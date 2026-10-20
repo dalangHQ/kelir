@@ -4,7 +4,7 @@
 
 ## 1. Local Velocity: `justfile`
 
-Requires: `just`, `cargo-nextest`, `mold` (Linux), `zig` or `musl-tools` (for the static shim), `pnpm`, `uv`.
+Requires: `just`, `cargo-nextest`, `mold` (Linux), `zig` (for the static shim), `pnpm`, `uv`.
 
 ```just
 # kelir development orchestrator
@@ -27,7 +27,7 @@ build-host:
 
 # Compiles static 50KB in-guest musl init binary
 build-shim target="aarch64-unknown-linux-musl":
-    cargo build -p kelir-shim --release --target {{target}}
+    cargo zigbuild -p kelir-shim --release --target {{target}}
     @ls -lh target/{{target}}/release/kelir-shim
 
 # Builds TS napi bindings
@@ -39,7 +39,7 @@ build-ts:
 test-unit:
     cargo nextest run --workspace --exclude kelir-shim --exclude driver-libkrun -E 'not test(test_hw_)'
 
-# Runs anti-TOCTOU, PTRACE_SEIZE, and subreaper tests in isolated container/namespaces
+# Runs anti-TOCTOU, PTRACE_SEIZE, and zombie reaper tests in isolated container/namespaces
 test-shim:
     cargo nextest run -p kelir-shim
 
@@ -122,10 +122,9 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: mozilla-actions/sccache-action@v0.0.5
-      - name: Install Musl Tools
-        run: sudo apt-get update && sudo apt-get install -y musl-tools gcc-aarch64-linux-gnu
-      - name: Compile Shim
-        run: cargo build -p kelir-shim --release --target ${{ matrix.target }}
+      - uses: taiki-e/install-action@cargo-zigbuild
+      - name: Build Shim via Zig Linker
+        run: cargo zigbuild -p kelir-shim --release --target ${{ matrix.target }}
       - name: Verify Size (<100KB binary constraint)
         run: |
           SIZE=$(stat -c%s target/${{ matrix.target }}/release/kelir-shim)
@@ -133,7 +132,7 @@ jobs:
           test $SIZE -lt 102400 || (echo "SHIM BLOAT DETECTED" && exit 1)
       - uses: actions/upload-artifact@v4
         with:
-          name: kelir-shim-${{{ matrix.target }}
+          name: kelir-shim-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/kelir-shim
 
   # ─── 3. HOST LINUX TESTS (KVM Mocked) ──────────────────────
@@ -145,6 +144,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@nextest
       - uses: mozilla-actions/sccache-action@v0.0.5
+      # Integration tests live in the kelir facade crate test target (crates/kelir/tests)
       - name: Run Nextest Unit Suite
         run: cargo nextest run --workspace --exclude kelir-shim --exclude driver-libkrun
 

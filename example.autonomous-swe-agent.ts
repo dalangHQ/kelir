@@ -4,7 +4,7 @@
 
 import { kelir, createPlugin, t,
          type Session, type SnapshotDescriptor, type ExecutionReceipt,
-         type CausalDelta } from "@kelir/core";
+         type PostExecAction, type CausalDelta } from "@kelir/core";
 import { pty }    from "@kelir/plugin-pty";
 import { vfs }    from "@kelir/plugin-vfs";
 import { wire }   from "@kelir/plugin-wire";
@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 
 declare const oracle: {
   currentTraceId(): string;
-  analyzeIntent(trap: { binary: string; binaryBlake3: number[]; argv: string[];
+  analyzeIntent(trap: { binary: string; binaryBlake3: string; argv: string[];
                         lineage: string[]; cwd: string; entropy: number;
                         loadedLibs: string[] }): Promise<{ isHypothesisValid: boolean;
                                                           falsificationReason?: string;
@@ -24,19 +24,7 @@ declare const oracle: {
   awaitHumanApproval(): Promise<void>;
 };
 
-// ── Plugin: typed checkpoint slot (replaces the invented `c.scratch`) ──────
-const stepLoopPlugin = () =>
-  createPlugin("step-loop")
-    .state("lastCheckpoint", null as SnapshotDescriptor | null)
-    .decorate("step", (store) => ({
-      mark: (cp: SnapshotDescriptor) => { store.lastCheckpoint = cp; },
-      last: (): SnapshotDescriptor => {
-        if (!store.lastCheckpoint) throw new Error("step-loop invariant: no checkpoint");
-        return store.lastCheckpoint;
-      },
-    }));
-
-// ── Plugin: repo policy (unchanged, still contributes exactly `c.policy`) ──
+// ── Plugin: repo policy (contributes `c.policy`) ──────────────────────────
 const repoPolicyPlugin = (opts: { maxDiffBytes: number; protectedBranches: string[] }) =>
   createPlugin("repo-policy")
     .state("violations", 0)
@@ -70,7 +58,7 @@ const repoPolicyPlugin = (opts: { maxDiffBytes: number; protectedBranches: strin
 
 const runtime = kelir({
   vcpus: 4, memoryMb: 4096, driver: "auto",
-  kernel: "./fixtures/vmlinux-6.6-arm64-kelir",
+  kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
   rootfsErofs: "./fixtures/rootfs-swebench.erofs",
   tscLocked: true, enableWatchdog: true,
 })
@@ -87,7 +75,7 @@ const runtime = kelir({
                 action: async (_p, stream) => { stream.write("y\n"); } })
   ))
 
-  // → c.fs   (maskRead folded in; NO separate dlp() — that was break #1)
+  // → c.fs (in-flight read masking via MaskRule included)
   .use(vfs((fs) => fs
     .idmap({ guestUid: 0, hostUid: process.getuid!() })
     .cacheSharedMounts(["~/.npm", "~/.cache/pip", "~/.cargo/registry"])
@@ -101,10 +89,10 @@ const runtime = kelir({
       { pattern: /sk_live_[0-9a-zA-Z]{24}/g, replace: "[STRIPE_VAULT_KEY]" },
       { pattern: /AKIA[0-9A-Z]{16}/g,       replace: "[AWS_IAM_REDACTED]" },
     ])
-    // NOTE: onWrite does NOT capture `runtime` or `session` (break #5).
-    // It receives the typed handler context `c`, whose `c.ledger` is
-    // bound by the `ledger()` plugin below. Order guarantees this is safe:
-    // snoop.onWrite only fires at guest write time, which is post-boot.
+    // NOTE: onWrite does not capture `runtime` or `session`. It receives
+    // the typed handler context `c`, whose `c.ledger` is bound by the
+    // `ledger()` plugin below; snoop onWrite only fires at guest write
+    // time, which is post-boot.
     .snoop("~/.claude/sessions/*.json", {
       sync: true,
       onWrite: async (path, raw, c) => {
@@ -112,7 +100,7 @@ const runtime = kelir({
         if (evt.falsifiedResult) throw new Error("EPERM: harness hallucination detected.");
         await oracle.ingestHarnessEvent({
           path, event: evt,
-          producerBlake3: await c.ledger.blake3OfProducingProcess(path), // typed
+          producerBlake3: await c.ledger.blake3OfProducingProcess(path),
         });
       },
     })
@@ -143,14 +131,12 @@ const runtime = kelir({
 
   // → c.ledger
   .use(ledger({
-    store: "sqlite:///workspace/audit.merkle.db",
+    // audit DB lives on the host, immune to guest rollback/fork
+    store: "sqlite://.kelir/audit.merkle.db",
     merkleChain: true,
     otel: { traceParent: true, serviceName: "kelir-swe-agent" },
-    receipts: { includeDirtyPages: true, includeBinaryBlake3: true, includeSyscallCount: true },
+    receipts: { includeDirtyBytes: true, includeBinaryBlake3: true, includeSyscallCount: true },
   }))
-
-  // → c.step   (typed checkpoint slot — replaces break #2)
-  .use(stepLoopPlugin())
 
   // → c.policy
   .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024,
@@ -166,10 +152,10 @@ const runtime = kelir({
       force:   t.Optional(t.Boolean()),
     }) })
     .before("*", async (c) => {
-      c.step.mark(await c.vm.checkpoint(`pre:${c.trap.pid}`));   // typed
+      c.step.mark(await c.vm.checkpoint(`pre:${c.trap.pid}`));
       const intent = await oracle.analyzeIntent({
         binary: c.trap.binary_path,
-        binaryBlake3: Array.from(c.trap.binary_blake3),
+        binaryBlake3: c.trap.binary_blake3,
         argv: c.trap.argv, lineage: c.trap.ancestor_chain,
         cwd: c.trap.cwd, entropy: c.trap.entropy,
         loadedLibs: c.trap.loaded_libraries,
@@ -196,41 +182,44 @@ const runtime = kelir({
       return c.resume();
     })
     .after("*", async (c) => {
-      const pre = c.step.last();                                  // typed, no !
-      const receipt: ExecutionReceipt = await c.ledger.lastReceipt(c.trap.pid);
-      if (receipt.binary_blake3.join() !== Array.from(c.trap.binary_blake3).join()) {
+      const pre: SnapshotDescriptor = c.step.last();   // throws if no checkpoint was marked
+      const receipt: ExecutionReceipt = await c.receipt();
+      if (receipt.binary_blake3 !== c.trap.binary_blake3) {
         await c.vm.rollback(pre);
         c.term.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n");
-        return;
+        return PostExecAction.RollbackAndHalt;
       }
       if (c.trap.binary_path.endsWith("/npm") && receipt.egress_bytes > 0 &&
           c.trap.cwd.includes("/checkout-service")) {
         await c.vm.rollback(pre);
         c.term.notice(`⚡ [KELIR]: hermetic test emitted ${receipt.egress_bytes}B — REVERTED\n`);
-        return;
+        return PostExecAction.RollbackAndHalt;
       }
       if (!(await oracle.verifyPhysicalReceipt(receipt))) {
         await c.vm.rollback(pre);
         c.term.notice("⚡ [KELIR]: post-condition violated — REVERTED\n");
+        return PostExecAction.RollbackAndHalt;
       }
+      return PostExecAction.Proceed;
     })
     .before("git commit -m *", async (c) =>
       c.policy.violations > 0
         ? c.deny(1, `EPOLICY: ${c.policy.violations} prior violation(s).`)
         : c.resume())
     .after("git commit *", async (c) => {
-      if ((await c.getReceipt()).dirty_memory_pages === 0)
-        throw new Error("Epistemic anomaly: zero-page delta commit attempted.");
+      if ((await c.receipt()).dirtyBytes === 0)
+        throw new Error("Epistemic anomaly: zero-byte delta commit attempted.");
+      return PostExecAction.Proceed;
     })
   )
 
   // ── LIFECYCLE: every handler receives `session` typed against the full
   //    accumulated context. No handler references a pre-boot variable. ────
-  .on("vm:init",     async (_s, driver) => driver.watchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
+  .on("vm:init",     async (_s, driver) => driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
   .on("vm:ready",    async (s) => { await s.execInGuest("npm", ["ci", "--prefer-offline"]); })
   .on("vm:shutdown", async (s) => { await s.ledger.flush(); })
   .on("trap:deny",   async (e, s) => {
-    if (await s.ledger.countDenials(e.pid) > 5) {
+    if (await s.ledger.countDenials(e.ppid) > 5) {
       await s.vm.suspend("./.kelir/quarantine.snap");
       await s.breakGlass();
     }
@@ -252,8 +241,10 @@ async function main() {
   try {
     const testRun = await session.spawn("npm", ["test", "--", "--runInBand"], {
       cwd: "/workspace/checkout-service",
+      // params are typed by the guard and cross into the guest as the
+      // KELIR_PARAMS=<json> environment variable
       params: { action: "fix-stripe-webhook", repo: "checkout-service",
-                issueId: "ISSUE-8412", env: "staging" },  // typed by the guard
+                issueId: "ISSUE-8412", env: "staging" },
     });
     if (testRun.exitCode !== 0) { await session.vm.rollback(baseSnap); await session.breakGlass(); return; }
 
@@ -276,12 +267,16 @@ async function main() {
     await oracle.awaitHumanApproval();
     await session.resume("/tmp/eval.snap");                       // <50ms
 
-    const commit = await session.commit({
+    // Sync the guest overlay to host storage, then commit via plain guest git.
+    const stats = await session.fs.reconcile({
       cwd: "/workspace/checkout-service",
-      message: `fix(stripe): dedupe webhook body reads (${winner.id})`,
-      reconcileWhiteouts: true, atomicRename: true, fsync: true,
+      atomicStaging: true, fsync: true,
     });
-    console.log(`[kelir] committed ${commit.filesChanged}f, ${commit.whiteoutsResolved} deletions`);
+    console.log(`[kelir] reconciled ${stats.filesChanged}f, ${stats.whiteoutsResolved} deletions`);
+
+    await session.spawn("git",
+      ["commit", "-am", `fix(stripe): dedupe webhook body reads (${winner.id})`],
+      { cwd: "/workspace/checkout-service" });
 
     const final = await session.ledger.finalize({ includeDelta: winningDelta!, includeMerkleRoot: true });
     console.log("[kelir] merkle root:", final.merkleRoot);
@@ -295,4 +290,4 @@ async function main() {
 main().catch(console.error);
 ```
 
-**The rule the repaired version now obeys:** *the builder is write-only until `boot()`; the session is read-only afterward; every context key is contributed by exactly one `.use()` upstream of its first consumer; every state slot used across hooks is declared by a plugin via `.state()` + `.decorate()`.*
+**The rule this file obeys:** *the builder is write-only until `boot()`; the session is read-only afterward; every plugin-contributed context key comes from exactly one `.use()` upstream of its first consumer (core provides `c.step` and `c.receipt()` directly); every state slot used across hooks is declared by a plugin via `.state()` + `.decorate()`.*

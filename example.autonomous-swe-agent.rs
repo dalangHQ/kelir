@@ -1,9 +1,9 @@
 //! examples/autonomous-swe-agent.rs
 //!
 //! Full-surface Rust SDK consumer. Not a TypeScript transliteration — this
-//! is the intended *native* Rust surface of `kelir-core` + first-class
-//! plugins, written to be consumed directly (not through the napi/pyo3
-//! bindings, which are for TS/Python consumers).
+//! is the intended *native* Rust surface of the `kelir` facade crate
+//! (`kelir-core` + first-class plugins), written to be consumed directly
+//! (not through the napi/pyo3 bindings, which are for TS/Python consumers).
 //!
 //! Two invariants the TS chain buys via generic type accumulation are
 //! enforced here by the borrow checker instead:
@@ -14,9 +14,9 @@
 //!      the Rust analogue of §6's "downstream handlers fail to compile".
 //!
 //!   2. `spawn().params::<P>(…)` requires `P: Deserialize`, and the runtime
-//!      deserializes the incoming JSON into `P` before any handler fires.
-//!      This replaces TypeBox's `t.Object({…})` runtime guard with a
-//!      zero-cost serde target.
+//!      deserializes the incoming JSON into `P` before any handler fires —
+//!      the TypeBox `t.Object({…})` runtime guard expressed as a zero-cost
+//!      serde target.
 //!
 //! Every plugin, every §11 superpower, all three §12 epistemic truth tiers,
 //! and all four VirtIO rings are exercised in the phases below.
@@ -49,8 +49,8 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use kelir::{
-    handler, CommitRequest, Decision, DriverChoice, FinalizeRequest, HandlerCtx,
-    KelirBuilder, Session, SnapshotDescriptor, StepSlot, VmConfig,
+    handler, Decision, DriverChoice, FinalizeRequest, FsReconcileRequest, HandlerCtx,
+    KelirBuilder, PostExecAction, Session, SnapshotDescriptor, StepSlot, VmConfig,
     oracle::{IntentAnalysis, Oracle},
     plugin::{KelirPlugin, PluginError, PluginWithHandle},
     plugins::{
@@ -63,7 +63,7 @@ use kelir::{
         },
         wire::{L4Proxy, Mtls, SinkholeConfig, VaultEntry, WireConfig, WirePlugin},
     },
-    protocol::{CausalDelta, ExecutionReceipt, SnapshotDescriptor, TrapAction, TrapEvent},
+    protocol::{CausalDelta, ExecutionReceipt, TrapAction, TrapEvent},
 };
 
 // ============================================================================
@@ -240,7 +240,7 @@ async fn build_runtime(
     let builder = KelirBuilder::new(VmConfig {
         vcpus: 4,
         memory_mb: 4096,
-        kernel: "./fixtures/vmlinux-6.6-arm64-kelir".into(),
+        kernel: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
         rootfs_erofs: "./fixtures/rootfs-swebench.erofs".into(),
         tsc_locked: true,
         enable_watchdog: true,
@@ -350,7 +350,8 @@ async fn build_runtime(
 
         // ── LEDGER (§12.1–§12.3) ────────────────────────────────────────
         .plugin(LedgerPlugin::new(LedgerConfig {
-            store: "sqlite:///workspace/audit.merkle.db".into(),
+            // The audit DB lives on the host, immune to guest rollback/fork.
+            store: ".kelir/audit.merkle.db".into(),
             merkle_chain: true,
             otel: Some(OtelConfig {
                 endpoint: "http://localhost:4318/v1/traces".into(),
@@ -358,7 +359,7 @@ async fn build_runtime(
                 propagate_traceparent: true,
             }),
             receipts: ReceiptConfig {
-                include_dirty_pages: true,
+                include_dirty_bytes: true,
                 include_binary_blake3: true,
                 include_syscall_count: true,
             },
@@ -442,10 +443,10 @@ async fn build_runtime(
                     move |c: HandlerCtx| {
                         let oracle = Arc::clone(&oracle);
                         async move {
-                            let pre: SnapshotDescriptor = c.step.last()
-                                .ok_or_else(|| anyhow!("step-loop: no pre-checkpoint"))?;
-                            let receipt: ExecutionReceipt =
-                                c.ledger.last_receipt(c.trap.pid).await?;
+                            let pre: SnapshotDescriptor = c.step.last().ok_or_else(|| {
+                                anyhow!("no pre-execution checkpoint recorded for this step")
+                            })?;
+                            let receipt: ExecutionReceipt = c.receipt().await?;
 
                             // Binary hash integrity — the agent cannot fake this
                             if receipt.binary_blake3 != c.trap.binary_blake3 {
@@ -453,7 +454,7 @@ async fn build_runtime(
                                 c.term.notice(
                                     "⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n",
                                 );
-                                return Ok(Decision::Halt);
+                                return Ok(PostExecAction::RollbackAndHalt);
                             }
                             // Hermetic runs must not egress
                             if c.trap.binary_path.ends_with("/npm")
@@ -465,7 +466,7 @@ async fn build_runtime(
                                     "⚡ [KELIR]: hermetic test emitted {}B egress — REVERTED\n",
                                     receipt.egress_bytes
                                 ));
-                                return Ok(Decision::Halt);
+                                return Ok(PostExecAction::RollbackAndHalt);
                             }
                             // Oracle post-condition (§12.5)
                             if !oracle.verify_physical_receipt(&receipt).await? {
@@ -473,9 +474,9 @@ async fn build_runtime(
                                 c.term.notice(
                                     "⚡ [KELIR]: post-condition violated — REVERTED\n",
                                 );
-                                return Ok(Decision::Halt);
+                                return Ok(PostExecAction::RollbackAndHalt);
                             }
-                            Ok(Decision::Resume)
+                            Ok(PostExecAction::Proceed)
                         }
                     }
                 }))
@@ -497,12 +498,12 @@ async fn build_runtime(
                     }
                 }))
 
-                // Tier-1 sanity: a commit must have dirtied ≥ 1 page
+                // Tier-1 sanity: a commit must have dirtied at least one byte
                 .after("git commit *", handler(|c: HandlerCtx| async move {
-                    if c.get_receipt().await?.dirty_memory_pages == 0 {
-                        bail!("Epistemic anomaly: zero-page delta commit attempted.");
+                    if c.receipt().await?.dirty_bytes == 0 {
+                        bail!("Epistemic anomaly: zero-byte delta commit attempted.");
                     }
-                    Ok(Decision::Resume)
+                    Ok(PostExecAction::Proceed)
                 }))
         }
     });
@@ -510,7 +511,7 @@ async fn build_runtime(
     // ── LIFECYCLE HOOKS (§11.4, §12) ────────────────────────────────────
     let builder = builder
         .on_vm_init(|driver| async move {
-            driver.watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot).await
+            driver.set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot).await
         })
         .on_vm_ready(|session: &Session| async move {
             session.exec_in_guest("npm", &["ci", "--prefer-offline"]).await
@@ -519,7 +520,7 @@ async fn build_runtime(
             session.ledger.flush().await
         })
         .on_trap_deny(|event, session: &Session| async move {
-            if session.ledger.count_denials(event.pid).await? > 5 {
+            if session.ledger.count_denials(event.ppid).await? > 5 {
                 session.vm.suspend("./.kelir/quarantine.snap").await?;
                 session.break_glass().await?;
             }
@@ -565,6 +566,7 @@ async fn main() -> anyhow::Result<()> {
         let test = session.spawn("npm")
             .args(["test", "--", "--runInBand"])
             .cwd("/workspace/checkout-service")
+            // params cross into the guest as the KELIR_PARAMS=<json> environment variable
             .params::<SpawnAction>(SpawnAction::FixStripeWebhook {
                 repo: "checkout-service".into(),
                 issue_id: "ISSUE-8412".into(),
@@ -616,19 +618,28 @@ async fn main() -> anyhow::Result<()> {
         oracle.await_human_approval().await?;
         session.resume("/tmp/eval.snap").await?;
 
-        // ── Phase 4: atomic commit + whiteout reconciliation (§8.1) ────
-        let commit = session.commit(CommitRequest {
+        // ── Phase 4: overlay reconcile to host, then git commit (§8.1) ─
+        let stats = session.fs.reconcile(FsReconcileRequest {
             cwd: "/workspace/checkout-service".into(),
-            message: format!("fix(stripe): dedupe webhook body reads ({id})"),
-            reconcile_whiteouts: true,
-            atomic_rename: true,
+            atomic_staging: true,
             fsync: true,
         }).await?;
         info!(
-            files = commit.files_changed,
-            deletes = commit.whiteouts_resolved,
-            "committed",
+            files = stats.files_changed,
+            deletes = stats.whiteouts_resolved,
+            "overlay reconciled to host disk",
         );
+
+        // Git runs as an ordinary guest execution — the trap chain gates it
+        // like any other binary.
+        session.spawn("git")
+            .args([
+                "commit",
+                "-am",
+                &format!("fix(stripe): dedupe webhook body reads ({id})"),
+            ])
+            .cwd("/workspace/checkout-service")
+            .await?;
 
         // ── Phase 5: signed Merkle receipt (§12.3) ─────────────────────
         let receipt: FinalReceipt = session

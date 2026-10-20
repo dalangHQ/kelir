@@ -21,9 +21,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import platform
 import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum
 from pathlib import Path
@@ -39,6 +40,7 @@ from kelir import (
     HandlerContext,
     KelirBuilder,
     Oracle,
+    PostExecAction,
     Session,
     SnapshotDescriptor,
     SpawnResult,
@@ -201,36 +203,7 @@ class RepoPolicyPlugin(BasePlugin[RepoPolicyHandle]):
 
 
 # ============================================================================
-# 3. STEP-LOOP PLUGIN — typed pre-checkpoint slot (replaces ad-hoc scratch)
-# ============================================================================
-
-@dataclass
-class StepLoopHandle:
-    slots: dict[int, SnapshotDescriptor] = field(default_factory=dict)
-
-    def mark(self, pid: int, cp: SnapshotDescriptor) -> None:
-        self.slots[pid] = cp
-
-    def last(self, pid: int) -> SnapshotDescriptor:
-        cp = self.slots.get(pid)
-        if cp is None:
-            raise RuntimeError(f"step-loop: no checkpoint for pid {pid}")
-        return cp
-
-
-class StepLoopPlugin(BasePlugin[StepLoopHandle]):
-    name = "step-loop"
-    requires: tuple[str, ...] = ()
-
-    def __init__(self) -> None:
-        self._h = StepLoopHandle()
-
-    def handle(self) -> StepLoopHandle:
-        return self._h
-
-
-# ============================================================================
-# 4. SNOOP FACTORY — does NOT capture session; only HandlerContext (§12.4 T3)
+# 3. SNOOP FACTORY — does NOT capture session; only HandlerContext (§12.4 T3)
 # ============================================================================
 
 def make_snoop(oracle: Oracle) -> Callable[[Path, bytes, HandlerContext], Awaitable[None]]:
@@ -244,17 +217,19 @@ def make_snoop(oracle: Oracle) -> Callable[[Path, bytes, HandlerContext], Awaita
 
 
 # ============================================================================
-# 5. HANDLER FACTORIES — closure-captured typed handles (compile-time-proof
+# 4. HANDLER FACTORIES — closure-captured typed handles (compile-time-proof
 #    analogue for Python; missing handle → NameError at import time)
 # ============================================================================
 
-Handler = Callable[[HandlerContext], Awaitable[Decision]]
+# `.before()` hooks gate the syscall and return a `Decision`; `.after()` hooks
+# run post-execution and return a `PostExecAction`.
+PreExecHandler = Callable[[HandlerContext], Awaitable[Decision]]
+PostExecHandler = Callable[[HandlerContext], Awaitable[PostExecAction]]
 
 
-def make_universal_step(step: StepLoopHandle, oracle: Oracle) -> Handler:
+def make_universal_step(oracle: Oracle) -> PreExecHandler:
     async def universal_step(c: HandlerContext) -> Decision:
-        pre = await c.vm.checkpoint(f"pre:{c.trap.pid}")
-        step.mark(c.trap.pid, pre)
+        c.step.mark(await c.vm.checkpoint(f"pre:{c.trap.pid}"))
 
         intent = await oracle.analyze_intent(c.trap)
         if not intent.is_hypothesis_valid:
@@ -270,7 +245,7 @@ def make_universal_step(step: StepLoopHandle, oracle: Oracle) -> Handler:
     return universal_step
 
 
-def make_warm_caches(oracle: Oracle) -> Handler:
+def make_warm_caches(oracle: Oracle) -> PreExecHandler:
     async def warm_caches(c: HandlerContext) -> Decision:
         c.env.set("OTEL_TRACE_ID", oracle.current_trace_id())
         c.env.set("CI", "1")
@@ -279,7 +254,7 @@ def make_warm_caches(oracle: Oracle) -> Handler:
     return warm_caches
 
 
-def make_entropy_check() -> Handler:
+def make_entropy_check() -> PreExecHandler:
     async def entropy_check(c: HandlerContext) -> Decision:
         if c.trap.entropy > 5.2:
             return Decision.deny(1, "EPERM: high-entropy payload.")
@@ -294,15 +269,15 @@ def make_entropy_check() -> Handler:
     return entropy_check
 
 
-def make_verify_receipt(step: StepLoopHandle, oracle: Oracle) -> Handler:
-    async def verify_receipt(c: HandlerContext) -> Decision:
-        pre = step.last(c.trap.pid)  # raises if invariant broken — no `!`
-        receipt: ExecutionReceipt = await c.ledger.last_receipt(c.trap.pid)
+def make_verify_receipt(oracle: Oracle) -> PostExecHandler:
+    async def verify_receipt(c: HandlerContext) -> PostExecAction:
+        pre: SnapshotDescriptor = c.step.last()  # raises if no checkpoint was marked
+        receipt: ExecutionReceipt = await c.receipt()
 
-        if list(receipt.binary_blake3) != list(c.trap.binary_blake3):
+        if receipt.binary_blake3 != c.trap.binary_blake3:
             await c.vm.rollback(pre)
             c.term.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
-            return Decision.halt()
+            return PostExecAction.rollback_and_halt()
 
         if (
             c.trap.binary_path.endswith("/npm")
@@ -314,18 +289,18 @@ def make_verify_receipt(step: StepLoopHandle, oracle: Oracle) -> Handler:
                 f"⚡ [KELIR]: hermetic test emitted {receipt.egress_bytes}B "
                 "egress — REVERTED\n"
             )
-            return Decision.halt()
+            return PostExecAction.rollback_and_halt()
 
         if not await oracle.verify_physical_receipt(receipt):
             await c.vm.rollback(pre)
             c.term.notice("⚡ [KELIR]: post-condition violated — REVERTED\n")
-            return Decision.halt()
+            return PostExecAction.rollback_and_halt()
 
-        return Decision.resume()
+        return PostExecAction.proceed()
     return verify_receipt
 
 
-def make_commit_gate(policy: RepoPolicyHandle) -> Handler:
+def make_commit_gate(policy: RepoPolicyHandle) -> PreExecHandler:
     async def commit_gate(_c: HandlerContext) -> Decision:
         n = policy.violations
         if n > 0:
@@ -334,17 +309,17 @@ def make_commit_gate(policy: RepoPolicyHandle) -> Handler:
     return commit_gate
 
 
-def make_zero_page_check() -> Handler:
-    async def zero_page_check(c: HandlerContext) -> Decision:
-        receipt = await c.get_receipt()
-        if receipt.dirty_memory_pages == 0:
-            raise RuntimeError("Epistemic anomaly: zero-page delta commit attempted.")
-        return Decision.resume()
-    return zero_page_check
+def make_zero_byte_check() -> PostExecHandler:
+    async def zero_byte_check(c: HandlerContext) -> PostExecAction:
+        receipt = await c.receipt()
+        if receipt.dirty_bytes == 0:
+            raise RuntimeError("Epistemic anomaly: zero-byte delta commit attempted.")
+        return PostExecAction.proceed()
+    return zero_byte_check
 
 
 # ============================================================================
-# 6. RUNTIME BUILDER — the linear chain (write-only until `.boot()`)
+# 5. RUNTIME BUILDER — the linear chain (write-only until `.boot()`)
 # ============================================================================
 
 async def build_runtime(
@@ -363,7 +338,7 @@ async def build_runtime(
         kelir.builder(
             vcpus=4,
             memory_mb=4096,
-            kernel="./fixtures/vmlinux-6.6-arm64-kelir",
+            kernel=f"./fixtures/vmlinux-6.6-{platform.machine()}-kelir",
             rootfs_erofs="./fixtures/rootfs-swebench.erofs",
             tsc_locked=True,
             enable_watchdog=True,
@@ -394,7 +369,7 @@ async def build_runtime(
             ],
         ))
 
-        # ── STORAGE PLANE (§8) — maskRead folded in; no separate dlp() ──
+        # ── STORAGE PLANE (§8) — in-flight read masking via MaskRule ──
         .plugin(VfsPlugin(
             idmap=IdmapConfig(guest_uid=0, host_uid=os.getuid()),
             shared_caches=[
@@ -480,7 +455,8 @@ async def build_runtime(
 
         # ── LEDGER (§12.1–§12.3) — must precede repo-policy (requires) ──
         .plugin(LedgerPlugin(LedgerConfig(
-            store="sqlite:///workspace/audit.merkle.db",
+            # audit DB lives on the host, immune to guest rollback/fork
+            store="sqlite://.kelir/audit.merkle.db",
             merkle_chain=True,
             otel=OtelConfig(
                 endpoint="http://localhost:4318/v1/traces",
@@ -488,38 +464,37 @@ async def build_runtime(
                 propagate_traceparent=True,
             ),
             receipts=ReceiptConfig(
-                include_dirty_pages=True,
+                include_dirty_bytes=True,
                 include_binary_blake3=True,
                 include_syscall_count=True,
             ),
         )))
     )
 
-    # ── CUSTOM PLUGIN + TYPED HANDLES ────────────────────────────────────
+    # ── CUSTOM PLUGIN + TYPED HANDLE ────────────────────────────────────
     #
-    # `plugin_with_handle` returns `(self, handle)`. If either line is
-    # removed, the handler closures below have no `policy` / `step` to
-    # capture → NameError at import time. That is the Python expression
+    # `plugin_with_handle` returns `(self, handle)`. If the line is
+    # removed, the handler closures below have no `policy` to capture
+    # → NameError at import time. That is the Python expression
     # of §6's "downstream handlers fail to compile".
     builder, policy = builder.plugin_with_handle(policy_plugin)
-    builder, step = builder.plugin_with_handle(StepLoopPlugin())
 
     # ── EXEC GRAPH (§4.3, §12.5) ─────────────────────────────────────────
     def _register_handlers(cmd: kelir.ExecChain) -> None:
         # Universal atomic step loop: checkpoint → oracle → resume
-        cmd.before("*", make_universal_step(step, oracle))
+        cmd.before("*", make_universal_step(oracle))
         cmd.before("npm test -- --runInBand", make_warm_caches(oracle))
         cmd.before("git push *", make_entropy_check())
-        cmd.after("*", make_verify_receipt(step, oracle))
+        cmd.after("*", make_verify_receipt(oracle))
         cmd.before("git commit -m *", make_commit_gate(policy))
-        cmd.after("git commit *", make_zero_page_check())
+        cmd.after("git commit *", make_zero_byte_check())
 
     builder = builder.exec(_register_handlers)
 
     # ── LIFECYCLE HOOKS (§11.4, §12) — every handler receives `session` ─
     @builder.on_vm_init
     async def _init(driver: kelir.VmmDriver) -> None:
-        await driver.watchdog(timeout=timedelta(minutes=5), action="reboot")
+        await driver.set_watchdog(timeout=timedelta(minutes=5), action="reboot")
 
     @builder.on_vm_ready
     async def _ready(session: Session) -> None:
@@ -531,7 +506,7 @@ async def build_runtime(
 
     @builder.on_trap_deny
     async def _deny(event: TrapEvent, session: Session) -> None:
-        if await session.ledger.count_denials(event.pid) > 5:
+        if await session.ledger.count_denials(event.ppid) > 5:
             await session.vm.suspend("./.kelir/quarantine.snap")
             await session.break_glass()
 
@@ -539,7 +514,7 @@ async def build_runtime(
 
 
 # ============================================================================
-# 7. ORCHESTRATION — the seven phases
+# 6. ORCHESTRATION — the seven phases
 # ============================================================================
 
 async def fork_and_verify(
@@ -588,6 +563,8 @@ async def main() -> None:
             "npm",
             ["test", "--", "--runInBand"],
             cwd="/workspace/checkout-service",
+            # params cross into the guest as the KELIR_PARAMS=<json>
+            # environment variable
             params=FixStripeWebhook(
                 action="fix-stripe-webhook",
                 repo="checkout-service",
@@ -619,17 +596,21 @@ async def main() -> None:
         await oracle.await_human_approval()
         await session.resume("/tmp/eval.snap")
 
-        # ── Phase 4: atomic commit + whiteout reconciliation (§8.1) ───
-        commit = await session.commit(
+        # ── Phase 4: overlay reconciliation + guest git commit (§8.1) ──
+        stats = await session.fs.reconcile(
             cwd="/workspace/checkout-service",
-            message=f"fix(stripe): dedupe webhook body reads ({winning_id})",
-            reconcile_whiteouts=True,
-            atomic_rename=True,
+            atomic_staging=True,
             fsync=True,
         )
-        log.info("committed",
-                 files=commit.files_changed,
-                 deletes=commit.whiteouts_resolved)
+        log.info("reconciled",
+                 files=stats.files_changed,
+                 deletes=stats.whiteouts_resolved)
+
+        await session.spawn(
+            "git",
+            ["commit", "-am", f"fix(stripe): dedupe webhook body reads ({winning_id})"],
+            cwd="/workspace/checkout-service",
+        )
 
         # ── Phase 5: signed Merkle receipt (§12.3) ────────────────────
         final = await session.ledger.finalize(
@@ -643,7 +624,7 @@ async def main() -> None:
 
 
 # ============================================================================
-# 8. ORACLE — user-supplied epistemic engine
+# 7. ORACLE — user-supplied epistemic engine
 # ============================================================================
 
 class _IntentAnalysis(Protocol):
@@ -674,7 +655,7 @@ class UserOracle(Oracle):
 
 
 # ============================================================================
-# 9. ENTRY
+# 8. ENTRY
 # ============================================================================
 
 if __name__ == "__main__":
