@@ -73,25 +73,25 @@
 ```
 
 ---
-
 ## 3. Physical Architecture & Pluggable `VmmDriver` Substrate
 
-`kelir` executes as a single host binary that directly drives guest virtualization across diverse operating systems and hypervisor platforms.
+`kelir` executes as a single in-process hypervisor runtime. Host consumer applications interface with the microkernel via two distinct pathways: **direct zero-overhead Rust linking** or **in-process foreign function interfaces (Node-API / PyO3)**.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                                 HOST PROCESS RUNTIME                                    │
 │                                                                                         │
-│  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
-│  │                    CONSUMER PLUGIN CHAIN (TypeScript / Rust / Python)             │  │
-│  │    kelir().use(pty()).use(vfs()).use(wire()).use(chaos()).use(customPlugin())     │  │
-│  └──────────────────────────────────────────┬────────────────────────────────────────┘  │
-│                                             │ In-Process FFI (napi-rs / PyO3)           │
-│                                             ▼                                           │
+│  ┌─────────────────────────┐       ┌─────────────────────────────────────────────────┐  │
+│  │   NATIVE RUST CONSUMER  │       │       DYNAMIC RUNTIME CONSUMERS                 │  │
+│  │   (Direct Cargo Crate)  │       │       TypeScript (@kelir/core) | Python (kelir) │  │
+│  └────────────┬────────────┘       └────────────────────────┬────────────────────────┘  │
+│               │ Zero-Cost Link                              │ In-Process FFI            │
+│               │ (Direct Monomorphization)                   │ (napi-rs / PyO3)          │
+│               ▼                                             ▼                           │
 │  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
 │  │                        kelir-core (Stripped Microkernel)                          │  │
 │  │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │
-│  │   ├── EventBus: Typed compile-time and runtime async hook pipeline                │  │
+│  │   ├── EventBus: Unified compile-time and async hook pipeline                      │  │
 │  │   └── DriverRouter: Lifecycle controller mediating Box<dyn VmmDriver>             │  │
 │  └──────────────────────────────────────────┬────────────────────────────────────────┘  │
 │                                             │ Dynamic Driver Trait Interface            │
@@ -134,7 +134,7 @@
 
 ### 3.1 The Universal `VmmDriver` Trait
 
-`kelir-core` decouples from hypervisor backends through the `VmmDriver` abstraction:
+Hypervisor backends are completely swappable via `VmmDriver`. The microkernel drives all backends through identical primitives:
 
 ```rust
 // crates/kelir-core/src/vmm/driver.rs
@@ -164,12 +164,12 @@ pub struct SnapshotDescriptor {
 
 #[async_trait]
 pub trait VmmDriver: Send + Sync {
-    /// Cold-boots the microVM environment in <60ms via libkrun or active driver
+    /// Cold-boots the microVM environment in <60ms via the active platform driver
     async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError>;
 
     /// Branches the running VM into an isolated CoW clone in <15ms
-    /// Linux: userfaultfd + KVM memory cloning
-    /// macOS: HVF memory-mapped page duplication
+    /// - Linux: userfaultfd + KVM memory cloning
+    /// - macOS: HVF memory-mapped page duplication
     async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError>;
 
     /// Creates an atomic in-memory checkpoint of guest RAM and vCPU registers
@@ -428,109 +428,151 @@ To achieve sub-12 microsecond hook execution, `kelir-core` compiles registered p
 
 ---
 
-## 6. The Elysia-Style Accumulating SDK Engine (`@kelir/core`)
+## 6. Tri-Native Consumer SDK Architecture (Rust, TypeScript, Python)
 
-The consumer SDK mirrors the microkernel: **`kelir()` by default is an empty execution context.** Every capability is mounted via `.use()`.
+`kelir` rejects dynamic `any`-typing and second-class shims. All three host consumer SDKs enforce identical runtime guarantees through their language-native compile-time type systems:
 
-Context accumulates through TypeScript generic inference (`Kelir<TContext>`). If an upstream plugin, state variable, or guard is removed, **downstream handlers fail to compile at build time**. Zero `any` casting.
+1. **Rust:** Borrow-checker verified handle injection + zero-cost Serde deserialization.
+2. **TypeScript:** Generic context accumulation (`Kelir<TContext>`) + TypeBox schema guards.
+3. **Python:** RAII context managers (`async with`) + Pydantic v2 execution validation.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              TYPE CONTEXT ACCUMULATION                                 │
-│                                                                                        │
-│   kelir()                                                                              │
-│     │ Context: {}                                                                      │
-│     ▼                                                                                  │
-│   .use(vfsPlugin)                                                                      │
-│     │ Context: { fs: VfsController }                                                   │
-│     ▼                                                                                  │
-│   .use(stripeSandboxPlugin)                                                            │
-│     │ Context: { fs: VfsController, store: { stripeInvoices: number }, getStripe() }   │
-│     ▼                                                                                  │
-│   .exec((cmd) => cmd.before("npm test", (c) => {                                       │
-│       // c is 100% type-inferred: c.fs, c.store.stripeInvoices, c.getStripe()          │
-│   }))                                                                                  │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+│                        LANGUAGE-SPECIFIC SAFETY INVARIANTS                             │
+├──────────────┬────────────────────────────────────┬────────────────────────────────────┤
+│ LANGUAGE     │ PLUGIN INSTALLATION PROOF          │ INBOUND PARAMETER VALIDATION       │
+├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
+│ Rust         │ `plugin_with_handle(P)` produces   │ `c.params::<T>()` deserializes     │
+│              │ typed handle; closures fail to     │ via Serde; failure halts spawn     │
+│              │ compile if plugin is unmounted     │ before traps execute               │
+├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
+│ TypeScript   │ Type-level context accumulation;   │ `.guard({ schema: t.Object(...) })`│
+│              │ `c.pluginKey` fails `tsc` if       │ validates via TypeBox prior to     │
+│              │ `.use()` is absent upstream        │ execution                          │
+├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
+│ Python       │ `plugin_with_handle()` yields typed│ Pydantic `BaseModel` on `spawn()`  │
+│              │ handle instance; missing handle    │ raises `EINVAL` before hook        │
+│              │ fails closures at import time      │ evaluation                         │
+└──────────────┴────────────────────────────────────┴────────────────────────────────────┘
 ```
 
-### 6.1 Plugin Authoring API (`createPlugin`)
+---
 
-Developers author reusable, self-contained plugins that configure the 4 hardware planes, store internal state, and decorate downstream contexts:
+### 6.1 Native Rust Architecture: The Borrow-Checker Invariant
 
-```typescript
-// packages/core/src/plugin.ts
-import { createPlugin } from "@kelir/core";
+In Rust, plugin dependencies are verified without dynamic reflection or string keys. A plugin defines an associated `Handle` type. Mounting the plugin atomically returns the builder and its handle.
 
-export interface StripePluginOptions {
-  mockMode: boolean;
-  apiKey: string;
+```rust
+// Rust Consumer: Compile-Time Plugin Verification & Serde Guards
+
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "kebab-case")]
+enum Action {
+    FixWebhook { repo: String, issue_id: String },
 }
 
-export const stripePlugin = (opts: StripePluginOptions) =>
-  createPlugin("stripe-plugin")
-    // Declare plugin-scoped state variable
-    .state("interceptedStripeCalls", 0)
+// 1. Atomic handle extraction:
+let (builder, policy) = builder.plugin_with_handle(RepoPolicyPlugin::new(options));
 
-    // Decorate downstream execution context with typed helper
-    .decorate("getStripeTelemetry", (store) => ({
-      calls: store.interceptedStripeCalls,
-    }))
-
-    // Wire Plane: Zero-Knowledge credential substitution
-    .wire((w) =>
-      w.vault("STRIPE_API_KEY", {
-        placeholder: "vault://stripe_key",
-        resolve: () => opts.apiKey,
-        scopeUrls: ["https://api.stripe.com/*"],
-      })
-    )
-
-    // Storage Plane: Mount ephemeral in-memory configuration
-    .vfs((fs) =>
-      fs.ghost("/root/.stripe/config.json", async () => ({
-        content: JSON.stringify({ mock: opts.mockMode }),
-        mode: 0o600,
-      }))
-    )
-
-    // Control Plane: Intercept process execution
-    .exec((cmd) =>
-      cmd.before("stripe *", async (c) => {
-        c.store.interceptedStripeCalls += 1;
-        return c.resume();
-      })
-    );
+// 2. Downstream handler captures typed handle:
+let builder = builder.exec(move |exec| {
+    let policy = policy.clone();
+    exec
+        // Serde deserializes `Action` before handler execution:
+        .before("npm test", handler(|c: HandlerCtx| async move {
+            let params = c.params::<Action>()?; 
+            Ok(Decision::Resume)
+        }))
+        // Compiler guarantees `policy` exists in scope:
+        .before("git commit *", handler(move |_c: HandlerCtx| {
+            let policy = policy.clone();
+            async move {
+                if policy.violations().await > 0 {
+                    return Ok(Decision::deny(1, "Policy violations recorded"));
+                }
+                Ok(Decision::Resume)
+            }
+        }))
+});
 ```
 
-### 6.2 Schema Enforcement on Shell Commands (TypeBox)
+* **No Handle, No Compile:** If `builder.plugin_with_handle(...)` is omitted, `policy` does not exist. Closures attempting to capture it trigger rustc error `E0425`.
+* **Zero-Allocation Validation:** `c.params::<T>()` operates directly on zero-copy guest memory buffers.
 
-Parameters are validated against static and runtime TypeBox schemas:
+---
+
+### 6.2 TypeScript Architecture: Type-Accumulating Pipeline (`@kelir/core`)
+
+The TypeScript SDK models pipeline state as an accumulating generic type `Kelir<TContext>`. Each `.use()` call returns an expanded type context.
 
 ```typescript
+// TypeScript Consumer: Generic Inference & TypeBox Guard
+
 import { kelir, t } from "@kelir/core";
-import { pty } from "@kelir/plugin-pty";
 import { vfs } from "@kelir/plugin-vfs";
 
-const app = kelir({ vcpus: 2, memoryMb: 1024 })
-  .use(pty())
+const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
   .use(vfs())
-  .exec((cmd) =>
-    cmd
-      .guard({
-        schema: t.Object({
-          action: t.Literal("deploy"),
-          env: t.Union([t.Literal("staging"), t.Literal("production")]),
-        }),
-      })
-      .before("./deploy.sh *", async (c) => {
-        // c.params.env is typed: "staging" | "production"
-        if (c.params.env === "production" && c.trap.uid !== 0) {
-          return c.deny(1, "EPERM: Production deployments require root privileges.");
-        }
-        return c.resume();
-      })
+  .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024 }))
+  .exec((cmd) => cmd
+    // 1. Static and runtime schema validation
+    .guard({
+      schema: t.Object({
+        action: t.Literal("fix-webhook"),
+        issueId: t.String(),
+      }),
+    })
+    // 2. `c.policy` and `c.fs` are fully inferred on HandlerContext:
+    .before("git commit *", async (c) => {
+      if (c.policy.violations > 0) {
+        return c.deny(1, `EPOLICY: ${c.policy.violations} violation(s)`);
+      }
+      return c.resume();
+    })
   );
 ```
+
+* **Build-Time Invalidation:** Removing `.use(repoPolicyPlugin)` strips `policy` from `TContext`. Downstream references to `c.policy` fail at `tsc` compilation.
+* **Schema Boundary:** Spawn actions failing the `.guard()` schema terminate execution with `EINVAL` prior to VM instruction dispatch.
+
+---
+
+### 6.3 Python Architecture: RAII Context Managers & Pydantic Validation
+
+The Python SDK bridges native hypervisor memory management directly to Python runtime semantics. It replaces ad-hoc hypervisor lifecycle management with deterministic `async with` resource cleanup and Pydantic v2 models.
+
+```python
+# Python Consumer: RAII Lifecycles & Pydantic Schema Enforcement
+
+from pydantic import BaseModel, Field
+from kelir import kelir, Decision, HandlerContext
+
+class FixWebhookParams(BaseModel, frozen=True):
+    action: str = Field(pattern=r"^fix-webhook$")
+    issue_id: str
+
+# 1. Plugin yields typed handle instance
+builder = kelir.builder(vcpus=4, memory_mb=4096)
+builder, policy = builder.plugin_with_handle(RepoPolicyPlugin())
+
+# 2. Handler captures handle via closure
+async def commit_gate(_c: HandlerContext) -> Decision:
+    if policy.violations > 0:
+        return Decision.deny(1, f"EPOLICY: {policy.violations} violation(s)")
+    return Decision.resume()
+
+builder.exec(lambda cmd: cmd.before("git commit *", commit_gate))
+
+# 3. RAII Execution: __aenter__ boots microVM; __aexit__ guarantees termination
+async with builder as session:
+    await session.spawn(
+        "npm", ["test"],
+        params=FixWebhookParams(action="fix-webhook", issue_id="ISSUE-8412"),
+    )
+```
+
+* **Guaranteed Hypervisor Teardown:** Python's `async with` guarantees `session.terminate()` execution inside `__aexit__`, matching Rust's `Drop` semantics under unhandled exceptions.
+* **Pre-Hook Type Safety:** Inbound spawn payloads are parsed through Pydantic v2 before any hypervisor trap or interceptor evaluates. Falsified payloads fail immediately at the guest perimeter.
 
 ---
 
@@ -1051,33 +1093,108 @@ await app.spawn("claude", ["code", "run test verification"]);
 
 
 ---
-
 ## 13. Ecosystem Ingestion Adapters
+
+`kelir` delivers seamless interoperability across cloud-native infrastructure, agent orchestration frameworks, and developer environments.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           KELIR INGESTION ADAPTERS                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 1. STANDARD LIBRARY SHIMS:                                                  │
-│    - Node.js: `import { spawn } from "@kelir/core";` (Drop-in child_process)│
-│    - Python:  `from kelir import Popen`              (Drop-in subprocess)   │
+│ 1. TRI-NATIVE FIRST-CLASS SDKs:                                             │
+│    - Rust: Direct in-process crate linkage (`kelir = "3.0"`)                │
+│    - TypeScript: Fully typed runtime builder (`@kelir/core`)                │
+│    - Python: Native async hypervisor engine (`kelir>=3.0` via PyO3)         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 2. MODEL CONTEXT PROTOCOL (MCP):                                            │
 │    - Binary `@kelir/mcp-server` mounts directly into Claude Desktop/Cursor. │
-│    - Exposes hypervisor terminal execution without touching host system.    │
+│    - Mediates hardware-isolated execution without exposing host boundaries. │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 3. CONTAINERD SHIM V2 (K8s Parity):                                         │
-│    - `containerd-shim-kelir-v2` runs microVMs as Kubernetes Pods.           │
-│    - Specified via: `runtimeClassName: kelir`                               │
+│ 3. CONTAINERD SHIM V2 (Kubernetes Bare-Metal Execution):                    │
+│    - `containerd-shim-kelir-v2` runs microVMs as standard K8s Pods.         │
+│    - Activated via `runtimeClassName: kelir` in Pod manifests.              │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 4. OPENSHELL COMPUTE DRIVER (NVIDIA Ecosystem):                             │
+│ 4. OPENSHELL COMPUTE DRIVER (NVIDIA AI Infrastructure):                     │
 │    - `openshell-driver-kelir` implements `compute_driver.proto` over UDS.   │
+│    - Binds GPU-accelerated workloads directly to bare-metal microVMs.       │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 5. E2B SDK COMPATIBILITY:                                                   │
-│    - `@kelir/e2b-compat` replicates `Sandbox` class for instant migration.  │
+│ 5. SANDBOX ENGINE COMPATIBILITY (E2B Drop-In):                              │
+│    - `@kelir/e2b-compat` (TS) and `kelir.compat.e2b` (Python).              │
+│    - Replicates the `Sandbox` interface with sub-60ms local hardware boots. │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+---
+
+### 13.1 Tri-Native Language Runtimes
+Workloads consume `kelir` directly through native programming models without shell shimming or background daemon management:
+
+* **Rust (`crates/kelir-core`):** Direct compile-time monomorphization. Hypervisor memory allocations share the host process heap with zero dynamic dispatch overhead.
+* **TypeScript (`@kelir/core`):** Zero-copy memory view streaming over NAPI-RS. High-throughput I/O pipelines process VirtIO console and network frames natively in libuv.
+* **Python (`kelir` via PyO3):** Direct GIL-released asynchronous Rust dispatch. Futures map to Python's `asyncio` event loop while VM memory operations execute on detached OS threads.
+
+---
+
+### 13.2 Model Context Protocol (MCP) Adapter
+The MCP engine exposes microVM execution to LLM clients (Claude Desktop, Cursor, Devin) via standard Model Context Protocol interfaces:
+
+```json
+{
+  "mcpServers": {
+    "kelir-sandbox": {
+      "command": "kelir-mcp",
+      "args": [
+        "--kernel", "./fixtures/vmlinux",
+        "--rootfs", "./fixtures/rootfs.erofs",
+        "--memory-mb", "2048"
+      ]
+    }
+  }
+}
+```
+* Bypasses host shell execution entirely.
+* Maps LLM tool calls (`execute_command`, `read_file`, `write_file`) directly to `virtio-console`, `virtio-fs`, and `virtio-vsock` ring operations.
+
+---
+
+### 13.3 Containerd Shim v2 (`containerd-shim-kelir-v2`)
+Enables direct orchestration of microVM sandboxes inside Kubernetes clusters without running bloated VM management stacks:
+
+* **Pod Isolation:** Each Kubernetes Pod executes within an isolated hardware microVM instance rather than a Linux cgroup/namespace envelope.
+* **Storage Mounts:** Kubernetes PersistentVolumeClaims (PVCs) mount directly as `virtio-fs` endpoints with in-flight UID/GID mapping.
+* **OCI Compatibility:** Translates standard OCI container images into read-only EROFS blocks during rootfs setup.
+
+---
+
+### 13.4 OpenShell gRPC Compute Driver (`openshell-driver-kelir`)
+Implements the NVIDIA OpenShell hardware orchestration layer:
+
+* Serves the `compute_driver.proto` gRPC interface over `/var/run/kelir/openshell.sock`.
+* Negotiates GPU passthrough via `driver-rustvmm` using NVIDIA Container Device Interface (CDI) device mapping.
+* Coordinates hardware memory checkpointing and CoW branching for multi-tenant inference tasks.
+
+---
+
+### 13.5 Sandbox API Compatibility (`@kelir/e2b-compat`)
+Enables immediate migration for agent frameworks built against the E2B Sandbox API without rewriting application code:
+
+```typescript
+// Drop-in compatibility with legacy Sandbox workflows:
+import { Sandbox } from "@kelir/e2b-compat";
+
+const sandbox = await Sandbox.create({
+  template: "base",
+  timeoutMs: 300_000,
+});
+
+// Executes inside an isolated hardware microVM:
+const execution = await sandbox.commands.run("npm test");
+console.log(execution.stdout);
+
+await sandbox.kill();
+```
+* Preserves existing `files`, `commands`, and `pty` method signatures.
+* Replaces remote cloud VM roundtrips with sub-60ms local hardware execution.
 ---
 
 ## 14. Consolidated Repository Layout & Crate Architecture
