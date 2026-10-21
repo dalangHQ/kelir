@@ -7,6 +7,7 @@
 
 use async_trait::async_trait;
 use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 use crate::handlers::HandlerCtx;
 use crate::protocol::messages::{
@@ -44,6 +45,37 @@ pub struct VfsInodeAttr {
     pub gid: u32,
     pub size: u64,
     pub content: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VirtioRing {
+    Vsock,
+    Console,
+    Fs,
+    Net,
+}
+
+/// Mount-level scoping filters evaluated before dispatch array registration.
+#[derive(Debug, Clone, Default)]
+pub struct MountScope {
+    pub rings: Option<Vec<VirtioRing>>,
+    pub binaries: Option<Vec<String>>,
+    pub paths: Option<Vec<PathBuf>>,
+}
+
+impl MountScope {
+    pub fn with_rings<I: IntoIterator<Item = VirtioRing>>(mut self, rings: I) -> Self {
+        self.rings = Some(rings.into_iter().collect());
+        self
+    }
+    pub fn with_binaries<I: IntoIterator<Item = S>, S: Into<String>>(mut self, binaries: I) -> Self {
+        self.binaries = Some(binaries.into_iter().map(Into::into).collect());
+        self
+    }
+    pub fn with_paths<I: IntoIterator<Item = P>, P: Into<PathBuf>>(mut self, paths: I) -> Self {
+        self.paths = Some(paths.into_iter().map(Into::into).collect());
+        self
+    }
 }
 
 // ── Lifecycle context ────────────────────────────────────────────
@@ -101,6 +133,12 @@ pub trait KelirPlugin: Send + Sync {
     /// Dispatch ordering; lower values run earlier. Default: 100.
     /// Ties broken by declaration order.
     fn priority(&self) -> u8 { 100 }
+
+    /// Default mount scope. Overridden by explicit builder scope.
+    fn default_scope(&self) -> MountScope { MountScope::default() }
+
+    /// Null-object toggle. False omits all hooks from flat dispatch array.
+    fn is_enabled(&self) -> bool { true }
 
     /// Hard dependencies by plugin name. Validated at boot; a missing
     /// dependency aborts with EConfig before any hook fires.

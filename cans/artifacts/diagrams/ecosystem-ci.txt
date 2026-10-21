@@ -1,0 +1,47 @@
+DECOUPLED PLUGIN CI + REGISTRY FLOW
+  Invariant: the canon repo never builds plugin source. Every trust
+  boundary is a signed attestation; every gate is a CLI subcommand
+  also runnable locally via `just parity` / `just plugin-check`.
+
+  ┌──────────────────────┐
+  │  PLUGIN REPO (ext)   │   own cadence, own source, own CI shell
+  │  github.com/x/pty    │
+  └──────────┬───────────┘
+             │  uses: <canon>/.github/workflows/plugin-ci-reusable.yml@main
+             ▼
+  ┌──────────────────────┐
+  │  REUSABLE WORKFLOW   │
+  │  audit               │   kelir-plugin-cli check
+  │  vectors × {rel,mn}  │   kelir-plugin-cli parity run
+  │  attest              │   kelir-plugin-cli attest --sign
+  └──────────┬───────────┘
+             │  attestation.json  (SHA · core range · per-lang · per-channel)
+             │  signature verified against registered pubkey
+             ▼
+  ┌──────────────────────┐
+  │  CANON REPO          │
+  │  cans/_registry/     │   PR-reviewed entry; one line per plugin
+  │    plugins.yaml      │
+  │  registry-poll (cron)│   GH_TOKEN, no plugin build, writes matrix
+  └──────────┬───────────┘
+             │  verify signature · update matrix · annotate state
+             ▼
+  ┌──────────────────────┐
+  │  DASHBOARD           │
+  │  last core attested  │
+  │  stable / canary     │
+  │  lang coverage       │
+  │  drift · age         │
+  └──────────────────────┘
+
+  Channels per registered plugin:
+    stable  →  kelir-core@released     green = first-class eligible
+    canary  →  kelir-core@main         drift flags `drifted`; never blocks core
+
+  Failure isolation:
+    degraded  →  archived after grace window
+    core release is NEVER blocked by plugin state
+
+  Registration:
+    one PR to cans/_registry/plugins.yaml  →  human gate on who is in
+    matrix update, poll, dashboard          →  automatic on who is current

@@ -5,7 +5,7 @@
     - Windows driver-openvmm: HV_SOCKET translates the same channels
     - Zero network interface involvement
   - Trap fast-path
-    - Step sequence and per-step mechanics: see artifacts/diagrams/trap-flow.txt
+    - Step sequence and per-step mechanics: See artifacts/diagrams/trap-flow.txt
     - Goal: the trap path must not slow `cargo build` / `npm install`
     - Why three layers, not one
       - A single trap-on-every-syscall design adds ~µs per fork/exec at
@@ -29,7 +29,7 @@
     - Flow diagram: See artifacts/diagrams/trap-flow.txt
   - Wire framing
     - See: artifacts/code/wire-protocol.rs
-    - Layout (header offsets, magic, version): see the artifact
+    - Layout (header offsets, magic, version): See artifacts/code/wire-protocol.rs
     - Framing invariants
       - One frame = one message; no message spans frames
       - Sequence is monotonic per vsock connection and shared across both
@@ -38,9 +38,8 @@
         the u64 sequence
   - Wire messages
     - See: artifacts/code/messages.rs
-    - Message set and payload fields: see the artifact
-    - Hook binding: each message resolves to exactly one hook; see
-      02-plugin-model.md#KelirPlugin-trait
+    - Message set and payload fields: See artifacts/code/messages.rs
+    - Hook binding: one hook per message; see 02-plugin-model.md#KelirPlugin-trait
     - TrapAction invariants
       - `Allow` cannot mutate registers, memory, or env; it is a no-op
       - `Deny` injects an exit code and stderr into the agent TTY

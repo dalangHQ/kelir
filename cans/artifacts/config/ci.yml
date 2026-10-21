@@ -4,6 +4,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.ref }}
@@ -81,6 +84,30 @@ jobs:
       - name: Core + testkit
         run: cargo nextest run -p kelir-core -p kelir-plugin-testkit
 
+  # ─── 3b. MULTI-LANGUAGE PARITY GATE ────────────────────────
+  # Merge-blocking. Vectors + surface diff run via kelir-plugin-cli,
+  # the same subcommand the reusable workflow invokes.
+  parity:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: astral-sh/setup-uv@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Build bindings
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @kelir/core build
+          uv venv && uv pip install -e "packages/py[dev]"
+      - name: Parity
+        run: cargo run -p kelir-plugin-cli -- parity run
+
   # ─── 4. PER-PLUGIN TEST MATRIX ─────────────────────────────
   # Each plugin's tests prove its own decoupling. A failure in one
   # cell does not mask others (fail-fast: false). See 02#Plugin-ownership.
@@ -157,3 +184,23 @@ jobs:
       # Only verify compilation of Apple Silicon HVF driver; do not waste runner minutes on full matrix
       - name: Check HVF libkrun driver
         run: cargo check -p driver-libkrun
+
+  # ─── 9. REGISTRY POLL (scheduled; external plugins) ────────
+  # Reads cans/_registry/plugins.yaml, pulls each repo's release
+  # attestation, verifies signature, writes dashboard state. Does not
+  # build plugin source. Stable/canary channel runs dispatch the
+  # reusable workflow; this job only reconciles attestations.
+  registry-poll:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Poll and attest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo run -p kelir-plugin-cli -- registry poll --apply

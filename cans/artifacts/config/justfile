@@ -38,6 +38,10 @@ test-plugins:
 test-plugin plugin:
     cargo nextest run -p plugin-{{plugin}}
 
+# Plugin audit mirror — same command plugin-ci-reusable.yml runs
+plugin-check plugin:
+    cargo run -p kelir-plugin-cli -- check -p plugin-{{plugin}}
+
 # Runs anti-TOCTOU, PTRACE_SEIZE, and zombie reaper tests in isolated container/namespaces
 test-shim:
     cargo nextest run -p kelir-shim
@@ -58,8 +62,15 @@ typecheck:
     pnpm -r exec tsc --noEmit
     uv run mypy packages/py
 
+# --- 3b. PARITY GATE ---
+# Single implementation: kelir-plugin-cli runs vectors (Rust fixtures →
+# TS + Python suites) and the surface manifest diff. The reusable workflow
+# calls the same subcommand.
+parity: build-ts
+    cargo run -p kelir-plugin-cli -- parity run
+
 # --- 4. PRE-FLIGHT CHECK (Run before git push) ---
-pre-flight: build-shim
+pre-flight: build-shim parity
     cargo fmt --all -- --check
     cargo clippy --workspace --exclude kelir-shim -- -D warnings
     pnpm -r exec eslint .

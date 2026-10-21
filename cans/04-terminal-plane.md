@@ -8,7 +8,7 @@
     - virtio-console ring buffer streams bytes to host memory
     - Host supervisor (@kelir/plugin-pty) applies five filters
   - Five filters
-    - Filter set and per-filter behavior: see artifacts/diagrams/terminal-pipeline.txt
+    - Filter set and per-filter behavior: See artifacts/diagrams/terminal-pipeline.txt
     - Ordering invariant
       - ANSI strip precedes prompt match: SGR codes split regex targets
       - Prompt match precedes Token Shield: clamping trims matched prompts

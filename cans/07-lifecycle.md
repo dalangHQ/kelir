@@ -1,7 +1,7 @@
 - Lifecycle
   - Superpowers
     - See: artifacts/diagrams/superpowers.txt
-    - Set membership and mechanism per item: see the diagram
+    - Set membership and mechanism per item: See artifacts/diagrams/superpowers.txt
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
       cooperation.

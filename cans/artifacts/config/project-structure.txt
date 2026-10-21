@@ -1,7 +1,8 @@
 kelir/
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                     # Unified fast CI (Lint, Typecheck, Cross-Shim, KVM test)
+│       ├── ci.yml                     # Unified fast CI (Lint, Typecheck, Cross-Shim, Parity, KVM test)
+│       ├── plugin-ci-reusable.yml     # workflow_call: audit, vectors, matrix, attest
 │       └── release.yml                # Automated binary stripping, NPM & PyPI publishing
 │
 ├── justfile                           # Zero-friction local development commands
@@ -178,6 +179,16 @@ kelir/
 │   │   └── tests/
 │   │       ├── test_full_pipeline.rs
 │   │       └── test_fork_fanout.rs
+│   │
+│   ├── kelir-plugin-cli/              # Plugin tooling: scaffold, check, vectors, attest, parity diff
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── main.rs                # Subcommand dispatch
+│   │       ├── doctor.rs              # Consumer probes: KVM/HVF, kernel, EROFS
+│   │       ├── audit.rs               # Same audit as plugin-ci-reusable.yml
+│   │       ├── vectors.rs             # Regenerate vectors.json from testkit fixtures
+│   │       ├── attest.rs              # Local attestation + --sign
+│   │       └── registry.rs            # Poll releases; write dashboard state
 │   │
 │   └── kelir-bindings/                # FFI Translation Layers
 │       ├── napi/                      # Rust -> Node.js NAPI-RS bridge

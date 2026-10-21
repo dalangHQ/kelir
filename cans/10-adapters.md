@@ -1,13 +1,12 @@
 - Adapters
   - Ingestion matrix
     - See: artifacts/diagrams/ingestion-adapters.txt
-    - Adapter set and ecosystem binding: see the diagram
+    - Adapter set and ecosystem binding: See artifacts/diagrams/ingestion-adapters.txt
     - Two shapes, one rule
       - Contract-bound binary + plugin: MCP, containerd shim v2, OpenShell
       - Thin SDK wrapper: E2B (no plugin, no binary) — see #E2B-compatibility
     - Rule: the plugin owns translation and policy; the binary owns the wire
-    - Tri-native SDKs are the fourth ingestion family and are canonical in
-      03-sdk-architecture.md
+    - Tri-native SDKs are the fourth ingestion family; see 03-sdk-architecture.md
   - MCP adapter
     - MCP binary
       - Crate: kelir-adapters/mcp-server

@@ -18,6 +18,8 @@
         locally reproducible
       - `pre-flight` is the only gate that must pass before push; it is the
         union of the three exclusions above
+    - `pre-flight` runs parity and plugin audit before push
+      - See #Multi-language-parity-gate and #Developer-CLI
   - CI matrix
     - See: artifacts/config/ci.yml
     - Constraints
@@ -33,6 +35,8 @@
       - sccache enabled via SCCACHE_GHA_ENABLED
     - Per-plugin matrix: each plugin fails independently
     - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
+    - External plugins: see #Decoupled-repository-CI
+    - Parity release gate: see #Multi-language-parity-gate
   - Per-plugin CI
     - Matrix job: test-plugins
       - One cell per first-class plugin (8 total)
@@ -46,6 +50,57 @@
       - Crate: kelir-integration
       - Runs only where KVM/HVF is available
       - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
+  - Decoupled repository CI
+    - Reusable workflow is the sole execution path
+      - .github/workflows/plugin-ci-reusable.yml, consumed via `uses:`
+      - Owns audit, vectors, cross-language matrix, attestation
+      - See: artifacts/config/plugin-ci-reusable.yml
+      - Attestation flow: See: artifacts/diagrams/ecosystem-ci.txt
+    - Audit criteria: see 02-plugin-model.md#Plugin-ownership
+    - Scope declaration: see 02-plugin-model.md#Mount-scoping
+    - Attestation carries commit SHA, tested core range, per-language results
+    - Two channels per registered plugin
+      - Stable: against kelir-core@released
+      - Canary: against kelir-core@main
+      - Canary drift flags `drifted`; never blocks core release
+    - Failure isolation
+      - Degraded → archived after grace; core release unblocked
+      - Downstream state: see #Plugin-registry
+  - Plugin registry
+    - Location: cans/_registry/plugins.yaml; PR-reviewed on entry
+    - Registration is one PR; matrix updates are automatic
+    - Scheduled poller consumes attestation
+      - Signature verified; writes to build matrix
+      - Attestation shape: see #Decoupled-repository-CI
+    - Dashboard per plugin
+      - Last attested core version; stable/canary status
+      - Language coverage; last-attestation age; drift state
+    - First-class claim requires full language coverage
+      - Language scope: see 03-sdk-architecture.md#N-native-design
+  - Multi-language parity gate
+    - Vectors source: see 02-plugin-model.md#Plugin-testkit
+    - Binding coverage assertion
+      - Every kelir-core primitive exposed through a binding has a parity test
+      - Missing test is a CI failure
+    - Surface manifest diff
+      - Rust: rustdoc JSON; TS: tsc --declaration; Python: mypy stubs
+      - Diff fails on name/arity/return-shape divergence
+    - kelir-core release requires parity green
+  - Developer CLI
+    - Scope rule: only what types cannot encode
+      - Anything a compile error enforces is not shipped
+    - Consumer subcommands
+      - `kelir doctor`: KVM/HVF, fixture kernel, EROFS image
+      - `kelir doctor --json`: structured for onboarding scripts
+    - Plugin subcommands
+      - `plugin new`: scaffold crate, manifest, empty vectors
+      - `plugin check`: same audit as CI, <30s, no network
+      - `plugin vectors`: regenerate vectors.json from fixtures
+      - `plugin attest --dry-run`
+      - `plugin bump-core`
+      - `plugin rings --show`
+    - Shares implementation with reusable workflow
+      - A local pass that CI rejects means the CLI is broken
   - Project structure
     - See: artifacts/config/project-structure.txt
     - Three language layers
@@ -69,6 +124,10 @@
       - containerd-shim, openshell-grpc, mcp-server
     - Two binding crates
       - napi, pyo3
+    - Tooling crate
+      - kelir-plugin-cli: see #Developer-CLI
+    - Registry
+      - Registry entries: see #Plugin-registry
     - Test fixtures
       - tests/fixtures/kernel: per-arch vmlinux
       - tests/fixtures/rootfs: EROFS build scripts

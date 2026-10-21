@@ -9,19 +9,26 @@
 
 import { kelir, t } from "@kelir/core";
 import { vfs } from "@kelir/plugin-vfs";
+import { ledger } from "@kelir/plugin-ledger";
 
 const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
-  .use(vfs())
-  .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024 }))
+  .use(vfs(), { paths: ["/workspace/**"] })
+  // 1. Null-object pattern: c.ledger is 100% typed; dispatch table skips hooks at boot
+  .use(ledger({ enabled: false }))
+  // 2. Mount scoping: filter to target rings and binaries before dispatch evaluation
+  .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024 }), {
+    rings: ["virtio-vsock", "virtio-fs"],
+    binaries: ["git", "npm"],
+  })
   .exec((cmd) => cmd
-    // 1. Static and runtime schema validation
+    // 3. Static and runtime schema validation
     .guard({
       schema: t.Object({
         action: t.Literal("fix-webhook"),
         issueId: t.String(),
       }),
     })
-    // 2. `c.policy` and `c.fs` are fully inferred on HandlerContext:
+    // 4. `c.policy`, `c.fs`, and `c.ledger` are fully inferred on HandlerContext:
     .before("git commit *", async (c) => {
       if (c.policy.violations > 0) {
         return c.deny(1, `EPOLICY: ${c.policy.violations} violation(s)`);

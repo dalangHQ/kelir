@@ -49,7 +49,7 @@
       - External input mapping, or policy over a core primitive
       - Declares priority(): see 02-plugin-model.md#KelirPlugin-trait
       - Owns crate, tests, fixtures, examples: see 02-plugin-model.md#Plugin-ownership
-    - Decision test
+    - Capability decision test
       - Invariant with no policy? → core primitive
       - User contract with no composition? → interface
       - Wire contract with a process boundary? → adapter binary
@@ -105,7 +105,7 @@
     - Workload contract: no guest-side SDK, shim, or agent
   - VmmDriver trait
     - See: artifacts/code/vmm-driver-trait.rs
-    - Primitive list and signatures: see the artifact
+    - Primitive list and signatures: See artifacts/code/vmm-driver-trait.rs
     - Single backend contract
       - Every backend implements every primitive; optional primitives are
         not part of the trait

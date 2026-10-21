@@ -21,7 +21,7 @@
         - Called from handlers setting OTEL_TRACE_ID
     - Wiring example: See artifacts/examples/autonomous-swe-agent.rs
   - Primitive vs derived telemetry
-    - Decision test
+    - Telemetry decision test
       - Single read API, hardware boundary, no policy → primitive, core-owned
       - Computed from primitives, policy-bearing → derived, plugin-owned
       - A new derived metric is a plugin or Oracle change, never a core method
@@ -33,7 +33,7 @@
       - Oracle analyses: consumer's Oracle impl
   - Execution receipts
     - See: artifacts/code/execution-receipt.rs
-    - Field set: see the artifact
+    - Field set: See artifacts/code/execution-receipt.rs
     - Emitted per executed process, at the trap/exit boundary
     - Assertion form: receipts are compared as values, not as hashes of host
       state; the canonical assertion is a per-field comparison
@@ -44,8 +44,8 @@
   - Causal delta
     - See: artifacts/code/causal-delta.rs
     - Definition: Δ = S_A − S_B between two checkpoint descriptors
-    - Field set: see the artifact
-    - Ownership
+    - Delta fields: See artifacts/code/causal-delta.rs
+    - Type ownership
       - Struct is a shared context type; it lives in kelir-core next to
         ExecutionReceipt
       - Computation is policy-bearing; it lives in plugin-ledger
@@ -69,7 +69,7 @@
     - Config surface lives in plugin-ledger (OtelConfig); not restated here
   - Three-tier truth
     - See: artifacts/diagrams/truth-hierarchy.txt
-    - Tier evidence per tier: see the diagram
+    - Tier evidence per tier: See artifacts/diagrams/truth-hierarchy.txt
     - Selection rule
       - Claim must resist forgery by guest code → Tier 1
       - Claim about a public, versioned contract → Tier 2

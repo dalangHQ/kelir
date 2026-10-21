@@ -1,7 +1,7 @@
 - Plugin model
   - KelirPlugin trait
     - See: artifacts/code/plugin-trait.rs
-    - Trait surface and hook families: see the artifact
+    - Trait surface and hook families: See artifacts/code/plugin-trait.rs
     - Shape of the surface
       - Every hook is `async` and returns `Result<_, PluginError>`; a hook
         cannot block the dispatch array
@@ -27,11 +27,19 @@
   - Static dispatch
     - Plugins compiled into flat contiguous dispatch array at boot
     - Evaluated in priority() order; ties broken by declaration order
+    - Deduplication: identical name() instances merge; deepest config wins
+    - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
+    - Zero-cost null objects: disabled plugins retain types, cost 0µs in core
     - requires() validated at boot; missing dep aborts boot with EConfig
     - First Deny or Rewrite halts pipeline, dispatches over AF_VSOCK
     - Sub-12 microsecond hook execution
     - on_trap_deny is builder-level, not a plugin hook
       - Deny-observation composition is a user concern
+  - Mount scoping
+    - Mount-level filters restrict blast radius before dispatch evaluation
+    - VirtIO ring mask: unselected rings bypass plugin completely
+    - Binary filter: kernel BPF drops traps for unlisted executable paths
+    - Path filter: FUSE layer bypasses VFS hooks outside declared subtrees
   - Core context keys
     - Handler-visible keys; each key's definition lives at its owning plane
     - Closed-set rule
@@ -39,6 +47,8 @@
       - Disabling a plugin removes its key at compile / type / import time
       - A handler that reads a disabled plugin's key does not run; it fails
         to typecheck
+      - No conditional type pollution: context keys never union with undefined
+      - Inactive features use null-object configs, keeping handle types intact
     - Core-provided (always present)
       - c.trap, c.env, c.vm, c.step, c.receipt()
     - Plugin-provided (present only when the plugin is mounted)
@@ -50,7 +60,7 @@
       restated here
   - First-class plugins
     - Minimum set: pty, vfs, wire, chaos, ledger
-    - Behavior of each: see the owning plane
+    - Behavior of each: at the owning plane
       - plugin-pty: see 04-terminal-plane.md
       - plugin-vfs: see 05-storage-plane.md
       - plugin-wire, plugin-chaos: see 06-wire-plane.md
@@ -73,6 +83,7 @@
     - Decoupling test
       - Remove the plugin → remaining plugins build and test green
       - A failing plugin's tests are attributable to that plugin alone
+    - External plugins: same contract; no adaptation
   - Plugin testkit
     - Crate layout: see 11-operations.md#Project-structure
     - Boundary contract
@@ -80,9 +91,12 @@
       - Every plugin depends on it as a dev-dependency
       - Not runtime: shipping it in the runtime crate graph is a defect
     - Purpose: a plugin's tests run without a hypervisor
+    - Emits language-agnostic test vectors
+      - vectors.json derived from Rust fixtures
   - Language parity
     - See: artifacts/diagrams/sdks-invariants.txt
-    - SDK surface: see 03-sdk-architecture.md#Tri-native-design
+    - SDK surface: see 03-sdk-architecture.md#N-native-design
+    - Enforcement: see 11-operations.md#Multi-language-parity-gate
     - Same first-class plugins in Rust, TypeScript, Python, maintained 1:1
     - Trait surface and hook semantics identical across languages
     - Typed-handle mechanism, realized per language

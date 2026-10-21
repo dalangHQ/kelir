@@ -8,14 +8,22 @@
 // Full runnable example: artifacts/examples/autonomous-swe-agent.rs
 // Canonical spec home:    cans/03-sdk-architecture.md#Rust-SDK
 
+use kelir::plugin::{MountScope, VirtioRing};
+
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
 enum Action {
     FixWebhook { repo: String, issue_id: String },
 }
 
-// 1. Atomic handle extraction:
-let (builder, policy) = builder.plugin_with_handle(RepoPolicyPlugin::new(options));
+// 1. Atomic handle extraction with mount-level scoping:
+let scope = MountScope::default()
+    .with_binaries(["git", "npm"])
+    .with_rings([VirtioRing::Vsock, VirtioRing::Fs]);
+let (builder, policy) = builder.plugin_with_handle_scoped(
+    RepoPolicyPlugin::new(options),
+    scope,
+);
 
 // 2. Downstream handler captures typed handle:
 let builder = builder.exec(move |exec| {

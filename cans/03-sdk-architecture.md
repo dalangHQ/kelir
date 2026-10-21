@@ -1,12 +1,17 @@
 - SDK architecture
-  - Tri-native design
+  - N-native design
     - No dynamic any-typing, no second-class shims
-    - All three SDKs enforce identical runtime guarantees through native type systems
+    - All SDKs enforce identical runtime guarantees through native type systems
+    - Bootstrap: Rust, TypeScript, Python
+    - Adding a language: bindings crate + vector consumer + surface manifest
     - Plugin authorship contract: see 02-plugin-model.md#Plugin-ownership
     - Plugin testkit: see 02-plugin-model.md#Plugin-testkit
     - Rust: borrow-checker verified handle injection, zero-cost Serde
     - TypeScript: generic context accumulation, TypeBox schema guards
     - Python: RAII context managers, Pydantic v2 validation
+    - Scoping: all SDKs support ring, binary, and path filters at mount point
+    - Topology rule: distinct environments use separate profile factories
+    - Parity mechanism: see 11-operations.md#Multi-language-parity-gate
   - Params typed views
     - Host-side typed access on HandlerCtx
       - Rust: c.params::<T>() deserializes from validated buffer
@@ -20,11 +25,13 @@
     - Zero-Allocation Validation via Serde
       - #[derive(Deserialize)] enum Action with serde(tag = "action")
       - c.params::<Action>() fails at perimeter before traps execute
+    - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
     - See: artifacts/code/typescript-accumulation.ts
-    - Kelir<TContext> accumulates context type across .use() calls
+    - Kelir<TContext> accumulates context type across .use(plugin, scope?)
     - Each .use() expands the generic; downstream c.pluginKey fully inferred
     - Missing .use() → property not on TContext → tsc error
+    - Null-object pattern: use(plugin({ enabled: false })) preserves c.pluginKey
     - TypeBox .guard() schema
       - t.Object({ action: t.Literal(...), issueId: t.String() })
       - Falsified spawn actions fail with EINVAL before VM dispatch
@@ -39,6 +46,7 @@
       - Raises EINVAL before hook evaluation
     - builder, handle = builder.plugin_with_handle(RepoPolicyPlugin())
       - Missing assignment → NameError at import time
+    - Mount scoping via kwargs: rings=..., binaries=..., paths=...
   - Full-surface examples
     - See: artifacts/examples/autonomous-swe-agent.rs
     - See: artifacts/examples/autonomous-swe-agent.ts
