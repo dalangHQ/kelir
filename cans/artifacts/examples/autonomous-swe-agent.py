@@ -317,7 +317,8 @@ def make_commit_gate(policy: RepoPolicyHandle) -> PreExecHandler:
 def make_zero_byte_check() -> PostExecHandler:
     async def zero_byte_check(c: HandlerContext) -> PostExecAction:
         receipt = await c.receipt()
-        if receipt.dirty_bytes == 0:
+        # dirty_bytes is Option: absent means not measured, not zero
+        if receipt.dirty_bytes is not None and receipt.dirty_bytes == 0:
             raise RuntimeError("Epistemic anomaly: zero-byte delta commit attempted.")
         return PostExecAction.proceed()
     return zero_byte_check
@@ -470,7 +471,6 @@ async def build_runtime(
             ),
             receipts=ReceiptConfig(
                 include_dirty_bytes=True,
-                include_binary_blake3=True,
                 include_syscall_count=True,
             ),
         )))

@@ -369,7 +369,6 @@ async fn build_runtime(
             }),
             receipts: ReceiptConfig {
                 include_dirty_bytes: true,
-                include_binary_blake3: true,
                 include_syscall_count: true,
             },
         }));
@@ -509,7 +508,8 @@ async fn build_runtime(
 
                 // Tier-1 sanity: a commit must have dirtied at least one byte
                 .after("git commit *", handler(|c: HandlerCtx| async move {
-                    if c.receipt().await?.dirty_bytes == 0 {
+                    // dirty_bytes is Option: absent means not measured, not zero
+                    if c.receipt().await?.dirty_bytes == Some(0) {
                         bail!("Epistemic anomaly: zero-byte delta commit attempted.");
                     }
                     Ok(PostExecAction::Proceed)

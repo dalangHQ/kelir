@@ -1,4 +1,13 @@
 - Epistemic
+  - Scope
+    - Boundary specification; not a runtime subsystem
+    - Core owns facts, never judgments
+      - Facts: TrapEvent, ExecutionReceipt, CausalDelta (struct), StepSlot
+    - Judgment has exactly two homes, both removable
+      - Oracle: user interface, one per session, not a plugin, no dispatch slot
+      - plugin-ledger: derived computation over core primitives
+    - Removing either leaves core intact; see #Primitive-vs-derived-telemetry
+    - Enforcement: see 01-architecture.md#Axiomatic-foundations
   - Oracle
     - User-supplied interface; NOT a plugin
     - Location: kelir-core::oracle::Oracle
@@ -25,6 +34,8 @@
       - Single read API, hardware boundary, no policy → primitive, core-owned
       - Computed from primitives, policy-bearing → derived, plugin-owned
       - A new derived metric is a plugin or Oracle change, never a core method
+    - Default posture: per-exec, per-trap, per-receipt signals on; per-syscall,
+      per-request, per-page signals off until enabled per config
     - Boundaries
       - Primitive set: see 01-architecture.md#Core-invariants
       - CausalDelta: see #Causal-delta
@@ -38,6 +49,13 @@
     - Assertion form: receipts are compared as values, not as hashes of host
       state; the canonical assertion is a per-field comparison
     - Byte-not-page reason: see 01-architecture.md#SnapshotDescriptor.dirty-bytes
+    - Population: per ReceiptConfig; fields not enabled are absent (Option),
+      never 0
+      - Always: pid, binary_path, binary_blake3, exit_code, wall_clock_ns,
+        egress_bytes
+      - Opt-in: dirty_bytes, syscall_count
+    - binary_blake3 cache: keyed on (inode, size, mtime_ns); one hash per
+      binary identity, not per exec
     - Ownership
       - kelir-core generates and holds at trap/exit boundary
       - c.receipt() is the single read API on HandlerCtx
@@ -45,6 +63,9 @@
     - See: artifacts/code/causal-delta.rs
     - Definition: Δ = S_A − S_B between two checkpoint descriptors
     - Delta fields: See artifacts/code/causal-delta.rs
+    - egress_requests: sampled or host-allowlisted; full per-request capture
+      is never the default. Use receipt.egress_bytes unless per-request
+      attribution is the question.
     - Type ownership
       - Struct is a shared context type; it lives in kelir-core next to
         ExecutionReceipt
@@ -55,6 +76,9 @@
       computation is derived
   - Merkle WAL
     - Chaining formula and backend live in plugin-ledger; not restated here
+    - Default: plain append-only WAL. Merkle chaining is opt-in via
+      LedgerConfig::merkle_chain; plain WAL already resists guest rollback
+      and fork. Enable Merkle only under a host-operator trust threat.
     - Host-isolated by construction
       - Store path resolved relative to consumer CWD; guest paths rejected
         at plugin construction

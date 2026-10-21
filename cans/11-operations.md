@@ -2,6 +2,10 @@
   - Execution philosophy
     - Zero CPU burn
     - Sub-minute local cycles via just
+    - Default posture
+      - Primitive telemetry on; derived telemetry off unless configured
+      - Ecosystem apparatus gated on registry size; not shipped ahead of it
+      - See 08-epistemic.md#Primitive-vs-derived-telemetry
     - Maximize GitHub Actions free tier
       - Public repo: unlimited Linux minutes
       - Private repo: 2,000 min ceiling
@@ -35,7 +39,7 @@
       - sccache enabled via SCCACHE_GHA_ENABLED
     - Per-plugin matrix: each plugin fails independently
     - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
-    - External plugins: see #Decoupled-repository-CI
+    - External plugin CI: TBD; see #Decoupled-repository-CI
     - Parity release gate: see #Multi-language-parity-gate
   - Per-plugin CI
     - Matrix job: test-plugins
@@ -51,32 +55,17 @@
       - Runs only where KVM/HVF is available
       - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
   - Decoupled repository CI
-    - Reusable workflow is the sole execution path
-      - .github/workflows/plugin-ci-reusable.yml, consumed via `uses:`
-      - Owns audit, vectors, cross-language matrix, attestation
-      - See: artifacts/config/plugin-ci-reusable.yml
-      - Attestation flow: See: artifacts/diagrams/ecosystem-ci.txt
-    - Audit criteria: see 02-plugin-model.md#Plugin-ownership
-    - Scope declaration: see 02-plugin-model.md#Mount-scoping
-    - Attestation carries commit SHA, tested core range, per-language results
-    - Two channels per registered plugin
-      - Stable: against kelir-core@released
-      - Canary: against kelir-core@main
-      - Canary drift flags `drifted`; never blocks core release
-    - Failure isolation
-      - Degraded → archived after grace; core release unblocked
-      - Downstream state: see #Plugin-registry
+    - TBD — deferred until registry size makes attestation load-bearing
+    - Design retained as artifact; not a live gate
+      - Reusable workflow sketch: See: artifacts/config/plugin-ci-reusable.yml
+      - Attestation flow sketch: See: artifacts/diagrams/ecosystem-ci.txt
+    - Substitute now: `plugin check` in the consuming repo's own CI
+      - Same audit subcommand; no signing, no cross-repo workflow
   - Plugin registry
-    - Location: cans/_registry/plugins.yaml; PR-reviewed on entry
-    - Registration is one PR; matrix updates are automatic
-    - Scheduled poller consumes attestation
-      - Signature verified; writes to build matrix
-      - Attestation shape: see #Decoupled-repository-CI
-    - Dashboard per plugin
-      - Last attested core version; stable/canary status
-      - Language coverage; last-attestation age; drift state
-    - First-class claim requires full language coverage
-      - Language scope: see 03-sdk-architecture.md#N-native-design
+    - TBD — deferred; first-class set is compiled in, not polled
+    - Prerequisite: external plugin count justifies per-plugin state tracking
+    - Downstream state shape when enabled: See:
+      artifacts/diagrams/ecosystem-ci.txt
   - Multi-language parity gate
     - Vectors source: see 02-plugin-model.md#Plugin-testkit
     - Binding coverage assertion
@@ -89,17 +78,14 @@
   - Developer CLI
     - Scope rule: only what types cannot encode
       - Anything a compile error enforces is not shipped
-    - Consumer subcommands
+    - Subcommands
       - `kelir doctor`: KVM/HVF, fixture kernel, EROFS image
       - `kelir doctor --json`: structured for onboarding scripts
-    - Plugin subcommands
       - `plugin new`: scaffold crate, manifest, empty vectors
       - `plugin check`: same audit as CI, <30s, no network
       - `plugin vectors`: regenerate vectors.json from fixtures
-      - `plugin attest --dry-run`
-      - `plugin bump-core`
       - `plugin rings --show`
-    - Shares implementation with reusable workflow
+    - Shares implementation with CI
       - A local pass that CI rejects means the CLI is broken
   - Project structure
     - See: artifacts/config/project-structure.txt

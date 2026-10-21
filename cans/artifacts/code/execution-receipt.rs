@@ -12,10 +12,11 @@ pub struct ExecutionReceipt {
     pub binary_path: String,
     /// BLAKE3 digest, canonical 64-char lowercase hex
     pub binary_blake3: String,
-    /// Byte count; see cans/01-architecture.md#VmmDriver-trait
-    pub dirty_bytes: u64,
-    /// Total system calls evaluated
-    pub syscall_count: u64,
+    /// Byte count; populated when ReceiptConfig::include_dirty_bytes.
+    /// Byte-not-page reason: see cans/01-architecture.md#VmmDriver-trait
+    pub dirty_bytes: Option<u64>,
+    /// Populated when ReceiptConfig::include_syscall_count.
+    pub syscall_count: Option<u64>,
     /// Kernel return code
     pub exit_code: i32,
     /// True physical elapsed time

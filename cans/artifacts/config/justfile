@@ -64,8 +64,8 @@ typecheck:
 
 # --- 3b. PARITY GATE ---
 # Single implementation: kelir-plugin-cli runs vectors (Rust fixtures →
-# TS + Python suites) and the surface manifest diff. The reusable workflow
-# calls the same subcommand.
+# TS + Python suites) and the surface manifest diff. CI calls the same
+# subcommand.
 parity: build-ts
     cargo run -p kelir-plugin-cli -- parity run
 

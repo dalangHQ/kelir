@@ -11,6 +11,7 @@
       - Pure epistemic agnosticism
         - Zero knowledge of LLMs, prompts, or AI morals
         - Operates strictly as OS physics: memory pages, registers, FDs, frames
+        - Factoring: see 08-epistemic.md#Scope
       - Deterministic hardware isolation
         - Hardware-enforced virtualization: Intel VT-x, AMD-V, ARM64 EL2
         - Escaped guest root cannot touch host memory or host kernel space

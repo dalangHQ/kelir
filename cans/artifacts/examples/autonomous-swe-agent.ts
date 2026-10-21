@@ -213,6 +213,7 @@ const runtime = kelir({
         ? c.deny(1, `EPOLICY: ${c.policy.violations} prior violation(s).`)
         : c.resume())
     .after("git commit *", async (c) => {
+      // dirtyBytes is optional: undefined means not measured, not zero
       if ((await c.receipt()).dirtyBytes === 0)
         throw new Error("Epistemic anomaly: zero-byte delta commit attempted.");
       return PostExecAction.Proceed;
