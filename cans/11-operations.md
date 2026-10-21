@@ -41,19 +41,57 @@
     - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
     - External plugin CI: TBD; see #Decoupled-repository-CI
     - Parity release gate: see #Multi-language-parity-gate
+    - Spec gate: cans-check; see #Spec-gate
+    - Plugin audit tier: plugin-audit; see #Per-plugin-CI
+    - Decoupling proof tier: plugin-isolation; see #Decoupling-proof
+  - Spec gate
+    - Job: cans-check
+    - Two tiers, exit-code asserted on parsed JSON, no stderr grep
+      - `cans check --refs-only`: every reference resolves, no deep hop, no orphan
+      - `cans check`: duplicate-home, node_vs_artifact invariant, redundancy
+    - Pull-request tier: `cans check --touched-files` rejects edits outside
+      each concept's canEdit set
+    - No path filter: a node edit can break a pointer in any other node
+    - Local mirror: `just cans-check` invokes the identical flags
+    - Invariant: every rule in _rules.yaml maps to a step here, or the rule
+      is dead and gets removed
   - Per-plugin CI
     - Matrix job: test-plugins
       - One cell per first-class plugin (8 total)
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
       - Structural decoupling proof: see 02-plugin-model.md#Plugin-ownership
+    - Matrix job: plugin-audit
+      - Each cell runs `kelir-plugin-cli check -p plugin-<name>` — the same
+        audit `just plugin-check` runs, actually executed in CI
+      - Dev-dep edge gate: `cargo tree -p plugin-<name> --edges dev` contains
+        only plugin-testkit among plugins
+      - Facade edge gate: `cargo tree -p plugin-<name>` contains no `kelir`
+    - Matrix job: plugin-isolation; see #Decoupling-proof
     - Local mirror
       - just test-plugins runs all in one invocation
       - just test-plugin <name> for a single plugin
+      - just plugin-check-all and just test-isolation-all run the loops
     - Integration tier
       - Crate: kelir-integration
       - Runs only where KVM/HVF is available
       - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
+  - Decoupling proof
+    - Job: plugin-isolation
+    - Claim it executes: "Remove the plugin → remaining plugins build and
+      test green" — 02-plugin-model.md#Plugin-ownership, executed per plugin
+    - Per cell: remove crate, workspace member, and facade feature; build and
+      nextest the remainder
+    - Excluded from the claim (structural, not policy)
+      - `kelir` facade: re-exports every plugin behind features
+      - Adapter binaries: each contract-bound to one plugin
+      - `kelir-integration`: dev-depends on all plugins
+    - Local mirror: `just test-isolation <plugin>`; trap restores on exit
+    - Honest gap not gated here
+      - `requires()` cycle detection: boot-time EConfig catches missing
+        targets; the declared graph is not asserted acyclic in CI
+      - Closing it needs a workspace-wide `plugin check --graph`; tracked as
+        TBD, not claimed by this node
   - Decoupled repository CI
     - TBD — deferred until registry size makes attestation load-bearing
     - Design retained as artifact; not a live gate
@@ -112,7 +150,7 @@
       - napi, pyo3
     - Tooling crate
       - kelir-plugin-cli: see #Developer-CLI
-    - Registry
+    - Registry index
       - Registry entries: see #Plugin-registry
     - Test fixtures
       - tests/fixtures/kernel: per-arch vmlinux

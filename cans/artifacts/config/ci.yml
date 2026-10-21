@@ -16,6 +16,35 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # ─── 0. SPEC GATE (merge-blocking, path-filter-free) ───────
+  # Corpus is a typed graph; this compiles it. Every see:, every
+  # duplicate-home, every node_vs_artifact invariant in _rules.yaml
+  # is a red X when it rots. No filter: a node edit can break a
+  # pointer in any other node.
+  cans-check:
+    runs-on: ubuntu-latest
+    env:
+      CANS_REPO: ${{ vars.CANS_REPO }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cans
+        run: cargo install --git "${CANS_REPO:?set repo var}" cans-cli --locked
+      - name: Refs only (<2s)
+        run: |
+          out=$(cans check --refs-only --json)
+          echo "$out" | jq -e '.ok == true and .exitCode == 0' >/dev/null
+      - name: Full check
+        run: |
+          out=$(cans check --json)
+          echo "$out" | jq -e '.ok == true and .exitCode == 0' >/dev/null
+      - name: Touched files within write budget
+        if: github.event_name == 'pull_request'
+        run: |
+          git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" > /tmp/touched
+          cans check --touched-files /tmp/touched --json \
+            | jq -e '.ok == true and .exitCode == 0' >/dev/null
+
   # ─── 1. FAST STATIC GATE (<90s) ────────────────────────────
   lint-and-types:
     runs-on: ubuntu-latest
@@ -123,6 +152,72 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.5
       - name: Test plugin-${{ matrix.plugin }}
         run: cargo nextest run -p plugin-${{ matrix.plugin }}
+
+  # ─── 4b. PLUGIN CONTRACT AUDIT ─────────────────────────────
+  # Same command as `just plugin-check`. The audit that
+  # 11-operations.md promises is actually executed here.
+  plugin-audit:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: [pty, vfs, wire, chaos, ledger, mcp, oci-translator, openshell-coordinator]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Contract audit
+        run: cargo run -p kelir-plugin-cli -- check -p plugin-${{ matrix.plugin }}
+      - name: No plugin dev-depends on another plugin
+        run: |
+          set -euo pipefail
+          P="plugin-${{ matrix.plugin }}"
+          if cargo tree -p "$P" --edges dev --prefix none \
+               | grep -E '^plugin-' | grep -v '^plugin-testkit '; then
+            echo "::error::$P has a non-testkit plugin dev-dep"; exit 1
+          fi
+      - name: No plugin depends on the facade
+        run: |
+          set -euo pipefail
+          P="plugin-${{ matrix.plugin }}"
+          if cargo tree -p "$P" --prefix none | grep -qE '^kelir '; then
+            echo "::error::$P depends on the kelir facade"; exit 1
+          fi
+
+  # ─── 4c. DECOUPLING PROOF (delete-and-rebuild) ─────────────
+  # 02-plugin-model.md#Plugin-ownership: "Remove the plugin →
+  # remaining plugins build and test green." Executed, per plugin.
+  # Excluded from the claim: facade (re-exports all plugins),
+  # adapter binaries (contract-bound to one plugin each),
+  # kelir-integration (dev-depends on all plugins).
+  plugin-isolation:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: [pty, vfs, wire, chaos, ledger, mcp, oci-translator, openshell-coordinator]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Remove plugin-${{ matrix.plugin }}
+        run: |
+          set -euo pipefail
+          P="plugin-${{ matrix.plugin }}"
+          rm -rf "crates/kelir-plugins/$P"
+          sed -i "/crates\/kelir-plugins\/$P/d" Cargo.toml
+          sed -i "/^$P\s*=/d" crates/kelir/Cargo.toml
+      - name: Build and test remainder
+        run: |
+          cargo nextest run --workspace \
+            --exclude kelir \
+            --exclude containerd-shim \
+            --exclude openshell-grpc \
+            --exclude mcp-server \
+            --exclude kelir-integration
 
   # ─── 5. SHIM + DRIVER TESTS ────────────────────────────────
   test-shim:

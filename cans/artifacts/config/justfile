@@ -42,6 +42,28 @@ test-plugin plugin:
 plugin-check plugin:
     cargo run -p kelir-plugin-cli -- check -p plugin-{{plugin}}
 
+# Spec gate — same two tiers CI runs; --json, exit-code asserted
+cans-check:
+    @cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
+    @cans check --json          | jq -e '.ok and .exitCode == 0'
+
+# Decoupling proof — same exclusions as ci.yml plugin-isolation.
+# Destroys the plugin dir; trap restores it on exit (success or fail).
+test-isolation plugin:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    P="plugin-{{plugin}}"
+    trap 'git checkout HEAD -- "crates/kelir-plugins/$P" Cargo.toml crates/kelir/Cargo.toml 2>/dev/null || true' EXIT
+    rm -rf "crates/kelir-plugins/$P"
+    sed -i "/crates\/kelir-plugins\/$P/d" Cargo.toml
+    sed -i "/^$P\s*=/d" crates/kelir/Cargo.toml
+    cargo nextest run --workspace \
+        --exclude kelir \
+        --exclude containerd-shim \
+        --exclude openshell-grpc \
+        --exclude mcp-server \
+        --exclude kelir-integration
+
 # Runs anti-TOCTOU, PTRACE_SEIZE, and zombie reaper tests in isolated container/namespaces
 test-shim:
     cargo nextest run -p kelir-shim
@@ -70,9 +92,24 @@ parity: build-ts
     cargo run -p kelir-plugin-cli -- parity run
 
 # --- 4. PRE-FLIGHT CHECK (Run before git push) ---
-pre-flight: build-shim parity
+pre-flight: cans-check build-shim parity plugin-check-all test-isolation-all
     cargo fmt --all -- --check
     cargo clippy --workspace --exclude kelir-shim -- -D warnings
     pnpm -r exec eslint .
     just test-all
     just typecheck
+
+# Aggregate targets — CI runs them as matrix cells; local runs the loop
+plugin-check-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for p in pty vfs wire chaos ledger mcp oci-translator openshell-coordinator; do
+        just plugin-check "$p"
+    done
+
+test-isolation-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for p in pty vfs wire chaos ledger mcp oci-translator openshell-coordinator; do
+        just test-isolation "$p"
+    done

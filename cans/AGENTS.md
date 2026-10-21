@@ -206,4 +206,8 @@ Before finalizing any change:
 - [ ] Is ambiguity visible? (Don't hide unknowns)
 - [ ] Did I create a deep hop? (FORBIDDEN: A→B→C)
 - [ ] Did I preserve real identifiers exactly?
-- [ ] Did I run `cans check` after editing?
+- [ ] Did I run `just cans-check` after editing?
+      (CI runs the identical flags in `cans-check`; a local pass that CI
+      rejects means the CLI is broken, not the spec)
+- [ ] Did the edit touch only files in the concept's `cans budget write`
+      canEdit set? (CI enforces `--touched-files` on every PR)

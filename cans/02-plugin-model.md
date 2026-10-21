@@ -94,6 +94,11 @@
     - Decoupling test
       - Remove the plugin → remaining plugins build and test green
       - A failing plugin's tests are attributable to that plugin alone
+      - Executed per plugin by plugin-isolation; see 11-operations.md#Decoupling-proof
+      - Scope: excludes facade (re-exports every plugin), adapter binaries
+        (one plugin each), and kelir-integration (dev-depends on all)
+      - Dev-dep edge and facade edge: gated by plugin-audit; see
+        11-operations.md#Per-plugin-CI
     - External plugins: same contract; no adaptation
   - Plugin testkit
     - Crate layout: see 11-operations.md#Project-structure

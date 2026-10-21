@@ -65,7 +65,9 @@ redundancy:
     enabled: true
     phrase_overlap_threshold: 0.85
     require_node_invariant: true
-  stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires]
+  # Load-bearing vocabulary of this corpus: every node mentions these nouns,
+  # so keyword sprawl on them is not a canonical-home violation.
+  stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires, host, guest, plugin, on, is]
   synonyms:
     - [postgres, postgresql, pg]
     - [auth, authentication, sign-in, signin]
