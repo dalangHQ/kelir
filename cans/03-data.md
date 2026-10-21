@@ -1,0 +1,5 @@
+- Data
+  - Storage: TBD
+  - Schema: TBD
+  - Backups: TBD
+  - Retention: TBD

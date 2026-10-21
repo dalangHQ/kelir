@@ -1,0 +1,4 @@
+- Authentication
+  - Sign up: TBD
+  - Sessions: TBD
+  - Passwords: TBD

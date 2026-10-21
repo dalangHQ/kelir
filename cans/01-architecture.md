@@ -1,0 +1,5 @@
+- Architecture
+  - Stack: TBD
+  - Layers: TBD
+  - Boundaries: TBD
+  - Principles: TBD

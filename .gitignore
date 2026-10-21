@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────────────────────
+# Kelir .gitignore — Rust (Cargo) + TypeScript (pnpm) + Python (uv)
+# ─────────────────────────────────────────────────────────────
+
+# ── Secrets & local env ──────────────────────────────────────
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.keystore
+credentials.json
+secrets.json
+
+# ── OS junk ──────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── Editors / IDEs ───────────────────────────────────────────
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# ── Rust / Cargo ─────────────────────────────────────────────
+target/
+**/*.rs.bk
+*.pdb
+# sccache / mold scratch
+.sccache/
+*.map.rs
+
+# ── TypeScript / Node / pnpm ─────────────────────────────────
+node_modules/
+.pnpm-store/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+.next/
+.nuxt/
+.cache/
+*.node
+
+# ── Python / uv / hatch ──────────────────────────────────────
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.so
+
+# ── Test fixtures (generated images, never hand-edited) ──────
+# vmlinux kernels in tests/fixtures/kernel/ stay tracked;
+# rootfs images are rebuilt by tests/fixtures/rootfs/build-erofs.sh
+tests/fixtures/rootfs/*.img
+tests/fixtures/rootfs/*.erofs
+tests/fixtures/rootfs/*.squashfs
+tests/fixtures/rootfs/*.iso
+*.qcow2
+
+# ── Logs & scratch ───────────────────────────────────────────
+*.log
+logs/
+tmp/
+.tmp/
+*.pid
+*.sock
+
+# ── Generated bundles ────────────────────────────────────────
+repomix.md

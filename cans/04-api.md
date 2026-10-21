@@ -1,0 +1,5 @@
+- API
+  - Endpoints: TBD
+  - Auth: TBD
+  - Errors: TBD
+  - Rate limits: TBD

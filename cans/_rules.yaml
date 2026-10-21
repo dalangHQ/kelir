@@ -1,0 +1,64 @@
+# Anchor slugs (issue #53) — documentation only: the algorithm is fixed, not
+# configurable. `cans slug "<node text>"` prints the exact anchor fragment.
+#   1. The dash family (hyphen `-`, figure dash, en dash, em dash, horizontal
+#      bar, minus sign, and their U+2010–U+2015 / U+2043 / U+2212 / U+FE58 /
+#      U+FE63 / U+FF0D variants) and the underscore `_` are SEPARATORS, exactly
+#      like every whitespace run.
+#   2. A run of separators collapses to ONE `-`.
+#   3. Every other character is preserved verbatim, case included.
+#   4. Leading/trailing separators are dropped.
+# Matching is tolerant (case- and separator-insensitive); the slug is the
+# canonical spelling refs should use.
+slug:
+  algorithm: dash-normalized
+  collapse: separator-runs-to-one-hyphen
+  case: preserved
+  example: 'Layer 1 — C authorizer -> Layer-1-C-authorizer'
+
+structure:
+  node_length: { min: 3, max: 90 }
+  siblings: { min: 4, max: 15 }
+  depth: { min: 3, max: 10 }
+  single_child_collapse: true
+  empty_nodes: false
+
+style:
+  prefer: sibling
+  force_nested_above: 6
+  force_sibling_below: 3
+  shared_prefix_detection: true
+
+content:
+  tbd_allowed: true
+  max_tbd_per_file: 5
+
+references:
+  mode: pointer
+  back_pointers: false
+  max_hops: 1
+  orphan_check: true
+  duplicate_home_check: true
+
+redundancy:
+  enabled: true
+  word_frequency_threshold: 4
+  phrase_overlap_threshold: 0.7
+  cross_file_threshold: 2
+  fuzzy: true
+  stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires]
+  synonyms:
+    - [postgres, postgresql, pg]
+    - [auth, authentication, sign-in, signin]
+    - [api, endpoint, route]
+    - [frontend, client, ui]
+    - [db, database, storage]
+
+token_budget:
+  enabled: true
+  default_limit: 4096
+  estimate_chars_per_token: 3.5
+  warn_threshold: 0.8
+
+overflow:
+  max_node_chars: 90
+  force_file_for: [code_block, table, diagram]
