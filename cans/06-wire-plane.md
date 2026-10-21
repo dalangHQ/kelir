@@ -1,6 +1,7 @@
 - Wire plane
   - Wire architecture
     - See: artifacts/diagrams/wire-plane.txt
+    - Owner: plugin-wire; see 02-plugin-model.md#First-class-plugins
     - Zero-knowledge credential architecture
     - Production API keys never enter guest memory, shell variables, or disk
     - Four channels: L7 proxy, L4 SOCKS5, SSH gate, DNS sinkhole

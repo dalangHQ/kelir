@@ -44,6 +44,7 @@
     - Adapter binary
       - Contract-bound process on the wire
       - Examples: containerd-shim-v2, MCP stdio
+      - Adapter implementations: see 10-adapters.md#Ingestion-matrix
       - Translation logic delegated to a plugin the binary loads
     - Plugin
       - External input mapping, or policy over a core primitive
@@ -57,7 +58,7 @@
   - Core invariants
     - The closed set. Everything not pointed to here is a plugin.
     - Trait definitions
-      - KelirPlugin: see 02-plugin-model.md#KelirPlugin-trait
+      - Trait contract: see 02-plugin-model.md#KelirPlugin-trait
       - VmmDriver trait (defined in this file)
     - Context types: see 09-protocol.md#Wire-messages
     - Wire framing: see 09-protocol.md#Wire-framing

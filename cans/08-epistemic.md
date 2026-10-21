@@ -26,7 +26,7 @@
         - Core-owned; enumerated in 01-architecture.md#Core-invariants
       - Derived: computed from primitives, policy-bearing
         - Plugin-owned; never a new core method
-    - Primitive (core)
+    - Core-owned primitives
       - ExecutionReceipt via c.receipt()
       - StepSlot via c.step
       - TrapEvent, ProcessExit, wire messages

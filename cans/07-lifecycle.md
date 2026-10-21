@@ -97,7 +97,7 @@
     - Control returns to agent
   - Port forwarding
     - forwardPort is a Session API with language parity
-    - Ownership: see 02-plugin-model.md#First-class-plugins
+    - Owning plugin: plugin-wire; see 02-plugin-model.md#First-class-plugins
     - TypeScript: session.forwardPort({ host: 8080, guest: 3000 })
     - Python: await session.forward_port(8080, 3000)
     - Rust: session.forward_port(8080, 3000).await?

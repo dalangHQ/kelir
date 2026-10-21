@@ -1,6 +1,7 @@
 - Storage plane
   - Storage architecture
     - See: artifacts/diagrams/storage-architecture.txt
+    - Owner: plugin-vfs; see 02-plugin-model.md#First-class-plugins
     - Layered model: EROFS rootfs, tmpfs overlay, reconciler, idmap, caches, ghosts, mask
   - EROFS rootfs
     - Stripped base system pre-baked into read-only EROFS

@@ -8,7 +8,7 @@
       - Plugin: translation and policy inside the process
       - see 01-architecture.md#Capability-taxonomy
   - MCP adapter
-    - Binary
+    - MCP binary
       - Crate: kelir-adapters/mcp-server
       - Command: kelir-mcp
       - CLI args: --kernel, --rootfs, --memory-mb
@@ -16,11 +16,11 @@
       - Transport: stdio JSON-RPC to client (Claude Desktop, Cursor, Devin)
       - Loads plugin-mcp and nothing else
       - Bypasses host shell execution entirely
-    - Plugin
+    - MCP plugin
       - Crate: kelir-plugins/plugin-mcp
       - name() = "mcp"; priority() = 50
       - Contributes c.mcp context key
-      - Hook wiring
+      - MCP hook wiring
         - on_vm_ready: setup JSON-RPC transport, advertise capabilities
         - on_pty_output / on_pty_input: stream terminal to/from MCP client
         - on_vfs_read / on_vfs_write: expose as read_file / write_file
@@ -34,7 +34,7 @@
       - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
         - Previously impossible: adapter binary sat outside the graph
   - Containerd shim v2
-    - Binary
+    - Shim binary
       - Crate: kelir-adapters/containerd-shim
       - Activated via runtimeClassName: kelir in Pod manifests
       - Loads plugin-oci-translator
@@ -44,17 +44,17 @@
       - PVC storage
         - PersistentVolumeClaims mount as virtio-fs endpoints
         - UID/GID mapping applied in-guest
-    - Plugin
+    - Shim plugin
       - Crate: kelir-plugins/plugin-oci-translator
       - name() = "oci-translator"; priority() = 20
-      - Hook wiring
+      - Shim hook wiring
         - on_vm_init: translate OCI image layers → EROFS block
         - on_vfs_lookup: resolve image-declared volumes
       - Translation policy
         - Layer flattening, whiteout application, /etc overlay
         - Composable: a chaos plugin can fault-inject into image pulls
   - OpenShell gRPC driver
-    - Binary
+    - gRPC binary
       - Crate: kelir-adapters/openshell-grpc
       - Implements compute_driver.proto
       - Served over /var/run/kelir/openshell.sock (UDS)
@@ -62,10 +62,10 @@
       - GPU passthrough via driver-rustvmm
         - NVIDIA Container Device Interface (CDI) device mapping
       - Target: multi-tenant inference tasks
-    - Plugin
+    - Coordinator plugin
       - Crate: kelir-plugins/plugin-openshell-coordinator
       - name() = "openshell-coordinator"; priority() = 60
-      - Hook wiring
+      - Coordinator hook wiring
         - on_vm_init: register vetoes on Fork, Suspend, ClockSkew
         - on_vm_ready: report readiness to OpenShell control plane
         - on_watchdog: forward to OpenShell health system

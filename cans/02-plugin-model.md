@@ -88,6 +88,7 @@
     - Not runtime: test infrastructure only
   - Language parity
     - See: artifacts/diagrams/sdks-invariants.txt
+    - SDK surface: see 03-sdk-architecture.md#Tri-native-design
     - Same first-class plugins in Rust, TypeScript, Python, maintained 1:1
     - Trait surface and hook semantics identical across languages
     - Typed-handle mechanism, realized per language
