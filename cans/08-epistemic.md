@@ -21,97 +21,65 @@
         - Called from handlers setting OTEL_TRACE_ID
     - Wiring example: See artifacts/examples/autonomous-swe-agent.rs
   - Primitive vs derived telemetry
-    - Rule
-      - Primitive: single read API, hardware boundary, no policy
-        - Core-owned; enumerated in 01-architecture.md#Core-invariants
-      - Derived: computed from primitives, policy-bearing
-        - Plugin-owned; never a new core method
-    - Core-owned primitives
-      - ExecutionReceipt via c.receipt()
-      - StepSlot via c.step
-      - TrapEvent, ProcessExit, wire messages
-    - Derived (plugin-owned)
-      - CausalDelta: plugin-ledger; see #Causal-delta
-      - Merkle chain: plugin-ledger; see #Merkle-WAL
-      - OTel spans: plugin-ledger; see #OpenTelemetry
+    - Decision test
+      - Single read API, hardware boundary, no policy → primitive, core-owned
+      - Computed from primitives, policy-bearing → derived, plugin-owned
+      - A new derived metric is a plugin or Oracle change, never a core method
+    - Boundaries
+      - Primitive set: see 01-architecture.md#Core-invariants
+      - CausalDelta: see #Causal-delta
+      - Merkle chain: see #Merkle-WAL
+      - OpenTelemetry spans: see #OpenTelemetry
       - Oracle analyses: consumer's Oracle impl
-    - Adding a new derived metric: new plugin or new Oracle impl
   - Execution receipts
     - See: artifacts/code/execution-receipt.rs
-    - Emitted per executed process to host
-    - Receipt fields
-      - pid, binary_path
-      - binary_blake3: canonical 64-char lowercase hex
-      - dirty_bytes: byte count of mutated physical memory
-      - syscall_count, exit_code, wall_clock_ns
-      - egress_bytes: total network egress bytes transmitted
-    - Hardware-agnostic telemetry
-      - Page size varies by platform
-      - Byte counts canonical, not page counts
-      - Identical executions produce identical receipts on every host
-      - Epistemic assertions, RLVR loss, Merkle roots stable across machines
-      - Assertion form: dirty_bytes == 0
+    - Field set: see the artifact
+    - Emitted per executed process, at the trap/exit boundary
+    - Assertion form: receipts are compared as values, not as hashes of host
+      state; the canonical assertion is a per-field comparison
+    - Byte-not-page reason: see 01-architecture.md#SnapshotDescriptor.dirty-bytes
     - Ownership
       - kelir-core generates and holds at trap/exit boundary
       - c.receipt() is the single read API on HandlerCtx
   - Causal delta
     - See: artifacts/code/causal-delta.rs
-    - Counterfactual state delta: Δ = S_A - S_B
-    - Delta fields
-      - memory_diff_bytes: hardware-agnostic byte-level RAM delta
-      - modified_inodes: Vec<PathBuf>
-      - spawned_pids: Vec<u32>
-      - egress_requests: Vec<HttpRequestRecord>
-    - Computed between two checkpoint descriptors
-    - Computed by plugin-ledger
-      - Session accessor: session.get_causal_delta_from_parent()
-      - Requires plugin-ledger mounted
-      - Struct type lives in kelir-core as shared context type
-        - Consistent with ExecutionReceipt
-        - Ownership is computation + dispatch, not type definition
-      - File layout: see 11-operations.md#Project-structure
-        - Struct (CausalDelta, HttpRequestRecord): kelir-core/src/telemetry/delta.rs
-        - Computation (compute_causal_delta): plugin-ledger/src/compute.rs
+    - Definition: Δ = S_A − S_B between two checkpoint descriptors
+    - Field set: see the artifact
+    - Ownership
+      - Struct is a shared context type; it lives in kelir-core next to
+        ExecutionReceipt
+      - Computation is policy-bearing; it lives in plugin-ledger
+      - Session accessor `get_causal_delta_from_parent()` requires
+        plugin-ledger mounted; unmounted sessions do not expose it
+    - This split follows the primitive-vs-derived rule: type is primitive,
+      computation is derived
   - Merkle WAL
-    - Every execution receipt hashed into append-only WAL
-    - Backend: embedded SQLite or DuckDB
-    - Chaining: H_n = BLAKE3(H_{n-1} || Receipt_n)
-    - Tamper-proof audit trail for SOC2 and regulatory compliance
-    - Host-isolated storage
-      - Database lives on host filesystem, resolved relative to consumer CWD
-      - Default: .kelir/audit.merkle.db
-      - Guest paths (/workspace/...) rejected at LedgerPlugin construction
-      - WAL survives guest rollback() and fork()
-      - Cannot be reverted or duplicated by guest operations
-    - Ownership boundary
-      - kelir-core: generates and holds execution receipts (c.receipt())
-      - plugin-ledger: persists receipts into WAL, exports OTel
-      - plugin-ledger also exposes c.ledger.flush()
+    - Chaining formula and backend live in plugin-ledger; not restated here
+    - Host-isolated by construction
+      - Store path resolved relative to consumer CWD; guest paths rejected
+        at plugin construction
+      - WAL survives guest rollback() and fork(); no guest operation can
+        rewrite or duplicate it
+      - This invariant is the reason the WAL exists separately from receipts
+    - Ownership: core generates receipts; plugin-ledger persists and exports
   - OpenTelemetry
-    - Automatic W3C traceparent injection into outbound HTTP requests
-    - Connects internal shell execution to Jaeger, Datadog, etc.
-    - OtelConfig in LedgerPlugin
-      - endpoint: http://localhost:4318/v1/traces
-      - service_name: kelir-swe-agent
-      - propagate_traceparent: true
+    - Outbound HTTP requests carry W3C traceparent, injected host-side
+    - Trace continuity rule: a guest-originated request and its guest-side
+      cause (trap, spawn, receipt) resolve to the same trace
+    - Config surface lives in plugin-ledger (OtelConfig); not restated here
   - Three-tier truth
     - See: artifacts/diagrams/truth-hierarchy.txt
-    - Motivates decoupling orchestration from private harness internals
-    - Tier 1: physical ground truth (hypervisor/kernel boundary)
-      - Unforgeable receipts: BLAKE3 hex digests, dirty byte counts
-      - OS inode diffs: physical disk modifications via CausalDelta
-      - Egress telemetry: true network frames past virtio-net proxy
-      - Invariant: agent cannot fake, even as guest root
-    - Tier 2: public formal protocols (contract interface)
-      - Model Context Protocol tool events over stdio
-      - Deterministic PTY stream output sanitized of ANSI injection
-      - Invariant: evaluated strictly against public versioned contracts
-    - Tier 3: synchronous inode snooping (harness state interception)
-      - Zero post-mortem polling
-      - Intercepts harness write() calls in real-time
-      - Host in-memory buffer captures updates before disk sync
-      - Invariant: eliminates async races and file lock collisions
-      - Consumer: Oracle.ingest_harness_event; see #Oracle
+    - Tier evidence per tier: see the diagram
+    - Selection rule
+      - Claim must resist forgery by guest code → Tier 1
+      - Claim about a public, versioned contract → Tier 2
+      - Claim about harness-internal state with no wire surface → Tier 3
+    - Degradation rule
+      - A higher-tier claim never falls back to a lower-tier signal
+      - Missing Tier 1 evidence is a denial, not a Tier 3 downgrade
+      - Rationale: silent downgrade is exactly the harness self-report failure
+        this tier scheme exists to prevent
+    - Consumer of Tier 3: Oracle.ingest_harness_event; see #Oracle
   - Lifecycle bridge
     - See: artifacts/diagrams/lifecycle-bridge.txt
     - Replaces language-level monkeypatching

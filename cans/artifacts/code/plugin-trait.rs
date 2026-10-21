@@ -1,10 +1,9 @@
 // crates/kelir-core/src/plugin.rs
 //
-// The unified KelirPlugin trait implemented by every subsystem — internal
-// or third-party — across the 4 VirtIO rings. kelir-core contains zero
-// hardcoded capability logic; every capability is a plugin.
+// The unified KelirPlugin trait implemented by every subsystem across the
+// 4 VirtIO rings. kelir-core contains no hardcoded capability logic.
 //
-// Canonical spec home: cans/02-plugin-model.md#KelirPlugin-trait
+// Owned by: cans/02-plugin-model.md#KelirPlugin-trait
 
 use async_trait::async_trait;
 use std::path::Path;
@@ -144,6 +143,7 @@ pub trait KelirPlugin: Send + Sync {
     /// Mandatory core-originated disclosure (TrapAction::Rewrite.disclosure).
     /// Body is immutable; return Some(bytes) to append. All annotations
     /// concatenate in priority() order and follow the body on the PTY.
+    /// See cans/04-terminal-plane.md#Disclosure
     async fn on_disclosure(
         &self, _body: &[u8],
     ) -> Result<Option<Vec<u8>>, PluginError> { Ok(None) }
@@ -151,8 +151,8 @@ pub trait KelirPlugin: Send + Sync {
     // ─── 4. Storage Plane (virtio-fs) ────────────────────────────
     async fn on_vfs_lookup(&self, _path: &Path) -> Result<Option<VfsInodeAttr>, PluginError> { Ok(None) }
     async fn on_vfs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
-    /// Ok(()) = allow. Err(Reject{errno}) = deny; guest write() fails
-    /// with errno. Replaces the previous `Result<bool, _>` ambiguity.
+    /// Ok(()) = allow; Err(Reject{errno}) = deny.
+    /// See cans/05-storage-plane.md#Write-gating
     async fn on_vfs_write(
         &self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx,
     ) -> Result<(), PluginError> { Ok(()) }

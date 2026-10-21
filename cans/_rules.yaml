@@ -58,6 +58,13 @@ redundancy:
   phrase_overlap_threshold: 0.95
   cross_file_threshold: 5
   fuzzy: false
+  node_vs_artifact:
+    # Overlap with the inbound artifact is allowed; missing so-what is not.
+    # A node fails this check when every bullet is either a see:, a bare
+    # restatement of the artifact, or a child enumeration.
+    enabled: true
+    phrase_overlap_threshold: 0.85
+    require_node_invariant: true
   stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires]
   synonyms:
     - [postgres, postgresql, pg]

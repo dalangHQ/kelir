@@ -56,9 +56,9 @@
       - TypeScript: Promise.all fan-out, generic inference
       - Python: asyncio.gather, async with, Pydantic v2
   - Oracle contract
-    - Interface spec: see 08-epistemic.md#Oracle
+    - Interface: see 08-epistemic.md#Oracle
     - Language-specific realization
       - Rust: Arc<dyn Oracle>, threaded through handler closures
       - TypeScript: Oracle object literal, captured by closures
       - Python: subclass kelir.Oracle, methods async
-    - All three must implement the five methods; missing method → link error
+    - Missing method fails at compile / import time in every language

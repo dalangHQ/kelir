@@ -3,7 +3,7 @@
 // All wire messages exchanged over vsock:5252. Payloads encode as CBOR
 // inside the TLV frame defined in codec.rs.
 //
-// Canonical spec home: cans/09-protocol.md#Wire-messages
+// Owned by: cans/09-protocol.md#Wire-messages
 
 use ciborium::value::Value as CborValue;
 use serde::{Deserialize, Serialize};
@@ -91,9 +91,7 @@ pub enum HostToGuest {
     AdjustBalloon {
         target_mb: u32,
     },
-    /// Core-originated mandatory disclosure. Routed through on_disclosure
-    /// hooks on the host before forwarding. Shim prints body verbatim to
-    /// the workload PTY — zero silent state divergence.
+    /// See cans/04-terminal-plane.md#Disclosure
     Disclosure {
         body: Vec<u8>,
     },
@@ -108,18 +106,12 @@ pub enum TrapAction {
         exit_code: i32,
         stderr_message: String,
     },
-    /// Re-execute with substitutions. This is the ONLY path by which
-    /// handler-side environment changes reach the guest: a handler that
-    /// returns `Decision.resume()` after `c.env.set(..)` is auto-converted
-    /// to `Rewrite { new_binary = original, new_argv = original,
-    /// injected_env = accumulated }`. See cans/09-protocol.md#Env-injection.
+    /// See cans/09-protocol.md#Env-injection
     Rewrite {
         new_binary: String,
         new_argv: Vec<String>,
         injected_env: HashMap<String, String>,
-        /// Mandatory terminal disclosure. Routed through on_disclosure
-        /// (host) → HostToGuest::Disclosure (shim) → PTY. Plugins may
-        /// annotate; the body is immutable by contract.
+        /// See cans/04-terminal-plane.md#Disclosure
         disclosure: Option<String>,
     },
     SuspendForApproval {

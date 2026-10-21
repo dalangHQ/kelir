@@ -8,27 +8,26 @@
     - virtio-console ring buffer streams bytes to host memory
     - Host supervisor (@kelir/plugin-pty) applies five filters
   - Five filters
-    - ANSI stream sanitizer
-      - Drops OSC 52 clipboard hijack in-flight
-      - Strips OSC 0/1/2 title spoofing
-    - onPrompt responder
-      - Foreground TTY verification via tcgetpgrp()
-      - Matches ANSI-SGR-stripped plaintext shadow copy
-      - Injects keystrokes directly into virtio-console ring
-    - WindowResize bridge
-      - Boot handshake pushes initial size (e.g. 120x40) at VM-ready
-      - Host SIGWINCH sends HostToGuest::WindowResize over vsock:5252
-      - Shim executes TIOCSWINSZ on guest PTY slave
-    - Signal forwarding: Ctrl+C (SIGINT) and Ctrl+D to foreground process group
-    - Token Shield filter
-      - Clamps chunks exceeding byte or line ceiling
-      - Injects truncation markers with byte/line stats
+    - Filter set and per-filter behavior: see artifacts/diagrams/terminal-pipeline.txt
+    - Ordering invariant
+      - ANSI strip precedes prompt match: SGR codes split regex targets
+      - Prompt match precedes Token Shield: clamping trims matched prompts
+      - Signal forwarding observes post-sanitization bytes only
+    - Placement invariant
+      - All five execute host-side at the virtio-console boundary
+      - In-guest placement would cede the chain to a compromised shim
+    - Single intentional bypass
+      - HostToGuest::Disclosure skips all five; body is authoritative
+      - Bypass path: see #Disclosure
+    - Threat model
+      - OSC 52: clipboard hijack (agent reads/writes human clipboard)
+      - OSC 0/1/2: title spoofing (agent impersonates terminal session)
+      - Both are Tier-1 violations: see 08-epistemic.md#Three-tier-truth
   - ANSI sanitizer
-    - OSC 52 attack defense
-      - Scripts printing \x1b]52;c;... attempt clipboard read/write
-      - All OSC 52 bytes dropped at hardware buffer boundary
-    - Title spoofing defense
-      - OSC 0/1/2 stripped to prevent host terminal emulator tampering
+    - Drops OSC 52 (`\x1b]52;c;…`) at the virtio-console ring boundary
+    - Strips OSC 0/1/2 before the host terminal emulator observes bytes
+    - Only OSC sequences are touched; SGR (color, bold) passes through
+    - Threat rationale: see #Five-filters
   - Prompt responder
     - Matchers run against ANSI-SGR-stripped plaintext shadow copy
     - Regex matches text regardless of SGR color or bold codes
@@ -50,11 +49,9 @@
       - In-guest shim executes ioctl(pts_fd, TIOCSWINSZ, &ws)
       - Guest shell redraws without corruption
   - Signal forwarding
-    - Ctrl+C / Ctrl+D forwarded to guest foreground process group
-    - on_signal_send(&SendSignal) fires in priority() order
-      - Observation only; hook cannot rewrite signal
-    - Signals flow as HostToGuest::SendSignal over vsock:5252
-    - Shim signals the foreground PID
+    - Ctrl+C / Ctrl+D reach the guest foreground process group
+    - on_signal_send is observation-only; a hook cannot rewrite the signal
+    - Wire path: see 09-protocol.md#Wire-messages
   - Disclosure
     - Core-originated mandatory notice from TrapAction::Rewrite.disclosure
     - Host-side pipeline

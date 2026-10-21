@@ -1,21 +1,18 @@
 - Plugin model
   - KelirPlugin trait
     - See: artifacts/code/plugin-trait.rs
-    - Async trait implemented by all subsystems, internal and third-party
-    - Trait surface
-      - name() -> &'static str: unique identifier
-      - priority() -> u8: dispatch ordering; lower = earlier
-    - Hook families across the 4 VirtIO rings
-      - Lifecycle: on_vm_init, on_vm_ready, on_vm_shutdown
-      - Control plane (vsock)
-        - on_trap, on_process_exit
-        - on_memory_pressure, on_heartbeat, on_port_bound
-        - on_signal_send, on_watchdog
-      - Terminal plane (console)
-        - on_pty_input, on_pty_output
-        - on_window_resize, on_disclosure
-      - Storage plane (fs): on_vfs_lookup, on_vfs_read, on_vfs_write
-      - Wire plane (net): on_net_outbound, on_net_inbound
+    - Trait surface and hook families: see the artifact
+    - Shape of the surface
+      - Every hook is `async` and returns `Result<_, PluginError>`; a hook
+        cannot block the dispatch array
+      - Every ring has both an observation and a mutation point; the trait
+        never exposes a ring for observation only
+      - The surface is closed per ring; adding a hook is a spec change, not
+        a plugin concern
+    - Why the surface is this size
+      - A hook exists only if a ring delivers the event it consumes
+      - A hook that a plugin does not implement defaults to `Ok(())`;
+        "opt-in" is the trait's typing, not a runtime branch
     - Hook context restriction
       - Every hook receives HandlerCtx or a restricted lifecycle context
       - No hook receives &mut Box<dyn VmmDriver> or &Session
@@ -36,29 +33,29 @@
     - on_trap_deny is builder-level, not a plugin hook
       - Deny-observation composition is a user concern
   - Core context keys
-    - Routing table; each key's semantics live at the owning node
+    - Handler-visible keys; each key's definition lives at its owning plane
+    - Closed-set rule
+      - Key presence is a property of the type, not of the runtime
+      - Disabling a plugin removes its key at compile / type / import time
+      - A handler that reads a disabled plugin's key does not run; it fails
+        to typecheck
     - Core-provided (always present)
-      - c.trap: see 09-protocol.md#Trap-fast-path
-      - c.env: see 09-protocol.md#Env-injection
-      - c.vm: see 01-architecture.md#VmmDriver-trait
-      - c.step: see 08-epistemic.md#Step-evaluation-loop
-      - c.receipt(): see 08-epistemic.md#Execution-receipts
+      - c.trap, c.env, c.vm, c.step, c.receipt()
     - Plugin-provided (present only when the plugin is mounted)
-      - c.term: plugin-pty
-      - c.fs: plugin-vfs
-      - c.ledger: plugin-ledger
-      - c.wire: plugin-wire
-      - c.chaos: plugin-chaos
+      - c.term ← plugin-pty; c.fs ← plugin-vfs; c.ledger ← plugin-ledger;
+        c.wire ← plugin-wire; c.chaos ← plugin-chaos
     - User-provided via typed handle
-      - c.<key>: from .decorate() / PluginWithHandle / BasePlugin.handle()
-    - Rule: disabling a plugin removes its key at compile/type/import time
+      - c.<key> from .decorate() / PluginWithHandle / BasePlugin.handle()
+    - Every key above resolves to a plane node in one hop; none are
+      restated here
   - First-class plugins
-    - plugin-pty: virtio-console, ANSI sanitizer, Token Shield, prompt responder
-    - plugin-vfs: virtio-fs, ghost inodes, maskRead, reconciler, lock broker
-    - plugin-wire: L7 proxy, SOCKS5, SSH gate, DNS sinkhole, port forwarding
-    - plugin-chaos: bidirectional wire jitter/drop, VFS ENOSPC injection
-    - plugin-ledger: Merkle WAL, causal delta, OpenTelemetry traceparent
-    - Minimum five above; ecosystem additions per 02-plugin-model.md#Plugin-ownership
+    - Minimum set: pty, vfs, wire, chaos, ledger
+    - Behavior of each: see the owning plane
+      - plugin-pty: see 04-terminal-plane.md
+      - plugin-vfs: see 05-storage-plane.md
+      - plugin-wire, plugin-chaos: see 06-wire-plane.md
+      - plugin-ledger: see 08-epistemic.md
+    - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
       - session.fs.*: see 05-storage-plane.md#Reconciler
       - session.term.*, session.break_glass(): see 04-terminal-plane.md#Terminal-plane
@@ -77,15 +74,12 @@
       - Remove the plugin → remaining plugins build and test green
       - A failing plugin's tests are attributable to that plugin alone
   - Plugin testkit
-    - New crate: crates/kelir-plugin-testkit/
-    - Provides
-      - MockVmmDriver (checkpoint, fork, rollback without RAM)
-      - MockBusDispatcher (records ring messages per plane)
-      - HandlerCtx constructors from synthetic TrapEvent
-      - Assertions: assert_rewrite, assert_deny, assert_env_injected
-    - Depends only on kelir-core
-    - Every plugin's tests depend on it; nothing else does
-    - Not runtime: test infrastructure only
+    - Crate layout: see 11-operations.md#Project-structure
+    - Boundary contract
+      - Depends on kelir-core only; never on a plugin or the facade crate
+      - Every plugin depends on it as a dev-dependency
+      - Not runtime: shipping it in the runtime crate graph is a defect
+    - Purpose: a plugin's tests run without a hypervisor
   - Language parity
     - See: artifacts/diagrams/sdks-invariants.txt
     - SDK surface: see 03-sdk-architecture.md#Tri-native-design

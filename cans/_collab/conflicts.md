@@ -1,1 +1,2 @@
 - conflicts
+  - status: unresolved | file: 08-epistemic.md | issue: work.md Part 4 Patches 28/29 point #Merkle-WAL and #OpenTelemetry at artifacts/code/wal.rs and artifacts/code/otel.rs, which do not exist as CANS artifacts (wal.rs/otel.rs are plugin-ledger crate files in artifacts/config/project-structure.txt). Patches applied without those pointers; nodes state plugin-ledger ownership instead. Create the artifacts or drop the pointers to resolve.

@@ -1,10 +1,8 @@
 // crates/kelir-core/src/vmm/driver.rs
 //
-// The universal hypervisor backend abstraction. Every backend
-// (driver-libkrun, driver-rustvmm, driver-openvmm) implements this trait
-// so kelir-core drives all platforms through identical primitives.
+// The universal hypervisor backend abstraction.
 //
-// Canonical spec home: cans/01-architecture.md#VmmDriver-trait
+// Owned by: cans/01-architecture.md#VmmDriver-trait
 
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
@@ -25,8 +23,7 @@ pub struct VmConfig {
 #[derive(Debug, Clone)]
 pub struct SnapshotDescriptor {
     pub id: String,
-    /// Bytes of guest RAM mutated since the parent snapshot — a hardware-agnostic
-    /// measure, immune to host page-size differences (Apple Silicon 16KB vs Linux 4KB)
+    /// Byte count; see cans/01-architecture.md#VmmDriver-trait
     pub dirty_bytes: u64,
     pub created_at_ns: u64,
 }

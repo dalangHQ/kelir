@@ -2,7 +2,18 @@
   - Storage architecture
     - See: artifacts/diagrams/storage-architecture.txt
     - Owner: plugin-vfs; see 02-plugin-model.md#First-class-plugins
-    - Layered model: EROFS rootfs, tmpfs overlay, reconciler, idmap, caches, ghosts, mask
+    - Invariant: host SSD is mutated by exactly one path — reconcile()
+      - Every other layer lives in guest RAM or host RAM
+      - Rollback reverts guest state with zero host SSD involvement
+    - Read-only lower + tmpfs upper
+      - Guest root cannot corrupt the host workspace tree
+      - Deletions leave whiteouts, not disk holes; reconciler must resolve them
+    - Enumerated write paths
+      - writes to upperdir (tmpfs; reconciled later)
+      - writes to shared read-only caches (rejected at FUSE)
+      - writes to ghost inodes (RAM-only; never reach host disk)
+      - writes to host SSD (reconcile() only, atomic per file)
+    - Every layer in the diagram is gated by one of the four paths above
   - EROFS rootfs
     - Stripped base system pre-baked into read-only EROFS
     - Python, Node, Rust, Bash pre-installed
@@ -81,12 +92,12 @@
     - Routes lock acquisition through centralized host in-memory mutex table
     - Conflicting locks block cleanly or return EWOULDBLOCK
   - Snoop plane
-    - Direct I/O semantics: snooped paths mounted with FOPEN_DIRECT_IO
-      - Bypasses guest page cache
-      - FUSE write frames carry the true producing PID
-      - Never a kernel flusher task (kworker/pdflush)
-    - Guaranteed FUSE reply
-      - Every user callback wrapped in catch-all
-      - Any panic or throw → fuse_reply_err(req, EPERM)
-      - Host hook exception cannot leave guest thread in D state
-      - Guest always observes well-defined error, never a hang
+    - Invariant: a snoop observation reflects the producing process, not a
+      kernel flusher
+      - Achieved by bypassing guest page cache on snooped paths; mechanism
+        lives in plugin-vfs
+    - Invariant: no host-side hook failure can leave the guest thread in D
+      state
+      - Achieved by a guaranteed FUSE reply from every user callback;
+        mechanism lives in plugin-vfs
+    - Consumer: Oracle.ingest_harness_event; see 08-epistemic.md#Oracle

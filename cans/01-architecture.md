@@ -17,7 +17,6 @@
       - Radical plugin-first microkernel
         - Core drives hardware virtualization and multiplexes the 4 VirtIO rings
         - Every capability is a decoupled, composable plugin
-        - Exception fence: only 01-architecture.md#Core-invariants primitives are core-owned
       - Transparent truthful steering
         - Intercepted I/O is allowed, steered with tty_notice, or rejected
         - No silent state divergence
@@ -56,7 +55,7 @@
       - Wire contract with a process boundary? → adapter binary
       - Otherwise → plugin
   - Core invariants
-    - The closed set. Everything not pointed to here is a plugin.
+    - The closed set of core primitives
     - Trait definitions
       - Trait contract: see 02-plugin-model.md#KelirPlugin-trait
       - VmmDriver trait (defined in this file)
@@ -84,47 +83,39 @@
     - kelir-drivers: pluggable backends (libkrun, rustvmm, openvmm)
   - Guest VM anatomy
     - See: artifacts/diagrams/guest-vm.txt
-    - Minimal vmlinux: stripped Linux kernel, no ACPI or PCI bloat
-      - Apple Silicon: CONFIG_ARM64_16K_PAGES=y
-      - Linux x86: 4KB pages standard
-      - Linux ARM64: CONFIG_ARM64_4K_PAGES=y
-    - Paravirtualized devices
-      - virtio-rng: hardware entropy feeding /dev/urandom, no boot hangs
-      - virtio-wdt: hardware watchdog preventing guest kernel lockups
-      - virtio-balloon: dynamic memory inflation/deflation under host pressure
-    - Rootfs
-      - Read-only EROFS block device, cold-mounted in <2ms
-      - No tarball decompression
-    - /sbin/kelir-shim
-      - Static 50KB Musl binary, guest PID 1
-      - Binds vsock:5252 (control/trap) and vsock:5253 (ingress port-forward)
-      - Non-blocking waitpid(-1, WNOHANG) zombie reaper in async event loop
-      - seccomp-unotify filter with in-kernel BPF allowlist
-      - Anti-TOCTOU: PTRACE_SEIZE + PTRACE_INTERRUPT on every thread
-      - Parses ELF DT_NEEDED/PT_INTERP from disk
-      - Shannon entropy on argv[1:] (payload only, not argv[0])
-      - PTY per workload: openpty() + setsid() + TIOCSCTTY
-    - Untouched guest workload
-      - Claude Code, Cursor, SWE-bench, Node, Rust, Python
-      - No custom binary, no guest-side SDK
+    - Boot budget
+      - Cold boot target: <60ms, host-side stopwatch to first workload exec
+      - ACPI + PCI probing alone is ~40ms; kernel is built without both
+      - Every device below earns its millisecond against that budget
+    - Device justification
+      - virtio-rng: without it, getrandom() blocks 200–2000ms at boot
+      - virtio-wdt: hardware watchdog, so no in-guest timer daemon is needed
+      - virtio-balloon: host pressure is invisible to guest; balloon is the
+        only signal that survives a rollback
+    - Shim constraints
+      - Static musl, no dynamic linkage: dynamic libc would force libc into
+        the rootfs and break the stripped-rootfs invariant
+      - Size ceiling: <50KB per architecture, enforced in CI
+      - Single-threaded async loop: a reaper thread would require pthread
+        linkage and breach the ceiling; waitpid reaps in the same loop
+    - Isolation boundary
+      - Shim runs as PID 1: orphan reaping is mandatory, not optional
+      - seccomp-unotify is in-kernel; userspace cannot race the allowlist
+      - PTRACE_SEIZE covers every thread: leader-only seize is unsafe
+    - Workload contract: no guest-side SDK, shim, or agent
   - VmmDriver trait
     - See: artifacts/code/vmm-driver-trait.rs
-    - Single trait all backends implement
-    - Primitives
-      - boot: cold-boot microVM in <60ms
-      - fork: isolated CoW clone in <15ms
-      - checkpoint: atomic RAM and register snapshot
-      - rollback: revert to checkpoint in <8ms
-      - suspend: flush dirty pages, host RAM to 0MB
-      - resume: restore from snapshot in <50ms
-      - skew_clock: offset KVM_SET_CLOCK / CNTVOFF_EL2
-      - adjust_balloon: adjust guest RAM ceiling
-      - set_watchdog: arm watchdog with action (Reboot/Terminate)
-      - vsock_connect: yield duplex channel to multiplexer
-      - terminate: release hypervisor allocations
+    - Primitive list and signatures: see the artifact
+    - Single backend contract
+      - Every backend implements every primitive; optional primitives are
+        not part of the trait
+      - Callers hold `Box<dyn VmmDriver>` only; no backend type is surfaced
     - SnapshotDescriptor.dirty_bytes
-      - Hardware-agnostic byte count, not page count
-      - Page size differs: 16KB Apple Silicon ARM64, 4KB Linux/x86
+      - Byte count, not page count: page size is 16KB on Apple Silicon ARM64
+        and 4KB on Linux/x86
+      - Rationale: a byte count yields identical receipts, deltas, and
+        Merkle roots across hosts; a page count does not
+      - This is the sole home of the page-size fact
   - Driver backends
     - driver-libkrun: default
       - macOS: HVF + Metal GPU

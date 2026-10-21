@@ -9,16 +9,15 @@
   - Local velocity
     - See: artifacts/config/justfile
     - Targets: <15s host build, <10s unit tests, sub-minute pre-flight
-    - Requires: just, cargo-nextest, mold (Linux), zig, pnpm, uv
-    - Enforced invariants: local velocity
-      - build-host excludes kelir-shim
-      - test-core runs kelir-core + kelir-plugin-testkit
-      - test-plugins runs each plugin-* crate independently
-      - test-shim runs kelir-shim standalone
-      - test-drivers excludes test_hw_* paths (real hardware)
-      - test-integration excluded from pre-flight (real VM)
-      - pre-flight gates every push: fmt, clippy, eslint, test-all, tsc, mypy
-      - shim binary built via cargo zigbuild musl
+    - Velocity invariants
+      - `build-host` excludes kelir-shim: shim has its own cross-compile
+        target and its own time budget
+      - `test-all` excludes integration: integration needs a real hypervisor
+        and would fail every local run
+      - `test-drivers` excludes `test_hw_*`: real-hardware paths are not
+        locally reproducible
+      - `pre-flight` is the only gate that must pass before push; it is the
+        union of the three exclusions above
   - CI matrix
     - See: artifacts/config/ci.yml
     - Constraints
@@ -29,7 +28,7 @@
       - macOS Apple Silicon jobs limited to compile gate for driver-libkrun
       - Do not waste runner minutes on full matrix
     - Enforced invariants: CI matrix
-      - Shim binary < 100KB per architecture
+      - Shim binary < 50KB per architecture: see 01-architecture.md#Guest-VM-anatomy
       - Concurrency cancelled per ref (cancel-in-progress)
       - sccache enabled via SCCACHE_GHA_ENABLED
     - Per-plugin matrix: each plugin fails independently

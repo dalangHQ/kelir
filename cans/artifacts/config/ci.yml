@@ -59,11 +59,11 @@ jobs:
       - uses: taiki-e/install-action@cargo-zigbuild
       - name: Build Shim via Zig Linker
         run: cargo zigbuild -p kelir-shim --release --target ${{ matrix.target }}
-      - name: Verify Size (<100KB binary constraint)
+      - name: Verify Size (<50KB binary constraint)
         run: |
           SIZE=$(stat -c%s target/${{ matrix.target }}/release/kelir-shim)
           echo "Shim size: $SIZE bytes"
-          test $SIZE -lt 102400 || (echo "SHIM BLOAT DETECTED" && exit 1)
+          test $SIZE -lt 51200 || (echo "SHIM BLOAT DETECTED" && exit 1)
       - uses: actions/upload-artifact@v4
         with:
           name: kelir-shim-${{ matrix.target }}

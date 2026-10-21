@@ -1,10 +1,12 @@
 - Lifecycle
   - Superpowers
     - See: artifacts/diagrams/superpowers.txt
-    - Nine superpowers enumerated below
-    - Every superpower exposes a veto or observation point
-      - Registered via LifecycleCtx in on_vm_init
-      - Class per superpower: see #Lifecycle-vetoes
+    - Set membership and mechanism per item: see the diagram
+    - Set-level invariant: every item is a hypervisor primitive, not a
+      guest-side simulation. Nothing in this set is achievable without driver
+      cooperation.
+    - Every item exposes one lifecycle point via LifecycleCtx
+      - Split by state-preservation, not by privilege: see #Lifecycle-vetoes
     - Ownership attribution: see 02-plugin-model.md#First-class-plugins
   - CoW fork
     - Driver primitive: fork returns Box<dyn VmmDriver> in <15ms
@@ -79,34 +81,23 @@
         - On host exit or pipe close: SIGKILL to backend process group
         - Reclaims VM memory mappings
   - Docker-in-kelir
-    - Constraint: Apple Silicon Hypervisor.framework lacks nested VMX/SVM passthrough
-    - Solution: embed Rootless Podman + crun inside read-only EROFS rootfs
-    - docker build / docker compose up run via rootless Podman
-    - Linux user namespaces (CLONE_NEWUSER)
-    - Ephemeral write layer
-      - Guest boot fstab provisions tmpfs for /var/lib/containers, /var/run, /tmp
-      - Rootfs stays immutable EROFS block
-      - Never surfaces EROFS: Read-only file system
-    - OCI containers run inside microVM without nested hypervisor or host daemon
+    - Constraint: Apple Silicon HVF offers no nested VMX/SVM
+    - Invariant: OCI containers run without a nested hypervisor and without
+      a host daemon
+    - Mechanism: rootless Podman + crun inside the read-only EROFS rootfs;
+      ephemeral state on tmpfs so the rootfs stays immutable
   - Break-glass
-    - Human interactive attach when automated agent is stuck
-    - session.breakGlass() on Session (post-boot only)
-    - Ownership: see 02-plugin-model.md#First-class-plugins
-    - Pauses agent loop, bridges developer host TTY directly to virtio-console
-    - Developer inspects state, runs manual commands, exits subshell
-    - Control returns to agent
+    - Invariant: developer TTY reaches virtio-console with zero guest-side
+      cooperation
+    - The agent loop pauses for the duration; control returns on subshell exit
+    - Session-only: `session.breakGlass()` exists after `boot()`
   - Port forwarding
-    - forwardPort is a Session API with language parity
-    - Owning plugin: plugin-wire; see 02-plugin-model.md#First-class-plugins
-    - TypeScript: session.forwardPort({ host: 8080, guest: 3000 })
-    - Python: await session.forward_port(8080, 3000)
-    - Rust: session.forward_port(8080, 3000).await?
-    - Flow
-      - Guest service binds port (e.g. Next.js dev server on 3000)
-      - Shim emits GuestToHost::PortBound over vsock:5252
-      - Host connections tunneled over virtio-vsock:5253
-      - Shim ingress multiplexer proxies byte stream to guest loopback port
-    - Ingress multiplexer: crates/kelir-shim/src/ingress.rs
+    - Invariant: an ingress connection to a guest-bound port never creates a
+      host-side listening socket
+    - Flow: guest binds → shim emits PortBound → host tunnels over
+      vsock:5253 → shim proxies to guest loopback
+    - Session API in all three SDKs; ingress mechanism in
+      crates/kelir-shim/src/ingress.rs
   - Zombie reaping
     - Shim runs as guest PID 1
     - waitpid(-1, WNOHANG) pass integrated into async event loop
@@ -124,11 +115,12 @@
       - Observation only: Checkpoint, Rollback, Resume, Terminate
         - Callback fires; return value logged and ignored
         - Use for ledger / trace / metrics
-        - Cannot veto by design
-          - Rollback, Resume, Checkpoint are state-preserving
-          - Terminate flush hook is on_vm_shutdown, not a veto
-    - Note: VetoEvent is the uniform registration type for both classes
-      - Class determines semantics, not the type name
+    - Class is determined by state-preservation, not by event name
+      - A state-preserving action cannot be vetoed: aborting it would leave
+        no recovery path
+      - A state-mutating action (Fork, Suspend, ClockSkew) is vetoable
+      - Terminate is observation-only because flush belongs to on_vm_shutdown
+    - VetoEvent is the uniform registration type for both classes
     - Firing point
       - Before the corresponding hypervisor primitive executes
       - Session-level actions also route through this point

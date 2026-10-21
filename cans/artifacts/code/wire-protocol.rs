@@ -1,9 +1,8 @@
 // crates/kelir-core/src/protocol/codec.rs
 //
 // Frame header for host↔guest transport over vsock:5252.
-// 20-byte TLV header, CBOR payload, 64-bit sequence shared by both directions.
 //
-// Canonical spec home: cans/09-protocol.md#Wire-framing
+// Owned by: cans/09-protocol.md#Wire-framing
 
 // Wire header layout (20 bytes, MSB-first bit numbering):
 //

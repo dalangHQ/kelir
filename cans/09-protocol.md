@@ -5,81 +5,49 @@
     - Windows driver-openvmm: HV_SOCKET translates the same channels
     - Zero network interface involvement
   - Trap fast-path
-    - Goal: prevent slowdowns on cargo build / npm install scale workloads
-    - Layer 1: in-kernel BPF allowlist
-      - rustc, gcc, as, ld, sed, cat evaluated purely in guest kernel
-      - 0µs roundtrip overhead
-    - Layer 2: anti-TOCTOU task-group freeze
-      - seccomp-unotify triggers on git, curl, ssh, rm, sudo, npm, /tmp binaries
-      - Iterate /proc/$PID/task/*
-      - Issue ptrace(PTRACE_SEIZE) + ptrace(PTRACE_INTERRUPT) to every thread
-      - seccomp-unotify stops only the calling thread
-      - Leader-only seize leaves siblings free to rewrite memory mid-inspection
-      - Full task-group freeze closes check-to-use race
-    - Layer 3: entropy and dynamic linker audit
-      - Shannon entropy computed on argv[1:] only
-        - Excludes argv[0]; low-entropy path would dilute the measurement
-        - Values > 5.2 flag encrypted shell drops or base64 payloads
-      - ELF header parsed directly from disk at trap time
-        - Walks DT_NEEDED entries
-        - Reads PT_INTERP segment
-        - Enumerates libraries the dynamic linker will load
-        - Blocks LD_PRELOAD rootkits
-        - Disk-time scan is correct; /proc/$PID/maps still describes old image
+    - Step sequence and per-step mechanics: see artifacts/diagrams/trap-flow.txt
+    - Goal: the trap path must not slow `cargo build` / `npm install`
+    - Why three layers, not one
+      - A single trap-on-every-syscall design adds ~µs per fork/exec at
+        toolchain scale; the allowlist exists to pay that cost only where
+        policy is possible
+      - A userspace-only inspection cannot close the check-to-use race;
+        the freeze exists to make the metadata binding
+      - A frozen inspection is still blind to what the loader *will* do;
+        the linker audit exists to make the inspection meaningful
+    - Layer cost if removed
+      - Layer 1 removal: every rustc invocation round-trips to the host
+      - Layer 2 removal: sibling threads rewrite memory during inspection;
+        inspection is decorative
+      - Layer 3 removal: LD_PRELOAD rootkits and encrypted argv payloads
+        pass through untouched
+    - Measurement rule
+      - Entropy is over argv[1:]: including argv[0] dilutes the signal with
+        a low-entropy path
+      - ELF is read from disk at trap time: /proc/$PID/maps still describes
+        the pre-exec image and cannot be trusted
     - Flow diagram: See artifacts/diagrams/trap-flow.txt
   - Wire framing
     - See: artifacts/code/wire-protocol.rs
-    - Binary TLV framing, CBOR payload encoding
-    - Fixed 20-byte header
-      - Magic 0x4B45 ('KE')
-      - Version 0x03
-      - Message Type (u16)
-      - Flags (u16)
-      - Sequence Number (64-bit, two u32 words, MSB first)
-      - Payload Length (u32)
-    - Sequence space
-      - 64-bit unsigned
-      - Shared across GuestToHost and HostToGuest directions
-      - Monotonically increases per vsock connection
-      - Codec reassembles u64 from the two u32 words before payload decode
+    - Layout (header offsets, magic, version): see the artifact
+    - Framing invariants
+      - One frame = one message; no message spans frames
+      - Sequence is monotonic per vsock connection and shared across both
+        directions; a lost seq is a protocol error, not a retry
+      - Payload is CBOR; the codec never inspects CBOR before reassembling
+        the u64 sequence
   - Wire messages
     - See: artifacts/code/messages.rs
-    - GuestToHost
-      - TrapEvent
-        - seq, pid, ppid, binary_path, binary_blake3
-        - argv, envp, cwd, ancestor_chain
-        - entropy, loaded_libraries
-      - ProcessExit: pid, exit_code, wall_clock_ns
-      - MemoryPressureWarning: available_mb, total_mb
-      - PortBound: guest_port, protocol
-      - Heartbeat: uptime_ms
-    - HostToGuest
-      - TrapDecision: seq, action
-      - WindowResize: rows, cols, xpixel, ypixel
-      - SendSignal: pid, signal
-      - AdjustBalloon: target_mb
-      - Disclosure: body (bytes)
-        - Mandatory core-originated notice
-        - Pipeline and invariants: see 04-terminal-plane.md#Disclosure
-    - TrapAction variants
-      - Allow: resume syscall untouched; registers and memory never modified
-      - Deny { exit_code, stderr_message }: inject exit code + stderr to agent TTY
-      - Rewrite { new_binary, new_argv, injected_env, disclosure }: re-execute with substitutions
-        - disclosure Some(_) routes via HostToGuest::Disclosure
-      - SuspendForApproval { poll_interval_ms }: hold for human approval
-      - Custom(CborValue): extension point for policy actions beyond the four above
-        - Dispatched by name to a registered handler (registration TBD)
-        - Unknown names fail EUnknownAction before pipeline resumes
-    - Hook mapping
-      - GuestToHost messages fire control-plane hooks
-        - TrapEvent → on_trap; ProcessExit → on_process_exit
-        - MemoryPressureWarning → on_memory_pressure
-        - Heartbeat → on_heartbeat; PortBound → on_port_bound
-      - HostToGuest messages fire host-side hooks before dispatch
-        - WindowResize → on_window_resize
-        - SendSignal → on_signal_send
-        - Disclosure → on_disclosure
-      - Watchdog fires on_watchdog, but is driver-side (not a wire message)
+    - Message set and payload fields: see the artifact
+    - Hook binding: each message resolves to exactly one hook; see
+      02-plugin-model.md#KelirPlugin-trait
+    - TrapAction invariants
+      - `Allow` cannot mutate registers, memory, or env; it is a no-op
+      - `Deny` injects an exit code and stderr into the agent TTY
+      - `Rewrite` is the only variant that can carry injected env; the
+        disclosure field routes through HostToGuest::Disclosure
+      - `Custom` variants are dispatched by name; unknown names fail with
+        EUnknownAction before the pipeline resumes
   - Env injection
     - Allow cannot mutate guest environment
       - Registers and memory untouched

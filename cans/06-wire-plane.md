@@ -2,9 +2,19 @@
   - Wire architecture
     - See: artifacts/diagrams/wire-plane.txt
     - Owner: plugin-wire; see 02-plugin-model.md#First-class-plugins
-    - Zero-knowledge credential architecture
-    - Production API keys never enter guest memory, shell variables, or disk
-    - Four channels: L7 proxy, L4 SOCKS5, SSH gate, DNS sinkhole
+    - Invariant: a real secret never enters guest address space
+      - The guest sees only vault:// URNs and per-session CA certs
+      - Substitution happens host-side, after TLS termination at the proxy
+    - Total egress rule
+      - Egress is what the four channels admit; nothing else reaches NIC
+      - Default deny: allowlist miss is silent drop (on_net_outbound Reject)
+      - DNS sinkhole is the fallback that makes "unlisted ⇒ dropped" total
+    - Per-channel admission
+      - L7 proxy: TLS terminated under per-session CA; allowlist by host
+      - L4 SOCKS5: connect-by-IP; used where TLS termination is invalid
+      - SSH gate: host keyring signs; private key never crosses vsock
+      - DNS: NXDOMAIN for non-allowlisted; blocks tunneling on port 53
+    - Composability: plugin-chaos mutates frames in both directions
   - L7 credential swapper
     - Guest shell sees dummy URN placeholders
       - STRIPE_KEY="vault://stripe_prod_key"

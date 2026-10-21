@@ -1,6 +1,6 @@
 # artifacts/
 
-Terminal references for the kelir CANS spec in `../`.
+Terminal content for the kelir CANS spec in `../`.
 
 ## What lives here
 
@@ -16,24 +16,44 @@ Terminal references for the kelir CANS spec in `../`.
 - CANS spec nodes — those are in `../`
 - Anything with an outbound reference — artifacts are terminal by design
 
+## SSOT contract
+
+Artifacts and nodes split truth by kind, not precedence.
+
+- Artifacts own **content**: enumerations, field sets, code signatures,
+  topology, timing constants, wire layouts.
+- Nodes own **normativity**: ordering, placement, threat model, invariants,
+  and the rationale for each.
+- A node that re-lists artifact content is a defect. The node must say
+  something the artifact cannot — otherwise it is decoration.
+- The test: *can the node articulate an invariant the artifact does not
+  encode?* If not, the node is wrong, not the artifact.
+
 ## Convention
 
-Every artifact is referenced from `cans/` via `see:` with a **relative** path:
+Every artifact is referenced from `cans/` via `see:` with a **relative** path
+and is accompanied by a node-level invariant:
 
 ```
 cans/01-architecture.md       →  see: artifacts/code/vmm-driver-trait.rs
+                                  invariant: the trait is the sole hypervisor boundary
 cans/04-terminal-plane.md     →  see: artifacts/diagrams/terminal-pipeline.txt
+                                  invariant: filter ordering (see #Five-filters)
 cans/03-sdk-architecture.md   →  see: artifacts/examples/autonomous-swe-agent.rs
+                                  invariant: same plugin set across all three SDKs
 ```
 
 - `cans check` treats every artifact pointer as a **0-hop** reference
-- Artifacts are never spec-edited during a CANS migration; they are frozen reference material
-- An artifact may contain inline file-level comments pointing back to canonical spec nodes, but the artifact itself issues no CANS reference
+- Artifacts are never spec-edited; they are frozen content
+- An artifact may carry a file-header pointer back to its owning node; the
+  artifact issues no CANS reference
 - One artifact may be referenced from multiple spec nodes (no duplication)
 
 ## Editing rules
 
-1. Never edit a spec concept inside an artifact — move the concept to a CANS node and reference it
-2. Never duplicate a spec concept across multiple artifacts
-3. Never create an artifact with no inbound `see:` — orphans are dead weight
-4. An artifact that is not verbatim source (e.g. an SDK usage excerpt) is marked with a top-of-file comment stating it is illustrative, not standalone-compilable
+1. Edit content in the artifact; edit invariants in the node. Never cross.
+2. Never duplicate artifact content in a node.
+3. Never create an artifact with no inbound `see:` carrying a node-level
+   invariant.
+4. Non-verbatim source (SDK excerpts, illustrative snippets) is marked at the
+   top of the file as illustrative, not standalone-compilable.
