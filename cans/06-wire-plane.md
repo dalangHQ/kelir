@@ -1,0 +1,64 @@
+- Wire plane
+  - Wire architecture
+    - See: artifacts/diagrams/wire-plane.txt
+    - Zero-knowledge credential architecture
+    - Production API keys never enter guest memory, shell variables, or disk
+    - Four channels: L7 proxy, L4 SOCKS5, SSH gate, DNS sinkhole
+  - L7 credential swapper
+    - Guest shell sees dummy URN placeholders
+      - STRIPE_KEY="vault://stripe_prod_key"
+      - DATABASE_URL="vault://pg_creds"
+    - Secret auto-injection contract
+      - on_vm_ready injects every registered vault key into guest env
+      - Placeholder URN is the only value that ever exists inside the guest
+      - Real secret crosses wire plane exclusively on host side
+    - TLS interception contract
+      - plugin-wire generates ephemeral per-session root CA at boot
+      - CA mounted into guest trust store /etc/ssl/certs as overlayfs ghost
+      - curl, git, and language-native TLS stacks accept transparently
+      - Zero CLI flags: no --cacert, no NODE_EXTRA_CA_CERTS
+    - Request flow
+      - Guest TLS terminates at host-side forward proxy
+      - Validates target host against egress allowlist
+      - Replaces vault:// placeholder with real key from host keyring
+      - Establishes upstream TLS handshake directly from host
+    - Response scrubbing
+      - Sensitive headers (Set-Cookie, echoed auth) stripped
+      - Response re-encrypted under per-session CA before entering TAP
+  - L4 gateway
+    - Direct TCP connections route through in-memory SOCKS5 / SNI gateway
+    - Database proxying
+      - PostgreSQL on 5432, Redis on 6379
+      - Ephemeral DB credentials injected at host connection boundary
+      - Client mTLS certificates injected at host boundary
+    - No private keys or DB passwords enter guest address space
+  - SSH gate
+    - git@github.com SSH connections mapped via /dev/vhost-vsock to host SSH_AUTH_SOCK
+    - Host signs cryptographic authentication challenges
+    - Secure Enclave keys sign on host
+    - Private keys never touch guest memory
+  - DNS sinkhole
+    - All UDP port 53 traffic trapped at TAP boundary
+    - Unregistered or non-allowlisted domains → immediate NXDOMAIN
+    - DNS data tunneling exploits neutralized at hypervisor perimeter
+    - Examples blocked: secret-data.attacker.com style exfiltration
+  - Fault injection (plugin-chaos)
+    - Bidirectional across wire plane
+      - on_net_outbound mutates frames leaving guest
+      - on_net_inbound mutates frames arriving at guest
+      - Both directions flow through same chaos rule engine
+    - Network chaos
+      - target: domain or host pattern
+      - direction: "outbound" | "inbound" | "both"
+      - latency: { baseMs, jitterMs }
+      - dropRate: synthetic packet loss probability
+      - injectRst: synthetic TCP RST flags
+      - bandwidthKbps: link speed clamp
+    - Storage chaos
+      - targetPath: glob over guest filesystem
+      - simulateError: errno such as ENOSPC
+      - errorProbability: fraction of write() calls failed
+    - Typical uses
+      - Verify agent code handles flaky APIs, dialup speeds, RST resets
+      - Verify graceful degradation on disk-full conditions
+    - Wiring: See artifacts/examples/autonomous-swe-agent.ts

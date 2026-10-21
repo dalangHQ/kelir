@@ -1,0 +1,90 @@
+- Epistemic
+  - Execution receipts
+    - See: artifacts/code/execution-receipt.rs
+    - Emitted per executed process to host
+    - Receipt fields
+      - pid, binary_path
+      - binary_blake3: canonical 64-char lowercase hex
+      - dirty_bytes: byte count of mutated physical memory
+      - syscall_count, exit_code, wall_clock_ns
+      - egress_bytes: total network egress bytes transmitted
+    - Hardware-agnostic telemetry
+      - Page size varies by platform
+      - Byte counts canonical, not page counts
+      - Identical executions produce identical receipts on every host
+      - Epistemic assertions, RLVR loss, Merkle roots stable across machines
+      - Assertion form: dirty_bytes == 0
+    - Ownership
+      - kelir-core generates and holds at trap/exit boundary
+      - c.receipt() is the single read API on HandlerCtx
+  - Causal delta
+    - See: artifacts/code/causal-delta.rs
+    - Counterfactual state delta: Δ = S_A - S_B
+    - Delta fields
+      - memory_diff_bytes: hardware-agnostic byte-level RAM delta
+      - modified_inodes: Vec<PathBuf>
+      - spawned_pids: Vec<u32>
+      - egress_requests: Vec<HttpRequestRecord>
+    - Computed between two checkpoint descriptors
+  - Merkle WAL
+    - Every execution receipt hashed into append-only WAL
+    - Backend: embedded SQLite or DuckDB
+    - Chaining: H_n = BLAKE3(H_{n-1} || Receipt_n)
+    - Tamper-proof audit trail for SOC2 and regulatory compliance
+    - Host-isolated storage
+      - Database lives on host filesystem, resolved relative to consumer CWD
+      - Default: .kelir/audit.merkle.db
+      - Guest paths (/workspace/...) rejected at LedgerPlugin construction
+      - WAL survives guest rollback() and fork()
+      - Cannot be reverted or duplicated by guest operations
+    - Ownership boundary
+      - kelir-core: generates and holds execution receipts (c.receipt())
+      - plugin-ledger: persists receipts into WAL, exports OTel
+      - plugin-ledger also exposes c.ledger.flush()
+  - OpenTelemetry
+    - Automatic W3C traceparent injection into outbound HTTP requests
+    - Connects internal shell execution to Jaeger, Datadog, etc.
+    - OtelConfig in LedgerPlugin
+      - endpoint: http://localhost:4318/v1/traces
+      - service_name: kelir-swe-agent
+      - propagate_traceparent: true
+  - Three-tier truth
+    - See: artifacts/diagrams/truth-hierarchy.txt
+    - Motivates decoupling orchestration from private harness internals
+    - Tier 1: physical ground truth (hypervisor/kernel boundary)
+      - Unforgeable receipts: BLAKE3 hex digests, dirty byte counts
+      - OS inode diffs: physical disk modifications via CausalDelta
+      - Egress telemetry: true network frames past virtio-net proxy
+      - Invariant: agent cannot fake, even as guest root
+    - Tier 2: public formal protocols (contract interface)
+      - Model Context Protocol tool events over stdio
+      - Deterministic PTY stream output sanitized of ANSI injection
+      - Invariant: evaluated strictly against public versioned contracts
+    - Tier 3: synchronous inode snooping (harness state interception)
+      - Zero post-mortem polling
+      - Intercepts harness write() calls in real-time
+      - Host in-memory buffer captures updates before disk sync
+      - Invariant: eliminates async races and file lock collisions
+  - Lifecycle bridge
+    - See: artifacts/diagrams/lifecycle-bridge.txt
+    - Replaces language-level monkeypatching
+      - Old form: agent._step(), private runtime prototype overrides
+      - Breaks on every CLI update, blind to OS-level side effects
+    - In-process hardware lifecycle bridge
+    - Mapping from orchestrator actions to hypervisor primitives
+      - pause() → halt vCPU registers instantly, 0% CPU
+      - resume() → restore vCPU with 0ms clock skew
+      - step() → execute until next virtio-vsock syscall trap, then pause
+      - revert() → drop dirty RAM, purge tmpfs diffs to last good snapshot in <8ms
+  - Step evaluation loop
+    - See: artifacts/code/step-evaluation-loop.ts
+    - Orchestrators execute unmodified agent binaries
+    - Cycle-accurate governance over every operational step
+    - Pre/post tracking is a core context service
+    - StepSlot on HandlerCtx
+      - c.step.mark(descriptor): stores typed checkpoint slot for trapping PID
+      - c.step.last(): retrieves it, raises if none
+      - No userland scratchpads, no plugin boilerplate
+    - Typical wiring
+      - before("*"): checkpoint + analyzeIntent; deny or resume
+      - after("*"): read receipt; rollback on post-condition violation

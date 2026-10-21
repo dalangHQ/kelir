@@ -1,0 +1,34 @@
+- Plugin model
+  - KelirPlugin trait
+    - See: artifacts/code/plugin-trait.rs
+    - Async trait implemented by all subsystems, internal and third-party
+    - Five hook families across the 4 VirtIO rings
+      - Lifecycle: on_vm_init, on_vm_ready, on_vm_shutdown
+      - Control plane (vsock): on_trap, on_process_exit
+      - Terminal plane (console): on_pty_input, on_pty_output
+      - Storage plane (fs): on_vfs_lookup, on_vfs_read, on_vfs_write
+      - Wire plane (net): on_net_outbound, on_net_inbound
+    - VfsInodeAttr carries full mode, uid, gid, size, content
+      - Populated verbatim into FUSE LOOKUP replies
+      - Ghost inodes honor mode: 0o400 exactly, no permission fallback
+    - Plane semantics
+      - Wire plane fully bidirectional: outbound and inbound mutation points
+      - Storage plane fully attributed: on_vfs_write carries PID and HandlerCtx
+  - Static dispatch
+    - Plugins compiled into flat contiguous dispatch array at boot
+    - Evaluated in strict priority order
+    - First Deny or Rewrite halts pipeline, dispatches over AF_VSOCK
+    - Sub-12 microsecond hook execution
+  - Five canonical plugins
+    - plugin-pty: virtio-console, ANSI sanitizer, Token Shield, prompt responder
+    - plugin-vfs: virtio-fs, ghost inodes, maskRead, reconciler, lock broker
+    - plugin-wire: L7 proxy, SOCKS5, SSH gate, DNS sinkhole
+    - plugin-chaos: bidirectional wire jitter/drop, VFS ENOSPC injection
+    - plugin-ledger: Merkle WAL, causal delta, OpenTelemetry traceparent
+  - Language parity
+    - See: artifacts/diagrams/sdks-invariants.txt
+    - Same five plugins in Rust, TypeScript, Python, maintained 1:1
+    - Trait surface and hook semantics identical across languages
+    - Rust: plugin_with_handle → typed handle; unmounted plugin breaks build
+    - TypeScript: type-level accumulation; missing .use() fails tsc
+    - Python: plugin_with_handle yields typed handle; missing handle fails import

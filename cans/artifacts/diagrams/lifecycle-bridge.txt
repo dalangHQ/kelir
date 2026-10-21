@@ -1,0 +1,14 @@
+┌───────────────────────────────┬─────────────────────────────────────────────┐
+│ ORCHESTRATOR LIFECYCLE ACTION │ PHYSICAL HYPERVISOR MECHANISM               │
+├───────────────────────────────┼─────────────────────────────────────────────┤
+│ orchestrator.pause()          │ Halts vCPU registers instantly via KVM/HVF  │
+│                               │ ioctl at the current cycle boundary (0% CPU)│
+├───────────────────────────────┼─────────────────────────────────────────────┤
+│ orchestrator.resume()         │ Restores vCPU execution with 0ms clock skew │
+├───────────────────────────────┼─────────────────────────────────────────────┤
+│ orchestrator.step()           │ Executes workload until next virtio-vsock   │
+│                               │ syscall trap, then pauses vCPUs for eval    │
+├───────────────────────────────┼─────────────────────────────────────────────┤
+│ orchestrator.revert()         │ Drops dirty RAM pages and purges tmpfs diffs│
+│                               │ back to last known good snapshot in <8ms    │
+└───────────────────────────────┴─────────────────────────────────────────────┘

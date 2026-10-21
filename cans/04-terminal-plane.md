@@ -1,0 +1,62 @@
+- Terminal plane
+  - Terminal pipeline
+    - See: artifacts/diagrams/terminal-pipeline.txt
+    - Guest workload writes stdout/stderr
+    - Linux kernel PTY driver: /dev/hvc0 → /dev/pts/N
+    - isatty(1) == true, raw mode active, zero CLI downgrade
+    - virtio-console ring buffer streams bytes to host memory
+    - Host supervisor (@kelir/plugin-pty) applies five filters
+  - Five filters
+    - ANSI stream sanitizer
+      - Drops OSC 52 clipboard hijack in-flight
+      - Strips OSC 0/1/2 title spoofing
+    - onPrompt responder
+      - Foreground TTY verification via tcgetpgrp()
+      - Matches ANSI-SGR-stripped plaintext shadow copy
+      - Injects keystrokes directly into virtio-console ring
+    - WindowResize bridge
+      - Boot handshake pushes initial size (e.g. 120x40) at VM-ready
+      - Host SIGWINCH sends HostToGuest::WindowResize over vsock:5252
+      - Shim executes TIOCSWINSZ on guest PTY slave
+    - Signal forwarding: Ctrl+C (SIGINT) and Ctrl+D to foreground process group
+    - Token Shield filter
+      - Clamps chunks exceeding byte or line ceiling
+      - Injects truncation markers with byte/line stats
+  - ANSI sanitizer
+    - OSC 52 attack defense
+      - Scripts printing \x1b]52;c;... attempt clipboard read/write
+      - All OSC 52 bytes dropped at hardware buffer boundary
+    - Title spoofing defense
+      - OSC 0/1/2 stripped to prevent host terminal emulator tampering
+  - Prompt responder
+    - Matchers run against ANSI-SGR-stripped plaintext shadow copy
+    - Regex matches text regardless of SGR color or bold codes
+    - Original bytes stream with styling intact
+    - Anti-spoof verification
+      - Executes only if PTY holder matches kernel foreground process group
+      - Background echo of prompt text cannot trigger automated responses
+    - Example wiring: See artifacts/examples/autonomous-swe-agent.ts
+  - Window resize
+    - Boot handshake
+      - Hypervisor pushes configured initial size before first workload spawn
+      - Guest never boots into 80x25 default
+      - Full-screen apps (Claude Code, vim, top) initialize with correct geometry
+    - Live resize
+      - host process.stdout.on("resize") catches SIGWINCH
+      - HostToGuest::WindowResize { rows, cols, xpixel, ypixel } over AF_VSOCK:5252
+      - In-guest shim executes ioctl(pts_fd, TIOCSWINSZ, &ws)
+      - Guest shell redraws without corruption
+  - Signal forwarding
+    - Ctrl+C / Ctrl+D forwarded to guest foreground process group
+    - Signals flow as HostToGuest::SendSignal over vsock:5252
+    - Shim signals the foreground PID
+  - Token Shield
+    - Ceilings: maxBytesTotal (e.g. 64KB), maxLinesTotal (e.g. 300)
+    - clampStrategy: head-and-tail (keep first 50 + last 100 lines)
+    - onClamp callback returns truncation notice with droppedBytes/droppedLines
+    - Boundary-safe clamping
+      - Truncation point never splits a glyph or escape sequence
+      - Scans backward to nearest valid UTF-8 code-point boundary
+      - Scans backward to start of any in-progress CSI/OSC sequence
+      - Multi-byte characters and complete ANSI sequences survive intact
+    - Protects LLM context window from runaway logs and stack traces

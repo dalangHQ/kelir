@@ -17,16 +17,23 @@ slug:
 
 structure:
   node_length: { min: 3, max: 90 }
-  siblings: { min: 4, max: 15 }
-  depth: { min: 3, max: 10 }
-  single_child_collapse: true
+  # spec-shaped docs: a node may legitimately own 1-2 children (a "Problem"
+  # node with one line, a "Fields" node with one field). min 1 = the check
+  # never fires; single_child_collapse is the knob for the 1-child advisory.
+  siblings: { min: 1, max: 20 }
+  depth: { min: 2, max: 10 }
+  single_child_collapse: false
   empty_nodes: false
 
 style:
   prefer: sibling
-  force_nested_above: 6
-  force_sibling_below: 3
-  shared_prefix_detection: true
+  # prefer=sibling already suppresses the shared-prefix / force-nested hints
+  # (they only fire when prefer != 'sibling'); force_sibling_below: 1 disables
+  # the "collapse 2-3 leaf children to sibling" hint, which fights spec groups
+  # like "Problem/Solution" and "Fields".
+  force_nested_above: 20
+  force_sibling_below: 1
+  shared_prefix_detection: false
 
 content:
   tbd_allowed: true
@@ -41,10 +48,16 @@ references:
 
 redundancy:
   enabled: true
-  word_frequency_threshold: 4
-  phrase_overlap_threshold: 0.7
-  cross_file_threshold: 2
-  fuzzy: true
+  # A term is only "sprawl" if it has no canonical home; in this spec the
+  # dominant nouns (host, guest, kelir, virtio, memory...) are load-bearing
+  # vocabulary, so the layer only fires for terms spread across most of the
+  # corpus. Fuzzy near-miss word forms are off: Levenshtein on technical
+  # identifiers (rc/vc, ts/tsx) is pure noise here.
+  word_frequency_threshold: 70
+  # 1.00 = literal duplicates only; sub-100% overlap on spec prose is normal.
+  phrase_overlap_threshold: 0.95
+  cross_file_threshold: 5
+  fuzzy: false
   stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires]
   synonyms:
     - [postgres, postgresql, pg]

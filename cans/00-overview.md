@@ -1,4 +1,58 @@
 - Overview
-  - Product: TBD
-  - Users: TBD
-  - Status: draft
+  - Product
+    - Name: kelir (Javanese ꦏꦼꦭꦶꦂ)
+    - Meaning: taut white fabric screen in Wayang Kulit shadow puppetry
+    - Metaphor: dalang (host app) directs puppets (agent) through the screen
+    - Version: 3.0.0-normative
+    - Status: normative specification
+  - What it is
+    - Embeddable in-process microVM hypervisor microkernel
+    - Boots stripped Linux microVMs in sub-60ms
+    - Details: see 01-architecture.md#Axiomatic-foundations
+  - What it is not
+    - Not a container wrapper
+    - Not an MCP server
+    - Not a background daemon
+    - Not a daemon or container runtime: see 01-architecture.md#In-process-microkernel
+  - Target audience
+    - Matrix: See artifacts/diagrams/target-audience.txt
+    - Infra platforms: K8s, Cube, OpenShell
+    - Harness creators: Claude Code, Cursor, Devin
+    - Orchestrators: LangGraph, CrewAI, E2B
+    - Epistemic engines: Axiom, RLVR, falsifiers
+  - What kelir replaces
+    - Terminal hacks: tmux send-keys, regex screen scraping
+    - Storage hacks: host-boundary write mutations and whiteout corruption
+    - Virtualization hacks: fragmented platform-specific VM scripts
+    - Agent trust hacks: polling self-reported harness JSON
+    - Details: see 04-terminal-plane.md#Terminal-pipeline
+    - Details: see 05-storage-plane.md#Storage-architecture
+    - Details: see 08-epistemic.md#Three-tier-truth
+  - Spec map
+    - Foundation: see 01-architecture.md
+    - Plugin model: see 02-plugin-model.md
+    - SDK architecture: see 03-sdk-architecture.md
+    - Terminal plane: see 04-terminal-plane.md
+    - Storage plane: see 05-storage-plane.md
+    - Wire plane: see 06-wire-plane.md
+    - Lifecycle: see 07-lifecycle.md
+    - Epistemic: see 08-epistemic.md
+    - Protocol: see 09-protocol.md
+    - Ecosystem and ops
+      - Ecosystem ingestion: see 10-adapters.md#Ingestion-matrix
+      - Build, CI, layout: see 11-operations.md#Execution-philosophy
+  - Canonical homes
+    - Plugin trait: see 02-plugin-model.md#KelirPlugin-trait
+    - Params typed views: see 03-sdk-architecture.md#Params-typed-views
+    - Params ingress contract: see 01-architecture.md#Params-ingress-contract
+    - Wire architecture: see 06-wire-plane.md#Wire-architecture
+    - VmmDriver trait: see 01-architecture.md#VmmDriver-trait
+    - Session superpowers: see 07-lifecycle.md#Superpowers
+    - Guest VM anatomy: see 01-architecture.md#Guest-VM-anatomy
+    - Env injection mechanism: see 09-protocol.md#Env-injection
+    - Trap fast path: see 09-protocol.md#Trap-fast-path
+    - Python SDK: see 03-sdk-architecture.md#Python-SDK
+    - Step evaluation loop: see 08-epistemic.md#Step-evaluation-loop
+    - Merkle WAL: see 08-epistemic.md#Merkle-WAL
+    - Snoop plane: see 05-storage-plane.md#Snoop-plane
+    - Page size by platform: see 01-architecture.md#SnapshotDescriptor.dirty-bytes

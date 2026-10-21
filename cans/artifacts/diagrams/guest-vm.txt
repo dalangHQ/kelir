@@ -1,0 +1,30 @@
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                             GUEST MICROVM (<60ms Cold Boot)                             │
+│                                                                                         │
+│   ├── Minimal vmlinux: Stripped Linux kernel (no ACPI, no PCI bloat)                    │
+│   │     - macOS Host: Built with CONFIG_ARM64_16K_PAGES=y (Apple Silicon parity)        │
+│   │     - Linux Host: Built with CONFIG_ARM64_4K_PAGES=y or x86 4KB standard            │
+│   │                                                                                     │
+│   ├── Hardware Paravirtualized Devices:                                                 │
+│   │     - virtio-rng: Hardware entropy feeding /dev/urandom (no boot hangs)             │
+│   │     - virtio-wdt: Hardware watchdog timer preventing guest kernel lockups           │
+│   │     - virtio-balloon: Dynamic memory inflation/deflation under host pressure        │
+│   │                                                                                     │
+│   ├── Rootfs Mounting: Ultra-fast read-only EROFS block device (cold-mounted in <2ms)   │
+│   │                                                                                     │
+│   ├── /sbin/kelir-shim (Static 50KB Musl Binary, Guest PID 1):                          │
+│   │     - Binds vsock:5252 (control/trap plane) AND vsock:5253 (ingress                 │
+│   │       port-forward multiplexer proxying host connections to guest loopback)         │
+│   │     - Runs a non-blocking waitpid(-1, WNOHANG) zombie reclamation loop in its       │
+│   │       async event loop (as PID 1 it is the universal orphan ancestor)               │
+│   │     - Installs seccomp-unotify filter with in-kernel BPF allowlist                  │
+│   │     - Performs Anti-TOCTOU task-group freezes: PTRACE_SEIZE +                       │
+│   │       PTRACE_INTERRUPT on every thread in /proc/$PID/task/*                         │
+│   │     - Parses binary ELF headers (DT_NEEDED, PT_INTERP) directly from disk           │
+│   │       and computes Shannon entropy on argv[1:]                                      │
+│   │     - Allocates a full PTY master/slave per workload via openpty() + setsid()       │
+│   │       + TIOCSCTTY so children get a real controlling terminal; executes             │
+│   │       TIOCSWINSZ resizes over virtio-console                                        │
+│   │                                                                                     │
+│   └── UNTOUCHED GUEST WORKLOAD: Claude Code / Cursor / SWE-bench / Node / Rust / Python │
+└─────────────────────────────────────────────────────────────────────────────────────────┘

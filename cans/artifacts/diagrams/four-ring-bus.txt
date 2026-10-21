@@ -1,0 +1,9 @@
+                           THE 4-RING VIRTIO BUS
+                                     │
+      ┌──────────────────┬───────────┴───────────┬──────────────────┐
+      ▼                  ▼                       ▼                  ▼
+ [virtio-vsock]  [virtio-console]          [virtio-fs]        [virtio-net]
+  CONTROL PLANE   TERMINAL PLANE          STORAGE PLANE        WIRE PLANE
+  Syscalls, PIDs, Raw TTY, ANSI,          CoW Overlays, Inodes, L4/L7 Traffic,
+  Signals, Traps  Token Shield, Resizing  In-Flight Masking,     Secrets, Chaos
+                                          Ghost Files

@@ -1,0 +1,21 @@
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   TARGET AUDIENCE MATRIX                                │
+├─────────────────────┬──────────────────────────┬────────────────────────┬───────────────┤
+│ TARGET AUDIENCE     │ VALUE DELIVERED          │ INTEGRATION METHOD     │ CORE TRIGGER  │
+├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
+│ 1. INFRA PLATFORMS  │ Sub-60ms cold boot micro-│ `containerd-shim-v2`   │ VM escapes,   │
+│    (K8s, Cube,      │ VMs; pluggable KVM/WHP/  │ `openshell-grpc`       │ daemon OOMs,  │
+│     OpenShell)      │ HVF bare-metal drivers   │ (Unix Domain Socket)   │ multi-tenancy │
+├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
+│ 2. HARNESS CREATORS │ Virtio-console hardware  │ Drop-in `spawn()` shim │ Tmux breaks,  │
+│    (Claude Code,    │ PTY; ANSI sanitizing;    │ Native MCP Server      │ token bleed,  │
+│     Cursor, Devin)  │ automated prompt answers │ (`@kelir/mcp-server`)  │ PII leaks     │
+├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
+│ 3. ORCHESTRATORS    │ Hardware memory CoW fork;│ Drop-in E2B client SDK │ RAM exhaust,  │
+│    (LangGraph,      │ 0MB RAM suspend/resume;  │ Elysia-style typed     │ slow tests,   │
+│     CrewAI, E2B)    │ shared VirtIO-FS cache   │ plugin chains          │ cloud VM cost │
+├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
+│ 4. EPISTEMIC ENGINES│ Unforgeable execution    │ Hardware TSC offsets;  │ LLM hallucina-│
+│    (Axiom, RLVR,    │ receipts; 8ms RAM roll-  │ Merkle-chained audit   │ tions, untaxed│
+│     Falsifiers)     │ backs; dynamic chaos     │ ledger; CausalDelta    │ side effects  │
+└─────────────────────┴──────────────────────────┴────────────────────────┴───────────────┘

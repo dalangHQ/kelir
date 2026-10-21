@@ -1,0 +1,34 @@
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 HOST PROCESS RUNTIME                                    │
+│                                                                                         │
+│  ┌─────────────────────────┐       ┌─────────────────────────────────────────────────┐  │
+│  │   NATIVE RUST CONSUMER  │       │       DYNAMIC RUNTIME CONSUMERS                 │  │
+│  │   (Direct Cargo Crate)  │       │       TypeScript (@kelir/core) | Python (kelir) │  │
+│  └────────────┬────────────┘       └────────────────────────┬────────────────────────┘  │
+│               │ Zero-Cost Link                              │ In-Process FFI            │
+│               │ (Direct Monomorphization)                   │ (napi-rs / PyO3)          │
+│               ▼                                             ▼                           │
+│  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                        kelir-core (Stripped Microkernel)                          │  │
+│  │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │
+│  │   ├── EventBus: Unified compile-time and async hook pipeline                      │  │
+│  │   └── DriverRouter: Lifecycle controller mediating Box<dyn VmmDriver>             │  │
+│  └──────────────────────────────────────────┬────────────────────────────────────────┘  │
+│                                             │ Dynamic Driver Trait Interface            │
+│                                             ▼                                           │
+│  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                           kelir-drivers (Pluggable Backends)                      │  │
+│  │   ├── driver-libkrun (DEFAULT): macOS (HVF + Metal GPU) + Linux KVM               │  │
+│  │   │   Internal hard fork carrying custom patches: userfaultfd CoW memory          │  │
+│  │   │   fork (<15ms), GPA snapshot/rollback engine (<8ms), and hardware clock       │  │
+│  │   │   skew control. Upstream libkrun provides none of these.                      │  │
+│  │   ├── driver-rustvmm: Bare-metal Linux KVM hypervisor + CUDA CDI GPU passthrough  │  │
+│  │   │   — the full-featured path on bare-metal Linux                                │  │
+│  │   └── driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure Linux MSHV         │  │
+│  └───────┬──────────────┬──────────────┬──────────────┬──────────────┬───────────────┘  │
+└──────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────────────┘
+           │ virtio-      │ virtio-      │ virtio-      │ virtio-blk   │ virtio-rng /
+           │ console      │ vsock        │ fs           │ (EROFS)      │ virtio-wdt /
+           │ [Ring 1]     │ [Ring 2]     │ [Ring 3]     │              │ virtio-balloon
+           ▼              ▼              ▼              ▼              ▼
+                             (see guest-vm.txt for the guest side)

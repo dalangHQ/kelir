@@ -1,0 +1,34 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          HARDWARE TERMINAL PIPELINE                         │
+│                                                                             │
+│   GUEST WORKLOAD (Claude Code / Bash)                                       │
+│     │ Writes stdout/stderr bytes                                            │
+│     ▼                                                                       │
+│   Linux Kernel PTY Driver (/dev/hvc0 -> /dev/pts/N)                         │
+│     │ isatty(1) == true. Raw mode active. Zero CLI downgrade.               │
+│     ▼                                                                       │
+│   virtio-console Ring Buffer (Hardware Shared Memory)                       │
+│     │ Direct byte streaming to Host Memory (Zero TCP/UDS overhead)          │
+│     ▼                                                                       │
+│   HOST SUPERVISOR (@kelir/plugin-pty)                                       │
+│     │                                                                       │
+│     ├── 1. ANSI Stream Sanitizer ─► Drops OSC 52 (Clipboard Hijack) &       │
+│     │                             OSC 0/1/2 (Title spoofing) in-flight.     │
+│     │                                                                       │
+│     ├── 2. onPrompt Responder ────► Verifies authentic foreground TTY;      │
+│     │                             matches prompts; auto-injects keystrokes. │
+│     │                             (Kills tmux send-keys forever).           │
+│     │                                                                       │
+│     ├── 3. WindowResize Bridge ───► Boot handshake pushes initial window    │
+│     │                             size (e.g. 120x40) at VM-ready; host      │
+│     │                             SIGWINCH resizes follow the same path:    │
+│     │                             WindowResize over vsock:5252 → shim       │
+│     │                             executes TIOCSWINSZ on guest PTY.         │
+│     │                                                                       │
+│     ├── 4. Signal Forwarding ─────► Ctrl+C (SIGINT) / Ctrl+D forwarded to   │
+│     │                             guest foreground process group.           │
+│     │                                                                       │
+│     └── 5. Token Shield Filter ───► Clamps chunks exceeding byte ceiling.   │
+│                                   Injects truncation markers into stream.   │
+│                                   (Protects LLM Context Window).            │
+└─────────────────────────────────────────────────────────────────────────────┘

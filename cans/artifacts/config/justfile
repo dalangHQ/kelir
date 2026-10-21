@@ -1,0 +1,48 @@
+# kelir development orchestrator
+set shell := ["bash", "-uc"]
+
+default:
+    @just --list
+
+# --- 1. SETUP & TOOLCHAINS ---
+bootstrap:
+    cargo install cargo-nextest sccache --locked
+    rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+    pnpm install --frozen-lockfile
+    uv venv && uv pip install -e "packages/py[dev]"
+
+# --- 2. LIGHTNING BUILD (<15s) ---
+# Compiles host core using mold/lld linker and sccache
+build-host:
+    RUSTC_WRAPPER=sccache cargo build --workspace --exclude kelir-shim
+
+# Compiles static 50KB in-guest musl init binary
+build-shim target="aarch64-unknown-linux-musl":
+    cargo zigbuild -p kelir-shim --release --target {{target}}
+    @ls -lh target/{{target}}/release/kelir-shim
+
+# Builds TS napi bindings
+build-ts:
+    pnpm --filter @kelir/core build
+
+# --- 3. RAPID TEST ENGINE (<10s) ---
+# Fast unit tests ignoring hardware-dependent hypervisor paths
+test-unit:
+    cargo nextest run --workspace --exclude kelir-shim --exclude driver-libkrun -E 'not test(test_hw_)'
+
+# Runs anti-TOCTOU, PTRACE_SEIZE, and zombie reaper tests in isolated container/namespaces
+test-shim:
+    cargo nextest run -p kelir-shim
+
+# Full TS context accumulation & type checking
+typecheck:
+    pnpm -r exec tsc --noEmit
+    uv run mypy packages/py
+
+# --- 4. PRE-FLIGHT CHECK (Run before git push) ---
+pre-flight: build-shim
+    cargo fmt --all -- --check
+    cargo clippy --workspace --exclude kelir-shim -- -D warnings
+    pnpm -r exec eslint .
+    just test-unit
+    just typecheck

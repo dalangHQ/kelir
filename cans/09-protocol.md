@@ -1,0 +1,78 @@
+- Protocol
+  - Control channel
+    - virtio-vsock port 5252: control/trap plane
+    - virtio-vsock port 5253: ingress/port-forward multiplexer
+    - Windows driver-openvmm: HV_SOCKET translates the same channels
+    - Zero network interface involvement
+  - Trap fast-path
+    - Goal: prevent slowdowns on cargo build / npm install scale workloads
+    - Layer 1: in-kernel BPF allowlist
+      - rustc, gcc, as, ld, sed, cat evaluated purely in guest kernel
+      - 0µs roundtrip overhead
+    - Layer 2: anti-TOCTOU task-group freeze
+      - seccomp-unotify triggers on git, curl, ssh, rm, sudo, npm, /tmp binaries
+      - Iterate /proc/$PID/task/*
+      - Issue ptrace(PTRACE_SEIZE) + ptrace(PTRACE_INTERRUPT) to every thread
+      - seccomp-unotify stops only the calling thread
+      - Leader-only seize leaves siblings free to rewrite memory mid-inspection
+      - Full task-group freeze closes check-to-use race
+    - Layer 3: entropy and dynamic linker audit
+      - Shannon entropy computed on argv[1:] only
+        - Excludes argv[0]; low-entropy path would dilute the measurement
+        - Values > 5.2 flag encrypted shell drops or base64 payloads
+      - ELF header parsed directly from disk at trap time
+        - Walks DT_NEEDED entries
+        - Reads PT_INTERP segment
+        - Enumerates libraries the dynamic linker will load
+        - Blocks LD_PRELOAD rootkits
+        - Disk-time scan is correct; /proc/$PID/maps still describes old image
+    - Flow diagram: See artifacts/diagrams/trap-flow.txt
+  - Wire framing
+    - See: artifacts/code/wire-protocol.rs
+    - Binary TLV framing, CBOR payload encoding
+    - Fixed 20-byte header
+      - Magic 0x4B45 ('KE')
+      - Version 0x03
+      - Message Type (u16)
+      - Flags (u16)
+      - Sequence Number (64-bit, two u32 words, MSB first)
+      - Payload Length (u32)
+    - Sequence space
+      - 64-bit unsigned
+      - Shared across GuestToHost and HostToGuest directions
+      - Monotonically increases per vsock connection
+      - Codec reassembles u64 from the two u32 words before payload decode
+  - Wire messages
+    - See: artifacts/code/messages.rs
+    - GuestToHost
+      - TrapEvent
+        - seq, pid, ppid, binary_path, binary_blake3
+        - argv, envp, cwd, ancestor_chain
+        - entropy, loaded_libraries
+      - ProcessExit: pid, exit_code, wall_clock_ns
+      - MemoryPressureWarning: available_mb, total_mb
+      - PortBound: guest_port, protocol
+      - Heartbeat: uptime_ms
+    - HostToGuest
+      - TrapDecision: seq, action
+      - WindowResize: rows, cols, xpixel, ypixel
+      - SendSignal: pid, signal
+      - AdjustBalloon: target_mb
+    - TrapAction variants
+      - Allow: resume syscall untouched; registers and memory never modified
+      - Deny { exit_code, stderr_message }: inject exit code + stderr to agent TTY
+      - Rewrite { new_binary, new_argv, injected_env, tty_notice }: re-execute with substitutions
+      - SuspendForApproval { poll_interval_ms }: hold for human approval
+  - Env injection
+    - Allow cannot mutate guest environment
+      - Registers and memory untouched
+      - A plain Allow decision is by definition a no-op
+    - Handler-side c.env.set(...) reaches guest only through Rewrite
+    - Auto-Rewrite on resume
+      - Handler calls c.env.set(...) then returns Decision.resume()
+      - Runtime auto-converts to TrapAction::Rewrite
+      - new_binary = original_binary
+      - new_argv = original_argv
+      - injected_env = accumulated handler env map
+      - Syscall re-executes through Rewrite path with injected env
+    - This is the only channel for handler-side env changes to reach guest

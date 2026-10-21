@@ -27,7 +27,9 @@
       "includeLogsCount": 50
     }
   },
-  "include": [],
+  "include": [
+    "cans/"
+],
   "ignore": {
     "useGitignore": true,
     "useDotIgnore": true,

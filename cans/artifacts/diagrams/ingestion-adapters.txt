@@ -1,0 +1,24 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           KELIR INGESTION ADAPTERS                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 1. TRI-NATIVE FIRST-CLASS SDKs:                                             │
+│    - Rust: Direct in-process crate linkage (`kelir = "3.0"`)                │
+│    - TypeScript: Fully typed runtime builder (`@kelir/core`)                │
+│    - Python: Native async hypervisor engine (`kelir>=3.0` via PyO3)         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 2. MODEL CONTEXT PROTOCOL (MCP):                                            │
+│    - Binary `@kelir/mcp-server` mounts directly into Claude Desktop/Cursor. │
+│    - Mediates hardware-isolated execution without exposing host boundaries. │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 3. CONTAINERD SHIM V2 (Kubernetes Bare-Metal Execution):                    │
+│    - `containerd-shim-kelir-v2` runs microVMs as standard K8s Pods.         │
+│    - Activated via `runtimeClassName: kelir` in Pod manifests.              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 4. OPENSHELL COMPUTE DRIVER (NVIDIA AI Infrastructure):                     │
+│    - `openshell-driver-kelir` implements `compute_driver.proto` over UDS.   │
+│    - Binds GPU-accelerated workloads directly to bare-metal microVMs.       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 5. SANDBOX ENGINE COMPATIBILITY (E2B Drop-In):                              │
+│    - `@kelir/e2b-compat` (TS) and `kelir.compat.e2b` (Python).              │
+│    - Replicates the `Sandbox` interface with sub-60ms local hardware boots. │
+└─────────────────────────────────────────────────────────────────────────────┘

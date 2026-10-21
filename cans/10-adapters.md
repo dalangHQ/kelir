@@ -1,0 +1,42 @@
+- Adapters
+  - Ingestion matrix
+    - See: artifacts/diagrams/ingestion-adapters.txt
+    - Five adapter families: MCP, containerd shim v2, OpenShell gRPC, E2B, tri-native SDKs
+    - Tri-native SDKs are canonical in 03-sdk-architecture.md; not repeated here
+  - MCP adapter
+    - Binary: @kelir/mcp-server
+    - Command: kelir-mcp
+    - Args: --kernel, --rootfs, --memory-mb
+    - Target clients: Claude Desktop, Cursor, Devin
+    - Bypasses host shell execution entirely
+    - Maps LLM tool calls directly to VirtIO ring operations
+      - execute_command → virtio-console
+      - read_file → virtio-fs
+      - write_file → virtio-fs
+  - Containerd shim v2
+    - Binary: containerd-shim-kelir-v2
+    - Activated via runtimeClassName: kelir in Pod manifests
+    - Pod isolation
+      - Each Pod runs in isolated hardware microVM
+      - Not a Linux cgroup/namespace envelope
+    - PVC storage
+      - Kubernetes PersistentVolumeClaims mount as virtio-fs endpoints
+      - In-flight UID/GID mapping applied
+    - OCI compatibility
+      - Standard OCI images translated to read-only EROFS blocks
+      - Happens during rootfs setup
+  - OpenShell gRPC driver
+    - Binary: openshell-driver-kelir
+    - Implements compute_driver.proto
+    - Served over /var/run/kelir/openshell.sock (UDS)
+    - GPU passthrough via driver-rustvmm
+      - NVIDIA Container Device Interface (CDI) device mapping
+    - Coordinates hardware memory checkpointing and CoW branching
+    - Target: multi-tenant inference tasks
+  - E2B compatibility
+    - TypeScript: @kelir/e2b-compat
+    - Python: kelir.compat.e2b
+    - Preserves existing E2B Sandbox method signatures
+      - Sandbox.create, sandbox.commands.run, sandbox.files, sandbox.pty, sandbox.kill
+    - Replaces remote cloud VM roundtrips with sub-60ms local hardware execution
+    - Drop-in: frameworks built against E2B SDK require no code change

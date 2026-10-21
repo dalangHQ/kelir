@@ -1,0 +1,19 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      THE 3-TIER HIERARCHY OF TRUTH                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ TIER 1: PHYSICAL GROUND TRUTH (Hypervisor / Kernel Boundary)                │
+│   - Unforgeable Receipts: BLAKE3 hex digests & dirty byte counts.           │
+│   - OS Inode Diffs: Physical disk modifications evaluated via CausalDelta.  │
+│   - Egress Telemetry: True network frames passing the virtio-net wire proxy.│
+│   ──► INVARIANT: The agent cannot fake this, even with root privileges.     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ TIER 2: PUBLIC FORMAL PROTOCOLS (The Contract Interface)                    │
+│   - Model Context Protocol (MCP) tool events routed over stdio.             │
+│   - Deterministic PTY stream outputs sanitized of ANSI injection.           │
+│   ──► INVARIANT: Evaluated strictly against public, versioned contracts.    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ TIER 3: SYNCHRONOUS INODE SNOOPING (Harness State Interception)             │
+│   - Zero Post-Mortem Polling: Intercepts harness write() calls in real-time.│
+│   - Host In-Memory Buffer: Captures session updates before disk sync.       │
+│   ──► INVARIANT: Eliminates async race conditions and file lock collisions. │
+└─────────────────────────────────────────────────────────────────────────────┘

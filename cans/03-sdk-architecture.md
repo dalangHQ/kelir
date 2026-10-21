@@ -1,0 +1,52 @@
+- SDK architecture
+  - Tri-native design
+    - No dynamic any-typing, no second-class shims
+    - All three SDKs enforce identical runtime guarantees through native type systems
+    - Rust: borrow-checker verified handle injection, zero-cost Serde
+    - TypeScript: generic context accumulation, TypeBox schema guards
+    - Python: RAII context managers, Pydantic v2 validation
+  - Params typed views
+    - Host-side typed access on HandlerCtx
+      - Rust: c.params::<T>() deserializes from validated buffer
+      - TypeScript: params typed by .guard() schema
+      - Python: params typed by Pydantic BaseModel
+    - Zero-allocation validation: operates on zero-copy guest memory
+  - Rust SDK
+    - See: artifacts/code/rust-handle-injection.rs
+    - plugin_with_handle(P) atomically returns (builder, P::Handle)
+    - Missing builder.plugin_with_handle call → handle not in scope → E0425
+    - Zero-Allocation Validation via Serde
+      - #[derive(Deserialize)] enum Action with serde(tag = "action")
+      - c.params::<Action>() fails at perimeter before traps execute
+  - TypeScript SDK
+    - See: artifacts/code/typescript-accumulation.ts
+    - Kelir<TContext> accumulates context type across .use() calls
+    - Each .use() expands the generic; downstream c.pluginKey fully inferred
+    - Missing .use() → property not on TContext → tsc error
+    - TypeBox .guard() schema
+      - t.Object({ action: t.Literal(...), issueId: t.String() })
+      - Falsified spawn actions fail with EINVAL before VM dispatch
+  - Python SDK
+    - See: artifacts/code/python-raii-pydantic.py
+    - async with builder as session
+      - __aenter__ boots microVM
+      - __aexit__ guarantees session.terminate() on any exception
+      - Matches Rust Drop semantics under unhandled exceptions
+    - Pydantic v2 BaseModel with frozen=True
+      - Field(pattern=r"^fix-webhook$")
+      - Raises EINVAL before hook evaluation
+    - builder, handle = builder.plugin_with_handle(RepoPolicyPlugin())
+      - Missing assignment → NameError at import time
+  - Full-surface examples
+    - See: artifacts/examples/autonomous-swe-agent.rs
+    - See: artifacts/examples/autonomous-swe-agent.ts
+    - See: artifacts/examples/autonomous-swe-agent.py
+    - Each example exercises
+      - All five plugins
+      - All four VirtIO rings
+      - All three epistemic truth tiers
+      - All lifecycle superpowers in 07-lifecycle.md
+    - Not transliterations: each uses language-idiomatic constructs
+      - Rust: async-trait, JoinSet, Arc<Mutex<>> handles
+      - TypeScript: Promise.all fan-out, generic inference
+      - Python: asyncio.gather, async with, Pydantic v2

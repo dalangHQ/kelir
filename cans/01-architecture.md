@@ -1,5 +1,96 @@
 - Architecture
-  - Stack: TBD
-  - Layers: TBD
-  - Boundaries: TBD
-  - Principles: TBD
+  - Axiomatic foundations
+    - Six invariants
+      - Zero harness awareness
+        - Guest sees standard POSIX: /bin/sh, /dev/pts/*, glibc/musl, TCP/IP
+        - No custom guest SDKs, CLI shims, or guest-side agents
+      - In-process microkernel
+        - Virtualization runs in host consumer memory via direct C-FFI
+        - Backends: libkrun, rust-vmm, OpenVMM
+        - No dockerd, containerd, background root socket, daemon maintenance
+      - Pure epistemic agnosticism
+        - Zero knowledge of LLMs, prompts, or AI morals
+        - Operates strictly as OS physics: memory pages, registers, FDs, frames
+      - Deterministic hardware isolation
+        - Hardware-enforced virtualization: Intel VT-x, AMD-V, ARM64 EL2
+        - Escaped guest root cannot touch host memory or host kernel space
+      - Radical plugin-first microkernel
+        - Core drives hardware virtualization and multiplexes the 4 VirtIO rings
+        - Every capability is a decoupled, composable plugin
+      - Transparent truthful steering
+        - Intercepted I/O is allowed, steered with tty_notice, or rejected
+        - No silent state divergence
+    - Params ingress contract
+      - Single ingress for structured execution parameters
+      - Host-side validation before any guest instruction
+        - Serde (Rust), TypeBox (TypeScript), Pydantic v2 (Python)
+        - Falsified payloads fail at perimeter with EINVAL
+      - Single-variable injection
+        - Validated value serialized to JSON
+        - Injected as exactly one env var: KELIR_PARAMS=<json>
+      - Standard POSIX consumption
+        - Guest reads KELIR_PARAMS like any other environment variable
+        - No guest-side SDKs, CLI shims, or agents
+  - Four-Ring Bus
+    - See: artifacts/diagrams/four-ring-bus.txt
+    - virtio-vsock control plane: syscalls, PIDs, signals, traps
+    - virtio-console terminal plane: raw TTY, ANSI, Token Shield, resizing
+    - virtio-fs storage plane: CoW overlays, inodes, in-flight masking, ghosts
+    - virtio-net wire plane: L4/L7 traffic, secrets, chaos
+  - Host runtime
+    - See: artifacts/diagrams/host-runtime.txt
+    - Native Rust consumer: direct Cargo crate, zero-cost monomorphization
+    - TypeScript consumer: @kelir/core via in-process NAPI-RS
+    - Python consumer: kelir via PyO3
+    - kelir-core: stripped microkernel (BusDispatcher, EventBus, DriverRouter)
+    - kelir-drivers: pluggable backends (libkrun, rustvmm, openvmm)
+  - Guest VM anatomy
+    - See: artifacts/diagrams/guest-vm.txt
+    - Minimal vmlinux: stripped Linux kernel, no ACPI or PCI bloat
+      - Apple Silicon: CONFIG_ARM64_16K_PAGES=y
+      - Linux x86: 4KB pages standard
+      - Linux ARM64: CONFIG_ARM64_4K_PAGES=y
+    - Paravirtualized devices
+      - virtio-rng: hardware entropy feeding /dev/urandom, no boot hangs
+      - virtio-wdt: hardware watchdog preventing guest kernel lockups
+      - virtio-balloon: dynamic memory inflation/deflation under host pressure
+    - Rootfs
+      - Read-only EROFS block device, cold-mounted in <2ms
+      - No tarball decompression
+    - /sbin/kelir-shim
+      - Static 50KB Musl binary, guest PID 1
+      - Binds vsock:5252 (control/trap) and vsock:5253 (ingress port-forward)
+      - Non-blocking waitpid(-1, WNOHANG) zombie reaper in async event loop
+      - seccomp-unotify filter with in-kernel BPF allowlist
+      - Anti-TOCTOU: PTRACE_SEIZE + PTRACE_INTERRUPT on every thread
+      - Parses ELF DT_NEEDED/PT_INTERP from disk
+      - Shannon entropy on argv[1:] (payload only, not argv[0])
+      - PTY per workload: openpty() + setsid() + TIOCSCTTY
+    - Untouched guest workload
+      - Claude Code, Cursor, SWE-bench, Node, Rust, Python
+      - No custom binary, no guest-side SDK
+  - VmmDriver trait
+    - See: artifacts/code/vmm-driver-trait.rs
+    - Single trait all backends implement
+    - Primitives
+      - boot: cold-boot microVM in <60ms
+      - fork: isolated CoW clone in <15ms
+      - checkpoint: atomic RAM and register snapshot
+      - rollback: revert to checkpoint in <8ms
+      - suspend: flush dirty pages, host RAM to 0MB
+      - resume: restore from snapshot in <50ms
+      - skew_clock: offset KVM_SET_CLOCK / CNTVOFF_EL2
+      - adjust_balloon: adjust guest RAM ceiling
+      - set_watchdog: arm watchdog with action (Reboot/Terminate)
+      - vsock_connect: yield duplex channel to multiplexer
+      - terminate: release hypervisor allocations
+    - SnapshotDescriptor.dirty_bytes
+      - Hardware-agnostic byte count, not page count
+      - Page size differs: 16KB Apple Silicon ARM64, 4KB Linux/x86
+  - Driver backends
+    - driver-libkrun: default
+      - macOS: HVF + Metal GPU
+      - Linux: KVM
+      - Hard fork: userfaultfd CoW fork, GPA snapshot, hardware clock skew
+    - driver-rustvmm: bare-metal Linux KVM + CUDA CDI GPU passthrough
+    - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure MSHV

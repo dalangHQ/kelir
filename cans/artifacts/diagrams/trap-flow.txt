@@ -1,0 +1,33 @@
+GUEST KERNEL                               HOST HYPERVISOR (kelir-core)
+Agent invokes execve("/bin/git", ["push"])
+      │
+      ▼
+Kernel evaluates BPF filter ──► Is it gcc/rustc? ──► YES ──► In-kernel Fast Path (0µs)
+      │ NO (Security-critical binary)
+      ▼
+Kernel seccomp-unotify triggers
+      │
+      ├──────────────────────────────┐
+      │ Task group frozen            ▼
+/sbin/kelir-shim seizes every    Shim extracts process metadata:
+thread in /proc/$PID/task/*:     - BLAKE3 hash of binary
+PTRACE_SEIZE + PTRACE_INTERRUPT  - Shannon entropy of argv[1:] (>5.2)
+Reads /proc/$PID/mem safely      - Full ancestor process DAG
+Parses ELF DT_NEEDED/PT_INTERP   - Working directory & envp
+from the binary on disk             │
+      │                              │
+      ▼                              │
+Pipes TLV packet to vsock:5252 ─────►│ Host receives TrapEvent
+                                     │ Evaluates Plugin Event Bus
+                                     │
+                                     ├──────────────────────────────┐
+                                     ▼                              ▼
+                               ALLOW / REWRITE                     DENY
+                                     │                              │
+Pipes Decision to vsock:5252 ◄───────┘                              │
+      │                                                             │
+      ├── If Rewrite: Prints `tty_notice`                           │
+      │   directly to the workload's PTY                               │
+      ▼                                                             ▼
+kelir-shim releases syscall                               Injects exit code + stderr
+Workload resumes on vCPU                                  to agent TTY immediately

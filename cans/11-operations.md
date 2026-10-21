@@ -1,0 +1,50 @@
+- Operations
+  - Execution philosophy
+    - Zero CPU burn
+    - Sub-minute local cycles via just
+    - Maximize GitHub Actions free tier
+      - Public repo: unlimited Linux minutes
+      - Private repo: 2,000 min ceiling
+      - macOS runners: 10x multiplier, scarce concurrency
+  - Local velocity
+    - See: artifacts/config/justfile
+    - Targets: <15s host build, <10s unit tests, sub-minute pre-flight
+    - Requires: just, cargo-nextest, mold (Linux), zig, pnpm, uv
+    - Enforced invariants: local velocity
+      - build-host excludes kelir-shim
+      - test-unit excludes kelir-shim and driver-libkrun
+      - pre-flight gates every push: fmt, clippy, eslint, nextest, tsc, mypy
+      - shim binary built via cargo zigbuild musl
+  - CI matrix
+    - See: artifacts/config/ci.yml
+    - Constraints
+      - macOS runners scarce and 10x private multiplier
+      - Public repos: free Linux minutes
+    - Strategy
+      - 90% of checks on Linux x86
+      - macOS Apple Silicon jobs limited to compile gate for driver-libkrun
+      - Do not waste runner minutes on full matrix
+    - Enforced invariants: CI matrix
+      - Shim binary < 100KB per architecture
+      - Concurrency cancelled per ref (cancel-in-progress)
+      - sccache enabled via SCCACHE_GHA_ENABLED
+  - Project structure
+    - See: artifacts/config/project-structure.txt
+    - Three language layers
+      - Rust: crates/ via Cargo Workspaces
+      - TypeScript: packages/ts/ via PNPM Workspaces
+      - Python: packages/py/ via UV/Hatch
+    - Five crate families
+      - kelir: facade crate, single Cargo dependency, feature-gated plugins
+      - kelir-core: stripped microkernel (bus, plugin, protocol, vmm, telemetry)
+      - kelir-plugins: five first-class plugins (pty, vfs, wire, chaos, ledger)
+      - kelir-drivers: libkrun, rustvmm, openvmm
+      - kelir-shim: in-guest musl PID 1 (<50KB)
+    - Three adapter crates
+      - containerd-shim, openshell-grpc, mcp-server
+    - Two binding crates
+      - napi, pyo3
+    - Test fixtures
+      - tests/fixtures/kernel: per-arch vmlinux
+      - tests/fixtures/rootfs: EROFS build scripts
+      - tests/fixtures/payloads: high-entropy trap test binaries

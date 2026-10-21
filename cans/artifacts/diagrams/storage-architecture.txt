@@ -1,0 +1,37 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       STORAGE & FILESYSTEM ARCHITECTURE                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 1. EROFS READ-ONLY ROOTFS (virtio-blk):                                     │
+│    - Stripped base system (Python, Node, Rust, Bash) pre-baked into EROFS.  │
+│    - Cold-mounted as block device in <2ms. Zero tarball decompression.      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 2. COPY-ON-WRITE RAM SCRATCHPAD (overlayfs):                                │
+│    - Base host workspace mounted STRICTLY READ-ONLY.                        │
+│    - Instant Revert: Drop overlayfs layer in 1ms. Host SSD is untouched.    │
+│ 3. THE SUCCESS PATH RECONCILER (session.fs.reconcile()):                    │
+│    - Pure storage-plane sync: overlay upperdir → host disk, atomically.     │
+│    - Resolves file whiteouts (c 0 0) and directory whiteouts                │
+│      (trusted.overlay.opaque=y) into host unlink() / remove_dir_all().      │
+│    - Zero filesystem corruption; Git commits stay ordinary guest runs.      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 4. UID / GID ID-MAPPING (idmap):                                            │
+│    - Translates guest root (UID 0) and node (UID 1000) to host geteuid().   │
+│    - Prevents files written by microVM from requiring host `sudo` to edit.  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 5. SHARED HOST PACKAGE CACHES (virtio-fs read-only mounts):                 │
+│    - Mounts host ~/.npm, ~/.cache/pip, ~/.cargo/registry into guest.        │
+│    - Package installs drop from 2 minutes to <3 seconds on cold microVMs.   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 6. SYNTHETIC GHOST INODES (RAM-Only Virtual Files):                         │
+│    - Injects virtual configurations (.env, .gitconfig) directly into VFS.   │
+│    - Served from host memory; physically DOES NOT EXIST on host SSD.        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 7. IN-FLIGHT READ-TIME MASKING (plugin-vfs maskRead):                       │
+│    - FUSE-level byte stream interception on file reads.                     │
+│    - MaskRule regex redaction; fixed-width replacements preserve            │
+│      st_size and file offsets.                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 8. CENTRAL INODE LOCK BROKER (Cross-VM Concurrency):                        │
+│    - Intercepts FUSE SETLK / SETLKW (flock / fcntl) across multiple VMs.    │
+│    - Prevents .git/index.lock collisions when multiple agents share a repo. │
+└─────────────────────────────────────────────────────────────────────────────┘

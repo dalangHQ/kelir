@@ -1,0 +1,81 @@
+- Storage plane
+  - Storage architecture
+    - See: artifacts/diagrams/storage-architecture.txt
+    - Layered model: EROFS rootfs, tmpfs overlay, reconciler, idmap, caches, ghosts, mask
+  - EROFS rootfs
+    - Stripped base system pre-baked into read-only EROFS
+    - Python, Node, Rust, Bash pre-installed
+    - Cold-mounted as virtio-blk block device in <2ms
+    - Zero tarball decompression
+  - CoW overlay scratchpad
+    - Host workspace mounted strictly read-only as lower layer
+    - overlayfs upperdir lives in guest tmpfs
+    - All writes stay in-memory until explicit reconcile
+    - Instant revert: drop overlayfs upperdir in ~1ms, host SSD untouched
+  - Reconciler
+    - See: artifacts/code/reconciler.rs
+    - session.fs.reconcile() is a pure storage-plane operation
+    - Syncs overlay upperdir differential to host workspace
+    - Carries no VCS semantics, accepts no message parameter
+    - Git commit is ordinary guest execution through the trap chain
+    - Algorithm
+      - Traverse guest tmpfs upperdir differential tree
+      - Resolve file whiteouts: S_ISCHR(mode) && rdev == 0 → host unlink()
+      - Resolve dir whiteouts: trusted.overlay.opaque=y → host remove_dir_all()
+      - Atomic staged writes: copy to tmp sibling, rename() into place
+      - Flush with syncfs()/fsync() before reporting completion
+    - Whiteout problem
+      - Deleted files become char devices with major/minor 0/0 (mknod c 0 0)
+      - Deleted or shadowed directories carry xattr trusted.overlay.opaque="y"
+      - Naive upperdir copy writes unusable device nodes and resurrects dirs
+    - CommitStats counters
+      - files_changed: count of modified or newly created files
+      - whiteouts_resolved: count of file and directory whiteouts handled
+  - UID/GID idmap
+    - Translates guest UID 0 (root) and 1000 (user) to host geteuid()/getegid()
+    - macOS host: developer is UID 501
+    - Linux host: developer is UID 1000
+    - Result: agent-created files are immediately editable without sudo
+  - Shared host package caches
+    - Host ~/.npm → guest /root/.npm
+    - Host ~/.cache/pip → guest /root/.cache/pip
+    - Host ~/.cargo/registry → guest /usr/local/cargo/registry
+    - Cold installs drop from ~2 minutes to <3 seconds via local SSD
+  - Ghost inodes
+    - Static ghost
+      - In-memory content fixed at .ghost() call
+      - Example: /root/.gitconfig, /workspace/.env.local
+    - Dynamic ghost
+      - Content factory evaluated fresh per open()
+      - Example: /workspace/identity.jwt regenerating per open
+    - Full VfsInodeAttr: mode, uid, gid, size, content
+    - FUSE LOOKUP reply populated verbatim
+    - mode: 0o400 honored exactly, no permission fallback
+    - Physically does not exist on host SSD
+  - In-flight read masking
+    - maskRead intercepts FUSE read() dispatch at buffer boundary
+    - MaskRule regex redactions applied in host RAM before guest pages fill
+    - Typical targets: .env, secrets files, private keys
+    - Fixed-width redaction
+      - Replacement padded or truncated to exact byte length of the match
+      - st_size and file offsets preserved
+      - Sequential reads and trailing reads stay consistent
+    - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks
+    - See: artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
+  - Cross-VM lock broker
+    - Prevents .git/index.lock collisions when multiple agents share a repo
+    - Guest overlayfs assigns virtual inodes with no host correlation
+    - Resolution: guest inode + virtio-fs mount identity → host physical inode + path
+    - Broker intercepts FUSE_SETLK and FUSE_SETLKW (fcntl/flock)
+    - Routes lock acquisition through centralized host in-memory mutex table
+    - Conflicting locks block cleanly or return EWOULDBLOCK
+  - Snoop plane
+    - Direct I/O semantics: snooped paths mounted with FOPEN_DIRECT_IO
+      - Bypasses guest page cache
+      - FUSE write frames carry the true producing PID
+      - Never a kernel flusher task (kworker/pdflush)
+    - Guaranteed FUSE reply
+      - Every user callback wrapped in catch-all
+      - Any panic or throw → fuse_reply_err(req, EPERM)
+      - Host hook exception cannot leave guest thread in D state
+      - Guest always observes well-defined error, never a hang

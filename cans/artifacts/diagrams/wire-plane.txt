@@ -1,0 +1,14 @@
+                           THE WIRE PLANE (virtio-net)
+                                        │
+           ┌────────────────────────────┼────────────────────────────┐
+           ▼                            ▼                            ▼
+  [1. L7 HTTP/TLS PROXY]      [2. NON-HTTP L4 SOCKS5]      [3. GIT-OVER-SSH GATE]
+  Terminates guest TLS under   Terminates DB connections    Bridges guest SSH
+  the per-session CA; swaps    (Postgres/Redis/MySQL);      to host SSH-Agent via
+  vault placeholders in-       injects mTLS & dynamic certs. vsock. Enclave signing.
+  transit. Scrubs responses.
+                                        │
+                                        ▼
+                              [4. DNS SINKHOLE]
+                              Traps all UDP 53; drops non-whitelisted
+                              domains with NXDOMAIN. Blocks exfiltration.

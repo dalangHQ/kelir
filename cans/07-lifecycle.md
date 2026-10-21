@@ -1,0 +1,97 @@
+- Lifecycle
+  - Superpowers
+    - See: artifacts/diagrams/superpowers.txt
+    - Nine superpowers enumerated below
+  - CoW fork
+    - Driver primitive: fork returns Box<dyn VmmDriver> in <15ms
+    - KVM path: userfaultfd + KVM memory cloning
+    - HVF path: memory-mapped page duplication
+    - Children share warm parent memory
+      - Warmed compilers, loaded dependencies, in-process caches
+    - Host RAM dirtied only on child write
+    - Session hydration
+      - Driver fork yields raw Box<dyn VmmDriver>
+      - Runtime re-hydrates complete twin Session around it
+      - Rebinds 4-ring dispatch table, virtio channels, plugin graph
+      - session.vm.fork() returns full Session
+      - spawn() and every other session API directly callable on child
+    - Typical use: parallel agent exploration (5+ candidate strategies)
+  - Rollback
+    - Driver primitive: rollback reverts in <8ms
+    - Reverts guest memory, registers, and tmpfs overlay diffs
+    - Used by HandlerCtx post-exec on post-condition violation
+    - Does not touch host SSD or Merkle WAL
+  - Suspend and resume
+    - suspend
+      - Freezes vCPU registers
+      - zstd-compresses dirty memory pages
+      - Flushes to local NVMe in <50ms
+      - Deallocates host memory; host RAM consumption drops to 0 MB
+    - resume
+      - Restores registers and memory in <50ms
+      - Resumes at exact cycle boundary
+    - Typical use: waiting for human approval with zero host CPU cost
+  - Clock skew
+    - KVM path: KVM_SET_CLOCK and kvm_clock MSRs
+    - HVF path: ARM64 CNTVOFF_EL2 (Virtual Timer Offset Register)
+    - Guest CNTVCT_EL0 reads jump forward instantly
+    - TSC scaling unpin
+      - Skew auto-unpins invariant-TSC scaling on cloned VM
+      - vCPU TSC rate decouples from host hardware clock
+      - Tracks virtual clocksource instead
+      - Guest kernel never flags tsc as unstable, never falls to jiffies
+    - Typical use: JWT expiry, cron cycles, certificate renewals
+  - Lid sleep/wake clock snapping
+    - Problem: guest clock stalls on lid close
+      - Laptop lid close pauses guest monotonic time
+      - Host wall-clock advances; guest time does not
+      - TLS handshakes fail on wake due to clock mismatch
+    - Solution
+      - Listen to host power events: IOPMrootDomain (macOS), systemd-logind (Linux)
+      - Dispatch immediate hardware clock resync over AF_VSOCK
+      - Guest time snaps to host wall-clock in 0ms
+  - Host crash reaper
+    - Problem: host crash orphans guest vCPUs
+      - Host Node.js / Python process killed abruptly (kill -9, OOM, segfault)
+      - Hypervisor children must not survive as orphaned CPU spinners
+    - Dual-path by design
+      - Linux: prctl(PR_SET_PDEATHSIG, SIGKILL)
+        - Applied to every hypervisor backend thread
+        - Kernel terminates backend and unmaps memory immediately
+        - No polling involved
+      - macOS: kqueue(EVFILT_PROC, NOTE_EXIT) watcher on host PID
+        - Second channel: parent-monitoring heartbeat pipe
+        - On host exit or pipe close: SIGKILL to backend process group
+        - Reclaims VM memory mappings
+  - Docker-in-kelir
+    - Constraint: Apple Silicon Hypervisor.framework lacks nested VMX/SVM passthrough
+    - Solution: embed Rootless Podman + crun inside read-only EROFS rootfs
+    - docker build / docker compose up run via rootless Podman
+    - Linux user namespaces (CLONE_NEWUSER)
+    - Ephemeral write layer
+      - Guest boot fstab provisions tmpfs for /var/lib/containers, /var/run, /tmp
+      - Rootfs stays immutable EROFS block
+      - Never surfaces EROFS: Read-only file system
+    - OCI containers run inside microVM without nested hypervisor or host daemon
+  - Break-glass
+    - Human interactive attach when automated agent is stuck
+    - session.breakGlass() on Session (post-boot only)
+    - Pauses agent loop, bridges developer host TTY directly to virtio-console
+    - Developer inspects state, runs manual commands, exits subshell
+    - Control returns to agent
+  - Port forwarding
+    - forwardPort is a Session API with language parity
+    - TypeScript: session.forwardPort({ host: 8080, guest: 3000 })
+    - Python: await session.forward_port(8080, 3000)
+    - Rust: session.forward_port(8080, 3000).await?
+    - Flow
+      - Guest service binds port (e.g. Next.js dev server on 3000)
+      - Shim emits GuestToHost::PortBound over vsock:5252
+      - Host connections tunneled over virtio-vsock:5253
+      - Shim ingress multiplexer proxies byte stream to guest loopback port
+    - Ingress multiplexer: crates/kelir-shim/src/ingress.rs
+  - Zombie reaping
+    - Shim runs as guest PID 1
+    - waitpid(-1, WNOHANG) pass integrated into async event loop
+    - Foreground shell exit → orphaned daemons adopted and reaped
+    - Prevents defunct <zombie> processes exhausting PID table
