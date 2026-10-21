@@ -2,6 +2,11 @@
   - KelirPlugin trait
     - See: artifacts/code/plugin-trait.rs
     - Trait surface and hook families: See artifacts/code/plugin-trait.rs
+    - Error variants
+      - Ok(()) = allow; kernel proceeds
+      - Err(Reject { errno, reason }) = deny with named errno, pre-write
+      - Err(Halt(msg)) = deny and halt pipeline for human review
+      - Err(Io(_)) = internal failure, surfaced to runtime
     - Shape of the surface
       - Every hook is `async` and returns `Result<_, PluginError>`; a hook
         cannot block the dispatch array
@@ -24,6 +29,11 @@
       - Wire plane fully bidirectional: outbound and inbound mutation points
       - Storage plane fully attributed: on_vfs_write carries PID and HandlerCtx
       - Control plane messages hook-observable; nothing bypasses the graph
+    - Hook return semantics
+      - on_vfs_write: see 05-storage-plane.md#Write-gating (storage owns it)
+      - on_vfs_lookup → Ok(None) = fall through; Ok(Some(attr)) = serve
+      - on_net_outbound / on_net_inbound → Ok(true) = forward;
+        Ok(false) = drop frame; Err(_) = halt pipeline
   - Static dispatch
     - Plugins compiled into flat contiguous dispatch array at boot
     - Evaluated in priority() order; ties broken by declaration order
@@ -68,8 +78,9 @@
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
       - session.fs.*: see 05-storage-plane.md#Reconciler
-      - session.term.*, session.break_glass(): see 04-terminal-plane.md#Terminal-plane
-      - session.wire.*, session.forward_port(): see 06-wire-plane.md#Wire-plane
+      - session.term.*, session.break-glass(): see 04-terminal-plane.md#Disclosure
+      - session.wire.*, session.forward-port(): see 06-wire-plane.md#Wire-plane
+        - Spelling: `forwardPort()` (TS) / `forward_port()` (Rust, Py)
       - session.ledger.*: see 08-epistemic.md#Merkle-WAL
       - session.get_causal_delta_from_parent(): see 08-epistemic.md#Causal-delta
   - Plugin ownership

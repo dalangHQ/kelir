@@ -49,11 +49,13 @@
     - Assertion form: receipts are compared as values, not as hashes of host
       state; the canonical assertion is a per-field comparison
     - Byte-not-page reason: see 01-architecture.md#SnapshotDescriptor.dirty-bytes
-    - Population: per ReceiptConfig; fields not enabled are absent (Option),
-      never 0
-      - Always: pid, binary_path, binary_blake3, exit_code, wall_clock_ns,
-        egress_bytes
-      - Opt-in: dirty_bytes, syscall_count
+    - Population: per ReceiptConfig; opt-in fields not enabled are absent
+      (Option), never 0
+      - Always: pid, binary_path, binary_blake3, dirty_bytes, exit_code,
+        wall_clock_ns, egress_bytes
+      - Opt-in: syscall_count
+      - dirty_bytes is always populated: zero is a real measurement, not an
+        absent value
     - binary_blake3 cache: keyed on (inode, size, mtime_ns); one hash per
       binary identity, not per exec
     - Ownership
@@ -82,10 +84,13 @@
     - Host-isolated by construction
       - Store path resolved relative to consumer CWD; guest paths rejected
         at plugin construction
+      - Default path: .kelir/audit.merkle.db relative to consumer CWD
       - WAL survives guest rollback() and fork(); no guest operation can
         rewrite or duplicate it
       - This invariant is the reason the WAL exists separately from receipts
     - Ownership: core generates receipts; plugin-ledger persists and exports
+    - Ledger handler API
+      - c.ledger.flush() forces WAL flush and OTel export
   - OpenTelemetry
     - Outbound HTTP requests carry W3C traceparent, injected host-side
     - Trace continuity rule: a guest-originated request and its guest-side

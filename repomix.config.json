@@ -28,6 +28,7 @@
     }
   },
   "include": [
+        "kelir.architecture.md",
     "cans/"
 ],
   "ignore": {
@@ -38,7 +39,8 @@
         "repomix.md",
             "readme.md",
             "repomix.config.json",
-            ".git"
+            ".git",
+            "cans/artifacts"
     ]
   },
   "security": {

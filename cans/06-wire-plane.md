@@ -15,6 +15,7 @@
       - SSH gate: host keyring signs; private key never crosses vsock
       - DNS: NXDOMAIN for non-allowlisted; blocks tunneling on port 53
     - Composability: plugin-chaos mutates frames in both directions
+    - Return contract: see 02-plugin-model.md#Hook-return-semantics
   - L7 credential swapper
     - Guest shell sees dummy URN placeholders
       - STRIPE_KEY="vault://stripe_prod_key"
@@ -53,7 +54,7 @@
     - Unregistered or non-allowlisted domains → immediate NXDOMAIN
     - DNS data tunneling exploits neutralized at hypervisor perimeter
     - Examples blocked: secret-data.attacker.com style exfiltration
-  - Fault injection (plugin-chaos)
+  - Fault injection plugin-chaos
     - Bidirectional across wire plane
       - on_net_outbound mutates frames leaving guest
       - on_net_inbound mutates frames arriving at guest

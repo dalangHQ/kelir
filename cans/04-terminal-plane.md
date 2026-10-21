@@ -53,7 +53,7 @@
     - on_signal_send is observation-only; a hook cannot rewrite the signal
     - Wire path: see 09-protocol.md#Wire-messages
   - Disclosure
-    - Core-originated mandatory notice from TrapAction::Rewrite.disclosure
+    - Core-originated mandatory notice from TrapAction::Rewrite.tty_notice
     - Host-side pipeline
       - on_disclosure(&body) fires on every plugin in priority() order
       - Hook returns Some(bytes) to append; None to pass
@@ -65,6 +65,9 @@
     - Guest-side
       - Shim prints body + annotations verbatim to workload PTY
       - No plugin-pty filter runs on shim side; disclosure is authoritative
+    - Terminal handler API
+      - c.term.notice(text) emits a Disclosure event
+      - Routes through the same wire message as TrapAction::Rewrite.tty_notice
     - Invariant: zero silent state divergence
       - Any host-side state mutation reaches the workload's TTY
       - Plugins annotate; none suppress

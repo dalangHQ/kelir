@@ -44,7 +44,7 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
         if (!isConsistent) {
           // 4. Instant Hardware Rollback: memory and disk revert in <8ms
           await c.vm.rollback(c.step.last());
-          c.pty.notice("⚡ [EPISTEMIC ENGINE]: Side-effect violation. State reverted.\n");
+          c.term.notice("⚡ [EPISTEMIC ENGINE]: Side-effect violation. State reverted.\n");
         }
       })
   )

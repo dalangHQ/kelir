@@ -41,7 +41,7 @@ const repoPolicyPlugin = (opts: { maxDiffBytes: number; protectedBranches: strin
             binary: "/bin/git",
             argv: ["git", "push", "origin", `HEAD:refs/heads/agent/${crypto.randomUUID().slice(0, 8)}`],
             env:  { KELIR_REWRITTEN: "1" },
-            notice: "⚡ [KELIR]: push target rewritten to agent branch.\n",
+            ttyNotice: "⚡ [KELIR]: push target rewritten to agent branch.\n",
           })
     ))
     .vfs((fs) => fs.onWrite(async (path, data, c) => {
@@ -184,7 +184,7 @@ const runtime = kelir({
         return c.rewrite({ binary: "/bin/git",
                            argv: c.trap.argv.filter((a) => a !== "--force"),
                            env: { KELIR_DISARMED: "1" },
-                           notice: "⚡ [KELIR NOTICE]: dropped '--force'.\n" });
+                           ttyNotice: "⚡ [KELIR NOTICE]: dropped '--force'.\n" });
       return c.resume();
     })
     .after("*", async (c) => {
@@ -213,7 +213,7 @@ const runtime = kelir({
         ? c.deny(1, `EPOLICY: ${c.policy.violations} prior violation(s).`)
         : c.resume())
     .after("git commit *", async (c) => {
-      // dirtyBytes is optional: undefined means not measured, not zero
+      // dirtyBytes is always populated; zero is a real measurement
       if ((await c.receipt()).dirtyBytes === 0)
         throw new Error("Epistemic anomaly: zero-byte delta commit attempted.");
       return PostExecAction.Proceed;

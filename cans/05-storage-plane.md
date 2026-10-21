@@ -55,7 +55,8 @@
     - Cold installs drop from ~2 minutes to <3 seconds via local SSD
   - Write gating
     - plugin-vfs gates FUSE write() via on_vfs_write
-    - Signature: See: artifacts/code/plugin-trait.rs
+    - Signature: See artifacts/code/plugin-trait.rs
+    - Error variants: see 02-plugin-model.md#Hook-return-semantics
     - Ok(()) = allow; kernel proceeds with write to upperdir
     - Err(PluginError::Reject { errno, reason }) = deny
       - Guest write() fails with named errno; error surfaces in workload

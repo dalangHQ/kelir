@@ -112,7 +112,7 @@ pub enum TrapAction {
         new_argv: Vec<String>,
         injected_env: HashMap<String, String>,
         /// See cans/04-terminal-plane.md#Disclosure
-        disclosure: Option<String>,
+        tty_notice: Option<String>,
     },
     SuspendForApproval {
         poll_interval_ms: u32,

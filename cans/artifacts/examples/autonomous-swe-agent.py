@@ -189,7 +189,7 @@ class RepoPolicyPlugin(BasePlugin[RepoPolicyHandle]):
             new_binary="/bin/git",
             new_argv=[*event.argv, f"HEAD:refs/heads/{new_branch}"],
             injected_env={"KELIR_REWRITTEN": "1"},
-            disclosure="⚡ [KELIR]: push rewritten to isolated agent branch.\n",
+            tty_notice="⚡ [KELIR]: push rewritten to isolated agent branch.\n",
         )
 
     # ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
@@ -268,7 +268,7 @@ def make_entropy_check() -> PreExecHandler:
                 binary="/bin/git",
                 argv=[a for a in c.trap.argv if a != "--force"],
                 env={"KELIR_DISARMED": "1"},
-                notice="⚡ [KELIR NOTICE]: dropped '--force'.\n",
+                tty_notice="⚡ [KELIR NOTICE]: dropped '--force'.\n",
             )
         return Decision.resume()
     return entropy_check
@@ -317,8 +317,8 @@ def make_commit_gate(policy: RepoPolicyHandle) -> PreExecHandler:
 def make_zero_byte_check() -> PostExecHandler:
     async def zero_byte_check(c: HandlerContext) -> PostExecAction:
         receipt = await c.receipt()
-        # dirty_bytes is Option: absent means not measured, not zero
-        if receipt.dirty_bytes is not None and receipt.dirty_bytes == 0:
+        # dirty_bytes is always populated; zero is a real measurement
+        if receipt.dirty_bytes == 0:
             raise RuntimeError("Epistemic anomaly: zero-byte delta commit attempted.")
         return PostExecAction.proceed()
     return zero_byte_check
@@ -470,7 +470,6 @@ async def build_runtime(
                 propagate_traceparent=True,
             ),
             receipts=ReceiptConfig(
-                include_dirty_bytes=True,
                 include_syscall_count=True,
             ),
         )))

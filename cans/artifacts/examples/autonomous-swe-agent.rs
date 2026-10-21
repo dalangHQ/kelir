@@ -181,7 +181,7 @@ impl KelirPlugin for RepoPolicyPlugin {
             new_binary: "/bin/git".into(),
             new_argv: argv,
             injected_env: env,
-            disclosure: Some(
+            tty_notice: Some(
                 "⚡ [KELIR]: push rewritten to isolated agent branch.\n".into(),
             ),
         }))
@@ -368,7 +368,6 @@ async fn build_runtime(
                 propagate_traceparent: true,
             }),
             receipts: ReceiptConfig {
-                include_dirty_bytes: true,
                 include_syscall_count: true,
             },
         }));
@@ -508,8 +507,8 @@ async fn build_runtime(
 
                 // Tier-1 sanity: a commit must have dirtied at least one byte
                 .after("git commit *", handler(|c: HandlerCtx| async move {
-                    // dirty_bytes is Option: absent means not measured, not zero
-                    if c.receipt().await?.dirty_bytes == Some(0) {
+                    // dirty_bytes is always populated; zero is a real measurement
+                    if c.receipt().await?.dirty_bytes == 0 {
                         bail!("Epistemic anomaly: zero-byte delta commit attempted.");
                     }
                     Ok(PostExecAction::Proceed)

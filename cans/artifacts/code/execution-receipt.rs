@@ -12,9 +12,9 @@ pub struct ExecutionReceipt {
     pub binary_path: String,
     /// BLAKE3 digest, canonical 64-char lowercase hex
     pub binary_blake3: String,
-    /// Byte count; populated when ReceiptConfig::include_dirty_bytes.
+    /// Byte count; always populated.
     /// Byte-not-page reason: see cans/01-architecture.md#VmmDriver-trait
-    pub dirty_bytes: Option<u64>,
+    pub dirty_bytes: u64,
     /// Populated when ReceiptConfig::include_syscall_count.
     pub syscall_count: Option<u64>,
     /// Kernel return code

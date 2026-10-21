@@ -178,7 +178,7 @@ pub trait KelirPlugin: Send + Sync {
     async fn on_window_resize(
         &self, _event: &WindowResize,
     ) -> Result<(), PluginError> { Ok(()) }
-    /// Mandatory core-originated disclosure (TrapAction::Rewrite.disclosure).
+    /// Mandatory core-originated disclosure (TrapAction::Rewrite.tty_notice).
     /// Body is immutable; return Some(bytes) to append. All annotations
     /// concatenate in priority() order and follow the body on the PTY.
     /// See cans/04-terminal-plane.md#Disclosure

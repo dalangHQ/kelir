@@ -19,7 +19,8 @@
         - Core drives hardware virtualization and multiplexes the 4 VirtIO rings
         - Every capability is a decoupled, composable plugin
       - Transparent truthful steering
-        - Intercepted I/O is allowed, steered with tty_notice, or rejected
+        - Any intercepted syscall, file read, or network packet is allowed,
+          steered with tty_notice, or rejected with a machine-parsable receipt
         - No silent state divergence
     - Params ingress contract
       - Single ingress for structured execution parameters
@@ -57,6 +58,7 @@
       - Otherwise → plugin
   - Core invariants
     - The closed set of core primitives
+    - Interposition is total: every ring is hooked; bypass is a spec violation
     - Trait definitions
       - Trait contract: see 02-plugin-model.md#KelirPlugin-trait
       - VmmDriver trait (defined in this file)

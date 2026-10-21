@@ -24,6 +24,8 @@
     - Measurement rule
       - Entropy is over argv[1:]: including argv[0] dilutes the signal with
         a low-entropy path
+      - Flag threshold: Shannon entropy > 5.2 flags encrypted or base64
+        shell payloads
       - ELF is read from disk at trap time: /proc/$PID/maps still describes
         the pre-exec image and cannot be trusted
     - Flow diagram: See artifacts/diagrams/trap-flow.txt
@@ -44,7 +46,9 @@
       - `Allow` cannot mutate registers, memory, or env; it is a no-op
       - `Deny` injects an exit code and stderr into the agent TTY
       - `Rewrite` is the only variant that can carry injected env; the
-        disclosure field routes through HostToGuest::Disclosure
+        tty_notice field routes through HostToGuest::Disclosure
+      - `SuspendForApproval { poll_interval_ms }` parks the trap; released
+        only by Oracle.await_human_approval()
       - `Custom` variants are dispatched by name; unknown names fail with
         EUnknownAction before the pipeline resumes
   - Env injection
@@ -58,6 +62,6 @@
       - new_binary = original_binary
       - new_argv = original_argv
       - injected_env = accumulated handler env map
-      - disclosure = handler's tty_notice if set, else None
+      - tty_notice = handler's tty_notice if set, else None
       - Syscall re-executes through Rewrite path with injected env
     - This is the only channel for handler-side env changes to reach guest

@@ -6,7 +6,8 @@
     - Version: 3.0.0-normative
     - Status: normative specification
   - What it is
-    - Embeddable in-process microVM hypervisor microkernel
+    - Embeddable in-process microVM hypervisor middleware microkernel
+    - Mediates every guest interaction through the 4-Ring VirtIO bus
     - Boots stripped Linux microVMs in sub-60ms
     - Details: see 01-architecture.md#Axiomatic-foundations
   - What it is not
@@ -15,7 +16,8 @@
     - Not a background daemon
     - Not a daemon or container runtime: see 01-architecture.md#In-process-microkernel
   - Target audience
-    - Matrix: See artifacts/diagrams/target-audience.txt
+    - Audience matrix: See artifacts/diagrams/target-audience.txt
+    - Value and trigger per audience: at the matrix
     - Infra platforms: K8s, Cube, OpenShell
     - Harness creators: Claude Code, Cursor, Devin
     - Orchestrators: LangGraph, CrewAI, E2B
@@ -28,6 +30,13 @@
     - Details: see 04-terminal-plane.md#Terminal-pipeline
     - Details: see 05-storage-plane.md#Storage-architecture
     - Details: see 08-epistemic.md#Three-tier-truth
+  - Use cases
+    - Parallel agent exploration: see 07-lifecycle.md#CoW-fork
+    - Human approval waits at zero CPU: see 07-lifecycle.md#Suspend-and-resume
+    - Time-sensitive tests (JWT, cron, certs): see 07-lifecycle.md#Clock-skew
+    - Flaky-API and disk-full resilience: see 06-wire-plane.md#Fault-injection-plugin-chaos
+    - Container builds without nested VMX: see 07-lifecycle.md#Docker-in-kelir
+    - Human break-glass on agent loops: see 07-lifecycle.md#Break-glass
   - Spec map
     - Foundation: see 01-architecture.md
     - Plugin model: see 02-plugin-model.md

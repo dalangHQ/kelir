@@ -90,7 +90,8 @@
     - Invariant: developer TTY reaches virtio-console with zero guest-side
       cooperation
     - The agent loop pauses for the duration; control returns on subshell exit
-    - Session-only: `session.breakGlass()` exists after `boot()`
+    - Session-only after `boot()`
+    - Spelling: `session.breakGlass()` (TS) / `session.break_glass()` (Rust, Py)
   - Port forwarding
     - Invariant: an ingress connection to a guest-bound port never creates a
       host-side listening socket
