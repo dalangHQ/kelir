@@ -2,6 +2,8 @@
   - Tri-native design
     - No dynamic any-typing, no second-class shims
     - All three SDKs enforce identical runtime guarantees through native type systems
+    - Plugin authorship contract: see 02-plugin-model.md#Plugin-ownership
+    - Plugin testkit: see 02-plugin-model.md#Plugin-testkit
     - Rust: borrow-checker verified handle injection, zero-cost Serde
     - TypeScript: generic context accumulation, TypeBox schema guards
     - Python: RAII context managers, Pydantic v2 validation
@@ -41,6 +43,9 @@
     - See: artifacts/examples/autonomous-swe-agent.rs
     - See: artifacts/examples/autonomous-swe-agent.ts
     - See: artifacts/examples/autonomous-swe-agent.py
+    - Position: integration examples, not "the" example
+      - Each plugin's own tests/ and examples/ are canonical for that plugin
+      - These three demonstrate composition across plugins and rings
     - Each example exercises
       - All five plugins
       - All four VirtIO rings
@@ -50,3 +55,10 @@
       - Rust: async-trait, JoinSet, Arc<Mutex<>> handles
       - TypeScript: Promise.all fan-out, generic inference
       - Python: asyncio.gather, async with, Pydantic v2
+  - Oracle contract
+    - Interface spec: see 08-epistemic.md#Oracle
+    - Language-specific realization
+      - Rust: Arc<dyn Oracle>, threaded through handler closures
+      - TypeScript: Oracle object literal, captured by closures
+      - Python: subclass kelir.Oracle, methods async
+    - All three must implement the five methods; missing method → link error

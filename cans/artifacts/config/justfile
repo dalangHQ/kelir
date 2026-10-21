@@ -26,13 +26,32 @@ build-ts:
     pnpm --filter @kelir/core build
 
 # --- 3. RAPID TEST ENGINE (<10s) ---
-# Fast unit tests ignoring hardware-dependent hypervisor paths
-test-unit:
-    cargo nextest run --workspace --exclude kelir-shim --exclude driver-libkrun -E 'not test(test_hw_)'
+# Core kernel + plugin-testkit (the only things every plugin depends on)
+test-core:
+    cargo nextest run -p kelir-core -p kelir-plugin-testkit
+
+# Every first-class plugin, independently. Failure in one does not mask others.
+test-plugins:
+    cargo nextest run -p plugin-pty -p plugin-vfs -p plugin-wire -p plugin-chaos -p plugin-ledger -p plugin-mcp -p plugin-oci-translator -p plugin-openshell-coordinator
+
+# Single plugin (debugging)
+test-plugin plugin:
+    cargo nextest run -p plugin-{{plugin}}
 
 # Runs anti-TOCTOU, PTRACE_SEIZE, and zombie reaper tests in isolated container/namespaces
 test-shim:
     cargo nextest run -p kelir-shim
+
+# Driver primitives; excludes test_hw_* paths that need real hardware
+test-drivers:
+    cargo nextest run -p driver-rustvmm -p driver-openvmm -E 'not test(test_hw_)'
+
+# Cross-plugin integration; requires real hypervisor (KVM/HVF)
+test-integration:
+    cargo nextest run -p kelir-integration
+
+# Everything except integration (which requires real VM)
+test-all: test-core test-plugins test-shim test-drivers
 
 # Full TS context accumulation & type checking
 typecheck:
@@ -44,5 +63,5 @@ pre-flight: build-shim
     cargo fmt --all -- --check
     cargo clippy --workspace --exclude kelir-shim -- -D warnings
     pnpm -r exec eslint .
-    just test-unit
+    just test-all
     just typecheck

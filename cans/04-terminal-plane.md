@@ -1,6 +1,7 @@
 - Terminal plane
   - Terminal pipeline
     - See: artifacts/diagrams/terminal-pipeline.txt
+    - Owner: plugin-pty; see 02-plugin-model.md#First-class-plugins
     - Guest workload writes stdout/stderr
     - Linux kernel PTY driver: /dev/hvc0 → /dev/pts/N
     - isatty(1) == true, raw mode active, zero CLI downgrade
@@ -43,13 +44,33 @@
       - Full-screen apps (Claude Code, vim, top) initialize with correct geometry
     - Live resize
       - host process.stdout.on("resize") catches SIGWINCH
+      - on_window_resize(&WindowResize) fires in priority() order
+        - Observation only; hook cannot rewrite wire payload
       - HostToGuest::WindowResize { rows, cols, xpixel, ypixel } over AF_VSOCK:5252
       - In-guest shim executes ioctl(pts_fd, TIOCSWINSZ, &ws)
       - Guest shell redraws without corruption
   - Signal forwarding
     - Ctrl+C / Ctrl+D forwarded to guest foreground process group
+    - on_signal_send(&SendSignal) fires in priority() order
+      - Observation only; hook cannot rewrite signal
     - Signals flow as HostToGuest::SendSignal over vsock:5252
     - Shim signals the foreground PID
+  - Disclosure
+    - Core-originated mandatory notice from TrapAction::Rewrite.disclosure
+    - Host-side pipeline
+      - on_disclosure(&body) fires on every plugin in priority() order
+      - Hook returns Some(bytes) to append; None to pass
+      - Annotations concatenate after body in priority() order
+      - Body itself is immutable by contract
+    - Wire message
+      - HostToGuest::Disclosure { body } over vsock:5252
+      - see 09-protocol.md#Wire-messages
+    - Guest-side
+      - Shim prints body + annotations verbatim to workload PTY
+      - No plugin-pty filter runs on shim side; disclosure is authoritative
+    - Invariant: zero silent state divergence
+      - Any host-side state mutation reaches the workload's TTY
+      - Plugins annotate; none suppress
   - Token Shield
     - Ceilings: maxBytesTotal (e.g. 64KB), maxLinesTotal (e.g. 300)
     - clampStrategy: head-and-tail (keep first 50 + last 100 lines)

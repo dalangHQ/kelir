@@ -41,6 +41,16 @@
     - Host ~/.cache/pip → guest /root/.cache/pip
     - Host ~/.cargo/registry → guest /usr/local/cargo/registry
     - Cold installs drop from ~2 minutes to <3 seconds via local SSD
+  - Write gating
+    - plugin-vfs gates FUSE write() via on_vfs_write
+    - Signature: See: artifacts/code/plugin-trait.rs
+    - Ok(()) = allow; kernel proceeds with write to upperdir
+    - Err(PluginError::Reject { errno, reason }) = deny
+      - Guest write() fails with named errno; error surfaces in workload
+      - Returned before any bytes enter upperdir
+    - Err(PluginError::Halt) = deny + halt pipeline
+      - For policy violations requiring human review
+    - Observation-only snoop callbacks are separate: see #Snoop-plane
   - Ghost inodes
     - Static ghost
       - In-memory content fixed at .ghost() call

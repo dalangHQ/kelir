@@ -47,10 +47,16 @@ const repoPolicyPlugin = (opts: { maxDiffBytes: number; protectedBranches: strin
     .vfs((fs) => fs.onWrite(async (path, data, c) => {
       if (path.endsWith(".diff") && data.byteLength > opts.maxDiffBytes) {
         c.store.violations += 1;
+        // SDK wraps { reject, reason } into PluginError::Reject at the NAPI
+        // boundary; the ring sees a failing write() with this errno.
         return { reject: "ENOSPC", reason: "diff exceeds policy ceiling" };
       }
       return { allow: true };
-    }));
+    }))
+    // onDisclosure: append policy annotations to mandatory notices
+    .term((t) => t.onDisclosure(async (body, _c) =>
+      new Uint8Array([...body, ...new TextEncoder().encode(
+        `[repo-policy: ${opts.protectedBranches.length} protected]\n`)])));
 
 // ============================================================================
 // SINGLE LINEAR CHAIN — order defines context keys; nothing mutates after boot

@@ -1,48 +1,81 @@
 // crates/kelir-core/src/protocol/messages.rs
 //
-// All wire messages exchanged over vsock:5252. Guest↔host control/trap plane.
-// Payloads encode as CBOR inside the TLV frame defined in codec.rs.
+// All wire messages exchanged over vsock:5252. Payloads encode as CBOR
+// inside the TLV frame defined in codec.rs.
 //
 // Canonical spec home: cans/09-protocol.md#Wire-messages
 
+use ciborium::value::Value as CborValue;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// ── Payload structs ──────────────────────────────────────────────
+// Referenced by both wire enums and plugin hook signatures.
+// One definition, one place.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrapEvent {
+    pub seq: u64,
+    pub pid: u32,
+    pub ppid: u32,
+    pub binary_path: String,
+    pub binary_blake3: [u8; 32],
+    pub argv: Vec<String>,
+    pub envp: HashMap<String, String>,
+    pub cwd: String,
+    pub ancestor_chain: Vec<String>,
+    pub entropy: f64,
+    pub loaded_libraries: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessExit {
+    pub pid: u32,
+    pub exit_code: i32,
+    /// True physical elapsed time from spawn to reap.
+    pub wall_clock_ns: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryPressureWarning {
+    pub available_mb: u32,
+    pub total_mb: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortBound {
+    pub guest_port: u16,
+    pub protocol: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Heartbeat {
+    pub uptime_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowResize {
+    pub rows: u16,
+    pub cols: u16,
+    pub xpixel: u16,
+    pub ypixel: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendSignal {
+    pub pid: u32,
+    pub signal: u32,
+}
+
+// ── Wire enums ───────────────────────────────────────────────────
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum GuestToHost {
-    /// Syscall Trap Interception
-    TrapEvent {
-        seq: u64,
-        pid: u32,
-        ppid: u32,
-        binary_path: String,
-        binary_blake3: [u8; 32],
-        argv: Vec<String>,
-        envp: HashMap<String, String>,
-        cwd: String,
-        ancestor_chain: Vec<String>,
-        entropy: f64,
-        loaded_libraries: Vec<String>,
-    },
-    /// Process Exit Notification
-    ProcessExit {
-        pid: u32,
-        exit_code: i32,
-        wall_clock_ns: u64,
-    },
-    /// Memory Pressure Alert from In-Guest Watcher
-    MemoryPressureWarning {
-        available_mb: u32,
-        total_mb: u32,
-    },
-    /// Background Service Bound Port
-    PortBound {
-        guest_port: u16,
-        protocol: String,
-    },
-    Heartbeat {
-        uptime_ms: u64,
-    },
+    TrapEvent(TrapEvent),
+    ProcessExit(ProcessExit),
+    MemoryPressureWarning(MemoryPressureWarning),
+    PortBound(PortBound),
+    Heartbeat(Heartbeat),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -52,21 +85,17 @@ pub enum HostToGuest {
         seq: u64,
         action: TrapAction,
     },
-    /// Forwarding TTY Terminal Window Resize (SIGWINCH)
-    WindowResize {
-        rows: u16,
-        cols: u16,
-        xpixel: u16,
-        ypixel: u16,
-    },
-    /// Signal Propagation (SIGINT, SIGTERM, SIGKILL)
-    SendSignal {
-        pid: u32,
-        signal: u32,
-    },
+    WindowResize(WindowResize),
+    SendSignal(SendSignal),
     /// Dynamic Memory Balloon Adjustment
     AdjustBalloon {
         target_mb: u32,
+    },
+    /// Core-originated mandatory disclosure. Routed through on_disclosure
+    /// hooks on the host before forwarding. Shim prints body verbatim to
+    /// the workload PTY — zero silent state divergence.
+    Disclosure {
+        body: Vec<u8>,
     },
 }
 
@@ -88,11 +117,16 @@ pub enum TrapAction {
         new_binary: String,
         new_argv: Vec<String>,
         injected_env: HashMap<String, String>,
-        /// Mandatory terminal disclosure printed to the workload's PTY.
-        /// Guarantees zero silent state divergence.
-        tty_notice: Option<String>,
+        /// Mandatory terminal disclosure. Routed through on_disclosure
+        /// (host) → HostToGuest::Disclosure (shim) → PTY. Plugins may
+        /// annotate; the body is immutable by contract.
+        disclosure: Option<String>,
     },
     SuspendForApproval {
         poll_interval_ms: u32,
     },
+    /// Extension point. Dispatched by name to a registered handler;
+    /// unknown names fail with EUnknownAction before the pipeline resumes.
+    /// Closes the fixed-variant lock-in (quarantine, throttle, shadow-route).
+    Custom(CborValue),
 }

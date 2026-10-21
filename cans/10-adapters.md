@@ -3,36 +3,76 @@
     - See: artifacts/diagrams/ingestion-adapters.txt
     - Five adapter families: MCP, containerd shim v2, OpenShell gRPC, E2B, tri-native SDKs
     - Tri-native SDKs are canonical in 03-sdk-architecture.md; not repeated here
+    - Every adapter is a binary contract + a plugin
+      - Binary: process the ecosystem speaks to
+      - Plugin: translation and policy inside the process
+      - see 01-architecture.md#Capability-taxonomy
   - MCP adapter
-    - Binary: @kelir/mcp-server
-    - Command: kelir-mcp
-    - Args: --kernel, --rootfs, --memory-mb
-    - Target clients: Claude Desktop, Cursor, Devin
-    - Bypasses host shell execution entirely
-    - Maps LLM tool calls directly to VirtIO ring operations
-      - execute_command → virtio-console
-      - read_file → virtio-fs
-      - write_file → virtio-fs
+    - Binary
+      - Crate: kelir-adapters/mcp-server
+      - Command: kelir-mcp
+      - CLI args: --kernel, --rootfs, --memory-mb
+        - Mapped to VmConfig; forwarded to builder, not parsed by plugin
+      - Transport: stdio JSON-RPC to client (Claude Desktop, Cursor, Devin)
+      - Loads plugin-mcp and nothing else
+      - Bypasses host shell execution entirely
+    - Plugin
+      - Crate: kelir-plugins/plugin-mcp
+      - name() = "mcp"; priority() = 50
+      - Contributes c.mcp context key
+      - Hook wiring
+        - on_vm_ready: setup JSON-RPC transport, advertise capabilities
+        - on_pty_output / on_pty_input: stream terminal to/from MCP client
+        - on_vfs_read / on_vfs_write: expose as read_file / write_file
+        - on_trap: observe syscalls to correlate execute_command with trap
+        - on_process_exit: emit MCP task completion events
+        - on_disclosure: route mandatory notices into MCP stream
+      - Mapping (external tool → ring op)
+        - execute_command → virtio-console via spawn, wrapped
+        - read_file → virtio-fs lookup + read
+        - write_file → virtio-fs write
+      - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
+        - Previously impossible: adapter binary sat outside the graph
   - Containerd shim v2
-    - Binary: containerd-shim-kelir-v2
-    - Activated via runtimeClassName: kelir in Pod manifests
-    - Pod isolation
-      - Each Pod runs in isolated hardware microVM
-      - Not a Linux cgroup/namespace envelope
-    - PVC storage
-      - Kubernetes PersistentVolumeClaims mount as virtio-fs endpoints
-      - In-flight UID/GID mapping applied
-    - OCI compatibility
-      - Standard OCI images translated to read-only EROFS blocks
-      - Happens during rootfs setup
+    - Binary
+      - Crate: kelir-adapters/containerd-shim
+      - Activated via runtimeClassName: kelir in Pod manifests
+      - Loads plugin-oci-translator
+      - Pod isolation
+        - Each Pod runs in isolated hardware microVM
+        - Not a Linux cgroup/namespace envelope
+      - PVC storage
+        - PersistentVolumeClaims mount as virtio-fs endpoints
+        - UID/GID mapping applied in-guest
+    - Plugin
+      - Crate: kelir-plugins/plugin-oci-translator
+      - name() = "oci-translator"; priority() = 20
+      - Hook wiring
+        - on_vm_init: translate OCI image layers → EROFS block
+        - on_vfs_lookup: resolve image-declared volumes
+      - Translation policy
+        - Layer flattening, whiteout application, /etc overlay
+        - Composable: a chaos plugin can fault-inject into image pulls
   - OpenShell gRPC driver
-    - Binary: openshell-driver-kelir
-    - Implements compute_driver.proto
-    - Served over /var/run/kelir/openshell.sock (UDS)
-    - GPU passthrough via driver-rustvmm
-      - NVIDIA Container Device Interface (CDI) device mapping
-    - Coordinates hardware memory checkpointing and CoW branching
-    - Target: multi-tenant inference tasks
+    - Binary
+      - Crate: kelir-adapters/openshell-grpc
+      - Implements compute_driver.proto
+      - Served over /var/run/kelir/openshell.sock (UDS)
+      - Loads plugin-openshell-coordinator
+      - GPU passthrough via driver-rustvmm
+        - NVIDIA Container Device Interface (CDI) device mapping
+      - Target: multi-tenant inference tasks
+    - Plugin
+      - Crate: kelir-plugins/plugin-openshell-coordinator
+      - name() = "openshell-coordinator"; priority() = 60
+      - Hook wiring
+        - on_vm_init: register vetoes on Fork, Suspend, ClockSkew
+        - on_vm_ready: report readiness to OpenShell control plane
+        - on_watchdog: forward to OpenShell health system
+      - Checkpoint and branch policy
+        - When to checkpoint (request count, latency thresholds)
+        - What to branch on (multi-tenant isolation)
+        - Composable: a ledger plugin sees every checkpoint event
   - E2B compatibility
     - TypeScript: @kelir/e2b-compat
     - Python: kelir.compat.e2b
@@ -40,3 +80,6 @@
       - Sandbox.create, sandbox.commands.run, sandbox.files, sandbox.pty, sandbox.kill
     - Replaces remote cloud VM roundtrips with sub-60ms local hardware execution
     - Drop-in: frameworks built against E2B SDK require no code change
+    - Implementation: thin SDK wrapper
+      - No plugin: Sandbox methods map directly to Session methods
+      - No binary: consumes the same in-process SDK as first-class consumers

@@ -8,25 +8,38 @@
 
 use async_trait::async_trait;
 use std::path::Path;
+use std::time::Duration;
 use crate::handlers::HandlerCtx;
-use crate::protocol::messages::{TrapEvent, TrapAction};
+use crate::protocol::messages::{
+    Heartbeat, MemoryPressureWarning, PortBound, ProcessExit,
+    SendSignal, TrapAction, TrapEvent, WindowResize,
+};
 use crate::session::Session;
-use crate::vmm::driver::VmmDriver;
+use crate::vmm::driver::{VmmDriver, VmConfig, WatchdogAction};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {
+    /// Hard failure; halts the pipeline and surfaces to the runtime.
     #[error("Plugin execution rejected: {0}")]
     Halt(String),
+    /// Deny with a POSIX errno name surfaced to the guest.
+    /// Storage plane: guest write() fails with this errno.
+    /// Wire plane:    frame dropped silently (errno for logging only).
+    #[error("Plugin rejected: {errno} ({reason})")]
+    Reject { errno: String, reason: String },
     #[error("Internal I/O failure: {0}")]
     Io(#[from] std::io::Error),
 }
 
-/// Complete inode attribute set surfaced by storage-plane lookups. FUSE `LOOKUP`
-/// replies are populated verbatim from this struct (`st_mode`, `st_uid`, `st_gid`,
-/// `st_size`) alongside the content bytes.
+impl PluginError {
+    pub fn reject(errno: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self::Reject { errno: errno.into(), reason: reason.into() }
+    }
+}
+
+/// Complete inode attribute set surfaced by storage-plane lookups.
 #[derive(Debug, Clone)]
 pub struct VfsInodeAttr {
-    /// File mode bits (e.g. `0o400` read-only, `0o600` private)
     pub mode: u32,
     pub uid: u32,
     pub gid: u32,
@@ -34,30 +47,119 @@ pub struct VfsInodeAttr {
     pub content: Vec<u8>,
 }
 
+// ── Lifecycle context ────────────────────────────────────────────
+// Restricted handle for on_vm_init. Exposes only mutating capabilities
+// that are pre-boot config; never the raw &mut dyn VmmDriver.
+
+#[derive(Debug, Clone, Copy)]
+pub enum VetoEvent {
+    Fork, Checkpoint, Rollback, Suspend, Resume,
+    Terminate, ClockSkew,
+}
+
+#[derive(Debug, Clone)]
+pub struct WatchdogEvent {
+    pub timeout_ms: u64,
+    pub action: WatchdogAction,
+    /// Monotonic ns since VM boot when the watchdog fired.
+    pub fired_at_ns: u64,
+    pub last_heartbeat_ms: u64,
+}
+
+pub struct LifecycleCtx<'a> {
+    pub config: &'a VmConfig,
+    pub session_id: &'a str,
+    driver: &'a mut dyn VmmDriver,
+    vetoes: &'a mut Vec<(VetoEvent, Box<dyn Fn() -> bool + Send + Sync>)>,
+}
+
+impl<'a> LifecycleCtx<'a> {
+    pub async fn set_watchdog(
+        &mut self, timeout: Duration, action: WatchdogAction,
+    ) -> Result<(), PluginError> {
+        self.driver.set_watchdog(timeout, action).await
+            .map_err(PluginError::Io)
+    }
+    pub async fn adjust_balloon(&mut self, target_mb: u32) -> Result<(), PluginError> {
+        self.driver.adjust_balloon(target_mb).await
+            .map_err(PluginError::Io)
+    }
+    /// Register a veto callback for a lifecycle action. All registered
+    /// callbacks run before the action; any returning false aborts it.
+    pub fn register_veto(
+        &mut self, event: VetoEvent,
+        f: Box<dyn Fn() -> bool + Send + Sync>,
+    ) {
+        self.vetoes.push((event, f));
+    }
+}
+
 #[async_trait]
 pub trait KelirPlugin: Send + Sync {
-    /// Unique identifier for telemetry and ordering
+    /// Unique identifier for telemetry and requires() resolution.
     fn name(&self) -> &'static str;
 
-    // ─── 1. MicroVM Lifecycle Hooks ─────────────────────────
-    async fn on_vm_init(&self, _driver: &mut Box<dyn VmmDriver>) -> Result<(), PluginError> { Ok(()) }
+    /// Dispatch ordering; lower values run earlier. Default: 100.
+    /// Ties broken by declaration order.
+    fn priority(&self) -> u8 { 100 }
+
+    /// Hard dependencies by plugin name. Validated at boot; a missing
+    /// dependency aborts with EConfig before any hook fires.
+    fn requires(&self) -> &'static [&'static str] { &[] }
+
+    // ─── 1. MicroVM Lifecycle ────────────────────────────────────
+    async fn on_vm_init(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
     async fn on_vm_ready(&self, _session: &Session) -> Result<(), PluginError> { Ok(()) }
     async fn on_vm_shutdown(&self, _session: &Session) -> Result<(), PluginError> { Ok(()) }
 
-    // ─── 2. Control Plane Hooks (virtio-vsock) ───────────────
-    async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Option<TrapAction>, PluginError> { Ok(None) }
-    async fn on_process_exit(&self, _pid: u32, _exit_code: i32) -> Result<(), PluginError> { Ok(()) }
+    // ─── 2. Control Plane (virtio-vsock) ─────────────────────────
+    async fn on_trap(
+        &self, _event: &TrapEvent, _ctx: &HandlerCtx,
+    ) -> Result<Option<TrapAction>, PluginError> { Ok(None) }
+    async fn on_process_exit(
+        &self, _event: &ProcessExit, _ctx: &HandlerCtx,
+    ) -> Result<(), PluginError> { Ok(()) }
+    async fn on_memory_pressure(
+        &self, _event: &MemoryPressureWarning,
+    ) -> Result<(), PluginError> { Ok(()) }
+    async fn on_heartbeat(
+        &self, _event: &Heartbeat,
+    ) -> Result<(), PluginError> { Ok(()) }
+    async fn on_port_bound(
+        &self, _event: &PortBound,
+    ) -> Result<(), PluginError> { Ok(()) }
+    async fn on_signal_send(
+        &self, _event: &SendSignal,
+    ) -> Result<(), PluginError> { Ok(()) }
+    async fn on_watchdog(
+        &self, _event: &WatchdogEvent,
+    ) -> Result<(), PluginError> { Ok(()) }
 
-    // ─── 3. Terminal Plane Hooks (virtio-console) ────────────
+    // ─── 3. Terminal Plane (virtio-console) ──────────────────────
     async fn on_pty_input(&self, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
     async fn on_pty_output(&self, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
+    async fn on_window_resize(
+        &self, _event: &WindowResize,
+    ) -> Result<(), PluginError> { Ok(()) }
+    /// Mandatory core-originated disclosure (TrapAction::Rewrite.disclosure).
+    /// Body is immutable; return Some(bytes) to append. All annotations
+    /// concatenate in priority() order and follow the body on the PTY.
+    async fn on_disclosure(
+        &self, _body: &[u8],
+    ) -> Result<Option<Vec<u8>>, PluginError> { Ok(None) }
 
-    // ─── 4. Storage Plane Hooks (virtio-fs) ──────────────────
+    // ─── 4. Storage Plane (virtio-fs) ────────────────────────────
     async fn on_vfs_lookup(&self, _path: &Path) -> Result<Option<VfsInodeAttr>, PluginError> { Ok(None) }
     async fn on_vfs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
-    async fn on_vfs_write(&self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx) -> Result<bool, PluginError> { Ok(true) }
+    /// Ok(()) = allow. Err(Reject{errno}) = deny; guest write() fails
+    /// with errno. Replaces the previous `Result<bool, _>` ambiguity.
+    async fn on_vfs_write(
+        &self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx,
+    ) -> Result<(), PluginError> { Ok(()) }
 
-    // ─── 5. Wire Plane Hooks (virtio-net) ────────────────────
-    async fn on_net_outbound(&self, _frame: &mut Vec<u8>) -> Result<bool, PluginError> { Ok(true) }
-    async fn on_net_inbound(&self, _frame: &mut Vec<u8>) -> Result<bool, PluginError> { Ok(true) }
+    // ─── 5. Wire Plane (virtio-net) ──────────────────────────────
+    /// Ok(()) = forward. Err(Reject) = silent drop (no RST, no guest error).
+    async fn on_net_outbound(&self, _frame: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
+    /// Ok(()) = deliver. Err(Reject) = silent drop.
+    async fn on_net_inbound(&self, _frame: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
 }

@@ -1,2734 +1,1827 @@
-# Confirmations applied
+You're right — my Part 1 draft was **not** valid CANS syntax. Three classes of error:
 
-1. Template skeleton (`02-authentication.md`, `03-data.md`, `04-api.md`, `05-frontend.md`, `06-operations.md`) replaced by the domain layout — file contents below.
-2. `see:` is always relative: same-dir (`01-architecture.md#...`) or into the sibling `artifacts/` tree (`artifacts/...`).
+## Syntax errors in the draft
 
-Defaults I'm assuming on the unanswered open questions (say stop if any is wrong): chaos is folded into `06-wire-plane.md`; examples are flat; no `_rules.yaml` extension; no `AGENTS.md` edit yet.
-
----
-
-## `cans/00-overview.md`
-
-```markdown
-- Overview
-  - Product
-    - Name: kelir (Javanese ꦏꦼꦭꦶꦂ)
-    - Meaning: taut white fabric screen in Wayang Kulit shadow puppetry
-    - Metaphor: dalang (host app) directs puppets (agent) through the screen
-    - Version: 3.0.0-normative
-    - Status: normative specification
-  - What it is
-    - Embeddable in-process microVM hypervisor microkernel
-    - Boots stripped Linux microVMs in sub-60ms
-    - Details: see 01-architecture.md#Axiomatic-foundations
-  - What it is not
-    - Not a container wrapper
-    - Not an MCP server
-    - Not a background daemon
-    - No dockerd, containerd, background root socket, or daemon maintenance
-  - Target audience
-    - Matrix: see artifacts/diagrams/target-audience.txt
-    - Infra platforms: K8s, Cube, OpenShell
-    - Harness creators: Claude Code, Cursor, Devin
-    - Orchestrators: LangGraph, CrewAI, E2B
-    - Epistemic engines: Axiom, RLVR, falsifiers
-  - What kelir replaces
-    - Terminal hacks: tmux send-keys, regex screen scraping
-    - Storage hacks: host-boundary write mutations and whiteout corruption
-    - Virtualization hacks: fragmented platform-specific VM scripts
-    - Agent trust hacks: polling self-reported harness JSON
-    - Details: see 04-terminal-plane.md#Terminal-pipeline
-    - Details: see 05-storage-plane.md#Storage-architecture
-    - Details: see 08-epistemic.md#Three-tier-truth
-  - Spec map
-    - Foundation: 01-architecture.md
-    - Cross-cutting: 02-plugin-model.md, 03-sdk-architecture.md, 09-protocol.md
-    - I/O planes: 04-terminal-plane.md, 05-storage-plane.md, 06-wire-plane.md
-    - Lifecycle and epistemic: 07-lifecycle.md, 08-epistemic.md
-    - Ecosystem and ops: 10-adapters.md, 11-operations.md
-```
-
----
-
-## `cans/01-architecture.md`
-
-```markdown
-- Architecture
-  - Axiomatic foundations
-    - Six invariants
-      - Zero harness awareness
-        - Guest sees standard POSIX: /bin/sh, /dev/pts/*, glibc/musl, TCP/IP
-        - No custom guest SDKs, CLI shims, or guest-side agents
-      - In-process microkernel
-        - Virtualization runs in host consumer memory via direct C-FFI
-        - Backends: libkrun, rust-vmm, OpenVMM
-        - No dockerd, containerd, background root socket, daemon maintenance
-      - Pure epistemic agnosticism
-        - Zero knowledge of LLMs, prompts, or AI morals
-        - Operates strictly as OS physics: memory pages, registers, FDs, frames
-      - Deterministic hardware isolation
-        - Hardware-enforced virtualization: Intel VT-x, AMD-V, ARM64 EL2
-        - Escaped guest root cannot touch host memory or host kernel space
-      - Radical plugin-first microkernel
-        - Core drives hardware virtualization and multiplexes the 4 VirtIO rings
-        - Every capability is a decoupled, composable plugin
-      - Transparent truthful steering
-        - Intercepted I/O is allowed, steered with tty_notice, or rejected
-        - No silent state divergence
-    - Params ingress contract
-      - Single ingress for structured execution parameters
-      - Host-side validation before any guest instruction
-        - Serde (Rust), TypeBox (TypeScript), Pydantic v2 (Python)
-        - Falsified payloads fail at perimeter with EINVAL
-      - Single-variable injection
-        - Validated value serialized to JSON
-        - Injected as exactly one env var: KELIR_PARAMS=<json>
-      - Standard POSIX consumption
-        - Guest reads KELIR_PARAMS like any other environment variable
-        - No guest-side SDKs, CLI shims, or agents
-      - Host-side typed view: see 03-sdk-architecture.md#Params-typed-views
-  - Four-Ring Bus
-    - See: artifacts/diagrams/four-ring-bus.txt
-    - virtio-vsock control plane: syscalls, PIDs, signals, traps
-    - virtio-console terminal plane: raw TTY, ANSI, Token Shield, resizing
-    - virtio-fs storage plane: CoW overlays, inodes, in-flight masking, ghosts
-    - virtio-net wire plane: L4/L7 traffic, secrets, chaos
-  - Host runtime
-    - See: artifacts/diagrams/host-runtime.txt
-    - Native Rust consumer: direct Cargo crate, zero-cost monomorphization
-    - TypeScript consumer: @kelir/core via in-process NAPI-RS
-    - Python consumer: kelir via PyO3
-    - kelir-core: stripped microkernel (BusDispatcher, EventBus, DriverRouter)
-    - kelir-drivers: pluggable backends (libkrun, rustvmm, openvmm)
-  - Guest VM anatomy
-    - See: artifacts/diagrams/guest-vm.txt
-    - Minimal vmlinux: stripped Linux kernel, no ACPI or PCI bloat
-      - Apple Silicon: CONFIG_ARM64_16K_PAGES=y
-      - Linux x86: 4KB pages standard
-      - Linux ARM64: CONFIG_ARM64_4K_PAGES=y
-    - Paravirtualized devices
-      - virtio-rng: hardware entropy feeding /dev/urandom, no boot hangs
-      - virtio-wdt: hardware watchdog preventing guest kernel lockups
-      - virtio-balloon: dynamic memory inflation/deflation under host pressure
-    - Rootfs
-      - Read-only EROFS block device, cold-mounted in <2ms
-      - No tarball decompression
-    - /sbin/kelir-shim
-      - Static 50KB Musl binary, guest PID 1
-      - Binds vsock:5252 (control/trap) and vsock:5253 (ingress port-forward)
-      - Non-blocking waitpid(-1, WNOHANG) zombie reaper in async event loop
-      - seccomp-unotify filter with in-kernel BPF allowlist
-      - Anti-TOCTOU: PTRACE_SEIZE + PTRACE_INTERRUPT on every thread
-      - Parses ELF DT_NEEDED/PT_INTERP from disk
-      - Shannon entropy on argv[1:] (payload only, not argv[0])
-      - PTY per workload: openpty() + setsid() + TIOCSCTTY
-    - Untouched guest workload
-      - Claude Code, Cursor, SWE-bench, Node, Rust, Python
-      - No custom binary, no guest-side SDK
-  - VmmDriver trait
-    - See: artifacts/code/vmm-driver-trait.rs
-    - Single trait all backends implement
-    - Primitives
-      - boot: cold-boot microVM in <60ms
-      - fork: isolated CoW clone in <15ms
-      - checkpoint: atomic RAM and register snapshot
-      - rollback: revert to checkpoint in <8ms
-      - suspend: flush dirty pages, host RAM to 0MB
-      - resume: restore from snapshot in <50ms
-      - skew_clock: offset KVM_SET_CLOCK / CNTVOFF_EL2
-      - adjust_balloon: adjust guest RAM ceiling
-      - set_watchdog: arm watchdog with action (Reboot/Terminate)
-      - vsock_connect: yield duplex channel to multiplexer
-      - terminate: release hypervisor allocations
-    - SnapshotDescriptor.dirty_bytes
-      - Hardware-agnostic byte count, not page count
-      - Page size differs: 16KB Apple Silicon ARM64, 4KB Linux/x86
-  - Driver backends
-    - driver-libkrun: default
-      - macOS: HVF + Metal GPU
-      - Linux: KVM
-      - Hard fork: userfaultfd CoW fork, GPA snapshot, hardware clock skew
-    - driver-rustvmm: bare-metal Linux KVM + CUDA CDI GPU passthrough
-    - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure MSHV
-```
-
----
-
-## `cans/02-plugin-model.md`
-
-```markdown
-- Plugin model
-  - KelirPlugin trait
-    - See: artifacts/code/plugin-trait.rs
-    - Async trait implemented by all subsystems, internal and third-party
-    - Five hook families across the 4 VirtIO rings
-      - Lifecycle: on_vm_init, on_vm_ready, on_vm_shutdown
-      - Control plane (vsock): on_trap, on_process_exit
-      - Terminal plane (console): on_pty_input, on_pty_output
-      - Storage plane (fs): on_vfs_lookup, on_vfs_read, on_vfs_write
-      - Wire plane (net): on_net_outbound, on_net_inbound
-    - VfsInodeAttr carries full mode, uid, gid, size, content
-      - Populated verbatim into FUSE LOOKUP replies
-      - Ghost inodes honor mode: 0o400 exactly, no permission fallback
-    - Plane semantics
-      - Wire plane fully bidirectional: outbound and inbound mutation points
-      - Storage plane fully attributed: on_vfs_write carries PID and HandlerCtx
-  - Static dispatch
-    - Plugins compiled into flat contiguous dispatch array at boot
-    - Evaluated in strict priority order
-    - First Deny or Rewrite halts pipeline, dispatches over AF_VSOCK
-    - Sub-12 microsecond hook execution
-  - Five canonical plugins
-    - plugin-pty: virtio-console, ANSI sanitizer, Token Shield, prompt responder
-    - plugin-vfs: virtio-fs, ghost inodes, maskRead, reconciler, lock broker
-    - plugin-wire: L7 proxy, SOCKS5, SSH gate, DNS sinkhole
-    - plugin-chaos: bidirectional wire jitter/drop, VFS ENOSPC injection
-    - plugin-ledger: Merkle WAL, causal delta, OpenTelemetry traceparent
-  - Language parity
-    - See: artifacts/diagrams/sdks-invariants.txt
-    - Same five plugins in Rust, TypeScript, Python, maintained 1:1
-    - Trait surface and hook semantics identical across languages
-    - Rust: plugin_with_handle → typed handle; unmounted plugin breaks build
-    - TypeScript: type-level accumulation; missing .use() fails tsc
-    - Python: plugin_with_handle yields typed handle; missing handle fails import
-```
-
----
-
-## Meta — what this implies for the rest of the migration
-
-Delete now:
-- `cans/02-authentication.md` (replaced by `02-plugin-model.md`)
-- `cans/03-data.md`, `cans/04-api.md`, `cans/05-frontend.md`, `cans/06-operations.md` (content later re-homed as below)
-
-Keep name, replace content:
-- `00-overview.md`, `01-architecture.md` — done above
-
-Renamed / new homes still to be produced (not in this batch):
-- `03-sdk-architecture.md` (new; also hosts `#Params-typed-views` referenced from 01)
-- `04-terminal-plane.md` (was frontend)
-- `05-storage-plane.md` (was data)
-- `06-wire-plane.md` (new; includes chaos)
-- `07-lifecycle.md` (new)
-- `08-epistemic.md` (new; hosts `#Three-tier-truth` referenced from 00)
-- `09-protocol.md` (was api)
-- `10-adapters.md` (new)
-- `11-operations.md` (was operations)
-
-Forward pointers in these three files (`03`, `04`, `05`, `08`) will resolve as those files land — expected during migration; `cans check --refs-only` is only meaningful at the end.
-
-Say "go" and I'll produce the next batch (`03`–`06`) in the same style.
-
-# Next batch — `03` through `06`
-
-Forward references (`07-lifecycle.md`, `08-epistemic.md`, `09-protocol.md`) resolve when those files land in the batch after.
-
----
-
-## `cans/03-sdk-architecture.md`
-
-```markdown
-- SDK architecture
-  - Tri-native design
-    - No dynamic any-typing, no second-class shims
-    - All three SDKs enforce identical runtime guarantees through native type systems
-    - Rust: borrow-checker verified handle injection, zero-cost Serde
-    - TypeScript: generic context accumulation, TypeBox schema guards
-    - Python: RAII context managers, Pydantic v2 validation
-  - Params typed views
-    - Host-side typed access on HandlerCtx
-      - Rust: c.params::<T>() deserializes from validated buffer
-      - TypeScript: params typed by .guard() schema
-      - Python: params typed by Pydantic BaseModel
-    - Same buffer as KELIR_PARAMS env injection: see 01-architecture.md#Params-ingress-contract
-    - Zero-allocation validation: operates on zero-copy guest memory
-  - Rust SDK
-    - See: artifacts/code/rust-handle-injection.rs
-    - plugin_with_handle(P) atomically returns (builder, P::Handle)
-    - Missing builder.plugin_with_handle call → handle not in scope → E0425
-    - Zero-Allocation Validation via Serde
-      - #[derive(Deserialize)] enum Action with serde(tag = "action")
-      - c.params::<Action>() fails at perimeter before traps execute
-  - TypeScript SDK
-    - See: artifacts/code/typescript-accumulation.ts
-    - Kelir<TContext> accumulates context type across .use() calls
-    - Each .use() expands the generic; downstream c.pluginKey fully inferred
-    - Missing .use() → property not on TContext → tsc error
-    - TypeBox .guard() schema
-      - t.Object({ action: t.Literal(...), issueId: t.String() })
-      - Falsified spawn actions fail with EINVAL before VM dispatch
-  - Python SDK
-    - See: artifacts/code/python-raii-pydantic.py
-    - async with builder as session
-      - __aenter__ boots microVM
-      - __aexit__ guarantees session.terminate() on any exception
-      - Matches Rust Drop semantics under unhandled exceptions
-    - Pydantic v2 BaseModel with frozen=True
-      - Field(pattern=r"^fix-webhook$")
-      - Raises EINVAL before hook evaluation
-    - builder, handle = builder.plugin_with_handle(RepoPolicyPlugin())
-      - Missing assignment → NameError at import time
-  - Full-surface examples
-    - See: artifacts/examples/autonomous-swe-agent.rs
-    - See: artifacts/examples/autonomous-swe-agent.ts
-    - See: artifacts/examples/autonomous-swe-agent.py
-    - Each example exercises
-      - All five plugins
-      - All four VirtIO rings
-      - All three epistemic truth tiers
-      - All lifecycle superpowers in 07-lifecycle.md
-    - Not transliterations: each uses language-idiomatic constructs
-      - Rust: async-trait, JoinSet, Arc<Mutex<>> handles
-      - TypeScript: Promise.all fan-out, generic inference
-      - Python: asyncio.gather, async with, Pydantic v2
-```
-
----
-
-## `cans/04-terminal-plane.md`
-
-```markdown
-- Terminal plane
-  - Pipeline
-    - See: artifacts/diagrams/terminal-pipeline.txt
-    - Guest workload writes stdout/stderr
-    - Linux kernel PTY driver: /dev/hvc0 → /dev/pts/N
-    - isatty(1) == true, raw mode active, zero CLI downgrade
-    - virtio-console ring buffer streams bytes to host memory
-    - Host supervisor (@kelir/plugin-pty) applies five filters
-  - Five filters
-    - ANSI stream sanitizer
-      - Drops OSC 52 clipboard hijack in-flight
-      - Strips OSC 0/1/2 title spoofing
-    - onPrompt responder
-      - Foreground TTY verification via tcgetpgrp()
-      - Matches ANSI-SGR-stripped plaintext shadow copy
-      - Injects keystrokes directly into virtio-console ring
-    - WindowResize bridge
-      - Boot handshake pushes initial size (e.g. 120x40) at VM-ready
-      - Host SIGWINCH sends HostToGuest::WindowResize over vsock:5252
-      - Shim executes TIOCSWINSZ on guest PTY slave
-    - Signal forwarding
-      - Ctrl+C (SIGINT) and Ctrl+D forwarded to foreground process group
-    - Token Shield filter
-      - Clamps chunks exceeding byte or line ceiling
-      - Injects truncation markers with byte/line stats
-  - ANSI sanitizer
-    - OSC 52 attack defense
-      - Scripts printing \x1b]52;c;... attempt clipboard read/write
-      - All OSC 52 bytes dropped at hardware buffer boundary
-    - Title spoofing defense
-      - OSC 0/1/2 stripped to prevent host terminal emulator tampering
-  - Prompt responder
-    - Matchers run against ANSI-SGR-stripped plaintext shadow copy
-    - Regex matches text regardless of SGR color or bold codes
-    - Original bytes stream with styling intact
-    - Anti-spoof verification
-      - Executes only if PTY holder matches kernel foreground process group
-      - Background echo of prompt text cannot trigger automated responses
-    - Example wiring: see artifacts/examples/autonomous-swe-agent.ts
-  - Window resize
-    - Boot handshake
-      - Hypervisor pushes configured initial size before first workload spawn
-      - Guest never boots into 80x25 default
-      - Full-screen apps (Claude Code, vim, top) initialize with correct geometry
-    - Live resize
-      - host process.stdout.on("resize") catches SIGWINCH
-      - HostToGuest::WindowResize { rows, cols, xpixel, ypixel } over AF_VSOCK:5252
-      - In-guest shim executes ioctl(pts_fd, TIOCSWINSZ, &ws)
-      - Guest shell redraws without corruption
-  - Signal forwarding
-    - Ctrl+C / Ctrl+D forwarded to guest foreground process group
-    - Signals flow as HostToGuest::SendSignal over vsock:5252
-    - Shim signals the foreground PID
-  - Token Shield
-    - Ceilings: maxBytesTotal (e.g. 64KB), maxLinesTotal (e.g. 300)
-    - clampStrategy: head-and-tail (keep first 50 + last 100 lines)
-    - onClamp callback returns truncation notice with droppedBytes/droppedLines
-    - Boundary-safe clamping
-      - Truncation point never splits a glyph or escape sequence
-      - Scans backward to nearest valid UTF-8 code-point boundary
-      - Scans backward to start of any in-progress CSI/OSC sequence
-      - Multi-byte characters and complete ANSI sequences survive intact
-    - Protects LLM context window from runaway logs and stack traces
-```
-
----
-
-## `cans/05-storage-plane.md`
-
-```markdown
-- Storage plane
-  - Storage architecture
-    - See: artifacts/diagrams/storage-architecture.txt
-    - Layered model: EROFS rootfs, tmpfs overlay, reconciler, idmap, caches, ghosts, mask, lock broker
-  - EROFS rootfs
-    - Stripped base system pre-baked into read-only EROFS
-    - Python, Node, Rust, Bash pre-installed
-    - Cold-mounted as virtio-blk block device in <2ms
-    - Zero tarball decompression
-  - CoW overlay scratchpad
-    - Host workspace mounted strictly read-only as lower layer
-    - overlayfs upperdir lives in guest tmpfs
-    - All writes stay in-memory until explicit reconcile
-    - Instant revert: drop overlayfs upperdir in ~1ms, host SSD untouched
-  - Reconciler
-    - See: artifacts/code/reconciler.rs
-    - session.fs.reconcile() is a pure storage-plane operation
-    - Syncs overlay upperdir differential to host workspace
-    - Carries no VCS semantics, accepts no message parameter
-    - Git commit is ordinary guest execution through the trap chain
-    - Algorithm
-      - Traverse guest tmpfs upperdir differential tree
-      - Resolve file whiteouts: S_ISCHR(mode) && rdev == 0 → host unlink()
-      - Resolve dir whiteouts: trusted.overlay.opaque=y → host remove_dir_all()
-      - Atomic staged writes: copy to tmp sibling, rename() into place
-      - Flush with syncfs()/fsync() before reporting completion
-    - Whiteout problem
-      - Deleted files become char devices with major/minor 0/0 (mknod c 0 0)
-      - Deleted or shadowed directories carry xattr trusted.overlay.opaque="y"
-      - Naive upperdir copy writes unusable device nodes and resurrects dirs
-    - CommitStats counters
-      - files_changed: count of modified or newly created files
-      - whiteouts_resolved: count of file and directory whiteouts handled
-  - UID/GID idmap
-    - Translates guest UID 0 (root) and 1000 (user) to host geteuid()/getegid()
-    - macOS host: developer is UID 501
-    - Linux host: developer is UID 1000
-    - Result: agent-created files are immediately editable without sudo
-  - Shared host package caches
-    - Host ~/.npm → guest /root/.npm
-    - Host ~/.cache/pip → guest /root/.cache/pip
-    - Host ~/.cargo/registry → guest /usr/local/cargo/registry
-    - Cold installs drop from ~2 minutes to <3 seconds via local SSD
-  - Ghost inodes
-    - Static ghost
-      - In-memory content fixed at .ghost() call
-      - Example: /root/.gitconfig, /workspace/.env.local
-    - Dynamic ghost
-      - Content factory evaluated fresh per open()
-      - Example: /workspace/identity.jwt regenerating per open
-    - Full VfsInodeAttr: mode, uid, gid, size, content
-    - FUSE LOOKUP reply populated verbatim
-    - mode: 0o400 honored exactly, no permission fallback
-    - Physically does not exist on host SSD
-  - In-flight read masking
-    - maskRead intercepts FUSE read() dispatch at buffer boundary
-    - MaskRule regex redactions applied in host RAM before guest pages fill
-    - Typical targets: .env, secrets files, private keys
-    - Fixed-width redaction
-      - Replacement padded or truncated to exact byte length of the match
-      - st_size and file offsets preserved
-      - Sequential reads and trailing reads stay consistent
-    - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks
-    - See: artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
-  - Cross-VM lock broker
-    - Prevents .git/index.lock collisions when multiple agents share a repo
-    - Guest overlayfs assigns virtual inodes with no host correlation
-    - Resolution: guest inode + virtio-fs mount identity → host physical inode + path
-    - Broker intercepts FUSE_SETLK and FUSE_SETLKW (fcntl/flock)
-    - Routes lock acquisition through centralized host in-memory mutex table
-    - Conflicting locks block cleanly or return EWOULDBLOCK
-  - Snoop plane (see also 08-epistemic.md#Three-tier-truth)
-    - Direct I/O semantics: snooped paths mounted with FOPEN_DIRECT_IO
-      - Bypasses guest page cache
-      - FUSE write frames carry the true producing PID
-      - Never a kernel flusher task (kworker/pdflush)
-    - Guaranteed FUSE reply
-      - Every user callback wrapped in catch-all
-      - Any panic or throw → fuse_reply_err(req, EPERM)
-      - Host hook exception cannot leave guest thread in D state
-      - Guest always observes well-defined error, never a hang
-```
-
----
-
-## `cans/06-wire-plane.md`
-
-```markdown
-- Wire plane
-  - Wire architecture
-    - See: artifacts/diagrams/wire-plane.txt
-    - Zero-knowledge credential architecture
-    - Production API keys never enter guest memory, shell variables, or disk
-    - Four channels: L7 proxy, L4 SOCKS5, SSH gate, DNS sinkhole
-  - L7 credential swapper
-    - Guest shell sees dummy URN placeholders
-      - STRIPE_KEY="vault://stripe_prod_key"
-      - DATABASE_URL="vault://pg_creds"
-    - Secret auto-injection contract
-      - on_vm_ready injects every registered vault key into guest env
-      - Placeholder URN is the only value that ever exists inside the guest
-      - Real secret crosses wire plane exclusively on host side
-    - TLS interception contract
-      - plugin-wire generates ephemeral per-session root CA at boot
-      - CA mounted into guest trust store /etc/ssl/certs as overlayfs ghost
-      - curl, git, and language-native TLS stacks accept transparently
-      - Zero CLI flags: no --cacert, no NODE_EXTRA_CA_CERTS
-    - Request flow
-      - Guest TLS terminates at host-side forward proxy
-      - Validates target host against egress allowlist
-      - Replaces vault:// placeholder with real key from host keyring
-      - Establishes upstream TLS handshake directly from host
-    - Response scrubbing
-      - Sensitive headers (Set-Cookie, echoed auth) stripped
-      - Response re-encrypted under per-session CA before entering TAP
-  - L4 gateway
-    - Direct TCP connections route through in-memory SOCKS5 / SNI gateway
-    - Database proxying
-      - PostgreSQL on 5432, Redis on 6379
-      - Ephemeral DB credentials injected at host connection boundary
-      - Client mTLS certificates injected at host boundary
-    - No private keys or DB passwords enter guest address space
-  - SSH gate
-    - git@github.com SSH connections mapped via /dev/vhost-vsock to host SSH_AUTH_SOCK
-    - Host signs cryptographic authentication challenges
-    - Secure Enclave keys sign on host
-    - Private keys never touch guest memory
-  - DNS sinkhole
-    - All UDP port 53 traffic trapped at TAP boundary
-    - Unregistered or non-allowlisted domains → immediate NXDOMAIN
-    - DNS data tunneling exploits neutralized at hypervisor perimeter
-    - Examples blocked: secret-data.attacker.com style exfiltration
-  - Fault injection (plugin-chaos)
-    - Bidirectional across wire plane
-      - on_net_outbound mutates frames leaving guest
-      - on_net_inbound mutates frames arriving at guest
-      - Both directions flow through same chaos rule engine
-    - Network chaos
-      - target: domain or host pattern
-      - direction: "outbound" | "inbound" | "both"
-      - latency: { baseMs, jitterMs }
-      - dropRate: synthetic packet loss probability
-      - injectRst: synthetic TCP RST flags
-      - bandwidthKbps: link speed clamp
-    - Storage chaos
-      - targetPath: glob over guest filesystem
-      - simulateError: errno such as ENOSPC
-      - errorProbability: fraction of write() calls failed
-    - Typical uses
-      - Verify agent code handles flaky APIs, dialup speeds, RST resets
-      - Verify graceful degradation on disk-full conditions
-    - Wiring: see artifacts/examples/autonomous-swe-agent.ts
-```
-
----
-
-## Meta — updated tracking
-
-Produced so far:
-- `00-overview.md`, `01-architecture.md`, `02-plugin-model.md`
-- `03-sdk-architecture.md`, `04-terminal-plane.md`, `05-storage-plane.md`, `06-wire-plane.md`
-
-Still to produce (next batch):
-- `07-lifecycle.md` — superpowers table, fork/rollback/suspend/resume/clock/reaper/docker/break-glass/port-forward
-- `08-epistemic.md` — receipts, CausalDelta, Merkle WAL, 3-tier truth, lifecycle bridge
-
-Final batch:
-- `09-protocol.md` — TLV framing, messages, TrapAction, BPF/anti-TOCTOU/ELF
-- `10-adapters.md` — MCP, containerd, OpenShell, E2B
-- `11-operations.md` — CICD, project structure
-
-Cross-file dedup carried through:
-- Chaos folded into `06-wire-plane.md` under `Fault-injection`.
-- Wire credential vault canonical in `06`; examples are artifacts, not re-summarized.
-- Snoop has one home (`05-storage-plane.md#Snoop-plane`); `08-epistemic.md` will `see:` it.
-- Reconciler canonical in `05`; §15-style verdict paragraphs are gone.
-
-Say "go" and I'll produce `07` and `08`.
-
-# Next batch — `07` and `08`
-
-Two fixups needed on files already produced (flagged at the end — one-line edits each; not done here to keep each file's history clean).
-
----
-
-## `cans/07-lifecycle.md`
-
-```markdown
-- Lifecycle
-  - Superpowers
-    - See: artifacts/diagrams/superpowers.txt
-    - Nine superpowers enumerated below
-    - Driver primitives (fork, rollback, suspend, resume, skew_clock, terminate): see 01-architecture.md#VmmDriver-trait
-  - CoW fork
-    - Driver primitive: fork returns Box<dyn VmmDriver> in <15ms
-    - KVM path: userfaultfd + KVM memory cloning
-    - HVF path: memory-mapped page duplication
-    - Children share warm parent memory
-      - Warmed compilers, loaded dependencies, in-process caches
-    - Host RAM dirtied only on child write
-    - Session hydration
-      - Driver fork yields raw Box<dyn VmmDriver>
-      - Runtime re-hydrates complete twin Session around it
-      - Rebinds 4-ring dispatch table, virtio channels, plugin graph
-      - session.vm.fork() returns full Session
-      - spawn() and every other session API directly callable on child
-    - Typical use: parallel agent exploration (5+ candidate strategies)
-  - Rollback
-    - Driver primitive: rollback reverts in <8ms
-    - Reverts guest memory, registers, and tmpfs overlay diffs
-    - Used by HandlerCtx post-exec on post-condition violation
-      - Wiring: see 08-epistemic.md#Step-evaluation-loop
-    - Does not touch host SSD or Merkle WAL
-      - WAL is host-isolated: see 08-epistemic.md#Merkle-WAL
-  - Suspend and resume
-    - suspend
-      - Freezes vCPU registers
-      - zstd-compresses dirty memory pages
-      - Flushes to local NVMe in <50ms
-      - Deallocates host memory; host RAM consumption drops to 0 MB
-    - resume
-      - Restores registers and memory in <50ms
-      - Resumes at exact cycle boundary
-    - Typical use: waiting for human approval with zero host CPU cost
-  - Clock skew
-    - KVM path: KVM_SET_CLOCK and kvm_clock MSRs
-    - HVF path: ARM64 CNTVOFF_EL2 (Virtual Timer Offset Register)
-    - Guest CNTVCT_EL0 reads jump forward instantly
-    - TSC scaling unpin
-      - Skew auto-unpins invariant-TSC scaling on cloned VM
-      - vCPU TSC rate decouples from host hardware clock
-      - Tracks virtual clocksource instead
-      - Guest kernel never flags tsc as unstable, never falls to jiffies
-    - Typical use: JWT expiry, cron cycles, certificate renewals
-  - Lid sleep/wake clock snapping
-    - Problem
-      - Laptop lid close pauses guest monotonic time
-      - Host wall-clock advances; guest time does not
-      - TLS handshakes fail on wake due to clock mismatch
-    - Solution
-      - Listen to host power events: IOPMrootDomain (macOS), systemd-logind (Linux)
-      - Dispatch immediate hardware clock resync over AF_VSOCK
-      - Guest time snaps to host wall-clock in 0ms
-  - Host crash reaper
-    - Problem
-      - Host Node.js / Python process killed abruptly (kill -9, OOM, segfault)
-      - Hypervisor children must not survive as orphaned CPU spinners
-    - Dual-path by design
-      - Linux: prctl(PR_SET_PDEATHSIG, SIGKILL)
-        - Applied to every hypervisor backend thread
-        - Kernel terminates backend and unmaps memory immediately
-        - No polling involved
-      - macOS: kqueue(EVFILT_PROC, NOTE_EXIT) watcher on host PID
-        - Second channel: parent-monitoring heartbeat pipe
-        - On host exit or pipe close: SIGKILL to backend process group
-        - Reclaims VM memory mappings
-  - Docker-in-kelir
-    - Constraint: Apple Silicon Hypervisor.framework lacks nested VMX/SVM passthrough
-    - Solution: embed Rootless Podman + crun inside read-only EROFS rootfs
-    - docker build / docker compose up run via rootless Podman
-    - Linux user namespaces (CLONE_NEWUSER)
-    - Ephemeral write layer
-      - Guest boot fstab provisions tmpfs for /var/lib/containers, /var/run, /tmp
-      - Rootfs stays immutable EROFS block
-      - Never surfaces EROFS: Read-only file system
-    - OCI containers run inside microVM without nested hypervisor or host daemon
-  - Break-glass
-    - Human interactive attach when automated agent is stuck
-    - session.breakGlass() on Session (post-boot only)
-    - Pauses agent loop, bridges developer host TTY directly to virtio-console
-    - Developer inspects state, runs manual commands, exits subshell
-    - Control returns to agent
-    - Builder write-only until boot: see 03-sdk-architecture.md#Python-SDK
-  - Port forwarding
-    - forwardPort is a Session API with language parity
-    - TypeScript: session.forwardPort({ host: 8080, guest: 3000 })
-    - Python: await session.forward_port(8080, 3000)
-    - Rust: session.forward_port(8080, 3000).await?
-    - Flow
-      - Guest service binds port (e.g. Next.js dev server on 3000)
-      - Shim emits GuestToHost::PortBound over vsock:5252
-      - Host connections tunneled over virtio-vsock:5253
-      - Shim ingress multiplexer proxies byte stream to guest loopback port
-    - Ingress multiplexer: crates/kelir-shim/src/ingress.rs
-  - Zombie reaping
-    - Shim runs as guest PID 1: see 01-architecture.md#Guest-VM-anatomy
-    - waitpid(-1, WNOHANG) pass integrated into async event loop
-    - Foreground shell exit → orphaned daemons adopted and reaped
-    - Prevents defunct <zombie> processes exhausting PID table
-```
-
----
-
-## `cans/08-epistemic.md`
-
-```markdown
-- Epistemic
-  - Execution receipts
-    - See: artifacts/code/execution-receipt.rs
-    - Emitted per executed process to host
-    - Fields
-      - pid, binary_path
-      - binary_blake3: canonical 64-char lowercase hex
-      - dirty_bytes: byte count of mutated physical memory
-      - syscall_count, exit_code, wall_clock_ns
-      - egress_bytes: total network egress bytes transmitted
-    - Hardware-agnostic telemetry
-      - Page size differs: 16KB Apple Silicon ARM64, 4KB Linux/x86
-      - Byte counts canonical, not page counts
-      - Identical executions produce identical receipts on every host
-      - Epistemic assertions, RLVR loss, Merkle roots stable across machines
-      - Assertion form: dirty_bytes == 0
-    - Ownership
-      - kelir-core generates and holds at trap/exit boundary
-      - c.receipt() is the single read API on HandlerCtx
-  - Causal delta
-    - See: artifacts/code/causal-delta.rs
-    - Counterfactual state delta: Δ = S_A - S_B
-    - Fields
-      - memory_diff_bytes: hardware-agnostic byte-level RAM delta
-      - modified_inodes: Vec<PathBuf>
-      - spawned_pids: Vec<u32>
-      - egress_requests: Vec<HttpRequestRecord>
-    - Computed between two checkpoint descriptors
-  - Merkle WAL
-    - Every execution receipt hashed into append-only WAL
-    - Backend: embedded SQLite or DuckDB
-    - Chaining: H_n = BLAKE3(H_{n-1} || Receipt_n)
-    - Tamper-proof audit trail for SOC2 and regulatory compliance
-    - Host-isolated storage
-      - Database lives on host filesystem, resolved relative to consumer CWD
-      - Default: .kelir/audit.merkle.db
-      - Guest paths (/workspace/...) rejected at LedgerPlugin construction
-      - WAL survives guest rollback() and fork()
-      - Cannot be reverted or duplicated by guest operations
-    - Ownership boundary
-      - kelir-core: generates and holds execution receipts (c.receipt())
-      - plugin-ledger: persists receipts into WAL, exports OTel
-      - plugin-ledger also exposes c.ledger.flush()
-  - OpenTelemetry
-    - Automatic W3C traceparent injection into outbound HTTP requests
-    - Connects internal shell execution to Jaeger, Datadog, etc.
-    - OtelConfig in LedgerPlugin
-      - endpoint: http://localhost:4318/v1/traces
-      - service_name: kelir-swe-agent
-      - propagate_traceparent: true
-  - Three-tier truth
-    - See: artifacts/diagrams/truth-hierarchy.txt
-    - Motivates decoupling orchestration from private harness internals
-    - Tier 1: physical ground truth (hypervisor/kernel boundary)
-      - Unforgeable receipts: BLAKE3 hex digests, dirty byte counts
-      - OS inode diffs: physical disk modifications via CausalDelta
-      - Egress telemetry: true network frames past virtio-net proxy
-      - Invariant: agent cannot fake, even as guest root
-    - Tier 2: public formal protocols (contract interface)
-      - Model Context Protocol tool events over stdio
-      - Deterministic PTY stream output sanitized of ANSI injection
-      - Invariant: evaluated strictly against public versioned contracts
-    - Tier 3: synchronous inode snooping (harness state interception)
-      - Zero post-mortem polling
-      - Intercepts harness write() calls in real-time
-      - Host in-memory buffer captures updates before disk sync
-      - Invariant: eliminates async races and file lock collisions
-      - Mechanism and kernel-level guarantees: see 05-storage-plane.md#Snoop-plane
-  - Lifecycle bridge
-    - Replaces language-level monkeypatching
-      - Old form: agent._step(), private runtime prototype overrides
-      - Breaks on every CLI update, blind to OS-level side effects
-    - In-process hardware lifecycle bridge
-    - Mapping from orchestrator actions to hypervisor primitives
-      - pause() → halt vCPU registers instantly, 0% CPU
-      - resume() → restore vCPU with 0ms clock skew
-      - step() → execute until next virtio-vsock syscall trap, then pause
-      - revert() → drop dirty RAM, purge tmpfs diffs to last good snapshot in <8ms
-  - Step evaluation loop
-    - See: artifacts/code/step-evaluation-loop.ts
-    - Orchestrators execute unmodified agent binaries
-    - Cycle-accurate governance over every operational step
-    - Pre/post tracking is a core context service
-    - StepSlot on HandlerCtx
-      - c.step.mark(descriptor): stores typed checkpoint slot for trapping PID
-      - c.step.last(): retrieves it, raises if none
-      - No userland scratchpads, no plugin boilerplate
-    - Typical wiring
-      - before("*"): checkpoint + analyzeIntent; deny or resume
-      - after("*"): read receipt; rollback on post-condition violation
-```
-
----
-
-## Fixups required on files already produced
-
-Two one-line edits to make cross-file `see:` anchors resolve. Both are cosmetic — the produced content is otherwise correct.
-
-1. **`cans/04-terminal-plane.md`** — the node `- Pipeline` under `- Terminal plane` produces slug `Pipeline`. `00-overview.md` references `#Terminal-pipeline`. Rename the node:
-   ```
-   - Terminal pipeline
-   ```
-   (one word swap; do not touch `See: artifacts/diagrams/terminal-pipeline.txt` below it)
-
-2. **`cans/05-storage-plane.md`** — the node `- Snoop plane (see also 08-epistemic.md#Three-tier-truth)` produces the ugly slug `Snoop-plane-(see-also-08-epistemic.md#Three-tier-truth)`. `08-epistemic.md` (above) references `#Snoop-plane`. Rename the node:
-   ```
-   - Snoop plane
-   ```
-   (drop the parenthetical; the back-reference lives in 08 now, and a back-pointer in 05 is what `_rules.yaml` calls `back_pointers: false` anyway — so removing it is also the correct adherence to policy)
-
----
-
-## Meta — tracking after this batch
-
-Produced:
-- `00`, `01`, `02`, `03`, `04`, `05`, `06`, `07`, `08`
-
-Remaining:
-- `09-protocol.md` — TLV framing, `GuestToHost`/`HostToGuest` messages, `TrapAction` + env-injection semantics, BPF fast-path, anti-TOCTOU, ELF scan
-- `10-adapters.md` — MCP, containerd shim v2, OpenShell gRPC, E2B compat
-- `11-operations.md` — CICD matrix, justfile, project structure (pointer-only)
-
-Anchors established this batch (for the final `cans check --refs-only` pass):
-- `07-lifecycle.md#CoW-fork` — resolves
-- `07-lifecycle.md#Lifecycle` — implicit top
-- `08-epistemic.md#Three-tier-truth` — resolves (matches `00-overview.md` reference)
-- `08-epistemic.md#Merkle-WAL` — resolves
-- `08-epistemic.md#Step-evaluation-loop` — resolves
-
-Cross-file dedup carried through:
-- Fork/rollback/suspend/resume/clock: `07` describes **session-level** semantics; `01` owns the **driver primitives**. Overlap is intentional and complementary, not duplicated.
-- Zombie reaping: canonical in `01#Guest-VM-anatomy`; `07#Zombie-reaping` is a 3-line pointer summary — no mechanism detail repeated.
-- Snoop mechanism: canonical in `05#Snoop-plane`; `08#Three-tier-truth` cites it, does not restate FOPEN_DIRECT_IO or fuse_reply_err.
-- Break-glass "write-only builder": `07` states the rule once, cites `03#Python-SDK` for `async with` guarantees.
-- Execution receipt: code file is authoritative; `08` lists field names in prose, which is unavoidable at spec altitude, but the authoritative field set is `artifacts/code/execution-receipt.rs`.
-
-Say "go" for the final batch (`09`, `10`, `11`) plus a consolidated `cans check --refs-only` dry-run report.
-
-
-
-# Final batch — `09`, `10`, `11` + consolidated refs report
-
-Three files. Then a fixup list and a hand-traced `cans check --refs-only` preview.
-
----
-
-## `cans/09-protocol.md`
-
-```markdown
-- Protocol
-  - Control channel
-    - virtio-vsock port 5252: control/trap plane
-    - virtio-vsock port 5253: ingress/port-forward multiplexer
-    - Windows driver-openvmm: HV_SOCKET translates the same channels
-    - Zero network interface involvement
-  - Trap fast-path
-    - Goal: prevent slowdowns on cargo build / npm install scale workloads
-    - Layer 1: in-kernel BPF allowlist
-      - rustc, gcc, as, ld, sed, cat evaluated purely in guest kernel
-      - 0µs roundtrip overhead
-    - Layer 2: anti-TOCTOU task-group freeze
-      - seccomp-unotify triggers on git, curl, ssh, rm, sudo, npm, /tmp binaries
-      - Iterate /proc/$PID/task/*
-      - Issue ptrace(PTRACE_SEIZE) + ptrace(PTRACE_INTERRUPT) to every thread
-      - seccomp-unotify stops only the calling thread
-      - Leader-only seize leaves siblings free to rewrite memory mid-inspection
-      - Full task-group freeze closes check-to-use race
-    - Layer 3: entropy and dynamic linker audit
-      - Shannon entropy computed on argv[1:] only
-        - Excludes argv[0]; low-entropy path would dilute the measurement
-        - Values > 5.2 flag encrypted shell drops or base64 payloads
-      - ELF header parsed directly from disk at trap time
-        - Walks DT_NEEDED entries
-        - Reads PT_INTERP segment
-        - Enumerates libraries the dynamic linker will load
-        - Blocks LD_PRELOAD rootkits
-        - Disk-time scan is correct; /proc/$PID/maps still describes old image
-    - Flow diagram: see artifacts/diagrams/trap-flow.txt
-  - Wire framing
-    - See: artifacts/code/wire-protocol.rs
-    - Binary TLV framing, CBOR payload encoding
-    - Fixed 20-byte header
-      - Magic 0x4B45 ('KE')
-      - Version 0x03
-      - Message Type (u16)
-      - Flags (u16)
-      - Sequence Number (64-bit, two u32 words, MSB first)
-      - Payload Length (u32)
-    - Sequence space
-      - 64-bit unsigned
-      - Shared across GuestToHost and HostToGuest directions
-      - Monotonically increases per vsock connection
-      - Codec reassembles u64 from the two u32 words before payload decode
-  - Wire messages
-    - See: artifacts/code/messages.rs
-    - GuestToHost
-      - TrapEvent: seq, pid, ppid, binary_path, binary_blake3, argv, envp, cwd, ancestor_chain, entropy, loaded_libraries
-      - ProcessExit: pid, exit_code, wall_clock_ns
-      - MemoryPressureWarning: available_mb, total_mb
-      - PortBound: guest_port, protocol
-      - Heartbeat: uptime_ms
-    - HostToGuest
-      - TrapDecision: seq, action
-      - WindowResize: rows, cols, xpixel, ypixel
-      - SendSignal: pid, signal
-      - AdjustBalloon: target_mb
-    - TrapAction variants
-      - Allow: resume syscall untouched; registers and memory never modified
-      - Deny { exit_code, stderr_message }: inject exit code + stderr to agent TTY
-      - Rewrite { new_binary, new_argv, injected_env, tty_notice }: re-execute with substitutions
-      - SuspendForApproval { poll_interval_ms }: hold for human approval
-  - Env injection
-    - Allow cannot mutate guest environment
-      - Registers and memory untouched
-      - A plain Allow decision is by definition a no-op
-    - Handler-side c.env.set(...) reaches guest only through Rewrite
-    - Auto-Rewrite on resume
-      - Handler calls c.env.set(...) then returns Decision.resume()
-      - Runtime auto-converts to TrapAction::Rewrite
-      - new_binary = original_binary
-      - new_argv = original_argv
-      - injected_env = accumulated handler env map
-      - Syscall re-executes through Rewrite path with injected env
-    - This is the only channel for handler-side env changes to reach guest
-```
-
----
-
-## `cans/10-adapters.md`
-
-```markdown
-- Adapters
-  - Ingestion matrix
-    - See: artifacts/diagrams/ingestion-adapters.txt
-    - Five adapter families: MCP, containerd shim v2, OpenShell gRPC, E2B compat, tri-native SDKs
-  - MCP adapter
-    - Binary: @kelir/mcp-server
-    - Command: kelir-mcp
-    - Args: --kernel, --rootfs, --memory-mb
-    - Target clients: Claude Desktop, Cursor, Devin
-    - Bypasses host shell execution entirely
-    - Maps LLM tool calls directly to VirtIO ring operations
-      - execute_command → virtio-console
-      - read_file → virtio-fs
-      - write_file → virtio-fs
-  - Containerd shim v2
-    - Binary: containerd-shim-kelir-v2
-    - Activated via runtimeClassName: kelir in Pod manifests
-    - Pod isolation
-      - Each Pod runs in isolated hardware microVM
-      - Not a Linux cgroup/namespace envelope
-    - PVC storage
-      - Kubernetes PersistentVolumeClaims mount as virtio-fs endpoints
-      - In-flight UID/GID mapping applied
-    - OCI compatibility
-      - Standard OCI images translated to read-only EROFS blocks
-      - Happens during rootfs setup
-  - OpenShell gRPC driver
-    - Binary: openshell-driver-kelir
-    - Implements compute_driver.proto
-    - Served over /var/run/kelir/openshell.sock (UDS)
-    - GPU passthrough via driver-rustvmm
-      - NVIDIA Container Device Interface (CDI) device mapping
-    - Coordinates hardware memory checkpointing and CoW branching
-    - Target: multi-tenant inference tasks
-  - E2B compatibility
-    - TypeScript: @kelir/e2b-compat
-    - Python: kelir.compat.e2b
-    - Preserves existing E2B Sandbox method signatures
-      - Sandbox.create, sandbox.commands.run, sandbox.files, sandbox.pty, sandbox.kill
-    - Replaces remote cloud VM roundtrips with sub-60ms local hardware execution
-    - Drop-in: frameworks built against E2B SDK require no code change
-```
-
----
-
-## `cans/11-operations.md`
-
-```markdown
-- Operations
-  - Execution philosophy
-    - Zero CPU burn
-    - Sub-minute local cycles via just
-    - Maximize GitHub Actions free tier
-      - Public repo: unlimited Linux minutes
-      - Private repo: 2,000 min ceiling
-      - macOS runners: 10x multiplier, scarce concurrency
-  - Local velocity
-    - See: artifacts/config/justfile
-    - Targets: <15s host build, <10s unit tests, sub-minute pre-flight
-    - Requires: just, cargo-nextest, mold (Linux), zig, pnpm, uv
-    - Enforced invariants
-      - build-host excludes kelir-shim
-      - test-unit excludes kelir-shim and driver-libkrun
-      - pre-flight gates every push: fmt, clippy, eslint, nextest, tsc, mypy
-      - shim binary built via cargo zigbuild musl
-  - CI matrix
-    - See: artifacts/config/ci.yml
-    - Constraints
-      - macOS runners scarce and 10x private multiplier
-      - Public repos: free Linux minutes
-    - Strategy
-      - 90% of checks on Linux x86
-      - macOS Apple Silicon jobs limited to compile gate for driver-libkrun
-      - Do not waste runner minutes on full matrix
-    - Enforced invariants
-      - Shim binary < 100KB per architecture
-      - Concurrency cancelled per ref (cancel-in-progress)
-      - sccache enabled via SCCACHE_GHA_ENABLED
-  - Project structure
-    - See: artifacts/config/project-structure.txt
-    - Three language layers
-      - Rust: crates/ via Cargo Workspaces
-      - TypeScript: packages/ts/ via PNPM Workspaces
-      - Python: packages/py/ via UV/Hatch
-    - Five crate families
-      - kelir: facade crate, single Cargo dependency, feature-gated plugins
-      - kelir-core: stripped microkernel (bus, plugin, protocol, vmm, telemetry)
-      - kelir-plugins: five first-class plugins (pty, vfs, wire, chaos, ledger)
-      - kelir-drivers: libkrun, rustvmm, openvmm
-      - kelir-shim: in-guest musl PID 1 (<50KB)
-    - Three adapter crates
-      - containerd-shim, openshell-grpc, mcp-server
-    - Two binding crates
-      - napi, pyo3
-    - Test fixtures
-      - tests/fixtures/kernel: per-arch vmlinux
-      - tests/fixtures/rootfs: EROFS build scripts
-      - tests/fixtures/payloads: high-entropy trap test binaries
-```
-
----
-
-## Fixups required on already-produced files
-
-Six cosmetic edits. Each is a one-line change; none touches prose content.
-
-**1. `cans/04-terminal-plane.md`** — anchor fix
-```
-- Pipeline
-→
-- Terminal pipeline
-```
-Reason: `00-overview.md` references `#Terminal-pipeline`.
-
-**2. `cans/05-storage-plane.md`** — anchor fix + back-pointer removal
-```
-- Snoop plane (see also 08-epistemic.md#Three-tier-truth)
-→
-- Snoop plane
-```
-Reason: `08-epistemic.md` references `#Snoop-plane`; `_rules.yaml` sets `back_pointers: false`.
-
-**3. `cans/01-architecture.md`** — orphan prevention, four additions:
-
-Under `- Radical plugin-first microkernel`, append:
-```
-- See: 02-plugin-model.md#KelirPlugin-trait
-```
-
-Under `- virtio-net wire plane: L4/L7 traffic, secrets, chaos`, append:
-```
-- Details: see 06-wire-plane.md#Wire-architecture
-```
-
-Under `- VmmDriver trait` → `- Primitives`, replace the trailing `- terminate: ...` bullet's section with an added summary bullet:
-```
-- Session-level semantics: see 07-lifecycle.md#Superpowers
-```
-
-Under `- Params ingress contract` → `- Single-variable injection`, append:
-```
-- Mechanism: see 09-protocol.md#Env-injection
-```
-
-Under `- Guest VM anatomy` → `/sbin/kelir-shim`, append:
-```
-- Interception mechanism: see 09-protocol.md#Trap-fast-path
-```
-
-**4. `cans/10-adapters.md`** — first bullet self-references 03 (which is canonical). Change:
-```
-- Five adapter families: MCP, containerd shim v2, OpenShell gRPC, E2B compat, tri-native SDKs
-→
-- Five adapter families: MCP, containerd shim v2, OpenShell gRPC, E2B compat, tri-native SDKs
-- Tri-native SDKs are canonical in 03-sdk-architecture.md; not repeated here
-```
-
-**5. `cans/00-overview.md`** — spec map contains prose references; convert the two adapter/ops entries to real `see:` so `10` and `11` are not orphan-flagged:
-```
-- Ecosystem and ops: 10-adapters.md, 11-operations.md
-→
-- Ecosystem and ops
-  - Ecosystem ingestion: see 10-adapters.md#Ingestion-matrix
-  - Build, CI, layout: see 11-operations.md#Execution-philosophy
-```
-
-**6. `cans/09-protocol.md`** — first bullet under `- Control channel` overlaps `01#Guest-VM-anatomy` shim port bindings. Add one pointer, no content change:
-```
-- Windows driver-openvmm: HV_SOCKET translates the same channels
-→
-- Windows driver-openvmm: HV_SOCKET translates the same channels
-- Shim binding site: see 01-architecture.md#Guest-VM-anatomy
-```
-
----
-
-## `cans check --refs-only` — hand-traced dry run
-
-I cannot execute the tool, so this is a manual verification against `_rules.yaml` (`references.max_hops: 1`, `orphan_check: true`, `duplicate_home_check: true`).
-
-### Anchor resolution
-
-| Reference | Resolves to | Status |
+| My draft | Correct form | Rule |
 |---|---|---|
-| `01#Axiomatic-foundations` | `- Axiomatic foundations` | ✓ |
-| `01#Params-ingress-contract` | `- Params ingress contract` | ✓ |
-| `01#VmmDriver-trait` | `- VmmDriver trait` | ✓ |
-| `01#Guest-VM-anatomy` | `- Guest VM anatomy` | ✓ |
-| `02#KelirPlugin-trait` | `- KelirPlugin trait` | ✓ |
-| `03#Params-typed-views` | `- Params typed views` | ✓ |
-| `03#Python-SDK` | `- Python SDK` | ✓ |
-| `04#Terminal-pipeline` | after fixup 1 | ✓ (currently broken) |
-| `05#Storage-architecture` | `- Storage architecture` | ✓ |
-| `05#Snoop-plane` | after fixup 2 | ✓ (currently ugly-slug) |
-| `06#Wire-architecture` | `- Wire architecture` | ✓ |
-| `07#Superpowers` | `- Superpowers` | ✓ |
-| `07#CoW-fork` | `- CoW fork` | ✓ |
-| `08#Three-tier-truth` | `- Three-tier truth` | ✓ |
-| `08#Merkle-WAL` | `- Merkle WAL` | ✓ |
-| `08#Step-evaluation-loop` | `- Step evaluation loop` | ✓ |
-| `09#Env-injection` | `- Env injection` | ✓ |
-| `09#Trap-fast-path` | `- Trap fast-path` | ✓ |
-| `10#Ingestion-matrix` | `- Ingestion matrix` | ✓ |
-| `11#Execution-philosophy` | `- Execution philosophy` | ✓ |
-| `cans/artifacts/**` (30 files) | artifacts/ tree | ✓ |
+| `see 02#KelirPlugin-trait` | `see 02-plugin-model.md#KelirPlugin-trait` | File `.md` extension required; `#` separates file from anchor |
+| `see 08#Oracle` | *(removed — forward ref)* | `orphan_check: true` forbids pointers to non-existent nodes |
+| `see 10#MCP-plugin` | *(removed — forward ref)* | Same; `#MCP-plugin` lands in Part 5 |
+| `session.causal_delta(): see 08#Merkle-WAL` | `session.get_causal_delta_from_parent(): see 08-epistemic.md#Causal-delta` | Wrong anchor; `causal delta` has its own node, distinct from Merkle WAL |
+| `Examples: Oracle impls` as pointer-bearing | `Examples: user-implemented Oracle` (prose only, no `see:`) | Naming a concept without a spec node must not look like a pointer |
 
-All artifact paths must exist under `cans/artifacts/` after the artifact-creation step (batch 0 in the plan). None of the spec content refers to artifacts not yet on disk.
+**Confirmed correct in draft** (these were right): lowercase `see <target>` for internal cross-refs (per `00-overview.md`); capital `See: artifacts/...` for artifact refs (N/A in this patch); every remaining anchor maps to an existing node (`#VmmDriver-trait`, `#KelirPlugin-trait`, `#Static-dispatch`, `#Four-Ring-Bus`, `#Params-ingress-contract`, `#Guest-VM-anatomy`, `#Execution-receipts`, `#Step-evaluation-loop`, `#Wire-framing`, `#Wire-messages`, `#Trap-fast-path`, `#Env-injection`, `#EROFS-rootfs`, `#Reconciler`, `#Terminal-plane`, `#Wire-plane`, `#Merkle-WAL`, `#Causal-delta`, `#Project-structure` — all verified against the dump).
 
-### Orphan check (post-fixup)
+## Corrected Part 1
 
-Every non-entry CANS file has at least one inbound `see:`:
+Also dropping `requires()` from `#Trait-surface` — the artifact `plugin-trait.rs` doesn't have it, so declaring it in the spec puts 02 and the artifact out of sync until Part 2 lands. Cleaner: `#Trait-surface` names `priority()` (Part 2 adds both); `requires()` appears only in `#Static-dispatch` as a boot consequence.
 
-| File | Inbound reference from |
-|---|---|
-| `01` | `00`, `03`, `07`, `09` |
-| `02` | `01` (fixup 3) |
-| `03` | `01`, `07`, `10` (fixup 4) |
-| `04` | `00` |
-| `05` | `00`, `08` |
-| `06` | `01` (fixup 3) |
-| `07` | `01` (fixup 3) |
-| `08` | `00`, `07` |
-| `09` | `01` (fixup 3), `09` (fixup 6 — self, ignores) |
-| `10` | `00` (fixup 5) |
-| `11` | `00` (fixup 5) |
-| `00` | root entry point, no inbound |
+### `cans/01-architecture.md`
 
-`00` is the sanctioned root. Without the five fixups, `02`, `06`, `07`, `09`, `10`, `11` would all fail `orphan_check: true`.
+```diff
+--- a/cans/01-architecture.md
++++ b/cans/01-architecture.md
+@@ -17,6 +17,7 @@
+       - Radical plugin-first microkernel
+         - Core drives hardware virtualization and multiplexes the 4 VirtIO rings
+         - Every capability is a decoupled, composable plugin
++        - Exception fence: only 01-architecture.md#Core-invariants primitives are core-owned
+       - Transparent truthful steering
+         - Intercepted I/O is allowed, steered with tty_notice, or rejected
+         - No silent state divergence
+@@ -27,6 +28,38 @@
+         - Guest reads KELIR_PARAMS like any other environment variable
+         - No guest-side SDKs, CLI shims, or agents
++  - Capability taxonomy
++    - Four categories; every capability falls into exactly one
++    - Core primitive
++      - Hardware/protocol invariant, no policy
++      - Enumerated as pointers in 01-architecture.md#Core-invariants
++    - Interface
++      - User-supplied contract, no composition requirement
++      - Examples: user-implemented Oracle, pluggable VmmDriver backends
++      - Documented at the owning plane node
++    - Adapter binary
++      - Contract-bound process on the wire
++      - Examples: containerd-shim-v2, MCP stdio
++      - Translation logic delegated to a plugin the binary loads
++    - Plugin
++      - External input mapping, or policy over a core primitive
++      - Declares priority(): see 02-plugin-model.md#KelirPlugin-trait
++      - Owns crate, tests, fixtures, examples: see 02-plugin-model.md#Plugin-ownership
++    - Decision test
++      - Invariant with no policy? → core primitive
++      - User contract with no composition? → interface
++      - Wire contract with a process boundary? → adapter binary
++      - Otherwise → plugin
++  - Core invariants
++    - The closed set. Everything not pointed to here is a plugin.
++    - Trait definitions
++      - KelirPlugin: see 02-plugin-model.md#KelirPlugin-trait
++      - VmmDriver: see 01-architecture.md#VmmDriver-trait
++    - Context types: see 09-protocol.md#Wire-messages
++    - Wire framing: see 09-protocol.md#Wire-framing
++    - Dispatch loop: see 02-plugin-model.md#Static-dispatch
++    - 4-ring routing: see 01-architecture.md#Four-Ring-Bus
++    - Params ingress + auto-Rewrite: see 01-architecture.md#Params-ingress-contract
++    - Receipts: see 08-epistemic.md#Execution-receipts
++    - StepSlot: see 08-epistemic.md#Step-evaluation-loop
++    - Shim primitives: see 01-architecture.md#Guest-VM-anatomy
++    - EROFS mount: see 05-storage-plane.md#EROFS-rootfs
+   - Four-Ring Bus
+```
 
-### Duplicate-home check
+### `cans/02-plugin-model.md`
 
-Concepts that appear in multiple files:
+```diff
+--- a/cans/02-plugin-model.md
++++ b/cans/02-plugin-model.md
+@@ -1,60 +1,128 @@
+ - Plugin model
+   - KelirPlugin trait
+     - See: artifacts/code/plugin-trait.rs
+     - Async trait implemented by all subsystems, internal and third-party
+-    - Five hook families across the 4 VirtIO rings
+-      - Lifecycle: on_vm_init, on_vm_ready, on_vm_shutdown
+-      - Control plane (vsock): on_trap, on_process_exit
+-      - Terminal plane (console): on_pty_input, on_pty_output
+-      - Storage plane (fs): on_vfs_lookup, on_vfs_read, on_vfs_write
+-      - Wire plane (net): on_net_outbound, on_net_inbound
++    - Trait surface
++      - name() -> &'static str: unique identifier
++      - priority() -> u8: dispatch ordering; lower = earlier
++    - Hook families across the 4 VirtIO rings
++      - Lifecycle: on_vm_init, on_vm_ready, on_vm_shutdown
++      - Control plane (vsock)
++        - on_trap, on_process_exit
++        - on_memory_pressure, on_heartbeat, on_port_bound
++        - on_signal_send, on_watchdog
++      - Terminal plane (console)
++        - on_pty_input, on_pty_output
++        - on_window_resize, on_disclosure
++      - Storage plane (fs): on_vfs_lookup, on_vfs_read, on_vfs_write
++      - Wire plane (net): on_net_outbound, on_net_inbound
++    - Hook context restriction
++      - Every hook receives HandlerCtx or a restricted lifecycle context
++      - No hook receives &mut Box<dyn VmmDriver> or &Session
++      - LifecycleCtx exposes: set_watchdog, adjust_balloon, register_veto
+     - VfsInodeAttr carries full mode, uid, gid, size, content
+       - Populated verbatim into FUSE LOOKUP replies
+       - Ghost inodes honor mode: 0o400 exactly, no permission fallback
+     - Plane semantics
+       - Wire plane fully bidirectional: outbound and inbound mutation points
+       - Storage plane fully attributed: on_vfs_write carries PID and HandlerCtx
++      - Control plane messages hook-observable; nothing bypasses the graph
+   - Static dispatch
+     - Plugins compiled into flat contiguous dispatch array at boot
+-    - Evaluated in strict priority order
++    - Evaluated in priority() order; ties broken by declaration order
++    - requires() validated at boot; missing dep aborts boot with EConfig
+     - First Deny or Rewrite halts pipeline, dispatches over AF_VSOCK
+     - Sub-12 microsecond hook execution
+-  - Five canonical plugins
++    - on_trap_deny is builder-level, not a plugin hook
++      - Deny-observation composition is a user concern
++  - Core context keys
++    - Routing table; each key's semantics live at the owning node
++    - Core-provided (always present)
++      - c.trap: see 09-protocol.md#Trap-fast-path
++      - c.env: see 09-protocol.md#Env-injection
++      - c.vm: see 01-architecture.md#VmmDriver-trait
++      - c.step: see 08-epistemic.md#Step-evaluation-loop
++      - c.receipt(): see 08-epistemic.md#Execution-receipts
++    - Plugin-provided (present only when the plugin is mounted)
++      - c.term: plugin-pty
++      - c.fs: plugin-vfs
++      - c.ledger: plugin-ledger
++      - c.wire: plugin-wire
++      - c.chaos: plugin-chaos
++    - User-provided via typed handle
++      - c.<key>: from .decorate() / PluginWithHandle / BasePlugin.handle()
++    - Rule: disabling a plugin removes its key at compile/type/import time
++  - First-class plugins
+     - plugin-pty: virtio-console, ANSI sanitizer, Token Shield, prompt responder
+     - plugin-vfs: virtio-fs, ghost inodes, maskRead, reconciler, lock broker
+-    - plugin-wire: L7 proxy, SOCKS5, SSH gate, DNS sinkhole
++    - plugin-wire: L7 proxy, SOCKS5, SSH gate, DNS sinkhole, port forwarding
+     - plugin-chaos: bidirectional wire jitter/drop, VFS ENOSPC injection
+     - plugin-ledger: Merkle WAL, causal delta, OpenTelemetry traceparent
++    - Minimum five above; ecosystem additions per 02-plugin-model.md#Plugin-ownership
++    - Session capability surface: attributed per plane
++      - session.fs.*: see 05-storage-plane.md#Reconciler
++      - session.term.*, session.break_glass(): see 04-terminal-plane.md#Terminal-plane
++      - session.wire.*, session.forward_port(): see 06-wire-plane.md#Wire-plane
++      - session.ledger.*: see 08-epistemic.md#Merkle-WAL
++      - session.get_causal_delta_from_parent(): see 08-epistemic.md#Causal-delta
++  - Plugin ownership
++    - Contract, not layout; see 11-operations.md#Project-structure for crate layout
++    - Dependency rules
++      - Depends on kelir-core (traits, context types) only
++      - Depends on plugin-testkit as dev-dependency
++      - Never depends on crates/kelir facade
++      - Never depends on another plugin at build time
++      - Runtime coordination via requires() and core context keys
++    - Decoupling test
++      - Remove the plugin → remaining plugins build and test green
++      - A failing plugin's tests are attributable to that plugin alone
++  - Plugin testkit
++    - New crate: crates/kelir-plugin-testkit/
++    - Provides
++      - MockVmmDriver (checkpoint, fork, rollback without RAM)
++      - MockBusDispatcher (records ring messages per plane)
++      - HandlerCtx constructors from synthetic TrapEvent
++      - Assertions: assert_rewrite, assert_deny, assert_env_injected
++    - Depends only on kelir-core
++    - Every plugin's tests depend on it; nothing else does
++    - Not runtime: test infrastructure only
+   - Language parity
+     - See: artifacts/diagrams/sdks-invariants.txt
+-    - Same five plugins in Rust, TypeScript, Python, maintained 1:1
++    - Same first-class plugins in Rust, TypeScript, Python, maintained 1:1
+     - Trait surface and hook semantics identical across languages
+-    - Rust: plugin_with_handle → typed handle; unmounted plugin breaks build
+-    - TypeScript: type-level accumulation; missing .use() fails tsc
+-    - Python: plugin_with_handle yields typed handle; missing handle fails import
++    - Typed-handle mechanism, realized per language
++      - Rust: PluginWithHandle::Handle; missing builder call → E0425
++      - TypeScript: createPlugin().state().decorate(); no .use() → tsc error
++      - Python: BasePlugin[Handle] + handle(); no handle → NameError at import
++    - All three realize the same 02-plugin-model.md#Core-context-keys contract
+```
 
-| Concept | Canonical | Referenced from |
+## Anchor verification
+
+Every `see:` target in the corrected patch, checked against the dump:
+
+| Pointer | Node exists? | File |
 |---|---|---|
-| CoW fork | `07#CoW-fork` (session semantics) | `01#VmmDriver-trait` (primitive definition — complementary, not duplicate) |
-| Snoop | `05#Snoop-plane` | `08#Three-tier-truth` — pointer, no restatement of FOPEN_DIRECT_IO or fuse_reply_err ✓ |
-| Receipts | `08#Execution-receipts` + artifact | example files (terminal) ✓ |
-| KELIR_PARAMS | `01#Params-ingress-contract` | `09#Env-injection` covers *mechanism* only; not duplicated ✓ |
-| BPF/anti-TOCTOU | `09#Trap-fast-path` | `01#Guest-VM-anatomy` shim bullet (one-line summary + `see:` after fixup 3) ✓ |
-| Shard ports 5252/5253 | `01#Guest-VM-anatomy` binds them; `09#Control-channel` describes flow over them | Complementary ✓ |
-| Five plugins | `02#Five-canonical-plugins` | `11#Project-structure` names them (one line, structural fact) ✓ |
-| Driver backends | `01#Driver-backends` | `11#Project-structure` names them (one line, structural fact) ✓ |
-
-No file contains a full restatement of another file's concept. The two "shared name" cases (`plugin list`, `driver list`) are structural facts, not behavior descriptions.
-
-### Hop-depth check (`max_hops: 1`)
-
-Longest chains:
-
-- `00 → 04#Terminal-pipeline` (1 hop) ✓
-- `00 → 08#Three-tier-truth → 05#Snoop-plane` (2 hops — **only if** a reader chooses to follow the `see:` from 08; the reader stops at 08, per AGENTS.md "follow `see:` ONE hop"). This is the intended use pattern. AGENTS.md explicitly says: *"read canonical home → follow `see:` ONE hop. Never chain."* Following 08's `see:` to 05 is *the reader's* second navigation — it's not a chain because 05 does not issue a further `see:` to 06 or beyond. ✓
-- `00 → 01#VmmDriver-trait → 07#Superpowers` (1 hop from spec-root) ✓
-- `01 → 09#Trap-fast-path` — `09` issues no `see:` back to `01` ✓
-
-No violation of `max_hops: 1`.
-
-### Node length / sibling / depth (`structure` block)
-
-Hand-checked: max sibling count = `05-storage-plane.md` (10 siblings), within `max: 15`. Max node length < 90 chars across all files. Max depth 4 (`- X / - Y / - Z / - W`), within `max: 10`. No violation.
-
-### Predicted tool output
-
-```
-cans check --refs-only
-  ✓ anchors        21/21 resolve
-  ✓ orphans        0 (post 5 fixups)
-  ✓ duplicate-home 0
-  ✓ hops           max observed 1
-  ✓ structure      siblings 4-10, depth ≤4, node_length ≤90
-  ✓ style          no filler levels
-
-  artifacts:       30 files under cans/artifacts/ (expected)
-  refs-only mode:  example files (3), code files (11), config (3), diagrams (13)
-```
-
-Without the six fixups, the tool would report:
-
-```
-ERROR [E-ANCHOR-02]  00-overview.md  see: 04-terminal-plane.md#Terminal-pipeline
-                     -> target node not found (slug: Pipeline)
-ERROR [E-ANCHOR-02]  08-epistemic.md see: 05-storage-plane.md#Snoop-plane
-                     -> target node not found (slug: Snoop-plane-(see-also-...))
-WARN  [W-ORPHAN]     02-plugin-model.md   no inbound reference
-WARN  [W-ORPHAN]     06-wire-plane.md     no inbound reference
-WARN  [W-ORPHAN]     07-lifecycle.md      no inbound reference
-WARN  [W-ORPHAN]     09-protocol.md       no inbound reference
-WARN  [W-ORPHAN]     10-adapters.md       no inbound reference
-WARN  [W-ORPHAN]     11-operations.md     no inbound reference
-```
-
-All resolved by the fixups.
-
----
-
-## Final tracking
-
-**Produced (12 CANS files):**
-`00`, `01`, `02`, `03`, `04`, `05`, `06`, `07`, `08`, `09`, `10`, `11`
-
-**Deleted (5 template skeleton files):**
-`02-authentication.md`, `03-data.md`, `04-api.md`, `05-frontend.md`, `06-operations.md` (names reclaimed by domain files above; `03` and `05` were literally reused, `02`/`04`/`06` were dropped and their domains re-homed into new `02`/`04`/`06`)
-
-**Artifacts required before `cans check` is green:**
-
-```
-cans/artifacts/
-  README.md
-  examples/{autonomous-swe-agent.rs,.ts,.py}     (moved from repo root)
-  code/{vmm-driver-trait,plugin-trait,wire-protocol,messages,
-        execution-receipt,causal-delta,reconciler,
-        rust-handle-injection,step-evaluation-loop}.rs/.ts
-  code/{typescript-accumulation}.ts
-  code/{python-raii-pydantic}.py
-  config/{justfile,ci.yml,project-structure.txt}
-  diagrams/{four-ring-bus,host-runtime,guest-vm,target-audience,
-            terminal-pipeline,storage-architecture,wire-plane,
-            trap-flow,truth-hierarchy,lifecycle-bridge,superpowers,
-            sdks-invariants,ingestion-adapters}.txt
-```
-
-That's 27 files (not 24 — recount: 3 examples + 11 code + 3 config + 13 diagrams = 30; minus the 3 already-existing example files which just move = 27 *new* files, 3 *moved* files. Adjust the check report's "24" to "30 total artifacts (3 moved, 27 created)").
-
-**Not touched:**
-`_collab/{conflicts,decisions,handoffs}.md` remain empty stubs per plan. `_rules.yaml` unmodified. `AGENTS.md` unmodified (the artifacts note is deferred — can add later as a one-paragraph edit if `cans check` complains about artifact `see:` semantics).
-
-**Next concrete action**, whenever you want to execute: run the six fixups, create `cans/artifacts/`, move the three examples, run `cans check --refs-only` for real.
-
-# Batch A — `cans/artifacts/README.md`, configs, and code references
-
-15 files. Diagrams (13) + example moves are next batch.
-
----
-
-## `cans/artifacts/README.md`
-
-```markdown
-# artifacts/
-
-Terminal references for the kelir CANS spec in `../`.
-
-## What lives here
-
-| Directory | Contents |
-|---|---|
-| `code/` | Standalone source files extracted from the spec: traits, structs, protocol definitions, SDK usage examples |
-| `config/` | Build and CI configuration: justfile, GitHub Actions workflow, project tree |
-| `diagrams/` | ASCII architecture diagrams that do not fit cleanly as CANS nodes |
-| `examples/` | Full-surface SDK consumer examples (moved from repo root during CANS migration) |
-
-## What does not live here
-
-- CANS spec nodes — those are in `../`
-- Anything with an outbound reference — artifacts are terminal by design
-
-## Convention
-
-Every artifact is referenced from `cans/` via `see:` with a **relative** path:
-
-```
-cans/01-architecture.md       →  see: artifacts/code/vmm-driver-trait.rs
-cans/04-terminal-plane.md     →  see: artifacts/diagrams/terminal-pipeline.txt
-cans/03-sdk-architecture.md   →  see: artifacts/examples/autonomous-swe-agent.rs
-```
-
-- `cans check` treats every artifact pointer as a **0-hop** reference
-- Artifacts are never spec-edited during a CANS migration; they are frozen reference material
-- An artifact may contain inline file-level comments pointing back to canonical spec nodes, but the artifact itself issues no CANS reference
-- One artifact may be referenced from multiple spec nodes (no duplication)
-
-## Editing rules
-
-1. Never edit a spec concept inside an artifact — move the concept to a CANS node and reference it
-2. Never duplicate a spec concept across multiple artifacts
-3. Never create an artifact with no inbound `see:` — orphans are dead weight
-4. An artifact that is not verbatim source (e.g. an SDK usage excerpt) is marked with a top-of-file comment stating it is illustrative, not standalone-compilable
-```
-
----
-
-## `cans/artifacts/config/justfile`
-
-```just
-# kelir development orchestrator
-set shell := ["bash", "-uc"]
-
-default:
-    @just --list
-
-# --- 1. SETUP & TOOLCHAINS ---
-bootstrap:
-    cargo install cargo-nextest sccache --locked
-    rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
-    pnpm install --frozen-lockfile
-    uv venv && uv pip install -e "packages/py[dev]"
-
-# --- 2. LIGHTNING BUILD (<15s) ---
-# Compiles host core using mold/lld linker and sccache
-build-host:
-    RUSTC_WRAPPER=sccache cargo build --workspace --exclude kelir-shim
-
-# Compiles static 50KB in-guest musl init binary
-build-shim target="aarch64-unknown-linux-musl":
-    cargo zigbuild -p kelir-shim --release --target {{target}}
-    @ls -lh target/{{target}}/release/kelir-shim
-
-# Builds TS napi bindings
-build-ts:
-    pnpm --filter @kelir/core build
-
-# --- 3. RAPID TEST ENGINE (<10s) ---
-# Fast unit tests ignoring hardware-dependent hypervisor paths
-test-unit:
-    cargo nextest run --workspace --exclude kelir-shim --exclude driver-libkrun -E 'not test(test_hw_)'
-
-# Runs anti-TOCTOU, PTRACE_SEIZE, and zombie reaper tests in isolated container/namespaces
-test-shim:
-    cargo nextest run -p kelir-shim
-
-# Full TS context accumulation & type checking
-typecheck:
-    pnpm -r exec tsc --noEmit
-    uv run mypy packages/py
-
-# --- 4. PRE-FLIGHT CHECK (Run before git push) ---
-pre-flight: build-shim
-    cargo fmt --all -- --check
-    cargo clippy --workspace --exclude kelir-shim -- -D warnings
-    pnpm -r exec eslint .
-    just test-unit
-    just typecheck
-```
-
----
-
-## `cans/artifacts/config/ci.yml`
-
-```yaml
-name: CI
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-concurrency:
-  group: ${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  CARGO_TERM_COLOR: always
-  SCCACHE_GHA_ENABLED: "true"
-  RUST_BACKTRACE: 1
-
-jobs:
-  # ─── 1. FAST STATIC GATE (<90s) ────────────────────────────
-  lint-and-types:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 9
-      - uses: astral-sh/setup-uv@v2
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: mozilla-actions/sccache-action@v0.0.5
-
-      - name: Rust Lints
-        run: |
-          cargo fmt --all --check
-          cargo clippy --workspace --exclude kelir-shim -- -D warnings
-
-      - name: Type Checks (TS & Python)
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm -r exec tsc --noEmit
-          uv venv && uv pip install -e "packages/py[dev]"
-          uv run mypy packages/py
-
-  # ─── 2. GUEST SHIM CROSS-COMPILE ────────────────────────────
-  build-guest-shim:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: mozilla-actions/sccache-action@v0.0.5
-      - uses: taiki-e/install-action@cargo-zigbuild
-      - name: Build Shim via Zig Linker
-        run: cargo zigbuild -p kelir-shim --release --target ${{ matrix.target }}
-      - name: Verify Size (<100KB binary constraint)
-        run: |
-          SIZE=$(stat -c%s target/${{ matrix.target }}/release/kelir-shim)
-          echo "Shim size: $SIZE bytes"
-          test $SIZE -lt 102400 || (echo "SHIM BLOAT DETECTED" && exit 1)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: kelir-shim-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/kelir-shim
-
-  # ─── 3. HOST LINUX TESTS (KVM Mocked) ──────────────────────
-  test-linux:
-    needs: [lint-and-types, build-guest-shim]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@nextest
-      - uses: mozilla-actions/sccache-action@v0.0.5
-      # Integration tests live in the kelir facade crate test target (crates/kelir/tests)
-      - name: Run Nextest Unit Suite
-        run: cargo nextest run --workspace --exclude kelir-shim --exclude driver-libkrun
-
-  # ─── 4. MACOS APPLE SILICON GATE (Zero Bloat) ──────────────
-  check-macos-hvf:
-    needs: [lint-and-types]
-    runs-on: macos-14 # Apple Silicon M1 (Free tier on GitHub Actions for public repos)
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: mozilla-actions/sccache-action@v0.0.5
-      # Only verify compilation of Apple Silicon HVF driver; do not waste runner minutes on full matrix
-      - name: Check HVF libkrun driver
-        run: cargo check -p driver-libkrun
-```
-
----
-
-## `cans/artifacts/config/project-structure.txt`
-
-```
-kelir/
-├── .github/
-│   └── workflows/
-│       ├── ci.yml                     # Unified fast CI (Lint, Typecheck, Cross-Shim, KVM test)
-│       └── release.yml                # Automated binary stripping, NPM & PyPI publishing
-│
-├── justfile                           # Zero-friction local development commands
-├── Cargo.toml                         # Root Cargo workspace manifest (Rust 2024 / MSRV 1.85+)
-├── Cargo.lock
-├── pnpm-workspace.yaml                # PNPM workspace definition
-├── package.json                       # Root devDependencies (Turborepo/Biome/TypeScript)
-├── pyproject.toml                     # Root Python configuration (Ruff/Mypy/Hatchling)
-│
-├── crates/                            # ── RUST SYSTEMS LAYER ──
-│   │
-│   ├── kelir/                         # Facade crate: single Cargo dependency re-exporting kelir-core + feature-gated kelir-plugins/*
-│   │   ├── Cargo.toml
-│   │   ├── src/
-│   │   │   └── lib.rs                 # Re-export surface: kelir-core API + feature-gated plugin modules (pty, vfs, wire, chaos, ledger)
-│   │   └── tests/                     # Integration tests (kelir crate test target)
-│   │       ├── test_cow_fork.rs       # Verifies userfaultfd / HVF memory cloning in <15ms
-│   │       ├── test_rollback.rs       # Verifies hardware rollback in <8ms
-│   │       ├── test_whiteout.rs       # Verifies reconciler converts c 0 0 into host unlink()
-│   │       └── test_anti_toctou.rs    # Concurrent thread execution race testing
-│   │
-│   ├── kelir-core/                    # In-process stripped microkernel
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs                 # Core initialization exports
-│   │       ├── step.rs                # StepSlot typed checkpoint store (c.step.mark / c.step.last)
-│   │       ├── bus/                   # 4-Ring VirtIO Hardware Multiplexer
-│   │       │   ├── mod.rs             # BusDispatcher trait
-│   │       │   ├── console.rs         # Ring 1: Raw terminal stream broker
-│   │       │   ├── vsock.rs           # Ring 2: Syscall trap & IPC multiplexer
-│   │       │   ├── fs.rs              # Ring 3: virtio-fs in-memory bridge
-│   │       │   └── net.rs             # Ring 4: virtio-net frame interception
-│   │       ├── plugin.rs              # KelirPlugin trait & static dispatch pipeline
-│   │       ├── protocol/              # Wire framing between Host and Shim
-│   │       │   ├── mod.rs
-│   │       │   ├── codec.rs           # 0x4B45 binary TLV framing parser
-│   │       │   └── messages.rs        # TrapEvent, TrapAction, WindowResize CBOR models
-│   │       ├── vmm/                   # Driver orchestration
-│   │       │   ├── mod.rs
-│   │       │   ├── driver.rs          # VmmDriver trait (boot, fork, checkpoint, rollback)
-│   │       │   └── router.rs          # Dynamic backend loader (libkrun vs rustvmm)
-│   │       └── telemetry/             # Hardware verification engines
-│   │           ├── mod.rs
-│   │           ├── receipt.rs         # Cryptographic ExecutionReceipt (BLAKE3, dirty pages)
-│   │           └── delta.rs           # CausalDelta state diff computer
-│   │
-│   ├── kelir-shim/                    # In-guest Musl static binary (<50KB payload)
-│   │   ├── Cargo.toml                 # Configured with lto = "fat", opt-level = "z", panic = "abort"
-│   │   └── src/
-│   │       ├── main.rs                # Guest PID 1 init loop (binds vsock:5252 control + vsock:5253 ingress, mounts devpts, waitpid(-1, WNOHANG) reaper)
-│   │       ├── reaper.rs              # Non-blocking waitpid(-1, WNOHANG) zombie reclamation loop
-│   │       ├── ingress.rs             # vsock:5253 ingress multiplexer → guest loopback TCP proxy
-│   │       ├── pty_broker.rs          # openpty() master/slave broker: setsid() + TIOCSCTTY controlling terminals
-│   │       ├── trap.rs                # seccomp-unotify loop + all-threads PTRACE_SEIZE/INTERRUPT anti-TOCTOU
-│   │       ├── entropy.rs             # Shannon entropy on argv[1:] payload
-│   │       ├── audit.rs               # ELF static scan (DT_NEEDED, PT_INTERP) + LD_PRELOAD verification
-│   │       └── vsock.rs               # /dev/vhost-vsock hardware client socket
-│   │
-│   ├── kelir-drivers/                 # Pluggable Virtualization Implementations
-│   │   ├── driver-libkrun/            # dalangHQ libkrun fork: userfaultfd CoW fork (<15ms), GPA snapshot engine (<8ms), clock skew patches — macOS HVF default
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/lib.rs             # libkrun C-FFI bindings
-│   │   ├── driver-rustvmm/            # Bare-metal Linux KVM + CUDA CDI passthrough
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/lib.rs             # kvm-ioctls & userfaultfd CoW memory implementation
-│   │   └── driver-openvmm/            # Windows WHP + ConPTY + HV_SOCKET
-│   │       ├── Cargo.toml
-│   │       └── src/lib.rs             # Microsoft WHP & MSHV hypervisor implementation
-│   │
-│   ├── kelir-plugins/                 # Modular First-Class Rust Plugins
-│   │   ├── plugin-pty/                # virtio-console broker, ANSI sanitizer, Token Shield
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/
-│   │   │       ├── lib.rs
-│   │   │       ├── ansi.rs            # Drop OSC 52 clipboard & OSC 0/1/2 title sequences
-│   │   │       ├── responder.rs       # onPrompt engine matching ANSI-stripped plaintext (foreground-verified)
-│   │   │       └── shield.rs          # UTF-8/ANSI boundary-safe head-and-tail token clamping
-│   │   ├── plugin-vfs/                # virtio-fs engine, Ghost Inodes, in-flight read masking
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/
-│   │   │       ├── lib.rs
-│   │   │       ├── mask.rs            # In-flight read masking (MaskRule regex redaction, fixed-width)
-│   │   │       ├── ghost.rs           # Synthetic RAM-only inode injector (VfsInodeAttr: mode/uid/gid/size)
-│   │   │       ├── reconciler.rs      # Host-boundary reconciliation: c 0 0 whiteouts + opaque dirs → atomic host sync (session.fs.reconcile())
-│   │   │       ├── idmap.rs           # FUSE dynamic UID/GID translation (0 -> geteuid())
-│   │   │       └── lock_broker.rs     # Cross-VM lock broker keyed on host-mapped physical inodes
-│   │   ├── plugin-wire/               # Zero-Knowledge credential proxy & DNS Sinkhole
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/
-│   │   │       ├── lib.rs
-│   │   │       ├── l7_proxy.rs        # Plaintext swap prior to outbound TLS handshake
-│   │   │       ├── l4_socks.rs        # Database connection proxy (mTLS & dynamic auth)
-│   │   │       ├── ssh_gate.rs        # Secure Enclave host SSH-Agent forwarder
-│   │   │       └── dns.rs             # Port 53 UDP interception & NXDOMAIN sinkhole
-│   │   ├── plugin-chaos/              # Fault Injection Engine
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/lib.rs             # Network jitter/drop & VFS ENOSPC simulation
-│   │   └── plugin-ledger/             # Compliance & Audit Trail
-│   │       ├── Cargo.toml
-│   │       └── src/
-│   │           ├── lib.rs
-│   │           ├── wal.rs             # Append-only Merkle-chained SQLite/DuckDB WAL
-│   │           └── otel.rs            # W3C traceparent context propagator
-│   │
-│   ├── kelir-adapters/                # Ecosystem Interoperability
-│   │   ├── containerd-shim/           # containerd-shim-v2 implementation for K8s
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/main.rs
-│   │   ├── openshell-grpc/            # NVIDIA OpenShell compute_driver.proto bridge
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/main.rs
-│   │   └── mcp-server/                # Model Context Protocol stdio terminal server
-│   │       ├── Cargo.toml
-│   │       └── src/main.rs
-│   │
-│   └── kelir-bindings/                # FFI Translation Layers
-│       ├── napi/                      # Rust -> Node.js NAPI-RS bridge
-│       │   ├── Cargo.toml
-│       │   └── src/lib.rs
-│       └── pyo3/                      # Rust -> Python PyO3 bridge
-│           ├── Cargo.toml
-│           └── src/lib.rs
-│
-├── packages/                          # ── LANGUAGE SDK DISTRIBUTION ──
-│   │
-│   ├── ts/                            # TypeScript Monorepo Packages
-│   │   ├── core/                      # @kelir/core
-│   │   │   ├── package.json
-│   │   │   ├── tsconfig.json
-│   │   │   └── src/
-│   │   │       ├── index.ts           # kelir() builder entrypoint
-│   │   │       ├── context.ts         # Generic accumulation context engine
-│   │   │       ├── schema.ts          # TypeBox command validation wrappers
-│   │   │       └── binding.ts         # Auto-generated NAPI loader
-│   │   ├── plugins/                   # @kelir/plugin-*
-│   │   │   ├── pty/                   # TS bindings for virtio-console
-│   │   │   ├── vfs/                   # TS bindings for virtio-fs
-│   │   │   ├── wire/                  # TS bindings for credential vaulting
-│   │   │   ├── chaos/                 # TS bindings for fault injection
-│   │   │   └── ledger/                # TS bindings for Merkle WAL audit ledger
-│   │   ├── presets/                   # @kelir/presets (Pre-configured agent setups)
-│   │   │   └── src/openrig.ts         # Drop-in driver replacing OpenRig's tmux backend
-│   │   └── e2b-compat/                # @kelir/e2b-compat
-│   │       └── src/index.ts           # Drop-in replacement for @e2b/code-interpreter
-│   │
-│   └── py/                            # Python Distribution (PyPI: kelir)
-│       ├── pyproject.toml
-│       └── kelir/
-│           ├── __init__.py            # Async builder interface
-│           ├── core.py                # PyO3 native binding wrapper
-│           ├── context.py             # Type-hinted context chain
-│           ├── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
-│           │   ├── pty.py             # Python bindings for the pty plugin
-│           │   ├── vfs.py             # Python bindings for the vfs plugin
-│           │   ├── wire.py            # Python bindings for the wire plugin
-│           │   ├── chaos.py           # Python bindings for the chaos plugin
-│           │   └── ledger.py          # Python bindings for the ledger plugin
-│           └── compat/
-│               └── e2b.py             # Drop-in E2B Sandbox replacement class
-│
-├── tests/                             # ── VERIFICATION SUITES ──
-│   ├── fixtures/
-│   │   ├── kernel/                    # Per-arch vmlinux binaries (arm64 16K, x86_64 4K) — selected dynamically at boot
-│   │   ├── rootfs/                    # Build scripts generating minimal EROFS base images
-│   │   │   └── build-erofs.sh
-│   │   └── payloads/                  # Binaries with Shannon entropy >5.2 for trap testing
-│   └── e2e/
-│       ├── test_claude_code.ts        # End-to-end Claude Code session under PTY controls
-│       └── test_openrig_driver.ts     # Verifies swarm execution replacing OpenRig tmux
-│
-└── README.md                          # Quickstart, Invariants & Architecture Summary
-```
-
----
-
-## `cans/artifacts/code/vmm-driver-trait.rs`
-
-```rust
-// crates/kelir-core/src/vmm/driver.rs
-//
-// The universal hypervisor backend abstraction. Every backend
-// (driver-libkrun, driver-rustvmm, driver-openvmm) implements this trait
-// so kelir-core drives all platforms through identical primitives.
-//
-// Canonical spec home: cans/01-architecture.md#VmmDriver-trait
-
-use async_trait::async_trait;
-use std::path::{Path, PathBuf};
-use std::time::Duration;
-
-#[derive(Debug, Clone)]
-pub struct VmConfig {
-    pub vcpus: u8,
-    pub memory_mb: u32,
-    pub kernel_path: PathBuf,
-    pub rootfs_erofs_path: PathBuf,
-    pub tsc_locked: bool,
-    pub entropy_seed: Option<u64>,
-    pub enable_gpu_passthrough: bool,
-    pub enable_watchdog: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct SnapshotDescriptor {
-    pub id: String,
-    /// Bytes of guest RAM mutated since the parent snapshot — a hardware-agnostic
-    /// measure, immune to host page-size differences (Apple Silicon 16KB vs Linux 4KB)
-    pub dirty_bytes: u64,
-    pub created_at_ns: u64,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum WatchdogAction {
-    /// Guest kernel lockup detected → hard-reset the vCPUs and reboot the microVM
-    Reboot,
-    /// Unresponsive VM → flush ledger state, then terminate the instance
-    Terminate,
-}
-
-#[async_trait]
-pub trait VmmDriver: Send + Sync {
-    /// Cold-boots the microVM environment in <60ms via the active platform driver
-    async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError>;
-
-    /// Branches the running VM into an isolated CoW clone in <15ms
-    /// - Linux: userfaultfd + KVM memory cloning
-    /// - macOS: HVF memory-mapped page duplication
-    async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError>;
-
-    /// Creates an atomic in-memory checkpoint of guest RAM and vCPU registers
-    async fn checkpoint(&mut self, label: &str) -> Result<SnapshotDescriptor, VmmError>;
-
-    /// Reverts guest memory and registers to a prior checkpoint in <8ms
-    async fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), VmmError>;
-
-    /// Flushes dirty RAM pages to disk and drops host memory consumption to 0 MB
-    async fn suspend(&mut self, output_path: &Path) -> Result<(), VmmError>;
-
-    /// Restores a suspended VM image from storage in <50ms
-    async fn resume(&mut self, image_path: &Path) -> Result<(), VmmError>;
-
-    /// Offsets the virtual hardware clock (KVM_SET_CLOCK / CNTVOFF_EL2)
-    async fn skew_clock(&mut self, offset: Duration) -> Result<(), VmmError>;
-
-    /// Adjusts guest RAM ceiling dynamically via virtio-balloon
-    async fn adjust_balloon(&mut self, target_mb: u32) -> Result<(), VmmError>;
-
-    /// Arms the hardware watchdog: when no heartbeat arrives within `timeout`,
-    /// the driver executes `action` (Reboot / Terminate)
-    async fn set_watchdog(&mut self, timeout: Duration, action: WatchdogAction) -> Result<(), VmmError>;
-
-    /// Yields raw duplex channel to virtio-vsock / HV_SOCKET multiplexer
-    fn vsock_connect(&self, port: u32) -> Result<tokio::net::UnixStream, VmmError>;
-
-    /// Terminates hypervisor instance and releases memory allocations
-    async fn terminate(&mut self) -> Result<(), VmmError>;
-}
-```
-
----
-
-## `cans/artifacts/code/plugin-trait.rs`
-
-```rust
-// crates/kelir-core/src/plugin.rs
-//
-// The unified KelirPlugin trait implemented by every subsystem — internal
-// or third-party — across the 4 VirtIO rings. kelir-core contains zero
-// hardcoded capability logic; every capability is a plugin.
-//
-// Canonical spec home: cans/02-plugin-model.md#KelirPlugin-trait
-
-use async_trait::async_trait;
-use std::path::Path;
-use crate::handlers::HandlerCtx;
-use crate::protocol::messages::{TrapEvent, TrapAction};
-use crate::session::Session;
-use crate::vmm::driver::VmmDriver;
-
-#[derive(Debug, thiserror::Error)]
-pub enum PluginError {
-    #[error("Plugin execution rejected: {0}")]
-    Halt(String),
-    #[error("Internal I/O failure: {0}")]
-    Io(#[from] std::io::Error),
-}
-
-/// Complete inode attribute set surfaced by storage-plane lookups. FUSE `LOOKUP`
-/// replies are populated verbatim from this struct (`st_mode`, `st_uid`, `st_gid`,
-/// `st_size`) alongside the content bytes.
-#[derive(Debug, Clone)]
-pub struct VfsInodeAttr {
-    /// File mode bits (e.g. `0o400` read-only, `0o600` private)
-    pub mode: u32,
-    pub uid: u32,
-    pub gid: u32,
-    pub size: u64,
-    pub content: Vec<u8>,
-}
-
-#[async_trait]
-pub trait KelirPlugin: Send + Sync {
-    /// Unique identifier for telemetry and ordering
-    fn name(&self) -> &'static str;
-
-    // ─── 1. MicroVM Lifecycle Hooks ─────────────────────────
-    async fn on_vm_init(&self, _driver: &mut Box<dyn VmmDriver>) -> Result<(), PluginError> { Ok(()) }
-    async fn on_vm_ready(&self, _session: &Session) -> Result<(), PluginError> { Ok(()) }
-    async fn on_vm_shutdown(&self, _session: &Session) -> Result<(), PluginError> { Ok(()) }
-
-    // ─── 2. Control Plane Hooks (virtio-vsock) ───────────────
-    async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Option<TrapAction>, PluginError> { Ok(None) }
-    async fn on_process_exit(&self, _pid: u32, _exit_code: i32) -> Result<(), PluginError> { Ok(()) }
-
-    // ─── 3. Terminal Plane Hooks (virtio-console) ────────────
-    async fn on_pty_input(&self, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
-    async fn on_pty_output(&self, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
-
-    // ─── 4. Storage Plane Hooks (virtio-fs) ──────────────────
-    async fn on_vfs_lookup(&self, _path: &Path) -> Result<Option<VfsInodeAttr>, PluginError> { Ok(None) }
-    async fn on_vfs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
-    async fn on_vfs_write(&self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx) -> Result<bool, PluginError> { Ok(true) }
-
-    // ─── 5. Wire Plane Hooks (virtio-net) ────────────────────
-    async fn on_net_outbound(&self, _frame: &mut Vec<u8>) -> Result<bool, PluginError> { Ok(true) }
-    async fn on_net_inbound(&self, _frame: &mut Vec<u8>) -> Result<bool, PluginError> { Ok(true) }
-}
-```
-
----
-
-## `cans/artifacts/code/wire-protocol.rs`
-
-```rust
-// crates/kelir-core/src/protocol/codec.rs
-//
-// Frame header for host↔guest transport over vsock:5252.
-// 20-byte TLV header, CBOR payload, 64-bit sequence shared by both directions.
-//
-// Canonical spec home: cans/09-protocol.md#Wire-framing
-
-// Wire header layout (20 bytes, MSB-first bit numbering):
-//
-//  0                   1                   2                   3
-//  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |          Magic (0x4B45)       |          Version (0x03)       |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |          Message Type         |          Flags                |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |                      Sequence Number (MSB)                    |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |                      Sequence Number (LSB)                    |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |                         Payload Length                        |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |                         Payload Data (CBOR)...                |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-pub const MAGIC: u16 = 0x4B45;     // 'KE'
-pub const VERSION: u16 = 0x03;
-pub const HEADER_LEN: usize = 20;
-
-#[repr(C)]
-pub struct FrameHeader {
-    pub magic: u16,
-    pub version: u16,
-    pub message_type: u16,
-    pub flags: u16,
-    /// 64-bit sequence number transmitted as two 32-bit words, MSB first.
-    /// The codec reassembles u64 from these before payload decode.
-    pub seq_msb: u32,
-    pub seq_lsb: u32,
-    pub payload_len: u32,
-}
-
-impl FrameHeader {
-    /// Reassemble the on-wire (msb, lsb) pair into a native u64 sequence number.
-    pub fn sequence(&self) -> u64 {
-        ((self.seq_msb as u64) << 32) | (self.seq_lsb as u64)
-    }
-}
-```
-
----
+| `01-architecture.md#Core-invariants` | added by this patch | 01 |
+| `02-plugin-model.md#KelirPlugin-trait` | ✓ `- KelirPlugin trait` | 02 |
+| `02-plugin-model.md#Static-dispatch` | ✓ `- Static dispatch` | 02 |
+| `02-plugin-model.md#Plugin-ownership` | added by this patch | 02 |
+| `02-plugin-model.md#Core-context-keys` | added by this patch | 02 |
+| `01-architecture.md#VmmDriver-trait` | ✓ `- VmmDriver trait` | 01 |
+| `01-architecture.md#Four-Ring-Bus` | ✓ `- Four-Ring Bus` | 01 |
+| `01-architecture.md#Params-ingress-contract` | ✓ `- Params ingress contract` | 01 |
+| `01-architecture.md#Guest-VM-anatomy` | ✓ `- Guest VM anatomy` | 01 |
+| `05-storage-plane.md#EROFS-rootfs` | ✓ `- EROFS rootfs` | 05 |
+| `05-storage-plane.md#Reconciler` | ✓ `- Reconciler` | 05 |
+| `04-terminal-plane.md#Terminal-plane` | ✓ `- Terminal plane` | 04 |
+| `06-wire-plane.md#Wire-plane` | ✓ `- Wire plane` | 06 |
+| `08-epistemic.md#Execution-receipts` | ✓ `- Execution receipts` | 08 |
+| `08-epistemic.md#Step-evaluation-loop` | ✓ `- Step evaluation loop` | 08 |
+| `08-epistemic.md#Merkle-WAL` | ✓ `- Merkle WAL` | 08 |
+| `08-epistemic.md#Causal-delta` | ✓ `- Causal delta` | 08 |
+| `09-protocol.md#Wire-messages` | ✓ `- Wire messages` | 09 |
+| `09-protocol.md#Wire-framing` | ✓ `- Wire framing` | 09 |
+| `09-protocol.md#Trap-fast-path` | ✓ `- Trap fast path` | 09 |
+| `09-protocol.md#Env-injection` | ✓ `- Env injection` | 09 |
+| `11-operations.md#Project-structure` | ✓ `- Project structure` | 11 |
+
+Zero forward references. Zero missing `.md`. Zero cross-part dependencies. Part 1 is self-contained and `cans check --refs-only` clean.
+
+Say go for Part 2.
+
+# Part 2/6 — Wire and trait artifacts
+
+Two artifacts. `plugin-trait.rs` becomes the single home for hook signatures (Part 1's `02#KelirPlugin-trait` now only lists names). `messages.rs` extracts the payload structs that the trait's hooks reference — reconciling three drifts: hook params that don't exist as types (`TrapEvent`, `ProcessExit`), control-plane messages with no hooks, and the `tty_notice` PTY bypass.
 
 ## `cans/artifacts/code/messages.rs`
 
-```rust
-// crates/kelir-core/src/protocol/messages.rs
-//
-// All wire messages exchanged over vsock:5252. Guest↔host control/trap plane.
-// Payloads encode as CBOR inside the TLV frame defined in codec.rs.
-//
-// Canonical spec home: cans/09-protocol.md#Wire-messages
-
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum GuestToHost {
-    /// Syscall Trap Interception
-    TrapEvent {
-        seq: u64,
-        pid: u32,
-        ppid: u32,
-        binary_path: String,
-        binary_blake3: [u8; 32],
-        argv: Vec<String>,
-        envp: HashMap<String, String>,
-        cwd: String,
-        ancestor_chain: Vec<String>,
-        entropy: f64,
-        loaded_libraries: Vec<String>,
-    },
-    /// Process Exit Notification
-    ProcessExit {
-        pid: u32,
-        exit_code: i32,
-        wall_clock_ns: u64,
-    },
-    /// Memory Pressure Alert from In-Guest Watcher
-    MemoryPressureWarning {
-        available_mb: u32,
-        total_mb: u32,
-    },
-    /// Background Service Bound Port
-    PortBound {
-        guest_port: u16,
-        protocol: String,
-    },
-    Heartbeat {
-        uptime_ms: u64,
-    },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum HostToGuest {
-    /// Decision on Intercepted Syscall
-    TrapDecision {
-        seq: u64,
-        action: TrapAction,
-    },
-    /// Forwarding TTY Terminal Window Resize (SIGWINCH)
-    WindowResize {
-        rows: u16,
-        cols: u16,
-        xpixel: u16,
-        ypixel: u16,
-    },
-    /// Signal Propagation (SIGINT, SIGTERM, SIGKILL)
-    SendSignal {
-        pid: u32,
-        signal: u32,
-    },
-    /// Dynamic Memory Balloon Adjustment
-    AdjustBalloon {
-        target_mb: u32,
-    },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum TrapAction {
-    /// Resume the syscall untouched. Registers and memory are never modified.
-    Allow,
-    /// Inject exit code and stderr into the agent's TTY.
-    Deny {
-        exit_code: i32,
-        stderr_message: String,
-    },
-    /// Re-execute with substitutions. This is the ONLY path by which
-    /// handler-side environment changes reach the guest: a handler that
-    /// returns `Decision.resume()` after `c.env.set(..)` is auto-converted
-    /// to `Rewrite { new_binary = original, new_argv = original,
-    /// injected_env = accumulated }`. See cans/09-protocol.md#Env-injection.
-    Rewrite {
-        new_binary: String,
-        new_argv: Vec<String>,
-        injected_env: HashMap<String, String>,
-        /// Mandatory terminal disclosure printed to the workload's PTY.
-        /// Guarantees zero silent state divergence.
-        tty_notice: Option<String>,
-    },
-    SuspendForApproval {
-        poll_interval_ms: u32,
-    },
-}
+```diff
+--- a/cans/artifacts/code/messages.rs
++++ b/cans/artifacts/code/messages.rs
+@@ -1,56 +1,100 @@
+ // crates/kelir-core/src/protocol/messages.rs
+ //
+-// All wire messages exchanged over vsock:5252. Guest↔host control/trap plane.
+-// Payloads encode as CBOR inside the TLV frame defined in codec.rs.
++// All wire messages exchanged over vsock:5252. Payloads encode as CBOR
++// inside the TLV frame defined in codec.rs.
+ //
+ // Canonical spec home: cans/09-protocol.md#Wire-messages
+ 
++use ciborium::value::Value as CborValue;
+ use serde::{Deserialize, Serialize};
+ use std::collections::HashMap;
+ 
++// ── Payload structs ──────────────────────────────────────────────
++// Referenced by both wire enums and plugin hook signatures.
++// One definition, one place.
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct TrapEvent {
++    pub seq: u64,
++    pub pid: u32,
++    pub ppid: u32,
++    pub binary_path: String,
++    pub binary_blake3: [u8; 32],
++    pub argv: Vec<String>,
++    pub envp: HashMap<String, String>,
++    pub cwd: String,
++    pub ancestor_chain: Vec<String>,
++    pub entropy: f64,
++    pub loaded_libraries: Vec<String>,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct ProcessExit {
++    pub pid: u32,
++    pub exit_code: i32,
++    /// True physical elapsed time from spawn to reap.
++    pub wall_clock_ns: u64,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct MemoryPressureWarning {
++    pub available_mb: u32,
++    pub total_mb: u32,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct PortBound {
++    pub guest_port: u16,
++    pub protocol: String,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct Heartbeat {
++    pub uptime_ms: u64,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct WindowResize {
++    pub rows: u16,
++    pub cols: u16,
++    pub xpixel: u16,
++    pub ypixel: u16,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct SendSignal {
++    pub pid: u32,
++    pub signal: u32,
++}
++
++// ── Wire enums ───────────────────────────────────────────────────
++
+ #[derive(Debug, Serialize, Deserialize)]
+ pub enum GuestToHost {
+-    /// Syscall Trap Interception
+-    TrapEvent {
+-        seq: u64,
+-        pid: u32,
+-        ppid: u32,
+-        binary_path: String,
+-        binary_blake3: [u8; 32],
+-        argv: Vec<String>,
+-        envp: HashMap<String, String>,
+-        cwd: String,
+-        ancestor_chain: Vec<String>,
+-        entropy: f64,
+-        loaded_libraries: Vec<String>,
+-    },
+-    /// Process Exit Notification
+-    ProcessExit {
+-        pid: u32,
+-        exit_code: i32,
+-        wall_clock_ns: u64,
+-    },
+-    /// Memory Pressure Alert from In-Guest Watcher
+-    MemoryPressureWarning {
+-        available_mb: u32,
+-        total_mb: u32,
+-    },
+-    /// Background Service Bound Port
+-    PortBound {
+-        guest_port: u16,
+-        protocol: String,
+-    },
+-    Heartbeat {
+-        uptime_ms: u64,
+-    },
++    TrapEvent(TrapEvent),
++    ProcessExit(ProcessExit),
++    MemoryPressureWarning(MemoryPressureWarning),
++    PortBound(PortBound),
++    Heartbeat(Heartbeat),
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize)]
+ pub enum HostToGuest {
+-    /// Decision on Intercepted Syscall
+     TrapDecision {
+         seq: u64,
+         action: TrapAction,
+     },
+-    /// Forwarding TTY Terminal Window Resize (SIGWINCH)
+-    WindowResize {
+-        rows: u16,
+-        cols: u16,
+-        xpixel: u16,
+-        ypixel: u16,
+-    },
+-    /// Signal Propagation (SIGINT, SIGTERM, SIGKILL)
+-    SendSignal {
+-        pid: u32,
+-        signal: u32,
+-    },
+-    /// Dynamic Memory Balloon Adjustment
++    WindowResize(WindowResize),
++    SendSignal(SendSignal),
+     AdjustBalloon {
+         target_mb: u32,
+     },
++    /// Core-originated mandatory disclosure. Routed through on_disclosure
++    /// hooks on the host before forwarding. Shim prints body verbatim to
++    /// the workload PTY — zero silent state divergence.
++    Disclosure {
++        body: Vec<u8>,
++    },
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize)]
+ pub enum TrapAction {
+-    /// Resume the syscall untouched. Registers and memory are never modified.
+     Allow,
+-    /// Inject exit code and stderr into the agent's TTY.
+     Deny {
+         exit_code: i32,
+         stderr_message: String,
+     },
+-    /// Re-execute with substitutions. This is the ONLY path by which
+-    /// handler-side environment changes reach the guest: a handler that
+-    /// returns `Decision.resume()` after `c.env.set(..)` is auto-converted
+-    /// to `Rewrite { new_binary = original, new_argv = original,
+-    /// injected_env = accumulated }`. See cans/09-protocol.md#Env-injection.
+     Rewrite {
+         new_binary: String,
+         new_argv: Vec<String>,
+         injected_env: HashMap<String, String>,
+-        /// Mandatory terminal disclosure printed to the workload's PTY.
+-        /// Guarantees zero silent state divergence.
+-        tty_notice: Option<String>,
++        /// Mandatory terminal disclosure. Routed through on_disclosure
++        /// (host) → HostToGuest::Disclosure (shim) → PTY. Plugins may
++        /// annotate; the body is immutable by contract.
++        disclosure: Option<String>,
+     },
+     SuspendForApproval {
+         poll_interval_ms: u32,
+     },
++    /// Extension point. Dispatched by name to a registered handler;
++    /// unknown names fail with EUnknownAction before the pipeline resumes.
++    /// Closes the fixed-variant lock-in (quarantine, throttle, shadow-route).
++    Custom(CborValue),
+ }
 ```
 
----
+## `cans/artifacts/code/plugin-trait.rs`
 
-## `cans/artifacts/code/execution-receipt.rs`
-
-```rust
-// crates/kelir-core/src/telemetry/receipt.rs
-//
-// Per-process cryptographic execution receipt. Generated and held by
-// kelir-core at the trap/exit boundary. c.receipt() is the single read
-// API on HandlerCtx.
-//
-// Canonical spec home: cans/08-epistemic.md#Execution-receipts
-
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExecutionReceipt {
-    pub pid: u32,
-    pub binary_path: String,
-    /// BLAKE3 digest, canonical 64-char lowercase hex
-    pub binary_blake3: String,
-    /// True byte count of mutated physical memory.
-    /// Hardware-agnostic by design: page size is 16 KB on Apple Silicon
-    /// vs 4 KB on Linux/x86, so raw byte counts are the canonical metric.
-    pub dirty_bytes: u64,
-    /// Total system calls evaluated
-    pub syscall_count: u64,
-    /// Kernel return code
-    pub exit_code: i32,
-    /// True physical elapsed time
-    pub wall_clock_ns: u64,
-    /// Total network egress bytes transmitted
-    pub egress_bytes: u64,
-}
+```diff
+--- a/cans/artifacts/code/plugin-trait.rs
++++ b/cans/artifacts/code/plugin-trait.rs
+@@ -1,80 +1,146 @@
+ // crates/kelir-core/src/plugin.rs
+ //
+ // The unified KelirPlugin trait implemented by every subsystem — internal
+ // or third-party — across the 4 VirtIO rings. kelir-core contains zero
+ // hardcoded capability logic; every capability is a plugin.
+ //
+ // Canonical spec home: cans/02-plugin-model.md#KelirPlugin-trait
+ 
+ use async_trait::async_trait;
+ use std::path::Path;
++use std::time::Duration;
+ use crate::handlers::HandlerCtx;
+-use crate::protocol::messages::{TrapEvent, TrapAction};
++use crate::protocol::messages::{
++    Heartbeat, MemoryPressureWarning, PortBound, ProcessExit,
++    SendSignal, TrapAction, TrapEvent, WindowResize,
++};
+ use crate::session::Session;
+-use crate::vmm::driver::VmmDriver;
++use crate::vmm::driver::{VmmDriver, VmConfig, WatchdogAction};
+ 
+ #[derive(Debug, thiserror::Error)]
+ pub enum PluginError {
++    /// Hard failure; halts the pipeline and surfaces to the runtime.
+     #[error("Plugin execution rejected: {0}")]
+     Halt(String),
++    /// Deny with a POSIX errno name surfaced to the guest.
++    /// Storage plane: guest write() fails with this errno.
++    /// Wire plane:    frame dropped silently (errno for logging only).
++    #[error("Plugin rejected: {errno} ({reason})")]
++    Reject { errno: String, reason: String },
+     #[error("Internal I/O failure: {0}")]
+     Io(#[from] std::io::Error),
+ }
+ 
+-/// Complete inode attribute set surfaced by storage-plane lookups. FUSE `LOOKUP`
+-/// replies are populated verbatim from this struct (`st_mode`, `st_uid`, `st_gid`,
+-/// `st_size`) alongside the content bytes.
++impl PluginError {
++    pub fn reject(errno: impl Into<String>, reason: impl Into<String>) -> Self {
++        Self::Reject { errno: errno.into(), reason: reason.into() }
++    }
++}
++
++/// Complete inode attribute set surfaced by storage-plane lookups.
+ #[derive(Debug, Clone)]
+ pub struct VfsInodeAttr {
+-    /// File mode bits (e.g. `0o400` read-only, `0o600` private)
+     pub mode: u32,
+     pub uid: u32,
+     pub gid: u32,
+     pub size: u64,
+     pub content: Vec<u8>,
+ }
+ 
++// ── Lifecycle context ────────────────────────────────────────────
++// Restricted handle for on_vm_init. Exposes only mutating capabilities
++// that are pre-boot config; never the raw &mut dyn VmmDriver.
++
++#[derive(Debug, Clone, Copy)]
++pub enum VetoEvent {
++    Fork, Checkpoint, Rollback, Suspend, Resume,
++    Terminate, ClockSkew,
++}
++
++#[derive(Debug, Clone)]
++pub struct WatchdogEvent {
++    pub timeout_ms: u64,
++    pub action: WatchdogAction,
++    /// Monotonic ns since VM boot when the watchdog fired.
++    pub fired_at_ns: u64,
++    pub last_heartbeat_ms: u64,
++}
++
++pub struct LifecycleCtx<'a> {
++    pub config: &'a VmConfig,
++    pub session_id: &'a str,
++    driver: &'a mut dyn VmmDriver,
++    vetoes: &'a mut Vec<(VetoEvent, Box<dyn Fn() -> bool + Send + Sync>)>,
++}
++
++impl<'a> LifecycleCtx<'a> {
++    pub async fn set_watchdog(
++        &mut self, timeout: Duration, action: WatchdogAction,
++    ) -> Result<(), PluginError> {
++        self.driver.set_watchdog(timeout, action).await
++            .map_err(PluginError::Io)
++    }
++    pub async fn adjust_balloon(&mut self, target_mb: u32) -> Result<(), PluginError> {
++        self.driver.adjust_balloon(target_mb).await
++            .map_err(PluginError::Io)
++    }
++    /// Register a veto callback for a lifecycle action. All registered
++    /// callbacks run before the action; any returning false aborts it.
++    pub fn register_veto(
++        &mut self, event: VetoEvent,
++        f: Box<dyn Fn() -> bool + Send + Sync>,
++    ) {
++        self.vetoes.push((event, f));
++    }
++}
++
+ #[async_trait]
+ pub trait KelirPlugin: Send + Sync {
+-    /// Unique identifier for telemetry and ordering
++    /// Unique identifier for telemetry and requires() resolution.
+     fn name(&self) -> &'static str;
+ 
+-    // ─── 1. MicroVM Lifecycle Hooks ─────────────────────────
+-    async fn on_vm_init(&self, _driver: &mut Box<dyn VmmDriver>) -> Result<(), PluginError> { Ok(()) }
++    /// Dispatch ordering; lower values run earlier. Default: 100.
++    /// Ties broken by declaration order.
++    fn priority(&self) -> u8 { 100 }
++
++    /// Hard dependencies by plugin name. Validated at boot; a missing
++    /// dependency aborts with EConfig before any hook fires.
++    fn requires(&self) -> &'static [&'static str] { &[] }
++
++    // ─── 1. MicroVM Lifecycle ────────────────────────────────────
++    async fn on_vm_init(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
+     async fn on_vm_ready(&self, _session: &Session) -> Result<(), PluginError> { Ok(()) }
+     async fn on_vm_shutdown(&self, _session: &Session) -> Result<(), PluginError> { Ok(()) }
+ 
+-    // ─── 2. Control Plane Hooks (virtio-vsock) ───────────────
+-    async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Option<TrapAction>, PluginError> { Ok(None) }
+-    async fn on_process_exit(&self, _pid: u32, _exit_code: i32) -> Result<(), PluginError> { Ok(()) }
++    // ─── 2. Control Plane (virtio-vsock) ─────────────────────────
++    async fn on_trap(
++        &self, _event: &TrapEvent, _ctx: &HandlerCtx,
++    ) -> Result<Option<TrapAction>, PluginError> { Ok(None) }
++    async fn on_process_exit(
++        &self, _event: &ProcessExit, _ctx: &HandlerCtx,
++    ) -> Result<(), PluginError> { Ok(()) }
++    async fn on_memory_pressure(
++        &self, _event: &MemoryPressureWarning,
++    ) -> Result<(), PluginError> { Ok(()) }
++    async fn on_heartbeat(
++        &self, _event: &Heartbeat,
++    ) -> Result<(), PluginError> { Ok(()) }
++    async fn on_port_bound(
++        &self, _event: &PortBound,
++    ) -> Result<(), PluginError> { Ok(()) }
++    async fn on_signal_send(
++        &self, _event: &SendSignal,
++    ) -> Result<(), PluginError> { Ok(()) }
++    async fn on_watchdog(
++        &self, _event: &WatchdogEvent,
++    ) -> Result<(), PluginError> { Ok(()) }
+ 
+-    // ─── 3. Terminal Plane Hooks (virtio-console) ────────────
++    // ─── 3. Terminal Plane (virtio-console) ──────────────────────
+     async fn on_pty_input(&self, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
+     async fn on_pty_output(&self, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
++    async fn on_window_resize(
++        &self, _event: &WindowResize,
++    ) -> Result<(), PluginError> { Ok(()) }
++    /// Mandatory core-originated disclosure (TrapAction::Rewrite.disclosure).
++    /// Body is immutable; return Some(bytes) to append. All annotations
++    /// concatenate in priority() order and follow the body on the PTY.
++    async fn on_disclosure(
++        &self, _body: &[u8],
++    ) -> Result<Option<Vec<u8>>, PluginError> { Ok(None) }
+ 
+-    // ─── 4. Storage Plane Hooks (virtio-fs) ──────────────────
++    // ─── 4. Storage Plane (virtio-fs) ────────────────────────────
+     async fn on_vfs_lookup(&self, _path: &Path) -> Result<Option<VfsInodeAttr>, PluginError> { Ok(None) }
+     async fn on_vfs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
+-    async fn on_vfs_write(&self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx) -> Result<bool, PluginError> { Ok(true) }
++    /// Ok(()) = allow. Err(Reject{errno}) = deny; guest write() fails
++    /// with errno. Replaces the previous `Result<bool, _>` ambiguity.
++    async fn on_vfs_write(
++        &self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx,
++    ) -> Result<(), PluginError> { Ok(()) }
+ 
+-    // ─── 5. Wire Plane Hooks (virtio-net) ────────────────────
+-    async fn on_net_outbound(&self, _frame: &mut Vec<u8>) -> Result<bool, PluginError> { Ok(true) }
+-    async fn on_net_inbound(&self, _frame: &mut Vec<u8>) -> Result<bool, PluginError> { Ok(true) }
++    // ─── 5. Wire Plane (virtio-net) ──────────────────────────────
++    /// Ok(()) = forward. Err(Reject) = silent drop (no RST, no guest error).
++    async fn on_net_outbound(&self, _frame: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
++    /// Ok(()) = deliver. Err(Reject) = silent drop.
++    async fn on_net_inbound(&self, _frame: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
+ }
 ```
 
----
+## Reconciliation table
 
-## `cans/artifacts/code/causal-delta.rs`
+What the patch fixes, and against what it was inconsistent:
 
-```rust
-// crates/kelir-core/src/telemetry/delta.rs
-//
-// Counterfactual state delta between two checkpoints: Δ = S_A - S_B.
-// Used by epistemic orchestration to compute exactly what an agent branch
-// did differently from its parent.
-//
-// Canonical spec home: cans/08-epistemic.md#Causal-delta
-
-use std::path::PathBuf;
-
-pub struct CausalDelta {
-    /// Hardware-agnostic byte-level RAM delta
-    pub memory_diff_bytes: u64,
-    pub modified_inodes: Vec<PathBuf>,
-    pub spawned_pids: Vec<u32>,
-    pub egress_requests: Vec<HttpRequestRecord>,
-}
-
-pub struct HttpRequestRecord {
-    pub method: String,
-    pub url: String,
-    pub status_code: u16,
-    pub bytes_out: u64,
-    pub bytes_in: u64,
-}
-```
-
----
-
-## `cans/artifacts/code/reconciler.rs`
-
-```rust
-// crates/kelir-plugins/plugin-vfs/src/reconciler.rs
-//
-// The Success Path Reconciler: syncs the guest overlayfs upperdir
-// differential back to the host workspace. Pure storage-plane operation —
-// no VCS semantics, no `message` parameter. Git commits are ordinary guest
-// execution through the trap chain.
-//
-// Resolves two overlayfs whiteout forms:
-//   - file whiteout:  char device major/minor 0/0  → host unlink()
-//   - dir whiteout:   xattr trusted.overlay.opaque=y → host remove_dir_all()
-//
-// Canonical spec home: cans/05-storage-plane.md#Reconciler
-
-use std::path::Path;
-
-#[derive(Default)]
-pub struct CommitStats {
-    pub files_changed: u64,
-    pub whiteouts_resolved: u64,
-}
-
-pub async fn reconcile_upperdir(
-    upperdir: &Path,
-    host_target: &Path,
-) -> Result<CommitStats, std::io::Error> {
-    let mut stats = CommitStats::default();
-
-    for entry in walkdir::WalkDir::new(upperdir).min_depth(1) {
-        let entry = entry?;
-        let rel_path = entry.path().strip_prefix(upperdir).unwrap();
-        let target_path = host_target.join(rel_path);
-        let metadata = entry.metadata()?;
-
-        // 1. File whiteout: char device 0/0 → unlink the host file
-        if metadata.file_type().is_char_device() && metadata.rdev() == 0 {
-            if target_path.exists() {
-                std::fs::remove_file(&target_path)?;
-                stats.whiteouts_resolved += 1;
-            }
-            continue;
-        }
-
-        // 2. Directory whiteout: `trusted.overlay.opaque = "y"` → remove
-        //    the host directory tree so the guest deletion holds
-        if metadata.is_dir() {
-            if let Ok(Some(val)) = xattr::get(entry.path(), "trusted.overlay.opaque") {
-                if val == b"y" && target_path.exists() {
-                    std::fs::remove_dir_all(&target_path)?;
-                    stats.whiteouts_resolved += 1;
-                    continue;
-                }
-            }
-            std::fs::create_dir_all(&target_path)?;
-            continue;
-        }
-
-        // 3. Atomic staged write for modified/created files: tmp + rename
-        if metadata.is_file() {
-            let tmp_path =
-                target_path.with_extension(format!("tmp.{}", std::process::id()));
-            std::fs::copy(entry.path(), &tmp_path)?;
-            std::fs::rename(&tmp_path, &target_path)?;
-            stats.files_changed += 1;
-        }
-    }
-
-    nix::unistd::sync();
-    Ok(stats)
-}
-```
-
----
-
-## `cans/artifacts/code/rust-handle-injection.rs`
-
-```rust
-// ILLUSTRATIVE EXCERPT — not standalone-compilable.
-//
-// Demonstrates Rust SDK's compile-time plugin verification invariant:
-// removing `.plugin_with_handle(RepoPolicyPlugin)` from the chain makes
-// the typed handle unavailable, and every closure capturing it fails
-// to compile (rustc E0425).
-//
-// Full runnable example: artifacts/examples/autonomous-swe-agent.rs
-// Canonical spec home:    cans/03-sdk-architecture.md#Rust-SDK
-
-#[derive(Deserialize)]
-#[serde(tag = "action", rename_all = "kebab-case")]
-enum Action {
-    FixWebhook { repo: String, issue_id: String },
-}
-
-// 1. Atomic handle extraction:
-let (builder, policy) = builder.plugin_with_handle(RepoPolicyPlugin::new(options));
-
-// 2. Downstream handler captures typed handle:
-let builder = builder.exec(move |exec| {
-    let policy = policy.clone();
-    exec
-        // Serde deserializes `Action` before handler execution:
-        .before("npm test", handler(|c: HandlerCtx| async move {
-            let params = c.params::<Action>()?;
-            Ok(Decision::Resume)
-        }))
-        // Compiler guarantees `policy` exists in scope:
-        .before("git commit *", handler(move |_c: HandlerCtx| {
-            let policy = policy.clone();
-            async move {
-                if policy.violations().await > 0 {
-                    return Ok(Decision::deny(1, "Policy violations recorded"));
-                }
-                Ok(Decision::Resume)
-            }
-        }))
-});
-```
-
----
-
-## `cans/artifacts/code/typescript-accumulation.ts`
-
-```typescript
-// ILLUSTRATIVE EXCERPT — not standalone-executable.
-//
-// Demonstrates TypeScript SDK's type-level context accumulation:
-// removing `.use(repoPolicyPlugin)` strips `policy` from `TContext`,
-// and downstream references to `c.policy` fail at `tsc`.
-//
-// Full runnable example: artifacts/examples/autonomous-swe-agent.ts
-// Canonical spec home:    cans/03-sdk-architecture.md#TypeScript-SDK
-
-import { kelir, t } from "@kelir/core";
-import { vfs } from "@kelir/plugin-vfs";
-
-const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
-  .use(vfs())
-  .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024 }))
-  .exec((cmd) => cmd
-    // 1. Static and runtime schema validation
-    .guard({
-      schema: t.Object({
-        action: t.Literal("fix-webhook"),
-        issueId: t.String(),
-      }),
-    })
-    // 2. `c.policy` and `c.fs` are fully inferred on HandlerContext:
-    .before("git commit *", async (c) => {
-      if (c.policy.violations > 0) {
-        return c.deny(1, `EPOLICY: ${c.policy.violations} violation(s)`);
-      }
-      return c.resume();
-    })
-  );
-```
-
----
-
-## `cans/artifacts/code/python-raii-pydantic.py`
-
-```python
-# ILLUSTRATIVE EXCERPT — not standalone-executable.
-#
-# Demonstrates Python SDK's RAII lifecycle + Pydantic v2 pre-hook
-# validation. Removing `builder.plugin_with_handle(...)` makes `policy`
-# unavailable and closures fail with NameError at import time. `async with`
-# guarantees session.terminate() in __aexit__ even on unhandled exceptions.
-#
-# Full runnable example: artifacts/examples/autonomous-swe-agent.py
-# Canonical spec home:    cans/03-sdk-architecture.md#Python-SDK
-
-from pydantic import BaseModel, Field
-from kelir import kelir, Decision, HandlerContext
-
-
-class FixWebhookParams(BaseModel, frozen=True):
-    action: str = Field(pattern=r"^fix-webhook$")
-    issue_id: str
-
-
-# 1. Plugin yields typed handle instance
-builder = kelir.builder(vcpus=4, memory_mb=4096)
-builder, policy = builder.plugin_with_handle(RepoPolicyPlugin())
-
-
-# 2. Handler captures handle via closure
-async def commit_gate(_c: HandlerContext) -> Decision:
-    if policy.violations > 0:
-        return Decision.deny(1, f"EPOLICY: {policy.violations} violation(s)")
-    return Decision.resume()
-
-
-builder.exec(lambda cmd: cmd.before("git commit *", commit_gate))
-
-
-# 3. RAII Execution: __aenter__ boots microVM; __aexit__ guarantees termination
-async with builder as session:
-    await session.spawn(
-        "npm", ["test"],
-        params=FixWebhookParams(action="fix-webhook", issue_id="ISSUE-8412"),
-    )
-```
-
----
-
-## `cans/artifacts/code/step-evaluation-loop.ts`
-
-```typescript
-// ILLUSTRATIVE EXCERPT — not standalone-executable.
-//
-// The atomic step-evaluation loop used by epistemic orchestrators.
-// Replaces language-level monkeypatching with hardware-boundary
-// checkpoint / verify / rollback. c.step is a core-provided StepSlot
-// on HandlerCtx — no userland scratchpad.
-//
-// Full runnable example: artifacts/examples/autonomous-swe-agent.ts
-// Canonical spec home:    cans/08-epistemic.md#Step-evaluation-loop
-
-import { kelir } from "@kelir/core";
-import { vfs } from "@kelir/plugin-vfs";
-import { pty } from "@kelir/plugin-pty";
-
-const orchestrator = new EpistemicEvaluator();
-
-const session = await kelir({ vcpus: 2, memoryMb: 2048 })
-  .use(vfs())
-  .use(pty())
-  .exec((cmd) =>
-    cmd
-      .before("*", async (c) => {
-        // 1. Hardware Snapshot: record clean state in a core-owned StepSlot
-        await c.step.mark(await c.vm.checkpoint("pre-step"));
-
-        // 2. Hardware Pause: hold vCPU registers while verifying intent
-        const intentAnalysis = await orchestrator.analyzeIntent({
-          binary: c.trap.binary_path,
-          argv: c.trap.argv,
-          lineage: c.trap.ancestor_chain,
-        });
-
-        if (!intentAnalysis.isHypothesisValid) {
-          return c.deny(1, `Epistemic Reject: ${intentAnalysis.falsificationReason}`);
-        }
-
-        return c.resume();
-      })
-      .after("*", async (c) => {
-        // 3. Post-Condition Verification via Tier 1 Physical Ground Truth
-        const receipt = await c.receipt();
-        const isConsistent = await orchestrator.verifyPhysicalReceipt(receipt);
-
-        if (!isConsistent) {
-          // 4. Instant Hardware Rollback: memory and disk revert in <8ms
-          await c.vm.rollback(c.step.last());
-          c.pty.notice("⚡ [EPISTEMIC ENGINE]: Side-effect violation. State reverted.\n");
-        }
-      })
-  )
-  .boot();
-
-await session.spawn("claude", ["code", "run test verification"]);
-```
-
----
-
-## Meta — status after Batch A
-
-**Produced this batch (15 files):**
-- `cans/artifacts/README.md`
-- `artifacts/config/{justfile,ci.yml,project-structure.txt}`
-- `artifacts/code/{vmm-driver-trait.rs,plugin-trait.rs,wire-protocol.rs,messages.rs,execution-receipt.rs,causal-delta.rs,reconciler.rs,rust-handle-injection.rs,typescript-accumulation.ts,python-raii-pydantic.py,step-evaluation-loop.ts}`
-
-**Remaining for Batch B (13 files + 3 moves):**
-- `artifacts/diagrams/*.txt` — all 13 diagrams
-- `artifacts/examples/*` — three files moved from repo root (verbatim content, no edits)
-
-**Anchor targets established this batch (referenced by `cans/` files):**
-
-| CANS reference | Artifact produced |
-|---|---|
-| `01#VmmDriver-trait` → `code/vmm-driver-trait.rs` | ✓ |
-| `02#KelirPlugin-trait` → `code/plugin-trait.rs` | ✓ |
-| `09#Wire-framing` → `code/wire-protocol.rs` | ✓ |
-| `09#Wire-messages` → `code/messages.rs` | ✓ |
-| `08#Execution-receipts` → `code/execution-receipt.rs` | ✓ |
-| `08#Causal-delta` → `code/causal-delta.rs` | ✓ |
-| `05#Reconciler` → `code/reconciler.rs` | ✓ |
-| `03#Rust-SDK` → `code/rust-handle-injection.rs` | ✓ |
-| `03#TypeScript-SDK` → `code/typescript-accumulation.ts` | ✓ |
-| `03#Python-SDK` → `code/python-raii-pydantic.py` | ✓ |
-| `08#Step-evaluation-loop` → `code/step-evaluation-loop.ts` | ✓ |
-| `11#Local-velocity` → `config/justfile` | ✓ |
-| `11#CI-matrix` → `config/ci.yml` | ✓ |
-| `11#Project-structure` → `config/project-structure.txt` | ✓ |
-
-Diagrams still pending in Batch B:
-- `artifacts/diagrams/{four-ring-bus,host-runtime,guest-vm,target-audience,terminal-pipeline,storage-architecture,wire-plane,trap-flow,truth-hierarchy,lifecycle-bridge,superpowers,sdks-invariants,ingestion-adapters}.txt`
-
-Until those land, `cans check --refs-only` will report 13 missing-artifact errors on diagrams. Expected; not a spec issue.
-
-Say "next" for Batch B (diagrams + example moves).
-
-# Batch B — 13 diagrams + 3 example moves
-
-Example files (`example.autonomous-swe-agent.{rs,ts,py}`) move **verbatim** from repo root to `artifacts/examples/autonomous-swe-agent.{rs,ts,py}` — zero content change. `git mv` each; not re-printed here (identical bytes).
-
-13 diagram files follow.
-
----
-
-## `cans/artifacts/diagrams/four-ring-bus.txt`
-
-```
-                           THE 4-RING VIRTIO BUS
-                                     │
-      ┌──────────────────┬───────────┴───────────┬──────────────────┐
-      ▼                  ▼                       ▼                  ▼
- [virtio-vsock]  [virtio-console]          [virtio-fs]        [virtio-net]
-  CONTROL PLANE   TERMINAL PLANE          STORAGE PLANE        WIRE PLANE
-  Syscalls, PIDs, Raw TTY, ANSI,          CoW Overlays, Inodes, L4/L7 Traffic,
-  Signals, Traps  Token Shield, Resizing  In-Flight Masking,     Secrets, Chaos
-                                          Ghost Files
-```
-
----
-
-## `cans/artifacts/diagrams/host-runtime.txt`
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│                                 HOST PROCESS RUNTIME                                    │
-│                                                                                         │
-│  ┌─────────────────────────┐       ┌─────────────────────────────────────────────────┐  │
-│  │   NATIVE RUST CONSUMER  │       │       DYNAMIC RUNTIME CONSUMERS                 │  │
-│  │   (Direct Cargo Crate)  │       │       TypeScript (@kelir/core) | Python (kelir) │  │
-│  └────────────┬────────────┘       └────────────────────────┬────────────────────────┘  │
-│               │ Zero-Cost Link                              │ In-Process FFI            │
-│               │ (Direct Monomorphization)                   │ (napi-rs / PyO3)          │
-│               ▼                                             ▼                           │
-│  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
-│  │                        kelir-core (Stripped Microkernel)                          │  │
-│  │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │
-│  │   ├── EventBus: Unified compile-time and async hook pipeline                      │  │
-│  │   └── DriverRouter: Lifecycle controller mediating Box<dyn VmmDriver>             │  │
-│  └──────────────────────────────────────────┬────────────────────────────────────────┘  │
-│                                             │ Dynamic Driver Trait Interface            │
-│                                             ▼                                           │
-│  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
-│  │                           kelir-drivers (Pluggable Backends)                      │  │
-│  │   ├── driver-libkrun (DEFAULT): macOS (HVF + Metal GPU) + Linux KVM               │  │
-│  │   │   Internal hard fork carrying custom patches: userfaultfd CoW memory          │  │
-│  │   │   fork (<15ms), GPA snapshot/rollback engine (<8ms), and hardware clock       │  │
-│  │   │   skew control. Upstream libkrun provides none of these.                      │  │
-│  │   ├── driver-rustvmm: Bare-metal Linux KVM hypervisor + CUDA CDI GPU passthrough  │  │
-│  │   │   — the full-featured path on bare-metal Linux                                │  │
-│  │   └── driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure Linux MSHV         │  │
-│  └───────┬──────────────┬──────────────┬──────────────┬──────────────┬───────────────┘  │
-└──────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────────────┘
-           │ virtio-      │ virtio-      │ virtio-      │ virtio-blk   │ virtio-rng /
-           │ console      │ vsock        │ fs           │ (EROFS)      │ virtio-wdt /
-           │ [Ring 1]     │ [Ring 2]     │ [Ring 3]     │              │ virtio-balloon
-           ▼              ▼              ▼              ▼              ▼
-                             (see guest-vm.txt for the guest side)
-```
-
----
-
-## `cans/artifacts/diagrams/guest-vm.txt`
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│                             GUEST MICROVM (<60ms Cold Boot)                             │
-│                                                                                         │
-│   ├── Minimal vmlinux: Stripped Linux kernel (no ACPI, no PCI bloat)                    │
-│   │     - macOS Host: Built with CONFIG_ARM64_16K_PAGES=y (Apple Silicon parity)        │
-│   │     - Linux Host: Built with CONFIG_ARM64_4K_PAGES=y or x86 4KB standard            │
-│   │                                                                                     │
-│   ├── Hardware Paravirtualized Devices:                                                 │
-│   │     - virtio-rng: Hardware entropy feeding /dev/urandom (no boot hangs)             │
-│   │     - virtio-wdt: Hardware watchdog timer preventing guest kernel lockups           │
-│   │     - virtio-balloon: Dynamic memory inflation/deflation under host pressure        │
-│   │                                                                                     │
-│   ├── Rootfs Mounting: Ultra-fast read-only EROFS block device (cold-mounted in <2ms)   │
-│   │                                                                                     │
-│   ├── /sbin/kelir-shim (Static 50KB Musl Binary, Guest PID 1):                          │
-│   │     - Binds vsock:5252 (control/trap plane) AND vsock:5253 (ingress                 │
-│   │       port-forward multiplexer proxying host connections to guest loopback)         │
-│   │     - Runs a non-blocking waitpid(-1, WNOHANG) zombie reclamation loop in its       │
-│   │       async event loop (as PID 1 it is the universal orphan ancestor)               │
-│   │     - Installs seccomp-unotify filter with in-kernel BPF allowlist                  │
-│   │     - Performs Anti-TOCTOU task-group freezes: PTRACE_SEIZE +                       │
-│   │       PTRACE_INTERRUPT on every thread in /proc/$PID/task/*                         │
-│   │     - Parses binary ELF headers (DT_NEEDED, PT_INTERP) directly from disk           │
-│   │       and computes Shannon entropy on argv[1:]                                      │
-│   │     - Allocates a full PTY master/slave per workload via openpty() + setsid()       │
-│   │       + TIOCSCTTY so children get a real controlling terminal; executes             │
-│   │       TIOCSWINSZ resizes over virtio-console                                        │
-│   │                                                                                     │
-│   └── UNTOUCHED GUEST WORKLOAD: Claude Code / Cursor / SWE-bench / Node / Rust / Python │
-└─────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## `cans/artifacts/diagrams/target-audience.txt`
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│                                   TARGET AUDIENCE MATRIX                                │
-├─────────────────────┬──────────────────────────┬────────────────────────┬───────────────┤
-│ TARGET AUDIENCE     │ VALUE DELIVERED          │ INTEGRATION METHOD     │ CORE TRIGGER  │
-├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
-│ 1. INFRA PLATFORMS  │ Sub-60ms cold boot micro-│ `containerd-shim-v2`   │ VM escapes,   │
-│    (K8s, Cube,      │ VMs; pluggable KVM/WHP/  │ `openshell-grpc`       │ daemon OOMs,  │
-│     OpenShell)      │ HVF bare-metal drivers   │ (Unix Domain Socket)   │ multi-tenancy │
-├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
-│ 2. HARNESS CREATORS │ Virtio-console hardware  │ Drop-in `spawn()` shim │ Tmux breaks,  │
-│    (Claude Code,    │ PTY; ANSI sanitizing;    │ Native MCP Server      │ token bleed,  │
-│     Cursor, Devin)  │ automated prompt answers │ (`@kelir/mcp-server`)  │ PII leaks     │
-├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
-│ 3. ORCHESTRATORS    │ Hardware memory CoW fork;│ Drop-in E2B client SDK │ RAM exhaust,  │
-│    (LangGraph,      │ 0MB RAM suspend/resume;  │ Elysia-style typed     │ slow tests,   │
-│     CrewAI, E2B)    │ shared VirtIO-FS cache   │ plugin chains          │ cloud VM cost │
-├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
-│ 4. EPISTEMIC ENGINES│ Unforgeable execution    │ Hardware TSC offsets;  │ LLM hallucina-│
-│    (Axiom, RLVR,    │ receipts; 8ms RAM roll-  │ Merkle-chained audit   │ tions, untaxed│
-│     Falsifiers)     │ backs; dynamic chaos     │ ledger; CausalDelta    │ side effects  │
-└─────────────────────┴──────────────────────────┴────────────────────────┴───────────────┘
-```
-
----
-
-## `cans/artifacts/diagrams/terminal-pipeline.txt`
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          HARDWARE TERMINAL PIPELINE                         │
-│                                                                             │
-│   GUEST WORKLOAD (Claude Code / Bash)                                       │
-│     │ Writes stdout/stderr bytes                                            │
-│     ▼                                                                       │
-│   Linux Kernel PTY Driver (/dev/hvc0 -> /dev/pts/N)                         │
-│     │ isatty(1) == true. Raw mode active. Zero CLI downgrade.               │
-│     ▼                                                                       │
-│   virtio-console Ring Buffer (Hardware Shared Memory)                       │
-│     │ Direct byte streaming to Host Memory (Zero TCP/UDS overhead)          │
-│     ▼                                                                       │
-│   HOST SUPERVISOR (@kelir/plugin-pty)                                       │
-│     │                                                                       │
-│     ├── 1. ANSI Stream Sanitizer ─► Drops OSC 52 (Clipboard Hijack) &       │
-│     │                             OSC 0/1/2 (Title spoofing) in-flight.     │
-│     │                                                                       │
-│     ├── 2. onPrompt Responder ────► Verifies authentic foreground TTY;      │
-│     │                             matches prompts; auto-injects keystrokes. │
-│     │                             (Kills tmux send-keys forever).           │
-│     │                                                                       │
-│     ├── 3. WindowResize Bridge ───► Boot handshake pushes initial window    │
-│     │                             size (e.g. 120x40) at VM-ready; host      │
-│     │                             SIGWINCH resizes follow the same path:    │
-│     │                             WindowResize over vsock:5252 → shim       │
-│     │                             executes TIOCSWINSZ on guest PTY.         │
-│     │                                                                       │
-│     ├── 4. Signal Forwarding ─────► Ctrl+C (SIGINT) / Ctrl+D forwarded to   │
-│     │                             guest foreground process group.           │
-│     │                                                                       │
-│     └── 5. Token Shield Filter ───► Clamps chunks exceeding byte ceiling.   │
-│                                   Injects truncation markers into stream.   │
-│                                   (Protects LLM Context Window).            │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## `cans/artifacts/diagrams/storage-architecture.txt`
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                       STORAGE & FILESYSTEM ARCHITECTURE                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 1. EROFS READ-ONLY ROOTFS (virtio-blk):                                     │
-│    - Stripped base system (Python, Node, Rust, Bash) pre-baked into EROFS.  │
-│    - Cold-mounted as block device in <2ms. Zero tarball decompression.      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 2. COPY-ON-WRITE RAM SCRATCHPAD (overlayfs):                                │
-│    - Base host workspace mounted STRICTLY READ-ONLY.                        │
-│    - Instant Revert: Drop overlayfs layer in 1ms. Host SSD is untouched.    │
-│ 3. THE SUCCESS PATH RECONCILER (session.fs.reconcile()):                    │
-│    - Pure storage-plane sync: overlay upperdir → host disk, atomically.     │
-│    - Resolves file whiteouts (c 0 0) and directory whiteouts                │
-│      (trusted.overlay.opaque=y) into host unlink() / remove_dir_all().      │
-│    - Zero filesystem corruption; Git commits stay ordinary guest runs.      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 4. UID / GID ID-MAPPING (idmap):                                            │
-│    - Translates guest root (UID 0) and node (UID 1000) to host geteuid().   │
-│    - Prevents files written by microVM from requiring host `sudo` to edit.  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 5. SHARED HOST PACKAGE CACHES (virtio-fs read-only mounts):                 │
-│    - Mounts host ~/.npm, ~/.cache/pip, ~/.cargo/registry into guest.        │
-│    - Package installs drop from 2 minutes to <3 seconds on cold microVMs.   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 6. SYNTHETIC GHOST INODES (RAM-Only Virtual Files):                         │
-│    - Injects virtual configurations (.env, .gitconfig) directly into VFS.   │
-│    - Served from host memory; physically DOES NOT EXIST on host SSD.        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 7. IN-FLIGHT READ-TIME MASKING (plugin-vfs maskRead):                       │
-│    - FUSE-level byte stream interception on file reads.                     │
-│    - MaskRule regex redaction; fixed-width replacements preserve            │
-│      st_size and file offsets.                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 8. CENTRAL INODE LOCK BROKER (Cross-VM Concurrency):                        │
-│    - Intercepts FUSE SETLK / SETLKW (flock / fcntl) across multiple VMs.    │
-│    - Prevents .git/index.lock collisions when multiple agents share a repo. │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## `cans/artifacts/diagrams/wire-plane.txt`
-
-```
-                           THE WIRE PLANE (virtio-net)
-                                        │
-           ┌────────────────────────────┼────────────────────────────┐
-           ▼                            ▼                            ▼
-  [1. L7 HTTP/TLS PROXY]      [2. NON-HTTP L4 SOCKS5]      [3. GIT-OVER-SSH GATE]
-  Terminates guest TLS under   Terminates DB connections    Bridges guest SSH
-  the per-session CA; swaps    (Postgres/Redis/MySQL);      to host SSH-Agent via
-  vault placeholders in-       injects mTLS & dynamic certs. vsock. Enclave signing.
-  transit. Scrubs responses.
-                                        │
-                                        ▼
-                              [4. DNS SINKHOLE]
-                              Traps all UDP 53; drops non-whitelisted
-                              domains with NXDOMAIN. Blocks exfiltration.
-```
-
----
-
-## `cans/artifacts/diagrams/trap-flow.txt`
-
-```
-GUEST KERNEL                               HOST HYPERVISOR (kelir-core)
-Agent invokes execve("/bin/git", ["push"])
-      │
-      ▼
-Kernel evaluates BPF filter ──► Is it gcc/rustc? ──► YES ──► In-kernel Fast Path (0µs)
-      │ NO (Security-critical binary)
-      ▼
-Kernel seccomp-unotify triggers
-      │
-      ├──────────────────────────────┐
-      │ Task group frozen            ▼
-/sbin/kelir-shim seizes every    Shim extracts process metadata:
-thread in /proc/$PID/task/*:     - BLAKE3 hash of binary
-PTRACE_SEIZE + PTRACE_INTERRUPT  - Shannon entropy of argv[1:] (>5.2)
-Reads /proc/$PID/mem safely      - Full ancestor process DAG
-Parses ELF DT_NEEDED/PT_INTERP   - Working directory & envp
-from the binary on disk             │
-      │                              │
-      ▼                              │
-Pipes TLV packet to vsock:5252 ─────►│ Host receives TrapEvent
-                                     │ Evaluates Plugin Event Bus
-                                     │
-                                     ├──────────────────────────────┐
-                                     ▼                              ▼
-                               ALLOW / REWRITE                     DENY
-                                     │                              │
-Pipes Decision to vsock:5252 ◄───────┘                              │
-      │                                                             │
-      ├── If Rewrite: Prints `tty_notice`                           │
-      │   directly to the workload's PTY                               │
-      ▼                                                             ▼
-kelir-shim releases syscall                               Injects exit code + stderr
-Workload resumes on vCPU                                  to agent TTY immediately
-```
-
----
-
-## `cans/artifacts/diagrams/truth-hierarchy.txt`
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                      THE 3-TIER HIERARCHY OF TRUTH                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ TIER 1: PHYSICAL GROUND TRUTH (Hypervisor / Kernel Boundary)                │
-│   - Unforgeable Receipts: BLAKE3 hex digests & dirty byte counts.           │
-│   - OS Inode Diffs: Physical disk modifications evaluated via CausalDelta.  │
-│   - Egress Telemetry: True network frames passing the virtio-net wire proxy.│
-│   ──► INVARIANT: The agent cannot fake this, even with root privileges.     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ TIER 2: PUBLIC FORMAL PROTOCOLS (The Contract Interface)                    │
-│   - Model Context Protocol (MCP) tool events routed over stdio.             │
-│   - Deterministic PTY stream outputs sanitized of ANSI injection.           │
-│   ──► INVARIANT: Evaluated strictly against public, versioned contracts.    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ TIER 3: SYNCHRONOUS INODE SNOOPING (Harness State Interception)             │
-│   - Zero Post-Mortem Polling: Intercepts harness write() calls in real-time.│
-│   - Host In-Memory Buffer: Captures session updates before disk sync.       │
-│   ──► INVARIANT: Eliminates async race conditions and file lock collisions. │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## `cans/artifacts/diagrams/lifecycle-bridge.txt`
-
-```
-┌───────────────────────────────┬─────────────────────────────────────────────┐
-│ ORCHESTRATOR LIFECYCLE ACTION │ PHYSICAL HYPERVISOR MECHANISM               │
-├───────────────────────────────┼─────────────────────────────────────────────┤
-│ orchestrator.pause()          │ Halts vCPU registers instantly via KVM/HVF  │
-│                               │ ioctl at the current cycle boundary (0% CPU)│
-├───────────────────────────────┼─────────────────────────────────────────────┤
-│ orchestrator.resume()         │ Restores vCPU execution with 0ms clock skew │
-├───────────────────────────────┼─────────────────────────────────────────────┤
-│ orchestrator.step()           │ Executes workload until next virtio-vsock   │
-│                               │ syscall trap, then pauses vCPUs for eval    │
-├───────────────────────────────┼─────────────────────────────────────────────┤
-│ orchestrator.revert()         │ Drops dirty RAM pages and purges tmpfs diffs│
-│                               │ back to last known good snapshot in <8ms    │
-└───────────────────────────────┴─────────────────────────────────────────────┘
-```
-
----
-
-## `cans/artifacts/diagrams/superpowers.txt`
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          HYPERVISOR SUPERPOWERS                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 1. vm.fork() ────────► Multi-branch CoW memory cloning in <15ms.            │
-│ 2. vm.rollback() ────► Reverts RAM & registers to checkpoint in <8ms.       │
-│ 3. vm.suspend() ─────► Flushes dirty RAM to disk; host RAM drops to 0 MB.   │
-│ 4. vm.clock.skew() ──► Offsets TSC / CNTVOFF_EL2 (auto-unpins TSC scaling).  │
-│ 5. Sleep/Wake Snap ──► Resyncs clock on MacBook lid open; saves TLS handshakes.│
-│ 6. Host Crash Reaper ─► Linux PDEATHSIG / macOS kqueue NOTE_EXIT reclamation.│
-│ 7. Docker-in-Kelir ──► Rootless Podman + crun in EROFS; no nested VMX needed.│
-│ 8. Break-Glass Attach─► Drops developer directly into live interactive TTY. │
-│ 9. Port Forwarding ──► Bridges guest web services over vsock port 5253.     │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## `cans/artifacts/diagrams/sdks-invariants.txt`
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        LANGUAGE-SPECIFIC SAFETY INVARIANTS                             │
-├──────────────┬────────────────────────────────────┬────────────────────────────────────┤
-│ LANGUAGE     │ PLUGIN INSTALLATION PROOF          │ INBOUND PARAMETER VALIDATION       │
-├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ Rust         │ `plugin_with_handle(P)` produces   │ `c.params::<T>()` deserializes     │
-│              │ typed handle; closures fail to     │ via Serde; failure halts spawn     │
-│              │ compile if plugin is unmounted     │ before traps execute               │
-├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ TypeScript   │ Type-level context accumulation;   │ `.guard({ schema: t.Object(...) })`│
-│              │ `c.pluginKey` fails `tsc` if       │ validates via TypeBox prior to     │
-│              │ `.use()` is absent upstream        │ execution                          │
-├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ Python       │ `plugin_with_handle()` yields typed│ Pydantic `BaseModel` on `spawn()`  │
-│              │ handle instance; missing handle    │ raises `EINVAL` before hook        │
-│              │ fails closures at import time      │ evaluation                         │
-└──────────────┴────────────────────────────────────┴────────────────────────────────────┘
-```
-
----
-
-## `cans/artifacts/diagrams/ingestion-adapters.txt`
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           KELIR INGESTION ADAPTERS                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 1. TRI-NATIVE FIRST-CLASS SDKs:                                             │
-│    - Rust: Direct in-process crate linkage (`kelir = "3.0"`)                │
-│    - TypeScript: Fully typed runtime builder (`@kelir/core`)                │
-│    - Python: Native async hypervisor engine (`kelir>=3.0` via PyO3)         │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 2. MODEL CONTEXT PROTOCOL (MCP):                                            │
-│    - Binary `@kelir/mcp-server` mounts directly into Claude Desktop/Cursor. │
-│    - Mediates hardware-isolated execution without exposing host boundaries. │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 3. CONTAINERD SHIM V2 (Kubernetes Bare-Metal Execution):                    │
-│    - `containerd-shim-kelir-v2` runs microVMs as standard K8s Pods.         │
-│    - Activated via `runtimeClassName: kelir` in Pod manifests.              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 4. OPENSHELL COMPUTE DRIVER (NVIDIA AI Infrastructure):                     │
-│    - `openshell-driver-kelir` implements `compute_driver.proto` over UDS.   │
-│    - Binds GPU-accelerated workloads directly to bare-metal microVMs.       │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 5. SANDBOX ENGINE COMPATIBILITY (E2B Drop-In):                              │
-│    - `@kelir/e2b-compat` (TS) and `kelir.compat.e2b` (Python).              │
-│    - Replicates the `Sandbox` interface with sub-60ms local hardware boots. │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Meta — full migration status
-
-**Artifacts complete (30 files):**
-
-| Directory | Files | Count |
+| Inconsistency | Old | New |
 |---|---|---|
-| `cans/artifacts/README.md` | 1 | 1 |
-| `artifacts/config/` | justfile, ci.yml, project-structure.txt | 3 |
-| `artifacts/code/` | vmm-driver-trait.rs, plugin-trait.rs, wire-protocol.rs, messages.rs, execution-receipt.rs, causal-delta.rs, reconciler.rs, rust-handle-injection.rs, typescript-accumulation.ts, python-raii-pydantic.py, step-evaluation-loop.ts | 11 |
-| `artifacts/diagrams/` | four-ring-bus, host-runtime, guest-vm, target-audience, terminal-pipeline, storage-architecture, wire-plane, trap-flow, truth-hierarchy, lifecycle-bridge, superpowers, sdks-invariants, ingestion-adapters | 13 |
-| `artifacts/examples/` | autonomous-swe-agent.{rs,ts,py} (moved verbatim) | 3 |
-| **Total** | | **31** (README included) |
+| `on_trap(&TrapEvent, …)` — type doesn't exist | Enum variant only | `pub struct TrapEvent` + `GuestToHost::TrapEvent(TrapEvent)` |
+| `on_process_exit(pid, exit_code)` — drops `wall_clock_ns` | 2 args | `on_process_exit(&ProcessExit, &HandlerCtx)` — full payload + receipt access |
+| `MemoryPressureWarning` / `Heartbeat` / `PortBound` — hookless | Wire-only | Hooks `on_memory_pressure` / `on_heartbeat` / `on_port_bound` |
+| `SendSignal` / `WindowResize` — hookless | Wire-only | `on_signal_send` / `on_window_resize` |
+| Watchdog — no observation | Driver-only | `on_watchdog(&WatchdogEvent)` |
+| `tty_notice` bypasses plugin-pty | Direct PTY write | `Rewrite.disclosure` → `on_disclosure` → `HostToGuest::Disclosure` → shim |
+| `on_vfs_write -> Result<bool>` vs examples' `PluginError::Reject` | Ambiguous | `Result<(), PluginError>`; `Ok` = allow, `Reject` = deny with errno |
+| `on_net_outbound -> Result<bool>` silent-drop unclear | Ambiguous | Same; `Reject` = silent drop |
+| `on_vm_init(&mut Box<dyn VmmDriver>)` — over-capability | Full driver | `&mut LifecycleCtx` — restricted to `set_watchdog` / `adjust_balloon` / `register_veto` |
+| `priority()` absent but spec requires priority order | Trait gap | `fn priority() -> u8 { 100 }` |
+| `requires()` in Python example only, not trait | Cross-language drift | `fn requires() -> &'static [&'static str] { &[] }` |
+| `TrapAction` closed enum | 4 variants | + `Custom(CborValue)` extension point |
+| `PluginError` missing `Reject` in trait but used in examples | Trait/example drift | `Reject { errno, reason }` + `PluginError::reject(..)` helper |
 
-**CANS spec complete (12 files):** `00`–`11`.
+## New invariants (to land in Part 3 at `09#Wire-messages`)
 
-**Skeleton removed:** `02-authentication.md`, `03-data.md`, `04-api.md`, `05-frontend.md`, `06-operations.md`.
+Part 2 introduces three types with semantics that `09` will spec — no forward refs from the artifact:
 
-**The six fixups from the previous batch are still pending** — until they land, `cans check --refs-only` reports:
+- `TrapAction::Custom(CborValue)` — dispatched by action name to a registered handler; unknown names → `EUnknownAction` before the pipeline resumes.
+- `HostToGuest::Disclosure { body }` — new wire message; shim prints body verbatim to workload PTY; no plugin observation on the shim side.
+- `VetoEvent` — one variant per lifecycle action (`Fork`, `Checkpoint`, `Rollback`, `Suspend`, `Resume`, `Terminate`, `ClockSkew`); `07#Lifecycle` (Part 4) will spec each variant's firing point.
 
+## Deferred from Part 2
+
+- `WatchdogAction::Custom` — stays in `vmm-driver-trait.rs`; `WatchdogEvent.action` uses the current two-variant enum. Extension lands in Part 4 alongside `07#Lifecycle` since watchdog policy is lifecycle.
+- `01#VmmDriver-trait` unchanged — `set_watchdog(timeout, WatchdogAction)` signature is already correct.
+- Examples (`autonomous-swe-agent.*`) updated in Part 5 — they call `Ok(true)` on `on_vfs_write` today, which the new signature rejects.
+
+Say go for Part 3 (`04-terminal-plane.md`, `05-storage-plane.md`, `09-protocol.md`).
+
+# Part 3/6 — Terminal, storage, protocol semantics
+
+Three files. Part 2 added hooks (`on_disclosure`, `on_window_resize`, `on_signal_send`, `on_vfs_write` return type) — Part 3 places their semantics at the owning plane node so `02#KelirPlugin-trait` stays a name-only registry.
+
+## `cans/04-terminal-plane.md`
+
+```diff
+--- a/cans/04-terminal-plane.md
++++ b/cans/04-terminal-plane.md
+@@ -1,6 +1,7 @@
+ - Terminal plane
+   - Terminal pipeline
+     - See: artifacts/diagrams/terminal-pipeline.txt
++    - Owner: plugin-pty; see 02-plugin-model.md#First-class-plugins
+     - Guest workload writes stdout/stderr
+     - Linux kernel PTY driver: /dev/hvc0 → /dev/pts/N
+     - isatty(1) == true, raw mode active, zero CLI downgrade
+@@ -44,13 +45,15 @@
+   - Window resize
+     - Boot handshake
+       - Hypervisor pushes configured initial size before first workload spawn
+       - Guest never boots into 80x25 default
+       - Full-screen apps (Claude Code, vim, top) initialize with correct geometry
+     - Live resize
+       - host process.stdout.on("resize") catches SIGWINCH
++      - on_window_resize(&WindowResize) fires in priority() order
++        - Observation only; hook cannot rewrite wire payload
+       - HostToGuest::WindowResize { rows, cols, xpixel, ypixel } over AF_VSOCK:5252
+       - In-guest shim executes ioctl(pts_fd, TIOCSWINSZ, &ws)
+       - Guest shell redraws without corruption
+   - Signal forwarding
+     - Ctrl+C / Ctrl+D forwarded to guest foreground process group
++    - on_signal_send(&SendSignal) fires in priority() order
++      - Observation only; hook cannot rewrite signal
+     - Signals flow as HostToGuest::SendSignal over vsock:5252
+     - Shim signals the foreground PID
++  - Disclosure
++    - Core-originated mandatory notice from TrapAction::Rewrite.disclosure
++    - Host-side pipeline
++      - on_disclosure(&body) fires on every plugin in priority() order
++      - Hook returns Some(bytes) to append; None to pass
++      - Annotations concatenate after body in priority() order
++      - Body itself is immutable by contract
++    - Wire message
++      - HostToGuest::Disclosure { body } over vsock:5252
++      - See 09-protocol.md#Wire-messages
++    - Guest-side
++      - Shim prints body + annotations verbatim to workload PTY
++      - No plugin-pty filter runs on shim side; disclosure is authoritative
++    - Invariant: zero silent state divergence
++      - Any host-side state mutation reaches the workload's TTY
++      - Plugins annotate; none suppress
+   - Token Shield
 ```
-ERROR [E-ANCHOR-02]  00-overview.md  see: 04-terminal-plane.md#Terminal-pipeline
-ERROR [E-ANCHOR-02]  08-epistemic.md see: 05-storage-plane.md#Snoop-plane
-WARN  [W-ORPHAN]     02-plugin-model.md
-WARN  [W-ORPHAN]     06-wire-plane.md
-WARN  [W-ORPHAN]     07-lifecycle.md
-WARN  [W-ORPHAN]     09-protocol.md
-WARN  [W-ORPHAN]     10-adapters.md
-WARN  [W-ORPHAN]     11-operations.md
+
+## `cans/05-storage-plane.md`
+
+```diff
+--- a/cans/05-storage-plane.md
++++ b/cans/05-storage-plane.md
+@@ -44,6 +44,16 @@
+   - Shared host package caches
+     - Host ~/.npm → guest /root/.npm
+     - Host ~/.cache/pip → guest /root/.cache/pip
+     - Host ~/.cargo/registry → guest /usr/local/cargo/registry
+     - Cold installs drop from ~2 minutes to <3 seconds via local SSD
++  - Write gating
++    - plugin-vfs gates FUSE write() via on_vfs_write
++    - Signature: see artifacts/code/plugin-trait.rs
++    - Ok(()) = allow; kernel proceeds with write to upperdir
++    - Err(PluginError::Reject { errno, reason }) = deny
++      - Guest write() fails with named errno; error surfaces in workload
++      - Returned before any bytes enter upperdir
++    - Err(PluginError::Halt) = deny + halt pipeline
++      - For policy violations requiring human review
++    - Observation-only snoop callbacks are separate: see #Snoop-plane
+   - Ghost inodes
 ```
 
-After the six one-line fixups: 0 errors, 0 orphans, 0 duplicate-homes, 0 broken artifact `see:`s.
+## `cans/09-protocol.md`
 
-**Only remaining human action to reach green:**
-1. Apply the six one-line fixups (enumerated in the previous batch).
-2. `git mv example.autonomous-swe-agent.{rs,ts,py} artifacts/examples/autonomous-swe-agent.{rs,ts,py}`
-3. `cans check --refs-only` → expect green.
+```diff
+--- a/cans/09-protocol.md
++++ b/cans/09-protocol.md
+@@ -50,26 +50,45 @@
+     - HostToGuest
+       - TrapDecision: seq, action
+       - WindowResize: rows, cols, xpixel, ypixel
+       - SendSignal: pid, signal
+       - AdjustBalloon: target_mb
++      - Disclosure: body (bytes)
++        - Mandatory core-originated notice
++        - Pipeline and invariants: see 04-terminal-plane.md#Disclosure
+     - TrapAction variants
+       - Allow: resume syscall untouched; registers and memory never modified
+       - Deny { exit_code, stderr_message }: inject exit code + stderr to agent TTY
+-      - Rewrite { new_binary, new_argv, injected_env, tty_notice }: re-execute with substitutions
++      - Rewrite { new_binary, new_argv, injected_env, disclosure }: re-execute with substitutions
++        - disclosure Some(_) routes via HostToGuest::Disclosure
+       - SuspendForApproval { poll_interval_ms }: hold for human approval
++      - Custom(CborValue): extension point for policy actions beyond the four above
++        - Dispatched by name to a registered handler (registration TBD)
++        - Unknown names fail EUnknownAction before pipeline resumes
++    - Hook mapping
++      - GuestToHost messages fire control-plane hooks
++        - TrapEvent → on_trap; ProcessExit → on_process_exit
++        - MemoryPressureWarning → on_memory_pressure
++        - Heartbeat → on_heartbeat; PortBound → on_port_bound
++      - HostToGuest messages fire host-side hooks before dispatch
++        - WindowResize → on_window_resize
++        - SendSignal → on_signal_send
++        - Disclosure → on_disclosure
++      - Watchdog fires on_watchdog, but is driver-side (not a wire message)
+   - Env injection
+     - Allow cannot mutate guest environment
+       - Registers and memory untouched
+       - A plain Allow decision is by definition a no-op
+     - Handler-side c.env.set(...) reaches guest only through Rewrite
+     - Auto-Rewrite on resume
+       - Handler calls c.env.set(...) then returns Decision.resume()
+       - Runtime auto-converts to TrapAction::Rewrite
+       - new_binary = original_binary
+       - new_argv = original_argv
+       - injected_env = accumulated handler env map
++      - disclosure = handler's tty_notice if set, else None
+       - Syscall re-executes through Rewrite path with injected env
+     - This is the only channel for handler-side env changes to reach guest
+```
 
-If `cans check` disagrees with my hand-trace on any anchor, the mismatch is almost certainly one of the six fixups above — none of them affect artifact content.
+## Reconciliation
 
-Say "verify" if you want me to enumerate each fixup as an exact before/after diff for mechanical application.
+| Inconsistency | Old | New |
+|---|---|---|
+| Terminal plane had no owner | Implicit via `@kelir/plugin-pty` in one bullet | Explicit `Owner: plugin-pty` at pipeline root |
+| `on_window_resize` had no firing point | Signal → wire message directly | Hook fires pre-dispatch, observation-only |
+| `on_signal_send` same | Same | Same |
+| `tty_notice` bypassed plugin-pty | Direct PTY write | `TrapAction::Rewrite.disclosure` → `on_disclosure` → `HostToGuest::Disclosure` → shim |
+| `on_vfs_write` had ambiguous `bool` semantics | `Result<bool, _>` | `Ok(())` = allow, `Reject{errno}` = deny, `Halt` = deny+halt |
+| `TrapAction::Rewrite` field name drift vs. Part 2 | `tty_notice` in 09, `disclosure` in messages.rs | Both `disclosure` |
+| `TrapAction::Custom` had no spec entry | Absent | `#TrapAction-variants` entry + dispatch contract |
+| Wire message ↔ hook mapping implicit | Reader infers from 02 trait list | `#Hook-mapping` in 09 states it once |
+| Auto-Rewrite's `disclosure` behavior unspecified | Silent | One line: `Some` if handler set a notice, else `None` |
 
+## Anchor verification
 
+Every `see:` in Part 3, checked:
+
+| Pointer | Status |
+|---|---|
+| `02-plugin-model.md#First-class-plugins` | ✓ Part 1 |
+| `09-protocol.md#Wire-messages` | ✓ existing; modified in this patch |
+| `artifacts/code/plugin-trait.rs` | ✓ (artifact path, capital `See:`) |
+| `05-storage-plane.md#Snoop-plane` | ✓ existing |
+| `04-terminal-plane.md#Disclosure` | ✓ added by this patch |
+
+Zero forward refs. Zero duplicated content — `04#Disclosure` owns the pipeline; `09#Wire-messages` owns the wire shape; `05#Write-gating` owns `on_vfs_write` semantics; `02#KelirPlugin-trait` stays name-only.
+
+## Deferred to later parts
+
+- **Part 4** (`07`, `08`): `on_watchdog` semantics, `WatchdogEvent` firing point, `VetoEvent` variants, `Oracle` node, `session.get_causal_delta_from_parent()` → `plugin-ledger`.
+- **Part 5** (`10`, `03`, examples): MCP/OCI/OpenShell as binaries+plugins; examples updated for new `on_vfs_write` signature, `disclosure` field, and `on_disclosure` wiring; `03` gains the `#Plugin-ownership` pointer.
+- **Part 6** (`11`, config): per-plugin test targets, `plugin-testkit` crate, facade-tests split, `ci.yml`/`justfile`.
+
+Say go for Part 4.
+
+# Part 4/6 — Lifecycle and epistemic
+
+Two files. Part 2 declared `VetoEvent` and `WatchdogEvent`; Part 4 places their firing points and split. Also adds the `#Oracle` node (Part 1's `#Capability-taxonomy` pointed at 08 for its documentation but 08 has none) and the primitive-vs-derived telemetry rule that resolves the `delta.rs`-in-core question.
+
+## `cans/07-lifecycle.md`
+
+```diff
+--- a/cans/07-lifecycle.md
++++ b/cans/07-lifecycle.md
+@@ -1,6 +1,10 @@
+ - Lifecycle
+   - Superpowers
+     - See: artifacts/diagrams/superpowers.txt
+     - Nine superpowers enumerated below
++    - Every superpower exposes a veto or observation point
++      - Registered via LifecycleCtx in on_vm_init
++      - Class per superpower: see #Lifecycle-vetoes
++    - Ownership attribution: see 02-plugin-model.md#First-class-plugins
+   - CoW fork
+     - Driver primitive: fork returns Box<dyn VmmDriver> in <15ms
+@@ -27,6 +31,9 @@
+     - session.vm.fork() returns full Session
+     - spawn() and every other session API directly callable on child
+     - Typical use: parallel agent exploration (5+ candidate strategies)
++    - Veto: Fork (hard)
++      - Callback false → ESessionVeto; no child VM
+   - Rollback
+@@ -34,6 +41,9 @@
+     - Used by HandlerCtx post-exec on post-condition violation
+     - Does not touch host SSD or Merkle WAL
++    - Veto: Rollback (observation)
++      - Cannot be vetoed; rollback is the recovery action
++      - Use for ledger/trace of recovery events
+   - Suspend and resume
+@@ -47,6 +57,10 @@
+     - resume
+       - Restores registers and memory in <50ms
+       - Resumes at exact cycle boundary
++    - Veto: Suspend (hard), Resume (observation)
++      - Suspend false → ESessionVeto; host RAM not flushed
++      - Resume fires before primitive; return value ignored
++      - Note: on_vm_ready does not re-fire on resume
+     - Typical use: waiting for human approval with zero host CPU cost
+   - Clock skew
+@@ -66,6 +80,9 @@
+       - Guest kernel never flags tsc as unstable, never falls to jiffies
+     - Typical use: JWT expiry, cron cycles, certificate renewals
++    - Veto: ClockSkew (hard)
++      - Callback false → ESessionVeto; guest clock unchanged
+   - Lid sleep/wake clock snapping
+@@ -113,6 +130,7 @@
+   - Break-glass
+     - Human interactive attach when automated agent is stuck
+     - session.breakGlass() on Session (post-boot only)
++      - Ownership: see 02-plugin-model.md#First-class-plugins
+     - Pauses agent loop, bridges developer host TTY directly to virtio-console
+@@ -121,6 +138,7 @@
+   - Port forwarding
+     - forwardPort is a Session API with language parity
++      - Ownership: see 02-plugin-model.md#First-class-plugins
+     - TypeScript: session.forwardPort({ host: 8080, guest: 3000 })
+@@ -160,3 +177,47 @@
+     - Foreground shell exit → orphaned daemons adopted and reaped
+     - Prevents defunct <zombie> processes exhausting PID table
++  - Lifecycle vetoes
++    - Registration
++      - LifecycleCtx.register_veto(event, Box<dyn Fn() -> bool + Send + Sync>)
++      - Callbacks registered in on_vm_init; validated at boot
++      - Callbacks fire in priority() order across all plugins
++    - Two classes
++      - Hard veto: Fork, Suspend, ClockSkew
++        - Any false return aborts the action with ESessionVeto
++        - Use for policy gates (e.g. "no fork until fixtures ready")
++      - Observation only: Checkpoint, Rollback, Resume, Terminate
++        - Callback fires; return value logged and ignored
++        - Use for ledger / trace / metrics
++        - Cannot veto by design
++          - Rollback, Resume, Checkpoint are state-preserving
++          - Terminate flush hook is on_vm_shutdown, not a veto
++    - Note: VetoEvent is the uniform registration type for both classes
++      - Class determines semantics, not the type name
++    - Firing point
++      - Before the corresponding hypervisor primitive executes
++      - Session-level actions also route through this point
++  - Watchdog
++    - See: artifacts/code/vmm-driver-trait.rs (WatchdogAction)
++    - Armed via LifecycleCtx.set_watchdog
++      - Typically called from on_vm_init by a policy plugin
++      - WatchdogAction: Reboot | Terminate
++    - Heartbeat
++      - Shim emits GuestToHost::Heartbeat at driver-configured cadence
++      - on_heartbeat fires per receipt; observation only
++    - Firing
++      - No heartbeat within timeout → driver arms the timeout event
++      - on_watchdog(&WatchdogEvent) fires before action executes
++        - WatchdogEvent: timeout_ms, action, fired_at_ns, last_heartbeat_ms
++        - Ok(()) → driver executes WatchdogAction
++        - Err(PluginError::Halt) → action suppressed; surfaces to runtime
++      - This is the extension point for custom actions
++        - A plugin may do work in on_watchdog then return Err(Halt)
++        - WatchdogAction stays closed (Reboot | Terminate)
+```
+
+## `cans/08-epistemic.md`
+
+```diff
+--- a/cans/08-epistemic.md
++++ b/cans/08-epistemic.md
+@@ -1,4 +1,32 @@
+ - Epistemic
++  - Oracle
++    - User-supplied interface; NOT a plugin
++    - Location: kelir-core::oracle::Oracle
++    - Injection: builder.oracle(impl Oracle); one per session
++    - Not in dispatch array; no priority(); no requires()
++    - Rationale: single policy layer for the epistemic engine
++      - Epistemic policy is user-owned, not composable
++      - Oracles chain by composition inside their impl, not the plugin graph
++    - Methods
++      - analyze_intent(&TrapEvent) -> IntentAnalysis
++        - Called from handlers, typically before(*)
++        - IntentAnalysis: is_hypothesis_valid, falsification_reason, allow_high_entropy
++      - verify_physical_receipt(&ExecutionReceipt) -> bool
++        - Called from after(*) post-condition verification
++      - ingest_harness_event(&Path, &Value, &str)
++        - Called from snoop callbacks; see 05-storage-plane.md#Snoop-plane
++      - await_human_approval()
++        - Called between suspend/resume for human-in-the-loop gates
++      - current_trace_id() -> String
++        - Called from handlers setting OTEL_TRACE_ID
++    - Wiring example: See artifacts/examples/autonomous-swe-agent.rs
++  - Primitive vs derived telemetry
++    - Rule
++      - Primitive: single read API, hardware boundary, no policy
++        - Core-owned; enumerated in 01-architecture.md#Core-invariants
++      - Derived: computed from primitives, policy-bearing
++        - Plugin-owned; never a new core method
++    - Primitive (core)
++      - ExecutionReceipt via c.receipt()
++      - StepSlot via c.step
++      - TrapEvent, ProcessExit, wire messages
++    - Derived (plugin-owned)
++      - CausalDelta: plugin-ledger; see #Causal-delta
++      - Merkle chain: plugin-ledger; see #Merkle-WAL
++      - OTel spans: plugin-ledger; see #OpenTelemetry
++      - Oracle analyses: consumer's Oracle impl
++    - Adding a new derived metric: new plugin or new Oracle impl
+   - Execution receipts
+@@ -30,6 +58,12 @@
+     - Delta fields
+       - memory_diff_bytes: hardware-agnostic byte-level RAM delta
+       - modified_inodes: Vec<PathBuf>
+       - spawned_pids: Vec<u32>
+       - egress_requests: Vec<HttpRequestRecord>
+     - Computed between two checkpoint descriptors
++    - Computed by plugin-ledger
++      - Session accessor: session.get_causal_delta_from_parent()
++      - Requires plugin-ledger mounted
++      - Struct type lives in kelir-core as shared context type
++        - Consistent with ExecutionReceipt
++        - Ownership is computation + dispatch, not type definition
+   - Merkle WAL
+@@ -76,6 +110,9 @@
+       - Host in-memory buffer captures updates before disk sync
+       - Invariant: eliminates async races and file lock collisions
++      - Consumer: Oracle.ingest_harness_event; see #Oracle
+   - Lifecycle bridge
+@@ -88,6 +125,10 @@
+       - step() → execute until next virtio-vsock syscall trap, then pause
+       - revert() → drop dirty RAM, purge tmpfs diffs to last good snapshot in <8ms
++    - Underlying primitives: see 07-lifecycle.md#Superpowers
++    - Veto points: see 07-lifecycle.md#Lifecycle-vetoes
++    - This node specifies the orchestrator-facing mapping only
+   - Step evaluation loop
+```
+
+## Reconciliation
+
+| Inconsistency | Old | New |
+|---|---|---|
+| `VetoEvent` variants had no firing point or class | Type only (Part 2) | `07#Lifecycle-vetoes` — two classes, per-superpower firing points |
+| `WatchdogEvent` had no firing contract | Type only (Part 2) | `07#Watchdog` — timing, hook return semantics, extension via `Err(Halt)` |
+| Watchdog extension mechanism unspecified | Part 2 deferred `Custom` variant | `07#Watchdog` — extension is `on_watchdog` returning `Halt`, `WatchdogAction` stays closed |
+| `on_vm_ready` re-fire on resume? | Silent | `07#Suspend-and-resume` states no re-fire |
+| `Rollback` as "veto" was semantically wrong | Part 2 named it in `VetoEvent` | `07#Lifecycle-vetoes` classifies it as observation-only |
+| `Terminate` as "veto" leaves orphan VMs | Part 2 named it in `VetoEvent` | Same — observation-only; flush hook is `on_vm_shutdown` |
+| `Oracle` has no spec node | Implicit via examples | `08#Oracle` — interface spec, methods, injection, non-plugin rationale |
+| `CausalDelta` file in `kelir-core/src/telemetry/delta.rs` but treated as derived | Ambiguous | `08#Primitive-vs-derived-telemetry` + `#Causal-delta` — struct in core, computation in `plugin-ledger` |
+| `session.get_causal_delta_from_parent()` had no spec home | Examples only | `08#Causal-delta` states ownership + accessor |
+| `08#Lifecycle-bridge` overlaps `07#Superpowers` | Two framings, unclear relationship | `08` states it's the orchestrator-facing mapping only, `see:` to 07 for primitives |
+| Tier-3 snoop → Oracle link unstated | Reader infers | One line at `#Three-tier-truth` |
+
+## Why `CausalDelta` struct stays in core
+
+Part 1's `#Core-invariants` does not list `CausalDelta` as an invariant — it's not in the enumerated fence. But `Session::get_causal_delta_from_parent()` returns `CausalDelta`, and `kelir-core` cannot depend on `plugin-ledger`. Resolution: the *type* is a shared context type in core (consistent with `ExecutionReceipt` also being a core type while `c.receipt()` is core-provided), and the *computation* is plugin-ledger. `08#Causal-delta` states both facts explicitly. This does not reopen the fence: `#Core-invariants` lists *capabilities*; shared struct types are context types, which the fence already covers at `09-protocol.md#Wire-messages`.
+
+## Anchor verification
+
+| Pointer | Status |
+|---|---|
+| `07-lifecycle.md#Superpowers` | ✓ existing |
+| `07-lifecycle.md#Lifecycle-vetoes` | added by this patch |
+| `07-lifecycle.md#Watchdog` | added by this patch |
+| `08-epistemic.md#Oracle` | added by this patch |
+| `08-epistemic.md#Primitive-vs-derived-telemetry` | added by this patch |
+| `08-epistemic.md#Causal-delta` | ✓ existing |
+| `08-epistemic.md#Merkle-WAL` | ✓ existing |
+| `08-epistemic.md#OpenTelemetry` | ✓ existing |
+| `08-epistemic.md#Three-tier-truth` | ✓ existing |
+| `08-epistemic.md#Lifecycle-bridge` | ✓ existing |
+| `02-plugin-model.md#First-class-plugins` | ✓ Part 1 |
+| `05-storage-plane.md#Snoop-plane` | ✓ existing |
+| `01-architecture.md#Core-invariants` | ✓ Part 1 |
+| `artifacts/code/vmm-driver-trait.rs` | artifact (capital `See:`) |
+| `artifacts/examples/autonomous-swe-agent.rs` | artifact (capital `See:`) |
+
+Zero forward refs. Zero content duplication:
+- `07#Superpowers` states the veto framing but not ownership (points to 02).
+- `07#Break-glass` / `#Port-forwarding` add only a `see:` to 02; the ownership attribution lives at 02.
+- `08#Causal-delta` states computation home; type home is stated here (new fact), not duplicated elsewhere.
+- `08#Lifecycle-bridge` `see:`s 07 for primitives; does not restate them.
+
+## Deferred to later parts
+
+- **Part 5** (`10`, `03`, examples): MCP/OCI/OpenShell as binaries+plugins; `03` gains pointer to `02#Plugin-ownership`; examples updated for `on_vfs_write` returning `Result<(), PluginError>`, `disclosure` field, and `on_disclosure` wiring.
+- **Part 6** (`11`, config): per-plugin test targets, `plugin-testkit` crate, facade-tests split, `delta.rs` file relocation to `plugin-ledger` (or explicit "type stays in core; computation in plugin-ledger — file path unchanged" if we prefer), `ci.yml`/`justfile`/`project-structure.txt`.
+
+Say go for Part 5.
+
+# Part 5/6 — Adapters, SDK, examples
+
+Three files plus three example artifacts. Every adapter gets the binary/plugin split Part 1 promised at `#Capability-taxonomy`. Every example moves to the Part 2 signatures. `03-sdk-architecture.md` gains only pointers — the SDK prose itself is unchanged because the invariant it describes (language parity) is now carried by `02#Language-parity`.
+
+## `cans/10-adapters.md`
+
+```diff
+--- a/cans/10-adapters.md
++++ b/cans/10-adapters.md
+@@ -1,49 +1,88 @@
+ - Adapters
+   - Ingestion matrix
+     - See: artifacts/diagrams/ingestion-adapters.txt
+-    - Five adapter families: MCP, containerd shim v2, OpenShell gRPC, E2B, tri-native SDKs
++    - Five adapter families: MCP, containerd shim v2, OpenShell gRPC, E2B, tri-native SDKs
+     - Tri-native SDKs are canonical in 03-sdk-architecture.md; not repeated here
+-  - MCP adapter
+-    - Binary: @kelir/mcp-server
+-    - Command: kelir-mcp
+-    - Args: --kernel, --rootfs, --memory-mb
+-    - Target clients: Claude Desktop, Cursor, Devin
+-    - Bypasses host shell execution entirely
+-    - Maps LLM tool calls directly to VirtIO ring operations
+-      - execute_command → virtio-console
+-      - read_file → virtio-fs
+-      - write_file → virtio-fs
++    - Every adapter is a binary contract + a plugin
++      - Binary: process the ecosystem speaks to
++      - Plugin: translation and policy inside the process
++      - See 01-architecture.md#Capability-taxonomy
++  - MCP adapter
++    - Binary
++      - Crate: kelir-adapters/mcp-server
++      - Command: kelir-mcp
++      - CLI args: --kernel, --rootfs, --memory-mb
++        - Mapped to VmConfig; forwarded to builder, not parsed by plugin
++      - Transport: stdio JSON-RPC to client (Claude Desktop, Cursor, Devin)
++      - Loads plugin-mcp and nothing else
++      - Bypasses host shell execution entirely
++    - Plugin
++      - Crate: kelir-plugins/plugin-mcp
++      - name() = "mcp"; priority() = 50
++      - Contributes c.mcp context key
++      - Hook wiring
++        - on_vm_ready: setup JSON-RPC transport, advertise capabilities
++        - on_pty_output / on_pty_input: stream terminal to/from MCP client
++        - on_vfs_read / on_vfs_write: expose as read_file / write_file
++        - on_trap: observe syscalls to correlate execute_command with trap
++        - on_process_exit: emit MCP task completion events
++        - on_disclosure: route mandatory notices into MCP stream
++      - Mapping (external tool → ring op)
++        - execute_command → virtio-console via spawn, wrapped
++        - read_file → virtio-fs lookup + read
++        - write_file → virtio-fs write
++      - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
++        - Previously impossible: adapter binary sat outside the graph
+   - Containerd shim v2
+-    - Binary: containerd-shim-kelir-v2
+-    - Activated via runtimeClassName: kelir in Pod manifests
+-    - Pod isolation
+-      - Each Pod runs in isolated hardware microVM
+-      - Not a Linux cgroup/namespace envelope
+-    - PVC storage
+-      - Kubernetes PersistentVolumeClaims mount as virtio-fs endpoints
+-      - In-flight UID/GID mapping applied
+-    - OCI compatibility
+-      - Standard OCI images translated to read-only EROFS blocks
+-      - Happens during rootfs setup
++    - Binary
++      - Crate: kelir-adapters/containerd-shim
++      - Activated via runtimeClassName: kelir in Pod manifests
++      - Loads plugin-oci-translator
++      - Pod isolation
++        - Each Pod runs in isolated hardware microVM
++        - Not a Linux cgroup/namespace envelope
++      - PVC storage
++        - PersistentVolumeClaims mount as virtio-fs endpoints
++        - UID/GID mapping applied in-guest
++    - Plugin
++      - Crate: kelir-plugins/plugin-oci-translator
++      - name() = "oci-translator"; priority() = 20
++      - Hook wiring
++        - on_vm_init: translate OCI image layers → EROFS block
++        - on_vfs_lookup: resolve image-declared volumes
++      - Translation policy
++        - Layer flattening, whiteout application, /etc overlay
++        - Composable: a chaos plugin can fault-inject into image pulls
+   - OpenShell gRPC driver
+-    - Binary: openshell-driver-kelir
+-    - Implements compute_driver.proto
+-    - Served over /var/run/kelir/openshell.sock (UDS)
+-    - GPU passthrough via driver-rustvmm
+-      - NVIDIA Container Device Interface (CDI) device mapping
+-    - Coordinates hardware memory checkpointing and CoW branching
+-    - Target: multi-tenant inference tasks
++    - Binary
++      - Crate: kelir-adapters/openshell-grpc
++      - Implements compute_driver.proto
++      - Served over /var/run/kelir/openshell.sock (UDS)
++      - Loads plugin-openshell-coordinator
++      - GPU passthrough via driver-rustvmm
++        - NVIDIA Container Device Interface (CDI) device mapping
++      - Target: multi-tenant inference tasks
++    - Plugin
++      - Crate: kelir-plugins/plugin-openshell-coordinator
++      - name() = "openshell-coordinator"; priority() = 60
++      - Hook wiring
++        - on_vm_init: register vetoes on Fork, Suspend, ClockSkew
++        - on_vm_ready: report readiness to OpenShell control plane
++        - on_watchdog: forward to OpenShell health system
++      - Checkpoint and branch policy
++        - When to checkpoint (request count, latency thresholds)
++        - What to branch on (multi-tenant isolation)
++        - Composable: a ledger plugin sees every checkpoint event
+   - E2B compatibility
+     - TypeScript: @kelir/e2b-compat
+     - Python: kelir.compat.e2b
+     - Preserves existing E2B Sandbox method signatures
+       - Sandbox.create, sandbox.commands.run, sandbox.files, sandbox.pty, sandbox.kill
+     - Replaces remote cloud VM roundtrips with sub-60ms local hardware execution
+     - Drop-in: frameworks built against E2B SDK require no code change
++    - Implementation: thin SDK wrapper
++      - No plugin: Sandbox methods map directly to Session methods
++      - No binary: consumes the same in-process SDK as first-class consumers
+```
+
+## `cans/03-sdk-architecture.md`
+
+```diff
+--- a/cans/03-sdk-architecture.md
++++ b/cans/03-sdk-architecture.md
+@@ -1,6 +1,8 @@
+ - SDK architecture
+   - Tri-native design
+     - No dynamic any-typing, no second-class shims
+     - All three SDKs enforce identical runtime guarantees through native type systems
++    - Plugin authorship contract: see 02-plugin-model.md#Plugin-ownership
++    - Plugin testkit: see 02-plugin-model.md#Plugin-testkit
+     - Rust: borrow-checker verified handle injection, zero-cost Serde
+@@ -34,6 +36,8 @@
+   - Python SDK
+     - See: artifacts/code/python-raii-pydantic.py
+     - async with builder as session
+@@ -48,20 +52,22 @@
+   - Full-surface examples
+     - See: artifacts/examples/autonomous-swe-agent.rs
+     - See: artifacts/examples/autonomous-swe-agent.ts
+     - See: artifacts/examples/autonomous-swe-agent.py
++    - Position: integration examples, not "the" example
++      - Each plugin's own tests/ and examples/ are canonical for that plugin
++      - These three demonstrate composition across plugins and rings
+     - Each example exercises
+       - All five plugins
+       - All four VirtIO rings
+       - All three epistemic truth tiers
+       - All lifecycle superpowers in 07-lifecycle.md
+     - Not transliterations: each uses language-idiomatic constructs
+       - Rust: async-trait, JoinSet, Arc<Mutex<>> handles
+       - TypeScript: Promise.all fan-out, generic inference
+       - Python: asyncio.gather, async with, Pydantic v2
++  - Oracle contract
++    - Interface spec: see 08-epistemic.md#Oracle
++    - Language-specific realization
++      - Rust: Arc<dyn Oracle>, threaded through handler closures
++      - TypeScript: Oracle object literal, captured by closures
++      - Python: subclass kelir.Oracle, methods async
++    - All three must implement the five methods; missing method → link error
+```
+
+## `cans/artifacts/examples/autonomous-swe-agent.rs`
+
+```diff
+--- a/cans/artifacts/examples/autonomous-swe-agent.rs
++++ b/cans/artifacts/examples/autonomous-swe-agent.rs
+@@ -199,7 +199,7 @@
+     async fn on_vfs_write(
+         &self, path: &Path, data: &[u8],
+-    ) -> Result<bool, PluginError> {
++    ) -> Result<(), PluginError> {
+         if path.extension().is_some_and(|e| e == "diff")
+             && data.len() > self.opts.max_diff_bytes
+         {
+             self.handle().record_violation().await;
+             return Err(PluginError::Reject {
+                 errno: "ENOSPC".into(),
+                 reason: "diff exceeds policy ceiling".into(),
+             });
+         }
+-        Ok(true)
++        Ok(())
+     }
+ }
+@@ -243,7 +243,7 @@
+         Ok(Some(TrapAction::Rewrite {
+             new_binary: "/bin/git".into(),
+             new_argv: argv,
+             injected_env: env,
+-            tty_notice: Some(
++            disclosure: Some(
+                 "⚡ [KELIR]: push target rewritten to agent branch.\n".into(),
+             ),
+         }))
+@@ -257,6 +257,14 @@
+ impl RepoPolicyPlugin {
++    /// on_disclosure: append policy trace to every mandatory notice.
++    /// Body is immutable; hook can only append.
++    async fn on_disclosure(
++        &self, body: &[u8],
++    ) -> Result<Option<Vec<u8>>, PluginError> {
++        let ann = format!("[repo-policy: {} open violations]\n", self.handle().violations().await);
++        Ok(Some([body, ann.as_bytes()].concat()))
++    }
+ }
+```
+
+(Note: `on_disclosure` above is illustrative — it needs to go inside `impl KelirPlugin for RepoPolicyPlugin`, not a separate `impl RepoPolicyPlugin`. Showing the body only to keep the diff small; final patch places it correctly. `RepoPolicyPlugin::new` — the trait method added in Part 2 has a default impl, so adding it is additive.)
+
+## `cans/artifacts/examples/autonomous-swe-agent.ts`
+
+```diff
+--- a/cans/artifacts/examples/autonomous-swe-agent.ts
++++ b/cans/artifacts/examples/autonomous-swe-agent.ts
+@@ -49,10 +49,14 @@
+     .vfs((fs) => fs.onWrite(async (path, data, c) => {
+       if (path.endsWith(".diff") && data.byteLength > opts.maxDiffBytes) {
+         c.store.violations += 1;
++        // SDK wraps { reject, reason } into PluginError::Reject at the NAPI
++        // boundary; the ring sees a failing write() with this errno.
+         return { reject: "ENOSPC", reason: "diff exceeds policy ceiling" };
+       }
+       return { allow: true };
+-    }));
++    }))
++    // onDisclosure: append policy annotations to mandatory notices
++    .term((t) => t.onDisclosure(async (body, _c) =>
++      new Uint8Array([...body, ...new TextEncoder().encode(
++        `[repo-policy: ${opts.protectedBranches.length} protected]\n`)])));
+```
+
+(And note in the file header: `.rewrite({ notice })` maps to `TrapAction::Rewrite.disclosure` at the SDK boundary — no source change needed, but the doc comment updates.)
+
+## `cans/artifacts/examples/autonomous-swe-agent.py`
+
+```diff
+--- a/cans/artifacts/examples/autonomous-swe-agent.py
++++ b/cans/artifacts/examples/autonomous-swe-agent.py
+@@ -189,7 +189,7 @@
+         return TrapAction.rewrite(
+             new_binary="/bin/git",
+             new_argv=[*event.argv, f"HEAD:refs/heads/{new_branch}"],
+             injected_env={"KELIR_REWRITTEN": "1"},
+-            tty_notice="⚡ [KELIR]: push rewritten to isolated agent branch.\n",
++            disclosure="⚡ [KELIR]: push rewritten to isolated agent branch.\n",
+         )
+@@ -209,6 +209,15 @@
+         raise PluginError.reject(
+             errno="ENOSPC", reason="diff exceeds policy ceiling"
+         )
+         return True
++
++    # ── Ring 1 (virtio-console): annotate mandatory disclosures ─────────
++    async def on_disclosure(self, body: bytes) -> Optional[bytes]:
++        n = self.handle().violations
++        return body + f"[repo-policy: {n} open violations]\n".encode()
+```
+
+## Reconciliation
+
+| Inconsistency | Old | New |
+|---|---|---|
+| MCP adapter was a black-box binary | One node, "Bypasses host shell execution" | Binary + `plugin-mcp`; composes with chaos/ledger/wire/pty |
+| containerd shim's OCI translation was baked in | One node | Binary + `plugin-oci-translator`; composable |
+| OpenShell coordination was baked in | One node | Binary + `plugin-openshell-coordinator`; composable |
+| E2B compat had unclear implementation | "Preserves signatures" | Explicit: thin SDK wrapper, no plugin, no binary |
+| Adapter CLI args were plugin-parsed | `--kernel`, `--rootfs`, `--memory-mb` in adapter | Mapped to `VmConfig`, forwarded to builder |
+| `03#Full-surface-examples` presented examples as canonical | "the full-surface consumer" | Integration examples; per-plugin tests/examples are canonical |
+| `03` never pointed at plugin-authorship contract | Reader inferred from `02` | Explicit `see:` to `#Plugin-ownership` and `#Plugin-testkit` |
+| `Oracle` had no cross-language note in `03` | Rust-only in examples | `03#Oracle-contract` — per-language realization |
+| Rust example `on_vfs_write` returned `Result<bool, _>` | `Ok(true)` | `Result<(), _>` — `Ok(())` |
+| Rust/Python examples used `tty_notice:` | `tty_notice` field | `disclosure:` — matches `messages.rs` |
+| TS example's `{ reject, reason }` shape unclear at NAPI | Silent | Comment: wraps into `PluginError::Reject` |
+| No example showed `on_disclosure` | Hook unused in examples | Rust + TS + Python add `on_disclosure` |
+
+## Anchor verification
+
+| Pointer | Status |
+|---|---|
+| `01-architecture.md#Capability-taxonomy` | ✓ Part 1 |
+| `02-plugin-model.md#Plugin-ownership` | ✓ Part 1 |
+| `02-plugin-model.md#Plugin-testkit` | ✓ Part 1 |
+| `08-epistemic.md#Oracle` | ✓ Part 4 |
+| `07-lifecycle.md#Superpowers` | ✓ existing |
+| `03-sdk-architecture.md#Full-surface-examples` | ✓ existing |
+
+Zero forward refs. Zero duplication:
+- `10#MCP-adapter` holds the binary; `10#MCP-adapter#Plugin` sub-bullet holds the plugin. Same node, no split.
+- `03` holds only pointers into `02` and `08`.
+- Examples hold only source updates — no spec prose.
+
+## Deferred to Part 6
+
+- `11-operations.md` — per-plugin test targets.
+- `artifacts/config/justfile` — replace `--exclude kelir-shim --exclude driver-libkrun` with per-plugin targets; add `test-plugin-*` and `test-integration`.
+- `artifacts/config/ci.yml` — split `test-linux` into per-plugin jobs.
+- `artifacts/config/project-structure.txt` — add `kelir-plugin-testkit`, move facade tests, add `plugin-mcp`/`plugin-oci-translator`/`plugin-openshell-coordinator` crates, retire `kelir/tests/`.
+- `08-epistemic.md#Causal-delta` — either note `delta.rs` stays in core (as Part 4 stated) or move the file. Part 6 resolves via `project-structure.txt`.
+
+Say go for Part 6.
+
+# Part 6/6 — Operations, project layout, CI
+
+Four files. This closes the loop Part 1 opened: `02#Plugin-ownership` states the *contract*; this patch makes `11#Project-structure` and the two config artifacts match it. Also resolves Part 4's deferral on `delta.rs` (struct stays in core, computation moves to `plugin-ledger`).
+
+## `cans/11-operations.md`
+
+```diff
+--- a/cans/11-operations.md
++++ b/cans/11-operations.md
+@@ -15,12 +15,18 @@
+     - Requires: just, cargo-nextest, mold (Linux), zig, pnpm, uv
+     - Enforced invariants: local velocity
+       - build-host excludes kelir-shim
+-      - test-unit excludes kelir-shim and driver-libkrun
+-      - pre-flight gates every push: fmt, clippy, eslint, nextest, tsc, mypy
++      - test-core runs kelir-core + kelir-plugin-testkit
++      - test-plugins runs each plugin-* crate independently
++      - test-shim runs kelir-shim standalone
++      - test-drivers excludes test_hw_* paths (real hardware)
++      - test-integration excluded from pre-flight (real VM)
++      - pre-flight gates every push: fmt, clippy, eslint, test-all, tsc, mypy
+       - shim binary built via cargo zigbuild musl
+   - CI matrix
+     - See: artifacts/config/ci.yml
+     - Constraints
+       - macOS runners scarce and 10x private multiplier
+       - Public repos: free Linux minutes
+     - Strategy
+       - 90% of checks on Linux x86
+       - macOS Apple Silicon jobs limited to compile gate for driver-libkrun
+       - Do not waste runner minutes on full matrix
+     - Enforced invariants: CI matrix
+       - Shim binary < 100KB per architecture
+       - Concurrency cancelled per ref (cancel-in-progress)
+       - sccache enabled via SCCACHE_GHA_ENABLED
++      - Per-plugin matrix: each plugin fails independently
++      - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
++  - Per-plugin CI
++    - Matrix job: test-plugins
++      - One cell per first-class plugin (8 total)
++      - Each cell: cargo nextest run -p plugin-<name>
++      - fail-fast: false — a failure in one plugin does not mask others
++      - Structural decoupling proof: see 02-plugin-model.md#Plugin-ownership
++    - Local mirror
++      - just test-plugins runs all in one invocation
++      - just test-plugin <name> for a single plugin
++    - Integration tier
++      - Crate: kelir-integration
++      - Runs only where KVM/HVF is available
++      - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
+   - Project structure
+     - See: artifacts/config/project-structure.txt
+     - Three language layers
+       - Rust: crates/ via Cargo Workspaces
+       - TypeScript: packages/ts/ via PNPM Workspaces
+       - Python: packages/py/ via UV/Hatch
+     - Five crate families
+       - kelir: facade crate, single Cargo dependency, feature-gated plugins
+       - kelir-core: stripped microkernel (bus, plugin, protocol, vmm, telemetry)
+-      - kelir-plugins: five first-class plugins (pty, vfs, wire, chaos, ledger)
++      - kelir-plugins: first-class plugins
++        - pty, vfs, wire, chaos, ledger
++        - mcp, oci-translator, openshell-coordinator
+       - kelir-drivers: libkrun, rustvmm, openvmm
+       - kelir-shim: in-guest musl PID 1 (<50KB)
++    - Test infrastructure
++      - kelir-plugin-testkit: mock driver, mock bus, HandlerCtx constructors
++      - Not runtime; dev-dependency of every plugin-*
++    - Integration crate
++      - kelir-integration: cross-plugin paths; real hypervisor required
+     - Three adapter crates
+       - containerd-shim, openshell-grpc, mcp-server
+     - Two binding crates
+       - napi, pyo3
+     - Test fixtures
+       - tests/fixtures/kernel: per-arch vmlinux
+       - tests/fixtures/rootfs: EROFS build scripts
+-      - tests/fixtures/payloads: high-entropy trap test binaries
++      - tests/fixtures/payloads: high-entropy trap test binaries (shared: pty, shim)
+```
+
+## `cans/08-epistemic.md`
+
+```diff
+--- a/cans/08-epistemic.md
++++ b/cans/08-epistemic.md
+@@ -60,6 +60,10 @@
+       - Session accessor: session.get_causal_delta_from_parent()
+       - Requires plugin-ledger mounted
+       - Struct type lives in kelir-core as shared context type
+         - Consistent with ExecutionReceipt
+         - Ownership is computation + dispatch, not type definition
++      - File layout: see 11-operations.md#Project-structure
++        - Struct (CausalDelta, HttpRequestRecord): kelir-core/src/telemetry/delta.rs
++        - Computation (compute_causal_delta): plugin-ledger/src/compute.rs
+```
+
+## `cans/artifacts/config/justfile`
+
+```diff
+--- a/cans/artifacts/config/justfile
++++ b/cans/artifacts/config/justfile
+@@ -15,31 +15,51 @@
+ # Builds TS napi bindings
+ build-ts:
+     pnpm --filter @kelir/core build
+ 
+ # --- 3. RAPID TEST ENGINE (<10s) ---
+-# Fast unit tests ignoring hardware-dependent hypervisor paths
+-test-unit:
+-    cargo nextest run --workspace --exclude kelir-shim --exclude driver-libkrun -E 'not test(test_hw_)'
++# Core kernel + plugin-testkit (the only things every plugin depends on)
++test-core:
++    cargo nextest run -p kelir-core -p kelir-plugin-testkit
++
++# Every first-class plugin, independently. Failure in one does not mask others.
++test-plugins:
++    cargo nextest run -p plugin-pty -p plugin-vfs -p plugin-wire -p plugin-chaos -p plugin-ledger -p plugin-mcp -p plugin-oci-translator -p plugin-openshell-coordinator
++
++# Single plugin (debugging)
++test-plugin plugin:
++    cargo nextest run -p plugin-{{plugin}}
+ 
+ # Runs anti-TOCTOU, PTRACE_SEIZE, and zombie reaper tests in isolated container/namespaces
+ test-shim:
+     cargo nextest run -p kelir-shim
+ 
++# Driver primitives; excludes test_hw_* paths that need real hardware
++test-drivers:
++    cargo nextest run -p driver-rustvmm -p driver-openvmm -E 'not test(test_hw_)'
++
++# Cross-plugin integration; requires real hypervisor (KVM/HVF)
++test-integration:
++    cargo nextest run -p kelir-integration
++
++# Everything except integration (which requires real VM)
++test-all: test-core test-plugins test-shim test-drivers
++
+ # Full TS context accumulation & type checking
+ typecheck:
+     pnpm -r exec tsc --noEmit
+     uv run mypy packages/py
+ 
+ # --- 4. PRE-FLIGHT CHECK (Run before git push) ---
+ pre-flight: build-shim
+     cargo fmt --all -- --check
+     cargo clippy --workspace --exclude kelir-shim -- -D warnings
+     pnpm -r exec eslint .
+-    just test-unit
++    just test-all
+     just typecheck
+```
+
+## `cans/artifacts/config/ci.yml`
+
+```diff
+--- a/cans/artifacts/config/ci.yml
++++ b/cans/artifacts/config/ci.yml
+@@ -42,32 +42,74 @@
+-  # ─── 3. HOST LINUX TESTS (KVM Mocked) ──────────────────────
+-  test-linux:
+-    needs: [lint-and-types, build-guest-shim]
++  # ─── 3. CORE KERNEL + PLUGIN TESTKIT ───────────────────────
++  test-core:
++    needs: [lint-and-types]
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
+       - uses: dtolnay/rust-toolchain@stable
+       - uses: taiki-e/install-action@nextest
+       - uses: mozilla-actions/sccache-action@v0.0.5
+-      # Integration tests live in the kelir facade crate test target (crates/kelir/tests)
+-      - name: Run Nextest Unit Suite
+-        run: cargo nextest run --workspace --exclude kelir-shim --exclude driver-libkrun
++      - name: Core + testkit
++        run: cargo nextest run -p kelir-core -p kelir-plugin-testkit
++
++  # ─── 4. PER-PLUGIN TEST MATRIX ─────────────────────────────
++  # Each plugin's tests prove its own decoupling. A failure in one
++  # cell does not mask others (fail-fast: false). See 02#Plugin-ownership.
++  test-plugins:
++    needs: [lint-and-types, test-core]
++    runs-on: ubuntu-latest
++    strategy:
++      fail-fast: false
++      matrix:
++        plugin: [pty, vfs, wire, chaos, ledger, mcp, oci-translator, openshell-coordinator]
++    steps:
++      - uses: actions/checkout@v4
++      - uses: dtolnay/rust-toolchain@stable
++      - uses: taiki-e/install-action@nextest
++      - uses: mozilla-actions/sccache-action@v0.0.5
++      - name: Test plugin-${{ matrix.plugin }}
++        run: cargo nextest run -p plugin-${{ matrix.plugin }}
++
++  # ─── 5. SHIM + DRIVER TESTS ────────────────────────────────
++  test-shim:
++    needs: [lint-and-types]
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: dtolnay/rust-toolchain@stable
++      - uses: taiki-e/install-action@nextest
++      - uses: mozilla-actions/sccache-action@v0.0.5
++      - run: cargo nextest run -p kelir-shim
++
++  test-drivers:
++    needs: [lint-and-types]
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: dtolnay/rust-toolchain@stable
++      - uses: taiki-e/install-action@nextest
++      - uses: mozilla-actions/sccache-action@v0.0.5
++      - name: Driver unit tests (excludes real-hardware paths)
++        run: cargo nextest run -p driver-rustvmm -p driver-openvmm -E 'not test(test_hw_)'
++
++  # ─── 6. CROSS-PLUGIN INTEGRATION (needs KVM) ───────────────
++  # continue-on-error: GitHub-hosted runners usually lack /dev/kvm.
++  # Set vars.KELIR_RUNNER to a self-hosted label to run for real.
++  test-integration:
++    needs: [test-plugins, test-drivers]
++    runs-on: ${{ vars.KELIR_RUNNER || 'ubuntu-latest' }}
++    continue-on-error: true
++    steps:
++      - uses: actions/checkout@v4
++      - uses: dtolnay/rust-toolchain@stable
++      - uses: taiki-e/install-action@nextest
++      - uses: mozilla-actions/sccache-action@v0.0.5
++      - name: Detect KVM
++        id: kvm
++        run: |
++          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
++            echo "available=true" >> "$GITHUB_OUTPUT"
++          else
++            echo "available=false" >> "$GITHUB_OUTPUT"
++            echo "::notice::No KVM; skipping kelir-integration"
++          fi
++      - name: Integration suite
++        if: steps.kvm.outputs.available == 'true'
++        run: cargo nextest run -p kelir-integration
+ 
+-  # ─── 4. MACOS APPLE SILICON GATE (Zero Bloat) ──────────────
++  # ─── 7. MACOS APPLE SILICON GATE (Zero Bloat) ──────────────
+   check-macos-hvf:
+     needs: [lint-and-types]
+     runs-on: macos-14 # Apple Silicon M1 (Free tier on GitHub Actions for public repos)
+```
+
+## `cans/artifacts/config/project-structure.txt`
+
+```diff
+--- a/cans/artifacts/config/project-structure.txt
++++ b/cans/artifacts/config/project-structure.txt
+@@ -42,16 +42,12 @@
+    │   ├── kelir/                         # Facade crate: single Cargo dependency re-exporting kelir-core + feature-gated kelir-plugins/*
+    │   │   ├── Cargo.toml
+    │   │   ├── src/
+    │   │   │   └── lib.rs                 # Re-export surface: kelir-core API + feature-gated plugin modules (pty, vfs, wire, chaos, ledger)
+-   │   │   └── tests/                     # Integration tests (kelir crate test target)
+-   │   │       ├── test_cow_fork.rs       # Verifies userfaultfd / HVF memory cloning in <15ms
+-   │   │       ├── test_rollback.rs       # Verifies hardware rollback in <8ms
+-   │   │       ├── test_whiteout.rs       # Verifies reconciler converts c 0 0 into host unlink()
+-   │   │       └── test_anti_toctou.rs    # Concurrent thread execution race testing
++   │   │   └── (no tests/ — ownership moved to the crate that owns each primitive)
+    │   │
+    │   ├── kelir-core/                    # In-process stripped microkernel
+@@ -70,12 +66,21 @@
+    │   │       │   ├── protocol/              # Wire framing between Host and Shim
+    │   │       │   │   ├── mod.rs
+    │   │       │   │   ├── codec.rs           # 0x4B45 binary TLV framing parser
+-   │   │       │   │   └── messages.rs        # TrapEvent, TrapAction, WindowResize CBOR models
++   │   │       │   │   └── messages.rs        # Payload structs + wire enums (TrapEvent, ProcessExit, TrapAction, ...)
+    │   │       │   ├── vmm/                   # Driver orchestration
+    │   │       │   │   ├── mod.rs
+    │   │       │   │   ├── driver.rs          # VmmDriver trait (boot, fork, checkpoint, rollback)
+    │   │       │   │   └── router.rs          # Dynamic backend loader (libkrun vs rustvmm)
+    │   │       │   └── telemetry/             # Hardware verification engines
+    │   │       │       ├── mod.rs
+    │   │       │       ├── receipt.rs         # Cryptographic ExecutionReceipt (BLAKE3, dirty pages)
+-   │   │       │       └── delta.rs           # CausalDelta state diff computer
++   │   │       │       └── delta.rs           # CausalDelta / HttpRequestRecord structs ONLY (computation in plugin-ledger)
++   │   │
++   │   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
++   │   │   ├── Cargo.toml                 # Depends on kelir-core only
++   │   │   └── src/
++   │   │       ├── lib.rs
++   │   │       ├── mock_driver.rs         # MockVmmDriver: checkpoint, fork, rollback without RAM
++   │   │       ├── mock_bus.rs            # MockBusDispatcher: records ring messages per plane
++   │   │       ├── handlers.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
++   │   │       ├── fixtures.rs            # Synthetic PTY streams, overlay upperdirs, ghost configs
++   │   │       └── assertions.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
+    │   │
+    │   ├── kelir-shim/                    # In-guest Musl static binary (<50KB payload)
+@@ -88,6 +93,9 @@
+    │   │       ├── audit.rs               # ELF static scan (DT_NEEDED, PT_INTERP) + LD_PRELOAD verification
+    │   │       └── vsock.rs               # /dev/vhost-vsock hardware client socket
++   │   │   └── tests/
++   │   │       ├── test_anti_toctou.rs    # Concurrent thread execution race (moved from kelir/tests)
++   │   │       └── test_reaper.rs         # Zombie reclamation under load
+    │   │
+    │   ├── kelir-drivers/                 # Pluggable Virtualization Implementations
+    │   │   ├── driver-libkrun/            # dalangHQ libkrun fork: userfaultfd CoW fork (<15ms), GPA snapshot engine (<8ms), clock skew patches — macOS HVF default
+@@ -96,13 +104,19 @@
+    │   │   │   ├── Cargo.toml
+    │   │   │   └── src/lib.rs             # libkrun C-FFI bindings
++   │   │   │   └── tests/
++   │   │   │       ├── test_cow_fork.rs   # HVF memory cloning in <15ms
++   │   │   │       └── test_rollback.rs   # Hardware rollback in <8ms
+    │   │   ├── driver-rustvmm/            # Bare-metal Linux KVM + CUDA CDI passthrough
+    │   │   │   ├── Cargo.toml
+    │   │   │   └── src/lib.rs             # kvm-ioctls & userfaultfd CoW memory implementation
++   │   │   │   └── tests/
++   │   │   │       ├── test_cow_fork.rs   # KVM userfaultfd CoW fork in <15ms
++   │   │   │       └── test_rollback.rs   # KVM rollback in <8ms
+    │   │   └── driver-openvmm/            # Windows WHP + ConPTY + HV_SOCKET
+    │   │       ├── Cargo.toml
+    │   │       └── src/lib.rs             # Microsoft WHP & MSHV hypervisor implementation
+    │   │
+-   │   ├── kelir-plugins/                 # Modular First-Class Rust Plugins
++   │   ├── kelir-plugins/                 # Modular First-Class Rust Plugins
++   │   │   # ── Every plugin-* has: src/, tests/, fixtures/, examples/, README.md ──
++   │   │   # ── Depends on kelir-core (runtime) + kelir-plugin-testkit (dev) only ──
+    │   │   ├── plugin-pty/                # virtio-console broker, ANSI sanitizer, Token Shield
+    │   │   │   ├── Cargo.toml
+    │   │   │   └── src/
+@@ -112,6 +126,11 @@
+    │   │   │       ├── ansi.rs            # Drop OSC 52 clipboard & OSC 0/1/2 title sequences
+    │   │   │       ├── responder.rs       # onPrompt engine matching ANSI-stripped plaintext (foreground-verified)
+    │   │   │       └── shield.rs          # UTF-8/ANSI boundary-safe head-and-tail token clamping
++   │   │   │   ├── tests/
++   │   │   │   │   ├── test_ansi_sanitizer.rs
++   │   │   │   │   ├── test_prompt_responder.rs
++   │   │   │   │   ├── test_disclosure.rs   # on_disclosure: annotations append, body immutable
++   │   │   │   │   └── test_token_shield.rs
++   │   │   │   └── examples/pty-only.rs
+    │   │   ├── plugin-vfs/                # virtio-fs engine, Ghost Inodes, in-flight read masking
+    │   │   │   ├── Cargo.toml
+    │   │   │   └── src/
+@@ -121,6 +140,13 @@
+    │   │   │       ├── reconciler.rs      # Host-boundary reconciliation: c 0 0 whiteouts + opaque dirs → atomic host sync (session.fs.reconcile())
+    │   │   │       ├── idmap.rs           # FUSE dynamic UID/GID translation (0 -> geteuid())
+    │   │   │       └── lock_broker.rs     # Cross-VM lock broker keyed on host-mapped physical inodes
++   │   │   │   ├── tests/
++   │   │   │   │   ├── test_whiteout.rs     # File + dir whiteouts → host unlink/remove_dir_all
++   │   │   │   │   ├── test_mask.rs
++   │   │   │   │   ├── test_ghost.rs
++   │   │   │   │   ├── test_idmap.rs
++   │   │   │   │   ├── test_lock_broker.rs
++   │   │   │   │   └── test_write_gating.rs # on_vfs_write: Ok allows, Reject denies with errno
++   │   │   │   └── fixtures/overlay/        # Synthetic upperdirs
+    │   │   ├── plugin-wire/               # Zero-Knowledge credential proxy & DNS Sinkhole
+    │   │   │   ├── Cargo.toml
+    │   │   │   └── src/
+@@ -129,6 +155,11 @@
+    │   │   │       ├── l4_socks.rs        # Database connection proxy (mTLS & dynamic auth)
+    │   │   │       ├── ssh_gate.rs        # Secure Enclave host SSH-Agent forwarder
+    │   │   │       └── dns.rs             # Port 53 UDP interception & NXDOMAIN sinkhole
++   │   │   │   └── port_forward.rs        # session.forward_port() (was core Session API)
++   │   │   │   └── tests/
++   │   │   │       ├── test_l7_proxy.rs
++   │   │   │       ├── test_l4_socks.rs
++   │   │   │       ├── test_dns_sinkhole.rs
++   │   │   │       └── test_port_forward.rs
+    │   │   ├── plugin-chaos/              # Fault Injection Engine
+    │   │   │   ├── Cargo.toml
+    │   │   │   └── src/lib.rs             # Network jitter/drop & VFS ENOSPC simulation
++   │   │   │   └── tests/test_chaos.rs
+    │   │   └── plugin-ledger/             # Compliance & Audit Trail
+    │   │       ├── Cargo.toml
+    │   │       └── src/
+    │   │           ├── lib.rs
+    │   │           ├── wal.rs             # Append-only Merkle-chained SQLite/DuckDB WAL
+-   │   │           └── otel.rs            # W3C traceparent context propagator
++   │   │           ├── otel.rs            # W3C traceparent context propagator
++   │   │           └── compute.rs         # compute_causal_delta() — CausalDelta computation (struct lives in kelir-core)
++   │   │       └── tests/
++   │   │           ├── test_merkle_wal.rs
++   │   │           ├── test_causal_delta.rs
++   │   │           └── test_otel.rs
++   │   ├── plugin-mcp/                    # MCP stdio JSON-RPC ↔ VirtIO rings
++   │   │   ├── Cargo.toml
++   │   │   ├── src/lib.rs                 # Hooks: on_vm_ready, on_pty_*, on_vfs_*, on_trap, on_process_exit, on_disclosure
++   │   │   ├── tests/test_mcp_mapping.rs
++   │   │   └── examples/mcp-stdio.rs
++   │   ├── plugin-oci-translator/         # OCI image → EROFS block; loaded by containerd-shim
++   │   │   ├── Cargo.toml
++   │   │   ├── src/lib.rs                 # on_vm_init: layer flatten + whiteout apply
++   │   │   └── tests/test_oci_translate.rs
++   │   └── plugin-openshell-coordinator/  # Checkpoint/branch policy; loaded by openshell-grpc
++   │       ├── Cargo.toml
++   │       ├── src/lib.rs                 # on_vm_init vetoes + on_watchdog forwarding
++   │       └── tests/test_coordinator.rs
+    │   │
+    │   ├── kelir-adapters/                # Ecosystem Interoperability
+    │   │   ├── containerd-shim/           # containerd-shim-v2 implementation for K8s
+    │   │   │   ├── Cargo.toml
+-   │   │   │   └── src/main.rs
++   │   │   │   └── src/main.rs            # Loads plugin-oci-translator
+    │   │   ├── openshell-grpc/            # NVIDIA OpenShell compute_driver.proto bridge
+    │   │   │   ├── Cargo.toml
+-   │   │   │   └── src/main.rs
++   │   │   │   └── src/main.rs            # Loads plugin-openshell-coordinator
+    │   │   └── mcp-server/                # Model Context Protocol stdio terminal server
+    │   │       ├── Cargo.toml
+-   │   │       └── src/main.rs
++   │   │       └── src/main.rs            # Thin SDK client; loads plugin-mcp
++   │   │
++   │   ├── kelir-integration/             # Cross-plugin integration tests (real hypervisor required)
++   │   │   ├── Cargo.toml                 # Dev-depends on all plugins + one driver
++   │   │   └── tests/
++   │   │       ├── test_full_pipeline.rs
++   │   │       └── test_fork_fanout.rs
+    │   │
+    │   └── kelir-bindings/                # FFI Translation Layers
+@@ -190,6 +232,7 @@
+  ├── tests/                             # ── VERIFICATION SUITES ──
+  │   ├── fixtures/
+  │   │   ├── kernel/                    # Per-arch vmlinux binaries (arm64 16K, x86_64 4K) — selected dynamically at boot
+  │   │   ├── rootfs/                    # Build scripts generating minimal EROFS base images
+  │   │   │   └── build-erofs.sh
+- │   │   └── payloads/                  # Binaries with Shannon entropy >5.2 for trap testing
++ │   │   └── payloads/                  # Binaries with Shannon entropy >5.2 (shared: plugin-pty + kelir-shim tests)
+  │   └── e2e/
+```
+
+## Reconciliation
+
+| Inconsistency | Old | New |
+|---|---|---|
+| Facade crate held 4 tests for 4 subsystems | `crates/kelir/tests/*` | Split to owning crates: `test_whiteout` → `plugin-vfs`, `test_anti_toctou` → `kelir-shim`, `test_cow_fork`/`test_rollback` → each driver |
+| `test-unit` used `--exclude kelir-shim --exclude driver-libkrun` | Monolithic exclusion | Per-tier targets (`test-core`, `test-plugins`, `test-shim`, `test-drivers`) |
+| Plugin tests ran in one CI job | One job | Matrix job; `fail-fast: false`; per-cell `-p plugin-<name>` |
+| Integration tests had no home | Absent | `crates/kelir-integration/`; opt-in via KVM detection |
+| `delta.rs` had ambiguous scope | Whole computation in core | Struct only in core; `plugin-ledger/src/compute.rs` holds computation |
+| Facade `lib.rs` feature-gated "five" plugins | `(pty, vfs, wire, chaos, ledger)` | Now 8; `plugin-testkit` and `kelir-integration` listed separately |
+| Adapter binaries had no explicit plugin loader | Silent | `src/main.rs` comments state which plugin each loads |
+| No `plugin-testkit` crate existed | Mocks implicit in examples | `crates/kelir-plugin-testkit/` with explicit module structure |
+| Payloads were undifferentiated fixture | `tests/fixtures/payloads/` | Annotated as shared between `plugin-pty` and `kelir-shim` |
+
+## Anchor verification
+
+| Pointer | Status |
+|---|---|
+| `02-plugin-model.md#Plugin-ownership` | ✓ Part 1 |
+| `11-operations.md#Project-structure` | ✓ existing (modified) |
+
+Zero forward refs. Zero cross-part dependencies — Part 6 is self-contained.
+
+## Final cross-check: `cans check` on the full patch set
+
+| Rule | Status |
+|---|---|
+| `structure.node_length: 3..90` | ✓ Longest added node line ≤ 88 chars |
+| `structure.siblings: 1..20` | ✓ `#KelirPlugin-trait` max 5; `#First-class-plugins` max 5 |
+| `structure.depth: 2..10` | ✓ Deepest added line is depth 5 (`#Per-plugin-CI → #Matrix-job → #One-cell` — removed, inlined) |
+| `references.mode: pointer` | ✓ All `see:` are single-hop |
+| `references.max_hops: 1` | ✓ No `A → B → C` chains |
+| `references.orphan_check` | ✓ Every new node reachable from a parent that Part 1's `#Capability-taxonomy` or `#Core-invariants` cites |
+| `references.duplicate_home_check` | ✓ See per-part reconciliation tables |
+| `content.tbd_allowed: true` | ✓ No new TBDs |
+| `slug.algorithm: dash-normalized` | ✓ All anchors match the node text via dash normalization (`#First-class-plugins` from "First-class plugins", etc.) |
+
+## What "plugin-first" now means concretely
+
+After Parts 1–6:
+
+1. `01#Capability-taxonomy` gives the decision test.
+2. `01#Core-invariants` gives the closed fence.
+3. `02#Plugin-ownership` gives the crate contract.
+4. `02#Plugin-testkit` gives the shared harness.
+5. `02#First-class-plugins` lists 8 (minimum), with ownership attribution per capability.
+6. `02#Language-parity` names the mechanism per language.
+7. `07#Lifecycle-vetoes` and `07#Watchdog` give lifecycle policy a plugin entry point.
+8. `08#Oracle` and `08#Primitive-vs-derived-telemetry` give the epistemic boundary.
+9. `10#MCP/Containerd/OpenShell-adapter` split binary from plugin.
+10. `11#Per-plugin-CI` + `ci.yml` + `justfile` + `project-structure.txt` make the decoupling test *executable*: remove a plugin, its cell doesn't run, remaining cells stay green.
+
+The axiom at `01#Axiomatic-foundations` — "every capability is a decoupled, composable plugin" — is now verifiable by test, not by assertion. That is what Parts 1–6 buy.

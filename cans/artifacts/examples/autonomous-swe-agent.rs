@@ -181,7 +181,7 @@ impl KelirPlugin for RepoPolicyPlugin {
             new_binary: "/bin/git".into(),
             new_argv: argv,
             injected_env: env,
-            tty_notice: Some(
+            disclosure: Some(
                 "⚡ [KELIR]: push rewritten to isolated agent branch.\n".into(),
             ),
         }))
@@ -190,7 +190,7 @@ impl KelirPlugin for RepoPolicyPlugin {
     // ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
     async fn on_vfs_write(
         &self, path: &Path, data: &[u8],
-    ) -> Result<bool, PluginError> {
+    ) -> Result<(), PluginError> {
         if path.extension().is_some_and(|e| e == "diff")
             && data.len() > self.opts.max_diff_bytes
         {
@@ -200,7 +200,16 @@ impl KelirPlugin for RepoPolicyPlugin {
                 reason: "diff exceeds policy ceiling".into(),
             });
         }
-        Ok(true)
+        Ok(())
+    }
+
+    /// on_disclosure: append policy trace to every mandatory notice.
+    /// Body is immutable; hook can only append.
+    async fn on_disclosure(
+        &self, body: &[u8],
+    ) -> Result<Option<Vec<u8>>, PluginError> {
+        let ann = format!("[repo-policy: {} open violations]\n", self.handle().violations().await);
+        Ok(Some([body, ann.as_bytes()].concat()))
     }
 }
 

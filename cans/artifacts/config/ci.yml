@@ -69,20 +69,84 @@ jobs:
           name: kelir-shim-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/kelir-shim
 
-  # ─── 3. HOST LINUX TESTS (KVM Mocked) ──────────────────────
-  test-linux:
-    needs: [lint-and-types, build-guest-shim]
+  # ─── 3. CORE KERNEL + PLUGIN TESTKIT ───────────────────────
+  test-core:
+    needs: [lint-and-types]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@nextest
       - uses: mozilla-actions/sccache-action@v0.0.5
-      # Integration tests live in the kelir facade crate test target (crates/kelir/tests)
-      - name: Run Nextest Unit Suite
-        run: cargo nextest run --workspace --exclude kelir-shim --exclude driver-libkrun
+      - name: Core + testkit
+        run: cargo nextest run -p kelir-core -p kelir-plugin-testkit
 
-  # ─── 4. MACOS APPLE SILICON GATE (Zero Bloat) ──────────────
+  # ─── 4. PER-PLUGIN TEST MATRIX ─────────────────────────────
+  # Each plugin's tests prove its own decoupling. A failure in one
+  # cell does not mask others (fail-fast: false). See 02#Plugin-ownership.
+  test-plugins:
+    needs: [lint-and-types, test-core]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: [pty, vfs, wire, chaos, ledger, mcp, oci-translator, openshell-coordinator]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Test plugin-${{ matrix.plugin }}
+        run: cargo nextest run -p plugin-${{ matrix.plugin }}
+
+  # ─── 5. SHIM + DRIVER TESTS ────────────────────────────────
+  test-shim:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - run: cargo nextest run -p kelir-shim
+
+  test-drivers:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Driver unit tests (excludes real-hardware paths)
+        run: cargo nextest run -p driver-rustvmm -p driver-openvmm -E 'not test(test_hw_)'
+
+  # ─── 6. CROSS-PLUGIN INTEGRATION (needs KVM) ───────────────
+  # continue-on-error: GitHub-hosted runners usually lack /dev/kvm.
+  # Set vars.KELIR_RUNNER to a self-hosted label to run for real.
+  test-integration:
+    needs: [test-plugins, test-drivers]
+    runs-on: ${{ vars.KELIR_RUNNER || 'ubuntu-latest' }}
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Detect KVM
+        id: kvm
+        run: |
+          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No KVM; skipping kelir-integration"
+          fi
+      - name: Integration suite
+        if: steps.kvm.outputs.available == 'true'
+        run: cargo nextest run -p kelir-integration
+
+  # ─── 7. MACOS APPLE SILICON GATE (Zero Bloat) ──────────────
   check-macos-hvf:
     needs: [lint-and-types]
     runs-on: macos-14 # Apple Silicon M1 (Free tier on GitHub Actions for public repos)

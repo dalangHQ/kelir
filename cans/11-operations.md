@@ -12,8 +12,12 @@
     - Requires: just, cargo-nextest, mold (Linux), zig, pnpm, uv
     - Enforced invariants: local velocity
       - build-host excludes kelir-shim
-      - test-unit excludes kelir-shim and driver-libkrun
-      - pre-flight gates every push: fmt, clippy, eslint, nextest, tsc, mypy
+      - test-core runs kelir-core + kelir-plugin-testkit
+      - test-plugins runs each plugin-* crate independently
+      - test-shim runs kelir-shim standalone
+      - test-drivers excludes test_hw_* paths (real hardware)
+      - test-integration excluded from pre-flight (real VM)
+      - pre-flight gates every push: fmt, clippy, eslint, test-all, tsc, mypy
       - shim binary built via cargo zigbuild musl
   - CI matrix
     - See: artifacts/config/ci.yml
@@ -28,6 +32,21 @@
       - Shim binary < 100KB per architecture
       - Concurrency cancelled per ref (cancel-in-progress)
       - sccache enabled via SCCACHE_GHA_ENABLED
+    - Per-plugin matrix: each plugin fails independently
+    - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
+  - Per-plugin CI
+    - Matrix job: test-plugins
+      - One cell per first-class plugin (8 total)
+      - Each cell: cargo nextest run -p plugin-<name>
+      - fail-fast: false — a failure in one plugin does not mask others
+      - Structural decoupling proof: see 02-plugin-model.md#Plugin-ownership
+    - Local mirror
+      - just test-plugins runs all in one invocation
+      - just test-plugin <name> for a single plugin
+    - Integration tier
+      - Crate: kelir-integration
+      - Runs only where KVM/HVF is available
+      - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
   - Project structure
     - See: artifacts/config/project-structure.txt
     - Three language layers
@@ -37,9 +56,16 @@
     - Five crate families
       - kelir: facade crate, single Cargo dependency, feature-gated plugins
       - kelir-core: stripped microkernel (bus, plugin, protocol, vmm, telemetry)
-      - kelir-plugins: five first-class plugins (pty, vfs, wire, chaos, ledger)
+      - kelir-plugins: first-class plugins
+        - pty, vfs, wire, chaos, ledger
+        - mcp, oci-translator, openshell-coordinator
       - kelir-drivers: libkrun, rustvmm, openvmm
       - kelir-shim: in-guest musl PID 1 (<50KB)
+    - Test infrastructure
+      - kelir-plugin-testkit: mock driver, mock bus, HandlerCtx constructors
+      - Not runtime; dev-dependency of every plugin-*
+    - Integration crate
+      - kelir-integration: cross-plugin paths; real hypervisor required
     - Three adapter crates
       - containerd-shim, openshell-grpc, mcp-server
     - Two binding crates
@@ -47,4 +73,4 @@
     - Test fixtures
       - tests/fixtures/kernel: per-arch vmlinux
       - tests/fixtures/rootfs: EROFS build scripts
-      - tests/fixtures/payloads: high-entropy trap test binaries
+      - tests/fixtures/payloads: high-entropy trap test binaries (shared: pty, shim)

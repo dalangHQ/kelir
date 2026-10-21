@@ -1,4 +1,41 @@
 - Epistemic
+  - Oracle
+    - User-supplied interface; NOT a plugin
+    - Location: kelir-core::oracle::Oracle
+    - Injection: builder.oracle(impl Oracle); one per session
+    - Not in dispatch array; no priority(); no requires()
+    - Rationale: single policy layer for the epistemic engine
+      - Epistemic policy is user-owned, not composable
+      - Oracles chain by composition inside their impl, not the plugin graph
+    - Methods
+      - analyze_intent(&TrapEvent) -> IntentAnalysis
+        - Called from handlers, typically before(*)
+        - IntentAnalysis: is_hypothesis_valid, falsification_reason, allow_high_entropy
+      - verify_physical_receipt(&ExecutionReceipt) -> bool
+        - Called from after(*) post-condition verification
+      - ingest_harness_event(&Path, &Value, &str)
+        - Called from snoop callbacks; see 05-storage-plane.md#Snoop-plane
+      - await_human_approval()
+        - Called between suspend/resume for human-in-the-loop gates
+      - current_trace_id() -> String
+        - Called from handlers setting OTEL_TRACE_ID
+    - Wiring example: See artifacts/examples/autonomous-swe-agent.rs
+  - Primitive vs derived telemetry
+    - Rule
+      - Primitive: single read API, hardware boundary, no policy
+        - Core-owned; enumerated in 01-architecture.md#Core-invariants
+      - Derived: computed from primitives, policy-bearing
+        - Plugin-owned; never a new core method
+    - Primitive (core)
+      - ExecutionReceipt via c.receipt()
+      - StepSlot via c.step
+      - TrapEvent, ProcessExit, wire messages
+    - Derived (plugin-owned)
+      - CausalDelta: plugin-ledger; see #Causal-delta
+      - Merkle chain: plugin-ledger; see #Merkle-WAL
+      - OTel spans: plugin-ledger; see #OpenTelemetry
+      - Oracle analyses: consumer's Oracle impl
+    - Adding a new derived metric: new plugin or new Oracle impl
   - Execution receipts
     - See: artifacts/code/execution-receipt.rs
     - Emitted per executed process to host
@@ -26,6 +63,15 @@
       - spawned_pids: Vec<u32>
       - egress_requests: Vec<HttpRequestRecord>
     - Computed between two checkpoint descriptors
+    - Computed by plugin-ledger
+      - Session accessor: session.get_causal_delta_from_parent()
+      - Requires plugin-ledger mounted
+      - Struct type lives in kelir-core as shared context type
+        - Consistent with ExecutionReceipt
+        - Ownership is computation + dispatch, not type definition
+      - File layout: see 11-operations.md#Project-structure
+        - Struct (CausalDelta, HttpRequestRecord): kelir-core/src/telemetry/delta.rs
+        - Computation (compute_causal_delta): plugin-ledger/src/compute.rs
   - Merkle WAL
     - Every execution receipt hashed into append-only WAL
     - Backend: embedded SQLite or DuckDB
@@ -65,6 +111,7 @@
       - Intercepts harness write() calls in real-time
       - Host in-memory buffer captures updates before disk sync
       - Invariant: eliminates async races and file lock collisions
+      - Consumer: Oracle.ingest_harness_event; see #Oracle
   - Lifecycle bridge
     - See: artifacts/diagrams/lifecycle-bridge.txt
     - Replaces language-level monkeypatching
@@ -76,6 +123,9 @@
       - resume() → restore vCPU with 0ms clock skew
       - step() → execute until next virtio-vsock syscall trap, then pause
       - revert() → drop dirty RAM, purge tmpfs diffs to last good snapshot in <8ms
+    - Underlying primitives: see 07-lifecycle.md#Superpowers
+    - Veto points: see 07-lifecycle.md#Lifecycle-vetoes
+    - This node specifies the orchestrator-facing mapping only
   - Step evaluation loop
     - See: artifacts/code/step-evaluation-loop.ts
     - Orchestrators execute unmodified agent binaries

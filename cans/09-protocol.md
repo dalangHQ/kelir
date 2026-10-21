@@ -58,11 +58,28 @@
       - WindowResize: rows, cols, xpixel, ypixel
       - SendSignal: pid, signal
       - AdjustBalloon: target_mb
+      - Disclosure: body (bytes)
+        - Mandatory core-originated notice
+        - Pipeline and invariants: see 04-terminal-plane.md#Disclosure
     - TrapAction variants
       - Allow: resume syscall untouched; registers and memory never modified
       - Deny { exit_code, stderr_message }: inject exit code + stderr to agent TTY
-      - Rewrite { new_binary, new_argv, injected_env, tty_notice }: re-execute with substitutions
+      - Rewrite { new_binary, new_argv, injected_env, disclosure }: re-execute with substitutions
+        - disclosure Some(_) routes via HostToGuest::Disclosure
       - SuspendForApproval { poll_interval_ms }: hold for human approval
+      - Custom(CborValue): extension point for policy actions beyond the four above
+        - Dispatched by name to a registered handler (registration TBD)
+        - Unknown names fail EUnknownAction before pipeline resumes
+    - Hook mapping
+      - GuestToHost messages fire control-plane hooks
+        - TrapEvent → on_trap; ProcessExit → on_process_exit
+        - MemoryPressureWarning → on_memory_pressure
+        - Heartbeat → on_heartbeat; PortBound → on_port_bound
+      - HostToGuest messages fire host-side hooks before dispatch
+        - WindowResize → on_window_resize
+        - SendSignal → on_signal_send
+        - Disclosure → on_disclosure
+      - Watchdog fires on_watchdog, but is driver-side (not a wire message)
   - Env injection
     - Allow cannot mutate guest environment
       - Registers and memory untouched
@@ -74,5 +91,6 @@
       - new_binary = original_binary
       - new_argv = original_argv
       - injected_env = accumulated handler env map
+      - disclosure = handler's tty_notice if set, else None
       - Syscall re-executes through Rewrite path with injected env
     - This is the only channel for handler-side env changes to reach guest

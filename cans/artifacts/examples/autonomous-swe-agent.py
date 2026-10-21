@@ -189,7 +189,7 @@ class RepoPolicyPlugin(BasePlugin[RepoPolicyHandle]):
             new_binary="/bin/git",
             new_argv=[*event.argv, f"HEAD:refs/heads/{new_branch}"],
             injected_env={"KELIR_REWRITTEN": "1"},
-            tty_notice="⚡ [KELIR]: push rewritten to isolated agent branch.\n",
+            disclosure="⚡ [KELIR]: push rewritten to isolated agent branch.\n",
         )
 
     # ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
@@ -200,6 +200,11 @@ class RepoPolicyPlugin(BasePlugin[RepoPolicyHandle]):
                 errno="ENOSPC", reason="diff exceeds policy ceiling"
             )
         return True
+
+    # ── Ring 1 (virtio-console): annotate mandatory disclosures ─────────
+    async def on_disclosure(self, body: bytes) -> Optional[bytes]:
+        n = self.handle().violations
+        return body + f"[repo-policy: {n} open violations]\n".encode()
 
 
 # ============================================================================

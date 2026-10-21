@@ -2,33 +2,96 @@
   - KelirPlugin trait
     - See: artifacts/code/plugin-trait.rs
     - Async trait implemented by all subsystems, internal and third-party
-    - Five hook families across the 4 VirtIO rings
+    - Trait surface
+      - name() -> &'static str: unique identifier
+      - priority() -> u8: dispatch ordering; lower = earlier
+    - Hook families across the 4 VirtIO rings
       - Lifecycle: on_vm_init, on_vm_ready, on_vm_shutdown
-      - Control plane (vsock): on_trap, on_process_exit
-      - Terminal plane (console): on_pty_input, on_pty_output
+      - Control plane (vsock)
+        - on_trap, on_process_exit
+        - on_memory_pressure, on_heartbeat, on_port_bound
+        - on_signal_send, on_watchdog
+      - Terminal plane (console)
+        - on_pty_input, on_pty_output
+        - on_window_resize, on_disclosure
       - Storage plane (fs): on_vfs_lookup, on_vfs_read, on_vfs_write
       - Wire plane (net): on_net_outbound, on_net_inbound
+    - Hook context restriction
+      - Every hook receives HandlerCtx or a restricted lifecycle context
+      - No hook receives &mut Box<dyn VmmDriver> or &Session
+      - LifecycleCtx exposes: set_watchdog, adjust_balloon, register_veto
     - VfsInodeAttr carries full mode, uid, gid, size, content
       - Populated verbatim into FUSE LOOKUP replies
       - Ghost inodes honor mode: 0o400 exactly, no permission fallback
     - Plane semantics
       - Wire plane fully bidirectional: outbound and inbound mutation points
       - Storage plane fully attributed: on_vfs_write carries PID and HandlerCtx
+      - Control plane messages hook-observable; nothing bypasses the graph
   - Static dispatch
     - Plugins compiled into flat contiguous dispatch array at boot
-    - Evaluated in strict priority order
+    - Evaluated in priority() order; ties broken by declaration order
+    - requires() validated at boot; missing dep aborts boot with EConfig
     - First Deny or Rewrite halts pipeline, dispatches over AF_VSOCK
     - Sub-12 microsecond hook execution
-  - Five canonical plugins
+    - on_trap_deny is builder-level, not a plugin hook
+      - Deny-observation composition is a user concern
+  - Core context keys
+    - Routing table; each key's semantics live at the owning node
+    - Core-provided (always present)
+      - c.trap: see 09-protocol.md#Trap-fast-path
+      - c.env: see 09-protocol.md#Env-injection
+      - c.vm: see 01-architecture.md#VmmDriver-trait
+      - c.step: see 08-epistemic.md#Step-evaluation-loop
+      - c.receipt(): see 08-epistemic.md#Execution-receipts
+    - Plugin-provided (present only when the plugin is mounted)
+      - c.term: plugin-pty
+      - c.fs: plugin-vfs
+      - c.ledger: plugin-ledger
+      - c.wire: plugin-wire
+      - c.chaos: plugin-chaos
+    - User-provided via typed handle
+      - c.<key>: from .decorate() / PluginWithHandle / BasePlugin.handle()
+    - Rule: disabling a plugin removes its key at compile/type/import time
+  - First-class plugins
     - plugin-pty: virtio-console, ANSI sanitizer, Token Shield, prompt responder
     - plugin-vfs: virtio-fs, ghost inodes, maskRead, reconciler, lock broker
-    - plugin-wire: L7 proxy, SOCKS5, SSH gate, DNS sinkhole
+    - plugin-wire: L7 proxy, SOCKS5, SSH gate, DNS sinkhole, port forwarding
     - plugin-chaos: bidirectional wire jitter/drop, VFS ENOSPC injection
     - plugin-ledger: Merkle WAL, causal delta, OpenTelemetry traceparent
+    - Minimum five above; ecosystem additions per 02-plugin-model.md#Plugin-ownership
+    - Session capability surface: attributed per plane
+      - session.fs.*: see 05-storage-plane.md#Reconciler
+      - session.term.*, session.break_glass(): see 04-terminal-plane.md#Terminal-plane
+      - session.wire.*, session.forward_port(): see 06-wire-plane.md#Wire-plane
+      - session.ledger.*: see 08-epistemic.md#Merkle-WAL
+      - session.get_causal_delta_from_parent(): see 08-epistemic.md#Causal-delta
+  - Plugin ownership
+    - Contract, not layout; see 11-operations.md#Project-structure for crate layout
+    - Dependency rules
+      - Depends on kelir-core (traits, context types) only
+      - Depends on plugin-testkit as dev-dependency
+      - Never depends on crates/kelir facade
+      - Never depends on another plugin at build time
+      - Runtime coordination via requires() and core context keys
+    - Decoupling test
+      - Remove the plugin → remaining plugins build and test green
+      - A failing plugin's tests are attributable to that plugin alone
+  - Plugin testkit
+    - New crate: crates/kelir-plugin-testkit/
+    - Provides
+      - MockVmmDriver (checkpoint, fork, rollback without RAM)
+      - MockBusDispatcher (records ring messages per plane)
+      - HandlerCtx constructors from synthetic TrapEvent
+      - Assertions: assert_rewrite, assert_deny, assert_env_injected
+    - Depends only on kelir-core
+    - Every plugin's tests depend on it; nothing else does
+    - Not runtime: test infrastructure only
   - Language parity
     - See: artifacts/diagrams/sdks-invariants.txt
-    - Same five plugins in Rust, TypeScript, Python, maintained 1:1
+    - Same first-class plugins in Rust, TypeScript, Python, maintained 1:1
     - Trait surface and hook semantics identical across languages
-    - Rust: plugin_with_handle → typed handle; unmounted plugin breaks build
-    - TypeScript: type-level accumulation; missing .use() fails tsc
-    - Python: plugin_with_handle yields typed handle; missing handle fails import
+    - Typed-handle mechanism, realized per language
+      - Rust: PluginWithHandle::Handle; missing builder call → E0425
+      - TypeScript: createPlugin().state().decorate(); no .use() → tsc error
+      - Python: BasePlugin[Handle] + handle(); no handle → NameError at import
+    - All three realize the same 02-plugin-model.md#Core-context-keys contract

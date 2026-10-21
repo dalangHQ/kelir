@@ -2,6 +2,10 @@
   - Superpowers
     - See: artifacts/diagrams/superpowers.txt
     - Nine superpowers enumerated below
+    - Every superpower exposes a veto or observation point
+      - Registered via LifecycleCtx in on_vm_init
+      - Class per superpower: see #Lifecycle-vetoes
+    - Ownership attribution: see 02-plugin-model.md#First-class-plugins
   - CoW fork
     - Driver primitive: fork returns Box<dyn VmmDriver> in <15ms
     - KVM path: userfaultfd + KVM memory cloning
@@ -16,11 +20,16 @@
       - session.vm.fork() returns full Session
       - spawn() and every other session API directly callable on child
     - Typical use: parallel agent exploration (5+ candidate strategies)
+    - Veto: Fork (hard)
+      - Callback false → ESessionVeto; no child VM
   - Rollback
     - Driver primitive: rollback reverts in <8ms
     - Reverts guest memory, registers, and tmpfs overlay diffs
     - Used by HandlerCtx post-exec on post-condition violation
     - Does not touch host SSD or Merkle WAL
+    - Veto: Rollback (observation)
+      - Cannot be vetoed; rollback is the recovery action
+      - Use for ledger/trace of recovery events
   - Suspend and resume
     - suspend
       - Freezes vCPU registers
@@ -30,6 +39,10 @@
     - resume
       - Restores registers and memory in <50ms
       - Resumes at exact cycle boundary
+    - Veto: Suspend (hard), Resume (observation)
+      - Suspend false → ESessionVeto; host RAM not flushed
+      - Resume fires before primitive; return value ignored
+      - Note: on_vm_ready does not re-fire on resume
     - Typical use: waiting for human approval with zero host CPU cost
   - Clock skew
     - KVM path: KVM_SET_CLOCK and kvm_clock MSRs
@@ -41,6 +54,8 @@
       - Tracks virtual clocksource instead
       - Guest kernel never flags tsc as unstable, never falls to jiffies
     - Typical use: JWT expiry, cron cycles, certificate renewals
+    - Veto: ClockSkew (hard)
+      - Callback false → ESessionVeto; guest clock unchanged
   - Lid sleep/wake clock snapping
     - Problem: guest clock stalls on lid close
       - Laptop lid close pauses guest monotonic time
@@ -76,11 +91,13 @@
   - Break-glass
     - Human interactive attach when automated agent is stuck
     - session.breakGlass() on Session (post-boot only)
+    - Ownership: see 02-plugin-model.md#First-class-plugins
     - Pauses agent loop, bridges developer host TTY directly to virtio-console
     - Developer inspects state, runs manual commands, exits subshell
     - Control returns to agent
   - Port forwarding
     - forwardPort is a Session API with language parity
+    - Ownership: see 02-plugin-model.md#First-class-plugins
     - TypeScript: session.forwardPort({ host: 8080, guest: 3000 })
     - Python: await session.forward_port(8080, 3000)
     - Rust: session.forward_port(8080, 3000).await?
@@ -95,3 +112,40 @@
     - waitpid(-1, WNOHANG) pass integrated into async event loop
     - Foreground shell exit → orphaned daemons adopted and reaped
     - Prevents defunct <zombie> processes exhausting PID table
+  - Lifecycle vetoes
+    - Registration
+      - LifecycleCtx.register_veto(event, Box<dyn Fn() -> bool + Send + Sync>)
+      - Callbacks registered in on_vm_init; validated at boot
+      - Callbacks fire in priority() order across all plugins
+    - Two classes
+      - Hard veto: Fork, Suspend, ClockSkew
+        - Any false return aborts the action with ESessionVeto
+        - Use for policy gates (e.g. "no fork until fixtures ready")
+      - Observation only: Checkpoint, Rollback, Resume, Terminate
+        - Callback fires; return value logged and ignored
+        - Use for ledger / trace / metrics
+        - Cannot veto by design
+          - Rollback, Resume, Checkpoint are state-preserving
+          - Terminate flush hook is on_vm_shutdown, not a veto
+    - Note: VetoEvent is the uniform registration type for both classes
+      - Class determines semantics, not the type name
+    - Firing point
+      - Before the corresponding hypervisor primitive executes
+      - Session-level actions also route through this point
+  - Watchdog
+    - See: artifacts/code/vmm-driver-trait.rs (WatchdogAction)
+    - Armed via LifecycleCtx.set_watchdog
+      - Typically called from on_vm_init by a policy plugin
+      - WatchdogAction: Reboot | Terminate
+    - Heartbeat
+      - Shim emits GuestToHost::Heartbeat at driver-configured cadence
+      - on_heartbeat fires per receipt; observation only
+    - Firing
+      - No heartbeat within timeout → driver arms the timeout event
+      - on_watchdog(&WatchdogEvent) fires before action executes
+        - WatchdogEvent: timeout_ms, action, fired_at_ns, last_heartbeat_ms
+        - Ok(()) → driver executes WatchdogAction
+        - Err(PluginError::Halt) → action suppressed; surfaces to runtime
+      - This is the extension point for custom actions
+        - A plugin may do work in on_watchdog then return Err(Halt)
+        - WatchdogAction stays closed (Reboot | Terminate)

@@ -17,11 +17,7 @@ kelir/
 │   │   ├── Cargo.toml
 │   │   ├── src/
 │   │   │   └── lib.rs                 # Re-export surface: kelir-core API + feature-gated plugin modules (pty, vfs, wire, chaos, ledger)
-│   │   └── tests/                     # Integration tests (kelir crate test target)
-│   │       ├── test_cow_fork.rs       # Verifies userfaultfd / HVF memory cloning in <15ms
-│   │       ├── test_rollback.rs       # Verifies hardware rollback in <8ms
-│   │       ├── test_whiteout.rs       # Verifies reconciler converts c 0 0 into host unlink()
-│   │       └── test_anti_toctou.rs    # Concurrent thread execution race testing
+│   │   └── (no tests/ — ownership moved to the crate that owns each primitive)
 │   │
 │   ├── kelir-core/                    # In-process stripped microkernel
 │   │   ├── Cargo.toml
@@ -38,7 +34,7 @@ kelir/
 │   │       ├── protocol/              # Wire framing between Host and Shim
 │   │       │   ├── mod.rs
 │   │       │   ├── codec.rs           # 0x4B45 binary TLV framing parser
-│   │       │   └── messages.rs        # TrapEvent, TrapAction, WindowResize CBOR models
+│   │       │   └── messages.rs        # Payload structs + wire enums (TrapEvent, ProcessExit, TrapAction, ...)
 │   │       ├── vmm/                   # Driver orchestration
 │   │       │   ├── mod.rs
 │   │       │   ├── driver.rs          # VmmDriver trait (boot, fork, checkpoint, rollback)
@@ -46,76 +42,142 @@ kelir/
 │   │       └── telemetry/             # Hardware verification engines
 │   │           ├── mod.rs
 │   │           ├── receipt.rs         # Cryptographic ExecutionReceipt (BLAKE3, dirty pages)
-│   │           └── delta.rs           # CausalDelta state diff computer
+│   │           └── delta.rs           # CausalDelta / HttpRequestRecord structs ONLY (computation in plugin-ledger)
+│   │
+│   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
+│   │   ├── Cargo.toml                 # Depends on kelir-core only
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── mock_driver.rs         # MockVmmDriver: checkpoint, fork, rollback without RAM
+│   │       ├── mock_bus.rs            # MockBusDispatcher: records ring messages per plane
+│   │       ├── handlers.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
+│   │       ├── fixtures.rs            # Synthetic PTY streams, overlay upperdirs, ghost configs
+│   │       └── assertions.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
 │   │
 │   ├── kelir-shim/                    # In-guest Musl static binary (<50KB payload)
 │   │   ├── Cargo.toml                 # Configured with lto = "fat", opt-level = "z", panic = "abort"
-│   │   └── src/
-│   │       ├── main.rs                # Guest PID 1 init loop (binds vsock:5252 control + vsock:5253 ingress, mounts devpts, waitpid(-1, WNOHANG) reaper)
-│   │       ├── reaper.rs              # Non-blocking waitpid(-1, WNOHANG) zombie reclamation loop
-│   │       ├── ingress.rs             # vsock:5253 ingress multiplexer → guest loopback TCP proxy
-│   │       ├── pty_broker.rs          # openpty() master/slave broker: setsid() + TIOCSCTTY controlling terminals
-│   │       ├── trap.rs                # seccomp-unotify loop + all-threads PTRACE_SEIZE/INTERRUPT anti-TOCTOU
-│   │       ├── entropy.rs             # Shannon entropy on argv[1:] payload
-│   │       ├── audit.rs               # ELF static scan (DT_NEEDED, PT_INTERP) + LD_PRELOAD verification
-│   │       └── vsock.rs               # /dev/vhost-vsock hardware client socket
+│   │   ├── src/
+│   │   │   ├── main.rs                # Guest PID 1 init loop (binds vsock:5252 control + vsock:5253 ingress, mounts devpts, waitpid(-1, WNOHANG) reaper)
+│   │   │   ├── reaper.rs              # Non-blocking waitpid(-1, WNOHANG) zombie reclamation loop
+│   │   │   ├── ingress.rs             # vsock:5253 ingress multiplexer → guest loopback TCP proxy
+│   │   │   ├── pty_broker.rs          # openpty() master/slave broker: setsid() + TIOCSCTTY controlling terminals
+│   │   │   ├── trap.rs                # seccomp-unotify loop + all-threads PTRACE_SEIZE/INTERRUPT anti-TOCTOU
+│   │   │   ├── entropy.rs             # Shannon entropy on argv[1:] payload
+│   │   │   ├── audit.rs               # ELF static scan (DT_NEEDED, PT_INTERP) + LD_PRELOAD verification
+│   │   │   └── vsock.rs               # /dev/vhost-vsock hardware client socket
+│   │   └── tests/
+│   │       ├── test_anti_toctou.rs    # Concurrent thread execution race (moved from kelir/tests)
+│   │       └── test_reaper.rs         # Zombie reclamation under load
 │   │
 │   ├── kelir-drivers/                 # Pluggable Virtualization Implementations
 │   │   ├── driver-libkrun/            # dalangHQ libkrun fork: userfaultfd CoW fork (<15ms), GPA snapshot engine (<8ms), clock skew patches — macOS HVF default
 │   │   │   ├── Cargo.toml
-│   │   │   └── src/lib.rs             # libkrun C-FFI bindings
+│   │   │   ├── src/lib.rs             # libkrun C-FFI bindings
+│   │   │   └── tests/
+│   │   │       ├── test_cow_fork.rs   # HVF memory cloning in <15ms
+│   │   │       └── test_rollback.rs   # Hardware rollback in <8ms
 │   │   ├── driver-rustvmm/            # Bare-metal Linux KVM + CUDA CDI passthrough
 │   │   │   ├── Cargo.toml
-│   │   │   └── src/lib.rs             # kvm-ioctls & userfaultfd CoW memory implementation
+│   │   │   ├── src/lib.rs             # kvm-ioctls & userfaultfd CoW memory implementation
+│   │   │   └── tests/
+│   │   │       ├── test_cow_fork.rs   # KVM userfaultfd CoW fork in <15ms
+│   │   │       └── test_rollback.rs   # KVM rollback in <8ms
 │   │   └── driver-openvmm/            # Windows WHP + ConPTY + HV_SOCKET
 │   │       ├── Cargo.toml
 │   │       └── src/lib.rs             # Microsoft WHP & MSHV hypervisor implementation
 │   │
 │   ├── kelir-plugins/                 # Modular First-Class Rust Plugins
+│   │   # ── Every plugin-* has: src/, tests/, fixtures/, examples/, README.md ──
+│   │   # ── Depends on kelir-core (runtime) + kelir-plugin-testkit (dev) only ──
 │   │   ├── plugin-pty/                # virtio-console broker, ANSI sanitizer, Token Shield
 │   │   │   ├── Cargo.toml
-│   │   │   └── src/
-│   │   │       ├── lib.rs
-│   │   │       ├── ansi.rs            # Drop OSC 52 clipboard & OSC 0/1/2 title sequences
-│   │   │       ├── responder.rs       # onPrompt engine matching ANSI-stripped plaintext (foreground-verified)
-│   │   │       └── shield.rs          # UTF-8/ANSI boundary-safe head-and-tail token clamping
+│   │   │   ├── src/
+│   │   │   │   ├── lib.rs
+│   │   │   │   ├── ansi.rs            # Drop OSC 52 clipboard & OSC 0/1/2 title sequences
+│   │   │   │   ├── responder.rs       # onPrompt engine matching ANSI-stripped plaintext (foreground-verified)
+│   │   │   │   └── shield.rs          # UTF-8/ANSI boundary-safe head-and-tail token clamping
+│   │   │   ├── tests/
+│   │   │   │   ├── test_ansi_sanitizer.rs
+│   │   │   │   ├── test_prompt_responder.rs
+│   │   │   │   ├── test_disclosure.rs # on_disclosure: annotations append, body immutable
+│   │   │   │   └── test_token_shield.rs
+│   │   │   └── examples/pty-only.rs
 │   │   ├── plugin-vfs/                # virtio-fs engine, Ghost Inodes, in-flight read masking
 │   │   │   ├── Cargo.toml
-│   │   │   └── src/
-│   │   │       ├── lib.rs
-│   │   │       ├── mask.rs            # In-flight read masking (MaskRule regex redaction, fixed-width)
-│   │   │       ├── ghost.rs           # Synthetic RAM-only inode injector (VfsInodeAttr: mode/uid/gid/size)
-│   │   │       ├── reconciler.rs      # Host-boundary reconciliation: c 0 0 whiteouts + opaque dirs → atomic host sync (session.fs.reconcile())
-│   │   │       ├── idmap.rs           # FUSE dynamic UID/GID translation (0 -> geteuid())
-│   │   │       └── lock_broker.rs     # Cross-VM lock broker keyed on host-mapped physical inodes
+│   │   │   ├── src/
+│   │   │   │   ├── lib.rs
+│   │   │   │   ├── mask.rs            # In-flight read masking (MaskRule regex redaction, fixed-width)
+│   │   │   │   ├── ghost.rs           # Synthetic RAM-only inode injector (VfsInodeAttr: mode/uid/gid/size)
+│   │   │   │   ├── reconciler.rs      # Host-boundary reconciliation: c 0 0 whiteouts + opaque dirs → atomic host sync (session.fs.reconcile())
+│   │   │   │   ├── idmap.rs           # FUSE dynamic UID/GID translation (0 -> geteuid())
+│   │   │   │   └── lock_broker.rs     # Cross-VM lock broker keyed on host-mapped physical inodes
+│   │   │   ├── tests/
+│   │   │   │   ├── test_whiteout.rs   # File + dir whiteouts → host unlink/remove_dir_all
+│   │   │   │   ├── test_mask.rs
+│   │   │   │   ├── test_ghost.rs
+│   │   │   │   ├── test_idmap.rs
+│   │   │   │   ├── test_lock_broker.rs
+│   │   │   │   └── test_write_gating.rs# on_vfs_write: Ok allows, Reject denies with errno
+│   │   │   └── fixtures/overlay/      # Synthetic upperdirs
 │   │   ├── plugin-wire/               # Zero-Knowledge credential proxy & DNS Sinkhole
 │   │   │   ├── Cargo.toml
-│   │   │   └── src/
-│   │   │       ├── lib.rs
-│   │   │       ├── l7_proxy.rs        # Plaintext swap prior to outbound TLS handshake
-│   │   │       ├── l4_socks.rs        # Database connection proxy (mTLS & dynamic auth)
-│   │   │       ├── ssh_gate.rs        # Secure Enclave host SSH-Agent forwarder
-│   │   │       └── dns.rs             # Port 53 UDP interception & NXDOMAIN sinkhole
+│   │   │   ├── src/
+│   │   │   │   ├── lib.rs
+│   │   │   │   ├── l7_proxy.rs        # Plaintext swap prior to outbound TLS handshake
+│   │   │   │   ├── l4_socks.rs        # Database connection proxy (mTLS & dynamic auth)
+│   │   │   │   ├── ssh_gate.rs        # Secure Enclave host SSH-Agent forwarder
+│   │   │   │   ├── dns.rs             # Port 53 UDP interception & NXDOMAIN sinkhole
+│   │   │   │   └── port_forward.rs    # session.forward_port() (was core Session API)
+│   │   │   └── tests/
+│   │   │       ├── test_l7_proxy.rs
+│   │   │       ├── test_l4_socks.rs
+│   │   │       ├── test_dns_sinkhole.rs
+│   │   │       └── test_port_forward.rs
 │   │   ├── plugin-chaos/              # Fault Injection Engine
 │   │   │   ├── Cargo.toml
-│   │   │   └── src/lib.rs             # Network jitter/drop & VFS ENOSPC simulation
-│   │   └── plugin-ledger/             # Compliance & Audit Trail
+│   │   │   ├── src/lib.rs             # Network jitter/drop & VFS ENOSPC simulation
+│   │   │   └── tests/test_chaos.rs
+│   │   ├── plugin-ledger/             # Compliance & Audit Trail
+│   │   │   ├── Cargo.toml
+│   │   │   ├── src/
+│   │   │   │   ├── lib.rs
+│   │   │   │   ├── wal.rs             # Append-only Merkle-chained SQLite/DuckDB WAL
+│   │   │   │   ├── otel.rs            # W3C traceparent context propagator
+│   │   │   │   └── compute.rs         # compute_causal_delta() — CausalDelta computation (struct lives in kelir-core)
+│   │   │   └── tests/
+│   │   │       ├── test_merkle_wal.rs
+│   │   │       ├── test_causal_delta.rs
+│   │   │       └── test_otel.rs
+│   │   ├── plugin-mcp/                # MCP stdio JSON-RPC ↔ VirtIO rings
+│   │   │   ├── Cargo.toml
+│   │   │   ├── src/lib.rs             # Hooks: on_vm_ready, on_pty_*, on_vfs_*, on_trap, on_process_exit, on_disclosure
+│   │   │   ├── tests/test_mcp_mapping.rs
+│   │   │   └── examples/mcp-stdio.rs
+│   │   ├── plugin-oci-translator/     # OCI image → EROFS block; loaded by containerd-shim
+│   │   │   ├── Cargo.toml
+│   │   │   ├── src/lib.rs             # on_vm_init: layer flatten + whiteout apply
+│   │   │   └── tests/test_oci_translate.rs
+│   │   └── plugin-openshell-coordinator/# Checkpoint/branch policy; loaded by openshell-grpc
 │   │       ├── Cargo.toml
-│   │       └── src/
-│   │           ├── lib.rs
-│   │           ├── wal.rs             # Append-only Merkle-chained SQLite/DuckDB WAL
-│   │           └── otel.rs            # W3C traceparent context propagator
+│   │       ├── src/lib.rs             # on_vm_init vetoes + on_watchdog forwarding
+│   │       └── tests/test_coordinator.rs
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
 │   │   ├── containerd-shim/           # containerd-shim-v2 implementation for K8s
 │   │   │   ├── Cargo.toml
-│   │   │   └── src/main.rs
+│   │   │   └── src/main.rs            # Loads plugin-oci-translator
 │   │   ├── openshell-grpc/            # NVIDIA OpenShell compute_driver.proto bridge
 │   │   │   ├── Cargo.toml
-│   │   │   └── src/main.rs
+│   │   │   └── src/main.rs            # Loads plugin-openshell-coordinator
 │   │   └── mcp-server/                # Model Context Protocol stdio terminal server
 │   │       ├── Cargo.toml
-│   │       └── src/main.rs
+│   │       └── src/main.rs            # Thin SDK client; loads plugin-mcp
+│   │
+│   ├── kelir-integration/             # Cross-plugin integration tests (real hypervisor required)
+│   │   ├── Cargo.toml                 # Dev-depends on all plugins + one driver
+│   │   └── tests/
+│   │       ├── test_full_pipeline.rs
+│   │       └── test_fork_fanout.rs
 │   │
 │   └── kelir-bindings/                # FFI Translation Layers
 │       ├── napi/                      # Rust -> Node.js NAPI-RS bridge
@@ -167,7 +229,7 @@ kelir/
 │   │   ├── kernel/                    # Per-arch vmlinux binaries (arm64 16K, x86_64 4K) — selected dynamically at boot
 │   │   ├── rootfs/                    # Build scripts generating minimal EROFS base images
 │   │   │   └── build-erofs.sh
-│   │   └── payloads/                  # Binaries with Shannon entropy >5.2 for trap testing
+│   │   └── payloads/                  # Binaries with Shannon entropy >5.2 (shared: plugin-pty + kelir-shim tests)
 │   └── e2e/
 │       ├── test_claude_code.ts        # End-to-end Claude Code session under PTY controls
 │       └── test_openrig_driver.ts     # Verifies swarm execution replacing OpenRig tmux

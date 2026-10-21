@@ -17,6 +17,7 @@
       - Radical plugin-first microkernel
         - Core drives hardware virtualization and multiplexes the 4 VirtIO rings
         - Every capability is a decoupled, composable plugin
+        - Exception fence: only 01-architecture.md#Core-invariants primitives are core-owned
       - Transparent truthful steering
         - Intercepted I/O is allowed, steered with tty_notice, or rejected
         - No silent state divergence
@@ -31,6 +32,42 @@
       - Standard POSIX consumption
         - Guest reads KELIR_PARAMS like any other environment variable
         - No guest-side SDKs, CLI shims, or agents
+  - Capability taxonomy
+    - Four categories; every capability falls into exactly one
+    - Core primitive
+      - Hardware/protocol invariant, no policy
+      - Enumerated as pointers in 01-architecture.md#Core-invariants
+    - Interface
+      - User-supplied contract, no composition requirement
+      - Examples: user-implemented Oracle, pluggable VmmDriver backends
+      - Documented at the owning plane node
+    - Adapter binary
+      - Contract-bound process on the wire
+      - Examples: containerd-shim-v2, MCP stdio
+      - Translation logic delegated to a plugin the binary loads
+    - Plugin
+      - External input mapping, or policy over a core primitive
+      - Declares priority(): see 02-plugin-model.md#KelirPlugin-trait
+      - Owns crate, tests, fixtures, examples: see 02-plugin-model.md#Plugin-ownership
+    - Decision test
+      - Invariant with no policy? → core primitive
+      - User contract with no composition? → interface
+      - Wire contract with a process boundary? → adapter binary
+      - Otherwise → plugin
+  - Core invariants
+    - The closed set. Everything not pointed to here is a plugin.
+    - Trait definitions
+      - KelirPlugin: see 02-plugin-model.md#KelirPlugin-trait
+      - VmmDriver trait (defined in this file)
+    - Context types: see 09-protocol.md#Wire-messages
+    - Wire framing: see 09-protocol.md#Wire-framing
+    - Dispatch loop: see 02-plugin-model.md#Static-dispatch
+    - 4-ring routing: Four-Ring Bus
+    - Params ingress + auto-Rewrite: Params ingress contract
+    - Receipts: see 08-epistemic.md#Execution-receipts
+    - StepSlot: see 08-epistemic.md#Step-evaluation-loop
+    - Shim primitives: Guest VM anatomy
+    - EROFS mount: see 05-storage-plane.md#EROFS-rootfs
   - Four-Ring Bus
     - See: artifacts/diagrams/four-ring-bus.txt
     - virtio-vsock control plane: syscalls, PIDs, signals, traps
