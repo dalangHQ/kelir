@@ -33,6 +33,8 @@
   - Containerd shim v2
     - Shim binary
       - Crate: kelir-adapters/containerd-shim
+      - Implements containerd v2 runtime protocol using containerd-shim and ttrpc
+      - Ingests OCI pod runtime bundles via typed Serde oci-spec definitions
       - Activated via runtimeClassName: kelir in Pod manifests
       - Loads plugin-oci-translator
       - Pod isolation

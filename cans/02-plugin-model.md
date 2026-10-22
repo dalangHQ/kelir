@@ -65,7 +65,8 @@
       - c.trap, c.env, c.vm, c.step, c.receipt()
     - Plugin-provided (present only when the plugin is mounted)
       - c.term ← plugin-pty; c.fs ← plugin-vfs; c.ledger ← plugin-ledger;
-        c.wire ← plugin-wire; c.chaos ← plugin-chaos
+        c.wire ← plugin-wire; c.chaos ← plugin-chaos;
+        c.density ← plugin-hyper-density; c.ingress ← plugin-wire-ingress
     - User-provided via typed handle
       - c.<key> from .decorate() / PluginWithHandle / BasePlugin.handle()
     - Every key above resolves to a plane node in one hop; none are
@@ -79,6 +80,9 @@
       - plugin-db-proxy: see 06-wire-plane.md#Database-proxy-plane
       - plugin-mesh: see 06-wire-plane.md#Federation-mesh
       - plugin-lock-broker: see 05-storage-plane.md#Entity-lock-broker
+      - plugin-hyper-density: see 07-lifecycle.md#Autonomous-idle-eviction
+      - plugin-cas-snapshot: see 07-lifecycle.md#Content-addressed-snapshots
+      - plugin-wire-ingress: see 06-wire-plane.md#Connection-parking
       - plugin-supply-chain: guard behavior at #Supply-chain-guard
       - plugin-ledger: see 08-epistemic.md
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership

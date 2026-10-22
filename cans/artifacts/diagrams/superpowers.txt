@@ -15,4 +15,6 @@
 │ 12. Synthetic Clock ─► Instruction-ticked virtual clocksource (0 jitter).   │
 │ 13. 2PC Lifecycle ───► Pre/post commit atomic synchronization with host DB. │
 │ 14. SIGTERM Grace ───► Preemption window holds SIGKILL for clean checkpoint.│
+│ 15. Zero-RSS Evict ──► Autonomous lz4_flex memory flush to NVMe in <15ms.   │
+│ 16. CAS Teleport ────► Sub-50ms cross-host rehydration via FastCDC chunks.  │
 └─────────────────────────────────────────────────────────────────────────────┘

@@ -58,7 +58,7 @@
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
     - Matrix job: test-plugins
-      - One cell per first-class plugin (12 total)
+      - One cell per first-class plugin (15 total)
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
       - Structural decoupling proof: see 02-plugin-model.md#Plugin-ownership

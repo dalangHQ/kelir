@@ -102,3 +102,11 @@
       - Verify agent code handles flaky APIs, dialup speeds, RST resets
       - Verify graceful degradation on disk-full conditions
     - Wiring: See artifacts/examples/autonomous-swe-agent.ts
+  - Connection parking
+    - Owner: plugin-wire-ingress; see 02-plugin-model.md#First-class-plugins
+    - Holds inbound client TCP connections without dropped frames during suspend
+    - Clamps socket receive buffers via socket2 to stall window progress natively
+    - Sniffs routing metadata in nanoseconds with zero allocation via httparse
+    - Wakes target microVM via LifecycleCtx when ingress bytes arrive
+    - Splices client stream directly to vsock:5253 using tokio copy_bidirectional
+    - Zero-downtime webhook and interactive terminal connection continuity

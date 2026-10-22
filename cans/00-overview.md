@@ -44,6 +44,9 @@
     - Container builds without nested VMX: see 07-lifecycle.md#Docker-in-kelir
     - Human break-glass on agent loops: see 07-lifecycle.md#Break-glass
     - Low-memory SBC execution: see 01-architecture.md#Embedded-profile
+    - Sub-15ms idle scale-to-zero: see 07-lifecycle.md#Autonomous-idle-eviction
+    - Cross-cluster state teleport: see 07-lifecycle.md#Content-addressed-snapshots
+    - Zero-downtime connection parking: see 06-wire-plane.md#Connection-parking
     - Mobile runtime governance on Android/Termux: see 01-architecture.md#Driver-backends
   - Spec map
     - Foundation: see 01-architecture.md

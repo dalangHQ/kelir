@@ -19,3 +19,8 @@
   Mediates pgwire (TCP 5432) & SQLite                       Point-to-point cross-VM
   sockets over vsock; enforces in-flight                    peer vsock stream with mTLS;
   DbAction (Allow, Deny, Rewrite).                          propagates traceparent & hops.
+                                        │
+                                        ▼
+                             [7. CONNECTION PARKING]
+                             Holds client TCP sockets in zero-window state;
+                             sniffs HTTP headers; wakes VM and forwards to vsock:5253.

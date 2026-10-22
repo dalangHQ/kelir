@@ -172,10 +172,22 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # Direct delegation to host OS advisory locks (flock)
 │   │   │   └── tests/test_lock_broker.rs
-│   │   └── plugin-supply-chain/       # Package guard: blocks dynamic lifecycle scripts in package manager trees
+│   │   ├── plugin-supply-chain/       # Package guard: blocks dynamic lifecycle scripts in package manager trees
+│   │   │   ├── Cargo.toml
+│   │   │   │   ├── src/lib.rs             # Trap hook rejecting postinstall/setup.py via ancestor chain
+│   │   │   │   └── tests/test_supply_chain.rs
+│   │   ├── plugin-hyper-density/      # Autonomous zero-RSS idle eviction via lz4_flex and io-uring
+│   │   │   ├── Cargo.toml
+│   │   │   │   ├── src/lib.rs             # Ring inactivity monitor and direct NVMe suspend flusher
+│   │   │   │   └── tests/test_eviction.rs
+│   │   ├── plugin-cas-snapshot/       # Content-addressed chunked remote microVM snapshot hydration
+│   │   │   ├── Cargo.toml
+│   │   │   │   ├── src/lib.rs             # FastCDC partitioning, BLAKE3 indexing, object_store sync
+│   │   │   │   └── tests/test_cas.rs
+│   │   └── plugin-wire-ingress/       # Connection parking and wake-on-traffic L4/L7 proxy
 │   │       ├── Cargo.toml
-│   │       ├── src/lib.rs             # Trap hook rejecting postinstall/setup.py via ancestor chain
-│   │       └── tests/test_supply_chain.rs
+│   │       ├── src/lib.rs             # socket2 buffer clamping, httparse sniffer, copy_bidirectional
+│   │       └── tests/test_parking.rs
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
 │   │   ├── containerd-shim/           # containerd-shim-v2 implementation for K8s
@@ -223,6 +235,9 @@ kelir/
 │   │   │       ├── schema.ts          # TypeBox command validation wrappers
 │   │   │       └── binding.ts         # Auto-generated NAPI loader
 │   │   ├── plugins/                   # @kelir/plugin-*
+│   │   │   ├── hyper-density/         # TS bindings for autonomous idle eviction
+│   │   │   ├── cas-snapshot/          # TS bindings for content-addressed snapshot hydration
+│   │   │   ├── wire-ingress/          # TS bindings for connection parking
 │   │   │   ├── pty/                   # TS bindings for virtio-console
 │   │   │   ├── vfs/                   # TS bindings for virtio-fs
 │   │   │   ├── wire/                  # TS bindings for credential vaulting
@@ -240,6 +255,9 @@ kelir/
 │           ├── core.py                # PyO3 native binding wrapper
 │           ├── context.py             # Type-hinted context chain
 │           ├── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
+│           │   ├── hyper_density.py   # Python bindings for idle eviction
+│           │   ├── cas_snapshot.py    # Python bindings for content-addressed snapshot hydration
+│           │   ├── wire_ingress.py    # Python bindings for connection parking
 │           │   ├── pty.py             # Python bindings for the pty plugin
 │           │   ├── vfs.py             # Python bindings for the vfs plugin
 │           │   ├── wire.py            # Python bindings for the wire plugin
