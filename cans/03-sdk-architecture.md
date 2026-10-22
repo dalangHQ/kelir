@@ -21,6 +21,10 @@
   - Rust SDK
     - See: artifacts/code/rust-handle-injection.rs
     - plugin_with_handle(P) atomically returns (builder, P::Handle)
+    - plugin_with_handle vs plugin_with_handle_scoped: TBD
+    - Builder return binding: TBD
+    - TypeScript createPlugin API spelling: TBD
+    - Python Pydantic v1-vs-v2 example: TBD
     - Missing builder.plugin_with_handle call → handle not in scope → E0425
     - Zero-Allocation Validation via Serde
       - #[derive(Deserialize)] enum Action with serde(tag = "action")

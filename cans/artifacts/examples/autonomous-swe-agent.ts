@@ -1,3 +1,7 @@
+// User-initiated forwardPort() binds a host-side listener on the named
+// port. This is the host-initiated path; the guest-initiated PortBound
+// tunnel in 07-lifecycle.md#Port-forwarding creates no host listener.
+
 // ============================================================================
 // autonomous-swe-agent.ts 
 // ============================================================================

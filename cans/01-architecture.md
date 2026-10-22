@@ -105,6 +105,7 @@
       - Shim runs as PID 1: orphan reaping is mandatory, not optional
       - seccomp-unotify is in-kernel; userspace cannot race the allowlist
       - PTRACE_SEIZE covers every thread: leader-only seize is unsafe
+    - Trust chain: TBD
     - Workload contract: no guest-side SDK, shim, or agent
   - VmmDriver trait
     - See: artifacts/code/vmm-driver-trait.rs
@@ -120,6 +121,7 @@
         Merkle roots across hosts; a page count does not
       - This is the sole home of the page-size fact
   - Driver backends
+    - Capability matrix: TBD
     - driver-libkrun: default
       - macOS: HVF + Metal GPU
       - Linux: KVM

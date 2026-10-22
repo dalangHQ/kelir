@@ -4,6 +4,7 @@
     - virtio-vsock port 5253: ingress/port-forward multiplexer
     - Windows driver-openvmm: HV_SOCKET translates the same channels
     - Zero network interface involvement
+    - Port collision across co-located sessions: TBD
   - Trap fast-path
     - Step sequence and per-step mechanics: See artifacts/diagrams/trap-flow.txt
     - Goal: the trap path must not slow `cargo build` / `npm install`
@@ -29,6 +30,7 @@
       - ELF is read from disk at trap time: /proc/$PID/maps still describes
         the pre-exec image and cannot be trusted
     - Flow diagram: See artifacts/diagrams/trap-flow.txt
+    - Fast-path policy: TBD
   - Wire framing
     - See: artifacts/code/wire-protocol.rs
     - Layout (header offsets, magic, version): See artifacts/code/wire-protocol.rs
@@ -38,6 +40,16 @@
         directions; a lost seq is a protocol error, not a retry
       - Payload is CBOR; the codec never inspects CBOR before reassembling
         the u64 sequence
+    - Framing gaps: TBD
+      - Byte order
+      - Message-type registry
+      - Flags registry
+      - Max frame size
+      - CBOR limits
+      - Version negotiation
+      - Flow control
+      - Reconnect and sequence reset
+      - Port 5253 framing
   - Wire messages
     - See: artifacts/code/messages.rs
     - Message set and payload fields: See artifacts/code/messages.rs
@@ -65,3 +77,10 @@
       - tty_notice = handler's tty_notice if set, else None
       - Syscall re-executes through Rewrite path with injected env
     - This is the only channel for handler-side env changes to reach guest
+  - Trap decision gaps: TBD
+    - Rewrite loop prevention
+    - new_binary canonicalisation
+    - Env injection size and secrets
+    - Multi-handler env merge
+    - Custom dispatch
+    - SuspendForApproval release

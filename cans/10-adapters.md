@@ -12,7 +12,9 @@
       - Crate: kelir-adapters/mcp-server
       - Command: kelir-mcp
       - CLI args: --kernel, --rootfs, --memory-mb
-        - Mapped to VmConfig; forwarded to builder, not parsed by plugin
+        - VmConfig also needs vcpus, tsc_locked, enable_watchdog,
+          driver, entropy_seed, gpu — none are CLI args here
+        - Defaults for unnamed VmConfig fields: TBD
       - Transport: stdio JSON-RPC to client (Claude Desktop, Cursor, Devin)
       - Loads plugin-mcp and nothing else
       - Bypasses host shell execution entirely
@@ -33,6 +35,7 @@
         - write_file → virtio-fs write
       - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
         - Previously impossible: adapter binary sat outside the graph
+    - MCP contract: TBD
   - Containerd shim v2
     - Shim binary
       - Crate: kelir-adapters/containerd-shim
@@ -53,6 +56,7 @@
       - Translation policy
         - Layer flattening, whiteout application, /etc overlay
         - Composable: a chaos plugin can fault-inject into image pulls
+      - Containerd contract: TBD
   - OpenShell gRPC driver
     - gRPC binary
       - Crate: kelir-adapters/openshell-grpc
@@ -73,6 +77,7 @@
         - When to checkpoint (request count, latency thresholds)
         - What to branch on (multi-tenant isolation)
         - Composable: a ledger plugin sees every checkpoint event
+      - OpenShell contract: TBD
   - E2B compatibility
     - TypeScript: @kelir/e2b-compat
     - Python: kelir.compat.e2b
@@ -83,3 +88,4 @@
     - Implementation: thin SDK wrapper
       - No plugin: Sandbox methods map directly to Session methods
       - No binary: consumes the same in-process SDK as first-class consumers
+    - E2B coverage: TBD

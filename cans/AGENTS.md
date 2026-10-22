@@ -166,6 +166,10 @@ cans budget write "sessions" --json
 # ONLY edit files in canEdit. Never touch mustNotEdit.
 ```
 
+The budget tool is a local guide. CI enforces the write envelope through
+`cans check --touched-files`, not through `budget write`. They are not the
+same computation today. `budget write` → `canEdit` agreement: TBD
+
 Example budget read output:
 
 ```json

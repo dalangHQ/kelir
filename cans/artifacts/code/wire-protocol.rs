@@ -24,7 +24,11 @@
 
 pub const MAGIC: u16 = 0x4B45;     // 'KE'
 pub const VERSION: u16 = 0x03;
+// Layout: magic(2)+version(2)+type(2)+flags(2)+seq_msb(4)+seq_lsb(4)+payload_len(4)
+// The header occupies the first five 32-bit rows of the diagram above;
+// the sixth row is payload, not header.
 pub const HEADER_LEN: usize = 20;
+// Byte order and padding: TBD
 
 #[repr(C)]
 pub struct FrameHeader {

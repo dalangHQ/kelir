@@ -16,6 +16,15 @@
       - DNS: NXDOMAIN for non-allowlisted; blocks tunneling on port 53
     - Composability: plugin-chaos mutates frames in both directions
     - Return contract: see 02-plugin-model.md#Hook-return-semantics
+    - Admission semantics: TBD
+      - Allowlist match key
+      - Redirect handling
+      - SNI vs Host vs IP
+      - QUIC / HTTP-3
+      - DoH / DoT
+      - Raw sockets, ICMP, IPv6
+      - Guest certificate pinning
+      - Response body scrubbing
   - L7 credential swapper
     - Guest shell sees dummy URN placeholders
       - STRIPE_KEY="vault://stripe_prod_key"
@@ -37,6 +46,11 @@
     - Response scrubbing
       - Sensitive headers (Set-Cookie, echoed auth) stripped
       - Response re-encrypted under per-session CA before entering TAP
+    - Failure and lifecycle: TBD
+      - Upstream failure surfacing
+      - Per-session CA lifetime and rotation
+      - Secret zeroization
+      - Substituted-request audit redaction
   - L4 gateway
     - Direct TCP connections route through in-memory SOCKS5 / SNI gateway
     - Database proxying
@@ -44,6 +58,7 @@
       - Ephemeral DB credentials injected at host connection boundary
       - Client mTLS certificates injected at host boundary
     - No private keys or DB passwords enter guest address space
+    - L4 destination pinning: TBD
   - SSH gate
     - git@github.com SSH connections mapped via /dev/vhost-vsock to host SSH_AUTH_SOCK
     - Host signs cryptographic authentication challenges

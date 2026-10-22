@@ -32,8 +32,7 @@
     - Hook return semantics
       - on_vfs_write: see 05-storage-plane.md#Write-gating (storage owns it)
       - on_vfs_lookup → Ok(None) = fall through; Ok(Some(attr)) = serve
-      - on_net_outbound / on_net_inbound → Ok(true) = forward;
-        Ok(false) = drop frame; Err(_) = halt pipeline
+      - on_net_outbound / on_net_inbound → See: artifacts/code/plugin-trait.rs
   - Static dispatch
     - Plugins compiled into flat contiguous dispatch array at boot
     - Evaluated in priority() order; ties broken by declaration order
@@ -78,9 +77,9 @@
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
       - session.fs.*: see 05-storage-plane.md#Reconciler
-      - session.term.*, session.break-glass(): see 04-terminal-plane.md#Disclosure
-      - session.wire.*, session.forward-port(): see 06-wire-plane.md#Wire-plane
-        - Spelling: `forwardPort()` (TS) / `forward_port()` (Rust, Py)
+      - session.term.*: see 04-terminal-plane.md#Disclosure
+      - session.forward_port(): see 07-lifecycle.md#Port-forwarding
+      - session.wire.*: TBD (no node owns it today)
       - session.ledger.*: see 08-epistemic.md#Merkle-WAL
       - session.get_causal_delta_from_parent(): see 08-epistemic.md#Causal-delta
   - Plugin ownership

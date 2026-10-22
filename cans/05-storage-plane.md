@@ -43,6 +43,18 @@
     - CommitStats counters
       - files_changed: count of modified or newly created files
       - whiteouts_resolved: count of file and directory whiteouts handled
+    - Reconciler coverage: TBD
+      - Symlinks
+      - Hardlinks
+      - Non-regular, non-dir file types
+      - xattrs and ACLs
+      - Mode, uid, gid, mtime
+      - Sparse files
+      - Deleted-directory subtree walk
+      - Reconcile-during-write
+      - Partial-reconcile crash recovery
+      - Directory fsync
+      - Host-side deletion scope
   - UID/GID idmap
     - Translates guest UID 0 (root) and 1000 (user) to host geteuid()/getegid()
     - macOS host: developer is UID 501
@@ -57,6 +69,7 @@
     - plugin-vfs gates FUSE write() via on_vfs_write
     - Signature: See artifacts/code/plugin-trait.rs
     - Error variants: see 02-plugin-model.md#Hook-return-semantics
+    - SDK-to-trait signature mapping: TBD
     - Ok(()) = allow; kernel proceeds with write to upperdir
     - Err(PluginError::Reject { errno, reason }) = deny
       - Guest write() fails with named errno; error surfaces in workload
@@ -83,6 +96,7 @@
       - Replacement padded or truncated to exact byte length of the match
       - st_size and file offsets preserved
       - Sequential reads and trailing reads stay consistent
+      - Short-match padding rule: TBD
     - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks
     - See: artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
   - Cross-VM lock broker
@@ -92,6 +106,13 @@
     - Broker intercepts FUSE_SETLK and FUSE_SETLKW (fcntl/flock)
     - Routes lock acquisition through centralized host in-memory mutex table
     - Conflicting locks block cleanly or return EWOULDBLOCK
+    - Broker semantics: TBD
+      - Lease timeout
+      - Deadlock detection
+      - Fairness
+      - Lock table lifetime
+      - Non-local filesystems
+      - Broker crash behavior
   - Snoop plane
     - Invariant: a snoop observation reflects the producing process, not a
       kernel flusher

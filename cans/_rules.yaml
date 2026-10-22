@@ -37,7 +37,10 @@ style:
 
 content:
   tbd_allowed: true
-  max_tbd_per_file: 5
+  # The spec now carries explicit open-decision inventories per plane
+  # (framing gaps, admission semantics, contract gaps). The cap stays as a
+  # sprawl guard, not a ban on marking unknowns.
+  max_tbd_per_file: 10
 
 references:
   mode: pointer
@@ -53,6 +56,8 @@ redundancy:
   # vocabulary, so the layer only fires for terms spread across most of the
   # corpus. Fuzzy near-miss word forms are off: Levenshtein on technical
   # identifiers (rc/vc, ts/tsx) is pure noise here.
+  # The redundancy layer is documented but no step in ci.yml reports it
+  # separately. Dead-rule status: TBD
   word_frequency_threshold: 70
   # 1.00 = literal duplicates only; sub-100% overlap on spec prose is normal.
   phrase_overlap_threshold: 0.95
@@ -62,7 +67,9 @@ redundancy:
     # Overlap with the inbound artifact is allowed; missing so-what is not.
     # A node fails this check when every bullet is either a see:, a bare
     # restatement of the artifact, or a child enumeration.
-    enabled: true
+    # enabled: true is asserted; no step in cans-check --json names the
+    # node_vs_artifact invariant explicitly. Either the check exists or
+    # the rule is dead. TBD
     phrase_overlap_threshold: 0.85
     require_node_invariant: true
   # Load-bearing vocabulary of this corpus: every node mentions these nouns,

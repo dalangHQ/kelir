@@ -21,6 +21,7 @@
       - Rebinds 4-ring dispatch table, virtio channels, plugin graph
       - session.vm.fork() returns full Session
       - spawn() and every other session API directly callable on child
+    - Child handoff scope: TBD
     - Typical use: parallel agent exploration (5+ candidate strategies)
     - Veto: Fork (hard)
       - Callback false → ESessionVeto; no child VM
@@ -41,6 +42,7 @@
     - resume
       - Restores registers and memory in <50ms
       - Resumes at exact cycle boundary
+    - Snapshot contents: TBD
     - Veto: Suspend (hard), Resume (observation)
       - Suspend false → ESessionVeto; host RAM not flushed
       - Resume fires before primitive; return value ignored
@@ -80,23 +82,26 @@
         - Second channel: parent-monitoring heartbeat pipe
         - On host exit or pipe close: SIGKILL to backend process group
         - Reclaims VM memory mappings
+    - Platform coverage: TBD
   - Docker-in-kelir
     - Constraint: Apple Silicon HVF offers no nested VMX/SVM
     - Invariant: OCI containers run without a nested hypervisor and without
       a host daemon
     - Mechanism: rootless Podman + crun inside the read-only EROFS rootfs;
       ephemeral state on tmpfs so the rootfs stays immutable
+    - Container contract: TBD
   - Break-glass
     - Invariant: developer TTY reaches virtio-console with zero guest-side
       cooperation
     - The agent loop pauses for the duration; control returns on subshell exit
     - Session-only after `boot()`
-    - Spelling: `session.breakGlass()` (TS) / `session.break_glass()` (Rust, Py)
+    - Spelling: `breakGlass()` (TS), `break_glass()` (Rust, Py);
+      `session.break-glass()` never exists
   - Port forwarding
-    - Invariant: an ingress connection to a guest-bound port never creates a
-      host-side listening socket
-    - Flow: guest binds → shim emits PortBound → host tunnels over
-      vsock:5253 → shim proxies to guest loopback
+    - Guest-initiated: no host listener
+      - Flow: guest binds → shim emits PortBound → host tunnels over
+        vsock:5253 → shim proxies to guest loopback
+    - User-initiated forward_port(): host does listen on the named port
     - Session API in all three SDKs; ingress mechanism in
       crates/kelir-shim/src/ingress.rs
   - Zombie reaping

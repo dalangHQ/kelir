@@ -29,6 +29,12 @@
       - current_trace_id() -> String
         - Called from handlers setting OTEL_TRACE_ID
     - Wiring example: See artifacts/examples/autonomous-swe-agent.rs
+    - Oracle contract: TBD
+      - Failure handling
+      - Timeouts
+      - Concurrency
+      - await_human_approval authority and timeout
+      - ingest_harness_event failure
   - Primitive vs derived telemetry
     - Telemetry decision test
       - Single read API, hardware boundary, no policy → primitive, core-owned
@@ -56,6 +62,13 @@
       - Opt-in: syscall_count
       - dirty_bytes is always populated: zero is a real measurement, not an
         absent value
+    - binary_blake3 canonical form: TBD
+    - Receipt accounting: TBD
+      - syscall_count counting rule
+      - egress_bytes observation point
+      - wall_clock_ns across suspend
+      - exit_code under Rewrite
+      - dirty_bytes under fork
     - binary_blake3 cache: keyed on (inode, size, mtime_ns); one hash per
       binary identity, not per exec
     - Receipt ownership
@@ -76,6 +89,7 @@
         plugin-ledger mounted; unmounted sessions do not expose it
     - This split follows the primitive-vs-derived rule: type is primitive,
       computation is derived
+    - CausalDelta computation: TBD
   - Merkle WAL
     - Chaining formula and backend live in plugin-ledger; not restated here
     - Default: plain append-only WAL. Merkle chaining is opt-in via
@@ -91,11 +105,21 @@
     - Ownership: core generates receipts; plugin-ledger persists and exports
     - Ledger handler API
       - c.ledger.flush() forces WAL flush and OTel export
+    - WAL contract: TBD
+      - Record schema
+      - Chaining formula and root signing key
+      - Backend and concurrency model
+      - Secret redaction before append
   - OpenTelemetry
     - Outbound HTTP requests carry W3C traceparent, injected host-side
     - Trace continuity rule: a guest-originated request and its guest-side
       cause (trap, spawn, receipt) resolve to the same trace
     - Config surface lives in plugin-ledger (OtelConfig); not restated here
+    - Span contract: TBD
+      - Names and parent/child
+      - Error mapping and sampling
+      - Attribute allowlist and redaction
+      - Export-failure behavior
   - Three-tier truth
     - See: artifacts/diagrams/truth-hierarchy.txt
     - Tier evidence per tier: See artifacts/diagrams/truth-hierarchy.txt
@@ -132,6 +156,11 @@
       - c.step.mark(descriptor): stores typed checkpoint slot for trapping PID
       - c.step.last(): retrieves it, raises if none
       - No userland scratchpads, no plugin boilerplate
+    - StepSlot semantics: TBD
+      - Stack vs single slot
+      - Multiple marks per PID
+      - Fork inheritance
+      - after() raise behavior
     - Typical wiring
       - before("*"): checkpoint + analyzeIntent; deny or resume
       - after("*"): read receipt; rollback on post-condition violation

@@ -55,6 +55,7 @@
     - Local mirror: `just cans-check` invokes the identical flags
     - Invariant: every rule in _rules.yaml maps to a step here, or the rule
       is dead and gets removed
+    - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
     - Matrix job: test-plugins
       - One cell per first-class plugin (8 total)

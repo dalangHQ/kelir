@@ -34,14 +34,16 @@ Artifacts and nodes split truth by kind, not precedence.
 Every artifact is referenced from `cans/` via `see:` with a **relative** path
 and is accompanied by a node-level invariant:
 
+The three rows below are examples of the convention, not claims about the
+current graph. The live graph is what `cans check --refs-only` walks.
+
 ```
 cans/01-architecture.md       →  see: artifacts/code/vmm-driver-trait.rs
-                                  invariant: the trait is the sole hypervisor boundary
 cans/04-terminal-plane.md     →  see: artifacts/diagrams/terminal-pipeline.txt
-                                  invariant: filter ordering (see #Five-filters)
 cans/03-sdk-architecture.md   →  see: artifacts/examples/autonomous-swe-agent.rs
-                                  invariant: same plugin set across all three SDKs
 ```
+
+- Per-artifact invariant coverage (every inbound artifact reference has one): TBD
 
 - `cans check` treats every artifact pointer as a **0-hop** reference
 - Artifacts are never spec-edited; they are frozen content

@@ -23,6 +23,7 @@
       - OSC 52: clipboard hijack (agent reads/writes human clipboard)
       - OSC 0/1/2: title spoofing (agent impersonates terminal session)
       - Both are Tier-1 violations: see 08-epistemic.md#Three-tier-truth
+    - Escape families outside the model: TBD
   - ANSI sanitizer
     - Drops OSC 52 (`\x1b]52;c;…`) at the virtio-console ring boundary
     - Strips OSC 0/1/2 before the host terminal emulator observes bytes
@@ -36,6 +37,7 @@
       - Executes only if PTY holder matches kernel foreground process group
       - Background echo of prompt text cannot trigger automated responses
     - Example wiring: See artifacts/examples/autonomous-swe-agent.ts
+    - Abuse and failure model: TBD
   - Window resize
     - Boot handshake
       - Hypervisor pushes configured initial size before first workload spawn
@@ -71,6 +73,7 @@
     - Invariant: zero silent state divergence
       - Any host-side state mutation reaches the workload's TTY
       - Plugins annotate; none suppress
+    - Annotation bounds: TBD
   - Token Shield
     - Ceilings: maxBytesTotal (e.g. 64KB), maxLinesTotal (e.g. 300)
     - clampStrategy: head-and-tail (keep first 50 + last 100 lines)
