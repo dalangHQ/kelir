@@ -14,6 +14,7 @@
     - Not a container wrapper
     - Not an MCP server
     - Not a background daemon
+    - Not a standalone CLI runner or daemon client: see 11-operations.md#Developer-CLI
     - Not a daemon or container runtime: see 01-architecture.md#In-process-microkernel
   - Target audience
     - Audience matrix: See artifacts/diagrams/target-audience.txt
@@ -42,6 +43,8 @@
     - Flaky-API and disk-full resilience: see 06-wire-plane.md#Fault-injection-plugin-chaos
     - Container builds without nested VMX: see 07-lifecycle.md#Docker-in-kelir
     - Human break-glass on agent loops: see 07-lifecycle.md#Break-glass
+    - Low-memory SBC execution: see 01-architecture.md#Embedded-profile
+    - Mobile runtime governance on Android/Termux: see 01-architecture.md#Driver-backends
   - Spec map
     - Foundation: see 01-architecture.md
     - Plugin model: see 02-plugin-model.md

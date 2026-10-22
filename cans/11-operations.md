@@ -117,8 +117,13 @@
   - Developer CLI
     - Scope rule: only what types cannot encode
       - Anything a compile error enforces is not shipped
+      - Kelir ships no runner CLI or daemon client; orchestrators embed directly
+      - Tooling exists exclusively to verify physical host boundaries and parity
     - Subcommands
-      - `kelir doctor`: KVM/HVF, fixture kernel, EROFS image
+      - `kelir doctor`: KVM/HVF/AVF, page size (4K/16K), fixture kernel, EROFS
+        - Linux / RPi probe: /dev/kvm access, 4KB vs 16KB host page size
+        - Android probe: /dev/avf, pKVM node, or proot ptrace readiness
+        - macOS probe: HVF entitlements, ARM64 16K page alignment
       - `kelir doctor --json`: structured for onboarding scripts
       - `plugin new`: scaffold crate, manifest, empty vectors
       - `plugin check`: same audit as CI, <30s, no network
@@ -138,7 +143,7 @@
       - kelir-plugins: first-class plugins
         - pty, vfs, wire, chaos, ledger, mcp, oci-translator
         - openshell-coordinator, db-proxy, mesh, lock-broker, supply-chain
-      - kelir-drivers: libkrun, rustvmm, openvmm, bwrap
+      - kelir-drivers: libkrun, rustvmm, openvmm, avf, bwrap, proot
       - kelir-shim: in-guest musl PID 1 (<50KB)
     - Test infrastructure
       - kelir-plugin-testkit: mock driver, mock bus, HandlerCtx constructors

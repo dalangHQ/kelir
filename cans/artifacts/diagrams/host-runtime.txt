@@ -25,7 +25,9 @@
 │  │   ├── driver-rustvmm: Bare-metal Linux KVM hypervisor + CUDA CDI GPU passthrough  │  │
 │  │   │   — the full-featured path on bare-metal Linux                                │  │
 │  │   ├── driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure Linux MSHV         │  │
-│  │   └── driver-bwrap: Unprivileged Linux user namespaces + seccomp-unotify fallback │  │
+│  │   ├── driver-avf: Android Virtualization Framework via /dev/avf & pKVM            │  │
+│  │   ├── driver-bwrap: Unprivileged Linux user namespaces + seccomp-unotify fallback │  │
+│  │   └── driver-proot: Unprivileged Android/Termux ptrace emulation fallback         │  │
 │  └───────┬──────────────┬──────────────┬──────────────┬──────────────┬───────────────┘  │
 └──────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────────────┘
            │ virtio-      │ virtio-      │ virtio-      │ virtio-blk   │ virtio-shm /

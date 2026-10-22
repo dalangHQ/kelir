@@ -15,6 +15,10 @@ pub struct VmConfig {
     pub memory_mb: u32,
     pub kernel_path: PathBuf,
     pub rootfs_erofs_path: PathBuf,
+    /// Guest page size in KB (4 or 16)
+    /// - The host reads its own page size and selects the matching vmlinux
+    ///   fixture before cold boot; see cans/01-architecture.md#Guest-VM-anatomy
+    pub page_size_kb: u32,
     pub tsc_locked: bool,
     pub entropy_seed: Option<u64>,
     pub enable_gpu_passthrough: bool,
@@ -58,6 +62,8 @@ pub struct SharedMemoryHandle {
 #[async_trait]
 pub trait VmmDriver: Send + Sync {
     /// Cold-boots the microVM environment in <60ms via the active platform driver
+    /// - The host page size selects the 4KB or 16KB kernel fixture
+    /// - The embedded profile boots 1 vCPU with 256MB RAM
     async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError>;
 
     /// Branches the running VM into an isolated CoW clone in <15ms

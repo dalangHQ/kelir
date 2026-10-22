@@ -6,7 +6,7 @@
         - No custom guest SDKs, CLI shims, or guest-side agents
       - In-process microkernel
         - Virtualization runs in host consumer memory via direct C-FFI
-        - Backends: libkrun, rust-vmm, OpenVMM
+        - Backends: libkrun, rustvmm, openvmm, avf, bwrap, proot
         - No dockerd, containerd, background root socket, daemon maintenance
       - Pure epistemic agnosticism
         - Zero knowledge of LLMs, prompts, or AI morals
@@ -60,6 +60,7 @@
     - The closed set of core primitives
     - Interposition is total: every ring is hooked; bypass is a spec violation
     - Trait definitions
+      - Low-footprint preset contract: see #Embedded-profile
       - Trait contract: see 02-plugin-model.md#KelirPlugin-trait
       - VmmDriver trait (defined in this file)
     - Context types: see 09-protocol.md#Wire-messages
@@ -84,13 +85,17 @@
     - Anonymous memfd_create host segment mapped into guest physical address space
     - High-throughput zero-copy exchange bypassing FUSE and vsock serialization
     - Mappings clean up automatically on guest process termination
+  - Embedded profile
+    - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
+    - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
+    - Host memory preservation: suspend drops host RSS to 0 MB under system pressure
   - Host runtime
     - See: artifacts/diagrams/host-runtime.txt
     - Native Rust consumer: direct Cargo crate, zero-cost monomorphization
     - TypeScript consumer: @kelir/core via in-process NAPI-RS
     - Python consumer: kelir via PyO3
     - kelir-core: stripped microkernel (BusDispatcher, EventBus, DriverRouter)
-    - kelir-drivers: pluggable backends (libkrun, rustvmm, openvmm)
+    - kelir-drivers: pluggable backends (libkrun, rustvmm, openvmm, avf, bwrap, proot)
   - Guest VM anatomy
     - See: artifacts/diagrams/guest-vm.txt
     - Boot budget
@@ -102,6 +107,10 @@
       - virtio-wdt: hardware watchdog, so no in-guest timer daemon is needed
       - virtio-balloon: host pressure is invisible to guest; balloon is the
         only signal that survives a rollback
+    - Page size dynamic boot selection
+      - 4KB kernel fixture: Linux x86_64, standard ARM64, Raspberry Pi 4
+      - 16KB kernel fixture: Apple Silicon ARM64, Raspberry Pi 5, Android 15
+      - Host getpagesize() selects matching vmlinux image before cold boot
     - Shim constraints
       - Static musl, no dynamic linkage: dynamic libc would force libc into
         the rootfs and break the stripped-rootfs invariant
@@ -127,7 +136,8 @@
         and 4KB on Linux/x86
       - Rationale: a byte count yields identical receipts, deltas, and
         Merkle roots across hosts; a page count does not
-      - This is the sole home of the page-size fact
+      - Sole home of the page-size fact for receipts and Merkle roots
+      - Kernel fixture selection: see #Page-size-dynamic-boot-selection
   - Driver backends
     - Capability matrix: TBD
     - driver-libkrun: default
@@ -135,6 +145,9 @@
       - Linux: KVM
       - Hard fork: userfaultfd CoW fork, GPA snapshot, hardware clock skew
     - driver-rustvmm: bare-metal Linux KVM + CUDA CDI GPU passthrough
+      - Direct hardware acceleration on x86_64 and bare-metal ARM64 (Raspberry Pi)
     - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure MSHV
+    - driver-avf: Android Virtualization Framework via /dev/avf and pKVM
     - driver-bwrap: unprivileged Linux user namespaces + seccomp-unotify
       - Fallback backend for unprivileged containers and CI without /dev/kvm
+    - driver-proot: unprivileged Android/Termux ptrace emulation fallback

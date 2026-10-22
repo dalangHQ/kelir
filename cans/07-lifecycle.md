@@ -52,6 +52,8 @@
       - Resume fires before primitive; return value ignored
       - Note: on_vm_ready does not re-fire on resume
     - Typical use: waiting for human approval with zero host CPU cost
+    - Mobile and SBC use: rapid 0 MB RSS drop under Android LMK memory pressure
+    - Flash preservation: guest tmpfs writes stay in RAM; zero random SD card writes
   - Portable snapshot bundles
     - Serializes frozen vCPU registers and zstd-compressed dirty RAM
     - session.export_snapshot() yields portable binary stream (.kelir-snap)
@@ -97,6 +99,8 @@
     - Graceful host preemption window
       - Host SIGTERM triggers preemption_grace_ms delay before SIGKILL
       - Fires on_host_preempt() hook to allow emergency state checkpoints
+      - Android LMK hook: executes session.suspend() before OS termination
+      - Prevents session state corruption during mobile app backgrounding
     - Platform coverage: TBD
   - Two-phase commit
     - MicroVM and host database state synchronization protocol
