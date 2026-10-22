@@ -16,6 +16,6 @@
            ┌────────────────────────────┴────────────────────────────┐
            ▼                                                         ▼
   [5. DATABASE PROXY]                                      [6. FEDERATION MESH]
-  Mediates pgwire (TCP 5432) and SQLite                     Point-to-point cross-VM
-  sockets over virtio-shm; enforces in-flight               mTLS/WireGuard tunnel;
+  Mediates pgwire (TCP 5432) & SQLite                       Point-to-point cross-VM
+  sockets over vsock; enforces in-flight                    peer vsock stream with mTLS;
   DbAction (Allow, Deny, Rewrite).                          propagates traceparent & hops.

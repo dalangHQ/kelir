@@ -96,6 +96,7 @@ pub struct WatchdogEvent {
     /// Monotonic ns since VM boot when the watchdog fired.
     pub fired_at_ns: u64,
     pub last_heartbeat_ms: u64,
+    pub last_active_pid: Option<u32>,
 }
 
 pub struct LifecycleCtx<'a> {
@@ -124,7 +125,7 @@ impl<'a> LifecycleCtx<'a> {
     ) {
         self.vetoes.push((event, f));
     }
-    /// Atomically updates flat dispatch table pointers via RCU swap
+    /// Atomically updates compiled hook pipeline via ArcSwap
     pub fn update_dispatch(&mut self, _new_dispatch: std::sync::Arc<()>) -> Result<(), PluginError> {
         Ok(())
     }

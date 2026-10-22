@@ -8,16 +8,10 @@
     - Rule: the plugin owns translation and policy; the binary owns the wire
     - Tri-native SDKs are the fourth ingestion family; see 03-sdk-architecture.md
   - MCP adapter
-    - MCP binary
-      - Crate: kelir-adapters/mcp-server
-      - Command: kelir-mcp
-      - CLI args: --kernel, --rootfs, --memory-mb
-        - VmConfig also needs vcpus, tsc_locked, enable_watchdog,
-          driver, entropy_seed, gpu — none are CLI args here
-        - Defaults for unnamed VmConfig fields: TBD
-      - Transport: stdio JSON-RPC to client (Claude Desktop, Cursor, Devin)
-      - Loads plugin-mcp and nothing else
-      - Bypasses host shell execution entirely
+    - Thin in-process adapter routing JSON-RPC stdio directly to VirtIO rings
+    - MCP binary: kelir-mcp boots microVM with plugin-mcp and stdio transport
+    - MCP plugin: maps tools directly to virtio-console, virtio-fs, and traps
+    - Eliminates external bridge daemons, proxy sockets, and shell layers
     - MCP plugin
       - Crate: kelir-plugins/plugin-mcp
       - name() = "mcp"; priority() = 50

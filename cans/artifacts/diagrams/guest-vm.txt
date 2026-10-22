@@ -18,10 +18,9 @@
 │   │     - Runs a non-blocking waitpid(-1, WNOHANG) zombie reclamation loop in its       │
 │   │       async event loop (as PID 1 it is the universal orphan ancestor)               │
 │   │     - Installs seccomp-unotify filter with in-kernel BPF allowlist                  │
-│   │     - Performs Anti-TOCTOU task-group freezes: PTRACE_SEIZE +                       │
-│   │       PTRACE_INTERRUPT on every thread in /proc/$PID/task/*                         │
+│   │     - Anti-TOCTOU task-group freezes via cgroup.freeze + process_vm_readv           │
 │   │     - Parses binary ELF headers (DT_NEEDED, PT_INTERP) directly from disk           │
-│   │       and computes Shannon entropy on argv[1:]                                      │
+│   │     - Streams raw argv/envp over vsock; host calculates entropy & allowlists        │
 │   │     - Allocates a full PTY master/slave per workload via openpty() + setsid()       │
 │   │       + TIOCSCTTY so children get a real controlling terminal; executes             │
 │   │       TIOCSWINSZ resizes over virtio-console                                        │

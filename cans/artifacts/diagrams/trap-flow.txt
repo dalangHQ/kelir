@@ -8,16 +8,17 @@ Kernel evaluates BPF filter ──► Is it gcc/rustc? ──► YES ──► I
 Kernel seccomp-unotify triggers
       │
       ├──────────────────────────────┐
-      │ Task group frozen            ▼
-/sbin/kelir-shim seizes every    Shim extracts process metadata:
-thread in /proc/$PID/task/*:     - BLAKE3 hash of binary
-PTRACE_SEIZE + PTRACE_INTERRUPT  - Shannon entropy of argv[1:] (>5.2)
-Reads /proc/$PID/mem safely      - Full ancestor process DAG
-Parses ELF DT_NEEDED/PT_INTERP   - Working directory & envp
+      │ Atomic task freeze           ▼
+/sbin/kelir-shim freezes group   Shim extracts process metadata:
+via cgroup.freeze. Reads memory  - BLAKE3 hash of binary on disk
+via process_vm_readv(2).         - Ancestor process DAG from stat
+Parses ELF DT_NEEDED/PT_INTERP   - Raw argv and envp vectors
 from the binary on disk             │
       │                              │
       ▼                              │
 Pipes TLV packet to vsock:5252 ─────►│ Host receives TrapEvent
+                                     │ Host calculates argv[1:] entropy
+                                     │ Host applies entropy_bypass_paths
                                      │ Evaluates Plugin Event Bus
                                      │
                                      ├──────────────────────────────┐

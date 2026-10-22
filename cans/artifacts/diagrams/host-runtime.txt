@@ -18,12 +18,8 @@
 │                                             ▼                                           │
 │  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
 │  │                           kelir-drivers (Pluggable Backends)                      │  │
-│  │   ├── driver-libkrun (DEFAULT): macOS (HVF + Metal GPU) + Linux KVM               │  │
-│  │   │   Internal hard fork carrying custom patches: userfaultfd CoW memory          │  │
-│  │   │   fork (<15ms), GPA snapshot/rollback engine (<8ms), and hardware clock       │  │
-│  │   │   skew control. Upstream libkrun provides none of these.                      │  │
-│  │   ├── driver-rustvmm: Bare-metal Linux KVM hypervisor + CUDA CDI GPU passthrough  │  │
-│  │   │   — the full-featured path on bare-metal Linux                                │  │
+│  │   ├── driver-rustvmm (DEFAULT Linux): KVM + userfaultfd CoW (<15ms) + CUDA CDI    │  │
+│  │   ├── driver-hvf (DEFAULT macOS): Native HVF + direct Mach vm_copy CoW (<15ms)    │  │
 │  │   ├── driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure Linux MSHV         │  │
 │  │   ├── driver-avf: Android Virtualization Framework via /dev/avf & pKVM            │  │
 │  │   ├── driver-bwrap: Unprivileged Linux user namespaces + seccomp-unotify fallback │  │

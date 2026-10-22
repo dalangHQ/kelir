@@ -59,7 +59,8 @@
       (Option), never 0
       - Always: pid, binary_path, binary_blake3, dirty_bytes, exit_code,
         retired_instructions, wall_clock_ns, egress_bytes
-      - retired_instructions: exact hardware PMU retired instruction count
+      - retired_instructions: sampled from host vCPU thread via perf_event_open
+      - Apple Silicon: queried via native Mach thread instruction counters
       - Eliminates cross-architecture dirty-page and wall-clock variance
       - Opt-in: syscall_count
       - dirty_bytes is always populated: zero is a real measurement, not an
@@ -93,10 +94,9 @@
       computation is derived
     - CausalDelta computation: TBD
   - Merkle WAL
-    - Chaining formula and backend live in plugin-ledger; not restated here
-    - Default: plain append-only WAL. Merkle chaining is opt-in via
-      LedgerConfig::merkle_chain; plain WAL already resists guest rollback
-      and fork. Enable Merkle only under a host-operator trust threat.
+    - Pluggable LedgerSink trait owns persistence; Merkle DB is default impl
+    - Delegated audit persistence via external_sink replaces default sink
+    - suppress_local_db skips local SQLite to preserve host single SSOT
     - Host-isolated by construction
       - Store path resolved relative to consumer CWD; guest paths rejected
         at plugin construction

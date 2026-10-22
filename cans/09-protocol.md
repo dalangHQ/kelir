@@ -15,8 +15,8 @@
       - A single trap-on-every-syscall design adds ~µs per fork/exec at
         toolchain scale; the allowlist exists to pay that cost only where
         policy is possible
-      - A userspace-only inspection cannot close the check-to-use race;
-        the freeze exists to make the metadata binding
+      - cgroup v2 freezer closes check-to-use race without ptrace latency
+      - process_vm_readv captures exact memory without thread attachment
       - A frozen inspection is still blind to what the loader *will* do;
         the linker audit exists to make the inspection meaningful
     - Layer cost if removed
@@ -26,10 +26,8 @@
       - Layer 3 removal: LD_PRELOAD rootkits and encrypted argv payloads
         pass through untouched
     - Measurement rule
-      - Entropy is over argv[1:]: including argv[0] dilutes the signal with
-        a low-entropy path
-      - Flag threshold: Shannon entropy > 5.2 flags encrypted or base64
-        shell payloads
+      - Host evaluates Shannon entropy on argv[1:]: keeps shim lean
+      - Flag threshold: Host entropy > 5.2 flags encrypted/base64 payloads
       - Allowlist bypass: entropy_bypass_paths skips check for trusted runners
       - Permits high-entropy base64 arguments for node, python, and runners
       - ELF is read from disk at trap time: /proc/$PID/maps still describes
@@ -41,10 +39,8 @@
     - Layout (header offsets, magic, version): See artifacts/code/wire-protocol.rs
     - Framing invariants
       - One frame = one message; no message spans frames
-      - Sequence is monotonic per vsock connection and shared across both
-        directions; a lost seq is a protocol error, not a retry
-      - Payload is CBOR; the codec never inspects CBOR before reassembling
-        the u64 sequence
+      - Monotonic 64-bit sequence transmitted natively without word splitting
+      - Codec reads exact 20-byte FrameHeader; payload decodes directly
     - Framing gaps: TBD
       - Byte order
       - Message-type registry
@@ -59,7 +55,7 @@
     - See: artifacts/code/messages.rs
     - Message set and payload fields: See artifacts/code/messages.rs
     - Hook binding: one hook per message; see 02-plugin-model.md#KelirPlugin-trait
-    - TrapEvent carries optional ambient 64-bit task_token for subagent threads
+    - TrapEvent task_token extracted from guest shim TLS; zero VirtIO hacking
     - TrapAction invariants
       - `Allow` cannot mutate registers, memory, or env; it is a no-op
       - `Yield { checkpoint_id }` freezes vCPU registers and CoW memory

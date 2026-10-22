@@ -41,8 +41,8 @@
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
     - Zero-cost null objects: disabled plugins retain types, cost 0µs in core
     - requires() validated at boot; missing dep aborts boot with EConfig
-    - Atomic RCU dispatch table update via update_dispatch()
-    - Hot-swaps hook arrays at runtime without microVM termination
+    - Lock-free dispatch swap via ArcSwap on the host event bus
+    - Hot-swaps hook pipelines at runtime without microVM reboot
     - First Deny or Rewrite halts pipeline, dispatches over AF_VSOCK
     - Sub-12 microsecond hook execution
     - on_trap_deny is builder-level, not a plugin hook
@@ -91,7 +91,8 @@
       - session.get_causal_delta_from_parent(): see 08-epistemic.md#Causal-delta
   - Supply chain guard
     - Owner: plugin-supply-chain; monitors package manager process trees
-    - Blocks dynamic postinstall and setup.py lifecycle execution scripts
+    - Inspects ancestor_chain on TrapEvent for package managers (npm, pip)
+    - Blocks execution of lifecycle scripts in dependency directories
   - Plugin ownership
     - Contract, not layout; see 11-operations.md#Project-structure for crate layout
     - Dependency rules

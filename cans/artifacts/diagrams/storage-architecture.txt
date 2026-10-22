@@ -26,19 +26,19 @@
 │    - Injects virtual configurations (.env, .gitconfig) directly into VFS.   │
 │    - Served from host memory; physically DOES NOT EXIST on host SSD.        │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 7. IN-FLIGHT READ-TIME MASKING (plugin-vfs maskRead):                       │
-│    - FUSE-level byte stream interception on file reads.                     │
-│    - MaskRule regex redaction; fixed-width replacements or format-          │
-│      preserving synthetic string generators.                                │
+│ 7. INODE-LEVEL READ MASKING (plugin-vfs maskRead):                          │
+│    - Intercepts FUSE lookup/open; spawns dynamic masked ghost inodes.       │
+│    - Fixed-width regex redaction or format-preserving synthetic content     │
+│      generated in RAM once at open; zero read-chunk boundary bugs.          │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 8. OCC STABLE INODE HASHES:                                                 │
 │    - Deterministic 64-bit physical hash populated in VfsInodeAttr.          │
 │    - Enables host optimistic concurrency state-fencing across edits.        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 9. SECONDARY READ-ONLY IMAGE MOUNTS:                                        │
-│    - Dynamic in-flight attachment of read-only squashfs/EROFS pack images.  │
+│    - Host-grafted FUSE subtrees for squashfs/EROFS pack images.             │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 10. CENTRAL INODE LOCK BROKER (Cross-VM Concurrency):                       │
-│    - Intercepts FUSE SETLK / SETLKW (flock / fcntl) across multiple VMs.    │
-│    - Prevents .git/index.lock collisions when multiple agents share a repo. │
+│ 10. HOST INODE LOCK BROKER (Cross-VM Concurrency):                          │
+│    - Intercepts FUSE SETLK / SETLKW; delegates to host OS advisory locks.   │
+│    - Maps virtual guest inodes to host physical inodes to avoid collisions. │
 └─────────────────────────────────────────────────────────────────────────────┘

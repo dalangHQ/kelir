@@ -31,7 +31,7 @@
       - Public repos: free Linux minutes
     - Strategy
       - 90% of checks on Linux x86
-      - macOS Apple Silicon jobs limited to compile gate for driver-libkrun
+      - macOS Apple Silicon jobs limited to compile gate for driver-hvf
       - Do not waste runner minutes on full matrix
     - Enforced invariants: CI matrix
       - Shim binary < 50KB per architecture: see 01-architecture.md#Guest-VM-anatomy
@@ -106,13 +106,12 @@
     - Downstream state shape when enabled: See:
       artifacts/diagrams/ecosystem-ci.txt
   - Multi-language parity gate
-    - Vectors source: see 02-plugin-model.md#Plugin-testkit
+    - Types generated from Rust macros: napi-rs stubs and pyo3 type files
+    - Parity tested against single vectors.json fixture across all languages
     - Binding coverage assertion
       - Every kelir-core primitive exposed through a binding has a parity test
       - Missing test is a CI failure
-    - Surface manifest diff
-      - Rust: rustdoc JSON; TS: tsc --declaration; Python: mypy stubs
-      - Diff fails on name/arity/return-shape divergence
+    - Surface manifest diff fails on name, arity, or return-shape divergence
     - kelir-core release requires parity green
   - Developer CLI
     - Scope rule: only what types cannot encode
@@ -143,7 +142,7 @@
       - kelir-plugins: first-class plugins
         - pty, vfs, wire, chaos, ledger, mcp, oci-translator
         - openshell-coordinator, db-proxy, mesh, lock-broker, supply-chain
-      - kelir-drivers: libkrun, rustvmm, openvmm, avf, bwrap, proot
+      - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
       - kelir-shim: in-guest musl PID 1 (<50KB)
     - Test infrastructure
       - kelir-plugin-testkit: mock driver, mock bus, HandlerCtx constructors
@@ -161,4 +160,4 @@
     - Test fixtures
       - tests/fixtures/kernel: per-arch vmlinux
       - tests/fixtures/rootfs: EROFS build scripts
-      - tests/fixtures/payloads: high-entropy trap test binaries (shared: pty, shim)
+      - tests/fixtures/payloads: high-entropy test binaries (shared: pty, core-trap)

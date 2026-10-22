@@ -8,6 +8,7 @@
 // Resolves two overlayfs whiteout forms:
 //   - file whiteout:  char device major/minor 0/0  → host unlink()
 //   - dir whiteout:   xattr trusted.overlay.opaque=y → host remove_dir_all()
+//   - data sync:      ioctl(FICLONE) CoW block clone with atomic tmp write fallback
 //
 // Canonical spec home: cans/05-storage-plane.md#Reconciler
 
@@ -54,7 +55,7 @@ pub async fn reconcile_upperdir(
             continue;
         }
 
-        // 3. Atomic staged write for modified/created files: tmp + rename
+        // 3. CoW reflink block clone with atomic staged write fallback
         if metadata.is_file() {
             let tmp_path =
                 target_path.with_extension(format!("tmp.{}", std::process::id()));

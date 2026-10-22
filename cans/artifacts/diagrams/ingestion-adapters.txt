@@ -7,7 +7,7 @@
 │    - Python: Native async hypervisor engine (`kelir>=3.0` via PyO3)         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 2. MODEL CONTEXT PROTOCOL (MCP):                                            │
-│    - Binary `@kelir/mcp-server` mounts directly into Claude Desktop/Cursor. │
+│    - In-process `plugin-mcp` connects Claude Desktop/Cursor to VirtIO rings.│
 │    - Mediates hardware-isolated execution without exposing host boundaries. │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 3. CONTAINERD SHIM V2 (Kubernetes Bare-Metal Execution):                    │

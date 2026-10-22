@@ -274,7 +274,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: mozilla-actions/sccache-action@v0.0.5
-      # Only verify compilation of Apple Silicon HVF driver; do not waste runner minutes on full matrix
-      - name: Check HVF libkrun driver
-        run: cargo check -p driver-libkrun
+      # Verify compilation of native Apple Silicon HVF driver
+      - name: Check native HVF driver
+        run: cargo check -p driver-hvf
 

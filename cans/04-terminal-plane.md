@@ -75,20 +75,20 @@
       - Plugins annotate; none suppress
     - Annotation bounds: TBD
   - Active leak detection
-    - Byte-stream scanner inspects terminal output for registered vault secrets
+    - Linear Aho-Corasick automaton scans terminal output for vault secrets
     - Detection triggers immediate security panic hook before render
   - Screen matrix export
-    - Maintains in-memory VT100 2D character and attribute grid
+    - Maintains headless VT100 grid state machine via embedded parser
     - export_screen_matrix() yields deterministic terminal wireframe states
+    - Zero hand-rolled parser state; evaluates raw byte streams directly
   - Token Shield
     - Ceilings: maxBytesTotal (e.g. 64KB), maxLinesTotal (e.g. 300)
-    - Token-aware clamping via pluggable BPE tokenizer (cl100k_base)
-    - Clamps by token ceiling to protect context from minified JSON logs
+    - Clamps by token ceiling via pluggable TokenCounter trait
+    - Default ratio heuristic: 3.5 chars/token; zero tokenizer bloat
     - clampStrategy: head-and-tail (keep first 50 + last 100 lines)
     - onClamp callback returns truncation notice with droppedBytes/droppedLines
     - Boundary-safe clamping
-      - Truncation point never splits a glyph or escape sequence
-      - Scans backward to nearest valid UTF-8 code-point boundary
-      - Scans backward to start of any in-progress CSI/OSC sequence
-      - Multi-byte characters and complete ANSI sequences survive intact
+      - Scans backward up to 4 bytes to find leading UTF-8 code-point
+      - Scans backward to unclosed CSI/OSC start; appends reset sequence
+      - Zero-allocation scan ensures glyphs and escape sequences survive intact
     - Protects LLM context window from runaway logs and stack traces

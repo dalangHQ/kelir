@@ -6,7 +6,7 @@
         - No custom guest SDKs, CLI shims, or guest-side agents
       - In-process microkernel
         - Virtualization runs in host consumer memory via direct C-FFI
-        - Backends: libkrun, rustvmm, openvmm, avf, bwrap, proot
+        - Backends: rustvmm, hvf, openvmm, avf, bwrap, proot
         - No dockerd, containerd, background root socket, daemon maintenance
       - Pure epistemic agnosticism
         - Zero knowledge of LLMs, prompts, or AI morals
@@ -80,10 +80,11 @@
     - virtio-console terminal plane: raw TTY, ANSI, Token Shield, resizing
     - virtio-fs storage plane: CoW overlays, inodes, in-flight masking, ghosts
     - virtio-net wire plane: L4/L7 traffic, secrets, chaos
-    - virtio-shm shared memory: zero-copy tabular data and host DB sockets
+    - virtio-shm shared memory: zero-copy tabular data buffers
   - Shared memory channel
-    - Anonymous memfd_create host segment mapped into guest physical address space
-    - High-throughput zero-copy exchange bypassing FUSE and vsock serialization
+    - Anonymous host memfd_create segment mapped directly into guest GPA slots
+    - Exposes zero-copy memory region via /dev/shm without custom kernel drivers
+    - High-throughput exchange bypassing FUSE and vsock serialization
     - Mappings clean up automatically on guest process termination
   - Embedded profile
     - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
@@ -95,7 +96,7 @@
     - TypeScript consumer: @kelir/core via in-process NAPI-RS
     - Python consumer: kelir via PyO3
     - kelir-core: stripped microkernel (BusDispatcher, EventBus, DriverRouter)
-    - kelir-drivers: pluggable backends (libkrun, rustvmm, openvmm, avf, bwrap, proot)
+    - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
   - Guest VM anatomy
     - See: artifacts/diagrams/guest-vm.txt
     - Boot budget
@@ -120,7 +121,8 @@
     - Isolation boundary
       - Shim runs as PID 1: orphan reaping is mandatory, not optional
       - seccomp-unotify is in-kernel; userspace cannot race the allowlist
-      - PTRACE_SEIZE covers every thread: leader-only seize is unsafe
+      - cgroup v2 freeze locks task group: atomic, zero ptrace signal race
+      - process_vm_readv extracts argv/envp atomically without trace state
       - Ambient 64-bit task token tracks user-space thread subagent identity
     - Trust chain: TBD
     - Workload contract: no guest-side SDK, shim, or agent
@@ -140,12 +142,9 @@
       - Kernel fixture selection: see #Page-size-dynamic-boot-selection
   - Driver backends
     - Capability matrix: TBD
-    - driver-libkrun: default
-      - macOS: HVF + Metal GPU
-      - Linux: KVM
-      - Hard fork: userfaultfd CoW fork, GPA snapshot, hardware clock skew
-    - driver-rustvmm: bare-metal Linux KVM + CUDA CDI GPU passthrough
+    - driver-rustvmm: Linux bare-metal KVM + userfaultfd CoW + CUDA CDI
       - Direct hardware acceleration on x86_64 and bare-metal ARM64 (Raspberry Pi)
+    - driver-hvf: macOS native Apple Silicon HVF direct Mach bindings
     - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure MSHV
     - driver-avf: Android Virtualization Framework via /dev/avf and pKVM
     - driver-bwrap: unprivileged Linux user namespaces + seccomp-unotify

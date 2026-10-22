@@ -25,6 +25,7 @@ pub struct TrapEvent {
     pub envp: HashMap<String, String>,
     pub cwd: String,
     pub ancestor_chain: Vec<String>,
+    /// Evaluated host-side on argv[1:] to keep shim under 50KB
     pub entropy: f64,
     pub loaded_libraries: Vec<String>,
 }

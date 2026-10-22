@@ -14,8 +14,8 @@
       - L4 SOCKS5: connect-by-IP; used where TLS termination is invalid
       - SSH gate: host keyring signs; private key never crosses vsock
       - DNS: NXDOMAIN for non-allowlisted; blocks tunneling on port 53
-    - Active credential leak scanner inspects outbound streams in flight
-    - Token-bucket rate limiter auto-tuned via upstream HTTP response headers
+    - Linear Aho-Corasick scanner inspects outbound L7 payloads for secrets
+    - L7 proxy enforces token-bucket rate limits per domain via governor
     - Recalibrates burst capacity using Retry-After and X-RateLimit headers
     - Composability: plugin-chaos mutates frames in both directions
     - Return contract: see 02-plugin-model.md#Hook-return-semantics
@@ -64,12 +64,13 @@
     - L4 destination pinning: TBD
   - Database proxy plane
     - Owner: plugin-db-proxy; mediates relational database communication
-    - PostgreSQL: intercepts pgwire on port 5432, decodes Q/P statement messages
-    - SQLite: exposes /run/kelir/db.sock proxying operations via virtio-shm
+    - PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser
+    - SQLite: exposes /run/kelir/db.sock forwarded via vsock host service
     - Verdict execution: DbAction::Allow, DbAction::Deny, DbAction::Rewrite
   - Federation mesh
     - Owner: plugin-mesh; sovereign cross-hypervisor peer transport
-    - Point-to-point mTLS and WireGuard tunnels connecting isolated microVMs
+    - Routes point-to-point peer streams via vsock listener services
+    - Injects and validates mTLS framing across hypervisor boundaries
     - Propagates W3C traceparents and call-hop counters across routines
   - SSH gate
     - git@github.com SSH connections mapped via /dev/vhost-vsock to host SSH_AUTH_SOCK

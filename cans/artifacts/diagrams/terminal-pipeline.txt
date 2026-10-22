@@ -29,7 +29,7 @@
 │     │                             guest foreground process group.           │
 │     │                                                                       │
 │     ├── 5. Token Shield Filter ───► Clamps chunks exceeding byte, line, or  │
-│     │                             BPE token ceilings (tiktoken cl100k).     │
+│     │                             token ceilings (pluggable TokenCounter).  │
 │     │                             Injects truncation markers into stream.   │
 │     │                                                                       │
 │     ├── 6. Active Leak Scanner ───► Scans stdout/stderr against registered  │

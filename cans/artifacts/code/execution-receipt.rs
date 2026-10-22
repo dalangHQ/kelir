@@ -15,7 +15,7 @@ pub struct ExecutionReceipt {
     /// Byte count; always populated.
     /// Byte-not-page reason: see cans/01-architecture.md#VmmDriver-trait
     pub dirty_bytes: u64,
-    /// Exact retired instruction count queried directly from hardware PMU
+    /// Retired instruction count sampled from host vCPU thread perf counter
     pub retired_instructions: u64,
     /// Populated when ReceiptConfig::include_syscall_count.
     pub syscall_count: Option<u64>,

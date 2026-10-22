@@ -64,7 +64,7 @@ test-isolation plugin:
         --exclude mcp-server \
         --exclude kelir-integration
 
-# Runs anti-TOCTOU, PTRACE_SEIZE, and zombie reaper tests in isolated container/namespaces
+# Runs anti-TOCTOU, cgroup.freeze, and zombie reaper tests in isolated container/namespaces
 test-shim:
     cargo nextest run -p kelir-shim
 

@@ -55,7 +55,7 @@
     - Mobile and SBC use: rapid 0 MB RSS drop under Android LMK memory pressure
     - Flash preservation: guest tmpfs writes stay in RAM; zero random SD card writes
   - Portable snapshot bundles
-    - Serializes frozen vCPU registers and zstd-compressed dirty RAM
+    - Streamed archive packaging vmm_state.json, ram.zst, and upperdir diff
     - session.export_snapshot() yields portable binary stream (.kelir-snap)
     - session.import_snapshot() hydrates twin session across identical hosts
     - Decouples long-running human approval pauses from host machine uptime
@@ -70,7 +70,8 @@
       - Guest kernel never flags tsc as unstable, never falls to jiffies
     - Typical use: JWT expiry, cron cycles, certificate renewals
     - Synthetic virtual clocksource mode
-      - Guest clock decouples from host TSC and advances per instruction block
+      - Guest clock decouples from host TSC; host advances KVM_SET_CLOCK per step
+      - Intercepts timer reads on host without custom guest kernel modules
       - Guarantees cycle-exact deterministic replay across repeated runs
     - Veto: ClockSkew (hard)
       - Callback false → ESessionVeto; guest clock unchanged
@@ -97,17 +98,17 @@
         - On host exit or pipe close: SIGKILL to backend process group
         - Reclaims VM memory mappings
     - Graceful host preemption window
-      - Host SIGTERM triggers preemption_grace_ms delay before SIGKILL
-      - Fires on_host_preempt() hook to allow emergency state checkpoints
+      - In-process Tokio handler catches host SIGTERM; delays SIGKILL
+      - Waits preemption_grace_ms; dispatches on_host_preempt() hook
       - Android LMK hook: executes session.suspend() before OS termination
       - Prevents session state corruption during mobile app backgrounding
     - Platform coverage: TBD
   - Two-phase commit
     - MicroVM and host database state synchronization protocol
-    - on_pre_commit() freezes microVM execution and flushes pending VFS buffers
+    - on_pre_commit pauses vCPUs and flushes in-flight VFS write buffers
     - Host evaluates transaction outcome before upperdir commit
     - on_post_commit(true) reconciles upperdir to host workspace
-    - on_post_commit(false) discards tmpfs upperdir diffs in <8ms
+    - on_post_commit(false) wipes tmpfs upperdir diffs via MADV_DONTNEED
     - Prevents desynchronization between host DB and guest workspace
   - Docker-in-kelir
     - Constraint: Apple Silicon HVF offers no nested VMX/SVM
@@ -170,8 +171,9 @@
         - WatchdogEvent: timeout_ms, action, fired_at_ns, last_heartbeat_ms
         - Ok(()) → driver executes WatchdogAction
         - Err(PluginError::Halt) → action suppressed; surfaces to runtime
-      - WatchdogAction::Terminate emits structured WatchdogDiagnostic
-      - Diagnostic carries fired_at_ns, last_heartbeat_ms, last_active_pid
+      - WatchdogAction::Terminate synthesizes WatchdogDiagnostic from host
+      - Carries fired_at_ns, last_heartbeat_ms, and last active PID
+      - Evaluates completely host-side without guest kernel cooperation
       - This is the extension point for custom actions
         - A plugin may do work in on_watchdog then return Err(Halt)
         - WatchdogAction stays closed (Reboot | Terminate)

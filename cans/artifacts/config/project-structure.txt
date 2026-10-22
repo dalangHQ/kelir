@@ -62,8 +62,7 @@ kelir/
 │   │   │   ├── reaper.rs              # Non-blocking waitpid(-1, WNOHANG) zombie reclamation loop
 │   │   │   ├── ingress.rs             # vsock:5253 ingress multiplexer → guest loopback TCP proxy
 │   │   │   ├── pty_broker.rs          # openpty() master/slave broker: setsid() + TIOCSCTTY controlling terminals
-│   │   │   ├── trap.rs                # seccomp-unotify loop + all-threads PTRACE_SEIZE/INTERRUPT anti-TOCTOU
-│   │   │   ├── entropy.rs             # Shannon entropy on argv[1:] payload
+│   │   │   ├── trap.rs                # seccomp-unotify loop + cgroup.freeze + process_vm_readv anti-TOCTOU
 │   │   │   ├── audit.rs               # ELF static scan (DT_NEEDED, PT_INTERP) + LD_PRELOAD verification
 │   │   │   └── vsock.rs               # /dev/vhost-vsock hardware client socket
 │   │   └── tests/
@@ -71,18 +70,13 @@ kelir/
 │   │       └── test_reaper.rs         # Zombie reclamation under load
 │   │
 │   ├── kelir-drivers/                 # Pluggable Virtualization Implementations
-│   │   ├── driver-libkrun/            # dalangHQ libkrun fork: userfaultfd CoW fork (<15ms), GPA snapshot engine (<8ms), clock skew patches — macOS HVF default
-│   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # libkrun C-FFI bindings
-│   │   │   └── tests/
-│   │   │       ├── test_cow_fork.rs   # HVF memory cloning in <15ms
-│   │   │       └── test_rollback.rs   # Hardware rollback in <8ms
-│   │   ├── driver-rustvmm/            # Bare-metal Linux KVM + CUDA CDI passthrough
+│   │   ├── driver-rustvmm/            # Bare-metal Linux KVM + userfaultfd CoW (<15ms) + CUDA CDI passthrough
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # kvm-ioctls & userfaultfd CoW memory implementation
 │   │   │   └── tests/
 │   │   │       ├── test_cow_fork.rs   # KVM userfaultfd CoW fork in <15ms
 │   │   │       └── test_rollback.rs   # KVM rollback in <8ms
+│   │   ├── driver-hvf/                # Native macOS Apple Silicon HVF + direct Mach memory bindings
 │   │   ├── driver-openvmm/            # Windows WHP + ConPTY + HV_SOCKET
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/lib.rs             # Microsoft WHP & MSHV hypervisor implementation
@@ -99,7 +93,8 @@ kelir/
 │   │   │   │   ├── lib.rs
 │   │   │   │   ├── ansi.rs            # Drop OSC 52 clipboard & OSC 0/1/2 title sequences
 │   │   │   │   ├── responder.rs       # onPrompt engine matching ANSI-stripped plaintext (foreground-verified)
-│   │   │   │   └── shield.rs          # UTF-8/ANSI boundary-safe head-and-tail token clamping
+│   │   │   │   ├── shield.rs          # UTF-8/ANSI boundary-safe head-and-tail token clamping
+│   │   │   │   └── grid.rs            # Headless VT100 parser grid for wireframe receipts
 │   │   │   ├── tests/
 │   │   │   │   ├── test_ansi_sanitizer.rs
 │   │   │   │   ├── test_prompt_responder.rs
@@ -145,7 +140,7 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs
-│   │   │   │   ├── wal.rs             # Append-only Merkle-chained SQLite/DuckDB WAL
+│   │   │   │   ├── wal.rs             # LedgerSink trait: LocalMerkleDbSink + external delegation
 │   │   │   │   ├── otel.rs            # W3C traceparent context propagator
 │   │   │   │   └── compute.rs         # compute_causal_delta() — CausalDelta computation (struct lives in kelir-core)
 │   │   │   └── tests/
@@ -165,21 +160,21 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # on_vm_init vetoes + on_watchdog forwarding
 │   │   │   └── tests/test_coordinator.rs
-│   │   ├── plugin-db-proxy/           # Agnostic DB mediation: pgwire (port 5432) & /run/kelir/db.sock SQLite shm
+│   │   ├── plugin-db-proxy/           # Agnostic DB mediation: pgwire (port 5432) & /run/kelir/db.sock vsock proxy
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # DbAction verdict engine (Allow, Deny, Rewrite)
 │   │   │   └── tests/test_db_proxy.rs
-│   │   ├── plugin-mesh/               # Sovereign federation transport: point-to-point mTLS/WireGuard tunnel
+│   │   ├── plugin-mesh/               # Sovereign federation transport: peer vsock stream with mTLS framing
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # Cross-hypervisor traceparent & hop-count propagation
 │   │   │   └── tests/test_mesh.rs
-│   │   ├── plugin-lock-broker/        # Distributed entity lease engine: cross-VM FUSE flock/fcntl with TTL
+│   │   ├── plugin-lock-broker/        # Cross-VM FUSE flock/fcntl mapped to host physical file locks
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # Host in-memory mutex table with heartbeat leases
 │   │   │   └── tests/test_lock_broker.rs
 │   │   └── plugin-supply-chain/       # Package guard: blocks dynamic lifecycle scripts in package manager trees
 │   │       ├── Cargo.toml
-│   │       ├── src/lib.rs             # Process spawn hook rejecting postinstall/setup.py scripts
+│   │       ├── src/lib.rs             # Trap hook rejecting postinstall/setup.py via ancestor chain
 │   │       └── tests/test_supply_chain.rs
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
@@ -258,7 +253,7 @@ kelir/
 │   │   ├── kernel/                    # Per-arch vmlinux binaries (arm64 16K, x86_64 4K) — selected dynamically at boot
 │   │   ├── rootfs/                    # Build scripts generating minimal EROFS base images
 │   │   │   └── build-erofs.sh
-│   │   └── payloads/                  # Binaries with Shannon entropy >5.2 (shared: plugin-pty + kelir-shim tests)
+│   │   └── payloads/                  # Binaries with Shannon entropy >5.2 (shared: plugin-pty + core trap tests)
 │   └── e2e/
 │       ├── test_claude_code.ts        # End-to-end Claude Code session under PTY controls
 │       └── test_openrig_driver.ts     # Verifies swarm execution replacing OpenRig tmux

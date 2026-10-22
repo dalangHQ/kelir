@@ -13,7 +13,8 @@
       - writes to shared read-only caches (rejected at FUSE)
       - writes to ghost inodes (RAM-only; never reach host disk)
       - writes to host SSD (reconcile() only, atomic per file)
-    - Deterministic 64-bit host_stable_hash in VfsInodeAttr for OCC fences
+    - Deterministic 64-bit host_stable_hash of inode metadata for OCC fences
+    - Hashes device, inode, mtime, and size; zero read-time payload hashing
     - Every layer in the diagram is gated by one of the four paths above
   - EROFS rootfs
     - Stripped base system pre-baked into read-only EROFS
@@ -32,10 +33,10 @@
     - Carries no VCS semantics, accepts no message parameter
     - Git commit is ordinary guest execution through the trap chain
     - Algorithm
-      - Traverse guest tmpfs upperdir differential tree
-      - Resolve file whiteouts: S_ISCHR(mode) && rdev == 0 → host unlink()
+      - Consumes in-memory dirty set and deletion map from plugin-vfs
+      - Resolves file whiteouts: character device 0/0 → host unlink()
       - Resolve dir whiteouts: trusted.overlay.opaque=y → host remove_dir_all()
-      - Atomic staged writes: copy to tmp sibling, rename() into place
+      - Fast CoW block clone via ioctl(FICLONE) with tmp sibling fallback
       - Flush with syncfs()/fsync() before reporting completion
     - Whiteout problem
       - Deleted files become char devices with major/minor 0/0 (mknod c 0 0)
@@ -67,7 +68,8 @@
     - Host ~/.cargo/registry → guest /usr/local/cargo/registry
     - Cold installs drop from ~2 minutes to <3 seconds via local SSD
   - Secondary image mounts
-    - Mounts squashfs or EROFS images dynamically at guest mount points
+    - Grafts host-opened squashfs/EROFS images into guest VFS namespace
+    - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE
     - Prevents tmpfs upperdir memory exhaustion when loading large packages
   - Write gating
     - plugin-vfs gates FUSE write() via on_vfs_write
@@ -93,28 +95,24 @@
     - mode: 0o400 honored exactly, no permission fallback
     - Physically does not exist on host SSD
   - In-flight read masking
-    - maskRead intercepts FUSE read() dispatch at buffer boundary
-    - MaskRule regex redactions applied in host RAM before guest pages fill
+    - maskRead intercepts FUSE lookup/open at inode boundary
+    - Sensitive targets synthesize RAM-backed ghost inodes on open
     - Typical targets: .env, secrets files, private keys
     - Fixed-width redaction
       - Replacement padded or truncated to exact byte length of the match
       - st_size and file offsets preserved
       - Sequential reads and trailing reads stay consistent
       - Short-match padding rule: TBD
-    - Format-preserving masking (FPA) via custom regex replacement callbacks
-    - Generates format-valid synthetic strings while redacting sensitive data
+    - Format-preserving masking (FPA) executes via ghost inode generator
+    - Generates format-valid synthetic content before guest read calls
     - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks
     - See: artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
   - Entity lock broker
-    - Owner: plugin-lock-broker; manages cross-VM entity leases
-    - Intercepts FUSE flock and fcntl on arbitrary paths with TTL heartbeats
-    - Prevents .git/index.lock collisions when multiple agents share a repo
-    - Guest overlayfs assigns virtual inodes with no host correlation
-    - Resolution: guest inode + virtio-fs mount identity → host physical inode + path
-    - Broker intercepts FUSE_SETLK and FUSE_SETLKW (fcntl/flock)
-    - Routes lock acquisition through centralized host in-memory mutex table
-    - Conflicting locks block cleanly or return EWOULDBLOCK
-    - Broker semantics: TBD
+    - Owner: plugin-lock-broker; mediates cross-VM file locking
+    - Intercepts FUSE_SETLK and FUSE_SETLKW on declared repository paths
+    - Maps guest virtual inode to host physical inode via virtio-fs mount
+    - Delegates lock acquisition directly to host OS advisory locks (flock)
+    - Non-blocking: conflicting lock returns EWOULDBLOCK without host lag
       - Lease timeout
       - Deadlock detection
       - Fairness
