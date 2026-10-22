@@ -10,4 +10,9 @@
 │ 7. Docker-in-Kelir ──► Rootless Podman + crun in EROFS; no nested VMX needed.│
 │ 8. Break-Glass Attach─► Drops developer directly into live interactive TTY. │
 │ 9. Port Forwarding ──► Bridges guest web services over vsock port 5253.     │
+│ 10. virtio-shm Map ──► Zero-copy anonymous host shared memory (<15ms).      │
+│ 11. Portable Snap ─► Headless .kelir-snap bundle export/import across hosts.│
+│ 12. Synthetic Clock ─► Instruction-ticked virtual clocksource (0 jitter).   │
+│ 13. 2PC Lifecycle ───► Pre/post commit atomic synchronization with host DB. │
+│ 14. SIGTERM Grace ───► Preemption window holds SIGKILL for clean checkpoint.│
 └─────────────────────────────────────────────────────────────────────────────┘

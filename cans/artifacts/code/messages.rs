@@ -18,6 +18,7 @@ pub struct TrapEvent {
     pub seq: u64,
     pub pid: u32,
     pub ppid: u32,
+    pub task_token: Option<u64>,
     pub binary_path: String,
     pub binary_blake3: [u8; 32],
     pub argv: Vec<String>,
@@ -101,6 +102,15 @@ pub enum HostToGuest {
 pub enum TrapAction {
     /// Resume the syscall untouched. Registers and memory are never modified.
     Allow,
+    /// Immediately freeze microVM and return control cleanly to host event loop
+    Yield {
+        checkpoint_id: u64,
+    },
+    /// Immediate hypervisor-level uncatchable termination of guest workload
+    Abort {
+        exit_code: i32,
+        reason: String,
+    },
     /// Inject exit code and stderr into the agent's TTY.
     Deny {
         exit_code: i32,

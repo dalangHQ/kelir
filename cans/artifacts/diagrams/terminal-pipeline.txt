@@ -28,7 +28,13 @@
 │     ├── 4. Signal Forwarding ─────► Ctrl+C (SIGINT) / Ctrl+D forwarded to   │
 │     │                             guest foreground process group.           │
 │     │                                                                       │
-│     └── 5. Token Shield Filter ───► Clamps chunks exceeding byte ceiling.   │
-│                                   Injects truncation markers into stream.   │
-│                                   (Protects LLM Context Window).            │
+│     ├── 5. Token Shield Filter ───► Clamps chunks exceeding byte, line, or  │
+│     │                             BPE token ceilings (tiktoken cl100k).     │
+│     │                             Injects truncation markers into stream.   │
+│     │                                                                       │
+│     ├── 6. Active Leak Scanner ───► Scans stdout/stderr against registered  │
+│     │                             secret patterns; trips security panic.    │
+│     │                                                                       │
+│     └── 7. Grid Matrix Export ────► Maintains in-memory VT100 grid for      │
+│                                   structured terminal wireframe receipts.   │
 └─────────────────────────────────────────────────────────────────────────────┘

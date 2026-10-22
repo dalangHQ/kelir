@@ -44,6 +44,7 @@ pub struct VfsInodeAttr {
     pub uid: u32,
     pub gid: u32,
     pub size: u64,
+    pub host_stable_hash: u64,
     pub content: Vec<u8>,
 }
 
@@ -123,6 +124,10 @@ impl<'a> LifecycleCtx<'a> {
     ) {
         self.vetoes.push((event, f));
     }
+    /// Atomically updates flat dispatch table pointers via RCU swap
+    pub fn update_dispatch(&mut self, _new_dispatch: std::sync::Arc<()>) -> Result<(), PluginError> {
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -148,6 +153,9 @@ pub trait KelirPlugin: Send + Sync {
     async fn on_vm_init(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
     async fn on_vm_ready(&self, _session: &Session) -> Result<(), PluginError> { Ok(()) }
     async fn on_vm_shutdown(&self, _session: &Session) -> Result<(), PluginError> { Ok(()) }
+    async fn on_pre_commit(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
+    async fn on_post_commit(&self, _ctx: &mut LifecycleCtx, _committed: bool) -> Result<(), PluginError> { Ok(()) }
+    async fn on_host_preempt(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
 
     // ─── 2. Control Plane (virtio-vsock) ─────────────────────────
     async fn on_trap(

@@ -83,9 +83,12 @@ kelir/
 │   │   │   └── tests/
 │   │   │       ├── test_cow_fork.rs   # KVM userfaultfd CoW fork in <15ms
 │   │   │       └── test_rollback.rs   # KVM rollback in <8ms
-│   │   └── driver-openvmm/            # Windows WHP + ConPTY + HV_SOCKET
+│   │   ├── driver-openvmm/            # Windows WHP + ConPTY + HV_SOCKET
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/lib.rs             # Microsoft WHP & MSHV hypervisor implementation
+│   │   └── driver-bwrap/              # Unprivileged Linux user namespaces + seccomp-unotify (non-KVM fallback)
 │   │       ├── Cargo.toml
-│   │       └── src/lib.rs             # Microsoft WHP & MSHV hypervisor implementation
+│   │       └── src/lib.rs             # Bubblewrap/user-namespace driver implementation
 │   │
 │   ├── kelir-plugins/                 # Modular First-Class Rust Plugins
 │   │   # ── Every plugin-* has: src/, tests/, fixtures/, examples/, README.md ──
@@ -158,10 +161,26 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # on_vm_init: layer flatten + whiteout apply
 │   │   │   └── tests/test_oci_translate.rs
-│   │   └── plugin-openshell-coordinator/# Checkpoint/branch policy; loaded by openshell-grpc
+│   │   ├── plugin-openshell-coordinator/# Checkpoint/branch policy; loaded by openshell-grpc
+│   │   │   ├── Cargo.toml
+│   │   │   ├── src/lib.rs             # on_vm_init vetoes + on_watchdog forwarding
+│   │   │   └── tests/test_coordinator.rs
+│   │   ├── plugin-db-proxy/           # Agnostic DB mediation: pgwire (port 5432) & /run/kelir/db.sock SQLite shm
+│   │   │   ├── Cargo.toml
+│   │   │   ├── src/lib.rs             # DbAction verdict engine (Allow, Deny, Rewrite)
+│   │   │   └── tests/test_db_proxy.rs
+│   │   ├── plugin-mesh/               # Sovereign federation transport: point-to-point mTLS/WireGuard tunnel
+│   │   │   ├── Cargo.toml
+│   │   │   ├── src/lib.rs             # Cross-hypervisor traceparent & hop-count propagation
+│   │   │   └── tests/test_mesh.rs
+│   │   ├── plugin-lock-broker/        # Distributed entity lease engine: cross-VM FUSE flock/fcntl with TTL
+│   │   │   ├── Cargo.toml
+│   │   │   ├── src/lib.rs             # Host in-memory mutex table with heartbeat leases
+│   │   │   └── tests/test_lock_broker.rs
+│   │   └── plugin-supply-chain/       # Package guard: blocks dynamic lifecycle scripts in package manager trees
 │   │       ├── Cargo.toml
-│   │       ├── src/lib.rs             # on_vm_init vetoes + on_watchdog forwarding
-│   │       └── tests/test_coordinator.rs
+│   │       ├── src/lib.rs             # Process spawn hook rejecting postinstall/setup.py scripts
+│   │       └── tests/test_supply_chain.rs
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
 │   │   ├── containerd-shim/           # containerd-shim-v2 implementation for K8s

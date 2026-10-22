@@ -12,3 +12,10 @@
                               [4. DNS SINKHOLE]
                               Traps all UDP 53; drops non-whitelisted
                               domains with NXDOMAIN. Blocks exfiltration.
+                                        │
+           ┌────────────────────────────┴────────────────────────────┐
+           ▼                                                         ▼
+  [5. DATABASE PROXY]                                      [6. FEDERATION MESH]
+  Mediates pgwire (TCP 5432) and SQLite                     Point-to-point cross-VM
+  sockets over virtio-shm; enforces in-flight               mTLS/WireGuard tunnel;
+  DbAction (Allow, Deny, Rewrite).                          propagates traceparent & hops.

@@ -58,7 +58,9 @@
     - Population: per ReceiptConfig; opt-in fields not enabled are absent
       (Option), never 0
       - Always: pid, binary_path, binary_blake3, dirty_bytes, exit_code,
-        wall_clock_ns, egress_bytes
+        retired_instructions, wall_clock_ns, egress_bytes
+      - retired_instructions: exact hardware PMU retired instruction count
+      - Eliminates cross-architecture dirty-page and wall-clock variance
       - Opt-in: syscall_count
       - dirty_bytes is always populated: zero is a real measurement, not an
         absent value
@@ -102,6 +104,8 @@
       - WAL survives guest rollback() and fork(); no guest operation can
         rewrite or duplicate it
       - This invariant is the reason the WAL exists separately from receipts
+    - Delegated audit persistence via external_sink callback
+    - suppress_local_db option allows host to maintain single authoritative DB
     - Ownership: core generates receipts; plugin-ledger persists and exports
     - Ledger handler API
       - c.ledger.flush() forces WAL flush and OTel export

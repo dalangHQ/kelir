@@ -71,12 +71,19 @@
     - StepSlot: see 08-epistemic.md#Step-evaluation-loop
     - Shim primitives: Guest VM anatomy
     - EROFS mount: see 05-storage-plane.md#EROFS-rootfs
+    - Shared memory mapping: see #Shared-memory-channel
+    - Portable snapshots: see 07-lifecycle.md#Portable-snapshot-bundles
   - Four-Ring Bus
     - See: artifacts/diagrams/four-ring-bus.txt
     - virtio-vsock control plane: syscalls, PIDs, signals, traps
     - virtio-console terminal plane: raw TTY, ANSI, Token Shield, resizing
     - virtio-fs storage plane: CoW overlays, inodes, in-flight masking, ghosts
     - virtio-net wire plane: L4/L7 traffic, secrets, chaos
+    - virtio-shm shared memory: zero-copy tabular data and host DB sockets
+  - Shared memory channel
+    - Anonymous memfd_create host segment mapped into guest physical address space
+    - High-throughput zero-copy exchange bypassing FUSE and vsock serialization
+    - Mappings clean up automatically on guest process termination
   - Host runtime
     - See: artifacts/diagrams/host-runtime.txt
     - Native Rust consumer: direct Cargo crate, zero-cost monomorphization
@@ -105,6 +112,7 @@
       - Shim runs as PID 1: orphan reaping is mandatory, not optional
       - seccomp-unotify is in-kernel; userspace cannot race the allowlist
       - PTRACE_SEIZE covers every thread: leader-only seize is unsafe
+      - Ambient 64-bit task token tracks user-space thread subagent identity
     - Trust chain: TBD
     - Workload contract: no guest-side SDK, shim, or agent
   - VmmDriver trait
@@ -128,3 +136,5 @@
       - Hard fork: userfaultfd CoW fork, GPA snapshot, hardware clock skew
     - driver-rustvmm: bare-metal Linux KVM + CUDA CDI GPU passthrough
     - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure MSHV
+    - driver-bwrap: unprivileged Linux user namespaces + seccomp-unotify
+      - Fallback backend for unprivileged containers and CI without /dev/kvm

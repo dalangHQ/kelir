@@ -20,7 +20,7 @@
     - Value and trigger per audience: at the matrix
     - Infra platforms: K8s, Cube, OpenShell
     - Harness creators: Claude Code, Cursor, Devin
-    - Orchestrators: LangGraph, CrewAI, E2B
+    - Orchestrators: Capcli, LangGraph, E2B
     - Epistemic engines: Axiom, RLVR, falsifiers
   - What kelir replaces
     - Terminal hacks: tmux send-keys, regex screen scraping
@@ -34,6 +34,11 @@
     - Parallel agent exploration: see 07-lifecycle.md#CoW-fork
     - Human approval waits at zero CPU: see 07-lifecycle.md#Suspend-and-resume
     - Time-sensitive tests (JWT, cron, certs): see 07-lifecycle.md#Clock-skew
+    - Deterministic execution replay: see 07-lifecycle.md#Clock-skew
+    - Relational database governance: see 06-wire-plane.md#Database-proxy-plane
+    - Supply chain package protection: see 02-plugin-model.md#Supply-chain-guard
+    - Zero-copy high-throughput IPC: see 01-architecture.md#Shared-memory-channel
+    - Cross-host state migration: see 07-lifecycle.md#Portable-snapshot-bundles
     - Flaky-API and disk-full resilience: see 06-wire-plane.md#Fault-injection-plugin-chaos
     - Container builds without nested VMX: see 07-lifecycle.md#Docker-in-kelir
     - Human break-glass on agent loops: see 07-lifecycle.md#Break-glass

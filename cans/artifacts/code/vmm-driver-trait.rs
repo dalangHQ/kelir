@@ -7,6 +7,7 @@
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use tokio::io::AsyncRead;
 
 #[derive(Debug, Clone)]
 pub struct VmConfig {
@@ -18,6 +19,10 @@ pub struct VmConfig {
     pub entropy_seed: Option<u64>,
     pub enable_gpu_passthrough: bool,
     pub enable_watchdog: bool,
+    pub deterministic_clock: bool,
+    pub ns_per_instruction: Option<u32>,
+    pub preemption_grace_ms: u64,
+    pub entropy_bypass_paths: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -32,8 +37,22 @@ pub struct SnapshotDescriptor {
 pub enum WatchdogAction {
     /// Guest kernel lockup detected → hard-reset the vCPUs and reboot the microVM
     Reboot,
-    /// Unresponsive VM → flush ledger state, then terminate the instance
-    Terminate,
+    /// Unresponsive VM → emit structured diagnostic payload, then terminate instance
+    Terminate { emit_diagnostic: bool },
+}
+
+#[derive(Debug, Clone)]
+pub struct WatchdogDiagnostic {
+    pub fired_at_ns: u64,
+    pub last_heartbeat_ms: u64,
+    pub last_active_pid: Option<u32>,
+}
+
+#[derive(Debug)]
+pub struct SharedMemoryHandle {
+    pub tag: String,
+    pub size_bytes: usize,
+    pub guest_phys_addr: u64,
 }
 
 #[async_trait]
@@ -48,6 +67,15 @@ pub trait VmmDriver: Send + Sync {
 
     /// Creates an atomic in-memory checkpoint of guest RAM and vCPU registers
     async fn checkpoint(&mut self, label: &str) -> Result<SnapshotDescriptor, VmmError>;
+
+    /// Maps an anonymous zero-copy host memory segment into guest address space
+    async fn map_shared_region(&mut self, tag: &str, size_bytes: usize) -> Result<SharedMemoryHandle, VmmError>;
+
+    /// Serializes registers and compressed dirty pages into a portable stream
+    async fn export_snapshot(&self) -> Result<Box<dyn AsyncRead + Send + Sync + Unpin>, VmmError>;
+
+    /// Hydrates microVM registers and memory pages from a portable snapshot stream
+    async fn import_snapshot(&mut self, reader: Box<dyn AsyncRead + Send + Sync + Unpin>) -> Result<(), VmmError>;
 
     /// Reverts guest memory and registers to a prior checkpoint in <8ms
     async fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), VmmError>;

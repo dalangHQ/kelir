@@ -28,10 +28,17 @@
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 7. IN-FLIGHT READ-TIME MASKING (plugin-vfs maskRead):                       │
 │    - FUSE-level byte stream interception on file reads.                     │
-│    - MaskRule regex redaction; fixed-width replacements preserve            │
-│      st_size and file offsets.                                              │
+│    - MaskRule regex redaction; fixed-width replacements or format-          │
+│      preserving synthetic string generators.                                │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 8. CENTRAL INODE LOCK BROKER (Cross-VM Concurrency):                        │
+│ 8. OCC STABLE INODE HASHES:                                                 │
+│    - Deterministic 64-bit physical hash populated in VfsInodeAttr.          │
+│    - Enables host optimistic concurrency state-fencing across edits.        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 9. SECONDARY READ-ONLY IMAGE MOUNTS:                                        │
+│    - Dynamic in-flight attachment of read-only squashfs/EROFS pack images.  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 10. CENTRAL INODE LOCK BROKER (Cross-VM Concurrency):                       │
 │    - Intercepts FUSE SETLK / SETLKW (flock / fcntl) across multiple VMs.    │
 │    - Prevents .git/index.lock collisions when multiple agents share a repo. │
 └─────────────────────────────────────────────────────────────────────────────┘

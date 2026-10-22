@@ -74,8 +74,16 @@
       - Any host-side state mutation reaches the workload's TTY
       - Plugins annotate; none suppress
     - Annotation bounds: TBD
+  - Active leak detection
+    - Byte-stream scanner inspects terminal output for registered vault secrets
+    - Detection triggers immediate security panic hook before render
+  - Screen matrix export
+    - Maintains in-memory VT100 2D character and attribute grid
+    - export_screen_matrix() yields deterministic terminal wireframe states
   - Token Shield
     - Ceilings: maxBytesTotal (e.g. 64KB), maxLinesTotal (e.g. 300)
+    - Token-aware clamping via pluggable BPE tokenizer (cl100k_base)
+    - Clamps by token ceiling to protect context from minified JSON logs
     - clampStrategy: head-and-tail (keep first 50 + last 100 lines)
     - onClamp callback returns truncation notice with droppedBytes/droppedLines
     - Boundary-safe clamping

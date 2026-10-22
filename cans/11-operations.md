@@ -58,7 +58,7 @@
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
     - Matrix job: test-plugins
-      - One cell per first-class plugin (8 total)
+      - One cell per first-class plugin (12 total)
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
       - Structural decoupling proof: see 02-plugin-model.md#Plugin-ownership
@@ -136,9 +136,9 @@
       - kelir: facade crate, single Cargo dependency, feature-gated plugins
       - kelir-core: stripped microkernel (bus, plugin, protocol, vmm, telemetry)
       - kelir-plugins: first-class plugins
-        - pty, vfs, wire, chaos, ledger
-        - mcp, oci-translator, openshell-coordinator
-      - kelir-drivers: libkrun, rustvmm, openvmm
+        - pty, vfs, wire, chaos, ledger, mcp, oci-translator
+        - openshell-coordinator, db-proxy, mesh, lock-broker, supply-chain
+      - kelir-drivers: libkrun, rustvmm, openvmm, bwrap
       - kelir-shim: in-guest musl PID 1 (<50KB)
     - Test infrastructure
       - kelir-plugin-testkit: mock driver, mock bus, HandlerCtx constructors

@@ -24,10 +24,11 @@
 │  │   │   skew control. Upstream libkrun provides none of these.                      │  │
 │  │   ├── driver-rustvmm: Bare-metal Linux KVM hypervisor + CUDA CDI GPU passthrough  │  │
 │  │   │   — the full-featured path on bare-metal Linux                                │  │
-│  │   └── driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure Linux MSHV         │  │
+│  │   ├── driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure Linux MSHV         │  │
+│  │   └── driver-bwrap: Unprivileged Linux user namespaces + seccomp-unotify fallback │  │
 │  └───────┬──────────────┬──────────────┬──────────────┬──────────────┬───────────────┘  │
 └──────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────────────┘
-           │ virtio-      │ virtio-      │ virtio-      │ virtio-blk   │ virtio-rng /
+           │ virtio-      │ virtio-      │ virtio-      │ virtio-blk   │ virtio-shm /
            │ console      │ vsock        │ fs           │ (EROFS)      │ virtio-wdt /
            │ [Ring 1]     │ [Ring 2]     │ [Ring 3]     │              │ virtio-balloon
            ▼              ▼              ▼              ▼              ▼

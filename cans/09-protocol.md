@@ -4,6 +4,9 @@
     - virtio-vsock port 5253: ingress/port-forward multiplexer
     - Windows driver-openvmm: HV_SOCKET translates the same channels
     - Zero network interface involvement
+    - Pluggable host listener registration via register_vsock_service()
+      - Maps custom vsock ports (e.g. 5254) to host async stream callbacks
+      - Provides direct host RPC channel without external network routing
     - Port collision across co-located sessions: TBD
   - Trap fast-path
     - Step sequence and per-step mechanics: See artifacts/diagrams/trap-flow.txt
@@ -27,6 +30,8 @@
         a low-entropy path
       - Flag threshold: Shannon entropy > 5.2 flags encrypted or base64
         shell payloads
+      - Allowlist bypass: entropy_bypass_paths skips check for trusted runners
+      - Permits high-entropy base64 arguments for node, python, and runners
       - ELF is read from disk at trap time: /proc/$PID/maps still describes
         the pre-exec image and cannot be trusted
     - Flow diagram: See artifacts/diagrams/trap-flow.txt
@@ -54,8 +59,13 @@
     - See: artifacts/code/messages.rs
     - Message set and payload fields: See artifacts/code/messages.rs
     - Hook binding: one hook per message; see 02-plugin-model.md#KelirPlugin-trait
+    - TrapEvent carries optional ambient 64-bit task_token for subagent threads
     - TrapAction invariants
       - `Allow` cannot mutate registers, memory, or env; it is a no-op
+      - `Yield { checkpoint_id }` freezes vCPU registers and CoW memory
+      - `Yield` returns execution cleanly to host event loop without polling
+      - `Abort { exit_code, reason }` executes uncatchable hypervisor SIGKILL
+      - `Abort` halts execution immediately on critical security violations
       - `Deny` injects an exit code and stderr into the agent TTY
       - `Rewrite` is the only variant that can carry injected env; the
         tty_notice field routes through HostToGuest::Disclosure

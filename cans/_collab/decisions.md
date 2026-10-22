@@ -1,1 +1,2 @@
 - decisions
+  - status: accepted | date: 2026-10-22 | title: Deterministic OS Substrate Primitives | rfc: kelir-ask.md | details: Added PMU retired instruction accounting, virtio-shm shared memory, non-blocking Yield/Abort traps, 2PC lifecycle sync, portable snapshots, synthetic instruction clocks, and decoupled db-proxy/mesh/lock-broker/supply-chain plugins.

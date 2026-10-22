@@ -12,6 +12,11 @@
     - Scoping: all SDKs support ring, binary, and path filters at mount point
     - Topology rule: distinct environments use separate profile factories
     - Parity mechanism: see 11-operations.md#Multi-language-parity-gate
+    - Non-blocking trap verdicts: c.yield(checkpoint_id) and c.abort(code, msg)
+    - Shared memory buffers: session.map_shared_region(tag, size_bytes)
+    - Portable snapshots: session.export_snapshot() and session.import_snapshot()
+    - Custom vsock RPC services: builder.register_vsock_service(port, handler)
+    - Extended plugin modules: db_proxy, mesh, lock_broker, supply_chain
   - Params typed views
     - Host-side typed access on HandlerCtx
       - Rust: c.params::<T>() deserializes from validated buffer

@@ -5,6 +5,10 @@
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
       cooperation.
+    - Shared memory mapping: see 01-architecture.md#Shared-memory-channel
+    - Portable snapshots: see #Portable-snapshot-bundles
+    - Two-phase commit protocol: see #Two-phase-commit
+    - Preemption window: see #Host-crash-reaper
     - Every item exposes one lifecycle point via LifecycleCtx
       - Split by state-preservation, not by privilege: see #Lifecycle-vetoes
     - Ownership attribution: see 02-plugin-model.md#First-class-plugins
@@ -48,6 +52,11 @@
       - Resume fires before primitive; return value ignored
       - Note: on_vm_ready does not re-fire on resume
     - Typical use: waiting for human approval with zero host CPU cost
+  - Portable snapshot bundles
+    - Serializes frozen vCPU registers and zstd-compressed dirty RAM
+    - session.export_snapshot() yields portable binary stream (.kelir-snap)
+    - session.import_snapshot() hydrates twin session across identical hosts
+    - Decouples long-running human approval pauses from host machine uptime
   - Clock skew
     - KVM path: KVM_SET_CLOCK and kvm_clock MSRs
     - HVF path: ARM64 CNTVOFF_EL2 (Virtual Timer Offset Register)
@@ -58,6 +67,9 @@
       - Tracks virtual clocksource instead
       - Guest kernel never flags tsc as unstable, never falls to jiffies
     - Typical use: JWT expiry, cron cycles, certificate renewals
+    - Synthetic virtual clocksource mode
+      - Guest clock decouples from host TSC and advances per instruction block
+      - Guarantees cycle-exact deterministic replay across repeated runs
     - Veto: ClockSkew (hard)
       - Callback false → ESessionVeto; guest clock unchanged
   - Lid sleep/wake clock snapping
@@ -82,7 +94,17 @@
         - Second channel: parent-monitoring heartbeat pipe
         - On host exit or pipe close: SIGKILL to backend process group
         - Reclaims VM memory mappings
+    - Graceful host preemption window
+      - Host SIGTERM triggers preemption_grace_ms delay before SIGKILL
+      - Fires on_host_preempt() hook to allow emergency state checkpoints
     - Platform coverage: TBD
+  - Two-phase commit
+    - MicroVM and host database state synchronization protocol
+    - on_pre_commit() freezes microVM execution and flushes pending VFS buffers
+    - Host evaluates transaction outcome before upperdir commit
+    - on_post_commit(true) reconciles upperdir to host workspace
+    - on_post_commit(false) discards tmpfs upperdir diffs in <8ms
+    - Prevents desynchronization between host DB and guest workspace
   - Docker-in-kelir
     - Constraint: Apple Silicon HVF offers no nested VMX/SVM
     - Invariant: OCI containers run without a nested hypervisor and without
@@ -144,6 +166,8 @@
         - WatchdogEvent: timeout_ms, action, fired_at_ns, last_heartbeat_ms
         - Ok(()) → driver executes WatchdogAction
         - Err(PluginError::Halt) → action suppressed; surfaces to runtime
+      - WatchdogAction::Terminate emits structured WatchdogDiagnostic
+      - Diagnostic carries fired_at_ns, last_heartbeat_ms, last_active_pid
       - This is the extension point for custom actions
         - A plugin may do work in on_watchdog then return Err(Halt)
         - WatchdogAction stays closed (Reboot | Terminate)

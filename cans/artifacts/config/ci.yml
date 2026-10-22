@@ -144,7 +144,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [pty, vfs, wire, chaos, ledger, mcp, oci-translator, openshell-coordinator]
+        plugin: [pty, vfs, wire, chaos, ledger, mcp, oci-translator, openshell-coordinator, db-proxy, mesh, lock-broker, supply-chain]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -162,7 +162,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [pty, vfs, wire, chaos, ledger, mcp, oci-translator, openshell-coordinator]
+        plugin: [pty, vfs, wire, chaos, ledger, mcp, oci-translator, openshell-coordinator, db-proxy, mesh, lock-broker, supply-chain]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -197,7 +197,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [pty, vfs, wire, chaos, ledger, mcp, oci-translator, openshell-coordinator]
+        plugin: [pty, vfs, wire, chaos, ledger, mcp, oci-translator, openshell-coordinator, db-proxy, mesh, lock-broker, supply-chain]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -239,7 +239,7 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - uses: mozilla-actions/sccache-action@v0.0.5
       - name: Driver unit tests (excludes real-hardware paths)
-        run: cargo nextest run -p driver-rustvmm -p driver-openvmm -E 'not test(test_hw_)'
+        run: cargo nextest run -p driver-rustvmm -p driver-openvmm -p driver-bwrap -E 'not test(test_hw_)'
 
   # ─── 6. CROSS-PLUGIN INTEGRATION (needs KVM) ───────────────
   # continue-on-error: GitHub-hosted runners usually lack /dev/kvm.

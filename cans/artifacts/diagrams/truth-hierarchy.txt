@@ -3,6 +3,8 @@
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ TIER 1: PHYSICAL GROUND TRUTH (Hypervisor / Kernel Boundary)                │
 │   - Unforgeable Receipts: BLAKE3 hex digests & dirty byte counts.           │
+│   - PMU Instruction Exactness: Hardware retired instruction counter.        │
+│   - OCC Inode Hashes: Deterministic 64-bit physical content/inode digests.  │
 │   - OS Inode Diffs: Physical disk modifications evaluated via CausalDelta.  │
 │   - Egress Telemetry: True network frames passing the virtio-net wire proxy.│
 │   ──► INVARIANT: The agent cannot fake this, even with root privileges.     │

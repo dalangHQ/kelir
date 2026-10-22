@@ -32,7 +32,7 @@ test-core:
 
 # Every first-class plugin, independently. Failure in one does not mask others.
 test-plugins:
-    cargo nextest run -p plugin-pty -p plugin-vfs -p plugin-wire -p plugin-chaos -p plugin-ledger -p plugin-mcp -p plugin-oci-translator -p plugin-openshell-coordinator
+    cargo nextest run -p plugin-pty -p plugin-vfs -p plugin-wire -p plugin-chaos -p plugin-ledger -p plugin-mcp -p plugin-oci-translator -p plugin-openshell-coordinator -p plugin-db-proxy -p plugin-mesh -p plugin-lock-broker -p plugin-supply-chain
 
 # Single plugin (debugging)
 test-plugin plugin:
@@ -70,7 +70,7 @@ test-shim:
 
 # Driver primitives; excludes test_hw_* paths that need real hardware
 test-drivers:
-    cargo nextest run -p driver-rustvmm -p driver-openvmm -E 'not test(test_hw_)'
+    cargo nextest run -p driver-rustvmm -p driver-openvmm -p driver-bwrap -E 'not test(test_hw_)'
 
 # Cross-plugin integration; requires real hypervisor (KVM/HVF)
 test-integration:
@@ -103,13 +103,13 @@ pre-flight: cans-check build-shim parity plugin-check-all test-isolation-all
 plugin-check-all:
     #!/usr/bin/env bash
     set -euo pipefail
-    for p in pty vfs wire chaos ledger mcp oci-translator openshell-coordinator; do
+    for p in pty vfs wire chaos ledger mcp oci-translator openshell-coordinator db-proxy mesh lock-broker supply-chain; do
         just plugin-check "$p"
     done
 
 test-isolation-all:
     #!/usr/bin/env bash
     set -euo pipefail
-    for p in pty vfs wire chaos ledger mcp oci-translator openshell-coordinator; do
+    for p in pty vfs wire chaos ledger mcp oci-translator openshell-coordinator db-proxy mesh lock-broker supply-chain; do
         just test-isolation "$p"
     done

@@ -22,6 +22,7 @@
       - Every hook receives HandlerCtx or a restricted lifecycle context
       - No hook receives &mut Box<dyn VmmDriver> or &Session
       - LifecycleCtx exposes: set_watchdog, adjust_balloon, register_veto
+      - Lifecycle commit: on_pre_commit, on_post_commit, on_host_preempt
     - VfsInodeAttr carries full mode, uid, gid, size, content
       - Populated verbatim into FUSE LOOKUP replies
       - Ghost inodes honor mode: 0o400 exactly, no permission fallback
@@ -40,6 +41,8 @@
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
     - Zero-cost null objects: disabled plugins retain types, cost 0µs in core
     - requires() validated at boot; missing dep aborts boot with EConfig
+    - Atomic RCU dispatch table update via update_dispatch()
+    - Hot-swaps hook arrays at runtime without microVM termination
     - First Deny or Rewrite halts pipeline, dispatches over AF_VSOCK
     - Sub-12 microsecond hook execution
     - on_trap_deny is builder-level, not a plugin hook
@@ -73,6 +76,10 @@
       - plugin-pty: see 04-terminal-plane.md
       - plugin-vfs: see 05-storage-plane.md
       - plugin-wire, plugin-chaos: see 06-wire-plane.md
+      - plugin-db-proxy: see 06-wire-plane.md#Database-proxy-plane
+      - plugin-mesh: see 06-wire-plane.md#Federation-mesh
+      - plugin-lock-broker: see 05-storage-plane.md#Entity-lock-broker
+      - plugin-supply-chain: guard behavior at #Supply-chain-guard
       - plugin-ledger: see 08-epistemic.md
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
@@ -82,6 +89,9 @@
       - session.wire.*: TBD (no node owns it today)
       - session.ledger.*: see 08-epistemic.md#Merkle-WAL
       - session.get_causal_delta_from_parent(): see 08-epistemic.md#Causal-delta
+  - Supply chain guard
+    - Owner: plugin-supply-chain; monitors package manager process trees
+    - Blocks dynamic postinstall and setup.py lifecycle execution scripts
   - Plugin ownership
     - Contract, not layout; see 11-operations.md#Project-structure for crate layout
     - Dependency rules

@@ -13,6 +13,7 @@
       - writes to shared read-only caches (rejected at FUSE)
       - writes to ghost inodes (RAM-only; never reach host disk)
       - writes to host SSD (reconcile() only, atomic per file)
+    - Deterministic 64-bit host_stable_hash in VfsInodeAttr for OCC fences
     - Every layer in the diagram is gated by one of the four paths above
   - EROFS rootfs
     - Stripped base system pre-baked into read-only EROFS
@@ -65,6 +66,9 @@
     - Host ~/.cache/pip → guest /root/.cache/pip
     - Host ~/.cargo/registry → guest /usr/local/cargo/registry
     - Cold installs drop from ~2 minutes to <3 seconds via local SSD
+  - Secondary image mounts
+    - Mounts squashfs or EROFS images dynamically at guest mount points
+    - Prevents tmpfs upperdir memory exhaustion when loading large packages
   - Write gating
     - plugin-vfs gates FUSE write() via on_vfs_write
     - Signature: See artifacts/code/plugin-trait.rs
@@ -97,9 +101,13 @@
       - st_size and file offsets preserved
       - Sequential reads and trailing reads stay consistent
       - Short-match padding rule: TBD
+    - Format-preserving masking (FPA) via custom regex replacement callbacks
+    - Generates format-valid synthetic strings while redacting sensitive data
     - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks
     - See: artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
-  - Cross-VM lock broker
+  - Entity lock broker
+    - Owner: plugin-lock-broker; manages cross-VM entity leases
+    - Intercepts FUSE flock and fcntl on arbitrary paths with TTL heartbeats
     - Prevents .git/index.lock collisions when multiple agents share a repo
     - Guest overlayfs assigns virtual inodes with no host correlation
     - Resolution: guest inode + virtio-fs mount identity → host physical inode + path
