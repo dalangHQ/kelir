@@ -104,8 +104,6 @@
       - WAL survives guest rollback() and fork(); no guest operation can
         rewrite or duplicate it
       - This invariant is the reason the WAL exists separately from receipts
-    - Delegated audit persistence via external_sink callback
-    - suppress_local_db option allows host to maintain single authoritative DB
     - Ownership: core generates receipts; plugin-ledger persists and exports
     - Ledger handler API
       - c.ledger.flush() forces WAL flush and OTel export

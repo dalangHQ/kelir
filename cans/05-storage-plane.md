@@ -113,12 +113,6 @@
     - Maps guest virtual inode to host physical inode via virtio-fs mount
     - Delegates lock acquisition directly to host OS advisory locks (flock)
     - Non-blocking: conflicting lock returns EWOULDBLOCK without host lag
-      - Lease timeout
-      - Deadlock detection
-      - Fairness
-      - Lock table lifetime
-      - Non-local filesystems
-      - Broker crash behavior
   - Snoop plane
     - Invariant: a snoop observation reflects the producing process, not a
       kernel flusher
