@@ -16,6 +16,6 @@
     - Splices client stream directly to vsock:5253 using tokio copy_bidirectional
     - Zero-downtime webhook and interactive terminal connection continuity
   - Error and return semantics (wire-ingress)
-    - Hook signature (wire-ingress): artifacts/code/plugin-trait.rs
+    - Hook signature (wire-ingress): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (wire-ingress)
       - Parked-connection timeout and overflow behavior: TBD

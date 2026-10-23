@@ -18,7 +18,7 @@
       - Ephemeral DB credentials injected at host connection boundary
       - Client mTLS certificates injected at host boundary
   - Error and return semantics (db-proxy)
-    - Hook signature (db-proxy): artifacts/code/plugin-trait.rs
+    - Hook signature (db-proxy): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (db-proxy)
       - DbAction::Deny error surfacing to guest client: TBD
       - DbAction::Rewrite semantics: TBD

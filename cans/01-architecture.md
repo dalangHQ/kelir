@@ -75,7 +75,7 @@
     - Shared memory mapping: see #Shared-memory-channel
     - Portable snapshots: see 07-lifecycle.md#Portable-snapshot-bundles
   - Four-Ring Bus
-    - See: artifacts/diagrams/four-ring-bus.txt
+    - see: artifacts/diagrams/four-ring-bus.txt
     - virtio-vsock control plane: syscalls, PIDs, signals, traps
     - virtio-console terminal plane: raw byte streams, PTY master/slave
       allocation, geometry ioctls
@@ -83,6 +83,7 @@
     - virtio-fs storage plane: FUSE request dispatch, EROFS block mounting,
       tmpfs overlays
     - virtio-net wire plane: L2/L3 frame interception, TAP frame routing
+      - Wire plane detail: see 06-wire-plane.md#Wire-plane
     - virtio-shm shared memory: zero-copy tabular data buffers
   - Shared memory channel
     - Anonymous host memfd_create segment mapped directly into guest GPA slots
@@ -94,14 +95,14 @@
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
     - Host memory preservation: suspend drops host RSS to 0 MB under system pressure
   - Host runtime
-    - See: artifacts/diagrams/host-runtime.txt
+    - see: artifacts/diagrams/host-runtime.txt
     - Native Rust consumer: direct Cargo crate, zero-cost monomorphization
     - TypeScript consumer: @kelir/core via in-process NAPI-RS
     - Python consumer: kelir via PyO3
     - kelir-core: stripped microkernel (BusDispatcher, EventBus, DriverRouter)
     - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
   - Guest VM anatomy
-    - See: artifacts/diagrams/guest-vm.txt
+    - see: artifacts/diagrams/guest-vm.txt
     - Boot budget
       - Cold boot target: <60ms, host-side stopwatch to first workload exec
       - ACPI + PCI probing alone is ~40ms; kernel is built without both
@@ -130,8 +131,8 @@
     - Trust chain: TBD
     - Workload contract: no guest-side SDK, shim, or agent
   - VmmDriver trait
-    - See: artifacts/code/vmm-driver-trait.rs
-    - Primitive list and signatures: See artifacts/code/vmm-driver-trait.rs
+    - see: artifacts/code/vmm-driver-trait.rs
+    - Primitive list and signatures: see artifacts/code/vmm-driver-trait.rs
     - Single backend contract
       - Every backend implements every primitive; optional primitives are
         not part of the trait

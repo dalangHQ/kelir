@@ -27,8 +27,8 @@
     - Typical uses
       - Verify agent code handles flaky APIs, dialup speeds, RST resets
       - Verify graceful degradation on disk-full conditions
-    - Wiring: artifacts/examples/autonomous-swe-agent.ts
+    - Wiring: see artifacts/examples/autonomous-swe-agent.ts
   - Error and return semantics (chaos)
-    - Hook signature (chaos): artifacts/code/plugin-trait.rs
+    - Hook signature (chaos): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (chaos)
       - Mutation failure behavior: TBD

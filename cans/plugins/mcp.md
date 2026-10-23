@@ -29,5 +29,5 @@
       - plugin-mcp requires raw pass-through mode on Ring 1 (virtio-console)
     - MCP contract: TBD
   - Error and return semantics (mcp)
-    - Hook signature (mcp): artifacts/code/plugin-trait.rs
+    - Hook signature (mcp): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (mcp): TBD

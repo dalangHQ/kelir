@@ -14,7 +14,7 @@
     - Injects and validates mTLS framing across hypervisor boundaries
     - Propagates W3C traceparents and call-hop counters across routines
   - Error and return semantics (mesh)
-    - Hook signature (mesh): artifacts/code/plugin-trait.rs
+    - Hook signature (mesh): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (mesh)
       - mTLS validation failure behavior: TBD
       - Peer identity and certificate issuance: TBD

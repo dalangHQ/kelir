@@ -1,7 +1,7 @@
 - Lifecycle
   - Superpowers
-    - See: artifacts/diagrams/superpowers.txt
-    - Set membership and mechanism per item: See artifacts/diagrams/superpowers.txt
+    - see: artifacts/diagrams/superpowers.txt
+    - Set membership and mechanism per item: see artifacts/diagrams/superpowers.txt
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
       cooperation.
@@ -155,7 +155,7 @@
       - Before the corresponding hypervisor primitive executes
       - Session-level actions also route through this point
   - Watchdog
-    - See: artifacts/code/vmm-driver-trait.rs (WatchdogAction)
+    - see: artifacts/code/vmm-driver-trait.rs (WatchdogAction)
     - Armed via LifecycleCtx.set_watchdog
       - Typically called from on_vm_init by a policy plugin
       - WatchdogAction: Reboot | Terminate

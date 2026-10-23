@@ -17,6 +17,6 @@
       - Delegates lock acquisition directly to host OS advisory locks (flock)
       - Non-blocking: conflicting lock returns EWOULDBLOCK without host lag
   - Error and return semantics (lock-broker)
-    - Hook signature (lock-broker): artifacts/code/plugin-trait.rs
+    - Hook signature (lock-broker): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (lock-broker)
       - Conflicting locks return Err(PluginError::Reject { errno: "EWOULDBLOCK" })

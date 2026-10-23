@@ -15,5 +15,5 @@
       - Synchronizes chunk differentials to S3-compatible tiers using object_store
       - Teleports twin microVM sessions across bare-metal hosts in <50ms
   - Error and return semantics (cas-snapshot)
-    - Hook signature (cas-snapshot): artifacts/code/plugin-trait.rs
+    - Hook signature (cas-snapshot): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (cas-snapshot): TBD

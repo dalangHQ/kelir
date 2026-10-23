@@ -28,7 +28,7 @@
         - Called between suspend/resume for human-in-the-loop gates
       - current_trace_id() -> String
         - Called from handlers setting OTEL_TRACE_ID
-    - Wiring example: See artifacts/examples/autonomous-swe-agent.rs
+    - Harness wiring example: see artifacts/examples/autonomous-swe-agent.rs
     - Oracle contract: TBD
       - Failure handling
       - Timeouts
@@ -49,8 +49,8 @@
       - OpenTelemetry spans: see plugins/ledger.md#OpenTelemetry
       - Oracle analyses: consumer's Oracle impl
   - Execution receipts
-    - See: artifacts/code/execution-receipt.rs
-    - Field set: See artifacts/code/execution-receipt.rs
+    - see: artifacts/code/execution-receipt.rs
+    - Field set: see artifacts/code/execution-receipt.rs
     - Emitted per executed process, at the trap/exit boundary
     - Assertion form: receipts are compared as values, not as hashes of host
       state; the canonical assertion is a per-field comparison
@@ -78,9 +78,9 @@
       - kelir-core generates and holds at trap/exit boundary
       - c.receipt() is the single read API on HandlerCtx
   - Causal delta
-    - See: artifacts/code/causal-delta.rs
+    - see: artifacts/code/causal-delta.rs
     - Definition: Δ = S_A − S_B between two checkpoint descriptors
-    - Delta fields: See artifacts/code/causal-delta.rs
+    - Delta fields: see artifacts/code/causal-delta.rs
     - egress_requests: sampled or host-allowlisted; full per-request capture
       is never the default. Use receipt.egress_bytes unless per-request
       attribution is the question.
@@ -91,8 +91,8 @@
     - This split follows the primitive-vs-derived rule: type is primitive,
       computation is derived
   - Three-tier truth
-    - See: artifacts/diagrams/truth-hierarchy.txt
-    - Tier evidence per tier: See artifacts/diagrams/truth-hierarchy.txt
+    - see: artifacts/diagrams/truth-hierarchy.txt
+    - Tier evidence per tier: see artifacts/diagrams/truth-hierarchy.txt
     - Selection rule
       - Claim must resist forgery by guest code → Tier 1
       - Claim about a public, versioned contract → Tier 2
@@ -104,7 +104,7 @@
         this tier scheme exists to prevent
     - Consumer of Tier 3: Oracle.ingest_harness_event; see #Oracle
   - Lifecycle bridge
-    - See: artifacts/diagrams/lifecycle-bridge.txt
+    - see: artifacts/diagrams/lifecycle-bridge.txt
     - Replaces language-level monkeypatching
       - Old form: agent._step(), private runtime prototype overrides
       - Breaks on every CLI update, blind to OS-level side effects
@@ -118,7 +118,7 @@
     - Veto points: see 07-lifecycle.md#Lifecycle-vetoes
     - This node specifies the orchestrator-facing mapping only
   - Step evaluation loop
-    - See: artifacts/code/step-evaluation-loop.ts
+    - see: artifacts/code/step-evaluation-loop.ts
     - Orchestrators execute unmodified agent binaries
     - Cycle-accurate governance over every operational step
     - Pre/post tracking is a core context service

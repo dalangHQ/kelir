@@ -1,6 +1,6 @@
 - Storage plane
   - Storage architecture
-    - See: artifacts/diagrams/storage-architecture.txt
+    - see: artifacts/diagrams/storage-architecture.txt
     - Owner: kelir-core (virtio-fs bus)
     - Read-only lower + tmpfs upper
       - Guest root cannot corrupt the host workspace tree
@@ -25,7 +25,7 @@
     - Prevents tmpfs upperdir memory exhaustion when loading large packages
   - Write gating
     - Storage bus gates FUSE write() via on_vfs_write hook callbacks
-    - Signature: See artifacts/code/plugin-trait.rs
+    - Signature: see artifacts/code/plugin-trait.rs
     - Write-gating error variants: see 02-plugin-model.md#Hook-return-semantics
     - SDK-to-trait signature mapping: TBD
     - Ok(()) = allow; kernel proceeds with write to upperdir

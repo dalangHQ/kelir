@@ -1,7 +1,7 @@
 - Plugin model
   - KelirPlugin trait
-    - See: artifacts/code/plugin-trait.rs
-    - Trait surface and hook families: See artifacts/code/plugin-trait.rs
+    - see: artifacts/code/plugin-trait.rs
+    - Trait surface and hook families: see artifacts/code/plugin-trait.rs
     - Error variants
       - Ok(()) = allow; kernel proceeds
       - Err(Reject { errno, reason }) = deny with named errno, pre-write
@@ -33,7 +33,7 @@
     - Hook return semantics
       - on_vfs_write: see 05-storage-plane.md#Write-gating (storage owns it)
       - on_vfs_lookup → Ok(None) = fall through; Ok(Some(attr)) = serve
-      - on_net_outbound / on_net_inbound → See: artifacts/code/plugin-trait.rs
+      - on_net_outbound / on_net_inbound → see: artifacts/code/plugin-trait.rs
   - Static dispatch
     - Plugins compiled into flat contiguous dispatch array at boot
     - Evaluated in priority() order; ties broken by declaration order
@@ -117,8 +117,8 @@
       - Executed per plugin by plugin-isolation; see 11-operations.md#Decoupling-proof
       - Scope: excludes facade (re-exports every plugin), adapter binaries
         (one plugin each), and kelir-integration (dev-depends on all)
-      - Dev-dep edge and facade edge: gated by plugin-audit; see
-        11-operations.md#Per-plugin-CI
+      - Dev-dep edge and facade edge: gated by plugin-audit
+      - Audit gate detail: see 11-operations.md#Per-plugin-CI
     - External plugins: same contract; no adaptation
   - Plugin testkit
     - Crate layout: see 11-operations.md#Project-structure
@@ -130,7 +130,7 @@
     - Emits language-agnostic test vectors
       - vectors.json derived from Rust fixtures
   - Language parity
-    - See: artifacts/diagrams/sdks-invariants.txt
+    - see: artifacts/diagrams/sdks-invariants.txt
     - SDK surface: see 03-sdk-architecture.md#N-native-design
     - Parity enforcement: see 11-operations.md#Multi-language-parity-gate
     - Same first-class plugins in Rust, TypeScript, Python, maintained 1:1

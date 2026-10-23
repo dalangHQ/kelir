@@ -13,5 +13,5 @@
     - Inspects ancestor_chain on TrapEvent for package managers (npm, pip)
     - Blocks execution of lifecycle scripts in dependency directories
   - Error and return semantics (supply-chain)
-    - Hook signature (supply-chain): artifacts/code/plugin-trait.rs
+    - Hook signature (supply-chain): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (supply-chain): TBD

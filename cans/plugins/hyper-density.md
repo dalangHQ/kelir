@@ -16,5 +16,5 @@
       - Flushes state directly to NVMe via io-uring bypassing host page cache
       - Resumes vCPU execution at exact cycle boundary in <15ms on ring traffic
   - Error and return semantics (hyper-density)
-    - Hook signature (hyper-density): artifacts/code/plugin-trait.rs
+    - Hook signature (hyper-density): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (hyper-density): TBD

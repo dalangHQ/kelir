@@ -27,7 +27,7 @@
       - Python: params typed by Pydantic BaseModel
     - Zero-allocation validation: operates on zero-copy guest memory
   - Rust SDK
-    - See: artifacts/code/rust-handle-injection.rs
+    - see: artifacts/code/rust-handle-injection.rs
     - plugin_with_handle(P) atomically returns (builder, P::Handle)
     - plugin_with_handle vs plugin_with_handle_scoped: TBD
     - Builder return binding: TBD
@@ -39,7 +39,7 @@
       - c.params::<Action>() fails at perimeter before traps execute
     - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
-    - See: artifacts/code/typescript-accumulation.ts
+    - see: artifacts/code/typescript-accumulation.ts
     - Kelir<TContext> accumulates context type across .use(plugin, scope?)
     - Each .use() expands the generic; downstream c.pluginKey fully inferred
     - Missing .use() → property not on TContext → tsc error
@@ -48,7 +48,7 @@
       - t.Object({ action: t.Literal(...), issueId: t.String() })
       - Falsified spawn actions fail with EINVAL before VM dispatch
   - Python SDK
-    - See: artifacts/code/python-raii-pydantic.py
+    - see: artifacts/code/python-raii-pydantic.py
     - async with builder as session
       - __aenter__ boots microVM
       - __aexit__ guarantees session.terminate() on any exception
@@ -60,9 +60,9 @@
       - Missing assignment → NameError at import time
     - Mount scoping via kwargs: rings=..., binaries=..., paths=...
   - Full-surface examples
-    - See: artifacts/examples/autonomous-swe-agent.rs
-    - See: artifacts/examples/autonomous-swe-agent.ts
-    - See: artifacts/examples/autonomous-swe-agent.py
+    - see: artifacts/examples/autonomous-swe-agent.rs
+    - see: artifacts/examples/autonomous-swe-agent.ts
+    - see: artifacts/examples/autonomous-swe-agent.py
     - Position: integration examples, not "the" example
       - Each plugin's own tests/ and examples/ are canonical for that plugin
       - These three demonstrate composition across plugins and rings
@@ -70,7 +70,7 @@
       - All five plugins
       - All four VirtIO rings
       - All three epistemic truth tiers
-      - All lifecycle superpowers in 07-lifecycle.md
+      - All lifecycle superpowers: see 07-lifecycle.md
     - Not transliterations: each uses language-idiomatic constructs
       - Rust: async-trait, JoinSet, Arc<Mutex<>> handles
       - TypeScript: Promise.all fan-out, generic inference

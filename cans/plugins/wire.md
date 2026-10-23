@@ -74,8 +74,8 @@
       - Session API in all three SDKs; ingress mechanism in
         crates/kelir-shim/src/ingress.rs
   - Error and return semantics (wire)
-    - Hook signature (wire): artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior (wire): artifacts/code/plugin-trait.rs
+    - Hook signature (wire): see artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (wire): see artifacts/code/plugin-trait.rs
     - Failure and lifecycle: TBD
       - Upstream failure surfacing
       - Per-session CA lifetime and rotation

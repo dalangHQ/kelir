@@ -5,13 +5,13 @@
     - Default posture
       - Primitive telemetry on; derived telemetry off unless configured
       - Ecosystem apparatus gated on registry size; not shipped ahead of it
-      - See 08-epistemic.md#Primitive-vs-derived-telemetry
+      - see 08-epistemic.md#Primitive-vs-derived-telemetry
     - Maximize GitHub Actions free tier
       - Public repo: unlimited Linux minutes
       - Private repo: 2,000 min ceiling
       - macOS runners: 10x multiplier, scarce concurrency
   - Local velocity
-    - See: artifacts/config/justfile
+    - see: artifacts/config/justfile
     - Targets: <15s host build, <10s unit tests, sub-minute pre-flight
     - Velocity invariants
       - `build-host` excludes kelir-shim: shim has its own cross-compile
@@ -25,7 +25,7 @@
     - `pre-flight` runs parity and plugin audit before push
       - See #Multi-language-parity-gate and #Developer-CLI
   - CI matrix
-    - See: artifacts/config/ci.yml
+    - see: artifacts/config/ci.yml
     - Constraints
       - macOS runners scarce and 10x private multiplier
       - Public repos: free Linux minutes
@@ -85,6 +85,7 @@
     - Job: plugin-isolation
     - Claim it executes: "Remove the plugin → remaining plugins build and
       test green" — 02-plugin-model.md#Plugin-ownership, executed per plugin
+      - Claim source: see 02-plugin-model.md#Plugin-ownership
     - Per cell: remove crate, workspace member, and facade feature; build and
       nextest the remainder
     - Excluded from the claim (structural, not policy)
@@ -100,15 +101,14 @@
   - Decoupled repository CI
     - TBD — deferred until registry size makes attestation load-bearing
     - Design retained as artifact; not a live gate
-      - Reusable workflow sketch: See: artifacts/config/plugin-ci-reusable.yml
-      - Attestation flow sketch: See: artifacts/diagrams/ecosystem-ci.txt
+      - Reusable workflow sketch: see: artifacts/config/plugin-ci-reusable.yml
+      - Attestation flow sketch: see: artifacts/diagrams/ecosystem-ci.txt
     - Substitute now: `plugin check` in the consuming repo's own CI
       - Same audit subcommand; no signing, no cross-repo workflow
   - Plugin registry
     - TBD — deferred; first-class set is compiled in, not polled
     - Prerequisite: external plugin count justifies per-plugin state tracking
-    - Downstream state shape when enabled: See:
-      artifacts/diagrams/ecosystem-ci.txt
+    - Downstream state shape when enabled: see artifacts/diagrams/ecosystem-ci.txt
   - Multi-language parity gate
     - Types generated from Rust macros: napi-rs stubs and pyo3 type files
     - Parity tested against single vectors.json fixture across all languages
@@ -135,7 +135,7 @@
     - Shares implementation with CI
       - A local pass that CI rejects means the CLI is broken
   - Project structure
-    - See: artifacts/config/project-structure.txt
+    - see: artifacts/config/project-structure.txt
     - Three language layers
       - Rust: crates/ via Cargo Workspaces
       - TypeScript: packages/ts/ via PNPM Workspaces

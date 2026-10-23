@@ -9,7 +9,7 @@
       - Provides direct host RPC channel without external network routing
     - Port collision across co-located sessions: TBD
   - Trap fast-path
-    - Step sequence and per-step mechanics: See artifacts/diagrams/trap-flow.txt
+    - Step sequence and per-step mechanics: see artifacts/diagrams/trap-flow.txt
     - Goal: the trap path must not slow `cargo build` / `npm install`
     - Why three layers, not one
       - A single trap-on-every-syscall design adds ~µs per fork/exec at
@@ -32,11 +32,11 @@
       - Permits high-entropy base64 arguments for node, python, and runners
       - ELF is read from disk at trap time: /proc/$PID/maps still describes
         the pre-exec image and cannot be trusted
-    - Flow diagram: See artifacts/diagrams/trap-flow.txt
+    - Flow diagram: see artifacts/diagrams/trap-flow.txt
     - Fast-path policy: TBD
   - Wire framing
-    - See: artifacts/code/wire-protocol.rs
-    - Layout (header offsets, magic, version): See artifacts/code/wire-protocol.rs
+    - see: artifacts/code/wire-protocol.rs
+    - Layout (header offsets, magic, version): see artifacts/code/wire-protocol.rs
     - Framing invariants
       - One frame = one message; no message spans frames
       - Monotonic 64-bit sequence transmitted natively without word splitting
@@ -52,8 +52,8 @@
       - Reconnect and sequence reset
       - Port 5253 framing
   - Wire messages
-    - See: artifacts/code/messages.rs
-    - Message set and payload fields: See artifacts/code/messages.rs
+    - see: artifacts/code/messages.rs
+    - Message set and payload fields: see artifacts/code/messages.rs
     - Hook binding: one hook per message; see 02-plugin-model.md#KelirPlugin-trait
     - TrapEvent task_token extracted from guest shim TLS; zero VirtIO hacking
     - TrapAction invariants

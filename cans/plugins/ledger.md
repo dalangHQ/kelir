@@ -45,5 +45,5 @@
       - Causal delta definition: see 08-epistemic.md#Causal-delta
       - CausalDelta computation: TBD
   - Error and return semantics (ledger)
-    - Hook signature (ledger): artifacts/code/plugin-trait.rs
+    - Hook signature (ledger): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (ledger): TBD

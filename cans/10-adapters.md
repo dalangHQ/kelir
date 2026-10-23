@@ -1,7 +1,7 @@
 - Adapters
   - Ingestion matrix
-    - See: artifacts/diagrams/ingestion-adapters.txt
-    - Adapter set and ecosystem binding: See artifacts/diagrams/ingestion-adapters.txt
+    - see: artifacts/diagrams/ingestion-adapters.txt
+    - Adapter set and ecosystem binding: see artifacts/diagrams/ingestion-adapters.txt
     - Two shapes, one rule
       - Contract-bound binary + plugin: MCP, containerd shim v2, OpenShell
       - Thin SDK wrapper: E2B (no plugin, no binary) — see #E2B-compatibility

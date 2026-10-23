@@ -14,7 +14,7 @@
       - Routes through the same wire message as TrapAction::Rewrite.tty_notice
   - Invariants and policy (pty)
     - Five filters
-      - Filter set and per-filter behavior: artifacts/diagrams/terminal-pipeline.txt
+      - Filter set and per-filter behavior: see artifacts/diagrams/terminal-pipeline.txt
       - Ordering invariant
         - ANSI strip precedes prompt match: SGR codes split regex targets
         - Prompt match precedes Token Shield: clamping trims matched prompts
@@ -42,7 +42,7 @@
       - Anti-spoof verification
         - Executes only if PTY holder matches kernel foreground process group
         - Background echo of prompt text cannot trigger automated responses
-      - Example wiring: artifacts/examples/autonomous-swe-agent.ts
+      - Example wiring: see artifacts/examples/autonomous-swe-agent.ts
       - Abuse and failure model: TBD
     - Active leak detection
       - Linear Aho-Corasick automaton scans terminal output for vault secrets
@@ -73,5 +73,5 @@
         - Plugins annotate; none suppress
       - Annotation bounds: TBD
   - Error and return semantics (pty)
-    - Hook signature (pty): artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior (pty): artifacts/code/plugin-trait.rs
+    - Hook signature (pty): see artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (pty): see artifacts/code/plugin-trait.rs

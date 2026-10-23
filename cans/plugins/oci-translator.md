@@ -17,7 +17,7 @@
       - Composable: a chaos plugin can fault-inject into image pulls
     - Containerd contract: TBD
   - Error and return semantics (oci-translator)
-    - Hook signature (oci-translator): artifacts/code/plugin-trait.rs
+    - Hook signature (oci-translator): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (oci-translator)
       - on_vm_init failure: PluginError::Halt("OCI layer extraction failed")
       - Aborts VM cold boot; no guest exists to receive a POSIX errno

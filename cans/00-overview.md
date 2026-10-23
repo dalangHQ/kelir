@@ -17,7 +17,7 @@
     - Not a standalone CLI runner or daemon client: see 11-operations.md#Developer-CLI
     - Not a daemon or container runtime: see 01-architecture.md#In-process-microkernel
   - Target audience
-    - Audience matrix: See artifacts/diagrams/target-audience.txt
+    - Audience matrix: see artifacts/diagrams/target-audience.txt
     - Value and trigger per audience: at the matrix
     - Infra platforms: K8s, Cube, OpenShell
     - Harness creators: Claude Code, Cursor, Devin

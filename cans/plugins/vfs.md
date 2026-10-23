@@ -11,7 +11,7 @@
     - Closed-set binding rule (vfs): see 02-plugin-model.md#Core-context-keys
   - Invariants and policy (vfs)
     - Reconciler
-      - artifacts/code/reconciler.rs
+      - see artifacts/code/reconciler.rs
       - session.fs.reconcile() is a pure storage-plane operation
       - Lifecycle hook bindings
         - on_pre_commit flushes in-flight FUSE buffers
@@ -73,7 +73,7 @@
       - Format-preserving masking (FPA) executes via ghost inode generator
       - Generates format-valid synthetic content before guest read calls
       - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks
-      - artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
+      - see artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
     - UID/GID idmap
       - Translates guest UID 0 (root) and 1000 (user) to host geteuid()/getegid()
       - macOS host: developer is UID 501
@@ -97,5 +97,5 @@
       - Dependency: snooping requires plugin-ledger — requires: ["ledger"]
       - c.ledger.blake3_of_producing_process is undefined without plugin-ledger
   - Error and return semantics (vfs)
-    - Hook signature (vfs): artifacts/code/plugin-trait.rs
+    - Hook signature (vfs): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (vfs): see 05-storage-plane.md#Write-gating

@@ -22,5 +22,5 @@
       - NVIDIA Container Device Interface (CDI) device mapping
     - OpenShell contract: TBD
   - Error and return semantics (openshell-coordinator)
-    - Hook signature (openshell-coordinator): artifacts/code/plugin-trait.rs
+    - Hook signature (openshell-coordinator): see artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (openshell-coordinator): TBD
