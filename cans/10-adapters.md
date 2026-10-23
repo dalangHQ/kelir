@@ -8,32 +8,22 @@
     - Rule: the plugin owns translation and policy; the binary owns the wire
     - Tri-native SDKs are the fourth ingestion family; see: 03-sdk-architecture.md
   - MCP adapter
-    - Server binary
-      - Crate: kelir-adapters/mcp-server
-      - Routes Model Context Protocol JSON-RPC over stdio directly to microVM rings
-      - Loads plugin-mcp
+    - Architecture (mcp): see: artifacts/diagrams/ingestion-adapters.txt
+    - Server binary crate: kelir-adapters/mcp-server
     - Server plugin: see: plugins/mcp.md
   - Containerd shim v2
-    - Shim binary
-      - Crate: kelir-adapters/containerd-shim
-      - Implements containerd v2 runtime protocol using containerd-shim and ttrpc
-      - Ingests OCI pod runtime bundles via typed Serde oci-spec definitions
-      - Activated via runtimeClassName: kelir in Pod manifests
-      - Loads plugin-oci-translator
-      - Pod isolation
-        - Each Pod runs in isolated hardware microVM
-        - Not a Linux cgroup/namespace envelope
-      - PVC storage
-        - PersistentVolumeClaims mount as virtio-fs endpoints
-        - UID/GID mapping applied in-guest
+    - Architecture (containerd): see: artifacts/diagrams/ingestion-adapters.txt
+    - Shim binary crate: kelir-adapters/containerd-shim
+    - Pod isolation
+      - Each Pod runs in isolated hardware microVM
+      - Not a Linux cgroup/namespace envelope
+    - PVC storage
+      - PersistentVolumeClaims mount as virtio-fs endpoints
+      - UID/GID mapping applied in-guest
     - Shim plugin: see: plugins/oci-translator.md
   - OpenShell gRPC driver
-    - gRPC binary
-      - Crate: kelir-adapters/openshell-grpc
-      - Implements compute_driver.proto
-      - Served over /var/run/kelir/openshell.sock (UDS)
-      - Loads plugin-openshell-coordinator
-      - Target: multi-tenant inference tasks
+    - Architecture (openshell): see: artifacts/diagrams/ingestion-adapters.txt
+    - Driver binary crate: kelir-adapters/openshell-grpc
     - Coordinator plugin file: see: plugins/openshell-coordinator.md
   - E2B compatibility
     - TypeScript: @kelir/e2b-compat

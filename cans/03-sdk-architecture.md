@@ -10,16 +10,9 @@
       - Tier 2 policy plugins: authored in userland code via native async closures
       - Tier 1 vs Tier 2 execution: see: 02-plugin-model.md#Two-tier-execution-architecture
     - Semantic invariant equivalence
-      - Uniform hypervisor safety guarantees enforced across runtimes
-      - Rust: typestate transitions validate mounted capabilities
-      - TypeScript: two-phase deferred context resolves cyclic plugin types
-      - Python: builder assembly validates closure scope prior to boot
+      - Runtime safety matrix: see: artifacts/diagrams/sdks-invariants.txt
       - Failure occurs at the earliest lifecycle phase native to each runtime
-      - Resource reclamation invariants
-        - Rust: Session implements Drop trait to terminate microVM and drop memory
-        - TypeScript: try/finally or using block guarantees session.terminate()
-        - Python: async with context manager guarantees __aexit__ terminates VM
-        - Unhandled errors abort hypervisor immediately to eliminate zombie runs
+      - Unhandled errors abort hypervisor immediately to eliminate zombie runs
       - DX iron rules
         - Zero runtime toolchain tax: distributed with precompiled NAPI/PyO3 wheels
         - Consumers never require cargo, zig, or C compilers on target systems
@@ -40,10 +33,6 @@
     - Shared memory buffers: session.map_shared_region(tag, size_bytes)
     - Portable snapshots: session.export_snapshot() and session.import_snapshot()
     - Custom vsock RPC services: builder.register_vsock_service(port, handler)
-    - Extended plugin modules
-      - db_proxy, mesh, lock_broker, supply_chain
-      - hyper_density, cas_snapshot
-      - wire_ingress (connection parking)
   - Params typed views
     - Host-side typed access on HandlerCtx
       - Rust: c.params::<T>() deserializes from validated buffer

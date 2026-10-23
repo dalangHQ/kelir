@@ -83,15 +83,10 @@
       - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
   - Decoupling proof
     - Job: plugin-isolation
-    - Claim it executes: "Remove the plugin → remaining plugins build and
-      test green" — 02-plugin-model.md#Plugin-ownership, executed per plugin
-      - Claim source: see: 02-plugin-model.md#Plugin-ownership
+    - Claim executed: see: 02-plugin-model.md#Plugin-ownership
     - Per cell: remove crate, workspace member, and facade feature; build and
       nextest the remainder
-    - Excluded from the claim (structural, not policy)
-      - `kelir` facade: re-exports every plugin behind features
-      - Adapter binaries: each contract-bound to one plugin
-      - `kelir-integration`: dev-depends on all plugins
+    - Excluded crates: see: 02-plugin-model.md#Plugin-ownership
     - Local mirror: `just test-isolation <plugin>`; trap restores on exit
     - Graph validation: `kelir-plugin-cli check --graph` asserts acyclic requires()
   - Decoupled repository CI

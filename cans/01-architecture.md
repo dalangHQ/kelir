@@ -68,14 +68,14 @@
     - Trait definitions
       - Low-footprint preset contract: see: #Embedded-profile
       - Trait contract: see: 02-plugin-model.md#KelirPlugin-trait
-      - VmmDriver trait (defined in this file)
+      - VmmDriver trait definition: see: #VmmDriver-trait
     - Context types: see: 09-protocol.md#Wire-messages
     - Wire framing layout: see: 09-protocol.md#Wire-framing
     - Dispatch loop: see: 02-plugin-model.md#Static-dispatch
-    - Device multiplexing: VirtIO Device Complex
-    - Params ingress contract: Params ingress contract
+    - Device multiplexing: see: #VirtIO-Device-Complex
+    - Params ingress contract (core): see: #Params-ingress-contract
     - Receipts: see: 08-epistemic.md#Execution-receipts
-    - In-kernel trap engine: Guest VM anatomy
+    - In-kernel trap engine: see: #Guest-VM-anatomy
     - EROFS mount: see: 05-storage-plane.md#EROFS-rootfs
     - Shared memory mapping: see: #Shared-memory-channel
     - Portable snapshots: see: 07-lifecycle.md#Portable-snapshot-bundles
@@ -113,11 +113,7 @@
       - Cold boot target: <60ms, host-side stopwatch to first workload exec
       - ACPI + PCI probing alone is ~40ms; kernel is built without both
       - Every device below earns its millisecond against that budget
-    - Device justification
-      - virtio-rng: without it, getrandom() blocks 200–2000ms at boot
-      - virtio-wdt: hardware watchdog, so no in-guest timer daemon is needed
-      - virtio-balloon: host pressure is invisible to guest; balloon is the
-        only signal that survives a rollback
+    - Device allocations: see: artifacts/diagrams/guest-vm.txt
     - Page size dynamic boot selection
       - 4KB kernel fixture: Linux x86_64, standard ARM64, Raspberry Pi 4
       - 16KB kernel fixture: Apple Silicon ARM64, Raspberry Pi 5, Android 15

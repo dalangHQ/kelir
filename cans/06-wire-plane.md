@@ -17,7 +17,4 @@
     - Default forward: frames pass unless a mounted plugin returns
       PluginError::Reject (silent drop)
   - Connection parking
-    - Ingress proxy completes client TCP handshake in host memory during suspend
-    - Buffers initial request bytes up to 64KB ceiling without zero-window stalls
-    - Triggers microVM resume on incoming frame arrival
-    - Splices buffered stream to guest vsock port following VM wake confirmation
+    - Mechanics (parking): see: plugins/wire-ingress.md

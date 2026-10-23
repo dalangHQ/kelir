@@ -16,11 +16,7 @@
       - Lifecycle hook bindings
         - on_pre_commit flushes in-flight FUSE buffers
         - on_post_commit triggers atomic staging swap into host workspace
-      - Algorithm
-        - Stages modifications into temporary directory .kelir-staging-<uuid>
-        - Applies deletions and modifications from FUSE journal to staging tree
-        - Performs atomic directory swap replacing target workspace subtree
-        - Issues scoped fsync on touched file descriptors and parent directory
+      - Algorithm: see: 05-storage-plane.md#Atomic-workspace-staging
       - Whiteout problem
         - Deleted files become char devices with major/minor 0/0 (mknod c 0 0)
         - Deleted or shadowed directories carry xattr trusted.overlay.opaque="y"
@@ -41,36 +37,17 @@
         - Directory fsync
         - Host-side deletion scope
     - Ghost inodes
-      - Static ghost
-        - In-memory content fixed at .ghost() call
-        - Example: /root/.gitconfig, /workspace/.env.local
-      - Dynamic ghost
-        - Content factory evaluated fresh per read request
-        - Hash computed as BLAKE3(path || generation_counter || mode)
-        - Generates zero open-time payload buffering or synchronous hash stalls
-      - Full VfsInodeAttr: mode, uid, gid, size, content
-      - FUSE LOOKUP reply populated verbatim
-      - mode: 0o400 honored exactly, no permission fallback
-      - Physically does not exist on host SSD
+      - Architecture (ghost inodes): see: artifacts/diagrams/storage-architecture.txt
+      - VfsInodeAttr mode: 0o400 honored strictly; no permission fallback
+      - Dynamic hash formula: BLAKE3(path || generation_counter || mode)
     - In-flight read masking
-      - maskRead intercepts FUSE read() requests via sliding-window scanner
-      - Matches secret patterns across chunk boundaries in streaming window
-      - Replaces matches with fixed-width byte tokens preserving offsets
-      - Eliminates full-file memory allocations during inode open
+      - Scanner mechanics: see: 05-storage-plane.md#Streaming-in-flight-masking
       - Format-preserving masking (FPA) executes via ghost inode generator
       - Generates format-valid synthetic content before guest read calls
       - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks
       - see: artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
-    - UID/GID idmap
-      - Translates guest UID 0 (root) and 1000 (user) to host geteuid()/getegid()
-      - macOS host: developer is UID 501
-      - Linux host: developer is UID 1000
-      - Result: agent-created files are immediately editable without sudo
-    - Shared host package caches
-      - Host ~/.npm → guest /root/.npm
-      - Host ~/.cache/pip → guest /root/.cache/pip
-      - Host ~/.cargo/registry → guest /usr/local/cargo/registry
-      - Cold installs drop from ~2 minutes to <3 seconds via local SSD
+    - UID/GID idmap: see: 05-storage-plane.md#Virtual-ID-remapping
+    - Shared host package caches: see: artifacts/diagrams/storage-architecture.txt
     - Snoop plane
       - Invariant: a snoop observation reflects the producing process, not a
         kernel flusher

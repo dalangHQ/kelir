@@ -45,19 +45,10 @@
         - Sensitive headers (Set-Cookie, echoed auth) stripped
         - Response re-encrypted under per-session CA before entering TAP
     - L4 gateway
-      - Direct TCP connections route through in-memory SOCKS5 / SNI gateway
-      - No private keys or DB passwords enter guest address space
-      - L4 destination pinning: TBD
-    - SSH gate
-      - git@github.com SSH connections mapped via /dev/vhost-vsock to host SSH_AUTH_SOCK
-      - Host signs cryptographic authentication challenges
-      - Secure Enclave keys sign on host
-      - Private keys never touch guest memory
-    - DNS sinkhole
-      - All UDP port 53 traffic trapped at TAP boundary
-      - Unregistered or non-allowlisted domains → immediate NXDOMAIN
-      - DNS data tunneling exploits neutralized at hypervisor perimeter
-      - Examples blocked: secret-data.attacker.com style exfiltration
+      - Mechanics (L4): see: artifacts/diagrams/wire-plane.txt
+      - Destination pinning: TBD
+    - SSH gate: see: artifacts/diagrams/wire-plane.txt
+    - DNS sinkhole: see: artifacts/diagrams/wire-plane.txt
     - Admission semantics: TBD
       - Allowlist match key: SNI vs Host vs IP
       - Redirect handling

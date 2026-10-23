@@ -58,17 +58,8 @@
     - see: artifacts/code/messages.rs
     - Message set and payload fields: see: artifacts/code/messages.rs
     - Hook binding: one hook per message; see: 02-plugin-model.md#KelirPlugin-trait
-    - TrapAction invariants
-      - `Allow` cannot mutate registers, memory, or env; it is a no-op
-      - `Yield { checkpoint_id }` freezes vCPU registers and CoW memory
-      - `Yield` returns execution cleanly to host event loop without polling
-      - `Abort { exit_code, reason }` executes uncatchable hypervisor SIGKILL
-      - `Abort` halts execution immediately on critical security violations
-      - `Deny` injects an exit code and stderr into the agent TTY
-      - `SuspendForApproval { poll_interval_ms }` parks the trap; released
-        only by Oracle.await_human_approval()
-      - `Custom` variants are dispatched by name; unknown names fail with
-        EUnknownAction before the pipeline resumes
+    - Action invariants: see: artifacts/code/messages.rs
+    - Custom dispatch failure: unknown names fail with EUnknownAction
   - Env injection
     - Allow cannot mutate guest environment
       - Registers, memory, and environment variables remain untouched

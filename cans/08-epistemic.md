@@ -25,15 +25,12 @@
       - Oracle analyses: consumer's Oracle impl
   - Execution receipts
     - see: artifacts/code/execution-receipt.rs
-    - Field set: see: artifacts/code/execution-receipt.rs
     - Emitted per executed process, at the trap/exit boundary
     - Assertion form: receipts are compared as values, not as hashes of host
       state; the canonical assertion is a per-field comparison
     - Byte-not-page reason: see: 01-architecture.md#SnapshotDescriptor.dirty-bytes
     - Population: per ReceiptConfig; opt-in fields not enabled are absent
       (Option), never 0
-      - Always: pid, binary_path, binary_blake3, dirty_bytes, exit_code,
-        retired_instructions, wall_clock_ns, egress_bytes
       - retired_instructions: sampled from host vCPU thread via perf_event_open
       - Apple Silicon: queried via native Mach thread instruction counters
       - Eliminates cross-architecture dirty-page and wall-clock variance
@@ -80,14 +77,7 @@
   - Lifecycle bridge
     - see: artifacts/diagrams/lifecycle-bridge.txt
     - Replaces language-level monkeypatching
-      - Old form: agent._step(), private runtime prototype overrides
-      - Breaks on every CLI update, blind to OS-level side effects
     - In-process hardware lifecycle bridge
-    - Mapping from orchestrator actions to hypervisor primitives
-      - pause() → halt vCPU registers instantly, 0% CPU
-      - resume() → restore vCPU with 0ms clock skew
-      - step() → execute until next virtio-vsock syscall trap, then pause
-      - revert() → drop dirty RAM, purge tmpfs diffs to last good snapshot in <8ms
     - Underlying primitives: see: 07-lifecycle.md#Superpowers
     - Veto points: see: 07-lifecycle.md#Lifecycle-vetoes
     - This node specifies the orchestrator-facing mapping only

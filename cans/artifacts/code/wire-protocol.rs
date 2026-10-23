@@ -4,7 +4,7 @@
 //
 // Owned by: cans/09-protocol.md#Wire-framing
 
-// Wire header layout (20 bytes, MSB-first bit numbering):
+// Wire header layout (24 bytes, MSB-first bit numbering):
 //
 //  0                   1                   2                   3
 //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -12,6 +12,8 @@
 // |          Magic (0x4B45)       |          Version (0x04)       |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 // |          Channel ID           |          Message Type         |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |             Flags             |            Reserved           |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 // |                     Sequence Number (u64)                     |
 // |                                                               |

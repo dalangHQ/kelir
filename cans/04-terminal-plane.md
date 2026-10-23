@@ -7,17 +7,8 @@
     - Interactive channel preserves isatty(1) and raw mode
     - Streaming ring buffers route directly to host supervisor memory
   - Window resize
-    - Boot handshake
-      - Hypervisor pushes configured initial size before first workload spawn
-      - Guest never boots into 80x25 default
-      - Full-screen apps (Claude Code, vim, top) initialize with correct geometry
-    - Live resize
-      - host process.stdout.on("resize") catches SIGWINCH
-      - on_window_resize(&WindowResize) fires in priority() order
-        - Observation only; hook cannot rewrite wire payload
-      - HostToGuest::WindowResize { rows, cols, xpixel, ypixel } over AF_VSOCK:5252
-      - In-guest shim executes ioctl(pts_fd, TIOCSWINSZ, &ws)
-      - Guest shell redraws without corruption
+    - Pipeline mechanics: see: artifacts/diagrams/terminal-pipeline.txt
+    - Live resize hook: on_window_resize is observation-only
   - Signal forwarding
     - Ctrl+C / Ctrl+D reach the guest foreground process group
     - on_signal_send is observation-only; a hook cannot rewrite the signal
