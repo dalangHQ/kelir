@@ -1,4 +1,4 @@
-// crates/kelir-core/src/telemetry/delta.rs
+// crates/kelir-interface/src/telemetry/delta.rs
 //
 // Counterfactual state delta between two checkpoints: Δ = S_A - S_B.
 // Used by epistemic orchestration to compute exactly what an agent branch

@@ -1,4 +1,4 @@
-// crates/kelir-core/src/plugin.rs
+// crates/kelir-interface/src/plugin.rs
 //
 // The unified KelirPlugin trait implemented by every subsystem across the
 // 4 VirtIO rings. kelir-core contains no hardcoded capability logic.

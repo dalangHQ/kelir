@@ -1,4 +1,4 @@
-// crates/kelir-core/src/vmm/driver.rs
+// crates/kelir-interface/src/driver.rs
 //
 // The universal hypervisor backend abstraction.
 //

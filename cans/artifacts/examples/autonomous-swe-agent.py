@@ -11,15 +11,14 @@ Requirements:
     kelir>=3.0          (PyO3 bindings; ships plugin-pty, plugin-vfs,
                          plugin-wire, plugin-chaos, plugin-ledger)
     pydantic>=2.6
-    anyhow-py>=1.0
     blake3>=0.4
-    structlog>=24.0
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import platform
 import re
@@ -81,9 +80,8 @@ from kelir.plugins.ledger import (
     ReceiptConfig,
 )
 
-import structlog
-
-log = structlog.get_logger("kelir.examples.swe-agent")
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+log = logging.getLogger("kelir.examples.swe-agent")
 
 
 # ============================================================================
@@ -551,8 +549,8 @@ async def main() -> None:
     # exception in the block — guarantees `session.terminate()` via
     # `__aexit__`. Rust gets this from `Drop`; Python gets it from the CM.
     async with builder as session:
-        log.info("booted", driver=session.driver_name,
-                 boot_ms=session.boot_ms)
+        log.info("[kelir] booted driver=%s boot_ms=%s",
+                 session.driver_name, session.boot_ms)
 
         await session.forward_port(8080, 3000)                       # §11.7
         base = await session.vm.checkpoint("clean_base")
@@ -592,7 +590,7 @@ async def main() -> None:
 
         # ── Phase 3: suspend to 0 MB RSS, await approval, resume (§11.2)
         await session.suspend("/tmp/eval.snap")
-        log.info("suspended", rss_mb=0)
+        log.info("[kelir] suspended rss_mb=0")
         await oracle.await_human_approval()
         await session.resume("/tmp/eval.snap")
 
@@ -602,9 +600,8 @@ async def main() -> None:
             atomic_staging=True,
             fsync=True,
         )
-        log.info("reconciled",
-                 files=stats.files_changed,
-                 deletes=stats.whiteouts_resolved)
+        log.info("[kelir] reconciled files=%s deletes=%s",
+                 stats.files_changed, stats.whiteouts_resolved)
 
         await session.spawn(
             "git",
@@ -617,8 +614,8 @@ async def main() -> None:
             include_delta=winning_delta,
             include_merkle_root=True,
         )
-        log.info("receipt", merkle=final.merkle_root,
-                 jws=final.signed_jws[:64])
+        log.info("[kelir] receipt merkle=%s jws=%s",
+                 final.merkle_root, final.signed_jws[:64])
 
         # `async with` handles the final suspend+terminate on exit.
 

@@ -12,6 +12,7 @@
   - Invariants and policy (vfs)
     - Reconciler
       - see: artifacts/code/reconciler.rs
+      - Pure stdlib implementation: zero external crate dependencies
       - session.fs.reconcile() is a pure storage-plane operation
       - Lifecycle hook bindings
         - on_pre_commit flushes in-flight FUSE buffers
@@ -36,6 +37,7 @@
         - Partial-reconcile crash recovery
         - Directory fsync
         - Host-side deletion scope
+      - FUSE low-level binding: raw kernel ABI structs; bans fuser and fuse3
     - Ghost inodes
       - Architecture (ghost inodes): see: artifacts/diagrams/storage-architecture.txt
       - VfsInodeAttr mode: 0o400 honored strictly; no permission fallback

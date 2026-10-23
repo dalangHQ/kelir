@@ -9,7 +9,7 @@
 │    - Base host workspace mounted STRICTLY READ-ONLY.                        │
 │    - Instant Revert: Drop overlayfs layer in 1ms. Host SSD is untouched.    │
 │ 3. THE SUCCESS PATH RECONCILER (session.fs.reconcile()):                    │
-│    - Pure storage-plane sync: stages upperdir into .kelir-staging-<uuid>.   │
+│    - Pure storage-plane sync: stages upperdir into .kelir-staging-<nonce>.   │
 │    - Executes atomic directory exchange (renameat2 / RENAME_EXCHANGE).      │
 │    - Zero filesystem corruption; Git commits stay ordinary guest runs.      │
 ├─────────────────────────────────────────────────────────────────────────────┤

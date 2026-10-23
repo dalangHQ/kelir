@@ -121,7 +121,7 @@
   - Plugin ownership
     - Dependency rules
       - Zero inter-plugin dependencies: no plugin imports another plugin crate
-      - Depends on kelir-core (traits, context types) only
+      - Depends on kelir-interface (traits, context types) only
       - Depends on plugin-testkit as dev-dependency
       - Never depends on crates/kelir facade
       - Cross-plugin coordination occurs via core traits or userland closures
@@ -137,7 +137,7 @@
   - Plugin testkit
     - Crate layout: see: 11-operations.md#Project-structure
     - Boundary contract
-      - Depends on kelir-core only; never on a plugin or the facade crate
+      - Depends on kelir-interface only; never on a plugin or the facade crate
       - Every plugin depends on it as a dev-dependency
       - Not runtime: shipping it in the runtime crate graph is a defect
     - Purpose: a plugin's tests run without a hypervisor

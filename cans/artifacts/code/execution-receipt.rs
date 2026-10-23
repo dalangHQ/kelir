@@ -1,4 +1,4 @@
-// crates/kelir-core/src/telemetry/receipt.rs
+// crates/kelir-interface/src/telemetry/receipt.rs
 //
 // Per-process cryptographic execution receipt.
 //

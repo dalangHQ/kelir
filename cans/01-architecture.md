@@ -4,6 +4,7 @@
       - Zero harness awareness
         - Guest sees standard POSIX kernel and standard system init
         - Zero guest-side SDKs, agent daemons, or harness environment variables
+        - Zero external crate dependencies inside shim: libc and raw syscalls only
       - In-process microkernel
         - Virtualization runs in host consumer memory via direct C-FFI
         - Backends: rustvmm, hvf, openvmm, avf, bwrap, proot
@@ -142,11 +143,10 @@
       - Kernel fixture selection: see: #Page-size-dynamic-boot-selection
   - Driver backends
     - Capability matrix: TBD
-    - driver-rustvmm: Linux bare-metal KVM + userfaultfd CoW + CUDA CDI
-      - Direct hardware acceleration on x86_64 and bare-metal ARM64 (Raspberry Pi)
-    - driver-hvf: macOS native Apple Silicon HVF direct Mach bindings
-    - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure MSHV
+    - driver-rustvmm: Linux bare-metal KVM + userfaultfd CoW + CUDA CDI via kvm-ioctls
+      - Bans vmm-sys-util; implements raw eventfd and epoll primitives
+    - driver-hvf: macOS native Apple Silicon HVF via zero-dep Hypervisor.framework FFI
+    - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET scoped strictly to windows-sys
     - driver-avf: Android Virtualization Framework via /dev/avf and pKVM
-    - driver-bwrap: unprivileged Linux user namespaces + seccomp-unotify
-      - Fallback backend for unprivileged containers and CI without /dev/kvm
+    - driver-bwrap: unprivileged Linux user namespaces via libc; bans nix crate
     - driver-proot: unprivileged Android/Termux ptrace emulation fallback

@@ -2,6 +2,8 @@
   - Execution philosophy
     - Zero CPU burn
     - Sub-minute local cycles via just
+    - Zero-bloat crate boundary: tokio full banned; libc/sys-crates strictly scoped
+    - Guest shim strictly under 50KB: zero external serialization or runtime crates
     - Default posture
       - Primitive telemetry on; derived telemetry off unless configured
       - Ecosystem apparatus gated on registry size; not shipped ahead of it
@@ -36,6 +38,7 @@
     - Enforced invariants: CI matrix
       - Rootfs EROFS image builds clean and cold-boots in <60ms
       - Concurrency cancelled per ref (cancel-in-progress)
+      - Shim musl binary strictly verified below 51200 bytes
       - sccache enabled via SCCACHE_GHA_ENABLED
     - Per-plugin matrix: each plugin fails independently
     - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
@@ -139,9 +142,10 @@
       - Rust: crates/ via Cargo Workspaces
       - TypeScript: packages/ts/ via PNPM Workspaces
       - Python: packages/py/ via UV/Hatch
-    - Five crate families
+    - Six crate families
       - kelir: facade crate, single Cargo dependency, feature-gated plugins
-      - kelir-core: stripped microkernel (bus, plugin, protocol, vmm, telemetry)
+      - kelir-interface: pure leaf types, traits, wire framing, zero engine deps
+      - kelir-core: stripped microkernel (bus, dispatch, vmm, trap gate)
       - kelir-plugins: first-class plugins
         - pty, vfs, wire, chaos, ledger, mcp, oci-translator
         - openshell-coordinator, db-proxy, mesh, lock-broker, supply-chain

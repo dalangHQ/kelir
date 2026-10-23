@@ -49,6 +49,7 @@
       - Detection triggers immediate security panic hook before render
     - Screen matrix export
       - Maintains headless VT100 grid state machine via embedded parser
+      - Evaluates raw byte streams via lean vte parser; bans alacritty_terminal
       - export_screen_matrix() yields deterministic terminal wireframe states
       - Zero hand-rolled parser state; evaluates raw byte streams directly
     - Token Shield

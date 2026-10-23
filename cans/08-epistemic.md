@@ -56,7 +56,7 @@
     - Tracks physical page deltas, modified inodes, and process lineage
     - L7 protocol telemetry lives in plugin-wire, isolated from core structs
     - Type ownership
-      - Struct is a shared context type; it lives in kelir-core next to
+      - Struct is a shared context type; it lives in kelir-interface next to
         ExecutionReceipt
       - Computation is derived: see: plugins/ledger.md#compute-causal-delta-engine
     - This split follows the primitive-vs-derived rule: type is primitive,

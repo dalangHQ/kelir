@@ -1,4 +1,4 @@
-// crates/kelir-core/src/protocol/codec.rs
+// crates/kelir-interface/src/codec.rs
 //
 // Frame header for host↔guest transport over vsock:5252.
 //

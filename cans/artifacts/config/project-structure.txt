@@ -19,6 +19,16 @@ kelir/
 │   │   ├── src/
 │   │   │   └── lib.rs                 # Re-export surface: kelir-core API + feature-gated plugin modules (pty, vfs, wire, chaos, ledger)
 │   │
+│   ├── kelir-interface/               # Centralized leaf traits, wire framing, and context types (zero engine dependencies)
+│   │   ├── Cargo.toml                 # Dependencies: serde, ciborium, thiserror only
+│   │   └── src/
+│   │       ├── lib.rs                 # Re-exports all core contracts
+│   │       ├── plugin.rs              # KelirPlugin, MountScope, LifecycleCtx, PluginError
+│   │       ├── driver.rs              # VmmDriver, VmConfig, SnapshotDescriptor, WatchdogAction
+│   │       ├── protocol.rs            # FrameHeader (0x4B45), TrapEvent, TrapAction, GuestToHost, HostToGuest
+│   │       ├── telemetry.rs           # ExecutionReceipt, CausalDelta
+│   │       └── oracle.rs              # Oracle evaluator trait
+│   │
 │   ├── kelir-core/                    # In-process stripped microkernel
 │   │   ├── Cargo.toml
 │   │   └── src/
@@ -29,22 +39,14 @@ kelir/
 │   │       │   ├── vsock.rs           # Ring 2: Syscall trap & IPC multiplexer
 │   │       │   ├── fs.rs              # Ring 3: virtio-fs in-memory bridge
 │   │       │   └── net.rs             # Ring 4: virtio-net frame interception
-│   │       ├── plugin.rs              # KelirPlugin trait & static dispatch pipeline
-│   │       ├── protocol/              # Wire framing between Host and Shim
-│   │       │   ├── mod.rs
-│   │       │   ├── codec.rs           # 0x4B45 binary TLV framing parser
-│   │       │   └── messages.rs        # Payload structs + wire enums (TrapEvent, ProcessExit, TrapAction, ...)
+│   │       ├── dispatch.rs            # Static dispatch array & ArcSwap pipeline runner
 │   │       ├── vmm/                   # Driver orchestration
 │   │       │   ├── mod.rs
-│   │       │   ├── driver.rs          # VmmDriver trait (boot, fork, checkpoint, rollback)
 │   │       │   └── router.rs          # Dynamic backend loader (rustvmm vs hvf)
-│   │       └── telemetry/             # Hardware verification engines
-│   │           ├── mod.rs
-│   │           ├── receipt.rs         # Cryptographic ExecutionReceipt (BLAKE3, dirty pages)
-│   │           └── delta.rs           # Physical CausalDelta primitives (computation in plugin-ledger)
+│   │       └── trap_gate.rs           # Filter-before-FFI trampoline & entropy analyzer
 │   │
 │   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
-│   │   ├── Cargo.toml                 # Depends on kelir-core only
+│   │   ├── Cargo.toml                 # Depends on kelir-interface only
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── mock_driver.rs         # MockVmmDriver: checkpoint, fork, rollback without RAM
@@ -54,8 +56,9 @@ kelir/
 │   │       └── assertions.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
 │   │
 │   ├── kelir-shim/                    # Guest userland helpers (optional non-PID 1 diagnostics)
-│   │   ├── Cargo.toml                 # Configured with lto = "fat", opt-level = "z", panic = "abort"
+│   │   ├── Cargo.toml                 # Zero third-party crates: libc only, lto = "fat", panic = "abort"
 │   │   ├── src/
+│   │   │   ├── codec.rs               # Raw slice bit-shift frame codec (zero serde/ciborium)
 │   │   │   ├── main.rs                # Guest helper entrypoint
 │   │   │   ├── ingress.rs             # vsock:5252 (Channel 1) stream forwarder
 │   │   │   ├── pty_broker.rs          # openpty() master/slave broker: setsid() + TIOCSCTTY controlling terminals
@@ -67,23 +70,23 @@ kelir/
 │   │       └── test_reaper.rs         # Zombie reclamation under load
 │   │
 │   ├── kelir-drivers/                 # Pluggable Virtualization Implementations
-│   │   ├── driver-rustvmm/            # Bare-metal Linux KVM + userfaultfd CoW (<15ms) + CUDA CDI passthrough
+│   │   ├── driver-rustvmm/            # Bare-metal Linux KVM via kvm-ioctls (bans vmm-sys-util)
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # kvm-ioctls & userfaultfd CoW memory implementation
 │   │   │   └── tests/
 │   │   │       ├── test_cow_fork.rs   # KVM userfaultfd CoW fork in <15ms
 │   │   │       └── test_rollback.rs   # KVM rollback in <8ms
-│   │   ├── driver-hvf/                # Native macOS Apple Silicon HVF + direct Mach memory bindings
-│   │   ├── driver-openvmm/            # Windows WHP + ConPTY + HV_SOCKET
+│   │   ├── driver-hvf/                # Native macOS Apple Silicon HVF via raw Hypervisor.framework FFI
+│   │   ├── driver-openvmm/            # Windows WHP + ConPTY + HV_SOCKET (scoped strictly to windows-sys)
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/lib.rs             # Microsoft WHP & MSHV hypervisor implementation
-│   │   └── driver-bwrap/              # Unprivileged Linux user namespaces + seccomp-unotify (non-KVM fallback)
+│   │   └── driver-bwrap/              # Unprivileged Linux user namespaces via libc (bans nix crate)
 │   │       ├── Cargo.toml
 │   │       └── src/lib.rs             # Bubblewrap/user-namespace driver implementation
 │   │
 │   ├── kelir-plugins/                 # Modular First-Class Rust Plugins
 │   │   # ── Every plugin-* has: src/, tests/, fixtures/, examples/, README.md ──
-│   │   # ── Depends on kelir-core (runtime) + kelir-plugin-testkit (dev) only ──
+│   │   # ── Depends on kelir-interface (runtime) + kelir-plugin-testkit (dev) only ──
 │   │   ├── plugin-pty/                # virtio-console broker, ANSI sanitizer, Token Shield
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
@@ -104,7 +107,7 @@ kelir/
 │   │   │   │   ├── lib.rs
 │   │   │   │   ├── mask.rs            # In-flight read masking (MaskRule regex redaction, fixed-width)
 │   │   │   │   ├── ghost.rs           # Synthetic RAM-only inode injector (VfsInodeAttr: mode/uid/gid/size)
-│   │   │   │   ├── reconciler.rs      # Atomic workspace staging reconciler (.kelir-staging-<uuid> -> atomic renameat2)
+│   │   │   │   ├── reconciler.rs      # Atomic workspace staging reconciler (.kelir-staging-<nonce> -> atomic renameat2)
 │   │   │   │   ├── idmap.rs           # FUSE dynamic UID/GID translation (0 -> geteuid())
 │   │   │   │   └── lock_broker.rs     # Cross-VM lock broker keyed on host-mapped physical inodes
 │   │   │   ├── tests/

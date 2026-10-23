@@ -1,4 +1,4 @@
-// crates/kelir-core/src/protocol/messages.rs
+// crates/kelir-interface/src/protocol.rs
 //
 // All wire messages exchanged over vsock:5252. Payloads encode as CBOR
 // inside the TLV frame defined in codec.rs.

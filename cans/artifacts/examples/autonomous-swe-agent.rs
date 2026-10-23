@@ -24,16 +24,12 @@
 //! Cargo.toml:
 //!   [dependencies]
 //!   kelir = { version = "3.0", features = ["pty","vfs","wire","chaos","ledger"] }
-//!   tokio = { version = "1", features = ["full"] }
+//!   tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "time"] }
 //!   async-trait = "0.1"
 //!   serde = { version = "1", features = ["derive"] }
 //!   serde_json = "1"
 //!   thiserror = "2"
-//!   anyhow = "1"
-//!   uuid = { version = "1", features = ["v4"] }
 //!   blake3 = "1"
-//!   tracing = "0.1"
-//!   tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 //!   libc = "0.2"
 
 use std::collections::HashMap;
@@ -41,12 +37,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, bail, Context as _};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-use tracing::{info, warn};
-use uuid::Uuid;
 
 use kelir::{
     handler, Decision, DriverChoice, FinalizeRequest, FsReconcileRequest, HandlerCtx,
@@ -172,7 +165,7 @@ impl KelirPlugin for RepoPolicyPlugin {
             }));
         }
 
-        let new_branch = format!("agent/{}", &Uuid::new_v4().to_string()[..8]);
+        let new_branch = format!("agent/{:08x}", std::process::id());
         let mut argv = event.argv.clone();
         argv.push(format!("HEAD:refs/heads/{new_branch}"));
         let mut env = HashMap::new();
@@ -219,7 +212,7 @@ async fn build_runtime(
     stripe_key: String,
     pg_cert: PathBuf,
     pg_key: PathBuf,
-) -> anyhow::Result<KelirBuilder> {
+) -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sync>> {
     let policy_plugin = RepoPolicyPlugin::new(RepoPolicyOptions {
         max_diff_bytes: 64 * 1024,
         protected_branches: vec!["main".into(), "master".into(), "release/*".into()],
@@ -230,10 +223,10 @@ async fn build_runtime(
     // Same invariant as the TS example (§12.4 Tier-3 truth).
     let snoop: SnoopHandler = Arc::new(|path: PathBuf, raw: Vec<u8>, c: HandlerCtx| {
         Box::pin(async move {
-            let evt: serde_json::Value =
-                serde_json::from_slice(&raw).context("session is not JSON")?;
+            let evt: serde_json::Value = serde_json::from_slice(&raw)
+                .map_err(|e| PluginError::Halt(format!("session is not JSON: {e}")))?;
             if evt.get("falsifiedResult").and_then(|v| v.as_bool()).unwrap_or(false) {
-                bail!("EPERM: harness hallucination detected at {}", path.display());
+                return Err(PluginError::reject("EPERM", "harness hallucination detected"));
             }
             let blake3 = c.ledger.blake3_of_producing_process(&path).await?;
             oracle.ingest_harness_event(&path, &evt, &blake3).await?;
@@ -295,7 +288,7 @@ async fn build_runtime(
                 ),
                 GhostFile::dynamic("/workspace/identity.jwt", |_| Box::pin(async move {
                     Ok(DynamicFile {
-                        content: format!("Bearer {}", Uuid::new_v4().simple()),
+                        content: format!("Bearer {:032x}", std::process::id()),
                         mode: 0o400,
                     })
                 })),
@@ -416,7 +409,7 @@ async fn build_runtime(
 
                 // Warm caches + stamp traceparent for hermetic test
                 .before("npm test -- --runInBand", handler(|c: HandlerCtx| async move {
-                    c.env.set("OTEL_TRACE_ID", Uuid::new_v4().to_string());
+                    c.env.set("OTEL_TRACE_ID", format!("{:032x}", std::process::id()));
                     c.env.set("CI", "1");
                     c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
                     Ok(Decision::Resume)
@@ -446,7 +439,7 @@ async fn build_runtime(
                         let oracle = Arc::clone(&oracle);
                         async move {
                             let pre: SnapshotDescriptor = c.step.last().ok_or_else(|| {
-                                anyhow!("no pre-execution checkpoint recorded for this step")
+                                PluginError::Halt("no pre-exec checkpoint".into())
                             })?;
                             let receipt: ExecutionReceipt = c.receipt().await?;
 
@@ -504,7 +497,7 @@ async fn build_runtime(
                 .after("git commit *", handler(|c: HandlerCtx| async move {
                     // dirty_bytes is always populated; zero is a real measurement
                     if c.receipt().await?.dirty_bytes == 0 {
-                        bail!("Epistemic anomaly: zero-byte delta commit attempted.");
+                        return Err(PluginError::Halt("zero-byte delta commit".into()));
                     }
                     Ok(PostExecAction::Proceed)
                 }))
@@ -538,14 +531,9 @@ async fn build_runtime(
 // ============================================================================
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter("info,kelir=debug")
-        .init();
-
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let oracle: Arc<dyn Oracle> = Arc::new(UserOracle::new());
-    let stripe_key = std::env::var("REAL_HOST_STRIPE_KEY")
-        .context("REAL_HOST_STRIPE_KEY missing")?;
+    let stripe_key = std::env::var("REAL_HOST_STRIPE_KEY")?;
 
     let builder = build_runtime(
         Arc::clone(&oracle),
@@ -555,8 +543,8 @@ async fn main() -> anyhow::Result<()> {
     ).await?;
 
     // ── Boot: the sole point where the write-only chain becomes a session ─
-    let session = builder.boot().await.context("boot failed")?;
-    info!(driver = session.driver_name(), boot_ms = session.boot_ms(), "booted");
+    let session = builder.boot().await?;
+    eprintln!("[kelir] driver={} boot={}ms", session.driver_name(), session.boot_ms());
 
     // Port forward the dev server for human smoke testing (§11.7)
     session.forward_port(8080, 3000).await?;
@@ -564,7 +552,7 @@ async fn main() -> anyhow::Result<()> {
     let base = session.vm.checkpoint("clean_base").await?;
     let mut winning_delta: Option<CausalDelta> = None;
 
-    let phase: anyhow::Result<()> = async {
+    let phase: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
         // ── Phase 1: hermetic test (chaos on, egress forbidden) ──────────
         let test = session.spawn("npm")
             .args(["test", "--", "--runInBand"])
@@ -598,7 +586,7 @@ async fn main() -> anyhow::Result<()> {
                     .await?;
                 let delta = child.get_causal_delta_from_parent().await?;
                 child.terminate().await?;
-                Ok::<_, anyhow::Error>((id, run, delta))
+                Ok::<_, Box<dyn std::error::Error + Send + Sync>>((id, run, delta))
             });
         }
 
@@ -617,7 +605,7 @@ async fn main() -> anyhow::Result<()> {
 
         // ── Phase 3: suspend to 0 MB RSS, await approval, resume (§11.2) ─
         session.suspend("/tmp/eval.snap").await?;
-        info!("suspended: host RSS = 0 MB; awaiting approval");
+        eprintln!("[kelir] suspended: host RSS = 0 MB; awaiting approval");
         oracle.await_human_approval().await?;
         session.resume("/tmp/eval.snap").await?;
 
@@ -627,10 +615,9 @@ async fn main() -> anyhow::Result<()> {
             atomic_staging: true,
             fsync: true,
         }).await?;
-        info!(
-            files = stats.files_changed,
-            deletes = stats.whiteouts_resolved,
-            "overlay reconciled to host disk",
+        eprintln!(
+            "[kelir] overlay reconciled files={} deletes={}",
+            stats.files_changed, stats.whiteouts_resolved,
         );
 
         // Git runs as an ordinary guest execution — the trap chain gates it
@@ -652,10 +639,9 @@ async fn main() -> anyhow::Result<()> {
                 include_merkle_root: true,
             })
             .await?;
-        info!(
-            merkle = %receipt.merkle_root,
-            jws = &receipt.signed_jws[..64.min(receipt.signed_jws.len())],
-            "final receipt",
+        eprintln!(
+            "[kelir] final receipt merkle={} jws={}",
+            receipt.merkle_root, &receipt.signed_jws[..64.min(receipt.signed_jws.len())],
         );
 
         Ok(())
@@ -663,7 +649,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Phase 6-7: suspend to reclaim RAM, then terminate (§11.4) ───────
     if let Err(e) = session.suspend("/tmp/eval.snap").await {
-        warn!("final suspend failed: {e:#}");
+        eprintln!("[kelir] final suspend failed: {e}");
     }
     session.terminate().await?;
     phase
@@ -678,20 +664,20 @@ impl UserOracle { fn new() -> Self { Self } }
 
 #[async_trait]
 impl Oracle for UserOracle {
-    async fn analyze_intent(&self, _trap: &TrapEvent) -> anyhow::Result<IntentAnalysis> {
+    async fn analyze_intent(&self, _trap: &TrapEvent) -> Result<IntentAnalysis, Box<dyn std::error::Error + Send + Sync>> {
         Ok(IntentAnalysis {
             is_hypothesis_valid: true,
             falsification_reason: None,
             allow_high_entropy: false,
         })
     }
-    async fn verify_physical_receipt(&self, _r: &ExecutionReceipt) -> anyhow::Result<bool> {
+    async fn verify_physical_receipt(&self, _r: &ExecutionReceipt) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         Ok(true)
     }
     async fn ingest_harness_event(
         &self, _p: &Path, _e: &serde_json::Value, _b: &str,
-    ) -> anyhow::Result<()> { Ok(()) }
-    async fn await_human_approval(&self) -> anyhow::Result<()> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> { Ok(()) }
+    async fn await_human_approval(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tokio::time::sleep(Duration::from_millis(50)).await;
         Ok(())
     }
