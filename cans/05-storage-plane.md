@@ -5,6 +5,7 @@
     - Read-only lower + tmpfs upper
       - Guest root cannot corrupt the host workspace tree
       - Deletions leave whiteouts, not disk holes; reconciler must resolve them
+        - Reconciler home: see plugins/vfs.md#Reconciler
     - Deterministic 64-bit host_stable_hash of inode metadata for OCC fences
     - Hashes device, inode, mtime, and size; zero read-time payload hashing
     - Exception for dynamic ghost inodes: see plugins/vfs.md#Ghost-inodes
@@ -23,7 +24,7 @@
     - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE
     - Prevents tmpfs upperdir memory exhaustion when loading large packages
   - Write gating
-    - plugin-vfs gates FUSE write() via on_vfs_write
+    - Storage bus gates FUSE write() via on_vfs_write hook callbacks
     - Signature: See artifacts/code/plugin-trait.rs
     - Write-gating error variants: see 02-plugin-model.md#Hook-return-semantics
     - SDK-to-trait signature mapping: TBD

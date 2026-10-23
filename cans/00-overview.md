@@ -50,7 +50,7 @@
     - Mobile runtime governance on Android/Termux: see 01-architecture.md#Driver-backends
   - Spec map
     - Foundation: see 01-architecture.md
-    - Plugin model: see 02-plugin-model.md (registry)
+    - Plugin model & catalog: see 02-plugin-model.md#First-class-plugins
     - SDK architecture: see 03-sdk-architecture.md (parity)
     - Terminal plane: see 04-terminal-plane.md (virtio-console)
     - Storage plane: see 05-storage-plane.md (virtio-fs)

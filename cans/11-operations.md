@@ -59,7 +59,8 @@
   - Per-plugin CI
     - Decoupled plugin specs
       - One spec file per plugin in the cans plugin folder (15 files)
-      - Leaf-pointer rule: plugin files hold no refs; registry pointers are plain
+      - Leaf-node rule: plugin files do not chain further references; bus
+        pointers are direct 1-hop
     - Matrix job: test-plugins
       - One cell per first-class plugin (15 total)
       - Each cell: cargo nextest run -p plugin-<name>
