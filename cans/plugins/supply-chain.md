@@ -3,7 +3,7 @@
     - Plugin identifier: plugin-supply-chain
     - Owner crate: crates/kelir-plugins/plugin-supply-chain
     - name() = "supply-chain"; priority() = 25
-    - VirtIO Ring attachment (supply-chain): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (supply-chain): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (supply-chain): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for supply-chain
     - Context key contributed: None (guard only)

@@ -181,9 +181,6 @@ impl KelirPlugin for RepoPolicyPlugin {
             new_binary: "/bin/git".into(),
             new_argv: argv,
             injected_env: env,
-            tty_notice: Some(
-                "⚡ [KELIR]: push rewritten to isolated agent branch.\n".into(),
-            ),
         }))
     }
 
@@ -395,7 +392,6 @@ async fn build_runtime(
                             let pre = c.vm
                                 .checkpoint(format!("pre:{}", c.trap.pid))
                                 .await?;
-                            c.step.mark(pre);
 
                             let intent: IntentAnalysis = oracle.analyze_intent(&c.trap).await?;
                             if !intent.is_hypothesis_valid {
@@ -438,7 +434,6 @@ async fn build_runtime(
                             "/bin/git",
                             argv,
                             [("KELIR_DISARMED".into(), "1".into())],
-                            "⚡ [KELIR NOTICE]: dropped '--force'.\n",
                         ));
                     }
                     Ok(Decision::Resume)

@@ -3,7 +3,7 @@
     - Plugin identifier: plugin-lock-broker
     - Owner crate: crates/kelir-plugins/plugin-lock-broker
     - name() = "lock-broker"; priority() = 30
-    - VirtIO Ring attachment (lock-broker): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (lock-broker): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (lock-broker): see: 07-lifecycle.md#Lifecycle-vetoes
     - Storage bus attachment (lock-broker): see: 05-storage-plane.md#Storage-plane
   - Context keys for lock-broker

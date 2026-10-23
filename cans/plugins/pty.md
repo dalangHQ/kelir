@@ -3,15 +3,15 @@
     - Plugin identifier: plugin-pty
     - Owner crate: crates/kelir-plugins/plugin-pty
     - name() = "pty"; priority() = 90
-    - VirtIO Ring attachment (pty): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (pty): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (pty): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Binds to virtio-console paravirtual port hvc0
     - Terminal bus transport: see: 04-terminal-plane.md#Terminal-pipeline
   - Context keys for pty
     - Context key contributed: c.term
     - Closed-set binding rule (pty): see: 02-plugin-model.md#Core-context-keys
     - Terminal handler API
-      - c.term.notice(text) emits a Disclosure event
-      - Routes through the same wire message as TrapAction::Rewrite.tty_notice
+      - c.term.notice(text) emits a HostToGuest::Disclosure event over hvc0
   - Invariants and policy (pty)
     - Five filters
       - Filter set and per-filter behavior: see: artifacts/diagrams/terminal-pipeline.txt

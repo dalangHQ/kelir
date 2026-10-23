@@ -3,8 +3,9 @@
     - Plugin identifier: plugin-mcp
     - Owner crate: crates/kelir-plugins/plugin-mcp
     - name() = "mcp"; priority() = 50
-    - VirtIO Ring attachment (mcp): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (mcp): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mcp): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Binds to virtio-console paravirtual port hvc1
   - Context keys for mcp
     - Context key contributed: c.mcp
     - Closed-set binding rule (mcp): see: 02-plugin-model.md#Core-context-keys
@@ -23,9 +24,7 @@
       - read_file → virtio-fs lookup + read
       - write_file → virtio-fs write
     - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
-    - Console stream exclusion
-      - plugin-mcp and plugin-pty cannot bind the same console stream
-      - plugin-mcp requires raw pass-through mode on Ring 1 (virtio-console)
+    - Port multiplexing routes hvc1 directly to MCP client without PTY conflict
     - MCP contract: TBD
   - Error and return semantics (mcp)
     - Hook signature (mcp): see: artifacts/code/plugin-trait.rs

@@ -54,7 +54,7 @@
     - Evaluated in priority() order; ties broken by declaration order
     - Deduplication: identical name() instances merge; deepest config wins
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
-    - Zero-cost null objects: disabled plugins retain types, cost 0µs in core
+    - Zero-cost null objects: disabled plugins retain types, cost zero in core
     - requires() validated at boot; missing dep aborts boot with EConfig
     - Lock-free dispatch swap via ArcSwap on the host event bus (internal)
     - ArcSwap serves atomic dispatch swapping during snapshot hydration only
@@ -66,7 +66,8 @@
   - Mount scoping
     - Mount-level filters restrict blast radius before dispatch evaluation
     - VirtIO ring mask: unselected rings bypass plugin completely
-    - Binary filter: kernel BPF drops traps for unlisted executable paths
+    - Multi-port console partition: routes hvc0 to pty and hvc1 to mcp
+    - Binary filter: in-kernel BPF drops traps for unlisted paths
     - Path filter: FUSE layer bypasses VFS hooks outside declared subtrees
     - Network filter: TAP dispatcher bypasses net hooks outside declared CIDR/port rules
   - Filter-before-FFI gate
@@ -75,10 +76,10 @@
     - FFI trampoline executes only when ring event satisfies scope match
     - Protects guest toolchain execution speed (cargo build, npm install)
   - FFI buffer lifecycle
-    - Guest memory slices pinned synchronously during async hook execution
-    - Prevents use-after-free while V8 or Python awaits handler resolution
-    - Policy inspection clamped to 64KB ceiling to eliminate FFI memory bloat
-    - Stream mutations exceeding ceiling require Tier 1 Rust engine plugins
+    - Pinned memory slices exposed via streaming chunked iterators
+    - Prevents use-after-free while host runtimes resolve handlers
+    - Payloads exceeding 64KB ceiling trigger BufferCeilingExceeded
+    - Handlers must reject uninspected payloads or delegate to Rust plugins
   - Core context keys
     - Handler-visible keys; each key's definition lives at its owning plane
     - Invariant: core runtime carries zero hardcoded plugin context keys

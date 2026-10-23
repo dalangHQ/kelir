@@ -2,39 +2,14 @@
   - Scope
     - Boundary specification; not a runtime subsystem
     - Core owns facts, never judgments
-      - Facts: TrapEvent, ExecutionReceipt, CausalDelta (struct), StepSlot
-    - Judgment has exactly two homes, both removable
-      - Oracle: user interface, one per session, not a plugin, no dispatch slot
-      - plugin-ledger: derived computation over core primitives
-    - Removing either leaves core intact; see: #Primitive-vs-derived-telemetry
+      - Facts: TrapEvent, ExecutionReceipt, CausalDelta (struct)
+      - Core owns physical hardware telemetry: registers, memory diffs, counters
+    - Judgment is defined in external userland orchestration layers
+      - Evaluators consume raw execution receipts independently of core
     - Axiom enforcement: see: 01-architecture.md#Axiomatic-foundations
   - Oracle
-    - User-supplied interface; NOT a plugin
-    - Location: kelir-core::oracle::Oracle
-    - Injection: builder.oracle(impl Oracle); one per session
-    - Not in dispatch array; no priority(); no requires()
-    - Rationale: single policy layer for the epistemic engine
-      - Epistemic policy is user-owned, not composable
-      - Oracles chain by composition inside their impl, not the plugin graph
-    - Methods
-      - analyze_intent(&TrapEvent) -> IntentAnalysis
-        - Called from handlers, typically before(*)
-        - IntentAnalysis: is_hypothesis_valid, falsification_reason, allow_high_entropy
-      - verify_physical_receipt(&ExecutionReceipt) -> bool
-        - Called from after(*) post-condition verification
-      - ingest_harness_event(&Path, &Value, &str)
-        - Called from snoop callbacks; see: plugins/vfs.md#Snoop-plane
-      - await_human_approval()
-        - Called between suspend/resume for human-in-the-loop gates
-      - current_trace_id() -> String
-        - Called from handlers setting OTEL_TRACE_ID
-    - Harness wiring example: see: artifacts/examples/autonomous-swe-agent.rs
-    - Oracle contract: TBD
-      - Failure handling
-      - Timeouts
-      - Concurrency
-      - await_human_approval authority and timeout
-      - ingest_harness_event failure
+    - Evaluator contract defined in orchestrator SDK layer, outside kelir-core
+    - Consumes physical execution receipts to evaluate workload correctness
   - Primitive vs derived telemetry
     - Telemetry decision test
       - Single read API, hardware boundary, no policy → primitive, core-owned
@@ -81,9 +56,8 @@
     - see: artifacts/code/causal-delta.rs
     - Definition: Δ = S_A − S_B between two checkpoint descriptors
     - Delta fields: see: artifacts/code/causal-delta.rs
-    - egress_requests: sampled or host-allowlisted; full per-request capture
-      is never the default. Use receipt.egress_bytes unless per-request
-      attribution is the question.
+    - Tracks physical page deltas, modified inodes, and process lineage
+    - L7 protocol telemetry lives in plugin-wire, isolated from core structs
     - Type ownership
       - Struct is a shared context type; it lives in kelir-core next to
         ExecutionReceipt
@@ -118,14 +92,9 @@
     - Veto points: see: 07-lifecycle.md#Lifecycle-vetoes
     - This node specifies the orchestrator-facing mapping only
   - Step evaluation loop
-    - see: artifacts/code/step-evaluation-loop.ts
     - Orchestrators execute unmodified agent binaries
-    - Cycle-accurate governance over every operational step
-    - Pre/post tracking is a core context service
-    - StepSlot on HandlerCtx
-      - c.step.mark(descriptor): stores typed checkpoint slot for trapping PID
-      - c.step.last(): retrieves it, raises if none
-      - No userland scratchpads, no plugin boilerplate
+    - Checkpoint descriptors are retained in userland orchestrator state
+    - Post-step verification compares physical receipts against pre-step states
     - StepSlot semantics: TBD
       - Stack vs single slot
       - Multiple marks per PID

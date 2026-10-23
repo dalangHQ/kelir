@@ -1,13 +1,11 @@
 - Protocol
   - Control channel
-    - virtio-vsock port 5252: control/trap plane
-    - virtio-vsock port 5253: ingress/port-forward multiplexer
-    - Windows driver-openvmm: HV_SOCKET translates the same channels
-    - Zero network interface involvement
-    - Pluggable host listener registration via register_vsock_service()
-      - Maps custom vsock ports (e.g. 5254) to host async stream callbacks
-      - Provides direct host RPC channel without external network routing
-    - Port collision across co-located sessions: TBD
+    - virtio-vsock port 5252: unified multiplexed transport
+    - Binary channel framing isolates sub-protocols via channel_id
+      - Channel 0: Syscall traps and VM lifecycle control
+      - Channel 1: Ingress port-forwarding and connection proxying
+      - Channel 2: Auxiliary host stream RPCs
+    - Eliminates multi-port socket allocation and port collisions
   - Trap fast-path
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
     - Three-tier gate pipeline
@@ -45,7 +43,7 @@
     - Framing invariants
       - One frame = one message; no message spans frames
       - Monotonic 64-bit sequence transmitted natively without word splitting
-      - Codec reads exact 20-byte FrameHeader; payload decodes directly
+      - Codec reads exact 24-byte FrameHeader; payload decodes directly
     - Framing gaps: TBD
       - Byte order
       - Message-type registry
@@ -60,7 +58,6 @@
     - see: artifacts/code/messages.rs
     - Message set and payload fields: see: artifacts/code/messages.rs
     - Hook binding: one hook per message; see: 02-plugin-model.md#KelirPlugin-trait
-    - TrapEvent task_token extracted from guest shim TLS; zero VirtIO hacking
     - TrapAction invariants
       - `Allow` cannot mutate registers, memory, or env; it is a no-op
       - `Yield { checkpoint_id }` freezes vCPU registers and CoW memory
@@ -68,26 +65,16 @@
       - `Abort { exit_code, reason }` executes uncatchable hypervisor SIGKILL
       - `Abort` halts execution immediately on critical security violations
       - `Deny` injects an exit code and stderr into the agent TTY
-      - `Rewrite` is the only variant that can carry injected env; the
-        tty_notice field routes through HostToGuest::Disclosure
       - `SuspendForApproval { poll_interval_ms }` parks the trap; released
         only by Oracle.await_human_approval()
       - `Custom` variants are dispatched by name; unknown names fail with
         EUnknownAction before the pipeline resumes
   - Env injection
     - Allow cannot mutate guest environment
-      - Registers and memory untouched
-      - A plain Allow decision is by definition a no-op
-    - Handler-side c.env.set(...) reaches guest only through Rewrite
-    - Auto-Rewrite on resume
-      - Handler calls c.env.set(...) then returns Decision.resume()
-      - Runtime auto-converts to TrapAction::Rewrite
-      - new_binary = original_binary
-      - new_argv = original_argv
-      - injected_env = accumulated handler env map
-      - tty_notice = handler's tty_notice if set, else None
-      - Syscall re-executes through Rewrite path with injected env
-    - This is the only channel for handler-side env changes to reach guest
+      - Registers, memory, and environment variables remain untouched
+    - Handler environment mutations require an explicit Rewrite decision
+    - Calling c.env.set() and returning Decision.resume() returns EINVALIDDECISION
+    - Terminal notifications must be emitted explicitly via c.term.notice()
   - Trap decision gaps: TBD
     - Rewrite loop prevention
     - new_binary canonicalisation

@@ -3,7 +3,7 @@
     - Plugin identifier: plugin-hyper-density
     - Owner crate: crates/kelir-plugins/plugin-hyper-density
     - name() = "hyper-density"; priority() = 45
-    - VirtIO Ring attachment (hyper-density): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (hyper-density): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (hyper-density): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for hyper-density
     - Context key contributed: c.density

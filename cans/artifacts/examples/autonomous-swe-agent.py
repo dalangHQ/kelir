@@ -189,7 +189,6 @@ class RepoPolicyPlugin(BasePlugin[RepoPolicyHandle]):
             new_binary="/bin/git",
             new_argv=[*event.argv, f"HEAD:refs/heads/{new_branch}"],
             injected_env={"KELIR_REWRITTEN": "1"},
-            tty_notice="⚡ [KELIR]: push rewritten to isolated agent branch.\n",
         )
 
     # ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
@@ -234,8 +233,6 @@ PostExecHandler = Callable[[HandlerContext], Awaitable[PostExecAction]]
 
 def make_universal_step(oracle: Oracle) -> PreExecHandler:
     async def universal_step(c: HandlerContext) -> Decision:
-        c.step.mark(await c.vm.checkpoint(f"pre:{c.trap.pid}"))
-
         intent = await oracle.analyze_intent(c.trap)
         if not intent.is_hypothesis_valid:
             return Decision.deny(
@@ -268,7 +265,6 @@ def make_entropy_check() -> PreExecHandler:
                 binary="/bin/git",
                 argv=[a for a in c.trap.argv if a != "--force"],
                 env={"KELIR_DISARMED": "1"},
-                tty_notice="⚡ [KELIR NOTICE]: dropped '--force'.\n",
             )
         return Decision.resume()
     return entropy_check

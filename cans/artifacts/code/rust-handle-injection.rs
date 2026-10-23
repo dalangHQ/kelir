@@ -1,14 +1,12 @@
 // ILLUSTRATIVE EXCERPT — not standalone-compilable.
 //
-// Demonstrates Rust SDK's compile-time plugin verification invariant:
-// removing `.plugin_with_handle(RepoPolicyPlugin)` from the chain makes
-// the typed handle unavailable, and every closure capturing it fails
-// to compile (rustc E0425).
+// Demonstrates Rust SDK's typestate builder pattern:
+// Handlers requiring policy can only be mounted on a builder possessing WithPolicy.
 //
 // Full runnable example: artifacts/examples/autonomous-swe-agent.rs
 // Canonical spec home:    cans/03-sdk-architecture.md#Rust-SDK
 
-use kelir::plugin::{MountScope, VirtioRing};
+use kelir::plugin::{MountScope, VirtioDevice};
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
@@ -16,29 +14,26 @@ enum Action {
     FixWebhook { repo: String, issue_id: String },
 }
 
-// 1. Atomic handle extraction with mount-level scoping:
+// 1. Typestate transition: Builder<Init> -> Builder<WithPolicy>
 let scope = MountScope::default()
     .with_binaries(["git", "npm"])
-    .with_rings([VirtioRing::Vsock, VirtioRing::Fs]);
-let (builder, policy) = builder.plugin_with_handle_scoped(
+    .with_devices([VirtioDevice::Vsock, VirtioDevice::Fs]);
+let builder = builder.with_scoped_plugin(
     RepoPolicyPlugin::new(options),
     scope,
 );
 
-// 2. Downstream handler captures typed handle:
-let builder = builder.exec(move |exec| {
-    let policy = policy.clone();
+// 2. Downstream handler receives typed plugin reference directly from context:
+let builder = builder.exec(|exec| {
     exec
         // Serde deserializes `Action` before handler execution:
         .before("npm test", handler(|c: HandlerCtx| async move {
             let params = c.params::<Action>()?;
             Ok(Decision::Resume)
         }))
-        // Compiler guarantees `policy` exists in scope:
-        .before("git commit *", handler(move |_c: HandlerCtx| {
-            let policy = policy.clone();
+        .before("git commit *", handler(|c: HandlerCtx| {
             async move {
-                if policy.violations().await > 0 {
+                if c.policy().violations().await > 0 {
                     return Ok(Decision::deny(1, "Policy violations recorded"));
                 }
                 Ok(Decision::Resume)

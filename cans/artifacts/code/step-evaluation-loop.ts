@@ -1,9 +1,8 @@
 // ILLUSTRATIVE EXCERPT — not standalone-executable.
 //
-// The atomic step-evaluation loop used by epistemic orchestrators.
-// Replaces language-level monkeypatching with hardware-boundary
-// checkpoint / verify / rollback. c.step is a core-provided StepSlot
-// on HandlerCtx — no userland scratchpad.
+// Epistemic orchestration step loop using external evaluator.
+// Checkpoints and verification state are managed in userland
+// orchestrator scope, decoupled from hypervisor microkernel core.
 //
 // Full runnable example: artifacts/examples/autonomous-swe-agent.ts
 // Canonical spec home:    cans/08-epistemic.md#Step-evaluation-loop
@@ -13,6 +12,7 @@ import { vfs } from "@kelir/plugin-vfs";
 import { pty } from "@kelir/plugin-pty";
 
 const orchestrator = new EpistemicEvaluator();
+let activeCheckpoint: SnapshotDescriptor | null = null;
 
 const session = await kelir({ vcpus: 2, memoryMb: 2048 })
   .use(vfs())
@@ -20,8 +20,8 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
   .exec((cmd) =>
     cmd
       .before("*", async (c) => {
-        // 1. Hardware Snapshot: record clean state in a core-owned StepSlot
-        await c.step.mark(await c.vm.checkpoint("pre-step"));
+        // 1. Hardware Snapshot: record clean state in orchestrator scope
+        activeCheckpoint = await c.vm.checkpoint("pre-step");
 
         // 2. Hardware Pause: hold vCPU registers while verifying intent
         const intentAnalysis = await orchestrator.analyzeIntent({
@@ -43,7 +43,7 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
 
         if (!isConsistent) {
           // 4. Instant Hardware Rollback: memory and disk revert in <8ms
-          await c.vm.rollback(c.step.last());
+          if (activeCheckpoint) await c.vm.rollback(activeCheckpoint);
           c.term.notice("⚡ [EPISTEMIC ENGINE]: Side-effect violation. State reverted.\n");
         }
       })

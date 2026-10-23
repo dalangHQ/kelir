@@ -34,7 +34,7 @@
       - macOS Apple Silicon jobs limited to compile gate for driver-hvf
       - Do not waste runner minutes on full matrix
     - Enforced invariants: CI matrix
-      - Shim binary < 50KB per architecture: see: 01-architecture.md#Guest-VM-anatomy
+      - Rootfs EROFS image builds clean and cold-boots in <60ms
       - Concurrency cancelled per ref (cancel-in-progress)
       - sccache enabled via SCCACHE_GHA_ENABLED
     - Per-plugin matrix: each plugin fails independently

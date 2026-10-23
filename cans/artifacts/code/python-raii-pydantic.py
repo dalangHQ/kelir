@@ -1,9 +1,8 @@
 # ILLUSTRATIVE EXCERPT — not standalone-executable.
 #
-# Demonstrates Python SDK's RAII lifecycle + Pydantic v2 pre-hook
-# validation. Removing `builder.plugin_with_handle(...)` makes `policy`
-# unavailable and closures fail with NameError at import time. `async with`
-# guarantees session.terminate() in __aexit__ even on unhandled exceptions.
+# Demonstrates Python SDK's assembly-time closure validation + Pydantic v2.
+# Builder inspects closure freevars during .exec(); unbound references
+# raise KelirConfigurationError before hypervisor boots.
 #
 # Full runnable example: artifacts/examples/autonomous-swe-agent.py
 # Canonical spec home:    cans/03-sdk-architecture.md#Python-SDK

@@ -3,7 +3,7 @@
     - Plugin identifier: plugin-vfs
     - Owner crate: crates/kelir-plugins/plugin-vfs
     - name() = "vfs"; priority() = 35
-    - VirtIO Ring attachment (vfs): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (vfs): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (vfs): see: 07-lifecycle.md#Lifecycle-vetoes
     - Storage bus attachment (vfs): see: 05-storage-plane.md#Storage-plane
   - Context keys for vfs
@@ -15,19 +15,12 @@
       - session.fs.reconcile() is a pure storage-plane operation
       - Lifecycle hook bindings
         - on_pre_commit flushes in-flight FUSE buffers
-        - on_post_commit triggers reconcile_upperdir()
-      - Syncs overlay upperdir differential to host workspace
-      - Carries no VCS semantics, accepts no message parameter
-      - Git commit is ordinary guest execution through the trap chain
-      - Invariant: host SSD is mutated by exactly one path — reconcile()
-        - Every other layer lives in guest RAM or host RAM
-        - Rollback reverts guest state with zero host SSD involvement
+        - on_post_commit triggers atomic staging swap into host workspace
       - Algorithm
-        - Consumes in-memory dirty set and deletion map from plugin-vfs
-        - Resolves file whiteouts: character device 0/0 → host unlink()
-        - Resolve dir whiteouts: trusted.overlay.opaque=y → host remove_dir_all()
-        - Fast CoW block clone via ioctl(FICLONE) with tmp sibling fallback
-        - Flush with syncfs()/fsync() before reporting completion
+        - Stages modifications into temporary directory .kelir-staging-<uuid>
+        - Applies deletions and modifications from FUSE journal to staging tree
+        - Performs atomic directory swap replacing target workspace subtree
+        - Issues scoped fsync on touched file descriptors and parent directory
       - Whiteout problem
         - Deleted files become char devices with major/minor 0/0 (mknod c 0 0)
         - Deleted or shadowed directories carry xattr trusted.overlay.opaque="y"
@@ -52,24 +45,18 @@
         - In-memory content fixed at .ghost() call
         - Example: /root/.gitconfig, /workspace/.env.local
       - Dynamic ghost
-        - Content factory evaluated fresh per open()
-        - Example: /workspace/identity.jwt regenerating per open
-        - OCC exception: host_stable_hash is computed from the dynamic content
-          buffer on open(), not from static metadata
-        - This bypasses the zero-read-time metadata hashing rule for ghosts
+        - Content factory evaluated fresh per read request
+        - Hash computed as BLAKE3(path || generation_counter || mode)
+        - Generates zero open-time payload buffering or synchronous hash stalls
       - Full VfsInodeAttr: mode, uid, gid, size, content
       - FUSE LOOKUP reply populated verbatim
       - mode: 0o400 honored exactly, no permission fallback
       - Physically does not exist on host SSD
     - In-flight read masking
-      - maskRead intercepts FUSE lookup/open at inode boundary
-      - Sensitive targets synthesize RAM-backed ghost inodes on open
-      - Typical targets: .env, secrets files, private keys
-      - Fixed-width redaction
-        - Replacement padded or truncated to exact byte length of the match
-        - st_size and file offsets preserved
-        - Sequential reads and trailing reads stay consistent
-        - Short-match padding rule: TBD
+      - maskRead intercepts FUSE read() requests via sliding-window scanner
+      - Matches secret patterns across chunk boundaries in streaming window
+      - Replaces matches with fixed-width byte tokens preserving offsets
+      - Eliminates full-file memory allocations during inode open
       - Format-preserving masking (FPA) executes via ghost inode generator
       - Generates format-valid synthetic content before guest read calls
       - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks

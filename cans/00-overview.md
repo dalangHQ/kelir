@@ -7,7 +7,7 @@
     - Status: normative specification
   - What it is
     - Embeddable in-process microVM hypervisor middleware microkernel
-    - Mediates every guest interaction through the 4-Ring VirtIO bus
+    - Mediates guest interaction through the VirtIO Device Complex
     - Boots stripped Linux microVMs in sub-60ms
     - Definition details: see: 01-architecture.md#Axiomatic-foundations
   - What it is not

@@ -3,7 +3,7 @@
     - Plugin identifier: plugin-oci-translator
     - Owner crate: crates/kelir-plugins/plugin-oci-translator
     - name() = "oci-translator"; priority() = 20
-    - VirtIO Ring attachment (oci-translator): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (oci-translator): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (oci-translator): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for oci-translator
     - Context key contributed: None (daemon runtime: image translation)

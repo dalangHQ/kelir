@@ -3,7 +3,7 @@
     - Plugin identifier: plugin-ledger
     - Owner crate: crates/kelir-plugins/plugin-ledger
     - name() = "ledger"; priority() = 55
-    - VirtIO Ring attachment (ledger): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (ledger): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (ledger): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for ledger
     - Context key contributed: c.ledger

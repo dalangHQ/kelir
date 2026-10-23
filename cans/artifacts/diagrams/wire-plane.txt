@@ -22,5 +22,5 @@
                                         │
                                         ▼
                              [7. CONNECTION PARKING]
-                             Holds client TCP sockets in zero-window state;
-                             sniffs HTTP headers; wakes VM and forwards to vsock:5253.
+                             Host-terminates client TCP; buffers up to 64KB;
+                             wakes microVM and forwards to vsock:5252 (Channel 1).

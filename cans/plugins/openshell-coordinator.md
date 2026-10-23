@@ -3,7 +3,7 @@
     - Plugin identifier: plugin-openshell-coordinator
     - Owner crate: crates/kelir-plugins/plugin-openshell-coordinator
     - name() = "openshell-coordinator"; priority() = 60
-    - VirtIO Ring attachment (openshell-coordinator): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (openshell-coordinator): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (openshell-coordinator): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for openshell-coordinator
     - Context key contributed: None (daemon runtime: checkpoint coordination)

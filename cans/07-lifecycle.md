@@ -63,11 +63,8 @@
     - KVM path: KVM_SET_CLOCK and kvm_clock MSRs
     - HVF path: ARM64 CNTVOFF_EL2 (Virtual Timer Offset Register)
     - Guest CNTVCT_EL0 reads jump forward instantly
-    - TSC scaling unpin
-      - Skew auto-unpins invariant-TSC scaling on cloned VM
-      - vCPU TSC rate decouples from host hardware clock
-      - Tracks virtual clocksource instead
-      - Guest kernel never flags tsc as unstable, never falls to jiffies
+    - Paravirtual clock updates route via pvclock structure without unpinning TSC
+    - Guest boots with pinned clocksource: clocksource=kvm-clock tsc=reliable nohpet
     - Typical use: JWT expiry, cron cycles, certificate renewals
     - Synthetic virtual clocksource mode
       - Guest clock decouples from host TSC; host advances KVM_SET_CLOCK on
@@ -108,9 +105,9 @@
   - Two-phase commit
     - MicroVM and host database state synchronization protocol
     - on_pre_commit pauses vCPUs and flushes in-flight VFS write buffers
-    - Host evaluates transaction outcome before upperdir commit
-    - on_post_commit(true) reconciles upperdir to host workspace
-    - on_post_commit(false) wipes tmpfs upperdir diffs via MADV_DONTNEED
+    - Staging subtree prepared atomically in host workspace
+    - on_post_commit(true) executes atomic directory swap into workspace
+    - on_post_commit(false) unlinks staging directory and purges tmpfs diffs
     - Prevents desynchronization between host DB and guest workspace
   - Docker-in-kelir
     - Constraint: Apple Silicon HVF offers no nested VMX/SVM
@@ -120,10 +117,10 @@
       ephemeral state on tmpfs so the rootfs stays immutable
     - Container contract: TBD
   - Break-glass
-    - Invariant: developer TTY reaches virtio-console with zero guest-side
-      cooperation
-    - The agent loop pauses for the duration; control returns on subshell exit
-    - Session-only after `boot()`
+    - Supervisor freezes guest agent task group via cgroup freezer prior to attach
+    - In-flight PTY buffer drained before exposing raw console master
+    - Developer attaches interactive TTY to virtio-console hvc0
+    - Subshell exit clears screen, refreshes window size, and unfreezes agent group
     - Spelling: `breakGlass()` (TS), `break_glass()` (Rust, Py);
       `session.break-glass()` never exists
   - Port forwarding (plugin-wire)
@@ -163,11 +160,10 @@
       - Shim emits GuestToHost::Heartbeat at driver-configured cadence
       - on_heartbeat fires per receipt; observation only
     - Firing
-      - No heartbeat within timeout → driver arms the timeout event
-      - on_watchdog(&WatchdogEvent) fires before action executes
-        - WatchdogEvent: timeout_ms, action, fired_at_ns, last_heartbeat_ms
-        - Ok(()) → driver executes WatchdogAction
-        - Err(PluginError::Halt) → action suppressed; surfaces to runtime
+      - Driver fires on_watchdog(&WatchdogEvent) when heartbeat expires
+      - Hook returns WatchdogVerdict (ExecuteDefault | Suppress | Mitigate)
+      - ExecuteDefault triggers configured WatchdogAction (Reboot | Terminate)
+      - Mitigate delegates recovery to host policy handler
       - WatchdogAction::Terminate synthesizes WatchdogDiagnostic from host
       - Carries fired_at_ns, last_heartbeat_ms, and last active PID
       - Evaluates completely host-side without guest kernel cooperation

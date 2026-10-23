@@ -9,9 +9,8 @@
 │    - Base host workspace mounted STRICTLY READ-ONLY.                        │
 │    - Instant Revert: Drop overlayfs layer in 1ms. Host SSD is untouched.    │
 │ 3. THE SUCCESS PATH RECONCILER (session.fs.reconcile()):                    │
-│    - Pure storage-plane sync: overlay upperdir → host disk, atomically.     │
-│    - Resolves file whiteouts (c 0 0) and directory whiteouts                │
-│      (trusted.overlay.opaque=y) into host unlink() / remove_dir_all().      │
+│    - Pure storage-plane sync: stages upperdir into .kelir-staging-<uuid>.   │
+│    - Executes atomic directory exchange (renameat2 / RENAME_EXCHANGE).      │
 │    - Zero filesystem corruption; Git commits stay ordinary guest runs.      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 4. UID / GID ID-MAPPING (idmap):                                            │
@@ -27,12 +26,11 @@
 │    - Served from host memory; physically DOES NOT EXIST on host SSD.        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 7. INODE-LEVEL READ MASKING (plugin-vfs maskRead):                          │
-│    - Intercepts FUSE lookup/open; spawns dynamic masked ghost inodes.       │
-│    - Fixed-width regex redaction or format-preserving synthetic content     │
-│      generated in RAM once at open; zero read-chunk boundary bugs.          │
+│    - Intercepts FUSE read(); runs sliding-window chunk pattern scanner.     │
+│    - Fixed-width byte replacement on-the-fly; zero full-file RAM buffering. │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 8. OCC STABLE INODE HASHES:                                                 │
-│    - Deterministic 64-bit physical hash populated in VfsInodeAttr.          │
+│    - Deterministic 64-bit hash: BLAKE3(path || generation_counter || mode). │
 │    - Enables host optimistic concurrency state-fencing across edits.        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 9. SECONDARY READ-ONLY IMAGE MOUNTS:                                        │

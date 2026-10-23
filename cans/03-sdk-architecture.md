@@ -10,10 +10,10 @@
       - Tier 2 policy plugins: authored in userland code via native async closures
       - Tier 1 vs Tier 2 execution: see: 02-plugin-model.md#Two-tier-execution-architecture
     - Semantic invariant equivalence
-      - Identical safety and hypervisor outcomes enforced via native idioms
-      - Rust: compile-time proof via handles; Serde perimeter deserialization
-      - TypeScript: type-time proof via Kelir<TContext>; TypeBox guard schema
-      - Python: import-time proof via handle capture; Pydantic v2 frozen models
+      - Uniform hypervisor safety guarantees enforced across runtimes
+      - Rust: typestate transitions validate mounted capabilities
+      - TypeScript: two-phase deferred context resolves cyclic plugin types
+      - Python: builder assembly validates closure scope prior to boot
       - Failure occurs at the earliest lifecycle phase native to each runtime
       - Resource reclamation invariants
         - Rust: Session implements Drop trait to terminate microVM and drop memory
@@ -52,19 +52,17 @@
     - Zero-allocation validation: operates on zero-copy guest memory
   - Rust SDK
     - see: artifacts/code/rust-handle-injection.rs
-    - plugin_with_handle(P) atomically returns (builder, P::Handle)
-    - Missing builder.plugin_with_handle call → handle not in scope → E0425
+    - Typestate builder transitions KelirBuilder<Unset> to KelirBuilder<WithPlugin>
+    - Closures requiring plugin capabilities enforce builder typestate bounds
     - Zero-Allocation Validation via Serde
       - #[derive(Deserialize)] enum Action with serde(tag = "action")
       - c.params::<Action>() fails at perimeter before traps execute
     - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
     - see: artifacts/code/typescript-accumulation.ts
-    - Kelir<TContext> accumulates context type across .use(plugin, scope?)
-    - Each .use() expands the generic; downstream c.pluginKey fully inferred
-    - Userland plugin authoring via createPlugin() declarative builder
+    - Two-phase builder: .use() registers plugins; .configure() binds hooks
+    - Fully unified TContext passes to callbacks, resolving cross-plugin lookups
     - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
-    - Missing .use() → property not on TContext → tsc error
     - Null-object pattern: use(plugin({ enabled: false })) preserves c.pluginKey
     - TypeBox .guard() schema
       - t.Object({ action: t.Literal(...), issueId: t.String() })
@@ -74,9 +72,8 @@
     - async with builder as session
       - __aenter__ boots microVM
       - __aexit__ guarantees session.terminate() on any exception
-      - Matches Rust Drop semantics under unhandled exceptions
-    - Userland plugin authoring via BasePlugin subclassing
-    - PyO3 wraps async coroutines into ForeignPluginProxy instance
+    - Builder assembly inspects closure freevars against mounted handles
+    - Unbound closure references raise KelirConfigurationError before boot
     - Pydantic v2 BaseModel with frozen=True
       - Field(pattern=r"^fix-webhook$")
       - Raises EINVAL before hook evaluation

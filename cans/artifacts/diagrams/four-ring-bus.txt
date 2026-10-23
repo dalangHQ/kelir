@@ -1,9 +1,11 @@
-                           THE 4-RING VIRTIO BUS
+THE VIRTIO DEVICE COMPLEX
                                      │
       ┌──────────────────┬───────────┴───────────┬──────────────────┐
       ▼                  ▼                       ▼                  ▼
  [virtio-vsock]  [virtio-console]          [virtio-fs]        [virtio-net]
   CONTROL PLANE   TERMINAL PLANE          STORAGE PLANE        WIRE PLANE
-  Syscalls, PIDs, Raw TTY, ANSI,          CoW Overlays, Inodes, L4/L7 Traffic,
-  Signals, Traps  Token Shield, Resizing  In-Flight Masking,     Secrets, Chaos
-                                          Ghost Files
+  Channel 0: Traps hvc0: PTY Master       FUSE Overlays,      Bidirectional L2,
+  Channel 1: Ingress hvc1: Binary MCP     Streaming Masking,   TAP Framing,
+  Channel 2: DB/RPC Token Shield, Grid    Journal Reconciler  Credentials, Chaos
+                         │                       │
+         [virtio-shm] ───┴────────── [virtio-blk / wdt / balloon]

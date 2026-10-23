@@ -7,16 +7,12 @@ Kernel evaluates BPF filter ──► Is it gcc/rustc? ──► YES ──► I
       ▼
 Kernel seccomp-unotify triggers
       │
-      ├──────────────────────────────┐
-      │ Atomic task freeze           ▼
-/sbin/kelir-shim freezes group   Shim extracts process metadata:
-via cgroup.freeze. Reads memory  - BLAKE3 hash of binary on disk
-via process_vm_readv(2).         - Ancestor process DAG from stat
-Parses ELF DT_NEEDED/PT_INTERP   - Raw argv and envp vectors
-from the binary on disk             │
+      │ Hypervisor freezes task group via cgroup v2
+      │ Hypervisor reads memory via process_vm_readv and disk ELF
+      │ Reads process lineage and parameters out-of-band
       │                              │
       ▼                              │
-Pipes TLV packet to vsock:5252 ─────►│ Host receives TrapEvent
+Pipes TLV packet to vsock:5252 (Ch 0)► Host receives TrapEvent
                                      │ Checks MountScope: Match? ──► NO ──► Resume (<2µs)
                                      │ YES
                                      │ Host calculates argv[1:] entropy
@@ -28,10 +24,8 @@ Pipes TLV packet to vsock:5252 ─────►│ Host receives TrapEvent
                                      ▼                              ▼
                                ALLOW / REWRITE                     DENY
                                      │                              │
-Pipes Decision to vsock:5252 ◄───────┘                              │
+Pipes Decision to vsock:5252 (Ch 0)◄─┘                              │
       │                                                             │
-      ├── If Rewrite: Prints `tty_notice`                           │
-      │   directly to the workload's PTY                               │
       ▼                                                             ▼
 kelir-shim releases syscall                               Injects exit code + stderr
 Workload resumes on vCPU                                  to agent TTY immediately

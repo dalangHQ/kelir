@@ -2,8 +2,8 @@
   - Axiomatic foundations
     - Six invariants
       - Zero harness awareness
-        - Guest sees standard POSIX: /bin/sh, /dev/pts/*, glibc/musl, TCP/IP
-        - No custom guest SDKs, CLI shims, or guest-side agents
+        - Guest sees standard POSIX kernel and standard system init
+        - Zero guest-side SDKs, agent daemons, or harness environment variables
       - In-process microkernel
         - Virtualization runs in host consumer memory via direct C-FFI
         - Backends: rustvmm, hvf, openvmm, avf, bwrap, proot
@@ -11,30 +11,29 @@
         - Filter-before-FFI boundary stops hypervisor thrash at 0µs cost
         - No dockerd, containerd, background root socket, daemon maintenance
       - Pure epistemic agnosticism
-        - Zero knowledge of LLMs, prompts, or AI morals
-        - Operates strictly as OS physics: memory pages, registers, FDs, frames
+        - Zero knowledge of prompts, evaluation loops, or orchestration logic
+        - Operates strictly as OS physics: pages, registers, descriptors, frames
         - Factoring: see: 08-epistemic.md#Scope
       - Deterministic hardware isolation
         - Hardware-enforced virtualization: Intel VT-x, AMD-V, ARM64 EL2
         - Escaped guest root cannot touch host memory or host kernel space
       - Radical plugin-first microkernel
-        - Core drives hardware virtualization and multiplexes the 4 VirtIO rings
-        - Core defines zero domain policies, protocols, or plugin signatures
-        - Every capability outside raw hypervisor physics is a decoupled plugin
-        - Plugins communicate through core ring abstractions, never peer imports
+        - Core controls hypervisor execution and dispatches VirtIO events
+        - Core defines zero domain policies, protocols, or agent schemas
+        - Capabilities outside raw hypervisor physics are decoupled plugins
+        - Plugins communicate through core device abstractions, not peer imports
         - Every capability is a decoupled, composable plugin
       - Transparent truthful steering
         - Any intercepted syscall, file read, or network packet is allowed,
           steered with tty_notice, or rejected with a machine-parsable receipt
         - No silent state divergence
     - Params ingress contract
-      - Single ingress for structured execution parameters
+      - Structured configuration delivered via paravirtual configuration device
       - Host-side validation before any guest instruction
         - Serde (Rust), TypeBox (TypeScript), Pydantic v2 (Python)
         - Falsified payloads fail at perimeter with EINVAL
-      - Single-variable injection
-        - Validated value serialized to JSON
-        - Injected as exactly one env var: KELIR_PARAMS=<json>
+      - Out-of-band device consumption
+        - Workload reads parameters from mounted read-only configuration block
       - Standard POSIX consumption
         - Guest reads KELIR_PARAMS like any other environment variable
         - No guest-side SDKs, CLI shims, or agents
@@ -44,8 +43,7 @@
       - Hardware/protocol invariant, no policy
       - Enumerated as pointers in 01-architecture.md#Core-invariants
     - Interface
-      - User-supplied contract, no composition requirement
-      - Examples: user-implemented Oracle, pluggable VmmDriver backends
+      - Pluggable backend contracts (e.g. VmmDriver)
       - Documented at the owning plane node
     - Adapter binary
       - Contract-bound process on the wire
@@ -61,12 +59,12 @@
       - Owns crate, tests, fixtures, examples: see: 02-plugin-model.md#Plugin-ownership
     - Capability decision test
       - Invariant with no policy? → core primitive
-      - User contract with no composition? → interface
+      - Backend driver contract? → interface
       - Wire contract with a process boundary? → adapter binary
       - Otherwise → plugin
   - Core invariants
     - The closed set of core primitives
-    - Interposition is total: every ring is hooked; bypass is a spec violation
+    - Interposition is total: every device channel is hooked
     - Trait definitions
       - Low-footprint preset contract: see: #Embedded-profile
       - Trait contract: see: 02-plugin-model.md#KelirPlugin-trait
@@ -74,32 +72,30 @@
     - Context types: see: 09-protocol.md#Wire-messages
     - Wire framing layout: see: 09-protocol.md#Wire-framing
     - Dispatch loop: see: 02-plugin-model.md#Static-dispatch
-    - 4-ring routing: Four-Ring Bus
-    - Params ingress + auto-Rewrite: Params ingress contract
+    - Device multiplexing: VirtIO Device Complex
+    - Params ingress contract: Params ingress contract
     - Receipts: see: 08-epistemic.md#Execution-receipts
-    - StepSlot: see: 08-epistemic.md#Step-evaluation-loop
-    - Shim primitives: Guest VM anatomy
+    - In-kernel trap engine: Guest VM anatomy
     - EROFS mount: see: 05-storage-plane.md#EROFS-rootfs
     - Shared memory mapping: see: #Shared-memory-channel
     - Portable snapshots: see: 07-lifecycle.md#Portable-snapshot-bundles
-  - Four-Ring Bus
-    - see: artifacts/diagrams/four-ring-bus.txt
-    - Core routes raw transport bytes and frames; plugins provide interpretation
-    - Zero protocol domain logic (HTTP, pgwire, ANSI, tar) lives in core
-    - virtio-vsock control plane: syscalls, PIDs, signals, traps
-    - virtio-console terminal plane: raw byte streams, PTY master/slave
-      allocation, geometry ioctls
-      - Terminal plane detail: see: 04-terminal-plane.md#Terminal-pipeline
-    - virtio-fs storage plane: FUSE request dispatch, EROFS block mounting,
-      tmpfs overlays
-    - virtio-net wire plane: L2/L3 frame interception, TAP frame routing
-      - Wire plane detail: see: 06-wire-plane.md#Wire-plane
-    - virtio-shm shared memory: zero-copy tabular data buffers
+  - VirtIO Device Complex
+    - Core routes paravirtual devices; plugins provide domain interpretation
+    - Zero protocol domain logic lives in core
+    - Primary VirtIO Bus
+      - virtio-vsock: multiplexed syscall traps and binary control channels
+      - virtio-console: multi-port streams for PTY and binary control
+      - virtio-fs: FUSE filesystem operations and virtual inode dispatch
+      - virtio-net: bidirectional L2 ethernet frame interception
+    - Paravirtual Auxiliaries
+      - virtio-blk: read-only EROFS rootfs block device
+      - virtio-shm: zero-copy shared memory regions with host memory barriers
+      - virtio-wdt: hardware watchdog with structured diagnostic export
+      - virtio-balloon: host dynamic memory reclamation
   - Shared memory channel
-    - Anonymous host memfd_create segment mapped directly into guest GPA slots
-    - Exposes zero-copy memory region via /dev/shm without custom kernel drivers
-    - High-throughput exchange bypassing FUSE and vsock serialization
-    - Mappings clean up automatically on guest process termination
+    - Anonymous host memfd segment mapped into guest physical address space
+    - Bypasses FUSE and vsock serialization under explicit host memory fences
+    - Region mappings unmap automatically on VM instance teardown
   - Embedded profile
     - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
@@ -126,18 +122,12 @@
       - 4KB kernel fixture: Linux x86_64, standard ARM64, Raspberry Pi 4
       - 16KB kernel fixture: Apple Silicon ARM64, Raspberry Pi 5, Android 15
       - Host getpagesize() selects matching vmlinux image before cold boot
-    - Shim constraints
-      - Static musl, no dynamic linkage: dynamic libc would force libc into
-        the rootfs and break the stripped-rootfs invariant
-      - Size ceiling: <50KB per architecture, enforced in CI
-      - Single-threaded async loop: a reaper thread would require pthread
-        linkage and breach the ceiling; waitpid reaps in the same loop
     - Isolation boundary
-      - Shim runs as PID 1: orphan reaping is mandatory, not optional
-      - seccomp-unotify is in-kernel; userspace cannot race the allowlist
-      - cgroup v2 freeze locks task group: atomic, zero ptrace signal race
-      - process_vm_readv extracts argv/envp atomically without trace state
-      - Ambient 64-bit task token tracks user-space thread subagent identity
+      - Standard system init reaps orphan processes
+      - In-kernel eBPF and seccomp filters trap monitored syscalls
+      - Syscall notifications stream over dedicated virtio-vsock channel
+      - Hypervisor cgroup freezer pauses task groups on trap matches
+      - VM introspection resolves process tree and executable hashes
     - Trust chain: TBD
     - Workload contract: no guest-side SDK, shim, or agent
   - VmmDriver trait

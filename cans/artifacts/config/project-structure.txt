@@ -23,8 +23,7 @@ kelir/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs                 # Core initialization exports
-│   │       ├── step.rs                # StepSlot typed checkpoint store (c.step.mark / c.step.last)
-│   │       ├── bus/                   # 4-Ring VirtIO Hardware Multiplexer
+│   │       ├── bus/                   # VirtIO Device Complex Multiplexer
 │   │       │   ├── mod.rs             # BusDispatcher trait
 │   │       │   ├── console.rs         # Ring 1: Raw terminal stream broker
 │   │       │   ├── vsock.rs           # Ring 2: Syscall trap & IPC multiplexer
@@ -42,7 +41,7 @@ kelir/
 │   │       └── telemetry/             # Hardware verification engines
 │   │           ├── mod.rs
 │   │           ├── receipt.rs         # Cryptographic ExecutionReceipt (BLAKE3, dirty pages)
-│   │           └── delta.rs           # CausalDelta / HttpRequestRecord structs ONLY (computation in plugin-ledger)
+│   │           └── delta.rs           # Physical CausalDelta primitives (computation in plugin-ledger)
 │   │
 │   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
 │   │   ├── Cargo.toml                 # Depends on kelir-core only
@@ -54,12 +53,11 @@ kelir/
 │   │       ├── fixtures.rs            # Synthetic PTY streams, overlay upperdirs, ghost configs
 │   │       └── assertions.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
 │   │
-│   ├── kelir-shim/                    # In-guest Musl static binary (<50KB payload)
+│   ├── kelir-shim/                    # Guest userland helpers (optional non-PID 1 diagnostics)
 │   │   ├── Cargo.toml                 # Configured with lto = "fat", opt-level = "z", panic = "abort"
 │   │   ├── src/
-│   │   │   ├── main.rs                # Guest PID 1 init loop (binds vsock:5252 control + vsock:5253 ingress, mounts devpts, waitpid(-1, WNOHANG) reaper)
-│   │   │   ├── reaper.rs              # Non-blocking waitpid(-1, WNOHANG) zombie reclamation loop
-│   │   │   ├── ingress.rs             # vsock:5253 ingress multiplexer → guest loopback TCP proxy
+│   │   │   ├── main.rs                # Guest helper entrypoint
+│   │   │   ├── ingress.rs             # vsock:5252 (Channel 1) stream forwarder
 │   │   │   ├── pty_broker.rs          # openpty() master/slave broker: setsid() + TIOCSCTTY controlling terminals
 │   │   │   ├── trap.rs                # seccomp-unotify loop + cgroup.freeze + process_vm_readv anti-TOCTOU
 │   │   │   ├── audit.rs               # ELF static scan (DT_NEEDED, PT_INTERP) + LD_PRELOAD verification
@@ -106,7 +104,7 @@ kelir/
 │   │   │   │   ├── lib.rs
 │   │   │   │   ├── mask.rs            # In-flight read masking (MaskRule regex redaction, fixed-width)
 │   │   │   │   ├── ghost.rs           # Synthetic RAM-only inode injector (VfsInodeAttr: mode/uid/gid/size)
-│   │   │   │   ├── reconciler.rs      # Host-boundary reconciliation: c 0 0 whiteouts + opaque dirs → atomic host sync (session.fs.reconcile())
+│   │   │   │   ├── reconciler.rs      # Atomic workspace staging reconciler (.kelir-staging-<uuid> -> atomic renameat2)
 │   │   │   │   ├── idmap.rs           # FUSE dynamic UID/GID translation (0 -> geteuid())
 │   │   │   │   └── lock_broker.rs     # Cross-VM lock broker keyed on host-mapped physical inodes
 │   │   │   ├── tests/

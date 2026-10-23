@@ -3,15 +3,16 @@
     - Plugin identifier: plugin-cas-snapshot
     - Owner crate: crates/kelir-plugins/plugin-cas-snapshot
     - name() = "cas-snapshot"; priority() = 40
-    - VirtIO Ring attachment (cas-snapshot): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (cas-snapshot): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (cas-snapshot): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for cas-snapshot
     - Context key contributed: c.cas
     - Closed-set binding rule (cas-snapshot): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (cas-snapshot)
     - Content-addressed snapshots
-      - Partitions dirty RAM and upperdir into variable chunks using fastcdc
-      - Generates content-addressed chunk identities via BLAKE3 SIMD hashing
+      - Partitions filesystem storage layers using FastCDC variable chunking
+      - Tracks dirty RAM using fixed 4KB/16KB page frames via hypervisor bitmaps
+      - Preserves direct hardware page table mapping during memory hydration
       - Synchronizes chunk differentials to S3-compatible tiers using object_store
       - Teleports twin microVM sessions across bare-metal hosts in <50ms
   - Error and return semantics (cas-snapshot)

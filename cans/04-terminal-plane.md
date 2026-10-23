@@ -1,10 +1,11 @@
 - Terminal plane
   - Terminal pipeline
     - Owner: kelir-core (virtio-console bus)
-    - Guest workload writes stdout/stderr
-    - Linux kernel PTY driver: /dev/hvc0 → /dev/pts/N
-    - isatty(1) == true, raw mode active, zero CLI downgrade
-    - virtio-console ring buffer streams bytes to host memory
+    - Multi-port VirtIO console allocates dedicated paravirtual channels
+    - Channel hvc0 binds to interactive PTY master/slave (/dev/pts/N)
+    - Channel hvc1 binds to binary protocol adapters (MCP JSON-RPC)
+    - Interactive channel preserves isatty(1) and raw mode
+    - Streaming ring buffers route directly to host supervisor memory
   - Window resize
     - Boot handshake
       - Hypervisor pushes configured initial size before first workload spawn
@@ -22,10 +23,9 @@
     - on_signal_send is observation-only; a hook cannot rewrite the signal
     - Wire path: see: 09-protocol.md#Wire-messages
   - Disclosure
-    - Core-originated mandatory notice from TrapAction::Rewrite.tty_notice
+    - Host-originated mandatory notification stream
     - Wire message
       - HostToGuest::Disclosure { body } over vsock:5252
       - Wire message definition: see: 09-protocol.md#Wire-messages
     - Guest-side
-      - Shim prints body + annotations verbatim to workload PTY
-      - No plugin-pty filter runs on shim side; disclosure is authoritative
+      - Supervisor routes disclosure directly to active PTY channel

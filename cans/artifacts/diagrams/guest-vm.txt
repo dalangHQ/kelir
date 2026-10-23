@@ -12,18 +12,13 @@
 │   │                                                                                     │
 │   ├── Rootfs Mounting: Ultra-fast read-only EROFS block device (cold-mounted in <2ms)   │
 │   │                                                                                     │
-│   ├── /sbin/kelir-shim (Static 50KB Musl Binary, Guest PID 1):                          │
-│   │     - Binds vsock:5252 (control/trap plane) AND vsock:5253 (ingress                 │
-│   │       port-forward multiplexer proxying host connections to guest loopback)         │
-│   │     - Runs a non-blocking waitpid(-1, WNOHANG) zombie reclamation loop in its       │
-│   │       async event loop (as PID 1 it is the universal orphan ancestor)               │
-│   │     - Installs seccomp-unotify filter with in-kernel BPF allowlist                  │
-│   │     - Anti-TOCTOU task-group freezes via cgroup.freeze + process_vm_readv           │
-│   │     - Parses binary ELF headers (DT_NEEDED, PT_INTERP) directly from disk           │
-│   │     - Streams raw argv/envp over vsock; host calculates entropy & allowlists        │
-│   │     - Allocates a full PTY master/slave per workload via openpty() + setsid()       │
-│   │       + TIOCSCTTY so children get a real controlling terminal; executes             │
-│   │       TIOCSWINSZ resizes over virtio-console                                        │
+│   ├── Standard Linux Init (PID 1):                                                      │
+│   │     - Standard uninstrumented musl init (tini/sysvinit); reaps zombies cleanly      │
+│   │     - Kernel-level eBPF & seccomp-unotify filters trap security-critical syscalls   │
+│   │     - Streams trap notifications over virtio-vsock port 5252 (Channel 0)            │
+│   │     - Hypervisor freezes task groups via cgroup.freeze during inspection            │
+│   │     - Dedicated virtio-console ports: hvc0 (PTY master/slave), hvc1 (binary MCP)    │
+│   │     - Zero guest-side orchestration agents, CLI shims, or env var injections        │
 │   │                                                                                     │
 │   └── UNTOUCHED GUEST WORKLOAD: Claude Code / Cursor / SWE-bench / Node / Rust / Python │
 └─────────────────────────────────────────────────────────────────────────────────────────┘

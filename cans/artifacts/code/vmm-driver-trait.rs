@@ -24,6 +24,7 @@ pub struct VmConfig {
     pub enable_gpu_passthrough: bool,
     pub enable_watchdog: bool,
     pub deterministic_clock: bool,
+    pub pinned_clocksource: Option<String>,
     pub ns_per_instruction: Option<u32>,
     pub preemption_grace_ms: u64,
     pub entropy_bypass_paths: Vec<PathBuf>,
@@ -37,12 +38,14 @@ pub struct SnapshotDescriptor {
     pub created_at_ns: u64,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum WatchdogAction {
     /// Guest kernel lockup detected → hard-reset the vCPUs and reboot the microVM
     Reboot,
     /// Unresponsive VM → emit structured diagnostic payload, then terminate instance
     Terminate { emit_diagnostic: bool },
+    /// Delegate action to a registered host plugin handler
+    Delegate { target_plugin: String },
 }
 
 #[derive(Debug, Clone)]

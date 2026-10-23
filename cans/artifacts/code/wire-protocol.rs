@@ -9,9 +9,9 @@
 //  0                   1                   2                   3
 //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |          Magic (0x4B45)       |          Version (0x03)       |
+// |          Magic (0x4B45)       |          Version (0x04)       |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |          Message Type         |          Flags                |
+// |          Channel ID           |          Message Type         |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 // |                     Sequence Number (u64)                     |
 // |                                                               |
@@ -22,13 +22,14 @@
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 pub const MAGIC: u16 = 0x4B45;     // 'KE'
-pub const VERSION: u16 = 0x03;
-pub const HEADER_LEN: usize = 20;
+pub const VERSION: u16 = 0x04;
+pub const HEADER_LEN: usize = 24;
 
 #[repr(C)]
 pub struct FrameHeader {
     pub magic: u16,
     pub version: u16,
+    pub channel_id: u16,
     pub message_type: u16,
     pub flags: u16,
     pub sequence: u64,

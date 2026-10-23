@@ -2,13 +2,14 @@
   - Storage architecture
     - see: artifacts/diagrams/storage-architecture.txt
     - Owner: kelir-core (virtio-fs bus)
-    - Read-only lower + tmpfs upper
-      - Guest root cannot corrupt the host workspace tree
-      - Deletions leave whiteouts, not disk holes; reconciler must resolve them
-        - Reconciler home: see: plugins/vfs.md#Reconciler
-    - Deterministic 64-bit host_stable_hash of inode metadata for OCC fences
-    - Hashes device, inode, mtime, and size; zero read-time payload hashing
-    - Exception for dynamic ghost inodes: see: plugins/vfs.md#Ghost-inodes
+    - Storage layout
+      - Host workspace mounted read-only as lower overlay layer
+      - Guest modifications isolated to volatile tmpfs upperdir
+      - FUSE dispatch journal tracks deletions and node overwrites in memory
+      - Host sync consumes memory journal without parsing raw overlayfs whiteouts
+    - Deterministic 64-bit metadata hash for OCC fences
+    - Hashes device, inode, generation counter, and mode in O(1) time
+    - Zero payload hashing on file open across all inode types
   - EROFS rootfs
     - Stripped base system pre-baked into read-only EROFS
     - Python, Node, Rust, Bash pre-installed
@@ -19,6 +20,12 @@
     - overlayfs upperdir lives in guest tmpfs
     - All writes stay in-memory until explicit reconcile
     - Instant revert: drop overlayfs upperdir in ~1ms, host SSD untouched
+  - Atomic workspace staging
+    - Reconciler stages modifications into an isolated temporary sibling directory
+    - Applies file creations and directory mutations to staged subtree
+    - Swaps staging tree into host workspace via atomic directory exchange
+    - Scoped fsync flushes updated file descriptors and parent directory
+    - Unfinished staging trees discard cleanly on crash recovery
   - Secondary image mounts
     - Grafts host-opened squashfs/EROFS images into guest VFS namespace
     - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE
@@ -27,13 +34,20 @@
     - Storage bus gates FUSE write() via on_vfs_write hook callbacks
     - Signature: see: artifacts/code/plugin-trait.rs
     - Write-gating error variants: see: 02-plugin-model.md#Hook-return-semantics
-    - Foreign policy inspection clamped to 64KB slice pinned synchronously
-    - Slices exceeding 64KB require Tier 1 Rust engine plugins
+    - Streaming sliding-window byte scanner inspects writes across chunk boundaries
+    - Payloads exceeding configured inspection ceiling reject with BufferCeilingExceeded
     - Buffer lifecycle invariants: see: 02-plugin-model.md#FFI-buffer-lifecycle
     - Ok(()) = allow; kernel proceeds with write to upperdir
     - Err(PluginError::Reject { errno, reason }) = deny
       - Guest write() fails with named errno; error surfaces in workload
       - Returned before any bytes enter upperdir
     - Err(PluginError::Halt) = deny + halt pipeline
-      - For policy violations requiring human review
+  - Virtual ID remapping
+    - FUSE driver dynamically maps guest UID 0/1000 to caller process UID
+    - File creation on host workspace executes under unprivileged host credentials
+    - Prevents ambient host UID values leaking into guest filesystem metadata
+  - Streaming in-flight masking
+    - Sliding-window replacement executes dynamically during FUSE read()
+    - Replaces matches with fixed-width byte patterns preserving file offset
+    - Zero full-file memory buffering on inode open
     - Observation-only snoop callbacks: see: plugins/vfs.md#Snoop-plane

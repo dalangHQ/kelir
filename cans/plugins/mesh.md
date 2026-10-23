@@ -3,7 +3,7 @@
     - Plugin identifier: plugin-mesh
     - Owner crate: crates/kelir-plugins/plugin-mesh
     - name() = "mesh"; priority() = 65
-    - VirtIO Ring attachment (mesh): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (mesh): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mesh): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for mesh
     - Context key contributed: c.mesh

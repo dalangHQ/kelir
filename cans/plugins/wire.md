@@ -3,7 +3,7 @@
     - Plugin identifier: plugin-wire
     - Owner crate: crates/kelir-plugins/plugin-wire
     - name() = "wire"; priority() = 75
-    - VirtIO Ring attachment (wire): see: 01-architecture.md#Four-Ring-Bus
+    - VirtIO device attachment (wire): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (wire): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for wire
     - Context key contributed: c.wire
@@ -68,11 +68,9 @@
       - session.forward_port() is a plugin-wire API; unmounted sessions do
         not expose it
       - Guest-initiated: no host listener
-        - Flow: guest binds → shim emits PortBound → host tunnels over
-          vsock:5253 → shim proxies to guest loopback
+        - Flow: guest binds → PortBound emitted → host tunnels over vsock:5252 (Channel 1)
       - User-initiated forward_port(): host does listen on the named port
-      - Session API in all three SDKs; ingress mechanism in
-        crates/kelir-shim/src/ingress.rs
+      - Session API in all three SDKs; ingress multiplexed over primary vsock transport
   - Error and return semantics (wire)
     - Hook signature (wire): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (wire): see: artifacts/code/plugin-trait.rs

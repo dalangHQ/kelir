@@ -3,9 +3,9 @@
 ├──────────────┬────────────────────────────────────┬────────────────────────────────────┬────────────────────────────────────┤
 │ LANGUAGE     │ PLUGIN INSTALLATION PROOF          │ INBOUND PARAMETER VALIDATION       │ RECLAMATION & FAILURE VELOCITY     │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ Rust         │ `plugin_with_handle(P)` produces   │ `c.params::<T>()` deserializes     │ RAII `Drop` terminates hypervisor; │
-│              │ typed handle; closures fail to     │ via Serde; failure halts spawn     │ Compile-time validation (rustc)    │
-│              │ compile if plugin is unmounted     │ before traps execute               │                                    │
+│ Rust         │ Typestate transition pattern:      │ `c.params::<T>()` deserializes     │ RAII `Drop` terminates hypervisor; │
+│              │ builder bounds enforce capability  │ via Serde; failure halts spawn     │ Compile-time validation (rustc)    │
+│              │ presence on handler registration   │ before traps execute               │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
 │ TypeScript   │ Type-level context accumulation;   │ `.guard({ schema: t.Object(...) })`│ `try...finally` / `using` cleanup; │
 │              │ `c.pluginKey` fails `tsc` if       │ validates via TypeBox prior to     │ Type-check time validation (tsc)   │

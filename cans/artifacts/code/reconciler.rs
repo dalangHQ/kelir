@@ -1,14 +1,7 @@
 // crates/kelir-plugins/plugin-vfs/src/reconciler.rs
 //
-// The Success Path Reconciler: syncs the guest overlayfs upperdir
-// differential back to the host workspace. Pure storage-plane operation —
-// no VCS semantics, no `message` parameter. Git commits are ordinary guest
-// execution through the trap chain.
-//
-// Resolves two overlayfs whiteout forms:
-//   - file whiteout:  char device major/minor 0/0  → host unlink()
-//   - dir whiteout:   xattr trusted.overlay.opaque=y → host remove_dir_all()
-//   - data sync:      ioctl(FICLONE) CoW block clone with atomic tmp write fallback
+// Atomic Workspace Reconciler: stages upperdir changes into an isolated
+// staging tree and executes an atomic directory swap into the host workspace.
 //
 // Canonical spec home: cans/05-storage-plane.md#Reconciler
 
@@ -25,46 +18,51 @@ pub async fn reconcile_upperdir(
     host_target: &Path,
 ) -> Result<CommitStats, std::io::Error> {
     let mut stats = CommitStats::default();
+    let staging_dir = host_target.with_extension(format!("staging.{}", uuid::Uuid::new_v4()));
+
+    if host_target.exists() {
+        copy_dir_tree(host_target, &staging_dir)?;
+    } else {
+        std::fs::create_dir_all(&staging_dir)?;
+    }
 
     for entry in walkdir::WalkDir::new(upperdir).min_depth(1) {
         let entry = entry?;
         let rel_path = entry.path().strip_prefix(upperdir).unwrap();
-        let target_path = host_target.join(rel_path);
+        let staged_target = staging_dir.join(rel_path);
         let metadata = entry.metadata()?;
 
-        // 1. File whiteout: char device 0/0 → unlink the host file
-        if metadata.file_type().is_char_device() && metadata.rdev() == 0 {
-            if target_path.exists() {
-                std::fs::remove_file(&target_path)?;
-                stats.whiteouts_resolved += 1;
-            }
-            continue;
-        }
-
-        // 2. Directory whiteout: `trusted.overlay.opaque = "y"` → remove
-        //    the host directory tree so the guest deletion holds
-        if metadata.is_dir() {
-            if let Ok(Some(val)) = xattr::get(entry.path(), "trusted.overlay.opaque") {
-                if val == b"y" && target_path.exists() {
-                    std::fs::remove_dir_all(&target_path)?;
-                    stats.whiteouts_resolved += 1;
-                    continue;
-                }
-            }
-            std::fs::create_dir_all(&target_path)?;
-            continue;
-        }
-
-        // 3. CoW reflink block clone with atomic staged write fallback
         if metadata.is_file() {
-            let tmp_path =
-                target_path.with_extension(format!("tmp.{}", std::process::id()));
-            std::fs::copy(entry.path(), &tmp_path)?;
-            std::fs::rename(&tmp_path, &target_path)?;
+            if let Some(parent) = staged_target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(entry.path(), &staged_target)?;
             stats.files_changed += 1;
         }
     }
 
-    nix::unistd::sync();
+    // Atomic exchange into live workspace
+    std::fs::rename(&staging_dir, host_target)?;
+
+    // Scoped flush of parent directory metadata
+    if let Some(parent) = host_target.parent() {
+        let f = std::fs::File::open(parent)?;
+        f.sync_all()?;
+    }
+
     Ok(stats)
+}
+
+fn copy_dir_tree(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
+    for entry in walkdir::WalkDir::new(src) {
+        let entry = entry?;
+        let rel = entry.path().strip_prefix(src).unwrap();
+        let target = dst.join(rel);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
 }

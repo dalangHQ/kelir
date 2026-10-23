@@ -26,6 +26,9 @@ pub enum PluginError {
     /// Wire plane:    frame dropped silently (errno for logging only).
     #[error("Plugin rejected: {errno} ({reason})")]
     Reject { errno: String, reason: String },
+    /// Payload size exceeds the foreign FFI boundary ceiling.
+    #[error("Inspection buffer ceiling exceeded: {size} bytes (max {max_bytes})")]
+    BufferCeilingExceeded { size: usize, max_bytes: usize },
     #[error("Internal I/O failure: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -48,24 +51,26 @@ pub struct VfsInodeAttr {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VirtioRing {
+pub enum VirtioDevice {
     Vsock,
     Console,
     Fs,
     Net,
+    Shm,
+    Auxiliary,
 }
 
 /// Mount-level scoping filters evaluated before dispatch array registration.
 #[derive(Debug, Clone, Default)]
 pub struct MountScope {
-    pub rings: Option<Vec<VirtioRing>>,
+    pub devices: Option<Vec<VirtioDevice>>,
     pub binaries: Option<Vec<String>>,
     pub paths: Option<Vec<PathBuf>>,
 }
 
 impl MountScope {
-    pub fn with_rings<I: IntoIterator<Item = VirtioRing>>(mut self, rings: I) -> Self {
-        self.rings = Some(rings.into_iter().collect());
+    pub fn with_devices<I: IntoIterator<Item = VirtioDevice>>(mut self, devices: I) -> Self {
+        self.devices = Some(devices.into_iter().collect());
         self
     }
     pub fn with_binaries<I: IntoIterator<Item = S>, S: Into<String>>(mut self, binaries: I) -> Self {
@@ -96,6 +101,13 @@ pub struct WatchdogEvent {
     pub fired_at_ns: u64,
     pub last_heartbeat_ms: u64,
     pub last_active_pid: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WatchdogVerdict {
+    ExecuteDefault,
+    Suppress,
+    Mitigate,
 }
 
 pub struct LifecycleCtx<'a> {
@@ -178,7 +190,7 @@ pub trait KelirPlugin: Send + Sync {
     ) -> Result<(), PluginError> { Ok(()) }
     async fn on_watchdog(
         &self, _event: &WatchdogEvent,
-    ) -> Result<(), PluginError> { Ok(()) }
+    ) -> Result<WatchdogVerdict, PluginError> { Ok(WatchdogVerdict::ExecuteDefault) }
 
     // ─── 3. Terminal Plane (virtio-console) ──────────────────────
     async fn on_pty_input(&self, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }

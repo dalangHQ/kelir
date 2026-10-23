@@ -18,7 +18,7 @@ pub struct TrapEvent {
     pub seq: u64,
     pub pid: u32,
     pub ppid: u32,
-    pub task_token: Option<u64>,
+    pub task_id: u64,
     pub binary_path: String,
     pub binary_blake3: [u8; 32],
     pub argv: Vec<String>,
@@ -122,8 +122,6 @@ pub enum TrapAction {
         new_binary: String,
         new_argv: Vec<String>,
         injected_env: HashMap<String, String>,
-        /// See cans/04-terminal-plane.md#Disclosure
-        tty_notice: Option<String>,
     },
     SuspendForApproval {
         poll_interval_ms: u32,

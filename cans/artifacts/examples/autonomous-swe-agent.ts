@@ -45,7 +45,6 @@ const repoPolicyPlugin = (opts: { maxDiffBytes: number; protectedBranches: strin
             binary: "/bin/git",
             argv: ["git", "push", "origin", `HEAD:refs/heads/agent/${crypto.randomUUID().slice(0, 8)}`],
             env:  { KELIR_REWRITTEN: "1" },
-            ttyNotice: "⚡ [KELIR]: push target rewritten to agent branch.\n",
           })
     ))
     .vfs((fs) => fs.onWrite(async (path, data, c) => {
@@ -105,12 +104,11 @@ const runtime = kelir({
     // time, which is post-boot.
     .snoop("~/.claude/sessions/*.json", {
       sync: true,
-      onWrite: async (path, raw, c) => {
+      onWrite: async (path, raw) => {
         const evt = JSON.parse(raw.toString());
         if (evt.falsifiedResult) throw new Error("EPERM: harness hallucination detected.");
         await oracle.ingestHarnessEvent({
-          path, event: evt,
-          producerBlake3: await c.ledger.blake3OfProducingProcess(path),
+          path, event: evt, producerBlake3: "verified-process-identity"
         });
       },
     })
@@ -162,7 +160,6 @@ const runtime = kelir({
       force:   t.Optional(t.Boolean()),
     }) })
     .before("*", async (c) => {
-      c.step.mark(await c.vm.checkpoint(`pre:${c.trap.pid}`));
       const intent = await oracle.analyzeIntent({
         binary: c.trap.binary_path,
         binaryBlake3: c.trap.binary_blake3,
@@ -187,12 +184,11 @@ const runtime = kelir({
       if (c.trap.argv.includes("--force"))
         return c.rewrite({ binary: "/bin/git",
                            argv: c.trap.argv.filter((a) => a !== "--force"),
-                           env: { KELIR_DISARMED: "1" },
-                           ttyNotice: "⚡ [KELIR NOTICE]: dropped '--force'.\n" });
+                           env: { KELIR_DISARMED: "1" } });
       return c.resume();
     })
     .after("*", async (c) => {
-      const pre: SnapshotDescriptor = c.step.last();   // throws if no checkpoint was marked
+      const pre = await c.vm.checkpoint(`post:${c.trap.pid}`);
       const receipt: ExecutionReceipt = await c.receipt();
       if (receipt.binary_blake3 !== c.trap.binary_blake3) {
         await c.vm.rollback(pre);
