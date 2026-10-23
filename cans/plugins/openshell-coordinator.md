@@ -1,0 +1,26 @@
+- Plugin openshell-coordinator
+  - Capability definition
+    - Plugin identifier: plugin-openshell-coordinator
+    - Owner crate: crates/kelir-plugins/plugin-openshell-coordinator
+    - name() = "openshell-coordinator"; priority() = 60
+    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys
+    - Context key contributed: TBD
+    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+  - Invariants and policy
+    - Coordinator hook wiring
+      - on_vm_init: register vetoes on Fork, Suspend, ClockSkew
+      - on_vm_ready: report readiness to OpenShell control plane
+      - on_watchdog: forward to OpenShell health system
+    - Checkpoint and branch policy
+      - When to checkpoint (request count, latency thresholds)
+      - What to branch on (multi-tenant isolation)
+      - Composable: a ledger plugin sees every checkpoint event
+    - GPU binding
+      - GPU passthrough via driver-rustvmm
+      - NVIDIA Container Device Interface (CDI) device mapping
+    - OpenShell contract: TBD
+  - Error and return semantics
+    - Hook signature: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior: TBD

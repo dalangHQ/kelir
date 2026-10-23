@@ -1,0 +1,76 @@
+- Plugin wire
+  - Capability definition
+    - Plugin identifier: plugin-wire
+    - Owner crate: crates/kelir-plugins/plugin-wire
+    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys
+    - Context key contributed: c.wire
+    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+  - Invariants and policy
+    - Invariant: a real secret never enters guest address space
+      - The guest sees only vault:// URNs and per-session CA certs
+      - Substitution happens host-side, after TLS termination at the proxy
+    - Total egress rule
+      - Egress is what the four channels admit; nothing else reaches NIC
+      - DNS sinkhole is the fallback that makes "unlisted ⇒ dropped" total
+    - Per-channel admission
+      - L7 proxy: TLS terminated under per-session CA; allowlist by host
+      - L4 SOCKS5: connect-by-IP; used where TLS termination is invalid
+      - SSH gate: host keyring signs; private key never crosses vsock
+      - DNS: NXDOMAIN for non-allowlisted; blocks tunneling on port 53
+    - Linear Aho-Corasick scanner inspects outbound L7 payloads for secrets
+    - L7 proxy enforces token-bucket rate limits per domain via governor
+    - Recalibrates burst capacity using Retry-After and X-RateLimit headers
+    - L7 credential swapper
+      - Guest shell sees dummy URN placeholders
+        - STRIPE_KEY="vault://stripe_prod_key"
+        - DATABASE_URL="vault://pg_creds"
+      - Secret auto-injection contract
+        - on_vm_ready injects every registered vault key into guest env
+        - Placeholder URN is the only value that ever exists inside the guest
+        - Real secret crosses wire plane exclusively on host side
+      - TLS interception contract
+        - plugin-wire generates ephemeral per-session root CA at boot
+        - CA mounted into guest trust store /etc/ssl/certs as overlayfs ghost
+        - curl, git, and language-native TLS stacks accept transparently
+        - Zero CLI flags: no --cacert, no NODE_EXTRA_CA_CERTS
+      - Request flow
+        - Guest TLS terminates at host-side forward proxy
+        - Validates target host against egress allowlist
+        - Replaces vault:// placeholder with real key from host keyring
+        - Establishes upstream TLS handshake directly from host
+      - Response scrubbing
+        - Sensitive headers (Set-Cookie, echoed auth) stripped
+        - Response re-encrypted under per-session CA before entering TAP
+    - L4 gateway
+      - Direct TCP connections route through in-memory SOCKS5 / SNI gateway
+      - No private keys or DB passwords enter guest address space
+      - L4 destination pinning: TBD
+    - SSH gate
+      - git@github.com SSH connections mapped via /dev/vhost-vsock to host SSH_AUTH_SOCK
+      - Host signs cryptographic authentication challenges
+      - Secure Enclave keys sign on host
+      - Private keys never touch guest memory
+    - DNS sinkhole
+      - All UDP port 53 traffic trapped at TAP boundary
+      - Unregistered or non-allowlisted domains → immediate NXDOMAIN
+      - DNS data tunneling exploits neutralized at hypervisor perimeter
+      - Examples blocked: secret-data.attacker.com style exfiltration
+    - Admission semantics: TBD
+      - Allowlist match key
+      - Redirect handling
+      - SNI vs Host vs IP
+      - QUIC / HTTP-3
+      - DoH / DoT
+      - Raw sockets, ICMP, IPv6
+      - Guest certificate pinning
+      - Response body scrubbing
+  - Error and return semantics
+    - Hook signature: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior: 02-plugin-model.md#Hook-return-semantics
+    - Failure and lifecycle: TBD
+      - Upstream failure surfacing
+      - Per-session CA lifetime and rotation
+      - Secret zeroization
+      - Substituted-request audit redaction

@@ -1,0 +1,48 @@
+- Plugin ledger
+  - Capability definition
+    - Plugin identifier: plugin-ledger
+    - Owner crate: crates/kelir-plugins/plugin-ledger
+    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys
+    - Context key contributed: c.ledger
+    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+  - Invariants and policy
+    - Merkle WAL
+      - Pluggable LedgerSink trait owns persistence; Merkle DB is default impl
+      - Delegated audit persistence via external_sink replaces default sink
+      - suppress_local_db skips local SQLite to preserve host single SSOT
+      - Host-isolated by construction
+        - Store path resolved relative to consumer CWD; guest paths rejected
+          at plugin construction
+        - Default path: .kelir/audit.merkle.db relative to consumer CWD
+        - WAL survives guest rollback() and fork(); no guest operation can
+          rewrite or duplicate it
+        - This invariant is the reason the WAL exists separately from receipts
+      - Ownership: core generates receipts; plugin-ledger persists and exports
+      - Ledger handler API
+        - c.ledger.flush() forces WAL flush and OTel export
+      - WAL contract: TBD
+        - Record schema
+        - Chaining formula and root signing key
+        - Backend and concurrency model
+        - Secret redaction before append
+    - OpenTelemetry
+      - Outbound HTTP requests carry W3C traceparent, injected host-side
+      - Trace continuity rule: a guest-originated request and its guest-side
+        cause (trap, spawn, receipt) resolve to the same trace
+      - Config surface lives in plugin-ledger (OtelConfig); not restated here
+      - Span contract: TBD
+        - Names and parent/child
+        - Error mapping and sampling
+        - Attribute allowlist and redaction
+        - Export-failure behavior
+    - compute_causal_delta() engine
+      - Computation is policy-bearing; it lives in plugin-ledger
+      - Session accessor `get_causal_delta_from_parent()` requires
+        plugin-ledger mounted; unmounted sessions do not expose it
+      - Causal delta definition: 08-epistemic.md#Causal-delta
+      - CausalDelta computation: TBD
+  - Error and return semantics
+    - Hook signature: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior

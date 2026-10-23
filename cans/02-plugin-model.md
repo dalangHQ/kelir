@@ -66,6 +66,7 @@
     - Plugin-provided (present only when the plugin is mounted)
       - c.term ← plugin-pty; c.fs ← plugin-vfs; c.ledger ← plugin-ledger;
         c.wire ← plugin-wire; c.chaos ← plugin-chaos;
+        c.db ← plugin-db-proxy; c.mesh ← plugin-mesh;
         c.density ← plugin-hyper-density; c.ingress ← plugin-wire-ingress
     - User-provided via typed handle
       - c.<key> from .decorate() / PluginWithHandle / BasePlugin.handle()
@@ -73,30 +74,31 @@
       restated here
   - First-class plugins
     - Minimum set: pty, vfs, wire, chaos, ledger
-    - Behavior of each: at the owning plane
-      - plugin-pty: see 04-terminal-plane.md
-      - plugin-vfs: see 05-storage-plane.md
-      - plugin-wire, plugin-chaos: see 06-wire-plane.md
-      - plugin-db-proxy: see 06-wire-plane.md#Database-proxy-plane
-      - plugin-mesh: see 06-wire-plane.md#Federation-mesh
-      - plugin-lock-broker: see 05-storage-plane.md#Entity-lock-broker
-      - plugin-hyper-density: see 07-lifecycle.md#Autonomous-idle-eviction
-      - plugin-cas-snapshot: see 07-lifecycle.md#Content-addressed-snapshots
-      - plugin-wire-ingress: see 06-wire-plane.md#Connection-parking
-      - plugin-supply-chain: guard behavior at #Supply-chain-guard
-      - plugin-ledger: see 08-epistemic.md
+    - Behavior of each: at its plugin file
+      - plugin-pty: plugins/pty.md — c.term
+      - plugin-vfs: plugins/vfs.md — c.fs
+      - plugin-wire: plugins/wire.md — c.wire
+      - plugin-chaos: plugins/chaos.md — c.chaos
+      - plugin-ledger: plugins/ledger.md — c.ledger
+      - plugin-db-proxy: plugins/db-proxy.md — c.db
+      - plugin-mesh: plugins/mesh.md — c.mesh
+      - plugin-lock-broker: plugins/lock-broker.md — c.locks
+      - plugin-supply-chain: plugins/supply-chain.md — package-manager guard
+      - plugin-hyper-density: plugins/hyper-density.md — c.density
+      - plugin-cas-snapshot: plugins/cas-snapshot.md — c.cas
+      - plugin-wire-ingress: plugins/wire-ingress.md — c.ingress
+      - plugin-mcp: plugins/mcp.md — c.mcp
+      - plugin-oci-translator: plugins/oci-translator.md — OCI layer translation
+      - plugin-openshell-coordinator: plugins/openshell-coordinator.md — checkpoint policy
+      - Pointer rule: plugin files are leaf targets; canonical ref matrix in plugins/index.md
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
-      - session.fs.*: see 05-storage-plane.md#Reconciler
+      - session.fs.*: plugins/vfs.md
       - session.term.*: see 04-terminal-plane.md#Disclosure
       - session.forward_port(): see 07-lifecycle.md#Port-forwarding
       - session.wire.*: TBD (no node owns it today)
-      - session.ledger.*: see 08-epistemic.md#Merkle-WAL
+      - session.ledger.*: plugins/ledger.md
       - session.get_causal_delta_from_parent(): see 08-epistemic.md#Causal-delta
-  - Supply chain guard
-    - Owner: plugin-supply-chain; monitors package manager process trees
-    - Inspects ancestor_chain on TrapEvent for package managers (npm, pip)
-    - Blocks execution of lifecycle scripts in dependency directories
   - Plugin ownership
     - Contract, not layout; see 11-operations.md#Project-structure for crate layout
     - Dependency rules

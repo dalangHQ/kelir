@@ -1,0 +1,33 @@
+- Plugin chaos
+  - Capability definition
+    - Plugin identifier: plugin-chaos
+    - Owner crate: crates/kelir-plugins/plugin-chaos
+    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys
+    - Context key contributed: c.chaos
+    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+  - Invariants and policy
+    - Bidirectional across wire plane
+      - on_net_outbound mutates frames leaving guest
+      - on_net_inbound mutates frames arriving at guest
+      - Both directions flow through same chaos rule engine
+    - Network chaos
+      - target: domain or host pattern
+      - direction: "outbound" | "inbound" | "both"
+      - latency: { baseMs, jitterMs }
+      - dropRate: synthetic packet loss probability
+      - injectRst: synthetic TCP RST flags
+      - bandwidthKbps: link speed clamp
+    - Storage chaos
+      - targetPath: glob over guest filesystem
+      - simulateError: errno such as ENOSPC
+      - errorProbability: fraction of write() calls failed
+    - Typical uses
+      - Verify agent code handles flaky APIs, dialup speeds, RST resets
+      - Verify graceful degradation on disk-full conditions
+    - Wiring: artifacts/examples/autonomous-swe-agent.ts
+  - Error and return semantics
+    - Hook signature: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior
+      - Mutation failure behavior: TBD

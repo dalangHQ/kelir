@@ -1,0 +1,16 @@
+- Plugin supply-chain
+  - Capability definition
+    - Plugin identifier: plugin-supply-chain
+    - Owner crate: crates/kelir-plugins/plugin-supply-chain
+    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys
+    - Context key contributed: TBD
+    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+  - Invariants and policy
+    - Monitors package manager process trees
+    - Inspects ancestor_chain on TrapEvent for package managers (npm, pip)
+    - Blocks execution of lifecycle scripts in dependency directories
+  - Error and return semantics
+    - Hook signature: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior: TBD

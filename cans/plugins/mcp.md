@@ -1,0 +1,30 @@
+- Plugin mcp
+  - Capability definition
+    - Plugin identifier: plugin-mcp
+    - Owner crate: crates/kelir-plugins/plugin-mcp
+    - name() = "mcp"; priority() = 50
+    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys
+    - Context key contributed: c.mcp
+    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+  - Invariants and policy
+    - Thin in-process adapter routing JSON-RPC stdio directly to VirtIO rings
+    - MCP plugin: maps tools directly to virtio-console, virtio-fs, and traps
+    - MCP hook wiring
+      - on_vm_ready: setup JSON-RPC transport, advertise capabilities
+      - on_pty_output / on_pty_input: stream terminal to/from MCP client
+      - on_vfs_read / on_vfs_write: expose as read_file / write_file
+      - on_trap: observe syscalls to correlate execute_command with trap
+      - on_process_exit: emit MCP task completion events
+      - on_disclosure: route mandatory notices into MCP stream
+    - Mapping (external tool → ring op)
+      - execute_command → virtio-console via spawn, wrapped
+      - read_file → virtio-fs lookup + read
+      - write_file → virtio-fs write
+    - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
+      - Previously impossible: adapter binary sat outside the graph
+    - MCP contract: TBD
+  - Error and return semantics
+    - Hook signature: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior: TBD

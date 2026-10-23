@@ -36,21 +36,22 @@
     - Human approval waits at zero CPU: see 07-lifecycle.md#Suspend-and-resume
     - Time-sensitive tests (JWT, cron, certs): see 07-lifecycle.md#Clock-skew
     - Deterministic execution replay: see 07-lifecycle.md#Clock-skew
-    - Relational database governance: see 06-wire-plane.md#Database-proxy-plane
-    - Supply chain package protection: see 02-plugin-model.md#Supply-chain-guard
+    - Relational database governance: plugins/db-proxy.md
+    - Supply chain package protection: plugins/supply-chain.md
     - Zero-copy high-throughput IPC: see 01-architecture.md#Shared-memory-channel
     - Cross-host state migration: see 07-lifecycle.md#Portable-snapshot-bundles
-    - Flaky-API and disk-full resilience: see 06-wire-plane.md#Fault-injection-plugin-chaos
+    - Flaky-API and disk-full resilience: plugins/chaos.md
     - Container builds without nested VMX: see 07-lifecycle.md#Docker-in-kelir
     - Human break-glass on agent loops: see 07-lifecycle.md#Break-glass
     - Low-memory SBC execution: see 01-architecture.md#Embedded-profile
-    - Sub-15ms idle scale-to-zero: see 07-lifecycle.md#Autonomous-idle-eviction
-    - Cross-cluster state teleport: see 07-lifecycle.md#Content-addressed-snapshots
-    - Zero-downtime connection parking: see 06-wire-plane.md#Connection-parking
+    - Sub-15ms idle scale-to-zero: plugins/hyper-density.md
+    - Cross-cluster state teleport: plugins/cas-snapshot.md
+    - Zero-downtime connection parking: plugins/wire-ingress.md
     - Mobile runtime governance on Android/Termux: see 01-architecture.md#Driver-backends
   - Spec map
     - Foundation: see 01-architecture.md
     - Plugin model: see 02-plugin-model.md
+    - Plugin catalog: plugins/index.md
     - SDK architecture: see 03-sdk-architecture.md
     - Terminal plane: see 04-terminal-plane.md
     - Storage plane: see 05-storage-plane.md

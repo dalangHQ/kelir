@@ -57,6 +57,10 @@
       is dead and gets removed
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
+    - Decoupled plugin specs
+      - One spec file per plugin in the cans plugin folder (15 files)
+      - Plugin catalog file: index.md in the plugin folder
+      - Leaf-pointer rule: plugin files hold no refs; pointers are plain outside the catalog
     - Matrix job: test-plugins
       - One cell per first-class plugin (15 total)
       - Each cell: cargo nextest run -p plugin-<name>
@@ -142,6 +146,12 @@
       - kelir-plugins: first-class plugins
         - pty, vfs, wire, chaos, ledger, mcp, oci-translator
         - openshell-coordinator, db-proxy, mesh, lock-broker, supply-chain
+        - hyper-density, cas-snapshot, wire-ingress
+    - Decoupled spec layout
+      - Core plane files: cans/00-overview.md to cans/11-operations.md
+      - Plugin spec files: one <name>.md per plugin in the plugin folder
+      - Plugin catalog file: index.md in the plugin folder, the ref matrix home
+      - Catalog is the only plugin file holding the plugin ref matrix
       - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
       - kelir-shim: in-guest musl PID 1 (<50KB)
     - Test infrastructure

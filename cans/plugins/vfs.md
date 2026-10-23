@@ -1,0 +1,92 @@
+- Plugin vfs
+  - Capability definition
+    - Plugin identifier: plugin-vfs
+    - Owner crate: crates/kelir-plugins/plugin-vfs
+    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
+    - Storage bus attachment: 05-storage-plane.md#Storage-plane
+  - Context keys
+    - Context key contributed: c.fs
+    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+  - Invariants and policy
+    - Reconciler
+      - artifacts/code/reconciler.rs
+      - session.fs.reconcile() is a pure storage-plane operation
+      - Syncs overlay upperdir differential to host workspace
+      - Carries no VCS semantics, accepts no message parameter
+      - Git commit is ordinary guest execution through the trap chain
+      - Invariant: host SSD is mutated by exactly one path — reconcile()
+        - Every other layer lives in guest RAM or host RAM
+        - Rollback reverts guest state with zero host SSD involvement
+      - Algorithm
+        - Consumes in-memory dirty set and deletion map from plugin-vfs
+        - Resolves file whiteouts: character device 0/0 → host unlink()
+        - Resolve dir whiteouts: trusted.overlay.opaque=y → host remove_dir_all()
+        - Fast CoW block clone via ioctl(FICLONE) with tmp sibling fallback
+        - Flush with syncfs()/fsync() before reporting completion
+      - Whiteout problem
+        - Deleted files become char devices with major/minor 0/0 (mknod c 0 0)
+        - Deleted or shadowed directories carry xattr trusted.overlay.opaque="y"
+        - Naive upperdir copy writes unusable device nodes and resurrects dirs
+      - CommitStats counters
+        - files_changed: count of modified or newly created files
+        - whiteouts_resolved: count of file and directory whiteouts handled
+      - Reconciler coverage: TBD
+        - Symlinks
+        - Hardlinks
+        - Non-regular, non-dir file types
+        - xattrs and ACLs
+        - Mode, uid, gid, mtime
+        - Sparse files
+        - Deleted-directory subtree walk
+        - Reconcile-during-write
+        - Partial-reconcile crash recovery
+        - Directory fsync
+        - Host-side deletion scope
+    - Ghost inodes
+      - Static ghost
+        - In-memory content fixed at .ghost() call
+        - Example: /root/.gitconfig, /workspace/.env.local
+      - Dynamic ghost
+        - Content factory evaluated fresh per open()
+        - Example: /workspace/identity.jwt regenerating per open
+      - Full VfsInodeAttr: mode, uid, gid, size, content
+      - FUSE LOOKUP reply populated verbatim
+      - mode: 0o400 honored exactly, no permission fallback
+      - Physically does not exist on host SSD
+    - In-flight read masking
+      - maskRead intercepts FUSE lookup/open at inode boundary
+      - Sensitive targets synthesize RAM-backed ghost inodes on open
+      - Typical targets: .env, secrets files, private keys
+      - Fixed-width redaction
+        - Replacement padded or truncated to exact byte length of the match
+        - st_size and file offsets preserved
+        - Sequential reads and trailing reads stay consistent
+        - Short-match padding rule: TBD
+      - Format-preserving masking (FPA) executes via ghost inode generator
+      - Generates format-valid synthetic content before guest read calls
+      - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks
+      - artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
+    - UID/GID idmap
+      - Translates guest UID 0 (root) and 1000 (user) to host geteuid()/getegid()
+      - macOS host: developer is UID 501
+      - Linux host: developer is UID 1000
+      - Result: agent-created files are immediately editable without sudo
+    - Shared host package caches
+      - Host ~/.npm → guest /root/.npm
+      - Host ~/.cache/pip → guest /root/.cache/pip
+      - Host ~/.cargo/registry → guest /usr/local/cargo/registry
+      - Cold installs drop from ~2 minutes to <3 seconds via local SSD
+    - Snoop plane
+      - Invariant: a snoop observation reflects the producing process, not a
+        kernel flusher
+        - Achieved by bypassing guest page cache on snooped paths; mechanism
+          lives in plugin-vfs
+      - Invariant: no host-side hook failure can leave the guest thread in D
+        state
+        - Achieved by a guaranteed FUSE reply from every user callback;
+          mechanism lives in plugin-vfs
+      - Consumer: Oracle.ingest_harness_event; 08-epistemic.md#Oracle
+  - Error and return semantics
+    - Hook signature: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior: 05-storage-plane.md#Write-gating

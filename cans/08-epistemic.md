@@ -23,7 +23,7 @@
       - verify_physical_receipt(&ExecutionReceipt) -> bool
         - Called from after(*) post-condition verification
       - ingest_harness_event(&Path, &Value, &str)
-        - Called from snoop callbacks; see 05-storage-plane.md#Snoop-plane
+        - Called from snoop callbacks; plugins/vfs.md#Snoop-plane
       - await_human_approval()
         - Called between suspend/resume for human-in-the-loop gates
       - current_trace_id() -> String
@@ -45,8 +45,8 @@
     - Boundaries
       - Primitive set: see 01-architecture.md#Core-invariants
       - CausalDelta: see #Causal-delta
-      - Merkle chain: see #Merkle-WAL
-      - OpenTelemetry spans: see #OpenTelemetry
+      - Merkle chain: plugins/ledger.md#Merkle-WAL
+      - OpenTelemetry spans: plugins/ledger.md#OpenTelemetry
       - Oracle analyses: consumer's Oracle impl
   - Execution receipts
     - See: artifacts/code/execution-receipt.rs
@@ -87,41 +87,9 @@
     - Type ownership
       - Struct is a shared context type; it lives in kelir-core next to
         ExecutionReceipt
-      - Computation is policy-bearing; it lives in plugin-ledger
-      - Session accessor `get_causal_delta_from_parent()` requires
-        plugin-ledger mounted; unmounted sessions do not expose it
+      - Computation is derived: plugins/ledger.md#compute-causal-delta()-engine
     - This split follows the primitive-vs-derived rule: type is primitive,
       computation is derived
-    - CausalDelta computation: TBD
-  - Merkle WAL
-    - Pluggable LedgerSink trait owns persistence; Merkle DB is default impl
-    - Delegated audit persistence via external_sink replaces default sink
-    - suppress_local_db skips local SQLite to preserve host single SSOT
-    - Host-isolated by construction
-      - Store path resolved relative to consumer CWD; guest paths rejected
-        at plugin construction
-      - Default path: .kelir/audit.merkle.db relative to consumer CWD
-      - WAL survives guest rollback() and fork(); no guest operation can
-        rewrite or duplicate it
-      - This invariant is the reason the WAL exists separately from receipts
-    - Ownership: core generates receipts; plugin-ledger persists and exports
-    - Ledger handler API
-      - c.ledger.flush() forces WAL flush and OTel export
-    - WAL contract: TBD
-      - Record schema
-      - Chaining formula and root signing key
-      - Backend and concurrency model
-      - Secret redaction before append
-  - OpenTelemetry
-    - Outbound HTTP requests carry W3C traceparent, injected host-side
-    - Trace continuity rule: a guest-originated request and its guest-side
-      cause (trap, spawn, receipt) resolve to the same trace
-    - Config surface lives in plugin-ledger (OtelConfig); not restated here
-    - Span contract: TBD
-      - Names and parent/child
-      - Error mapping and sampling
-      - Attribute allowlist and redaction
-      - Export-failure behavior
   - Three-tier truth
     - See: artifacts/diagrams/truth-hierarchy.txt
     - Tier evidence per tier: See artifacts/diagrams/truth-hierarchy.txt

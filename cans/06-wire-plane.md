@@ -1,112 +1,15 @@
 - Wire plane
   - Wire architecture
     - See: artifacts/diagrams/wire-plane.txt
-    - Owner: plugin-wire; see 02-plugin-model.md#First-class-plugins
-    - Invariant: a real secret never enters guest address space
-      - The guest sees only vault:// URNs and per-session CA certs
-      - Substitution happens host-side, after TLS termination at the proxy
-    - Total egress rule
-      - Egress is what the four channels admit; nothing else reaches NIC
-      - Default deny: allowlist miss is silent drop (on_net_outbound Reject)
-      - DNS sinkhole is the fallback that makes "unlisted ⇒ dropped" total
-    - Per-channel admission
-      - L7 proxy: TLS terminated under per-session CA; allowlist by host
-      - L4 SOCKS5: connect-by-IP; used where TLS termination is invalid
-      - SSH gate: host keyring signs; private key never crosses vsock
-      - DNS: NXDOMAIN for non-allowlisted; blocks tunneling on port 53
-    - Linear Aho-Corasick scanner inspects outbound L7 payloads for secrets
-    - L7 proxy enforces token-bucket rate limits per domain via governor
-    - Recalibrates burst capacity using Retry-After and X-RateLimit headers
-    - Composability: plugin-chaos mutates frames in both directions
-    - Return contract: see 02-plugin-model.md#Hook-return-semantics
-    - Admission semantics: TBD
-      - Allowlist match key
-      - Redirect handling
-      - SNI vs Host vs IP
-      - QUIC / HTTP-3
-      - DoH / DoT
-      - Raw sockets, ICMP, IPv6
-      - Guest certificate pinning
-      - Response body scrubbing
-  - L7 credential swapper
-    - Guest shell sees dummy URN placeholders
-      - STRIPE_KEY="vault://stripe_prod_key"
-      - DATABASE_URL="vault://pg_creds"
-    - Secret auto-injection contract
-      - on_vm_ready injects every registered vault key into guest env
-      - Placeholder URN is the only value that ever exists inside the guest
-      - Real secret crosses wire plane exclusively on host side
-    - TLS interception contract
-      - plugin-wire generates ephemeral per-session root CA at boot
-      - CA mounted into guest trust store /etc/ssl/certs as overlayfs ghost
-      - curl, git, and language-native TLS stacks accept transparently
-      - Zero CLI flags: no --cacert, no NODE_EXTRA_CA_CERTS
-    - Request flow
-      - Guest TLS terminates at host-side forward proxy
-      - Validates target host against egress allowlist
-      - Replaces vault:// placeholder with real key from host keyring
-      - Establishes upstream TLS handshake directly from host
-    - Response scrubbing
-      - Sensitive headers (Set-Cookie, echoed auth) stripped
-      - Response re-encrypted under per-session CA before entering TAP
-    - Failure and lifecycle: TBD
-      - Upstream failure surfacing
-      - Per-session CA lifetime and rotation
-      - Secret zeroization
-      - Substituted-request audit redaction
-  - L4 gateway
-    - Direct TCP connections route through in-memory SOCKS5 / SNI gateway
-    - Database proxying
-      - PostgreSQL on 5432, Redis on 6379
-      - Ephemeral DB credentials injected at host connection boundary
-      - Client mTLS certificates injected at host boundary
-    - No private keys or DB passwords enter guest address space
-    - L4 destination pinning: TBD
-  - Database proxy plane
-    - Owner: plugin-db-proxy; mediates relational database communication
-    - PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser
-    - SQLite: exposes /run/kelir/db.sock forwarded via vsock host service
-    - Verdict execution: DbAction::Allow, DbAction::Deny, DbAction::Rewrite
-  - Federation mesh
-    - Owner: plugin-mesh; sovereign cross-hypervisor peer transport
-    - Routes point-to-point peer streams via vsock listener services
-    - Injects and validates mTLS framing across hypervisor boundaries
-    - Propagates W3C traceparents and call-hop counters across routines
-  - SSH gate
-    - git@github.com SSH connections mapped via /dev/vhost-vsock to host SSH_AUTH_SOCK
-    - Host signs cryptographic authentication challenges
-    - Secure Enclave keys sign on host
-    - Private keys never touch guest memory
-  - DNS sinkhole
-    - All UDP port 53 traffic trapped at TAP boundary
-    - Unregistered or non-allowlisted domains → immediate NXDOMAIN
-    - DNS data tunneling exploits neutralized at hypervisor perimeter
-    - Examples blocked: secret-data.attacker.com style exfiltration
-  - Fault injection plugin-chaos
-    - Bidirectional across wire plane
-      - on_net_outbound mutates frames leaving guest
-      - on_net_inbound mutates frames arriving at guest
-      - Both directions flow through same chaos rule engine
-    - Network chaos
-      - target: domain or host pattern
-      - direction: "outbound" | "inbound" | "both"
-      - latency: { baseMs, jitterMs }
-      - dropRate: synthetic packet loss probability
-      - injectRst: synthetic TCP RST flags
-      - bandwidthKbps: link speed clamp
-    - Storage chaos
-      - targetPath: glob over guest filesystem
-      - simulateError: errno such as ENOSPC
-      - errorProbability: fraction of write() calls failed
-    - Typical uses
-      - Verify agent code handles flaky APIs, dialup speeds, RST resets
-      - Verify graceful degradation on disk-full conditions
-    - Wiring: See artifacts/examples/autonomous-swe-agent.ts
-  - Connection parking
-    - Owner: plugin-wire-ingress; see 02-plugin-model.md#First-class-plugins
-    - Holds inbound client TCP connections without dropped frames during suspend
-    - Clamps socket receive buffers via socket2 to stall window progress natively
-    - Sniffs routing metadata in nanoseconds with zero allocation via httparse
-    - Wakes target microVM via LifecycleCtx when ingress bytes arrive
-    - Splices client stream directly to vsock:5253 using tokio copy_bidirectional
-    - Zero-downtime webhook and interactive terminal connection continuity
+    - Return contract: 02-plugin-model.md#Hook-return-semantics
+  - TAP bridge and L2 frame intercept
+    - TAP interface bridge connects the guest virtio-net device to the host
+    - All frames in both directions cross the TAP boundary
+    - L2 frames are intercepted at the TAP boundary before forwarding
+  - Raw packet interception points
+    - on_net_outbound: hook on frames leaving the guest
+    - on_net_inbound: hook on frames arriving at the guest
+  - Frame drop and forward semantics
+    - Ok(()) on outbound = forward; Ok(()) on inbound = deliver
+    - Err(Reject) = silent drop (no RST, no guest error)
+    - Default deny: allowlist miss is silent drop (on_net_outbound Reject)

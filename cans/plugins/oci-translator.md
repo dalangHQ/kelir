@@ -1,0 +1,21 @@
+- Plugin oci-translator
+  - Capability definition
+    - Plugin identifier: plugin-oci-translator
+    - Owner crate: crates/kelir-plugins/plugin-oci-translator
+    - name() = "oci-translator"; priority() = 20
+    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys
+    - Context key contributed: TBD
+    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+  - Invariants and policy
+    - Shim hook wiring
+      - on_vm_init: translate OCI image layers → EROFS block
+      - on_vfs_lookup: resolve image-declared volumes
+    - Translation policy
+      - Layer flattening, whiteout application, /etc overlay
+      - Composable: a chaos plugin can fault-inject into image pulls
+    - Containerd contract: TBD
+  - Error and return semantics
+    - Hook signature: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior: TBD

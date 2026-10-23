@@ -1,0 +1,18 @@
+- Plugin cas-snapshot
+  - Capability definition
+    - Plugin identifier: plugin-cas-snapshot
+    - Owner crate: crates/kelir-plugins/plugin-cas-snapshot
+    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys
+    - Context key contributed: c.cas
+    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+  - Invariants and policy
+    - Content-addressed snapshots
+      - Partitions dirty RAM and upperdir into variable chunks using fastcdc
+      - Generates content-addressed chunk identities via BLAKE3 SIMD hashing
+      - Synchronizes chunk differentials to S3-compatible tiers using object_store
+      - Teleports twin microVM sessions across bare-metal hosts in <50ms
+  - Error and return semantics
+    - Hook signature: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior

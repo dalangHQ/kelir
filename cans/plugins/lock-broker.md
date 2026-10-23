@@ -1,0 +1,20 @@
+- Plugin lock-broker
+  - Capability definition
+    - Plugin identifier: plugin-lock-broker
+    - Owner crate: crates/kelir-plugins/plugin-lock-broker
+    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
+    - Storage bus attachment: 05-storage-plane.md#Storage-plane
+  - Context keys
+    - Context key contributed: c.locks
+    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+  - Invariants and policy
+    - Entity lock broker
+      - Owner: plugin-lock-broker; mediates cross-VM file locking
+      - Intercepts FUSE_SETLK and FUSE_SETLKW on declared repository paths
+      - Maps guest virtual inode to host physical inode via virtio-fs mount
+      - Delegates lock acquisition directly to host OS advisory locks (flock)
+      - Non-blocking: conflicting lock returns EWOULDBLOCK without host lag
+  - Error and return semantics
+    - Hook signature: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior: 05-storage-plane.md#Write-gating

@@ -1,0 +1,76 @@
+- Plugin pty
+  - Capability definition
+    - Plugin identifier: plugin-pty
+    - Owner crate: crates/kelir-plugins/plugin-pty
+    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
+    - Terminal bus transport: 04-terminal-plane.md#Terminal-pipeline
+  - Context keys
+    - Context key contributed: c.term
+    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+    - Terminal handler API
+      - c.term.notice(text) emits a Disclosure event
+      - Routes through the same wire message as TrapAction::Rewrite.tty_notice
+  - Invariants and policy
+    - Five filters
+      - Filter set and per-filter behavior: artifacts/diagrams/terminal-pipeline.txt
+      - Ordering invariant
+        - ANSI strip precedes prompt match: SGR codes split regex targets
+        - Prompt match precedes Token Shield: clamping trims matched prompts
+        - Signal forwarding observes post-sanitization bytes only
+      - Placement invariant
+        - All five execute host-side at the virtio-console boundary
+        - In-guest placement would cede the chain to a compromised shim
+      - Single intentional bypass
+        - HostToGuest::Disclosure skips all five; body is authoritative
+        - Bypass path: 04-terminal-plane.md#Disclosure
+      - Threat model
+        - OSC 52: clipboard hijack (agent reads/writes human clipboard)
+        - OSC 0/1/2: title spoofing (agent impersonates terminal session)
+        - Both are Tier-1 violations: 08-epistemic.md#Three-tier-truth
+      - Escape families outside the model: TBD
+    - ANSI sanitizer
+      - Drops OSC 52 (`\x1b]52;c;…`) at the virtio-console ring boundary
+      - Strips OSC 0/1/2 before the host terminal emulator observes bytes
+      - Only OSC sequences are touched; SGR (color, bold) passes through
+      - Threat rationale: #Five-filters
+    - Prompt responder
+      - Matchers run against ANSI-SGR-stripped plaintext shadow copy
+      - Regex matches text regardless of SGR color or bold codes
+      - Original bytes stream with styling intact
+      - Anti-spoof verification
+        - Executes only if PTY holder matches kernel foreground process group
+        - Background echo of prompt text cannot trigger automated responses
+      - Example wiring: artifacts/examples/autonomous-swe-agent.ts
+      - Abuse and failure model: TBD
+    - Active leak detection
+      - Linear Aho-Corasick automaton scans terminal output for vault secrets
+      - Detection triggers immediate security panic hook before render
+    - Screen matrix export
+      - Maintains headless VT100 grid state machine via embedded parser
+      - export_screen_matrix() yields deterministic terminal wireframe states
+      - Zero hand-rolled parser state; evaluates raw byte streams directly
+    - Token Shield
+      - Ceilings: maxBytesTotal (e.g. 64KB), maxLinesTotal (e.g. 300)
+      - Clamps by token ceiling via pluggable TokenCounter trait
+      - Default ratio heuristic: 3.5 chars/token; zero tokenizer bloat
+      - clampStrategy: head-and-tail (keep first 50 + last 100 lines)
+      - onClamp callback returns truncation notice with droppedBytes/droppedLines
+      - Boundary-safe clamping
+        - Scans backward up to 4 bytes to find leading UTF-8 code-point
+        - Scans backward to unclosed CSI/OSC start; appends reset sequence
+        - Zero-allocation scan ensures glyphs and escape sequences survive intact
+      - Protects LLM context window from runaway logs and stack traces
+    - Disclosure annotation
+      - Host-side pipeline
+        - on_disclosure(&body) fires on every plugin in priority() order
+        - Hook returns Some(bytes) to append; None to pass
+        - Annotations concatenate after body in priority() order
+        - Body itself is immutable by contract
+      - Invariant: zero silent state divergence
+        - Any host-side state mutation reaches the workload's TTY
+        - Plugins annotate; none suppress
+      - Annotation bounds: TBD
+  - Error and return semantics
+    - Hook signature: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior: 02-plugin-model.md#Hook-return-semantics
