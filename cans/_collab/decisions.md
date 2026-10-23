@@ -1,2 +1,4 @@
 - decisions
+  - status: accepted | date: 2026-10-23 | title: Multi-Language Semantic Parity & DX | rfc: kelir-sdks.md | details: Native idiom equivalence across Rust/TS/Python, precompiled wheels, AST manifest diffs, and unhandled exception freeze recovery.
+  - status: accepted | date: 2026-10-23 | title: Two-Tier Plugin & FFI Gate | rfc: kelir-tiers.md | details: Engine Rust plugins vs userland policy plugins, filter-before-FFI, and pinned FFI memory buffers.
   - status: accepted | date: 2026-10-22 | title: Deterministic OS Substrate Primitives | rfc: kelir-ask.md | details: Added PMU retired instruction accounting, virtio-shm shared memory, non-blocking Yield/Abort traps, 2PC lifecycle sync, portable snapshots, synthetic instruction clocks, and decoupled db-proxy/mesh/lock-broker/supply-chain plugins.

@@ -1,4 +1,17 @@
 - Plugin model
+  - Two-tier execution architecture
+    - Engine tier (Tier 1)
+      - Compiled native Rust plugins in crates/kelir-plugins
+      - Direct memory execution on 4 VirtIO rings at sub-12µs latency
+      - High-frequency mutation: raw PTY ANSI, FUSE CoW, TAP L2 frames
+    - Policy tier (Tier 2)
+      - Userland host plugins authored in TypeScript, Python, or Rust
+      - Executes in host runtime event loop via ForeignPluginProxy
+      - Steers agent workflows, prompt rules, branch gates, and masks
+  - Foreign plugin proxy
+    - Bridges language runtimes to KelirPlugin trait via NAPI/PyO3
+    - Marshals ring events across threadsafe boundaries on match
+    - Non-blocking trap returns: Allow, Deny, Rewrite, Yield, Abort
   - KelirPlugin trait
     - see: artifacts/code/plugin-trait.rs
     - Trait surface and hook families: see: artifacts/code/plugin-trait.rs
@@ -56,6 +69,16 @@
     - Binary filter: kernel BPF drops traps for unlisted executable paths
     - Path filter: FUSE layer bypasses VFS hooks outside declared subtrees
     - Network filter: TAP dispatcher bypasses net hooks outside declared CIDR/port rules
+  - Filter-before-FFI gate
+    - Unmonitored guest operations bypass host language runtimes entirely
+    - Host core checks MountScope in native memory before crossing FFI
+    - FFI trampoline executes only when ring event satisfies scope match
+    - Protects guest toolchain execution speed (cargo build, npm install)
+  - FFI buffer lifecycle
+    - Guest memory slices pinned synchronously during async hook execution
+    - Prevents use-after-free while V8 or Python awaits handler resolution
+    - Policy inspection clamped to 64KB ceiling to eliminate FFI memory bloat
+    - Stream mutations exceeding ceiling require Tier 1 Rust engine plugins
   - Core context keys
     - Handler-visible keys; each key's definition lives at its owning plane
     - Invariant: core runtime carries zero hardcoded plugin context keys

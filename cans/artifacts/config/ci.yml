@@ -111,9 +111,9 @@ jobs:
       - name: Core + testkit
         run: cargo nextest run -p kelir-core -p kelir-plugin-testkit
 
-  # ─── 3b. MULTI-LANGUAGE PARITY GATE ────────────────────────
-  # Merge-blocking. Vectors + surface diff run via kelir-plugin-cli,
-  # the same subcommand `just parity` runs locally.
+  # ─── 3b. MULTI-LANGUAGE PARITY & SDK EXECUTION GATE ────────
+  # Merge-blocking. Executes TS and Python test suites (ForeignPluginProxy,
+  # memory pinning, unhandled freeze recovery), testkit vectors, and AST diff.
   parity:
     needs: [lint-and-types]
     runs-on: ubuntu-latest
@@ -132,8 +132,31 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm --filter @kelir/core build
           uv venv && uv pip install -e "packages/py[dev]"
+      - name: Execute TypeScript SDK tests
+        run: pnpm --filter @kelir/core test
+      - name: Execute Python SDK tests
+        run: uv run pytest packages/py
       - name: Parity
         run: cargo run -p kelir-plugin-cli -- parity run
+
+  # ─── 3c. ZERO-TOOLCHAIN PACKAGING CHECK ────────────────────
+  # Asserts precompiled NAPI binaries and Python wheels build cleanly
+  # so consumers never require C/Rust compilers on target systems.
+  package-check:
+    needs: [parity]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: astral-sh/setup-uv@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify NAPI packaging
+        run: pnpm --filter @kelir/core pack --dry-run
+      - name: Verify Python wheel packaging
+        run: uv build --package kelir
 
   # ─── 4. PER-PLUGIN TEST MATRIX ─────────────────────────────
   # Each plugin's tests prove its own decoupling. A failure in one

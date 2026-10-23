@@ -7,6 +7,8 @@
       - In-process microkernel
         - Virtualization runs in host consumer memory via direct C-FFI
         - Backends: rustvmm, hvf, openvmm, avf, bwrap, proot
+        - ForeignPluginProxy embeds V8 and Python event loops directly
+        - Filter-before-FFI boundary stops hypervisor thrash at 0µs cost
         - No dockerd, containerd, background root socket, daemon maintenance
       - Pure epistemic agnosticism
         - Zero knowledge of LLMs, prompts, or AI morals
@@ -53,6 +55,9 @@
     - Plugin
       - External input mapping, or policy over a core primitive
       - Declares priority(): see: 02-plugin-model.md#KelirPlugin-trait
+      - Tier 1: systems-grade engine plugin compiled in Rust
+      - Tier 2: userland policy plugin written in host language
+      - Two-tier execution details: see: 02-plugin-model.md#Two-tier-execution-architecture
       - Owns crate, tests, fixtures, examples: see: 02-plugin-model.md#Plugin-ownership
     - Capability decision test
       - Invariant with no policy? → core primitive

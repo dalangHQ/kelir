@@ -103,13 +103,24 @@
     - First-class plugin catalog is compiled in; external index poller is opt-in
     - Downstream state shape when enabled: see: artifacts/diagrams/ecosystem-ci.txt
   - Multi-language parity gate
-    - Types generated from Rust macros: napi-rs stubs and pyo3 type files
-    - Parity tested against single vectors.json fixture across all languages
+    - Rust macros generate typed FFI stubs: napi-rs for TS, pyo3 for Python
+    - Parity validated against single vectors.json fixture across all SDKs
+    - Testkit ground truth
+      - kelir-plugin-testkit serializes canonical ring events and verdicts
+      - Emits raw binary frames, TrapEvent JSON, and Decision expectations
+      - TS and Python suites consume vectors.json; divergent verdicts block CI
+    - AST surface manifest diff
+      - Automated AST scraper extracts public exported API signatures
+      - Asserts 1:1 match across Rust, TypeScript, and Python SDK surfaces
+      - Fails CI on divergent method names, parameter arity, or return types
+    - Precompiled zero-toolchain distribution
+      - Release builds native NAPI addons and PyO3 wheels across target matrix
+      - Linux x86_64, aarch64 musl/glibc, macOS arm64/x86_64 prebuilt
+      - End-user installation via npm and pip requires zero C or Rust tools
     - Binding coverage assertion
-      - Every kelir-core primitive exposed through a binding has a parity test
-      - Missing test is a CI failure
-    - Surface manifest diff fails on name, arity, or return-shape divergence
-    - kelir-core release requires parity green
+      - Every kelir-core primitive exposed in FFI must have a parity test
+      - Missing coverage blocks core and plugin releases immediately
+    - Release gate: kelir-core release requires parity green
   - Developer CLI
     - Scope rule: only what types cannot encode
       - Anything a compile error enforces is not shipped

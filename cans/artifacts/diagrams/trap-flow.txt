@@ -17,9 +17,12 @@ from the binary on disk             │
       │                              │
       ▼                              │
 Pipes TLV packet to vsock:5252 ─────►│ Host receives TrapEvent
+                                     │ Checks MountScope: Match? ──► NO ──► Resume (<2µs)
+                                     │ YES
                                      │ Host calculates argv[1:] entropy
                                      │ Host applies entropy_bypass_paths
-                                     │ Evaluates Plugin Event Bus
+                                     │ Evaluates Tier 1 Rust Plugins (<12µs)
+                                     │ Crosses FFI Trampoline to TS/Python async handler
                                      │
                                      ├──────────────────────────────┐
                                      ▼                              ▼

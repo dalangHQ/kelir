@@ -5,11 +5,13 @@
 │  │   NATIVE RUST CONSUMER  │       │       DYNAMIC RUNTIME CONSUMERS                 │  │
 │  │   (Direct Cargo Crate)  │       │       TypeScript (@kelir/core) | Python (kelir) │  │
 │  └────────────┬────────────┘       └────────────────────────┬────────────────────────┘  │
-│               │ Zero-Cost Link                              │ In-Process FFI            │
+│               │ Zero-Cost Link                              │ ForeignPluginProxy FFI    │
 │               │ (Direct Monomorphization)                   │ (napi-rs / PyO3)          │
 │               ▼                                             ▼                           │
 │  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
 │  │                        kelir-core (Stripped Microkernel)                          │  │
+│  │   ├── Tier 1 Engine Plugins: In-memory Rust execution (<12µs raw ring speed)      │  │
+│  │   ├── Tier 2 Policy Filter-Before-FFI Gate: MountScope drops unmonitored events   │  │
 │  │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │
 │  │   ├── EventBus: Unified compile-time and async hook pipeline                      │  │
 │  │   └── DriverRouter: Lifecycle controller mediating Box<dyn VmmDriver>             │  │

@@ -1,17 +1,17 @@
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │                        LANGUAGE-SPECIFIC SAFETY INVARIANTS                             │
-├──────────────┬────────────────────────────────────┬────────────────────────────────────┤
-│ LANGUAGE     │ PLUGIN INSTALLATION PROOF          │ INBOUND PARAMETER VALIDATION       │
-├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ Rust         │ `plugin_with_handle(P)` produces   │ `c.params::<T>()` deserializes     │
-│              │ typed handle; closures fail to     │ via Serde; failure halts spawn     │
-│              │ compile if plugin is unmounted     │ before traps execute               │
-├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ TypeScript   │ Type-level context accumulation;   │ `.guard({ schema: t.Object(...) })`│
-│              │ `c.pluginKey` fails `tsc` if       │ validates via TypeBox prior to     │
-│              │ `.use()` is absent upstream        │ execution                          │
-├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ Python       │ `plugin_with_handle()` yields typed│ Pydantic `BaseModel` on `spawn()`  │
-│              │ handle instance; missing handle    │ raises `EINVAL` before hook        │
-│              │ fails closures at import time      │ evaluation                         │
-└──────────────┴────────────────────────────────────┴────────────────────────────────────┘
+├──────────────┬────────────────────────────────────┬────────────────────────────────────┬────────────────────────────────────┤
+│ LANGUAGE     │ PLUGIN INSTALLATION PROOF          │ INBOUND PARAMETER VALIDATION       │ RECLAMATION & FAILURE VELOCITY     │
+├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
+│ Rust         │ `plugin_with_handle(P)` produces   │ `c.params::<T>()` deserializes     │ RAII `Drop` terminates hypervisor; │
+│              │ typed handle; closures fail to     │ via Serde; failure halts spawn     │ Compile-time validation (rustc)    │
+│              │ compile if plugin is unmounted     │ before traps execute               │                                    │
+├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
+│ TypeScript   │ Type-level context accumulation;   │ `.guard({ schema: t.Object(...) })`│ `try...finally` / `using` cleanup; │
+│              │ `c.pluginKey` fails `tsc` if       │ validates via TypeBox prior to     │ Type-check time validation (tsc)   │
+│              │ `.use()` is absent upstream        │ execution                          │                                    │
+├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
+│ Python       │ `plugin_with_handle()` yields typed│ Pydantic `BaseModel` on `spawn()`  │ `async with` __aexit__ terminates; │
+│              │ handle instance; missing handle    │ raises `EINVAL` before hook        │ Import-time + perimeter validation │
+│              │ fails closures at import time      │ evaluation                         │                                    │
+└──────────────┴────────────────────────────────────┴────────────────────────────────────┴────────────────────────────────────┘

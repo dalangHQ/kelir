@@ -9,6 +9,8 @@
   - Raw packet interception points
     - on_net_outbound: hook on frames leaving the guest
     - on_net_inbound: hook on frames arriving at the guest
+    - TAP Dispatcher checks MountScope in native memory before FFI
+    - Pinned frame inspection ceiling: see: 02-plugin-model.md#FFI-buffer-lifecycle
   - Frame drop and forward semantics
     - Ok(()) on outbound = forward; Ok(()) on inbound = deliver
     - Err(Reject) = silent drop (no RST, no guest error)

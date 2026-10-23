@@ -10,6 +10,11 @@
     - Port collision across co-located sessions: TBD
   - Trap fast-path
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
+    - Three-tier gate pipeline
+      - Gate 1: guest in-kernel BPF allowlist returns in 0µs for harmless tools
+      - Gate 2: host core checks MountScope in native memory in <2µs (0 FFI)
+      - Gate 3: FFI trampoline dispatches to TS/Python handlers on match only
+      - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
     - Goal: the trap path must not slow `cargo build` / `npm install`
     - Why three layers, not one
       - A single trap-on-every-syscall design adds ~µs per fork/exec at

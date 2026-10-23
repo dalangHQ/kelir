@@ -76,12 +76,17 @@ test-shim:
 test-drivers:
     cargo nextest run -p driver-rustvmm -p driver-openvmm -p driver-bwrap -E 'not test(test_hw_)'
 
+# Dynamic SDK test suites: ForeignPluginProxy, memory pinning, unhandled freeze recovery
+test-sdks: build-ts
+    pnpm --filter @kelir/core test
+    uv run pytest packages/py
+
 # Cross-plugin integration; requires real hypervisor (KVM/HVF)
 test-integration:
     cargo nextest run -p kelir-integration
 
 # Everything except integration (which requires real VM)
-test-all: test-core test-plugins test-shim test-drivers
+test-all: test-core test-plugins test-shim test-drivers test-sdks
 
 # Full TS context accumulation & type checking
 typecheck:

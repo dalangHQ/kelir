@@ -209,3 +209,11 @@ pub trait KelirPlugin: Send + Sync {
     /// Ok(()) = deliver. Err(Reject) = silent drop.
     async fn on_net_inbound(&self, _frame: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
 }
+
+/// Trait marker for foreign runtime plugin proxies bridging V8 and Python.
+pub trait ForeignPluginBridge: KelirPlugin {
+    /// Declared declarative filter evaluated in native Rust before FFI crossing
+    fn mount_scope(&self) -> &MountScope;
+    /// Max inspected byte ceiling across FFI boundary (default 64KB)
+    fn buffer_ceiling(&self) -> usize { 64 * 1024 }
+}

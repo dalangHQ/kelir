@@ -27,7 +27,9 @@
     - Storage bus gates FUSE write() via on_vfs_write hook callbacks
     - Signature: see: artifacts/code/plugin-trait.rs
     - Write-gating error variants: see: 02-plugin-model.md#Hook-return-semantics
-    - SDK-to-trait signature mapping: TBD
+    - Foreign policy inspection clamped to 64KB slice pinned synchronously
+    - Slices exceeding 64KB require Tier 1 Rust engine plugins
+    - Buffer lifecycle invariants: see: 02-plugin-model.md#FFI-buffer-lifecycle
     - Ok(()) = allow; kernel proceeds with write to upperdir
     - Err(PluginError::Reject { errno, reason }) = deny
       - Guest write() fails with named errno; error surfaces in workload

@@ -5,6 +5,30 @@
     - Bootstrap: Rust, TypeScript, Python
     - Adding a language: bindings crate + vector consumer + surface manifest
     - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
+    - Two-tier authoring model
+      - Tier 1 engine plugins: distributed as precompiled npm/pip native binaries
+      - Tier 2 policy plugins: authored in userland code via native async closures
+      - Tier 1 vs Tier 2 execution: see: 02-plugin-model.md#Two-tier-execution-architecture
+    - Semantic invariant equivalence
+      - Identical safety and hypervisor outcomes enforced via native idioms
+      - Rust: compile-time proof via handles; Serde perimeter deserialization
+      - TypeScript: type-time proof via Kelir<TContext>; TypeBox guard schema
+      - Python: import-time proof via handle capture; Pydantic v2 frozen models
+      - Failure occurs at the earliest lifecycle phase native to each runtime
+      - Resource reclamation invariants
+        - Rust: Session implements Drop trait to terminate microVM and drop memory
+        - TypeScript: try/finally or using block guarantees session.terminate()
+        - Python: async with context manager guarantees __aexit__ terminates VM
+        - Unhandled errors abort hypervisor immediately to eliminate zombie runs
+      - DX iron rules
+        - Zero runtime toolchain tax: distributed with precompiled NAPI/PyO3 wheels
+        - Consumers never require cargo, zig, or C compilers on target systems
+        - Unhandled foreign handler error catches cleanly; guest never hangs
+        - Unhandled host exceptions convert to Decision::Deny or hypervisor abort
+        - Structured error envelope carries driver, ring, pid, binary, and errno
+    - Filter-before-FFI declaration
+      - Declarative filters passed to builder during plugin registration
+      - Host core evaluates rules natively; non-matching events skip FFI
     - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
     - Rust: borrow-checker verified handle injection, zero-cost Serde
     - TypeScript: generic context accumulation, TypeBox schema guards
@@ -38,6 +62,8 @@
     - see: artifacts/code/typescript-accumulation.ts
     - Kelir<TContext> accumulates context type across .use(plugin, scope?)
     - Each .use() expands the generic; downstream c.pluginKey fully inferred
+    - Userland plugin authoring via createPlugin() declarative builder
+    - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
     - Missing .use() → property not on TContext → tsc error
     - Null-object pattern: use(plugin({ enabled: false })) preserves c.pluginKey
     - TypeBox .guard() schema
@@ -49,6 +75,8 @@
       - __aenter__ boots microVM
       - __aexit__ guarantees session.terminate() on any exception
       - Matches Rust Drop semantics under unhandled exceptions
+    - Userland plugin authoring via BasePlugin subclassing
+    - PyO3 wraps async coroutines into ForeignPluginProxy instance
     - Pydantic v2 BaseModel with frozen=True
       - Field(pattern=r"^fix-webhook$")
       - Raises EINVAL before hook evaluation
