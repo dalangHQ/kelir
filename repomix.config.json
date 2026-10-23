@@ -40,7 +40,11 @@
             "readme.md",
             "repomix.config.json",
             ".git",
-       //     "cans/artifacts"
+            "cans/_adr",
+            "cans/_collab",
+            "cans/_tasks",
+            "cans/AGENTS.md",
+           "cans/artifacts"
     ]
   },
   "security": {
