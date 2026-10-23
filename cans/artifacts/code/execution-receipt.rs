@@ -7,6 +7,14 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhaseTimings {
+    pub trap_ingress_ns: u64,
+    pub ffi_hop_ns: u64,
+    pub policy_ns: u64,
+    pub verdict_egress_ns: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionReceipt {
     pub pid: u32,
     pub binary_path: String,
@@ -23,6 +31,8 @@ pub struct ExecutionReceipt {
     pub exit_code: i32,
     /// True physical elapsed time
     pub wall_clock_ns: u64,
+    /// Optional nano-tracer sub-microsecond breakdown
+    pub phase_timings: Option<PhaseTimings>,
     /// Total network egress bytes transmitted
     pub egress_bytes: u64,
 }

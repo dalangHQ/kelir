@@ -13,7 +13,8 @@ Kernel seccomp-unotify triggers
       │                              │
       ▼                              │
 Pipes TLV packet to vsock:5252 (Ch 0)► Host receives TrapEvent
-                                     │ Checks MountScope: Match? ──► NO ──► Resume (<2µs)
+                                     │ Gate 2: Checks MountScope & AOT Schema ──► INVALID ──► Deny (EINVAL)
+                                     │ Match? ──► NO ──► Resume (<2µs)
                                      │ YES
                                      │ Host calculates argv[1:] entropy
                                      │ Host applies entropy_bypass_paths

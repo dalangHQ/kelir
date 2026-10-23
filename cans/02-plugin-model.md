@@ -10,6 +10,8 @@
       - Steers agent workflows, prompt rules, branch gates, and masks
   - Foreign plugin proxy
     - Bridges language runtimes to KelirPlugin trait via NAPI/PyO3
+    - AOT hook fusion compiles chained host hooks into a single flat closure
+    - Exactly one FFI trampoline crossing per ring event regardless of hook count
     - Marshals ring events across threadsafe boundaries on match
     - Non-blocking trap returns: Allow, Deny, Rewrite, Yield, Abort
   - KelirPlugin trait
@@ -48,6 +50,14 @@
       - on_vfs_write: see: 05-storage-plane.md#Write-gating (storage owns it)
       - on_vfs_lookup → Ok(None) = fall through; Ok(Some(attr)) = serve
       - on_net_outbound / on_net_inbound → see: artifacts/code/plugin-trait.rs
+  - Declarative error mapping
+    - Host exceptions map directly to POSIX errnos via builder error registry
+    - Unmapped exceptions convert cleanly to Decision::Deny or hypervisor abort
+    - Preserves guest POSIX semantics without manual try-catch in hook bodies
+  - Declarative plugin macros
+    - Plugins expose declarative DSL attributes expanding at assembly time
+    - Macros inject MountScope filters, BPF allowlists, and fused hooks
+    - Eliminates procedural condition checks inside userland hook bodies
   - Static dispatch
     - Plugins compiled into flat contiguous dispatch array at boot
     - Core verifies plugin dependency DAG: cycles and missing deps halt boot
@@ -73,8 +83,11 @@
   - Filter-before-FFI gate
     - Unmonitored guest operations bypass host language runtimes entirely
     - Host core checks MountScope in native memory before crossing FFI
+    - Evaluates native compiled schema validators alongside MountScope
+    - Zero FFI allocation on non-matching or invalid events
     - FFI trampoline executes only when ring event satisfies scope match
     - Protects guest toolchain execution speed (cargo build, npm install)
+    - TAP dispatcher application: see: 06-wire-plane.md#Raw-packet-interception-points
   - FFI buffer lifecycle
     - Pinned memory slices exposed via streaming chunked iterators
     - Prevents use-after-free while host runtimes resolve handlers
@@ -87,6 +100,9 @@
     - Language SDKs accumulate context keys via phantom types or handles
     - Core-provided (always present)
       - c.trap, c.env, c.vm, c.step, c.receipt()
+    - Context key lifecycle
+      - Static decoration via decorate(): handles bound once at VM boot
+      - Lazy derivation via derive(): computes telemetry only on handler access
     - Plugin-provided (accumulated strictly by SDK builder at compile/type time)
       - Plugin handles map to typed properties on the accumulated context
       - Unmounted plugin key dereference fails compile or import time

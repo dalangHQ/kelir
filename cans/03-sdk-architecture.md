@@ -17,7 +17,8 @@
         - Zero runtime toolchain tax: distributed with precompiled NAPI/PyO3 wheels
         - Consumers never require cargo, zig, or C compilers on target systems
         - Unhandled foreign handler error catches cleanly; guest never hangs
-        - Unhandled host exceptions convert to Decision::Deny or hypervisor abort
+        - Declarative error maps convert host exceptions to exact POSIX errnos
+        - Unmapped exceptions convert to Decision::Deny or hypervisor abort
         - Structured error envelope carries driver, ring, pid, binary, and errno
     - Filter-before-FFI declaration
       - Declarative filters passed to builder during plugin registration
@@ -32,7 +33,8 @@
     - Non-blocking trap verdicts: c.yield(checkpoint_id) and c.abort(code, msg)
     - Shared memory buffers: session.map_shared_region(tag, size_bytes)
     - Portable snapshots: session.export_snapshot() and session.import_snapshot()
-    - Custom vsock RPC services: builder.register_vsock_service(port, handler)
+    - Eden-style typed vsock RPC: session.vsock.channel(2) with zero-IDL inference
+    - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
   - Params typed views
     - Host-side typed access on HandlerCtx
       - Rust: c.params::<T>() deserializes from validated buffer
@@ -49,7 +51,10 @@
     - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
     - see: artifacts/code/typescript-accumulation.ts
-    - Two-phase builder: .use() registers plugins; .configure() binds hooks
+    - Builder lifecycle: .use(), .decorate(), .derive(), .macro(), .error()
+    - TypeBox AOT schema push-down compiles to native Rust validators at boot
+    - AOT hook fusion compiles all TS pipeline handlers into a single flat closure
+    - Exactly 1 NAPI trampoline jump per matched ring event
     - Fully unified TContext passes to callbacks, resolving cross-plugin lookups
     - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
     - Null-object pattern: use(plugin({ enabled: false })) preserves c.pluginKey

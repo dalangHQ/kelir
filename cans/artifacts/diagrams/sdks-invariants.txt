@@ -8,8 +8,8 @@
 │              │ presence on handler registration   │ before traps execute               │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
 │ TypeScript   │ Type-level context accumulation;   │ `.guard({ schema: t.Object(...) })`│ `try...finally` / `using` cleanup; │
-│              │ `c.pluginKey` fails `tsc` if       │ validates via TypeBox prior to     │ Type-check time validation (tsc)   │
-│              │ `.use()` is absent upstream        │ execution                          │                                    │
+│              │ `c.pluginKey` fails `tsc` if       │ compiles to native Rust validator; │ `.error()` maps host exceptions to │
+│              │ `.use()` is absent upstream        │ invalid payload drops in Gate 2    │ POSIX errnos before crash/abort    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
 │ Python       │ `plugin_with_handle()` yields typed│ Pydantic `BaseModel` on `spawn()`  │ `async with` __aexit__ terminates; │
 │              │ handle instance; missing handle    │ raises `EINVAL` before hook        │ Import-time + perimeter validation │

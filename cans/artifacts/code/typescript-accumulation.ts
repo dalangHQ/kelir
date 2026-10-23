@@ -19,15 +19,26 @@ const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
     devices: ["virtio-vsock", "virtio-fs"],
     binaries: ["git", "npm"],
   })
+  // 3. Declarative POSIX errno mapping (replaces unhandled throw aborts)
+  .error({
+    EACCES: [UnauthorizedAccessError],
+    ENOENT: [MissingConfigError],
+  })
+  // 4. Lazy per-event context derivation (zero-cost if unread)
+  .derive("processLineage", async (c) => c.trap.ancestor_chain.join(" -> "))
   .configure((c) => {
-    // 3. Static and runtime schema validation
+    // 5. Schema push-down: AOT-compiled to native Rust validator at boot
     .guard({
       schema: t.Object({
         action: t.Literal("fix-webhook"),
         issueId: t.String(),
       }),
     })
-    // 4. `c.policy`, `c.fs`, and `c.ledger` are fully inferred on unified context:
+    // 6. Nano-tracer lifecycle tap
+    .trace((t) => {
+      if (t.ffi_hop_ns > 10_000) console.warn("FFI boundary spike:", t);
+    })
+    // 7. `c.policy`, `c.fs`, and `c.processLineage` are fully inferred on unified context:
     .before("git commit *", async (c) => {
       if (c.policy.violations > 0) {
         return c.deny(1, `EPOLICY: ${c.policy.violations} violation(s)`);

@@ -32,6 +32,8 @@
       - Structured configuration delivered via paravirtual configuration device
       - Host-side validation before any guest instruction
         - Serde (Rust), TypeBox (TypeScript), Pydantic v2 (Python)
+        - Schema push-down: builder compiles schemas into native Rust validators
+        - Gate 2 validates ingress in native memory before V8/Python wake-up
         - Falsified payloads fail at perimeter with EINVAL
       - Out-of-band device consumption
         - Workload reads parameters from mounted read-only configuration block

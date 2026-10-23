@@ -44,6 +44,7 @@
       - wall_clock_ns across suspend
       - exit_code under Rewrite
       - dirty_bytes under fork
+      - Sub-microsecond phase spans: trap_ingress_ns, ffi_hop_ns, policy_ns
     - binary_blake3 cache: keyed on (inode, size, mtime_ns); one hash per
       binary identity, not per exec
     - Receipt ownership
@@ -93,3 +94,7 @@
     - Typical wiring
       - before("*"): checkpoint + analyzeIntent; deny or resume
       - after("*"): read receipt; rollback on post-condition violation
+  - Lifecycle nano-tracer
+    - Trace hooks (.trace()) measure exact nanosecond overhead across phases
+    - Tracks trap ingress, FFI crossing, policy evaluation, and verdict dispatch
+    - Zero-allocation timings pipe directly to receipts and OTel spans
