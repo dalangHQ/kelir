@@ -6,7 +6,7 @@
     - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
     - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys
-    - Context key contributed: TBD
+    - Context key contributed: None (daemon runtime)
     - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
   - Invariants and policy
     - Coordinator hook wiring

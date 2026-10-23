@@ -59,8 +59,7 @@
   - Per-plugin CI
     - Decoupled plugin specs
       - One spec file per plugin in the cans plugin folder (15 files)
-      - Plugin catalog file: index.md in the plugin folder
-      - Leaf-pointer rule: plugin files hold no refs; pointers are plain outside the catalog
+      - Leaf-pointer rule: plugin files hold no refs; registry pointers are plain
     - Matrix job: test-plugins
       - One cell per first-class plugin (15 total)
       - Each cell: cargo nextest run -p plugin-<name>
@@ -147,13 +146,11 @@
         - pty, vfs, wire, chaos, ledger, mcp, oci-translator
         - openshell-coordinator, db-proxy, mesh, lock-broker, supply-chain
         - hyper-density, cas-snapshot, wire-ingress
+      - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
+      - kelir-shim: in-guest musl PID 1 (<50KB)
     - Decoupled spec layout
       - Core plane files: cans/00-overview.md to cans/11-operations.md
       - Plugin spec files: one <name>.md per plugin in the plugin folder
-      - Plugin catalog file: index.md in the plugin folder, the ref matrix home
-      - Catalog is the only plugin file holding the plugin ref matrix
-      - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
-      - kelir-shim: in-guest musl PID 1 (<50KB)
     - Test infrastructure
       - kelir-plugin-testkit: mock driver, mock bus, HandlerCtx constructors
       - Not runtime; dev-dependency of every plugin-*

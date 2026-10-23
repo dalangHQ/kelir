@@ -15,4 +15,4 @@
       - Teleports twin microVM sessions across bare-metal hosts in <50ms
   - Error and return semantics
     - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior
+    - Return errno and rejection behavior: TBD

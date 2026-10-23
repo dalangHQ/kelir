@@ -87,7 +87,7 @@
     - Type ownership
       - Struct is a shared context type; it lives in kelir-core next to
         ExecutionReceipt
-      - Computation is derived: plugins/ledger.md#compute-causal-delta()-engine
+      - Computation is derived: plugins/ledger.md#compute-causal-delta-engine
     - This split follows the primitive-vs-derived rule: type is primitive,
       computation is derived
   - Three-tier truth

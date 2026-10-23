@@ -67,7 +67,9 @@
       - c.term ← plugin-pty; c.fs ← plugin-vfs; c.ledger ← plugin-ledger;
         c.wire ← plugin-wire; c.chaos ← plugin-chaos;
         c.db ← plugin-db-proxy; c.mesh ← plugin-mesh;
-        c.density ← plugin-hyper-density; c.ingress ← plugin-wire-ingress
+        c.locks ← plugin-lock-broker; c.cas ← plugin-cas-snapshot;
+        c.mcp ← plugin-mcp; c.density ← plugin-hyper-density;
+        c.ingress ← plugin-wire-ingress
     - User-provided via typed handle
       - c.<key> from .decorate() / PluginWithHandle / BasePlugin.handle()
     - Every key above resolves to a plane node in one hop; none are
@@ -90,7 +92,7 @@
       - plugin-mcp: plugins/mcp.md — c.mcp
       - plugin-oci-translator: plugins/oci-translator.md — OCI layer translation
       - plugin-openshell-coordinator: plugins/openshell-coordinator.md — checkpoint policy
-      - Pointer rule: plugin files are leaf targets; canonical ref matrix in plugins/index.md
+      - Pointer rule: plugin files are leaf targets; this matrix is the canonical registry
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
       - session.fs.*: plugins/vfs.md

@@ -51,7 +51,6 @@
   - Spec map
     - Foundation: see 01-architecture.md
     - Plugin model: see 02-plugin-model.md
-    - Plugin catalog: plugins/index.md
     - SDK architecture: see 03-sdk-architecture.md
     - Terminal plane: see 04-terminal-plane.md
     - Storage plane: see 05-storage-plane.md

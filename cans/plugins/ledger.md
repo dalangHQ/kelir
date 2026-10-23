@@ -37,7 +37,7 @@
         - Error mapping and sampling
         - Attribute allowlist and redaction
         - Export-failure behavior
-    - compute_causal_delta() engine
+    - compute-causal-delta engine
       - Computation is policy-bearing; it lives in plugin-ledger
       - Session accessor `get_causal_delta_from_parent()` requires
         plugin-ledger mounted; unmounted sessions do not expose it
@@ -45,4 +45,4 @@
       - CausalDelta computation: TBD
   - Error and return semantics
     - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior
+    - Return errno and rejection behavior: TBD

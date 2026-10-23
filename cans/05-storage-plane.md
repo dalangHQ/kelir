@@ -1,7 +1,7 @@
 - Storage plane
   - Storage architecture
     - See: artifacts/diagrams/storage-architecture.txt
-    - Owner: plugin-vfs; see 02-plugin-model.md#First-class-plugins
+    - Owner: kelir-core (virtio-fs bus)
     - Read-only lower + tmpfs upper
       - Guest root cannot corrupt the host workspace tree
       - Deletions leave whiteouts, not disk holes; reconciler must resolve them

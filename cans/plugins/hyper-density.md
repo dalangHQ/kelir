@@ -16,4 +16,4 @@
       - Resumes vCPU execution at exact cycle boundary in <15ms on ring traffic
   - Error and return semantics
     - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior
+    - Return errno and rejection behavior: TBD

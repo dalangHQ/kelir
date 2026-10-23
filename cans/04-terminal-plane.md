@@ -1,7 +1,7 @@
 - Terminal plane
   - Terminal pipeline
     - See: artifacts/diagrams/terminal-pipeline.txt
-    - Owner: plugin-pty; see 02-plugin-model.md#First-class-plugins
+    - Owner: kelir-core (virtio-console bus)
     - Guest workload writes stdout/stderr
     - Linux kernel PTY driver: /dev/hvc0 → /dev/pts/N
     - isatty(1) == true, raw mode active, zero CLI downgrade
