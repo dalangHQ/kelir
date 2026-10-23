@@ -5,10 +5,10 @@
     - Read-only lower + tmpfs upper
       - Guest root cannot corrupt the host workspace tree
       - Deletions leave whiteouts, not disk holes; reconciler must resolve them
-        - Reconciler home: see plugins/vfs.md#Reconciler
+        - Reconciler home: see: plugins/vfs.md#Reconciler
     - Deterministic 64-bit host_stable_hash of inode metadata for OCC fences
     - Hashes device, inode, mtime, and size; zero read-time payload hashing
-    - Exception for dynamic ghost inodes: see plugins/vfs.md#Ghost-inodes
+    - Exception for dynamic ghost inodes: see: plugins/vfs.md#Ghost-inodes
   - EROFS rootfs
     - Stripped base system pre-baked into read-only EROFS
     - Python, Node, Rust, Bash pre-installed
@@ -25,8 +25,8 @@
     - Prevents tmpfs upperdir memory exhaustion when loading large packages
   - Write gating
     - Storage bus gates FUSE write() via on_vfs_write hook callbacks
-    - Signature: see artifacts/code/plugin-trait.rs
-    - Write-gating error variants: see 02-plugin-model.md#Hook-return-semantics
+    - Signature: see: artifacts/code/plugin-trait.rs
+    - Write-gating error variants: see: 02-plugin-model.md#Hook-return-semantics
     - SDK-to-trait signature mapping: TBD
     - Ok(()) = allow; kernel proceeds with write to upperdir
     - Err(PluginError::Reject { errno, reason }) = deny
@@ -34,4 +34,4 @@
       - Returned before any bytes enter upperdir
     - Err(PluginError::Halt) = deny + halt pipeline
       - For policy violations requiring human review
-    - Observation-only snoop callbacks: see plugins/vfs.md#Snoop-plane
+    - Observation-only snoop callbacks: see: plugins/vfs.md#Snoop-plane

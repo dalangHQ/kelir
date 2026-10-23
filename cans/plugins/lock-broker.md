@@ -3,12 +3,12 @@
     - Plugin identifier: plugin-lock-broker
     - Owner crate: crates/kelir-plugins/plugin-lock-broker
     - name() = "lock-broker"; priority() = 30
-    - VirtIO Ring attachment (lock-broker): see 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment (lock-broker): see 07-lifecycle.md#Lifecycle-vetoes
-    - Storage bus attachment (lock-broker): see 05-storage-plane.md#Storage-plane
+    - VirtIO Ring attachment (lock-broker): see: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (lock-broker): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Storage bus attachment (lock-broker): see: 05-storage-plane.md#Storage-plane
   - Context keys for lock-broker
     - Context key contributed: c.locks
-    - Closed-set binding rule (lock-broker): see 02-plugin-model.md#Core-context-keys
+    - Closed-set binding rule (lock-broker): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (lock-broker)
     - Entity lock broker
       - Owner: plugin-lock-broker; mediates cross-VM file locking
@@ -17,6 +17,6 @@
       - Delegates lock acquisition directly to host OS advisory locks (flock)
       - Non-blocking: conflicting lock returns EWOULDBLOCK without host lag
   - Error and return semantics (lock-broker)
-    - Hook signature (lock-broker): see artifacts/code/plugin-trait.rs
+    - Hook signature (lock-broker): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (lock-broker)
       - Conflicting locks return Err(PluginError::Reject { errno: "EWOULDBLOCK" })

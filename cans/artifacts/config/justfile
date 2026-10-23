@@ -42,6 +42,10 @@ test-plugin plugin:
 plugin-check plugin:
     cargo run -p kelir-plugin-cli -- check -p plugin-{{plugin}}
 
+# Validate plugin dependency graph is strictly acyclic
+plugin-check-graph:
+    cargo run -p kelir-plugin-cli -- check --graph
+
 # Spec gate — same two tiers CI runs; --json, exit-code asserted
 cans-check:
     @cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
@@ -92,7 +96,7 @@ parity: build-ts
     cargo run -p kelir-plugin-cli -- parity run
 
 # --- 4. PRE-FLIGHT CHECK (Run before git push) ---
-pre-flight: cans-check build-shim parity plugin-check-all test-isolation-all
+pre-flight: cans-check build-shim parity plugin-check-graph plugin-check-all test-isolation-all
     cargo fmt --all -- --check
     cargo clippy --workspace --exclude kelir-shim -- -D warnings
     pnpm -r exec eslint .

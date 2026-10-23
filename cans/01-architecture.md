@@ -11,12 +11,15 @@
       - Pure epistemic agnosticism
         - Zero knowledge of LLMs, prompts, or AI morals
         - Operates strictly as OS physics: memory pages, registers, FDs, frames
-        - Factoring: see 08-epistemic.md#Scope
+        - Factoring: see: 08-epistemic.md#Scope
       - Deterministic hardware isolation
         - Hardware-enforced virtualization: Intel VT-x, AMD-V, ARM64 EL2
         - Escaped guest root cannot touch host memory or host kernel space
       - Radical plugin-first microkernel
         - Core drives hardware virtualization and multiplexes the 4 VirtIO rings
+        - Core defines zero domain policies, protocols, or plugin signatures
+        - Every capability outside raw hypervisor physics is a decoupled plugin
+        - Plugins communicate through core ring abstractions, never peer imports
         - Every capability is a decoupled, composable plugin
       - Transparent truthful steering
         - Any intercepted syscall, file read, or network packet is allowed,
@@ -45,12 +48,12 @@
     - Adapter binary
       - Contract-bound process on the wire
       - Examples: containerd-shim-v2, MCP stdio
-      - Adapter implementations: see 10-adapters.md#Ingestion-matrix
+      - Adapter implementations: see: 10-adapters.md#Ingestion-matrix
       - Translation logic delegated to a plugin the binary loads
     - Plugin
       - External input mapping, or policy over a core primitive
-      - Declares priority(): see 02-plugin-model.md#KelirPlugin-trait
-      - Owns crate, tests, fixtures, examples: see 02-plugin-model.md#Plugin-ownership
+      - Declares priority(): see: 02-plugin-model.md#KelirPlugin-trait
+      - Owns crate, tests, fixtures, examples: see: 02-plugin-model.md#Plugin-ownership
     - Capability decision test
       - Invariant with no policy? → core primitive
       - User contract with no composition? → interface
@@ -60,30 +63,32 @@
     - The closed set of core primitives
     - Interposition is total: every ring is hooked; bypass is a spec violation
     - Trait definitions
-      - Low-footprint preset contract: see #Embedded-profile
-      - Trait contract: see 02-plugin-model.md#KelirPlugin-trait
+      - Low-footprint preset contract: see: #Embedded-profile
+      - Trait contract: see: 02-plugin-model.md#KelirPlugin-trait
       - VmmDriver trait (defined in this file)
-    - Context types: see 09-protocol.md#Wire-messages
-    - Wire framing layout: see 09-protocol.md#Wire-framing
-    - Dispatch loop: see 02-plugin-model.md#Static-dispatch
+    - Context types: see: 09-protocol.md#Wire-messages
+    - Wire framing layout: see: 09-protocol.md#Wire-framing
+    - Dispatch loop: see: 02-plugin-model.md#Static-dispatch
     - 4-ring routing: Four-Ring Bus
     - Params ingress + auto-Rewrite: Params ingress contract
-    - Receipts: see 08-epistemic.md#Execution-receipts
-    - StepSlot: see 08-epistemic.md#Step-evaluation-loop
+    - Receipts: see: 08-epistemic.md#Execution-receipts
+    - StepSlot: see: 08-epistemic.md#Step-evaluation-loop
     - Shim primitives: Guest VM anatomy
-    - EROFS mount: see 05-storage-plane.md#EROFS-rootfs
-    - Shared memory mapping: see #Shared-memory-channel
-    - Portable snapshots: see 07-lifecycle.md#Portable-snapshot-bundles
+    - EROFS mount: see: 05-storage-plane.md#EROFS-rootfs
+    - Shared memory mapping: see: #Shared-memory-channel
+    - Portable snapshots: see: 07-lifecycle.md#Portable-snapshot-bundles
   - Four-Ring Bus
     - see: artifacts/diagrams/four-ring-bus.txt
+    - Core routes raw transport bytes and frames; plugins provide interpretation
+    - Zero protocol domain logic (HTTP, pgwire, ANSI, tar) lives in core
     - virtio-vsock control plane: syscalls, PIDs, signals, traps
     - virtio-console terminal plane: raw byte streams, PTY master/slave
       allocation, geometry ioctls
-      - Terminal plane detail: see 04-terminal-plane.md#Terminal-pipeline
+      - Terminal plane detail: see: 04-terminal-plane.md#Terminal-pipeline
     - virtio-fs storage plane: FUSE request dispatch, EROFS block mounting,
       tmpfs overlays
     - virtio-net wire plane: L2/L3 frame interception, TAP frame routing
-      - Wire plane detail: see 06-wire-plane.md#Wire-plane
+      - Wire plane detail: see: 06-wire-plane.md#Wire-plane
     - virtio-shm shared memory: zero-copy tabular data buffers
   - Shared memory channel
     - Anonymous host memfd_create segment mapped directly into guest GPA slots
@@ -132,7 +137,7 @@
     - Workload contract: no guest-side SDK, shim, or agent
   - VmmDriver trait
     - see: artifacts/code/vmm-driver-trait.rs
-    - Primitive list and signatures: see artifacts/code/vmm-driver-trait.rs
+    - Primitive list and signatures: see: artifacts/code/vmm-driver-trait.rs
     - Single backend contract
       - Every backend implements every primitive; optional primitives are
         not part of the trait
@@ -143,7 +148,7 @@
       - Rationale: a byte count yields identical receipts, deltas, and
         Merkle roots across hosts; a page count does not
       - Sole home of the page-size fact for receipts and Merkle roots
-      - Kernel fixture selection: see #Page-size-dynamic-boot-selection
+      - Kernel fixture selection: see: #Page-size-dynamic-boot-selection
   - Driver backends
     - Capability matrix: TBD
     - driver-rustvmm: Linux bare-metal KVM + userfaultfd CoW + CUDA CDI

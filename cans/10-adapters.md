@@ -1,18 +1,18 @@
 - Adapters
   - Ingestion matrix
     - see: artifacts/diagrams/ingestion-adapters.txt
-    - Adapter set and ecosystem binding: see artifacts/diagrams/ingestion-adapters.txt
+    - Adapter set and ecosystem binding: see: artifacts/diagrams/ingestion-adapters.txt
     - Two shapes, one rule
       - Contract-bound binary + plugin: MCP, containerd shim v2, OpenShell
-      - Thin SDK wrapper: E2B (no plugin, no binary) — see #E2B-compatibility
+      - Thin SDK wrapper: E2B (no plugin, no binary) — see: #E2B-compatibility
     - Rule: the plugin owns translation and policy; the binary owns the wire
-    - Tri-native SDKs are the fourth ingestion family; see 03-sdk-architecture.md
+    - Tri-native SDKs are the fourth ingestion family; see: 03-sdk-architecture.md
   - MCP adapter
     - Server binary
       - Crate: kelir-adapters/mcp-server
       - Routes Model Context Protocol JSON-RPC over stdio directly to microVM rings
       - Loads plugin-mcp
-    - Server plugin: see plugins/mcp.md
+    - Server plugin: see: plugins/mcp.md
   - Containerd shim v2
     - Shim binary
       - Crate: kelir-adapters/containerd-shim
@@ -26,7 +26,7 @@
       - PVC storage
         - PersistentVolumeClaims mount as virtio-fs endpoints
         - UID/GID mapping applied in-guest
-    - Shim plugin: see plugins/oci-translator.md
+    - Shim plugin: see: plugins/oci-translator.md
   - OpenShell gRPC driver
     - gRPC binary
       - Crate: kelir-adapters/openshell-grpc
@@ -34,7 +34,7 @@
       - Served over /var/run/kelir/openshell.sock (UDS)
       - Loads plugin-openshell-coordinator
       - Target: multi-tenant inference tasks
-    - Coordinator plugin file: see plugins/openshell-coordinator.md
+    - Coordinator plugin file: see: plugins/openshell-coordinator.md
   - E2B compatibility
     - TypeScript: @kelir/e2b-compat
     - Python: kelir.compat.e2b

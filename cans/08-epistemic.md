@@ -6,8 +6,8 @@
     - Judgment has exactly two homes, both removable
       - Oracle: user interface, one per session, not a plugin, no dispatch slot
       - plugin-ledger: derived computation over core primitives
-    - Removing either leaves core intact; see #Primitive-vs-derived-telemetry
-    - Axiom enforcement: see 01-architecture.md#Axiomatic-foundations
+    - Removing either leaves core intact; see: #Primitive-vs-derived-telemetry
+    - Axiom enforcement: see: 01-architecture.md#Axiomatic-foundations
   - Oracle
     - User-supplied interface; NOT a plugin
     - Location: kelir-core::oracle::Oracle
@@ -23,12 +23,12 @@
       - verify_physical_receipt(&ExecutionReceipt) -> bool
         - Called from after(*) post-condition verification
       - ingest_harness_event(&Path, &Value, &str)
-        - Called from snoop callbacks; see plugins/vfs.md#Snoop-plane
+        - Called from snoop callbacks; see: plugins/vfs.md#Snoop-plane
       - await_human_approval()
         - Called between suspend/resume for human-in-the-loop gates
       - current_trace_id() -> String
         - Called from handlers setting OTEL_TRACE_ID
-    - Harness wiring example: see artifacts/examples/autonomous-swe-agent.rs
+    - Harness wiring example: see: artifacts/examples/autonomous-swe-agent.rs
     - Oracle contract: TBD
       - Failure handling
       - Timeouts
@@ -43,18 +43,18 @@
     - Default posture: per-exec, per-trap, per-receipt signals on; per-syscall,
       per-request, per-page signals off until enabled per config
     - Boundaries
-      - Primitive set: see 01-architecture.md#Core-invariants
-      - CausalDelta: see #Causal-delta
-      - Merkle chain: see plugins/ledger.md#Merkle-WAL
-      - OpenTelemetry spans: see plugins/ledger.md#OpenTelemetry
+      - Primitive set: see: 01-architecture.md#Core-invariants
+      - CausalDelta: see: #Causal-delta
+      - Merkle chain: see: plugins/ledger.md#Merkle-WAL
+      - OpenTelemetry spans: see: plugins/ledger.md#OpenTelemetry
       - Oracle analyses: consumer's Oracle impl
   - Execution receipts
     - see: artifacts/code/execution-receipt.rs
-    - Field set: see artifacts/code/execution-receipt.rs
+    - Field set: see: artifacts/code/execution-receipt.rs
     - Emitted per executed process, at the trap/exit boundary
     - Assertion form: receipts are compared as values, not as hashes of host
       state; the canonical assertion is a per-field comparison
-    - Byte-not-page reason: see 01-architecture.md#SnapshotDescriptor.dirty-bytes
+    - Byte-not-page reason: see: 01-architecture.md#SnapshotDescriptor.dirty-bytes
     - Population: per ReceiptConfig; opt-in fields not enabled are absent
       (Option), never 0
       - Always: pid, binary_path, binary_blake3, dirty_bytes, exit_code,
@@ -80,19 +80,19 @@
   - Causal delta
     - see: artifacts/code/causal-delta.rs
     - Definition: Δ = S_A − S_B between two checkpoint descriptors
-    - Delta fields: see artifacts/code/causal-delta.rs
+    - Delta fields: see: artifacts/code/causal-delta.rs
     - egress_requests: sampled or host-allowlisted; full per-request capture
       is never the default. Use receipt.egress_bytes unless per-request
       attribution is the question.
     - Type ownership
       - Struct is a shared context type; it lives in kelir-core next to
         ExecutionReceipt
-      - Computation is derived: see plugins/ledger.md#compute-causal-delta-engine
+      - Computation is derived: see: plugins/ledger.md#compute-causal-delta-engine
     - This split follows the primitive-vs-derived rule: type is primitive,
       computation is derived
   - Three-tier truth
     - see: artifacts/diagrams/truth-hierarchy.txt
-    - Tier evidence per tier: see artifacts/diagrams/truth-hierarchy.txt
+    - Tier evidence per tier: see: artifacts/diagrams/truth-hierarchy.txt
     - Selection rule
       - Claim must resist forgery by guest code → Tier 1
       - Claim about a public, versioned contract → Tier 2
@@ -102,7 +102,7 @@
       - Missing Tier 1 evidence is a denial, not a Tier 3 downgrade
       - Rationale: silent downgrade is exactly the harness self-report failure
         this tier scheme exists to prevent
-    - Consumer of Tier 3: Oracle.ingest_harness_event; see #Oracle
+    - Consumer of Tier 3: Oracle.ingest_harness_event; see: #Oracle
   - Lifecycle bridge
     - see: artifacts/diagrams/lifecycle-bridge.txt
     - Replaces language-level monkeypatching
@@ -114,8 +114,8 @@
       - resume() → restore vCPU with 0ms clock skew
       - step() → execute until next virtio-vsock syscall trap, then pause
       - revert() → drop dirty RAM, purge tmpfs diffs to last good snapshot in <8ms
-    - Underlying primitives: see 07-lifecycle.md#Superpowers
-    - Veto points: see 07-lifecycle.md#Lifecycle-vetoes
+    - Underlying primitives: see: 07-lifecycle.md#Superpowers
+    - Veto points: see: 07-lifecycle.md#Lifecycle-vetoes
     - This node specifies the orchestrator-facing mapping only
   - Step evaluation loop
     - see: artifacts/code/step-evaluation-loop.ts

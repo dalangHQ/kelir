@@ -3,11 +3,11 @@
     - Plugin identifier: plugin-cas-snapshot
     - Owner crate: crates/kelir-plugins/plugin-cas-snapshot
     - name() = "cas-snapshot"; priority() = 40
-    - VirtIO Ring attachment (cas-snapshot): see 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment (cas-snapshot): see 07-lifecycle.md#Lifecycle-vetoes
+    - VirtIO Ring attachment (cas-snapshot): see: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (cas-snapshot): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for cas-snapshot
     - Context key contributed: c.cas
-    - Closed-set binding rule (cas-snapshot): see 02-plugin-model.md#Core-context-keys
+    - Closed-set binding rule (cas-snapshot): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (cas-snapshot)
     - Content-addressed snapshots
       - Partitions dirty RAM and upperdir into variable chunks using fastcdc
@@ -15,5 +15,5 @@
       - Synchronizes chunk differentials to S3-compatible tiers using object_store
       - Teleports twin microVM sessions across bare-metal hosts in <50ms
   - Error and return semantics (cas-snapshot)
-    - Hook signature (cas-snapshot): see artifacts/code/plugin-trait.rs
+    - Hook signature (cas-snapshot): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (cas-snapshot): TBD

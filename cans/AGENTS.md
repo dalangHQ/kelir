@@ -9,10 +9,10 @@ Find concept → read canonical home → follow `see:` ONE hop. Never chain.
 ```
 # GOOD: read canonical, then one ref
 cans/02-authentication.md  →  "Sessions" node
-cans/04-api.md             →  "Session rules: see 02-authentication.md#Sessions"
+cans/04-api.md             →  "Session rules: see: 02-authentication.md#Sessions"
 
 # FORBIDDEN: following a see: inside the referenced file
-04-api.md → see 02-auth.md → see 06-ops.md   ← DEEP HOP, stop at 02-auth.md
+04-api.md → see: 02-auth.md → see: 06-ops.md   ← DEEP HOP, stop at 02-auth.md
 ```
 
 Read surrounding hierarchy for context, not just the leaf:
@@ -33,7 +33,7 @@ One canonical home per concept. Reference, don't duplicate.
 ```
 # GOOD: 04-api.md references the canonical home
 - Authentication
-  - Session rules: see 02-authentication.md#Sessions
+  - Session rules: see: 02-authentication.md#Sessions
 
 # BAD: duplicating session rules in 04-api.md
 - Authentication
@@ -110,7 +110,7 @@ Decisions get an ADR. ADRs record WHY. Specs are the truth.
 cans new adr "postgres-over-mysql"
 # Creates: _adr/003-postgres-over-mysql.md
 # Fill: Context → Decision → Alternatives → Consequences
-# Reference spec: see 03-data.md#Storage
+# Reference spec: see: 03-data.md#Storage
 ```
 
 ## Tasks

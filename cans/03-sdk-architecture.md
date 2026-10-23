@@ -4,14 +4,14 @@
     - All SDKs enforce identical runtime guarantees through native type systems
     - Bootstrap: Rust, TypeScript, Python
     - Adding a language: bindings crate + vector consumer + surface manifest
-    - Plugin authorship contract: see 02-plugin-model.md#Plugin-ownership
-    - Testkit contract: see 02-plugin-model.md#Plugin-testkit
+    - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
+    - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
     - Rust: borrow-checker verified handle injection, zero-cost Serde
     - TypeScript: generic context accumulation, TypeBox schema guards
     - Python: RAII context managers, Pydantic v2 validation
     - Scoping: all SDKs support ring, binary, and path filters at mount point
     - Topology rule: distinct environments use separate profile factories
-    - Parity mechanism: see 11-operations.md#Multi-language-parity-gate
+    - Parity mechanism: see: 11-operations.md#Multi-language-parity-gate
     - Non-blocking trap verdicts: c.yield(checkpoint_id) and c.abort(code, msg)
     - Shared memory buffers: session.map_shared_region(tag, size_bytes)
     - Portable snapshots: session.export_snapshot() and session.import_snapshot()
@@ -29,10 +29,6 @@
   - Rust SDK
     - see: artifacts/code/rust-handle-injection.rs
     - plugin_with_handle(P) atomically returns (builder, P::Handle)
-    - plugin_with_handle vs plugin_with_handle_scoped: TBD
-    - Builder return binding: TBD
-    - TypeScript createPlugin API spelling: TBD
-    - Python Pydantic v1-vs-v2 example: TBD
     - Missing builder.plugin_with_handle call → handle not in scope → E0425
     - Zero-Allocation Validation via Serde
       - #[derive(Deserialize)] enum Action with serde(tag = "action")
@@ -70,13 +66,13 @@
       - All five plugins
       - All four VirtIO rings
       - All three epistemic truth tiers
-      - All lifecycle superpowers: see 07-lifecycle.md
+      - All lifecycle superpowers: see: 07-lifecycle.md
     - Not transliterations: each uses language-idiomatic constructs
       - Rust: async-trait, JoinSet, Arc<Mutex<>> handles
       - TypeScript: Promise.all fan-out, generic inference
       - Python: asyncio.gather, async with, Pydantic v2
   - Oracle contract
-    - Oracle interface: see 08-epistemic.md#Oracle
+    - Oracle interface: see: 08-epistemic.md#Oracle
     - Language-specific realization
       - Rust: Arc<dyn Oracle>, threaded through handler closures
       - TypeScript: Oracle object literal, captured by closures

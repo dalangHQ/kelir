@@ -3,11 +3,11 @@
     - Plugin identifier: plugin-wire
     - Owner crate: crates/kelir-plugins/plugin-wire
     - name() = "wire"; priority() = 75
-    - VirtIO Ring attachment (wire): see 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment (wire): see 07-lifecycle.md#Lifecycle-vetoes
+    - VirtIO Ring attachment (wire): see: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (wire): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for wire
     - Context key contributed: c.wire
-    - Closed-set binding rule (wire): see 02-plugin-model.md#Core-context-keys
+    - Closed-set binding rule (wire): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (wire)
     - Invariant: a real secret never enters guest address space
       - The guest sees only vault:// URNs and per-session CA certs
@@ -74,8 +74,8 @@
       - Session API in all three SDKs; ingress mechanism in
         crates/kelir-shim/src/ingress.rs
   - Error and return semantics (wire)
-    - Hook signature (wire): see artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior (wire): see artifacts/code/plugin-trait.rs
+    - Hook signature (wire): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (wire): see: artifacts/code/plugin-trait.rs
     - Failure and lifecycle: TBD
       - Upstream failure surfacing
       - Per-session CA lifetime and rotation

@@ -9,15 +9,15 @@
     - Embeddable in-process microVM hypervisor middleware microkernel
     - Mediates every guest interaction through the 4-Ring VirtIO bus
     - Boots stripped Linux microVMs in sub-60ms
-    - Definition details: see 01-architecture.md#Axiomatic-foundations
+    - Definition details: see: 01-architecture.md#Axiomatic-foundations
   - What it is not
     - Not a container wrapper
     - Not an MCP server
     - Not a background daemon
-    - Not a standalone CLI runner or daemon client: see 11-operations.md#Developer-CLI
-    - Not a daemon or container runtime: see 01-architecture.md#In-process-microkernel
+    - Not a standalone CLI runner or daemon client: see: 11-operations.md#Developer-CLI
+    - Not a daemon or container runtime: see: 01-architecture.md#In-process-microkernel
   - Target audience
-    - Audience matrix: see artifacts/diagrams/target-audience.txt
+    - Audience matrix: see: artifacts/diagrams/target-audience.txt
     - Value and trigger per audience: at the matrix
     - Infra platforms: K8s, Cube, OpenShell
     - Harness creators: Claude Code, Cursor, Devin
@@ -28,36 +28,36 @@
     - Storage hacks: host-boundary write mutations and whiteout corruption
     - Virtualization hacks: fragmented platform-specific VM scripts
     - Agent trust hacks: polling self-reported harness JSON
-    - Terminal details: see plugins/pty.md#Prompt-responder
-    - Storage details: see plugins/vfs.md#Reconciler
-    - Trust details: see 08-epistemic.md#Three-tier-truth
+    - Terminal details: see: plugins/pty.md#Prompt-responder
+    - Storage details: see: plugins/vfs.md#Reconciler
+    - Trust details: see: 08-epistemic.md#Three-tier-truth
   - Use cases
-    - Parallel agent exploration: see 07-lifecycle.md#CoW-fork
-    - Human approval waits at zero CPU: see 07-lifecycle.md#Suspend-and-resume
-    - Time-sensitive tests (JWT, cron, certs): see 07-lifecycle.md#Clock-skew
-    - Deterministic execution replay: see 07-lifecycle.md#Clock-skew
-    - Relational database governance: see plugins/db-proxy.md
-    - Supply chain package protection: see plugins/supply-chain.md
-    - Zero-copy high-throughput IPC: see 01-architecture.md#Shared-memory-channel
-    - Cross-host state migration: see 07-lifecycle.md#Portable-snapshot-bundles
-    - Flaky-API and disk-full resilience: see plugins/chaos.md
-    - Container builds without nested VMX: see 07-lifecycle.md#Docker-in-kelir
-    - Human break-glass on agent loops: see 07-lifecycle.md#Break-glass
-    - Low-memory SBC execution: see 01-architecture.md#Embedded-profile
-    - Sub-15ms idle scale-to-zero: see plugins/hyper-density.md
-    - Cross-cluster state teleport: see plugins/cas-snapshot.md
-    - Zero-downtime connection parking: see plugins/wire-ingress.md
-    - Mobile runtime governance on Android/Termux: see 01-architecture.md#Driver-backends
+    - Parallel agent exploration: see: 07-lifecycle.md#CoW-fork
+    - Human approval waits at zero CPU: see: 07-lifecycle.md#Suspend-and-resume
+    - Time-sensitive tests (JWT, cron, certs): see: 07-lifecycle.md#Clock-skew
+    - Deterministic execution replay: see: 07-lifecycle.md#Clock-skew
+    - Relational database governance: see: plugins/db-proxy.md
+    - Supply chain package protection: see: plugins/supply-chain.md
+    - Zero-copy high-throughput IPC: see: 01-architecture.md#Shared-memory-channel
+    - Cross-host state migration: see: 07-lifecycle.md#Portable-snapshot-bundles
+    - Flaky-API and disk-full resilience: see: plugins/chaos.md
+    - Container builds without nested VMX: see: 07-lifecycle.md#Docker-in-kelir
+    - Human break-glass on agent loops: see: 07-lifecycle.md#Break-glass
+    - Low-memory SBC execution: see: 01-architecture.md#Embedded-profile
+    - Sub-15ms idle scale-to-zero: see: plugins/hyper-density.md
+    - Cross-cluster state teleport: see: plugins/cas-snapshot.md
+    - Zero-downtime connection parking: see: plugins/wire-ingress.md
+    - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends
   - Spec map
-    - Foundation: see 01-architecture.md
-    - Plugin model & catalog: see 02-plugin-model.md#First-class-plugins
-    - SDK architecture: see 03-sdk-architecture.md (parity)
-    - Terminal plane: see 04-terminal-plane.md (virtio-console)
-    - Storage plane: see 05-storage-plane.md (virtio-fs)
-    - Wire plane: see 06-wire-plane.md (virtio-net)
-    - Lifecycle: see 07-lifecycle.md (suspend/resume)
-    - Epistemic: see 08-epistemic.md (oracle)
-    - Protocol: see 09-protocol.md (wire messages)
+    - Foundation: see: 01-architecture.md
+    - Plugin model & catalog: see: 02-plugin-model.md#First-class-plugins
+    - SDK architecture: see: 03-sdk-architecture.md (parity)
+    - Terminal plane: see: 04-terminal-plane.md (virtio-console)
+    - Storage plane: see: 05-storage-plane.md (virtio-fs)
+    - Wire plane: see: 06-wire-plane.md (virtio-net)
+    - Lifecycle: see: 07-lifecycle.md (suspend/resume)
+    - Epistemic: see: 08-epistemic.md (oracle)
+    - Protocol: see: 09-protocol.md (wire messages)
     - Ecosystem and ops
-      - Ecosystem ingestion: see 10-adapters.md#Ingestion-matrix
-      - Build, CI, layout: see 11-operations.md#Execution-philosophy
+      - Ecosystem ingestion: see: 10-adapters.md#Ingestion-matrix
+      - Build, CI, layout: see: 11-operations.md#Execution-philosophy

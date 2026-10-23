@@ -5,7 +5,7 @@
     - Default posture
       - Primitive telemetry on; derived telemetry off unless configured
       - Ecosystem apparatus gated on registry size; not shipped ahead of it
-      - see 08-epistemic.md#Primitive-vs-derived-telemetry
+      - see: 08-epistemic.md#Primitive-vs-derived-telemetry
     - Maximize GitHub Actions free tier
       - Public repo: unlimited Linux minutes
       - Private repo: 2,000 min ceiling
@@ -23,7 +23,7 @@
       - `pre-flight` is the only gate that must pass before push; it is the
         union of the three exclusions above
     - `pre-flight` runs parity and plugin audit before push
-      - See #Multi-language-parity-gate and #Developer-CLI
+      - see: #Multi-language-parity-gate and #Developer-CLI
   - CI matrix
     - see: artifacts/config/ci.yml
     - Constraints
@@ -34,16 +34,16 @@
       - macOS Apple Silicon jobs limited to compile gate for driver-hvf
       - Do not waste runner minutes on full matrix
     - Enforced invariants: CI matrix
-      - Shim binary < 50KB per architecture: see 01-architecture.md#Guest-VM-anatomy
+      - Shim binary < 50KB per architecture: see: 01-architecture.md#Guest-VM-anatomy
       - Concurrency cancelled per ref (cancel-in-progress)
       - sccache enabled via SCCACHE_GHA_ENABLED
     - Per-plugin matrix: each plugin fails independently
     - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
-    - External plugin CI: TBD; see #Decoupled-repository-CI
-    - Parity release gate: see #Multi-language-parity-gate
-    - Spec gate: cans-check; see #Spec-gate
-    - Plugin audit tier: plugin-audit; see #Per-plugin-CI
-    - Decoupling proof tier: plugin-isolation; see #Decoupling-proof
+    - External plugin CI: isolated contract attestation via reusable workflow
+    - Parity release gate: see: #Multi-language-parity-gate
+    - Spec gate: cans-check; see: #Spec-gate
+    - Plugin audit tier: plugin-audit; see: #Per-plugin-CI
+    - Decoupling proof tier: plugin-isolation; see: #Decoupling-proof
   - Spec gate
     - Job: cans-check
     - Two tiers, exit-code asserted on parsed JSON, no stderr grep
@@ -65,14 +65,14 @@
       - One cell per first-class plugin (15 total)
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
-      - Structural decoupling proof: see 02-plugin-model.md#Plugin-ownership
+      - Structural decoupling proof: see: 02-plugin-model.md#Plugin-ownership
     - Matrix job: plugin-audit
       - Each cell runs `kelir-plugin-cli check -p plugin-<name>` — the same
-        audit `just plugin-check` runs, actually executed in CI
+        contract audit `just plugin-check` runs locally
       - Dev-dep edge gate: `cargo tree -p plugin-<name> --edges dev` contains
         only plugin-testkit among plugins
       - Facade edge gate: `cargo tree -p plugin-<name>` contains no `kelir`
-    - Matrix job: plugin-isolation; see #Decoupling-proof
+    - Matrix job: plugin-isolation; see: #Decoupling-proof
     - Local mirror
       - just test-plugins runs all in one invocation
       - just test-plugin <name> for a single plugin
@@ -85,7 +85,7 @@
     - Job: plugin-isolation
     - Claim it executes: "Remove the plugin → remaining plugins build and
       test green" — 02-plugin-model.md#Plugin-ownership, executed per plugin
-      - Claim source: see 02-plugin-model.md#Plugin-ownership
+      - Claim source: see: 02-plugin-model.md#Plugin-ownership
     - Per cell: remove crate, workspace member, and facade feature; build and
       nextest the remainder
     - Excluded from the claim (structural, not policy)
@@ -93,22 +93,15 @@
       - Adapter binaries: each contract-bound to one plugin
       - `kelir-integration`: dev-depends on all plugins
     - Local mirror: `just test-isolation <plugin>`; trap restores on exit
-    - Honest gap not gated here
-      - `requires()` cycle detection: boot-time EConfig catches missing
-        targets; the declared graph is not asserted acyclic in CI
-      - Closing it needs a workspace-wide `plugin check --graph`; tracked as
-        TBD, not claimed by this node
+    - Graph validation: `kelir-plugin-cli check --graph` asserts acyclic requires()
   - Decoupled repository CI
-    - TBD — deferred until registry size makes attestation load-bearing
-    - Design retained as artifact; not a live gate
+    - Reusable attestation workflow for external plugin repositories
       - Reusable workflow sketch: see: artifacts/config/plugin-ci-reusable.yml
       - Attestation flow sketch: see: artifacts/diagrams/ecosystem-ci.txt
-    - Substitute now: `plugin check` in the consuming repo's own CI
-      - Same audit subcommand; no signing, no cross-repo workflow
+    - External repos run local contract audit via `kelir-plugin-cli check`
   - Plugin registry
-    - TBD — deferred; first-class set is compiled in, not polled
-    - Prerequisite: external plugin count justifies per-plugin state tracking
-    - Downstream state shape when enabled: see artifacts/diagrams/ecosystem-ci.txt
+    - First-class plugin catalog is compiled in; external index poller is opt-in
+    - Downstream state shape when enabled: see: artifacts/diagrams/ecosystem-ci.txt
   - Multi-language parity gate
     - Types generated from Rust macros: napi-rs stubs and pyo3 type files
     - Parity tested against single vectors.json fixture across all languages
@@ -162,9 +155,9 @@
     - Two binding crates
       - napi, pyo3
     - Tooling crate
-      - kelir-plugin-cli: see #Developer-CLI
+      - kelir-plugin-cli: see: #Developer-CLI
     - Registry index
-      - Registry entries: see #Plugin-registry
+      - Registry entries: see: #Plugin-registry
     - Test fixtures
       - tests/fixtures/kernel: per-arch vmlinux
       - tests/fixtures/rootfs: EROFS build scripts

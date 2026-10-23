@@ -1,7 +1,7 @@
 - Plugin model
   - KelirPlugin trait
     - see: artifacts/code/plugin-trait.rs
-    - Trait surface and hook families: see artifacts/code/plugin-trait.rs
+    - Trait surface and hook families: see: artifacts/code/plugin-trait.rs
     - Error variants
       - Ok(()) = allow; kernel proceeds
       - Err(Reject { errno, reason }) = deny with named errno, pre-write
@@ -10,6 +10,7 @@
     - Shape of the surface
       - Every hook is `async` and returns `Result<_, PluginError>`; a hook
         cannot block the dispatch array
+      - Hooks map strictly to VirtIO transport events and hypervisor transitions
       - Every ring has both an observation and a mutation point; the trait
         never exposes a ring for observation only
       - The surface is closed per ring; adding a hook is a spec change, not
@@ -31,11 +32,12 @@
       - Storage plane fully attributed: on_vfs_write carries PID and HandlerCtx
       - Control plane messages hook-observable; nothing bypasses the graph
     - Hook return semantics
-      - on_vfs_write: see 05-storage-plane.md#Write-gating (storage owns it)
+      - on_vfs_write: see: 05-storage-plane.md#Write-gating (storage owns it)
       - on_vfs_lookup → Ok(None) = fall through; Ok(Some(attr)) = serve
       - on_net_outbound / on_net_inbound → see: artifacts/code/plugin-trait.rs
   - Static dispatch
     - Plugins compiled into flat contiguous dispatch array at boot
+    - Core verifies plugin dependency DAG: cycles and missing deps halt boot
     - Evaluated in priority() order; ties broken by declaration order
     - Deduplication: identical name() instances merge; deepest config wins
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
@@ -56,72 +58,60 @@
     - Network filter: TAP dispatcher bypasses net hooks outside declared CIDR/port rules
   - Core context keys
     - Handler-visible keys; each key's definition lives at its owning plane
-    - Closed-set rule
-      - Key presence is a property of the type, not of the runtime
-      - Disabling a plugin removes its key at compile / type / import time
-      - A handler that reads a disabled plugin's key does not run; it fails
-        to typecheck
-      - No conditional type pollution: context keys never union with undefined
-      - Inactive features use null-object configs, keeping handle types intact
+    - Invariant: core runtime carries zero hardcoded plugin context keys
+    - Host context carries typed extension map for plugin-contributed data
+    - Language SDKs accumulate context keys via phantom types or handles
     - Core-provided (always present)
       - c.trap, c.env, c.vm, c.step, c.receipt()
-    - Plugin-provided (present only when the plugin is mounted)
-      - c.term ← plugin-pty; c.fs ← plugin-vfs; c.ledger ← plugin-ledger;
-        c.wire ← plugin-wire; c.chaos ← plugin-chaos;
-        c.db ← plugin-db-proxy; c.mesh ← plugin-mesh;
-        c.locks ← plugin-lock-broker; c.cas ← plugin-cas-snapshot;
-        c.mcp ← plugin-mcp; c.density ← plugin-hyper-density;
-        c.ingress ← plugin-wire-ingress
+    - Plugin-provided (accumulated strictly by SDK builder at compile/type time)
+      - Plugin handles map to typed properties on the accumulated context
+      - Unmounted plugin key dereference fails compile or import time
     - User-provided via typed handle
       - c.<key> from .decorate() / PluginWithHandle / BasePlugin.handle()
-    - Every key above resolves to a plane node in one hop; none are
-      restated here
   - First-class plugins
     - Minimum set: pty, vfs, wire, chaos, ledger
     - Behavior of each: at its plugin file
-      - plugin-pty: see plugins/pty.md — c.term
-      - plugin-vfs: see plugins/vfs.md — c.fs
-      - plugin-wire: see plugins/wire.md — c.wire
-      - plugin-chaos: see plugins/chaos.md — c.chaos
-      - plugin-ledger: see plugins/ledger.md — c.ledger
-      - plugin-db-proxy: see plugins/db-proxy.md — c.db
-      - plugin-mesh: see plugins/mesh.md — c.mesh
-      - plugin-lock-broker: see plugins/lock-broker.md — c.locks
-      - plugin-supply-chain: see plugins/supply-chain.md — package-manager guard
-      - plugin-hyper-density: see plugins/hyper-density.md — c.density
-      - plugin-cas-snapshot: see plugins/cas-snapshot.md — c.cas
-      - plugin-wire-ingress: see plugins/wire-ingress.md — c.ingress
-      - plugin-mcp: see plugins/mcp.md — c.mcp
-      - plugin-oci-translator: see plugins/oci-translator.md — OCI layer translation
-      - plugin-openshell-coordinator: see plugins/openshell-coordinator.md — checkpoint policy
+      - plugin-pty: see: plugins/pty.md — c.term
+      - plugin-vfs: see: plugins/vfs.md — c.fs
+      - plugin-wire: see: plugins/wire.md — c.wire
+      - plugin-chaos: see: plugins/chaos.md — c.chaos
+      - plugin-ledger: see: plugins/ledger.md — c.ledger
+      - plugin-db-proxy: see: plugins/db-proxy.md — c.db
+      - plugin-mesh: see: plugins/mesh.md — c.mesh
+      - plugin-lock-broker: see: plugins/lock-broker.md — c.locks
+      - plugin-supply-chain: see: plugins/supply-chain.md — package-manager guard
+      - plugin-hyper-density: see: plugins/hyper-density.md — c.density
+      - plugin-cas-snapshot: see: plugins/cas-snapshot.md — c.cas
+      - plugin-wire-ingress: see: plugins/wire-ingress.md — c.ingress
+      - plugin-mcp: see: plugins/mcp.md — c.mcp
+      - plugin-oci-translator: see: plugins/oci-translator.md — OCI layer translation
+      - plugin-openshell-coordinator: see: plugins/openshell-coordinator.md — checkpoint policy
       - Pointer rule: plugin files are leaf targets; this matrix is the canonical registry
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
-      - session.fs.*: see plugins/vfs.md
-      - session.term.*: see plugins/pty.md#Context-keys-for-pty
-      - session.forward_port(): see plugins/wire.md#Port-forwarding
-      - session.wire.*: TBD (no node owns it today)
-      - session.ledger.*: see plugins/ledger.md
-      - session.get_causal_delta_from_parent(): see plugins/ledger.md#compute-causal-delta-engine
+      - session.fs.*: see: plugins/vfs.md
+      - session.term.*: see: plugins/pty.md#Context-keys-for-pty
+      - session.forward_port(): see: plugins/wire.md#Port-forwarding
+      - session.ledger.*: see: plugins/ledger.md
+      - session.get_causal_delta_from_parent(): see: plugins/ledger.md#compute-causal-delta-engine
   - Plugin ownership
-    - Contract, not layout; see 11-operations.md#Project-structure for crate layout
     - Dependency rules
+      - Zero inter-plugin dependencies: no plugin imports another plugin crate
       - Depends on kelir-core (traits, context types) only
       - Depends on plugin-testkit as dev-dependency
       - Never depends on crates/kelir facade
-      - Never depends on another plugin at build time
-      - Runtime coordination via requires() and core context keys
+      - Cross-plugin coordination occurs via core traits or userland closures
     - Decoupling test
       - Remove the plugin → remaining plugins build and test green
       - A failing plugin's tests are attributable to that plugin alone
-      - Executed per plugin by plugin-isolation; see 11-operations.md#Decoupling-proof
+      - Executed per plugin by plugin-isolation; see: 11-operations.md#Decoupling-proof
       - Scope: excludes facade (re-exports every plugin), adapter binaries
         (one plugin each), and kelir-integration (dev-depends on all)
       - Dev-dep edge and facade edge: gated by plugin-audit
-      - Audit gate detail: see 11-operations.md#Per-plugin-CI
+      - Audit gate detail: see: 11-operations.md#Per-plugin-CI
     - External plugins: same contract; no adaptation
   - Plugin testkit
-    - Crate layout: see 11-operations.md#Project-structure
+    - Crate layout: see: 11-operations.md#Project-structure
     - Boundary contract
       - Depends on kelir-core only; never on a plugin or the facade crate
       - Every plugin depends on it as a dev-dependency
@@ -131,8 +121,8 @@
       - vectors.json derived from Rust fixtures
   - Language parity
     - see: artifacts/diagrams/sdks-invariants.txt
-    - SDK surface: see 03-sdk-architecture.md#N-native-design
-    - Parity enforcement: see 11-operations.md#Multi-language-parity-gate
+    - SDK surface: see: 03-sdk-architecture.md#N-native-design
+    - Parity enforcement: see: 11-operations.md#Multi-language-parity-gate
     - Same first-class plugins in Rust, TypeScript, Python, maintained 1:1
     - Trait surface and hook semantics identical across languages
     - Typed-handle mechanism, realized per language

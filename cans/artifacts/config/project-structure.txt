@@ -18,7 +18,6 @@ kelir/
 │   │   ├── Cargo.toml
 │   │   ├── src/
 │   │   │   └── lib.rs                 # Re-export surface: kelir-core API + feature-gated plugin modules (pty, vfs, wire, chaos, ledger)
-│   │   └── (no tests/ — ownership moved to the crate that owns each primitive)
 │   │
 │   ├── kelir-core/                    # In-process stripped microkernel
 │   │   ├── Cargo.toml
@@ -66,7 +65,7 @@ kelir/
 │   │   │   ├── audit.rs               # ELF static scan (DT_NEEDED, PT_INTERP) + LD_PRELOAD verification
 │   │   │   └── vsock.rs               # /dev/vhost-vsock hardware client socket
 │   │   └── tests/
-│   │       ├── test_anti_toctou.rs    # Concurrent thread execution race (moved from kelir/tests)
+│   │       ├── test_anti_toctou.rs    # Concurrent thread execution race
 │   │       └── test_reaper.rs         # Zombie reclamation under load
 │   │
 │   ├── kelir-drivers/                 # Pluggable Virtualization Implementations
@@ -126,7 +125,7 @@ kelir/
 │   │   │   │   ├── l4_socks.rs        # Database connection proxy (mTLS & dynamic auth)
 │   │   │   │   ├── ssh_gate.rs        # Secure Enclave host SSH-Agent forwarder
 │   │   │   │   ├── dns.rs             # Port 53 UDP interception & NXDOMAIN sinkhole
-│   │   │   │   └── port_forward.rs    # session.forward_port() (was core Session API)
+│   │   │   │   └── port_forward.rs    # session.forward_port()
 │   │   │   └── tests/
 │   │   │       ├── test_l7_proxy.rs
 │   │   │       ├── test_l4_socks.rs
@@ -213,7 +212,7 @@ kelir/
 │   │       ├── doctor.rs              # Consumer probes: KVM/HVF, kernel, EROFS
 │   │       ├── audit.rs               # Same audit as CI
 │   │       ├── vectors.rs             # Regenerate vectors.json from testkit fixtures
-│   │       └── registry.rs            # TBD — deferred with #Decoupled-repository-CI
+│   │       └── registry.rs            # Registry attestation and verification commands
 │   │
 │   └── kelir-bindings/                # FFI Translation Layers
 │       ├── napi/                      # Rust -> Node.js NAPI-RS bridge

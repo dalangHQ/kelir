@@ -14,7 +14,6 @@ use crate::protocol::messages::{
     Heartbeat, MemoryPressureWarning, PortBound, ProcessExit,
     SendSignal, TrapAction, TrapEvent, WindowResize,
 };
-use crate::session::Session;
 use crate::vmm::driver::{VmmDriver, VmConfig, WatchdogAction};
 
 #[derive(Debug, thiserror::Error)]
@@ -146,14 +145,14 @@ pub trait KelirPlugin: Send + Sync {
     /// Null-object toggle. False omits all hooks from flat dispatch array.
     fn is_enabled(&self) -> bool { true }
 
-    /// Hard dependencies by plugin name. Validated at boot; a missing
-    /// dependency aborts with EConfig before any hook fires.
+    /// Declared capability requirements validated as an acyclic graph at boot.
+    /// Missing targets or circular dependencies abort with EConfig.
     fn requires(&self) -> &'static [&'static str] { &[] }
 
     // ─── 1. MicroVM Lifecycle ────────────────────────────────────
     async fn on_vm_init(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
-    async fn on_vm_ready(&self, _session: &Session) -> Result<(), PluginError> { Ok(()) }
-    async fn on_vm_shutdown(&self, _session: &Session) -> Result<(), PluginError> { Ok(()) }
+    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
+    async fn on_vm_shutdown(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
     async fn on_pre_commit(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
     async fn on_post_commit(&self, _ctx: &mut LifecycleCtx, _committed: bool) -> Result<(), PluginError> { Ok(()) }
     async fn on_host_preempt(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }

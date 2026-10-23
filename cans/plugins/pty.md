@@ -3,18 +3,18 @@
     - Plugin identifier: plugin-pty
     - Owner crate: crates/kelir-plugins/plugin-pty
     - name() = "pty"; priority() = 90
-    - VirtIO Ring attachment (pty): see 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment (pty): see 07-lifecycle.md#Lifecycle-vetoes
-    - Terminal bus transport: see 04-terminal-plane.md#Terminal-pipeline
+    - VirtIO Ring attachment (pty): see: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (pty): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Terminal bus transport: see: 04-terminal-plane.md#Terminal-pipeline
   - Context keys for pty
     - Context key contributed: c.term
-    - Closed-set binding rule (pty): see 02-plugin-model.md#Core-context-keys
+    - Closed-set binding rule (pty): see: 02-plugin-model.md#Core-context-keys
     - Terminal handler API
       - c.term.notice(text) emits a Disclosure event
       - Routes through the same wire message as TrapAction::Rewrite.tty_notice
   - Invariants and policy (pty)
     - Five filters
-      - Filter set and per-filter behavior: see artifacts/diagrams/terminal-pipeline.txt
+      - Filter set and per-filter behavior: see: artifacts/diagrams/terminal-pipeline.txt
       - Ordering invariant
         - ANSI strip precedes prompt match: SGR codes split regex targets
         - Prompt match precedes Token Shield: clamping trims matched prompts
@@ -24,11 +24,11 @@
         - In-guest placement would cede the chain to a compromised shim
       - Single intentional bypass
         - HostToGuest::Disclosure skips all five; body is authoritative
-        - Bypass path: see 04-terminal-plane.md#Disclosure
+        - Bypass path: see: 04-terminal-plane.md#Disclosure
       - Threat model
         - OSC 52: clipboard hijack (agent reads/writes human clipboard)
         - OSC 0/1/2: title spoofing (agent impersonates terminal session)
-        - Both are Tier-1 violations: see 08-epistemic.md#Three-tier-truth
+        - Both are Tier-1 violations: see: 08-epistemic.md#Three-tier-truth
       - Escape families outside the model: TBD
     - ANSI sanitizer
       - Drops OSC 52 (`\x1b]52;c;…`) at the virtio-console ring boundary
@@ -42,7 +42,7 @@
       - Anti-spoof verification
         - Executes only if PTY holder matches kernel foreground process group
         - Background echo of prompt text cannot trigger automated responses
-      - Example wiring: see artifacts/examples/autonomous-swe-agent.ts
+      - Example wiring: see: artifacts/examples/autonomous-swe-agent.ts
       - Abuse and failure model: TBD
     - Active leak detection
       - Linear Aho-Corasick automaton scans terminal output for vault secrets
@@ -73,5 +73,5 @@
         - Plugins annotate; none suppress
       - Annotation bounds: TBD
   - Error and return semantics (pty)
-    - Hook signature (pty): see artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior (pty): see artifacts/code/plugin-trait.rs
+    - Hook signature (pty): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (pty): see: artifacts/code/plugin-trait.rs

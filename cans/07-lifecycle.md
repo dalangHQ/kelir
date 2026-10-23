@@ -1,17 +1,17 @@
 - Lifecycle
   - Superpowers
     - see: artifacts/diagrams/superpowers.txt
-    - Set membership and mechanism per item: see artifacts/diagrams/superpowers.txt
+    - Set membership and mechanism per item: see: artifacts/diagrams/superpowers.txt
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
       cooperation.
-    - Shared memory mapping: see 01-architecture.md#Shared-memory-channel
-    - Portable snapshots: see #Portable-snapshot-bundles
-    - Two-phase commit protocol: see #Two-phase-commit
-    - Preemption window: see #Host-crash-reaper
+    - Shared memory mapping: see: 01-architecture.md#Shared-memory-channel
+    - Portable snapshots: see: #Portable-snapshot-bundles
+    - Two-phase commit protocol: see: #Two-phase-commit
+    - Preemption window: see: #Host-crash-reaper
     - Every item exposes one lifecycle point via LifecycleCtx
-      - Split by state-preservation, not by privilege: see #Lifecycle-vetoes
-    - Ownership attribution: see 02-plugin-model.md#First-class-plugins
+      - Split by state-preservation, not by privilege: see: #Lifecycle-vetoes
+    - Ownership attribution: see: 02-plugin-model.md#First-class-plugins
   - CoW fork
     - Driver primitive: fork returns Box<dyn VmmDriver> in <15ms
     - KVM path: userfaultfd + KVM memory cloning
@@ -127,7 +127,7 @@
     - Spelling: `breakGlass()` (TS), `break_glass()` (Rust, Py);
       `session.break-glass()` never exists
   - Port forwarding (plugin-wire)
-    - Plugin-wire API: see plugins/wire.md#Port-forwarding
+    - Plugin-wire API: see: plugins/wire.md#Port-forwarding
   - Zombie reaping
     - Shim runs as guest PID 1
     - waitpid(-1, WNOHANG) pass integrated into async event loop

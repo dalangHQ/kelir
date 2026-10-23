@@ -3,15 +3,15 @@
     - Plugin identifier: plugin-vfs
     - Owner crate: crates/kelir-plugins/plugin-vfs
     - name() = "vfs"; priority() = 35
-    - VirtIO Ring attachment (vfs): see 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment (vfs): see 07-lifecycle.md#Lifecycle-vetoes
-    - Storage bus attachment (vfs): see 05-storage-plane.md#Storage-plane
+    - VirtIO Ring attachment (vfs): see: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (vfs): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Storage bus attachment (vfs): see: 05-storage-plane.md#Storage-plane
   - Context keys for vfs
     - Context key contributed: c.fs
-    - Closed-set binding rule (vfs): see 02-plugin-model.md#Core-context-keys
+    - Closed-set binding rule (vfs): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (vfs)
     - Reconciler
-      - see artifacts/code/reconciler.rs
+      - see: artifacts/code/reconciler.rs
       - session.fs.reconcile() is a pure storage-plane operation
       - Lifecycle hook bindings
         - on_pre_commit flushes in-flight FUSE buffers
@@ -73,7 +73,7 @@
       - Format-preserving masking (FPA) executes via ghost inode generator
       - Generates format-valid synthetic content before guest read calls
       - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks
-      - see artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
+      - see: artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
     - UID/GID idmap
       - Translates guest UID 0 (root) and 1000 (user) to host geteuid()/getegid()
       - macOS host: developer is UID 501
@@ -93,9 +93,8 @@
         state
         - Achieved by a guaranteed FUSE reply from every user callback;
           mechanism lives in plugin-vfs
-      - Consumer: Oracle.ingest_harness_event; see 08-epistemic.md#Oracle
-      - Dependency: snooping requires plugin-ledger — requires: ["ledger"]
-      - c.ledger.blake3_of_producing_process is undefined without plugin-ledger
+      - Consumer: Oracle.ingest_harness_event; see: 08-epistemic.md#Oracle
+      - Producing process metadata is resolved via HandlerCtx extension slots
   - Error and return semantics (vfs)
-    - Hook signature (vfs): see artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior (vfs): see 05-storage-plane.md#Write-gating
+    - Hook signature (vfs): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (vfs): see: 05-storage-plane.md#Write-gating

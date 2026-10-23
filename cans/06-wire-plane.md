@@ -1,7 +1,7 @@
 - Wire plane
   - Wire architecture
     - see: artifacts/diagrams/wire-plane.txt
-    - Return contract: see 02-plugin-model.md#Hook-return-semantics
+    - Return contract: see: 02-plugin-model.md#Hook-return-semantics
   - TAP bridge and L2 frame intercept
     - TAP interface bridge connects the guest virtio-net device to the host
     - All frames in both directions cross the TAP boundary

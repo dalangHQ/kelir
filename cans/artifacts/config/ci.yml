@@ -153,6 +153,17 @@ jobs:
       - name: Test plugin-${{ matrix.plugin }}
         run: cargo nextest run -p plugin-${{ matrix.plugin }}
 
+  # ─── 4a. PLUGIN DEPENDENCY DAG CHECK ──────────────────────
+  plugin-graph:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Validate Acyclic Plugin Dependency DAG
+        run: cargo run -p kelir-plugin-cli -- check --graph
+
   # ─── 4b. PLUGIN CONTRACT AUDIT ─────────────────────────────
   # Same command as `just plugin-check`. The audit that
   # 11-operations.md promises is actually executed here.

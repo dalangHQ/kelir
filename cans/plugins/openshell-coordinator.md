@@ -3,11 +3,11 @@
     - Plugin identifier: plugin-openshell-coordinator
     - Owner crate: crates/kelir-plugins/plugin-openshell-coordinator
     - name() = "openshell-coordinator"; priority() = 60
-    - VirtIO Ring attachment (openshell-coordinator): see 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment (openshell-coordinator): see 07-lifecycle.md#Lifecycle-vetoes
+    - VirtIO Ring attachment (openshell-coordinator): see: 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (openshell-coordinator): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for openshell-coordinator
     - Context key contributed: None (daemon runtime: checkpoint coordination)
-    - Closed-set binding rule (openshell-coordinator): see 02-plugin-model.md#Core-context-keys
+    - Closed-set binding rule (openshell-coordinator): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (openshell-coordinator)
     - Coordinator hook wiring
       - on_vm_init: register vetoes on Fork, Suspend, ClockSkew
@@ -22,5 +22,5 @@
       - NVIDIA Container Device Interface (CDI) device mapping
     - OpenShell contract: TBD
   - Error and return semantics (openshell-coordinator)
-    - Hook signature (openshell-coordinator): see artifacts/code/plugin-trait.rs
+    - Hook signature (openshell-coordinator): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (openshell-coordinator): TBD
