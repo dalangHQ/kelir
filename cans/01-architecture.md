@@ -77,9 +77,11 @@
   - Four-Ring Bus
     - See: artifacts/diagrams/four-ring-bus.txt
     - virtio-vsock control plane: syscalls, PIDs, signals, traps
-    - virtio-console terminal plane: raw TTY, ANSI, Token Shield, resizing
-    - virtio-fs storage plane: CoW overlays, inodes, in-flight masking, ghosts
-    - virtio-net wire plane: L4/L7 traffic, secrets, chaos
+    - virtio-console terminal plane: raw byte streams, PTY master/slave
+      allocation, geometry ioctls
+    - virtio-fs storage plane: FUSE request dispatch, EROFS block mounting,
+      tmpfs overlays
+    - virtio-net wire plane: L2/L3 frame interception, TAP frame routing
     - virtio-shm shared memory: zero-copy tabular data buffers
   - Shared memory channel
     - Anonymous host memfd_create segment mapped directly into guest GPA slots

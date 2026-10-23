@@ -8,9 +8,11 @@
     - Rule: the plugin owns translation and policy; the binary owns the wire
     - Tri-native SDKs are the fourth ingestion family; see 03-sdk-architecture.md
   - MCP adapter
-    - MCP binary: kelir-mcp boots microVM with plugin-mcp and stdio transport
-    - Eliminates external bridge daemons, proxy sockets, and shell layers
-    - MCP plugin file: plugins/mcp.md
+    - Server binary
+      - Crate: kelir-adapters/mcp-server
+      - Routes Model Context Protocol JSON-RPC over stdio directly to microVM rings
+      - Loads plugin-mcp
+    - Server plugin: plugins/mcp.md
   - Containerd shim v2
     - Shim binary
       - Crate: kelir-adapters/containerd-shim

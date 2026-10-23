@@ -28,8 +28,8 @@
     - Storage hacks: host-boundary write mutations and whiteout corruption
     - Virtualization hacks: fragmented platform-specific VM scripts
     - Agent trust hacks: polling self-reported harness JSON
-    - Details: see 04-terminal-plane.md#Terminal-pipeline
-    - Details: see 05-storage-plane.md#Storage-architecture
+    - Details: plugins/pty.md#Prompt-responder
+    - Details: plugins/vfs.md#Reconciler
     - Details: see 08-epistemic.md#Three-tier-truth
   - Use cases
     - Parallel agent exploration: see 07-lifecycle.md#CoW-fork

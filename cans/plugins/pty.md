@@ -2,6 +2,7 @@
   - Capability definition
     - Plugin identifier: plugin-pty
     - Owner crate: crates/kelir-plugins/plugin-pty
+    - name() = "pty"; priority() = 90
     - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
     - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
     - Terminal bus transport: 04-terminal-plane.md#Terminal-pipeline
@@ -73,4 +74,4 @@
       - Annotation bounds: TBD
   - Error and return semantics
     - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior: 02-plugin-model.md#Hook-return-semantics
+    - Return errno and rejection behavior: artifacts/code/plugin-trait.rs

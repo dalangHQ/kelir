@@ -70,7 +70,9 @@
       - Guest kernel never flags tsc as unstable, never falls to jiffies
     - Typical use: JWT expiry, cron cycles, certificate renewals
     - Synthetic virtual clocksource mode
-      - Guest clock decouples from host TSC; host advances KVM_SET_CLOCK per step
+      - Guest clock decouples from host TSC; host advances KVM_SET_CLOCK on
+        retired-instruction PMU windows (host vCPU timer ticks), not per
+        syscall trap
       - Intercepts timer reads on host without custom guest kernel modules
       - Guarantees cycle-exact deterministic replay across repeated runs
     - Veto: ClockSkew (hard)
@@ -125,12 +127,7 @@
     - Spelling: `breakGlass()` (TS), `break_glass()` (Rust, Py);
       `session.break-glass()` never exists
   - Port forwarding
-    - Guest-initiated: no host listener
-      - Flow: guest binds → shim emits PortBound → host tunnels over
-        vsock:5253 → shim proxies to guest loopback
-    - User-initiated forward_port(): host does listen on the named port
-    - Session API in all three SDKs; ingress mechanism in
-      crates/kelir-shim/src/ingress.rs
+    - Plugin-wire API: plugins/wire.md#Port-forwarding
   - Zombie reaping
     - Shim runs as guest PID 1
     - waitpid(-1, WNOHANG) pass integrated into async event loop

@@ -18,4 +18,6 @@
     - Containerd contract: TBD
   - Error and return semantics
     - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior: TBD
+    - Return errno and rejection behavior
+      - on_vm_init failure: PluginError::Halt("OCI layer extraction failed")
+      - Aborts VM cold boot; no guest exists to receive a POSIX errno

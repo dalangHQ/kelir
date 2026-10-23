@@ -7,6 +7,7 @@
       - Deletions leave whiteouts, not disk holes; reconciler must resolve them
     - Deterministic 64-bit host_stable_hash of inode metadata for OCC fences
     - Hashes device, inode, mtime, and size; zero read-time payload hashing
+    - Exception for dynamic ghost inodes: plugins/vfs.md#Ghost-inodes
   - EROFS rootfs
     - Stripped base system pre-baked into read-only EROFS
     - Python, Node, Rust, Bash pre-installed
@@ -32,4 +33,4 @@
       - Returned before any bytes enter upperdir
     - Err(PluginError::Halt) = deny + halt pipeline
       - For policy violations requiring human review
-    - Observation-only snoop callbacks are separate: Snoop plane in plugin-vfs
+    - Observation-only snoop callbacks: plugins/vfs.md#Snoop-plane

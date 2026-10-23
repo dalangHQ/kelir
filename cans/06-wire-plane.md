@@ -12,4 +12,5 @@
   - Frame drop and forward semantics
     - Ok(()) on outbound = forward; Ok(()) on inbound = deliver
     - Err(Reject) = silent drop (no RST, no guest error)
-    - Default deny: allowlist miss is silent drop (on_net_outbound Reject)
+    - Default forward: frames pass unless a mounted plugin returns
+      PluginError::Reject (silent drop)

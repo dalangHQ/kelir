@@ -2,6 +2,7 @@
   - Capability definition
     - Plugin identifier: plugin-cas-snapshot
     - Owner crate: crates/kelir-plugins/plugin-cas-snapshot
+    - name() = "cas-snapshot"; priority() = 40
     - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
     - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys

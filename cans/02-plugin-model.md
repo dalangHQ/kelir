@@ -41,8 +41,9 @@
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
     - Zero-cost null objects: disabled plugins retain types, cost 0µs in core
     - requires() validated at boot; missing dep aborts boot with EConfig
-    - Lock-free dispatch swap via ArcSwap on the host event bus
-    - Hot-swaps hook pipelines at runtime without microVM reboot
+    - Lock-free dispatch swap via ArcSwap on the host event bus (internal)
+    - ArcSwap serves atomic dispatch swapping during snapshot hydration only
+    - Not a public runtime API; session configuration is frozen after boot
     - First Deny or Rewrite halts pipeline, dispatches over AF_VSOCK
     - Sub-12 microsecond hook execution
     - on_trap_deny is builder-level, not a plugin hook
@@ -52,6 +53,7 @@
     - VirtIO ring mask: unselected rings bypass plugin completely
     - Binary filter: kernel BPF drops traps for unlisted executable paths
     - Path filter: FUSE layer bypasses VFS hooks outside declared subtrees
+    - Network filter: TAP dispatcher bypasses net hooks outside declared CIDR/port rules
   - Core context keys
     - Handler-visible keys; each key's definition lives at its owning plane
     - Closed-set rule
@@ -96,11 +98,11 @@
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
       - session.fs.*: plugins/vfs.md
-      - session.term.*: see 04-terminal-plane.md#Disclosure
-      - session.forward_port(): see 07-lifecycle.md#Port-forwarding
+      - session.term.*: plugins/pty.md#Context-keys
+      - session.forward_port(): plugins/wire.md#Port-forwarding
       - session.wire.*: TBD (no node owns it today)
       - session.ledger.*: plugins/ledger.md
-      - session.get_causal_delta_from_parent(): see 08-epistemic.md#Causal-delta
+      - session.get_causal_delta_from_parent(): plugins/ledger.md#compute-causal-delta-engine
   - Plugin ownership
     - Contract, not layout; see 11-operations.md#Project-structure for crate layout
     - Dependency rules

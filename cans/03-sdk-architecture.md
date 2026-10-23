@@ -16,8 +16,10 @@
     - Shared memory buffers: session.map_shared_region(tag, size_bytes)
     - Portable snapshots: session.export_snapshot() and session.import_snapshot()
     - Custom vsock RPC services: builder.register_vsock_service(port, handler)
-    - Extended plugin modules: db_proxy, mesh, lock_broker, supply_chain,
-      hyper_density, cas_snapshot, wire_ingress
+    - Extended plugin modules
+      - db_proxy, mesh, lock_broker, supply_chain
+      - hyper_density, cas_snapshot
+      - wire_ingress
   - Params typed views
     - Host-side typed access on HandlerCtx
       - Rust: c.params::<T>() deserializes from validated buffer

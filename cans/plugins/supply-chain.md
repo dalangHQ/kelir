@@ -2,6 +2,7 @@
   - Capability definition
     - Plugin identifier: plugin-supply-chain
     - Owner crate: crates/kelir-plugins/plugin-supply-chain
+    - name() = "supply-chain"; priority() = 25
     - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
     - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys

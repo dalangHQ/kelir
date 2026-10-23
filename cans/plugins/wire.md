@@ -2,6 +2,7 @@
   - Capability definition
     - Plugin identifier: plugin-wire
     - Owner crate: crates/kelir-plugins/plugin-wire
+    - name() = "wire"; priority() = 75
     - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
     - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys
@@ -58,17 +59,23 @@
       - DNS data tunneling exploits neutralized at hypervisor perimeter
       - Examples blocked: secret-data.attacker.com style exfiltration
     - Admission semantics: TBD
-      - Allowlist match key
+      - Allowlist match key: SNI vs Host vs IP
       - Redirect handling
-      - SNI vs Host vs IP
-      - QUIC / HTTP-3
-      - DoH / DoT
-      - Raw sockets, ICMP, IPv6
+      - Alternative L4/L7 protocol admission: QUIC, DoH/DoT, raw sockets, ICMP, IPv6
       - Guest certificate pinning
       - Response body scrubbing
+    - Port forwarding
+      - session.forward_port() is a plugin-wire API; unmounted sessions do
+        not expose it
+      - Guest-initiated: no host listener
+        - Flow: guest binds → shim emits PortBound → host tunnels over
+          vsock:5253 → shim proxies to guest loopback
+      - User-initiated forward_port(): host does listen on the named port
+      - Session API in all three SDKs; ingress mechanism in
+        crates/kelir-shim/src/ingress.rs
   - Error and return semantics
     - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior: 02-plugin-model.md#Hook-return-semantics
+    - Return errno and rejection behavior: artifacts/code/plugin-trait.rs
     - Failure and lifecycle: TBD
       - Upstream failure surfacing
       - Per-session CA lifetime and rotation

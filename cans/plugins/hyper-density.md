@@ -2,6 +2,7 @@
   - Capability definition
     - Plugin identifier: plugin-hyper-density
     - Owner crate: crates/kelir-plugins/plugin-hyper-density
+    - name() = "hyper-density"; priority() = 45
     - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
     - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys

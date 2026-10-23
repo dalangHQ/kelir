@@ -24,6 +24,9 @@
       - write_file → virtio-fs write
     - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
       - Previously impossible: adapter binary sat outside the graph
+    - Console stream exclusion
+      - plugin-mcp and plugin-pty cannot bind the same console stream
+      - plugin-mcp requires raw pass-through mode on Ring 1 (virtio-console)
     - MCP contract: TBD
   - Error and return semantics
     - Hook signature: artifacts/code/plugin-trait.rs

@@ -2,6 +2,7 @@
   - Capability definition
     - Plugin identifier: plugin-wire-ingress
     - Owner crate: crates/kelir-plugins/plugin-wire-ingress
+    - name() = "wire-ingress"; priority() = 85
     - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
     - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys

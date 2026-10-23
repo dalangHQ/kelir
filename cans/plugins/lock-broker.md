@@ -2,6 +2,7 @@
   - Capability definition
     - Plugin identifier: plugin-lock-broker
     - Owner crate: crates/kelir-plugins/plugin-lock-broker
+    - name() = "lock-broker"; priority() = 30
     - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
     - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
     - Storage bus attachment: 05-storage-plane.md#Storage-plane
@@ -17,4 +18,5 @@
       - Non-blocking: conflicting lock returns EWOULDBLOCK without host lag
   - Error and return semantics
     - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior: 05-storage-plane.md#Write-gating
+    - Return errno and rejection behavior
+      - Conflicting locks return Err(PluginError::Reject { errno: "EWOULDBLOCK" })

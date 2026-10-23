@@ -2,7 +2,8 @@
   - Capability definition
     - Plugin identifier: plugin-db-proxy
     - Owner crate: crates/kelir-plugins/plugin-db-proxy
-    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
+    - name() = "db-proxy"; priority() = 70
+    - VirtIO Ring attachment: virtio-net (port 5432) and virtio-vsock (/run/kelir/db.sock)
     - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys
     - Context key contributed: c.db

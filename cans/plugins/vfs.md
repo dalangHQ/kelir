@@ -2,6 +2,7 @@
   - Capability definition
     - Plugin identifier: plugin-vfs
     - Owner crate: crates/kelir-plugins/plugin-vfs
+    - name() = "vfs"; priority() = 35
     - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
     - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
     - Storage bus attachment: 05-storage-plane.md#Storage-plane
@@ -12,6 +13,9 @@
     - Reconciler
       - artifacts/code/reconciler.rs
       - session.fs.reconcile() is a pure storage-plane operation
+      - Lifecycle hook bindings
+        - on_pre_commit flushes in-flight FUSE buffers
+        - on_post_commit triggers reconcile_upperdir()
       - Syncs overlay upperdir differential to host workspace
       - Carries no VCS semantics, accepts no message parameter
       - Git commit is ordinary guest execution through the trap chain
@@ -50,6 +54,9 @@
       - Dynamic ghost
         - Content factory evaluated fresh per open()
         - Example: /workspace/identity.jwt regenerating per open
+        - OCC exception: host_stable_hash is computed from the dynamic content
+          buffer on open(), not from static metadata
+        - This bypasses the zero-read-time metadata hashing rule for ghosts
       - Full VfsInodeAttr: mode, uid, gid, size, content
       - FUSE LOOKUP reply populated verbatim
       - mode: 0o400 honored exactly, no permission fallback
@@ -87,6 +94,8 @@
         - Achieved by a guaranteed FUSE reply from every user callback;
           mechanism lives in plugin-vfs
       - Consumer: Oracle.ingest_harness_event; 08-epistemic.md#Oracle
+      - Dependency: snooping requires plugin-ledger — requires: ["ledger"]
+      - c.ledger.blake3_of_producing_process is undefined without plugin-ledger
   - Error and return semantics
     - Hook signature: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior: 05-storage-plane.md#Write-gating
