@@ -1,14 +1,14 @@
 - Plugin db-proxy
-  - Capability definition
+  - Capability definition (db-proxy)
     - Plugin identifier: plugin-db-proxy
     - Owner crate: crates/kelir-plugins/plugin-db-proxy
     - name() = "db-proxy"; priority() = 70
     - VirtIO Ring attachment: virtio-net (port 5432) and virtio-vsock (/run/kelir/db.sock)
-    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys
+    - Lifecycle attachment (db-proxy): see 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys for db-proxy
     - Context key contributed: c.db
-    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
-  - Invariants and policy
+    - Closed-set binding rule (db-proxy): see 02-plugin-model.md#Core-context-keys
+  - Invariants and policy (db-proxy)
     - Mediates relational database communication
     - PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser
     - SQLite: exposes /run/kelir/db.sock forwarded via vsock host service
@@ -17,8 +17,8 @@
       - PostgreSQL on 5432, Redis on 6379
       - Ephemeral DB credentials injected at host connection boundary
       - Client mTLS certificates injected at host boundary
-  - Error and return semantics
-    - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior
+  - Error and return semantics (db-proxy)
+    - Hook signature (db-proxy): artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (db-proxy)
       - DbAction::Deny error surfacing to guest client: TBD
       - DbAction::Rewrite semantics: TBD

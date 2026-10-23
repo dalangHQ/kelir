@@ -79,30 +79,30 @@
   - First-class plugins
     - Minimum set: pty, vfs, wire, chaos, ledger
     - Behavior of each: at its plugin file
-      - plugin-pty: plugins/pty.md — c.term
-      - plugin-vfs: plugins/vfs.md — c.fs
-      - plugin-wire: plugins/wire.md — c.wire
-      - plugin-chaos: plugins/chaos.md — c.chaos
-      - plugin-ledger: plugins/ledger.md — c.ledger
-      - plugin-db-proxy: plugins/db-proxy.md — c.db
-      - plugin-mesh: plugins/mesh.md — c.mesh
-      - plugin-lock-broker: plugins/lock-broker.md — c.locks
-      - plugin-supply-chain: plugins/supply-chain.md — package-manager guard
-      - plugin-hyper-density: plugins/hyper-density.md — c.density
-      - plugin-cas-snapshot: plugins/cas-snapshot.md — c.cas
-      - plugin-wire-ingress: plugins/wire-ingress.md — c.ingress
-      - plugin-mcp: plugins/mcp.md — c.mcp
-      - plugin-oci-translator: plugins/oci-translator.md — OCI layer translation
-      - plugin-openshell-coordinator: plugins/openshell-coordinator.md — checkpoint policy
+      - plugin-pty: see plugins/pty.md — c.term
+      - plugin-vfs: see plugins/vfs.md — c.fs
+      - plugin-wire: see plugins/wire.md — c.wire
+      - plugin-chaos: see plugins/chaos.md — c.chaos
+      - plugin-ledger: see plugins/ledger.md — c.ledger
+      - plugin-db-proxy: see plugins/db-proxy.md — c.db
+      - plugin-mesh: see plugins/mesh.md — c.mesh
+      - plugin-lock-broker: see plugins/lock-broker.md — c.locks
+      - plugin-supply-chain: see plugins/supply-chain.md — package-manager guard
+      - plugin-hyper-density: see plugins/hyper-density.md — c.density
+      - plugin-cas-snapshot: see plugins/cas-snapshot.md — c.cas
+      - plugin-wire-ingress: see plugins/wire-ingress.md — c.ingress
+      - plugin-mcp: see plugins/mcp.md — c.mcp
+      - plugin-oci-translator: see plugins/oci-translator.md — OCI layer translation
+      - plugin-openshell-coordinator: see plugins/openshell-coordinator.md — checkpoint policy
       - Pointer rule: plugin files are leaf targets; this matrix is the canonical registry
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
-      - session.fs.*: plugins/vfs.md
-      - session.term.*: plugins/pty.md#Context-keys
-      - session.forward_port(): plugins/wire.md#Port-forwarding
+      - session.fs.*: see plugins/vfs.md
+      - session.term.*: see plugins/pty.md#Context-keys-for-pty
+      - session.forward_port(): see plugins/wire.md#Port-forwarding
       - session.wire.*: TBD (no node owns it today)
-      - session.ledger.*: plugins/ledger.md
-      - session.get_causal_delta_from_parent(): plugins/ledger.md#compute-causal-delta-engine
+      - session.ledger.*: see plugins/ledger.md
+      - session.get_causal_delta_from_parent(): see plugins/ledger.md#compute-causal-delta-engine
   - Plugin ownership
     - Contract, not layout; see 11-operations.md#Project-structure for crate layout
     - Dependency rules
@@ -132,7 +132,7 @@
   - Language parity
     - See: artifacts/diagrams/sdks-invariants.txt
     - SDK surface: see 03-sdk-architecture.md#N-native-design
-    - Enforcement: see 11-operations.md#Multi-language-parity-gate
+    - Parity enforcement: see 11-operations.md#Multi-language-parity-gate
     - Same first-class plugins in Rust, TypeScript, Python, maintained 1:1
     - Trait surface and hook semantics identical across languages
     - Typed-handle mechanism, realized per language

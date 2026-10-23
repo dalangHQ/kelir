@@ -1,21 +1,21 @@
 - Plugin wire-ingress
-  - Capability definition
+  - Capability definition (wire-ingress)
     - Plugin identifier: plugin-wire-ingress
     - Owner crate: crates/kelir-plugins/plugin-wire-ingress
     - name() = "wire-ingress"; priority() = 85
-    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys
+    - VirtIO Ring attachment (wire-ingress): see 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (wire-ingress): see 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys for wire-ingress
     - Context key contributed: c.ingress
-    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
-  - Invariants and policy
+    - Closed-set binding rule (wire-ingress): see 02-plugin-model.md#Core-context-keys
+  - Invariants and policy (wire-ingress)
     - Holds inbound client TCP connections without dropped frames during suspend
     - Clamps socket receive buffers via socket2 to stall window progress natively
     - Sniffs routing metadata in nanoseconds with zero allocation via httparse
     - Wakes target microVM via LifecycleCtx when ingress bytes arrive
     - Splices client stream directly to vsock:5253 using tokio copy_bidirectional
     - Zero-downtime webhook and interactive terminal connection continuity
-  - Error and return semantics
-    - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior
+  - Error and return semantics (wire-ingress)
+    - Hook signature (wire-ingress): artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (wire-ingress)
       - Parked-connection timeout and overflow behavior: TBD

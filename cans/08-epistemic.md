@@ -7,7 +7,7 @@
       - Oracle: user interface, one per session, not a plugin, no dispatch slot
       - plugin-ledger: derived computation over core primitives
     - Removing either leaves core intact; see #Primitive-vs-derived-telemetry
-    - Enforcement: see 01-architecture.md#Axiomatic-foundations
+    - Axiom enforcement: see 01-architecture.md#Axiomatic-foundations
   - Oracle
     - User-supplied interface; NOT a plugin
     - Location: kelir-core::oracle::Oracle
@@ -23,7 +23,7 @@
       - verify_physical_receipt(&ExecutionReceipt) -> bool
         - Called from after(*) post-condition verification
       - ingest_harness_event(&Path, &Value, &str)
-        - Called from snoop callbacks; plugins/vfs.md#Snoop-plane
+        - Called from snoop callbacks; see plugins/vfs.md#Snoop-plane
       - await_human_approval()
         - Called between suspend/resume for human-in-the-loop gates
       - current_trace_id() -> String
@@ -45,8 +45,8 @@
     - Boundaries
       - Primitive set: see 01-architecture.md#Core-invariants
       - CausalDelta: see #Causal-delta
-      - Merkle chain: plugins/ledger.md#Merkle-WAL
-      - OpenTelemetry spans: plugins/ledger.md#OpenTelemetry
+      - Merkle chain: see plugins/ledger.md#Merkle-WAL
+      - OpenTelemetry spans: see plugins/ledger.md#OpenTelemetry
       - Oracle analyses: consumer's Oracle impl
   - Execution receipts
     - See: artifacts/code/execution-receipt.rs
@@ -87,7 +87,7 @@
     - Type ownership
       - Struct is a shared context type; it lives in kelir-core next to
         ExecutionReceipt
-      - Computation is derived: plugins/ledger.md#compute-causal-delta-engine
+      - Computation is derived: see plugins/ledger.md#compute-causal-delta-engine
     - This split follows the primitive-vs-derived rule: type is primitive,
       computation is derived
   - Three-tier truth

@@ -1,20 +1,20 @@
 - Plugin mesh
-  - Capability definition
+  - Capability definition (mesh)
     - Plugin identifier: plugin-mesh
     - Owner crate: crates/kelir-plugins/plugin-mesh
     - name() = "mesh"; priority() = 65
-    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys
+    - VirtIO Ring attachment (mesh): see 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (mesh): see 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys for mesh
     - Context key contributed: c.mesh
-    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
-  - Invariants and policy
+    - Closed-set binding rule (mesh): see 02-plugin-model.md#Core-context-keys
+  - Invariants and policy (mesh)
     - Sovereign cross-hypervisor peer transport
     - Routes point-to-point peer streams via vsock listener services
     - Injects and validates mTLS framing across hypervisor boundaries
     - Propagates W3C traceparents and call-hop counters across routines
-  - Error and return semantics
-    - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior
+  - Error and return semantics (mesh)
+    - Hook signature (mesh): artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (mesh)
       - mTLS validation failure behavior: TBD
       - Peer identity and certificate issuance: TBD

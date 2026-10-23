@@ -20,12 +20,12 @@
   - Signal forwarding
     - Ctrl+C / Ctrl+D reach the guest foreground process group
     - on_signal_send is observation-only; a hook cannot rewrite the signal
-    - Wire path: 09-protocol.md#Wire-messages
+    - Wire path: see 09-protocol.md#Wire-messages
   - Disclosure
     - Core-originated mandatory notice from TrapAction::Rewrite.tty_notice
     - Wire message
       - HostToGuest::Disclosure { body } over vsock:5252
-      - Wire message definition: 09-protocol.md#Wire-messages
+      - Wire message definition: see 09-protocol.md#Wire-messages
     - Guest-side
       - Shim prints body + annotations verbatim to workload PTY
       - No plugin-pty filter runs on shim side; disclosure is authoritative

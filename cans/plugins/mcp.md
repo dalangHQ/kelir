@@ -1,14 +1,14 @@
 - Plugin mcp
-  - Capability definition
+  - Capability definition (mcp)
     - Plugin identifier: plugin-mcp
     - Owner crate: crates/kelir-plugins/plugin-mcp
     - name() = "mcp"; priority() = 50
-    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys
+    - VirtIO Ring attachment (mcp): see 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (mcp): see 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys for mcp
     - Context key contributed: c.mcp
-    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
-  - Invariants and policy
+    - Closed-set binding rule (mcp): see 02-plugin-model.md#Core-context-keys
+  - Invariants and policy (mcp)
     - Thin in-process adapter routing JSON-RPC stdio directly to VirtIO rings
     - MCP plugin: maps tools directly to virtio-console, virtio-fs, and traps
     - MCP hook wiring
@@ -28,6 +28,6 @@
       - plugin-mcp and plugin-pty cannot bind the same console stream
       - plugin-mcp requires raw pass-through mode on Ring 1 (virtio-console)
     - MCP contract: TBD
-  - Error and return semantics
-    - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior: TBD
+  - Error and return semantics (mcp)
+    - Hook signature (mcp): artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (mcp): TBD

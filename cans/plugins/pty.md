@@ -1,18 +1,18 @@
 - Plugin pty
-  - Capability definition
+  - Capability definition (pty)
     - Plugin identifier: plugin-pty
     - Owner crate: crates/kelir-plugins/plugin-pty
     - name() = "pty"; priority() = 90
-    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
-    - Terminal bus transport: 04-terminal-plane.md#Terminal-pipeline
-  - Context keys
+    - VirtIO Ring attachment (pty): see 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (pty): see 07-lifecycle.md#Lifecycle-vetoes
+    - Terminal bus transport: see 04-terminal-plane.md#Terminal-pipeline
+  - Context keys for pty
     - Context key contributed: c.term
-    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
+    - Closed-set binding rule (pty): see 02-plugin-model.md#Core-context-keys
     - Terminal handler API
       - c.term.notice(text) emits a Disclosure event
       - Routes through the same wire message as TrapAction::Rewrite.tty_notice
-  - Invariants and policy
+  - Invariants and policy (pty)
     - Five filters
       - Filter set and per-filter behavior: artifacts/diagrams/terminal-pipeline.txt
       - Ordering invariant
@@ -24,11 +24,11 @@
         - In-guest placement would cede the chain to a compromised shim
       - Single intentional bypass
         - HostToGuest::Disclosure skips all five; body is authoritative
-        - Bypass path: 04-terminal-plane.md#Disclosure
+        - Bypass path: see 04-terminal-plane.md#Disclosure
       - Threat model
         - OSC 52: clipboard hijack (agent reads/writes human clipboard)
         - OSC 0/1/2: title spoofing (agent impersonates terminal session)
-        - Both are Tier-1 violations: 08-epistemic.md#Three-tier-truth
+        - Both are Tier-1 violations: see 08-epistemic.md#Three-tier-truth
       - Escape families outside the model: TBD
     - ANSI sanitizer
       - Drops OSC 52 (`\x1b]52;c;…`) at the virtio-console ring boundary
@@ -72,6 +72,6 @@
         - Any host-side state mutation reaches the workload's TTY
         - Plugins annotate; none suppress
       - Annotation bounds: TBD
-  - Error and return semantics
-    - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior: artifacts/code/plugin-trait.rs
+  - Error and return semantics (pty)
+    - Hook signature (pty): artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (pty): artifacts/code/plugin-trait.rs

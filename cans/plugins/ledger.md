@@ -1,14 +1,14 @@
 - Plugin ledger
-  - Capability definition
+  - Capability definition (ledger)
     - Plugin identifier: plugin-ledger
     - Owner crate: crates/kelir-plugins/plugin-ledger
     - name() = "ledger"; priority() = 55
-    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys
+    - VirtIO Ring attachment (ledger): see 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (ledger): see 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys for ledger
     - Context key contributed: c.ledger
-    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
-  - Invariants and policy
+    - Closed-set binding rule (ledger): see 02-plugin-model.md#Core-context-keys
+  - Invariants and policy (ledger)
     - Merkle WAL
       - Pluggable LedgerSink trait owns persistence; Merkle DB is default impl
       - Delegated audit persistence via external_sink replaces default sink
@@ -42,8 +42,8 @@
       - Computation is policy-bearing; it lives in plugin-ledger
       - Session accessor `get_causal_delta_from_parent()` requires
         plugin-ledger mounted; unmounted sessions do not expose it
-      - Causal delta definition: 08-epistemic.md#Causal-delta
+      - Causal delta definition: see 08-epistemic.md#Causal-delta
       - CausalDelta computation: TBD
-  - Error and return semantics
-    - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior: TBD
+  - Error and return semantics (ledger)
+    - Hook signature (ledger): artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (ledger): TBD

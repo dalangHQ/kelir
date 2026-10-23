@@ -1,15 +1,15 @@
 - Plugin vfs
-  - Capability definition
+  - Capability definition (vfs)
     - Plugin identifier: plugin-vfs
     - Owner crate: crates/kelir-plugins/plugin-vfs
     - name() = "vfs"; priority() = 35
-    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
-    - Storage bus attachment: 05-storage-plane.md#Storage-plane
-  - Context keys
+    - VirtIO Ring attachment (vfs): see 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (vfs): see 07-lifecycle.md#Lifecycle-vetoes
+    - Storage bus attachment (vfs): see 05-storage-plane.md#Storage-plane
+  - Context keys for vfs
     - Context key contributed: c.fs
-    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
-  - Invariants and policy
+    - Closed-set binding rule (vfs): see 02-plugin-model.md#Core-context-keys
+  - Invariants and policy (vfs)
     - Reconciler
       - artifacts/code/reconciler.rs
       - session.fs.reconcile() is a pure storage-plane operation
@@ -93,9 +93,9 @@
         state
         - Achieved by a guaranteed FUSE reply from every user callback;
           mechanism lives in plugin-vfs
-      - Consumer: Oracle.ingest_harness_event; 08-epistemic.md#Oracle
+      - Consumer: Oracle.ingest_harness_event; see 08-epistemic.md#Oracle
       - Dependency: snooping requires plugin-ledger — requires: ["ledger"]
       - c.ledger.blake3_of_producing_process is undefined without plugin-ledger
-  - Error and return semantics
-    - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior: 05-storage-plane.md#Write-gating
+  - Error and return semantics (vfs)
+    - Hook signature (vfs): artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (vfs): see 05-storage-plane.md#Write-gating

@@ -1,20 +1,20 @@
 - Plugin hyper-density
-  - Capability definition
+  - Capability definition (hyper-density)
     - Plugin identifier: plugin-hyper-density
     - Owner crate: crates/kelir-plugins/plugin-hyper-density
     - name() = "hyper-density"; priority() = 45
-    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys
+    - VirtIO Ring attachment (hyper-density): see 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (hyper-density): see 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys for hyper-density
     - Context key contributed: c.density
-    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
-  - Invariants and policy
+    - Closed-set binding rule (hyper-density): see 02-plugin-model.md#Core-context-keys
+  - Invariants and policy (hyper-density)
     - Autonomous idle eviction
       - Detects guest blocking I/O across VirtIO rings via idle threshold timer
       - Drops host RSS to 0 MB autonomously when workload awaits model or human
       - Compresses dirty memory pages at multi-gigabyte line speed using lz4_flex
       - Flushes state directly to NVMe via io-uring bypassing host page cache
       - Resumes vCPU execution at exact cycle boundary in <15ms on ring traffic
-  - Error and return semantics
-    - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior: TBD
+  - Error and return semantics (hyper-density)
+    - Hook signature (hyper-density): artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (hyper-density): TBD

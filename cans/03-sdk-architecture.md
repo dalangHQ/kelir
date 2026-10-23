@@ -5,7 +5,7 @@
     - Bootstrap: Rust, TypeScript, Python
     - Adding a language: bindings crate + vector consumer + surface manifest
     - Plugin authorship contract: see 02-plugin-model.md#Plugin-ownership
-    - Plugin testkit: see 02-plugin-model.md#Plugin-testkit
+    - Testkit contract: see 02-plugin-model.md#Plugin-testkit
     - Rust: borrow-checker verified handle injection, zero-cost Serde
     - TypeScript: generic context accumulation, TypeBox schema guards
     - Python: RAII context managers, Pydantic v2 validation
@@ -19,7 +19,7 @@
     - Extended plugin modules
       - db_proxy, mesh, lock_broker, supply_chain
       - hyper_density, cas_snapshot
-      - wire_ingress
+      - wire_ingress (connection parking)
   - Params typed views
     - Host-side typed access on HandlerCtx
       - Rust: c.params::<T>() deserializes from validated buffer
@@ -76,7 +76,7 @@
       - TypeScript: Promise.all fan-out, generic inference
       - Python: asyncio.gather, async with, Pydantic v2
   - Oracle contract
-    - Interface: see 08-epistemic.md#Oracle
+    - Oracle interface: see 08-epistemic.md#Oracle
     - Language-specific realization
       - Rust: Arc<dyn Oracle>, threaded through handler closures
       - TypeScript: Oracle object literal, captured by closures

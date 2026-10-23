@@ -12,7 +12,7 @@
       - Crate: kelir-adapters/mcp-server
       - Routes Model Context Protocol JSON-RPC over stdio directly to microVM rings
       - Loads plugin-mcp
-    - Server plugin: plugins/mcp.md
+    - Server plugin: see plugins/mcp.md
   - Containerd shim v2
     - Shim binary
       - Crate: kelir-adapters/containerd-shim
@@ -26,7 +26,7 @@
       - PVC storage
         - PersistentVolumeClaims mount as virtio-fs endpoints
         - UID/GID mapping applied in-guest
-    - Shim plugin: plugins/oci-translator.md
+    - Shim plugin: see plugins/oci-translator.md
   - OpenShell gRPC driver
     - gRPC binary
       - Crate: kelir-adapters/openshell-grpc
@@ -34,7 +34,7 @@
       - Served over /var/run/kelir/openshell.sock (UDS)
       - Loads plugin-openshell-coordinator
       - Target: multi-tenant inference tasks
-    - Coordinator plugin file: plugins/openshell-coordinator.md
+    - Coordinator plugin file: see plugins/openshell-coordinator.md
   - E2B compatibility
     - TypeScript: @kelir/e2b-compat
     - Python: kelir.compat.e2b

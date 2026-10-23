@@ -126,8 +126,8 @@
     - Session-only after `boot()`
     - Spelling: `breakGlass()` (TS), `break_glass()` (Rust, Py);
       `session.break-glass()` never exists
-  - Port forwarding
-    - Plugin-wire API: plugins/wire.md#Port-forwarding
+  - Port forwarding (plugin-wire)
+    - Plugin-wire API: see plugins/wire.md#Port-forwarding
   - Zombie reaping
     - Shim runs as guest PID 1
     - waitpid(-1, WNOHANG) pass integrated into async event loop

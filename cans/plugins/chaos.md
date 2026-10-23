@@ -1,14 +1,14 @@
 - Plugin chaos
-  - Capability definition
+  - Capability definition (chaos)
     - Plugin identifier: plugin-chaos
     - Owner crate: crates/kelir-plugins/plugin-chaos
     - name() = "chaos"; priority() = 80
-    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys
+    - VirtIO Ring attachment (chaos): see 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (chaos): see 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys for chaos
     - Context key contributed: c.chaos
-    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
-  - Invariants and policy
+    - Closed-set binding rule (chaos): see 02-plugin-model.md#Core-context-keys
+  - Invariants and policy (chaos)
     - Bidirectional across wire plane
       - on_net_outbound mutates frames leaving guest
       - on_net_inbound mutates frames arriving at guest
@@ -28,7 +28,7 @@
       - Verify agent code handles flaky APIs, dialup speeds, RST resets
       - Verify graceful degradation on disk-full conditions
     - Wiring: artifacts/examples/autonomous-swe-agent.ts
-  - Error and return semantics
-    - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior
+  - Error and return semantics (chaos)
+    - Hook signature (chaos): artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (chaos)
       - Mutation failure behavior: TBD

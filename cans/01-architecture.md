@@ -64,7 +64,7 @@
       - Trait contract: see 02-plugin-model.md#KelirPlugin-trait
       - VmmDriver trait (defined in this file)
     - Context types: see 09-protocol.md#Wire-messages
-    - Wire framing: see 09-protocol.md#Wire-framing
+    - Wire framing layout: see 09-protocol.md#Wire-framing
     - Dispatch loop: see 02-plugin-model.md#Static-dispatch
     - 4-ring routing: Four-Ring Bus
     - Params ingress + auto-Rewrite: Params ingress contract
@@ -79,6 +79,7 @@
     - virtio-vsock control plane: syscalls, PIDs, signals, traps
     - virtio-console terminal plane: raw byte streams, PTY master/slave
       allocation, geometry ioctls
+      - Terminal plane detail: see 04-terminal-plane.md#Terminal-pipeline
     - virtio-fs storage plane: FUSE request dispatch, EROFS block mounting,
       tmpfs overlays
     - virtio-net wire plane: L2/L3 frame interception, TAP frame routing

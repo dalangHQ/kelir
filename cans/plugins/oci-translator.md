@@ -1,14 +1,14 @@
 - Plugin oci-translator
-  - Capability definition
+  - Capability definition (oci-translator)
     - Plugin identifier: plugin-oci-translator
     - Owner crate: crates/kelir-plugins/plugin-oci-translator
     - name() = "oci-translator"; priority() = 20
-    - VirtIO Ring attachment: 01-architecture.md#Four-Ring-Bus
-    - Lifecycle attachment: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys
-    - Context key contributed: None (daemon runtime)
-    - Closed-set binding rule: 02-plugin-model.md#Core-context-keys
-  - Invariants and policy
+    - VirtIO Ring attachment (oci-translator): see 01-architecture.md#Four-Ring-Bus
+    - Lifecycle attachment (oci-translator): see 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys for oci-translator
+    - Context key contributed: None (daemon runtime: image translation)
+    - Closed-set binding rule (oci-translator): see 02-plugin-model.md#Core-context-keys
+  - Invariants and policy (oci-translator)
     - Shim hook wiring
       - on_vm_init: translate OCI image layers → EROFS block
       - on_vfs_lookup: resolve image-declared volumes
@@ -16,8 +16,8 @@
       - Layer flattening, whiteout application, /etc overlay
       - Composable: a chaos plugin can fault-inject into image pulls
     - Containerd contract: TBD
-  - Error and return semantics
-    - Hook signature: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior
+  - Error and return semantics (oci-translator)
+    - Hook signature (oci-translator): artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (oci-translator)
       - on_vm_init failure: PluginError::Halt("OCI layer extraction failed")
       - Aborts VM cold boot; no guest exists to receive a POSIX errno
