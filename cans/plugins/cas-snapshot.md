@@ -19,4 +19,7 @@
       - Hydrates microVM sessions from streaming snapshot bundle in <50ms
   - Error and return semantics (cas-snapshot)
     - Hook signature (cas-snapshot): see: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior (cas-snapshot): TBD
+    - Return errno and rejection behavior (cas-snapshot)
+      - Chunk BLAKE3 mismatch → Err(Halt), boot aborts
+      - S3 unavailable → empty-RAM boot; errno="EIO" logged only
+      - Hydration budget miss → receipt.budget_missed=true, no errno

@@ -17,7 +17,9 @@
     - Translation policy
       - Layer flattening, whiteout application, /etc overlay
       - Composable: a chaos plugin can fault-inject into image pulls
-    - Containerd contract: TBD
+    - Containerd contract
+      - Shim: containerd-shim-v2 over ttrpc
+      - Returns EROFS block path; no pull step separate from boot
   - Error and return semantics (oci-translator)
     - Hook signature (oci-translator): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (oci-translator)

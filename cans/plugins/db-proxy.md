@@ -22,5 +22,11 @@
   - Error and return semantics (db-proxy)
     - Hook signature (db-proxy): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (db-proxy)
-      - DbAction::Deny error surfacing to guest client: TBD
-      - DbAction::Rewrite semantics: TBD
+      - DbAction::Deny
+        - pgwire ErrorResponse frame precedes connection close
+        - SQLSTATE derived from errno (EPERM→42501, ENOENT→42P01)
+        - Unmapped errno → SQLSTATE XX000 (internal_error)
+      - DbAction::Rewrite
+        - Q/P frame payload replaced before upstream forward
+        - Server sees rewritten frame as if client sent it
+        - rewrite_count incremented; >3 aborts ECYCLICREWRITE

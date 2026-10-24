@@ -22,7 +22,13 @@
     - GPU binding
       - GPU passthrough via driver-rustvmm
       - NVIDIA Container Device Interface (CDI) device mapping
-    - OpenShell contract: TBD
+    - OpenShell contract
+      - Driver: kelir-adapters/openshell-grpc
+      - Control-plane checkpoint/branch → LifecycleCtx.register_veto
+      - Readiness ack over gRPC from on_vm_ready
   - Error and return semantics (openshell-coordinator)
     - Hook signature (openshell-coordinator): see: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior (openshell-coordinator): TBD
+    - Return errno and rejection behavior (openshell-coordinator)
+      - Hooks are observation-only except on_vm_init
+      - on_vm_init Err(Halt) aborts boot with EConfig
+      - Veto false → ESessionVeto, no guest errno

@@ -19,4 +19,7 @@
       - Resumes vCPU execution at exact cycle boundary in <15ms on ring traffic
   - Error and return semantics (hyper-density)
     - Hook signature (hyper-density): see: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior (hyper-density): TBD
+    - Return errno and rejection behavior (hyper-density)
+      - No guest errno: plugin mutates host RSS, not guest address space
+      - on_memory_pressure Err(Halt) aborts before OOM killer
+      - Compaction budget miss → SyncVerdict::YieldToHost, no guest errno

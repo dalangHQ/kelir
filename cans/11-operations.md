@@ -59,6 +59,12 @@
     - Audit-slop target: banned-term grep over cans/, see: artifacts/config/justfile
     - Invariant: every rule in _rules.yaml maps to a step here, or the rule
       is dead and gets removed
+  - Coverage-gates
+    - --plugin-coverage
+      - Plugin asserts: see: 02-plugin-model.md#First-class-plugins
+    - --lifecycle-coverage
+      - Lifecycle asserts: see: 07-lifecycle.md#Hypervisor-primitives
+    - Both flags run in cans-check; exit code 1 on any orphan
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
     - Decoupled plugin specs

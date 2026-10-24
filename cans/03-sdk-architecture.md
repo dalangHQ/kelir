@@ -37,9 +37,13 @@
     - Scoping: all SDKs support ring, binary, and path filters at mount point
     - Topology rule: distinct environments use separate profile factories
     - Parity mechanism: see: 11-operations.md#Multi-language-parity-gate
-    - Non-blocking trap verdicts: c.yield(checkpoint_id) and c.abort(code, msg)
+    - Trap verdict surface: see: 09-protocol.md#TrapAction-method-mapping
     - Shared memory buffers: session.map_shared_region(tag, size_bytes)
     - Portable snapshots: session.export_snapshot() and session.import_snapshot()
+    - Session control surface
+      - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
+      - Lifecycle vetoes: LifecycleCtx.register_veto(event, cb)
+        - Event classes: see: 07-lifecycle.md#Lifecycle-vetoes
     - Multiplexed binary RPC: session.vsock.channel(2), binary framing
     - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
   - Params typed views
@@ -89,14 +93,21 @@
     - see: artifacts/examples/autonomous-swe-agent.rs
     - see: artifacts/examples/autonomous-swe-agent.ts
     - see: artifacts/examples/autonomous-swe-agent.py
+    - see: artifacts/examples/multi-vm-swarm.rs
+    - see: artifacts/examples/serverless-webhook.ts
+    - see: artifacts/examples/db-backed-runtime.py
     - Position: integration examples, not "the" example
       - Each plugin's own tests/ and examples/ are canonical for that plugin
       - These three demonstrate composition across plugins and rings
+      - The additional three demonstrate the primitives and plugins
+        that the SWE-bench family does not mount
     - Each example exercises
-      - All five plugins
-      - All four VirtIO rings
+      - Its declared plugin set
+        - Plugin-set registry: see: 02-plugin-model.md#First-class-plugins
+      - Every VirtIO ring its plugin set attaches to
       - All three evidence verification tiers
-      - All lifecycle hypervisor primitives: see: 07-lifecycle.md
+      - Every primitive it names
+        - Primitive registry: see: 07-lifecycle.md#Hypervisor-primitives
     - Not transliterations: each uses language-idiomatic constructs
       - Rust: async-trait, JoinSet, Arc<Mutex<>> states
       - TypeScript: Promise.all fan-out, generic inference

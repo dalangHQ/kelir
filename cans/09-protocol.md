@@ -62,9 +62,21 @@
   - Wire messages
     - see: artifacts/code/messages.rs
     - Message set and payload fields: see: artifacts/code/messages.rs
-    - Hook binding: one hook per message; see: 02-plugin-model.md#KelirPlugin-trait
+    - Hook binding: one hook per message
+      - Contract: see: 02-plugin-model.md#KelirPlugin-trait
+    - TrapAction-method-mapping
+      - TrapAction::Allow: c.resume()
+      - TrapAction::Deny: c.deny(errno, msg)
+      - TrapAction::Rewrite: c.rewrite(bin, argv, env)
+      - TrapAction::Yield: c.yield(checkpoint_id)
+      - TrapAction::Abort: c.abort(exit_code, reason)
+      - TrapAction::SuspendForApproval: c.suspend_for_approval(poll_ms)
+      - TrapAction::Custom: c.custom(name, cbor_payload)
+    - Custom dispatch contract
+      - Registration: builder.register_custom_action(name, schema, handler)
+      - Unknown name at trap time fails with EUnknownAction
+      - Registration after boot() fails with EConfig
     - Action invariants: see: artifacts/code/messages.rs
-    - Custom dispatch failure: unknown names fail with EUnknownAction
   - Env injection
     - Allow cannot mutate guest environment
       - Registers, memory, and environment variables remain untouched

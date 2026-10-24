@@ -16,4 +16,7 @@
     - Blocks execution of lifecycle scripts in dependency directories
   - Error and return semantics (supply-chain)
     - Hook signature (supply-chain): see: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior (supply-chain): TBD
+    - Return errno and rejection behavior (supply-chain)
+      - Lifecycle-script deny → exit 126 (permission denied)
+      - stderr_message names manager and blocked script
+      - Nested npm→sh→node traps at the sh ancestor

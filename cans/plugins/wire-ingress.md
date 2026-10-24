@@ -20,4 +20,8 @@
   - Error and return semantics (wire-ingress)
     - Hook signature (wire-ingress): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (wire-ingress)
-      - Parked-connection timeout and overflow behavior: TBD
+      - Parked-connection timeout
+        - Post-handshake: 504 Gateway Timeout
+        - Pre-handshake: TCP RST, no HTTP status
+      - Overflow
+        - 503 + Retry-After: 1 when backlog.maxConnections exceeded

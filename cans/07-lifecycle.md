@@ -5,6 +5,18 @@
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
       cooperation.
+    - Per-primitive exercise map
+      - fork, rollback: autonomous-swe-agent.{rs,ts,py}
+      - suspend, resume, skew_clock: autonomous-swe-agent.{rs,ts,py}
+      - watchdog, breakGlass, forward_port: autonomous-swe-agent.{rs,ts,py}
+      - map_shared_region: multi-vm-swarm.rs
+      - register_veto: multi-vm-swarm.rs
+      - export_snapshot, import_snapshot: db-backed-runtime.py
+      - adjust_balloon: serverless-webhook.ts
+    - Exercise invariant
+      - Every primitive mounts end-to-end in one example file
+      - An unexercised primitive fails --lifecycle-coverage
+      - Lifecycle-coverage gate: see: 11-operations.md#Coverage-gates
     - Shared memory mapping: see: 01-architecture.md#Shared-memory-channel
     - Portable snapshots: see: #Portable-snapshot-bundles
     - Two-phase commit protocol: see: #Two-phase-commit

@@ -27,7 +27,13 @@
       - write_file → virtio-fs write
     - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
     - Port multiplexing routes hvc1 directly to MCP client without PTY conflict
-    - MCP contract: TBD
+    - MCP contract
+      - Transport: JSON-RPC 2.0 over virtio-console hvc1
+      - Framing: JSON Lines; one object per \n, no Content-Length
+      - Max frame: 64 KB; larger split via FLAG_CONTINUATION
   - Error and return semantics (mcp)
     - Hook signature (mcp): see: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior (mcp): TBD
+    - Return errno and rejection behavior (mcp)
+      - PluginError → JSON-RPC error object
+      - code = -32000 - errno_number (EPERM→-32001)
+      - data carries {errno, reason, pid, binary}

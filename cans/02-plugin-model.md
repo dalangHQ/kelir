@@ -144,6 +144,22 @@
       - c.<key> from .decorate() or instantiated plugin state
   - First-class plugins
     - Minimum set: pty, vfs, wire, chaos, ledger
+    - Coverage matrix (plugin → demonstrating example)
+      - pty, vfs, wire, chaos, ledger: autonomous-swe-agent.{rs,ts,py}
+      - db-proxy: db-backed-runtime.py
+      - mcp: serverless-webhook.ts
+      - mesh: multi-vm-swarm.rs
+      - lock-broker: multi-vm-swarm.rs
+      - wire-ingress: serverless-webhook.ts
+      - hyper-density: serverless-webhook.ts
+      - cas-snapshot: db-backed-runtime.py
+      - supply-chain: multi-vm-swarm.rs
+      - oci-translator: db-backed-runtime.py
+      - openshell-coordinator: multi-vm-swarm.rs
+    - Coverage invariant
+      - Every first-class plugin names one demonstrating example
+      - An orphan plugin fails --plugin-coverage
+      - Plugin-coverage gate: see: 11-operations.md#Coverage-gates
     - Behavior of each: at its plugin file
       - plugin-pty: see: plugins/pty.md — c.term
       - plugin-vfs: see: plugins/vfs.md — c.fs
