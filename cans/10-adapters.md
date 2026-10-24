@@ -15,7 +15,7 @@
     - Ingestion tiering and licensing
       - Community adapters: mcp-server (stdio wire), e2b-compat (thin client SDK)
       - Commercial adapters: containerd-shim-v2 (K8s), openshell-grpc (NVIDIA CDI)
-      - Commercial adapter SSOT: see: kelir-cloud://cans/01-fleet-orchestration.md
+      - Commercial adapter SSOT: see: kelir-cloud://01-fleet-orchestration.md
   - MCP adapter
     - Architecture (mcp): see: artifacts/diagrams/ingestion-adapters.txt
     - Server binary crate: kelir-adapters/mcp-server
@@ -31,13 +31,13 @@
     - PVC storage
       - PersistentVolumeClaims mount as virtio-fs endpoints
       - UID/GID mapping applied in-guest
-    - Shim plugin: see: kelir-cloud://cans/plugins/oci-translator.md
+    - Shim plugin: see: kelir-cloud://plugins/oci-translator.md
     - Shim maps to Session execution with flat oci-translator config
     - Containerd boundary: see: #Process-vs-plugin-boundary
   - OpenShell gRPC driver
     - Architecture (openshell): see: artifacts/diagrams/ingestion-adapters.txt
     - Driver binary crate: kelir-adapters/openshell-grpc
-    - Coordinator plugin file: see: kelir-cloud://cans/plugins/openshell-coordinator.md
+    - Coordinator plugin file: see: kelir-cloud://plugins/openshell-coordinator.md
     - Driver maps to Session execution with flat openshell-coordinator config
     - OpenShell boundary: see: #Process-vs-plugin-boundary
   - E2B compatibility

@@ -38,8 +38,9 @@
     - Topology rule: distinct environments use separate profile factories
     - Parity mechanism: see: 11-operations.md#Multi-language-parity-gate
     - Trap verdict surface: see: 09-protocol.md#TrapAction-method-mapping
-    - Shared memory buffers: session.map_shared_region(tag, size_bytes)
-    - Portable snapshots: session.export_snapshot() and session.import_snapshot()
+    - Session data operations
+      - Shared memory buffers: session.map_shared_region(tag, size_bytes)
+      - Portable snapshots: session.export_snapshot() and session.import_snapshot()
     - Session control surface
       - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
       - Lifecycle vetoes: LifecycleCtx.register_veto(event, cb)
@@ -51,7 +52,7 @@
         NAPI-RS .node and PyO3 .whl native shared libraries
       - Pure Rust enterprise: Gated private Cargo registry (crates.kelir.dev) requiring license
         tokens for on-premise compilation ($100k/yr commercial tier)
-      - Kelir Cloud SaaS: Managed execution over HTTP/gRPC; internal hyper-density and cas-snapshot
+      - Kelir Cloud SaaS: Execution over HTTP/gRPC; internal hyper-density and cas-snapshot
         optimization applied transparently on host servers
   - Idiomatic Surfaces Law
     - TS, Python, and Rust do not copy each other's method names

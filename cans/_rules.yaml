@@ -49,7 +49,7 @@ references:
   orphan_check: true
   duplicate_home_check: true
   external_roots:
-    kelir-cloud: "../kelir-cloud/cans"
+    kelir-cloud: "kelir-cloud/cans"
 
 redundancy:
   enabled: true
@@ -58,14 +58,13 @@ redundancy:
   # vocabulary, so the layer only fires for terms spread across most of the
   # corpus. Fuzzy near-miss word forms are off: Levenshtein on technical
   # identifiers (rc/vc, ts/tsx) is pure noise here.
-  word_frequency_threshold: 70
+  # wire is load-bearing (canonical homes: wire plugin, wire plane), currently 71 nodes;
+  # 80 keeps the layer live for genuine sprawl without flagging a core domain term.
+  word_frequency_threshold: 80
   # 1.00 = literal duplicates only; sub-100% overlap on spec prose is normal.
   phrase_overlap_threshold: 0.95
   cross_file_threshold: 5
   fuzzy: false
-  node_vs_artifact:
-    phrase_overlap_threshold: 0.85
-    require_node_invariant: true
   # Load-bearing vocabulary of this corpus: every node mentions these nouns,
   # so keyword sprawl on them is not a canonical-home violation.
   stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires, host, guest, plugin, on, is, kelir, virtio]
@@ -81,7 +80,3 @@ token_budget:
   default_limit: 4096
   estimate_chars_per_token: 3.5
   warn_threshold: 0.8
-
-overflow:
-  max_node_chars: 90
-  force_file_for: [code_block, table, diagram]

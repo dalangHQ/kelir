@@ -17,4 +17,4 @@ references:
   orphan_check: true
   duplicate_home_check: true
   external_roots:
-    kelir: "../../cans"
+    kelir: "../cans"

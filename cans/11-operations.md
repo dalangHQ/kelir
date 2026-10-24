@@ -73,7 +73,8 @@
         pointers are direct 1-hop
     - Matrix job: test-plugins
       - One cell per community plugin (11 total)
-      - Plugins: [pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress]
+      - Plugins: [pty, vfs, wire, chaos, ledger, mcp]
+      - Plugins: [db-proxy, mesh, lock-broker, supply-chain, wire-ingress]
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
       - Structural decoupling proof: see: 02-plugin-model.md#Plugin-ownership
@@ -166,7 +167,7 @@
       - kelir: facade crate, single Cargo dependency, feature-gated plugins
       - kelir-interface: pure leaf types, traits, wire framing, zero engine deps
       - kelir-core: stripped microkernel (bus, dispatch, vmm, trap gate)
-      - kelir-plugins: community plugin family (11 plugins; 4 enterprise plugins hosted in kelir-cloud)
+      - kelir-plugins: community plugin family (11 plugins; 4 in kelir-cloud)
         - pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker
         - supply-chain, wire-ingress
       - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot

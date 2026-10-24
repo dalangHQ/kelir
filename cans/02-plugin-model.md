@@ -162,12 +162,13 @@
   - First-class plugins
     - Catalog tiering
       - Community plugins (hosted in core repo):
-        - pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress
+        - pty, vfs, wire, chaos, ledger, mcp
+        - db-proxy, mesh, lock-broker, supply-chain, wire-ingress
       - Commercial plugins (SSOT hosted in kelir-cloud):
-        - hyper-density: see: kelir-cloud://cans/plugins/hyper-density.md
-        - cas-snapshot: see: kelir-cloud://cans/plugins/cas-snapshot.md
-        - oci-translator: see: kelir-cloud://cans/plugins/oci-translator.md
-        - openshell-coordinator: see: kelir-cloud://cans/plugins/openshell-coordinator.md
+        - hyper-density: see: kelir-cloud://plugins/hyper-density.md
+        - cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md
+        - oci-translator: see: kelir-cloud://plugins/oci-translator.md
+        - openshell-coordinator: see: kelir-cloud://plugins/openshell-coordinator.md
     - Coverage matrix (community plugins -> demonstrating example)
       - pty, vfs, wire, chaos, ledger: autonomous-swe-agent.{rs,ts,py}
       - mesh, lock-broker, supply-chain: multi-vm-swarm.rs
@@ -187,12 +188,14 @@
       - plugin-mesh: see: plugins/mesh.md — c.mesh
       - plugin-lock-broker: see: plugins/lock-broker.md — c.locks
       - plugin-supply-chain: see: plugins/supply-chain.md — package-manager guard
-      - plugin-hyper-density: see: kelir-cloud://cans/plugins/hyper-density.md — c.density
-      - plugin-cas-snapshot: see: kelir-cloud://cans/plugins/cas-snapshot.md — c.cas
+      - plugin-hyper-density: see: kelir-cloud://plugins/hyper-density.md — c.density
+      - plugin-cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md — c.cas
       - plugin-wire-ingress: see: plugins/wire-ingress.md — c.ingress
       - plugin-mcp: see: plugins/mcp.md — c.mcp
-      - plugin-oci-translator: see: kelir-cloud://cans/plugins/oci-translator.md — OCI layer translation
-      - plugin-openshell-coordinator: see: kelir-cloud://cans/plugins/openshell-coordinator.md — checkpoint
+      - plugin-oci-translator — OCI layer translation
+        - see: kelir-cloud://plugins/oci-translator.md
+      - plugin-openshell-coordinator — checkpoint
+        - see: kelir-cloud://plugins/openshell-coordinator.md
       - Pointer rule: plugin files are leaf targets; this matrix is the canonical registry
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane

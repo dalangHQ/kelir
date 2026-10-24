@@ -5,11 +5,11 @@
     - name() = "cas-snapshot"; priority() = 40
     - Taxonomy (cas-snapshot): urn:kelir:fs:block:cas
       - coordinate: rings=[virtio-blk, virtio-shm]; role=Observer; tier=Native
-    - VirtIO attachment (cas-snapshot): see: kelir://cans/01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (cas-snapshot): see: kelir://cans/07-lifecycle.md#Lifecycle-vetoes
+    - VirtIO attachment (cas-snapshot): see: kelir://01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (cas-snapshot): see: kelir://07-lifecycle.md#Lifecycle-vetoes
   - Context keys for cas-snapshot
     - Context key contributed: c.cas
-    - Closed-set binding rule (cas-snapshot): see: kelir://cans/02-plugin-model.md#Core-context-keys
+    - Closed-set binding rule (cas-snapshot): see: kelir://02-plugin-model.md#Core-context-keys
   - Invariants and policy (cas-snapshot)
     - Content-addressed snapshots
       - Partitions filesystem storage layers using FastCDC variable chunking
@@ -18,7 +18,7 @@
       - Synchronizes chunk differentials to S3-compatible tiers using object_store
       - Hydrates microVM sessions from streaming snapshot bundle in <50ms
   - Error and return semantics (cas-snapshot)
-    - Hook signature (cas-snapshot): see: kelir://cans/artifacts/code/plugin-trait.rs
+    - Hook signature (cas-snapshot): see: kelir://artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (cas-snapshot)
       - Chunk BLAKE3 mismatch → Err(Halt), boot aborts
       - S3 unavailable → empty-RAM boot; errno="EIO" logged only

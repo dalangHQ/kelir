@@ -2,7 +2,8 @@
   - Product
     - Name: kelir-cloud
     - Commercial model: SaaS execution platform and Enterprise VPC distribution
-    - Boundary rule: see: kelir://cans/00-overview.md#Axiomatic-foundations
+    - Boundary rule: see: kelir://01-architecture.md#Axiomatic-foundations
+    - Commercial licensing: see: 02-commercial-licensing.md
   - SaaS Architecture
     - Zero-RAM idle execution: Powered by plugin-hyper-density
     - Content-addressed block streaming: Powered by plugin-cas-snapshot
