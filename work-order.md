@@ -1,315 +1,380 @@
-# WORK-ORDER: KELIR 3.0 COMPLETE SURFACE ALIGNMENT
+# `work-order.md`
 
-**Status:** Canonical Execution Blueprint  
-**Target:** Total elimination of web-router metaphors; unification into an **Event-Driven Hardware Interception Bus**; zero-closure flat plugin configuration; day-1 non-archaeological canonical text across all 33 spec and artifact files.
+```markdown
+# PARALLEL AGENT EXECUTION ORDER: KELIR DUAL-SPEC REFACTOR (PHASE 2)
+
+## 0. EXECUTIVE DIRECTIVE & CONCURRENCY PROTOCOL
+* **Objective:** Execute an atomic, two-repository specification refactor without scaffolding implementation code.
+* **Architecture:** Split the monolithic corpus into `kelir` (Public Open-Core) and `kelir-cloud` (Private Commercial & Fleet).
+* **Execution Model:** Designed for 4 concurrent, non-overlapping autonomous worker agents coordinated by a synchronization barrier.
+* **Hard Constraints:**
+  1. Spec-phase only: Generate ZERO `.rs`, `.ts`, or `.py` runtime implementations.
+  2. Zero clobbering: Each agent owns an exclusive set of path mutations.
+  3. Strict graph integrity: `cans check --refs-only --json` and `cans check --json` must return `ok: true, exitCode: 0` in both repos upon completion.
+  4. Audit-slop zero tolerance: Banned terms (`pure epistemic|truth tier|fact-producer|ghost inode|GhostFile|cohesive state duality|token-to-bit|superpowers|teleport`) must never enter either corpus.
 
 ---
 
-## 1. Canonical API Specification (Day-1 SSOT)
+## 1. AGENT CONCURRENCY & RESPONSIBILITY MATRIX
 
-Every SDK and spec file must reflect these exact signatures. No variations.
-
-### 1.1 TypeScript SDK (`@kelir/core`)
-```ts
-// 1. Blueprint Phase (Write-Only Builder)
-const runtime = kelir(vmConfig: VmConfig)
-  // Plugins take strictly FLAT options (no callback builders)
-  .use(plugin: KelirPluginInstance)
-  
-  // Per-session schema push-down (AOT-compiled to native Rust validator)
-  .params<T>(schema: TSchema)
-
-  // Trap Engine (Control Plane: Syscalls & Binaries)
-  // Overload A: Simple Pre-Exec Gate
-  .trap(pattern: string, handler: (c: HandlerCtx<T>) => Promise<Decision>)
-  // Overload B: Dual Pre/Post Gate
-  .trap(pattern: string, hooks: {
-    pre?: (c: HandlerCtx<T>) => Promise<Decision>;
-    post?: (c: HandlerCtx<T>) => Promise<PostExecAction>;
-  })
-
-  // Intercept Engine (Ring-level synchronous hot-path filters)
-  .intercept(channel: "vfs:write", pathGlob: string, handler: (e: VfsWriteEvent, c: HandlerCtx<T>) => SyncVerdict | Promise<SyncVerdict>)
-  .intercept(channel: "net:outbound" | "net:inbound", filter: string, handler: (frame: NetFrame, c: HandlerCtx<T>) => SyncVerdict)
-
-  // Lifecycle Interceptors (Hypervisor Transitions)
-  .on(event: "vm:init", handler: (driver: VmmDriver) => Promise<void>)
-  .on(event: "vm:ready" | "vm:shutdown", handler: (session: Session) => Promise<void>)
-  .on(event: "trap:deny", handler: (e: TrapDenialEvent, session: Session) => Promise<void>);
-
-// 2. Sealed Execution Phase
-const session: Session = await runtime.boot();
+```
+                         [BARRIER 0: REPO SKELETON SETUP]
+                                        │
+           ┌────────────────────────────┼────────────────────────────┐
+           ▼                            ▼                            ▼
+  [AGENT 1: PUBLIC SPEC]      [AGENT 2: PUBLIC ARTIFACTS]  [AGENT 3: CLOUD SPEC & ARTIFACTS]
+  • kelir/cans/*.md           • kelir/cans/artifacts/*     • kelir-cloud/cans/*.md
+  • kelir/cans/_rules.yaml    • config/ (justfile, ci.yml) • kelir-cloud/cans/plugins/*
+  • Licenses (FSL, MIT, CC)   • project-structure.txt      • kelir-cloud/cans/artifacts/*
+           │                            │                            │
+           └────────────────────────────┼────────────────────────────┘
+                                        ▼
+                         [BARRIER 1: INTEGRATION AUDIT]
+                                        │
+                             [AGENT 4: ORCHESTRATOR]
+                             • Cross-repo cans check
+                             • SPDX license compliance
+                             • Audit-slop verification
 ```
 
-### 1.2 Rust SDK (`kelir`)
-```rust
-// Typestate Transition: KelirBuilder<Unset> -> KelirBuilder<Sealed> -> Session
-let session: Session = KelirBuilder::new(vm_config)
-    .plugin(pty_plugin)
-    .plugin(vfs_plugin)
-    .params::<SpawnAction>()
-    .trap("git push *", handler(|c: HandlerCtx| async move {
-        Ok(Decision::deny(1, "EPERM"))
-    }))
-    .trap("*", dual_handler(pre_hook, post_hook))
-    .intercept_vfs("**/secrets/**", vfs_handler)
-    .on_vm_ready(|session: &Session| async move { Ok(()) })
-    .boot()
-    .await?;
-```
-
-### 1.3 Python SDK (`kelir`)
-```python
-builder = (
-    kelir.builder(vm_config)
-    .plugin(PtyPlugin(cols=120, rows=40))
-    .plugin(VfsPlugin(idmap=IdmapConfig(...)))
-    .params(FixStripeWebhook)
-)
-
-builder.trap("git push *", git_gate)
-builder.trap("*", pre=universal_step, post=verify_receipt)
-builder.intercept("vfs:write", "**/secrets/**", vfs_gate)
-
-@builder.on("vm:ready")
-async def _ready(session: Session) -> None:
-    pass
-
-async with builder as session:
-    await session.spawn("npm", ["test"])
-```
-
----
-
-## 2. All 15 First-Class Plugins: Flat Options Contracts
-
-Any file instantiating or referencing these plugins must use these **flat config signatures**. Nested builder callbacks are completely illegal.
-
-| Plugin | Package | Flat Config Interface / Struct Fields | Contributed Context Key |
-|---|---|---|---|
-| `pty` | `@kelir/plugin-pty` | `{ cols: number; rows: number; dropOsc52: boolean; stripTitle: boolean; tokenShield?: TokenShieldConfig; prompts?: PromptRule[] }` | `c.term` |
-| `vfs` | `@kelir/plugin-vfs` | `{ idmap: IdmapConfig; sharedCaches?: string[]; lockBroker?: boolean; syntheticFiles?: SyntheticFile[]; maskRead?: MaskRule[]; snoops?: SnoopRule[] }` | `c.fs` |
-| `wire` | `@kelir/plugin-wire` | `{ sinkhole?: SinkholeConfig; sshAgentBridge?: boolean; vaults?: VaultEntry[]; l4Proxies?: L4Proxy[] }` | `c.wire` |
-| `chaos` | `@kelir/plugin-chaos` | `{ network?: NetworkChaosConfig[]; fs?: FsChaosConfig[] }` | `c.chaos` |
-| `ledger` | `@kelir/plugin-ledger`| `{ store: string; merkleChain: boolean; otel?: OtelConfig; receipts?: ReceiptConfig }` | `c.ledger` |
-| `db-proxy` | `@kelir/plugin-db-proxy` | `{ postgres?: PgWireRewrite; credentials?: EphemeralCredentials; sqlite?: SqliteOverVsock }` | `c.db` |
-| `mesh` | `@kelir/plugin-mesh` | `{ peerIdentity: PeerIdentity; mtls: boolean; traceparent: TraceParentMode; listeners: PeerListener[] }` | `c.mesh` |
-| `lock-broker` | `@kelir/plugin-lock-broker` | `{ scope: LockScope; defaultMode: LockMode; nonBlocking: boolean }` | `c.locks` |
-| `supply-chain` | `@kelir/plugin-supply-chain` | `{ managers: PackageManager[]; policy: LifecyclePolicy; trapOnAncestorChain: boolean }` | *None (Pure Gate)* |
-| `hyper-density` | `@kelir/plugin-hyper-density` | `{ idleDetect: IdleDetectConfig; compaction: CompactionConfig; resumeBudgetMs: number }` | `c.density` |
-| `cas-snapshot` | `@kelir/plugin-cas-snapshot` | `{ chunking: FastCDCConfig; tier: S3TierConfig }` | `c.cas` |
-| `wire-ingress` | `@kelir/plugin-wire-ingress` | `{ listen: ListenConfig; parking: ParkingConfig; wakeOnPacket: WakeConfig; backlog: BacklogConfig }` | `c.ingress` |
-| `mcp` | `@kelir/plugin-mcp` | `{ transport: TransportConfig; advertise: { tools: string[] } }` | `c.mcp` |
-| `oci-translator` | `@kelir/plugin-oci-translator` | `{ image: string; layerPolicy: LayerPolicyConfig; inFlight: boolean }` | *None (Daemon)* |
-| `openshell-coordinator` | `@kelir/plugin-openshell-coordinator` | `{ tenantId: string; checkpointPolicy: CheckpointPolicyConfig; gpu?: GpuBinding }` | *None (Daemon)* |
-
----
-
-## 3. Comprehensive File-by-File Mutation Matrix
-
-### Group A: Core Architecture Spec (`cans/`)
-* **`cans/00-overview.md`**:
-  * Line 42: Replace `.before("*")` and prompt responder regex references with `trap("*")` and `pty({ prompts })`.
-* **`cans/01-architecture.md`**:
-  * Node `Params ingress contract`: Replace any `.guard()` reference with `session.params(schema)` validated out-of-band via paravirtual configuration device before guest instruction execution.
-  * Node `In-process microkernel`: Remove references to userland "web-like middleware". State: "Interposition occurs directly at VirtIO device complex via synchronous native gates and asynchronous trap handlers."
-* **`cans/02-plugin-model.md`**:
-  * Node `Static dispatch`: Define the dispatch array explicitly: VirtIO Rings $\to$ MountScope pre-filter $\to$ Monotonic Lattice Evaluation (`Allow < Rewrite < Deny < Abort`). Remove `.before()` and `.after()`.
-  * Node `Declarative plugin macros`: Remove "macro expansion into HTTP-like routing". State: "Macros expand to static MountScope masks and binary trap registrations."
-* **`cans/03-sdk-architecture.md`**:
-  * Replace the entire subsection `TypeScript SDK`: Document the fluent `.use().params().trap().intercept()` model.
-  * Replace `Rust SDK`: Document typestate transitions without `.exec(|cmd| ...)`.
-  * Define **Idiomatic Surfaces Law**: TS, Python, and Rust do not copy each other's method names; they enforce 1:1 behavioral and wire parity against `vectors.json`.
-* **`cans/07-lifecycle.md`**:
-  * Node `Hypervisor primitives`: Anchor the typestate boundary. Primitives (`fork`, `suspend`, `rollback`, `skew_clock`) exist exclusively on `Session`, never on `KelirBuilder`.
-  * Node `Lifecycle vetoes`: Enforce hard vetoes (`Fork`, `Suspend`, `ClockSkew`) via `LifecycleCtx.register_veto` in `on_vm_init`.
-* **`cans/08-epistemic.md`**:
-  * Node `Step evaluation loop`: Completely scrub `.before("*")` and `.after("*")`. Reframe as:
-    ```
-    1. Trap match triggers pre-hook: checkpoint creation & intent analysis.
-    2. Guest executes process.
-    3. Process exit triggers post-hook: physical ExecutionReceipt assertion.
-    4. Mismatch triggers instant <8ms hypervisor rollback.
-    ```
-* **`cans/09-protocol.md`**:
-  * Node `Trap fast-path`: Rewrite the 3 gates: Gate 1 (in-kernel eBPF allowlist) $\to$ Gate 2 (native MountScope/schema eval) $\to$ Gate 3 (trap handler dispatch).
-  * Node `Wire messages`: Explicitly map `TrapAction` to context methods:
-    * `Allow` $\to$ `c.resume()`
-    * `Deny` $\to$ `c.deny(errno, msg)`
-    * `Rewrite` $\to$ `c.rewrite({ binary, argv, env })`
-    * `Yield` $\to$ `c.yield(checkpoint_id)`
-    * `Abort` $\to$ `c.abort(exit_code, reason)`
-
-### Group B: Peripheral Plane Specs (`cans/`)
-* **`cans/04-terminal-plane.md`**:
-  * Update terminal pipeline specs: All 5 filters configured strictly via `PtyConfig` flat struct.
-* **`cans/05-storage-plane.md`**:
-  * Node `Write gating`: Remove middleware terminology. Replace with synchronous VirtIO-FS interception: `on_vfs_write` yielding `SyncVerdict::Allow` or `PluginError::Reject`.
-* **`cans/06-wire-plane.md`**:
-  * Frame TAP bridge as L2/L4 interception points dispatched via `.intercept("net:outbound", ...)`.
-* **`cans/10-adapters.md`**:
-  * Validate container-shim, MCP stdio, and OpenShell bindings map strictly to `Session` execution and flat plugin configurations.
-* **`cans/11-operations.md`**:
-  * Node `Multi-language parity gate`: Rewrite invariant: "Parity is evaluated on identical wire frame inputs and outputs using `vectors.json`. Syntax is idiomatic per language runtime."
-
-### Group C: Plugin Catalog (`cans/plugins/`)
-Audit all 15 files (`cans/plugins/*.md`):
-* [ ] Verify that every code example uses flat config initialization.
-* [ ] Ensure all references point to `c.<key>` according to the Table in Section 2.
-* [ ] Assert that every line adheres to the 90-character node length limit (`_rules.yaml`).
-
-### Group D: Artifacts & Code Examples (`cans/artifacts/`)
-
-* **`cans/artifacts/code/typescript-accumulation.ts`**:
-  * Purge `.configure((c) => ...)`, `.guard()`, `.before()`.
-  * Rewrite to:
-    ```ts
-    const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
-      .use(secureWorkspace)
-      .use(ledger({ enabled: false }))
-      .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024 }))
-      .params(t.Object({ action: t.Literal("fix-webhook"), issueId: t.String() }))
-      .trace((t) => { if (t.ffi_hop_ns > 10_000) console.warn("FFI boundary spike:", t); })
-      .trap("git commit *", async (c) => {
-        if (c.policy.violations > 0) {
-          return c.deny(1, `EPOLICY: ${c.policy.violations} violation(s)`);
-        }
-        return c.resume();
-      });
-    ```
-
-* **`cans/artifacts/code/step-evaluation-loop.ts`**:
-  * Purge `.exec((cmd) => cmd.before(...).after(...))`.
-  * Rewrite to dual-trap pattern:
-    ```ts
-    const session = await kelir({ vcpus: 2, memoryMb: 2048 })
-      .use(vfs())
-      .use(pty())
-      .trap("*", {
-        pre: async (c) => {
-          activeCheckpoint = await c.vm.checkpoint("pre-step");
-          const intent = await orchestrator.analyzeIntent({
-            binary: c.trap.binary_path, argv: c.trap.argv, lineage: c.trap.ancestor_chain,
-          });
-          return intent.isHypothesisValid ? c.resume() : c.deny(1, intent.falsificationReason);
-        },
-        post: async (c) => {
-          const receipt = await c.receipt();
-          if (!await orchestrator.verifyPhysicalReceipt(receipt)) {
-            if (activeCheckpoint) await c.vm.rollback(activeCheckpoint);
-            c.term.notice("⚡ [VERIFICATION ENGINE]: Reverted.\n");
-          }
-        }
-      })
-      .boot();
-    ```
-
-* **`cans/artifacts/code/rust-handle-injection.rs`**:
-  * Remove `.exec(|exec| exec.before(...))`.
-  * Replace with:
-    ```rust
-    let builder = builder
-        .params::<Action>()
-        .trap("npm test", handler(|c: HandlerCtx| async move {
-            let params = c.params::<Action>()?;
-            Ok(Decision::Resume)
-        }))
-        .trap("git commit *", handler(|c: HandlerCtx| async move {
-            if c.policy().violations().await > 0 {
-                return Ok(Decision::deny(1, "Policy violations recorded"));
-            }
-            Ok(Decision::Resume)
-        }));
-    ```
-
-* **`cans/artifacts/code/python-raii-pydantic.py`**:
-  * Replace `builder.exec(lambda cmd: cmd.before(...))` with:
-    ```python
-    builder.trap("git commit *", commit_gate)
-    ```
-
-* **`cans/artifacts/examples/autonomous-swe-agent.ts`**:
-  * Complete overhaul of the single linear chain:
-    * Flat `pty({ ... })` configuration.
-    * Flat `vfs({ ... })` configuration.
-    * Flat `wire({ ... })` configuration.
-    * Direct `.params(t.Object({ ... }))`.
-    * Direct `.trap("*", { pre: ..., post: ... })`.
-    * Direct `.trap("npm test -- --runInBand", ...)`.
-    * Direct `.trap("git push *", ...)`.
-    * Direct `.trap("git commit *", { pre: ..., post: ... })`.
-    * Lifecycle hooks registered via `.on("vm:init", ...)`, `.on("vm:ready", ...)`, etc.
-
-* **`cans/artifacts/examples/serverless-webhook.ts`**:
-  * Flatten `wireIngress`, `hyperDensity`, `mcp`, and `ledger` to pure objects.
-  * Replace `.exec((cmd) => cmd.guard(...).before(...).after(...))` with:
-    ```ts
-    .params(t.Object({ action: t.Literal("dispatch-webhook"), webhookId: t.String() }))
-    .trap("dispatch-webhook", {
-      pre: async (c) => {
-        await c.vm.adjust_balloon(512);
-        return c.resume();
-      },
-      post: async (c) => {
-        const receipt = await c.receipt();
-        return receipt.dirtyBytes === 0 ? PostExecAction.RollbackAndHalt : PostExecAction.Proceed;
-      }
-    })
-    ```
-
-* **`cans/artifacts/examples/autonomous-swe-agent.rs`**:
-  * Purge `.exec(|exec| ...)` graph block.
-  * Flatten `.trap()` registrations into root `KelirBuilder`.
-
-* **`cans/artifacts/examples/autonomous-swe-agent.py`**:
-  * Purge `_register_handlers(cmd: kelir.ExecChain)`.
-  * Register traps directly: `builder.trap("*", pre=..., post=...)`.
-
-* **`cans/artifacts/examples/db-backed-runtime.py`**:
-  * Purge `_register_exec_graph(cmd: kelir.ExecChain)`.
-  * Use `builder.trap("migrate *", pre=pre_migrate, post=post_migrate)`.
-
----
-
-## 4. Parallel Agent Swarm Allocation (Collision-Free)
-
-| Agent Thread | Target Scope | Output Deliverables |
+| Agent ID | Exclusive Target Scope | Primary Responsibility |
 |---|---|---|
-| **Agent Alpha** | Spec Core: `cans/01-architecture.md`, `cans/02-plugin-model.md`, `cans/03-sdk-architecture.md`, `cans/07-lifecycle.md`, `cans/09-protocol.md` | Complete, non-commented, updated markdown files adhering to `<90` char node length. |
-| **Agent Beta** | Peripheral Planes & Ops: `cans/00-overview.md`, `cans/04-terminal-plane.md`, `cans/05-storage-plane.md`, `cans/06-wire-plane.md`, `cans/08-epistemic.md`, `cans/10-adapters.md`, `cans/11-operations.md` | Purged of all web-middleware terminology. CANS anchors fully validated. |
-| **Agent Gamma** | Plugin Specs: All 15 files in `cans/plugins/*.md` | Flat configuration structures enforced; legacy callback references eliminated. |
-| **Agent Delta** | TypeScript Artifacts: `typescript-accumulation.ts`, `step-evaluation-loop.ts`, `autonomous-swe-agent.ts`, `serverless-webhook.ts` | Fully compilable, production-ready TS code excerpts; zero lambda configs. |
-| **Agent Epsilon** | Rust & Python Artifacts: `rust-handle-injection.rs`, `python-raii-pydantic.py`, `autonomous-swe-agent.rs`, `autonomous-swe-agent.py`, `db-backed-runtime.py`, `multi-vm-swarm.rs` | Idiomatic typestate and Pythonic trap registrations across all examples. |
+| **Agent 0** | Workspace Root | Repository creation, file migrations, directory layouts |
+| **Agent 1** | `kelir/cans/*.md`, `kelir/cans/_rules.yaml`, `kelir/LICENSE*` | Public normative spec nodes, licensing, clean-room boundary |
+| **Agent 2** | `kelir/cans/artifacts/**/*` | Public justfile, ci.yml, project structure, community examples |
+| **Agent 3** | `kelir-cloud/cans/**/*` | Private enterprise spec nodes, cloud architecture, SaaS metering |
+| **Agent 4** | Both Repositories | Final barrier verification, JSON assertion of `cans check` |
 
 ---
 
-## 5. Automated Gate Checklists
+## 2. BARRIER 0: PRE-REQUISITE SETUP (AGENT 0)
 
-Every agent must run and pass these exact verification checks before finalizing their partition:
+Execute before spawning Agents 1, 2, and 3:
 
 ```bash
-# 1. Zero Tolerance for HTTP Router Metaphors
-! rg -q "\.exec\(" cans/
-! rg -q "cmd\.before" cans/
-! rg -q "cmd\.after" cans/
-! rg -q "ExecChain" cans/
-! rg -q "\.guard\(" cans/
+# 1. Establish directory boundaries
+mkdir -p kelir kelir-cloud
 
-# 2. Zero Tolerance for Nested Lambda Builders
-! rg -q "\.use\(pty\(\(" cans/
-! rg -q "\.use\(vfs\(\(" cans/
-! rg -q "\.use\(wire\(\(" cans/
-! rg -q "\.use\(hyperDensity\(\(" cans/
+# 2. Populate public repo base from existing corpus
+cp -r cans kelir/
+cp -r .github kelir/ 2>/dev/null || true
+cp justfile Cargo.toml package.json pnpm-workspace.yaml pyproject.toml kelir/ 2>/dev/null || true
 
-# 3. Zero Tolerance for Archaeological Notes
-! rg -qi "formerly" cans/
-! rg -qi "migrated" cans/
-! rg -qi "deprecated" cans/
-! rg -qi "replaces the old" cans/
-
-# 4. Canonical Specification Verification
-cans check --refs-only
-cans check
+# 3. Initialize private repo specification skeleton
+mkdir -p kelir-cloud/cans/artifacts/{config,diagrams,examples}
+mkdir -p kelir-cloud/cans/plugins
 ```
 
-**Execution Order:** Proceed immediately with full-file rewrites. Do not summarize. Do not truncate. Emit complete, final-state documents.
+---
+
+## 3. AGENT 1: PUBLIC SPECIFICATION WORKSTREAM
+
+**Target Files (Strictly Exclusive):**
+* `kelir/cans/00-overview.md`
+* `kelir/cans/02-plugin-model.md`
+* `kelir/cans/03-sdk-architecture.md`
+* `kelir/cans/07-lifecycle.md`
+* `kelir/cans/10-adapters.md`
+* `kelir/cans/11-operations.md`
+* `kelir/cans/_rules.yaml`
+* `kelir/LICENSE-FSL.md`, `kelir/LICENSE-MIT`, `kelir/LICENSE-APACHE`, `kelir/LICENSE-SPEC.md`
+
+### Task 1.1: Licensing Invariant Injection
+In `kelir/cans/00-overview.md`, insert under `- Product`:
+```markdown
+  - Legal and licensing architecture
+    - Tri-license topology
+      - Spec: Creative Commons Attribution 4.0 International (CC-BY-4.0)
+      - Core engine, drivers, and shim: Functional Source License (FSL-1.1-Apache-2.0)
+      - Interfaces, SDKs, and testkit: MIT OR Apache-2.0 dual license
+      - Enterprise extensions (EE): Commercial proprietary license
+    - Two-repo distribution invariant
+      - Public repo (kelir): core microkernel, local virtualization, community plugins
+      - Private repo (kelir-cloud): fleet compaction, S3 snapshot streaming, enterprise shims
+    - Enterprise distribution channels
+      - Dynamic SDKs: Precompiled native binaries via npm (@kelir-cloud) and PyPI (kelir-cloud)
+      - Rust on-prem: Authenticated private Cargo registry with commercial license tokens
+      - Managed platform: Kelir Cloud SaaS execution over HTTPS/gRPC
+```
+
+### Task 1.2: Clean-Room Guarantee Injection
+In `kelir/cans/02-plugin-model.md`, append under `- Taxonomic coordinate contract`:
+```markdown
+    - Clean-room boundary invariant
+      - kelir-interface is strictly dual-licensed (MIT OR Apache-2.0)
+      - Implementing KelirPlugin creates zero copyleft or viral licensing obligations
+      - Third-party authors retain 100% intellectual property rights over their plugins
+      - Commercial plugins in kelir-cloud link against kelir-interface without licensing conflict
+```
+
+### Task 1.3: Catalog Tiering Definition
+In `kelir/cans/02-plugin-model.md`, replace `- First-class plugins` catalog entries with:
+```markdown
+    - Catalog tiering
+      - Community plugins (hosted in core repo):
+        - pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress
+      - Commercial plugins (SSOT hosted in kelir-cloud):
+        - hyper-density: see: kelir-cloud://cans/plugins/hyper-density.md
+        - cas-snapshot: see: kelir-cloud://cans/plugins/cas-snapshot.md
+        - oci-translator: see: kelir-cloud://cans/plugins/oci-translator.md
+        - openshell-coordinator: see: kelir-cloud://cans/plugins/openshell-coordinator.md
+    - Coverage matrix (community plugins -> demonstrating example)
+      - pty, vfs, wire, chaos, ledger: autonomous-swe-agent.{rs,ts,py}
+      - mesh, lock-broker, supply-chain: multi-vm-swarm.rs
+      - db-proxy: db-backed-runtime.py
+      - wire-ingress, mcp: serverless-webhook.ts
+```
+
+### Task 1.4: Tri-Tier SDK Distribution Invariant
+In `kelir/cans/03-sdk-architecture.md`, append under `- N-native design`:
+```markdown
+      - Three-tier binary distribution model
+        - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
+          NAPI-RS .node and PyO3 .whl native shared libraries
+        - Pure Rust enterprise: Gated private Cargo registry (crates.kelir.dev) requiring license
+          tokens for on-premise compilation ($100k/yr commercial tier)
+        - Kelir Cloud SaaS: Managed execution over HTTP/gRPC; internal hyper-density and cas-snapshot
+          optimization applied transparently on host servers
+```
+
+### Task 1.5: Ingestion Matrix Tiering
+In `kelir/cans/10-adapters.md`, append under `- Ingestion matrix`:
+```markdown
+    - Ingestion tiering and licensing
+      - Community adapters: mcp-server (stdio wire), e2b-compat (thin client SDK)
+      - Commercial adapters: containerd-shim-v2 (K8s), openshell-grpc (NVIDIA CDI)
+      - Commercial adapter SSOT: see: kelir-cloud://cans/01-fleet-orchestration.md
+```
+
+### Task 1.6: Public Operations & Decoupling Scope
+In `kelir/cans/11-operations.md`:
+1. Under `- Matrix job: test-plugins`, set plugin list to exactly:
+   `[pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress]`.
+2. Under `- Six crate families`, replace the plugin crate family description:
+   `kelir-plugins: community plugin family (11 plugins; 4 enterprise plugins hosted in kelir-cloud)`.
+3. Under `- Decoupling proof`, set audit scope to the 11 community plugins.
+
+### Task 1.7: Public Rules Configuration
+In `kelir/cans/_rules.yaml`, update `references:`:
+```yaml
+references:
+  mode: pointer
+  back_pointers: false
+  max_hops: 1
+  orphan_check: true
+  duplicate_home_check: true
+  external_roots:
+    kelir-cloud: "../kelir-cloud/cans"
+```
+
+### Task 1.8: Generate License Files
+In `kelir/`:
+* `LICENSE-SPEC.md`: Creative Commons Attribution 4.0 International.
+* `LICENSE-FSL.md`: Functional Source License 1.1 with Apache-2.0 Change License.
+* `LICENSE-MIT`: Standard MIT License text.
+* `LICENSE-APACHE`: Apache License Version 2.0 text.
+
+---
+
+## 4. AGENT 2: PUBLIC ARTIFACTS WORKSTREAM
+
+**Target Files (Strictly Exclusive):**
+* `kelir/cans/artifacts/config/justfile`
+* `kelir/cans/artifacts/config/ci.yml`
+* `kelir/cans/artifacts/config/project-structure.txt`
+* `kelir/cans/artifacts/examples/multi-vm-swarm.rs`
+* `kelir/cans/artifacts/examples/serverless-webhook.ts`
+* `kelir/cans/artifacts/examples/db-backed-runtime.py`
+
+### Task 2.1: Update `justfile` Plugin Targets
+In `kelir/cans/artifacts/config/justfile`:
+1. Modify `test-plugins`:
+```make
+test-plugins:
+    cargo nextest run -p plugin-pty -p plugin-vfs -p plugin-wire -p plugin-chaos -p plugin-ledger -p plugin-mcp -p plugin-db-proxy -p plugin-mesh -p plugin-lock-broker -p plugin-supply-chain -p plugin-wire-ingress
+```
+2. Modify `plugin-check-all` and `test-isolation-all`:
+```bash
+    for p in pty vfs wire chaos ledger mcp db-proxy mesh lock-broker supply-chain wire-ingress; do
+```
+
+### Task 2.2: Update `ci.yml` Matrix Jobs
+In `kelir/cans/artifacts/config/ci.yml`:
+Update `matrix.plugin` across `test-plugins`, `plugin-audit`, and `plugin-isolation`:
+```yaml
+matrix:
+  plugin: [pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress]
+```
+
+### Task 2.3: Update `project-structure.txt`
+In `kelir/cans/artifacts/config/project-structure.txt`:
+1. Under `crates/kelir-plugins/`, remove:
+   * `plugin-hyper-density/`
+   * `plugin-cas-snapshot/`
+   * `plugin-oci-translator/`
+   * `plugin-openshell-coordinator/`
+2. Under `crates/kelir-adapters/`, remove:
+   * `containerd-shim/`
+   * `openshell-grpc/`
+3. Add a footer:
+```text
+── KELIR-CLOUD (PRIVATE REPO) ──
+crates/kelir-ee-plugins/ (hyper-density, cas-snapshot, oci-translator, openshell-coordinator)
+crates/kelir-ee-adapters/ (containerd-shim, openshell-grpc)
+services/ (control-plane, api-gateway, snapshot-relay, billing)
+```
+
+### Task 2.4: Prune Commercial Invocations from Public Examples
+Sanitize public examples so they demonstrate community plugins without depending on commercial plugins:
+1. `multi-vm-swarm.rs`: Mount `mesh`, `lock-broker`, `supply-chain`. Replace `openshell_coordinator` with standard session veto API.
+2. `serverless-webhook.ts`: Mount `wire-ingress`, `mcp`, `ledger`. Replace `hyperDensity()` with standard `c.vm.adjust_balloon()`.
+3. `db-backed-runtime.py`: Mount `db-proxy`. Replace `OciTranslatorPlugin` and `CasSnapshotPlugin` with local EROFS fixtures.
+
+---
+
+## 5. AGENT 3: CLOUD SPECIFICATION & ARTIFACTS WORKSTREAM
+
+**Target Files (Strictly Exclusive):**
+* `kelir-cloud/cans/00-cloud-overview.md`
+* `kelir-cloud/cans/01-fleet-orchestration.md`
+* `kelir-cloud/cans/02-commercial-licensing.md`
+* `kelir-cloud/cans/_rules.yaml`
+* `kelir-cloud/cans/plugins/hyper-density.md`
+* `kelir-cloud/cans/plugins/cas-snapshot.md`
+* `kelir-cloud/cans/plugins/oci-translator.md`
+* `kelir-cloud/cans/plugins/openshell-coordinator.md`
+* `kelir-cloud/cans/artifacts/config/ee-ci.yml`
+* `kelir-cloud/cans/artifacts/config/cloud-structure.txt`
+* `kelir-cloud/cans/artifacts/examples/` (Full enterprise versions of examples)
+* `kelir-cloud/LICENSE`
+
+### Task 3.1: Initialize `kelir-cloud/cans/_rules.yaml`
+Write `kelir-cloud/cans/_rules.yaml`:
+```yaml
+slug:
+  algorithm: dash-normalized
+  collapse: separator-runs-to-one-hyphen
+  case: preserved
+structure:
+  node_length: { min: 3, max: 90 }
+  siblings: { min: 1, max: 20 }
+  depth: { min: 2, max: 10 }
+  single_child_collapse: false
+  empty_nodes: false
+content:
+  tbd_allowed: true
+  max_tbd_per_file: 10
+references:
+  mode: pointer
+  max_hops: 1
+  orphan_check: true
+  duplicate_home_check: true
+  external_roots:
+    kelir: "../kelir/cans"
+```
+
+### Task 3.2: Create `00-cloud-overview.md`
+Write `kelir-cloud/cans/00-cloud-overview.md`:
+```markdown
+- Cloud Overview
+  - Product
+    - Name: kelir-cloud
+    - Commercial model: SaaS execution platform and Enterprise VPC distribution
+    - Boundary rule: see: kelir://cans/00-overview.md#Axiomatic-foundations
+  - SaaS Architecture
+    - Zero-RAM idle execution: Powered by plugin-hyper-density
+    - Content-addressed block streaming: Powered by plugin-cas-snapshot
+    - Managed endpoints: REST / JSON-RPC gateway at https://api.kelir.dev
+    - Multi-tenant boundary: Per-tenant hardware microVM isolation, zero cgroup bleeding
+```
+
+### Task 3.3: Create `01-fleet-orchestration.md`
+Write `kelir-cloud/cans/01-fleet-orchestration.md`:
+```markdown
+- Fleet Orchestration
+  - Kubernetes bare-metal runtime
+    - containerd-shim-kelir-v2 integrates microVMs directly into K8s Pod lifecycle
+    - Translates OCI layers via plugin-oci-translator: see: plugins/oci-translator.md
+  - NVIDIA OpenShell integration
+    - openshell-grpc mediates compute_driver.proto via UDS
+    - Binds GPU devices via CDI: see: plugins/openshell-coordinator.md
+```
+
+### Task 3.4: Create `02-commercial-licensing.md`
+Write `kelir-cloud/cans/02-commercial-licensing.md`:
+```markdown
+- Commercial Licensing
+  - Distribution channels
+    - Precompiled NAPI / PyO3 packages: Delivered via npm/PyPI under commercial EULA
+    - Private Cargo Registry: Authenticated access to crates.kelir.dev for pure Rust consumers
+    - License enforcement: Cryptographic host entitlement token verification at on_vm_init
+```
+
+### Task 3.5: Migrate & Patch Enterprise Plugin Specs
+Relocate the 4 plugin files from `kelir/cans/plugins/` to `kelir-cloud/cans/plugins/`:
+* `hyper-density.md`
+* `cas-snapshot.md`
+* `oci-translator.md`
+* `openshell-coordinator.md`
+
+In each migrated file, rewrite internal core references to use cross-repo pointers:
+* `see: 01-architecture.md#VirtIO-Device-Complex` -> `see: kelir://cans/01-architecture.md#VirtIO-Device-Complex`
+* `see: 07-lifecycle.md#Lifecycle-vetoes` -> `see: kelir://cans/07-lifecycle.md#Lifecycle-vetoes`
+* `see: 02-plugin-model.md#Core-context-keys` -> `see: kelir://cans/02-plugin-model.md#Core-context-keys`
+* `see: artifacts/code/plugin-trait.rs` -> `see: kelir://cans/artifacts/code/plugin-trait.rs`
+
+### Task 3.6: Relocate Enterprise Artifacts
+1. Copy original full-scale examples (`multi-vm-swarm.rs`, `serverless-webhook.ts`, `db-backed-runtime.py`) into `kelir-cloud/cans/artifacts/examples/`.
+2. Add `kelir-cloud/LICENSE`: Commercial Proprietary text (All Rights Reserved).
+
+---
+
+## 6. BARRIER 1: INTEGRATION VERIFICATION (AGENT 4)
+
+Agent 4 runs only after Agents 1, 2, and 3 report completion.
+
+### Task 4.1: Public Repo Graph & Slop Audit
+```bash
+cd kelir
+
+# 1. References integrity (<2s)
+cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
+
+# 2. Full spec integrity
+cans check --json | jq -e '.ok and .exitCode == 0'
+
+# 3. Slop audit (MUST return 0 matches)
+git grep -i -E "pure epistemic|truth tier|fact-producer|ghost inode|GhostFile|cohesive state duality|token-to-bit|superpowers|teleport" -- cans/ || true
+```
+
+### Task 4.2: Private Repo Graph Audit
+```bash
+cd ../kelir-cloud
+
+# 1. References integrity across external root kelir://
+cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
+
+# 2. Full spec integrity
+cans check --json | jq -e '.ok and .exitCode == 0'
+```
+
+### Task 4.3: Structural Leak Audit
+Verify that NO enterprise code or specs remain in the public repository:
+```bash
+cd ../kelir
+if ls cans/plugins/hyper-density.md cans/plugins/cas-snapshot.md cans/plugins/oci-translator.md cans/plugins/openshell-coordinator.md 2>/dev/null; then
+    echo "ERROR: Enterprise plugins leaked into public spec!" >&2
+    exit 1
+fi
+echo "PARALLEL REFACTOR VERIFIED: PASS"
+```
+
+---
+
+## 7. DEFINITION OF DONE
+1. Both `kelir` and `kelir-cloud` exist as independent directory structures.
+2. `cans check --json` outputs `{"ok": true, "exitCode": 0}` in both repositories.
+3. Cross-repo URI links (`kelir://` and `kelir-cloud://`) resolve with zero broken pointers.
+4. Exactly zero lines of implementation code (`src/*.rs`, `*.ts`, `*.py`) were written.
+5. All 11 community plugins pass public spec validation; all 4 commercial plugins pass private spec validation.
+```
