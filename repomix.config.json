@@ -28,7 +28,8 @@
     }
   },
   "include": [
-    "cans/"
+    "cans/",
+    "kelir-cloud/cans/"
   ],
   "ignore": {
     "useGitignore": true,

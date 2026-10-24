@@ -174,14 +174,14 @@
       - kelir-shim: in-guest musl PID 1 (<50KB)
     - Decoupled spec layout
       - Core plane files: cans/00-overview.md to cans/11-operations.md
-      - Plugin spec files: one <name>.md per plugin in the plugin folder
+      - Plugin spec files: one <name>.md per plugin, in cans/plugins or kelir-cloud/cans/plugins
     - Test infrastructure
       - kelir-plugin-testkit: mock driver, mock bus, HandlerCtx constructors
       - Not runtime; dev-dependency of every plugin-*
     - Integration crate
       - kelir-integration: cross-plugin paths; real hypervisor required
     - Three adapter crates
-      - containerd-shim, openshell-grpc, mcp-server
+      - mcp-server (community); containerd-shim, openshell-grpc (kelir-cloud)
     - Two binding crates
       - napi, pyo3
     - Tooling crate
