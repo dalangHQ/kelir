@@ -2,7 +2,7 @@
   - Product
     - Name: kelir (Javanese ꦏꦼꦭꦶꦂ)
     - Meaning: taut white fabric screen in Wayang Kulit shadow puppetry
-    - Metaphor: see: #Wayang-metaphor
+    - Product metaphor: see: #Wayang-metaphor
     - Version: 3.0.0-normative
     - Status: normative specification
   - Wayang metaphor
@@ -58,7 +58,7 @@
     - Storage plane: see: 05-storage-plane.md (virtio-fs)
     - Wire plane: see: 06-wire-plane.md (virtio-net)
     - Lifecycle: see: 07-lifecycle.md (suspend/resume)
-    - Verification and hardware telemetry: see: 08-epistemic.md
+    - Verification and hardware telemetry (08-epistemic): see: 08-epistemic.md
     - Protocol: see: 09-protocol.md (wire messages)
     - Ecosystem and ops
       - Ecosystem ingestion: see: 10-adapters.md#Ingestion-matrix

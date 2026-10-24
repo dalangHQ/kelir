@@ -370,14 +370,14 @@ async def build_runtime(
             ],
         ))
 
-        # ── STORAGE PLANE (§8) — in-flight read masking via MaskRule ──
+        # ── STORAGE PLANE (§8) — sliding-window read replacement via MaskRule ──
         .plugin(VfsPlugin(
             idmap=IdmapConfig(guest_uid=0, host_uid=os.getuid()),
             shared_caches=[
                 "~/.npm", "~/.cache/pip", "~/.cargo/registry",
             ],
             lock_broker=True,
-            ghosts=[
+            synthetic_files=[
                 SyntheticFile.static(
                     "/workspace/.env.local",
                     "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n",

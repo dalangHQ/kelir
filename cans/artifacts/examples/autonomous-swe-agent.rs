@@ -283,7 +283,7 @@ async fn build_runtime(
                 "~/.npm".into(), "~/.cache/pip".into(), "~/.cargo/registry".into(),
             ],
             lock_broker: true,
-            ghosts: vec![
+            synthetic_files: vec![
                 SyntheticFile::static_(
                     "/workspace/.env.local",
                     "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n",

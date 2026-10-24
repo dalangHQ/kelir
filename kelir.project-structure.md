@@ -82,11 +82,11 @@ kelir/
 │   │   │       ├── ansi.rs            # Drop OSC 52 clipboard & OSC 0/1/2 title sequences
 │   │   │       ├── responder.rs       # onPrompt engine matching ANSI-stripped plaintext (foreground-verified)
 │   │   │       └── shield.rs          # UTF-8/ANSI boundary-safe head-and-tail token clamping
-│   │   ├── plugin-vfs/                # virtio-fs engine, Ghost Inodes, in-flight read masking
+│   │   ├── plugin-vfs/                # virtio-fs engine, Synthetic FUSE inodes, sliding-window read replacement
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/
 │   │   │       ├── lib.rs
-│   │   │       ├── mask.rs            # In-flight read masking (MaskRule regex redaction, fixed-width)
+│   │   │       ├── mask.rs            # Sliding-window read replacement (MaskRule regex redaction, fixed-width)
 │   │   │       ├── ghost.rs           # Synthetic RAM-only inode injector (VfsInodeAttr: mode/uid/gid/size)
 │   │   │       ├── reconciler.rs      # Host-boundary reconciliation: c 0 0 whiteouts + opaque dirs → atomic host sync (session.fs.reconcile())
 │   │   │       ├── idmap.rs           # FUSE dynamic UID/GID translation (0 -> geteuid())

@@ -32,17 +32,17 @@
  [virtio-vsock]  [virtio-console]          [virtio-fs]        [virtio-net]
   CONTROL PLANE   TERMINAL PLANE          STORAGE PLANE        WIRE PLANE
   Syscalls, PIDs, Raw TTY, ANSI,          CoW Overlays, Inodes, L4/L7 Traffic,
-  Signals, Traps  Token Shield, Resizing  In-Flight Masking,     Secrets, Chaos
-                                          Ghost Files
+  Signals, Traps  Token Shield, Resizing  Sliding-Window Repl,  Secrets, Chaos
+                                          Synthetic Files
 ```
 
 ### The 6 Core Invariants
 
 1. **Zero Harness Awareness:** The guest workload sees standard POSIX interfaces (`/bin/sh`, `/dev/pts/*`, `glibc`/`musl`, TCP/IP). No custom guest SDKs, CLI shims, or guest-side agents are required.
 2. **In-Process Microkernel (Zero Daemon Tax):** Virtualization runs inside the host consumer's memory space via direct C-FFI to `libkrun`, `rust-vmm`, or `OpenVMM`. There is no `dockerd`, no `containerd`, no background root socket, and no daemon maintenance.
-3. **Pure Epistemic Agnosticism:** `kelir` has zero knowledge of "LLMs", "prompts", or "AI morals". It operates strictly as an operating system physics engine: memory pages, CPU registers, process lineages, file descriptors, and network frames.
+3. **Strict hardware/kernel abstraction layer:** `kelir` has zero knowledge of "LLMs", "prompts", or "AI morals". It operates strictly as an operating system physics engine: memory pages, CPU registers, process lineages, file descriptors, and network frames.
 4. **Deterministic Hardware Isolation:** The security boundary is hardware-enforced virtualization (Intel VT-x / AMD-V / Apple Silicon ARM64 EL2). An escaped guest root exploit cannot touch host memory or host kernel space.
-5. **Radical Plugin-First Microkernel:** The hypervisor core does only two things: drive hardware virtualization and multiplex the 4 VirtIO rings. Every single capability (terminal sanitizing, secret vaulting, filesystem masking, chaos, audit logging) is a completely decoupled, composable plugin.
+5. **Modular VirtIO Interposition Microkernel:** The hypervisor core does only two things: drive hardware virtualization and multiplex the 4 VirtIO rings. Every single capability (terminal sanitizing, secret vaulting, filesystem masking, chaos, audit logging) is a completely decoupled, composable plugin.
 6. **Transparent, Truthful Steering:** No silent state divergence. Any intercepted syscall, file read, or network packet is either allowed, steered with mandatory terminal disclosure (`tty_notice`), or rejected with machine-parsable receipts.
 
 ### The Params Ingress Contract
@@ -75,7 +75,7 @@
 │    (LangGraph,      │ 0MB RAM suspend/resume;  │ Elysia-style typed     │ slow tests,   │
 │     CrewAI, E2B)    │ shared VirtIO-FS cache   │ plugin chains          │ cloud VM cost │
 ├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
-│ 4. EPISTEMIC ENGINES│ Unforgeable execution    │ Hardware TSC offsets;  │ LLM hallucina-│
+│ 4. VERIFICATION ENGINES│ Unforgeable execution    │ Hardware TSC offsets;  │ LLM hallucina-│
 │    (Axiom, RLVR,    │ receipts; 8ms RAM roll-  │ Merkle-chained audit   │ tions, untaxed│
 │     Falsifiers)     │ backs; dynamic chaos     │ ledger; CausalDelta    │ side effects  │
 └─────────────────────┴──────────────────────────┴────────────────────────┴───────────────┘
@@ -390,8 +390,8 @@ pub enum TrapAction {
         new_argv: Vec<String>,
         injected_env: HashMap<String, String>,
         /// Mandatory terminal disclosure notice printed to the
-        /// workload's PTY. Guarantees Invariant #6: Zero silent
-        /// state divergence
+        /// workload's PTY. Guarantees Invariant #6: Mandatory TTY host
+        /// disclosure invariant
         tty_notice: Option<String>,
     },
     SuspendForApproval {
@@ -404,7 +404,7 @@ pub enum TrapAction {
 
 ---
 
-*(End of Part 1. Part 2: Radical Plugin-First Core Traits, The Elysia-Style Accumulating SDK Engine, Hardware Terminal Plane [virtio-console], and Zero-Leak Storage Plane with In-Flight Masking [virtio-fs].)*
+*(End of Part 1. Part 2: Radical Plugin-First Core Traits, The Elysia-Style Accumulating SDK Engine, Hardware Terminal Plane [virtio-console], and Zero-Leak Storage Plane with Sliding-Window Replacement [virtio-fs].)*
 
 # `kelir.architecture.md` (Part 2/3)
 **A Radical, Plugin-First MicroVM Hypervisor Middleware for Autonomous Systems**
@@ -769,11 +769,11 @@ File operations flow over **`virtio-fs`** (directory sharing) and **`virtio-blk`
 │    - Mounts host ~/.npm, ~/.cache/pip, ~/.cargo/registry into guest.        │
 │    - Package installs drop from 2 minutes to <3 seconds on cold microVMs.   │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 6. SYNTHETIC GHOST INODES (RAM-Only Virtual Files):                         │
+│ 6. SYNTHETIC FUSE INODES (RAM-Only Virtual Files):                          │
 │    - Injects virtual configurations (.env, .gitconfig) directly into VFS.   │
 │    - Served from host memory; physically DOES NOT EXIST on host SSD.        │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 7. IN-FLIGHT READ-TIME MASKING (plugin-vfs maskRead):                       │
+│ 7. SLIDING-WINDOW READ REPLACEMENT (plugin-vfs maskRead):                   │
 │    - FUSE-level byte stream interception on file reads.                     │
 │    - MaskRule regex redaction; fixed-width replacements preserve            │
 │      st_size and file offsets.                                              │
@@ -865,7 +865,7 @@ Cold-booting an agent that runs `npm install`, `cargo build`, or `pip install` t
   * Host `~/.cargo/registry` $\longrightarrow$ Guest `/usr/local/cargo/registry`
 * Cold dependency installations complete in **<3 seconds** via local host SSD caching.
 
-### 8.4 In-Flight Read-Time Masking (`maskRead`, plugin-vfs)
+### 8.4 Sliding-Window Read Replacement (`maskRead`, plugin-vfs)
 When an agent executes `cat /workspace/.env` or inspects configuration files, local secrets must not leak into guest memory:
 * `plugin-vfs` intercepts `read()` dispatch at the FUSE buffer boundary and applies registered `MaskRule` regex redactions in host RAM before bytes copy to guest pages:
 
@@ -892,7 +892,7 @@ When multiple agents in a swarm share the same repository:
   2. Maps the guest virtual inode through the virtio-fs mount identity to the host physical inode and path, then routes lock acquisition through a centralized host-side in-memory mutex table keyed on that host identity.
   3. Conflicting lock attempts either block cleanly until release or return `EWOULDBLOCK`, preventing Git index corruption.
 
-### 8.6 Synthetic Ghost Inodes API
+### 8.6 Synthetic FUSE Inodes API
 Orchestrators inject environment files and licenses into the microVM without leaving artifacts on the developer's physical disk:
 
 ```typescript
@@ -900,9 +900,9 @@ app.use(
   vfs((fs) =>
     fs
       // Static in-memory file:
-      .ghost("/root/.gitconfig", `[user]\n  name = Claude Agent\n  email = agent@kelir.dev\n`)
+      .syntheticFile("/root/.gitconfig", `[user]\n  name = Claude Agent\n  email = agent@kelir.dev\n`)
       // Dynamic in-memory file (evaluated freshly per open()):
-      .ghostDynamic("/workspace/.env.runtime", async () => ({
+      .syntheticFileDynamic("/workspace/.env.runtime", async () => ({
         content: `DATABASE_URL=postgres://ephemeral_${crypto.randomUUID()}@localhost/db\n`,
         mode: 0o400,   // full VfsInodeAttr: mode, uid, gid, size, content
         uid: 0,
@@ -912,11 +912,11 @@ app.use(
 );
 ```
 
-Every ghost inode — static or dynamic — surfaces as a full `VfsInodeAttr` (`mode`, `uid`, `gid`, `size`, `content`). The FUSE `LOOKUP` reply is populated verbatim from these attributes, so guest-visible permissions such as `mode: 0o400` are honored exactly: an untrusted guest process opens a read-only ghost file as read-only, with no default-permission fallback.
+Every synthetic FUSE inode — static or dynamic — surfaces as a full `VfsInodeAttr` (`mode`, `uid`, `gid`, `size`, `content`). The FUSE `LOOKUP` reply is populated verbatim from these attributes, so guest-visible permissions such as `mode: 0o400` are honored exactly: an untrusted guest process opens a read-only synthetic file as read-only, with no default-permission fallback.
 
 ---
 
-*(End of Part 2. Part 3: The Wire Plane [virtio-net], Hypervisor Chaos Controller, State Superpowers [fork/suspend/clock], Persistent Causal Ledger, and Repository Layout.)*
+*(End of Part 2. Part 3: The Wire Plane [virtio-net], Hypervisor Chaos Controller, Hypervisor primitives [fork/suspend/clock], Persistent Causal Ledger, and Repository Layout.)*
 
 # `kelir.architecture.md` (Part 3/3)
 **A Radical, Plugin-First MicroVM Hypervisor Middleware for Autonomous Systems**
@@ -956,7 +956,7 @@ When the agent executes an outbound HTTP command:
    # In-guest: STRIPE_KEY = "vault://stripe_prod_key"
    ```
 2. **Secret Auto-Injection Contract:** During `on_vm_ready`, `plugin-wire` injects every registered vault key into the guest init environment table (`STRIPE_KEY=vault://stripe_prod_key`, `DATABASE_URL=vault://pg_creds`, …). The placeholder URN is the only value that ever exists inside the guest; the real secret crosses the wire plane exclusively on the host side.
-3. **TLS Interception Contract:** At boot, `plugin-wire` generates an ephemeral per-session root CA and mounts it into the guest trust store (`/etc/ssl/certs`) as an overlayfs ghost inode. Standard guest binaries (`curl`, `git`, language-native TLS stacks) therefore transparently accept the intercepted TLS session with zero CLI flags — no `--cacert`, no `NODE_EXTRA_CA_CERTS`, no harness awareness.
+3. **TLS Interception Contract:** At boot, `plugin-wire` generates an ephemeral per-session root CA and mounts it into the guest trust store (`/etc/ssl/certs`) as an overlayfs synthetic FUSE inode. Standard guest binaries (`curl`, `git`, language-native TLS stacks) therefore transparently accept the intercepted TLS session with zero CLI flags — no `--cacert`, no `NODE_EXTRA_CA_CERTS`, no harness awareness.
 4. The `virtio-net` TAP interface routes outgoing frames through `kelir-plugin-wire`. The forward proxy terminates the guest TLS session:
    * Validates target host against the egress allowlist (`api.stripe.com`).
    * Replaces `vault://stripe_prod_key` with the real key retrieved from the host keyring or AWS Secrets Manager.
@@ -1001,11 +1001,11 @@ app.use(
 
 ---
 
-## 11. State, Time, & Hypervisor Lifecycle Superpowers
+## 11. State, Time, & Hypervisor Lifecycle Primitives
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          HYPERVISOR SUPERPOWERS                             │
+│                          HYPERVISOR HARDWARE PRIMITIVES                     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 1. vm.fork() ────────► Multi-branch CoW memory cloning in <15ms.            │
 │ 2. vm.rollback() ────► Reverts RAM & registers to checkpoint in <8ms.       │
@@ -1093,9 +1093,9 @@ if (agent.isConfused) {
 
 ---
 
-## 12. Epistemic Oracles & The Persistent Causal Ledger (`@kelir/plugin-ledger`)
+## 12. Verification Oracles & The Persistent Causal Ledger (`@kelir/plugin-ledger`)
 
-Epistemic orchestrators (Axiom, RLVR runners, Popperian falsifiers) require objective verification of agent claims.
+Verification orchestrators (Axiom, RLVR runners, Popperian falsifiers) require objective verification of agent claims.
 
 ### 12.1 Cryptographic Execution Receipts
 Every executed process emits an unforgeable physical signature to the host:
@@ -1119,7 +1119,7 @@ pub struct ExecutionReceipt {
 }
 ```
 
-* **Hardware-Agnostic Telemetry:** `dirty_bytes: u64` reports the true byte count of mutated physical memory. Physical page size differs across platforms (16 KB on Apple Silicon ARM64, 4 KB on Linux/x86), so byte counts — not page counts — are the canonical metric: identical executions produce identical receipts on every host, keeping epistemic assertions, RLVR loss functions, and Merkle root hashes stable across developer machines. Epistemic assertions check `dirty_bytes == 0`.
+* **Hardware-Agnostic Telemetry:** `dirty_bytes: u64` reports the true byte count of mutated physical memory. Physical page size differs across platforms (16 KB on Apple Silicon ARM64, 4 KB on Linux/x86), so byte counts — not page counts — are the canonical metric: identical executions produce identical receipts on every host, keeping verification assertions, RLVR loss functions, and Merkle root hashes stable across developer machines. Verification assertions check `dirty_bytes == 0`.
 * **Universal Digest Encoding:** every BLAKE3 digest — binary hashes, execution receipts, causal deltas — is a canonical 64-character lowercase hex string across Rust, TypeScript, and Python. It is the single cross-FFI representation; no raw byte arrays or mixed encodings cross language boundaries.
 * **Ownership:** receipts are generated and held by `kelir-core` at the trap/exit boundary. `c.receipt()` on the handler context is the single read API.
 
@@ -1143,7 +1143,7 @@ pub struct CausalDelta {
 * **Ownership Boundary:** `kelir-core` generates and holds execution receipts (`c.receipt()`); `plugin-ledger` persists them into the Merkle WAL and exports OTel telemetry (`c.ledger.flush()`).
 * **Distributed Tracing (OTel):** Automatically injects standard W3C `traceparent` headers into outbound HTTP requests, connecting internal shell execution directly to Jaeger or Datadog.
 
-### 12.4 The 3-Tier Epistemic Truth Hierarchy & Synchronous Inode Snooper
+### 12.4 The 3-Tier Evidence Verification Model & Synchronous Inode Snooper
 
 AI agents suffer from **self-reporting bias**: when evaluated via internal harness artifacts (e.g. `~/.claude/sessions/*.json` or local SQLite logs), agents frequently hallucinate success, report falsified test passes, or break orchestrators when minor harness updates mutate private JSON schemas. 
 
@@ -1196,9 +1196,9 @@ The snoop plane carries two kernel-level guarantees:
 
 ---
 
-### 12.5 The Hardware Epistemic Lifecycle Bridge
+### 12.5 The Hardware Verification Lifecycle Bridge
 
-Epistemic evaluation platforms (RLVR loops, Popperian falsifiers, benchmark runners) traditionally control agents by monkeypatching language-level SDKs (`agent._step()`, overriding private runtime prototypes). This breaks on every CLI update and remains blind to OS-level side effects.
+Verification evaluation platforms (RLVR loops, Popperian falsifiers, benchmark runners) traditionally control agents by monkeypatching language-level SDKs (`agent._step()`, overriding private runtime prototypes). This breaks on every CLI update and remains blind to OS-level side effects.
 
 `kelir` replaces software monkeypatching with an **In-Process Hardware Lifecycle Bridge**, converting high-level orchestrator controls into bare-metal hypervisor primitives:
 
@@ -1227,7 +1227,7 @@ import { kelir } from "@kelir/core";
 import { vfs } from "@kelir/plugin-vfs";
 import { pty } from "@kelir/plugin-pty";
 
-const orchestrator = new EpistemicEvaluator();
+const orchestrator = new VerificationEvaluator();
 
 const session = await kelir({ vcpus: 2, memoryMb: 2048 })
   .use(vfs())
@@ -1249,7 +1249,7 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
 
         if (!intentAnalysis.isHypothesisValid) {
           // Reject action immediately: Zero mutations reach the guest OS
-          return c.deny(1, `Epistemic Reject: ${intentAnalysis.falsificationReason}`);
+          return c.deny(1, `Verification Reject: ${intentAnalysis.falsificationReason}`);
         }
 
         return c.resume(); // Releases vCPU to execute step
@@ -1263,7 +1263,7 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
         if (!isConsistent) {
           // 4. Instant Hardware Rollback: Memory and disk revert in <8ms
           await c.vm.rollback(c.step.last());
-          c.pty.notice("⚡ [EPISTEMIC ENGINE]: Side-effect violation. State reverted.\n");
+          c.pty.notice("⚡ [VERIFICATION ENGINE]: Side-effect violation. State reverted.\n");
         }
       })
   )
@@ -1412,8 +1412,8 @@ kelir/
 │   │
 │   ├── kelir-plugins/                 # Canonical First-Class Plugin Crates
 │   │   ├── plugin-pty/                # virtio-console broker, ANSI sanitizer, Token Shield
-│   │   ├── plugin-vfs/                # virtio-fs daemon, Ghost Inodes, lock broker,
-│   │   │   │                          #   reconciler, in-flight MaskRule masking (mask.rs)
+│   │   ├── plugin-vfs/                # virtio-fs daemon, Synthetic FUSE inodes, lock broker,
+│   │   │   │                          #   reconciler, sliding-window MaskRule replacement (mask.rs)
 │   │   ├── plugin-wire/               # L7 forward proxy (per-session CA), SOCKS5, DNS sinkhole
 │   │   ├── plugin-chaos/              # Bidirectional virtio-net jitter/drop & virtio-fs ENOSPC
 │   │   └── plugin-ledger/             # Persistent Merkle WAL, CausalDelta, OpenTelemetry
@@ -1482,9 +1482,9 @@ kelir/
 `kelir` delivers a unified, production-grade substrate for autonomous AI execution:
 
 1. **Replaces Brittle Terminal Hacks (`tmux`, regex screen scraping):** Employs hardware `virtio-console` channels, programmatic prompt responders matching SGR-stripped plaintext, foreground process validation, dynamic `SIGWINCH` window resizing, Token Shield context protection with UTF-8/ANSI-boundary clamping, and in-flight ANSI sanitization.
-2. **Replaces Unsafe Host Storage Mutations:** Operates on pre-baked EROFS read-only rootfs devices, Copy-on-Write RAM overlays, synthetic in-memory Ghost Inodes, in-flight `MaskRule` secret masking with fixed-width padding, dynamic UID/GID ID-mapping, and an atomic Success Path Reconciler (`session.fs.reconcile()`) that resolves both Linux whiteout character devices (`c 0 0`) and opaque directory whiteouts (`trusted.overlay.opaque`).
+2. **Replaces Unsafe Host Storage Mutations:** Operates on pre-baked EROFS read-only rootfs devices, Copy-on-Write RAM overlays, synthetic in-memory FUSE inodes, sliding-window `MaskRule` secret replacement with fixed-width padding, dynamic UID/GID ID-mapping, and an atomic Success Path Reconciler (`session.fs.reconcile()`) that resolves both Linux whiteout character devices (`c 0 0`) and opaque directory whiteouts (`trusted.overlay.opaque`).
 3. **Replaces Fragmented Virtualization Scripts:** Establishes a modular `VmmDriver` abstraction driving `libkrun` by default on macOS (with Metal GPU) and Linux KVM, with seamless pluggability for bare-metal `rust-vmm` or Windows `OpenVMM`.
 4. **Enforces True Plugin-First Architecture:** Strips `kelir-core` down to a microkernel managing the 4 VirtIO hardware rings, delegating all behavioral logic to five canonical plugins — `pty`, `vfs`, `wire`, `chaos`, `ledger` — mirrored 1:1 across Rust, TypeScript, and Python.
 5. **Guarantees Operational Survival:** Engineered with dual-path host crash reclamation (`PR_SET_PDEATHSIG` on Linux, `kqueue(EVFILT_PROC, NOTE_EXIT)` watchers on macOS), MacBook sleep/wake clock snapping with TSC-scale unpinning, Docker-in-Kelir rootless Podman execution on ephemeral tmpfs, bidirectional hardware chaos fault injection, and an unforgeable Merkle-chained Causal Ledger of hardware-agnostic execution receipts (`dirty_bytes`, canonical 64-character lowercase hex BLAKE3 digests).
 
-By maintaining strict **Epistemic Agnosticism** at the hardware hypervisor layer while delivering **Unbreakable Type Safety and Complete Operational Governance** at the application layer, `kelir` stands as the normative execution screen for autonomous artificial intelligence. The specification is internally coherent across its Rust, TypeScript, and Python surfaces and is production-ready as written.
+By maintaining strict **hardware/kernel abstraction** at the hypervisor layer while delivering **Unbreakable Type Safety and Complete Operational Governance** at the application layer, `kelir` stands as the normative execution screen for autonomous artificial intelligence. The specification is internally coherent across its Rust, TypeScript, and Python surfaces and is production-ready as written.

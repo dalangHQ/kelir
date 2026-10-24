@@ -46,7 +46,7 @@
     - FUSE driver dynamically maps guest UID 0/1000 to caller process UID
     - File creation on host workspace executes under unprivileged host credentials
     - Prevents ambient host UID values leaking into guest filesystem metadata
-  - Synthetic FUSE inodes
+  - Synthetic FUSE inodes (storage plane)
     - Virtual files served from host memory into guest VFS
     - No backing file on host SSD
   - Sliding-window replacement over FUSE read buffers

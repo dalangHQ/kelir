@@ -30,9 +30,10 @@
       - NAPI/PyO3 AOT hook fusion: pipeline handlers fuse to one native closure
       - Foreign handlers cross FFI at most once per event
     - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
-    - Rust: borrow-checker verified handle injection, zero-cost Serde
-    - TypeScript: generic context accumulation, TypeBox schema guards
-    - Python: RAII context managers, Pydantic v2 validation
+    - Language surfaces
+      - Rust: borrow-checker verified handle injection, zero-cost Serde
+      - TypeScript: generic context accumulation, TypeBox schema guards
+      - Python: RAII context managers, Pydantic v2 validation
     - Scoping: all SDKs support ring, binary, and path filters at mount point
     - Topology rule: distinct environments use separate profile factories
     - Parity mechanism: see: 11-operations.md#Multi-language-parity-gate

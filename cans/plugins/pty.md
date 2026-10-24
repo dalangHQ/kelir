@@ -71,7 +71,7 @@
         - Hook returns Some(bytes) to append; None to pass
         - Annotations concatenate after body in priority() order
         - Body itself is immutable by contract
-      - Invariant: Mandatory TTY host disclosure
+      - Invariant: Mandatory TTY host disclosure (pty)
         - Any host-side state mutation reaches the workload's TTY
         - Plugins annotate; none suppress
       - Annotation bounds: TBD

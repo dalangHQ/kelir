@@ -86,7 +86,7 @@ const runtime = kelir({
                 action: async (_p, stream) => { stream.write("y\n"); } })
   ))
 
-  // → c.fs (in-flight read masking via MaskRule included)
+  // → c.fs (sliding-window read replacement via MaskRule included)
   .use(vfs((fs) => fs
     .idmap({ guestUid: 0, hostUid: process.getuid!() })
     .cacheSharedMounts(["~/.npm", "~/.cache/pip", "~/.cargo/registry"])
