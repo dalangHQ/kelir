@@ -72,6 +72,7 @@
     - Matrix job: plugin-audit
       - Each cell runs `kelir-plugin-cli check -p plugin-<name>` — the same
         contract audit `just plugin-check` runs locally
+      - Taxonomy check: asserts boundary URN and ring mask in plugin.toml
       - Dev-dep edge gate: `cargo tree -p plugin-<name> --edges dev` contains
         only plugin-testkit among plugins
       - Facade edge gate: `cargo tree -p plugin-<name>` contains no `kelir`
@@ -81,7 +82,7 @@
       - just test-plugin <name> for a single plugin
       - just plugin-check-all and just test-isolation-all run the loops
     - Integration tier
-      - Crate: kelir-integration
+      - Uses: kelir-integration
       - Runs only where KVM/HVF is available
       - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
   - Decoupling proof
@@ -100,6 +101,7 @@
   - Plugin registry
     - First-class plugin catalog is compiled in; external index poller is opt-in
     - Downstream state shape when enabled: see: artifacts/diagrams/ecosystem-ci.txt
+    - Index schema indexes by boundary URN, ring mask, and epistemic role
   - Multi-language parity gate
     - Rust macros generate typed FFI stubs: napi-rs for TS, pyo3 for Python
     - Parity validated against single vectors.json fixture across all SDKs
@@ -131,6 +133,7 @@
         - macOS probe: HVF entitlements, ARM64 16K page alignment
       - `kelir doctor --json`: structured for onboarding scripts
       - `plugin new`: scaffold crate, manifest, empty vectors
+      - `plugin new --boundary`: prompts for universal taxonomy coordinates
       - `plugin check`: same audit as CI, <30s, no network
       - `plugin vectors`: regenerate vectors.json from fixtures
       - `plugin rings --show`
@@ -146,7 +149,7 @@
       - kelir: facade crate, single Cargo dependency, feature-gated plugins
       - kelir-interface: pure leaf types, traits, wire framing, zero engine deps
       - kelir-core: stripped microkernel (bus, dispatch, vmm, trap gate)
-      - kelir-plugins: first-class plugins
+      - kelir-plugins: the plugin crate family
         - pty, vfs, wire, chaos, ledger, mcp, oci-translator
         - openshell-coordinator, db-proxy, mesh, lock-broker, supply-chain
         - hyper-density, cas-snapshot, wire-ingress
@@ -165,7 +168,7 @@
     - Two binding crates
       - napi, pyo3
     - Tooling crate
-      - kelir-plugin-cli: see: #Developer-CLI
+      - kelir-plugin-cli: see: #Subcommands
     - Registry index
       - Registry entries: see: #Plugin-registry
     - Test fixtures

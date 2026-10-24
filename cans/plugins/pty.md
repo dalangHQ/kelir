@@ -3,6 +3,8 @@
     - Plugin identifier: plugin-pty
     - Owner crate: crates/kelir-plugins/plugin-pty
     - name() = "pty"; priority() = 90
+    - Taxonomy (pty): urn:kelir:boundary:io.stream
+      - coordinate: rings=[virtio-console:hvc0]; role=mutator
     - VirtIO device attachment (pty): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (pty): see: 07-lifecycle.md#Lifecycle-vetoes
     - Binds to virtio-console paravirtual port hvc0

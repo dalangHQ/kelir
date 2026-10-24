@@ -3,6 +3,8 @@
     - Plugin identifier: plugin-cas-snapshot
     - Owner crate: crates/kelir-plugins/plugin-cas-snapshot
     - name() = "cas-snapshot"; priority() = 40
+    - Taxonomy (cas-snapshot): urn:kelir:boundary:storage.vfs
+      - coordinate: rings=[virtio-blk, virtio-shm]; role=fact-producer
     - VirtIO device attachment (cas-snapshot): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (cas-snapshot): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for cas-snapshot

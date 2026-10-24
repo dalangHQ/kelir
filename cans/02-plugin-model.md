@@ -1,4 +1,21 @@
 - Plugin model
+  - Taxonomic coordinate manifest
+    - Every plugin defines a 4-axis coordinate tuple in plugin.toml
+    - Decoupled from internal engine spec planes and directory trees
+    - Axis 1 (boundary): universal mediation taxon (urn:kelir:boundary:*)
+    - Axis 2 (rings): set of attached VirtIO device channels
+    - Axis 3 (execution): tier-1-engine (Rust) | tier-2-policy (host FFI)
+    - Axis 4 (epistemic): observer | mutator | gate | fact-producer
+    - First-class catalog default: execution is tier-1-engine unless stated
+    - Coordinates enforce runtime sandbox blast-radius and ordering gates
+  - Universal mediation boundaries
+    - io.stream: interactive streams, TTY, stdio, token slicing
+    - storage.vfs: filesystems, mounts, snapshots, CoW layers
+    - net.fabric: L2-L7 wire, DNS, egress filters, proxies
+    - kernel.trap: syscall traps, process trees, task freezer
+    - security.policy: sandboxing, quotas, supply chain, chaos
+    - telemetry.provenance: Merkle logs, OTel traces, hardware receipts
+    - interop.protocol: MCP JSON-RPC, gRPC drivers, vsock RPC
   - Two-tier execution architecture
     - Engine tier (Tier 1)
       - Compiled native Rust plugins in crates/kelir-plugins
@@ -14,6 +31,12 @@
     - Exactly one FFI trampoline crossing per ring event regardless of hook count
     - Marshals ring events across threadsafe boundaries on match
     - Non-blocking trap returns: Allow, Deny, Rewrite, Yield, Abort
+  - Composite plugin hierarchy
+    - see: artifacts/code/plugin-trait.rs
+    - Assembly-time tree flattens into contiguous C-speed dispatch array
+    - Invariant: nested depth incurs zero runtime call-stack overhead
+    - Deduplication merges identical name() nodes; deepest config wins
+    - AOT hook fusion collapses nested closures into single FFI trampoline
   - KelirPlugin trait
     - see: artifacts/code/plugin-trait.rs
     - Trait surface and hook families: see: artifacts/code/plugin-trait.rs
@@ -80,6 +103,8 @@
     - Binary filter: in-kernel BPF drops traps for unlisted paths
     - Path filter: FUSE layer bypasses VFS hooks outside declared subtrees
     - Network filter: TAP dispatcher bypasses net hooks outside declared CIDR/port rules
+    - Scope cascade: see: artifacts/code/plugin-trait.rs
+    - Invariant: child effective scope is boolean intersection of ancestor scopes
   - Filter-before-FFI gate
     - Unmonitored guest operations bypass host language runtimes entirely
     - Host core checks MountScope in native memory before crossing FFI
@@ -159,6 +184,8 @@
     - Purpose: a plugin's tests run without a hypervisor
     - Emits language-agnostic test vectors
       - vectors.json derived from Rust fixtures
+  - Manifest contract
+    - Missing or invalid taxonomy coordinates reject compilation at boot
   - Language parity
     - see: artifacts/diagrams/sdks-invariants.txt
     - SDK surface: see: 03-sdk-architecture.md#N-native-design

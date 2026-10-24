@@ -3,6 +3,8 @@
     - Plugin identifier: plugin-wire-ingress
     - Owner crate: crates/kelir-plugins/plugin-wire-ingress
     - name() = "wire-ingress"; priority() = 85
+    - Taxonomy (wire-ingress): urn:kelir:boundary:net.fabric
+      - coordinate: rings=[virtio-vsock:ch1]; role=mutator
     - VirtIO device attachment (wire-ingress): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (wire-ingress): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for wire-ingress

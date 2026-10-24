@@ -16,9 +16,18 @@ class FixWebhookParams(BaseModel, frozen=True):
     issue_id: str
 
 
-# 1. Plugin yields typed handle instance
+# 1. Composite plugin tree unpacked at assembly time
+class SecurityBundle:
+    def __init__(self, policy: RepoPolicyPlugin):
+        self.policy = policy
+
+    def unpack(self, builder, scope=None):
+        builder, policy_h = builder.plugin_with_handle(self.policy, scope=scope)
+        return builder, policy_h
+
+# 2. Builder consumes composite bundle and captures typed handle
 builder = kelir.builder(vcpus=4, memory_mb=4096)
-builder, policy = builder.plugin_with_handle(RepoPolicyPlugin())
+builder, policy = builder.use_composite(SecurityBundle(RepoPolicyPlugin()))
 
 
 # 2. Handler captures handle via closure

@@ -3,6 +3,8 @@
     - Plugin identifier: plugin-vfs
     - Owner crate: crates/kelir-plugins/plugin-vfs
     - name() = "vfs"; priority() = 35
+    - Taxonomy (vfs): urn:kelir:boundary:storage.vfs
+      - coordinate: rings=[virtio-fs]; role=mutator
     - VirtIO device attachment (vfs): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (vfs): see: 07-lifecycle.md#Lifecycle-vetoes
     - Storage bus attachment (vfs): see: 05-storage-plane.md#Storage-plane

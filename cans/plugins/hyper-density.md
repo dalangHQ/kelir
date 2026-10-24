@@ -3,6 +3,8 @@
     - Plugin identifier: plugin-hyper-density
     - Owner crate: crates/kelir-plugins/plugin-hyper-density
     - name() = "hyper-density"; priority() = 45
+    - Taxonomy (hyper-density): urn:kelir:boundary:kernel.trap
+      - coordinate: rings=[virtio-balloon, virtio-shm]; role=mutator
     - VirtIO device attachment (hyper-density): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (hyper-density): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for hyper-density

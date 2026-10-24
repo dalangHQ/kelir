@@ -3,6 +3,8 @@
     - Plugin identifier: plugin-mesh
     - Owner crate: crates/kelir-plugins/plugin-mesh
     - name() = "mesh"; priority() = 65
+    - Taxonomy (mesh): urn:kelir:boundary:net.fabric
+      - coordinate: rings=[virtio-vsock]; role=mutator
     - VirtIO device attachment (mesh): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mesh): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for mesh

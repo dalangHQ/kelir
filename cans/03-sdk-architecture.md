@@ -45,6 +45,7 @@
     - see: artifacts/code/rust-handle-injection.rs
     - Typestate builder transitions KelirBuilder<Unset> to KelirBuilder<WithPlugin>
     - Closures requiring plugin capabilities enforce builder typestate bounds
+    - Composite bundles flatten into builder via CompositePlugin trait
     - Zero-Allocation Validation via Serde
       - #[derive(Deserialize)] enum Action with serde(tag = "action")
       - c.params::<Action>() fails at perimeter before traps execute
@@ -52,9 +53,11 @@
   - TypeScript SDK
     - see: artifacts/code/typescript-accumulation.ts
     - Builder lifecycle: .use(), .decorate(), .derive(), .macro(), .error()
+    - Composition: createPlugin() nests sub-plugins recursively via .use()
+    - Generic context accumulator recurses through nested sub-plugin types
     - TypeBox AOT schema push-down compiles to native Rust validators at boot
     - AOT hook fusion compiles all TS pipeline handlers into a single flat closure
-    - Exactly 1 NAPI trampoline jump per matched ring event
+    - Invariant: exactly 1 NAPI trampoline jump per event regardless of depth
     - Fully unified TContext passes to callbacks, resolving cross-plugin lookups
     - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
     - Null-object pattern: use(plugin({ enabled: false })) preserves c.pluginKey
@@ -68,6 +71,7 @@
       - __aexit__ guarantees session.terminate() on any exception
     - Builder assembly inspects closure freevars against mounted handles
     - Unbound closure references raise KelirConfigurationError before boot
+    - Composite plugins unpack nested handles atomically before boot
     - Pydantic v2 BaseModel with frozen=True
       - Field(pattern=r"^fix-webhook$")
       - Raises EINVAL before hook evaluation

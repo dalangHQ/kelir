@@ -6,13 +6,23 @@
 // Full runnable example: artifacts/examples/autonomous-swe-agent.ts
 // Canonical spec home:    cans/03-sdk-architecture.md#TypeScript-SDK
 
-import { kelir, t } from "@kelir/core";
+import { kelir, createPlugin, t } from "@kelir/core";
 import { vfs } from "@kelir/plugin-vfs";
 import { ledger } from "@kelir/plugin-ledger";
 
-const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
+// 1. Level 3 leaf plugin
+const secretMask = createPlugin("secret-mask")
+  .decorate("maskActive", () => true);
+
+// 2. Level 2 composite plugin (nests Level 3 + vfs)
+const secureWorkspace = createPlugin("secure-workspace")
   .use(vfs(), { paths: ["/workspace/**"] })
-  // 1. Null-object pattern: c.ledger is 100% typed; dispatch table skips hooks at boot
+  .use(secretMask);
+
+// 3. Level 1 runtime builder mounts composite
+const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
+  .use(secureWorkspace)
+  // Null-object pattern: c.ledger is 100% typed; dispatch table skips hooks at boot
   .use(ledger({ enabled: false }))
   // 2. Mount scoping: filter to target devices and binaries before dispatch evaluation
   .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024 }), {

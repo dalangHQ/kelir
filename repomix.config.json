@@ -28,23 +28,25 @@
     }
   },
   "include": [
-     //   "kelir.architecture.md",
     "cans/"
-],
+  ],
   "ignore": {
     "useGitignore": true,
     "useDotIgnore": true,
     "useDefaultPatterns": true,
     "customPatterns": [
-        "repomix.md",
-            "readme.md",
-            "repomix.config.json",
-            ".git",
-            "cans/_adr",
-            "cans/_collab",
-            "cans/_tasks",
-            "cans/AGENTS.md",
-           "cans/artifacts"
+      "repomix.md",
+      "readme.md",
+      "repomix.config.json",
+      ".git",
+      "cans/_adr",
+      "cans/_collab",
+      "cans/_tasks",
+      "cans/AGENTS.md",
+  //    "cans/artifacts/code",
+  //    "cans/artifacts/config",
+  //    "cans/artifacts/diagrams",
+  //    "cans/artifacts/examples"
     ]
   },
   "security": {

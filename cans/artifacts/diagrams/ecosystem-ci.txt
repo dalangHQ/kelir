@@ -15,12 +15,12 @@ DECOUPLED PLUGIN CI + REGISTRY FLOW
   │  vectors × {rel,mn}  │   kelir-plugin-cli parity run
   │  attest              │   kelir-plugin-cli attest --sign
   └──────────┬───────────┘
-             │  attestation.json  (SHA · core range · per-lang · per-channel)
+             │  attestation.json  (SHA · core range · boundary URN · coordinates)
              │  signature verified against registered pubkey
              ▼
   ┌──────────────────────┐
   │  CANON REPO          │
-  │  cans/_registry/     │   PR-reviewed entry; one line per plugin
+  │  cans/_registry/     │   PR-reviewed entry; indexed by boundary URN
   │    plugins.yaml      │
   │  registry-poll (cron)│   GH_TOKEN, no plugin build, writes matrix
   └──────────┬───────────┘

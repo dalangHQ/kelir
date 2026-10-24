@@ -3,6 +3,8 @@
     - Plugin identifier: plugin-oci-translator
     - Owner crate: crates/kelir-plugins/plugin-oci-translator
     - name() = "oci-translator"; priority() = 20
+    - Taxonomy (oci-translator): urn:kelir:boundary:storage.vfs
+      - coordinate: rings=[virtio-blk]; role=mutator
     - VirtIO device attachment (oci-translator): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (oci-translator): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for oci-translator

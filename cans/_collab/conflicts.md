@@ -1,2 +1,7 @@
 - conflicts
   - status: resolved | file: 08-epistemic.md | resolution: wal.rs/otel.rs pointers dropped; Merkle-WAL and OpenTelemetry nodes state plugin-ledger ownership, no artifact pointer
+  - status: resolved | file: plugins/*.md | resolution: compact taxonomy nodes
+    - kelir and virtio joined the _rules.yaml stopwords (keyword sprawl)
+    - execution axis hoisted to a catalog default node in the plugin model
+    - per-plugin coordinate leaves condensed to 2 unique nodes each
+    - kelir stopword re-tokenization exposed 3 old overlaps; lines reworded

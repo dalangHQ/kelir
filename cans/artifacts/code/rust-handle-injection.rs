@@ -14,12 +14,24 @@ enum Action {
     FixWebhook { repo: String, issue_id: String },
 }
 
-// 1. Typestate transition: Builder<Init> -> Builder<WithPolicy>
-let scope = MountScope::default()
-    .with_binaries(["git", "npm"])
-    .with_devices([VirtioDevice::Vsock, VirtioDevice::Fs]);
-let builder = builder.with_scoped_plugin(
-    RepoPolicyPlugin::new(options),
+// 1. Composite tree definition unpacked at assembly time
+struct WorkspaceBundle {
+    policy: RepoPolicyPlugin,
+}
+
+impl CompositePlugin for WorkspaceBundle {
+    fn unpack(self: Box<Self>, parent: &MountScope) -> Vec<(Box<dyn KelirPlugin>, MountScope)> {
+        vec![(
+            Box::new(self.policy),
+            parent.intersect(&MountScope::default().with_binaries(["git"])),
+        )]
+    }
+}
+
+// 2. Typestate transition: Builder<Init> -> Builder<WithPolicy> via composite unpack
+let scope = MountScope::default().with_devices([VirtioDevice::Vsock, VirtioDevice::Fs]);
+let (builder, policy) = builder.with_composite(
+    WorkspaceBundle { policy: RepoPolicyPlugin::new(options) },
     scope,
 );
 

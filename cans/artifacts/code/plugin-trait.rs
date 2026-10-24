@@ -60,6 +60,27 @@ pub enum VirtioDevice {
     Auxiliary,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EpistemicRole {
+    Observer,
+    Mutator,
+    Gate,
+    FactProducer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionTier {
+    Tier1Engine,
+    Tier2Policy,
+}
+
+#[derive(Debug, Clone)]
+pub struct PluginTaxonomy {
+    pub boundary: &'static str,
+    pub epistemic: EpistemicRole,
+    pub execution: ExecutionTier,
+}
+
 /// Mount-level scoping filters evaluated before dispatch array registration.
 #[derive(Debug, Clone, Default)]
 pub struct MountScope {
@@ -81,6 +102,34 @@ impl MountScope {
         self.paths = Some(paths.into_iter().map(Into::into).collect());
         self
     }
+    /// Evaluates boolean intersection against an ancestor scope during composite unpacking
+    pub fn intersect(&self, parent: &Self) -> Self {
+        Self {
+            devices: match (&self.devices, &parent.devices) {
+                (Some(a), Some(b)) => Some(a.iter().filter(|d| b.contains(d)).copied().collect()),
+                (Some(a), None) => Some(a.clone()),
+                (None, Some(b)) => Some(b.clone()),
+                (None, None) => None,
+            },
+            binaries: match (&self.binaries, &parent.binaries) {
+                (Some(a), Some(b)) => Some(a.iter().filter(|x| b.contains(x)).cloned().collect()),
+                (Some(a), None) => Some(a.clone()),
+                (None, Some(b)) => Some(b.clone()),
+                (None, None) => None,
+            },
+            paths: match (&self.paths, &parent.paths) {
+                (Some(a), Some(b)) => Some(a.iter().filter(|x| b.contains(x)).cloned().collect()),
+                (Some(a), None) => Some(a.clone()),
+                (None, Some(b)) => Some(b.clone()),
+                (None, None) => None,
+            },
+        }
+    }
+}
+
+/// Assembly-time composite plugin tree unpacked into flat dispatch entries before boot.
+pub trait CompositePlugin: Send + Sync {
+    fn unpack(self: Box<Self>, parent_scope: &MountScope) -> Vec<(Box<dyn KelirPlugin>, MountScope)>;
 }
 
 // ── Lifecycle context ────────────────────────────────────────────
@@ -146,6 +195,9 @@ impl<'a> LifecycleCtx<'a> {
 pub trait KelirPlugin: Send + Sync {
     /// Unique identifier for telemetry and requires() resolution.
     fn name(&self) -> &'static str;
+
+    /// Universal taxonomy coordinates declared for registry indexing.
+    fn taxonomy(&self) -> PluginTaxonomy;
 
     /// Dispatch ordering; lower values run earlier. Default: 100.
     /// Ties broken by declaration order.

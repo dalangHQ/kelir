@@ -3,6 +3,8 @@
     - Plugin identifier: plugin-wire
     - Owner crate: crates/kelir-plugins/plugin-wire
     - name() = "wire"; priority() = 75
+    - Taxonomy (wire): urn:kelir:boundary:net.fabric
+      - coordinate: rings=[virtio-net]; role=mutator
     - VirtIO device attachment (wire): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (wire): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for wire
