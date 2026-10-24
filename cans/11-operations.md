@@ -182,6 +182,7 @@
       - kelir-integration: cross-plugin paths; real hypervisor required
     - Three adapter crates
       - mcp-server (community); containerd-shim, openshell-grpc (kelir-cloud)
+      - see: 10-adapters.md
     - Two binding crates
       - napi, pyo3
     - Tooling crate
