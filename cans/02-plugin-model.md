@@ -177,7 +177,7 @@
     - Coverage invariant
       - Every first-class plugin names one demonstrating example
       - Community examples live in cans/artifacts/examples
-      - Commercial examples live in kelir-cloud/cans/artifacts/examples
+      - Commercial examples live in ../kelir-cloud/cans/artifacts/examples
       - An orphan plugin fails --plugin-coverage
       - Plugin-coverage gate: see: 11-operations.md#Coverage-gates
     - Behavior of each: at its plugin file

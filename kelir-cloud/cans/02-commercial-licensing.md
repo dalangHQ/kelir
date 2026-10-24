@@ -1,5 +1,0 @@
-- Commercial Licensing
-  - Distribution channels
-    - Precompiled NAPI / PyO3 packages: Delivered via npm/PyPI under commercial EULA
-    - Private Cargo Registry: Authenticated access to crates.kelir.dev for pure Rust consumers
-    - License enforcement: Cryptographic host entitlement token verification at on_vm_init

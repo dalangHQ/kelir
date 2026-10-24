@@ -174,7 +174,9 @@
       - kelir-shim: in-guest musl PID 1 (<50KB)
     - Decoupled spec layout
       - Core plane files: cans/00-overview.md to cans/11-operations.md
-      - Plugin spec files: one <name>.md per plugin, in cans/plugins or kelir-cloud/cans/plugins
+      - Plugin spec files: one <name>.md per plugin
+        - Community: cans/plugins
+        - Commercial: ../kelir-cloud/cans/plugins
     - Test infrastructure
       - kelir-plugin-testkit: mock driver, mock bus, HandlerCtx constructors
       - Not runtime; dev-dependency of every plugin-*

@@ -49,7 +49,7 @@ references:
   orphan_check: true
   duplicate_home_check: true
   external_roots:
-    kelir-cloud: "kelir-cloud/cans"
+    kelir-cloud: "../kelir-cloud/cans"
 
 redundancy:
   enabled: true

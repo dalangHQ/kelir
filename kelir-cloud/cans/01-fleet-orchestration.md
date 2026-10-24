@@ -1,7 +1,0 @@
-- Fleet Orchestration
-  - Kubernetes bare-metal runtime
-    - containerd-shim-kelir-v2 integrates microVMs directly into K8s Pod lifecycle
-    - Translates OCI layers via plugin-oci-translator: see: plugins/oci-translator.md
-  - NVIDIA OpenShell integration
-    - openshell-grpc mediates compute_driver.proto via UDS
-    - Binds GPU devices via CDI: see: plugins/openshell-coordinator.md
