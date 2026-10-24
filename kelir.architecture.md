@@ -1,5 +1,5 @@
 # `kelir.architecture.md` (Part 1/3)
-**A Radical, Plugin-First MicroVM Hypervisor Middleware for Autonomous Systems**
+**A Modular VirtIO Interposition Microkernel for Autonomous Systems**
 
 *Version: 3.0.0-normative*  
 *Classification: Systems Architecture Blueprint*  
@@ -400,14 +400,14 @@ pub enum TrapAction {
 }
 ```
 
-**TrapAction semantics — environment injection.** `TrapAction::Allow` resumes the intercepted syscall untouched: registers and memory are never modified, so a plain `Allow` decision can never mutate the guest environment. Environment variables set by a trap handler (`c.env.set(...)`) reach the guest exclusively through `TrapAction::Rewrite`. When a handler that called `c.env.set()` returns `Decision.resume()`, the runtime automatically converts the decision into `TrapAction::Rewrite`, preserving `new_binary = original_binary` and the original `new_argv`, and carrying the accumulated handler environment map in `injected_env`. The syscall then re-executes through the rewrite path with the injected environment attached — the only channel through which handler-side environment changes become visible to the guest process.
+**TrapAction semantics — environment injection.** `TrapAction::Allow` resumes the intercepted syscall untouched: registers and memory are never modified, so a plain `Allow` decision can never mutate the guest environment. Environment variables set by a trap handler (`c.env.set(...)`) reach the guest exclusively through an explicit `TrapAction::Rewrite`, with `new_binary`, `new_argv`, and the handler environment map in `injected_env`. Calling `c.env.set()` and returning `Decision.resume()` returns `EINVALIDDECISION` — the runtime does not auto-convert a resume into a rewrite.
 
 ---
 
-*(End of Part 1. Part 2: Radical Plugin-First Core Traits, The Elysia-Style Accumulating SDK Engine, Hardware Terminal Plane [virtio-console], and Zero-Leak Storage Plane with Sliding-Window Replacement [virtio-fs].)*
+*(End of Part 1. Part 2: Modular VirtIO interposition core traits, the fluent trap/intercept SDK engine, Hardware Terminal Plane [virtio-console], and Zero-Leak Storage Plane with Sliding-Window Replacement [virtio-fs].)*
 
 # `kelir.architecture.md` (Part 2/3)
-**A Radical, Plugin-First MicroVM Hypervisor Middleware for Autonomous Systems**
+**A Modular VirtIO Interposition Microkernel for Autonomous Systems**
 
 *Version: 3.0.0-normative*  
 *Classification: Systems Architecture Blueprint*  
@@ -415,7 +415,7 @@ pub enum TrapAction {
 
 ---
 
-## 5. The Radical Plugin-First Rust Trait Architecture
+## 5. The Modular VirtIO Interposition Rust Trait Architecture
 
 `kelir-core` is a **stripped microkernel**. It contains zero hardcoded logic for terminal filtering, file redaction, credential vaulting, or chaos injection. 
 
@@ -493,7 +493,7 @@ To achieve sub-12 microsecond hook execution, `kelir-core` compiles registered p
 `kelir` rejects dynamic `any`-typing and second-class shims. All three host consumer SDKs enforce identical runtime guarantees through their language-native compile-time type systems:
 
 1. **Rust:** Borrow-checker verified handle injection + zero-cost Serde deserialization.
-2. **TypeScript:** Generic context accumulation (`Kelir<TContext>`) + TypeBox schema guards.
+2. **TypeScript:** Generic context accumulation (`Kelir<TContext>`) + TypeBox AOT validation.
 3. **Python:** RAII context managers (`async with`) + Pydantic v2 execution validation.
 
 All three SDKs publish the same five first-class plugin packages, maintained **1:1 across languages**: the Rust crates `plugin-pty`, `plugin-vfs`, `plugin-wire`, `plugin-chaos`, and `plugin-ledger`; the TypeScript packages `@kelir/plugin-pty`, `@kelir/plugin-vfs`, `@kelir/plugin-wire`, `@kelir/plugin-chaos`, and `@kelir/plugin-ledger`; and the Python modules under `kelir.plugins.*`. A plugin mounted in one language has an exact counterpart — same trait surface, same hook semantics — in the other two.
@@ -506,17 +506,17 @@ Spawn options follow the params ingress contract defined in §1: `params` are va
 ├──────────────┬────────────────────────────────────┬────────────────────────────────────┤
 │ LANGUAGE     │ PLUGIN INSTALLATION PROOF          │ INBOUND PARAMETER VALIDATION       │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ Rust         │ `plugin_with_handle(P)` produces   │ `c.params::<T>()` deserializes     │
-│              │ typed handle; closures fail to     │ via Serde; failure halts spawn     │
-│              │ compile if plugin is unmounted     │ before traps execute               │
+│ Rust         │ Instantiated plugin + `.plugin()`  │ `c.params::<T>()` deserializes     │
+│              │ returns Builder only; host-held    │ via Serde; failure halts spawn     │
+│              │ `policy = plugin.handle()`         │ before traps execute               │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ TypeScript   │ Type-level context accumulation;   │ `.guard({ schema: t.Object(...) })`│
+│ TypeScript   │ Type-level context accumulation;   │ `.params({ schema: t.Object(...) })`│
 │              │ `c.pluginKey` fails `tsc` if       │ validates via TypeBox prior to     │
 │              │ `.use()` is absent upstream        │ execution                          │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ Python       │ `plugin_with_handle()` yields typed│ Pydantic `BaseModel` on `spawn()`  │
-│              │ handle instance; missing handle    │ raises `EINVAL` before hook        │
-│              │ fails closures at import time      │ evaluation                         │
+│ Python       │ Instantiated plugin + `.use()`     │ Pydantic `BaseModel` on `spawn()`  │
+│              │ returns Builder only; handlers     │ raises `EINVAL` before hook        │
+│              │ read `c.policy` directly           │ evaluation                         │
 └──────────────┴────────────────────────────────────┴────────────────────────────────────┘
 ```
 
@@ -524,10 +524,10 @@ Spawn options follow the params ingress contract defined in §1: `params` are va
 
 ### 6.1 Native Rust Architecture: The Borrow-Checker Invariant
 
-In Rust, plugin dependencies are verified without dynamic reflection or string keys. A plugin defines an associated `Handle` type. Mounting the plugin atomically returns the builder and its handle.
+In Rust, plugin dependencies are verified without dynamic reflection or string keys. A plugin defines an associated `Handle` type. Mounting the plugin returns only the builder; the host holds the handle separately.
 
 ```rust
-// Rust Consumer: Compile-Time Plugin Verification & Serde Guards
+// Rust Consumer: Compile-Time Plugin Verification & Serde Validation
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
@@ -535,32 +535,29 @@ enum Action {
     FixWebhook { repo: String, issue_id: String },
 }
 
-// 1. Atomic handle extraction:
-let (builder, policy) = builder.plugin_with_handle(RepoPolicyPlugin::new(options));
+// 1. Caller instantiates the plugin; host holds its handle
+// (available for direct checks outside traps; handlers read c.policy()):
+let policy_plugin = RepoPolicyPlugin::new(options);
+let policy = policy_plugin.handle();
+let builder = builder.plugin(policy_plugin);
 
-// 2. Downstream handler captures typed handle:
-let builder = builder.exec(move |exec| {
-    let policy = policy.clone();
-    exec
-        // Serde deserializes `Action` before handler execution:
-        .before("npm test", handler(|c: HandlerCtx| async move {
-            let params = c.params::<Action>()?; 
-            Ok(Decision::Resume)
-        }))
-        // Compiler guarantees `policy` exists in scope:
-        .before("git commit *", handler(move |_c: HandlerCtx| {
-            let policy = policy.clone();
-            async move {
-                if policy.violations().await > 0 {
-                    return Ok(Decision::deny(1, "Policy violations recorded"));
-                }
-                Ok(Decision::Resume)
-            }
-        }))
-});
+// 2. Fluid builder chain returns only Builder; handlers read c.policy():
+let builder = builder
+    .params::<Action>()
+    // Serde deserializes `Action` before handler execution:
+    .trap("npm test", handler(|c: HandlerCtx| async move {
+        let params = c.params::<Action>()?;
+        Ok(Decision::Resume)
+    }))
+    .trap("git commit *", handler(|c: HandlerCtx| async move {
+        if c.policy().violations().await > 0 {
+            return Ok(Decision::deny(1, "Policy violations recorded"));
+        }
+        Ok(Decision::Resume)
+    }));
 ```
 
-* **No Handle, No Compile:** If `builder.plugin_with_handle(...)` is omitted, `policy` does not exist. Closures attempting to capture it trigger rustc error `E0425`.
+* **No Handle, No Compile:** If `policy_plugin.handle()` is omitted, `policy` does not exist. Closures attempting to capture it trigger rustc error `E0425`.
 * **Zero-Allocation Validation:** `c.params::<T>()` operates directly on zero-copy guest memory buffers.
 
 ---
@@ -570,7 +567,7 @@ let builder = builder.exec(move |exec| {
 The TypeScript SDK models pipeline state as an accumulating generic type `Kelir<TContext>`. Each `.use()` call returns an expanded type context.
 
 ```typescript
-// TypeScript Consumer: Generic Inference & TypeBox Guard
+// TypeScript Consumer: Generic Inference & TypeBox AOT Validation
 
 import { kelir, t } from "@kelir/core";
 import { vfs } from "@kelir/plugin-vfs";
@@ -578,26 +575,22 @@ import { vfs } from "@kelir/plugin-vfs";
 const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
   .use(vfs())
   .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024 }))
-  .exec((cmd) => cmd
-    // 1. Static and runtime schema validation
-    .guard({
-      schema: t.Object({
-        action: t.Literal("fix-webhook"),
-        issueId: t.String(),
-      }),
-    })
-    // 2. `c.policy` and `c.fs` are fully inferred on HandlerContext:
-    .before("git commit *", async (c) => {
-      if (c.policy.violations > 0) {
-        return c.deny(1, `EPOLICY: ${c.policy.violations} violation(s)`);
-      }
-      return c.resume();
-    })
-  );
+  // 1. Schema push-down: AOT-compiled to a native Rust validator at boot
+  .params(t.Object({
+    action: t.Literal("fix-webhook"),
+    issueId: t.String(),
+  }))
+  // 2. `c.policy` and `c.fs` are fully inferred on HandlerContext:
+  .trap("git commit *", async (c) => {
+    if (c.policy.violations > 0) {
+      return c.deny(1, `EPOLICY: ${c.policy.violations} violation(s)`);
+    }
+    return c.resume();
+  });
 ```
 
 * **Build-Time Invalidation:** Removing `.use(repoPolicyPlugin)` strips `policy` from `TContext`. Downstream references to `c.policy` fail at `tsc` compilation.
-* **Schema Boundary:** Spawn actions failing the `.guard()` schema terminate execution with `EINVAL` prior to VM instruction dispatch.
+* **Schema Boundary:** Spawn actions failing the `.params()` schema terminate execution with `EINVAL` prior to VM instruction dispatch.
 
 ---
 
@@ -615,17 +608,17 @@ class FixWebhookParams(BaseModel, frozen=True):
     action: str = Field(pattern=r"^fix-webhook$")
     issue_id: str
 
-# 1. Plugin yields typed handle instance
-builder = kelir.builder(vcpus=4, memory_mb=4096)
-builder, policy = builder.plugin_with_handle(RepoPolicyPlugin())
+# 1. Caller instantiates plugin reference directly
+policy = RepoPolicyPlugin()
+builder = kelir.builder(vcpus=4, memory_mb=4096).use(policy)
 
-# 2. Handler captures handle via closure
-async def commit_gate(_c: HandlerContext) -> Decision:
-    if policy.violations > 0:
-        return Decision.deny(1, f"EPOLICY: {policy.violations} violation(s)")
+# 2. Handler reads typed plugin state directly from context c
+async def commit_gate(c: HandlerContext) -> Decision:
+    if c.policy.violations > 0:
+        return Decision.deny(1, f"EPOLICY: {c.policy.violations} violation(s)")
     return Decision.resume()
 
-builder.exec(lambda cmd: cmd.before("git commit *", commit_gate))
+builder.trap("git commit *", commit_gate)
 
 # 3. RAII Execution: __aenter__ boots microVM; __aexit__ guarantees termination
 async with builder as session:
@@ -701,18 +694,17 @@ When an agent renders interactive curses interfaces or spinners, column and row 
 Orchestrators avoid scraping terminal screens with regex. `onPrompt` triggers directly on the hardware stream chunk:
 
 ```typescript
-app.use(
-  pty((t) =>
-    t.onPrompt({
-      match: /Overwrite production schema\? \[y\/N\]/i,
-      timeoutMs: 1500,
-      action: async (prompt, stream) => {
-        // Injects raw keystrokes directly into the virtio-console hardware ring:
-        stream.write("y\n");
-      },
-    })
-  )
-);
+pty({
+  prompts: [{
+    match: /Overwrite production schema\? \[y\/N\]/i,
+    timeoutMs: 1500,
+    verifyForeground: true,
+    action: async (prompt, stream) => {
+      // Injects raw keystrokes directly into the virtio-console hardware ring:
+      stream.write("y\n");
+    },
+  }],
+})
 ```
 * **ANSI-Stable Matching:** Matchers run against an ANSI-SGR-stripped plaintext shadow copy of the output stream. The plugin maintains a parallel buffer with all SGR color/bold/underline codes removed, evaluates `match` against that plaintext, and streams the original bytes — styling intact — to the consumer. Regexes therefore match prompt text like `Overwrite production schema? [y/N]` regardless of embedded SGR color or bold codes emitted by modern CLI tools.
 * **Anti-Spoof Verification:** The prompt responder executes **only** if the process holding the PTY slave matches the kernel's active foreground process group (`tcgetpgrp()`). Background processes executing `echo "Overwrite production schema? [y/N]"` cannot trigger automated responses.
@@ -919,7 +911,7 @@ Every synthetic FUSE inode — static or dynamic — surfaces as a full `VfsInod
 *(End of Part 2. Part 3: The Wire Plane [virtio-net], Hypervisor Chaos Controller, Hypervisor primitives [fork/suspend/clock], Persistent Causal Ledger, and Repository Layout.)*
 
 # `kelir.architecture.md` (Part 3/3)
-**A Radical, Plugin-First MicroVM Hypervisor Middleware for Autonomous Systems**
+**A Modular VirtIO Interposition Microkernel for Autonomous Systems**
 
 *Version: 3.0.0-normative*  
 *Classification: Systems Architecture Blueprint*  
@@ -1233,40 +1225,39 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
   .use(vfs())
   .use(pty())
   // Intercept every action at the hardware boundary
-  .exec((cmd) =>
-    cmd
-      .before("*", async (c) => {
-        // 1. Hardware Snapshot: record clean state in a core-owned StepSlot
-        //    (typed, per-PID pre/post state tracking on the handler context)
-        await c.step.mark(await c.vm.checkpoint("pre-step"));
+  .trap("*", {
+    pre: async (c) => {
+      // 1. Hardware Snapshot: record clean state in a core-owned StepSlot
+      //    (typed, per-PID pre/post state tracking on the handler context)
+      await c.step.mark(await c.vm.checkpoint("pre-step"));
 
-        // 2. Hardware Pause: Hold vCPU registers while verifying intent
-        const intentAnalysis = await orchestrator.analyzeIntent({
-          binary: c.trap.binary_path,
-          argv: c.trap.argv,
-          lineage: c.trap.ancestor_chain,
-        });
+      // 2. Hardware Pause: Hold vCPU registers while verifying intent
+      const intentAnalysis = await orchestrator.analyzeIntent({
+        binary: c.trap.binary_path,
+        argv: c.trap.argv,
+        lineage: c.trap.ancestor_chain,
+      });
 
-        if (!intentAnalysis.isHypothesisValid) {
-          // Reject action immediately: Zero mutations reach the guest OS
-          return c.deny(1, `Verification Reject: ${intentAnalysis.falsificationReason}`);
-        }
+      if (!intentAnalysis.isHypothesisValid) {
+        // Reject action immediately: Zero mutations reach the guest OS
+        return c.deny(1, `Verification Reject: ${intentAnalysis.falsificationReason}`);
+      }
 
-        return c.resume(); // Releases vCPU to execute step
-      })
-      .after("*", async (c) => {
-        // 3. Post-Condition Verification via Tier 1 Physical Ground Truth
-        //    (c.receipt() is the single receipt read API on the context)
-        const receipt = await c.receipt(); // BLAKE3 hex digest, dirty_bytes, exit code
-        const isConsistent = await orchestrator.verifyPhysicalReceipt(receipt);
+      return c.resume(); // Releases vCPU to execute step
+    },
+    post: async (c) => {
+      // 3. Post-Condition Verification via Tier 1 Hardware Evidence
+      //    (c.receipt() is the single receipt read API on the context)
+      const receipt = await c.receipt(); // BLAKE3 hex digest, dirty_bytes, exit code
+      const isConsistent = await orchestrator.verifyPhysicalReceipt(receipt);
 
-        if (!isConsistent) {
-          // 4. Instant Hardware Rollback: Memory and disk revert in <8ms
-          await c.vm.rollback(c.step.last());
-          c.pty.notice("⚡ [VERIFICATION ENGINE]: Side-effect violation. State reverted.\n");
-        }
-      })
-  )
+      if (!isConsistent) {
+        // 4. Instant Hardware Rollback: Memory and disk revert in <8ms
+        await c.vm.rollback(c.step.last());
+        c.term.notice("⚡ [VERIFICATION ENGINE]: Side-effect violation. State reverted.\n");
+      }
+    },
+  })
   .boot();
 
 // Boots stripped microVM and runs unmodified harness on the session
@@ -1458,7 +1449,7 @@ kelir/
 │   │
 │   └── py/                            # Python Package Distribution (PyPI: kelir)
 │       └── kelir/
-│           ├── __init__.py            # Pythonic async middleware builder
+│           ├── __init__.py            # Pythonic async builder
 │           ├── plugins/               # Python plugin bindings (1:1 with kelir-plugins)
 │           │   ├── pty.py
 │           │   ├── vfs.py

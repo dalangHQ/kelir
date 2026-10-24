@@ -368,13 +368,13 @@
                   { "id": "microkernel", "name": "Microkernel Execution Platforms", "rank": "class", "desc": "The execution substrate agents run on: in-process microVMs, VirtIO rings, plugin graphs.", "children": [
                     { "id": "guest-runtimes", "name": "Guest-Side Agent Runtimes", "rank": "family", "desc": "SDK-in-guest, harness-aware, agent daemons.", "children": [] },
                     { "id": "container-wrappers", "name": "Host-Side Container Wrappers", "rank": "family", "desc": "dockerd/containerd userland, cgroup envelopes.", "children": [] },
-                    { "id": "microvm", "name": "In-Process MicroVM Hypervisor Middleware", "rank": "family", "desc": "Virtualization runs in the host consumer's memory via direct FFI.", "children": [
+                    { "id": "microvm", "name": "In-Process MicroVM Hypervisor", "rank": "family", "desc": "Virtualization runs in the host consumer's memory via direct FFI.", "children": [
                       { "id": "daemon-microvm", "name": "Daemon-Based MicroVM Managers", "rank": "genus", "desc": "Background root socket, separate process.", "children": [] },
                       { "id": "plugin-microkernels", "name": "Plugin-First VirtIO Microkernels", "rank": "genus", "desc": "Microkernel dispatching over VirtIO rings with a plugin graph.", "children": [
                         { "id": "monolithic", "name": "Monolithic MicroVMMs", "rank": "species", "desc": "Single binary, no plugin graph.", "children": [] },
                         { "id": "kelir", "name": "Kelir", "rank": "species", "species": "kelir",
                           "tagline": "What execution substrate does the agent run on?",
-                          "desc": "Embeddable in-process microVM hypervisor middleware microkernel. Mediates guest interaction through the VirtIO Device Complex. Boots stripped Linux microVMs in sub-60ms. The Wayang Kulit metaphor anchors this lineage: the dalang (host app) directs puppets (agents) through the kelir (the taut white screen that mediates all interaction).",
+                          "desc": "Embeddable in-process microVM hypervisor microkernel. Mediates guest interaction through the VirtIO Device Complex. Boots stripped Linux microVMs in sub-60ms. The Wayang Kulit metaphor anchors this lineage: the dalang (host app) directs puppets (agents) through the kelir (the taut white screen that mediates all interaction).",
                           "meta": {
                             "Defining Property": "Defines the execution substrate (microVM + VirtIO + plugin graph) that agents and orchestrators run on.",
                             "Core Abstraction": "The Session (in-process microVM + plugin graph)",

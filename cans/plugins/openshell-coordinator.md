@@ -5,11 +5,11 @@
     - name() = "openshell-coordinator"; priority() = 60
     - Taxonomy (openshell-coordinator): urn:kelir:sys:proc:lifecycle
       - coordinate: rings=[virtio-vsock]; role=Gate; tier=Native
-    - VirtIO attachment (openshell-coordinator): see: 01-architecture.md#VirtIO-Device-Complex
+    - VirtIO link (openshell-coordinator): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (openshell-coordinator): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for openshell-coordinator
     - Context key contributed: None (daemon runtime: checkpoint coordination)
-    - Closed-set binding rule (openshell-coordinator): see: 02-plugin-model.md#Core-context-keys
+    - Closed-set rule (openshell-coordinator): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (openshell-coordinator)
     - Coordinator hook wiring
       - on_vm_init: register vetoes on Fork, Suspend, ClockSkew

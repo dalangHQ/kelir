@@ -58,7 +58,7 @@ use kelir::{
 };
 
 // ============================================================================
-// 1. TYPED PARAMS — the serde analogue of TypeBox's `.guard({ schema })`
+// 1. TYPED PARAMS — the serde analogue of the TypeBox object schema
 // ============================================================================
 
 /// Deserialization target for every `spawn()` call in this file. Any handler
@@ -372,139 +372,136 @@ async fn build_runtime(
     // ── CUSTOM PLUGIN: fluid registration ───────────────────────────────
     let builder = builder.plugin(policy_plugin);
 
-    // ── EXEC GRAPH (§4.3, §12.5) ────────────────────────────────────────
-    let builder = builder.exec({
-        let oracle = Arc::clone(&oracle);
-        move |exec| {
-            let policy_for_commit = policy.clone();
-            exec
-                // Universal atomic step loop: checkpoint → oracle → resume
-                .before("*", handler({
-                    let oracle = Arc::clone(&oracle);
-                    move |c: HandlerCtx| {
-                        let oracle = Arc::clone(&oracle);
-                        async move {
-                            let pre = c.vm
-                                .checkpoint(format!("pre:{}", c.trap.pid))
-                                .await?;
+    // ── TRAP REGISTRATIONS (§4.3, §12.5) ─────────────────────────────
+    // Direct root-level .trap() registrations: pre-exec gates return a
+    // Decision, post-exec gates return a PostExecAction.
+    let policy_for_commit = policy.clone();
+    let builder = builder
+        // Universal atomic step loop: checkpoint → oracle → resume
+        .trap("*", handler({
+            let oracle = Arc::clone(&oracle);
+            move |c: HandlerCtx| {
+                let oracle = Arc::clone(&oracle);
+                async move {
+                    let pre = c.vm
+                        .checkpoint(format!("pre:{}", c.trap.pid))
+                        .await?;
 
-                            let intent: IntentAnalysis = oracle.analyze_intent(&c.trap).await?;
-                            if !intent.is_hypothesis_valid {
-                                return Ok(Decision::deny(
-                                    1,
-                                    format!(
-                                        "Verification Reject: {}",
-                                        intent.falsification_reason.unwrap_or_default()
-                                    ),
-                                ));
-                            }
-                            if c.trap.entropy > 5.2 && !intent.allow_high_entropy {
-                                return Ok(Decision::deny(
-                                    126,
-                                    "EENTROPY: high-entropy argv requires oracle clearance.".into(),
-                                ));
-                            }
-                            Ok(Decision::Resume)
-                        }
+                    let intent: IntentAnalysis = oracle.analyze_intent(&c.trap).await?;
+                    if !intent.is_hypothesis_valid {
+                        return Ok(Decision::deny(
+                            1,
+                            format!(
+                                "Verification Reject: {}",
+                                intent.falsification_reason.unwrap_or_default()
+                            ),
+                        ));
                     }
-                }))
-
-                // Warm caches + stamp traceparent for hermetic test
-                .before("npm test -- --runInBand", handler(|c: HandlerCtx| async move {
-                    c.env.set("OTEL_TRACE_ID", format!("{:032x}", std::process::id()));
-                    c.env.set("CI", "1");
-                    c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
-                    Ok(Decision::Resume)
-                }))
-
-                // Entropy defense + `--force` strip
-                .before("git push *", handler(|c: HandlerCtx| async move {
-                    if c.trap.entropy > 5.2 {
-                        return Ok(Decision::deny(1, "EPERM: high-entropy payload.".into()));
-                    }
-                    if c.trap.argv.iter().any(|a| a == "--force") {
-                        let argv = c.trap.argv.iter()
-                            .filter(|a| *a != "--force").cloned().collect();
-                        return Ok(Decision::rewrite(
-                            "/bin/git",
-                            argv,
-                            [("KELIR_DISARMED".into(), "1".into())],
+                    if c.trap.entropy > 5.2 && !intent.allow_high_entropy {
+                        return Ok(Decision::deny(
+                            126,
+                            "EENTROPY: high-entropy argv requires oracle clearance.".into(),
                         ));
                     }
                     Ok(Decision::Resume)
-                }))
+                }
+            }
+        }))
 
-                // Tier-1 post-condition verification + rollback (§12.5)
-                .after("*", handler({
-                    let oracle = Arc::clone(&oracle);
-                    move |c: HandlerCtx| {
-                        let oracle = Arc::clone(&oracle);
-                        async move {
-                            let pre: SnapshotDescriptor = c.step.last().ok_or_else(|| {
-                                PluginError::Halt("no pre-exec checkpoint".into())
-                            })?;
-                            let receipt: ExecutionReceipt = c.receipt().await?;
+        // Warm caches + stamp traceparent for hermetic test
+        .trap("npm test -- --runInBand", handler(|c: HandlerCtx| async move {
+            c.env.set("OTEL_TRACE_ID", format!("{:032x}", std::process::id()));
+            c.env.set("CI", "1");
+            c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
+            Ok(Decision::Resume)
+        }))
 
-                            // Binary hash integrity — the agent cannot fake this
-                            if receipt.binary_blake3 != c.trap.binary_blake3 {
-                                c.vm.rollback(&pre).await?;
-                                c.term.notice(
-                                    "⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n",
-                                );
-                                return Ok(PostExecAction::RollbackAndHalt);
-                            }
-                            // Hermetic runs must not egress
-                            if c.trap.binary_path.ends_with("/npm")
-                                && receipt.egress_bytes > 0
-                                && c.trap.cwd.contains("/checkout-service")
-                            {
-                                c.vm.rollback(&pre).await?;
-                                c.term.notice(&format!(
-                                    "⚡ [KELIR]: hermetic test emitted {}B egress — REVERTED\n",
-                                    receipt.egress_bytes
-                                ));
-                                return Ok(PostExecAction::RollbackAndHalt);
-                            }
-                            // Oracle post-condition (§12.5)
-                            if !oracle.verify_physical_receipt(&receipt).await? {
-                                c.vm.rollback(&pre).await?;
-                                c.term.notice(
-                                    "⚡ [KELIR]: post-condition violated — REVERTED\n",
-                                );
-                                return Ok(PostExecAction::RollbackAndHalt);
-                            }
-                            Ok(PostExecAction::Proceed)
-                        }
+        // Entropy defense + `--force` strip
+        .trap("git push *", handler(|c: HandlerCtx| async move {
+            if c.trap.entropy > 5.2 {
+                return Ok(Decision::deny(1, "EPERM: high-entropy payload.".into()));
+            }
+            if c.trap.argv.iter().any(|a| a == "--force") {
+                let argv = c.trap.argv.iter()
+                    .filter(|a| *a != "--force").cloned().collect();
+                return Ok(Decision::rewrite(
+                    "/bin/git",
+                    argv,
+                    [("KELIR_DISARMED".into(), "1".into())],
+                ));
+            }
+            Ok(Decision::Resume)
+        }))
+
+        // Tier-1 post-condition verification + rollback (§12.5)
+        .trap("*", handler({
+            let oracle = Arc::clone(&oracle);
+            move |c: HandlerCtx| {
+                let oracle = Arc::clone(&oracle);
+                async move {
+                    let pre: SnapshotDescriptor = c.step.last().ok_or_else(|| {
+                        PluginError::Halt("no pre-exec checkpoint".into())
+                    })?;
+                    let receipt: ExecutionReceipt = c.receipt().await?;
+
+                    // Binary hash integrity — the agent cannot fake this
+                    if receipt.binary_blake3 != c.trap.binary_blake3 {
+                        c.vm.rollback(&pre).await?;
+                        c.term.notice(
+                            "⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n",
+                        );
+                        return Ok(PostExecAction::RollbackAndHalt);
                     }
-                }))
-
-                // Commit gate — refuses if the policy plugin logged anything
-                .before("git commit -m *", handler({
-                    let policy = policy_for_commit.clone();
-                    move |_c: HandlerCtx| {
-                        let policy = policy.clone();
-                        async move {
-                            let n = policy.violations().await;
-                            if n > 0 {
-                                return Ok(Decision::deny(
-                                    1, format!("EPOLICY: {n} prior violation(s)."),
-                                ));
-                            }
-                            Ok(Decision::Resume)
-                        }
+                    // Hermetic runs must not egress
+                    if c.trap.binary_path.ends_with("/npm")
+                        && receipt.egress_bytes > 0
+                        && c.trap.cwd.contains("/checkout-service")
+                    {
+                        c.vm.rollback(&pre).await?;
+                        c.term.notice(&format!(
+                            "⚡ [KELIR]: hermetic test emitted {}B egress — REVERTED\n",
+                            receipt.egress_bytes
+                        ));
+                        return Ok(PostExecAction::RollbackAndHalt);
                     }
-                }))
-
-                // Tier-1 sanity: a commit must have dirtied at least one byte
-                .after("git commit *", handler(|c: HandlerCtx| async move {
-                    // dirty_bytes is always populated; zero is a real measurement
-                    if c.receipt().await?.dirty_bytes == 0 {
-                        return Err(PluginError::Halt("zero-byte delta commit".into()));
+                    // Oracle post-condition (§12.5)
+                    if !oracle.verify_physical_receipt(&receipt).await? {
+                        c.vm.rollback(&pre).await?;
+                        c.term.notice(
+                            "⚡ [KELIR]: post-condition violated — REVERTED\n",
+                        );
+                        return Ok(PostExecAction::RollbackAndHalt);
                     }
                     Ok(PostExecAction::Proceed)
-                }))
-        }
-    });
+                }
+            }
+        }))
+
+        // Commit gate — refuses if the policy plugin logged anything
+        .trap("git commit -m *", handler({
+            let policy = policy_for_commit.clone();
+            move |_c: HandlerCtx| {
+                let policy = policy.clone();
+                async move {
+                    let n = policy.violations().await;
+                    if n > 0 {
+                        return Ok(Decision::deny(
+                            1, format!("EPOLICY: {n} prior violation(s)."),
+                        ));
+                    }
+                    Ok(Decision::Resume)
+                }
+            }
+        }))
+
+        // Tier-1 sanity: a commit must have dirtied at least one byte
+        .trap("git commit *", handler(|c: HandlerCtx| async move {
+            // dirty_bytes is always populated; zero is a real measurement
+            if c.receipt().await?.dirty_bytes == 0 {
+                return Err(PluginError::Halt("zero-byte delta commit".into()));
+            }
+            Ok(PostExecAction::Proceed)
+        }));
 
     // ── LIFECYCLE HOOKS (§11.4, §12) ────────────────────────────────────
     let builder = builder

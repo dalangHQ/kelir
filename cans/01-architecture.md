@@ -7,6 +7,8 @@
         - Zero external crate dependencies inside shim: libc and raw syscalls only
       - In-process microkernel
         - Virtualization runs in host consumer memory via direct C-FFI
+        - Interposition occurs directly at VirtIO device complex using
+          synchronous native gates and asynchronous trap handlers
         - Backends: rustvmm, hvf, openvmm, avf, bwrap, proot
         - ForeignPluginProxy embeds V8 and Python event loops directly
         - Native linear capability isolation: zero-WASM, zero-JIT overhead
@@ -33,6 +35,8 @@
         - Mandatory TTY host disclosure invariant
     - Params ingress contract
       - Structured configuration delivered via paravirtual configuration device
+      - Params API: .params(schema), validated out-of-band by paravirtual
+        configuration device before guest instruction execution
       - Host-side validation before any guest instruction
         - Serde (Rust), TypeBox (TypeScript), Pydantic v2 (Python)
         - Schema push-down: builder compiles schemas into native Rust validators

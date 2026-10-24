@@ -30,7 +30,7 @@ async def commit_gate(c: HandlerContext) -> Decision:
     return Decision.resume()
 
 
-builder.exec(lambda cmd: cmd.before("git commit *", commit_gate))
+builder.trap("git commit *", commit_gate)
 
 
 # 3. RAII Execution: __aenter__ boots microVM; __aexit__ guarantees termination

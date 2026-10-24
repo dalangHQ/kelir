@@ -16,6 +16,7 @@
     - Architecture (mcp): see: artifacts/diagrams/ingestion-adapters.txt
     - Server binary crate: kelir-adapters/mcp-server
     - Server plugin: see: plugins/mcp.md
+    - Binding maps to Session execution with flat mcp plugin config
     - MCP boundary: see: #Process-vs-plugin-boundary
   - Containerd shim v2
     - Architecture (containerd): see: artifacts/diagrams/ingestion-adapters.txt
@@ -27,11 +28,13 @@
       - PersistentVolumeClaims mount as virtio-fs endpoints
       - UID/GID mapping applied in-guest
     - Shim plugin: see: plugins/oci-translator.md
+    - Shim maps to Session execution with flat oci-translator config
     - Containerd boundary: see: #Process-vs-plugin-boundary
   - OpenShell gRPC driver
     - Architecture (openshell): see: artifacts/diagrams/ingestion-adapters.txt
     - Driver binary crate: kelir-adapters/openshell-grpc
     - Coordinator plugin file: see: plugins/openshell-coordinator.md
+    - Driver maps to Session execution with flat openshell-coordinator config
     - OpenShell boundary: see: #Process-vs-plugin-boundary
   - E2B compatibility
     - TypeScript: @kelir/e2b-compat

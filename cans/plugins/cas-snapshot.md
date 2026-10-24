@@ -5,7 +5,7 @@
     - name() = "cas-snapshot"; priority() = 40
     - Taxonomy (cas-snapshot): urn:kelir:fs:block:cas
       - coordinate: rings=[virtio-blk, virtio-shm]; role=Observer; tier=Native
-    - VirtIO device attachment (cas-snapshot): see: 01-architecture.md#VirtIO-Device-Complex
+    - VirtIO attachment (cas-snapshot): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (cas-snapshot): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for cas-snapshot
     - Context key contributed: c.cas

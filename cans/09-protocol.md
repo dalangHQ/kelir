@@ -10,8 +10,8 @@
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
     - Three-tier gate pipeline
       - Gate 1: guest in-kernel BPF allowlist returns in 0µs for harmless tools
-      - Gate 2: core evaluates MountScope and compiled schema in <2µs (0 FFI)
-      - Gate 3: FFI trampoline dispatches to TS/Python handlers on match only
+      - Gate 2: native MountScope/schema eval in <2µs (0 FFI)
+      - Gate 3: trap handler dispatch through FFI trampoline on match only
       - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
     - Goal: the trap path must not slow `cargo build` / `npm install`
     - Why three layers, not one
@@ -67,7 +67,7 @@
     - TrapAction-method-mapping
       - TrapAction::Allow: c.resume()
       - TrapAction::Deny: c.deny(errno, msg)
-      - TrapAction::Rewrite: c.rewrite(bin, argv, env)
+      - TrapAction::Rewrite: c.rewrite({ binary, argv, env })
       - TrapAction::Yield: c.yield(checkpoint_id)
       - TrapAction::Abort: c.abort(exit_code, reason)
       - TrapAction::SuspendForApproval: c.suspend_for_approval(poll_ms)

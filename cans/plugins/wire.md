@@ -68,7 +68,7 @@
       - session.forward_port() is a plugin-wire API; unmounted sessions do
         not expose it
       - Guest-initiated: no host listener
-        - Flow: guest binds → PortBound emitted → host tunnels over vsock:5252 (Channel 1)
+        - Flow: guest binds → PortBound → host tunnels over vsock:5252 (Ch 1)
       - User-initiated forward_port(): host does listen on the named port
       - Session API in all three SDKs; ingress multiplexed over primary vsock transport
   - Error and return semantics (wire)

@@ -81,10 +81,11 @@
     - Preserves guest POSIX semantics without manual try-catch in hook bodies
   - Declarative plugin macros
     - Plugins expose declarative DSL attributes expanding at assembly time
-    - Macros inject MountScope filters, BPF allowlists, and fused hooks
+    - Macros expand to static MountScope masks and binary trap registrations
     - Eliminates procedural condition checks inside userland hook bodies
   - Static dispatch
-    - Plugins compiled into flat contiguous dispatch array at boot
+    - Dispatch array: VirtIO rings -> MountScope pre-filter -> monotonic
+      lattice evaluation (Allow < Rewrite < Deny < Abort); flat at boot
     - Core verifies plugin dependency DAG: cycles and missing deps halt boot
     - Evaluated in priority() order; ties broken by declaration order
     - Monotonic permission lattice: Allow -> Rewrite -> Deny -> Abort

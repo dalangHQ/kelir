@@ -44,11 +44,11 @@
         - Host-side deletion scope
       - FUSE low-level binding: raw kernel ABI structs; bans fuser and fuse3
     - Synthetic FUSE inodes
-      - Architecture (synthetic FUSE inodes): see: artifacts/diagrams/storage-architecture.txt
+      - Architecture (synthetic inodes): see: artifacts/diagrams/storage-architecture.txt
       - VfsInodeAttr mode: 0o400 honored strictly; no permission fallback
       - Dynamic hash formula: BLAKE3(path || generation_counter || mode)
     - In-flight read masking
-      - Mechanics: see: 05-storage-plane.md#Sliding-window-replacement-over-FUSE-read-buffers
+      - Flow: see: 05-storage-plane.md#Sliding-window-replacement-over-FUSE-read-buffers
       - Format-preserving masking (FPA) executes via synthetic FUSE inode generator
       - Generates format-valid synthetic content before guest read calls
       - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks

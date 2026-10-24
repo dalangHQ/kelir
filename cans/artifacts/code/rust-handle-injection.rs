@@ -38,19 +38,16 @@ let builder = builder.with_composite(
 );
 
 // 2. Downstream handler receives typed plugin reference directly from context:
-let builder = builder.exec(|exec| {
-    exec
-        // Serde deserializes `Action` before handler execution:
-        .before("npm test", handler(|c: HandlerCtx| async move {
-            let params = c.params::<Action>()?;
-            Ok(Decision::Resume)
-        }))
-        .before("git commit *", handler(|c: HandlerCtx| {
-            async move {
-                if c.policy().violations().await > 0 {
-                    return Ok(Decision::deny(1, "Policy violations recorded"));
-                }
-                Ok(Decision::Resume)
-            }
-        }))
-});
+let builder = builder
+    .params::<Action>()
+    // Serde deserializes `Action` before handler execution:
+    .trap("npm test", handler(|c: HandlerCtx| async move {
+        let params = c.params::<Action>()?;
+        Ok(Decision::Resume)
+    }))
+    .trap("git commit *", handler(|c: HandlerCtx| async move {
+        if c.policy().violations().await > 0 {
+            return Ok(Decision::deny(1, "Policy violations recorded"));
+        }
+        Ok(Decision::Resume)
+    }));

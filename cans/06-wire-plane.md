@@ -7,6 +7,8 @@
     - All frames in both directions cross the TAP boundary
     - L2 frames are intercepted at the TAP boundary before forwarding
   - Raw packet interception points
+    - L2/L4 interception dispatched by .intercept("net:outbound", ...)
+    - L2/L4 interception dispatched by .intercept("net:inbound", ...)
     - on_net_outbound: hook on frames leaving the guest
     - on_net_inbound: hook on frames arriving at the guest
     - TAP Dispatcher checks MountScope in native memory before FFI

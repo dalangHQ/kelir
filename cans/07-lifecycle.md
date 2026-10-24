@@ -22,6 +22,8 @@
     - Two-phase commit protocol: see: #Two-phase-commit
     - Preemption window: see: #Host-crash-reaper
     - Every item exposes one lifecycle point via LifecycleCtx
+      - Typestate boundary: fork, suspend, rollback, skew_clock exist
+        exclusively on Session, never on KelirBuilder
       - Split by state-preservation, not by privilege: see: #Lifecycle-vetoes
     - Ownership attribution: see: 02-plugin-model.md#First-class-plugins
   - CoW fork
@@ -149,7 +151,8 @@
   - Lifecycle vetoes
     - Registration
       - LifecycleCtx.register_veto(event, Box<dyn Fn() -> bool + Send + Sync>)
-      - Callbacks registered in on_vm_init; validated at boot
+      - Hard vetoes register in on_vm_init using LifecycleCtx.register_veto;
+        validated at boot
       - Callbacks fire in priority() order across all plugins
     - Two classes
       - Hard veto: Fork, Suspend, ClockSkew

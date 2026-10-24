@@ -102,10 +102,12 @@
       - Stack vs single slot
       - Multiple marks per PID
       - Fork inheritance
-      - after() raise behavior
+      - post-hook raise behavior
     - Typical wiring
-      - before("*"): checkpoint + analyzeIntent; deny or resume
-      - after("*"): read receipt; rollback on post-condition violation
+      - Trap match triggers pre-hook: checkpoint creation & intent analysis
+      - Guest executes process
+      - Process exit triggers post-hook: physical ExecutionReceipt assertion
+      - Mismatch triggers instant <8ms hypervisor rollback
   - Lifecycle nano-tracer
     - Trace hooks (.trace()) measure exact nanosecond overhead across phases
     - Tracks trap ingress, FFI crossing, policy evaluation, and verdict dispatch

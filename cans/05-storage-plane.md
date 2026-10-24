@@ -31,13 +31,13 @@
     - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE
     - Prevents tmpfs upperdir memory exhaustion when loading large packages
   - Write gating
-    - Storage bus gates FUSE write() via on_vfs_write hook callbacks
+    - Synchronous VirtIO-FS interception gates FUSE write() via on_vfs_write
     - Signature: see: artifacts/code/plugin-trait.rs
     - Write-gating error variants: see: 02-plugin-model.md#Hook-return-semantics
     - Streaming sliding-window byte scanner inspects writes across chunk boundaries
     - Payloads exceeding configured inspection ceiling reject with BufferCeilingExceeded
     - Buffer lifecycle invariants: see: 02-plugin-model.md#FFI-buffer-lifecycle
-    - Ok(()) = allow; kernel proceeds with write to upperdir
+    - SyncVerdict::Allow = allow; kernel proceeds with write to upperdir
     - Err(PluginError::Reject { errno, reason }) = deny
       - Guest write() fails with named errno; error surfaces in workload
       - Returned before any bytes enter upperdir

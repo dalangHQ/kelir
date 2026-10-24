@@ -12,7 +12,7 @@
     - Blencong: hardware clocksource and PMU retired-instruction counters
     - Bayang: projected terminal streams and frame telemetry
   - What it is
-    - Embeddable in-process microVM hypervisor middleware microkernel
+    - Embeddable in-process microVM hypervisor microkernel
     - Mediates guest interaction through the VirtIO Device Complex
     - Boots stripped Linux microVMs in sub-60ms
     - Definition details: see: 01-architecture.md#Axiomatic-foundations

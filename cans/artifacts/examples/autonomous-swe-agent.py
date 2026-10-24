@@ -85,7 +85,7 @@ log = logging.getLogger("kelir.examples.swe-agent")
 
 
 # ============================================================================
-# 1. TYPED PARAMS — the Pydantic analogue of TypeBox's `.guard({ schema })`
+# 1. TYPED PARAMS — the Pydantic analogue of the TypeBox object schema
 # ============================================================================
 
 class Env(str, Enum):
@@ -222,8 +222,8 @@ def make_snoop(oracle: Oracle) -> Callable[[Path, bytes, HandlerContext], Awaita
 #    analogue for Python; missing handle → NameError at import time)
 # ============================================================================
 
-# `.before()` hooks gate the syscall and return a `Decision`; `.after()` hooks
-# run post-execution and return a `PostExecAction`.
+# `trap` pre hooks gate the syscall and return a `Decision`; `trap` post
+# hooks run post-execution and return a `PostExecAction`.
 PreExecHandler = Callable[[HandlerContext], Awaitable[Decision]]
 PostExecHandler = Callable[[HandlerContext], Awaitable[PostExecAction]]
 
@@ -472,17 +472,15 @@ async def build_runtime(
     # ── CUSTOM PLUGIN: fluid registration ───────────────────────────────
     builder = builder.plugin(policy_plugin)
 
-    # ── EXEC GRAPH (§4.3, §12.5) ─────────────────────────────────────────
-    def _register_handlers(cmd: kelir.ExecChain) -> None:
-        # Universal atomic step loop: checkpoint → oracle → resume
-        cmd.before("*", make_universal_step(oracle))
-        cmd.before("npm test -- --runInBand", make_warm_caches(oracle))
-        cmd.before("git push *", make_entropy_check())
-        cmd.after("*", make_verify_receipt(oracle))
-        cmd.before("git commit -m *", make_commit_gate(policy))
-        cmd.after("git commit *", make_zero_byte_check())
-
-    builder = builder.exec(_register_handlers)
+    # ── TRAP REGISTRATIONS (§4.3, §12.5) ───────────────────────────────
+    # Direct builder.trap() registrations, per §1.3: pre gates return a
+    # Decision, post gates return a PostExecAction.
+    # Universal atomic step loop: checkpoint → oracle → resume
+    builder.trap("*", pre=make_universal_step(oracle), post=make_verify_receipt(oracle))
+    builder.trap("npm test -- --runInBand", pre=make_warm_caches(oracle))
+    builder.trap("git push *", pre=make_entropy_check())
+    builder.trap("git commit -m *", pre=make_commit_gate(policy))
+    builder.trap("git commit *", post=make_zero_byte_check())
 
     # ── LIFECYCLE HOOKS (§11.4, §12) — every handler receives `session` ─
     @builder.on_vm_init

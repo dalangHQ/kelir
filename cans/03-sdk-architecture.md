@@ -32,7 +32,7 @@
     - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
     - Language surfaces
       - Rust: borrow-checker verified typestate, zero-cost Serde
-      - TypeScript: generic context accumulation, TypeBox schema guards
+      - TypeScript: generic context accumulation, TypeBox AOT validation
       - Python: RAII context managers, Pydantic v2 validation
     - Scoping: all SDKs support ring, binary, and path filters at mount point
     - Topology rule: distinct environments use separate profile factories
@@ -46,15 +46,22 @@
         - Event classes: see: 07-lifecycle.md#Lifecycle-vetoes
     - Multiplexed binary RPC: session.vsock.channel(2), binary framing
     - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
+  - Idiomatic Surfaces Law
+    - TS, Python, and Rust do not copy each other's method names
+    - Each enforces 1:1 behavioral and wire parity against vectors.json
   - Params typed views
     - Host-side typed access on HandlerCtx
       - Rust: c.params::<T>() deserializes from validated buffer
-      - TypeScript: params typed by .guard() schema
+      - TypeScript: params typed by .params(schema) (TypeBox)
       - Python: params typed by Pydantic BaseModel
     - Zero-allocation validation: operates on zero-copy guest memory
   - Rust SDK
     - see: artifacts/code/rust-handle-injection.rs
-    - Typestate builder transitions KelirBuilder<Unset> to KelirBuilder<WithPlugin>
+    - Typestate transitions: KelirBuilder<Unset> to KelirBuilder<Sealed> to Session
+    - .plugin() takes flat plugin instances; .params::<T>() carries the schema
+    - .trap(pattern, handler): pre-exec gate; dual pre/post handler also supported
+    - .intercept_vfs(pathGlob, handler): synchronous VFS write filter
+    - .on_vm_ready(handler): session callback; .boot().await seals and boots
     - Closures requiring plugin capabilities enforce builder typestate bounds
     - Composite bundles flatten into builder via CompositePlugin trait
     - Zero-Allocation Validation via Serde
@@ -63,18 +70,23 @@
     - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
     - see: artifacts/code/typescript-accumulation.ts
-    - Builder lifecycle: .use(), .decorate(), .derive(), .macro(), .error()
-    - Composition: createPlugin() nests sub-plugins recursively via .use()
-    - Generic context accumulator recurses through nested sub-plugin types
-    - TypeBox AOT schema push-down compiles to native Rust validators at boot
+    - Fluent model: .use().params().trap().intercept().on(), then .boot()
+    - .use() takes flat plugin instances; no callback builder arguments
+    - .params(schema): TypeBox AOT push-down compiles to native Rust
+      validators at boot; falsified actions fail with EINVAL before dispatch
+    - .trap(pattern, handler): simple pre-exec gate returning a Decision
+    - .trap(pattern, { pre, post }): dual pre/post gate; post returns a
+      PostExecAction
+    - .intercept(channel, filter, handler): ring-level synchronous hot-path
+      filters returning SyncVerdict
+    - .on(event, handler): lifecycle interceptors for vm:init, vm:ready,
+      vm:shutdown, and trap:deny
+    - Generic context accumulator infers c.<key> from mounted plugins
     - AOT hook fusion compiles all TS pipeline handlers into a single flat closure
     - Invariant: exactly 1 NAPI trampoline jump per event regardless of depth
     - Fully unified TContext passes to callbacks, resolving cross-plugin lookups
     - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
     - Null-object pattern: use(plugin({ enabled: false })) preserves c.pluginKey
-    - TypeBox .guard() schema
-      - t.Object({ action: t.Literal(...), issueId: t.String() })
-      - Falsified spawn actions fail with EINVAL before VM dispatch
   - Python SDK
     - see: artifacts/code/python-raii-pydantic.py
     - async with builder as session

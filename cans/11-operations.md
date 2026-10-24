@@ -111,7 +111,8 @@
     - Index schema indexes by boundary URN, ring mask, and telemetry role
   - Multi-language parity gate
     - Rust macros generate typed FFI stubs: napi-rs for TS, pyo3 for Python
-    - Parity validated against single vectors.json fixture across all SDKs
+    - Parity evaluated on identical wire frame inputs and outputs using vectors.json
+    - Syntax is idiomatic per language runtime, not copied across SDKs
     - Testkit ground truth
       - kelir-plugin-testkit serializes canonical ring events and verdicts
       - Emits raw binary frames, TrapEvent JSON, and Decision expectations

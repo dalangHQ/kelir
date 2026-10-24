@@ -5,7 +5,7 @@
     - name() = "lock-broker"; priority() = 30
     - Taxonomy (lock-broker): urn:kelir:fs:vfs:lock
       - coordinate: rings=[virtio-fs]; role=Gate; tier=Native
-    - VirtIO device attachment (lock-broker): see: 01-architecture.md#VirtIO-Device-Complex
+    - VirtIO attachment (lock-broker): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (lock-broker): see: 07-lifecycle.md#Lifecycle-vetoes
     - Storage bus attachment (lock-broker): see: 05-storage-plane.md#Storage-plane
   - Context keys for lock-broker

@@ -10,6 +10,8 @@
     - VT100 parser grid monitors virtual screen and scrollback rows
     - Token Shield clamps scrollback rows, never mid-stream raw bytes
     - Truncation notices inject ANSI resets inside DECSTBM status margins
+    - All five filters configured strictly using flat PtyConfig, no callbacks
+    - PtyConfig fields: cols, rows, dropOsc52, stripTitle, tokenShield, prompts
   - Window resize
     - Pipeline mechanics: see: artifacts/diagrams/terminal-pipeline.txt
     - Live resize hook: on_window_resize is observation-only

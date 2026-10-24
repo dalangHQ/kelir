@@ -44,7 +44,7 @@ class MigrateParams(BaseModel, frozen=True):
 
 
 def build_runtime(s3_bucket: str, pg_host: str, pg_secret: str) -> KelirBuilder:
-    return (
+    builder = (
         kelir.builder(
             vcpus=2, memory_mb=2048, driver="auto",
             kernel=f"./fixtures/vmlinux-6.6-{os.uname().machine}-kelir",
@@ -106,12 +106,8 @@ def build_runtime(s3_bucket: str, pg_host: str, pg_secret: str) -> KelirBuilder:
                 host_path="/var/lib/app/migrations.sqlite",
             ),
         )))
-
-        .exec(_register_exec_graph)
     )
 
-
-def _register_exec_graph(cmd: kelir.ExecChain) -> None:
     def pre_migrate(c: HandlerContext) -> Decision:
         # Pin the pgwire rewrite to the expected schema prefix. A drift
         # means the proxy config diverged from the migration source;
@@ -129,8 +125,8 @@ def _register_exec_graph(cmd: kelir.ExecChain) -> None:
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
 
-    cmd.before("migrate *", pre_migrate)
-    cmd.after("migrate *", post_migrate)
+    builder.trap("migrate *", pre=pre_migrate, post=post_migrate)
+    return builder
 
 
 async def main() -> None:

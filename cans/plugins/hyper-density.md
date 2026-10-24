@@ -5,7 +5,7 @@
     - name() = "hyper-density"; priority() = 45
     - Taxonomy (hyper-density): urn:kelir:sys:proc:memory
       - coordinate: rings=[virtio-balloon, virtio-shm]; role=Mutator; tier=Native
-    - VirtIO device attachment (hyper-density): see: 01-architecture.md#VirtIO-Device-Complex
+    - VirtIO attachment (hyper-density): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (hyper-density): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for hyper-density
     - Context key contributed: c.density

@@ -41,39 +41,39 @@ const runtime = kelir({
 })
 
   // → c.ingress
-  .use(wireIngress((i) => i
+  .use(wireIngress({
     // Park up to 64 KiB per inbound connection during suspend; the TCP
     // handshake completes host-side and the frames queue without dropping.
-    .listen({ port: 8443, protocol: "https" })
-    .parking({ maxBufferedBytes: 64 * 1024, idleTimeoutMs: 30_000 })
+    listen: { port: 8443, protocol: "https" },
+    parking: { maxBufferedBytes: 64 * 1024, idleTimeoutMs: 30_000 },
     // First post-wake frame splices to vsock Channel 1. The host proxy
     // has already parsed routing metadata with zero allocation.
-    .wakeOnPacket({ vsockChannel: 1 })
+    wakeOnPacket: { vsockChannel: 1 },
     // Burst absorption: queue up to 256 inbound connections across the
     // suspend→resume window; overflow returns 503 without touching RAM.
-    .backlog({ maxConnections: 256, overflow: "reject-503" })
-  ))
+    backlog: { maxConnections: 256, overflow: "reject-503" },
+  }))
 
   // → c.density
-  .use(hyperDensity((d) => d
+  .use(hyperDensity({
     // Idle detection across all four VirtIO rings: any traffic resets
     // the timer, 250 ms of silence triggers compaction.
-    .idleDetect({ thresholdMs: 250, ringMask: ["vsock", "console", "fs", "net"] })
+    idleDetect: { thresholdMs: 250, ringMask: ["vsock", "console", "fs", "net"] },
     // lz4_flex compress + io_uring flush to NVMe, bypassing the host
     // page cache so the pages are physically unbacked.
-    .compaction({ codec: "lz4", sink: "io_uring-nvme", pageCache: "bypass" })
+    compaction: { codec: "lz4", sink: "io_uring-nvme", pageCache: "bypass" },
     // Resume latency is the invariant; exceeding it aborts compaction
     // and keeps the pages resident.
-    .resumeBudgetMs(15)
-  ))
+    resumeBudgetMs: 15,
+  }))
 
   // → c.mcp
-  .use(mcp((m) => m
+  .use(mcp({
     // hvc1 carries JSON-RPC 2.0 stdio directly to the MCP client. No
     // PTY conflict with hvc0 (interactive shell on a separate port).
-    .transport({ port: "hvc1", framing: "json-rpc-2.0-stdio" })
-    .advertise({ tools: ["webhook.dispatch", "webhook.replay"] })
-  ))
+    transport: { port: "hvc1", framing: "json-rpc-2.0-stdio" },
+    advertise: { tools: ["webhook.dispatch", "webhook.replay"] },
+  }))
 
   // → c.ledger
   .use(ledger({
@@ -82,25 +82,25 @@ const runtime = kelir({
     otel: { traceParent: true, serviceName: "kelir-webhook" },
   }))
 
-  .exec((cmd) => cmd
-    .guard({ schema: t.Object({
-      action: t.Literal("dispatch-webhook"),
-      webhookId: t.String(),
-    }) })
+  .params(t.Object({
+    action: t.Literal("dispatch-webhook"),
+    webhookId: t.String(),
+  }))
+  .trap("dispatch-webhook", {
     // First post-wake frame: raise the RAM ceiling back to 512 MB before
     // the handler runs. Hyper-density had ballooned it to ~0 MB.
-    .before("dispatch-webhook", async (c) => {
+    pre: async (c) => {
       await c.vm.adjust_balloon(512);
       return c.resume();
-    })
-    .after("dispatch-webhook", async (c) => {
+    },
+    post: async (c) => {
       const receipt: ExecutionReceipt = await c.receipt();
       // Zero dirty bytes means the handler short-circuited; the body
       // cannot be fresh. Rollback rather than serve a stale response.
       if (receipt.dirtyBytes === 0) return PostExecAction.RollbackAndHalt;
       return PostExecAction.Proceed;
-    })
-  )
+    },
+  })
 
   // Shrink the ceiling once the handler binary is loaded; hyper-density
   // grows it back on the next wake.

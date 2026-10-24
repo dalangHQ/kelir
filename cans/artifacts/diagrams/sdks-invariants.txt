@@ -7,7 +7,7 @@
 │              │ builder bounds enforce capability  │ via Serde; failure halts spawn     │ Compile-time validation (rustc)    │
 │              │ presence on handler registration   │ before traps execute               │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ TypeScript   │ Type-level context accumulation;   │ `.guard({ schema: t.Object(...) })`│ `try...finally` / `using` cleanup; │
+│ TypeScript   │ Type-level context accumulation;  │ `.params({ schema: t.Object(...) })`│ `try...finally` / `using` cleanup; │
 │              │ `c.pluginKey` fails `tsc` if       │ compiles to native Rust validator; │ `.error()` maps host exceptions to │
 │              │ `.use()` is absent upstream        │ invalid payload drops in Gate 2    │ POSIX errnos before crash/abort    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤

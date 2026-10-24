@@ -5,7 +5,7 @@
     - name() = "oci-translator"; priority() = 20
     - Taxonomy (oci-translator): urn:kelir:fs:block:oci
       - coordinate: rings=[virtio-blk]; role=Mutator; tier=Native
-    - VirtIO device attachment (oci-translator): see: 01-architecture.md#VirtIO-Device-Complex
+    - VirtIO attachment (oci-translator): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (oci-translator): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for oci-translator
     - Context key contributed: None (daemon runtime: image translation)

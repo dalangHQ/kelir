@@ -30,7 +30,7 @@
       - Threat model
         - OSC 52: clipboard hijack (agent reads/writes human clipboard)
         - OSC 0/1/2: title spoofing (agent impersonates terminal session)
-        - Both are Tier-1 violations: see: 08-epistemic.md#Three-tier-evidence-verification-model
+        - Tier-1 violations: see: 08-epistemic.md#Three-tier-evidence-verification-model
       - Escape families outside the model: TBD
     - ANSI sanitizer
       - Drops OSC 52 (`\x1b]52;c;…`) at the virtio-console ring boundary
