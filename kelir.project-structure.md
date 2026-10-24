@@ -110,12 +110,6 @@ kelir/
 │   │           └── otel.rs            # W3C traceparent context propagator
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
-│   │   ├── containerd-shim/           # containerd-shim-v2 implementation for K8s
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/main.rs
-│   │   ├── openshell-grpc/            # NVIDIA OpenShell compute_driver.proto bridge
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/main.rs
 │   │   └── mcp-server/                # Model Context Protocol stdio terminal server
 │   │       ├── Cargo.toml
 │   │       └── src/main.rs

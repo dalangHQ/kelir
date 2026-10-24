@@ -51,7 +51,7 @@
       - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
         NAPI-RS .node and PyO3 .whl native shared libraries
       - Pure Rust enterprise: Gated private Cargo registry (crates.kelir.dev) requiring license
-        tokens for on-premise compilation ($100k/yr commercial tier)
+        tokens for on-premise compilation (commercial tier)
       - Kelir Cloud SaaS: Execution over HTTP/gRPC; internal hyper-density and cas-snapshot
         optimization applied transparently on host servers
   - Idiomatic Surfaces Law

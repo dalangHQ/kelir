@@ -5,7 +5,7 @@
 ├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
 │ 1. INFRA PLATFORMS  │ Sub-60ms cold boot micro-│ `containerd-shim-v2`   │ VM escapes,   │
 │    (K8s, Cube,      │ VMs; pluggable KVM/WHP/  │ `openshell-grpc`       │ daemon OOMs,  │
-│     OpenShell)      │ HVF bare-metal drivers   │ (Unix Domain Socket)   │ multi-tenancy │
+│     OpenShell)      │ HVF bare-metal drivers   │ commercial adapters    │ multi-tenancy │
 ├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
 │ 2. HARNESS CREATORS │ Virtio-console hardware  │ Drop-in `spawn()` shim │ Tmux breaks,  │
 │    (Claude Code,    │ PTY; ANSI sanitizing;    │ Native MCP Server      │ token bleed,  │

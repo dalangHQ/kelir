@@ -59,7 +59,7 @@
     - Container builds without nested VMX: see: 07-lifecycle.md#Docker-in-kelir
     - Human break-glass on agent loops: see: 07-lifecycle.md#Break-glass
     - Low-memory SBC execution: see: 01-architecture.md#Embedded-profile
-    - Sub-15ms idle scale-to-zero: see: kelir-cloud://plugins/hyper-density.md
+    - Idle scale-to-zero: see: kelir-cloud://plugins/hyper-density.md
     - Hydrate state from streaming snapshot bundle: see: kelir-cloud://plugins/cas-snapshot.md
     - Zero-downtime connection parking: see: plugins/wire-ingress.md
     - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends

@@ -11,12 +11,12 @@
 │    - Mediates hardware-isolated execution without exposing host boundaries. │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 3. CONTAINERD SHIM V2 (Kubernetes Bare-Metal Execution):                    │
-│    - `containerd-shim-kelir-v2` runs microVMs as standard K8s Pods.         │
-│    - Activated via `runtimeClassName: kelir` in Pod manifests.              │
+│    - Commercial adapter — full diagram in kelir-cloud (private repo).       │
+│    - See kelir-cloud ingestion-adapters-commercial diagram.                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 4. OPENSHELL COMPUTE DRIVER (NVIDIA AI Infrastructure):                     │
-│    - `openshell-driver-kelir` implements `compute_driver.proto` over UDS.   │
-│    - Binds GPU-accelerated workloads directly to bare-metal microVMs.       │
+│    - Commercial adapter — full diagram in kelir-cloud (private repo).       │
+│    - See kelir-cloud ingestion-adapters-commercial diagram.                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 5. SANDBOX ENGINE COMPATIBILITY (E2B Drop-In):                              │
 │    - `@kelir/e2b-compat` (TS) and `kelir.compat.e2b` (Python).              │

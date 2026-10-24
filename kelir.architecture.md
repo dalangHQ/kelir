@@ -65,7 +65,7 @@
 ├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
 │ 1. INFRA PLATFORMS  │ Sub-60ms cold boot micro-│ `containerd-shim-v2`   │ VM escapes,   │
 │    (K8s, Cube,      │ VMs; pluggable KVM/WHP/  │ `openshell-grpc`       │ daemon OOMs,  │
-│     OpenShell)      │ HVF bare-metal drivers   │ (Unix Domain Socket)   │ multi-tenancy │
+│     OpenShell)      │ HVF bare-metal drivers   │ commercial adapters    │ multi-tenancy │
 ├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
 │ 2. HARNESS CREATORS │ Virtio-console hardware  │ Drop-in `spawn()` shim │ Tmux breaks,  │
 │    (Claude Code,    │ PTY; ANSI sanitizing;    │ Native MCP Server      │ token bleed,  │
@@ -1284,12 +1284,12 @@ await session.spawn("claude", ["code", "run test verification"]);
 │    - Mediates hardware-isolated execution without exposing host boundaries. │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 3. CONTAINERD SHIM V2 (Kubernetes Bare-Metal Execution):                    │
-│    - `containerd-shim-kelir-v2` runs microVMs as standard K8s Pods.         │
-│    - Activated via `runtimeClassName: kelir` in Pod manifests.              │
+│    - Commercial adapter — full diagram in kelir-cloud (private repo).       │
+│    - See kelir-cloud ingestion-adapters-commercial diagram.                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 4. OPENSHELL COMPUTE DRIVER (NVIDIA AI Infrastructure):                     │
-│    - `openshell-driver-kelir` implements `compute_driver.proto` over UDS.   │
-│    - Binds GPU-accelerated workloads directly to bare-metal microVMs.       │
+│    - Commercial adapter — full diagram in kelir-cloud (private repo).       │
+│    - See kelir-cloud ingestion-adapters-commercial diagram.                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 5. SANDBOX ENGINE COMPATIBILITY (E2B Drop-In):                              │
 │    - `@kelir/e2b-compat` (TS) and `kelir.compat.e2b` (Python).              │
@@ -1331,20 +1331,12 @@ The MCP engine exposes microVM execution to LLM clients (Claude Desktop, Cursor,
 ---
 
 ### 13.3 Containerd Shim v2 (`containerd-shim-kelir-v2`)
-Enables direct orchestration of microVM sandboxes inside Kubernetes clusters without running bloated VM management stacks:
-
-* **Pod Isolation:** Each Kubernetes Pod executes within an isolated hardware microVM instance rather than a Linux cgroup/namespace envelope.
-* **Storage Mounts:** Kubernetes PersistentVolumeClaims (PVCs) mount directly as `virtio-fs` endpoints with in-flight UID/GID mapping.
-* **OCI Compatibility:** Translates standard OCI container images into read-only EROFS blocks during rootfs setup.
+Commercial adapter — full spec and diagram in kelir-cloud (private repo).
 
 ---
 
 ### 13.4 OpenShell gRPC Compute Driver (`openshell-driver-kelir`)
-Implements the NVIDIA OpenShell hardware orchestration layer:
-
-* Serves the `compute_driver.proto` gRPC interface over `/var/run/kelir/openshell.sock`.
-* Negotiates GPU passthrough via `driver-rustvmm` using NVIDIA Container Device Interface (CDI) device mapping.
-* Coordinates hardware memory checkpointing and CoW branching for multi-tenant inference tasks.
+Commercial adapter — full spec and diagram in kelir-cloud (private repo).
 
 ---
 
@@ -1427,8 +1419,6 @@ kelir/
 │   │   └── Cargo.toml                 # Target: x86_64/aarch64-unknown-linux-musl
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability Shims
-│   │   ├── containerd-shim/           # containerd-shim-v2 implementation for Kubernetes
-│   │   ├── openshell-grpc/            # NVIDIA OpenShell compute_driver.proto service
 │   │   └── mcp-server/                # Model Context Protocol standard terminal server
 │   │
 │   └── kelir-bindings/                # Foreign Function Interface Layers
