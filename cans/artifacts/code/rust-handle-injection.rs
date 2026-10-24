@@ -8,7 +8,7 @@
 // Full runnable example: artifacts/examples/autonomous-swe-agent.rs
 // Canonical spec home:    cans/03-sdk-architecture.md#Rust-SDK
 
-use kelir::plugin::{MountScope, VirtioDevice};
+use kelir::plugin::{AnyPlugin, MountScope, VirtioDevice};
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
@@ -22,7 +22,9 @@ struct WorkspaceBundle {
 }
 
 impl CompositePlugin for WorkspaceBundle {
-    fn unpack(self: Box<Self>, parent: &MountScope) -> Vec<(Box<dyn KelirPlugin>, MountScope)> {
+    // Unpacked plugins are AnyPlugin identity objects the builder
+    // sorts into the ring-specific dispatch arrays at assembly time.
+    fn unpack(self: Box<Self>, parent: &MountScope) -> Vec<(Box<dyn AnyPlugin>, MountScope)> {
         vec![(
             Box::new(self.policy),
             parent.intersect(&MountScope::default().with_binaries(["git"])),

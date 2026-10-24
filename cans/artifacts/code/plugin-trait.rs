@@ -148,7 +148,7 @@ pub enum SyncVerdict {
 
 /// Assembly-time composite plugin tree unpacked into flat dispatch entries before boot.
 pub trait CompositePlugin: Send + Sync {
-    fn unpack(self: Box<Self>, parent_scope: &MountScope) -> Vec<(Box<dyn KelirPlugin>, MountScope)>;
+    fn unpack(self: Box<Self>, parent_scope: &MountScope) -> Vec<(Box<dyn AnyPlugin>, MountScope)>;
 }
 
 // ── Lifecycle context ────────────────────────────────────────────
@@ -210,7 +210,17 @@ impl<'a> LifecycleCtx<'a> {
     }
 }
 
-#[async_trait]
+// ── Interface segregation ────────────────────────────────────────
+// Formerly one monolithic KelirPlugin trait; now a core identity trait
+// plus five ring-scoped capability traits, each with default no-op
+// implementations. Plugins implement only the traits they touch.
+// NOTE (follow-up, not implemented here): at builder `.plugin(p)`
+// assembly, core is to inspect the plugin's declared taxonomy().rings
+// and register handlers into dedicated, ring-specific contiguous
+// arrays (e.g. Vec<Arc<dyn StorageInterposer>>), so unused rings cost
+// zero vtable lookups. No dispatch-registration code lives in this file.
+
+// ── Core Identity Trait (Mandatory) ──────────────────────────────
 pub trait KelirPlugin: Send + Sync {
     /// Unique identifier for telemetry and requires() resolution.
     fn name(&self) -> &'static str;
@@ -233,17 +243,22 @@ pub trait KelirPlugin: Send + Sync {
     fn requires(&self) -> &'static [&'static str] { &[] }
 
     /// Deep-clones plugin state when session.vm.fork() creates a CoW child.
-    fn fork_state(&self, _child_session_id: &str) -> Box<dyn KelirPlugin>;
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin>;
+}
 
-    // ─── 1. MicroVM Lifecycle ────────────────────────────────────
+// ── Ring-Scoped Capability Traits (Implement Only What You Touch) ─
+#[async_trait]
+pub trait LifecycleParticipant {
     async fn on_vm_init(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
     async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
     async fn on_vm_shutdown(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
     async fn on_pre_commit(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
     async fn on_post_commit(&self, _ctx: &mut LifecycleCtx, _committed: bool) -> Result<(), PluginError> { Ok(()) }
     async fn on_host_preempt(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
+}
 
-    // ─── 2. Control Plane (virtio-vsock) ─────────────────────────
+#[async_trait]
+pub trait TrapInterposer {
     async fn on_trap(
         &self, _event: &TrapEvent, _ctx: &HandlerCtx,
     ) -> Result<Option<TrapAction>, PluginError> { Ok(None) }
@@ -265,8 +280,10 @@ pub trait KelirPlugin: Send + Sync {
     async fn on_watchdog(
         &self, _event: &WatchdogEvent,
     ) -> Result<WatchdogVerdict, PluginError> { Ok(WatchdogVerdict::ExecuteDefault) }
+}
 
-    // ─── 3. Terminal Plane (virtio-console) ──────────────────────
+#[async_trait]
+pub trait TerminalInterposer {
     async fn on_pty_input(&self, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
     async fn on_pty_output(&self, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
     async fn on_window_resize(
@@ -279,21 +296,33 @@ pub trait KelirPlugin: Send + Sync {
     async fn on_disclosure(
         &self, _body: &[u8],
     ) -> Result<Option<Vec<u8>>, PluginError> { Ok(None) }
+}
 
-    // ─── 4. Storage Plane (virtio-fs) ────────────────────────────
-    async fn on_vfs_lookup(&self, _path: &Path) -> Result<Option<VfsInodeAttr>, PluginError> { Ok(None) }
-    async fn on_vfs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
+pub trait StorageInterposer {
+    fn on_vfs_lookup(&self, _path: &Path) -> Result<Option<VfsInodeAttr>, PluginError> { Ok(None) }
+    fn on_vfs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
     /// Synchronous hot-path inspection. Returns Ok(Allow) or Ok(YieldToHost) before write applies.
     fn on_vfs_write(
         &self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx,
     ) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
+}
 
-    // ─── 5. Wire Plane (virtio-net) ──────────────────────────────
+pub trait WireInterposer {
     /// Synchronous L2 outbound inspection.
     fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
     /// Synchronous L2 inbound inspection.
     fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
 }
+
+/// Identity marker for any plugin object: core identity only.
+/// fork_state and CompositePlugin::unpack return this type. It must NOT
+/// require the capability traits: requiring all five would force every
+/// forkable plugin to implement every ring, defeating segregation.
+/// Capability dispatch uses the per-ring trait objects, not this marker.
+/// Send + Sync are inherited via KelirPlugin.
+pub trait AnyPlugin: KelirPlugin {}
+
+impl<T: KelirPlugin> AnyPlugin for T {}
 
 /// Trait marker for foreign runtime plugin proxies bridging V8 and Python.
 pub trait ForeignPluginBridge: KelirPlugin {

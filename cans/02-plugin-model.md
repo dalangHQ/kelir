@@ -42,14 +42,25 @@
   - KelirPlugin trait
     - see: artifacts/code/plugin-trait.rs
     - Trait surface and hook families: see: artifacts/code/plugin-trait.rs
+    - Segregated capability traits
+      - Core identity only: KelirPlugin is mandatory; see: artifacts/code/plugin-trait.rs
+      - LifecycleParticipant: vm lifecycle, commit, host preempt
+      - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
+      - TerminalInterposer: pty input, pty output, window resize, disclosure
+      - StorageInterposer: vfs lookup, read, write; synchronous hot path
+      - WireInterposer: net outbound, net inbound; synchronous hot path
+      - AnyPlugin: identity marker for any KelirPlugin (fork/composite)
+      - Plugins implement only traits for rings they touch; rest default no-op
+      - Dispatch: taxonomy rings register into ring-specific contiguous arrays
+      - Unused rings cost zero vtable lookups; sub-12µs dispatch preserved
     - Error variants
       - Ok(()) = allow; kernel proceeds
       - Err(Reject { errno, reason }) = deny with named errno, pre-write
       - Err(Halt(msg)) = deny and halt pipeline for human review
       - Err(Io(_)) = internal failure, surfaced to runtime
     - Shape of the surface
-      - Every hook is `async` and returns `Result<_, PluginError>`; a hook
-        cannot block the dispatch array
+      - Lifecycle, trap, and terminal hooks are `async`; storage and wire
+        hooks are synchronous; neither blocks the dispatch array
       - Hooks map strictly to VirtIO transport events and hypervisor transitions
       - Every ring has both an observation and a mutation point; the trait
         never exposes a ring for observation only
@@ -58,9 +69,9 @@
     - Why the surface is this size
       - A hook exists only if a ring delivers the event it consumes
       - A hook that a plugin does not implement defaults to `Ok(())`;
-        "opt-in" is the trait's typing, not a runtime branch
+        "opt-in" is each capability trait's typing, not a runtime branch
     - Hook context restriction
-      - Every hook receives HandlerCtx or a restricted lifecycle context
+      - Trap and lifecycle hooks receive HandlerCtx or a restricted lifecycle context
       - No hook receives &mut Box<dyn VmmDriver> or &Session
       - LifecycleCtx exposes: set_watchdog, adjust_balloon, register_veto
       - Lifecycle commit: on_pre_commit, on_post_commit, on_host_preempt
@@ -176,7 +187,7 @@
       - plugin-wire-ingress: see: plugins/wire-ingress.md — c.ingress
       - plugin-mcp: see: plugins/mcp.md — c.mcp
       - plugin-oci-translator: see: plugins/oci-translator.md — OCI layer translation
-      - plugin-openshell-coordinator: see: plugins/openshell-coordinator.md — checkpoint policy
+      - plugin-openshell-coordinator: see: plugins/openshell-coordinator.md — checkpoint
       - Pointer rule: plugin files are leaf targets; this matrix is the canonical registry
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
@@ -184,7 +195,8 @@
       - session.term.*: see: plugins/pty.md#Context-keys-for-pty
       - session.forward_port(): see: plugins/wire.md#Port-forwarding
       - session.ledger.*: see: plugins/ledger.md
-      - session.get_causal_delta_from_parent(): see: plugins/ledger.md#compute-causal-delta-engine
+      - session.get_causal_delta_from_parent():
+        - see: plugins/ledger.md#compute-causal-delta-engine
   - Plugin ownership
     - Dependency rules
       - Zero inter-plugin dependencies: no plugin imports another plugin crate

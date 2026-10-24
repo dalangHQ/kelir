@@ -8,7 +8,7 @@
     - Two-tier authoring model
       - Native plugins: distributed as precompiled npm/pip native binaries
       - Foreign policy plugins: authored in userland code via native async closures
-      - Native vs Foreign execution: see: 02-plugin-model.md#Two-tier-execution-architecture
+      - Native vs Foreign: see: 02-plugin-model.md#Two-tier-execution-architecture
     - Semantic invariant equivalence
       - Runtime safety matrix: see: artifacts/diagrams/sdks-invariants.txt
       - Failure occurs at the earliest lifecycle phase native to each runtime
@@ -59,6 +59,11 @@
     - see: artifacts/code/rust-handle-injection.rs
     - Typestate transitions: KelirBuilder<Unset> to KelirBuilder<Sealed> to Session
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
+    - .plugin() accepts core KelirPlugin plus only needed capability traits
+    - Capability traits: LifecycleParticipant, TrapInterposer, TerminalInterposer
+    - StorageInterposer and WireInterposer are synchronous hot-path traits
+    - AnyPlugin: identity marker for any KelirPlugin, not a capability bundle
+    - Example trait bounds follow the split; unneeded traits stay unimplemented
     - .trap(pattern, handler): pre-exec gate; dual pre/post handler also supported
     - .intercept_vfs(pathGlob, handler): synchronous VFS write filter
     - .on_vm_ready(handler): session callback; .boot().await seals and boots

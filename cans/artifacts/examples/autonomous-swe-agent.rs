@@ -43,7 +43,11 @@ use kelir::{
     handler, Decision, DriverChoice, FinalizeRequest, FsReconcileRequest, HandlerCtx,
     KelirBuilder, PostExecAction, Session, SnapshotDescriptor, StepSlot, VmConfig,
     oracle::{IntentAnalysis, Oracle},
-    plugin::{KelirPlugin, PluginError, SyncVerdict},
+    plugin::{
+        AnyPlugin, ExecutionTier, KelirPlugin, PluginError, PluginTaxonomy,
+        StorageInterposer, SyncVerdict, TelemetryRole, TerminalInterposer,
+        TrapInterposer, VirtioDevice,
+    },
     plugins::{
         chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
         ledger::{FinalReceipt, LedgerConfig, LedgerPlugin, OtelConfig, ReceiptConfig},
@@ -145,12 +149,36 @@ impl RepoPolicyPlugin {
     }
 }
 
-#[async_trait]
 impl KelirPlugin for RepoPolicyPlugin {
     fn name(&self) -> &'static str { "repo-policy" }
 
+    // Coordinates from the TS example's comment (urn:kelir:sys:trap:exec;
+    // rings virtio-vsock, virtio-fs). Role/tier/targets are the struct's
+    // remaining required fields, filled from this plugin's hook behaviour:
+    // Gate (deny/reject gating), Native (native Rust), argv/env (what
+    // on_trap rewrites).
+    fn taxonomy(&self) -> PluginTaxonomy {
+        PluginTaxonomy {
+            boundary: "urn:kelir:sys:trap:exec",
+            rings: &[VirtioDevice::Vsock, VirtioDevice::Fs],
+            role: TelemetryRole::Gate,
+            tier: ExecutionTier::Native,
+            mutation_targets: &["argv", "env"],
+        }
+    }
+
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
+        Box::new(Self {
+            opts: self.opts.clone(),
+            state: Arc::new(Mutex::new(self.state.blocking_lock().clone())),
+        })
+    }
+}
+
+#[async_trait]
+impl TrapInterposer for RepoPolicyPlugin {
     // ── Ring 2 (virtio-vsock): veto or rewrite `git push` ────────────────
-    async fn on_trap(&self, event: &TrapEvent) -> Result<Option<TrapAction>, PluginError> {
+    async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Option<TrapAction>, PluginError> {
         let is_git = event.binary_path.ends_with("/git") || event.binary_path == "git";
         let is_push = event.argv.get(1).map(String::as_str) == Some("push");
         if !(is_git && is_push) { return Ok(None); }
@@ -175,7 +203,9 @@ impl KelirPlugin for RepoPolicyPlugin {
             injected_env: env,
         }))
     }
+}
 
+impl StorageInterposer for RepoPolicyPlugin {
     // ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
     fn on_vfs_write(
         &self, path: &Path, data: &[u8], _pid: u32, _ctx: &HandlerCtx,
@@ -191,14 +221,10 @@ impl KelirPlugin for RepoPolicyPlugin {
         }
         Ok(SyncVerdict::Allow)
     }
+}
 
-    fn fork_state(&self, _child_session_id: &str) -> Box<dyn KelirPlugin> {
-        Box::new(Self {
-            opts: self.opts.clone(),
-            state: Arc::new(Mutex::new(self.state.blocking_lock().clone())),
-        })
-    }
-
+#[async_trait]
+impl TerminalInterposer for RepoPolicyPlugin {
     /// on_disclosure: append policy trace to every mandatory notice.
     /// Body is immutable; hook can only append.
     async fn on_disclosure(
