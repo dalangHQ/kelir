@@ -15,7 +15,8 @@
 │    (Capcli,         │ 0MB RAM suspend/resume;  │ Non-blocking Yield/    │ nism, fuel,   │
 │     LangGraph, E2B) │ virtio-shm, PMU counters │ Abort, 2PC sync hooks  │ OCC conflicts │
 ├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
-│ 4. EPISTEMIC ENGINES│ Unforgeable execution    │ Hardware TSC offsets;  │ LLM hallucina-│
-│    (Axiom, RLVR,    │ receipts; 8ms RAM roll-  │ Merkle-chained audit   │ tions, untaxed│
-│     Falsifiers)     │ backs; dynamic chaos     │ ledger; CausalDelta    │ side effects  │
+│ 4. VERIFIERS & AUDIT│ Unforgeable execution    │ Hardware TSC offsets;  │ LLM hallucina-│
+│    SYSTEMS (Axiom,     │ receipts; 8ms RAM roll-  │ Merkle-chained audit   │ tions, untaxed│
+│    RLVR, Formal        │ backs; dynamic chaos     │ ledger; CausalDelta    │ side effects  │
+│    Falsifiers)         │                          │                        │               │
 └─────────────────────┴──────────────────────────┴────────────────────────┴───────────────┘

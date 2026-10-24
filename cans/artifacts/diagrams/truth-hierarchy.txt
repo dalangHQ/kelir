@@ -1,21 +1,22 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                      THE 3-TIER HIERARCHY OF TRUTH                          │
+│                   THE 3-TIER EVIDENCE VERIFICATION MODEL                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ TIER 1: PHYSICAL GROUND TRUTH (Hypervisor / Kernel Boundary)                │
+│ TIER 1: HARDWARE/HYPERVISOR SAMPLING                                        │
 │   - Unforgeable Receipts: BLAKE3 hex digests & dirty byte counts.           │
 │   - PMU Instruction Exactness: Host-sampled vCPU retired instructions.      │
 │   - OCC Inode Hashes: Deterministic 64-bit physical metadata/inode digests. │
 │   - OS Inode Diffs: Physical disk modifications evaluated via CausalDelta.  │
 │   - Egress Telemetry: True network frames passing the virtio-net wire proxy.│
-│   ──► INVARIANT: The agent cannot fake this, even with root privileges.     │
+│   ──► INVARIANT: Unforgeable outside guest VM memory boundary.              │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ TIER 2: PUBLIC FORMAL PROTOCOLS (The Contract Interface)                    │
-│   - Model Context Protocol (MCP) tool events routed over stdio.             │
-│   - Deterministic PTY stream outputs sanitized of ANSI injection.           │
-│   ──► INVARIANT: Evaluated strictly against public, versioned contracts.    │
+│ TIER 2: BOUNDARY PARAVIRTUAL INTERCEPTS                                     │
+│   - FUSE write journals.                                                    │
+│   - TAP L2/L4 frame counters.                                               │
+│   - Sanitized PTY stream digests.                                           │
+│   ──► INVARIANT: Observed at the VirtIO boundary, not inside the guest.     │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ TIER 3: SYNCHRONOUS INODE SNOOPING (Harness State Interception)             │
-│   - Zero Post-Mortem Polling: Intercepts harness write() calls in real-time.│
-│   - Host In-Memory Buffer: Captures session updates before disk sync.       │
-│   ──► INVARIANT: Eliminates async race conditions and file lock collisions. │
+│ TIER 3: GUEST USERLAND SELF-REPORTING                                       │
+│   - Unverified harness stdout/stderr.                                       │
+│   - Guest status JSON.                                                      │
+│   ──► INVARIANT: Unverified; never substitutes for Tier 1 evidence.         │
 └─────────────────────────────────────────────────────────────────────────────┘

@@ -20,12 +20,12 @@ pub struct ExecutionReceipt {
     pub binary_path: String,
     /// BLAKE3 digest, canonical 64-char lowercase hex
     pub binary_blake3: String,
-    /// Cryptographic token linkage for model-generation-to-trap lineage
-    pub causal_token_id: Option<String>,
-    /// Byte count; always populated.
+    /// Correlation token for model-generation-to-trap attribution
+    pub correlation_token: Option<String>,
+    /// Hypervisor dirty-byte counter; always populated.
     /// Byte-not-page reason: see cans/01-architecture.md#VmmDriver-trait
     pub dirty_bytes: u64,
-    /// Retired instruction count sampled from host vCPU thread perf counter
+    /// PMU retired instruction count sampled from host vCPU thread perf counter
     pub retired_instructions: u64,
     /// Populated when ReceiptConfig::include_syscall_count.
     pub syscall_count: Option<u64>,

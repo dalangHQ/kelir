@@ -1,10 +1,11 @@
 // crates/kelir-plugins/plugin-vfs/src/reconciler.rs
 //
 // Atomic Workspace Reconciler: stages upperdir changes into an isolated
-// staging tree and executes an atomic directory swap into the host workspace.
-// Zero-dependency implementation: eliminates walkdir and uuid.
+// staging tree and executes an atomic workspace exchange into the host
+// workspace: one rename swaps the staged tree in; the live workspace is
+// never mutated in place. Zero-dependency implementation using std only.
 //
-// Canonical spec home: cans/05-storage-plane.md#Reconciler
+// Canonical spec home: cans/05-storage-plane.md#Atomic-workspace-staging
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -32,7 +33,7 @@ pub async fn reconcile_upperdir(
 
     reconcile_recursive(upperdir, upperdir, &staging_dir, &mut stats)?;
 
-    // Atomic exchange into live workspace
+    // Atomic workspace exchange into live workspace
     fs::rename(&staging_dir, host_target)?;
 
     // Scoped flush of parent directory metadata

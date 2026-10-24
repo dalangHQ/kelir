@@ -1,7 +1,7 @@
 - Lifecycle
-  - Superpowers
-    - see: artifacts/diagrams/superpowers.txt
-    - Set membership and mechanism per item: see: artifacts/diagrams/superpowers.txt
+  - Hypervisor primitives
+    - see: artifacts/diagrams/hypervisor-primitives.txt
+    - Set membership and mechanism per item: see: artifacts/diagrams/hypervisor-primitives.txt
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
       cooperation.
@@ -21,7 +21,7 @@
     - Host RAM dirtied only on child write
     - Session hydration
       - Driver fork yields raw Box<dyn VmmDriver>
-      - Runtime re-hydrates complete twin Session around it
+      - Runtime re-hydrates complete Session around it
       - Rebinds 4-ring dispatch table, virtio channels, plugin graph
       - session.vm.fork() returns full Session
       - spawn() and every other session API directly callable on child
@@ -40,9 +40,10 @@
   - Suspend and resume
     - suspend
       - Freezes vCPU registers
-      - zstd-compresses dirty memory pages
+      - lz4_flex-compresses dirty memory pages
       - Flushes to local NVMe in <50ms
       - Deallocates host memory; host RAM consumption drops to 0 MB
+    - Zero-RSS working-set swap via lz4_flex & io_uring
     - resume
       - Restores registers and memory in <50ms
       - Resumes at exact cycle boundary
@@ -55,9 +56,10 @@
     - Mobile and SBC use: rapid 0 MB RSS drop under Android LMK memory pressure
     - Flash preservation: guest tmpfs writes stay in RAM; zero random SD card writes
   - Portable snapshot bundles
+    - Content-addressed snapshot sync
     - Streamed archive packaging vmm_state.json, ram.zst, and upperdir diff
     - session.export_snapshot() yields portable binary stream (.kelir-snap)
-    - session.import_snapshot() hydrates twin session across identical hosts
+    - session.import_snapshot() hydrates session across identical hosts
     - Decouples long-running human approval pauses from host machine uptime
   - Clock skew
     - KVM path: KVM_SET_CLOCK and kvm_clock MSRs

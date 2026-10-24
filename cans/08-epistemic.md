@@ -1,4 +1,4 @@
-- Epistemic
+- Verification & Hardware Telemetry
   - Scope
     - Boundary specification; not a runtime subsystem
     - Core owns facts, never judgments
@@ -25,9 +25,9 @@
       - Oracle analyses: consumer's Oracle impl
   - Execution receipts
     - see: artifacts/code/execution-receipt.rs
-    - End-to-end token-to-bit lineage: maps model tokens to physical dirty bytes
+    - End-to-end instruction-counter and dirty-byte hardware attribution
     - Cryptographic provenance chain: model generation -> trap -> receipt
-    - Granular hardware truth: micro-level execution telemetry per process
+    - Granular hardware telemetry: micro-level execution telemetry per process
     - Emitted per executed process, at the trap/exit boundary
     - Assertion form: receipts are compared as values, not as hashes of host
       state; the canonical assertion is a per-field comparison
@@ -57,8 +57,8 @@
     - see: artifacts/code/causal-delta.rs
     - Definition: Δ = S_A − S_B between two checkpoint descriptors
     - Delta fields: see: artifacts/code/causal-delta.rs
-    - Cohesive state duality: CausalDelta aggregates net physical diffs
-    - Merkle root chaining links granular receipts to cohesive deltas
+    - State diff aggregation: CausalDelta aggregates net physical diffs
+    - Merkle root chaining links granular receipts to state diffs
     - Tracks physical page deltas, modified inodes, and process lineage
     - L7 protocol telemetry lives in plugin-wire, isolated from core structs
     - Type ownership
@@ -67,9 +67,17 @@
       - Computation is derived: see: plugins/ledger.md#compute-causal-delta-engine
     - This split follows the primitive-vs-derived rule: type is primitive,
       computation is derived
-  - Three-tier truth
+  - Three-tier evidence verification model
     - see: artifacts/diagrams/truth-hierarchy.txt
     - Tier evidence per tier: see: artifacts/diagrams/truth-hierarchy.txt
+    - Tier 1 Hardware/Hypervisor Sampling
+      - PMU retired instructions, host TSC deltas, dirty-page bitmaps
+      - Kernel register state
+    - Tier 2 Boundary Paravirtual Intercepts
+      - FUSE write journals, TAP L2/L4 frame counters
+      - Sanitized PTY stream digests
+    - Tier 3 Guest Userland Self-Reporting
+      - Unverified harness stdout/stderr, guest status JSON
     - Selection rule
       - Claim must resist forgery by guest code → Tier 1
       - Claim about a public, versioned contract → Tier 2
@@ -82,9 +90,8 @@
     - Consumer of Tier 3: Oracle.ingest_harness_event; see: #Oracle
   - Lifecycle bridge
     - see: artifacts/diagrams/lifecycle-bridge.txt
-    - Replaces language-level monkeypatching
     - In-process hardware lifecycle bridge
-    - Underlying primitives: see: 07-lifecycle.md#Superpowers
+    - Underlying primitives: see: 07-lifecycle.md#Hypervisor-primitives
     - Veto points: see: 07-lifecycle.md#Lifecycle-vetoes
     - This node specifies the orchestrator-facing mapping only
   - Step evaluation loop

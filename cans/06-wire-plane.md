@@ -2,7 +2,7 @@
   - Wire architecture
     - see: artifacts/diagrams/wire-plane.txt
     - Return contract: see: 02-plugin-model.md#Hook-return-semantics
-  - TAP bridge and L2 frame intercept
+  - TAP L2 bridge
     - TAP interface bridge connects the guest virtio-net device to the host
     - All frames in both directions cross the TAP boundary
     - L2 frames are intercepted at the TAP boundary before forwarding
@@ -11,10 +11,16 @@
     - on_net_inbound: hook on frames arriving at the guest
     - TAP Dispatcher checks MountScope in native memory before FFI
     - Pinned frame inspection ceiling: see: 02-plugin-model.md#FFI-buffer-lifecycle
+  - L7 forward proxy
+    - Terminates guest L7 protocols at host boundary
+    - Re-originates requests from host side
+    - L7 proxy mechanics: see: plugins/wire.md
   - Frame drop and forward semantics
     - Ok(()) on outbound = forward; Ok(()) on inbound = deliver
     - Err(Reject) = silent drop (no RST, no guest error)
     - Default forward: frames pass unless a mounted plugin returns
       PluginError::Reject (silent drop)
   - Connection parking
+    - Parked connections queue in TAP buffers and raw virtqueues
+    - Host-terminated TCP splices to guest vsock on wake
     - Mechanics (parking): see: plugins/wire-ingress.md

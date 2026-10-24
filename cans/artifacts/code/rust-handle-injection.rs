@@ -2,6 +2,8 @@
 //
 // Demonstrates Rust SDK's typestate builder pattern:
 // Handlers requiring policy can only be mounted on a builder possessing WithPolicy.
+// SyntheticFile: FUSE-presented paths with no host backing file.
+// Verification Reject: Decision::deny returns a POSIX errno.
 //
 // Full runnable example: artifacts/examples/autonomous-swe-agent.rs
 // Canonical spec home:    cans/03-sdk-architecture.md#Rust-SDK

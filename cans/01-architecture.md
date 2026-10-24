@@ -14,14 +14,14 @@
         - Hardware memory protection keys (MPK) isolate in-process heap
         - Filter-before-FFI boundary stops hypervisor thrash at 0µs cost
         - No dockerd, containerd, background root socket, daemon maintenance
-      - Pure epistemic agnosticism
+      - Strict hardware/kernel abstraction layer
         - Zero knowledge of prompts, evaluation loops, or orchestration logic
         - Operates strictly as OS physics: pages, registers, descriptors, frames
         - Factoring: see: 08-epistemic.md#Scope
       - Deterministic hardware isolation
         - Hardware-enforced virtualization: Intel VT-x, AMD-V, ARM64 EL2
         - Escaped guest root cannot touch host memory or host kernel space
-      - Radical plugin-first microkernel
+      - Modular VirtIO interposition microkernel
         - Core controls hypervisor execution and dispatches VirtIO events
         - Core defines zero domain policies, protocols, or agent schemas
         - Capabilities outside raw hypervisor physics are decoupled plugins
@@ -30,7 +30,7 @@
       - Transparent truthful steering
         - Any intercepted syscall, file read, or network packet is allowed,
           steered with tty_notice, or rejected with a machine-parsable receipt
-        - No silent state divergence
+        - Mandatory TTY host disclosure invariant
     - Params ingress contract
       - Structured configuration delivered via paravirtual configuration device
       - Host-side validation before any guest instruction
@@ -59,8 +59,8 @@
     - Plugin
       - External input mapping, or policy over a core primitive
       - Declares priority(): see: 02-plugin-model.md#KelirPlugin-trait
-      - Tier 1: systems-grade engine plugin compiled in Rust
-      - Tier 2: userland policy plugin written in host language
+      - Native: systems-grade engine plugin compiled in Rust
+      - Foreign: userland policy plugin written in host language
       - Two-tier execution details: see: 02-plugin-model.md#Two-tier-execution-architecture
       - Owns crate, tests, fixtures, examples: see: 02-plugin-model.md#Plugin-ownership
     - Capability decision test

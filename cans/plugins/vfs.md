@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-vfs
     - Owner crate: crates/kelir-plugins/plugin-vfs
     - name() = "vfs"; priority() = 35
-    - Taxonomy (vfs): urn:kelir:boundary:storage.vfs
-      - coordinate: rings=[virtio-fs]; role=mutator
+    - Taxonomy (vfs): urn:kelir:fs:vfs
+      - coordinate: rings=[virtio-fs]; role=Mutator; tier=Native
     - VirtIO device attachment (vfs): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (vfs): see: 07-lifecycle.md#Lifecycle-vetoes
     - Storage bus attachment (vfs): see: 05-storage-plane.md#Storage-plane
@@ -40,13 +40,13 @@
         - Directory fsync
         - Host-side deletion scope
       - FUSE low-level binding: raw kernel ABI structs; bans fuser and fuse3
-    - Ghost inodes
-      - Architecture (ghost inodes): see: artifacts/diagrams/storage-architecture.txt
+    - Synthetic FUSE inodes
+      - Architecture (synthetic FUSE inodes): see: artifacts/diagrams/storage-architecture.txt
       - VfsInodeAttr mode: 0o400 honored strictly; no permission fallback
       - Dynamic hash formula: BLAKE3(path || generation_counter || mode)
     - In-flight read masking
-      - Scanner mechanics: see: 05-storage-plane.md#Streaming-in-flight-masking
-      - Format-preserving masking (FPA) executes via ghost inode generator
+      - Mechanics: see: 05-storage-plane.md#Sliding-window-replacement-over-FUSE-read-buffers
+      - Format-preserving masking (FPA) executes via synthetic FUSE inode generator
       - Generates format-valid synthetic content before guest read calls
       - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks
       - see: artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)

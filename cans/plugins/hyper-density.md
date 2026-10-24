@@ -3,15 +3,15 @@
     - Plugin identifier: plugin-hyper-density
     - Owner crate: crates/kelir-plugins/plugin-hyper-density
     - name() = "hyper-density"; priority() = 45
-    - Taxonomy (hyper-density): urn:kelir:boundary:kernel.trap
-      - coordinate: rings=[virtio-balloon, virtio-shm]; role=mutator
+    - Taxonomy (hyper-density): urn:kelir:sys:proc:memory
+      - coordinate: rings=[virtio-balloon, virtio-shm]; role=Mutator; tier=Native
     - VirtIO device attachment (hyper-density): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (hyper-density): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for hyper-density
     - Context key contributed: c.density
     - Closed-set binding rule (hyper-density): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (hyper-density)
-    - Autonomous idle eviction
+    - Zero-RSS working-set page compaction and swap
       - Detects guest blocking I/O across VirtIO rings via idle threshold timer
       - Drops host RSS to 0 MB autonomously when workload awaits model or human
       - Compresses dirty memory pages at multi-gigabyte line speed using lz4_flex

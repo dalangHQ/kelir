@@ -55,7 +55,7 @@ pub struct VfsInodeAttr {
     pub uid: u32,
     pub gid: u32,
     pub size: u64,
-    pub host_stable_hash: u64,
+    pub occ_metadata_hash: u64,
     pub content: Vec<u8>,
 }
 
@@ -70,25 +70,25 @@ pub enum VirtioDevice {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EpistemicRole {
+pub enum TelemetryRole {
     Observer,
-    Mutator,
     Gate,
-    FactProducer,
+    Mutator,
+    Proxy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionTier {
-    Tier1Engine,
-    Tier2Policy,
+    Native,
+    Foreign,
 }
 
 #[derive(Debug, Clone)]
 pub struct PluginTaxonomy {
-    pub boundary: &'static str,
+    pub boundary: &'static str, // urn:kelir:<subsystem>:<target>[:<subtarget>]
     pub rings: &'static [VirtioDevice],
-    pub epistemic: EpistemicRole,
-    pub execution: ExecutionTier,
+    pub role: TelemetryRole,
+    pub tier: ExecutionTier,
     pub mutation_targets: &'static [&'static str],
 }
 

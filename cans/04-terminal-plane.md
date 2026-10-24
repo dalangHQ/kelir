@@ -2,10 +2,11 @@
   - Terminal pipeline
     - Owner: kelir-core (virtio-console bus)
     - Multi-port VirtIO console allocates dedicated paravirtual channels
-    - Channel hvc0 binds to interactive PTY master/slave (/dev/pts/N)
-    - Channel hvc1 binds to binary protocol adapters (MCP JSON-RPC)
+    - Channel hvc0 is the interactive PTY Master (/dev/pts/N)
+    - Channel hvc1 is the binary transport (MCP JSON-RPC)
     - Interactive channel preserves isatty(1) and raw mode
     - Streaming ring buffers route directly to host supervisor memory
+    - Terminal evidence uses Three-tier evidence verification model
   - Window resize
     - Pipeline mechanics: see: artifacts/diagrams/terminal-pipeline.txt
     - Live resize hook: on_window_resize is observation-only

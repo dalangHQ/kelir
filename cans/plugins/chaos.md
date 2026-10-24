@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-chaos
     - Owner crate: crates/kelir-plugins/plugin-chaos
     - name() = "chaos"; priority() = 80
-    - Taxonomy (chaos): urn:kelir:boundary:security.policy
-      - coordinate: rings=[virtio-net, virtio-fs]; role=mutator
+    - Taxonomy (chaos): urn:kelir:sys:fault
+      - coordinate: rings=[virtio-net, virtio-fs]; role=Mutator; tier=Native
     - VirtIO device attachment (chaos): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (chaos): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for chaos

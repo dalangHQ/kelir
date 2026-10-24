@@ -16,6 +16,7 @@ import { chaos }  from "@kelir/plugin-chaos";
 import { ledger } from "@kelir/plugin-ledger";
 import crypto from "node:crypto";
 
+// Oracle: post-condition verification engine.
 declare const oracle: {
   currentTraceId(): string;
   analyzeIntent(trap: { binary: string; binaryBlake3: string; argv: string[];
@@ -29,6 +30,7 @@ declare const oracle: {
 };
 
 // ── Plugin: repo policy (contributes `c.policy`) ──────────────────────────
+// Taxonomy: urn:kelir:sys:trap:exec; rings: virtio-vsock, virtio-fs
 const repoPolicyPlugin = (opts: { maxDiffBytes: number; protectedBranches: string[] }) =>
   createPlugin("repo-policy")
     .state("violations", 0)
@@ -89,9 +91,9 @@ const runtime = kelir({
     .idmap({ guestUid: 0, hostUid: process.getuid!() })
     .cacheSharedMounts(["~/.npm", "~/.cache/pip", "~/.cargo/registry"])
     .lockBroker({ enabled: true })
-    .ghost("/workspace/.env.local",
+    .syntheticFile("/workspace/.env.local",
            "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n")
-    .ghostDynamic("/workspace/identity.jwt", async () => ({
+    .syntheticFileDynamic("/workspace/identity.jwt", async () => ({
       content: `Bearer ${crypto.randomBytes(32).toString("hex")}`, mode: 0o400,
     }))
     .maskRead("**/secrets/**", [
@@ -168,7 +170,7 @@ const runtime = kelir({
         loadedLibs: c.trap.loaded_libraries,
       });
       if (!intent.isHypothesisValid)
-        return c.deny(1, `Epistemic Reject: ${intent.falsificationReason}`);
+        return c.deny(1, `Verification Reject: ${intent.falsificationReason}`);
       if (c.trap.entropy > 5.2 && !intent.allowHighEntropy)
         return c.deny(126, "EENTROPY: high-entropy argv requires oracle clearance.");
       return c.resume();
@@ -215,7 +217,7 @@ const runtime = kelir({
     .after("git commit *", async (c) => {
       // dirtyBytes is always populated; zero is a real measurement
       if ((await c.receipt()).dirtyBytes === 0)
-        throw new Error("Epistemic anomaly: zero-byte delta commit attempted.");
+        throw new Error("Verification anomaly: zero-byte delta commit attempted.");
       return PostExecAction.Proceed;
     })
   )

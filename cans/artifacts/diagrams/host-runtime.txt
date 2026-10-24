@@ -10,8 +10,8 @@
 │               ▼                                             ▼                           │
 │  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
 │  │                        kelir-core (Stripped Microkernel)                          │  │
-│  │   ├── Tier 1 Engine Plugins: In-memory Rust execution (<12µs raw ring speed)      │  │
-│  │   ├── Tier 2 Policy Filter-Before-FFI Gate: MountScope drops unmonitored events   │  │
+│  │   ├── Native tier plugins: In-memory Rust execution (<12µs raw ring speed)        │  │
+│  │   ├── Foreign tier Filter-Before-FFI Gate: MountScope drops unmonitored events    │  │
 │  │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │
 │  │   ├── EventBus: Unified compile-time and async hook pipeline                      │  │
 │  │   └── DriverRouter: Lifecycle controller mediating Box<dyn VmmDriver>             │  │

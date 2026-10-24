@@ -4,7 +4,7 @@
     - Binary channel framing isolates sub-protocols via channel_id
       - Channel 0: Syscall traps and VM lifecycle control
       - Channel 1: Ingress port-forwarding and connection proxying
-      - Channel 2: Strongly-typed Eden RPC proxy services
+      - Channel 2: Multiplexed binary RPC services, 24-byte framing
     - Eliminates multi-port socket allocation and port collisions
   - Trap fast-path
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt

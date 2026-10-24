@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-db-proxy
     - Owner crate: crates/kelir-plugins/plugin-db-proxy
     - name() = "db-proxy"; priority() = 70
-    - Taxonomy (db-proxy): urn:kelir:boundary:net.fabric
-      - coordinate: rings=[virtio-net, virtio-vsock]; role=mutator
+    - Taxonomy (db-proxy): urn:kelir:net:l7:sql
+      - coordinate: rings=[virtio-net, virtio-vsock]; role=Proxy; tier=Native
     - VirtIO Ring attachment: virtio-net (port 5432) and virtio-vsock (/run/kelir/db.sock)
     - Lifecycle attachment (db-proxy): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for db-proxy

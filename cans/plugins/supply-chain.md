@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-supply-chain
     - Owner crate: crates/kelir-plugins/plugin-supply-chain
     - name() = "supply-chain"; priority() = 25
-    - Taxonomy (supply-chain): urn:kelir:boundary:security.policy
-      - coordinate: rings=[virtio-vsock:ch0]; role=gate
+    - Taxonomy (supply-chain): urn:kelir:sys:trap:exec
+      - coordinate: rings=[virtio-vsock:ch0]; role=Gate; tier=Native
     - VirtIO device attachment (supply-chain): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (supply-chain): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for supply-chain

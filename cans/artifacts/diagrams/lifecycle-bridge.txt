@@ -11,4 +11,8 @@
 ├───────────────────────────────┼─────────────────────────────────────────────┤
 │ orchestrator.revert()         │ Drops dirty RAM pages and purges tmpfs diffs│
 │                               │ back to last known good snapshot in <8ms    │
+├───────────────────────────────┼─────────────────────────────────────────────┤
+│ orchestrator.fork()           │ CoW memory cloning via userfaultfd (<15ms)  │
+├───────────────────────────────┼─────────────────────────────────────────────┤
+│ orchestrator.suspend()        │ lz4_flex working-set swap; host RAM to 0 MB │
 └───────────────────────────────┴─────────────────────────────────────────────┘

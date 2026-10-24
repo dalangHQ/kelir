@@ -2,28 +2,26 @@
   - Taxonomic coordinate contract
     - Code is sole SSOT: declared programmatically via KelirPlugin trait
     - Manifest artifact is strictly auto-generated for zero-compile indexing
-    - Axis 1 (boundary): universal mediation taxon (urn:kelir:boundary:*)
+    - Axis 1 (boundary): urn:kelir:<subsystem>:<target>[:<subtarget>]
     - Axis 2 (rings): set of attached VirtIO device channels
-    - Axis 3 (execution): tier-1-engine (Rust) | tier-2-policy (host FFI)
-    - Axis 4 (epistemic): observer | mutator | gate | fact-producer
-    - First-class catalog default: execution is tier-1-engine unless stated
+    - Axis 3 (tier): Native (Rust in-process) | Foreign (host FFI)
+    - Axis 4 (telemetry role): Observer | Gate | Mutator | Proxy
+    - First-class catalog default: tier is Native unless stated
     - Mutation scope manifest: mutators declare target paths, ports, or envs
     - Overlapping mutation scopes between plugins fail validation at boot
     - Coordinates enforce compile-time ordering gates and dispatch layout
-  - Universal mediation boundaries
-    - io.stream: interactive streams, TTY, stdio, token slicing
-    - storage.vfs: filesystems, mounts, snapshots, CoW layers
-    - net.fabric: L2-L7 wire, DNS, egress filters, proxies
-    - kernel.trap: syscall traps, process trees, task freezer
-    - security.policy: sandboxing, quotas, supply chain, chaos
-    - telemetry.provenance: Merkle logs, OTel traces, hardware receipts
-    - interop.protocol: MCP JSON-RPC, gRPC drivers, vsock RPC
+  - Universal taxonomy subsystems
+    - net: L2 TAP frames, L4 streams, L7 protocol termination
+    - fs: FUSE VFS operations and virtio-blk block images
+    - io: PTY streams and multiplexed console channels
+    - sys: traps, process trees, clock, faults, audit receipts
+    - ipc: vsock multiplexing and shared-memory mapping
   - Two-tier execution architecture
-    - Engine tier (Tier 1)
+    - Native tier
       - Compiled native Rust plugins in crates/kelir-plugins
       - Direct memory execution on 4 VirtIO rings at sub-12µs latency
       - High-frequency mutation: raw PTY ANSI, FUSE CoW, TAP L2 frames
-    - Policy tier (Tier 2)
+    - Foreign tier
       - Userland host plugins authored in TypeScript, Python, or Rust
       - Executes in host runtime event loop via ForeignPluginProxy
       - Steers agent workflows, prompt rules, branch gates, and masks
@@ -66,7 +64,7 @@
       - Lifecycle commit: on_pre_commit, on_post_commit, on_host_preempt
     - VfsInodeAttr carries full mode, uid, gid, size, content
       - Populated verbatim into FUSE LOOKUP replies
-      - Ghost inodes honor mode: 0o400 exactly, no permission fallback
+      - Synthetic FUSE inodes honor mode: 0o400 exactly, no permission fallback
     - Plane semantics
       - Wire plane fully bidirectional: outbound and inbound mutation points
       - Storage plane fully attributed: on_vfs_write carries PID and HandlerCtx

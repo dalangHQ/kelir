@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-lock-broker
     - Owner crate: crates/kelir-plugins/plugin-lock-broker
     - name() = "lock-broker"; priority() = 30
-    - Taxonomy (lock-broker): urn:kelir:boundary:storage.vfs
-      - coordinate: rings=[virtio-fs]; role=gate
+    - Taxonomy (lock-broker): urn:kelir:fs:vfs:lock
+      - coordinate: rings=[virtio-fs]; role=Gate; tier=Native
     - VirtIO device attachment (lock-broker): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (lock-broker): see: 07-lifecycle.md#Lifecycle-vetoes
     - Storage bus attachment (lock-broker): see: 05-storage-plane.md#Storage-plane

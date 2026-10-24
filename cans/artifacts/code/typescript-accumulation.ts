@@ -2,6 +2,8 @@
 //
 // Demonstrates TypeScript SDK's two-phase builder pattern:
 // Plugins register via .use(); .configure() receives the fully unified TContext.
+// SyntheticFile: FUSE-presented paths with no host backing file.
+// Verification Reject: c.deny returns a POSIX errno.
 //
 // Full runnable example: artifacts/examples/autonomous-swe-agent.ts
 // Canonical spec home:    cans/03-sdk-architecture.md#TypeScript-SDK

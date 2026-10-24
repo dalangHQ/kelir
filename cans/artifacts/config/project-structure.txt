@@ -1,7 +1,7 @@
 kelir/
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                     # Unified fast CI (Lint, Typecheck, Cross-Shim, Parity, KVM test)
+│       ├── ci.yml                     # Unified fast CI (Lint, Typecheck, Cross-Shim, Parity, Audit-slop, KVM test)
 │       ├── plugin-ci-reusable.yml     # workflow_call: audit, vectors, matrix, attest
 │       └── release.yml                # Automated binary stripping, NPM & PyPI publishing
 │
@@ -25,7 +25,7 @@ kelir/
 │   │       ├── lib.rs                 # Re-exports all core contracts
 │   │       ├── plugin.rs              # KelirPlugin, MountScope, LifecycleCtx, PluginError
 │   │       ├── driver.rs              # VmmDriver, VmConfig, SnapshotDescriptor, WatchdogAction
-│   │       ├── protocol.rs            # FrameHeader (0x4B45), TrapEvent, TrapAction, GuestToHost, HostToGuest
+│   │       ├── protocol.rs            # 24-byte FrameHeader (0x4B45), TrapEvent, TrapAction, GuestToHost, HostToGuest
 │   │       ├── telemetry.rs           # ExecutionReceipt, CausalDelta
 │   │       └── oracle.rs              # Oracle evaluator trait
 │   │
@@ -52,10 +52,10 @@ kelir/
 │   │       ├── mock_driver.rs         # MockVmmDriver: checkpoint, fork, rollback without RAM
 │   │       ├── mock_bus.rs            # MockBusDispatcher: records ring messages per plane
 │   │       ├── handlers.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
-│   │       ├── fixtures.rs            # Synthetic PTY streams, overlay upperdirs, ghost configs
+│   │       ├── fixtures.rs            # Synthetic PTY streams, overlay upperdirs, synthetic configs
 │   │       └── assertions.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
 │   │
-│   ├── kelir-shim/                    # Guest userland helpers (optional non-PID 1 diagnostics)
+│   ├── kelir-shim/                    # Guest musl PID 1 (<50KB), zero external serialization or runtime crates
 │   │   ├── Cargo.toml                 # Zero third-party crates: libc only, lto = "fat", panic = "abort"
 │   │   ├── src/
 │   │   │   ├── codec.rs               # Raw slice bit-shift frame codec (zero serde/ciborium)
@@ -101,11 +101,11 @@ kelir/
 │   │   │   │   ├── test_disclosure.rs # on_disclosure: annotations append, body immutable
 │   │   │   │   └── test_token_shield.rs
 │   │   │   └── examples/pty-only.rs
-│   │   ├── plugin-vfs/                # virtio-fs engine, Ghost Inodes, in-flight read masking
+│   │   ├── plugin-vfs/                # virtio-fs engine, Synthetic FUSE inodes, sliding-window read replacement
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs
-│   │   │   │   ├── mask.rs            # In-flight read masking (MaskRule regex redaction, fixed-width)
+│   │   │   │   ├── mask.rs            # Sliding-window read replacement (MaskRule regex redaction, fixed-width)
 │   │   │   │   ├── ghost.rs           # Synthetic RAM-only inode injector (VfsInodeAttr: mode/uid/gid/size)
 │   │   │   │   ├── reconciler.rs      # Atomic workspace staging reconciler (.kelir-staging-<nonce> -> atomic renameat2)
 │   │   │   │   ├── idmap.rs           # FUSE dynamic UID/GID translation (0 -> geteuid())
@@ -142,7 +142,7 @@ kelir/
 │   │   │   │   ├── lib.rs
 │   │   │   │   ├── wal.rs             # LedgerSink trait: LocalMerkleDbSink + external delegation
 │   │   │   │   ├── otel.rs            # W3C traceparent context propagator
-│   │   │   │   └── compute.rs         # compute_causal_delta() — CausalDelta computation (struct lives in kelir-core)
+│   │   │   │   └── compute.rs         # compute_causal_delta() — CausalDelta computation (struct lives in kelir-interface)
 │   │   │   └── tests/
 │   │   │       ├── test_merkle_wal.rs
 │   │   │       ├── test_causal_delta.rs
@@ -176,7 +176,7 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   │   ├── src/lib.rs             # Trap hook rejecting postinstall/setup.py via ancestor chain
 │   │   │   │   └── tests/test_supply_chain.rs
-│   │   ├── plugin-hyper-density/      # Autonomous zero-RSS idle eviction via lz4_flex and io-uring
+│   │   ├── plugin-hyper-density/      # Zero-RSS working-set page compaction and swap via lz4_flex and io-uring
 │   │   │   ├── Cargo.toml
 │   │   │   │   ├── src/lib.rs             # Ring inactivity monitor and direct NVMe suspend flusher
 │   │   │   │   └── tests/test_eviction.rs
@@ -235,7 +235,7 @@ kelir/
 │   │   │       ├── schema.ts          # TypeBox command validation wrappers
 │   │   │       └── binding.ts         # Auto-generated NAPI loader
 │   │   ├── plugins/                   # @kelir/plugin-*
-│   │   │   ├── hyper-density/         # TS bindings for autonomous idle eviction
+│   │   │   ├── hyper-density/         # TS bindings for zero-RSS working-set page compaction
 │   │   │   ├── cas-snapshot/          # TS bindings for content-addressed snapshot hydration
 │   │   │   ├── wire-ingress/          # TS bindings for connection parking
 │   │   │   ├── pty/                   # TS bindings for virtio-console
@@ -255,7 +255,7 @@ kelir/
 │           ├── core.py                # PyO3 native binding wrapper
 │           ├── context.py             # Type-hinted context chain
 │           ├── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
-│           │   ├── hyper_density.py   # Python bindings for idle eviction
+│           │   ├── hyper_density.py   # Python bindings for zero-RSS working-set page compaction
 │           │   ├── cas_snapshot.py    # Python bindings for content-addressed snapshot hydration
 │           │   ├── wire_ingress.py    # Python bindings for connection parking
 │           │   ├── pty.py             # Python bindings for the pty plugin

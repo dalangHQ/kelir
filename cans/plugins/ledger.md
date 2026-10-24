@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-ledger
     - Owner crate: crates/kelir-plugins/plugin-ledger
     - name() = "ledger"; priority() = 55
-    - Taxonomy (ledger): urn:kelir:boundary:telemetry.provenance
-      - coordinate: rings=[virtio-vsock:ch0]; role=fact-producer
+    - Taxonomy (ledger): urn:kelir:sys:audit
+      - coordinate: rings=[virtio-vsock:ch0]; role=Observer; tier=Native
     - VirtIO device attachment (ledger): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (ledger): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for ledger
@@ -46,7 +46,7 @@
         plugin-ledger mounted; unmounted sessions do not expose it
       - Causal delta definition: see: 08-epistemic.md#Causal-delta
       - CausalDelta computation: diffs physical RAM and inode journals
-      - Binds ExecutionReceipt causal_token_id into Merkle WAL records
+      - Binds ExecutionReceipt correlation_token into Merkle WAL records
   - Error and return semantics (ledger)
     - Hook signature (ledger): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (ledger): TBD

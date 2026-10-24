@@ -3,6 +3,8 @@
 # Demonstrates Python SDK's assembly-time closure validation + Pydantic v2.
 # Builder inspects closure freevars during .exec(); unbound references
 # raise KelirConfigurationError before hypervisor boots.
+# SyntheticFile: FUSE-presented paths with no host backing file.
+# Verification Reject: Decision.deny returns a POSIX errno.
 #
 # Full runnable example: artifacts/examples/autonomous-swe-agent.py
 # Canonical spec home:    cans/03-sdk-architecture.md#Python-SDK

@@ -22,3 +22,6 @@
 │    - `@kelir/e2b-compat` (TS) and `kelir.compat.e2b` (Python).              │
 │    - Replicates the `Sandbox` interface with sub-60ms local hardware boots. │
 └─────────────────────────────────────────────────────────────────────────────┘
+Boundary rule: the process owns the wire; the plugin owns policy and translation.
+URNs: containerd urn:kelir:fs:block:oci; MCP urn:kelir:io:channel:mcp;
+OpenShell urn:kelir:sys:proc:lifecycle; E2B: no plugin, no URN.

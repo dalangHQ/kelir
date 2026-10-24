@@ -28,6 +28,8 @@ Artifacts and nodes split truth by kind, not precedence.
   something the artifact cannot — otherwise it is decoration.
 - The test: *can the node articulate an invariant the artifact does not
   encode?* If not, the node is wrong, not the artifact.
+- Receipt and execution checks in artifacts use deterministic hypervisor
+  verification.
 
 ## Convention
 

@@ -1,6 +1,6 @@
 - Operations
   - Execution philosophy
-    - Zero CPU burn
+    - Resource constraints: <50KB shim, <60ms boot, <15s build
     - Sub-minute local cycles via just
     - Zero-bloat crate boundary: tokio full banned; libc/sys-crates strictly scoped
     - Guest shim strictly under 50KB: zero external serialization or runtime crates
@@ -56,6 +56,7 @@
       each concept's canEdit set
     - No path filter: a node edit can break a pointer in any other node
     - Local mirror: `just cans-check` invokes the identical flags
+    - Audit-slop target: banned-term grep over cans/, see: artifacts/config/justfile
     - Invariant: every rule in _rules.yaml maps to a step here, or the rule
       is dead and gets removed
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
@@ -101,7 +102,7 @@
   - Plugin registry
     - First-class plugin catalog is compiled in; external index poller is opt-in
     - Downstream state shape when enabled: see: artifacts/diagrams/ecosystem-ci.txt
-    - Index schema indexes by boundary URN, ring mask, and epistemic role
+    - Index schema indexes by boundary URN, ring mask, and telemetry role
   - Multi-language parity gate
     - Rust macros generate typed FFI stubs: napi-rs for TS, pyo3 for Python
     - Parity validated against single vectors.json fixture across all SDKs

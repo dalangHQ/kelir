@@ -104,8 +104,9 @@ Subsystem      ::= "net" | "fs" | "io" | "sys" | "ipc"
 │   Specs: 07-lifecycle.md, 08-epistemic.md                                   │
 │   Artifacts: code/execution-receipt.rs, code/causal-delta.rs,               │
 │              code/messages.rs, code/step-evaluation-loop.ts,                │
-│              diagrams/superpowers.txt, diagrams/truth-hierarchy.txt,        │
-│              diagrams/lifecycle-bridge.txt, diagrams/trap-flow.txt          │
+│              diagrams/hypervisor-primitives.txt,                            │
+│              diagrams/truth-hierarchy.txt, diagrams/lifecycle-bridge.txt,   │
+│              diagrams/trap-flow.txt                                         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ Stream 4: SDKs, Ingestion, Protocol & Ops                                   │
 │   Specs: 03-sdk-architecture.md, 09-protocol.md, 10-adapters.md, 11-ops.md │
@@ -191,7 +192,7 @@ Subsystem      ::= "net" | "fs" | "io" | "sys" | "ipc"
   * `cans/artifacts/code/causal-delta.rs`
   * `cans/artifacts/code/messages.rs`
   * `cans/artifacts/code/step-evaluation-loop.ts`
-  * `cans/artifacts/diagrams/superpowers.txt`
+  * `cans/artifacts/diagrams/hypervisor-primitives.txt`
   * `cans/artifacts/diagrams/truth-hierarchy.txt`
   * `cans/artifacts/diagrams/lifecycle-bridge.txt`
   * `cans/artifacts/diagrams/trap-flow.txt`
@@ -206,7 +207,7 @@ Subsystem      ::= "net" | "fs" | "io" | "sys" | "ipc"
   4. `code/causal-delta.rs`: Purge "Counterfactual state delta... epistemic orchestration". Define as differential delta (Δ = S_A - S_B) tracking memory, inodes, and wire egress.
   5. `code/messages.rs`: Standardize `TrapAction::Yield` as hypervisor cgroup freeze. Clean up comments on permission lattice.
   6. `code/step-evaluation-loop.ts`: Replace "Epistemic Reject" with "Verification Reject". Replace "Physical Ground Truth" with "Tier 1 Hardware Evidence".
-  7. `diagrams/superpowers.txt`: Change header to `HYPERVISOR HARDWARE PRIMITIVES`. Replace slop entries:
+  7. `diagrams/hypervisor-primitives.txt`: Change header to `HYPERVISOR HARDWARE PRIMITIVES`. Replace slop entries:
      * `15. Zero-RSS Evict` ──► `Zero-RSS working-set swap via lz4_flex & io_uring.`
      * `16. CAS Teleport` ──► `Content-addressed block hydration (FastCDC + object_store).`
   8. `diagrams/truth-hierarchy.txt`: Change header to `THE 3-TIER EVIDENCE VERIFICATION MODEL`. Reorganize into Tier 1 (Hardware), Tier 2 (Boundary), Tier 3 (Guest). Replace "The agent cannot fake this" with "Unforgeable outside guest VM memory boundary".
@@ -315,7 +316,7 @@ echo "PASS: All 15 plugins comply with RFC 8141 URN schema."
 
 echo "=== GATE 3: DIAGRAM TITLE INTEGRITY ==="
 grep -q "THE 3-TIER EVIDENCE VERIFICATION MODEL" cans/artifacts/diagrams/truth-hierarchy.txt
-grep -q "HYPERVISOR HARDWARE PRIMITIVES" cans/artifacts/diagrams/superpowers.txt
+grep -q "HYPERVISOR HARDWARE PRIMITIVES" cans/artifacts/diagrams/hypervisor-primitives.txt
 echo "PASS: Diagram headers correctly refactored."
 
 echo "=== GATE 4: CANS SPEC COMPILATION ==="

@@ -45,3 +45,5 @@ DECOUPLED PLUGIN CI + REGISTRY FLOW
   Registration:
     one PR to cans/_registry/plugins.yaml  →  human gate on who is in
     matrix update, poll, dashboard          →  automatic on who is current
+
+  Canon CI also runs audit-slop: banned-term grep over cans/.

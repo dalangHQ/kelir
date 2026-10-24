@@ -99,12 +99,13 @@ pub enum HostToGuest {
     },
 }
 
-/// Monotonic decision lattice: Allow < Rewrite < Deny < Abort.
+/// Permission lattice (monotonic): Allow < Rewrite < Deny < Abort.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrapAction {
     /// Resume the syscall untouched. Registers and memory are never modified.
     Allow,
-    /// Immediately freeze microVM and return control cleanly to host event loop
+    /// Hypervisor cgroup freeze: freeze guest task group, return control
+    /// cleanly to host event loop
     Yield {
         checkpoint_id: u64,
     },

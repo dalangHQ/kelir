@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-pty
     - Owner crate: crates/kelir-plugins/plugin-pty
     - name() = "pty"; priority() = 90
-    - Taxonomy (pty): urn:kelir:boundary:io.stream
-      - coordinate: rings=[virtio-console:hvc0]; role=mutator
+    - Taxonomy (pty): urn:kelir:io:pty
+      - coordinate: rings=[virtio-console:hvc0]; role=Mutator; tier=Native
     - VirtIO device attachment (pty): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (pty): see: 07-lifecycle.md#Lifecycle-vetoes
     - Binds to virtio-console paravirtual port hvc0
@@ -30,7 +30,7 @@
       - Threat model
         - OSC 52: clipboard hijack (agent reads/writes human clipboard)
         - OSC 0/1/2: title spoofing (agent impersonates terminal session)
-        - Both are Tier-1 violations: see: 08-epistemic.md#Three-tier-truth
+        - Both are Tier-1 violations: see: 08-epistemic.md#Three-tier-evidence-verification-model
       - Escape families outside the model: TBD
     - ANSI sanitizer
       - Drops OSC 52 (`\x1b]52;c;…`) at the virtio-console ring boundary
@@ -71,7 +71,7 @@
         - Hook returns Some(bytes) to append; None to pass
         - Annotations concatenate after body in priority() order
         - Body itself is immutable by contract
-      - Invariant: zero silent state divergence
+      - Invariant: Mandatory TTY host disclosure
         - Any host-side state mutation reaches the workload's TTY
         - Plugins annotate; none suppress
       - Annotation bounds: TBD

@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-mcp
     - Owner crate: crates/kelir-plugins/plugin-mcp
     - name() = "mcp"; priority() = 50
-    - Taxonomy (mcp): urn:kelir:boundary:interop.protocol
-      - coordinate: rings=[virtio-console:hvc1]; role=mutator
+    - Taxonomy (mcp): urn:kelir:io:channel:mcp
+      - coordinate: rings=[virtio-console:hvc1]; role=Mutator; tier=Native
     - VirtIO device attachment (mcp): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mcp): see: 07-lifecycle.md#Lifecycle-vetoes
     - Binds to virtio-console paravirtual port hvc1

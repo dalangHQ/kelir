@@ -1,6 +1,6 @@
 // ILLUSTRATIVE EXCERPT — not standalone-executable.
 //
-// Epistemic orchestration step loop using external evaluator.
+// Verification step loop using external evaluator.
 // Checkpoints and verification state are managed in userland
 // orchestrator scope, decoupled from hypervisor microkernel core.
 //
@@ -11,7 +11,7 @@ import { kelir } from "@kelir/core";
 import { vfs } from "@kelir/plugin-vfs";
 import { pty } from "@kelir/plugin-pty";
 
-const orchestrator = new EpistemicEvaluator();
+const orchestrator = new VerificationEvaluator();
 let activeCheckpoint: SnapshotDescriptor | null = null;
 
 const session = await kelir({ vcpus: 2, memoryMb: 2048 })
@@ -31,20 +31,20 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
         });
 
         if (!intentAnalysis.isHypothesisValid) {
-          return c.deny(1, `Epistemic Reject: ${intentAnalysis.falsificationReason}`);
+          return c.deny(1, `Verification Reject: ${intentAnalysis.falsificationReason}`);
         }
 
         return c.resume();
       })
       .after("*", async (c) => {
-        // 3. Post-Condition Verification via Tier 1 Physical Ground Truth
+        // 3. Post-Condition Verification via Tier 1 Hardware Evidence
         const receipt = await c.receipt();
         const isConsistent = await orchestrator.verifyPhysicalReceipt(receipt);
 
         if (!isConsistent) {
           // 4. Instant Hardware Rollback: memory and disk revert in <8ms
           if (activeCheckpoint) await c.vm.rollback(activeCheckpoint);
-          c.term.notice("⚡ [EPISTEMIC ENGINE]: Side-effect violation. State reverted.\n");
+          c.term.notice("⚡ [VERIFICATION ENGINE]: Side-effect violation. State reverted.\n");
         }
       })
   )

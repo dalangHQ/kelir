@@ -9,7 +9,7 @@
 │    - Base host workspace mounted STRICTLY READ-ONLY.                        │
 │    - Instant Revert: Drop overlayfs layer in 1ms. Host SSD is untouched.    │
 │ 3. THE SUCCESS PATH RECONCILER (session.fs.reconcile()):                    │
-│    - Pure storage-plane sync: stages upperdir into .kelir-staging-<nonce>.   │
+│    - Storage-plane sync: stages upperdir into .kelir-staging-<nonce>.       │
 │    - Executes atomic directory exchange (renameat2 / RENAME_EXCHANGE).      │
 │    - Zero filesystem corruption; Git commits stay ordinary guest runs.      │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -21,11 +21,11 @@
 │    - Mounts host ~/.npm, ~/.cache/pip, ~/.cargo/registry into guest.        │
 │    - Package installs drop from 2 minutes to <3 seconds on cold microVMs.   │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 6. SYNTHETIC GHOST INODES (RAM-Only Virtual Files):                         │
+│ 6. SYNTHETIC FUSE INODES (RAM-Only Virtual Files):                          │
 │    - Injects virtual configurations (.env, .gitconfig) directly into VFS.   │
 │    - Served from host memory; physically DOES NOT EXIST on host SSD.        │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 7. INODE-LEVEL READ MASKING (plugin-vfs maskRead):                          │
+│ 7. SLIDING-WINDOW REPLACEMENT OVER FUSE READ BUFFERS:                       │
 │    - Intercepts FUSE read(); runs sliding-window chunk pattern scanner.     │
 │    - Fixed-width byte replacement on-the-fly; zero full-file RAM buffering. │
 ├─────────────────────────────────────────────────────────────────────────────┤

@@ -6,14 +6,14 @@
     - Adding a language: bindings crate + vector consumer + surface manifest
     - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
     - Two-tier authoring model
-      - Tier 1 engine plugins: distributed as precompiled npm/pip native binaries
-      - Tier 2 policy plugins: authored in userland code via native async closures
-      - Tier 1 vs Tier 2 execution: see: 02-plugin-model.md#Two-tier-execution-architecture
+      - Native plugins: distributed as precompiled npm/pip native binaries
+      - Foreign policy plugins: authored in userland code via native async closures
+      - Native vs Foreign execution: see: 02-plugin-model.md#Two-tier-execution-architecture
     - Semantic invariant equivalence
       - Runtime safety matrix: see: artifacts/diagrams/sdks-invariants.txt
       - Failure occurs at the earliest lifecycle phase native to each runtime
       - Unhandled errors abort hypervisor immediately to eliminate zombie runs
-      - DX iron rules
+      - Distribution and error invariants
         - Zero runtime toolchain tax: distributed with precompiled NAPI/PyO3 wheels
         - Consumers never require cargo, zig, or C compilers on target systems
         - Unhandled foreign handler error catches cleanly; guest never hangs
@@ -23,6 +23,12 @@
     - Filter-before-FFI declaration
       - Declarative filters passed to builder during plugin registration
       - Host core evaluates rules natively; non-matching events skip FFI
+    - Type-safety invariants
+      - Rust borrow checker and Serde perimeter validation: see: #Rust-SDK
+      - TypeScript tsc and TypeBox AOT native validators: see: #TypeScript-SDK
+      - Python Pydantic v2 frozen models, import-time checks: see: #Python-SDK
+      - NAPI/PyO3 AOT hook fusion: pipeline handlers fuse to one native closure
+      - Foreign handlers cross FFI at most once per event
     - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
     - Rust: borrow-checker verified handle injection, zero-cost Serde
     - TypeScript: generic context accumulation, TypeBox schema guards
@@ -33,7 +39,7 @@
     - Non-blocking trap verdicts: c.yield(checkpoint_id) and c.abort(code, msg)
     - Shared memory buffers: session.map_shared_region(tag, size_bytes)
     - Portable snapshots: session.export_snapshot() and session.import_snapshot()
-    - Eden-style typed vsock RPC: session.vsock.channel(2) with zero-IDL inference
+    - Multiplexed binary RPC: session.vsock.channel(2), binary framing
     - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
   - Params typed views
     - Host-side typed access on HandlerCtx
@@ -88,8 +94,8 @@
     - Each example exercises
       - All five plugins
       - All four VirtIO rings
-      - All three epistemic truth tiers
-      - All lifecycle superpowers: see: 07-lifecycle.md
+      - All three evidence verification tiers
+      - All lifecycle hypervisor primitives: see: 07-lifecycle.md
     - Not transliterations: each uses language-idiomatic constructs
       - Rust: async-trait, JoinSet, Arc<Mutex<>> handles
       - TypeScript: Promise.all fan-out, generic inference

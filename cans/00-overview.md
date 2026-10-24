@@ -2,9 +2,15 @@
   - Product
     - Name: kelir (Javanese ꦏꦼꦭꦶꦂ)
     - Meaning: taut white fabric screen in Wayang Kulit shadow puppetry
-    - Metaphor: dalang (host app) directs puppets (agent) through the screen
+    - Metaphor: see: #Wayang-metaphor
     - Version: 3.0.0-normative
     - Status: normative specification
+  - Wayang metaphor
+    - Kelir: VirtIO mediation boundary between host and guest
+    - Dalang: host runtime supervisor owning hypervisor loops
+    - Wayang: sandboxed microVM workload, unmodified POSIX binaries
+    - Blencong: hardware clocksource and PMU retired-instruction counters
+    - Bayang: projected terminal streams and frame telemetry
   - What it is
     - Embeddable in-process microVM hypervisor middleware microkernel
     - Mediates guest interaction through the VirtIO Device Complex
@@ -26,7 +32,7 @@
     - Agent trust hacks: polling self-reported harness JSON
     - Terminal details: see: plugins/pty.md#Prompt-responder
     - Storage details: see: plugins/vfs.md#Reconciler
-    - Trust details: see: 08-epistemic.md#Three-tier-truth
+    - Trust details: see: 08-epistemic.md
   - Use cases
     - Parallel agent exploration: see: 07-lifecycle.md#CoW-fork
     - Human approval waits at zero CPU: see: 07-lifecycle.md#Suspend-and-resume
@@ -35,13 +41,13 @@
     - Relational database governance: see: plugins/db-proxy.md
     - Supply chain package protection: see: plugins/supply-chain.md
     - Zero-copy high-throughput IPC: see: 01-architecture.md#Shared-memory-channel
-    - Cross-host state migration: see: 07-lifecycle.md#Portable-snapshot-bundles
+    - Cross-host portable snapshot bundles: see: 07-lifecycle.md#Portable-snapshot-bundles
     - Flaky-API and disk-full resilience: see: plugins/chaos.md
     - Container builds without nested VMX: see: 07-lifecycle.md#Docker-in-kelir
     - Human break-glass on agent loops: see: 07-lifecycle.md#Break-glass
     - Low-memory SBC execution: see: 01-architecture.md#Embedded-profile
     - Sub-15ms idle scale-to-zero: see: plugins/hyper-density.md
-    - Cross-cluster state teleport: see: plugins/cas-snapshot.md
+    - Hydrate state from streaming snapshot bundle: see: plugins/cas-snapshot.md
     - Zero-downtime connection parking: see: plugins/wire-ingress.md
     - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends
   - Spec map
@@ -52,7 +58,7 @@
     - Storage plane: see: 05-storage-plane.md (virtio-fs)
     - Wire plane: see: 06-wire-plane.md (virtio-net)
     - Lifecycle: see: 07-lifecycle.md (suspend/resume)
-    - Epistemic: see: 08-epistemic.md (oracle)
+    - Verification and hardware telemetry: see: 08-epistemic.md
     - Protocol: see: 09-protocol.md (wire messages)
     - Ecosystem and ops
       - Ecosystem ingestion: see: 10-adapters.md#Ingestion-matrix

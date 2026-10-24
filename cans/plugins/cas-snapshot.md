@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-cas-snapshot
     - Owner crate: crates/kelir-plugins/plugin-cas-snapshot
     - name() = "cas-snapshot"; priority() = 40
-    - Taxonomy (cas-snapshot): urn:kelir:boundary:storage.vfs
-      - coordinate: rings=[virtio-blk, virtio-shm]; role=fact-producer
+    - Taxonomy (cas-snapshot): urn:kelir:fs:block:cas
+      - coordinate: rings=[virtio-blk, virtio-shm]; role=Observer; tier=Native
     - VirtIO device attachment (cas-snapshot): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (cas-snapshot): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for cas-snapshot
@@ -16,7 +16,7 @@
       - Tracks dirty RAM using fixed 4KB/16KB page frames via hypervisor bitmaps
       - Preserves direct hardware page table mapping during memory hydration
       - Synchronizes chunk differentials to S3-compatible tiers using object_store
-      - Teleports twin microVM sessions across bare-metal hosts in <50ms
+      - Hydrates microVM sessions from streaming snapshot bundle in <50ms
   - Error and return semantics (cas-snapshot)
     - Hook signature (cas-snapshot): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (cas-snapshot): TBD

@@ -5,7 +5,7 @@ Full-surface Python SDK consumer for kelir 3.0.
 Not a transliteration: this uses Pydantic for schema (the TS TypeBox
 equivalent), async/await natively, decorator-registered handlers, and
 `async with` for lifecycle enforcement. It exercises every plugin,
-every VirtIO ring, and all three epistemic truth tiers.
+every VirtIO ring, and the three-tier evidence verification model.
 
 Requirements:
     kelir>=3.0          (PyO3 bindings; ships plugin-pty, plugin-vfs,
@@ -54,7 +54,7 @@ from kelir.plugins.pty import (
 )
 from kelir.plugins.vfs import (
     DynamicFile,
-    GhostFile,
+    SyntheticFile,
     IdmapConfig,
     MaskRule,
     SnoopRule,
@@ -146,6 +146,7 @@ class RepoPolicyHandle:
         self._state.current_branch = b
 
 
+# Taxonomy: urn:kelir:sys:trap:exec; rings: virtio-vsock, virtio-fs
 class RepoPolicyPlugin(BasePlugin[RepoPolicyHandle]):
     name = "repo-policy"
     requires: tuple[str, ...] = ("ledger",)  # runtime dependency check
@@ -235,7 +236,7 @@ def make_universal_step(oracle: Oracle) -> PreExecHandler:
         if not intent.is_hypothesis_valid:
             return Decision.deny(
                 1,
-                f"Epistemic Reject: {intent.falsification_reason or ''}",
+                f"Verification Reject: {intent.falsification_reason or ''}",
             )
         if c.trap.entropy > 5.2 and not intent.allow_high_entropy:
             return Decision.deny(
@@ -313,7 +314,7 @@ def make_zero_byte_check() -> PostExecHandler:
         receipt = await c.receipt()
         # dirty_bytes is always populated; zero is a real measurement
         if receipt.dirty_bytes == 0:
-            raise RuntimeError("Epistemic anomaly: zero-byte delta commit attempted.")
+            raise RuntimeError("Verification anomaly: zero-byte delta commit attempted.")
         return PostExecAction.proceed()
     return zero_byte_check
 
@@ -377,11 +378,11 @@ async def build_runtime(
             ],
             lock_broker=True,
             ghosts=[
-                GhostFile.static(
+                SyntheticFile.static(
                     "/workspace/.env.local",
                     "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n",
                 ),
-                GhostFile.dynamic(
+                SyntheticFile.dynamic(
                     "/workspace/identity.jwt",
                     lambda _p: DynamicFile(
                         content=f"Bearer {uuid.uuid4().hex}",
@@ -621,7 +622,7 @@ async def main() -> None:
 
 
 # ============================================================================
-# 7. ORACLE — user-supplied epistemic engine
+# 7. ORACLE — user-supplied post-condition verification engine
 # ============================================================================
 
 class _IntentAnalysis(Protocol):

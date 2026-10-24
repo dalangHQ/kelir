@@ -15,3 +15,4 @@
 │              │ handle instance; missing handle    │ raises `EINVAL` before hook        │ Import-time + perimeter validation │
 │              │ fails closures at import time      │ evaluation                         │                                    │
 └──────────────┴────────────────────────────────────┴────────────────────────────────────┴────────────────────────────────────┘
+AOT hook fusion: NAPI/PyO3 pipeline handlers fuse to one native closure per event.

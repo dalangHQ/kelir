@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-openshell-coordinator
     - Owner crate: crates/kelir-plugins/plugin-openshell-coordinator
     - name() = "openshell-coordinator"; priority() = 60
-    - Taxonomy (openshell-coordinator): urn:kelir:boundary:interop.protocol
-      - coordinate: rings=[virtio-vsock]; role=gate
+    - Taxonomy (openshell-coordinator): urn:kelir:sys:proc:lifecycle
+      - coordinate: rings=[virtio-vsock]; role=Gate; tier=Native
     - VirtIO attachment (openshell-coordinator): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (openshell-coordinator): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for openshell-coordinator

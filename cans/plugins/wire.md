@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-wire
     - Owner crate: crates/kelir-plugins/plugin-wire
     - name() = "wire"; priority() = 75
-    - Taxonomy (wire): urn:kelir:boundary:net.fabric
-      - coordinate: rings=[virtio-net]; role=mutator
+    - Taxonomy (wire): urn:kelir:net:l7:proxy
+      - coordinate: rings=[virtio-net]; role=Mutator; tier=Native
     - VirtIO device attachment (wire): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (wire): see: 07-lifecycle.md#Lifecycle-vetoes
   - Context keys for wire
@@ -35,7 +35,7 @@
         - Real secret crosses wire plane exclusively on host side
       - TLS interception contract
         - plugin-wire generates ephemeral per-session root CA at boot
-        - CA mounted into guest trust store /etc/ssl/certs as overlayfs ghost
+        - CA mounted into guest trust store /etc/ssl/certs as overlayfs synthetic inode
         - curl, git, and language-native TLS stacks accept transparently
         - Zero CLI flags: no --cacert, no NODE_EXTRA_CA_CERTS
       - Request flow

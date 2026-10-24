@@ -18,7 +18,7 @@
 //!      the TypeBox `t.Object({…})` runtime guard expressed as a zero-cost
 //!      serde target.
 //!
-//! Every plugin, every §11 superpower, all three §12 epistemic truth tiers,
+//! Every plugin, every §11 hypervisor primitive, and the §12 three-tier evidence verification model,
 //! and all four VirtIO rings are exercised in the phases below.
 //!
 //! Cargo.toml:
@@ -51,7 +51,7 @@ use kelir::{
         ledger::{FinalReceipt, LedgerConfig, LedgerPlugin, OtelConfig, ReceiptConfig},
         pty::{PtyConfig, PtyPlugin, PromptRule, TokenShield},
         vfs::{
-            DynamicFile, GhostFile, IdmapConfig, MaskRule, SnoopHandler, SnoopRule,
+            DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopHandler, SnoopRule,
             VfsConfig, VfsPlugin,
         },
         wire::{L4Proxy, Mtls, SinkholeConfig, VaultEntry, WireConfig, WirePlugin},
@@ -125,6 +125,8 @@ impl RepoPolicyHandle {
     }
 }
 
+/// Taxonomy: urn:kelir:sys:trap:exec
+/// Rings: virtio-vsock, virtio-fs
 pub struct RepoPolicyPlugin {
     opts: RepoPolicyOptions,
     state: Arc<Mutex<RepoPolicyState>>,
@@ -282,11 +284,11 @@ async fn build_runtime(
             ],
             lock_broker: true,
             ghosts: vec![
-                GhostFile::static_(
+                SyntheticFile::static_(
                     "/workspace/.env.local",
                     "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n",
                 ),
-                GhostFile::dynamic("/workspace/identity.jwt", |_| Box::pin(async move {
+                SyntheticFile::dynamic("/workspace/identity.jwt", |_| Box::pin(async move {
                     Ok(DynamicFile {
                         content: format!("Bearer {:032x}", std::process::id()),
                         mode: 0o400,
@@ -391,7 +393,7 @@ async fn build_runtime(
                                 return Ok(Decision::deny(
                                     1,
                                     format!(
-                                        "Epistemic Reject: {}",
+                                        "Verification Reject: {}",
                                         intent.falsification_reason.unwrap_or_default()
                                     ),
                                 ));
@@ -656,7 +658,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 // ============================================================================
-// 5. ORACLE (user-supplied epistemic engine)
+// 5. ORACLE (user-supplied post-condition verification engine)
 // ============================================================================
 
 struct UserOracle;
