@@ -117,10 +117,8 @@ class RepoPolicyState:
 
 @dataclass(frozen=True)
 class RepoPolicyHandle:
-    """Typed handle — the Python expression of §6's compile-time proof of
-    installation. `plugin_with_handle` returns this object *only* if the
-    plugin was successfully installed; removing the plugin from the chain
-    means the handler closures have no `policy` to capture."""
+    """Typed handle held by host scope. Created at instantiation, while
+    the builder chain remains 100% fluid."""
     _state: RepoPolicyState
     _protected: tuple[str, ...]
 
@@ -147,7 +145,7 @@ class RepoPolicyHandle:
 
 
 # Taxonomy: urn:kelir:sys:trap:exec; rings: virtio-vsock, virtio-fs
-class RepoPolicyPlugin(BasePlugin[RepoPolicyHandle]):
+class RepoPolicyPlugin(BasePlugin):
     name = "repo-policy"
     requires: tuple[str, ...] = ("ledger",)  # runtime dependency check
 
@@ -334,6 +332,7 @@ async def build_runtime(
         max_diff_bytes=64 * 1024,
         protected_branches=["main", "master", "release/*"],
     )
+    policy = policy_plugin.handle()
 
     builder = (
         kelir.builder(
@@ -470,13 +469,8 @@ async def build_runtime(
         )))
     )
 
-    # ── CUSTOM PLUGIN + TYPED HANDLE ────────────────────────────────────
-    #
-    # `plugin_with_handle` returns `(self, handle)`. If the line is
-    # removed, the handler closures below have no `policy` to capture
-    # → NameError at import time. That is the Python expression
-    # of §6's "downstream handlers fail to compile".
-    builder, policy = builder.plugin_with_handle(policy_plugin)
+    # ── CUSTOM PLUGIN: fluid registration ───────────────────────────────
+    builder = builder.plugin(policy_plugin)
 
     # ── EXEC GRAPH (§4.3, §12.5) ─────────────────────────────────────────
     def _register_handlers(cmd: kelir.ExecChain) -> None:

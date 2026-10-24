@@ -1,8 +1,7 @@
 # ILLUSTRATIVE EXCERPT — not standalone-executable.
 #
-# Demonstrates Python SDK's assembly-time closure validation + Pydantic v2.
-# Builder inspects closure freevars during .exec(); unbound references
-# raise KelirConfigurationError before hypervisor boots.
+# Demonstrates Python SDK's fluent builder + Pydantic v2 validation.
+# Host holds instantiated plugin reference; handlers read c.policy.
 # SyntheticFile: FUSE-presented paths with no host backing file.
 # Verification Reject: Decision.deny returns a POSIX errno.
 #
@@ -18,23 +17,15 @@ class FixWebhookParams(BaseModel, frozen=True):
     issue_id: str
 
 
-# 1. Composite plugin tree unpacked at assembly time
-class SecurityBundle:
-    def __init__(self, policy: RepoPolicyPlugin):
-        self.policy = policy
+# 1. Caller instantiates plugin reference directly
+policy = RepoPolicyPlugin()
 
-    def unpack(self, builder, scope=None):
-        builder, policy_h = builder.plugin_with_handle(self.policy, scope=scope)
-        return builder, policy_h
+# 2. Fluid builder chain returns only Builder
+builder = kelir.builder(vcpus=4, memory_mb=4096).use(policy)
 
-# 2. Builder consumes composite bundle and captures typed handle
-builder = kelir.builder(vcpus=4, memory_mb=4096)
-builder, policy = builder.use_composite(SecurityBundle(RepoPolicyPlugin()))
-
-
-# 2. Handler captures handle via closure
-async def commit_gate(_c: HandlerContext) -> Decision:
-    if policy.violations > 0:
+# 3. Handler reads typed plugin state directly from context c
+async def commit_gate(c: HandlerContext) -> Decision:
+    if c.policy.violations > 0:
         return Decision.deny(1, f"EPOLICY: {policy.violations} violation(s)")
     return Decision.resume()
 

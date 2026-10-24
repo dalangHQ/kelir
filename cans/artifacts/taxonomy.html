@@ -438,9 +438,9 @@
                               ]}
                             ]},
                             { "id": "kelir-sdks", "name": "SDK Trio", "rank": "leaf", "desc": "N-native design. Parity enforced by vectors.json + AST manifest diff.", "children": [
-                              { "id": "sdk-rust", "name": "Rust SDK", "rank": "leaf", "desc": "Typestate builder (KelirBuilder<Unset> → KelirBuilder<WithPlugin>). Serde zero-allocation validation. Borrow-checker verified handle injection.", "children": [] },
+                              { "id": "sdk-rust", "name": "Rust SDK", "rank": "leaf", "desc": "Typestate builder (KelirBuilder<Unset> → KelirBuilder<WithPlugin>). Serde zero-allocation validation. Borrow-checker verified typestate.", "children": [] },
                               { "id": "sdk-ts", "name": "TypeScript SDK", "rank": "leaf", "desc": "TypeBox AOT schema push-down. AOT hook fusion into single flat closure. Exactly 1 NAPI trampoline per matched ring event. Generic context accumulation.", "children": [] },
-                              { "id": "sdk-py", "name": "Python SDK", "rank": "leaf", "desc": "RAII async with builder as session (__aenter__ boots, __aexit__ guarantees terminate). Pydantic v2 frozen=True. Builder inspects closure freevars against mounted handles.", "children": [] }
+                              { "id": "sdk-py", "name": "Python SDK", "rank": "leaf", "desc": "RAII async with builder as session (__aenter__ boots, __aexit__ guarantees terminate). Pydantic v2 frozen=True. Builder inspects closure freevars against mounted plugins.", "children": [] }
                             ]},
                             { "id": "kelir-drivers", "name": "Driver Backends (6)", "rank": "leaf", "desc": "Every backend implements every primitive; optional primitives are not part of the trait.", "children": [
                               { "id": "driver-rustvmm", "name": "driver-rustvmm", "rank": "leaf", "desc": "Linux bare-metal KVM + userfaultfd CoW + CUDA CDI via kvm-ioctls. Bans vmm-sys-util; implements raw eventfd and epoll primitives.", "children": [] },

@@ -31,7 +31,7 @@
       - Foreign handlers cross FFI at most once per event
     - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
     - Language surfaces
-      - Rust: borrow-checker verified handle injection, zero-cost Serde
+      - Rust: borrow-checker verified typestate, zero-cost Serde
       - TypeScript: generic context accumulation, TypeBox schema guards
       - Python: RAII context managers, Pydantic v2 validation
     - Scoping: all SDKs support ring, binary, and path filters at mount point
@@ -76,14 +76,14 @@
     - async with builder as session
       - __aenter__ boots microVM
       - __aexit__ guarantees session.terminate() on any exception
-    - Builder assembly inspects closure freevars against mounted handles
+    - Builder assembly inspects closure freevars against mounted plugins
     - Unbound closure references raise KelirConfigurationError before boot
-    - Composite plugins unpack nested handles atomically before boot
+    - Composite plugins unpack nested plugins atomically before boot
     - Pydantic v2 BaseModel with frozen=True
       - Field(pattern=r"^fix-webhook$")
       - Raises EINVAL before hook evaluation
-    - builder, handle = builder.plugin_with_handle(RepoPolicyPlugin())
-      - Missing assignment → NameError at import time
+    - policy = RepoPolicyPlugin(); builder.use(policy)
+      - Host retains direct reference; hooks receive c.policy
     - Mount scoping via kwargs: rings=..., binaries=..., paths=...
   - Full-surface examples
     - see: artifacts/examples/autonomous-swe-agent.rs
@@ -98,7 +98,7 @@
       - All three evidence verification tiers
       - All lifecycle hypervisor primitives: see: 07-lifecycle.md
     - Not transliterations: each uses language-idiomatic constructs
-      - Rust: async-trait, JoinSet, Arc<Mutex<>> handles
+      - Rust: async-trait, JoinSet, Arc<Mutex<>> states
       - TypeScript: Promise.all fan-out, generic inference
       - Python: asyncio.gather, async with, Pydantic v2
   - Oracle contract

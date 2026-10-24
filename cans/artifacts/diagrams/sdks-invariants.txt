@@ -11,8 +11,8 @@
 │              │ `c.pluginKey` fails `tsc` if       │ compiles to native Rust validator; │ `.error()` maps host exceptions to │
 │              │ `.use()` is absent upstream        │ invalid payload drops in Gate 2    │ POSIX errnos before crash/abort    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ Python       │ `plugin_with_handle()` yields typed│ Pydantic `BaseModel` on `spawn()`  │ `async with` __aexit__ terminates; │
-│              │ handle instance; missing handle    │ raises `EINVAL` before hook        │ Import-time + perimeter validation │
-│              │ fails closures at import time      │ evaluation                         │                                    │
+│ Python       │ Pre-instantiated plugin reference; │ Pydantic `BaseModel` on `spawn()`  │ `async with` __aexit__ terminates; │
+│              │ `c.plugin` and `session.plugin`    │ raises `EINVAL` before hook        │ Import-time + perimeter validation │
+│              │ projected automatically            │ evaluation                         │                                    │
 └──────────────┴────────────────────────────────────┴────────────────────────────────────┴────────────────────────────────────┘
 AOT hook fusion: NAPI/PyO3 pipeline handlers fuse to one native closure per event.

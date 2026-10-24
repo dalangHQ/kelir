@@ -5,13 +5,11 @@
 //! (`kelir-core` + first-class plugins), written to be consumed directly
 //! (not through the napi/pyo3 bindings, which are for TS/Python consumers).
 //!
-//! Two invariants the TS chain buys via generic type accumulation are
-//! enforced here by the borrow checker instead:
+//! Key runtime guarantees enforced natively:
 //!
-//!   1. `plugin_with_handle(P)` returns `(Self, P::Handle)`. If you remove
-//!      the plugin from the chain, the typed handle is never produced, and
-//!      every handler closure that captures it fails to *compile*. This is
-//!      the Rust analogue of §6's "downstream handlers fail to compile".
+//!   1. Fluent builder chaining: `.plugin()` returns `Builder` directly;
+//!      capabilities project onto `c.policy()` and `session.policy()`,
+//!      while pre-boot host access is held via the instantiated handle.
 //!
 //!   2. `spawn().params::<P>(…)` requires `P: Deserialize`, and the runtime
 //!      deserializes the incoming JSON into `P` before any handler fires —
@@ -45,7 +43,7 @@ use kelir::{
     handler, Decision, DriverChoice, FinalizeRequest, FsReconcileRequest, HandlerCtx,
     KelirBuilder, PostExecAction, Session, SnapshotDescriptor, StepSlot, VmConfig,
     oracle::{IntentAnalysis, Oracle},
-    plugin::{KelirPlugin, PluginError, PluginWithHandle},
+    plugin::{KelirPlugin, PluginError},
     plugins::{
         chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
         ledger::{FinalReceipt, LedgerConfig, LedgerPlugin, OtelConfig, ReceiptConfig},
@@ -138,9 +136,8 @@ impl RepoPolicyPlugin {
     }
 }
 
-impl PluginWithHandle for RepoPolicyPlugin {
-    type Handle = RepoPolicyHandle;
-    fn handle(&self) -> Self::Handle {
+impl RepoPolicyPlugin {
+    pub fn handle(&self) -> RepoPolicyHandle {
         RepoPolicyHandle {
             state: Arc::clone(&self.state),
             protected: Arc::new(self.opts.protected_branches.clone()),
@@ -219,6 +216,7 @@ async fn build_runtime(
         max_diff_bytes: 64 * 1024,
         protected_branches: vec!["main".into(), "master".into(), "release/*".into()],
     });
+    let policy = policy_plugin.handle();
 
     // Snoop closure — does NOT capture `session`; uses only the `HandlerCtx`
     // it receives, whose `ledger` field is bound by `LedgerPlugin` below.
@@ -364,13 +362,8 @@ async fn build_runtime(
             },
         }));
 
-    // ── CUSTOM PLUGIN + its typed handle, atomically ────────────────────
-    //
-    // `plugin_with_handle` returns `(Self, RepoPolicyHandle)`. If this line
-    // is removed, the subsequent `.exec(...)` block cannot capture `policy`
-    // → the downstream handler closures fail to compile. That is the Rust
-    // expression of §6's "downstream handlers fail to compile" invariant.
-    let (builder, policy) = builder.plugin_with_handle(policy_plugin);
+    // ── CUSTOM PLUGIN: fluid registration ───────────────────────────────
+    let builder = builder.plugin(policy_plugin);
 
     // ── EXEC GRAPH (§4.3, §12.5) ────────────────────────────────────────
     let builder = builder.exec({

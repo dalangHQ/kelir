@@ -1,7 +1,7 @@
 // ILLUSTRATIVE EXCERPT — not standalone-compilable.
 //
 // Demonstrates Rust SDK's typestate builder pattern:
-// Handlers requiring policy can only be mounted on a builder possessing WithPolicy.
+// Builder chains stay fluid; capabilities project directly onto HandlerCtx.
 // SyntheticFile: FUSE-presented paths with no host backing file.
 // Verification Reject: Decision::deny returns a POSIX errno.
 //
@@ -30,9 +30,9 @@ impl CompositePlugin for WorkspaceBundle {
     }
 }
 
-// 2. Typestate transition: Builder<Init> -> Builder<WithPolicy> via composite unpack
+// 2. Fluid builder assembly: .with_composite() returns Builder directly
 let scope = MountScope::default().with_devices([VirtioDevice::Vsock, VirtioDevice::Fs]);
-let (builder, policy) = builder.with_composite(
+let builder = builder.with_composite(
     WorkspaceBundle { policy: RepoPolicyPlugin::new(options) },
     scope,
 );

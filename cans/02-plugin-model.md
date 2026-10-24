@@ -128,17 +128,17 @@
     - Handler-visible keys; each key's definition lives at its owning plane
     - Invariant: core runtime carries zero hardcoded plugin context keys
     - Host context carries typed extension map for plugin-contributed data
-    - Language SDKs accumulate context keys via phantom types or handles
+    - Language SDKs accumulate context keys via phantom types or plugins
     - Core-provided (always present)
       - c.trap, c.env, c.vm, c.step, c.receipt()
     - Context key lifecycle
-      - Static decoration via decorate(): handles bound once at VM boot
+      - Static decoration via decorate(): states bound once at VM boot
       - Lazy derivation via derive(): computes telemetry only on handler access
     - Plugin-provided (accumulated strictly by SDK builder at compile/type time)
-      - Plugin handles map to typed properties on the accumulated context
+      - Plugin states map to typed properties on the accumulated context
       - Unmounted plugin key dereference fails compile or import time
-    - User-provided via typed handle
-      - c.<key> from .decorate() / PluginWithHandle / BasePlugin.handle()
+    - User-provided via plugin registration
+      - c.<key> from .decorate() or instantiated plugin state
   - First-class plugins
     - Minimum set: pty, vfs, wire, chaos, ledger
     - Behavior of each: at its plugin file
@@ -204,8 +204,8 @@
     - Parity enforcement: see: 11-operations.md#Multi-language-parity-gate
     - Same first-class plugins in Rust, TypeScript, Python, maintained 1:1
     - Trait surface and hook semantics identical across languages
-    - Typed-handle mechanism, realized per language
-      - Rust: PluginWithHandle::Handle; missing builder call → E0425
-      - TypeScript: createPlugin().state().decorate(); no .use() → tsc error
-      - Python: BasePlugin[Handle] + handle(); no handle → NameError at import
+    - Context & session projection, realized per language
+      - Rust: builder.plugin(p); context c.p() and session.p() projected
+      - TypeScript: builder.use(p); context c.p and session.p inferred
+      - Python: builder.use(p); context c.p and session.p exposed
     - All three realize the same 02-plugin-model.md#Core-context-keys contract
