@@ -1,13 +1,14 @@
 // crates/kelir-plugins/plugin-vfs/src/reconciler.rs
 //
-// Atomic Workspace Reconciler: stages upperdir changes into an isolated
-// staging tree and executes an atomic workspace exchange into the host
-// workspace: one rename swaps the staged tree in; the live workspace is
-// never mutated in place. Zero-dependency implementation using std only.
+// Diff-only atomic reconciler: scans guest tmpfs upperdir, resolves
+// overlayfs whiteouts (char devices st_rdev == 0 and opaque dirs),
+// applies file mutations via atomic temporary swaps, and never duplicates
+// unmodified base workspace files.
 //
 // Canonical spec home: cans/05-storage-plane.md#Atomic-workspace-staging
 
 use std::fs;
+use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -23,66 +24,59 @@ pub async fn reconcile_upperdir(
 ) -> Result<CommitStats, std::io::Error> {
     let mut stats = CommitStats::default();
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let staging_dir = host_target.with_extension(format!("staging.{:x}", nonce));
-
-    if host_target.exists() {
-        copy_dir_tree(host_target, &staging_dir)?;
-    } else {
-        fs::create_dir_all(&staging_dir)?;
-    }
-
-    reconcile_recursive(upperdir, upperdir, &staging_dir, &mut stats)?;
-
-    // Atomic workspace exchange into live workspace
-    fs::rename(&staging_dir, host_target)?;
+    reconcile_diff(upperdir, upperdir, host_target, nonce, &mut stats)?;
 
     // Scoped flush of parent directory metadata
-    if let Some(parent) = host_target.parent() {
-        let f = fs::File::open(parent)?;
+    if host_target.exists() {
+        let f = fs::File::open(host_target)?;
         f.sync_all()?;
     }
 
     Ok(stats)
 }
 
-fn reconcile_recursive(
-    root: &Path,
+fn reconcile_diff(
+    upper_root: &Path,
     current: &Path,
-    staging_root: &Path,
+    host_target: &Path,
+    nonce: u128,
     stats: &mut CommitStats,
 ) -> Result<(), std::io::Error> {
     for entry in fs::read_dir(current)? {
         let entry = entry?;
         let path = entry.path();
-        let rel_path = path.strip_prefix(root).unwrap();
-        let staged_target = staging_root.join(rel_path);
+        let rel_path = path.strip_prefix(upper_root).unwrap();
+        let target_path = host_target.join(rel_path);
         let file_type = entry.file_type()?;
 
+        // Overlayfs file deletion: char device with st_rdev == 0
+        if file_type.is_char_device() {
+            let meta = entry.metadata()?;
+            if meta.rdev() == 0 {
+                if target_path.is_file() || target_path.is_symlink() {
+                    fs::remove_file(&target_path)?;
+                    stats.whiteouts_resolved += 1;
+                } else if target_path.is_dir() {
+                    fs::remove_dir_all(&target_path)?;
+                    stats.whiteouts_resolved += 1;
+                }
+                continue;
+            }
+        }
+
         if file_type.is_dir() {
-            fs::create_dir_all(&staged_target)?;
-            reconcile_recursive(root, &path, staging_root, stats)?;
+            if !target_path.exists() {
+                fs::create_dir_all(&target_path)?;
+            }
+            reconcile_diff(upper_root, &path, host_target, nonce, stats)?;
         } else if file_type.is_file() {
-            if let Some(parent) = staged_target.parent() {
+            if let Some(parent) = target_path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::copy(&path, &staged_target)?;
+            let tmp_swap = target_path.with_extension(format!("tmp.{:x}", nonce));
+            fs::copy(&path, &tmp_swap)?;
+            fs::rename(&tmp_swap, &target_path)?;
             stats.files_changed += 1;
-        }
-    }
-    Ok(())
-}
-
-fn copy_dir_tree(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let path = entry.path();
-        let target = dst.join(entry.file_name());
-        let file_type = entry.file_type()?;
-        if file_type.is_dir() {
-            fs::create_dir_all(&target)?;
-            copy_dir_tree(&path, &target)?;
-        } else {
-            fs::copy(&path, target)?;
         }
     }
     Ok(())

@@ -56,14 +56,11 @@
       - Zero hand-rolled parser state; evaluates raw byte streams directly
     - Token Shield
       - Ceilings: maxBytesTotal (e.g. 64KB), maxLinesTotal (e.g. 300)
-      - Clamps by token ceiling via pluggable TokenCounter trait
-      - Default ratio heuristic: 3.5 chars/token; zero tokenizer bloat
-      - clampStrategy: head-and-tail (keep first 50 + last 100 lines)
-      - onClamp callback returns truncation notice with droppedBytes/droppedLines
-      - Boundary-safe clamping
-        - Scans backward up to 4 bytes to find leading UTF-8 code-point
-        - Scans backward to unclosed CSI/OSC start; appends reset sequence
-        - Zero-allocation scan ensures glyphs and escape sequences survive intact
+      - Clamps completed lines from VT100 scrollback grid
+      - Never slices raw byte streams or active escape sequences
+      - Injects truncation notices inside DECSTBM status margins
+      - Appends \x1b[0m reset sequence preserving cursor coordinates
+      - Prevents ANSI state machine corruption in curses and full-screen TUIs
       - Protects LLM context window from runaway logs and stack traces
     - Disclosure annotation
       - Host-side pipeline

@@ -1,10 +1,10 @@
 // crates/kelir-interface/src/codec.rs
 //
-// Frame header for host↔guest transport over vsock:5252.
+// Little-Endian Frame header for host↔guest transport over vsock:5252.
 //
 // Owned by: cans/09-protocol.md#Wire-framing
 
-// Wire header layout (24 bytes, MSB-first bit numbering):
+// Wire header layout (24 bytes, Little-Endian bit numbering):
 //
 //  0                   1                   2                   3
 //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -26,10 +26,12 @@
 pub const MAGIC: u16 = 0x4B45;     // 'KE'
 pub const VERSION: u16 = 0x04;
 pub const HEADER_LEN: usize = 24;
+pub const MAX_FRAME_PAYLOAD: usize = 64 * 1024; // 64KB strict boundary
+
+pub const FLAG_CONTINUATION: u16 = 0x0001;
 
 // Packed layout, exactly 24 bytes, matching the diagram above:
-// 6 x u16 (magic, version, channel, type, flags, reserved) = 12,
-// sequence (u64) = 8, payload_len (u32) = 4. No padding bytes.
+// All multi-byte integers encoded in Little-Endian byte order.
 #[repr(C, packed)]
 pub struct FrameHeader {
     pub magic: u16,

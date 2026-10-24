@@ -15,7 +15,8 @@
   - CoW fork
     - Driver primitive: fork returns Box<dyn VmmDriver> in <15ms
     - KVM path: userfaultfd + KVM memory cloning
-    - HVF path: memory-mapped page duplication
+    - HVF path: Stage-2 translation table write protection (hv_vm_protect)
+    - Host runtime calls fork_state() to isolate plugin states per branch
     - Children share warm parent memory
       - Warmed compilers, loaded dependencies, in-process caches
     - Host RAM dirtied only on child write
@@ -32,6 +33,7 @@
   - Rollback
     - Driver primitive: rollback reverts in <8ms
     - Reverts guest memory, registers, and tmpfs overlay diffs
+    - HVF path: resets Stage-2 translation table roots to snapshot base
     - Used by HandlerCtx post-exec on post-condition violation
     - Does not touch host SSD or Merkle WAL
     - Veto: Rollback (observation)

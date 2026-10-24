@@ -19,6 +19,8 @@ pub struct TrapEvent {
     pub pid: u32,
     pub ppid: u32,
     pub task_id: u64,
+    /// Anti-cyclic rewrite counter. Exceeding 3 aborts task with ECYCLICREWRITE.
+    pub rewrite_count: u8,
     pub binary_path: String,
     pub binary_blake3: [u8; 32],
     pub argv: Vec<String>,
@@ -96,6 +98,11 @@ pub enum HostToGuest {
     /// See cans/04-terminal-plane.md#Disclosure
     Disclosure {
         body: Vec<u8>,
+    },
+    /// Paravirtualized signing service response over vsock Channel 2
+    SignatureResult {
+        seq: u64,
+        signature: Vec<u8>,
     },
 }
 

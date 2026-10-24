@@ -15,9 +15,16 @@
     - Terminates guest L7 protocols at host boundary
     - Re-originates requests from host side
     - L7 proxy mechanics: see: plugins/wire.md
+  - Paravirtualized signing gateway (wire plane)
+    - Guest forwards canonical unhashed requests over vsock Channel 2
+    - Host signs payloads with real keys (SigV4, HMAC, Stripe signatures)
+    - Cryptographic signatures stay valid without exposing keys to guest
   - Frame drop and forward semantics
-    - Ok(()) on outbound = forward; Ok(()) on inbound = deliver
+    - Ok(Allow) on outbound = forward; Ok(Allow) on inbound = deliver
+    - Ok(YieldToHost) = yield frame to host for async policy
     - Err(Reject) = silent drop (no RST, no guest error)
+    - Admission match order: TLS SNI -> HTTP Host -> Destination IP
+    - Mismatched SNI and HTTP Host headers drop as domain fronting
     - Default forward: frames pass unless a mounted plugin returns
       PluginError::Reject (silent drop)
   - Connection parking

@@ -6,7 +6,9 @@
       - Host workspace mounted read-only as lower overlay layer
       - Guest modifications isolated to volatile tmpfs upperdir
       - FUSE dispatch journal tracks deletions and node overwrites in memory
-      - Host sync consumes memory journal without parsing raw overlayfs whiteouts
+      - Reconciler scans upperdir diffs only; base files never duplicated
+      - Whiteout char devices (st_rdev == 0) trigger host file unlink
+      - Opaque directories (trusted.overlay.opaque) purge host directory trees
     - Deterministic 64-bit metadata hash for OCC fences
     - Hashes device, inode, generation counter, and mode in O(1) time
     - Zero payload hashing on file open across all inode types
@@ -21,11 +23,9 @@
     - All writes stay in-memory until explicit reconcile
     - Instant revert: drop overlayfs upperdir in ~1ms, host SSD untouched
   - Atomic workspace staging
-    - Reconciler stages modifications into an isolated temporary sibling directory
-    - Applies file creations and directory mutations to staged subtree
-    - Swaps staging tree into host workspace via atomic directory exchange
-    - Scoped fsync flushes updated file descriptors and parent directory
-    - Unfinished staging trees discard cleanly on crash recovery
+    - Writes modified files to sibling temporary files (.tmp.<nonce>)
+    - Atomic rename swaps updated files directly over host target paths
+    - Parent directory fsync flushes updated inodes to disk
   - Secondary image mounts
     - Grafts host-opened squashfs/EROFS images into guest VFS namespace
     - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE

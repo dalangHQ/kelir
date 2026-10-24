@@ -2,10 +2,10 @@
                                         │
            ┌────────────────────────────┼────────────────────────────┐
            ▼                            ▼                            ▼
-  [1. L7 FORWARD PROXY]       [2. NON-HTTP L4 SOCKS5]      [3. GIT-OVER-SSH GATE]
-  Terminates guest TLS under   Terminates DB connections    Bridges guest SSH
-  the per-session CA; swaps    (Postgres/Redis/MySQL);      to host SSH-Agent via
-  vault placeholders in-       injects mTLS & dynamic certs. vsock. Enclave signing.
+  [1. L7 PROXY & SIGNING GATE][2. NON-HTTP L4 SOCKS5]      [3. GIT-OVER-SSH GATE]
+  Terminates TLS via CA cert;  Terminates DB connections    Bridges guest SSH
+  vsock Ch 2 sidecar signs     (Postgres/Redis/MySQL);      to host SSH-Agent via
+  SigV4/HMAC payloads.         injects mTLS & dynamic certs. vsock. Enclave signing.
   transit. Scrubs responses.
                                         │
                                         ▼

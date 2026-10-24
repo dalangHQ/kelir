@@ -116,7 +116,7 @@ kelir/
 │   │   │   │   ├── test_ghost.rs
 │   │   │   │   ├── test_idmap.rs
 │   │   │   │   ├── test_lock_broker.rs
-│   │   │   │   └── test_write_gating.rs# on_vfs_write: Ok allows, Reject denies with errno
+│   │   │   │   └── test_write_gating.rs# on_vfs_write: Ok(Allow) allows, Reject denies with errno
 │   │   │   └── fixtures/overlay/      # Synthetic upperdirs
 │   │   ├── plugin-wire/               # Zero-Knowledge credential proxy & DNS Sinkhole
 │   │   │   ├── Cargo.toml

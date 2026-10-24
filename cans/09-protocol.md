@@ -4,7 +4,7 @@
     - Binary channel framing isolates sub-protocols via channel_id
       - Channel 0: Syscall traps and VM lifecycle control
       - Channel 1: Ingress port-forwarding and connection proxying
-      - Channel 2: Multiplexed binary RPC services, 24-byte framing
+      - Channel 2: Paravirtualized signing gateway and binary RPC
     - Eliminates multi-port socket allocation and port collisions
   - Trap fast-path
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
@@ -29,19 +29,24 @@
       - Layer 3 removal: LD_PRELOAD rootkits and encrypted argv payloads
         pass through untouched
     - Measurement rule
+      - Monotonic rewrite_count increments per trap rewrite
+      - rewrite_count exceeding 3 aborts execution with ECYCLICREWRITE
       - Host evaluates Shannon entropy on argv[1:]: keeps shim lean
       - Flag threshold: Host entropy > 5.2 flags encrypted/base64 payloads
       - Allowlist bypass: entropy_bypass_paths skips check for trusted runners
       - Permits high-entropy base64 arguments for node, python, and runners
       - ELF is read from disk at trap time: /proc/$PID/maps still describes
         the pre-exec image and cannot be trusted
+      - Scans /proc/$PID/auxv, envp, and PT_INTERP before cgroup unfreeze
     - Flow diagram: see: artifacts/diagrams/trap-flow.txt
     - Fast-path policy: TBD
   - Wire framing
     - see: artifacts/code/wire-protocol.rs
     - Layout (header offsets, magic, version): see: artifacts/code/wire-protocol.rs
     - Framing invariants
-      - One frame = one message; no message spans frames
+      - Frame fields follow strict Little-Endian byte order
+      - Maximum single frame payload capped at 64KB
+      - Payloads exceeding 64KB split across frames using FLAG_CONTINUATION
       - Monotonic 64-bit sequence transmitted natively without word splitting
       - Codec reads exact 24-byte FrameHeader; payload decodes directly
     - Framing gaps: TBD

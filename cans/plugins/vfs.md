@@ -18,12 +18,15 @@
       - session.fs.reconcile() is a pure storage-plane operation
       - Lifecycle hook bindings
         - on_pre_commit flushes in-flight FUSE buffers
-        - on_post_commit triggers atomic staging swap into host workspace
-      - Algorithm: see: 05-storage-plane.md#Atomic-workspace-staging
+        - on_post_commit triggers sibling swap (.tmp.<nonce>) into host workspace
+      - Scans tmpfs upperdir diffs only; base files remain untouched
+      - Overlayfs char devices (st_rdev == 0) trigger host file unlinks
+      - Opaque directory xattrs (trusted.overlay.opaque) purge host subtrees
+      - Atomic sibling file swap (.tmp.<nonce>) and parent fsync
       - Whiteout problem
         - Deleted files become char devices with major/minor 0/0 (mknod c 0 0)
         - Deleted or shadowed directories carry xattr trusted.overlay.opaque="y"
-        - Naive upperdir copy writes unusable device nodes and resurrects dirs
+        - Direct upperdir copy writes broken device nodes and resurrects files
       - CommitStats counters
         - files_changed: count of modified or newly created files
         - whiteouts_resolved: count of file and directory whiteouts handled

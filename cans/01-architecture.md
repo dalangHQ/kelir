@@ -121,9 +121,9 @@
       - Every device below earns its millisecond against that budget
     - Device allocations: see: artifacts/diagrams/guest-vm.txt
     - Page size dynamic boot selection
-      - 4KB kernel fixture: Linux x86_64, standard ARM64, Raspberry Pi 4
-      - 16KB kernel fixture: Apple Silicon ARM64, Raspberry Pi 5, Android 15
-      - Host getpagesize() selects matching vmlinux image before cold boot
+      - 4KB guest MMU mapping standard across x86_64 and ARM64
+      - ARM64 Stage-2 tables configure 4KB leaf pages on 16KB host RAM
+      - Eliminates binary alignment faults for standard distro packages
     - Isolation boundary
       - Standard system init reaps orphan processes
       - In-kernel eBPF and seccomp filters trap monitored syscalls
@@ -150,7 +150,8 @@
     - Capability matrix: TBD
     - driver-rustvmm: Linux bare-metal KVM + userfaultfd CoW + CUDA CDI via kvm-ioctls
       - Bans vmm-sys-util; implements raw eventfd and epoll primitives
-    - driver-hvf: macOS native Apple Silicon HVF via zero-dep Hypervisor.framework FFI
+    - driver-hvf: macOS native Apple Silicon HVF via Hypervisor.framework
+      - Stage-2 write-protect fault trapping for <15ms CoW and <8ms rollback
     - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET scoped strictly to windows-sys
     - driver-avf: Android Virtualization Framework via /dev/avf and pKVM
     - driver-bwrap: unprivileged Linux user namespaces via libc; bans nix crate

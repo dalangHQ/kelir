@@ -7,6 +7,9 @@
     - Interactive channel preserves isatty(1) and raw mode
     - Streaming ring buffers route directly to host supervisor memory
     - Terminal evidence uses Three-tier evidence verification model
+    - VT100 parser grid monitors virtual screen and scrollback rows
+    - Token Shield clamps scrollback rows, never mid-stream raw bytes
+    - Truncation notices inject ANSI resets inside DECSTBM status margins
   - Window resize
     - Pipeline mechanics: see: artifacts/diagrams/terminal-pipeline.txt
     - Live resize hook: on_window_resize is observation-only

@@ -19,6 +19,8 @@
   - Two-tier execution architecture
     - Native tier
       - Compiled native Rust plugins in crates/kelir-plugins
+      - Synchronous fast-path filters execute on VirtIO rings at <1µs
+      - Returns SyncVerdict::Allow or yields to host via SyncVerdict::YieldToHost
       - Direct memory execution on 4 VirtIO rings at sub-12µs latency
       - High-frequency mutation: raw PTY ANSI, FUSE CoW, TAP L2 frames
     - Foreign tier
@@ -91,6 +93,7 @@
     - Deduplication: identical name() instances merge; deepest config wins
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
     - Zero-cost null objects: disabled plugins retain types, cost zero in core
+    - fork_state() deep-clones state instances during session.vm.fork()
     - Native zero-WASM isolation: compile-time linear capability tokens
     - Immutable &[u8] slice views prevent cross-plugin heap tampering
     - Hardware MPK page keys isolate per-plugin memory domains in-process

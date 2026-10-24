@@ -43,7 +43,7 @@ use kelir::{
     handler, Decision, DriverChoice, FinalizeRequest, FsReconcileRequest, HandlerCtx,
     KelirBuilder, PostExecAction, Session, SnapshotDescriptor, StepSlot, VmConfig,
     oracle::{IntentAnalysis, Oracle},
-    plugin::{KelirPlugin, PluginError},
+    plugin::{KelirPlugin, PluginError, SyncVerdict},
     plugins::{
         chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
         ledger::{FinalReceipt, LedgerConfig, LedgerPlugin, OtelConfig, ReceiptConfig},
@@ -90,7 +90,7 @@ pub struct RepoPolicyOptions {
     pub protected_branches: Vec<String>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct RepoPolicyState {
     violations: usize,
     current_branch: String,
@@ -177,19 +177,26 @@ impl KelirPlugin for RepoPolicyPlugin {
     }
 
     // ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
-    async fn on_vfs_write(
-        &self, path: &Path, data: &[u8],
-    ) -> Result<(), PluginError> {
+    fn on_vfs_write(
+        &self, path: &Path, data: &[u8], _pid: u32, _ctx: &HandlerCtx,
+    ) -> Result<SyncVerdict, PluginError> {
         if path.extension().is_some_and(|e| e == "diff")
             && data.len() > self.opts.max_diff_bytes
         {
-            self.handle().record_violation().await;
+            self.state.blocking_lock().violations += 1;
             return Err(PluginError::Reject {
                 errno: "ENOSPC".into(),
                 reason: "diff exceeds policy ceiling".into(),
             });
         }
-        Ok(())
+        Ok(SyncVerdict::Allow)
+    }
+
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn KelirPlugin> {
+        Box::new(Self {
+            opts: self.opts.clone(),
+            state: Arc::new(Mutex::new(self.state.blocking_lock().clone())),
+        })
     }
 
     /// on_disclosure: append policy trace to every mandatory notice.

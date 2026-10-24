@@ -33,6 +33,11 @@
         - on_vm_ready injects every registered vault key into guest env
         - Placeholder URN is the only value that ever exists inside the guest
         - Real secret crosses wire plane exclusively on host side
+    - Paravirtualized signing gateway
+      - Mediates cryptographic requests (AWS SigV4, HMAC, Stripe signatures)
+      - Unhashed canonical payload streams over vsock Channel 2
+      - Host signs using real host keyring; returns header signature
+      - Real secret never enters guest address space
       - TLS interception contract
         - plugin-wire generates ephemeral per-session root CA at boot
         - CA mounted into guest trust store /etc/ssl/certs as overlayfs synthetic inode
@@ -51,7 +56,9 @@
       - Destination pinning: TBD
     - SSH gate: see: artifacts/diagrams/wire-plane.txt
     - DNS sinkhole: see: artifacts/diagrams/wire-plane.txt
-    - Admission semantics: TBD
+    - Admission semantics
+      - Admission priority: TLS SNI -> HTTP Host -> Destination IP
+      - Mismatched SNI and HTTP Host dropped as domain fronting
       - Allowlist match key: SNI vs Host vs IP
       - Redirect handling
       - Alternative L4/L7 protocol admission: QUIC, DoH/DoT, raw sockets, ICMP, IPv6

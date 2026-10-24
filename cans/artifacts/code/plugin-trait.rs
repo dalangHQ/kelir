@@ -138,6 +138,14 @@ impl MountScope {
     }
 }
 
+/// Synchronous verdict on hot-path VirtIO rings (Fs, Net).
+/// Eliminates async allocation and libuv/asyncio event loop overhead on the fast path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncVerdict {
+    Allow,
+    YieldToHost(u64),
+}
+
 /// Assembly-time composite plugin tree unpacked into flat dispatch entries before boot.
 pub trait CompositePlugin: Send + Sync {
     fn unpack(self: Box<Self>, parent_scope: &MountScope) -> Vec<(Box<dyn KelirPlugin>, MountScope)>;
@@ -224,6 +232,9 @@ pub trait KelirPlugin: Send + Sync {
     /// Missing targets or circular dependencies abort with EConfig.
     fn requires(&self) -> &'static [&'static str] { &[] }
 
+    /// Deep-clones plugin state when session.vm.fork() creates a CoW child.
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn KelirPlugin>;
+
     // ─── 1. MicroVM Lifecycle ────────────────────────────────────
     async fn on_vm_init(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
     async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
@@ -272,17 +283,16 @@ pub trait KelirPlugin: Send + Sync {
     // ─── 4. Storage Plane (virtio-fs) ────────────────────────────
     async fn on_vfs_lookup(&self, _path: &Path) -> Result<Option<VfsInodeAttr>, PluginError> { Ok(None) }
     async fn on_vfs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
-    /// Ok(()) = allow; Err(Reject{errno}) = deny.
-    /// See cans/05-storage-plane.md#Write-gating
-    async fn on_vfs_write(
+    /// Synchronous hot-path inspection. Returns Ok(Allow) or Ok(YieldToHost) before write applies.
+    fn on_vfs_write(
         &self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx,
-    ) -> Result<(), PluginError> { Ok(()) }
+    ) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
 
     // ─── 5. Wire Plane (virtio-net) ──────────────────────────────
-    /// Ok(()) = forward. Err(Reject) = silent drop (no RST, no guest error).
-    async fn on_net_outbound(&self, _frame: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
-    /// Ok(()) = deliver. Err(Reject) = silent drop.
-    async fn on_net_inbound(&self, _frame: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
+    /// Synchronous L2 outbound inspection.
+    fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
+    /// Synchronous L2 inbound inspection.
+    fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
 }
 
 /// Trait marker for foreign runtime plugin proxies bridging V8 and Python.
