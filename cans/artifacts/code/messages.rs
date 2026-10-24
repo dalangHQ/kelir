@@ -99,7 +99,8 @@ pub enum HostToGuest {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+/// Monotonic decision lattice: Allow < Rewrite < Deny < Abort.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrapAction {
     /// Resume the syscall untouched. Registers and memory are never modified.
     Allow,
@@ -118,6 +119,7 @@ pub enum TrapAction {
         stderr_message: String,
     },
     /// See cans/09-protocol.md#Env-injection
+    /// Injected env keys must remain disjoint across handlers; collisions raise EAmbiguousMutation.
     Rewrite {
         new_binary: String,
         new_argv: Vec<String>,

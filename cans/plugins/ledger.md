@@ -45,7 +45,8 @@
       - Session accessor `get_causal_delta_from_parent()` requires
         plugin-ledger mounted; unmounted sessions do not expose it
       - Causal delta definition: see: 08-epistemic.md#Causal-delta
-      - CausalDelta computation: TBD
+      - CausalDelta computation: diffs physical RAM and inode journals
+      - Binds ExecutionReceipt causal_token_id into Merkle WAL records
   - Error and return semantics (ledger)
     - Hook signature (ledger): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (ledger): TBD

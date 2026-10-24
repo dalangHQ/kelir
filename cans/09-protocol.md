@@ -64,12 +64,14 @@
     - Allow cannot mutate guest environment
       - Registers, memory, and environment variables remain untouched
     - Handler environment mutations require an explicit Rewrite decision
+    - Multi-handler env merge: disjoint keys compose monotonically
+    - Key collision policy: overlapping env keys abort with EAmbiguousMutation
+    - Mutation decision lattice: Allow -> Rewrite -> Deny -> Abort
     - Calling c.env.set() and returning Decision.resume() returns EINVALIDDECISION
     - Terminal notifications must be emitted explicitly via c.term.notice()
   - Trap decision gaps: TBD
     - Rewrite loop prevention
     - new_binary canonicalisation
     - Env injection size and secrets
-    - Multi-handler env merge
     - Custom dispatch
     - SuspendForApproval release

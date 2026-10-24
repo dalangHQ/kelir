@@ -9,6 +9,9 @@
         - Virtualization runs in host consumer memory via direct C-FFI
         - Backends: rustvmm, hvf, openvmm, avf, bwrap, proot
         - ForeignPluginProxy embeds V8 and Python event loops directly
+        - Native linear capability isolation: zero-WASM, zero-JIT overhead
+        - Compile-time ownership tokens enforce plugin memory boundaries
+        - Hardware memory protection keys (MPK) isolate in-process heap
         - Filter-before-FFI boundary stops hypervisor thrash at 0µs cost
         - No dockerd, containerd, background root socket, daemon maintenance
       - Pure epistemic agnosticism

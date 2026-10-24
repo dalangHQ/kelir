@@ -20,6 +20,8 @@ pub struct ExecutionReceipt {
     pub binary_path: String,
     /// BLAKE3 digest, canonical 64-char lowercase hex
     pub binary_blake3: String,
+    /// Cryptographic token linkage for model-generation-to-trap lineage
+    pub causal_token_id: Option<String>,
     /// Byte count; always populated.
     /// Byte-not-page reason: see cans/01-architecture.md#VmmDriver-trait
     pub dirty_bytes: u64,

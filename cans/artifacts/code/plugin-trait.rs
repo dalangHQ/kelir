@@ -29,11 +29,20 @@ pub enum PluginError {
     /// Payload size exceeds the foreign FFI boundary ceiling.
     #[error("Inspection buffer ceiling exceeded: {size} bytes (max {max_bytes})")]
     BufferCeilingExceeded { size: usize, max_bytes: usize },
+    /// Conflicting semantic mutations on overlapping resource targets.
+    #[error("Ambiguous mutation detected across plugins on resource '{resource}': {conflict}")]
+    AmbiguousMutation { resource: String, conflict: String },
     #[error("Internal I/O failure: {0}")]
     Io(#[from] std::io::Error),
 }
 
 impl PluginError {
+    pub fn ambiguous_mutation(
+        resource: impl Into<String>,
+        conflict: impl Into<String>,
+    ) -> Self {
+        Self::AmbiguousMutation { resource: resource.into(), conflict: conflict.into() }
+    }
     pub fn reject(errno: impl Into<String>, reason: impl Into<String>) -> Self {
         Self::Reject { errno: errno.into(), reason: reason.into() }
     }
@@ -77,8 +86,10 @@ pub enum ExecutionTier {
 #[derive(Debug, Clone)]
 pub struct PluginTaxonomy {
     pub boundary: &'static str,
+    pub rings: &'static [VirtioDevice],
     pub epistemic: EpistemicRole,
     pub execution: ExecutionTier,
+    pub mutation_targets: &'static [&'static str],
 }
 
 /// Mount-level scoping filters evaluated before dispatch array registration.

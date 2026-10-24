@@ -33,4 +33,5 @@
   - Error and return semantics (chaos)
     - Hook signature (chaos): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (chaos)
-      - Mutation failure behavior: TBD
+      - Fault injection adheres to monotonic lattice via PluginError::Reject
+      - Frame drop semantics execute as silent network drops

@@ -67,6 +67,8 @@
   - Error and return semantics (wire)
     - Hook signature (wire): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (wire): see: artifacts/code/plugin-trait.rs
+    - Mutation scope: declared per URL pattern and L4 destination port
+    - Colliding rewrite rules across plugins abort with AmbiguousMutation
     - Failure and lifecycle: TBD
       - Upstream failure surfacing
       - Per-session CA lifetime and rotation

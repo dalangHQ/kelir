@@ -25,6 +25,9 @@
       - Oracle analyses: consumer's Oracle impl
   - Execution receipts
     - see: artifacts/code/execution-receipt.rs
+    - End-to-end token-to-bit lineage: maps model tokens to physical dirty bytes
+    - Cryptographic provenance chain: model generation -> trap -> receipt
+    - Granular hardware truth: micro-level execution telemetry per process
     - Emitted per executed process, at the trap/exit boundary
     - Assertion form: receipts are compared as values, not as hashes of host
       state; the canonical assertion is a per-field comparison
@@ -54,6 +57,8 @@
     - see: artifacts/code/causal-delta.rs
     - Definition: Δ = S_A − S_B between two checkpoint descriptors
     - Delta fields: see: artifacts/code/causal-delta.rs
+    - Cohesive state duality: CausalDelta aggregates net physical diffs
+    - Merkle root chaining links granular receipts to cohesive deltas
     - Tracks physical page deltas, modified inodes, and process lineage
     - L7 protocol telemetry lives in plugin-wire, isolated from core structs
     - Type ownership

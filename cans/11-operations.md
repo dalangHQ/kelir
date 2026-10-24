@@ -72,7 +72,7 @@
     - Matrix job: plugin-audit
       - Each cell runs `kelir-plugin-cli check -p plugin-<name>` — the same
         contract audit `just plugin-check` runs locally
-      - Taxonomy check: asserts boundary URN and ring mask in plugin.toml
+      - Taxonomy check: asserts boundary URN and ring mask in code trait
       - Dev-dep edge gate: `cargo tree -p plugin-<name> --edges dev` contains
         only plugin-testkit among plugins
       - Facade edge gate: `cargo tree -p plugin-<name>` contains no `kelir`
@@ -132,8 +132,8 @@
         - Android probe: /dev/avf, pKVM node, or proot ptrace readiness
         - macOS probe: HVF entitlements, ARM64 16K page alignment
       - `kelir doctor --json`: structured for onboarding scripts
-      - `plugin new`: scaffold crate, manifest, empty vectors
-      - `plugin new --boundary`: prompts for universal taxonomy coordinates
+      - `plugin new`: scaffold crate, code trait stubs, empty vectors
+      - `plugin manifest`: emits auto-generated manifest artifact from AST
       - `plugin check`: same audit as CI, <30s, no network
       - `plugin vectors`: regenerate vectors.json from fixtures
       - `plugin rings --show`

@@ -66,3 +66,5 @@
   - Error and return semantics (vfs)
     - Hook signature (vfs): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (vfs): see: 05-storage-plane.md#Write-gating
+    - Write mutation scope: evaluated over declared path subtrees
+    - Conflicting write mutators on overlapping paths raise AmbiguousMutation

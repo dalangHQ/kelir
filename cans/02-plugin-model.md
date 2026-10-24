@@ -1,13 +1,15 @@
 - Plugin model
-  - Taxonomic coordinate manifest
-    - Every plugin defines a 4-axis coordinate tuple in plugin.toml
-    - Decoupled from internal engine spec planes and directory trees
+  - Taxonomic coordinate contract
+    - Code is sole SSOT: declared programmatically via KelirPlugin trait
+    - Manifest artifact is strictly auto-generated for zero-compile indexing
     - Axis 1 (boundary): universal mediation taxon (urn:kelir:boundary:*)
     - Axis 2 (rings): set of attached VirtIO device channels
     - Axis 3 (execution): tier-1-engine (Rust) | tier-2-policy (host FFI)
     - Axis 4 (epistemic): observer | mutator | gate | fact-producer
     - First-class catalog default: execution is tier-1-engine unless stated
-    - Coordinates enforce runtime sandbox blast-radius and ordering gates
+    - Mutation scope manifest: mutators declare target paths, ports, or envs
+    - Overlapping mutation scopes between plugins fail validation at boot
+    - Coordinates enforce compile-time ordering gates and dispatch layout
   - Universal mediation boundaries
     - io.stream: interactive streams, TTY, stdio, token slicing
     - storage.vfs: filesystems, mounts, snapshots, CoW layers
@@ -85,9 +87,15 @@
     - Plugins compiled into flat contiguous dispatch array at boot
     - Core verifies plugin dependency DAG: cycles and missing deps halt boot
     - Evaluated in priority() order; ties broken by declaration order
+    - Monotonic permission lattice: Allow -> Rewrite -> Deny -> Abort
+    - Restrictive monotonicity: downstream hooks cannot widen upstream denial
+    - Fail-closed mutation collisions: overlapping writes raise EAmbiguousMutation
     - Deduplication: identical name() instances merge; deepest config wins
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
     - Zero-cost null objects: disabled plugins retain types, cost zero in core
+    - Native zero-WASM isolation: compile-time linear capability tokens
+    - Immutable &[u8] slice views prevent cross-plugin heap tampering
+    - Hardware MPK page keys isolate per-plugin memory domains in-process
     - requires() validated at boot; missing dep aborts boot with EConfig
     - Lock-free dispatch swap via ArcSwap on the host event bus (internal)
     - ArcSwap serves atomic dispatch swapping during snapshot hydration only
@@ -163,6 +171,9 @@
     - Dependency rules
       - Zero inter-plugin dependencies: no plugin imports another plugin crate
       - Depends on kelir-interface (traits, context types) only
+      - Data-flow dependencies expressed via typed bus schemas, not code
+      - Inter-plugin coordination passes linear tokens via hypervisor bus
+      - Cryptographic Merkle handoff tracks every in-flight mutation per hook
       - Depends on plugin-testkit as dev-dependency
       - Never depends on crates/kelir facade
       - Cross-plugin coordination occurs via core traits or userland closures
@@ -184,7 +195,10 @@
     - Purpose: a plugin's tests run without a hypervisor
     - Emits language-agnostic test vectors
       - vectors.json derived from Rust fixtures
-  - Manifest contract
+  - Auto-generated manifest contract
+    - Tooling extracts metadata directly from code AST and taxonomy trait
+    - Manual manifest authoring is banned to eliminate dual-source drift
+    - Validates 4-axis coordinates, acyclic requires, and disjoint scopes
     - Missing or invalid taxonomy coordinates reject compilation at boot
   - Language parity
     - see: artifacts/diagrams/sdks-invariants.txt
