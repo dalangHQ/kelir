@@ -5,6 +5,19 @@
     - Product metaphor: see: #Wayang-metaphor
     - Version: 3.0.0-normative
     - Status: normative specification
+    - Legal and licensing architecture
+      - Tri-license topology
+        - Spec: Creative Commons Attribution 4.0 International (CC-BY-4.0)
+        - Core engine, drivers, and shim: Functional Source License (FSL-1.1-Apache-2.0)
+        - Interfaces, SDKs, and testkit: MIT OR Apache-2.0 dual license
+        - Enterprise extensions (EE): Commercial proprietary license
+      - Two-repo distribution invariant
+        - Public repo (kelir): core microkernel, local virtualization, community plugins
+        - Private repo (kelir-cloud): fleet compaction, S3 snapshot streaming, enterprise shims
+      - Enterprise distribution channels
+        - Dynamic SDKs: Precompiled native binaries via npm (@kelir-cloud) and PyPI (kelir-cloud)
+        - Rust on-prem: Authenticated private Cargo registry with commercial license tokens
+        - Managed platform: Kelir Cloud SaaS execution over HTTPS/gRPC
   - Wayang metaphor
     - Kelir: VirtIO mediation boundary between host and guest
     - Dalang: host runtime supervisor owning hypervisor loops
@@ -46,8 +59,8 @@
     - Container builds without nested VMX: see: 07-lifecycle.md#Docker-in-kelir
     - Human break-glass on agent loops: see: 07-lifecycle.md#Break-glass
     - Low-memory SBC execution: see: 01-architecture.md#Embedded-profile
-    - Sub-15ms idle scale-to-zero: see: plugins/hyper-density.md
-    - Hydrate state from streaming snapshot bundle: see: plugins/cas-snapshot.md
+    - Sub-15ms idle scale-to-zero: see: kelir-cloud://cans/plugins/hyper-density.md
+    - Hydrate state from streaming snapshot bundle: see: kelir-cloud://cans/plugins/cas-snapshot.md
     - Zero-downtime connection parking: see: plugins/wire-ingress.md
     - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends
   - Spec map

@@ -1,0 +1,37 @@
+SKELETON — content not specified in work-order.md (Task 3.5/3.6 scope only).
+Structure listing only; to be filled in by a later task.
+
+kelir-cloud/
+  cans/
+    00-cloud-overview.md
+    01-fleet-orchestration.md
+    02-commercial-licensing.md
+    _rules.yaml
+    plugins/
+      hyper-density.md
+      cas-snapshot.md
+      oci-translator.md
+      openshell-coordinator.md
+    artifacts/
+      config/
+        ee-ci.yml
+        cloud-structure.txt
+      examples/
+        multi-vm-swarm.rs
+        serverless-webhook.ts
+        db-backed-runtime.py
+  LICENSE
+crates/
+  kelir-ee-plugins/
+    plugin-hyper-density/
+    plugin-cas-snapshot/
+    plugin-oci-translator/
+    plugin-openshell-coordinator/
+  kelir-ee-adapters/
+    containerd-shim/
+    openshell-grpc/
+services/
+  control-plane/
+  api-gateway/
+  snapshot-relay/
+  billing/

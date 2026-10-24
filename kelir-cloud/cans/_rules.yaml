@@ -1,0 +1,20 @@
+slug:
+  algorithm: dash-normalized
+  collapse: separator-runs-to-one-hyphen
+  case: preserved
+structure:
+  node_length: { min: 3, max: 90 }
+  siblings: { min: 1, max: 20 }
+  depth: { min: 2, max: 10 }
+  single_child_collapse: false
+  empty_nodes: false
+content:
+  tbd_allowed: true
+  max_tbd_per_file: 10
+references:
+  mode: pointer
+  max_hops: 1
+  orphan_check: true
+  duplicate_home_check: true
+  external_roots:
+    kelir: "../../cans"

@@ -152,14 +152,6 @@ kelir/
 │   │   │   ├── src/lib.rs             # Hooks: on_vm_ready, on_pty_*, on_vfs_*, on_trap, on_process_exit, on_disclosure
 │   │   │   ├── tests/test_mcp_mapping.rs
 │   │   │   └── examples/mcp-stdio.rs
-│   │   ├── plugin-oci-translator/     # OCI image → EROFS block; loaded by containerd-shim
-│   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # on_vm_init: layer flatten + whiteout apply
-│   │   │   └── tests/test_oci_translate.rs
-│   │   ├── plugin-openshell-coordinator/# Checkpoint/branch policy; loaded by openshell-grpc
-│   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # on_vm_init vetoes + on_watchdog forwarding
-│   │   │   └── tests/test_coordinator.rs
 │   │   ├── plugin-db-proxy/           # Agnostic DB mediation: pgwire (port 5432) & /run/kelir/db.sock vsock proxy
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # DbAction verdict engine (Allow, Deny, Rewrite)
@@ -176,26 +168,12 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   │   ├── src/lib.rs             # Trap hook rejecting postinstall/setup.py via ancestor chain
 │   │   │   │   └── tests/test_supply_chain.rs
-│   │   ├── plugin-hyper-density/      # Zero-RSS working-set page compaction and swap via lz4_flex and io-uring
-│   │   │   ├── Cargo.toml
-│   │   │   │   ├── src/lib.rs             # Ring inactivity monitor and direct NVMe suspend flusher
-│   │   │   │   └── tests/test_eviction.rs
-│   │   ├── plugin-cas-snapshot/       # Content-addressed chunked remote microVM snapshot hydration
-│   │   │   ├── Cargo.toml
-│   │   │   │   ├── src/lib.rs             # FastCDC partitioning, BLAKE3 indexing, object_store sync
-│   │   │   │   └── tests/test_cas.rs
 │   │   └── plugin-wire-ingress/       # Connection parking and wake-on-traffic L4/L7 proxy
 │   │       ├── Cargo.toml
 │   │       ├── src/lib.rs             # socket2 buffer clamping, httparse sniffer, copy_bidirectional
 │   │       └── tests/test_parking.rs
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
-│   │   ├── containerd-shim/           # containerd-shim-v2 implementation for K8s
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/main.rs            # Loads plugin-oci-translator
-│   │   ├── openshell-grpc/            # NVIDIA OpenShell compute_driver.proto bridge
-│   │   │   ├── Cargo.toml
-│   │   │   └── src/main.rs            # Loads plugin-openshell-coordinator
 │   │   └── mcp-server/                # Model Context Protocol stdio terminal server
 │   │       ├── Cargo.toml
 │   │       └── src/main.rs            # Thin SDK client; loads plugin-mcp
@@ -235,8 +213,6 @@ kelir/
 │   │   │       ├── schema.ts          # TypeBox command validation wrappers
 │   │   │       └── binding.ts         # Auto-generated NAPI loader
 │   │   ├── plugins/                   # @kelir/plugin-*
-│   │   │   ├── hyper-density/         # TS bindings for zero-RSS working-set page compaction
-│   │   │   ├── cas-snapshot/          # TS bindings for content-addressed snapshot hydration
 │   │   │   ├── wire-ingress/          # TS bindings for connection parking
 │   │   │   ├── pty/                   # TS bindings for virtio-console
 │   │   │   ├── vfs/                   # TS bindings for virtio-fs
@@ -255,8 +231,6 @@ kelir/
 │           ├── core.py                # PyO3 native binding wrapper
 │           ├── context.py             # Type-hinted context chain
 │           ├── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
-│           │   ├── hyper_density.py   # Python bindings for zero-RSS working-set page compaction
-│           │   ├── cas_snapshot.py    # Python bindings for content-addressed snapshot hydration
 │           │   ├── wire_ingress.py    # Python bindings for connection parking
 │           │   ├── pty.py             # Python bindings for the pty plugin
 │           │   ├── vfs.py             # Python bindings for the vfs plugin
@@ -277,3 +251,8 @@ kelir/
 │       └── test_openrig_driver.ts     # Verifies swarm execution replacing OpenRig tmux
 │
 └── README.md                          # Quickstart, Invariants & Architecture Summary
+
+── KELIR-CLOUD (PRIVATE REPO) ──
+crates/kelir-ee-plugins/ (hyper-density, cas-snapshot, oci-translator, openshell-coordinator)
+crates/kelir-ee-adapters/ (containerd-shim, openshell-grpc)
+services/ (control-plane, api-gateway, snapshot-relay, billing)

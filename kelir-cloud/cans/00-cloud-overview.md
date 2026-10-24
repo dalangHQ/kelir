@@ -1,0 +1,10 @@
+- Cloud Overview
+  - Product
+    - Name: kelir-cloud
+    - Commercial model: SaaS execution platform and Enterprise VPC distribution
+    - Boundary rule: see: kelir://cans/00-overview.md#Axiomatic-foundations
+  - SaaS Architecture
+    - Zero-RAM idle execution: Powered by plugin-hyper-density
+    - Content-addressed block streaming: Powered by plugin-cas-snapshot
+    - Managed endpoints: REST / JSON-RPC gateway at https://api.kelir.dev
+    - Multi-tenant boundary: Per-tenant hardware microVM isolation, zero cgroup bleeding

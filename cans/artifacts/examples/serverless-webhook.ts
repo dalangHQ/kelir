@@ -4,18 +4,17 @@
 //
 // Scale-to-zero webhook handler. Inbound TCP parks at the host proxy during
 // suspend; the first post-wake frame splices to vsock Channel 1. While
-// awaiting the next event, hyper-density compacts the guest working set to
-// NVMe via io_uring so host RSS drops to 0 MB. MCP clients attach on hvc1
-// without colliding with the hvc0 PTY.
+// awaiting the next event, the guest memory ceiling is shrunk with the
+// standard c.vm.adjust_balloon() API so host RSS drops. MCP clients attach
+// on hvc1 without colliding with the hvc0 PTY.
 //
-// Mounts:     wire-ingress, hyper-density, mcp.
+// Mounts:     wire-ingress, mcp, ledger.
 // Primitives: adjust_balloon.
 
 import { kelir, t,
          type ExecutionReceipt,
          type PostExecAction } from "@kelir/core";
 import { wireIngress } from "@kelir/plugin-wire-ingress";
-import { hyperDensity } from "@kelir/plugin-hyper-density";
 import { mcp }         from "@kelir/plugin-mcp";
 import { ledger }      from "@kelir/plugin-ledger";
 
@@ -54,18 +53,10 @@ const runtime = kelir({
     backlog: { maxConnections: 256, overflow: "reject-503" },
   }))
 
-  // → c.density
-  .use(hyperDensity({
-    // Idle detection across all four VirtIO rings: any traffic resets
-    // the timer, 250 ms of silence triggers compaction.
-    idleDetect: { thresholdMs: 250, ringMask: ["vsock", "console", "fs", "net"] },
-    // lz4_flex compress + io_uring flush to NVMe, bypassing the host
-    // page cache so the pages are physically unbacked.
-    compaction: { codec: "lz4", sink: "io_uring-nvme", pageCache: "bypass" },
-    // Resume latency is the invariant; exceeding it aborts compaction
-    // and keeps the pages resident.
-    resumeBudgetMs: 15,
-  }))
+  // Idle memory: the standard balloon API shrinks the ceiling while
+  // parked (see the vm:ready handler below); the trap pre-handler
+  // grows it back before the webhook handler runs. No separate
+  // compaction plugin is mounted.
 
   // → c.mcp
   .use(mcp({
@@ -88,7 +79,7 @@ const runtime = kelir({
   }))
   .trap("dispatch-webhook", {
     // First post-wake frame: raise the RAM ceiling back to 512 MB before
-    // the handler runs. Hyper-density had ballooned it to ~0 MB.
+    // the handler runs. The idle balloon shrink had reduced it.
     pre: async (c) => {
       await c.vm.adjust_balloon(512);
       return c.resume();
@@ -102,8 +93,8 @@ const runtime = kelir({
     },
   })
 
-  // Shrink the ceiling once the handler binary is loaded; hyper-density
-  // grows it back on the next wake.
+  // Shrink the ceiling once the handler binary is loaded; the trap
+  // pre-handler grows it back on the next wake via adjust_balloon.
   .on("vm:ready",    async (s) => { await s.vm.adjust_balloon(384); })
   .on("vm:shutdown", async (s) => { await s.ledger.flush(); });
 

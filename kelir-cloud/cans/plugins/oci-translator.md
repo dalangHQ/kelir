@@ -1,15 +1,15 @@
 - Plugin oci-translator
   - Capability definition (oci-translator)
     - Plugin identifier: plugin-oci-translator
-    - Owner crate: crates/kelir-plugins/plugin-oci-translator
+    - Owner crate: crates/kelir-ee-plugins/plugin-oci-translator
     - name() = "oci-translator"; priority() = 20
     - Taxonomy (oci-translator): urn:kelir:fs:block:oci
       - coordinate: rings=[virtio-blk]; role=Mutator; tier=Native
-    - VirtIO attachment (oci-translator): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (oci-translator): see: 07-lifecycle.md#Lifecycle-vetoes
+    - VirtIO attachment (oci-translator): see: kelir://cans/01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (oci-translator): see: kelir://cans/07-lifecycle.md#Lifecycle-vetoes
   - Context keys for oci-translator
     - Context key contributed: None (daemon runtime: image translation)
-    - Closed-set binding rule (oci-translator): see: 02-plugin-model.md#Core-context-keys
+    - Closed-set binding rule (oci-translator): see: kelir://cans/02-plugin-model.md#Core-context-keys
   - Invariants and policy (oci-translator)
     - Shim hook wiring
       - on_vm_init: translate OCI image layers → EROFS block
@@ -21,7 +21,7 @@
       - Shim: containerd-shim-v2 over ttrpc
       - Returns EROFS block path; no pull step separate from boot
   - Error and return semantics (oci-translator)
-    - Hook signature (oci-translator): see: artifacts/code/plugin-trait.rs
+    - Hook signature (oci-translator): see: kelir://cans/artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (oci-translator)
       - on_vm_init failure: PluginError::Halt("OCI layer extraction failed")
       - Aborts VM cold boot; no guest exists to receive a POSIX errno

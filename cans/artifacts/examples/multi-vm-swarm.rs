@@ -2,12 +2,13 @@
 //!
 //! Cooperative agent swarm: N workers share a warm base microVM over a
 //! host memfd, acquire repository locks via lock-broker, and exchange
-//! peer streams over the mesh. The openshell-coordinator holds a hard
-//! Fork veto until the shared fixture cache is hydrated.
+//! peer streams over the mesh. A session Fork veto holds until the
+//! shared fixture cache is hydrated.
 //!
-//! Mounts:     mesh, lock-broker, supply-chain, openshell-coordinator.
+//! Mounts:     mesh, lock-broker, supply-chain.
 //! Primitives: map_shared_region, register_veto(Fork).
 
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -19,9 +20,6 @@ use kelir::{
     plugins::{
         lock_broker::{LockBrokerConfig, LockBrokerPlugin, LockMode, LockScope},
         mesh::{MeshConfig, MeshPlugin, PeerIdentity, TraceParentPropagation},
-        openshell_coordinator::{
-            CheckpointPolicy, CoordinatorConfig, CoordinatorPlugin, GpuBinding,
-        },
         supply_chain::{
             LifecyclePolicy, PackageManager, SupplyChainConfig, SupplyChainPlugin,
         },
@@ -37,7 +35,7 @@ enum WorkerAction {
 const SWARM_REGION: &str = "swarm-coordination";
 const SWARM_BYTES: usize = 32;
 
-fn swarm_builder(coordinator: CoordinatorPlugin) -> KelirBuilder {
+fn swarm_builder() -> KelirBuilder {
     KelirBuilder::new(VmConfig {
         vcpus: 4, memory_mb: 8192,
         kernel: "./fixtures/vmlinux-6.6-aarch64-kelir".into(),
@@ -83,26 +81,17 @@ fn swarm_builder(coordinator: CoordinatorPlugin) -> KelirBuilder {
         policy: LifecyclePolicy::DenyInDependencyDirs,
         trap_on_ancestor_chain: true,
     }))
-    .plugin(coordinator)
 }
 
 async fn boot_swarm() -> Result<Session, Box<dyn std::error::Error + Send + Sync>> {
-    let coordinator = CoordinatorPlugin::new(CoordinatorConfig {
-        tenant_id: "swarm-tenant-a".into(),
-        checkpoint_policy: CheckpointPolicy {
-            every_n_requests: 64, max_latency_ms: 250,
-        },
-        gpu: Some(GpuBinding::Cdi {
-            device_ids: vec!["nvidia.com/gpu=0".into()],
-            driver: "driver-rustvmm".into(),
-        }),
-    });
-
     // Register the Fork veto before boot. Without it, a worker that calls
     // fork() during cache hydration clones a half-warm page cache.
-    let coord = coordinator.handle();
-    let mut lifecycle = swarm_builder(coordinator).lifecycle_mut();
-    lifecycle.register_veto(VetoEvent::Fork, Box::new(move || coord.cache_ready()));
+    // The veto is a plain session veto: it clears once hydration below
+    // marks the shared cache ready.
+    let cache_ready = Arc::new(AtomicBool::new(false));
+    let veto_flag = cache_ready.clone();
+    let mut lifecycle = swarm_builder().lifecycle_mut();
+    lifecycle.register_veto(VetoEvent::Fork, Box::new(move || veto_flag.load(Ordering::SeqCst)));
     let session = lifecycle.seal().boot().await?;
 
     // Base VM hydrates caches. The veto blocks every child fork until
@@ -112,7 +101,7 @@ async fn boot_swarm() -> Result<Session, Box<dyn std::error::Error + Send + Sync
         "npm ci --prefer-offline && cargo fetch --locked \
          && pip install -q -r requirements.txt",
     ]).await?;
-    session.coordinator_mark_cache_ready().await?;
+    cache_ready.store(true, Ordering::SeqCst);
 
     Ok(session)
 }

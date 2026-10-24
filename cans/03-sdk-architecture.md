@@ -46,6 +46,13 @@
         - Event classes: see: 07-lifecycle.md#Lifecycle-vetoes
     - Multiplexed binary RPC: session.vsock.channel(2), binary framing
     - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
+    - Three-tier binary distribution model
+      - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
+        NAPI-RS .node and PyO3 .whl native shared libraries
+      - Pure Rust enterprise: Gated private Cargo registry (crates.kelir.dev) requiring license
+        tokens for on-premise compilation ($100k/yr commercial tier)
+      - Kelir Cloud SaaS: Managed execution over HTTP/gRPC; internal hyper-density and cas-snapshot
+        optimization applied transparently on host servers
   - Idiomatic Surfaces Law
     - TS, Python, and Rust do not copy each other's method names
     - Each enforces 1:1 behavioral and wire parity against vectors.json

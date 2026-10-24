@@ -2,11 +2,11 @@
 """
 Database-backed secure runtime. pgwire traffic is rewritten at the L7
 boundary; credentials are injected per-connection host-side and never
-enter guest address space. Cold start imports a portable .kelir-snap
-from S3 via FastCDC streaming; OCI image layers are translated to EROFS
-blocks in flight during the same boot.
+enter guest address space. The guest root filesystem and the migration
+snapshot are local EROFS fixtures under ./fixtures/; no remote image
+translation or snapshot streaming is involved.
 
-Mounts:     db-proxy, cas-snapshot, oci-translator.
+Mounts:     db-proxy.
 Primitives: export_snapshot, import_snapshot.
 
 Requirements:
@@ -24,15 +24,9 @@ from pydantic import BaseModel, Field
 
 import kelir
 from kelir import Decision, HandlerContext, KelirBuilder, PostExecAction
-from kelir.plugins.cas_snapshot import (
-    CasSnapshotConfig, CasSnapshotPlugin, FastCDCConfig, S3Tier,
-)
 from kelir.plugins.db_proxy import (
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials,
     PgWireRewrite, SqliteOverVsock,
-)
-from kelir.plugins.oci_translator import (
-    LayerPolicy, OciTranslatorConfig, OciTranslatorPlugin,
 )
 
 
@@ -43,7 +37,10 @@ class MigrateParams(BaseModel, frozen=True):
     dry_run: bool = False
 
 
-def build_runtime(s3_bucket: str, pg_host: str, pg_secret: str) -> KelirBuilder:
+LOCAL_SNAPSHOT = "./fixtures/migrate-snapshot.erofs"
+
+
+def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
     builder = (
         kelir.builder(
             vcpus=2, memory_mb=2048, driver="auto",
@@ -52,34 +49,9 @@ def build_runtime(s3_bucket: str, pg_host: str, pg_secret: str) -> KelirBuilder:
             tsc_locked=True, enable_watchdog=True,
         )
 
-        # OCI layers → EROFS blocks in flight. The first workload exec
-        # runs while the final layer flushes; chaos can fault-inject
-        # into image pulls without a separate pull step.
-        .plugin(OciTranslatorPlugin(OciTranslatorConfig(
-            image="registry.internal/app-migrations:latest",
-            layer_policy=LayerPolicy(
-                flatten=True, apply_whiteouts=True,
-                etc_overlay=True, output="erofs-block",
-            ),
-            in_flight=True,
-        )))
-
-        # FastCDC chunking + streaming S3 hydration. The <50 ms budget
-        # is the invariant; if S3 is slower, cold start degrades to an
-        # empty-RAM boot and re-uploads the snapshot.
-        .plugin(CasSnapshotPlugin(CasSnapshotConfig(
-            chunking=FastCDCConfig(
-                min_bytes=16 * 1024,
-                avg_bytes=64 * 1024,
-                max_bytes=256 * 1024,
-            ),
-            tier=S3Tier(
-                bucket=s3_bucket,
-                prefix="snapshots/migrate/",
-                hydration_budget_ms=50,
-            ),
-        )))
-
+        # Local EROFS fixtures: the root filesystem above
+        # (./fixtures/rootfs-migrate.erofs) and LOCAL_SNAPSHOT are
+        # mounted/imported directly; no image translation step runs.
         # pgwire L7 rewrite + ephemeral creds + SQLite over vsock.
         .plugin(DbProxyPlugin(DbProxyConfig(
             postgres=PgWireRewrite(
@@ -130,17 +102,15 @@ def build_runtime(s3_bucket: str, pg_host: str, pg_secret: str) -> KelirBuilder:
 
 
 async def main() -> None:
-    s3_bucket = os.environ["KELIR_S3_BUCKET"]
     pg_host = os.environ["KELIR_PG_HOST"]
     pg_secret = os.environ["KELIR_PG_SECRET"]
 
-    async with build_runtime(s3_bucket, pg_host, pg_secret) as session:
-        # Cold start: hydrate registers and dirty pages from the S3
-        # snapshot in <50 ms. The first workload exec runs against warm
-        # memory, not empty RAM.
-        await session.vm.import_snapshot(
-            session.cas.stream_from_s3("snapshots/migrate/latest.kelir-snap"),
-        )
+    async with build_runtime(pg_host, pg_secret) as session:
+        # Cold start: hydrate registers and dirty pages from the local
+        # EROFS snapshot fixture. The first workload exec runs against
+        # warm memory, not empty RAM.
+        with open(LOCAL_SNAPSHOT, "rb") as f:
+            await session.vm.import_snapshot(f.read())
 
         run = await session.spawn(
             "python", ["-m", "app.migrate", "--schema", "migrate"],
@@ -153,12 +123,11 @@ async def main() -> None:
         if run.exit_code != 0:
             raise SystemExit(f"migration failed: {run.exit_code}")
 
-        # Export the post-migration state back to S3. The next cold
-        # start hydrates it via the same cas-snapshot path.
+        # Export the post-migration state to the local fixture. The
+        # next cold start hydrates it from the same local file.
         out = await session.vm.export_snapshot()
-        await session.cas.upload_to_s3(
-            out, "snapshots/migrate/latest.kelir-snap",
-        )
+        with open(LOCAL_SNAPSHOT, "wb") as f:
+            f.write(out)
 
         final = await session.ledger.finalize(
             include_merkle_root=True,

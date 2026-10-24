@@ -68,11 +68,12 @@
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
     - Decoupled plugin specs
-      - One spec file per plugin in the cans plugin folder (15 files)
+      - One spec file per plugin: 11 in cans plugin folder, 4 in kelir-cloud
       - Leaf-node rule: plugin files do not chain further references; bus
         pointers are direct 1-hop
     - Matrix job: test-plugins
-      - One cell per first-class plugin (15 total)
+      - One cell per community plugin (11 total)
+      - Plugins: [pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress]
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
       - Structural decoupling proof: see: 02-plugin-model.md#Plugin-ownership
@@ -94,6 +95,7 @@
       - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
   - Decoupling proof
     - Job: plugin-isolation
+    - Audit scope: 11 community plugins
     - Claim executed: see: 02-plugin-model.md#Plugin-ownership
     - Per cell: remove crate, workspace member, and facade feature; build and
       nextest the remainder
@@ -164,10 +166,9 @@
       - kelir: facade crate, single Cargo dependency, feature-gated plugins
       - kelir-interface: pure leaf types, traits, wire framing, zero engine deps
       - kelir-core: stripped microkernel (bus, dispatch, vmm, trap gate)
-      - kelir-plugins: the plugin crate family
-        - pty, vfs, wire, chaos, ledger, mcp, oci-translator
-        - openshell-coordinator, db-proxy, mesh, lock-broker, supply-chain
-        - hyper-density, cas-snapshot, wire-ingress
+      - kelir-plugins: community plugin family (11 plugins; 4 enterprise plugins hosted in kelir-cloud)
+        - pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker
+        - supply-chain, wire-ingress
       - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
       - kelir-shim: in-guest musl PID 1 (<50KB)
     - Decoupled spec layout

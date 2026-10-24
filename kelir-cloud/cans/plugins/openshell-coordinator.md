@@ -1,15 +1,15 @@
 - Plugin openshell-coordinator
   - Capability definition (openshell-coordinator)
     - Plugin identifier: plugin-openshell-coordinator
-    - Owner crate: crates/kelir-plugins/plugin-openshell-coordinator
+    - Owner crate: crates/kelir-ee-plugins/plugin-openshell-coordinator
     - name() = "openshell-coordinator"; priority() = 60
     - Taxonomy (openshell-coordinator): urn:kelir:sys:proc:lifecycle
       - coordinate: rings=[virtio-vsock]; role=Gate; tier=Native
-    - VirtIO link (openshell-coordinator): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (openshell-coordinator): see: 07-lifecycle.md#Lifecycle-vetoes
+    - VirtIO link (openshell-coordinator): see: kelir://cans/01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (openshell-coordinator): see: kelir://cans/07-lifecycle.md#Lifecycle-vetoes
   - Context keys for openshell-coordinator
     - Context key contributed: None (daemon runtime: checkpoint coordination)
-    - Closed-set rule (openshell-coordinator): see: 02-plugin-model.md#Core-context-keys
+    - Closed-set rule (openshell-coordinator): see: kelir://cans/02-plugin-model.md#Core-context-keys
   - Invariants and policy (openshell-coordinator)
     - Coordinator hook wiring
       - on_vm_init: register vetoes on Fork, Suspend, ClockSkew
@@ -27,7 +27,7 @@
       - Control-plane checkpoint/branch → LifecycleCtx.register_veto
       - Readiness ack over gRPC from on_vm_ready
   - Error and return semantics (openshell-coordinator)
-    - Hook signature (openshell-coordinator): see: artifacts/code/plugin-trait.rs
+    - Hook signature (openshell-coordinator): see: kelir://cans/artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (openshell-coordinator)
       - Hooks are observation-only except on_vm_init
       - on_vm_init Err(Halt) aborts boot with EConfig

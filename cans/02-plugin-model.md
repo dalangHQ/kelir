@@ -10,6 +10,11 @@
     - Mutation scope manifest: mutators declare target paths, ports, or envs
     - Overlapping mutation scopes between plugins fail validation at boot
     - Coordinates enforce compile-time ordering gates and dispatch layout
+    - Clean-room boundary invariant
+      - kelir-interface is strictly dual-licensed (MIT OR Apache-2.0)
+      - Implementing KelirPlugin creates zero copyleft or viral licensing obligations
+      - Third-party authors retain 100% intellectual property rights over their plugins
+      - Commercial plugins in kelir-cloud link against kelir-interface without licensing conflict
   - Universal taxonomy subsystems
     - net: L2 TAP frames, L4 streams, L7 protocol termination
     - fs: FUSE VFS operations and virtio-blk block images
@@ -155,19 +160,19 @@
     - User-provided via plugin registration
       - c.<key> from .decorate() or instantiated plugin state
   - First-class plugins
-    - Minimum set: pty, vfs, wire, chaos, ledger
-    - Coverage matrix (plugin → demonstrating example)
+    - Catalog tiering
+      - Community plugins (hosted in core repo):
+        - pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress
+      - Commercial plugins (SSOT hosted in kelir-cloud):
+        - hyper-density: see: kelir-cloud://cans/plugins/hyper-density.md
+        - cas-snapshot: see: kelir-cloud://cans/plugins/cas-snapshot.md
+        - oci-translator: see: kelir-cloud://cans/plugins/oci-translator.md
+        - openshell-coordinator: see: kelir-cloud://cans/plugins/openshell-coordinator.md
+    - Coverage matrix (community plugins -> demonstrating example)
       - pty, vfs, wire, chaos, ledger: autonomous-swe-agent.{rs,ts,py}
+      - mesh, lock-broker, supply-chain: multi-vm-swarm.rs
       - db-proxy: db-backed-runtime.py
-      - mcp: serverless-webhook.ts
-      - mesh: multi-vm-swarm.rs
-      - lock-broker: multi-vm-swarm.rs
-      - wire-ingress: serverless-webhook.ts
-      - hyper-density: serverless-webhook.ts
-      - cas-snapshot: db-backed-runtime.py
-      - supply-chain: multi-vm-swarm.rs
-      - oci-translator: db-backed-runtime.py
-      - openshell-coordinator: multi-vm-swarm.rs
+      - wire-ingress, mcp: serverless-webhook.ts
     - Coverage invariant
       - Every first-class plugin names one demonstrating example
       - An orphan plugin fails --plugin-coverage
@@ -182,12 +187,12 @@
       - plugin-mesh: see: plugins/mesh.md — c.mesh
       - plugin-lock-broker: see: plugins/lock-broker.md — c.locks
       - plugin-supply-chain: see: plugins/supply-chain.md — package-manager guard
-      - plugin-hyper-density: see: plugins/hyper-density.md — c.density
-      - plugin-cas-snapshot: see: plugins/cas-snapshot.md — c.cas
+      - plugin-hyper-density: see: kelir-cloud://cans/plugins/hyper-density.md — c.density
+      - plugin-cas-snapshot: see: kelir-cloud://cans/plugins/cas-snapshot.md — c.cas
       - plugin-wire-ingress: see: plugins/wire-ingress.md — c.ingress
       - plugin-mcp: see: plugins/mcp.md — c.mcp
-      - plugin-oci-translator: see: plugins/oci-translator.md — OCI layer translation
-      - plugin-openshell-coordinator: see: plugins/openshell-coordinator.md — checkpoint
+      - plugin-oci-translator: see: kelir-cloud://cans/plugins/oci-translator.md — OCI layer translation
+      - plugin-openshell-coordinator: see: kelir-cloud://cans/plugins/openshell-coordinator.md — checkpoint
       - Pointer rule: plugin files are leaf targets; this matrix is the canonical registry
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane

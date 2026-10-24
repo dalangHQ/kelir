@@ -1,15 +1,15 @@
 - Plugin hyper-density
   - Capability definition (hyper-density)
     - Plugin identifier: plugin-hyper-density
-    - Owner crate: crates/kelir-plugins/plugin-hyper-density
+    - Owner crate: crates/kelir-ee-plugins/plugin-hyper-density
     - name() = "hyper-density"; priority() = 45
     - Taxonomy (hyper-density): urn:kelir:sys:proc:memory
       - coordinate: rings=[virtio-balloon, virtio-shm]; role=Mutator; tier=Native
-    - VirtIO attachment (hyper-density): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (hyper-density): see: 07-lifecycle.md#Lifecycle-vetoes
+    - VirtIO attachment (hyper-density): see: kelir://cans/01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (hyper-density): see: kelir://cans/07-lifecycle.md#Lifecycle-vetoes
   - Context keys for hyper-density
     - Context key contributed: c.density
-    - Closed-set binding rule (hyper-density): see: 02-plugin-model.md#Core-context-keys
+    - Closed-set binding rule (hyper-density): see: kelir://cans/02-plugin-model.md#Core-context-keys
   - Invariants and policy (hyper-density)
     - Zero-RSS working-set page compaction and swap
       - Detects guest blocking I/O across VirtIO rings via idle threshold timer
@@ -18,7 +18,7 @@
       - Flushes state directly to NVMe via io-uring bypassing host page cache
       - Resumes vCPU execution at exact cycle boundary in <15ms on ring traffic
   - Error and return semantics (hyper-density)
-    - Hook signature (hyper-density): see: artifacts/code/plugin-trait.rs
+    - Hook signature (hyper-density): see: kelir://cans/artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (hyper-density)
       - No guest errno: plugin mutates host RSS, not guest address space
       - on_memory_pressure Err(Halt) aborts before OOM killer

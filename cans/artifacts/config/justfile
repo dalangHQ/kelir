@@ -32,7 +32,7 @@ test-core:
 
 # Every first-class plugin, independently. Failure in one does not mask others.
 test-plugins:
-    cargo nextest run -p plugin-pty -p plugin-vfs -p plugin-wire -p plugin-chaos -p plugin-ledger -p plugin-mcp -p plugin-oci-translator -p plugin-openshell-coordinator -p plugin-db-proxy -p plugin-mesh -p plugin-lock-broker -p plugin-supply-chain -p plugin-hyper-density -p plugin-cas-snapshot -p plugin-wire-ingress
+    cargo nextest run -p plugin-pty -p plugin-vfs -p plugin-wire -p plugin-chaos -p plugin-ledger -p plugin-mcp -p plugin-db-proxy -p plugin-mesh -p plugin-lock-broker -p plugin-supply-chain -p plugin-wire-ingress
 
 # Single plugin (debugging)
 test-plugin plugin:
@@ -120,13 +120,13 @@ pre-flight: cans-check build-shim parity plugin-check-graph plugin-check-all tes
 plugin-check-all:
     #!/usr/bin/env bash
     set -euo pipefail
-    for p in pty vfs wire chaos ledger mcp oci-translator openshell-coordinator db-proxy mesh lock-broker supply-chain hyper-density cas-snapshot wire-ingress; do
+    for p in pty vfs wire chaos ledger mcp db-proxy mesh lock-broker supply-chain wire-ingress; do
         just plugin-check "$p"
     done
 
 test-isolation-all:
     #!/usr/bin/env bash
     set -euo pipefail
-    for p in pty vfs wire chaos ledger mcp oci-translator openshell-coordinator db-proxy mesh lock-broker supply-chain hyper-density cas-snapshot wire-ingress; do
+    for p in pty vfs wire chaos ledger mcp db-proxy mesh lock-broker supply-chain wire-ingress; do
         just test-isolation "$p"
     done
