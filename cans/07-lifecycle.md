@@ -26,6 +26,11 @@
         exclusively on Session, never on KelirBuilder
       - Split by state-preservation, not by privilege: see: #Lifecycle-vetoes
     - Ownership attribution: see: 02-plugin-model.md#First-class-plugins
+    - Hardware session attestation:
+      - Core injects ephemeral one-time session token over paravirtual config
+      - Workloads verify token over vsock Channel 0 before starting harnesses
+      - Bare-metal executions lack the paravirtual token and abort immediately
+      - Protects developers running harness scripts natively by mistake
   - CoW fork
     - Driver primitive: fork returns Box<dyn VmmDriver> in <15ms
     - KVM path: userfaultfd + KVM memory cloning

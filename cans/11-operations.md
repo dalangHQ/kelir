@@ -135,10 +135,17 @@
       - Kelir ships no runner CLI or daemon client; orchestrators embed directly
       - Tooling exists exclusively to verify physical host boundaries and parity
     - Subcommands
-      - `kelir doctor`: KVM/HVF/AVF, page size (4K/16K), fixture kernel, EROFS
+      - `kelir doctor`: Probes hardware KVM/HVF virtualization and page size
         - Linux / RPi probe: /dev/kvm access, 4KB vs 16KB host page size
         - Android probe: /dev/avf, pKVM node, or proot ptrace readiness
         - macOS probe: HVF entitlements, ARM64 16K page alignment
+      - `kelir doctor --enforce`: Writes immutable /etc/kelir/hw.lock
+      - `kelir setup`: Executes host machine hardening against bare-metal runs:
+        - shims: Prepends ~/.kelir/shims to PATH for claude, pytest, python
+        - lsm: Attaches eBPF/LSM execve killswitch to designated workspace dirs
+        - vault: Migrates plaintext host credentials into Kelir host keyring
+        - hw-lock: Enforces strict permissions on /dev/kvm (group: kelir, 0660)
+      - Granular flags: --install-shims, --attach-lsm, --quarantine-credentials
       - `kelir doctor --json`: structured for onboarding scripts
       - `plugin new`: scaffold crate, code trait stubs, empty vectors
       - `plugin manifest`: emits auto-generated manifest artifact from AST

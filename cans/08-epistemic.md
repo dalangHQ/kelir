@@ -31,6 +31,11 @@
     - Emitted per executed process, at the trap/exit boundary
     - Assertion form: receipts are compared as values, not as hashes of host
       state; the canonical assertion is a per-field comparison
+    - Receipts differentiate whole-VM RAM mutations from workspace mutations
+    - workspace_dirty_bytes tracks bytes committed to target workspace inodes
+    - Prevents agents gaming dirty_bytes checks through unmonitored /tmp writes
+    - Attestation token: receipts carry cryptographic proof of hypervisor run
+    - Bare-metal executions lack hardware receipts and fail oracle evaluation
     - Byte-not-page reason: see: 01-architecture.md#SnapshotDescriptor.dirty-bytes
     - Population: per ReceiptConfig; opt-in fields not enabled are absent
       (Option), never 0
@@ -46,7 +51,8 @@
       - egress_bytes observation point
       - wall_clock_ns across suspend
       - exit_code under Rewrite
-      - dirty_bytes under fork
+      - Receipts require workspace_dirty_bytes > 0 when workspace edits claimed
+      - Granular knob: receipt_scope = WorkspaceInodesOnly (default) | WholeVmRam
       - Sub-microsecond phase spans: trap_ingress_ns, ffi_hop_ns, policy_ns
     - binary_blake3 cache: keyed on (inode, size, mtime_ns); one hash per
       binary identity, not per exec

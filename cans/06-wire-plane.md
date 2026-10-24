@@ -6,6 +6,10 @@
     - TAP interface bridge connects the guest virtio-net device to the host
     - All frames in both directions cross the TAP boundary
     - L2 frames are intercepted at the TAP boundary before forwarding
+    - Default-deny protocol filter: all non-TCP L2/L3 frames are silently dropped
+    - ICMP, raw sockets, and unencapsulated UDP are dropped at the TAP boundary
+    - IPv6 disabled at TAP interface unless explicit wire configuration opts in
+    - QUIC transport dropped unless an explicit UDP L4 proxy is configured
   - Raw packet interception points
     - L2/L4 interception dispatched by .intercept("net:outbound", ...)
     - L2/L4 interception dispatched by .intercept("net:inbound", ...)
@@ -25,6 +29,9 @@
     - Ok(Allow) on outbound = forward; Ok(Allow) on inbound = deliver
     - Ok(YieldToHost) = yield frame to host for async policy
     - Err(Reject) = silent drop (no RST, no guest error)
+    - DNS sinkhole enforces subdomain entropy checks on wildcard masks (*.dom)
+    - Subdomain queries exceeding entropy threshold 4.5 drop with NXDOMAIN
+    - Blocks exfiltration through DNS query labels across allowed domain masks
     - Admission match order: TLS SNI -> HTTP Host -> Destination IP
     - Mismatched SNI and HTTP Host headers drop as domain fronting
     - Default forward: frames pass unless a mounted plugin returns

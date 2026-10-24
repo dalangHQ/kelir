@@ -10,12 +10,19 @@
   - Context keys for wire
     - Context key contributed: c.wire
     - Closed-set binding rule (wire): see: 02-plugin-model.md#Core-context-keys
+    - Wire configuration knobs:
+      - tap_filter: TapFilter::StrictTcpOnly (default) | AllowUdpProxied | Passthrough
+      - ipv6_policy: Ipv6Policy::DropAll (default) | AllowRoutable
+      - dns_entropy_gate: DnsEntropyGate::Enabled { max_entropy: 4.5 } (default)
+      - icmp_policy: IcmpPolicy::Drop (default) | AllowEgressOnly
   - Invariants and policy (wire)
     - Invariant: a real secret never enters guest address space
       - The guest sees only vault:// URNs and per-session CA certs
       - Substitution happens host-side, after TLS termination at the proxy
     - Total egress rule
       - Egress is what the four channels admit; nothing else reaches NIC
+      - Non-TCP traffic (raw sockets, ICMP echo) fails silently with 100% packet loss
+      - DNS queries matching wildcard allowlists inspect label entropy
       - DNS sinkhole is the fallback that makes "unlisted ⇒ dropped" total
     - Per-channel admission
       - L7 proxy: TLS terminated under per-session CA; allowlist by host
@@ -52,8 +59,7 @@
         - Sensitive headers (Set-Cookie, echoed auth) stripped
         - Response re-encrypted under per-session CA before entering TAP
     - L4 gateway
-      - Mechanics (L4): see: artifacts/diagrams/wire-plane.txt
-      - Destination pinning: TBD
+      - Mechanics (L4): fixed TCP port destination mapping without DNS reliance
     - SSH gate: see: artifacts/diagrams/wire-plane.txt
     - DNS sinkhole: see: artifacts/diagrams/wire-plane.txt
     - Admission semantics

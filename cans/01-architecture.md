@@ -9,8 +9,14 @@
         - Virtualization runs in host consumer memory via direct C-FFI
         - Interposition occurs directly at VirtIO device complex using
           synchronous native gates and asynchronous trap handlers
-        - Backends: rustvmm, hvf, openvmm, avf, bwrap, proot
+        - Hardware backends: driver-rustvmm, driver-hvf, driver-openvmm, driver-avf
+        - Unprivileged fallbacks (driver-bwrap, driver-proot) banned by default
+        - Silent driver downgrade is an uncatchable fatal error: E_NOHARDWAREVMM
+        - Emulation tiers require explicit granular opt-in in DriverPolicy
         - ForeignPluginProxy embeds V8 and Python event loops directly
+        - ForeignPluginProxy isolates host event loops on dedicated OS threads
+        - Ring-buffered async channels decouple host UI/IO from microVM vCPU loops
+        - Rate limits evaluated in native memory before FFI queue insertion
         - Native linear capability isolation: zero-WASM, zero-JIT overhead
         - Compile-time ownership tokens enforce plugin memory boundaries
         - Hardware memory protection keys (MPK) isolate in-process heap
@@ -19,6 +25,10 @@
       - Strict hardware/kernel abstraction layer
         - Zero knowledge of prompts, evaluation loops, or orchestration logic
         - Operates strictly as OS physics: pages, registers, descriptors, frames
+        - Hardware memory execution policy: strict W^X enforced at MMU boundary
+        - Guest kernel traps anonymous PROT_EXEC mmap and mprotect allocations
+        - In-memory elf loading through memfd_create aborts with E_WX_VIOLATION
+        - Granular knob: wx_enforcement = Strict | PermissiveAudit | Disabled
         - Factoring: see: 08-epistemic.md#Scope
       - Deterministic hardware isolation
         - Hardware-enforced virtualization: Intel VT-x, AMD-V, ARM64 EL2
@@ -151,12 +161,12 @@
       - Sole home of the page-size fact for receipts and Merkle roots
       - Kernel fixture selection: see: #Page-size-dynamic-boot-selection
   - Driver backends
-    - Capability matrix: TBD
-    - driver-rustvmm: Linux bare-metal KVM + userfaultfd CoW + CUDA CDI via kvm-ioctls
-      - Bans vmm-sys-util; implements raw eventfd and epoll primitives
-    - driver-hvf: macOS native Apple Silicon HVF via Hypervisor.framework
-      - Stage-2 write-protect fault trapping for <15ms CoW and <8ms rollback
-    - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET scoped strictly to windows-sys
-    - driver-avf: Android Virtualization Framework via /dev/avf and pKVM
-    - driver-bwrap: unprivileged Linux user namespaces via libc; bans nix crate
-    - driver-proot: unprivileged Android/Termux ptrace emulation fallback
+    - Hardware tier (Default, Zero-Escape Boundary):
+      - driver-rustvmm: Linux bare-metal KVM + userfaultfd CoW + CUDA CDI
+      - driver-hvf: macOS native Apple Silicon HVF via Hypervisor.framework
+      - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET
+      - driver-avf: Android Virtualization Framework via /dev/avf and pKVM
+    - Emulated tier (Strict Opt-In, Development Only):
+      - driver-bwrap: Linux user namespaces; requires allow_emulated_fallback=true
+      - driver-proot: Termux ptrace emulation; requires allow_emulated_fallback=true
+      - Attempting to boot emulated tier without flag throws E_NOHARDWAREVMM

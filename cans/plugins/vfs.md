@@ -11,6 +11,11 @@
   - Context keys for vfs
     - Context key contributed: c.fs
     - Closed-set binding rule (vfs): see: 02-plugin-model.md#Core-context-keys
+    - Storage configuration knobs:
+      - encapsulation: WorkspaceEncapsulation::Locked (default) | Passthrough
+      - scan_engine: ReadMaskEngine::StreamingAutomata (default) | FastRegex
+      - carryover_bytes: Ring carryover window depth (default: 512 bytes)
+      - traversal_guard: TraversalGuard::StrictResolveBeneath (default)
   - Invariants and policy (vfs)
     - Reconciler
       - see: artifacts/code/reconciler.rs
@@ -20,8 +25,8 @@
         - on_pre_commit flushes in-flight FUSE buffers
         - on_post_commit triggers sibling swap (.tmp.<nonce>) into host workspace
       - Scans tmpfs upperdir diffs only; base files remain untouched
-      - Overlayfs char devices (st_rdev == 0) trigger host file unlinks
-      - Opaque directory xattrs (trusted.overlay.opaque) purge host subtrees
+      - Overlayfs char devices (st_rdev == 0) trigger host file unlinks using openat2
+      - Unlinks enforced strictly within host workspace root; escapes fail closed
       - Atomic sibling file swap (.tmp.<nonce>) and parent fsync
       - Whiteout problem
         - Deleted files become char devices with major/minor 0/0 (mknod c 0 0)

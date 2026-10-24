@@ -6,12 +6,18 @@
     - Channel hvc1 is the binary transport (MCP JSON-RPC)
     - Interactive channel preserves isatty(1) and raw mode
     - Streaming ring buffers route directly to host supervisor memory
+    - Stateful stream processing: regex and token shields maintain sliding
+      automata state across arbitrary chunk boundaries
+    - Split ANSI escapes spanning multiple virtqueue frames parse atomically
+    - Clamping and secret redactions evaluate across inter-frame buffers
     - Terminal evidence uses Three-tier evidence verification model
     - VT100 parser grid monitors virtual screen and scrollback rows
     - Token Shield clamps scrollback rows, never mid-stream raw bytes
     - Truncation notices inject ANSI resets inside DECSTBM status margins
-    - All five filters configured strictly using flat PtyConfig, no callbacks
-    - PtyConfig fields: cols, rows, dropOsc52, stripTitle, tokenShield, prompts
+    - All filters configured strictly using flat PtyConfig, no callbacks
+    - PtyConfig fields: cols, rows, dropOsc52, stripTitle, tokenShield, prompts,
+      streamEngine, carryoverBufferBytes
+    - Filter stream engines: StreamingAutomata (default) | StatelessRegex
   - Window resize
     - Pipeline mechanics: see: artifacts/diagrams/terminal-pipeline.txt
     - Live resize hook: on_window_resize is observation-only

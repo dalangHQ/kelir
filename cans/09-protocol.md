@@ -5,6 +5,8 @@
       - Channel 0: Syscall traps and VM lifecycle control
       - Channel 1: Ingress port-forwarding and connection proxying
       - Channel 2: Paravirtualized signing gateway and binary RPC
+      - Swarm agent coordination executes over Channel 2 with Merkle logging
+      - Unchecked raw RW shared memory without vsock sync fails validation
     - Eliminates multi-port socket allocation and port collisions
   - Trap fast-path
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
@@ -31,6 +33,10 @@
     - Measurement rule
       - Monotonic rewrite_count increments per trap rewrite
       - rewrite_count exceeding 3 aborts execution with ECYCLICREWRITE
+      - Syscall trap resolves target binaries by kernel (st_dev, st_ino)
+      - Prevents path confusion across nested namespaces, chroots, and crun roots
+      - In-kernel BPF denies CLONE_NEWUSER unless explicitly allowed in MountScope
+      - Agents cannot hide execution by spawning unprivileged child containers
       - Host evaluates Shannon entropy on argv[1:]: keeps shim lean
       - Flag threshold: Host entropy > 5.2 flags encrypted/base64 payloads
       - Allowlist bypass: entropy_bypass_paths skips check for trusted runners

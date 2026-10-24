@@ -29,6 +29,12 @@ pub enum PluginError {
     /// Payload size exceeds the foreign FFI boundary ceiling.
     #[error("Inspection buffer ceiling exceeded: {size} bytes (max {max_bytes})")]
     BufferCeilingExceeded { size: usize, max_bytes: usize },
+    /// Host event loop or foreign runtime thread starvation detected.
+    #[error("Foreign FFI channel saturated: worker queue depth exceeded ({depth})")]
+    FfiQueueSaturated { depth: usize },
+    /// Trap violation against W^X memory execution invariants.
+    #[error("W^X execution violation detected: PID {pid} attempted {operation}")]
+    WxViolation { pid: u32, operation: String },
     /// Conflicting semantic mutations on overlapping resource targets.
     #[error("Ambiguous mutation detected across plugins on resource '{resource}': {conflict}")]
     AmbiguousMutation { resource: String, conflict: String },
@@ -328,6 +334,10 @@ impl<T: KelirPlugin> AnyPlugin for T {}
 pub trait ForeignPluginBridge: KelirPlugin {
     /// Declared declarative filter evaluated in native Rust before FFI crossing
     fn mount_scope(&self) -> &MountScope;
+    /// Hard rate limit evaluated in host memory before foreign thread dispatch
+    fn max_dispatches_per_second(&self) -> u32 { 10_000 }
+    /// Ring-buffer capacity for decoupling foreign language execution
+    fn worker_channel_capacity(&self) -> usize { 4_096 }
     /// Max inspected byte ceiling across FFI boundary (default 64KB)
     fn buffer_ceiling(&self) -> usize { 64 * 1024 }
 }

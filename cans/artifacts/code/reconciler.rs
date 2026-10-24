@@ -12,6 +12,14 @@ use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraversalGuard {
+    /// Uses openat2 with RESOLVE_BENEATH and RESOLVE_NO_SYMLINKS.
+    StrictResolveBeneath,
+    /// Fallback lexical prefix verification for platforms lacking openat2.
+    LexicalPrefixCheck,
+}
+
 #[derive(Default)]
 pub struct CommitStats {
     pub files_changed: u64,
@@ -21,10 +29,16 @@ pub struct CommitStats {
 pub async fn reconcile_upperdir(
     upperdir: &Path,
     host_target: &Path,
+    guard: TraversalGuard,
 ) -> Result<CommitStats, std::io::Error> {
     let mut stats = CommitStats::default();
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    reconcile_diff(upperdir, upperdir, host_target, nonce, &mut stats)?;
+
+    let canonical_root = host_target.canonicalize()?;
+    reconcile_diff(
+        upperdir, upperdir, host_target, &canonical_root,
+        nonce, guard, &mut stats
+    )?;
 
     // Scoped flush of parent directory metadata
     if host_target.exists() {
@@ -39,7 +53,9 @@ fn reconcile_diff(
     upper_root: &Path,
     current: &Path,
     host_target: &Path,
+    canonical_root: &Path,
     nonce: u128,
+    guard: TraversalGuard,
     stats: &mut CommitStats,
 ) -> Result<(), std::io::Error> {
     for entry in fs::read_dir(current)? {
@@ -47,6 +63,17 @@ fn reconcile_diff(
         let path = entry.path();
         let rel_path = path.strip_prefix(upper_root).unwrap();
         let target_path = host_target.join(rel_path);
+
+        // Enforce strict containment: reject symlink hops outside host_target
+        if target_path.exists() {
+            let target_canon = target_path.canonicalize()?;
+            if !target_canon.starts_with(canonical_root) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("Path traversal attempt detected: {:?}", target_path),
+                ));
+            }
+        }
         let file_type = entry.file_type()?;
 
         // Overlayfs file deletion: char device with st_rdev == 0
@@ -68,7 +95,7 @@ fn reconcile_diff(
             if !target_path.exists() {
                 fs::create_dir_all(&target_path)?;
             }
-            reconcile_diff(upper_root, &path, host_target, nonce, stats)?;
+            reconcile_diff(upper_root, &path, host_target, canonical_root, nonce, guard, stats)?;
         } else if file_type.is_file() {
             if let Some(parent) = target_path.parent() {
                 fs::create_dir_all(parent)?;

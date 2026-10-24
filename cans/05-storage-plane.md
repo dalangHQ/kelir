@@ -4,11 +4,16 @@
     - Owner: kelir-core (virtio-fs bus)
     - Storage layout
       - Host workspace mounted read-only as lower overlay layer
+      - Host encapsulation: raw workspace locked to mode 000 on host
+      - Native toolchains outside Kelir observe EACCES on workspace access
+      - Only Kelir hypervisor descriptor bridges access to virtio-fs lowerdir
+      - Granular knob: workspace_encapsulation = Locked | Passthrough
       - Guest modifications isolated to volatile tmpfs upperdir
       - FUSE dispatch journal tracks deletions and node overwrites in memory
-      - Reconciler scans upperdir diffs only; base files never duplicated
-      - Whiteout char devices (st_rdev == 0) trigger host file unlink
-      - Opaque directories (trusted.overlay.opaque) purge host directory trees
+      - Reconciler scans upperdir diffs only under RESOLVE_BENEATH invariants
+      - Whiteout char devices (st_rdev == 0) unlink files strictly beneath target
+      - Symlink resolution escapes during reconciliation abort with E_PATH_TRAVERSAL
+      - Opaque directories purge host directory trees without crossing mount roots
     - Deterministic 64-bit metadata hash for OCC fences
     - Hashes device, inode, generation counter, and mode in O(1) time
     - Zero payload hashing on file open across all inode types
@@ -50,7 +55,9 @@
     - Virtual files served from host memory into guest VFS
     - No backing file on host SSD
   - Sliding-window replacement over FUSE read buffers
-    - Sliding-window replacement executes dynamically during FUSE read()
+    - Stateful Aho-Corasick automaton carries state across read chunk offsets
+    - Splitting target secrets across 1-byte read calls fails evasion
+    - Carryover window buffers boundary fragments until pattern match or flush
     - Replaces matches with fixed-width byte patterns preserving file offset
     - Zero full-file memory buffering on inode open
     - Observation-only snoop callbacks: see: plugins/vfs.md#Snoop-plane

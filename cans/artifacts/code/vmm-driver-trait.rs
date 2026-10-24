@@ -9,6 +9,34 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::io::AsyncRead;
 
+/// Granular memory execution policy enforced by the hypervisor and guest trap loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WxPolicy {
+    /// Hard panic on anonymous executable mappings or dynamic mprotect(PROT_EXEC).
+    Strict,
+    /// Log violation to host ledger and continue execution.
+    PermissiveAudit,
+    /// Disable W^X checks (required for JIT heavy runners like V8/Node).
+    Disabled,
+}
+
+/// Host virtualization selection and hardware validation parameters.
+#[derive(Debug, Clone)]
+pub struct DriverPolicy {
+    /// Refuse to initialize if true hardware virtualization (KVM/HVF/AVF) is missing.
+    pub require_hardware_vmm: bool,
+    /// Explicit flag required to permit bwrap or proot fallback execution.
+    pub allow_emulated_fallback: bool,
+    /// Verify host integrity lockfile (/etc/kelir/hw.lock) before allocating vCPUs.
+    pub verify_hw_lockfile: bool,
+    /// Memory execution boundary policy.
+    pub wx_enforcement: WxPolicy,
+    /// Size of dedicated worker thread pool servicing foreign runtime FFI events.
+    pub ffi_worker_threads: usize,
+    /// Maximum event dispatch operations per second permitted across FFI boundary.
+    pub ffi_max_ops_per_sec: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct VmConfig {
     pub vcpus: u8,
@@ -21,6 +49,7 @@ pub struct VmConfig {
     pub page_size_kb: u32,
     pub tsc_locked: bool,
     pub entropy_seed: Option<u64>,
+    pub driver_policy: DriverPolicy,
     pub enable_gpu_passthrough: bool,
     pub enable_watchdog: bool,
     pub deterministic_clock: bool,

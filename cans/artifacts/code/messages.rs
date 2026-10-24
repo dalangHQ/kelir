@@ -22,10 +22,16 @@ pub struct TrapEvent {
     /// Anti-cyclic rewrite counter. Exceeding 3 aborts task with ECYCLICREWRITE.
     pub rewrite_count: u8,
     pub binary_path: String,
+    /// Physical filesystem device ID of the executable inode
+    pub binary_dev: u64,
+    /// Inode number of executable binary (resists mount/chroot spoofing)
+    pub binary_ino: u64,
     pub binary_blake3: [u8; 32],
     pub argv: Vec<String>,
     pub envp: HashMap<String, String>,
     pub cwd: String,
+    /// Process namespace depth; >1 indicates nested container execution
+    pub namespace_depth: u8,
     pub ancestor_chain: Vec<String>,
     /// Evaluated host-side on argv[1:] to keep shim under 50KB
     pub entropy: f64,
