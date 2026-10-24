@@ -6,6 +6,8 @@
     - Commercial licensing: see: 02-commercial-licensing.md
   - SaaS Architecture
     - Zero-RAM idle execution: Powered by plugin-hyper-density
+      - see: plugins/hyper-density.md
     - Content-addressed block streaming: Powered by plugin-cas-snapshot
+      - see: plugins/cas-snapshot.md
     - Managed endpoints: REST / JSON-RPC gateway at https://api.kelir.dev
     - Multi-tenant boundary: Per-tenant hardware microVM isolation, zero cgroup bleeding
