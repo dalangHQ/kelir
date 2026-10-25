@@ -120,7 +120,7 @@ pub enum TrapAction {
     /// Hypervisor cgroup freeze: freeze guest task group, return control
     /// cleanly to host event loop
     Yield {
-        checkpoint_id: u64,
+        checkpoint_id: String,
     },
     /// Immediate hypervisor-level uncatchable termination of guest workload
     Abort {

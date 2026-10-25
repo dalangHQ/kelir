@@ -43,11 +43,9 @@
 //     Only c.resume / c.deny / c.rewrite appear in existing TS examples;
 //     the four new spellings below are 09's names in TS camelCase idiom
 //     (cf. warmCache, execInGuest), not spellings shown in any example.
-//   - Yield id: 09 leaves checkpoint_id untyped and checkpoints carry
-//     string labels elsewhere (step-evaluation-loop.ts uses "pre-step"),
-//     so this file yields with the "policy-yield" label. Rust's code
-//     declares the id u64 while SnapshotDescriptor.id is String — see
-//     policy-matrix.rs header for that mismatch.
+//   - Yield id: TrapAction::Yield checkpoint_id is String, matching
+//     SnapshotDescriptor.id, so this file yields with the "policy-yield"
+//     label.
 //   - Veto registration in TS: no veto spelling appears in any TS
 //     example or in 03's .on() list (vm:init, vm:ready, vm:shutdown,
 //     trap:deny). The registerVeto calls in the vm:init handler mirror

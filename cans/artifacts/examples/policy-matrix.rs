@@ -28,13 +28,10 @@
 //!
 //! GAPS (spec-documented form used where it exists; the rest is flagged,
 //! not silently invented):
-//!   - Yield id type mismatch: messages.rs declares TrapAction::Yield
-//!     { checkpoint_id: u64 }, but SnapshotDescriptor.id is String
-//!     (vmm-driver-trait.rs). The yield row checkpoints "policy-yield" and
-//!     passes checkpoint_id: 0 as an explicit placeholder until the spec
-//!     reconciles the two types. TS/Python pass the "policy-yield" label,
-//!     matching 09's untyped c.yield(checkpoint_id) and the string labels
-//!     used by step-evaluation-loop.ts.
+//!   - Yield id: String wins (parent decision). TrapAction::Yield
+//!     carries checkpoint_id: String, matching SnapshotDescriptor.id
+//!     (vmm-driver-trait.rs) and the "policy-yield" label TS/Python
+//!     already pass; the yield row below passes "policy-yield".
 //!   - builder.register_custom_action / builder.register_vsock_service are
 //!     specified in 09/03 but their handler signatures and the schema
 //!     argument's type appear in no example; the closures and serde_json
@@ -206,12 +203,10 @@ impl TrapInterposer for PolicyMatrixPlugin {
                 reason: "EPOLICY: abort row".into(),
             })),
             // Row 5: Yield — checkpoint first, then freeze to the host.
-            // GAP: checkpoint_id is u64 in messages.rs but the checkpoint
-            // descriptor carries a String id; 0 is an explicit placeholder
-            // until the spec reconciles the types (see file header).
+            // checkpoint_id is the String label of that checkpoint.
             "policy-yield" => {
                 let _snap = ctx.vm.checkpoint("policy-yield").await?;
-                Ok(Some(TrapAction::Yield { checkpoint_id: 0 }))
+                Ok(Some(TrapAction::Yield { checkpoint_id: "policy-yield".into() }))
             }
             // Row 6: SuspendForApproval — host polls every 500 ms.
             "policy-approval" => Ok(Some(TrapAction::SuspendForApproval {

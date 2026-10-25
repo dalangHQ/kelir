@@ -33,6 +33,8 @@ pub struct ExecutionReceipt {
     pub retired_instructions: u64,
     /// Populated when ReceiptConfig::include_syscall_count.
     pub syscall_count: Option<u64>,
+    /// SQL statements opened against the backing store (db-proxy mounted; 0 otherwise).
+    pub statement_count: u64,
     /// Kernel return code
     pub exit_code: i32,
     /// True physical elapsed time

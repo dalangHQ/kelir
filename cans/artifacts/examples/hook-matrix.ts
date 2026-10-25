@@ -33,6 +33,16 @@
 // the read/output hooks mutate fixed-size buffers in place and cannot
 // change a chunk's length.
 //
+// GUARDS (not new dispatch rows; hook order 1-7 above is unchanged):
+//   - onVfsLookup rejects a path whose `..` segments resolve outside
+//     the /workspace root with E_PATH_TRAVERSAL (05), before the
+//     identity check runs. Paths without `..` keep the old behavior:
+//     the identity inode, else fall through.
+//   - onVfsWrite rejects any payload over the 64KB (65536-byte) FFI
+//     inspection ceiling with BufferCeilingExceeded. That is the runtime
+//     inspection ceiling, NOT the swe-agent policy diff ceiling, which
+//     rejects with ENOSPC.
+//
 // GAPS (flagged, not silently invented):
 //   - TS plugin-hook surface: no createPlugin hook method appears in any
 //     TS example (only .state/.decorate). The .onNetOutbound /
@@ -67,6 +77,22 @@ const TOKEN_LEN = TOKEN_PREFIX.length + 24;
 // Bytes carried between reads: one less than the token length, so any
 // token split across a read boundary is reassembled in the window.
 const CARRYOVER = TOKEN_LEN - 1;
+
+// Lexical workspace escape check, `..` paths only: resolve `..`
+// segments without touching the filesystem (no symlink resolution
+// here; the reconciler's RESOLVE_BENEATH guard owns that) and report
+// whether the resolved path left the /workspace root. Paths with no
+// `..` segment are untouched by this guard.
+function escapesWorkspace(path: string): boolean {
+  const parts = path.split("/").filter((p) => p !== "" && p !== ".");
+  if (!parts.includes("..")) return false;
+  const stack: string[] = [];
+  for (const part of parts) {
+    if (part === "..") stack.pop();
+    else stack.push(part);
+  }
+  return stack.length === 0 || stack[0] !== "workspace";
+}
 
 // ── Shared hook state (closed over, as in the swe-agent TS factory) ───────
 const hookState = {
@@ -110,6 +136,11 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
   // Hook 2: storage lookup. Exactly one synthetic inode, mode 0o400
   // with no permission fallback (02); everything else falls through.
   .onVfsLookup(async (path) => {
+    // GUARD: traversal first — an escaping path is rejected, never
+    // served and never silently fallen through to the host fs.
+    if (escapesWorkspace(path)) {
+      throw new Error("E_PATH_TRAVERSAL: lookup escapes the /workspace root");
+    }
     if (path !== IDENTITY_PATH) return null;
     return {
       mode: 0o400, uid: 0, gid: 0,
@@ -131,6 +162,21 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     const chunk = masked.slice(masked.length - buffer.length);
     hookState.tail = masked.slice(-CARRYOVER);
     return Buffer.from(chunk, "latin1");
+  })
+  // GUARD (not a new dispatch row): the 64KB FFI inspection ceiling.
+  // A payload over it is rejected with BufferCeilingExceeded — the
+  // runtime inspection error, distinct from the swe-agent policy diff
+  // ceiling, which rejects oversize diffs with ENOSPC. GAP: no
+  // BufferCeilingExceeded throw is attested in any TS example; the
+  // swe-agent TS snoop throws Error("ENOSPC: …"), so the ceiling name
+  // is carried as the Error message prefix here (see header).
+  .onVfsWrite(async (_path, buffer) => {
+    const ffiInspectionCeiling = 64 * 1024;
+    if (buffer.byteLength > ffiInspectionCeiling) {
+      throw new Error(`BufferCeilingExceeded: payload ${buffer.byteLength} ` +
+        `bytes exceeds ${ffiInspectionCeiling}-byte FFI ceiling`);
+    }
+    return SyncVerdict.Allow;
   })
   // Hook 4: PTY input. Strip OSC52 clipboard exfiltration sequences:
   // ESC ] 52 ; … terminated by BEL (0x07) or ST (ESC \).

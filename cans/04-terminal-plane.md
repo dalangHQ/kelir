@@ -17,6 +17,7 @@
     - All filters configured strictly using flat PtyConfig, no callbacks
     - PtyConfig fields: cols, rows, dropOsc52, stripTitle, tokenShield, prompts,
       streamEngine, carryoverBufferBytes
+    - carryoverBufferBytes default: 512 bytes
     - Filter stream engines: StreamingAutomata (default) | StatelessRegex
   - Window resize
     - Pipeline mechanics: see: artifacts/diagrams/terminal-pipeline.txt

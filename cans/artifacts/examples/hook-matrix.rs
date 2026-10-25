@@ -34,6 +34,16 @@
 //! on_vfs_read / on_pty_output mutate fixed-size buffers in place and
 //! cannot change a chunk's length.
 //!
+//! GUARDS (not new dispatch rows; hook order 1-7 above is unchanged):
+//!   - on_vfs_lookup rejects a path whose `..` segments resolve outside
+//!     the /workspace root with E_PATH_TRAVERSAL (05), before the
+//!     identity check runs. Paths without `..` keep the old behavior:
+//!     the identity inode, else fall through.
+//!   - on_vfs_write rejects any payload over the 64KB (65536-byte) FFI
+//!     inspection ceiling with PluginError::BufferCeilingExceeded
+//!     (plugin-trait.rs). That is the runtime inspection ceiling, NOT
+//!     the swe-agent policy diff ceiling, which rejects with ENOSPC.
+//!
 //! GAPS (flagged, not silently invented):
 //!   - SyncVerdict::YieldToHost(u64): the u64's meaning (queue id?
 //!     reason code?) is specified nowhere. The outbound hook below
@@ -183,8 +193,44 @@ impl WireInterposer for HookMatrixPlugin {
     }
 }
 
+/// Lexical workspace escape check, `..` paths only: resolve `..`
+/// segments without touching the filesystem (no symlink resolution
+/// here; the reconciler's RESOLVE_BENEATH guard owns that) and report
+/// whether the resolved path left the /workspace root. Paths with no
+/// `..` segment are untouched by this guard — they keep the old
+/// identity-or-fall-through behavior.
+fn escapes_workspace(path: &Path) -> bool {
+    use std::path::Component;
+    if !path.components().any(|c| matches!(c, Component::ParentDir)) {
+        return false;
+    }
+    let mut stack: Vec<&str> = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(segment) => {
+                if let Some(s) = segment.to_str() {
+                    stack.push(s);
+                }
+            }
+            Component::ParentDir => {
+                stack.pop();
+            }
+            _ => {}
+        }
+    }
+    stack.first() != Some(&"workspace")
+}
+
 impl StorageInterposer for HookMatrixPlugin {
     fn on_vfs_lookup(&self, path: &Path) -> Result<Option<VfsInodeAttr>, PluginError> {
+        // GUARD: traversal first — an escaping path is rejected, never
+        // served and never silently fallen through to the host fs.
+        if escapes_workspace(path) {
+            return Err(PluginError::reject(
+                "E_PATH_TRAVERSAL",
+                "lookup escapes the /workspace root",
+            ));
+        }
         if path.as_os_str() != IDENTITY_PATH {
             return Ok(None);
         }
@@ -216,6 +262,23 @@ impl StorageInterposer for HookMatrixPlugin {
         buffer.copy_from_slice(&window[chunk_start..]);
         state.tail = window[window.len().saturating_sub(CARRYOVER)..].to_vec();
         Ok(())
+    }
+
+    // GUARD (not a new dispatch row): the 64KB FFI inspection ceiling.
+    // A payload over it is rejected with BufferCeilingExceeded — the
+    // runtime inspection error, distinct from the swe-agent policy
+    // diff ceiling, which rejects oversize diffs with ENOSPC.
+    fn on_vfs_write(
+        &self, _path: &Path, data: &[u8], _pid: u32, _ctx: &HandlerCtx,
+    ) -> Result<SyncVerdict, PluginError> {
+        const FFI_INSPECTION_CEILING: usize = 64 * 1024;
+        if data.len() > FFI_INSPECTION_CEILING {
+            return Err(PluginError::BufferCeilingExceeded {
+                size: data.len(),
+                max_bytes: FFI_INSPECTION_CEILING,
+            });
+        }
+        Ok(SyncVerdict::Allow)
     }
 }
 

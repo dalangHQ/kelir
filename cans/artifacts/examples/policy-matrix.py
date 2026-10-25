@@ -44,10 +44,9 @@ GAPS (flagged, not silently invented):
     09's names in the existing static-Decision idiom, not spellings
     shown in any example. yield_ carries a trailing underscore because
     bare `.yield` is a Python syntax error (yield is a keyword).
-  - Yield id: 09 leaves checkpoint_id untyped and checkpoints carry
-    string labels elsewhere, so this file yields with the "policy-yield"
-    label. Rust's code declares the id u64 while SnapshotDescriptor.id
-    is String — see policy-matrix.rs header for that mismatch.
+  - Yield id: TrapAction::Yield checkpoint_id is String, matching
+    SnapshotDescriptor.id, so this file yields with the "policy-yield"
+    label.
   - Veto registration in Python: no veto spelling appears in any Python
     example, and the swe-agent Python lifecycle uses builder decorators
     (@builder.on_vm_init), not plugin methods. The plugin on_vm_init /

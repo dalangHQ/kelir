@@ -35,6 +35,7 @@
     - workspace_dirty_bytes tracks bytes committed to target workspace inodes
     - Prevents agents gaming dirty_bytes checks through unmonitored /tmp writes
     - workspace_dirty_bytes is distinct from dirty_bytes: workspace inodes only
+    - ReceiptConfig.receipt_scope = WorkspaceInodesOnly (default) | WholeVmRam
     - statement_count: SQL statements opened against the backing store
       - Example use: see: artifacts/examples/db-backed-runtime.py
     - Attestation token: receipts carry cryptographic proof of hypervisor run
@@ -55,7 +56,6 @@
       - wall_clock_ns across suspend
       - exit_code under Rewrite
       - Receipts require workspace_dirty_bytes > 0 when workspace edits claimed
-      - Granular knob: receipt_scope = WorkspaceInodesOnly (default) | WholeVmRam
       - Sub-microsecond phase spans: trap_ingress_ns, ffi_hop_ns, policy_ns
     - binary_blake3 cache: keyed on (inode, size, mtime_ns); one hash per
       binary identity, not per exec

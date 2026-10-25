@@ -37,10 +37,21 @@
     - Scoping: all SDKs support ring, binary, and path filters at mount point
     - Topology rule: distinct environments use separate profile factories
     - Parity mechanism: see: 11-operations.md#Multi-language-parity-gate
+      - SDK naming idiom: same concept, per-SDK spelling; parity is concept parity
+        - Sinkhole allowlist (Py/RS) vs dnsExcept (TS)
+        - OTel endpoint/service_name/propagate_traceparent vs traceParent/serviceName
+        - ReceiptConfig: Py/RS include_syscall_count
+          - TS: includeDirtyBytes, includeBinaryBlake3, includeSyscallCount
+        - MaskRule patterns list (Py/RS) vs single pattern+replace (TS)
+        - SnoopRule glob (Py/RS) vs path (TS)
+        - Decision static constructors (Py/RS) vs c.deny/c.resume/c.rewrite (TS)
+        - Lifecycle decorators/methods (Py/RS) vs .on("vm:ready") (TS)
+        - TS lock-broker via vfs lockBroker config, not LockBrokerPlugin import
+          - Accepted idiom; same lock-broker concept
     - Trap verdict surface: see: 09-protocol.md#TrapAction-method-mapping
     - Session data operations
-      - Shared memory buffers: session.map_shared_region(tag, size_bytes)
-      - Portable snapshots: session.export_snapshot() and session.import_snapshot()
+      - Shared memory buffers: session.vm.map_shared_region(tag, size_bytes)
+      - Portable snapshots: session.vm.export_snapshot() and session.vm.import_snapshot()
     - Session control surface
       - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
       - Lifecycle vetoes: LifecycleCtx.register_veto(event, cb)

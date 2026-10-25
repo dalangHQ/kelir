@@ -167,8 +167,10 @@
   - Lifecycle vetoes
     - Registration
       - LifecycleCtx.register_veto(event, Box<dyn Fn() -> bool + Send + Sync>)
-      - Hard vetoes register in on_vm_init using LifecycleCtx.register_veto;
-        validated at boot
+      - Hard vetoes register in on_vm_init using LifecycleCtx.register_veto
+      - Pre-boot registration also allowed: builder lifecycle_mut().register_veto
+        - Before seal/boot; validated at boot; same VetoEvent, same firing point
+      - All veto registrations validated at boot
       - Callbacks fire in priority() order across all plugins
     - Two classes
       - Hard veto: Fork, Suspend, ClockSkew

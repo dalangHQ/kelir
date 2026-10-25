@@ -230,6 +230,7 @@ PostExecHandler = Callable[[HandlerContext], Awaitable[PostExecAction]]
 
 def make_universal_step(oracle: Oracle) -> PreExecHandler:
     async def universal_step(c: HandlerContext) -> Decision:
+        await c.vm.checkpoint(f"pre:{c.trap.pid}")
         intent = await oracle.analyze_intent(c.trap)
         if not intent.is_hypothesis_valid:
             return Decision.deny(
@@ -246,10 +247,14 @@ def make_universal_step(oracle: Oracle) -> PreExecHandler:
 
 def make_warm_caches(oracle: Oracle) -> PreExecHandler:
     async def warm_caches(c: HandlerContext) -> Decision:
-        c.env.set("OTEL_TRACE_ID", oracle.current_trace_id())
-        c.env.set("CI", "1")
         await c.fs.warm_cache(["node_modules", ".next/cache"])
-        return Decision.resume()
+        # Env injection via Rewrite, not env.set + resume (09 Env-injection:
+        # env.set + resume returns EINVALIDDECISION). Same binary/argv.
+        return Decision.rewrite(
+            binary=c.trap.binary_path,
+            argv=list(c.trap.argv),
+            env={"OTEL_TRACE_ID": oracle.current_trace_id(), "CI": "1"},
+        )
     return warm_caches
 
 
@@ -457,6 +462,20 @@ async def build_runtime(
                     base_ms=150,
                     jitter_ms=30,
                     drop_rate=0.02,
+                ),
+                NetworkChaos(
+                    target="api.stripe.com",
+                    base_ms=150,
+                    jitter_ms=30,
+                    drop_rate=0.02,
+                    direction="inbound",
+                ),
+                NetworkChaos(
+                    target="api.stripe.com",
+                    base_ms=150,
+                    jitter_ms=30,
+                    drop_rate=0.02,
+                    direction="both",
                 ),
             ],
             fs=[

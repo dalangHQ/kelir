@@ -110,14 +110,13 @@ async fn run_shard(
     parent: &Session,
     shard_id: u32,
     total: u32,
-    region: &kelir::SharedMemoryHandle,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     let child = parent.vm.fork().await?;
 
     // Zero-copy coordination: same host memfd, per-child guest phys addr.
     // Both the parent and every child observe the same bytes with no
     // vsock hop and no FUSE round-trip.
-    let mapped = child.vm.map_shared_region(region, SWARM_REGION).await?;
+    let mapped = child.vm.map_shared_region(SWARM_REGION, SWARM_BYTES).await?;
 
     // Lock-broker intercepts the Cargo.lock write inside the child and
     // delegates to host flock; a conflicting writer sees EWOULDBLOCK,
@@ -147,16 +146,11 @@ async fn run_shard(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let session = boot_swarm().await?;
-    let region = session.vm.map_shared_region(
-        &kelir::SharedMemoryHandle::named(SWARM_REGION, SWARM_BYTES),
-        SWARM_REGION,
-    ).await?;
 
     let mut joins = JoinSet::new();
     for shard_id in 0..8u32 {
         let parent = session.clone();
-        let region = region.clone();
-        joins.spawn(async move { run_shard(&parent, shard_id, 8, &region).await });
+        joins.spawn(async move { run_shard(&parent, shard_id, 8).await });
     }
 
     let mut passed = 0u32;

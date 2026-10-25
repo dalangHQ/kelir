@@ -13,6 +13,8 @@
         - Unprivileged fallbacks (driver-bwrap, driver-proot) banned by default
         - Silent driver downgrade is an uncatchable fatal error: E_NOHARDWAREVMM
         - Emulation tiers require explicit granular opt-in in DriverPolicy
+        - DriverPolicy: wx_enforcement, allow_emulated_fallback, driver (bwrap/proot)
+          - Exercised by: see: artifacts/examples/knob-matrix.rs
         - ForeignPluginProxy embeds V8 and Python event loops directly
         - ForeignPluginProxy isolates host event loops on dedicated OS threads
         - Ring-buffered async channels decouple host UI/IO from microVM vCPU loops

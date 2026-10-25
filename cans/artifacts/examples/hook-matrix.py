@@ -32,6 +32,16 @@ Masking is same-length (token bytes overwritten with "*"), because
 the read/output hooks mutate fixed-size buffers in place and cannot
 change a chunk's length.
 
+GUARDS (not new dispatch rows; hook order 1-7 above is unchanged):
+  - on_vfs_lookup rejects a path whose `..` segments resolve outside
+    the /workspace root with E_PATH_TRAVERSAL (05), before the
+    identity check runs. Paths without `..` keep the old behavior:
+    the identity inode, else fall through.
+  - on_vfs_write rejects any payload over the 64KB (65536-byte) FFI
+    inspection ceiling with BufferCeilingExceeded. That is the runtime
+    inspection ceiling, NOT the swe-agent policy diff ceiling, which
+    rejects with ENOSPC.
+
 GAPS (flagged, not silently invented):
   - Python plugin-hook surface: only on_trap / on_vfs_write /
     on_disclosure appear in the swe-agent Python plugin. The
@@ -51,6 +61,10 @@ GAPS (flagged, not silently invented):
     Python hooks below return the transformed bytes (the swe-agent
     Python on_disclosure returns bytes rather than mutating), which is
     the Python-idiom equivalent of the same transformation.
+  - Error idiom: no BufferCeilingExceeded variant or E_PATH_TRAVERSAL
+    raise is attested in any Python example; both guards below use
+    PluginError.reject (the swe-agent Python on_vfs_write precedent),
+    carrying the error name as the errno, distinct from ENOSPC.
 
 Requirements:
     kelir>=3.0
@@ -67,6 +81,7 @@ from typing import Optional
 import kelir
 from kelir.plugin import (
     BasePlugin,
+    PluginError,
     SyncVerdict,
     VfsInodeAttr,
 )
@@ -86,6 +101,25 @@ CARRYOVER = TOKEN_LEN - 1
 
 _TOKEN_RE = re.compile(rb"sk_live_[A-Za-z0-9]{24}")
 _OSC52_RE = re.compile(rb"\x1b\]52;[^\x07\x1b]*(?:\x07|\x1b\\)?")
+
+
+def escapes_workspace(path: str) -> bool:
+    """Lexical workspace escape check, `..` paths only: resolve `..`
+    segments without touching the filesystem (no symlink resolution
+    here; the reconciler's RESOLVE_BENEATH guard owns that) and report
+    whether the resolved path left the /workspace root. Paths with no
+    `..` segment are untouched by this guard."""
+    parts = [p for p in path.split("/") if p not in ("", ".")]
+    if ".." not in parts:
+        return False
+    stack: list[str] = []
+    for part in parts:
+        if part == "..":
+            if stack:
+                stack.pop()
+        else:
+            stack.append(part)
+    return not stack or stack[0] != "workspace"
 
 
 def mask_tokens(window: bytes) -> bytes:
@@ -130,6 +164,13 @@ class HookMatrixPlugin(BasePlugin):
     # Hook 2: storage lookup. Exactly one synthetic inode, mode 0o400
     # with no permission fallback (02); everything else falls through.
     async def on_vfs_lookup(self, path: Path) -> Optional[VfsInodeAttr]:
+        # GUARD: traversal first — an escaping path is rejected, never
+        # served and never silently fallen through to the host fs.
+        if escapes_workspace(str(path)):
+            raise PluginError.reject(
+                errno="E_PATH_TRAVERSAL",
+                reason="lookup escapes the /workspace root",
+            )
         if str(path) != IDENTITY_PATH:
             return None
         return VfsInodeAttr(
@@ -156,6 +197,23 @@ class HookMatrixPlugin(BasePlugin):
         chunk = masked[len(masked) - len(buffer):] if buffer else b""
         self._state.tail = masked[-CARRYOVER:] if masked else b""
         return chunk
+
+    # GUARD (not a new dispatch row): the 64KB FFI inspection ceiling.
+    # A payload over it is rejected with BufferCeilingExceeded — the
+    # runtime inspection error, distinct from the swe-agent policy diff
+    # ceiling, which rejects oversize diffs with ENOSPC. GAP: no
+    # BufferCeilingExceeded variant is attested in any Python example;
+    # the swe-agent Python on_vfs_write raises PluginError.reject, so
+    # the ceiling name is carried as the errno here (see header).
+    async def on_vfs_write(self, path: Path, data: bytes) -> bool:
+        ffi_inspection_ceiling = 64 * 1024
+        if len(data) > ffi_inspection_ceiling:
+            raise PluginError.reject(
+                errno="BufferCeilingExceeded",
+                reason=f"payload {len(data)} bytes exceeds "
+                       f"{ffi_inspection_ceiling}-byte FFI ceiling",
+            )
+        return True
 
     # Hook 4: PTY input. Strip OSC52 clipboard exfiltration sequences:
     # ESC ] 52 ; … terminated by BEL (0x07) or ST (ESC \).

@@ -195,13 +195,11 @@
         - An all-default field fails --knob-coverage
         - Knob-coverage gate: see: 11-operations.md#Coverage-gates
       - Depth gap list: hooks and surfaces currently unhit
-        - LifecycleParticipant: on_pre_commit, on_post_commit, on_host_preempt
-        - TrapInterposer: on_process_exit, on_pressure, on_heartbeat
-        - TrapInterposer: on_port, on_signal, on_watchdog
-        - TerminalInterposer: on_pty_input, on_pty_output
+        - LifecycleParticipant: on_host_preempt
+        - TrapInterposer: on_pressure
+        - TrapInterposer: on_port, on_signal
         - TerminalInterposer: on_window_resize, on_signal_send
-        - StorageInterposer: on_vfs_lookup, on_vfs_read
-        - WireInterposer: on_net_outbound, on_net_inbound
+        - WireInterposer: on_net_inbound
         - CompositePlugin flattening: no example flattens a bundle
         - derive() vs decorate(): only decorate() is demonstrated
         - Gap list is evidence, not a waiver: unhit items still fail gates

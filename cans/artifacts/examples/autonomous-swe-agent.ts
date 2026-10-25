@@ -79,7 +79,9 @@ const runtime = kelir({
       { path: "/workspace/.env.local",
         content: "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n" },
       { path: "/workspace/identity.jwt",
-        content: `Bearer ${crypto.randomBytes(32).toString("hex")}`, mode: 0o400 },
+        // Lazy per-read thunk, like Py SyntheticFile.dynamic / RS
+        // SyntheticFile::dynamic — not frozen at builder time.
+        content: () => `Bearer ${crypto.randomBytes(32).toString("hex")}`, mode: 0o400 },
     ],
     maskRead: [
       { glob: "**/secrets/**",
@@ -131,7 +133,13 @@ const runtime = kelir({
   // → c.chaos
   .use(chaos({
     network: [{ target: "api.stripe.com",
-                latency: { baseMs: 150, jitterMs: 30 }, dropRate: 0.02 }],
+                latency: { baseMs: 150, jitterMs: 30 }, dropRate: 0.02 },
+              { target: "api.stripe.com",
+                latency: { baseMs: 150, jitterMs: 30 }, dropRate: 0.02,
+                direction: "inbound" },
+              { target: "api.stripe.com",
+                latency: { baseMs: 150, jitterMs: 30 }, dropRate: 0.02,
+                direction: "both" }],
     fs: [{ targetPath: "/workspace/build/cache/*",
            simulateError: "ENOSPC", errorProbability: 0.05 }],
   }))
@@ -159,6 +167,7 @@ const runtime = kelir({
   }))
   .trap("*", {
     pre: async (c) => {
+      await c.vm.checkpoint(`pre:${c.trap.pid}`);
       const intent = await oracle.analyzeIntent({
         binary: c.trap.binary_path,
         binaryBlake3: c.trap.binary_blake3,
@@ -173,7 +182,7 @@ const runtime = kelir({
       return c.resume();
     },
     post: async (c) => {
-      const pre = await c.vm.checkpoint(`post:${c.trap.pid}`);
+      const pre = c.step.last();
       const receipt: ExecutionReceipt = await c.receipt();
       if (receipt.binary_blake3 !== c.trap.binary_blake3) {
         await c.vm.rollback(pre);
@@ -195,10 +204,11 @@ const runtime = kelir({
     },
   })
   .trap("npm test -- --runInBand", async (c) => {
-    c.env.set("OTEL_TRACE_ID", oracle.currentTraceId());
-    c.env.set("CI", "1");
     await c.fs.warmCache(["node_modules", ".next/cache"]);
-    return c.resume();
+    // Env injection via Rewrite, not env.set + resume (09 Env-injection:
+    // env.set + resume returns EINVALIDDECISION). Same binary/argv.
+    return c.rewrite({ binary: c.trap.binary_path, argv: c.trap.argv,
+                       env: { OTEL_TRACE_ID: oracle.currentTraceId(), CI: "1" } });
   })
   .trap("git push *", async (c) => {
     // Merged repo-policy push gate + runtime push gate.

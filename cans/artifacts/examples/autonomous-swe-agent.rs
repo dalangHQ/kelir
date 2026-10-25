@@ -380,6 +380,16 @@ async fn build_runtime(
                 target: "api.stripe.com".into(),
                 base_ms: 150, jitter_ms: 30, drop_rate: 0.02,
                 inject_rst: false, bandwidth_kbps: None,
+            }, NetworkChaos {
+                target: "api.stripe.com".into(),
+                base_ms: 150, jitter_ms: 30, drop_rate: 0.02,
+                inject_rst: false, bandwidth_kbps: None,
+                direction: "inbound".into(),
+            }, NetworkChaos {
+                target: "api.stripe.com".into(),
+                base_ms: 150, jitter_ms: 30, drop_rate: 0.02,
+                inject_rst: false, bandwidth_kbps: None,
+                direction: "both".into(),
             }],
             fs: vec![FsChaos {
                 target_path: "/workspace/build/cache/*".into(),
@@ -444,10 +454,14 @@ async fn build_runtime(
 
         // Warm caches + stamp traceparent for hermetic test
         .trap("npm test -- --runInBand", handler(|c: HandlerCtx| async move {
-            c.env.set("OTEL_TRACE_ID", format!("{:032x}", std::process::id()));
-            c.env.set("CI", "1");
             c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
-            Ok(Decision::Resume)
+            // Env injection via Rewrite, not env.set + Resume (09: EINVALIDDECISION).
+            Ok(Decision::rewrite(
+                c.trap.binary_path.clone(),
+                c.trap.argv.clone(),
+                [("OTEL_TRACE_ID".into(), format!("{:032x}", std::process::id())),
+                 ("CI".into(), "1".into())],
+            ))
         }))
 
         // Entropy defense + `--force` strip

@@ -52,6 +52,8 @@
       - Architecture (synthetic inodes): see: artifacts/diagrams/storage-architecture.txt
       - VfsInodeAttr mode: 0o400 honored strictly; no permission fallback
       - Dynamic hash formula: BLAKE3(path || generation_counter || mode)
+      - TS synthetic content may be a thunk evaluated per read
+        - Same lifecycle as SyntheticFile.dynamic (Py/RS)
     - In-flight read masking
       - Flow: see: 05-storage-plane.md#Sliding-window-replacement-over-FUSE-read-buffers
       - Format-preserving masking (FPA) executes via synthetic FUSE inode generator
