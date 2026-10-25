@@ -1,4 +1,10 @@
 - conflicts
+  - status: unresolved | file: 09-protocol.md | issue: all three swe-agent examples call c.env.set() and return Decision.resume(), but 09-protocol.md#Env-injection says that returns EINVALIDDECISION
+  - status: unresolved | file: cans/artifacts/examples/autonomous-swe-agent.ts | issue: TS post-hook creates a post-exec checkpoint and rolls back to it (semantic no-op for binary-hash/hermetic-egress cases) and its pre-hook creates none, vs Python/Rust pre-hook checkpoint reads
+  - status: unresolved | file: 07-lifecycle.md | issue: multi-vm-swarm.rs registers its veto pre-boot via lifecycle_mut().register_veto, but 07-lifecycle.md#Lifecycle-vetoes says vetoes register in on_vm_init
+  - status: unresolved | file: 07-lifecycle.md | issue: spec session.map_shared_region / session.export_snapshot() / session.import_snapshot() vs examples child.vm.map_shared_region / session.vm.map_shared_region / session.vm.export_snapshot() / session.vm.import_snapshot()
+  - status: unresolved | file: cans/artifacts/examples/autonomous-swe-agent.{rs,ts,py} | issue: field-level SDK naming diverges: sinkhole allowlist vs dnsExcept, otel endpoint/service_name vs traceParent/serviceName, receipt include_syscall_count vs includeDirtyBytes/includeBinaryBlake3/includeSyscallCount, MaskRule patterns vs single pattern/replace, SnoopRule glob vs path
+  - status: unresolved | file: cans/artifacts/examples/autonomous-swe-agent.{rs,ts,py} | issue: synthetic-file lifecycle diverges: Rust/Python evaluate a dynamic callback per read, TS eagerly evaluates a template literal at builder-construction time
   - status: resolved | file: 08-epistemic.md | resolution: wal.rs/otel.rs pointers dropped; Merkle-WAL and OpenTelemetry nodes state plugin-ledger ownership, no artifact pointer
   - status: resolved | file: plugins/*.md | resolution: compact taxonomy nodes
     - kelir and virtio joined the _rules.yaml stopwords (keyword sprawl)

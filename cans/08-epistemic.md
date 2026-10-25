@@ -34,6 +34,9 @@
     - Receipts differentiate whole-VM RAM mutations from workspace mutations
     - workspace_dirty_bytes tracks bytes committed to target workspace inodes
     - Prevents agents gaming dirty_bytes checks through unmonitored /tmp writes
+    - workspace_dirty_bytes is distinct from dirty_bytes: workspace inodes only
+    - statement_count: SQL statements opened against the backing store
+      - Example use: see: artifacts/examples/db-backed-runtime.py
     - Attestation token: receipts carry cryptographic proof of hypervisor run
     - Bare-metal executions lack hardware receipts and fail oracle evaluation
     - Byte-not-page reason: see: 01-architecture.md#SnapshotDescriptor.dirty-bytes

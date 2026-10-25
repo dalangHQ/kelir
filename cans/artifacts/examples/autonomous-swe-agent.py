@@ -313,6 +313,13 @@ def make_zero_byte_check() -> PostExecHandler:
         # dirty_bytes is always populated; zero is a real measurement
         if receipt.dirty_bytes == 0:
             raise RuntimeError("Verification anomaly: zero-byte delta commit attempted.")
+        # Workspace-scoped observation (08-epistemic.md#Execution-receipts):
+        # dirty_bytes counts all hypervisor-dirtied bytes; this field
+        # counts only target workspace inodes. The gate above still keys
+        # on dirty_bytes; this line observes the workspace counter the
+        # gate does not check.
+        log.info("[kelir] commit workspace_dirty_bytes=%s",
+                 receipt.workspace_dirty_bytes)
         return PostExecAction.proceed()
     return zero_byte_check
 
@@ -367,6 +374,10 @@ async def build_runtime(
                     action=lambda _p, stream: stream.write(b"y\n"),
                 ),
             ],
+            # Non-default knob (04-terminal-plane.md#Terminal-pipeline):
+            # StatelessRegex instead of the StreamingAutomata default.
+            # The filters above are unchanged; only the match engine is.
+            stream_engine="StatelessRegex",
         ))
 
         # ── STORAGE PLANE (§8) — sliding-window read replacement via MaskRule ──
@@ -432,6 +443,10 @@ async def build_runtime(
                     inject_mtls=Mtls(cert_path=pg_cert, key_path=pg_key),
                 ),
             ],
+            # Non-default knob (plugins/wire.md): AllowUdpProxied instead
+            # of the StrictTcpOnly default. The TCP sinkhole / drop_all
+            # above is unchanged; only the UDP path moves to proxied.
+            tap_filter="AllowUdpProxied",
         ))
 
         # ── CHAOS (§10) ───────────────────────────────────────────────────

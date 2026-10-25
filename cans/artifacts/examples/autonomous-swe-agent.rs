@@ -56,7 +56,7 @@ use kelir::{
             DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopHandler, SnoopRule,
             VfsConfig, VfsPlugin,
         },
-        wire::{L4Proxy, Mtls, SinkholeConfig, VaultEntry, WireConfig, WirePlugin},
+        wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig, WirePlugin},
     },
     protocol::{CausalDelta, ExecutionReceipt, TrapAction, TrapEvent},
 };
@@ -302,6 +302,10 @@ async fn build_runtime(
                     Ok(())
                 })),
             }],
+            // Non-default knob (04-terminal-plane.md#Terminal-pipeline):
+            // StatelessRegex instead of the StreamingAutomata default.
+            // The filters above are unchanged; only the match engine is.
+            stream_engine: "StatelessRegex".into(),
         }))
 
         // ── STORAGE PLANE (§8) ─────────────────────────────────────────
@@ -364,6 +368,10 @@ async fn build_runtime(
                 destination: "pg.internal.net:5432".into(),
                 inject_mtls: Some(Mtls { cert_path: pg_cert, key_path: pg_key }),
             }],
+            // Non-default knob (plugins/wire.md): AllowUdpProxied instead
+            // of the StrictTcpOnly default. The TCP sinkhole / drop_all
+            // above is unchanged; only the UDP path moves to proxied.
+            tap_filter: TapFilter::AllowUdpProxied,
         }))
 
         // ── CHAOS (§10) ─────────────────────────────────────────────────
@@ -522,10 +530,20 @@ async fn build_runtime(
 
         // Tier-1 sanity: a commit must have dirtied at least one byte
         .trap("git commit *", handler(|c: HandlerCtx| async move {
+            let receipt = c.receipt().await?;
             // dirty_bytes is always populated; zero is a real measurement
-            if c.receipt().await?.dirty_bytes == 0 {
+            if receipt.dirty_bytes == 0 {
                 return Err(PluginError::Halt("zero-byte delta commit".into()));
             }
+            // Workspace-scoped observation (08-epistemic.md#Execution-receipts):
+            // dirty_bytes counts all hypervisor-dirtied bytes; this field
+            // counts only target workspace inodes. The gate above still keys
+            // on dirty_bytes; this line observes the workspace counter the
+            // gate does not check.
+            eprintln!(
+                "[kelir] commit workspace_dirty_bytes={}",
+                receipt.workspace_dirty_bytes,
+            );
             Ok(PostExecAction::Proceed)
         }));
 

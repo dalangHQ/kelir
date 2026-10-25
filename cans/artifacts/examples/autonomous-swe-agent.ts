@@ -64,6 +64,10 @@ const runtime = kelir({
     prompts: [{ match: /Overwrite production schema\? \[y\/N\]/i,
                 timeoutMs: 3000, verifyForeground: true,
                 action: async (_p, stream) => { stream.write("y\n"); } }],
+    // Non-default knob (04-terminal-plane.md#Terminal-pipeline):
+    // StatelessRegex instead of the StreamingAutomata default.
+    // The filters above are unchanged; only the match engine is.
+    streamEngine: "StatelessRegex",
   }))
 
   // → c.fs (sliding-window read replacement via MaskRule included)
@@ -118,6 +122,10 @@ const runtime = kelir({
     l4Proxies: [{ listenPort: 5432, destination: "pg.internal.net:5432",
                   injectMtls: { certPath: "/etc/ssl/client.crt",
                                 keyPath:  "/etc/ssl/client.key" } }],
+    // Non-default knob (plugins/wire.md): AllowUdpProxied instead of the
+    // StrictTcpOnly default. The sinkhole allowlist above is unchanged;
+    // only the UDP path moves to proxied.
+    tapFilter: "AllowUdpProxied",
   }))
 
   // → c.chaos
@@ -215,9 +223,16 @@ const runtime = kelir({
         ? c.deny(1, `EPOLICY: ${c.policy.violations} prior violation(s).`)
         : c.resume(),
     post: async (c) => {
+      const receipt = await c.receipt();
       // dirtyBytes is always populated; zero is a real measurement
-      if ((await c.receipt()).dirtyBytes === 0)
+      if (receipt.dirtyBytes === 0)
         throw new Error("Verification anomaly: zero-byte delta commit attempted.");
+      // Workspace-scoped observation (08-epistemic.md#Execution-receipts):
+      // dirtyBytes counts all hypervisor-dirtied bytes; this field counts
+      // only target workspace inodes. The gate above still keys on
+      // dirtyBytes; this line observes the workspace counter the gate
+      // does not check.
+      console.log(`[kelir] commit workspace_dirty_bytes=${receipt.workspaceDirtyBytes}`);
       return PostExecAction.Proceed;
     },
   })

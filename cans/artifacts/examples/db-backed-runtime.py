@@ -8,6 +8,9 @@ translation or snapshot streaming is involved.
 
 Mounts:     db-proxy.
 Primitives: export_snapshot, import_snapshot.
+Commit:     two-phase commit around the snapshot export — on_pre_commit
+            flushes the host ledger before staging, on_post_commit
+            reports whether the staged snapshot swapped in or was purged.
 
 Requirements:
     kelir>=3.0
@@ -23,7 +26,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 import kelir
-from kelir import Decision, HandlerContext, KelirBuilder, PostExecAction
+from kelir import Decision, HandlerContext, KelirBuilder, PostExecAction, Session
 from kelir.plugins.db_proxy import (
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials,
     PgWireRewrite, SqliteOverVsock,
@@ -98,6 +101,31 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         return PostExecAction.proceed()
 
     builder.trap("migrate *", pre=pre_migrate, post=post_migrate)
+
+    # ── TWO-PHASE COMMIT (§07-lifecycle.md#Two-phase-commit) ──────────
+    # LifecycleParticipant commit hooks, registered the same decorator
+    # way as on_vm_ready / on_vm_shutdown in autonomous-swe-agent.py.
+    # They bracket the snapshot export in main(): the runtime pauses
+    # vCPUs and flushes in-flight VFS buffers, then these handlers run.
+    @builder.on_pre_commit
+    async def _pre_commit(session: Session) -> None:
+        # Prepare phase: make the host side durable BEFORE the guest
+        # snapshot is staged. A crash between export and ledger finalize
+        # must not leave host DB state ahead of guest state — the exact
+        # desynchronization the commit protocol exists to prevent.
+        await session.ledger.flush()
+
+    @builder.on_post_commit
+    async def _post_commit(session: Session, committed: bool) -> None:
+        # Commit phase: committed=True executes the atomic swap into the
+        # workspace — here the staged snapshot becomes the next cold-start
+        # fixture; False unlinks staging and purges tmpfs diffs, so a
+        # failed export never overwrites the last good snapshot.
+        if committed:
+            print("[kelir] commit: snapshot staged as next cold-start fixture")
+        else:
+            print("[kelir] commit aborted: staging purged, last good snapshot kept")
+
     return builder
 
 
@@ -123,8 +151,12 @@ async def main() -> None:
         if run.exit_code != 0:
             raise SystemExit(f"migration failed: {run.exit_code}")
 
-        # Export the post-migration state to the local fixture. The
-        # next cold start hydrates it from the same local file.
+        # Commit point (07-lifecycle.md#Two-phase-commit): exporting the
+        # post-migration state stages the snapshot; on_pre_commit already
+        # flushed the host ledger, and on_post_commit(True) swaps the
+        # staged snapshot into LOCAL_SNAPSHOT while on_post_commit(False)
+        # purges staging, leaving the last good fixture intact. The next
+        # cold start hydrates from the same local file.
         out = await session.vm.export_snapshot()
         with open(LOCAL_SNAPSHOT, "wb") as f:
             f.write(out)

@@ -17,6 +17,16 @@
       - Every primitive mounts end-to-end in one example file
       - An unexercised primitive fails --lifecycle-coverage
       - Lifecycle-coverage gate: see: 11-operations.md#Coverage-gates
+      - Veto-coverage: every VetoEvent registered at least once
+        - Fork, Suspend, ClockSkew, Checkpoint, Rollback, Resume, Terminate
+        - An unregistered VetoEvent fails --veto-coverage
+        - Veto-coverage gate: see: 11-operations.md#Coverage-gates
+        - Veto classes: see: #Lifecycle-vetoes
+      - Watchdog-coverage: Suppress and Mitigate returned at least once
+        - ExecuteDefault alone does not satisfy watchdog-coverage
+        - An unreturned verdict fails --watchdog-coverage
+        - Watchdog-coverage gate: see: 11-operations.md#Coverage-gates
+        - Verdicts: see: #Watchdog
     - Shared memory mapping: see: 01-architecture.md#Shared-memory-channel
     - Portable snapshots: see: #Portable-snapshot-bundles
     - Two-phase commit protocol: see: #Two-phase-commit
@@ -132,6 +142,7 @@
     - on_post_commit(true) executes atomic directory swap into workspace
     - on_post_commit(false) unlinks staging directory and purges tmpfs diffs
     - Prevents desynchronization between host DB and guest workspace
+    - Demonstration target: see: artifacts/examples/db-backed-runtime.py
   - Docker-in-kelir
     - Constraint: Apple Silicon HVF offers no nested VMX/SVM
     - Invariant: OCI containers run without a nested hypervisor and without

@@ -64,7 +64,24 @@
       - Plugin asserts: see: 02-plugin-model.md#First-class-plugins
     - --lifecycle-coverage
       - Lifecycle asserts: see: 07-lifecycle.md#Hypervisor-primitives
-    - Both flags run in cans-check; exit code 1 on any orphan
+    - --hook-coverage
+      - Asserts every hook in the segregated traits is implemented by some
+        custom plugin in cans/artifacts/examples
+      - Hook home: see: 02-plugin-model.md#Segregated-capability-traits
+    - --action-coverage
+      - Asserts every TrapAction, PostExecAction, SyncVerdict, and PluginError
+        variant is used at least once in cans/artifacts/examples
+      - Action home: see: 09-protocol.md#TrapAction-method-mapping
+    - --veto-coverage
+      - Asserts every VetoEvent is registered at least once in an example
+      - Veto home: see: 07-lifecycle.md#Lifecycle-vetoes
+    - --watchdog-coverage
+      - Asserts Suppress and Mitigate are each returned at least once
+      - Watchdog home: see: 07-lifecycle.md#Watchdog
+    - --knob-coverage
+      - Asserts every *Config field set to a non-default value in some example
+      - Extends: see: 02-plugin-model.md#Coverage-invariant
+    - All flags run in cans-check; exit code 1 on any orphan or gap
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
     - Decoupled plugin specs
@@ -124,6 +141,11 @@
       - Automated AST scraper extracts public exported API signatures
       - Asserts 1:1 match across Rust, TypeScript, and Python SDK surfaces
       - Fails CI on divergent method names, parameter arity, or return types
+    - Chain parity
+      - vectors.json must encode the same trap/pre/post/hook chain for each SDK
+      - Each SDK executes that identical chain; CI diffs the observed
+        ExecutionReceipt per chain and any divergence blocks CI
+      - AST method-name parity alone does not assert chain parity
     - Precompiled zero-toolchain distribution
       - Release builds native NAPI addons and PyO3 wheels across target matrix
       - Linux x86_64, aarch64 musl/glibc, macOS arm64/x86_64 prebuilt
