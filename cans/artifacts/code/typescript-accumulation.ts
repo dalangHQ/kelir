@@ -25,7 +25,7 @@ const secureWorkspace = createPlugin("secure-workspace")
 // 3. Level 1 runtime builder mounts composite
 const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
   .use(secureWorkspace)
-  // Null-object pattern: c.ledger is 100% typed; dispatch table skips hooks at boot
+  // Null-object pattern: disabled plugin preserves service interfaces; dispatch skips hooks at boot
   .use(ledger({ enabled: false }))
   .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024 }))
   // Schema push-down: AOT-compiled to native Rust validator at boot
@@ -38,10 +38,18 @@ const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
     if (t.ffi_hop_ns > 10_000) console.warn("FFI boundary spike:", t);
   })
   // Services resolved via typed service locator; no ambient string grab-bags
-  .trap("git commit *", async (c) => {
+  .trap(TrapFilter.binary("git").withArg("commit"), async (c) => {
     const policy = c.service(RepoPolicyService);
     if (policy.violations > 0) {
       return c.deny(1, `EPOLICY: ${policy.violations} violation(s)`);
     }
     return c.resume();
+  })
+  .on(LifecycleEvent.VmReady, async (c) => {
+    return c.resume();
   });
+
+// Session extension pattern: core Session carries no domain APIs.
+const session = await runtime.boot();
+const pty = session.use(ptyExtension);
+await pty.resize(120, 40);

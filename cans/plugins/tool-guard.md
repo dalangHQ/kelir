@@ -1,22 +1,20 @@
 - Plugin tool-guard
-  - Capability definition (tool-guard)
+  - Crate dependencies (tool-guard)
     - Plugin identifier: plugin-tool-guard
     - Owner crate: crates/kelir-plugins/plugin-tool-guard
     - name() = "tool-guard"
-    - Taxonomy (tool-guard): urn:kelir:io:mcp:tool
-      - coordinate: rings=[virtio-console:hvc1]; role=Gate; tier=Native
-    - Capabilities (tool-guard):
-      - provides = [Capability("io:mcp:tool-guard")]
-      - requires = []
-      - order = [OrderConstraint::RunBefore(Capability("io:channel:mcp"))]
+    - Tier 2 governance and protocol proxy (tool-guard)
+    - Depends on (tool-guard): kelir-interface, plugin-mcp
+    - Imports plugin-mcp AST and call definitions directly
+    - Exposes: ToolRegistryService
     - VirtIO device attachment (tool-guard): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (tool-guard): see: 07-lifecycle.md#Lifecycle-vetoes
-    - Topologically executes upstream of plugin-mcp on virtio-console hvc1
+    - Executes upstream of plugin-mcp on the MCP console port
   - Service exports (tool-guard)
     - Exports ToolRegistryService via PipelineBinder for schema and approval lookups
   - Invariants and policy (tool-guard)
     - Total tool-call interposition
-      - Intercepts all JSON-RPC 2.0 frames on hvc1 matching method "tools/call"
+      - Intercepts all JSON-RPC 2.0 frames on the MCP console port matching "tools/call"
       - Deserializes tool name and arguments in native memory before execution
       - Interposition is complete: no tool invocation reaches guest
         execution shims without passing tool-guard
@@ -35,9 +33,9 @@
       - ToolAction::Rewrite(args): mutates payload before dispatch
         (e.g. forced flags, path sandboxing)
       - ToolAction::Deny(errno, reason): drops call, synthesizes standard JSON-RPC error response
-      - ToolAction::SuspendForApproval: requests hypervisor
-        LifecycleRequest::Suspend(HostHold(TOOL_GUARD_HOLD))
-        - Freezes vCPU execution and flushes guest RAM to NVMe (0 MB host RSS)
+      - ToolAction::Hold: requests hypervisor
+        LifecycleRequest::Suspend(External)
+        - Swap mechanics: see: 07-lifecycle.md#Suspend-and-resume
         - Host waits for human out-of-band authorization via vsock Channel 0
     - "Denial of Wallet" recursion limiter
       - Per-tool token-bucket governor clamps call cadence

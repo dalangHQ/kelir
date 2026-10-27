@@ -1,13 +1,11 @@
 - Plugin wire-ingress
-  - Capability definition (wire-ingress)
+  - Crate dependencies (wire-ingress)
     - Plugin identifier: plugin-wire-ingress
     - Owner crate: crates/kelir-plugins/plugin-wire-ingress
     - name() = "wire-ingress"
-    - Taxonomy (wire-ingress): urn:kelir:net:l4:ingress
-      - coordinate: rings=[virtio-vsock:ch1]; role=Proxy; tier=Native
-    - Capabilities (wire-ingress):
-      - provides = [Capability("net:l4:ingress")]
-      - requires = []
+    - Tier 2 governance and protocol proxy (wire-ingress)
+    - Depends on (wire-ingress): kelir-interface, plugin-wire
+    - Exposes: IngressRoutingService
     - VirtIO attachment (wire-ingress): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (wire-ingress): see: 07-lifecycle.md#Lifecycle-vetoes
   - Service exports (wire-ingress)

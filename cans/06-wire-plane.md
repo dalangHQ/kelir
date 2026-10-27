@@ -2,7 +2,10 @@
   - Wire architecture
     - see: artifacts/diagrams/wire-plane.txt
     - Owner: kelir-core (virtio-net wire domain pipeline)
-    - Pipeline stages resolved via topological DAG: chaos -> ingress -> db-proxy -> wire proxy
+    - virtio-net is an L2 TAP bridge
+    - Hook points: on_net_outbound and on_net_inbound
+    - Database proxying lives in db-proxy: see: plugins/db-proxy.md
+    - Credential signing: see: plugins/wire.md
     - Interceptor hooks receive strongly-typed NetContext; ambient c.wire is eliminated
     - Return contract: see: 02-plugin-model.md#Hook-return-semantics
   - TAP L2 bridge
@@ -14,8 +17,8 @@
     - IPv6 disabled at TAP interface unless explicit wire configuration opts in
     - QUIC transport dropped unless an explicit UDP L4 proxy is configured
   - Raw packet interception points
-    - L2/L4 interception dispatched by .intercept("net:outbound", ...)
-    - L2/L4 interception dispatched by .intercept("net:inbound", ...)
+    - L2/L4 interception dispatched by .intercept(Ring.NetOutbound, ...)
+    - L2/L4 interception dispatched by .intercept(Ring.NetInbound, ...)
     - on_net_outbound: hook on frames leaving the guest
     - on_net_inbound: hook on frames arriving at the guest
     - TAP Dispatcher checks MountScope in native memory before FFI
@@ -24,11 +27,6 @@
     - Terminates guest L7 protocols at host boundary
     - Re-originates requests from host side
     - L7 proxy mechanics: see: plugins/wire.md
-  - Paravirtualized signing gateway (wire plane)
-    - Guest forwards canonical unhashed requests over the wire-signing kind
-    - Host signs payloads with real keys (SigV4, HMAC, Stripe signatures)
-    - Signatures return through HostToGuest::ChannelData on the same kind
-    - Cryptographic signatures stay valid without exposing keys to guest
   - Frame drop and forward semantics
     - Ok(Allow) on outbound = forward; Ok(Allow) on inbound = deliver
     - Ok(YieldToHost) = yield frame to host for async policy
@@ -42,5 +40,5 @@
       PluginError::Reject (silent drop)
   - Connection parking
     - Parked connections queue in TAP buffers and raw virtqueues
-    - Emits standard LifecycleRequest::Suspend(IngressWait) to core state machine
+    - Emits standard LifecycleRequest::Suspend(External) to core state machine
     - Mechanics (parking): see: plugins/wire-ingress.md

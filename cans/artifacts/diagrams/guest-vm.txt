@@ -17,7 +17,7 @@
 │   │     - Kernel-level eBPF & seccomp-unotify filters trap security-critical syscalls   │
 │   │     - Streams trap notifications over virtio-vsock port 5252 (Channel 0)            │
 │   │     - Hypervisor freezes task groups via cgroup.freeze during inspection            │
-│   │     - virtio-console ports: hvc0 (PTY master/slave), hvc1 (binary transport)        │
+│   │     - virtio-console ports: console master, dynamic ports                           │
 │   │     - Zero guest-side orchestration agents, CLI shims, or env var injections        │
 │   │                                                                                     │
 │   └── UNTOUCHED GUEST WORKLOAD: Claude Code / Cursor / SWE-bench / Node / Rust / Python │

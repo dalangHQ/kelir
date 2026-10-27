@@ -1,17 +1,11 @@
 - Plugin chaos
-  - Capability definition (chaos)
+  - Crate dependencies (chaos)
     - Plugin identifier: plugin-chaos
     - Owner crate: crates/kelir-plugins/plugin-chaos
     - name() = "chaos"
-    - Taxonomy (chaos): urn:kelir:sys:fault
-      - coordinate: rings=[virtio-net, virtio-fs]; role=Mutator; tier=Native
-    - Capabilities (chaos):
-      - provides = [Capability("sys:fault")]
-      - requires = []
-      - order = [
-          OrderConstraint::RunBefore(Capability("net:l7:proxy")),
-          OrderConstraint::RunBefore(Capability("fs:vfs"))
-        ]
+    - Tier 3 cross-cutting aggregator (chaos)
+    - Depends on (chaos): kelir-interface, plugin-wire, plugin-vfs
+    - Exposes: FaultInjectionService
     - VirtIO device attachment (chaos): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (chaos): see: 07-lifecycle.md#Lifecycle-vetoes
   - Service exports (chaos)

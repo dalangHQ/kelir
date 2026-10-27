@@ -1,13 +1,11 @@
 - Plugin profile
-  - Capability definition (profile)
+  - Crate dependencies (profile)
     - Plugin identifier: plugin-profile
     - Owner crate: crates/kelir-plugins/plugin-profile
     - name() = "profile"
-    - Taxonomy (profile): urn:kelir:sys:config:profile
-      - coordinate (profile): rings=[virtio-vsock:ch0]; role=Gate; tier=Native
-    - Capabilities (profile):
-      - provides = [Capability("sys:config:profile")]
-      - requires = []
+    - Tier 3 cross-cutting aggregator (profile)
+    - Depends on (profile): kelir-interface, Tier 1 and Tier 2 crates
+    - Exposes: ConfigurablePlugin
     - VirtIO device attachment (profile): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (profile): see: 07-lifecycle.md#Lifecycle-vetoes
   - Invariants and policy (profile)

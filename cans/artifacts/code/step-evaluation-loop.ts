@@ -26,7 +26,7 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
       const intent = await orchestrator.analyzeIntent({
         binary: c.trap.binary_path,
         argv: c.trap.argv,
-        lineage: c.trap.ancestor_chain,
+        lineage: c.trap.ppid,
       });
 
       if (!intent.isHypothesisValid) {
@@ -41,7 +41,7 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
       if (!await orchestrator.verifyPhysicalReceipt(receipt)) {
         // 4. Instant Hardware Rollback: memory and disk revert in <8ms
         if (activeCheckpoint) await c.vm.rollback(activeCheckpoint);
-        c.term.notice("⚡ [VERIFICATION ENGINE]: Reverted.\n");
+        c.service(PtyService).notice("⚡ [VERIFICATION ENGINE]: Reverted.\n");
       }
     },
   })

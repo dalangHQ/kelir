@@ -74,7 +74,7 @@ const runtime = kelir({
   carryoverBytes: 1024,
   lockBroker: false,
 
-  // → c.term — 1024-byte carryover buffer, NOT the 512 default.
+  // → terminal extension — 1024-byte carryover buffer, NOT the 512 default.
 })).use(pty({
   cols: 120, rows: 40,
   dropOsc52: true, stripTitle: true,

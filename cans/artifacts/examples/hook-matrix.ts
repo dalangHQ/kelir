@@ -56,12 +56,10 @@
 //     TS example. SyncVerdict.Allow / SyncVerdict.YieldToHost(0) below
 //     follow the PostExecAction.RollbackAndHalt enum precedent in the
 //     swe-agent TS example (imported from @kelir/core).
-//   - YieldToHost's numeric argument and FsInodeAttr's
-//     occMetadataHash: unspecified anywhere (see hook-matrix.rs
-//     header); 0 is an explicit placeholder for both.
-//   - FsInodeAttr field names in TS: camelCase per TS idiom
-//     (occMetadataHash); the Rust struct fields are the documented
-//     source (plugin-trait.rs).
+//   - YieldToHost's numeric argument: unspecified anywhere (see
+//     hook-matrix.rs header); 0 is an explicit placeholder.
+//   - FsInodeAttr field names in TS: camelCase per TS idiom;
+//     the Rust struct fields are the documented source (plugin-trait.rs).
 
 import { kelir, createPlugin, SyncVerdict,
          type Session } from "@kelir/core";
@@ -146,7 +144,6 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
       mode: 0o400, uid: 0, gid: 0,
       size: IDENTITY_CONTENT.length,
       // GAP: hash semantics unspecified; 0 is an explicit placeholder.
-      occMetadataHash: 0,
       content: IDENTITY_CONTENT,
     };
   })

@@ -16,7 +16,7 @@
 //                                            EINVALIDDECISION per 09)
 //   4. policy-abort    -> Abort           (pre-exec, exit 1)
 //   5. policy-yield    -> checkpoint "policy-yield", then Yield to host
-//   6. policy-approval -> HostHold (poll 500 ms)
+//   6. policy-approval -> Hold (500 ms)
 //   7. policy-custom   -> Custom("quarantine", payload) dispatched to
 //                          registerCustomAction("quarantine", …)
 //   8. Vetoes (vm:init): Suspend and ClockSkew, each allowed only once
@@ -37,9 +37,9 @@
 // plugin uses for its options.
 //
 // GAPS (flagged, not silently invented):
-//   - c.abort / c.yield / c.hostHold / c.custom: 09 maps the
+//   - c.abort / c.yield / c.hold / c.custom: 09 maps the
 //     lattice to c.abort, c.yield(checkpoint_id),
-//     c.host_hold(poll_ms), c.custom(name, cbor_payload).
+//     c.hold(duration_ms), c.custom(name, cbor_payload).
 //     Only c.resume / c.deny / c.rewrite appear in existing TS examples;
 //     the four new spellings below are 09's names in TS camelCase idiom
 //     (cf. warmCache, execInGuest), not spellings shown in any example.
@@ -143,8 +143,8 @@ const runtime = kelir({
     await c.vm.checkpoint("policy-yield");
     return c.yield("policy-yield");
   })
-  // Row 6: HostHold — host polls every 500 ms.
-  .trap("policy-approval", async (c) => c.hostHold(500))
+  // Row 6: Hold — host holds 500 ms pending approval.
+  .trap("policy-approval", async (c) => c.hold(500))
   // Row 7: Custom — dispatched by name to the handler above.
   .trap("policy-custom", async (c) =>
     c.custom("quarantine", { pid: c.trap.pid,

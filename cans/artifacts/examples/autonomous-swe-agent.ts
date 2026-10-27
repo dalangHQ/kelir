@@ -20,8 +20,7 @@ import crypto from "node:crypto";
 declare const oracle: {
   currentTraceId(): string;
   analyzeIntent(trap: { binary: string; binaryBlake3: string; argv: string[];
-                        lineage: string[]; cwd: string;
-                        loadedLibs: string[] }): Promise<{ isHypothesisValid: boolean;
+                        lineage: number; cwd: string }): Promise<{ isHypothesisValid: boolean;
                                                           falsificationReason?: string }>;
   verifyPhysicalReceipt(r: ExecutionReceipt): Promise<boolean>;
   ingestHarnessEvent(e: { path: string; event: unknown; producerBlake3: string }): Promise<void>;
@@ -53,7 +52,7 @@ const runtime = kelir({
   tscLocked: true, enableWatchdog: true,
 })
 
-  // → c.term
+  // → terminal extension
   .use(pty({
     cols: 120, rows: 40,
     dropOsc52: true, stripTitle: true,
@@ -170,9 +169,8 @@ const runtime = kelir({
       const intent = await oracle.analyzeIntent({
         binary: c.trap.binary_path,
         binaryBlake3: c.trap.binary_blake3,
-        argv: c.trap.argv, lineage: c.trap.ancestor_chain,
+        argv: c.trap.argv, lineage: c.trap.ppid,
         cwd: c.trap.cwd,
-        loadedLibs: c.trap.loaded_libraries,
       });
       if (!intent.isHypothesisValid)
         return c.deny(1, `Verification Reject: ${intent.falsificationReason}`);
@@ -183,18 +181,18 @@ const runtime = kelir({
       const receipt: ExecutionReceipt = await c.receipt();
       if (receipt.binary_blake3 !== c.trap.binary_blake3) {
         await c.vm.rollback(pre);
-        c.term.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n");
+        c.service(PtyService).notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n");
         return PostExecAction.RollbackAndHalt;
       }
       if (c.trap.binary_path.endsWith("/npm") && receipt.egress_bytes > 0 &&
           c.trap.cwd.includes("/checkout-service")) {
         await c.vm.rollback(pre);
-        c.term.notice(`⚡ [KELIR]: hermetic test emitted ${receipt.egress_bytes}B — REVERTED\n`);
+        c.service(PtyService).notice(`⚡ [KELIR]: hermetic test emitted ${receipt.egress_bytes}B — REVERTED\n`);
         return PostExecAction.RollbackAndHalt;
       }
       if (!(await oracle.verifyPhysicalReceipt(receipt))) {
         await c.vm.rollback(pre);
-        c.term.notice("⚡ [KELIR]: post-condition violated — REVERTED\n");
+        c.service(PtyService).notice("⚡ [KELIR]: post-condition violated — REVERTED\n");
         return PostExecAction.RollbackAndHalt;
       }
       return PostExecAction.Proceed;
@@ -304,7 +302,7 @@ async function main() {
     await session.resume("/tmp/eval.snap");                       // <50ms
 
     // Sync the guest overlay to host storage, then commit via plain guest git.
-    const stats = await session.fs.reconcile({
+    const stats = await session.use(vfsExtension).reconcile({
       cwd: "/workspace/checkout-service",
       atomicStaging: true, fsync: true,
     });

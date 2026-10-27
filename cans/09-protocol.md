@@ -2,8 +2,9 @@
   - Control channel
     - virtio-vsock port 5252: unified multiplexed transport
     - Binary channel framing isolates sub-protocols via channel_id
-      - Channel 0: core-reserved. Syscall traps, VM lifecycle, RFC 6902 patches
-      - Channel 1+: plugin-registered by kind. No core symbol names a plugin channel
+      - Channel 0: hypervisor control
+      - Channels 1-65535: dynamic multiplexed endpoints
+      - No core symbol names a channel endpoint
       - Kind registration: see: #Channel-registration
       - Unchecked raw RW shared memory without vsock sync fails validation
     - Eliminates multi-port socket allocation and port collisions
@@ -24,8 +25,6 @@
       - A frozen inspection is still blind to what the loader *will* do;
         the linker audit exists to make the inspection meaningful
     - Measurement rule
-      - Monotonic rewrite_count increments per trap rewrite
-      - rewrite_count exceeding 3 aborts execution with ECYCLICREWRITE
       - Syscall trap resolves target binaries by kernel (st_dev, st_ino)
       - Prevents path confusion across nested namespaces, chroots, and crun roots
       - In-kernel BPF denies CLONE_NEWUSER unless explicitly allowed in MountScope
@@ -65,13 +64,11 @@
       - TrapAction::Rewrite: c.rewrite({ binary, argv, env })
       - TrapAction::Yield: c.yield(checkpoint_id)
       - TrapAction::Abort: c.abort(exit_code, reason)
-      - TrapAction::HostHold: c.host_hold(poll_ms)
+      - TrapAction::Hold: c.hold(duration_ms)
       - TrapAction::Custom: c.custom(name, cbor_payload)
-    - HostHold wire contract
-      - Supervisor emits PolicyViolationEvent carrying PID, binary, and rule
+    - Hold wire contract
       - Host halts vCPU execution and drops RAM footprint via suspend primitive
-      - Host releases suspension via HostToGuest::ResumeWithPatch frame
-      - Patch frame payload carries CBOR-encoded RFC 6902 mutation instructions
+      - Host releases suspension when the hold duration elapses
     - Custom dispatch contract
       - Registration: builder.register_custom_action(name, schema, handler)
       - Unknown name at trap time fails with EUnknownAction
@@ -92,7 +89,6 @@
     - Key collision policy: overlapping env keys abort with EAmbiguousMutation
     - Mutation decision lattice: Allow -> Rewrite -> Deny -> Abort
     - Calling c.env.set() and returning Decision.resume() returns EINVALIDDECISION
-    - Terminal notifications must be emitted explicitly via c.term.notice()
   - Trap decision gaps: TBD
     - Rewrite loop prevention
     - new_binary canonicalisation

@@ -48,10 +48,6 @@
 //!   - SyncVerdict::YieldToHost(u64): the u64's meaning (queue id?
 //!     reason code?) is specified nowhere. The outbound hook below
 //!     passes 0 as an explicit placeholder.
-//!   - FsInodeAttr.occ_metadata_hash: 02 lists mode, uid, gid, size,
-//!     content for the struct; the hash field appears only in the
-//!     struct definition with no stated semantics. The lookup hook
-//!     below sets it to 0 as an explicit placeholder.
 //!   - on_console_input / on_console_output take &mut Vec<u8> in plugin-trait.rs
 //!     (whole-chunk mutation); there is no per-byte streaming hook, so
 //!     the OSC52 stripper below buffers one chunk at a time.
@@ -240,9 +236,6 @@ impl FsInterposer for HookMatrixPlugin {
             uid: 0,
             gid: 0,
             size: IDENTITY_CONTENT.len() as u64,
-            // GAP: hash semantics unspecified; 0 is an explicit
-            // placeholder (see file header).
-            occ_metadata_hash: 0,
             content: IDENTITY_CONTENT.to_vec(),
         }))
     }

@@ -1,14 +1,11 @@
 - Plugin wire
-  - Capability definition (wire)
+  - Crate dependencies (wire)
     - Plugin identifier: plugin-wire
     - Owner crate: crates/kelir-plugins/plugin-wire
     - name() = "wire"
-    - Taxonomy (wire): urn:kelir:net:l7:proxy
-      - coordinate: rings=[virtio-net]; role=Mutator; tier=Native
-    - Capabilities (wire):
-      - provides = [Capability("net:l7:proxy"), Capability("net:l4:socks")]
-      - requires = []
-      - order = [OrderConstraint::RunAfter(Capability("sys:fault"))]
+    - Tier 1 base ring adapter (wire)
+    - Depends on (wire): kelir-interface only
+    - Exposes: WireProxyService
     - VirtIO device attachment (wire): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (wire): see: 07-lifecycle.md#Lifecycle-vetoes
   - Service exports (wire)
@@ -75,7 +72,7 @@
       - Guest certificate pinning
       - Response body scrubbing
     - Port forwarding
-      - session.forward_port() is a plugin-wire API; unmounted sessions do
+      - Extension forward_port() is a plugin-wire API; unmounted sessions do
         not expose it
       - Guest-initiated: no host listener
         - Flow: guest binds → PortBound → host tunnels over vsock:5252 (Ch 1)

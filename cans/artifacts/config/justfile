@@ -26,7 +26,7 @@ build-ts:
     pnpm --filter @kelir/core build
 
 # --- 3. RAPID TEST ENGINE (<10s) ---
-# Core kernel + plugin-testkit (the only things every plugin depends on)
+# Core kernel + plugin-testkit
 test-core:
     cargo nextest run -p kelir-core -p kelir-plugin-testkit
 
@@ -59,22 +59,9 @@ cans-check:
     @cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
     @cans check --json          | jq -e '.ok and .exitCode == 0'
 
-# Decoupling proof — same exclusions as ci.yml plugin-isolation.
-# Destroys the plugin dir; trap restores it on exit (success or fail).
-test-isolation plugin:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    P="plugin-{{plugin}}"
-    trap 'git checkout HEAD -- "crates/kelir-plugins/$P" Cargo.toml crates/kelir/Cargo.toml 2>/dev/null || true' EXIT
-    rm -rf "crates/kelir-plugins/$P"
-    sed -i "/crates\/kelir-plugins\/$P/d" Cargo.toml
-    sed -i "/^$P\s*=/d" crates/kelir/Cargo.toml
-    cargo nextest run --workspace \
-        --exclude kelir \
-        --exclude containerd-shim \
-        --exclude openshell-grpc \
-        --exclude mcp-server \
-        --exclude kelir-integration
+# Static workspace verification — every plugin against explicit upstream deps
+tiered-check:
+    cargo check --workspace --all-targets
 
 # Runs anti-TOCTOU, cgroup.freeze, and zombie reaper tests in isolated container/namespaces
 test-shim:
@@ -109,7 +96,7 @@ parity: build-ts
     cargo run -p kelir-plugin-cli -- parity run
 
 # --- 4. PRE-FLIGHT CHECK (Run before git push) ---
-pre-flight: cans-check build-shim parity plugin-check-graph plugin-check-all test-isolation-all
+pre-flight: cans-check build-shim parity plugin-check-graph plugin-check-all tiered-check
     cargo fmt --all -- --check
     cargo clippy --workspace --exclude kelir-shim -- -D warnings
     pnpm -r exec eslint .
@@ -122,11 +109,4 @@ plugin-check-all:
     set -euo pipefail
     for p in pty vfs wire chaos ledger mcp db-proxy mesh lock-broker supply-chain wire-ingress profile tool-guard; do
         just plugin-check "$p"
-    done
-
-test-isolation-all:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    for p in pty vfs wire chaos ledger mcp db-proxy mesh lock-broker supply-chain wire-ingress profile tool-guard; do
-        just test-isolation "$p"
     done

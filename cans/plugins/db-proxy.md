@@ -1,14 +1,12 @@
 - Plugin db-proxy
-  - Capability definition (db-proxy)
+  - Crate dependencies (db-proxy)
     - Plugin identifier: plugin-db-proxy
     - Owner crate: crates/kelir-plugins/plugin-db-proxy
     - name() = "db-proxy"
-    - Taxonomy (db-proxy): urn:kelir:net:l7:sql
-      - coordinate: rings=[virtio-net, virtio-vsock]; role=Proxy; tier=Native
-    - Capabilities (db-proxy):
-      - provides = [Capability("net:l7:sql")]
-      - requires = []
-      - order = [OrderConstraint::RunBefore(Capability("net:l7:proxy"))]
+    - Tier 2 governance and protocol proxy (db-proxy)
+    - Depends on (db-proxy): kelir-interface, plugin-wire
+    - Imports plugin-wire L4 proxy primitives directly
+    - Exposes: SqlProxyService
     - VirtIO Ring attachment: virtio-net (port 5432) and virtio-vsock (/run/kelir/db.sock)
     - Lifecycle attachment (db-proxy): see: 07-lifecycle.md#Lifecycle-vetoes
   - Service exports (db-proxy)

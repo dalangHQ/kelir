@@ -6,8 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Plugin-scoped telemetry entry. Core never inspects `payload`;
-/// `namespace` is the producing plugin's taxonomy boundary URN.
+/// Telemetry extension entry. Core never inspects `payload`;
+/// `namespace` is opaque; core never interprets it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelemetryExtension {
     pub namespace: String,
@@ -47,7 +47,7 @@ pub struct ExecutionReceipt {
     pub phase_timings: Option<PhaseTimings>,
     /// Total network egress bytes transmitted
     pub egress_bytes: u64,
-    /// Plugin-scoped extensions. Core treats entries as opaque;
-    /// empty for sessions with no extension-producing plugin.
+    /// Extension entries. Core treats entries as opaque;
+    /// empty for sessions with no extension producer.
     pub extensions: Vec<TelemetryExtension>,
 }

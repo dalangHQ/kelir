@@ -1,13 +1,10 @@
 - Plugin mesh
-  - Capability definition (mesh)
+  - Crate dependencies (mesh)
     - Plugin identifier: plugin-mesh
     - Owner crate: crates/kelir-plugins/plugin-mesh
     - name() = "mesh"
-    - Taxonomy (mesh): urn:kelir:ipc:vsock:mesh
-      - coordinate: rings=[virtio-vsock]; role=Mutator; tier=Native
-    - Capabilities (mesh):
-      - provides = [Capability("ipc:vsock:mesh")]
-      - requires = []
+    - Tier 1-adjacent base transport (mesh)
+    - Depends on (mesh): kelir-interface only
     - VirtIO device attachment (mesh): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mesh): see: 07-lifecycle.md#Lifecycle-vetoes
   - Invariants and policy (mesh)

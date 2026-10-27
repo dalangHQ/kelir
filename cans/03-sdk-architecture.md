@@ -29,6 +29,25 @@
       - Python Pydantic v2 frozen models, import-time checks: see: #Python-SDK
       - NAPI/PyO3 AOT hook fusion: pipeline handlers fuse to one native closure
       - Foreign handlers cross FFI at most once per event
+    - Typed dispatch and session extensions
+      - Typed event hooks
+        - .on(LifecycleEvent.VmReady, handler) for lifecycle events
+        - .intercept(Ring.NetOutbound, handler) for ring interception
+        - .trap(TrapFilter.binary("git").withArg("commit"), handler)
+      - Session extension pattern
+        - Core Session: boot, fork, suspend, resume, rollback, terminate
+        - Core Session: raw ring channel access alongside primitives
+        - No domain APIs on core Session: no forward_port, term, fs members
+        - Rust: let session = builder.boot().await?
+        - Rust: let pty = session.extension::<PtyExtension>()?
+        - Rust: pty.resize(120, 40).await?
+        - TypeScript: const session = await builder.boot()
+        - TypeScript: const pty = session.use(ptyExtension)
+        - TypeScript: await pty.resize(120, 40)
+        - Python: async with builder as session
+        - Python: pty = session.ext(PtyExtension)
+        - Python: await pty.resize(120, 40)
+        - Services resolve via c.service::<PtyService>() in handlers
     - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
     - Language surfaces
       - Rust: borrow-checker verified typestate, zero-cost Serde
@@ -48,17 +67,18 @@
         - MaskRule patterns list (Py/RS) vs single pattern+replace (TS)
         - SnoopRule glob (Py/RS) vs path (TS)
         - Decision static constructors (Py/RS) vs c.deny/c.resume/c.rewrite (TS)
-        - Lifecycle decorators/methods (Py/RS) vs .on("vm:ready") (TS)
+        - Lifecycle decorators/methods (Py/RS) vs .on(LifecycleEvent.VmReady) (TS)
         - TS lock-broker via vfs lockBroker config, not LockBrokerPlugin import
           - Accepted idiom; same lock-broker concept
     - Trap verdict surface: see: 09-protocol.md#TrapAction-method-mapping
-    - Session data operations
-      - Shared memory buffers: session.vm.map_shared_region(tag, size_bytes)
-      - Portable snapshots: session.vm.export_snapshot() and session.vm.import_snapshot()
-    - Session control surface
-      - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
-      - Lifecycle vetoes: LifecycleCtx.register_veto(event, cb)
-        - Event classes: see: 07-lifecycle.md#Lifecycle-vetoes
+    - Session surfaces
+      - Session data operations
+        - Shared memory buffers: session.vm.map_shared_region(tag, size_bytes)
+        - Portable snapshots: session.vm.export_snapshot() and session.vm.import_snapshot()
+      - Session control surface
+        - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
+        - Lifecycle vetoes: LifecycleCtx.register_veto(event, cb)
+          - Event classes: see: 07-lifecycle.md#Lifecycle-vetoes
     - Multiplexed binary RPC: session.vsock.channel(kind), binary framing
       - Channel kind registration: builder.register_channel(kind, handler)
         - kind 0 is core-reserved; see: 09-protocol.md#Channel-registration
@@ -103,15 +123,15 @@
     - see: artifacts/code/rust-handle-injection.rs
     - Typestate transitions: KelirBuilder<Unset> to KelirBuilder<Sealed> to Session
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
-    - .plugin() accepts core KelirPlugin plus only needed capability traits
-    - Capability traits: LifecycleParticipant, TrapInterposer, ConsoleInterposer
+    - .plugin() accepts core KelirPlugin plus only needed ring traits
+    - Ring traits: LifecycleParticipant, TrapInterposer, ConsoleInterposer
     - FsInterposer and NetInterposer are synchronous hot-path traits
     - AnyPlugin: identity marker for any KelirPlugin, not a capability bundle
     - Example trait bounds follow the split; unneeded traits stay unimplemented
-    - .trap(pattern, handler): pre-exec gate; dual pre/post handler also supported
+    - .trap(matcher, handler): pre-exec gate; dual pre/post handler also supported
     - .intercept_vfs(pathGlob, handler): synchronous VFS write filter
     - .on_vm_ready(handler): session callback; .boot().await seals and boots
-    - Inter-plugin services queryable via c.service::<T>() validated against DAG requirements
+    - Inter-plugin services queryable via c.service::<T>()
     - Composite bundles flatten into builder via CompositePlugin trait
     - Zero-Allocation Validation via Serde
       - #[derive(Deserialize)] enum Action with serde(tag = "action")
@@ -123,14 +143,13 @@
     - .use() takes flat plugin instances; no callback builder arguments
     - .params(schema): TypeBox AOT push-down compiles to native Rust
       validators at boot; falsified actions fail with EINVAL before dispatch
-    - .trap(pattern, handler): simple pre-exec gate returning a Decision
-    - .trap(pattern, { pre, post }): dual pre/post gate; post returns a
+    - .trap(matcher, handler): simple pre-exec gate returning a Decision
+    - .trap(matcher, { pre, post }): dual pre/post gate; post returns a
       PostExecAction
     - .intercept(channel, filter, handler): ring-level synchronous hot-path
       filters returning SyncVerdict
-    - .on(event, handler): lifecycle interceptors for vm:init, vm:ready,
-      vm:shutdown, and trap:deny
-    - Typed service locator: c.service(ToolRegistry) replaces ambient untyped properties
+    - .on(event, handler): lifecycle interceptors over LifecycleEvent values
+    - Typed service locator: c.service(ToolRegistry) for typed service lookup
     - AOT hook fusion compiles all TS pipeline handlers into a single flat closure
     - Invariant: exactly 1 NAPI trampoline jump per event regardless of depth
     - Fully unified TContext passes to callbacks, resolving cross-plugin lookups

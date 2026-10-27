@@ -27,7 +27,7 @@
         locally reproducible
       - `pre-flight` is the only gate that must pass before push; it is the
         union of the three exclusions above
-    - `pre-flight` runs parity and plugin audit before push
+    - `pre-flight` runs parity, plugin audit, tiered check before push
       - see: #Multi-language-parity-gate and #Developer-CLI
   - CI matrix
     - see: artifacts/config/ci.yml
@@ -45,11 +45,11 @@
       - sccache enabled via SCCACHE_GHA_ENABLED
     - Per-plugin matrix: each plugin fails independently
     - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
-    - External plugin CI: isolated contract attestation via reusable workflow
+    - External plugin CI: contract attestation via reusable workflow
     - Parity release gate: see: #Multi-language-parity-gate
     - Spec gate: cans-check; see: #Spec-gate
     - Plugin audit tier: plugin-audit; see: #Per-plugin-CI
-    - Decoupling proof tier: plugin-isolation; see: #Decoupling-proof
+    - Tiered compilation tier: verify-tiered-compilation; see: #Tiered-compilation
   - Spec gate
     - Job: cans-check
     - Two tiers, exit-code asserted on parsed JSON, no stderr grep
@@ -65,9 +65,9 @@
   - Coverage-gates
     - --plugin-coverage
       - Plugin asserts: see: 02-plugin-model.md#First-class-plugins
-      - DAG resolution gate: asserts all provides, requires, and order constraints
-        form an acyclic graph
-      - Verifies zero plugins define hardcoded integer priority values
+      - Tier model (coverage): see: 02-plugin-model.md#Plugin-tiering
+      - Tiered compilation gate: plugins compile against explicit upstream deps
+      - Builder registration gate: each plugin registers without string tokens
     - --lifecycle-coverage
       - Lifecycle asserts: see: 07-lifecycle.md#Hypervisor-primitives
       - State machine assert: verifies all SuspendReason variants execute through
@@ -75,7 +75,7 @@
     - --hook-coverage
       - Asserts every hook in the segregated traits is implemented by some
         custom plugin in cans/artifacts/examples
-      - Hook home: see: 02-plugin-model.md#Segregated-capability-traits
+      - Hook home: see: 02-plugin-model.md#Segregated-ring-traits
     - --action-coverage
       - Asserts every TrapAction, PostExecAction, SyncVerdict, and PluginError
         variant is used at least once in cans/artifacts/examples
@@ -92,7 +92,7 @@
     - All flags run in cans-check; exit code 1 on any orphan or gap
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
-    - Decoupled plugin specs
+    - Per-plugin specs
       - One spec file per plugin: 13 in cans plugin folder, 4 in kelir-cloud
       - Leaf-node rule: plugin files do not chain further references; bus
         pointers are direct 1-hop
@@ -101,34 +101,32 @@
       - Plugin roster: see: 02-plugin-model.md#First-class-plugins
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
-      - Structural decoupling proof: see: 02-plugin-model.md#Plugin-ownership
+      - Upstream dependencies: see: 02-plugin-model.md#Plugin-tiering
     - Matrix job: plugin-audit
       - Each cell runs `kelir-plugin-cli check -p plugin-<name>` — the same
         contract audit `just plugin-check` runs locally
       - Cell set: see: artifacts/config/ci.yml
-      - Taxonomy check: asserts boundary URN and ring mask in code trait
-      - Dev-dep edge gate: `cargo tree -p plugin-<name> --edges dev` contains
-        only plugin-testkit among plugins
-      - Facade edge gate: `cargo tree -p plugin-<name>` contains no `kelir`
-    - Matrix job: plugin-isolation; see: #Decoupling-proof
+      - Dependency check: asserts crate deps and ring mask in code trait
+      - Tiered dependency gate: plugin Cargo deps follow the tier model
+      - Tier model (audit): see: 02-plugin-model.md#Plugin-tiering
+    - Matrix job: verify-tiered-compilation; see: #Tiered-compilation
     - Local mirror
       - just test-plugins runs all in one invocation
       - just test-plugin <name> for a single plugin
-      - just plugin-check-all and just test-isolation-all run the loops
+      - just plugin-check-all runs the loop
     - Integration tier
       - Uses: kelir-integration
       - Runs only where KVM/HVF is available
       - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
-  - Decoupling proof
-    - Job: plugin-isolation
-    - Audit scope: see: 02-plugin-model.md#First-class-plugins
-    - Claim executed: see: 02-plugin-model.md#Plugin-ownership
-    - Per cell: remove crate, workspace member, and facade feature; build and
-      nextest the remainder
-    - Excluded crates: see: 02-plugin-model.md#Plugin-ownership
-    - Local mirror: `just test-isolation <plugin>`; trap restores on exit
-    - Graph validation: `kelir-plugin-cli check --graph` asserts acyclic requires()
-  - Decoupled repository CI
+  - Tiered compilation
+    - Job: verify-tiered-compilation
+    - Step: Verify Tiered Plugin Compilation
+    - Command: cargo check --workspace --all-targets
+    - Tier model (compilation): see: 02-plugin-model.md#Plugin-tiering
+    - Scope: every workspace crate and target, plugins included
+    - Local mirror: `just tiered-check` runs the identical command
+    - Graph validation: `kelir-plugin-cli check --graph` asserts acyclic deps
+  - External repository CI
     - Reusable attestation workflow for external plugin repositories
       - Reusable workflow sketch: see: artifacts/config/plugin-ci-reusable.yml
       - Attestation flow sketch: see: artifacts/diagrams/ecosystem-ci.txt
@@ -206,7 +204,7 @@
         - Community roster: see: 02-plugin-model.md#First-class-plugins
       - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
       - kelir-shim: in-guest musl PID 1 (<50KB)
-    - Decoupled spec layout
+    - Spec layout
       - Core plane files: cans/00-overview.md to cans/11-operations.md
       - Plugin spec files: one <name>.md per plugin
         - Community: cans/plugins

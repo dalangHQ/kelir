@@ -273,7 +273,7 @@ def make_verify_receipt(oracle: Oracle) -> PostExecHandler:
 
         if receipt.binary_blake3 != c.trap.binary_blake3:
             await c.vm.rollback(pre)
-            c.term.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
+            c.service(PtyService).notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
             return PostExecAction.rollback_and_halt()
 
         if (
@@ -282,7 +282,7 @@ def make_verify_receipt(oracle: Oracle) -> PostExecHandler:
             and "/checkout-service" in c.trap.cwd
         ):
             await c.vm.rollback(pre)
-            c.term.notice(
+            c.service(PtyService).notice(
                 f"⚡ [KELIR]: hermetic test emitted {receipt.egress_bytes}B "
                 "egress — REVERTED\n"
             )
@@ -290,7 +290,7 @@ def make_verify_receipt(oracle: Oracle) -> PostExecHandler:
 
         if not await oracle.verify_physical_receipt(receipt):
             await c.vm.rollback(pre)
-            c.term.notice("⚡ [KELIR]: post-condition violated — REVERTED\n")
+            c.service(PtyService).notice("⚡ [KELIR]: post-condition violated — REVERTED\n")
             return PostExecAction.rollback_and_halt()
 
         return PostExecAction.proceed()
@@ -582,7 +582,8 @@ async def main() -> None:
         log.info("[kelir] booted driver=%s boot_ms=%s",
                  session.driver_name, session.boot_ms)
 
-        await session.forward_port(8080, 3000)                       # §11.7
+        wire = session.ext(WireExtension)
+        await wire.forward_port(8080, 3000)                          # §11.7
         base = await session.vm.checkpoint("clean_base")
         winning_delta: Optional[CausalDelta] = None
 
@@ -625,7 +626,7 @@ async def main() -> None:
         await session.resume("/tmp/eval.snap")
 
         # ── Phase 4: overlay reconciliation + guest git commit (§8.1) ──
-        stats = await session.fs.reconcile(
+        stats = await session.ext(VfsExtension).reconcile(
             cwd="/workspace/checkout-service",
             atomic_staging=True,
             fsync=True,

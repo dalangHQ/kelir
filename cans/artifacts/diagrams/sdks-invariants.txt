@@ -16,3 +16,9 @@
 │              │ projected automatically            │ evaluation                         │                                    │
 └──────────────┴────────────────────────────────────┴────────────────────────────────────┴────────────────────────────────────┘
 AOT hook fusion: NAPI/PyO3 pipeline handlers fuse to one native closure per event.
+Typed enum compilation: LifecycleEvent, Ring, and TrapFilter values are checked
+at compile time in Rust and TypeScript and at import time in Python; string
+event names are not accepted dispatch keys in any language.
+Session extensions: domain APIs attach via PtyExtension-style extensions in all
+three languages; core Session exposes only hypervisor primitives plus raw ring
+channel access, never forward_port, term, or fs members.

@@ -30,6 +30,13 @@ pub const MAX_FRAME_PAYLOAD: usize = 64 * 1024; // 64KB strict boundary
 
 pub const FLAG_CONTINUATION: u16 = 0x0001;
 
+// Canonical message types. The header carries integers only; no
+// message type names a domain, device, or plugin.
+pub const MSG_TRAP: u16 = 0x0001; // Trap Notification / Decision
+pub const MSG_CHANNEL_PAYLOAD: u16 = 0x0002; // Channel Payload (ChannelData)
+pub const MSG_VM_LIFECYCLE_CONTROL: u16 = 0x0003; // VM Lifecycle Control
+pub const MSG_SYSTEM_TELEMETRY: u16 = 0x0004; // System Telemetry (Heartbeat, Pressure)
+
 // Packed layout, exactly 24 bytes, matching the diagram above:
 // All multi-byte integers encoded in Little-Endian byte order.
 #[repr(C, packed)]

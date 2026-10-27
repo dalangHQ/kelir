@@ -1,7 +1,7 @@
 // crates/kelir-interface/src/plugin.rs
 //
-// The decoupled capability-based KelirPlugin trait and dual-plane execution contracts.
-// Eliminates magic integer priorities in favor of topological DAG scheduling.
+// The typed KelirPlugin trait and ring interposer contracts.
+// Plugins link directly via Cargo crates; no runtime string resolution.
 //
 // Owned by: cans/02-plugin-model.md#KelirPlugin-trait
 
@@ -40,9 +40,6 @@ pub enum PluginError {
     /// Conflicting semantic mutations on overlapping resource targets.
     #[error("Ambiguous mutation detected across plugins on resource '{resource}': {conflict}")]
     AmbiguousMutation { resource: String, conflict: String },
-    /// DAG resolution failure at bootstrap
-    #[error("Unsatisfied capability dependency: plugin '{plugin}' requires '{capability}'")]
-    UnsatisfiedCapability { plugin: String, capability: String },
     #[error("Internal I/O failure: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -66,19 +63,7 @@ pub struct FsInodeAttr {
     pub uid: u32,
     pub gid: u32,
     pub size: u64,
-    pub occ_metadata_hash: u64,
     pub content: Vec<u8>,
-}
-
-/// Semantic capability token decoupled from concrete crate types.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Capability(pub &'static str);
-
-/// Semantic ordering constraints resolved via Kahn's algorithm at boot.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OrderConstraint {
-    RunBefore(Capability),
-    RunAfter(Capability),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,15 +93,6 @@ pub enum TelemetryRole {
 pub enum ExecutionTier {
     Native,
     Foreign,
-}
-
-#[derive(Debug, Clone)]
-pub struct PluginTaxonomy {
-    pub boundary: &'static str, // urn:kelir:<subsystem>:<target>[:<subtarget>]
-    pub rings: &'static [VirtioDevice],
-    pub role: TelemetryRole,
-    pub tier: ExecutionTier,
-    pub mutation_targets: &'static [&'static str],
 }
 
 /// Mount-level scoping filters evaluated before dispatch array registration.
@@ -257,31 +233,18 @@ impl<'a> LifecycleCtx<'a> {
 }
 
 // ── Interface segregation ────────────────────────────────────────
-// Formerly one monolithic KelirPlugin trait; now a core identity trait
-// plus five ring-scoped capability traits, each with default no-op
-// implementations. Plugins implement only the traits they touch.
-// NOTE (follow-up, not implemented here): at builder `.plugin(p)`
-// assembly, core is to inspect the plugin's declared taxonomy().rings
-// and register handlers into dedicated, ring-specific contiguous
-// arrays (e.g. Vec<Arc<dyn FsInterposer>>), so unused rings cost
-// zero vtable lookups. No dispatch-registration code lives in this file.
+// A core identity trait plus five ring-scoped traits, each with default
+// no-op implementations. Plugins implement only the traits they touch.
+// NOTE: at builder `.plugin(p)` assembly, core inspects the plugin's
+// implemented ring traits and registers handlers into dedicated,
+// ring-specific contiguous arrays (e.g. Vec<Arc<dyn FsInterposer>>),
+// so unused rings cost zero vtable lookups. No dispatch-registration
+// code lives in this file.
 
 // ── Core Identity Trait (Mandatory) ──────────────────────────────
 pub trait KelirPlugin: Send + Sync {
-    /// Unique identifier for telemetry and requires() resolution.
+    /// Unique identifier for telemetry.
     fn name(&self) -> &'static str;
-
-    /// Universal taxonomy coordinates declared for registry indexing.
-    fn taxonomy(&self) -> PluginTaxonomy;
-
-    /// Capabilities exported by this plugin for consumption by peers.
-    fn provides(&self) -> Vec<Capability> { vec![] }
-
-    /// Required capabilities validated against the DAG at engine boot.
-    fn requires(&self) -> Vec<Capability> { vec![] }
-
-    /// Semantic ordering constraints resolved via Kahn's topological sort.
-    fn order(&self) -> Vec<OrderConstraint> { vec![] }
 
     /// Default mount scope. Overridden by explicit builder scope.
     fn default_scope(&self) -> MountScope { MountScope::default() }
@@ -290,7 +253,7 @@ pub trait KelirPlugin: Send + Sync {
     fn is_enabled(&self) -> bool { true }
 
     /// Deep-clones plugin state when session.vm.fork() creates a CoW child.
-    fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin>;
+    fn fork_state(&self, child_session_id: &str) -> Box<dyn AnyPlugin>;
 
     /// Register inline fallible interceptors into the hardware ring pipelines.
     fn register_interceptors(&self, _pipeline: &mut dyn PipelineBinder) {}
@@ -299,7 +262,7 @@ pub trait KelirPlugin: Send + Sync {
     fn register_subscribers(&self, _bus: &mut dyn EventBusBinder) {}
 }
 
-// ── Ring-Scoped Capability Traits (Implement Only What You Touch) ─
+// ── Ring-Scoped Traits (Implement Only What You Touch) ─
 #[async_trait]
 pub trait LifecycleParticipant {
     async fn on_vm_init(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }
@@ -344,7 +307,7 @@ pub trait ConsoleInterposer {
     ) -> Result<(), PluginError> { Ok(()) }
     /// Mandatory core-originated disclosure (TrapAction::Rewrite.tty_notice).
     /// Body is immutable; return Some(bytes) to append. All annotations
-    /// concatenate in priority() order and follow the body on the PTY.
+    /// concatenate in registration order and follow the body on the PTY.
     /// See cans/04-terminal-plane.md#Disclosure
     async fn on_disclosure(
         &self, _body: &[u8],
@@ -369,9 +332,9 @@ pub trait NetInterposer {
 
 /// Identity marker for any plugin object: core identity only.
 /// fork_state and CompositePlugin::unpack return this type. It must NOT
-/// require the capability traits: requiring all five would force every
+/// require the ring traits: requiring all five would force every
 /// forkable plugin to implement every ring, defeating segregation.
-/// Capability dispatch uses the per-ring trait objects, not this marker.
+/// Dispatch uses the per-ring trait objects, not this marker.
 /// Send + Sync are inherited via KelirPlugin.
 pub trait AnyPlugin: KelirPlugin {}
 

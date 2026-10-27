@@ -86,7 +86,11 @@ kelir/
 │   │
 │   ├── kelir-plugins/                 # Modular First-Class Rust Plugins
 │   │   # ── Every plugin-* has: src/, tests/, fixtures/, examples/, README.md ──
-│   │   # ── Depends on kelir-interface (runtime) + kelir-plugin-testkit (dev) only ──
+│   │   # ── Crate dependency rules ──
+│   │   # ── Tier 1 plugins depend only on kelir-interface ──
+│   │   # ── Tier 2 plugins depend on Tier 1 plugins ──
+│   │   # ── Tier 3 plugins depend on Tier 1 and Tier 2 plugins ──
+│   │   # ── Every plugin also dev-depends on kelir-plugin-testkit ──
 │   │   ├── plugin-pty/                # virtio-console broker, ANSI sanitizer, Token Shield
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
@@ -126,7 +130,7 @@ kelir/
 │   │   │   │   ├── l4_socks.rs        # Database connection proxy (mTLS & dynamic auth)
 │   │   │   │   ├── ssh_gate.rs        # Secure Enclave host SSH-Agent forwarder
 │   │   │   │   ├── dns.rs             # Port 53 UDP interception & NXDOMAIN sinkhole
-│   │   │   │   └── port_forward.rs    # session.forward_port()
+│   │   │   │   └── port_forward.rs    # extension forward_port()
 │   │   │   └── tests/
 │   │   │       ├── test_l7_proxy.rs
 │   │   │       ├── test_l4_socks.rs
@@ -176,7 +180,7 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # CompositePlugin flattening of profile declarations into child plugins
 │   │   │   └── tests/test_profile.rs
-│   │   └── plugin-tool-guard/         # MCP tool-call interposition, schema pinning, veto rules on hvc1
+│   │   └── plugin-tool-guard/         # MCP tool-call interposition, schema pinning, veto rules on MCP port
 │   │       ├── Cargo.toml
 │   │       ├── src/lib.rs             # ToolInterposer: on_tool_list, on_tool_call, on_tool_result
 │   │       └── tests/test_tool_guard.rs

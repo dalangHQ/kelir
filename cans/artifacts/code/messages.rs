@@ -5,7 +5,6 @@
 //
 // Owned by: cans/09-protocol.md#Wire-messages
 
-use ciborium::value::Value as CborValue;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -19,8 +18,6 @@ pub struct TrapEvent {
     pub pid: u32,
     pub ppid: u32,
     pub task_id: u64,
-    /// Anti-cyclic rewrite counter. Exceeding 3 aborts task with ECYCLICREWRITE.
-    pub rewrite_count: u8,
     pub binary_path: String,
     /// Physical filesystem device ID of the executable inode
     pub binary_dev: u64,
@@ -30,10 +27,6 @@ pub struct TrapEvent {
     pub argv: Vec<String>,
     pub envp: HashMap<String, String>,
     pub cwd: String,
-    /// Process namespace depth; >1 indicates nested container execution
-    pub namespace_depth: u8,
-    pub ancestor_chain: Vec<String>,
-    pub loaded_libraries: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,20 +54,6 @@ pub struct Heartbeat {
     pub uptime_ms: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindowResize {
-    pub rows: u16,
-    pub cols: u16,
-    pub xpixel: u16,
-    pub ypixel: u16,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SendSignal {
-    pub pid: u32,
-    pub signal: u32,
-}
-
 // ── Wire enums ───────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -93,8 +72,6 @@ pub enum HostToGuest {
         seq: u64,
         action: TrapAction,
     },
-    WindowResize(WindowResize),
-    SendSignal(SendSignal),
     /// Dynamic Memory Balloon Adjustment
     AdjustBalloon {
         target_mb: u32,
@@ -102,6 +79,8 @@ pub enum HostToGuest {
     /// Extension frame on a host-registered channel kind.
     /// `kind` resolution: see: cans/09-protocol.md#Channel-registration
     /// Unknown kinds abort delivery with EUnknownChannel.
+    /// Console control frames travel inside ChannelData addressed to a
+    /// console channel endpoint; there is no dedicated control variant.
     ChannelData {
         kind: u16,
         seq: u64,
@@ -114,16 +93,6 @@ pub enum HostToGuest {
 pub enum TrapAction {
     /// Resume the syscall untouched. Registers and memory are never modified.
     Allow,
-    /// Hypervisor cgroup freeze: freeze guest task group, return control
-    /// cleanly to host event loop
-    Yield {
-        checkpoint_id: String,
-    },
-    /// Immediate hypervisor-level uncatchable termination of guest workload
-    Abort {
-        exit_code: i32,
-        reason: String,
-    },
     /// Inject exit code and stderr into the agent's TTY.
     Deny {
         exit_code: i32,
@@ -136,13 +105,22 @@ pub enum TrapAction {
         new_argv: Vec<String>,
         injected_env: HashMap<String, String>,
     },
-    /// Plugin-initiated hold: freeze vCPUs, flush RAM, poll for release.
-    /// Reason attribution is plugin-side; core sees only the hold.
-    HostHold {
-        poll_interval_ms: u32,
+    /// Hypervisor cgroup freeze: freeze guest task group, return control
+    /// cleanly to host event loop
+    Yield {
+        checkpoint_id: String,
+    },
+    /// Immediate hypervisor-level uncatchable termination of guest workload
+    Abort {
+        exit_code: i32,
+        reason: String,
+    },
+    /// Hold guest execution for duration_ms.
+    Hold {
+        duration_ms: u32,
     },
     /// Extension point. Dispatched by name to a registered handler;
     /// unknown names fail with EUnknownAction before the pipeline resumes.
     /// Closes the fixed-variant lock-in (quarantine, throttle, shadow-route).
-    Custom(CborValue),
+    Custom(ciborium::value::Value),
 }

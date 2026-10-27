@@ -15,7 +15,7 @@ is the dispatch order; each binary hits exactly one row:
                                            EINVALIDDECISION per 09)
   4. policy-abort    -> Abort           (pre-exec, exit 1)
   5. policy-yield    -> checkpoint "policy-yield", then Yield to host
-  6. policy-approval -> HostHold (poll 500 ms)
+  6. policy-approval -> Hold (500 ms)
   7. policy-custom   -> Custom("quarantine", payload) dispatched to
                          builder.register_custom_action("quarantine", …)
   8. Vetoes (on_vm_init): Suspend and ClockSkew, each allowed only once
@@ -36,9 +36,9 @@ subclasses, mirroring the Rust capability traits in snake_case (cf.
 on_trap / on_fs_write / on_disclosure in the swe-agent Python plugin).
 
 GAPS (flagged, not silently invented):
-  - Decision.abort / Decision.yield_ / Decision.host_hold /
+  - Decision.abort / Decision.yield_ / Decision.hold /
     Decision.custom: 09 maps the lattice to c.abort,
-    c.yield(checkpoint_id), c.host_hold(poll_ms),
+    c.yield(checkpoint_id), c.hold(duration_ms),
     c.custom(name, cbor_payload). Only Decision.deny / resume / rewrite
     appear in existing Python examples; the four new spellings below are
     09's names in the existing static-Decision idiom, not spellings
@@ -65,7 +65,7 @@ GAPS (flagged, not silently invented):
     read/write shape is not shown anywhere. write/read below are the
     closest generic duplex form.
   - Handler-context vm.checkpoint: the swe-agent Python handlers use
-    c.receipt() / c.term but never c.vm.checkpoint; the yield row below
+    c.receipt() / terminal service but never c.vm.checkpoint; the yield row below
     assumes the Python HandlerContext exposes vm like its TS/Rust
     counterparts.
 
@@ -184,7 +184,7 @@ async def row_yield(c: HandlerContext) -> Decision:
 
 
 async def row_approval(c: HandlerContext) -> Decision:
-    return Decision.host_hold(poll_ms=500)
+    return Decision.hold(duration_ms=500)
 
 
 async def row_custom(c: HandlerContext) -> Decision:

@@ -2,10 +2,9 @@
   - Hypervisor primitives
     - Centralized Hypervisor Lifecycle State Machine:
       - States: Initializing, Running, Suspended(SuspendReason), Terminated
-      - SuspendReason: HostHold(u32) | IngressWait | AdminHold | ResourcePressure
-      - Eliminates independent suspend implementations in tool-guard and wire-ingress
-      - Single core implementation of lz4_flex + io_uring NVMe working-set dump
-      - Zero host RSS (0 MB) achieved identically across all suspension triggers
+      - SuspendReason: External(u32) | ResourcePressure
+      - Eliminates independent suspend implementations outside core
+      - Working-set swap: see: #Suspend-and-resume
       - Cycle-exact resume triggered via vsock Channel 0 patch or TAP frame arrival
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
@@ -82,10 +81,9 @@
   - Suspend and resume
     - suspend
       - Freezes vCPU registers
-      - lz4_flex-compresses dirty memory pages
-      - Flushes to local NVMe
-      - Deallocates host memory; see: artifacts/code/vmm-driver-trait.rs (suspend)
-    - Zero-RSS working-set swap via lz4_flex & io_uring
+      - Page-dump engine: lz4_flex compression over io_uring direct I/O
+      - Flushes compressed pages to local NVMe
+      - Host RSS drops to 0 MB; see: artifacts/code/vmm-driver-trait.rs (suspend)
     - resume
       - Restores registers and memory
       - Resumes at exact cycle boundary
@@ -97,11 +95,9 @@
     - Typical use: waiting for human approval with zero host CPU cost
     - Mobile and SBC use: full RSS deallocation under Android LMK memory pressure
     - Flash preservation: guest tmpfs writes stay in RAM; zero random SD card writes
-    - Host-hold suspension
-      - Triggered by TrapAction::HostHold on plugin-initiated holds
-      - Freezes vCPUs and flushes memory to local NVMe via io_uring
-      - Host RAM drops to 0 MB while awaiting out-of-band release
-      - Resume executes cycle-exact upon monotonic RFC 6902 patch submission
+    - External suspension
+      - Triggered by SuspendReason::External(u32) awaiting out-of-band release
+      - Resume executes cycle-exact upon external release signal
   - Portable snapshot bundles
     - Content-addressed snapshot sync
     - Streamed archive packaging vmm_state.json, ram.zst, and upperdir diff
@@ -169,12 +165,11 @@
   - Break-glass
     - Supervisor freezes guest agent task group via cgroup freezer prior to attach
     - In-flight PTY buffer drained before exposing raw console master
-    - Developer attaches interactive TTY to virtio-console hvc0
+    - Developer attaches interactive TTY to the interactive console master port
     - Subshell exit clears screen, refreshes window size, and unfreezes agent group
     - Spelling: `breakGlass()` (TS), `break_glass()` (Rust, Py);
       `session.break-glass()` never exists
-  - Port forwarding (plugin-wire)
-    - Plugin-wire API: see: plugins/wire.md#Port-forwarding
+  - Wire port forwarding: see: plugins/wire.md#Port-forwarding
   - Zombie reaping
     - Shim runs as guest PID 1
     - waitpid(-1, WNOHANG) pass integrated into async event loop

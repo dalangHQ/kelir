@@ -54,9 +54,8 @@ GAPS (flagged, not silently invented):
     follow the PostExecAction.proceed() / rollback_and_halt() static
     precedent in the swe-agent Python example; the import path follows
     the kelir.plugin precedent (PluginError, TrapAction).
-  - YieldToHost's numeric argument and FsInodeAttr's
-    occ_metadata_hash: unspecified anywhere (see hook-matrix.rs
-    header); 0 is an explicit placeholder for both.
+  - YieldToHost's numeric argument: unspecified anywhere (see
+    hook-matrix.rs header); 0 is an explicit placeholder.
   - Hook return-vs-mutate shape: Rust mutates buffers in place; the
     Python hooks below return the transformed bytes (the swe-agent
     Python on_disclosure returns bytes rather than mutating), which is
@@ -178,9 +177,6 @@ class HookMatrixPlugin(BasePlugin):
             uid=0,
             gid=0,
             size=len(IDENTITY_CONTENT),
-            # GAP: hash semantics unspecified; 0 is an explicit
-            # placeholder (see header).
-            occ_metadata_hash=0,
             content=IDENTITY_CONTENT,
         )
 

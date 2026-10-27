@@ -2,26 +2,21 @@
                                         │
            ┌────────────────────────────┼────────────────────────────┐
            ▼                            ▼                            ▼
-  [1. L7 PROXY & SIGNING GATE][2. NON-HTTP L4 SOCKS5]      [3. GIT-OVER-SSH GATE]
-  Terminates TLS via CA cert;  Terminates DB connections    Bridges guest SSH
-  vsock Ch 2 sidecar signs     (Postgres/Redis/MySQL);      to host SSH-Agent via
-  SigV4/HMAC payloads.         injects mTLS & dynamic certs. vsock. Enclave signing.
-  transit. Scrubs responses.
+  [L2 TAP BRIDGE]              [on_net_outbound]            [on_net_inbound]
+  Raw L2 TAP Ethernet frames   Hook on frames leaving       Hook on frames arriving
+  cross the TAP boundary in    the guest.                    at the guest.
+  both directions.
                                         │
                                         ▼
-                              [4. DNS SINKHOLE]
+                              [DNS SINKHOLE]
                               Traps all UDP 53; drops non-whitelisted
                               domains with NXDOMAIN. Blocks exfiltration.
                                         │
-           ┌────────────────────────────┴────────────────────────────┐
-           ▼                                                         ▼
-  [5. DATABASE PROXY]                                      [6. FEDERATION MESH]
-  Mediates pgwire (TCP 5432) & SQLite                       Point-to-point cross-VM
-  sockets over vsock; enforces in-flight                    peer vsock stream with mTLS;
-  DbAction (Allow, Deny, Rewrite).                          propagates traceparent & hops.
-                                        │
                                         ▼
-                             [7. CONNECTION PARKING]
+                             [CONNECTION PARKING]
                              Host-terminates client TCP; parks frames in TAP buffers;
                              buffers up to 64KB in raw virtqueues until guest resumes;
                              wakes microVM and forwards to vsock:5252 (Channel 1).
+
+  Database proxying: see plugins/db-proxy.md.
+  L7 proxy and credential signing: see plugins/wire.md.

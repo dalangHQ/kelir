@@ -1,17 +1,14 @@
 - Plugin mcp
-  - Capability definition (mcp)
+  - Crate dependencies (mcp)
     - Plugin identifier: plugin-mcp
     - Owner crate: crates/kelir-plugins/plugin-mcp
     - name() = "mcp"
-    - Taxonomy (mcp): urn:kelir:io:channel:mcp
-      - coordinate: rings=[virtio-console:hvc1]; role=Mutator; tier=Native
-    - Capabilities (mcp):
-      - provides = [Capability("io:channel:mcp")]
-      - requires = []
-      - order = [OrderConstraint::RunAfter(Capability("io:mcp:tool-guard"))]
+    - Tier 1 base ring adapter (mcp)
+    - Depends on (mcp): kelir-interface only
+    - Exposes: McpEndpointService
     - VirtIO device attachment (mcp): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mcp): see: 07-lifecycle.md#Lifecycle-vetoes
-    - Binds to virtio-console paravirtual port hvc1
+    - Binds to a dynamically allocated virtio-console port for JSON-RPC transport
   - Service exports (mcp)
     - Exports McpEndpointService via PipelineBinder for JSON-RPC transport routing
   - Invariants and policy (mcp)
@@ -29,10 +26,10 @@
       - read_file → virtio-fs lookup + read
       - write_file → virtio-fs write
     - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
-    - Composes with plugin-tool-guard: tool-guard sits upstream on hvc1 inspecting "tools/call"
-    - Port multiplexing routes hvc1 directly to MCP client without PTY conflict
+    - Composes with plugin-tool-guard: tool-guard sits upstream on the MCP console port
+    - Port multiplexing routes its console port directly to MCP client without PTY conflict
     - MCP contract
-      - Transport: JSON-RPC 2.0 over virtio-console hvc1
+      - Transport: JSON-RPC 2.0 over its virtio-console port
       - Framing: JSON Lines; one object per \n, no Content-Length
       - Max frame: 64 KB; larger split via FLAG_CONTINUATION
   - Error and return semantics (mcp)

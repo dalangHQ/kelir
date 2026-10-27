@@ -1,13 +1,11 @@
 - Plugin ledger
-  - Capability definition (ledger)
+  - Crate dependencies (ledger)
     - Plugin identifier: plugin-ledger
     - Owner crate: crates/kelir-plugins/plugin-ledger
     - name() = "ledger"
-    - Taxonomy (ledger): urn:kelir:sys:audit
-      - coordinate: rings=[virtio-vsock:ch0]; role=Observer; tier=Native
-    - Capabilities (ledger):
-      - provides = [Capability("sys:audit")]
-      - requires = []
+    - Tier 3 cross-cutting aggregator (ledger)
+    - Depends on (ledger): kelir-interface, Tier 1 and Tier 2 crates
+    - Exposes: LedgerSink
     - VirtIO device attachment (ledger): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (ledger): see: 07-lifecycle.md#Lifecycle-vetoes
   - Invariants and policy (ledger)

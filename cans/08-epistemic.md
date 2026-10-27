@@ -39,9 +39,9 @@
       - Computes BLAKE3 hash over canonical declarative profile bytes at boot
       - Injected as genesis block into Merkle WAL before guest vCPU starts
       - Receipts bind profile_blake3 cryptographically to hardware counters
-    - Plugin telemetry: producer writes a TelemetryExtension in `extensions`
-      - Example: plugin-db-proxy emits net:l7:sql statement counts
-      - Example: plugin-vfs emits fs:vfs:workspace_dirty_bytes
+    - Extension telemetry: producer writes a TelemetryExtension in `extensions`
+      - Example: namespace net:l7:sql carries statement counts
+      - Example: namespace fs:vfs carries workspace dirty bytes
       - Example use: see: artifacts/examples/db-backed-runtime.py
     - Attestation token: receipts carry cryptographic proof of hypervisor run
     - Bare-metal executions lack hardware receipts and fail oracle evaluation
@@ -74,14 +74,14 @@
     - State diff aggregation: CausalDelta aggregates net physical diffs
     - Merkle root chaining links granular receipts to state diffs
     - Tracks physical page deltas, modified inodes, and process lineage
-    - L7 protocol telemetry lives in plugin-wire, isolated from core structs
+    - L7 protocol telemetry lives outside core structs, in extensions
     - Type ownership
       - Struct is a shared context type; it lives in kelir-interface next to
         ExecutionReceipt
       - Computation is domain-local: StorageDomain emits StorageDelta;
         ControlDomain emits ExecutionDelta
-      - Core aggregates domain deltas over the EventBus into CausalDelta at checkpoint boundaries
-      - Eliminates feature-envy: plugin-ledger subscribes to CausalDelta; never diffs VFS journals
+      - Core aggregates domain deltas into CausalDelta at checkpoints
+      - Subscribers consume CausalDelta; never diff VFS journals directly
   - Three-tier evidence verification model
     - Tier 1: hardware/hypervisor sampling
       - Signals: BLAKE3 receipts, PMU retired instructions, OCC inode hashes,

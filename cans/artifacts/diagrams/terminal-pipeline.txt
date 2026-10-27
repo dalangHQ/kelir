@@ -4,7 +4,7 @@
 │   GUEST WORKLOAD (Claude Code / Bash)                                       │
 │     │ Writes stdout/stderr bytes                                            │
 │     ▼                                                                       │
-│   Linux Kernel PTY Driver (hvc0: PTY Master -> /dev/pts/N)                  │
+│   Linux Kernel PTY Driver (virtio-console port: PTY Master -> /dev/pts/N)   │
 │     │ isatty(1) == true. Raw mode active. Zero CLI downgrade.               │
 │     ▼                                                                       │
 │   virtio-console Ring Buffer (Hardware Shared Memory)                       │

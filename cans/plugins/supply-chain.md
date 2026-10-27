@@ -1,18 +1,15 @@
 - Plugin supply-chain
-  - Capability definition (supply-chain)
+  - Crate dependencies (supply-chain)
     - Plugin identifier: plugin-supply-chain
     - Owner crate: crates/kelir-plugins/plugin-supply-chain
     - name() = "supply-chain"
-    - Taxonomy (supply-chain): urn:kelir:sys:trap:exec
-      - coordinate: rings=[virtio-vsock:ch0]; role=Gate; tier=Native
-    - Capabilities (supply-chain):
-      - provides = [Capability("sys:trap:exec")]
-      - requires = []
+    - Tier 2 governance and protocol proxy (supply-chain)
+    - Depends on (supply-chain): kelir-interface and Tier 1 crates
     - VirtIO attachment (supply-chain): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (supply-chain): see: 07-lifecycle.md#Lifecycle-vetoes
   - Invariants and policy (supply-chain)
     - Monitors package manager process trees
-    - Inspects ancestor_chain on TrapEvent for package managers (npm, pip)
+    - Inspects binary_path and argv on TrapEvent for package managers (npm, pip)
     - Blocks execution of lifecycle scripts in dependency directories
     - Entropy analysis
       - Computes Shannon entropy of argv[1:] on every TrapEvent

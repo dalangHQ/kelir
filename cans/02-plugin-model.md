@@ -1,35 +1,49 @@
 - Plugin model
-  - Taxonomic coordinate contract
+  - Plugin tiering
+    - Tier 1 base ring adapters
+      - plugin-pty: console ring adapter
+      - plugin-vfs: storage ring adapter
+      - plugin-wire: wire ring adapter
+      - plugin-mcp: console channel adapter
+      - Tier 1 plugins depend strictly on kelir-interface only
+    - Tier 2 security, governance, and protocol proxies
+      - plugin-tool-guard: tool-call governance proxy
+      - plugin-lock-broker: cross-VM lock governance proxy
+      - plugin-db-proxy: database protocol proxy
+      - plugin-supply-chain: execution governance proxy
+      - plugin-wire-ingress: inbound wire proxy
+      - Tier 2 plugins declare direct Cargo dependencies on Tier 1 plugins
+    - Tier 3 cross-cutting aggregators
+      - plugin-ledger: audit aggregation over Tier 1 and Tier 2 plugins
+      - plugin-profile: configuration aggregation over Tier 1 and Tier 2 plugins
+      - plugin-chaos: fault aggregation over Tier 1 and Tier 2 plugins
+      - Tier 3 plugins declare direct Cargo dependencies on Tier 1 and Tier 2 plugins
+    - Tier 1-adjacent base transport
+      - plugin-mesh: vsock IPC peer transport
+      - plugin-mesh depends strictly on kelir-interface only
+    - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
+    - Typed cross-plugin communication
+      - plugin-tool-guard imports plugin-mcp AST and call definitions directly
+      - plugin-lock-broker imports plugin-vfs inode abstractions directly
+      - plugin-db-proxy imports plugin-wire L4 proxy primitives directly
     - Code is sole SSOT: declared programmatically via KelirPlugin trait
     - Manifest artifact is strictly auto-generated for zero-compile indexing
-    - Axis 1 (boundary): urn:kelir:<subsystem>:<target>[:<subtarget>]
-    - Axis 2 (rings): set of attached VirtIO device channels
-    - Axis 3 (tier): Native (Rust in-process) | Foreign (host FFI)
-    - Axis 4 (telemetry role): Observer | Gate | Mutator | Proxy
-    - Axis 5 (capabilities): Provided and required semantic tokens
-    - Ordering via topological DAG: eliminates arbitrary magic integer priorities
-    - Cycle detection and unfulfilled dependencies fail closed at boot
-    - First-class catalog default: tier is Native unless stated
+    - Execution kind: Native (Rust in-process) | Foreign (host FFI)
+    - First-class catalog default: kind is Native unless stated
     - Mutation scope manifest: mutators declare target paths, ports, or envs
     - Overlapping mutation scopes between plugins fail validation at boot
-    - Coordinates enforce DAG construction and dispatch layout
+    - Cycle detection and unfulfilled dependencies fail closed at boot
     - Clean-room boundary invariant
       - kelir-interface is strictly dual-licensed (MIT OR Apache-2.0)
       - Implementing KelirPlugin creates zero copyleft or viral licensing obligations
       - Third-party authors retain 100% intellectual property rights over their plugins
       - Commercial plugins in kelir-cloud link against kelir-interface without licensing conflict
-  - Universal taxonomy subsystems
-    - net: L2 TAP frames, L4 streams, L7 protocol termination
-    - fs: FUSE VFS operations and virtio-blk block images
-    - io: PTY streams and multiplexed console channels
-    - sys: traps, process trees, clock, faults, audit receipts
-    - ipc: vsock multiplexing and shared-memory mapping
   - Dual-plane execution architecture
     - Interceptor pipeline plane
       - Synchronous or bounded latency inline processors
       - Evaluates monotonic verdict lattice: Allow < Rewrite < Deny < Abort
       - Single mutator owns target byte slice at any stage
-      - Compiled into contiguous zero-cost dispatch tables via Kahn's sort
+      - Compiled into contiguous zero-cost dispatch tables
       - Latency bounded by #Latency-ceiling; foreign FFI filter-gated
     - Reactive event bus plane
       - Asynchronous fan-out pub/sub for telemetry, audit, and OTel
@@ -52,11 +66,10 @@
     - AOT hook fusion collapses nested closures into single FFI trampoline
   - KelirPlugin trait
     - see: artifacts/code/plugin-trait.rs
-    - Capability tokens define interface contracts without peer crate linkage
-    - provides() declares exported capabilities to the engine
-    - requires() declares mandatory dependencies validated at boot
-    - order() declares RunBefore and RunAfter constraints relative to capabilities
-    - Segregated capability traits
+    - Typed lifecycle: name, default_scope, is_enabled, fork_state
+    - Typed registration: register_interceptors, register_subscribers
+    - Inter-plugin linkage is direct Cargo crate imports, not string tokens
+    - Segregated ring traits
       - Core identity only: KelirPlugin is mandatory; see: artifacts/code/plugin-trait.rs
       - LifecycleParticipant: vm lifecycle, commit, host preempt
       - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
@@ -83,7 +96,7 @@
     - Why the surface is this size
       - A hook exists only if a ring delivers the event it consumes
       - A hook that a plugin does not implement defaults to `Ok(())`;
-        "opt-in" is each capability trait's typing, not a runtime branch
+        "opt-in" is each ring trait's typing, not a runtime branch
     - Hook context restriction
       - Trap and lifecycle hooks receive HandlerCtx or a restricted lifecycle context
       - No hook receives &mut Box<dyn VmmDriver> or &Session
@@ -109,9 +122,9 @@
     - Macros expand to static MountScope masks and binary trap registrations
     - Eliminates procedural condition checks inside userland hook bodies
   - Static dispatch
-    - Dispatch compilation: Kahn's topological sort resolves dependency DAG at boot
+    - Dispatch compilation: direct Cargo linkage resolves plugin order at build time
     - Pipeline tables index linear interceptor chains per VirtIO ring
-    - Core verifies plugin dependency DAG: cycles and missing deps halt boot
+    - Core verifies plugin crate graph: cycles and missing deps halt boot
     - Monotonic permission lattice: Allow -> Rewrite -> Deny -> Abort
     - Restrictive monotonicity: downstream hooks cannot widen upstream denial
     - Fail-closed mutation collisions: overlapping writes raise EAmbiguousMutation
@@ -119,10 +132,10 @@
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
     - Zero-cost null objects: disabled plugins retain types, cost zero in core
     - fork_state() deep-clones state instances during session.vm.fork()
-    - Native zero-WASM isolation: compile-time linear capability tokens
+    - Native zero-WASM isolation: compile-time crate linkage
     - Immutable &[u8] slice views prevent cross-plugin heap tampering
     - Hardware MPK page keys isolate per-plugin memory domains in-process
-    - requires() validated at boot; missing dep aborts boot with EConfig
+    - Missing declared dependency aborts boot with EConfig
     - Lock-free dispatch swap via ArcSwap on the host event bus (internal)
     - ArcSwap serves atomic dispatch swapping during snapshot hydration only
     - Not a public runtime API; session configuration is frozen after boot
@@ -132,7 +145,7 @@
   - Mount scoping
     - Mount-level filters restrict blast radius before dispatch evaluation
     - VirtIO ring mask: unselected rings bypass plugin completely
-    - Multi-port console partition: routes hvc0 to pty and hvc1 to mcp
+    - Multi-port console partition: ports allocated dynamically at session configuration
     - Binary filter: in-kernel BPF drops traps for unlisted paths
     - Path filter: FUSE layer bypasses VFS hooks outside declared subtrees
     - Network filter: TAP dispatcher bypasses net hooks outside declared CIDR/port rules
@@ -169,9 +182,9 @@
       - FsContext: scoped to virtio-fs operations (inode, path, journal)
       - NetContext: scoped to virtio-net operations (L2 frame, L4 stream, socket)
       - ConsoleContext: scoped to virtio-console operations (PTY, grid, window)
-    - Inter-plugin capability injection:
-      - Plugins consume peer capabilities via ctx.get_service::<T>()
-      - Service resolution is verified at boot during DAG compilation
+    - Inter-plugin typed services:
+      - Plugins import peer crate traits directly; see: #Plugin-tiering
+      - Plugins consume peer services via ctx.get_service::<T>()
   - First-class plugins
     - Catalog tiering
       - Community plugins (hosted in core repo):
@@ -195,9 +208,9 @@
       - Commercial examples live in ../kelir-cloud/cans/artifacts/examples
       - An orphan plugin fails --plugin-coverage
       - Plugin-coverage gate: see: 11-operations.md#Coverage-gates
-      - Hook-coverage: every hook in Segregated-capability-traits is implemented
+      - Hook-coverage: every hook in Segregated-ring-traits is implemented
         - Implemented by some custom plugin in cans/artifacts/examples
-        - Hook families: see: #Segregated-capability-traits
+        - Hook families: see: #Segregated-ring-traits
         - An unhit hook fails --hook-coverage
         - Hook-coverage gate: see: 11-operations.md#Coverage-gates
       - Action-coverage: every TrapAction, PostExecAction, SyncVerdict, PluginError
@@ -236,32 +249,30 @@
       - plugin-tool-guard: home: see: plugins/tool-guard.md
       - plugin-oci-translator: home: see: kelir-cloud://plugins/oci-translator.md
       - plugin-openshell-coordinator: home: see: kelir-cloud://plugins/openshell-coordinator.md
-      - Pointer rule: plugin files are leaf targets; capability URN lives in the plugin file
+      - Pointer rule: plugin files are leaf targets; crate dependencies live in the plugin file
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
-    - Session capability surface: attributed per plane
-      - session.fs.*: see: plugins/vfs.md
-      - session.term.*: see: plugins/pty.md
-      - session.forward_port(): see: plugins/wire.md#Port-forwarding
-      - session.ledger.*: see: plugins/ledger.md
-      - session.get_causal_delta_from_parent():
-        - see: plugins/ledger.md
+    - Session extension surface: attached per plane
+      - Filesystem extension: see: plugins/vfs.md
+      - Terminal extension: see: plugins/pty.md
+      - Port-forwarding extension: see: plugins/wire.md#Port-forwarding
+      - Ledger extension: see: plugins/ledger.md
+      - Causal-delta extension: see: plugins/ledger.md
   - Plugin ownership
     - Dependency rules
-      - Zero inter-plugin dependencies: no plugin imports another plugin crate
-      - Depends on kelir-interface (traits, context types) only
-      - Data-flow dependencies expressed via typed bus schemas, not code
+      - Tier dependency rules: see: #Plugin-tiering
+      - Data-flow dependencies expressed via typed bus schemas and direct imports
       - Inter-plugin coordination passes linear tokens via hypervisor bus
       - Cryptographic Merkle handoff tracks every in-flight mutation per hook
       - Depends on plugin-testkit as dev-dependency
       - Never depends on crates/kelir facade
-      - Cross-plugin coordination occurs via core traits or userland closures
+      - Cross-plugin coordination occurs via direct crate imports or userland closures
     - Decoupling test
-      - Remove the plugin → remaining plugins build and test green
       - A failing plugin's tests are attributable to that plugin alone
-      - Executed per plugin by plugin-isolation; see: 11-operations.md#Decoupling-proof
+      - Removing an upstream crate breaks only its declared dependents
+      - Executed per plugin by tiered compilation; see: 11-operations.md#Tiered-compilation
       - Scope: excludes facade (re-exports every plugin), adapter binaries
         (one plugin each), and kelir-integration (dev-depends on all)
-      - Dev-dep edge and facade edge: gated by plugin-audit
+      - Tiered dependency edges: gated by plugin-audit
       - Audit gate detail: see: 11-operations.md#Per-plugin-CI
     - External plugins: same contract; no adaptation
   - Plugin testkit
@@ -274,10 +285,10 @@
     - Emits language-agnostic test vectors
       - vectors.json derived from Rust fixtures
   - Auto-generated manifest contract
-    - Tooling extracts metadata directly from code AST and taxonomy trait
+    - Tooling extracts metadata directly from code AST and KelirPlugin trait
     - Manual manifest authoring is banned to eliminate dual-source drift
-    - Validates 4-axis coordinates, acyclic requires, and disjoint scopes
-    - Missing or invalid taxonomy coordinates reject compilation at boot
+    - Validates tier dependencies, acyclic imports, and disjoint scopes
+    - Missing or invalid crate metadata rejects compilation at boot
   - Language parity
     - see: artifacts/diagrams/sdks-invariants.txt
     - SDK surface: see: 03-sdk-architecture.md#N-native-design

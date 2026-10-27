@@ -8,7 +8,7 @@
 │ 2. COPY-ON-WRITE RAM SCRATCHPAD (overlayfs):                                │
 │    - Base host workspace mounted STRICTLY READ-ONLY.                        │
 │    - Instant Revert: Drop overlayfs layer. Host SSD is untouched.           │
-│ 3. THE SUCCESS PATH RECONCILER (session.fs.reconcile()):                    │
+│ 3. THE SUCCESS PATH RECONCILER (extension-based reconcile):                 │
 │    - Storage-plane sync: stages upperdir into .kelir-staging-<nonce>.       │
 │    - Executes atomic directory exchange (renameat2 / RENAME_EXCHANGE).      │
 │    - Zero filesystem corruption; Git commits stay ordinary guest runs.      │
@@ -29,14 +29,10 @@
 │    - Intercepts FUSE read(); runs sliding-window chunk pattern scanner.     │
 │    - Fixed-width byte replacement on-the-fly; zero full-file RAM buffering. │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 8. OCC STABLE INODE HASHES:                                                 │
-│    - Deterministic 64-bit hash: BLAKE3(path || generation_counter || mode). │
-│    - Enables host optimistic concurrency state-fencing across edits.        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 9. SECONDARY READ-ONLY IMAGE MOUNTS:                                        │
+│ 8. SECONDARY READ-ONLY IMAGE MOUNTS:                                        │
 │    - Host-grafted FUSE subtrees for squashfs/EROFS pack images.             │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 10. HOST INODE LOCK BROKER (Cross-VM Concurrency):                          │
+│ 9. HOST INODE LOCK BROKER (Cross-VM Concurrency):                           │
 │    - Intercepts FUSE SETLK / SETLKW; delegates to host OS advisory locks.   │
 │    - Maps virtual guest inodes to host physical inodes to avoid collisions. │
 └─────────────────────────────────────────────────────────────────────────────┘

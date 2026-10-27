@@ -38,11 +38,11 @@
       - Modular VirtIO interposition microkernel
         - Core controls hypervisor execution and dispatches VirtIO events
         - Core defines zero domain policies, protocols, or agent schemas
-        - Plugins register semantic capability tokens (`provides`, `requires`)
-        - Core compiles plugins into an acyclic directed graph via Kahn's sort
-        - Unfulfilled capabilities or cyclic dependencies abort boot with EConfig
-        - Plugins communicate through core device abstractions, not peer imports
-        - Every capability is a decoupled, composable plugin
+        - Plugins declare direct Cargo dependencies on peer plugin crates
+        - Core compiles plugins in registration order against typed traits
+        - Cyclic crate dependencies abort compilation with EConfig
+        - Plugins communicate through typed peer traits and core abstractions
+        - Every plugin is a decoupled, composable crate
       - Transparent truthful steering
         - Any intercepted syscall, file read, or network packet is allowed,
           steered with tty_notice, or rejected with a machine-parsable receipt
@@ -76,12 +76,12 @@
       - Translation logic delegated to a plugin the binary loads
     - Plugin
       - External input mapping, or policy over a core primitive
-      - Declares provides()/requires()/order(): see: 02-plugin-model.md#KelirPlugin-trait
+      - Declares typed lifecycle and interposer traits: see: 02-plugin-model.md#KelirPlugin-trait
       - Native: systems-grade engine plugin compiled in Rust
       - Foreign: userland policy plugin written in host language
       - Dual-plane execution details: see: 02-plugin-model.md#Dual-plane-execution-architecture
       - Owns crate, tests, fixtures, examples: see: 02-plugin-model.md#Plugin-ownership
-    - Capability decision test
+    - Boundary decision test
       - Invariant with no policy? → core primitive
       - Backend driver contract? → interface
       - Wire contract with a process boundary? → adapter binary
@@ -92,7 +92,7 @@
     - Trait definitions
       - Low-footprint preset contract: see: #Embedded-profile
       - Trait contract: see: 02-plugin-model.md#KelirPlugin-trait
-      - Semantic capability contract: see: 02-plugin-model.md#Taxonomic-coordinate-contract
+      - Tiered dependency contract: see: 02-plugin-model.md#Plugin-tiering
       - VmmDriver trait definition: see: #VmmDriver-trait
     - Context types: see: 09-protocol.md#Wire-messages
     - Wire framing layout: see: 09-protocol.md#Wire-framing
@@ -107,9 +107,11 @@
   - VirtIO Device Complex
     - Core routes paravirtual devices; plugins provide domain interpretation
     - Zero protocol domain logic lives in core
+    - Channel 0 carries hypervisor control
+    - Channels 1-65535 are dynamic multiplexed endpoints
     - Primary VirtIO Bus
       - virtio-vsock: multiplexed syscall traps and binary control channels
-      - virtio-console: multi-port streams for PTY and binary control
+      - virtio-console: multi-port character streams
       - virtio-fs: FUSE filesystem operations and virtual inode dispatch
       - virtio-net: bidirectional L2 ethernet frame interception
     - Paravirtual Auxiliaries
@@ -150,7 +152,7 @@
       - In-kernel eBPF and seccomp filters trap monitored syscalls
       - Syscall notifications stream over dedicated virtio-vsock channel
       - Hypervisor cgroup freezer pauses task groups on trap matches
-      - VM introspection resolves process tree and executable hashes
+      - VM introspection resolves executable hashes
     - Trust chain: TBD
     - Workload contract: no guest-side SDK, shim, or agent
   - VmmDriver trait

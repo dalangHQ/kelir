@@ -15,7 +15,7 @@
 //!                                            EINVALIDDECISION per 09)
 //!   4. policy-abort    -> Abort           (pre-exec, exit 1)
 //!   5. policy-yield    -> checkpoint "policy-yield", then Yield to host
-//!   6. policy-approval -> HostHold (poll 500 ms)
+//!   6. policy-approval -> Hold (500 ms)
 //!   7. policy-custom   -> Custom("quarantine", CBOR payload) dispatched to
 //!                          builder.register_custom_action("quarantine", …)
 //!   8. Vetoes (on_vm_init): Suspend and ClockSkew, each allowed only once
@@ -208,9 +208,9 @@ impl TrapInterposer for PolicyMatrixPlugin {
                 let _snap = ctx.vm.checkpoint("policy-yield").await?;
                 Ok(Some(TrapAction::Yield { checkpoint_id: "policy-yield".into() }))
             }
-            // Row 6: HostHold — host polls every 500 ms.
-            "policy-approval" => Ok(Some(TrapAction::HostHold {
-                poll_interval_ms: 500,
+            // Row 6: Hold — host holds 500 ms pending approval.
+            "policy-approval" => Ok(Some(TrapAction::Hold {
+                duration_ms: 500,
             })),
             // Row 7: Custom — dispatched by name to the registered handler.
             // Unknown names fail with EUnknownAction (09); "quarantine"

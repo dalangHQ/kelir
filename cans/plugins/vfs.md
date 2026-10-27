@@ -1,14 +1,11 @@
 - Plugin vfs
-  - Capability definition (vfs)
+  - Crate dependencies (vfs)
     - Plugin identifier: plugin-vfs
     - Owner crate: crates/kelir-plugins/plugin-vfs
     - name() = "vfs"
-    - Taxonomy (vfs): urn:kelir:fs:vfs
-      - coordinate: rings=[virtio-fs]; role=Mutator; tier=Native
-    - Capabilities (vfs):
-      - provides = [Capability("fs:vfs")]
-      - requires = []
-      - order = [OrderConstraint::RunAfter(Capability("fs:vfs:lock"))]
+    - Tier 1 base ring adapter (vfs)
+    - Depends on (vfs): kelir-interface only
+    - Exposes: VfsStorageService
     - VirtIO device attachment (vfs): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (vfs): see: 07-lifecycle.md#Lifecycle-vetoes
     - Storage bus attachment (vfs): see: 05-storage-plane.md#Storage-plane
@@ -25,7 +22,7 @@
     - Reconciler
       - see: artifacts/code/reconciler.rs
       - Pure stdlib implementation: zero external crate dependencies
-      - session.fs.reconcile() is a pure storage-plane operation
+      - Extension reconcile() is a pure storage-plane operation
       - Directly publishes StorageDelta to EventBus upon successful reconcile
       - Lifecycle hook bindings
         - on_pre_commit flushes in-flight FUSE buffers

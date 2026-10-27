@@ -74,6 +74,14 @@ pub enum WatchdogAction {
     Terminate { emit_diagnostic: bool },
 }
 
+/// Generalized suspend reason. Carries no plugin identity:
+/// an external trigger is identified only by an opaque code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SuspendReason {
+    External(u32),
+    ResourcePressure,
+}
+
 #[derive(Debug, Clone)]
 pub struct WatchdogDiagnostic {
     pub fired_at_ns: u64,

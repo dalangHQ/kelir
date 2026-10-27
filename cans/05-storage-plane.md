@@ -2,7 +2,7 @@
   - Storage architecture
     - see: artifacts/diagrams/storage-architecture.txt
     - Owner: kelir-core (virtio-fs storage domain pipeline)
-    - Single SSOT: plugin-vfs and plugin-lock-broker execute as stages in this pipeline
+    - Single SSOT: plugin-vfs and plugin-lock-broker attach hooks to this pipeline
     - All hooks receive strongly-typed FsContext; ambient c.fs is eliminated
     - Emits StorageDelta directly to the event bus; ledger consumes without VFS introspection
     - Encapsulation invariant
@@ -15,9 +15,8 @@
       - Whiteout char devices (st_rdev == 0) unlink files strictly beneath target
       - Symlink escapes abort with E_PATH_TRAVERSAL
       - Opaque directories purge without crossing mount roots
-    - Deterministic 64-bit metadata hash for OCC fences
-    - Hashes device, inode, generation counter, and mode in O(1) time
-    - Zero payload hashing on file open across all inode types
+    - virtio-fs is an unadulterated FUSE pass-through bridge
+    - Read and write interposition hooks attach to the FUSE bridge
   - EROFS rootfs
     - Stripped base system pre-baked into read-only EROFS
     - Python, Node, Rust, Bash pre-installed

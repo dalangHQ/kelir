@@ -1,21 +1,19 @@
 - Plugin pty
-  - Capability definition (pty)
+  - Crate dependencies (pty)
     - Plugin identifier: plugin-pty
     - Owner crate: crates/kelir-plugins/plugin-pty
     - name() = "pty"
-    - Taxonomy (pty): urn:kelir:io:pty
-      - coordinate: rings=[virtio-console:hvc0]; role=Mutator; tier=Native
-    - Capabilities (pty):
-      - provides = [Capability("io:pty")]
-      - requires = []
+    - Tier 1 base ring adapter (pty)
+    - Depends on (pty): kelir-interface only
+    - Exposes: TerminalControlService
     - VirtIO device attachment (pty): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (pty): see: 07-lifecycle.md#Lifecycle-vetoes
-    - Binds to virtio-console paravirtual port hvc0
+    - Binds to a dynamically allocated virtio-console port for terminal streams
     - Terminal bus transport: see: 04-terminal-plane.md#Terminal-pipeline
   - Service exports (pty)
     - Exports TerminalControlService through PipelineBinder for window and notice control
     - Terminal handler API
-      - c.term.notice(text) emits HostToGuest::ChannelData on the pty-disclosure kind over hvc0
+      - Terminal notice emits HostToGuest::ChannelData on the pty-disclosure kind
   - Invariants and policy (pty)
     - Five filters
       - Filter set and per-filter behavior: see: artifacts/diagrams/terminal-pipeline.txt
@@ -66,9 +64,9 @@
       - Protects LLM context window from runaway logs and stack traces
     - Disclosure annotation
       - Host-side pipeline
-        - on_disclosure(&body) fires on every plugin in DAG order
+        - on_disclosure(&body) fires on every plugin in registration order
         - Hook returns Some(bytes) to append; None to pass
-        - Annotations concatenate after body in DAG order
+        - Annotations concatenate after body in registration order
         - Body itself is immutable by contract
       - Invariant: Mandatory TTY host disclosure (pty)
         - Any host-side state mutation reaches the workload's TTY

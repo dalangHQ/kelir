@@ -486,7 +486,7 @@ async fn build_runtime(
                     // Binary hash integrity — the agent cannot fake this
                     if receipt.binary_blake3 != c.trap.binary_blake3 {
                         c.vm.rollback(&pre).await?;
-                        c.term.notice(
+                        c.service::<PtyService>().notice(
                             "⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n",
                         );
                         return Ok(PostExecAction::RollbackAndHalt);
@@ -497,7 +497,7 @@ async fn build_runtime(
                         && c.trap.cwd.contains("/checkout-service")
                     {
                         c.vm.rollback(&pre).await?;
-                        c.term.notice(&format!(
+                        c.service::<PtyService>().notice(&format!(
                             "⚡ [KELIR]: hermetic test emitted {}B egress — REVERTED\n",
                             receipt.egress_bytes
                         ));
@@ -506,7 +506,7 @@ async fn build_runtime(
                     // Oracle post-condition (§12.5)
                     if !oracle.verify_physical_receipt(&receipt).await? {
                         c.vm.rollback(&pre).await?;
-                        c.term.notice(
+                        c.service::<PtyService>().notice(
                             "⚡ [KELIR]: post-condition violated — REVERTED\n",
                         );
                         return Ok(PostExecAction::RollbackAndHalt);
@@ -600,7 +600,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("[kelir] driver={} boot={}ms", session.driver_name(), session.boot_ms());
 
     // Port forward the dev server for human smoke testing (§11.7)
-    session.forward_port(8080, 3000).await?;
+    session.extension::<WireExtension>()?.forward_port(8080, 3000).await?;
 
     let base = session.vm.checkpoint("clean_base").await?;
     let mut winning_delta: Option<CausalDelta> = None;
@@ -663,7 +663,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         session.resume("/tmp/eval.snap").await?;
 
         // ── Phase 4: overlay reconcile to host, then git commit (§8.1) ─
-        let stats = session.fs.reconcile(FsReconcileRequest {
+        let stats = session.extension::<VfsExtension>()?.reconcile(FsReconcileRequest {
             cwd: "/workspace/checkout-service".into(),
             atomic_staging: true,
             fsync: true,

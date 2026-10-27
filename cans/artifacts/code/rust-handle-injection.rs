@@ -43,14 +43,23 @@ let builder = builder.with_composite(
 let builder = builder
     .params::<Action>()
     // Serde deserializes `Action` before handler execution:
-    .trap("npm test", handler(|c: HandlerCtx| async move {
+    .trap(TrapFilter::binary("npm").with_arg("test"), handler(|c: HandlerCtx| async move {
         let params = c.params::<Action>()?;
         Ok(Decision::Resume)
     }))
-    .trap("git commit *", handler(|c: HandlerCtx| async move {
+    .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: HandlerCtx| async move {
         let policy = c.service::<dyn RepoPolicyService>()?;
         if policy.violations().await > 0 {
             return Ok(Decision::deny(1, "Policy violations recorded"));
         }
         Ok(Decision::Resume)
+    }))
+    .on(LifecycleEvent::VmReady, handler(|c: HandlerCtx| async move {
+        Ok(Decision::Resume)
     }));
+
+// 3. Session extension pattern: core Session carries no domain APIs.
+// Domain access attaches via typed extensions, never via ambient properties.
+let session = builder.boot().await?;
+let pty = session.extension::<PtyExtension>()?;
+pty.resize(120, 40).await?;

@@ -1,7 +1,7 @@
 # ILLUSTRATIVE EXCERPT — not standalone-executable.
 #
 # Demonstrates Python SDK's fluent builder + Pydantic v2 validation.
-# Host holds instantiated plugin reference; handlers read c.policy.
+# Host holds instantiated plugin reference; handlers resolve services via c.service.
 # SyntheticFile: FUSE-presented paths with no host backing file.
 # Verification Reject: Decision.deny returns a POSIX errno.
 #
@@ -31,11 +31,14 @@ async def commit_gate(c: HandlerContext) -> Decision:
     return Decision.resume()
 
 
-builder.trap("git commit *", commit_gate)
+builder.trap(TrapFilter.binary("git").with_arg("commit"), commit_gate)
 
 
 # 3. RAII Execution: __aenter__ boots microVM; __aexit__ guarantees termination
 async with builder as session:
+    # Session extension pattern: core Session carries no domain APIs.
+    pty = session.ext(PtyExtension)
+    await pty.resize(120, 40)
     await session.spawn(
         "npm", ["test"],
         params=FixWebhookParams(action="fix-webhook", issue_id="ISSUE-8412"),

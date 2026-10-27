@@ -1,9 +1,10 @@
 - Terminal plane
   - Terminal pipeline
     - Owner: kelir-core (virtio-console domain)
-    - Allocates isolated linear interceptor pipelines per paravirtual channel:
-      - Channel hvc0: PTY Master pipeline (plugin-pty ANSI filters and Token Shield)
-      - Channel hvc1: Binary RPC pipeline (plugin-tool-guard -> plugin-mcp)
+    - virtio-console is a multi-port paravirtual character bus
+    - Channel 0 defaults to interactive console master
+    - Subsequent ports allocated dynamically at session configuration
+    - Allocates isolated interceptor pipelines per paravirtual channel
     - Handlers receive strongly-typed ConsoleContext; ambient c.term is eliminated
     - Interactive channel preserves isatty(1) and raw mode
     - Streaming ring buffers route directly to host supervisor memory
