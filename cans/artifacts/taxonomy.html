@@ -378,7 +378,7 @@
                           "meta": {
                             "Defining Property": "Defines the execution substrate (microVM + VirtIO + plugin graph) that agents and orchestrators run on.",
                             "Core Abstraction": "The Session (in-process microVM + plugin graph)",
-                            "Primary Mechanism": "BusDispatcher + EventBus + DriverRouter + 4 VirtIO rings + 11 community plugins + 4 kelir-cloud plugins",
+                            "Primary Mechanism": "BusDispatcher + EventBus + DriverRouter + 4 VirtIO rings + 12 community plugins + 4 kelir-cloud plugins",
                             "Metaphor": "The stage and rigging — the Wayang Kulit screen itself.",
                             "Cross-Species Role": "Substrate layer, beneath OpenShell (security) and OpenRig (topology).",
                             "Integration Leaf": "plugin-openshell-coordinator + openshell-grpc adapter bridge upward to OpenShell."
@@ -410,7 +410,7 @@
                               { "id": "virtio-wdt", "name": "virtio-wdt", "rank": "leaf", "desc": "Hardware watchdog with structured diagnostic export.", "children": [] },
                               { "id": "virtio-balloon", "name": "virtio-balloon", "rank": "leaf", "desc": "Host dynamic memory reclamation.", "children": [] }
                             ]},
-                            { "id": "kelir-plugins", "name": "Plugin Catalog (11 community + 4 kelir-cloud)", "rank": "leaf", "desc": "First-class plugins. Each owns its crate, tests, fixtures, examples. Zero inter-plugin dependencies.", "children": [
+                            { "id": "kelir-plugins", "name": "Plugin Catalog (12 community + 4 kelir-cloud)", "rank": "leaf", "desc": "First-class plugins. Each owns its crate, tests, fixtures, examples. Zero inter-plugin dependencies.", "children": [
                               { "id": "plugins-net", "name": "net Subsystem", "rank": "leaf", "desc": "L2 TAP frames, L4 streams, L7 protocol termination", "children": [
                                 { "id": "plugin-wire", "name": "plugin-wire (priority 75, c.wire)", "rank": "leaf", "desc": "Vault URN placeholders (guest sees only vault:// URNs; real secret never enters guest address space). Per-session ephemeral root CA. L7 proxy (TLS termination, allowlist, rate limit), L4 SOCKS5 (connect-by-IP), SSH gate (host keyring signs), DNS sinkhole (NXDOMAIN fallback). Total egress rule: unlisted ⇒ dropped.", "children": [] },
                                 { "id": "plugin-wire-ingress", "name": "plugin-wire-ingress (priority 85, c.ingress)", "rank": "leaf", "desc": "Holds inbound client TCP connections without dropped frames during suspend. Terminates TCP handshake, buffers up to 64KB initial request, wakes microVM via LifecycleCtx, splices to vsock:5252 Channel 1.", "children": [] },

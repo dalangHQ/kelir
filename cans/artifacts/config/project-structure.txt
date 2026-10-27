@@ -168,10 +168,14 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   │   ├── src/lib.rs             # Trap hook rejecting postinstall/setup.py via ancestor chain
 │   │   │   │   └── tests/test_supply_chain.rs
-│   │   └── plugin-wire-ingress/       # Connection parking and wake-on-traffic L4/L7 proxy
+│   │   ├── plugin-wire-ingress/       # Connection parking and wake-on-traffic L4/L7 proxy
+│   │   │   ├── Cargo.toml
+│   │   │   ├── src/lib.rs             # socket2 buffer clamping, httparse sniffer, copy_bidirectional
+│   │   │   └── tests/test_parking.rs
+│   │   └── plugin-profile/            # Declarative kelir.toml/kelir.yaml ingestion, inheritance, schema export
 │   │       ├── Cargo.toml
-│   │       ├── src/lib.rs             # socket2 buffer clamping, httparse sniffer, copy_bidirectional
-│   │       └── tests/test_parking.rs
+│   │       ├── src/lib.rs             # CompositePlugin flattening of profile declarations into child plugins
+│   │       └── tests/test_profile.rs
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
 │   │   └── mcp-server/                # Model Context Protocol stdio terminal server

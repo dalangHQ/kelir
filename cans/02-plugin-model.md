@@ -41,6 +41,7 @@
   - Composite plugin hierarchy
     - see: artifacts/code/plugin-trait.rs
     - Assembly-time tree flattens into contiguous C-speed dispatch array
+    - Declarative profile hydration maps schema sections to child plugins
     - Invariant: nested depth incurs zero runtime call-stack overhead
     - Deduplication merges identical name() nodes; deepest config wins
     - AOT hook fusion collapses nested closures into single FFI trampoline
@@ -162,7 +163,7 @@
   - First-class plugins
     - Catalog tiering
       - Community plugins (hosted in core repo):
-        - pty, vfs, wire, chaos, ledger, mcp
+        - pty, vfs, wire, chaos, ledger, mcp, profile
         - db-proxy, mesh, lock-broker, supply-chain, wire-ingress
       - Commercial plugins (SSOT hosted in kelir-cloud):
         - hyper-density: see: kelir-cloud://plugins/hyper-density.md
@@ -174,6 +175,7 @@
       - mesh, lock-broker, supply-chain: multi-vm-swarm.rs
       - db-proxy: db-backed-runtime.py
       - wire-ingress, mcp: serverless-webhook.ts
+      - profile: autonomous-swe-agent.ts
     - Coverage invariant
       - Every first-class plugin names one demonstrating example
       - Community examples live in cans/artifacts/examples
@@ -213,6 +215,7 @@
       - plugin-mesh: see: plugins/mesh.md — c.mesh
       - plugin-lock-broker: see: plugins/lock-broker.md — c.locks
       - plugin-supply-chain: see: plugins/supply-chain.md — package-manager guard
+      - plugin-profile: see: plugins/profile.md — c.profile
       - plugin-hyper-density: see: kelir-cloud://plugins/hyper-density.md — c.density
       - plugin-cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md — c.cas
       - plugin-wire-ingress: see: plugins/wire-ingress.md — c.ingress

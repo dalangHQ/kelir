@@ -1,0 +1,39 @@
+- Plugin profile
+  - Capability definition (profile)
+    - Plugin identifier: plugin-profile
+    - Owner crate: crates/kelir-plugins/plugin-profile
+    - name() = "profile"; priority() = 10
+    - Taxonomy (profile): urn:kelir:sys:config:profile
+      - coordinate (profile): rings=[virtio-vsock:ch0]; role=Gate; tier=Native
+    - VirtIO device attachment (profile): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (profile): see: 07-lifecycle.md#Lifecycle-vetoes
+  - Context keys for profile
+    - Context key contributed: c.profile
+    - Closed-set binding rule (profile): see: 02-plugin-model.md#Core-context-keys
+  - Invariants and policy (profile)
+    - Bidirectional declarative configuration engine
+    - Ingests canonical kelir.toml and kelir.yaml configurations
+    - Implements CompositePlugin to flatten declarations into child plugins
+    - Key-to-plugin mapping contract
+      - storage block expands into plugin-vfs configuration
+      - network and secrets blocks expand into plugin-wire configuration
+      - terminal block expands into plugin-pty configuration
+    - Strict serialization boundary
+      - Static knobs, limits, and scopes serialize cleanly to schema files
+      - Dynamic hook closures remain strictly in host code
+      - Serializing arbitrary executable code strings into schemas is banned
+    - Multi-file inheritance
+      - Base profiles inherited via extends key
+      - Deep-merge preserves monotonic lattice: cannot widen upstream denials
+    - Out-of-band secret separation
+      - Public profiles reference vault:// placeholders exclusively
+      - Host keyring or gitignored kelir.vault.toml maps credentials
+      - Real credentials never enter guest physical RAM
+    - Bidirectional extraction
+      - export_spec() emits active plugin topologies to TOML or YAML
+  - Error and return semantics (profile)
+    - Hook signature (profile): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (profile)
+      - Schema syntax or validation failure aborts boot with EConfig
+      - Upstream lattice widening attempts abort with ESecurityViolation
+      - Conflicting merge scopes abort with EAmbiguousMutation

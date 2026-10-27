@@ -85,12 +85,12 @@
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
     - Decoupled plugin specs
-      - One spec file per plugin: 11 in cans plugin folder, 4 in kelir-cloud
+      - One spec file per plugin: 12 in cans plugin folder, 4 in kelir-cloud
       - Leaf-node rule: plugin files do not chain further references; bus
         pointers are direct 1-hop
     - Matrix job: test-plugins
-      - One cell per community plugin (11 total)
-      - Plugins: [pty, vfs, wire, chaos, ledger, mcp]
+      - One cell per community plugin (12 total)
+      - Plugins: [pty, vfs, wire, chaos, ledger, mcp, profile]
       - Plugins: [db-proxy, mesh, lock-broker, supply-chain, wire-ingress]
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
@@ -113,7 +113,7 @@
       - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
   - Decoupling proof
     - Job: plugin-isolation
-    - Audit scope: 11 community plugins
+    - Audit scope: 12 community plugins
     - Claim executed: see: 02-plugin-model.md#Plugin-ownership
     - Per cell: remove crate, workspace member, and facade feature; build and
       nextest the remainder
@@ -170,6 +170,11 @@
         - lsm: Attaches eBPF/LSM execve killswitch to designated workspace dirs
         - vault: Migrates plaintext host credentials into Kelir host keyring
         - hw-lock: Enforces strict permissions on /dev/kvm (group: kelir, 0660)
+      - `kelir spec check <file>`: AOT validation of kelir.toml or kelir.yaml:
+        - Validates syntax and TypeBox/Serde schema without compiling code
+        - Asserts acyclic inheritance trees across extends pointers
+        - Verifies monotonic lattice restrictions across deep-merged profiles
+      - `kelir spec export`: Emits canonical kelir.toml or kelir.yaml
       - Granular flags: --install-shims, --attach-lsm, --quarantine-credentials
       - `kelir doctor --json`: structured for onboarding scripts
       - `plugin new`: scaffold crate, code trait stubs, empty vectors
@@ -189,9 +194,9 @@
       - kelir: facade crate, single Cargo dependency, feature-gated plugins
       - kelir-interface: pure leaf types, traits, wire framing, zero engine deps
       - kelir-core: stripped microkernel (bus, dispatch, vmm, trap gate)
-      - kelir-plugins: community plugin family (11 plugins; 4 in kelir-cloud)
-        - pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker
-        - supply-chain, wire-ingress
+      - kelir-plugins: community plugin family (12 plugins; 4 in kelir-cloud)
+        - pty, vfs, wire, chaos, ledger, mcp, profile, db-proxy, mesh
+        - lock-broker, supply-chain, wire-ingress
       - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
       - kelir-shim: in-guest musl PID 1 (<50KB)
     - Decoupled spec layout

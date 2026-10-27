@@ -68,6 +68,25 @@
   - Idiomatic Surfaces Law
     - TS, Python, and Rust do not copy each other's method names
     - Each enforces 1:1 behavioral and wire parity against vectors.json
+  - Sandbox high-level facade
+    - High-level consumer DX wrapper around KelirBuilder and plugin-profile
+    - Initialization via Sandbox.from_config(path) or Sandbox.create(opts)
+    - Internal pipeline
+      - Mounts plugin-profile to parse declared TOML or YAML specifications
+      - Flattens profile into child VirtIO plugins via CompositePlugin
+      - Transitions KelirBuilder<Unset> to KelirBuilder<Sealed> at boot
+    - Bidirectional synchronization
+      - box.export_spec(path) serializes active topology back to disk
+      - File hydration leaves builder open for host programmatic hooks
+    - Language parity (Sandbox)
+      - TypeScript: Sandbox.fromConfig("kelir.toml")
+      - Python: Sandbox.from_config("kelir.toml")
+      - Rust: Sandbox::from_config("kelir.toml")
+    - Facade method delegations
+      - box.exec(cmd) routes through virtio-console and trap filters
+      - box.rollback() invokes driver rollback in <8ms
+      - box.reconcile() invokes storage reconciler to host workspace
+      - box.suspend() drops host RSS to 0 MB in <50ms
   - Params typed views
     - Host-side typed access on HandlerCtx
       - Rust: c.params::<T>() deserializes from validated buffer
