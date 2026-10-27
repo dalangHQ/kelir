@@ -20,10 +20,9 @@ import crypto from "node:crypto";
 declare const oracle: {
   currentTraceId(): string;
   analyzeIntent(trap: { binary: string; binaryBlake3: string; argv: string[];
-                        lineage: string[]; cwd: string; entropy: number;
+                        lineage: string[]; cwd: string;
                         loadedLibs: string[] }): Promise<{ isHypothesisValid: boolean;
-                                                          falsificationReason?: string;
-                                                          allowHighEntropy?: boolean }>;
+                                                          falsificationReason?: string }>;
   verifyPhysicalReceipt(r: ExecutionReceipt): Promise<boolean>;
   ingestHarnessEvent(e: { path: string; event: unknown; producerBlake3: string }): Promise<void>;
   awaitHumanApproval(): Promise<void>;
@@ -172,13 +171,11 @@ const runtime = kelir({
         binary: c.trap.binary_path,
         binaryBlake3: c.trap.binary_blake3,
         argv: c.trap.argv, lineage: c.trap.ancestor_chain,
-        cwd: c.trap.cwd, entropy: c.trap.entropy,
+        cwd: c.trap.cwd,
         loadedLibs: c.trap.loaded_libraries,
       });
       if (!intent.isHypothesisValid)
         return c.deny(1, `Verification Reject: ${intent.falsificationReason}`);
-      if (c.trap.entropy > 5.2 && !intent.allowHighEntropy)
-        return c.deny(126, "EENTROPY: high-entropy argv requires oracle clearance.");
       return c.resume();
     },
     post: async (c) => {
@@ -216,7 +213,6 @@ const runtime = kelir({
       c.store.violations += 1;
       return c.deny(1, `EPOLICY: '${c.policy.currentBranch}' protected.`);
     }
-    if (c.trap.entropy > 5.2) return c.deny(1, "EPERM: high-entropy payload.");
     if (c.trap.argv.includes("--force"))
       return c.rewrite({ binary: "/bin/git",
                          argv: c.trap.argv.filter((a) => a !== "--force"),
@@ -238,11 +234,16 @@ const runtime = kelir({
       if (receipt.dirtyBytes === 0)
         throw new Error("Verification anomaly: zero-byte delta commit attempted.");
       // Workspace-scoped observation (08-epistemic.md#Execution-receipts):
-      // dirtyBytes counts all hypervisor-dirtied bytes; this field counts
-      // only target workspace inodes. The gate above still keys on
-      // dirtyBytes; this line observes the workspace counter the gate
-      // does not check.
-      console.log(`[kelir] commit workspace_dirty_bytes=${receipt.workspaceDirtyBytes}`);
+      // dirtyBytes counts all hypervisor-dirtied bytes; the workspace
+      // counter now arrives as a plugin-vfs TelemetryExtension
+      // (namespace "fs:vfs"), whose payload is plugin-defined and
+      // opaque to core. The gate above still keys on dirtyBytes;
+      // this logs only the extension's presence and payload length,
+      // never a decoded count.
+      const vfsExt = receipt.extensions?.find((e) => e.namespace === "fs:vfs");
+      console.log(vfsExt
+        ? `[kelir] commit fs:vfs extension present, payload_len=${vfsExt.payload.length}`
+        : "[kelir] commit fs:vfs extension absent");
       return PostExecAction.Proceed;
     },
   })

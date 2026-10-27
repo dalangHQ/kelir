@@ -3,7 +3,7 @@
 //! Canonical depth example: the non-default knob set, not the swe-agent
 //! defaults. Where autonomous-swe-agent.rs runs hardware-only with Locked
 //! workspace encapsulation, StreamingAutomata scanning, and workspace-
-//! scoped receipts, this file deliberately departs from every one of
+//! scoped receipts, this file deliberately departs from
 //! those defaults — in one place, so knob-coverage has a single home.
 //!
 //! SAME KNOB SET as knob-matrix.ts and knob-matrix.py. Each knob below
@@ -16,15 +16,10 @@
 //!     carryover_bytes 1024            (default 512)
 //!   PTY:
 //!     carryover_buffer_bytes 1024     (default 512)
-//!   RECEIPTS (08):
-//!     receipt_scope   WholeVmRam      (default WorkspaceInodesOnly)
 //!   DRIVER (01, vmm-driver-trait.rs DriverPolicy):
 //!     wx_enforcement        PermissiveAudit (default Strict)
 //!     allow_emulated_fallback true         (default false)
 //!     driver                bwrap            (the emulated tier)
-//!   VM (09, VmConfig.entropy_bypass_paths):
-//!     entropy_bypass_paths ["/opt/kelir/trusted-runner"]
-//!       (a single trusted-runner path, not a wildcard)
 //!
 //! EMULATED-TIER DISCLAIMER: this example does NOT claim hardware-only
 //! admission. driver bwrap with allow_emulated_fallback = true is the
@@ -34,13 +29,15 @@
 //!
 //! GAPS (flagged, not silently invented):
 //!   - VmConfig / DriverPolicy shape follows artifacts/code/
-//!     vmm-driver-trait.rs (driver_policy, entropy_bypass_paths,
-//!     WxPolicy), NOT the slimmer example-facade VmConfig in
-//!     policy-matrix.rs, which omits driver_policy. The facade gap is
-//!     flagged here rather than papered over with a DriverChoice.
-//!   - receipt_scope as a ReceiptConfig field is defined in 08 (parent
-//!     decision); the ReceiptScope enum spelling below is the closest
-//!     form, not an attested enum name.
+//!     vmm-driver-trait.rs (driver_policy, WxPolicy), NOT the slimmer
+//!     example-facade VmConfig in policy-matrix.rs, which omits
+//!     driver_policy. The facade gap is flagged here rather than
+//!     papered over with a DriverChoice.
+//!   - receipt_scope was removed from core: 08 deleted the
+//!     receipt_scope line, and ExecutionReceipt now carries plugin
+//!     TelemetryExtensions instead, so this example no longer sets
+//!     it. entropy_bypass_paths was likewise removed from VmConfig
+//!     (entropy analysis moved to plugin-supply-chain).
 //!   - VFS/PTY knob enum spellings (WorkspaceEncapsulation::
 //!     Passthrough, ReadMaskEngine::FastRegex) are attested in
 //!     plugins/vfs.md; carryover_buffer_bytes is the pty config's
@@ -55,15 +52,11 @@ use kelir::{
     KelirBuilder, Session, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     plugins::{
-        ledger::{LedgerConfig, LedgerPlugin, ReceiptConfig, ReceiptScope},
+        ledger::{LedgerConfig, LedgerPlugin, ReceiptConfig},
         pty::{PtyConfig, PtyPlugin},
         vfs::{IdmapConfig, VfsConfig, VfsPlugin, WorkspaceEncapsulation, ReadMaskEngine},
     },
 };
-
-/// Trusted runner whose entropy check is bypassed: a single explicit
-/// path, never a wildcard, never a directory.
-const TRUSTED_RUNNER_PATH: &str = "/opt/kelir/trusted-runner";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -97,8 +90,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         pinned_clocksource: None,
         ns_per_instruction: None,
         preemption_grace_ms: 0,
-        // One trusted-runner path, not a wildcard (09).
-        entropy_bypass_paths: vec![TRUSTED_RUNNER_PATH.into()],
     })
     // VFS — Passthrough, NOT the Locked default, so the guest
     // workspace is not locked to mode 000; FastRegex, NOT the
@@ -125,15 +116,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         stream_engine: "StreamingAutomata".into(),
         carryover_buffer_bytes: 1024,
     }))
-    // LEDGER — WholeVmRam receipts, NOT the WorkspaceInodesOnly
-    // default: the receipt covers whole-VM RAM mutations.
+    // LEDGER — receipts include syscall counts.
     .plugin(LedgerPlugin::new(LedgerConfig {
         store: ".kelir/audit.merkle.db".into(),
         merkle_chain: true,
         otel: None,
         receipts: ReceiptConfig {
             include_syscall_count: true,
-            receipt_scope: ReceiptScope::WholeVmRam,
         },
     }))
     .boot()
@@ -144,9 +133,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("[kelir] probe -> exit={}", probe.exit_code);
     eprintln!(
         "[kelir] knobs: vfs=Passthrough/FastRegex/1024 \
-         pty_carryover=1024 receipt_scope=WholeVmRam \
-         driver=bwrap wx=PermissiveAudit emulated_fallback=true \
-         entropy_bypass=[{TRUSTED_RUNNER_PATH}]"
+         pty_carryover=1024 \
+         driver=bwrap wx=PermissiveAudit emulated_fallback=true"
     );
 
     session.terminate().await?;

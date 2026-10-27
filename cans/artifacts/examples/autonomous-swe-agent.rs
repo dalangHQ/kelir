@@ -45,7 +45,7 @@ use kelir::{
     oracle::{IntentAnalysis, Oracle},
     plugin::{
         AnyPlugin, ExecutionTier, KelirPlugin, PluginError, PluginTaxonomy,
-        StorageInterposer, SyncVerdict, TelemetryRole, TerminalInterposer,
+        FsInterposer, SyncVerdict, TelemetryRole, ConsoleInterposer,
         TrapInterposer, VirtioDevice,
     },
     plugins::{
@@ -205,9 +205,9 @@ impl TrapInterposer for RepoPolicyPlugin {
     }
 }
 
-impl StorageInterposer for RepoPolicyPlugin {
+impl FsInterposer for RepoPolicyPlugin {
     // ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
-    fn on_vfs_write(
+    fn on_fs_write(
         &self, path: &Path, data: &[u8], _pid: u32, _ctx: &HandlerCtx,
     ) -> Result<SyncVerdict, PluginError> {
         if path.extension().is_some_and(|e| e == "diff")
@@ -224,7 +224,7 @@ impl StorageInterposer for RepoPolicyPlugin {
 }
 
 #[async_trait]
-impl TerminalInterposer for RepoPolicyPlugin {
+impl ConsoleInterposer for RepoPolicyPlugin {
     /// on_disclosure: append policy trace to every mandatory notice.
     /// Body is immutable; hook can only append.
     async fn on_disclosure(
@@ -441,12 +441,6 @@ async fn build_runtime(
                             ),
                         ));
                     }
-                    if c.trap.entropy > 5.2 && !intent.allow_high_entropy {
-                        return Ok(Decision::deny(
-                            126,
-                            "EENTROPY: high-entropy argv requires oracle clearance.".into(),
-                        ));
-                    }
                     Ok(Decision::Resume)
                 }
             }
@@ -464,11 +458,8 @@ async fn build_runtime(
             ))
         }))
 
-        // Entropy defense + `--force` strip
+        // `--force` strip
         .trap("git push *", handler(|c: HandlerCtx| async move {
-            if c.trap.entropy > 5.2 {
-                return Ok(Decision::deny(1, "EPERM: high-entropy payload.".into()));
-            }
             if c.trap.argv.iter().any(|a| a == "--force") {
                 let argv = c.trap.argv.iter()
                     .filter(|a| *a != "--force").cloned().collect();
@@ -550,14 +541,19 @@ async fn build_runtime(
                 return Err(PluginError::Halt("zero-byte delta commit".into()));
             }
             // Workspace-scoped observation (08-epistemic.md#Execution-receipts):
-            // dirty_bytes counts all hypervisor-dirtied bytes; this field
-            // counts only target workspace inodes. The gate above still keys
-            // on dirty_bytes; this line observes the workspace counter the
-            // gate does not check.
-            eprintln!(
-                "[kelir] commit workspace_dirty_bytes={}",
-                receipt.workspace_dirty_bytes,
-            );
+            // dirty_bytes counts all hypervisor-dirtied bytes; the
+            // workspace counter now arrives as a plugin-vfs
+            // TelemetryExtension (namespace "fs:vfs"), whose payload is
+            // plugin-defined and opaque to core. The gate above still keys
+            // on dirty_bytes; this line logs only the extension's
+            // presence and payload length, never a decoded count.
+            match receipt.extensions.iter().find(|e| e.namespace == "fs:vfs") {
+                Some(ext) => eprintln!(
+                    "[kelir] commit fs:vfs extension present, payload_len={}",
+                    ext.payload.len(),
+                ),
+                None => eprintln!("[kelir] commit fs:vfs extension absent"),
+            }
             Ok(PostExecAction::Proceed)
         }));
 

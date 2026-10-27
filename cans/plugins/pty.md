@@ -66,9 +66,9 @@
       - Protects LLM context window from runaway logs and stack traces
     - Disclosure annotation
       - Host-side pipeline
-        - on_disclosure(&body) fires on every plugin in priority() order
+        - on_disclosure(&body) fires on every plugin in DAG order
         - Hook returns Some(bytes) to append; None to pass
-        - Annotations concatenate after body in priority() order
+        - Annotations concatenate after body in DAG order
         - Body itself is immutable by contract
       - Invariant: Mandatory TTY host disclosure (pty)
         - Any host-side state mutation reaches the workload's TTY

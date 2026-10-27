@@ -8,21 +8,21 @@
 //!
 //! SAME HOOK SET in all three SDKs, in dispatch order:
 //!
-//!   1. WireInterposer::on_net_outbound -> SyncVerdict. Frames containing
+//!   1. NetInterposer::on_net_outbound -> SyncVerdict. Frames containing
 //!      the documentation-range marker 198.51.100. yield to the host for
 //!      inspection (YieldToHost); all other frames Allow.
-//!   2. StorageInterposer::on_vfs_lookup -> Ok(Some(VfsInodeAttr)) for
+//!   2. FsInterposer::on_fs_lookup -> Ok(Some(FsInodeAttr)) for
 //!      exactly one path, /workspace/.policy/identity, with mode 0o400
 //!      (no permission fallback, per 02); Ok(None) — fall through —
 //!      everywhere else.
-//!   3. StorageInterposer::on_vfs_read -> sliding-window masking. A
+//!   3. FsInterposer::on_fs_read -> sliding-window masking. A
 //!      31-byte tail is carried between reads, so a secret token split
 //!      across two reads is still masked from the split point onward and
 //!      no single read ever emits a complete unmasked token (the token
 //!      is 32 bytes; see the masking note on the function).
-//!   4. TerminalInterposer::on_pty_input -> strips OSC52 clipboard
+//!   4. ConsoleInterposer::on_console_input -> strips OSC52 clipboard
 //!      sequences (ESC ] 52 ; … terminator) from guest-bound input.
-//!   5. TerminalInterposer::on_pty_output -> masks sk_live_ tokens in
+//!   5. ConsoleInterposer::on_console_output -> masks sk_live_ tokens in
 //!      the chunk before it reaches the host terminal.
 //!   6. TrapInterposer::on_heartbeat -> counts heartbeats; a receipt
 //!      whose uptime_ms has not advanced since the previous receipt
@@ -31,15 +31,15 @@
 //!      non-zero exits increment the failure counter.
 //!
 //! Masking is same-length (token bytes overwritten with b'*'), because
-//! on_vfs_read / on_pty_output mutate fixed-size buffers in place and
+//! on_fs_read / on_console_output mutate fixed-size buffers in place and
 //! cannot change a chunk's length.
 //!
 //! GUARDS (not new dispatch rows; hook order 1-7 above is unchanged):
-//!   - on_vfs_lookup rejects a path whose `..` segments resolve outside
+//!   - on_fs_lookup rejects a path whose `..` segments resolve outside
 //!     the /workspace root with E_PATH_TRAVERSAL (05), before the
 //!     identity check runs. Paths without `..` keep the old behavior:
 //!     the identity inode, else fall through.
-//!   - on_vfs_write rejects any payload over the 64KB (65536-byte) FFI
+//!   - on_fs_write rejects any payload over the 64KB (65536-byte) FFI
 //!     inspection ceiling with PluginError::BufferCeilingExceeded
 //!     (plugin-trait.rs). That is the runtime inspection ceiling, NOT
 //!     the swe-agent policy diff ceiling, which rejects with ENOSPC.
@@ -48,11 +48,11 @@
 //!   - SyncVerdict::YieldToHost(u64): the u64's meaning (queue id?
 //!     reason code?) is specified nowhere. The outbound hook below
 //!     passes 0 as an explicit placeholder.
-//!   - VfsInodeAttr.occ_metadata_hash: 02 lists mode, uid, gid, size,
+//!   - FsInodeAttr.occ_metadata_hash: 02 lists mode, uid, gid, size,
 //!     content for the struct; the hash field appears only in the
 //!     struct definition with no stated semantics. The lookup hook
 //!     below sets it to 0 as an explicit placeholder.
-//!   - on_pty_input / on_pty_output take &mut Vec<u8> in plugin-trait.rs
+//!   - on_console_input / on_console_output take &mut Vec<u8> in plugin-trait.rs
 //!     (whole-chunk mutation); there is no per-byte streaming hook, so
 //!     the OSC52 stripper below buffers one chunk at a time.
 //!
@@ -73,9 +73,9 @@ use kelir::{
     DriverChoice, HandlerCtx, KelirBuilder, Session, VmConfig,
     plugin::{
         AnyPlugin, ExecutionTier, KelirPlugin, PluginError, PluginTaxonomy,
-        StorageInterposer, SyncVerdict, TelemetryRole, TerminalInterposer,
-        TrapInterposer, VfsInodeAttr, VirtioDevice, WatchdogEvent, WatchdogVerdict,
-        WireInterposer,
+        FsInterposer, SyncVerdict, TelemetryRole, ConsoleInterposer,
+        TrapInterposer, FsInodeAttr, VirtioDevice, WatchdogEvent, WatchdogVerdict,
+        NetInterposer,
     },
     protocol::{Heartbeat, ProcessExit},
 };
@@ -180,7 +180,7 @@ impl KelirPlugin for HookMatrixPlugin {
     }
 }
 
-impl WireInterposer for HookMatrixPlugin {
+impl NetInterposer for HookMatrixPlugin {
     fn on_net_outbound(&self, frame: &mut [u8]) -> Result<SyncVerdict, PluginError> {
         // Sliding search, no allocation: any frame carrying the denylist
         // marker yields to host inspection instead of leaving the TAP.
@@ -221,8 +221,8 @@ fn escapes_workspace(path: &Path) -> bool {
     stack.first() != Some(&"workspace")
 }
 
-impl StorageInterposer for HookMatrixPlugin {
-    fn on_vfs_lookup(&self, path: &Path) -> Result<Option<VfsInodeAttr>, PluginError> {
+impl FsInterposer for HookMatrixPlugin {
+    fn on_fs_lookup(&self, path: &Path) -> Result<Option<FsInodeAttr>, PluginError> {
         // GUARD: traversal first — an escaping path is rejected, never
         // served and never silently fallen through to the host fs.
         if escapes_workspace(path) {
@@ -234,7 +234,7 @@ impl StorageInterposer for HookMatrixPlugin {
         if path.as_os_str() != IDENTITY_PATH {
             return Ok(None);
         }
-        Ok(Some(VfsInodeAttr {
+        Ok(Some(FsInodeAttr {
             // 0o400 exactly, no permission fallback (02).
             mode: 0o400,
             uid: 0,
@@ -247,7 +247,7 @@ impl StorageInterposer for HookMatrixPlugin {
         }))
     }
 
-    fn on_vfs_read(&self, _path: &Path, buffer: &mut [u8]) -> Result<(), PluginError> {
+    fn on_fs_read(&self, _path: &Path, buffer: &mut [u8]) -> Result<(), PluginError> {
         let mut state = self.state.lock().unwrap();
         // Window = carried tail + this chunk. Mask over the window, then
         // write the chunk's portion back and carry the last CARRYOVER
@@ -268,7 +268,7 @@ impl StorageInterposer for HookMatrixPlugin {
     // A payload over it is rejected with BufferCeilingExceeded — the
     // runtime inspection error, distinct from the swe-agent policy
     // diff ceiling, which rejects oversize diffs with ENOSPC.
-    fn on_vfs_write(
+    fn on_fs_write(
         &self, _path: &Path, data: &[u8], _pid: u32, _ctx: &HandlerCtx,
     ) -> Result<SyncVerdict, PluginError> {
         const FFI_INSPECTION_CEILING: usize = 64 * 1024;
@@ -283,8 +283,8 @@ impl StorageInterposer for HookMatrixPlugin {
 }
 
 #[async_trait]
-impl TerminalInterposer for HookMatrixPlugin {
-    async fn on_pty_input(&self, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
+impl ConsoleInterposer for HookMatrixPlugin {
+    async fn on_console_input(&self, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
         // Strip OSC52 clipboard exfiltration sequences: ESC ] 52 ; …
         // terminated by BEL (0x07) or ST (ESC \). Everything else passes.
         let mut out = Vec::with_capacity(bytes.len());
@@ -312,7 +312,7 @@ impl TerminalInterposer for HookMatrixPlugin {
         Ok(())
     }
 
-    async fn on_pty_output(&self, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_output(&self, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
         // Single-chunk masking; the cross-chunk case is the vfs read
         // path's sliding window above, not the terminal path.
         mask_tokens(chunk);

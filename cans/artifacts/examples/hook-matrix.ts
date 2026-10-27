@@ -12,16 +12,16 @@
 //   1. onNetOutbound -> SyncVerdict. Frames containing the
 //      documentation-range marker 198.51.100. yield to the host for
 //      inspection (YieldToHost); all other frames Allow.
-//   2. onVfsLookup -> Some(VfsInodeAttr) for exactly one path,
+//   2. onFsLookup -> Some(FsInodeAttr) for exactly one path,
 //      /workspace/.policy/identity, with mode 0o400 (no permission
 //      fallback, per 02); None — fall through — everywhere else.
-//   3. onVfsRead -> sliding-window masking. A 31-byte tail is carried
+//   3. onFsRead -> sliding-window masking. A 31-byte tail is carried
 //      between reads, so a secret token split across two reads is still
 //      masked from the split point onward and no single read ever emits
 //      a complete unmasked token (the token is 32 bytes).
-//   4. onPtyInput -> strips OSC52 clipboard sequences
+//   4. onConsoleInput -> strips OSC52 clipboard sequences
 //      (ESC ] 52 ; … terminator) from guest-bound input.
-//   5. onPtyOutput -> masks sk_live_ tokens in the chunk before it
+//   5. onConsoleOutput -> masks sk_live_ tokens in the chunk before it
 //      reaches the host terminal.
 //   6. onHeartbeat -> counts heartbeats; a receipt whose uptimeMs has
 //      not advanced since the previous receipt increments the stall
@@ -34,11 +34,11 @@
 // change a chunk's length.
 //
 // GUARDS (not new dispatch rows; hook order 1-7 above is unchanged):
-//   - onVfsLookup rejects a path whose `..` segments resolve outside
+//   - onFsLookup rejects a path whose `..` segments resolve outside
 //     the /workspace root with E_PATH_TRAVERSAL (05), before the
 //     identity check runs. Paths without `..` keep the old behavior:
 //     the identity inode, else fall through.
-//   - onVfsWrite rejects any payload over the 64KB (65536-byte) FFI
+//   - onFsWrite rejects any payload over the 64KB (65536-byte) FFI
 //     inspection ceiling with BufferCeilingExceeded. That is the runtime
 //     inspection ceiling, NOT the swe-agent policy diff ceiling, which
 //     rejects with ENOSPC.
@@ -46,7 +46,7 @@
 // GAPS (flagged, not silently invented):
 //   - TS plugin-hook surface: no createPlugin hook method appears in any
 //     TS example (only .state/.decorate). The .onNetOutbound /
-//     .onVfsLookup / .onVfsRead / .onPtyInput / .onPtyOutput /
+//     .onFsLookup / .onFsRead / .onConsoleInput / .onConsoleOutput /
 //     .onHeartbeat / .onProcessExit chain below mirrors the Rust trait
 //     names in TS camelCase idiom. The one documented TS mechanism for
 //     sync hot-path filters, .intercept(channel, filter, handler) (03),
@@ -56,10 +56,10 @@
 //     TS example. SyncVerdict.Allow / SyncVerdict.YieldToHost(0) below
 //     follow the PostExecAction.RollbackAndHalt enum precedent in the
 //     swe-agent TS example (imported from @kelir/core).
-//   - YieldToHost's numeric argument and VfsInodeAttr's
+//   - YieldToHost's numeric argument and FsInodeAttr's
 //     occMetadataHash: unspecified anywhere (see hook-matrix.rs
 //     header); 0 is an explicit placeholder for both.
-//   - VfsInodeAttr field names in TS: camelCase per TS idiom
+//   - FsInodeAttr field names in TS: camelCase per TS idiom
 //     (occMetadataHash); the Rust struct fields are the documented
 //     source (plugin-trait.rs).
 
@@ -135,7 +135,7 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
   })
   // Hook 2: storage lookup. Exactly one synthetic inode, mode 0o400
   // with no permission fallback (02); everything else falls through.
-  .onVfsLookup(async (path) => {
+  .onFsLookup(async (path) => {
     // GUARD: traversal first — an escaping path is rejected, never
     // served and never silently fallen through to the host fs.
     if (escapesWorkspace(path)) {
@@ -156,7 +156,7 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
   // reads is masked from the split point onward in the later chunk, and
   // no single chunk ever contains a complete unmasked token, because
   // the earlier chunk held at most a 31-byte fragment of it.
-  .onVfsRead(async (_path, buffer) => {
+  .onFsRead(async (_path, buffer) => {
     const window = hookState.tail + Buffer.from(buffer).toString("latin1");
     const masked = maskTokens(window);
     const chunk = masked.slice(masked.length - buffer.length);
@@ -170,7 +170,7 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
   // BufferCeilingExceeded throw is attested in any TS example; the
   // swe-agent TS snoop throws Error("ENOSPC: …"), so the ceiling name
   // is carried as the Error message prefix here (see header).
-  .onVfsWrite(async (_path, buffer) => {
+  .onFsWrite(async (_path, buffer) => {
     const ffiInspectionCeiling = 64 * 1024;
     if (buffer.byteLength > ffiInspectionCeiling) {
       throw new Error(`BufferCeilingExceeded: payload ${buffer.byteLength} ` +
@@ -180,14 +180,14 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
   })
   // Hook 4: PTY input. Strip OSC52 clipboard exfiltration sequences:
   // ESC ] 52 ; … terminated by BEL (0x07) or ST (ESC \).
-  .onPtyInput(async (bytes) => {
+  .onConsoleInput(async (bytes) => {
     const text = Buffer.from(bytes).toString("latin1");
     const stripped = text.replace(/\x1b\]52;[^\x07\x1b]*(?:\x07|\x1b\\)?/g, "");
     return Buffer.from(stripped, "latin1");
   })
   // Hook 5: PTY output. Single-chunk masking; the cross-chunk case is
   // the vfs read path's sliding window above, not the terminal path.
-  .onPtyOutput(async (chunk) => {
+  .onConsoleOutput(async (chunk) => {
     const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
     return Buffer.from(masked, "latin1");
   })

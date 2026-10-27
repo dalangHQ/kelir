@@ -4,7 +4,7 @@
 // Canonical depth example: the non-default knob set, not the swe-agent
 // defaults. Where autonomous-swe-agent.ts runs hardware-only with Locked
 // workspace encapsulation, StreamingAutomata scanning, and workspace-
-// scoped receipts, this file deliberately departs from every one of
+// scoped receipts, this file deliberately departs from
 // those defaults — in one place, so knob-coverage has a single home.
 //
 // SAME KNOB SET as knob-matrix.rs and knob-matrix.py. Each knob below
@@ -17,15 +17,10 @@
 //     carryoverBytes  1024            (default 512)
 //   PTY:
 //     carryoverBufferBytes 1024      (default 512)
-//   RECEIPTS (08):
-//     receiptScope    WholeVmRam      (default WorkspaceInodesOnly)
 //   DRIVER (01, vmm-driver-trait.rs DriverPolicy):
 //     wxEnforcement         PermissiveAudit (default Strict)
 //     allowEmulatedFallback true           (default false)
 //     driver                bwrap            (the emulated tier)
-//   VM (09, VmConfig.entropy_bypass_paths):
-//     entropyBypassPaths ["/opt/kelir/trusted-runner"]
-//       (a single trusted-runner path, not a wildcard)
 //
 // EMULATED-TIER DISCLAIMER: this example does NOT claim hardware-only
 // admission. driver="bwrap" with allowEmulatedFallback=true is the
@@ -34,13 +29,15 @@
 // these driver knobs into a hardware-admission example.
 //
 // GAPS (flagged, not silently invented):
-//   - driverPolicy / entropyBypassPaths as kelir() options: no TS
-//     example shows them. The field names follow the Rust VmConfig /
-//     DriverPolicy structs (vmm-driver-trait.rs) in TS camelCase idiom,
-//     cf. tapFilter / streamEngine in autonomous-swe-agent.ts.
-//   - receiptScope as a receipts field: the field is defined in 08
-//     (parent decision); no TS example sets it, so the string form
-//     follows the includeDirtyBytes precedent in the same literal.
+//   - driverPolicy as a kelir() option: no TS example shows it.
+//     The field name follows the Rust VmConfig / DriverPolicy
+//     structs (vmm-driver-trait.rs) in TS camelCase idiom, cf.
+//     tapFilter / streamEngine in autonomous-swe-agent.ts.
+//   - receiptScope was removed from core: 08 deleted the
+//     receipt_scope line, and ExecutionReceipt now carries plugin
+//     TelemetryExtensions instead, so this example no longer sets
+//     it. entropyBypassPaths was likewise removed from VmConfig
+//     (entropy analysis moved to plugin-supply-chain).
 //   - VFS/PTY knob spellings in TS: plugins/vfs.md attests the field
 //     names (encapsulation, scan_engine, carryover_bytes); the TS
 //     camelCase forms follow the tapFilter precedent, and
@@ -51,10 +48,6 @@ import { kelir, type Session } from "@kelir/core";
 import { pty }    from "@kelir/plugin-pty";
 import { vfs }    from "@kelir/plugin-vfs";
 import { ledger } from "@kelir/plugin-ledger";
-
-// Trusted runner whose entropy check is bypassed: a single explicit
-// path, never a wildcard, never a directory.
-const TRUSTED_RUNNER_PATH = "/opt/kelir/trusted-runner";
 
 const runtime = kelir({
   vcpus: 2, memoryMb: 2048,
@@ -71,8 +64,6 @@ const runtime = kelir({
     // banned by default; this example opts in.
     allowEmulatedFallback: true,
   },
-  // One trusted-runner path, not a wildcard (09).
-  entropyBypassPaths: [TRUSTED_RUNNER_PATH],
 
   // → c.fs — Passthrough, NOT the Locked default, so the guest
   // workspace is not locked to mode 000; FastRegex, NOT the
@@ -89,12 +80,11 @@ const runtime = kelir({
   dropOsc52: true, stripTitle: true,
   carryoverBufferBytes: 1024,
 
-  // → c.ledger — WholeVmRam receipts, NOT the WorkspaceInodesOnly
-  // default: the receipt covers whole-VM RAM mutations.
+  // → c.ledger — receipts include syscall counts.
 })).use(ledger({
   store: "sqlite://.kelir/audit.merkle.db",
   merkleChain: true,
-  receipts: { includeSyscallCount: true, receiptScope: "WholeVmRam" },
+  receipts: { includeSyscallCount: true },
 }));
 
 async function main() {
@@ -103,9 +93,8 @@ async function main() {
   const probe = await session.spawn("true", [], { cwd: "/workspace" });
   console.log(`[kelir] probe -> exit=${probe.exitCode}`);
   console.log("[kelir] knobs: vfs=Passthrough/FastRegex/1024 " +
-              "pty_carryover=1024 receiptScope=WholeVmRam " +
-              "driver=bwrap wx=PermissiveAudit emulatedFallback=true " +
-              `entropyBypass=[${TRUSTED_RUNNER_PATH}]`);
+              "pty_carryover=1024 " +
+              "driver=bwrap wx=PermissiveAudit emulatedFallback=true");
   await session.terminate();
 }
 

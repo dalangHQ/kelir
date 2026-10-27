@@ -187,7 +187,7 @@
       - Pre-boot registration also allowed: builder lifecycle_mut().register_veto
         - Before seal/boot; validated at boot; same VetoEvent, same firing point
       - All veto registrations validated at boot
-      - Callbacks fire in priority() order across all plugins
+      - Callbacks fire in DAG order across all plugins
     - Two classes
       - Hard veto: Fork, Suspend, ClockSkew
         - Any false return aborts the action with ESessionVeto

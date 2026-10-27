@@ -10,7 +10,7 @@
 │   │     - virtio-wdt: Hardware watchdog timer preventing guest kernel lockups           │
 │   │     - virtio-balloon: Dynamic memory inflation/deflation under host pressure        │
 │   │                                                                                     │
-│   ├── Rootfs Mounting: Ultra-fast read-only EROFS block device (cold-mounted in <2ms)   │
+│   ├── Rootfs Mounting: Ultra-fast read-only EROFS block device (cold-mounted)           │
 │   │                                                                                     │
 │   ├── Standard Linux Init (PID 1):                                                      │
 │   │     - Standard uninstrumented musl init (tini/sysvinit); reaps zombies cleanly      │

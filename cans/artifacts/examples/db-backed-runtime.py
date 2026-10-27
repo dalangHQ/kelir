@@ -94,9 +94,11 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         return Decision.resume()
 
     def post_migrate(c: HandlerContext) -> PostExecAction:
-        # A migration that opened zero SQL statements is either a no-op
+        # A migration with no db-proxy telemetry is either a no-op
         # or a falsified report; the ledger cannot distinguish them.
-        if c.receipt().statement_count == 0:
+        # Payload format is plugin-defined, so presence (not a decoded
+        # count) is the gate: no "net:l7:sql" extension, no proceed.
+        if not any(e.namespace == "net:l7:sql" for e in c.receipt().extensions):
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
 

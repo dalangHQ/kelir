@@ -76,7 +76,7 @@
       - Translation logic delegated to a plugin the binary loads
     - Plugin
       - External input mapping, or policy over a core primitive
-      - Declares priority(): see: 02-plugin-model.md#KelirPlugin-trait
+      - Declares provides()/requires()/order(): see: 02-plugin-model.md#KelirPlugin-trait
       - Native: systems-grade engine plugin compiled in Rust
       - Foreign: userland policy plugin written in host language
       - Dual-plane execution details: see: 02-plugin-model.md#Dual-plane-execution-architecture

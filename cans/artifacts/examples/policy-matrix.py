@@ -15,7 +15,7 @@ is the dispatch order; each binary hits exactly one row:
                                            EINVALIDDECISION per 09)
   4. policy-abort    -> Abort           (pre-exec, exit 1)
   5. policy-yield    -> checkpoint "policy-yield", then Yield to host
-  6. policy-approval -> SuspendForApproval (poll 500 ms)
+  6. policy-approval -> HostHold (poll 500 ms)
   7. policy-custom   -> Custom("quarantine", payload) dispatched to
                          builder.register_custom_action("quarantine", …)
   8. Vetoes (on_vm_init): Suspend and ClockSkew, each allowed only once
@@ -33,12 +33,12 @@ expresses it through the plugin's on_trap returning TrapAction. The
 decision sequence and order are identical; only the registration
 mechanism follows SDK idiom. Watchdog/veto hooks live on BasePlugin
 subclasses, mirroring the Rust capability traits in snake_case (cf.
-on_trap / on_vfs_write / on_disclosure in the swe-agent Python plugin).
+on_trap / on_fs_write / on_disclosure in the swe-agent Python plugin).
 
 GAPS (flagged, not silently invented):
-  - Decision.abort / Decision.yield_ / Decision.suspend_for_approval /
+  - Decision.abort / Decision.yield_ / Decision.host_hold /
     Decision.custom: 09 maps the lattice to c.abort,
-    c.yield(checkpoint_id), c.suspend_for_approval(poll_ms),
+    c.yield(checkpoint_id), c.host_hold(poll_ms),
     c.custom(name, cbor_payload). Only Decision.deny / resume / rewrite
     appear in existing Python examples; the four new spellings below are
     09's names in the existing static-Decision idiom, not spellings
@@ -184,7 +184,7 @@ async def row_yield(c: HandlerContext) -> Decision:
 
 
 async def row_approval(c: HandlerContext) -> Decision:
-    return Decision.suspend_for_approval(poll_ms=500)
+    return Decision.host_hold(poll_ms=500)
 
 
 async def row_custom(c: HandlerContext) -> Decision:
@@ -230,7 +230,7 @@ def build_runtime() -> KelirBuilder:
         quarantine,
     )
 
-    # Vsock service on port 2: the RPC peer of session.vsock.channel(2)
+    # Vsock service on vsock channel kind 2: the RPC peer of session.vsock.channel(2)
     # in main(). Echoes the request frame back to the caller.
     async def echo(request: bytes) -> bytes:
         return request

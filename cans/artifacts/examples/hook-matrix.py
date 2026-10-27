@@ -11,16 +11,16 @@ SAME HOOK SET in all three SDKs, in dispatch order:
   1. on_net_outbound -> SyncVerdict. Frames containing the
      documentation-range marker 198.51.100. yield to the host for
      inspection (YieldToHost); all other frames Allow.
-  2. on_vfs_lookup -> Some(VfsInodeAttr) for exactly one path,
+  2. on_fs_lookup -> Some(FsInodeAttr) for exactly one path,
      /workspace/.policy/identity, with mode 0o400 (no permission
      fallback, per 02); None — fall through — everywhere else.
-  3. on_vfs_read -> sliding-window masking. A 31-byte tail is carried
+  3. on_fs_read -> sliding-window masking. A 31-byte tail is carried
      between reads, so a secret token split across two reads is still
      masked from the split point onward and no single read ever emits
      a complete unmasked token (the token is 32 bytes).
-  4. on_pty_input -> strips OSC52 clipboard sequences
+  4. on_console_input -> strips OSC52 clipboard sequences
      (ESC ] 52 ; … terminator) from guest-bound input.
-  5. on_pty_output -> masks sk_live_ tokens in the chunk before it
+  5. on_console_output -> masks sk_live_ tokens in the chunk before it
      reaches the host terminal.
   6. on_heartbeat -> counts heartbeats; a receipt whose uptime_ms has
      not advanced since the previous receipt increments the stall
@@ -33,28 +33,28 @@ the read/output hooks mutate fixed-size buffers in place and cannot
 change a chunk's length.
 
 GUARDS (not new dispatch rows; hook order 1-7 above is unchanged):
-  - on_vfs_lookup rejects a path whose `..` segments resolve outside
+  - on_fs_lookup rejects a path whose `..` segments resolve outside
     the /workspace root with E_PATH_TRAVERSAL (05), before the
     identity check runs. Paths without `..` keep the old behavior:
     the identity inode, else fall through.
-  - on_vfs_write rejects any payload over the 64KB (65536-byte) FFI
+  - on_fs_write rejects any payload over the 64KB (65536-byte) FFI
     inspection ceiling with BufferCeilingExceeded. That is the runtime
     inspection ceiling, NOT the swe-agent policy diff ceiling, which
     rejects with ENOSPC.
 
 GAPS (flagged, not silently invented):
-  - Python plugin-hook surface: only on_trap / on_vfs_write /
+  - Python plugin-hook surface: only on_trap / on_fs_write /
     on_disclosure appear in the swe-agent Python plugin. The
-    on_net_outbound / on_vfs_lookup / on_vfs_read / on_pty_input /
-    on_pty_output / on_heartbeat / on_process_exit methods below mirror
+    on_net_outbound / on_fs_lookup / on_fs_read / on_console_input /
+    on_console_output / on_heartbeat / on_process_exit methods below mirror
     the Rust trait names in the existing snake_case idiom.
-  - SyncVerdict / VfsInodeAttr spellings in Python: no SyncVerdict
-    value and no VfsInodeAttr construction appear in any Python
+  - SyncVerdict / FsInodeAttr spellings in Python: no SyncVerdict
+    value and no FsInodeAttr construction appear in any Python
     example. SyncVerdict.allow() / SyncVerdict.yield_to_host(0) below
     follow the PostExecAction.proceed() / rollback_and_halt() static
     precedent in the swe-agent Python example; the import path follows
     the kelir.plugin precedent (PluginError, TrapAction).
-  - YieldToHost's numeric argument and VfsInodeAttr's
+  - YieldToHost's numeric argument and FsInodeAttr's
     occ_metadata_hash: unspecified anywhere (see hook-matrix.rs
     header); 0 is an explicit placeholder for both.
   - Hook return-vs-mutate shape: Rust mutates buffers in place; the
@@ -63,7 +63,7 @@ GAPS (flagged, not silently invented):
     the Python-idiom equivalent of the same transformation.
   - Error idiom: no BufferCeilingExceeded variant or E_PATH_TRAVERSAL
     raise is attested in any Python example; both guards below use
-    PluginError.reject (the swe-agent Python on_vfs_write precedent),
+    PluginError.reject (the swe-agent Python on_fs_write precedent),
     carrying the error name as the errno, distinct from ENOSPC.
 
 Requirements:
@@ -83,7 +83,7 @@ from kelir.plugin import (
     BasePlugin,
     PluginError,
     SyncVerdict,
-    VfsInodeAttr,
+    FsInodeAttr,
 )
 
 
@@ -163,7 +163,7 @@ class HookMatrixPlugin(BasePlugin):
 
     # Hook 2: storage lookup. Exactly one synthetic inode, mode 0o400
     # with no permission fallback (02); everything else falls through.
-    async def on_vfs_lookup(self, path: Path) -> Optional[VfsInodeAttr]:
+    async def on_fs_lookup(self, path: Path) -> Optional[FsInodeAttr]:
         # GUARD: traversal first — an escaping path is rejected, never
         # served and never silently fallen through to the host fs.
         if escapes_workspace(str(path)):
@@ -173,7 +173,7 @@ class HookMatrixPlugin(BasePlugin):
             )
         if str(path) != IDENTITY_PATH:
             return None
-        return VfsInodeAttr(
+        return FsInodeAttr(
             mode=0o400,
             uid=0,
             gid=0,
@@ -191,7 +191,7 @@ class HookMatrixPlugin(BasePlugin):
     # the later chunk, and no single chunk ever contains a complete
     # unmasked token, because the earlier chunk held at most a 31-byte
     # fragment of it.
-    async def on_vfs_read(self, path: Path, buffer: bytes) -> bytes:
+    async def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
         window = self._state.tail + buffer
         masked = mask_tokens(window)
         chunk = masked[len(masked) - len(buffer):] if buffer else b""
@@ -203,9 +203,9 @@ class HookMatrixPlugin(BasePlugin):
     # runtime inspection error, distinct from the swe-agent policy diff
     # ceiling, which rejects oversize diffs with ENOSPC. GAP: no
     # BufferCeilingExceeded variant is attested in any Python example;
-    # the swe-agent Python on_vfs_write raises PluginError.reject, so
+    # the swe-agent Python on_fs_write raises PluginError.reject, so
     # the ceiling name is carried as the errno here (see header).
-    async def on_vfs_write(self, path: Path, data: bytes) -> bool:
+    async def on_fs_write(self, path: Path, data: bytes) -> bool:
         ffi_inspection_ceiling = 64 * 1024
         if len(data) > ffi_inspection_ceiling:
             raise PluginError.reject(
@@ -217,12 +217,12 @@ class HookMatrixPlugin(BasePlugin):
 
     # Hook 4: PTY input. Strip OSC52 clipboard exfiltration sequences:
     # ESC ] 52 ; … terminated by BEL (0x07) or ST (ESC \).
-    async def on_pty_input(self, data: bytes) -> bytes:
+    async def on_console_input(self, data: bytes) -> bytes:
         return _OSC52_RE.sub(b"", data)
 
     # Hook 5: PTY output. Single-chunk masking; the cross-chunk case is
     # the vfs read path's sliding window above, not the terminal path.
-    async def on_pty_output(self, chunk: bytes) -> bytes:
+    async def on_console_output(self, chunk: bytes) -> bytes:
         return mask_tokens(chunk)
 
     # Hook 6: heartbeat. Observation only (07): count, and note stalls,

@@ -16,7 +16,7 @@ Pipes TLV packet to vsock:5252 (Ch 0)► Host receives TrapEvent
                                      │ Gate 2: Checks MountScope & AOT Schema ──► INVALID ──► Deny (EINVAL)
                                      │ Match? ──► NO ──► Resume (<2µs)
                                      │ YES
-                                     │ Evaluates Tier 1 Rust Plugins (<12µs)
+                                     │ Evaluates Tier 1 Rust Plugins (at the latency ceiling)
                                      │ Gate 3: Crosses FFI Trampoline to TS/Python async handler
                                      │
                                      ├──────────────────────────────┐

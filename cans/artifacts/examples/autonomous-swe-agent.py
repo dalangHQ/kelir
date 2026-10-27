@@ -189,7 +189,7 @@ class RepoPolicyPlugin(BasePlugin):
         )
 
     # ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
-    async def on_vfs_write(self, path: Path, data: bytes) -> bool:
+    async def on_fs_write(self, path: Path, data: bytes) -> bool:
         if path.suffix == ".diff" and len(data) > self._opts["max_diff_bytes"]:
             self.handle().record_violation()
             raise PluginError.reject(
@@ -237,10 +237,6 @@ def make_universal_step(oracle: Oracle) -> PreExecHandler:
                 1,
                 f"Verification Reject: {intent.falsification_reason or ''}",
             )
-        if c.trap.entropy > 5.2 and not intent.allow_high_entropy:
-            return Decision.deny(
-                126, "EENTROPY: high-entropy argv requires oracle clearance."
-            )
         return Decision.resume()
     return universal_step
 
@@ -258,10 +254,8 @@ def make_warm_caches(oracle: Oracle) -> PreExecHandler:
     return warm_caches
 
 
-def make_entropy_check() -> PreExecHandler:
-    async def entropy_check(c: HandlerContext) -> Decision:
-        if c.trap.entropy > 5.2:
-            return Decision.deny(1, "EPERM: high-entropy payload.")
+def make_force_strip() -> PreExecHandler:
+    async def force_strip(c: HandlerContext) -> Decision:
         if "--force" in c.trap.argv:
             return Decision.rewrite(
                 binary="/bin/git",
@@ -269,7 +263,7 @@ def make_entropy_check() -> PreExecHandler:
                 env={"KELIR_DISARMED": "1"},
             )
         return Decision.resume()
-    return entropy_check
+    return force_strip
 
 
 def make_verify_receipt(oracle: Oracle) -> PostExecHandler:
@@ -319,12 +313,21 @@ def make_zero_byte_check() -> PostExecHandler:
         if receipt.dirty_bytes == 0:
             raise RuntimeError("Verification anomaly: zero-byte delta commit attempted.")
         # Workspace-scoped observation (08-epistemic.md#Execution-receipts):
-        # dirty_bytes counts all hypervisor-dirtied bytes; this field
-        # counts only target workspace inodes. The gate above still keys
-        # on dirty_bytes; this line observes the workspace counter the
-        # gate does not check.
-        log.info("[kelir] commit workspace_dirty_bytes=%s",
-                 receipt.workspace_dirty_bytes)
+        # dirty_bytes counts all hypervisor-dirtied bytes; the workspace
+        # counter now arrives as a plugin-vfs TelemetryExtension
+        # (namespace "fs:vfs"), whose payload is plugin-defined and
+        # opaque to core. The gate above still keys on dirty_bytes;
+        # this logs only the extension's presence and payload length,
+        # never a decoded count.
+        vfs_ext = next(
+            (e for e in receipt.extensions if e.namespace == "fs:vfs"),
+            None,
+        )
+        if vfs_ext is None:
+            log.info("[kelir] commit fs:vfs extension absent")
+        else:
+            log.info("[kelir] commit fs:vfs extension present, payload_len=%s",
+                     len(vfs_ext.payload))
         return PostExecAction.proceed()
     return zero_byte_check
 
@@ -512,7 +515,7 @@ async def build_runtime(
     # Universal atomic step loop: checkpoint → oracle → resume
     builder.trap("*", pre=make_universal_step(oracle), post=make_verify_receipt(oracle))
     builder.trap("npm test -- --runInBand", pre=make_warm_caches(oracle))
-    builder.trap("git push *", pre=make_entropy_check())
+    builder.trap("git push *", pre=make_force_strip())
     builder.trap("git commit -m *", pre=make_commit_gate(policy))
     builder.trap("git commit *", post=make_zero_byte_check())
 
@@ -654,7 +657,6 @@ async def main() -> None:
 class _IntentAnalysis(Protocol):
     is_hypothesis_valid: bool
     falsification_reason: Optional[str]
-    allow_high_entropy: bool
 
 
 class UserOracle(Oracle):

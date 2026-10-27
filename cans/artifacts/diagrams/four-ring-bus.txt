@@ -5,7 +5,7 @@ THE VIRTIO DEVICE COMPLEX
  [virtio-vsock]  [virtio-console]          [virtio-fs]        [virtio-net]
   CONTROL PLANE   TERMINAL PLANE          STORAGE PLANE        WIRE PLANE
   Channel 0: Traps hvc0: PTY Master       FUSE Overlays,      Bidirectional L2,
-  Channel 1: hvc1: Binary transport       Streaming Masking,   TAP Framing,
-  Channel 2: DB/RPC Token Shield, Grid    Journal Reconciler  Credentials, Chaos
+  Kind 1:    hvc1: Binary transport       Streaming Masking,   TAP Framing,
+  Kind 2:    DB/RPC Token Shield, Grid    Journal Reconciler  Credentials, Chaos
                          │                       │
          [virtio-shm] ───┴────────── [virtio-blk / wdt / balloon]
