@@ -25,6 +25,15 @@
     - Multi-file inheritance
       - Base profiles inherited via extends key
       - Deep-merge preserves monotonic lattice: cannot widen upstream denials
+    - RFC 6902 dynamic policy patching
+      - Ingests JSON/YAML patches over vsock Channel 0 while VM is running
+      - Monotonic lattice validation: patches cannot loosen upstream denials
+      - Monotonic violation halts patch dispatch with ESecurityViolation
+      - Approved patches update active MountScope and BPF tables atomically
+    - Container Device Interface (CDI) device mapping
+      - Ingests /etc/cdi specification files declared in profile
+      - Maps designated host GPU nodes directly via virtio-shm and PCI
+      - Bypasses external container daemons for direct hardware assignment
     - Out-of-band secret separation
       - Public profiles reference vault:// placeholders exclusively
       - Host keyring or gitignored kelir.vault.toml maps credentials

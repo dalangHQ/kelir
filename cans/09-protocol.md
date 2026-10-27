@@ -2,7 +2,7 @@
   - Control channel
     - virtio-vsock port 5252: unified multiplexed transport
     - Binary channel framing isolates sub-protocols via channel_id
-      - Channel 0: Syscall traps and VM lifecycle control
+      - Channel 0: Syscall traps, VM lifecycle control, and RFC 6902 patches
       - Channel 1: Ingress port-forwarding and connection proxying
       - Channel 2: Paravirtualized signing gateway and binary RPC
       - Swarm agent coordination executes over Channel 2 with Merkle logging
@@ -78,6 +78,11 @@
       - TrapAction::Abort: c.abort(exit_code, reason)
       - TrapAction::SuspendForApproval: c.suspend_for_approval(poll_ms)
       - TrapAction::Custom: c.custom(name, cbor_payload)
+    - SuspendForApproval wire contract
+      - Supervisor emits PolicyViolationEvent carrying PID, binary, and rule
+      - Host halts vCPU execution and drops RAM footprint via suspend primitive
+      - Host releases suspension via HostToGuest::ResumeWithPatch frame
+      - Patch frame payload carries CBOR-encoded RFC 6902 mutation instructions
     - Custom dispatch contract
       - Registration: builder.register_custom_action(name, schema, handler)
       - Unknown name at trap time fails with EUnknownAction
@@ -97,4 +102,3 @@
     - new_binary canonicalisation
     - Env injection size and secrets
     - Custom dispatch
-    - SuspendForApproval release

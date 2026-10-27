@@ -31,8 +31,18 @@
   - OpenShell gRPC driver
     - Architecture (openshell)
       - see: kelir-cloud://artifacts/diagrams/ingestion-adapters-commercial.txt
-    - Coordinator plugin file: see: kelir-cloud://plugins/openshell-coordinator.md
-    - Driver maps to Session execution with flat openshell-coordinator config
+    - Server binary crate: kelir-adapters/openshell-driver
+    - Translates OpenShell gRPC services directly to Session and plugin-profile
+      - SandboxService maps to KelirBuilder boot and lifecycle primitives
+      - PolicyService maps OpenShell YAML directly into plugin-profile
+      - SupervisorService maps execution traps to OpenShell approval hooks
+    - Out-of-band supervisor elimination
+      - Eliminates in-guest OpenShell supervisor process entirely
+      - Enforces policy out-of-band via virtio-vsock Channel 0 and FUSE gates
+    - Dynamic approval lifecycle bridge
+      - Denial triggers suspend_for_approval, dropping host RAM to 0 MB
+      - Gateway admin approvals push RFC 6902 patches before cycle-exact resume
+    - CDI mapping: passes OpenShell GPU device requests to plugin-profile CDI parser
     - OpenShell boundary: see: #Process-vs-plugin-boundary
   - E2B compatibility
     - TypeScript: @kelir/e2b-compat

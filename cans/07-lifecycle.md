@@ -57,6 +57,10 @@
       - spawn() and every other session API directly callable on child
     - Child handoff scope: TBD
     - Typical use: parallel agent exploration (5+ candidate strategies)
+    - Policy dry-run CoW probing
+      - Clones parent VM in <15ms to evaluate untrusted candidate commands
+      - Policy denial in probe child aborts branch in <1ms with zero parent impact
+      - Probe execution asserts hardware receipts before parent commits diff
     - Veto: Fork (hard)
       - Callback false → ESessionVeto; no child VM
   - Rollback
@@ -86,6 +90,11 @@
     - Typical use: waiting for human approval with zero host CPU cost
     - Mobile and SBC use: rapid 0 MB RSS drop under Android LMK memory pressure
     - Flash preservation: guest tmpfs writes stay in RAM; zero random SD card writes
+    - Policy approval suspension
+      - Triggered by TrapAction::SuspendForApproval on policy denials
+      - Freezes vCPUs and flushes memory to local NVMe via io_uring in <50ms
+      - Host RAM drops to 0 MB while waiting for out-of-band approval
+      - Resume executes cycle-exact upon monotonic RFC 6902 patch submission
   - Portable snapshot bundles
     - Content-addressed snapshot sync
     - Streamed archive packaging vmm_state.json, ram.zst, and upperdir diff
