@@ -26,6 +26,7 @@
       - read_file → virtio-fs lookup + read
       - write_file → virtio-fs write
     - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
+    - Composes with plugin-tool-guard: tool-guard sits upstream on hvc1 inspecting "tools/call"
     - Port multiplexing routes hvc1 directly to MCP client without PTY conflict
     - MCP contract
       - Transport: JSON-RPC 2.0 over virtio-console hvc1

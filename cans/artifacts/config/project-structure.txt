@@ -172,10 +172,14 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # socket2 buffer clamping, httparse sniffer, copy_bidirectional
 │   │   │   └── tests/test_parking.rs
-│   │   └── plugin-profile/            # Declarative kelir.toml/kelir.yaml ingestion, inheritance, schema export
+│   │   ├── plugin-profile/            # Declarative kelir.toml/kelir.yaml ingestion, inheritance, schema export
+│   │   │   ├── Cargo.toml
+│   │   │   ├── src/lib.rs             # CompositePlugin flattening of profile declarations into child plugins
+│   │   │   └── tests/test_profile.rs
+│   │   └── plugin-tool-guard/         # MCP tool-call interposition, schema pinning, veto rules on hvc1
 │   │       ├── Cargo.toml
-│   │       ├── src/lib.rs             # CompositePlugin flattening of profile declarations into child plugins
-│   │       └── tests/test_profile.rs
+│   │       ├── src/lib.rs             # ToolInterposer: on_tool_list, on_tool_call, on_tool_result
+│   │       └── tests/test_tool_guard.rs
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
 │   │   └── mcp-server/                # Model Context Protocol stdio terminal server

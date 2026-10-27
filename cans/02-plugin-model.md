@@ -54,6 +54,7 @@
       - LifecycleParticipant: vm lifecycle, commit, host preempt
       - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
       - TerminalInterposer: pty input, pty output, window resize, disclosure
+      - ToolInterposer: on_tool_list, on_tool_call, on_tool_result; hot-path JSON-RPC filter
       - StorageInterposer: vfs lookup, read, write; synchronous hot path
       - WireInterposer: net outbound, net inbound; synchronous hot path
       - AnyPlugin: identity marker for any KelirPlugin (fork/composite)
@@ -171,7 +172,7 @@
     - Catalog tiering
       - Community plugins (hosted in core repo):
         - pty, vfs, wire, chaos, ledger, mcp, profile
-        - db-proxy, mesh, lock-broker, supply-chain, wire-ingress
+        - db-proxy, mesh, lock-broker, supply-chain, wire-ingress, tool-guard
       - Commercial plugins (SSOT hosted in kelir-cloud):
         - hyper-density: see: kelir-cloud://plugins/hyper-density.md
         - cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md
@@ -182,6 +183,7 @@
       - mesh, lock-broker, supply-chain: multi-vm-swarm.rs
       - db-proxy: db-backed-runtime.py
       - wire-ingress, mcp: serverless-webhook.ts
+      - tool-guard: autonomous-swe-agent.ts
       - profile: autonomous-swe-agent.ts
     - Coverage invariant
       - Every first-class plugin names one demonstrating example
@@ -227,6 +229,7 @@
       - plugin-cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md — c.cas
       - plugin-wire-ingress: see: plugins/wire-ingress.md — c.ingress
       - plugin-mcp: see: plugins/mcp.md — c.mcp
+      - plugin-tool-guard: see: plugins/tool-guard.md — c.tools
       - plugin-oci-translator — OCI layer translation
         - see: kelir-cloud://plugins/oci-translator.md
       - plugin-openshell-coordinator — checkpoint

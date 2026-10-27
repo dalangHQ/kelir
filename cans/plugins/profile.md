@@ -14,9 +14,10 @@
     - Bidirectional declarative configuration engine
     - Ingests canonical kelir.toml and kelir.yaml configurations
     - Implements CompositePlugin to flatten declarations into child plugins
-    - Twelve-domain composite expansion
+    - Thirteen-domain composite expansion
       - storage block expands into plugin-vfs mount rules and encapsulations
       - masking block expands into plugin-vfs sliding-window FPA generators
+      - tools block expands into plugin-tool-guard pinning, rate limits, and veto rules
       - network and secrets blocks expand into plugin-wire TAP and proxy rules
       - rate_limits block expands into plugin-wire token-bucket rate limiters
       - terminal block expands into plugin-pty Token Shield and ANSI filters

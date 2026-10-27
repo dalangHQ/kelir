@@ -178,7 +178,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress, profile]
+        plugin: [pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress, profile, tool-guard]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -207,7 +207,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress, profile]
+        plugin: [pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress, profile, tool-guard]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -242,7 +242,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress, profile]
+        plugin: [pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress, profile, tool-guard]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

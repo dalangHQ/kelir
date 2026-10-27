@@ -85,13 +85,13 @@
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
     - Decoupled plugin specs
-      - One spec file per plugin: 12 in cans plugin folder, 4 in kelir-cloud
+      - One spec file per plugin: 13 in cans plugin folder, 4 in kelir-cloud
       - Leaf-node rule: plugin files do not chain further references; bus
         pointers are direct 1-hop
     - Matrix job: test-plugins
-      - One cell per community plugin (12 total)
+      - One cell per community plugin (13 total)
       - Plugins: [pty, vfs, wire, chaos, ledger, mcp, profile]
-      - Plugins: [db-proxy, mesh, lock-broker, supply-chain, wire-ingress]
+      - Plugins: [db-proxy, mesh, lock-broker, supply-chain, wire-ingress, tool-guard]
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
       - Structural decoupling proof: see: 02-plugin-model.md#Plugin-ownership
@@ -113,7 +113,7 @@
       - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
   - Decoupling proof
     - Job: plugin-isolation
-    - Audit scope: 12 community plugins
+    - Audit scope: 13 community plugins
     - Claim executed: see: 02-plugin-model.md#Plugin-ownership
     - Per cell: remove crate, workspace member, and facade feature; build and
       nextest the remainder
@@ -194,9 +194,9 @@
       - kelir: facade crate, single Cargo dependency, feature-gated plugins
       - kelir-interface: pure leaf types, traits, wire framing, zero engine deps
       - kelir-core: stripped microkernel (bus, dispatch, vmm, trap gate)
-      - kelir-plugins: community plugin family (12 plugins; 4 in kelir-cloud)
+      - kelir-plugins: community plugin family (13 plugins; 4 in kelir-cloud)
         - pty, vfs, wire, chaos, ledger, mcp, profile, db-proxy, mesh
-        - lock-broker, supply-chain, wire-ingress
+        - lock-broker, supply-chain, wire-ingress, tool-guard
       - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
       - kelir-shim: in-guest musl PID 1 (<50KB)
     - Decoupled spec layout

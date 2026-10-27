@@ -34,6 +34,9 @@
       - Rust: borrow-checker verified typestate, zero-cost Serde
       - TypeScript: generic context accumulation, TypeBox AOT validation
       - Python: RAII context managers, Pydantic v2 validation
+      - Rust: .intercept_tool("bash", |call, ctx| async { ToolAction::Allow })
+      - TypeScript: .tool("bash", async (call, c) => c.tools.allow())
+      - Python: @builder.on_tool("bash") async def guard(call, c): ...
     - Scoping: all SDKs support ring, binary, and path filters at mount point
     - Topology rule: distinct environments use separate profile factories
     - Parity mechanism: see: 11-operations.md#Multi-language-parity-gate
@@ -84,6 +87,7 @@
       - Rust: Sandbox::from_config("kelir.toml")
     - Facade method delegations
       - box.exec(cmd) routes through virtio-console and trap filters
+      - box.tools exposes active MCP schema pins and call telemetry
       - box.rollback() invokes driver rollback in <8ms
       - box.reconcile() invokes storage reconciler to host workspace
       - box.suspend() drops host RSS to 0 MB in <50ms

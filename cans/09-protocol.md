@@ -88,6 +88,12 @@
       - Unknown name at trap time fails with EUnknownAction
       - Registration after boot() fails with EConfig
     - Action invariants: see: artifacts/code/messages.rs
+  - ToolAction-method-mapping
+    - ToolAction::Allow: forward raw JSON-RPC frame to hvc1
+    - ToolAction::Deny(errno, msg): emit JSON-RPC -32001 error response frame
+    - ToolAction::Rewrite(new_params): replace params payload in-flight
+    - ToolAction::SuspendForApproval: freeze vCPUs, flush RSS, wait for vsock patch
+    - ToolAction::Abort: terminate microVM immediately with exit code 126
   - Env injection
     - Allow cannot mutate guest environment
       - Registers, memory, and environment variables remain untouched
