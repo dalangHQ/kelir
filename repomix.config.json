@@ -46,7 +46,7 @@
   //    "cans/artifacts/code",
   //    "cans/artifacts/config",
   //    "cans/artifacts/diagrams",
-    //  "cans/artifacts/examples",
+      "cans/artifacts/examples",
         "cans/artifacts/taxonomy.html"
     ]
   },
