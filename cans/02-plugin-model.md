@@ -6,10 +6,13 @@
     - Axis 2 (rings): set of attached VirtIO device channels
     - Axis 3 (tier): Native (Rust in-process) | Foreign (host FFI)
     - Axis 4 (telemetry role): Observer | Gate | Mutator | Proxy
+    - Axis 5 (capabilities): Provided and required semantic tokens
+    - Ordering via topological DAG: eliminates arbitrary magic integer priorities
+    - Cycle detection and unfulfilled dependencies fail closed at boot
     - First-class catalog default: tier is Native unless stated
     - Mutation scope manifest: mutators declare target paths, ports, or envs
     - Overlapping mutation scopes between plugins fail validation at boot
-    - Coordinates enforce compile-time ordering gates and dispatch layout
+    - Coordinates enforce DAG construction and dispatch layout
     - Clean-room boundary invariant
       - kelir-interface is strictly dual-licensed (MIT OR Apache-2.0)
       - Implementing KelirPlugin creates zero copyleft or viral licensing obligations
@@ -21,17 +24,18 @@
     - io: PTY streams and multiplexed console channels
     - sys: traps, process trees, clock, faults, audit receipts
     - ipc: vsock multiplexing and shared-memory mapping
-  - Two-tier execution architecture
-    - Native tier
-      - Compiled native Rust plugins in crates/kelir-plugins
-      - Synchronous fast-path filters execute on VirtIO rings at <1µs
-      - Returns SyncVerdict::Allow or yields to host via SyncVerdict::YieldToHost
-      - Direct memory execution on 4 VirtIO rings at sub-12µs latency
-      - High-frequency mutation: raw PTY ANSI, FUSE CoW, TAP L2 frames
-    - Foreign tier
-      - Userland host plugins authored in TypeScript, Python, or Rust
-      - Executes in host runtime event loop via ForeignPluginProxy
-      - Steers agent workflows, prompt rules, branch gates, and masks
+  - Dual-plane execution architecture
+    - Interceptor pipeline plane
+      - Synchronous or bounded latency inline processors
+      - Evaluates monotonic verdict lattice: Allow < Rewrite < Deny < Abort
+      - Single mutator owns target byte slice at any stage
+      - Compiled into contiguous zero-cost dispatch tables via Kahn's sort
+      - Latency bounded: native tier sub-12µs, foreign FFI filter-gated
+    - Reactive event bus plane
+      - Asynchronous fan-out pub/sub for telemetry, audit, and OTel
+      - Strictly immutable domain events emitted after pipeline settlement
+      - Non-blocking: slow observers cannot stall microVM vCPU execution
+      - Zero participation in mutation or gating decisions
   - Foreign plugin proxy
     - Bridges language runtimes to KelirPlugin trait via NAPI/PyO3
     - AOT hook fusion compiles chained host hooks into a single flat closure
@@ -48,13 +52,15 @@
     - AOT hook fusion collapses nested closures into single FFI trampoline
   - KelirPlugin trait
     - see: artifacts/code/plugin-trait.rs
-    - Trait surface and hook families: see: artifacts/code/plugin-trait.rs
+    - Capability tokens define interface contracts without peer crate linkage
+    - provides() declares exported capabilities to the engine
+    - requires() declares mandatory dependencies validated at boot
+    - order() declares RunBefore and RunAfter constraints relative to capabilities
     - Segregated capability traits
       - Core identity only: KelirPlugin is mandatory; see: artifacts/code/plugin-trait.rs
       - LifecycleParticipant: vm lifecycle, commit, host preempt
       - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
       - TerminalInterposer: pty input, pty output, window resize, disclosure
-      - ToolInterposer: on_tool_list, on_tool_call, on_tool_result; hot-path JSON-RPC filter
       - StorageInterposer: vfs lookup, read, write; synchronous hot path
       - WireInterposer: net outbound, net inbound; synchronous hot path
       - AnyPlugin: identity marker for any KelirPlugin (fork/composite)
@@ -103,10 +109,9 @@
     - Macros expand to static MountScope masks and binary trap registrations
     - Eliminates procedural condition checks inside userland hook bodies
   - Static dispatch
-    - Dispatch array: VirtIO rings -> MountScope pre-filter -> monotonic
-      lattice evaluation (Allow < Rewrite < Deny < Abort); flat at boot
+    - Dispatch compilation: Kahn's topological sort resolves dependency DAG at boot
+    - Pipeline tables index linear interceptor chains per VirtIO ring
     - Core verifies plugin dependency DAG: cycles and missing deps halt boot
-    - Evaluated in priority() order; ties broken by declaration order
     - Monotonic permission lattice: Allow -> Rewrite -> Deny -> Abort
     - Restrictive monotonicity: downstream hooks cannot widen upstream denial
     - Fail-closed mutation collisions: overlapping writes raise EAmbiguousMutation
@@ -154,20 +159,19 @@
     - Payloads exceeding 64KB ceiling trigger BufferCeilingExceeded
     - Handlers must reject uninspected payloads or delegate to Rust plugins
   - Core context keys
-    - Handler-visible keys; each key's definition lives at its owning plane
-    - Invariant: core runtime carries zero hardcoded plugin context keys
-    - Host context carries typed extension map for plugin-contributed data
-    - Language SDKs accumulate context keys via phantom types or plugins
-    - Core-provided (always present)
-      - c.trap, c.env, c.vm, c.step, c.receipt()
-    - Context key lifecycle
-      - Static decoration via decorate(): states bound once at VM boot
-      - Lazy derivation via derive(): computes telemetry only on handler access
-    - Plugin-provided (accumulated strictly by SDK builder at compile/type time)
-      - Plugin states map to typed properties on the accumulated context
-      - Unmounted plugin key dereference fails compile or import time
-    - User-provided via plugin registration
-      - c.<key> from .decorate() or instantiated plugin state
+    - Invariant: ambient untyped string bags (c.<key>) are eliminated
+    - Handlers receive strictly-typed context tailored to event scope
+    - Core context primitives (invariable across all handlers):
+      - c.trap: immutable syscall inspection payload
+      - c.vm: restricted lifecycle actuation handle
+      - c.receipt(): hardware execution proof generation
+    - Scoped domain contexts:
+      - StorageContext: scoped to virtio-fs operations (inode, path, journal)
+      - WireContext: scoped to virtio-net operations (L2 frame, L4 stream, socket)
+      - TerminalContext: scoped to virtio-console operations (PTY, grid, window)
+    - Inter-plugin capability injection:
+      - Plugins consume peer capabilities via ctx.get_service::<T>()
+      - Service resolution is verified at boot during DAG compilation
   - First-class plugins
     - Catalog tiering
       - Community plugins (hosted in core repo):
@@ -215,21 +219,21 @@
         - derive() vs decorate(): only decorate() is demonstrated
         - Gap list is evidence, not a waiver: unhit items still fail gates
     - Behavior of each: at its plugin file
-      - plugin-pty: see: plugins/pty.md — c.term
-      - plugin-vfs: see: plugins/vfs.md — c.fs
-      - plugin-wire: see: plugins/wire.md — c.wire
-      - plugin-chaos: see: plugins/chaos.md — c.chaos
-      - plugin-ledger: see: plugins/ledger.md — c.ledger
-      - plugin-db-proxy: see: plugins/db-proxy.md — c.db
-      - plugin-mesh: see: plugins/mesh.md — c.mesh
-      - plugin-lock-broker: see: plugins/lock-broker.md — c.locks
-      - plugin-supply-chain: see: plugins/supply-chain.md — package-manager guard
-      - plugin-profile: see: plugins/profile.md — c.profile
-      - plugin-hyper-density: see: kelir-cloud://plugins/hyper-density.md — c.density
-      - plugin-cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md — c.cas
-      - plugin-wire-ingress: see: plugins/wire-ingress.md — c.ingress
-      - plugin-mcp: see: plugins/mcp.md — c.mcp
-      - plugin-tool-guard: see: plugins/tool-guard.md — c.tools
+      - plugin-pty: see: plugins/pty.md — capability: io:pty
+      - plugin-vfs: see: plugins/vfs.md — capability: fs:vfs
+      - plugin-wire: see: plugins/wire.md — capability: net:l7:proxy
+      - plugin-chaos: see: plugins/chaos.md — capability: sys:fault
+      - plugin-ledger: see: plugins/ledger.md — capability: sys:audit
+      - plugin-db-proxy: see: plugins/db-proxy.md — capability: net:l7:sql
+      - plugin-mesh: see: plugins/mesh.md — capability: ipc:vsock:mesh
+      - plugin-lock-broker: see: plugins/lock-broker.md — capability: fs:vfs:lock
+      - plugin-supply-chain: see: plugins/supply-chain.md — capability: sys:trap:exec
+      - plugin-profile: see: plugins/profile.md — capability: sys:config:profile
+      - plugin-hyper-density: see: kelir-cloud://plugins/hyper-density.md — cap: sys:vm:density
+      - plugin-cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md — capability: fs:cas
+      - plugin-wire-ingress: see: plugins/wire-ingress.md — capability: net:l4:ingress
+      - plugin-mcp: see: plugins/mcp.md — capability: io:channel:mcp
+      - plugin-tool-guard: see: plugins/tool-guard.md — capability: io:mcp:tool
       - plugin-oci-translator — OCI layer translation
         - see: kelir-cloud://plugins/oci-translator.md
       - plugin-openshell-coordinator — checkpoint
@@ -238,11 +242,11 @@
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
       - session.fs.*: see: plugins/vfs.md
-      - session.term.*: see: plugins/pty.md#Context-keys-for-pty
+      - session.term.*: see: plugins/pty.md
       - session.forward_port(): see: plugins/wire.md#Port-forwarding
       - session.ledger.*: see: plugins/ledger.md
       - session.get_causal_delta_from_parent():
-        - see: plugins/ledger.md#compute-causal-delta-engine
+        - see: plugins/ledger.md
   - Plugin ownership
     - Dependency rules
       - Zero inter-plugin dependencies: no plugin imports another plugin crate

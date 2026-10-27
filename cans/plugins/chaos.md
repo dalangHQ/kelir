@@ -2,14 +2,20 @@
   - Capability definition (chaos)
     - Plugin identifier: plugin-chaos
     - Owner crate: crates/kelir-plugins/plugin-chaos
-    - name() = "chaos"; priority() = 80
+    - name() = "chaos"
     - Taxonomy (chaos): urn:kelir:sys:fault
       - coordinate: rings=[virtio-net, virtio-fs]; role=Mutator; tier=Native
+    - Capabilities (chaos):
+      - provides = [Capability("sys:fault")]
+      - requires = []
+      - order = [
+          OrderConstraint::RunBefore(Capability("net:l7:proxy")),
+          OrderConstraint::RunBefore(Capability("fs:vfs"))
+        ]
     - VirtIO device attachment (chaos): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (chaos): see: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys for chaos
-    - Context key contributed: c.chaos
-    - Closed-set binding rule (chaos): see: 02-plugin-model.md#Core-context-keys
+  - Service exports (chaos)
+    - Exports FaultInjectionService through PipelineBinder for dynamic rule mutations
   - Invariants and policy (chaos)
     - Bidirectional across wire plane
       - on_net_outbound mutates frames leaving guest

@@ -48,7 +48,8 @@ let builder = builder
         Ok(Decision::Resume)
     }))
     .trap("git commit *", handler(|c: HandlerCtx| async move {
-        if c.policy().violations().await > 0 {
+        let policy = c.service::<dyn RepoPolicyService>()?;
+        if policy.violations().await > 0 {
             return Ok(Decision::deny(1, "Policy violations recorded"));
         }
         Ok(Decision::Resume)

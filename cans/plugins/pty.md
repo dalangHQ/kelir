@@ -2,16 +2,18 @@
   - Capability definition (pty)
     - Plugin identifier: plugin-pty
     - Owner crate: crates/kelir-plugins/plugin-pty
-    - name() = "pty"; priority() = 90
+    - name() = "pty"
     - Taxonomy (pty): urn:kelir:io:pty
       - coordinate: rings=[virtio-console:hvc0]; role=Mutator; tier=Native
+    - Capabilities (pty):
+      - provides = [Capability("io:pty")]
+      - requires = []
     - VirtIO device attachment (pty): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (pty): see: 07-lifecycle.md#Lifecycle-vetoes
     - Binds to virtio-console paravirtual port hvc0
     - Terminal bus transport: see: 04-terminal-plane.md#Terminal-pipeline
-  - Context keys for pty
-    - Context key contributed: c.term
-    - Closed-set binding rule (pty): see: 02-plugin-model.md#Core-context-keys
+  - Service exports (pty)
+    - Exports TerminalControlService through PipelineBinder for window and notice control
     - Terminal handler API
       - c.term.notice(text) emits a HostToGuest::Disclosure event over hvc0
   - Invariants and policy (pty)

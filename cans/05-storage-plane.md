@@ -1,7 +1,10 @@
 - Storage plane
   - Storage architecture
     - see: artifacts/diagrams/storage-architecture.txt
-    - Owner: kelir-core (virtio-fs bus)
+    - Owner: kelir-core (virtio-fs storage domain pipeline)
+    - Single SSOT: plugin-vfs and plugin-lock-broker execute as stages in this pipeline
+    - All hooks receive strongly-typed StorageContext; ambient c.fs is eliminated
+    - Emits StorageDelta directly to the event bus; ledger consumes without VFS introspection
     - Storage layout
       - Host workspace mounted read-only as lower overlay layer
       - Host encapsulation: raw workspace locked to mode 000 on host
@@ -31,6 +34,12 @@
     - Writes modified files to sibling temporary files (.tmp.<nonce>)
     - Atomic rename swaps updated files directly over host target paths
     - Parent directory fsync flushes updated inodes to disk
+  - Storage delta generation
+    - Storage pipeline computes modified inode delta during reconcile
+    - Emits immutable StorageDelta event to the EventBus on commit:
+      - modified_inodes: Vec<PathBuf>
+      - whiteouts_purged: u64
+      - workspace_dirty_bytes: u64
   - Secondary image mounts
     - Grafts host-opened squashfs/EROFS images into guest VFS namespace
     - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE
@@ -39,7 +48,7 @@
     - Synchronous VirtIO-FS interception gates FUSE write() via on_vfs_write
     - Signature: see: artifacts/code/plugin-trait.rs
     - Write-gating error variants: see: 02-plugin-model.md#Hook-return-semantics
-    - Streaming sliding-window byte scanner inspects writes across chunk boundaries
+    - Receives &StorageContext (inode, path, locks, journal); zero ambient context
     - Payloads exceeding configured inspection ceiling reject with BufferCeilingExceeded
     - Buffer lifecycle invariants: see: 02-plugin-model.md#FFI-buffer-lifecycle
     - SyncVerdict::Allow = allow; kernel proceeds with write to upperdir

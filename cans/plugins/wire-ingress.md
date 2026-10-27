@@ -2,14 +2,16 @@
   - Capability definition (wire-ingress)
     - Plugin identifier: plugin-wire-ingress
     - Owner crate: crates/kelir-plugins/plugin-wire-ingress
-    - name() = "wire-ingress"; priority() = 85
+    - name() = "wire-ingress"
     - Taxonomy (wire-ingress): urn:kelir:net:l4:ingress
       - coordinate: rings=[virtio-vsock:ch1]; role=Proxy; tier=Native
+    - Capabilities (wire-ingress):
+      - provides = [Capability("net:l4:ingress")]
+      - requires = []
     - VirtIO attachment (wire-ingress): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (wire-ingress): see: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys for wire-ingress
-    - Context key contributed: c.ingress
-    - Closed-set binding rule (wire-ingress): see: 02-plugin-model.md#Core-context-keys
+  - Service exports (wire-ingress)
+    - Exports IngressRoutingService via PipelineBinder for socket forwarding
   - Invariants and policy (wire-ingress)
     - Holds inbound client TCP connections without dropped frames during suspend
     - Host proxy terminates TCP handshake and buffers up to 64KB initial request data

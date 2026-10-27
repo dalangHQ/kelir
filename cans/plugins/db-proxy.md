@@ -2,14 +2,17 @@
   - Capability definition (db-proxy)
     - Plugin identifier: plugin-db-proxy
     - Owner crate: crates/kelir-plugins/plugin-db-proxy
-    - name() = "db-proxy"; priority() = 70
+    - name() = "db-proxy"
     - Taxonomy (db-proxy): urn:kelir:net:l7:sql
       - coordinate: rings=[virtio-net, virtio-vsock]; role=Proxy; tier=Native
+    - Capabilities (db-proxy):
+      - provides = [Capability("net:l7:sql")]
+      - requires = []
+      - order = [OrderConstraint::RunBefore(Capability("net:l7:proxy"))]
     - VirtIO Ring attachment: virtio-net (port 5432) and virtio-vsock (/run/kelir/db.sock)
     - Lifecycle attachment (db-proxy): see: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys for db-proxy
-    - Context key contributed: c.db
-    - Closed-set binding rule (db-proxy): see: 02-plugin-model.md#Core-context-keys
+  - Service exports (db-proxy)
+    - Exports SqlProxyService via PipelineBinder for statement and dialect queries
   - Invariants and policy (db-proxy)
     - Mediates relational database communication
     - PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser

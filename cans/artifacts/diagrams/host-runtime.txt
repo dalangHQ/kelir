@@ -13,6 +13,7 @@
 │  │   ├── Native tier plugins: In-memory Rust execution (<12µs raw ring speed)        │  │
 │  │   ├── Foreign tier Filter-Before-FFI Gate: MountScope drops unmonitored events    │  │
 │  │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │
+│  │   ├── PipelineEngine: Kahn's DAG-sorted contiguous interceptor execution tables   │  │
 │  │   ├── EventBus: Unified compile-time and async hook pipeline                      │  │
 │  │   └── DriverRouter: Lifecycle controller mediating Box<dyn VmmDriver>             │  │
 │  └──────────────────────────────────────────┬────────────────────────────────────────┘  │

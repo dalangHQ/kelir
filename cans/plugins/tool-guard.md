@@ -2,15 +2,18 @@
   - Capability definition (tool-guard)
     - Plugin identifier: plugin-tool-guard
     - Owner crate: crates/kelir-plugins/plugin-tool-guard
-    - name() = "tool-guard"; priority() = 45
+    - name() = "tool-guard"
     - Taxonomy (tool-guard): urn:kelir:io:mcp:tool
       - coordinate: rings=[virtio-console:hvc1]; role=Gate; tier=Native
+    - Capabilities (tool-guard):
+      - provides = [Capability("io:mcp:tool-guard")]
+      - requires = []
+      - order = [OrderConstraint::RunBefore(Capability("io:channel:mcp"))]
     - VirtIO device attachment (tool-guard): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (tool-guard): see: 07-lifecycle.md#Lifecycle-vetoes
-    - Binds upstream of plugin-mcp on virtio-console port hvc1
-  - Context keys for tool-guard
-    - Context key contributed: c.tools
-    - Closed-set binding rule (tool-guard): see: 02-plugin-model.md#Core-context-keys
+    - Topologically executes upstream of plugin-mcp on virtio-console hvc1
+  - Service exports (tool-guard)
+    - Exports ToolRegistryService via PipelineBinder for schema and approval lookups
   - Invariants and policy (tool-guard)
     - Total tool-call interposition
       - Intercepts all JSON-RPC 2.0 frames on hvc1 matching method "tools/call"
@@ -32,7 +35,8 @@
       - ToolAction::Rewrite(args): mutates payload before dispatch
         (e.g. forced flags, path sandboxing)
       - ToolAction::Deny(errno, reason): drops call, synthesizes standard JSON-RPC error response
-      - ToolAction::SuspendForApproval: triggers hypervisor suspend primitive
+      - ToolAction::SuspendForApproval: requests hypervisor
+        LifecycleRequest::Suspend(ToolApproval)
         - Freezes vCPU execution and flushes guest RAM to NVMe (0 MB host RSS)
         - Host waits for human out-of-band authorization via vsock Channel 0
     - "Denial of Wallet" recursion limiter

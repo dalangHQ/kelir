@@ -38,7 +38,9 @@
       - Modular VirtIO interposition microkernel
         - Core controls hypervisor execution and dispatches VirtIO events
         - Core defines zero domain policies, protocols, or agent schemas
-        - Capabilities outside raw hypervisor physics are decoupled plugins
+        - Plugins register semantic capability tokens (`provides`, `requires`)
+        - Core compiles plugins into an acyclic directed graph via Kahn's sort
+        - Unfulfilled capabilities or cyclic dependencies abort boot with EConfig
         - Plugins communicate through core device abstractions, not peer imports
         - Every capability is a decoupled, composable plugin
       - Transparent truthful steering
@@ -77,7 +79,7 @@
       - Declares priority(): see: 02-plugin-model.md#KelirPlugin-trait
       - Native: systems-grade engine plugin compiled in Rust
       - Foreign: userland policy plugin written in host language
-      - Two-tier execution details: see: 02-plugin-model.md#Two-tier-execution-architecture
+      - Dual-plane execution details: see: 02-plugin-model.md#Dual-plane-execution-architecture
       - Owns crate, tests, fixtures, examples: see: 02-plugin-model.md#Plugin-ownership
     - Capability decision test
       - Invariant with no policy? → core primitive
@@ -90,6 +92,7 @@
     - Trait definitions
       - Low-footprint preset contract: see: #Embedded-profile
       - Trait contract: see: 02-plugin-model.md#KelirPlugin-trait
+      - Semantic capability contract: see: 02-plugin-model.md#Taxonomic-coordinate-contract
       - VmmDriver trait definition: see: #VmmDriver-trait
     - Context types: see: 09-protocol.md#Wire-messages
     - Wire framing layout: see: 09-protocol.md#Wire-framing
@@ -127,7 +130,8 @@
     - Native Rust consumer: direct Cargo crate, zero-cost monomorphization
     - TypeScript consumer: @kelir/core via in-process NAPI-RS
     - Python consumer: kelir via PyO3
-    - kelir-core: stripped microkernel (BusDispatcher, EventBus, DriverRouter)
+    - kelir-core: stripped microkernel (BusDispatcher, PipelineEngine, EventBus, DriverRouter)
+    - PipelineEngine: compiles inline interceptors into indexed contiguous tables
     - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
   - Guest VM anatomy
     - see: artifacts/diagrams/guest-vm.txt

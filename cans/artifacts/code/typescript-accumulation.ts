@@ -37,10 +37,11 @@ const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
   .trace((t) => {
     if (t.ffi_hop_ns > 10_000) console.warn("FFI boundary spike:", t);
   })
-  // `c.policy`, `c.fs`, and `c.processLineage` are fully inferred on unified context:
+  // Services resolved via typed service locator; no ambient string grab-bags
   .trap("git commit *", async (c) => {
-    if (c.policy.violations > 0) {
-      return c.deny(1, `EPOLICY: ${c.policy.violations} violation(s)`);
+    const policy = c.service(RepoPolicyService);
+    if (policy.violations > 0) {
+      return c.deny(1, `EPOLICY: ${policy.violations} violation(s)`);
     }
     return c.resume();
   });

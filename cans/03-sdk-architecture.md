@@ -8,7 +8,7 @@
     - Two-tier authoring model
       - Native plugins: distributed as precompiled npm/pip native binaries
       - Foreign policy plugins: authored in userland code via native async closures
-      - Native vs Foreign: see: 02-plugin-model.md#Two-tier-execution-architecture
+      - Native vs Foreign: see: 02-plugin-model.md#Dual-plane-execution-architecture
     - Semantic invariant equivalence
       - Runtime safety matrix: see: artifacts/diagrams/sdks-invariants.txt
       - Failure occurs at the earliest lifecycle phase native to each runtime
@@ -109,7 +109,7 @@
     - .trap(pattern, handler): pre-exec gate; dual pre/post handler also supported
     - .intercept_vfs(pathGlob, handler): synchronous VFS write filter
     - .on_vm_ready(handler): session callback; .boot().await seals and boots
-    - Closures requiring plugin capabilities enforce builder typestate bounds
+    - Inter-plugin services queryable via c.service::<T>() validated against DAG requirements
     - Composite bundles flatten into builder via CompositePlugin trait
     - Zero-Allocation Validation via Serde
       - #[derive(Deserialize)] enum Action with serde(tag = "action")
@@ -128,12 +128,13 @@
       filters returning SyncVerdict
     - .on(event, handler): lifecycle interceptors for vm:init, vm:ready,
       vm:shutdown, and trap:deny
-    - Generic context accumulator infers c.<key> from mounted plugins
+    - Typed service locator: c.service(ToolRegistry) replaces ambient untyped properties
     - AOT hook fusion compiles all TS pipeline handlers into a single flat closure
     - Invariant: exactly 1 NAPI trampoline jump per event regardless of depth
     - Fully unified TContext passes to callbacks, resolving cross-plugin lookups
     - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
-    - Null-object pattern: use(plugin({ enabled: false })) preserves c.pluginKey
+    - Null-object pattern: use(plugin({ enabled: false })) preserves service
+      interfaces with no-op dispatch
   - Python SDK
     - see: artifacts/code/python-raii-pydantic.py
     - async with builder as session
@@ -145,8 +146,7 @@
     - Pydantic v2 BaseModel with frozen=True
       - Field(pattern=r"^fix-webhook$")
       - Raises EINVAL before hook evaluation
-    - policy = RepoPolicyPlugin(); builder.use(policy)
-      - Host retains direct reference; hooks receive c.policy
+    - Service resolution via c.service(RepoPolicyService)
     - Mount scoping via kwargs: rings=..., binaries=..., paths=...
   - Full-surface examples
     - see: artifacts/examples/autonomous-swe-agent.rs

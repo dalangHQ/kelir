@@ -2,14 +2,14 @@
   - Capability definition (mesh)
     - Plugin identifier: plugin-mesh
     - Owner crate: crates/kelir-plugins/plugin-mesh
-    - name() = "mesh"; priority() = 65
+    - name() = "mesh"
     - Taxonomy (mesh): urn:kelir:ipc:vsock:mesh
       - coordinate: rings=[virtio-vsock]; role=Mutator; tier=Native
+    - Capabilities (mesh):
+      - provides = [Capability("ipc:vsock:mesh")]
+      - requires = []
     - VirtIO device attachment (mesh): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mesh): see: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys for mesh
-    - Context key contributed: c.mesh
-    - Closed-set binding rule (mesh): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (mesh)
     - Sovereign cross-hypervisor peer transport
     - Routes point-to-point peer streams via vsock listener services

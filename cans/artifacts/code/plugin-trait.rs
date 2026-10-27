@@ -1,7 +1,7 @@
 // crates/kelir-interface/src/plugin.rs
 //
-// The unified KelirPlugin trait implemented by every subsystem across the
-// 4 VirtIO rings. kelir-core contains no hardcoded capability logic.
+// The decoupled capability-based KelirPlugin trait and dual-plane execution contracts.
+// Eliminates magic integer priorities in favor of topological DAG scheduling.
 //
 // Owned by: cans/02-plugin-model.md#KelirPlugin-trait
 
@@ -9,6 +9,8 @@ use async_trait::async_trait;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
+use std::any::{Any, TypeId};
+use std::sync::Arc;
 use crate::handlers::HandlerCtx;
 use crate::protocol::messages::{
     Heartbeat, MemoryPressureWarning, PortBound, ProcessExit,
@@ -38,6 +40,9 @@ pub enum PluginError {
     /// Conflicting semantic mutations on overlapping resource targets.
     #[error("Ambiguous mutation detected across plugins on resource '{resource}': {conflict}")]
     AmbiguousMutation { resource: String, conflict: String },
+    /// DAG resolution failure at bootstrap
+    #[error("Unsatisfied capability dependency: plugin '{plugin}' requires '{capability}'")]
+    UnsatisfiedCapability { plugin: String, capability: String },
     #[error("Internal I/O failure: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -63,6 +68,22 @@ pub struct VfsInodeAttr {
     pub size: u64,
     pub occ_metadata_hash: u64,
     pub content: Vec<u8>,
+}
+
+/// Semantic capability token decoupled from concrete crate types.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Capability(pub &'static str);
+
+/// Semantic ordering constraints resolved via Kahn's algorithm at boot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OrderConstraint {
+    RunBefore(Capability),
+    RunAfter(Capability),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VirtioRing {
+    Vsock, Console, Fs, Net,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,6 +173,25 @@ pub enum SyncVerdict {
     YieldToHost(u64),
 }
 
+/// Strongly-typed service locator eliminating ambient context string bags.
+pub trait ServiceRegistry: Send + Sync {
+    fn register_service<T: ?Sized + Any + Send + Sync>(&mut self, service: Arc<T>);
+    fn get_service<T: ?Sized + Any + Send + Sync>(&self) -> Option<Arc<T>>;
+}
+
+/// Binds inline interceptors into the linear monotonic pipeline.
+pub trait PipelineBinder: ServiceRegistry {
+    fn bind_storage(&mut self, stage: Arc<dyn StorageInterposer>);
+    fn bind_wire(&mut self, stage: Arc<dyn WireInterposer>);
+    fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>);
+    fn bind_terminal(&mut self, stage: Arc<dyn TerminalInterposer>);
+}
+
+/// Binds non-blocking observers to the immutable telemetry bus.
+pub trait EventBusBinder {
+    fn subscribe<E: Any + Send + Sync + 'static>(&mut self, handler: Box<dyn Fn(&E) + Send + Sync>);
+}
+
 /// Assembly-time composite plugin tree unpacked into flat dispatch entries before boot.
 pub trait CompositePlugin: Send + Sync {
     fn unpack(self: Box<Self>, parent_scope: &MountScope) -> Vec<(Box<dyn AnyPlugin>, MountScope)>;
@@ -234,9 +274,14 @@ pub trait KelirPlugin: Send + Sync {
     /// Universal taxonomy coordinates declared for registry indexing.
     fn taxonomy(&self) -> PluginTaxonomy;
 
-    /// Dispatch ordering; lower values run earlier. Default: 100.
-    /// Ties broken by declaration order.
-    fn priority(&self) -> u8 { 100 }
+    /// Capabilities exported by this plugin for consumption by peers.
+    fn provides(&self) -> Vec<Capability> { vec![] }
+
+    /// Required capabilities validated against the DAG at engine boot.
+    fn requires(&self) -> Vec<Capability> { vec![] }
+
+    /// Semantic ordering constraints resolved via Kahn's topological sort.
+    fn order(&self) -> Vec<OrderConstraint> { vec![] }
 
     /// Default mount scope. Overridden by explicit builder scope.
     fn default_scope(&self) -> MountScope { MountScope::default() }
@@ -244,12 +289,14 @@ pub trait KelirPlugin: Send + Sync {
     /// Null-object toggle. False omits all hooks from flat dispatch array.
     fn is_enabled(&self) -> bool { true }
 
-    /// Declared capability requirements validated as an acyclic graph at boot.
-    /// Missing targets or circular dependencies abort with EConfig.
-    fn requires(&self) -> &'static [&'static str] { &[] }
-
     /// Deep-clones plugin state when session.vm.fork() creates a CoW child.
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin>;
+
+    /// Register inline fallible interceptors into the hardware ring pipelines.
+    fn register_interceptors(&self, _pipeline: &mut dyn PipelineBinder) {}
+
+    /// Register asynchronous non-blocking subscribers to the event bus.
+    fn register_subscribers(&self, _bus: &mut dyn EventBusBinder) {}
 }
 
 // ── Ring-Scoped Capability Traits (Implement Only What You Touch) ─

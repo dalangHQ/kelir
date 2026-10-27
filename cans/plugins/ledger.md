@@ -2,15 +2,18 @@
   - Capability definition (ledger)
     - Plugin identifier: plugin-ledger
     - Owner crate: crates/kelir-plugins/plugin-ledger
-    - name() = "ledger"; priority() = 55
+    - name() = "ledger"
     - Taxonomy (ledger): urn:kelir:sys:audit
       - coordinate: rings=[virtio-vsock:ch0]; role=Observer; tier=Native
+    - Capabilities (ledger):
+      - provides = [Capability("sys:audit")]
+      - requires = []
     - VirtIO device attachment (ledger): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (ledger): see: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys for ledger
-    - Context key contributed: c.ledger
-    - Closed-set binding rule (ledger): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (ledger)
+    - Pure reactive observer: registers subscribers exclusively on the EventBus
+    - Zero participation in inline interceptor pipelines; non-blocking execution
+    - Ingests immutable StorageDelta and ExecutionDelta domain events
     - Merkle WAL
       - Pluggable LedgerSink trait owns persistence; Merkle DB is default impl
       - Delegated audit persistence via external_sink replaces default sink
@@ -40,12 +43,6 @@
         - Error mapping and sampling
         - Attribute allowlist and redaction
         - Export-failure behavior
-    - compute-causal-delta engine
-      - Computation is policy-bearing; it lives in plugin-ledger
-      - Session accessor `get_causal_delta_from_parent()` requires
-        plugin-ledger mounted; unmounted sessions do not expose it
-      - Causal delta definition: see: 08-epistemic.md#Causal-delta
-      - CausalDelta computation: diffs physical RAM and inode journals
       - Binds ExecutionReceipt correlation_token into Merkle WAL records
   - Error and return semantics (ledger)
     - Hook signature (ledger): see: artifacts/code/plugin-trait.rs

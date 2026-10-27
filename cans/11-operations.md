@@ -62,8 +62,13 @@
   - Coverage-gates
     - --plugin-coverage
       - Plugin asserts: see: 02-plugin-model.md#First-class-plugins
+      - DAG resolution gate: asserts all provides, requires, and order constraints
+        form an acyclic graph
+      - Verifies zero plugins define hardcoded integer priority values
     - --lifecycle-coverage
       - Lifecycle asserts: see: 07-lifecycle.md#Hypervisor-primitives
+      - State machine assert: verifies all SuspendReason variants execute through
+        centralized lifecycle
     - --hook-coverage
       - Asserts every hook in the segregated traits is implemented by some
         custom plugin in cans/artifacts/examples

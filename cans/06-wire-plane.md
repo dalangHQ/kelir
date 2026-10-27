@@ -1,6 +1,9 @@
 - Wire plane
   - Wire architecture
     - see: artifacts/diagrams/wire-plane.txt
+    - Owner: kelir-core (virtio-net wire domain pipeline)
+    - Pipeline stages resolved via topological DAG: chaos -> ingress -> db-proxy -> wire proxy
+    - Interceptor hooks receive strongly-typed WireContext; ambient c.wire is eliminated
     - Return contract: see: 02-plugin-model.md#Hook-return-semantics
   - TAP L2 bridge
     - TAP interface bridge connects the guest virtio-net device to the host
@@ -38,5 +41,5 @@
       PluginError::Reject (silent drop)
   - Connection parking
     - Parked connections queue in TAP buffers and raw virtqueues
-    - Host-terminated TCP splices to guest vsock on wake
+    - Emits standard LifecycleRequest::Suspend(IngressWait) to core state machine
     - Mechanics (parking): see: plugins/wire-ingress.md

@@ -2,14 +2,17 @@
   - Capability definition (wire)
     - Plugin identifier: plugin-wire
     - Owner crate: crates/kelir-plugins/plugin-wire
-    - name() = "wire"; priority() = 75
+    - name() = "wire"
     - Taxonomy (wire): urn:kelir:net:l7:proxy
       - coordinate: rings=[virtio-net]; role=Mutator; tier=Native
+    - Capabilities (wire):
+      - provides = [Capability("net:l7:proxy"), Capability("net:l4:socks")]
+      - requires = []
+      - order = [OrderConstraint::RunAfter(Capability("sys:fault"))]
     - VirtIO device attachment (wire): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (wire): see: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys for wire
-    - Context key contributed: c.wire
-    - Closed-set binding rule (wire): see: 02-plugin-model.md#Core-context-keys
+  - Service exports (wire)
+    - Exports WireProxyService through PipelineBinder for dynamic port and rule queries
     - Wire configuration knobs:
       - tap_filter: TapFilter::StrictTcpOnly (default) | AllowUdpProxied | Passthrough
       - ipv6_policy: Ipv6Policy::DropAll (default) | AllowRoutable

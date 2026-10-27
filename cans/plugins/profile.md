@@ -2,31 +2,21 @@
   - Capability definition (profile)
     - Plugin identifier: plugin-profile
     - Owner crate: crates/kelir-plugins/plugin-profile
-    - name() = "profile"; priority() = 10
+    - name() = "profile"
     - Taxonomy (profile): urn:kelir:sys:config:profile
       - coordinate (profile): rings=[virtio-vsock:ch0]; role=Gate; tier=Native
+    - Capabilities (profile):
+      - provides = [Capability("sys:config:profile")]
+      - requires = []
     - VirtIO device attachment (profile): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (profile): see: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys for profile
-    - Context key contributed: c.profile
-    - Closed-set binding rule (profile): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (profile)
-    - Bidirectional declarative configuration engine
-    - Ingests canonical kelir.toml and kelir.yaml configurations
-    - Implements CompositePlugin to flatten declarations into child plugins
-    - Thirteen-domain composite expansion
-      - storage block expands into plugin-vfs mount rules and encapsulations
-      - masking block expands into plugin-vfs sliding-window FPA generators
-      - tools block expands into plugin-tool-guard pinning, rate limits, and veto rules
-      - network and secrets blocks expand into plugin-wire TAP and proxy rules
-      - rate_limits block expands into plugin-wire token-bucket rate limiters
-      - terminal block expands into plugin-pty Token Shield and ANSI filters
-      - syscalls block compiles to Gate 1 in-kernel eBPF allowlists
-      - budget block configures virtio-wdt ceilings and PMU instruction limits
-      - audit block expands into plugin-ledger Merkle WAL and redaction rules
-      - database block expands into plugin-db-proxy pgwire port interception
-      - supply_chain block expands into plugin-supply-chain exec-trap monitors
-      - chaos block expands into plugin-chaos network and storage fault rules
+    - Inversion-of-Control configuration router:
+      - Ingests canonical kelir.toml and kelir.yaml specification files
+      - Plugins register target schema namespaces dynamically via ConfigurablePlugin
+      - Routes unparsed configuration fragments to registered namespace owners
+      - Profile contains zero hardcoded child domain logic or expansion rules
+      - Downward min cascade enforced uniformly across scalar budget fields
     - Downward min cascade
       - Effective budget and resource limits evaluate as min(base, child)
       - Overlays cannot widen execution duration, memory, or instruction ceilings

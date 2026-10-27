@@ -82,9 +82,10 @@
     - Type ownership
       - Struct is a shared context type; it lives in kelir-interface next to
         ExecutionReceipt
-      - Computation is derived: see: plugins/ledger.md#compute-causal-delta-engine
-    - This split follows the primitive-vs-derived rule: type is primitive,
-      computation is derived
+      - Computation is domain-local: StorageDomain emits StorageDelta;
+        ControlDomain emits ExecutionDelta
+      - Core aggregates domain deltas over the EventBus into CausalDelta at checkpoint boundaries
+      - Eliminates feature-envy: plugin-ledger subscribes to CausalDelta; never diffs VFS journals
   - Three-tier evidence verification model
     - see: artifacts/diagrams/truth-hierarchy.txt
     - Tier evidence per tier: see: artifacts/diagrams/truth-hierarchy.txt

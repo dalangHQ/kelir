@@ -1,6 +1,13 @@
 - Lifecycle
   - Hypervisor primitives
     - see: artifacts/diagrams/hypervisor-primitives.txt
+    - Centralized Hypervisor Lifecycle State Machine:
+      - States: Initializing, Running, Suspended(SuspendReason), Terminated
+      - SuspendReason: ToolApproval | IngressWait | AdminHold | ResourcePressure
+      - Eliminates independent suspend implementations in tool-guard and wire-ingress
+      - Single core implementation of lz4_flex + io_uring NVMe working-set dump
+      - Zero host RSS (0 MB) achieved identically across all suspension triggers
+      - Cycle-exact resume triggered via vsock Channel 0 patch or TAP frame arrival
     - Set membership and mechanism per item: see: artifacts/diagrams/hypervisor-primitives.txt
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver

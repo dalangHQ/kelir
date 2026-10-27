@@ -25,8 +25,9 @@ builder = kelir.builder(vcpus=4, memory_mb=4096).use(policy)
 
 # 3. Handler reads typed plugin state directly from context c
 async def commit_gate(c: HandlerContext) -> Decision:
-    if c.policy.violations > 0:
-        return Decision.deny(1, f"EPOLICY: {policy.violations} violation(s)")
+    policy_svc = c.service(RepoPolicyService)
+    if policy_svc.violations > 0:
+        return Decision.deny(1, f"EPOLICY: {policy_svc.violations} violation(s)")
     return Decision.resume()
 
 

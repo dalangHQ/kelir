@@ -2,14 +2,14 @@
   - Capability definition (supply-chain)
     - Plugin identifier: plugin-supply-chain
     - Owner crate: crates/kelir-plugins/plugin-supply-chain
-    - name() = "supply-chain"; priority() = 25
+    - name() = "supply-chain"
     - Taxonomy (supply-chain): urn:kelir:sys:trap:exec
       - coordinate: rings=[virtio-vsock:ch0]; role=Gate; tier=Native
+    - Capabilities (supply-chain):
+      - provides = [Capability("sys:trap:exec")]
+      - requires = []
     - VirtIO attachment (supply-chain): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (supply-chain): see: 07-lifecycle.md#Lifecycle-vetoes
-  - Context keys for supply-chain
-    - Context key contributed: None (guard only)
-    - Closed-set binding rule (supply-chain): see: 02-plugin-model.md#Core-context-keys
   - Invariants and policy (supply-chain)
     - Monitors package manager process trees
     - Inspects ancestor_chain on TrapEvent for package managers (npm, pip)

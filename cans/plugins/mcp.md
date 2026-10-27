@@ -2,15 +2,18 @@
   - Capability definition (mcp)
     - Plugin identifier: plugin-mcp
     - Owner crate: crates/kelir-plugins/plugin-mcp
-    - name() = "mcp"; priority() = 50
+    - name() = "mcp"
     - Taxonomy (mcp): urn:kelir:io:channel:mcp
       - coordinate: rings=[virtio-console:hvc1]; role=Mutator; tier=Native
+    - Capabilities (mcp):
+      - provides = [Capability("io:channel:mcp")]
+      - requires = []
+      - order = [OrderConstraint::RunAfter(Capability("io:mcp:tool-guard"))]
     - VirtIO device attachment (mcp): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mcp): see: 07-lifecycle.md#Lifecycle-vetoes
     - Binds to virtio-console paravirtual port hvc1
-  - Context keys for mcp
-    - Context key contributed: c.mcp
-    - Closed-set binding rule (mcp): see: 02-plugin-model.md#Core-context-keys
+  - Service exports (mcp)
+    - Exports McpEndpointService via PipelineBinder for JSON-RPC transport routing
   - Invariants and policy (mcp)
     - Thin in-process adapter routing JSON-RPC stdio directly to VirtIO rings
     - MCP plugin: maps tools directly to virtio-console, virtio-fs, and traps
