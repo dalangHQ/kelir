@@ -14,10 +14,29 @@
     - Bidirectional declarative configuration engine
     - Ingests canonical kelir.toml and kelir.yaml configurations
     - Implements CompositePlugin to flatten declarations into child plugins
-    - Key-to-plugin mapping contract
-      - storage block expands into plugin-vfs configuration
-      - network and secrets blocks expand into plugin-wire configuration
-      - terminal block expands into plugin-pty configuration
+    - Twelve-domain composite expansion
+      - storage block expands into plugin-vfs mount rules and encapsulations
+      - masking block expands into plugin-vfs sliding-window FPA generators
+      - network and secrets blocks expand into plugin-wire TAP and proxy rules
+      - rate_limits block expands into plugin-wire token-bucket rate limiters
+      - terminal block expands into plugin-pty Token Shield and ANSI filters
+      - syscalls block compiles to Gate 1 in-kernel eBPF allowlists
+      - budget block configures virtio-wdt ceilings and PMU instruction limits
+      - audit block expands into plugin-ledger Merkle WAL and redaction rules
+      - database block expands into plugin-db-proxy pgwire port interception
+      - supply_chain block expands into plugin-supply-chain exec-trap monitors
+      - chaos block expands into plugin-chaos network and storage fault rules
+    - Downward min cascade
+      - Effective budget and resource limits evaluate as min(base, child)
+      - Overlays cannot widen execution duration, memory, or instruction ceilings
+      - Violations of downward min cascade fail validation with ESecurityViolation
+    - Default-zero capability invariant
+      - Undeclared subsystems receive zero physical hardware allocations
+      - Omitted network section allocates zero TAP devices and drops all L2 frames
+      - Omitted storage mounts allocate zero host paths, running read-only EROFS
+    - Physicality invariant
+      - Every schema key must terminate in MMU flags, BPF bytecode, or PMU counters
+      - Decorative or non-enforceable configuration keys are rejected at boot
     - Strict serialization boundary
       - Static knobs, limits, and scopes serialize cleanly to schema files
       - Dynamic hook closures remain strictly in host code

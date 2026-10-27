@@ -4,6 +4,10 @@
     - Core owns facts, never judgments
       - Facts: TrapEvent, ExecutionReceipt, CausalDelta (struct)
       - Core owns physical hardware telemetry: registers, memory diffs, counters
+    - Epistemic asymmetry invariant
+      - Workload is presumed hostile and remains blind to active profile rules
+      - Policy drops surface as standard POSIX errors (EACCES, NXDOMAIN) or silent drops
+      - Workload cannot distinguish hypervisor policy drops from physical failures
     - Judgment is defined in external userland orchestration layers
       - Evaluators consume raw execution receipts independently of core
     - Axiom enforcement: see: 01-architecture.md#Axiomatic-foundations
@@ -35,6 +39,10 @@
     - workspace_dirty_bytes tracks bytes committed to target workspace inodes
     - Prevents agents gaming dirty_bytes checks through unmonitored /tmp writes
     - workspace_dirty_bytes is distinct from dirty_bytes: workspace inodes only
+    - profile_blake3 cryptographic identity
+      - Computes BLAKE3 hash over canonical declarative profile bytes at boot
+      - Injected as genesis block into Merkle WAL before guest vCPU starts
+      - Receipts bind profile_blake3 cryptographically to hardware counters
     - ReceiptConfig.receipt_scope = WorkspaceInodesOnly (default) | WholeVmRam
     - statement_count: SQL statements opened against the backing store
       - Example use: see: artifacts/examples/db-backed-runtime.py
@@ -49,7 +57,10 @@
       - Opt-in: syscall_count
       - dirty_bytes is always populated: zero is a real measurement, not an
         absent value
-    - binary_blake3 canonical form: TBD
+    - binary_blake3 identity
+      - Canonical form: TBD
+      - Cache: keyed on (inode, size, mtime_ns); one hash per
+        binary identity, not per exec
     - Receipt accounting: TBD
       - syscall_count counting rule
       - egress_bytes observation point
@@ -57,8 +68,6 @@
       - exit_code under Rewrite
       - Receipts require workspace_dirty_bytes > 0 when workspace edits claimed
       - Sub-microsecond phase spans: trap_ingress_ns, ffi_hop_ns, policy_ns
-    - binary_blake3 cache: keyed on (inode, size, mtime_ns); one hash per
-      binary identity, not per exec
     - Receipt ownership
       - kelir-core generates and holds at trap/exit boundary
       - c.receipt() is the single read API on HandlerCtx

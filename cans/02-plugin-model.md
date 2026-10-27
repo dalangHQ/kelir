@@ -42,6 +42,7 @@
     - see: artifacts/code/plugin-trait.rs
     - Assembly-time tree flattens into contiguous C-speed dispatch array
     - Declarative profile hydration maps schema sections to child plugins
+    - Composite expansion enforces downward min cascade across budget fields
     - Invariant: nested depth incurs zero runtime call-stack overhead
     - Deduplication merges identical name() nodes; deepest config wins
     - AOT hook fusion collapses nested closures into single FFI trampoline
@@ -140,6 +141,12 @@
     - FFI trampoline executes only when ring event satisfies scope match
     - Protects guest toolchain execution speed (cargo build, npm install)
     - TAP dispatcher application: see: 06-wire-plane.md#Raw-packet-interception-points
+  - Latency ceiling (0-2-12)
+    - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs
+    - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs
+    - Gate 3: Async FFI hook trampolines dispatch on positive match only in <12µs
+    - Latency overhead on guest toolchains (cargo, npm) must remain below 3%
+    - Violation of latency budget blocks core and plugin releases in CI
   - FFI buffer lifecycle
     - Pinned memory slices exposed via streaming chunked iterators
     - Prevents use-after-free while host runtimes resolve handlers
