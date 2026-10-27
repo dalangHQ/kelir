@@ -56,7 +56,6 @@ pub struct VmConfig {
     pub pinned_clocksource: Option<String>,
     pub ns_per_instruction: Option<u32>,
     pub preemption_grace_ms: u64,
-    pub entropy_bypass_paths: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone)]

@@ -33,8 +33,6 @@ pub struct TrapEvent {
     /// Process namespace depth; >1 indicates nested container execution
     pub namespace_depth: u8,
     pub ancestor_chain: Vec<String>,
-    /// Evaluated host-side on argv[1:] to keep shim under 50KB
-    pub entropy: f64,
     pub loaded_libraries: Vec<String>,
 }
 
@@ -138,7 +136,9 @@ pub enum TrapAction {
         new_argv: Vec<String>,
         injected_env: HashMap<String, String>,
     },
-    SuspendForApproval {
+    /// Plugin-initiated hold: freeze vCPUs, flush RAM, poll for release.
+    /// Reason attribution is plugin-side; core sees only the hold.
+    HostHold {
         poll_interval_ms: u32,
     },
     /// Extension point. Dispatched by name to a registered handler;

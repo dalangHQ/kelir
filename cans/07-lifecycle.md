@@ -1,14 +1,12 @@
 - Lifecycle
   - Hypervisor primitives
-    - see: artifacts/diagrams/hypervisor-primitives.txt
     - Centralized Hypervisor Lifecycle State Machine:
       - States: Initializing, Running, Suspended(SuspendReason), Terminated
-      - SuspendReason: ToolApproval | IngressWait | AdminHold | ResourcePressure
+      - SuspendReason: HostHold(u32) | IngressWait | AdminHold | ResourcePressure
       - Eliminates independent suspend implementations in tool-guard and wire-ingress
       - Single core implementation of lz4_flex + io_uring NVMe working-set dump
       - Zero host RSS (0 MB) achieved identically across all suspension triggers
       - Cycle-exact resume triggered via vsock Channel 0 patch or TAP frame arrival
-    - Set membership and mechanism per item: see: artifacts/diagrams/hypervisor-primitives.txt
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
       cooperation.
@@ -86,7 +84,7 @@
       - Freezes vCPU registers
       - lz4_flex-compresses dirty memory pages
       - Flushes to local NVMe
-      - Deallocates host memory; host RAM consumption drops to 0 MB
+      - Deallocates host memory; see: artifacts/code/vmm-driver-trait.rs (suspend)
     - Zero-RSS working-set swap via lz4_flex & io_uring
     - resume
       - Restores registers and memory
@@ -97,12 +95,12 @@
       - Resume fires before primitive; return value ignored
       - Note: on_vm_ready does not re-fire on resume
     - Typical use: waiting for human approval with zero host CPU cost
-    - Mobile and SBC use: rapid 0 MB RSS drop under Android LMK memory pressure
+    - Mobile and SBC use: full RSS deallocation under Android LMK memory pressure
     - Flash preservation: guest tmpfs writes stay in RAM; zero random SD card writes
-    - Policy approval suspension
-      - Triggered by TrapAction::SuspendForApproval on policy denials
+    - Host-hold suspension
+      - Triggered by TrapAction::HostHold on plugin-initiated holds
       - Freezes vCPUs and flushes memory to local NVMe via io_uring
-      - Host RAM drops to 0 MB while waiting for out-of-band approval
+      - Host RAM drops to 0 MB while awaiting out-of-band release
       - Resume executes cycle-exact upon monotonic RFC 6902 patch submission
   - Portable snapshot bundles
     - Content-addressed snapshot sync

@@ -1,5 +1,5 @@
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│                             GUEST MICROVM (<60ms Cold Boot)                             │
+│                                      GUEST MICROVM                                      │
 │                                                                                         │
 │   ├── Minimal vmlinux: Stripped Linux kernel (no ACPI, no PCI bloat)                    │
 │   │     - macOS Host: Built with CONFIG_ARM64_16K_PAGES=y (Apple Silicon parity)        │

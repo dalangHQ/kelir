@@ -1,10 +1,12 @@
 - Operations
   - Execution philosophy
-    - Resource constraints: <50KB shim, <15s build
+    - Resource constraints: see: artifacts/config/justfile (build)
+      and artifacts/config/ci.yml (shim size)
     - Boot-budget target: see: 01-architecture.md#Boot-budget
     - Sub-minute local cycles via just
     - Zero-bloat crate boundary: tokio full banned; libc/sys-crates strictly scoped
-    - Shim size invariant: <50KB, zero external serialization or runtime crates
+    - Shim size invariant: see: artifacts/config/ci.yml (build-guest-shim)
+    - Shim crate invariant: zero external serialization or runtime crates
     - Default posture
       - Primitive telemetry on; derived telemetry off unless configured
       - Ecosystem apparatus gated on registry size; not shipped ahead of it
@@ -39,7 +41,7 @@
     - Enforced invariants: CI matrix
       - Rootfs EROFS image cold-boot budget: see: 01-architecture.md#Boot-budget
       - Concurrency cancelled per ref (cancel-in-progress)
-      - Shim musl binary strictly verified below 51200 bytes
+      - Shim musl binary size gate: see: artifacts/config/ci.yml (build-guest-shim)
       - sccache enabled via SCCACHE_GHA_ENABLED
     - Per-plugin matrix: each plugin fails independently
     - Integration tier: KVM-detected, continue-on-error on GitHub-hosted

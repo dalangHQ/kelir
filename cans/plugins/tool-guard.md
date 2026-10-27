@@ -36,7 +36,7 @@
         (e.g. forced flags, path sandboxing)
       - ToolAction::Deny(errno, reason): drops call, synthesizes standard JSON-RPC error response
       - ToolAction::SuspendForApproval: requests hypervisor
-        LifecycleRequest::Suspend(ToolApproval)
+        LifecycleRequest::Suspend(HostHold(TOOL_GUARD_HOLD))
         - Freezes vCPU execution and flushes guest RAM to NVMe (0 MB host RSS)
         - Host waits for human out-of-band authorization via vsock Channel 0
     - "Denial of Wallet" recursion limiter

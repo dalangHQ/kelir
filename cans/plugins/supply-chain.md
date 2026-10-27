@@ -14,6 +14,11 @@
     - Monitors package manager process trees
     - Inspects ancestor_chain on TrapEvent for package managers (npm, pip)
     - Blocks execution of lifecycle scripts in dependency directories
+    - Entropy analysis
+      - Computes Shannon entropy of argv[1:] on every TrapEvent
+      - Flags values above 5.2 bits/char as encrypted or base64-obfuscated
+      - Bypass paths are plugin-private config, not VmConfig
+      - Default bypass runners: node, python, language toolchains
   - Error and return semantics (supply-chain)
     - Hook signature (supply-chain): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (supply-chain)

@@ -3,7 +3,7 @@
 ├─────────────────────┬──────────────────────────┬────────────────────────┬───────────────┤
 │ TARGET AUDIENCE     │ VALUE DELIVERED          │ INTEGRATION METHOD     │ CORE TRIGGER  │
 ├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
-│ 1. INFRA PLATFORMS  │ Sub-60ms cold boot micro-│ `containerd-shim-v2`   │ VM escapes,   │
+│ 1. INFRA PLATFORMS  │ Hardware cold-boot micro-│ `containerd-shim-v2`   │ VM escapes,   │
 │    (K8s, Cube,      │ VMs; pluggable KVM/WHP/  │ `openshell-grpc`       │ daemon OOMs,  │
 │     OpenShell)      │ HVF bare-metal drivers   │ commercial adapters    │ multi-tenancy │
 ├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤

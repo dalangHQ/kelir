@@ -3,11 +3,11 @@
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 1. EROFS READ-ONLY ROOTFS (virtio-blk):                                     │
 │    - Stripped base system (Python, Node, Rust, Bash) pre-baked into EROFS.  │
-│    - Cold-mounted as block device in <2ms. Zero tarball decompression.      │
+│    - Cold-mounted as block device. Zero tarball decompression.              │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 2. COPY-ON-WRITE RAM SCRATCHPAD (overlayfs):                                │
 │    - Base host workspace mounted STRICTLY READ-ONLY.                        │
-│    - Instant Revert: Drop overlayfs layer in 1ms. Host SSD is untouched.    │
+│    - Instant Revert: Drop overlayfs layer. Host SSD is untouched.           │
 │ 3. THE SUCCESS PATH RECONCILER (session.fs.reconcile()):                    │
 │    - Storage-plane sync: stages upperdir into .kelir-staging-<nonce>.       │
 │    - Executes atomic directory exchange (renameat2 / RENAME_EXCHANGE).      │

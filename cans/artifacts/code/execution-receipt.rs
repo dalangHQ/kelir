@@ -33,8 +33,6 @@ pub struct ExecutionReceipt {
     /// Hypervisor dirty-byte counter; always populated.
     /// Byte-not-page reason: see cans/01-architecture.md#VmmDriver-trait
     pub dirty_bytes: u64,
-    /// Bytes dirtied strictly within target workspace inodes (virtio-fs journal)
-    pub workspace_dirty_bytes: u64,
     /// Cryptographic hardware attestation signature issued by hypervisor
     pub hardware_attestation: [u8; 32],
     /// PMU retired instruction count sampled from host vCPU thread perf counter

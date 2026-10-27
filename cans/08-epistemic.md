@@ -35,17 +35,13 @@
     - Emitted per executed process, at the trap/exit boundary
     - Assertion form: receipts are compared as values, not as hashes of host
       state; the canonical assertion is a per-field comparison
-    - Receipts differentiate whole-VM RAM mutations from workspace mutations
-    - workspace_dirty_bytes tracks bytes committed to target workspace inodes
-    - Prevents agents gaming dirty_bytes checks through unmonitored /tmp writes
-    - workspace_dirty_bytes is distinct from dirty_bytes: workspace inodes only
     - profile_blake3 cryptographic identity
       - Computes BLAKE3 hash over canonical declarative profile bytes at boot
       - Injected as genesis block into Merkle WAL before guest vCPU starts
       - Receipts bind profile_blake3 cryptographically to hardware counters
-    - ReceiptConfig.receipt_scope = WorkspaceInodesOnly (default) | WholeVmRam
     - Plugin telemetry: producer writes a TelemetryExtension in `extensions`
       - Example: plugin-db-proxy emits net:l7:sql statement counts
+      - Example: plugin-vfs emits fs:vfs:workspace_dirty_bytes
       - Example use: see: artifacts/examples/db-backed-runtime.py
     - Attestation token: receipts carry cryptographic proof of hypervisor run
     - Bare-metal executions lack hardware receipts and fail oracle evaluation
@@ -67,7 +63,6 @@
       - egress_bytes observation point
       - wall_clock_ns across suspend
       - exit_code under Rewrite
-      - Receipts require workspace_dirty_bytes > 0 when workspace edits claimed
       - Sub-microsecond phase spans: trap_ingress_ns, ffi_hop_ns, policy_ns
     - Receipt ownership
       - kelir-core generates and holds at trap/exit boundary
@@ -88,8 +83,16 @@
       - Core aggregates domain deltas over the EventBus into CausalDelta at checkpoint boundaries
       - Eliminates feature-envy: plugin-ledger subscribes to CausalDelta; never diffs VFS journals
   - Three-tier evidence verification model
-    - see: artifacts/diagrams/truth-hierarchy.txt
-    - Tier membership per tier: see: artifacts/diagrams/truth-hierarchy.txt
+    - Tier 1: hardware/hypervisor sampling
+      - Signals: BLAKE3 receipts, PMU retired instructions, OCC inode hashes,
+        dirty-byte counts, egress telemetry
+      - Invariant: unforgeable outside guest VM memory boundary
+    - Tier 2: boundary paravirtual intercepts
+      - Signals: FUSE write journals, TAP L2/L4 counters, sanitized PTY digests
+      - Invariant: observed at the VirtIO boundary, never inside the guest
+    - Tier 3: guest userland self-reporting
+      - Signals: harness stdout/stderr, guest status JSON
+      - Invariant: unverified; never substitutes for Tier 1 evidence
     - Forgeability invariant: Tier 1 is unforgeable outside guest VM memory;
       Tier 2 is observed at the VirtIO boundary; Tier 3 is unverified
     - Selection rule
@@ -103,11 +106,14 @@
         this tier scheme exists to prevent
     - Consumer of Tier 3: Oracle.ingest_harness_event; see: #Oracle
   - Lifecycle bridge
-    - see: artifacts/diagrams/lifecycle-bridge.txt
-    - In-process hardware lifecycle bridge
-    - Underlying primitives: see: 07-lifecycle.md#Hypervisor-primitives
+    - Orchestrator verbs: pause, resume, step, revert, fork, suspend
+    - Each verb aliases exactly one mechanism in
+      07-lifecycle.md#Hypervisor-primitives
+    - pause: vCPU-only halt at cycle boundary; guest RAM stays resident
+    - step: run to next virtio-vsock syscall trap, then pause for eval
+    - suspend is the only verb that flushes RAM; every other verb is
+      cycle-exact
     - Veto points: see: 07-lifecycle.md#Lifecycle-vetoes
-    - This node specifies the orchestrator-facing mapping only
   - Step evaluation loop
     - Orchestrators execute unmodified agent binaries
     - Checkpoint descriptors are retained in userland orchestrator state

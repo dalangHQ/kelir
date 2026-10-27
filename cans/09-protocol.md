@@ -30,10 +30,6 @@
       - Prevents path confusion across nested namespaces, chroots, and crun roots
       - In-kernel BPF denies CLONE_NEWUSER unless explicitly allowed in MountScope
       - Agents cannot hide execution by spawning unprivileged child containers
-      - Host evaluates Shannon entropy on argv[1:]: keeps shim lean
-      - Flag threshold: Host entropy > 5.2 flags encrypted/base64 payloads
-      - Allowlist bypass: entropy_bypass_paths skips check for trusted runners
-      - Permits high-entropy base64 arguments for node, python, and runners
       - ELF is read from disk at trap time: /proc/$PID/maps still describes
         the pre-exec image and cannot be trusted
       - Scans /proc/$PID/auxv, envp, and PT_INTERP before cgroup unfreeze
@@ -69,9 +65,9 @@
       - TrapAction::Rewrite: c.rewrite({ binary, argv, env })
       - TrapAction::Yield: c.yield(checkpoint_id)
       - TrapAction::Abort: c.abort(exit_code, reason)
-      - TrapAction::SuspendForApproval: c.suspend_for_approval(poll_ms)
+      - TrapAction::HostHold: c.host_hold(poll_ms)
       - TrapAction::Custom: c.custom(name, cbor_payload)
-    - SuspendForApproval wire contract
+    - HostHold wire contract
       - Supervisor emits PolicyViolationEvent carrying PID, binary, and rule
       - Host halts vCPU execution and drops RAM footprint via suspend primitive
       - Host releases suspension via HostToGuest::ResumeWithPatch frame
@@ -88,12 +84,6 @@
     - Core dispatches HostToGuest::ChannelData { kind, .. } to the handler
     - Unknown kinds abort delivery with EUnknownChannel
     - SDK channel surface: see: 03-sdk-architecture.md#Language-surfaces
-  - ToolAction-method-mapping
-    - ToolAction::Allow: forward raw JSON-RPC frame to hvc1
-    - ToolAction::Deny(errno, msg): emit JSON-RPC -32001 error response frame
-    - ToolAction::Rewrite(new_params): replace params payload in-flight
-    - ToolAction::SuspendForApproval: freeze vCPUs, flush RSS, wait for vsock patch
-    - ToolAction::Abort: terminate microVM immediately with exit code 126
   - Env injection
     - Allow cannot mutate guest environment
       - Registers, memory, and environment variables remain untouched

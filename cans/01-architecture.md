@@ -136,7 +136,8 @@
   - Guest VM anatomy
     - see: artifacts/diagrams/guest-vm.txt
     - Boot budget
-      - Cold boot target: <60ms, host-side stopwatch to first workload exec
+      - Cold boot target: see: artifacts/code/vmm-driver-trait.rs (boot)
+      - Measurement: host-side stopwatch to first workload exec
       - ACPI + PCI probing alone is ~40ms; kernel is built without both
       - Every device below earns its millisecond against that budget
     - Device allocations: see: artifacts/diagrams/guest-vm.txt

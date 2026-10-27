@@ -14,6 +14,8 @@
     - Storage bus attachment (vfs): see: 05-storage-plane.md#Storage-plane
   - Service exports (vfs)
     - Exports VfsStorageService through PipelineBinder for filesystem inspection
+    - Emits TelemetryExtension { namespace: "fs:vfs", payload: workspace_dirty_bytes }
+      on StorageDelta commit; consumed by ExecutionReceipt.extensions
     - Storage configuration knobs:
       - encapsulation: WorkspaceEncapsulation::Locked (default) | Passthrough
       - scan_engine: ReadMaskEngine::StreamingAutomata (default) | FastRegex

@@ -30,7 +30,7 @@
       - Evaluates monotonic verdict lattice: Allow < Rewrite < Deny < Abort
       - Single mutator owns target byte slice at any stage
       - Compiled into contiguous zero-cost dispatch tables via Kahn's sort
-      - Latency bounded: native tier sub-12µs, foreign FFI filter-gated
+      - Latency bounded by #Latency-ceiling; foreign FFI filter-gated
     - Reactive event bus plane
       - Asynchronous fan-out pub/sub for telemetry, audit, and OTel
       - Strictly immutable domain events emitted after pipeline settlement
@@ -66,7 +66,7 @@
       - AnyPlugin: identity marker for any KelirPlugin (fork/composite)
       - Plugins implement only traits for rings they touch; rest default no-op
       - Dispatch: taxonomy rings register into ring-specific contiguous arrays
-      - Unused rings cost zero vtable lookups; sub-12µs dispatch preserved
+      - Unused rings cost zero vtable lookups
     - Error variants
       - Ok(()) = allow; kernel proceeds
       - Err(Reject { errno, reason }) = deny with named errno, pre-write
@@ -127,7 +127,6 @@
     - ArcSwap serves atomic dispatch swapping during snapshot hydration only
     - Not a public runtime API; session configuration is frozen after boot
     - First Deny or Rewrite halts pipeline, dispatches over AF_VSOCK
-    - Sub-12 microsecond hook execution
     - on_trap_deny is builder-level, not a plugin hook
       - Deny-observation composition is a user concern
   - Mount scoping
@@ -153,6 +152,7 @@
     - Gate 3: Async FFI hook trampolines dispatch on positive match only in <12µs
     - Latency overhead on guest toolchains (cargo, npm) must remain below 3%
     - Violation of latency budget blocks core and plugin releases in CI
+    - This node is the sole numerical home for gate latency budgets
   - FFI buffer lifecycle
     - Pinned memory slices exposed via streaming chunked iterators
     - Prevents use-after-free while host runtimes resolve handlers
@@ -219,26 +219,24 @@
         - derive() vs decorate(): only decorate() is demonstrated
         - Gap list is evidence, not a waiver: unhit items still fail gates
     - Behavior of each: at its plugin file
-      - plugin-pty: see: plugins/pty.md — capability: io:pty
-      - plugin-vfs: see: plugins/vfs.md — capability: fs:vfs
-      - plugin-wire: see: plugins/wire.md — capability: net:l7:proxy
-      - plugin-chaos: see: plugins/chaos.md — capability: sys:fault
-      - plugin-ledger: see: plugins/ledger.md — capability: sys:audit
-      - plugin-db-proxy: see: plugins/db-proxy.md — capability: net:l7:sql
-      - plugin-mesh: see: plugins/mesh.md — capability: ipc:vsock:mesh
-      - plugin-lock-broker: see: plugins/lock-broker.md — capability: fs:vfs:lock
-      - plugin-supply-chain: see: plugins/supply-chain.md — capability: sys:trap:exec
-      - plugin-profile: see: plugins/profile.md — capability: sys:config:profile
-      - plugin-hyper-density: see: kelir-cloud://plugins/hyper-density.md — cap: sys:vm:density
-      - plugin-cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md — capability: fs:cas
-      - plugin-wire-ingress: see: plugins/wire-ingress.md — capability: net:l4:ingress
-      - plugin-mcp: see: plugins/mcp.md — capability: io:channel:mcp
-      - plugin-tool-guard: see: plugins/tool-guard.md — capability: io:mcp:tool
-      - plugin-oci-translator — OCI layer translation
-        - see: kelir-cloud://plugins/oci-translator.md
-      - plugin-openshell-coordinator — checkpoint
-        - see: kelir-cloud://plugins/openshell-coordinator.md
-      - Pointer rule: plugin files are leaf targets; this matrix is the canonical registry
+      - plugin-pty: home: see: plugins/pty.md
+      - plugin-vfs: home: see: plugins/vfs.md
+      - plugin-wire: home: see: plugins/wire.md
+      - plugin-chaos: home: see: plugins/chaos.md
+      - plugin-ledger: home: see: plugins/ledger.md
+      - plugin-db-proxy: home: see: plugins/db-proxy.md
+      - plugin-mesh: home: see: plugins/mesh.md
+      - plugin-lock-broker: home: see: plugins/lock-broker.md
+      - plugin-supply-chain: home: see: plugins/supply-chain.md
+      - plugin-profile: home: see: plugins/profile.md
+      - plugin-hyper-density: home: see: kelir-cloud://plugins/hyper-density.md
+      - plugin-cas-snapshot: home: see: kelir-cloud://plugins/cas-snapshot.md
+      - plugin-wire-ingress: home: see: plugins/wire-ingress.md
+      - plugin-mcp: home: see: plugins/mcp.md
+      - plugin-tool-guard: home: see: plugins/tool-guard.md
+      - plugin-oci-translator: home: see: kelir-cloud://plugins/oci-translator.md
+      - plugin-openshell-coordinator: home: see: kelir-cloud://plugins/openshell-coordinator.md
+      - Pointer rule: plugin files are leaf targets; capability URN lives in the plugin file
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session capability surface: attributed per plane
       - session.fs.*: see: plugins/vfs.md

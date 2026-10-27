@@ -10,7 +10,7 @@
 │               ▼                                             ▼                           │
 │  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
 │  │                        kelir-core (Stripped Microkernel)                          │  │
-│  │   ├── Native tier plugins: In-memory Rust execution (<12µs raw ring speed)        │  │
+│  │   ├── Native tier plugins: In-memory Rust execution at the latency ceiling        │  │
 │  │   ├── Foreign tier Filter-Before-FFI Gate: MountScope drops unmonitored events    │  │
 │  │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │
 │  │   ├── PipelineEngine: Kahn's DAG-sorted contiguous interceptor execution tables   │  │
@@ -21,8 +21,8 @@
 │                                             ▼                                           │
 │  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
 │  │                           kelir-drivers (Pluggable Backends)                      │  │
-│  │   ├── driver-rustvmm (DEFAULT Linux): KVM + userfaultfd CoW (<15ms) + CUDA CDI    │  │
-│  │   ├── driver-hvf (DEFAULT macOS): Native HVF + direct Mach vm_copy CoW (<15ms)    │  │
+│  │   ├── driver-rustvmm (DEFAULT Linux): KVM + userfaultfd CoW + CUDA CDI            │  │
+│  │   ├── driver-hvf (DEFAULT macOS): Native HVF + direct Mach vm_copy CoW            │  │
 │  │   ├── driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure Linux MSHV         │  │
 │  │   ├── driver-avf: Android Virtualization Framework via /dev/avf & pKVM            │  │
 │  │   ├── driver-bwrap: Unprivileged Linux user namespaces + seccomp-unotify fallback │  │
