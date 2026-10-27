@@ -1,380 +1,350 @@
-# `work-order.md`
+# WORK ORDER: ARCHITECTURAL PURIFICATION & DIRECT PLUGIN LINKAGE
 
-```markdown
-# PARALLEL AGENT EXECUTION ORDER: KELIR DUAL-SPEC REFACTOR (PHASE 2)
-
-## 0. EXECUTIVE DIRECTIVE & CONCURRENCY PROTOCOL
-* **Objective:** Execute an atomic, two-repository specification refactor without scaffolding implementation code.
-* **Architecture:** Split the monolithic corpus into `kelir` (Public Open-Core) and `kelir-cloud` (Private Commercial & Fleet).
-* **Execution Model:** Designed for 4 concurrent, non-overlapping autonomous worker agents coordinated by a synchronization barrier.
-* **Hard Constraints:**
-  1. Spec-phase only: Generate ZERO `.rs`, `.ts`, or `.py` runtime implementations.
-  2. Zero clobbering: Each agent owns an exclusive set of path mutations.
-  3. Strict graph integrity: `cans check --refs-only --json` and `cans check --json` must return `ok: true, exitCode: 0` in both repos upon completion.
-  4. Audit-slop zero tolerance: Banned terms (`pure epistemic|truth tier|fact-producer|ghost inode|GhostFile|cohesive state duality|token-to-bit|superpowers|teleport`) must never enter either corpus.
+**Document:** `work-order.md`  
+**System:** `kelir` Hypervisor Microkernel & Plugin Ecosystem  
+**Target State:** Canonical Day-1 Architecture (Zero migration narrative, zero historical diffs)  
+**Execution:** 6 Parallel Non-Conflicting Autonomous Agents  
 
 ---
 
-## 1. AGENT CONCURRENCY & RESPONSIBILITY MATRIX
+## 1. System Context & Architectural Mandates
+
+`kelir` is an in-process microVM hypervisor microkernel. It mediates guest Linux workloads via the VirtIO Device Complex (`virtio-vsock`, `virtio-console`, `virtio-fs`, `virtio-net`). It provides hardware-isolated execution for untrusted processes with zero guest-side agents.
+
+Every agent executing this work order must enforce three non-negotiable architectural mandates:
+
+### Mandate A: Pure Microkernel Boundary
+Core handles vCPUs, MMU boundaries, physical memory regions, and raw VirtIO queue descriptors. Core contains **zero domain logic, zero protocol parsers, zero agent schemas, and zero hardcoded plugin identities**. Any reference to PTY control, MCP tools, database protocols, or specific plugin names inside core crates or wire definitions is a defect.
+
+### Mandate B: 3-Tier Direct-Import Plugin Hierarchy
+Runtime string-based dependency resolution (`Capability("...")`, `OrderConstraint`, Kahn's DAG sorting) is dead. Plugins are compiled Rust crates that link directly via Cargo (and package managers for TS/Python). Inter-plugin dependencies must follow an acyclic 3-tier hierarchy:
 
 ```
-                         [BARRIER 0: REPO SKELETON SETUP]
-                                        │
-           ┌────────────────────────────┼────────────────────────────┐
-           ▼                            ▼                            ▼
-  [AGENT 1: PUBLIC SPEC]      [AGENT 2: PUBLIC ARTIFACTS]  [AGENT 3: CLOUD SPEC & ARTIFACTS]
-  • kelir/cans/*.md           • kelir/cans/artifacts/*     • kelir-cloud/cans/*.md
-  • kelir/cans/_rules.yaml    • config/ (justfile, ci.yml) • kelir-cloud/cans/plugins/*
-  • Licenses (FSL, MIT, CC)   • project-structure.txt      • kelir-cloud/cans/artifacts/*
-           │                            │                            │
-           └────────────────────────────┼────────────────────────────┘
-                                        ▼
-                         [BARRIER 1: INTEGRATION AUDIT]
-                                        │
-                             [AGENT 4: ORCHESTRATOR]
-                             • Cross-repo cans check
-                             • SPDX license compliance
-                             • Audit-slop verification
+┌────────────────────────────────────────────────────────┐
+│  Tier 3: Aggregators & Orchestrators                   │
+│  (plugin-ledger, plugin-profile, plugin-chaos)         │
+│  Imports: Tier 2 and Tier 1 directly                   │
+└───────────────────────────┬────────────────────────────┘
+                            │ imports
+┌───────────────────────────▼────────────────────────────┐
+│  Tier 2: Governance, Security & Interposition          │
+│  (plugin-tool-guard, plugin-lock-broker, db-proxy,     │
+│   plugin-supply-chain, plugin-wire-ingress)            │
+│  Imports: Tier 1 directly                              │
+└───────────────────────────┬────────────────────────────┘
+                            │ imports
+┌───────────────────────────▼────────────────────────────┐
+│  Tier 1: Base VirtIO Ring Interposers                  │
+│  (plugin-pty, plugin-vfs, plugin-wire, plugin-mcp)     │
+│  Imports: kelir-interface only                         │
+└────────────────────────────────────────────────────────┘
 ```
 
-| Agent ID | Exclusive Target Scope | Primary Responsibility |
+### Mandate C: Decoupled Session Extension Trait Pattern
+The core `Session` object provides only hypervisor primitives (`boot`, `fork`, `suspend`, `resume`, `rollback`, `terminate`) and raw ring channel access. Domain APIs (`session.forward_port()`, `session.term.*`, `session.fs.*`) must not exist on the core struct. They attach via language-level extension traits/interfaces implemented in owning plugin packages:
+* **Rust:** `session.extension::<PtyHandle>()?.write_input(...)`
+* **TypeScript:** `session.use(ptyExtension).writeInput(...)`
+* **Python:** `session.ext(PtyExtension).write_input(...)`
+
+---
+
+## 2. File Ownership Matrix
+
+To prevent git conflicts, agents operate strictly on disjoint file boundaries:
+
+| Agent | Functional Domain | Exclusive File Ownership |
 |---|---|---|
-| **Agent 0** | Workspace Root | Repository creation, file migrations, directory layouts |
-| **Agent 1** | `kelir/cans/*.md`, `kelir/cans/_rules.yaml`, `kelir/LICENSE*` | Public normative spec nodes, licensing, clean-room boundary |
-| **Agent 2** | `kelir/cans/artifacts/**/*` | Public justfile, ci.yml, project structure, community examples |
-| **Agent 3** | `kelir-cloud/cans/**/*` | Private enterprise spec nodes, cloud architecture, SaaS metering |
-| **Agent 4** | Both Repositories | Final barrier verification, JSON assertion of `cans check` |
+| **Agent 1** | Core Interface & Wire Framing | `cans/artifacts/code/wire-protocol.rs`<br>`cans/artifacts/code/messages.rs`<br>`cans/01-architecture.md`<br>`cans/09-protocol.md` |
+| **Agent 2** | Plugin Trait & Tiered Linkage | `cans/artifacts/code/plugin-trait.rs`<br>`cans/02-plugin-model.md`<br>`cans/plugins/*.md` (all 13 files) |
+| **Agent 3** | VirtIO Ring Interposition Planes | `cans/04-terminal-plane.md`<br>`cans/05-storage-plane.md`<br>`cans/06-wire-plane.md`<br>`cans/artifacts/diagrams/four-ring-bus.txt`<br>`cans/artifacts/diagrams/terminal-pipeline.txt`<br>`cans/artifacts/diagrams/wire-plane.txt`<br>`cans/artifacts/diagrams/storage-architecture.txt` |
+| **Agent 4** | Lifecycle, Telemetry & Receipts | `cans/07-lifecycle.md`<br>`cans/08-epistemic.md`<br>`cans/artifacts/code/vmm-driver-trait.rs`<br>`cans/artifacts/code/execution-receipt.rs`<br>`cans/artifacts/code/causal-delta.rs` |
+| **Agent 5** | CI, Build & Tooling Realignment | `cans/11-operations.md`<br>`cans/artifacts/config/ci.yml`<br>`cans/artifacts/config/justfile`<br>`cans/artifacts/config/project-structure.txt` |
+| **Agent 6** | SDK Surface & Typestate Facades | `cans/03-sdk-architecture.md`<br>`cans/artifacts/code/rust-handle-injection.rs`<br>`cans/artifacts/code/typescript-accumulation.ts`<br>`cans/artifacts/code/python-raii-pydantic.py`<br>`cans/artifacts/diagrams/sdks-invariants.txt` |
 
 ---
 
-## 2. BARRIER 0: PRE-REQUISITE SETUP (AGENT 0)
+## 3. Detailed Work Packages
 
-Execute before spawning Agents 1, 2, and 3:
+### Agent 1: Core Interface & Wire Framing
+
+#### 1. Target Invariants
+* The core multiplexed protocol over `vsock:5252` is agnostic of process lineage, terminals, and plugins.
+* `HostToGuest` and `GuestToHost` represent generic kernel traps, raw channel streams, memory pressure, and watchdog signals.
+
+#### 2. Exact Specification Changes
+
+* **`cans/artifacts/code/wire-protocol.rs`:**
+  * Preserve the packed 24-byte header: `magic (0x4B45)`, `version (0x04)`, `channel_id (u16)`, `message_type (u16)`, `flags (u16)`, `reserved (u16)`, `sequence (u64)`, `payload_len (u32)`.
+  * Define canonical message types strictly as integers:
+    * `0x0001` = Trap Notification / Decision
+    * `0x0002` = Channel Payload (`ChannelData`)
+    * `0x0003` = VM Lifecycle Control
+    * `0x0004` = System Telemetry (Heartbeat, Pressure)
+
+* **`cans/artifacts/code/messages.rs`:**
+  * **Delete** `HostToGuest::WindowResize` and `HostToGuest::SendSignal`. Terminal control frames must be transported inside `HostToGuest::ChannelData` destined for a console channel endpoint.
+  * **Cleanse `TrapEvent`:**
+    ```rust
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct TrapEvent {
+        pub seq: u64,
+        pub pid: u32,
+        pub ppid: u32,
+        pub task_id: u64,
+        pub binary_path: String,
+        pub binary_dev: u64,
+        pub binary_ino: u64,
+        pub binary_blake3: [u8; 32],
+        pub argv: Vec<String>,
+        pub envp: HashMap<String, String>,
+        pub cwd: String,
+    }
+    ```
+    *Remove:* `rewrite_count`, `namespace_depth`, `ancestor_chain`, `loaded_libraries`. These are plugin-derived properties, not raw kernel trap facts.
+  * **Simplify `TrapAction`:**
+    ```rust
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum TrapAction {
+        Allow,
+        Deny { exit_code: i32, stderr_message: String },
+        Rewrite { new_binary: String, new_argv: Vec<String>, injected_env: HashMap<String, String> },
+        Yield { checkpoint_id: String },
+        Abort { exit_code: i32, reason: String },
+        Hold { duration_ms: u32 },
+        Custom(ciborium::value::Value),
+    }
+    ```
+    *Remove:* `HostHold { poll_interval_ms }` (generalized to `Hold`).
+
+* **`cans/01-architecture.md` & `cans/09-protocol.md`:**
+  * Purge all text claiming core evaluates process ancestor chains or terminal signals on the wire.
+  * Document Channel 0 as hypervisor control, Channels 1–65535 as dynamic multiplexed endpoints.
+
+---
+
+### Agent 2: Plugin Trait & Tiered Linkage
+
+#### 1. Target Invariants
+* Zero runtime string capability resolution. Delete `Capability`, `OrderConstraint`, and runtime Kahn's DAG sorting.
+* Direct Cargo crate linkage between dependent plugins.
+* Services are strongly typed Rust traits exported directly by the defining plugin crate.
+
+#### 2. Exact Specification Changes
+
+* **`cans/artifacts/code/plugin-trait.rs`:**
+  * Remove `Capability`, `OrderConstraint`, `PluginTaxonomy`.
+  * Replace runtime registration with typed lifecycle and interposer registration:
+    ```rust
+    pub trait KelirPlugin: Send + Sync {
+        fn name(&self) -> &'static str;
+        fn default_scope(&self) -> MountScope { MountScope::default() }
+        fn is_enabled(&self) -> bool { true }
+        fn fork_state(&self, child_session_id: &str) -> Box<dyn AnyPlugin>;
+    }
+    ```
+  * Retain segregated ring interposer traits (`FsInterposer`, `NetInterposer`, `TrapInterposer`, `ConsoleInterposer`, `LifecycleParticipant`).
+  * Remove `occ_metadata_hash` from `FsInodeAttr`. Keep attributes strictly to standard POSIX: `mode`, `uid`, `gid`, `size`, `content`.
+
+* **`cans/02-plugin-model.md`:**
+  * Replace runtime DAG sorting documentation with the **3-Tier Compile-Time Dependency Model**:
+    * **Tier 1:** Base ring adapters (`plugin-pty`, `plugin-vfs`, `plugin-wire`, `plugin-mcp`). Depend strictly on `kelir-interface`.
+    * **Tier 2:** Security, governance, protocol proxies (`plugin-tool-guard`, `plugin-lock-broker`, `plugin-db-proxy`, `plugin-supply-chain`, `plugin-wire-ingress`). Declare direct Cargo dependencies on Tier 1 plugins.
+    * **Tier 3:** Cross-cutting aggregators (`plugin-ledger`, `plugin-profile`, `plugin-chaos`). Declare direct Cargo dependencies on Tier 1 and Tier 2 plugins.
+  * Define typed cross-plugin communication:
+    * `plugin-tool-guard` directly imports `plugin-mcp` AST/call definitions.
+    * `plugin-lock-broker` directly imports `plugin-vfs` inode abstractions.
+    * `plugin-db-proxy` directly imports `plugin-wire` L4 proxy primitives.
+
+* **`cans/plugins/*.md` (All 13 files):**
+  * Rewrite headers to replace string taxonomy (`urn:kelir:...`, `provides = [...]`, `requires = [...]`) with explicit Rust crate dependencies and exposed traits.
+
+---
+
+### Agent 3: VirtIO Ring Interposition Planes
+
+#### 1. Target Invariants
+* VirtIO devices are transport pipes. No core device ring is reserved for a specific plugin.
+* The wire, storage, and console planes process raw payloads without hardcoded pipeline stage sequences.
+
+#### 2. Exact Specification Changes
+
+* **`cans/04-terminal-plane.md`:**
+  * Delete hardcoded port mappings (`hvc0` = PTY, `hvc1` = MCP/Tool-Guard).
+  * Specify `virtio-console` as a multi-port paravirtual character bus. Channel 0 defaults to interactive console master; subsequent ports are allocated dynamically at session configuration.
+  * Delete all references to `plugin-tool-guard` in the terminal plane.
+
+* **`cans/05-storage-plane.md`:**
+  * Purge all mentions of "OCC Stable Inode Hashes". Optimistic concurrency control is an application/plugin concern, not a microkernel VirtIO-FS property.
+  * Document `virtio-fs` as an unadulterated FUSE pass-through bridge with read/write interposition hooks.
+
+* **`cans/06-wire-plane.md`:**
+  * Purge hardcoded pipeline sequences (`chaos -> ingress -> db-proxy -> wire proxy`).
+  * Document the wire plane as an L2 TAP bridge with hook points `on_net_outbound` and `on_net_inbound`.
+  * Remove database proxying and credential swapping from the core plane specification; assign them strictly to `plugins/wire.md` and `plugins/db-proxy.md`.
+
+* **`cans/artifacts/diagrams/`:**
+  * `four-ring-bus.txt`: Remove plugin names (`Token Shield`, `TAP Framing`, `Credentials`, `Chaos`). Label purely by transport:
+    * `virtio-vsock`: Control & Multiplexed IPC
+    * `virtio-console`: Multiplexed Character Streams
+    * `virtio-fs`: FUSE Inode & File Data
+    * `virtio-net`: Raw L2 TAP Ethernet Frames
+  * `terminal-pipeline.txt`, `wire-plane.txt`, `storage-architecture.txt`: Strip references to hardcoded stage ordering.
+
+---
+
+### Agent 4: Lifecycle, Telemetry & Receipts
+
+#### 1. Target Invariants
+* Hypervisor lifecycle states must not leak plugin identities.
+* Hardware telemetry is strictly empirical (PMU, registers, dirty bytes). Core does not generate policy judgments.
+
+#### 2. Exact Specification Changes
+
+* **`cans/artifacts/code/vmm-driver-trait.rs` & `cans/07-lifecycle.md`:**
+  * Purge plugin-specific suspend reasons. Generalize `SuspendReason`:
+    ```rust
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum SuspendReason {
+        External(u32),
+        ResourcePressure,
+    }
+    ```
+    *Delete:* `IngressWait`, `HostHold(TOOL_GUARD_HOLD)`, `AdminHold`.
+  * Establish the Single Source of Truth for zero-RSS swap in `cans/07-lifecycle.md#Suspend-and-resume`:
+    * Page-dump engine: `lz4_flex` compression over `io_uring` direct I/O.
+    * Memory ceiling drops to 0 MB host RSS.
+  * Purge redundant copies of the zero-RSS swap description from `cans/01-architecture.md`, `cans/plugins/tool-guard.md`, and `cans/plugins/wire-ingress.md`.
+
+* **`cans/08-epistemic.md` & `cans/artifacts/code/execution-receipt.rs`:**
+  * Remove specific plugin references (`plugin-wire`, `plugin-ledger`, `plugin-db-proxy`) from `cans/08-epistemic.md`.
+  * Keep `ExecutionReceipt` purely hardware-focused:
+    * Hardware primitives: `retired_instructions`, `dirty_bytes`, `wall_clock_ns`, `hardware_attestation`, `exit_code`.
+    * Extensibility: `extensions: Vec<TelemetryExtension>` with opaque `namespace: String` and `payload: Vec<u8>`.
+
+---
+
+### Agent 5: CI, Build & Tooling Realignment
+
+#### 1. Target Invariants
+* CI must enforce compile-time crate dependencies, not artificial module isolation.
+* Build configurations must reflect the 3-tier hierarchy.
+
+#### 2. Exact Specification Changes
+
+* **`cans/artifacts/config/ci.yml` & `cans/artifacts/config/justfile`:**
+  * **Delete** the `plugin-isolation` job and `test-isolation` script (which deleted plugin directories to assert decoupling).
+  * **Delete** the `plugin-audit` restrictions that banned inter-plugin dependencies in `Cargo.toml`.
+  * Add static workspace verification:
+    ```yaml
+    - name: Verify Tiered Plugin Compilation
+      run: cargo check --workspace --all-targets
+    ```
+  * Retain `cans-check`, `audit-slop`, guest shim compile checks (<50KB), and nextest matrices.
+
+* **`cans/11-operations.md`:**
+  * Rewrite the CI and testing sections. Document that plugins compile against their explicit upstream dependencies.
+  * Remove all references to isolation proof by deletion.
+  * Consolidate coverage gates: verify that each plugin registers with the builder without runtime string tokens.
+
+* **`cans/artifacts/config/project-structure.txt`:**
+  * Annotate crate dependency rules explicitly:
+    * Tier 1 plugins depend only on `kelir-interface`.
+    * Tier 2 plugins depend on Tier 1 plugins.
+    * Tier 3 plugins depend on Tier 1 and Tier 2 plugins.
+
+---
+
+### Agent 6: SDK Surface & Typestate Facades
+
+#### 1. Target Invariants
+* Dynamic language SDKs (TypeScript, Python) and Rust builder surfaces must use typed enums and constants instead of stringly-typed dispatch.
+* The core `Session` object provides raw hypervisor control; domain capabilities attach via typed extensions.
+
+#### 2. Exact Specification Changes
+
+* **`cans/03-sdk-architecture.md`:**
+  * **Eradicate String Event Hooks:**
+    * Replace `.on("vm:ready", ...)` with `.on(LifecycleEvent.VmReady, ...)`.
+    * Replace `.intercept("net:outbound", ...)` with `.intercept(Ring.NetOutbound, ...)`.
+    * Replace `.trap("git commit *", ...)` with structured matchers: `TrapFilter.binary("git").withArg("commit")`.
+  * **Document the Extension Pattern for `Session`:**
+    * In Rust:
+      ```rust
+      let session = builder.boot().await?;
+      let pty = session.extension::<PtyExtension>()?;
+      pty.resize(120, 40).await?;
+      ```
+    * In TypeScript:
+      ```typescript
+      const session = await builder.boot();
+      const pty = session.use(ptyExtension);
+      await pty.resize(120, 40);
+      ```
+    * In Python:
+      ```python
+      async with builder as session:
+          pty = session.ext(PtyExtension)
+          await pty.resize(120, 40)
+      ```
+
+* **`cans/artifacts/code/rust-handle-injection.rs`, `typescript-accumulation.ts`, `python-raii-pydantic.py`:**
+  * Update all sample code to use the extension trait pattern and typed event constants.
+  * Strip `c.forward_port()`, `c.term`, `c.fs` ambient properties. Replace with `c.service::<PtyService>()`.
+
+* **`cans/artifacts/diagrams/sdks-invariants.txt`:**
+  * Update runtime safety invariants to reflect typed enum compilation across all three languages.
+
+---
+
+## 4. Single Source of Truth (SSOT) Map
+
+To guarantee zero redundancy, enforce the following authoritative locations:
+
+| Fact / Concept | Canonical Single Source of Truth | Forbidden Everywhere Else |
+|---|---|---|
+| **Gate Latency Ceilings** (`0µs / <2µs / <12µs`) | `cans/02-plugin-model.md#Latency-ceiling` | Do not restate numbers in diagrams or code docs. |
+| **VM Boot & Rollback Constants** (`<60ms`, `<8ms`) | `cans/artifacts/code/vmm-driver-trait.rs` | Do not restate in markdown spec nodes. |
+| **Wire Header Byte Layout** | `cans/artifacts/code/wire-protocol.rs` | Do not draw header bit-tables in markdown files. |
+| **Zero-RSS Swap Mechanics** (`lz4_flex + io_uring`) | `cans/07-lifecycle.md#Suspend-and-resume` | Reference via `see: 07-lifecycle.md#Suspend-and-resume`. |
+| **Permission Verdict Lattice** (`Allow < Rewrite < Deny < Abort`) | `cans/artifacts/code/messages.rs#TrapAction` | Reference via `see: artifacts/code/messages.rs`. |
+| **3-Tier Plugin Hierarchy** | `cans/02-plugin-model.md#Plugin-tiering` | Do not duplicate tier classifications in plane files. |
+
+---
+
+## 5. Execution & Verification Instructions
+
+### Phase 1: Clean Core & Interfaces (Agents 1, 4)
+* Execute Package 1 (`wire-protocol.rs`, `messages.rs`, `01-architecture.md`, `09-protocol.md`).
+* Execute Package 4 (`vmm-driver-trait.rs`, `execution-receipt.rs`, `causal-delta.rs`, `07-lifecycle.md`, `08-epistemic.md`).
+* *Checkpoint Gate:* Ensure wire definitions compile with zero plugin and terminal symbols.
+
+### Phase 2: Restructure Plugin & Plane Layers (Agents 2, 3)
+* Execute Package 2 (`plugin-trait.rs`, `02-plugin-model.md`, `cans/plugins/*.md`).
+* Execute Package 3 (`04-terminal-plane.md`, `05-storage-plane.md`, `06-wire-plane.md`, diagrams).
+* *Checkpoint Gate:* Verify that all plugin specifications express dependencies via explicit crate imports.
+
+### Phase 3: Update SDKs, Tooling & Verification (Agents 5, 6)
+* Execute Package 5 (`ci.yml`, `justfile`, `11-operations.md`, `project-structure.txt`).
+* Execute Package 6 (`03-sdk-architecture.md`, SDK sample code, diagrams).
+* *Final Gate:* Run verification test suite.
+
+---
+
+## 6. Final Acceptance Gate Commands
+
+The agents' collective work is complete only when the following suite succeeds with zero warnings:
 
 ```bash
-# 1. Establish directory boundaries
-mkdir -p kelir kelir-cloud
-
-# 2. Populate public repo base from existing corpus
-cp -r cans kelir/
-cp -r .github kelir/ 2>/dev/null || true
-cp justfile Cargo.toml package.json pnpm-workspace.yaml pyproject.toml kelir/ 2>/dev/null || true
-
-# 3. Initialize private repo specification skeleton
-mkdir -p kelir-cloud/cans/artifacts/{config,diagrams,examples}
-mkdir -p kelir-cloud/cans/plugins
-```
-
----
-
-## 3. AGENT 1: PUBLIC SPECIFICATION WORKSTREAM
-
-**Target Files (Strictly Exclusive):**
-* `kelir/cans/00-overview.md`
-* `kelir/cans/02-plugin-model.md`
-* `kelir/cans/03-sdk-architecture.md`
-* `kelir/cans/07-lifecycle.md`
-* `kelir/cans/10-adapters.md`
-* `kelir/cans/11-operations.md`
-* `kelir/cans/_rules.yaml`
-* `kelir/LICENSE-FSL.md`, `kelir/LICENSE-MIT`, `kelir/LICENSE-APACHE`, `kelir/LICENSE-SPEC.md`
-
-### Task 1.1: Licensing Invariant Injection
-In `kelir/cans/00-overview.md`, insert under `- Product`:
-```markdown
-  - Legal and licensing architecture
-    - Tri-license topology
-      - Spec: Creative Commons Attribution 4.0 International (CC-BY-4.0)
-      - Core engine, drivers, and shim: Functional Source License (FSL-1.1-Apache-2.0)
-      - Interfaces, SDKs, and testkit: MIT OR Apache-2.0 dual license
-      - Enterprise extensions (EE): Commercial proprietary license
-    - Two-repo distribution invariant
-      - Public repo (kelir): core microkernel, local virtualization, community plugins
-      - Private repo (kelir-cloud): fleet compaction, S3 snapshot streaming, enterprise shims
-    - Enterprise distribution channels
-      - Dynamic SDKs: Precompiled native binaries via npm (@kelir-cloud) and PyPI (kelir-cloud)
-      - Rust on-prem: Authenticated private Cargo registry with commercial license tokens
-      - Managed platform: Kelir Cloud SaaS execution over HTTPS/gRPC
-```
-
-### Task 1.2: Clean-Room Guarantee Injection
-In `kelir/cans/02-plugin-model.md`, append under `- Taxonomic coordinate contract`:
-```markdown
-    - Clean-room boundary invariant
-      - kelir-interface is strictly dual-licensed (MIT OR Apache-2.0)
-      - Implementing KelirPlugin creates zero copyleft or viral licensing obligations
-      - Third-party authors retain 100% intellectual property rights over their plugins
-      - Commercial plugins in kelir-cloud link against kelir-interface without licensing conflict
-```
-
-### Task 1.3: Catalog Tiering Definition
-In `kelir/cans/02-plugin-model.md`, replace `- First-class plugins` catalog entries with:
-```markdown
-    - Catalog tiering
-      - Community plugins (hosted in core repo):
-        - pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress
-      - Commercial plugins (SSOT hosted in kelir-cloud):
-        - hyper-density: see: kelir-cloud://cans/plugins/hyper-density.md
-        - cas-snapshot: see: kelir-cloud://cans/plugins/cas-snapshot.md
-        - oci-translator: see: kelir-cloud://cans/plugins/oci-translator.md
-        - openshell-coordinator: see: kelir-cloud://cans/plugins/openshell-coordinator.md
-    - Coverage matrix (community plugins -> demonstrating example)
-      - pty, vfs, wire, chaos, ledger: autonomous-swe-agent.{rs,ts,py}
-      - mesh, lock-broker, supply-chain: multi-vm-swarm.rs
-      - db-proxy: db-backed-runtime.py
-      - wire-ingress, mcp: serverless-webhook.ts
-```
-
-### Task 1.4: Tri-Tier SDK Distribution Invariant
-In `kelir/cans/03-sdk-architecture.md`, append under `- N-native design`:
-```markdown
-      - Three-tier binary distribution model
-        - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
-          NAPI-RS .node and PyO3 .whl native shared libraries
-        - Pure Rust enterprise: Gated private Cargo registry (crates.kelir.dev) requiring license
-          tokens for on-premise compilation ($100k/yr commercial tier)
-        - Kelir Cloud SaaS: Managed execution over HTTP/gRPC; internal hyper-density and cas-snapshot
-          optimization applied transparently on host servers
-```
-
-### Task 1.5: Ingestion Matrix Tiering
-In `kelir/cans/10-adapters.md`, append under `- Ingestion matrix`:
-```markdown
-    - Ingestion tiering and licensing
-      - Community adapters: mcp-server (stdio wire), e2b-compat (thin client SDK)
-      - Commercial adapters: containerd-shim-v2 (K8s), openshell-grpc (NVIDIA CDI)
-      - Commercial adapter SSOT: see: kelir-cloud://cans/01-fleet-orchestration.md
-```
-
-### Task 1.6: Public Operations & Decoupling Scope
-In `kelir/cans/11-operations.md`:
-1. Under `- Matrix job: test-plugins`, set plugin list to exactly:
-   `[pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress]`.
-2. Under `- Six crate families`, replace the plugin crate family description:
-   `kelir-plugins: community plugin family (11 plugins; 4 enterprise plugins hosted in kelir-cloud)`.
-3. Under `- Decoupling proof`, set audit scope to the 11 community plugins.
-
-### Task 1.7: Public Rules Configuration
-In `kelir/cans/_rules.yaml`, update `references:`:
-```yaml
-references:
-  mode: pointer
-  back_pointers: false
-  max_hops: 1
-  orphan_check: true
-  duplicate_home_check: true
-  external_roots:
-    kelir-cloud: "../kelir-cloud/cans"
-```
-
-### Task 1.8: Generate License Files
-In `kelir/`:
-* `LICENSE-SPEC.md`: Creative Commons Attribution 4.0 International.
-* `LICENSE-FSL.md`: Functional Source License 1.1 with Apache-2.0 Change License.
-* `LICENSE-MIT`: Standard MIT License text.
-* `LICENSE-APACHE`: Apache License Version 2.0 text.
-
----
-
-## 4. AGENT 2: PUBLIC ARTIFACTS WORKSTREAM
-
-**Target Files (Strictly Exclusive):**
-* `kelir/cans/artifacts/config/justfile`
-* `kelir/cans/artifacts/config/ci.yml`
-* `kelir/cans/artifacts/config/project-structure.txt`
-* `kelir/cans/artifacts/examples/multi-vm-swarm.rs`
-* `kelir/cans/artifacts/examples/serverless-webhook.ts`
-* `kelir/cans/artifacts/examples/db-backed-runtime.py`
-
-### Task 2.1: Update `justfile` Plugin Targets
-In `kelir/cans/artifacts/config/justfile`:
-1. Modify `test-plugins`:
-```make
-test-plugins:
-    cargo nextest run -p plugin-pty -p plugin-vfs -p plugin-wire -p plugin-chaos -p plugin-ledger -p plugin-mcp -p plugin-db-proxy -p plugin-mesh -p plugin-lock-broker -p plugin-supply-chain -p plugin-wire-ingress
-```
-2. Modify `plugin-check-all` and `test-isolation-all`:
-```bash
-    for p in pty vfs wire chaos ledger mcp db-proxy mesh lock-broker supply-chain wire-ingress; do
-```
-
-### Task 2.2: Update `ci.yml` Matrix Jobs
-In `kelir/cans/artifacts/config/ci.yml`:
-Update `matrix.plugin` across `test-plugins`, `plugin-audit`, and `plugin-isolation`:
-```yaml
-matrix:
-  plugin: [pty, vfs, wire, chaos, ledger, mcp, db-proxy, mesh, lock-broker, supply-chain, wire-ingress]
-```
-
-### Task 2.3: Update `project-structure.txt`
-In `kelir/cans/artifacts/config/project-structure.txt`:
-1. Under `crates/kelir-plugins/`, remove:
-   * `plugin-hyper-density/`
-   * `plugin-cas-snapshot/`
-   * `plugin-oci-translator/`
-   * `plugin-openshell-coordinator/`
-2. Under `crates/kelir-adapters/`, remove:
-   * `containerd-shim/`
-   * `openshell-grpc/`
-3. Add a footer:
-```text
-── KELIR-CLOUD (PRIVATE REPO) ──
-crates/kelir-ee-plugins/ (hyper-density, cas-snapshot, oci-translator, openshell-coordinator)
-crates/kelir-ee-adapters/ (containerd-shim, openshell-grpc)
-services/ (control-plane, api-gateway, snapshot-relay, billing)
-```
-
-### Task 2.4: Prune Commercial Invocations from Public Examples
-Sanitize public examples so they demonstrate community plugins without depending on commercial plugins:
-1. `multi-vm-swarm.rs`: Mount `mesh`, `lock-broker`, `supply-chain`. Replace `openshell_coordinator` with standard session veto API.
-2. `serverless-webhook.ts`: Mount `wire-ingress`, `mcp`, `ledger`. Replace `hyperDensity()` with standard `c.vm.adjust_balloon()`.
-3. `db-backed-runtime.py`: Mount `db-proxy`. Replace `OciTranslatorPlugin` and `CasSnapshotPlugin` with local EROFS fixtures.
-
----
-
-## 5. AGENT 3: CLOUD SPECIFICATION & ARTIFACTS WORKSTREAM
-
-**Target Files (Strictly Exclusive):**
-* `kelir-cloud/cans/00-cloud-overview.md`
-* `kelir-cloud/cans/01-fleet-orchestration.md`
-* `kelir-cloud/cans/02-commercial-licensing.md`
-* `kelir-cloud/cans/_rules.yaml`
-* `kelir-cloud/cans/plugins/hyper-density.md`
-* `kelir-cloud/cans/plugins/cas-snapshot.md`
-* `kelir-cloud/cans/plugins/oci-translator.md`
-* `kelir-cloud/cans/plugins/openshell-coordinator.md`
-* `kelir-cloud/cans/artifacts/config/ee-ci.yml`
-* `kelir-cloud/cans/artifacts/config/cloud-structure.txt`
-* `kelir-cloud/cans/artifacts/examples/` (Full enterprise versions of examples)
-* `kelir-cloud/LICENSE`
-
-### Task 3.1: Initialize `kelir-cloud/cans/_rules.yaml`
-Write `kelir-cloud/cans/_rules.yaml`:
-```yaml
-slug:
-  algorithm: dash-normalized
-  collapse: separator-runs-to-one-hyphen
-  case: preserved
-structure:
-  node_length: { min: 3, max: 90 }
-  siblings: { min: 1, max: 20 }
-  depth: { min: 2, max: 10 }
-  single_child_collapse: false
-  empty_nodes: false
-content:
-  tbd_allowed: true
-  max_tbd_per_file: 10
-references:
-  mode: pointer
-  max_hops: 1
-  orphan_check: true
-  duplicate_home_check: true
-  external_roots:
-    kelir: "../kelir/cans"
-```
-
-### Task 3.2: Create `00-cloud-overview.md`
-Write `kelir-cloud/cans/00-cloud-overview.md`:
-```markdown
-- Cloud Overview
-  - Product
-    - Name: kelir-cloud
-    - Commercial model: SaaS execution platform and Enterprise VPC distribution
-    - Boundary rule: see: kelir://cans/00-overview.md#Axiomatic-foundations
-  - SaaS Architecture
-    - Zero-RAM idle execution: Powered by plugin-hyper-density
-    - Content-addressed block streaming: Powered by plugin-cas-snapshot
-    - Managed endpoints: REST / JSON-RPC gateway at https://api.kelir.dev
-    - Multi-tenant boundary: Per-tenant hardware microVM isolation, zero cgroup bleeding
-```
-
-### Task 3.3: Create `01-fleet-orchestration.md`
-Write `kelir-cloud/cans/01-fleet-orchestration.md`:
-```markdown
-- Fleet Orchestration
-  - Kubernetes bare-metal runtime
-    - containerd-shim-kelir-v2 integrates microVMs directly into K8s Pod lifecycle
-    - Translates OCI layers via plugin-oci-translator: see: plugins/oci-translator.md
-  - NVIDIA OpenShell integration
-    - openshell-grpc mediates compute_driver.proto via UDS
-    - Binds GPU devices via CDI: see: plugins/openshell-coordinator.md
-```
-
-### Task 3.4: Create `02-commercial-licensing.md`
-Write `kelir-cloud/cans/02-commercial-licensing.md`:
-```markdown
-- Commercial Licensing
-  - Distribution channels
-    - Precompiled NAPI / PyO3 packages: Delivered via npm/PyPI under commercial EULA
-    - Private Cargo Registry: Authenticated access to crates.kelir.dev for pure Rust consumers
-    - License enforcement: Cryptographic host entitlement token verification at on_vm_init
-```
-
-### Task 3.5: Migrate & Patch Enterprise Plugin Specs
-Relocate the 4 plugin files from `kelir/cans/plugins/` to `kelir-cloud/cans/plugins/`:
-* `hyper-density.md`
-* `cas-snapshot.md`
-* `oci-translator.md`
-* `openshell-coordinator.md`
-
-In each migrated file, rewrite internal core references to use cross-repo pointers:
-* `see: 01-architecture.md#VirtIO-Device-Complex` -> `see: kelir://cans/01-architecture.md#VirtIO-Device-Complex`
-* `see: 07-lifecycle.md#Lifecycle-vetoes` -> `see: kelir://cans/07-lifecycle.md#Lifecycle-vetoes`
-* `see: 02-plugin-model.md#Core-context-keys` -> `see: kelir://cans/02-plugin-model.md#Core-context-keys`
-* `see: artifacts/code/plugin-trait.rs` -> `see: kelir://cans/artifacts/code/plugin-trait.rs`
-
-### Task 3.6: Relocate Enterprise Artifacts
-1. Copy original full-scale examples (`multi-vm-swarm.rs`, `serverless-webhook.ts`, `db-backed-runtime.py`) into `kelir-cloud/cans/artifacts/examples/`.
-2. Add `kelir-cloud/LICENSE`: Commercial Proprietary text (All Rights Reserved).
-
----
-
-## 6. BARRIER 1: INTEGRATION VERIFICATION (AGENT 4)
-
-Agent 4 runs only after Agents 1, 2, and 3 report completion.
-
-### Task 4.1: Public Repo Graph & Slop Audit
-```bash
-cd kelir
-
-# 1. References integrity (<2s)
+# 1. Spec Integrity & Reference Check (No dangling anchors, no rule breaks)
 cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
-
-# 2. Full spec integrity
 cans check --json | jq -e '.ok and .exitCode == 0'
 
-# 3. Slop audit (MUST return 0 matches)
-git grep -i -E "pure epistemic|truth tier|fact-producer|ghost inode|GhostFile|cohesive state duality|token-to-bit|superpowers|teleport" -- cans/ || true
-```
+# 2. Banned Term & Concept Leak Grep (Must return 0 lines)
+git grep -E "Capability\(|IngressWait|TOOL_GUARD_HOLD|occ_metadata_hash" -- cans/
 
-### Task 4.2: Private Repo Graph Audit
-```bash
-cd ../kelir-cloud
+# 3. Microkernel Wire Cleanliness Audit (Must return 0 lines)
+git grep -i -E "pty|mcp|token_shield|tool_guard|db_proxy" -- cans/artifacts/code/messages.rs cans/artifacts/code/wire-protocol.rs
 
-# 1. References integrity across external root kelir://
-cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
-
-# 2. Full spec integrity
-cans check --json | jq -e '.ok and .exitCode == 0'
-```
-
-### Task 4.3: Structural Leak Audit
-Verify that NO enterprise code or specs remain in the public repository:
-```bash
-cd ../kelir
-if ls cans/plugins/hyper-density.md cans/plugins/cas-snapshot.md cans/plugins/oci-translator.md cans/plugins/openshell-coordinator.md 2>/dev/null; then
-    echo "ERROR: Enterprise plugins leaked into public spec!" >&2
-    exit 1
-fi
-echo "PARALLEL REFACTOR VERIFIED: PASS"
-```
-
----
-
-## 7. DEFINITION OF DONE
-1. Both `kelir` and `kelir-cloud` exist as independent directory structures.
-2. `cans check --json` outputs `{"ok": true, "exitCode": 0}` in both repositories.
-3. Cross-repo URI links (`kelir://` and `kelir-cloud://`) resolve with zero broken pointers.
-4. Exactly zero lines of implementation code (`src/*.rs`, `*.ts`, `*.py`) were written.
-5. All 11 community plugins pass public spec validation; all 4 commercial plugins pass private spec validation.
+# 4. Redundancy Audit (Ensure swap engine is mentioned exactly once)
+test $(git grep -c "lz4_flex" -- cans/ | wc -l) -eq 1
 ```
