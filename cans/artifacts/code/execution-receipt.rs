@@ -6,6 +6,14 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Plugin-scoped telemetry entry. Core never inspects `payload`;
+/// `namespace` is the producing plugin's taxonomy boundary URN.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetryExtension {
+    pub namespace: String,
+    pub payload: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhaseTimings {
     pub trap_ingress_ns: u64,
@@ -33,8 +41,6 @@ pub struct ExecutionReceipt {
     pub retired_instructions: u64,
     /// Populated when ReceiptConfig::include_syscall_count.
     pub syscall_count: Option<u64>,
-    /// SQL statements opened against the backing store (db-proxy mounted; 0 otherwise).
-    pub statement_count: u64,
     /// Kernel return code
     pub exit_code: i32,
     /// True physical elapsed time
@@ -43,4 +49,7 @@ pub struct ExecutionReceipt {
     pub phase_timings: Option<PhaseTimings>,
     /// Total network egress bytes transmitted
     pub egress_bytes: u64,
+    /// Plugin-scoped extensions. Core treats entries as opaque;
+    /// empty for sessions with no extension-producing plugin.
+    pub extensions: Vec<TelemetryExtension>,
 }

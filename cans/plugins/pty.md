@@ -15,7 +15,7 @@
   - Service exports (pty)
     - Exports TerminalControlService through PipelineBinder for window and notice control
     - Terminal handler API
-      - c.term.notice(text) emits a HostToGuest::Disclosure event over hvc0
+      - c.term.notice(text) emits HostToGuest::ChannelData on the pty-disclosure kind over hvc0
   - Invariants and policy (pty)
     - Five filters
       - Filter set and per-filter behavior: see: artifacts/diagrams/terminal-pipeline.txt
@@ -27,7 +27,7 @@
         - All five execute host-side at the virtio-console boundary
         - In-guest placement would cede the chain to a compromised shim
       - Single intentional bypass
-        - HostToGuest::Disclosure skips all five; body is authoritative
+        - HostToGuest::ChannelData skips all five; body is authoritative
         - Bypass path: see: 04-terminal-plane.md#Disclosure
       - Threat model
         - OSC 52: clipboard hijack (agent reads/writes human clipboard)

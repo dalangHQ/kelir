@@ -3,7 +3,7 @@
     - see: artifacts/diagrams/wire-plane.txt
     - Owner: kelir-core (virtio-net wire domain pipeline)
     - Pipeline stages resolved via topological DAG: chaos -> ingress -> db-proxy -> wire proxy
-    - Interceptor hooks receive strongly-typed WireContext; ambient c.wire is eliminated
+    - Interceptor hooks receive strongly-typed NetContext; ambient c.wire is eliminated
     - Return contract: see: 02-plugin-model.md#Hook-return-semantics
   - TAP L2 bridge
     - TAP interface bridge connects the guest virtio-net device to the host
@@ -25,8 +25,9 @@
     - Re-originates requests from host side
     - L7 proxy mechanics: see: plugins/wire.md
   - Paravirtualized signing gateway (wire plane)
-    - Guest forwards canonical unhashed requests over vsock Channel 2
+    - Guest forwards canonical unhashed requests over the wire-signing kind
     - Host signs payloads with real keys (SigV4, HMAC, Stripe signatures)
+    - Signatures return through HostToGuest::ChannelData on the same kind
     - Cryptographic signatures stay valid without exposing keys to guest
   - Frame drop and forward semantics
     - Ok(Allow) on outbound = forward; Ok(Allow) on inbound = deliver

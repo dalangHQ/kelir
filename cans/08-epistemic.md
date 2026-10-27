@@ -44,7 +44,8 @@
       - Injected as genesis block into Merkle WAL before guest vCPU starts
       - Receipts bind profile_blake3 cryptographically to hardware counters
     - ReceiptConfig.receipt_scope = WorkspaceInodesOnly (default) | WholeVmRam
-    - statement_count: SQL statements opened against the backing store
+    - Plugin telemetry: producer writes a TelemetryExtension in `extensions`
+      - Example: plugin-db-proxy emits net:l7:sql statement counts
       - Example use: see: artifacts/examples/db-backed-runtime.py
     - Attestation token: receipts carry cryptographic proof of hypervisor run
     - Bare-metal executions lack hardware receipts and fail oracle evaluation
@@ -88,15 +89,9 @@
       - Eliminates feature-envy: plugin-ledger subscribes to CausalDelta; never diffs VFS journals
   - Three-tier evidence verification model
     - see: artifacts/diagrams/truth-hierarchy.txt
-    - Tier evidence per tier: see: artifacts/diagrams/truth-hierarchy.txt
-    - Tier 1 Hardware/Hypervisor Sampling
-      - PMU retired instructions, host TSC deltas, dirty-page bitmaps
-      - Kernel register state
-    - Tier 2 Boundary Paravirtual Intercepts
-      - FUSE write journals, TAP L2/L4 frame counters
-      - Sanitized PTY stream digests
-    - Tier 3 Guest Userland Self-Reporting
-      - Unverified harness stdout/stderr, guest status JSON
+    - Tier membership per tier: see: artifacts/diagrams/truth-hierarchy.txt
+    - Forgeability invariant: Tier 1 is unforgeable outside guest VM memory;
+      Tier 2 is observed at the VirtIO boundary; Tier 3 is unverified
     - Selection rule
       - Claim must resist forgery by guest code → Tier 1
       - Claim about a public, versioned contract → Tier 2
@@ -126,7 +121,8 @@
       - Trap match triggers pre-hook: checkpoint creation & intent analysis
       - Guest executes process
       - Process exit triggers post-hook: physical ExecutionReceipt assertion
-      - Mismatch triggers instant <8ms hypervisor rollback
+      - Mismatch triggers hypervisor rollback
+        (timing: see: artifacts/code/vmm-driver-trait.rs)
   - Lifecycle nano-tracer
     - Trace hooks (.trace()) measure exact nanosecond overhead across phases
     - Tracks trap ingress, FFI crossing, policy evaluation, and verdict dispatch

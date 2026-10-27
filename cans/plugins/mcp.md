@@ -19,8 +19,8 @@
     - MCP plugin: maps tools directly to virtio-console, virtio-fs, and traps
     - MCP hook wiring
       - on_vm_ready: setup JSON-RPC transport, advertise capabilities
-      - on_pty_output / on_pty_input: stream terminal to/from MCP client
-      - on_vfs_read / on_vfs_write: expose as read_file / write_file
+      - on_console_output / on_console_input: stream terminal to/from MCP client
+      - on_fs_read / on_fs_write: expose as read_file / write_file
       - on_trap: observe syscalls to correlate execute_command with trap
       - on_process_exit: emit MCP task completion events
       - on_disclosure: route mandatory notices into MCP stream

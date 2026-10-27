@@ -2,10 +2,9 @@
   - Control channel
     - virtio-vsock port 5252: unified multiplexed transport
     - Binary channel framing isolates sub-protocols via channel_id
-      - Channel 0: Syscall traps, VM lifecycle control, and RFC 6902 patches
-      - Channel 1: Ingress port-forwarding and connection proxying
-      - Channel 2: Paravirtualized signing gateway and binary RPC
-      - Swarm agent coordination executes over Channel 2 with Merkle logging
+      - Channel 0: core-reserved. Syscall traps, VM lifecycle, RFC 6902 patches
+      - Channel 1+: plugin-registered by kind. No core symbol names a plugin channel
+      - Kind registration: see: #Channel-registration
       - Unchecked raw RW shared memory without vsock sync fails validation
     - Eliminates multi-port socket allocation and port collisions
   - Trap fast-path
@@ -24,12 +23,6 @@
       - process_vm_readv captures exact memory without thread attachment
       - A frozen inspection is still blind to what the loader *will* do;
         the linker audit exists to make the inspection meaningful
-    - Layer cost if removed
-      - Layer 1 removal: every rustc invocation round-trips to the host
-      - Layer 2 removal: sibling threads rewrite memory during inspection;
-        inspection is decorative
-      - Layer 3 removal: LD_PRELOAD rootkits and encrypted argv payloads
-        pass through untouched
     - Measurement rule
       - Monotonic rewrite_count increments per trap rewrite
       - rewrite_count exceeding 3 aborts execution with ECYCLICREWRITE
@@ -88,6 +81,13 @@
       - Unknown name at trap time fails with EUnknownAction
       - Registration after boot() fails with EConfig
     - Action invariants: see: artifacts/code/messages.rs
+  - Channel registration
+    - LifecycleCtx.register_channel(kind, handler) assigns a u16 channel kind
+    - kind stable per session; collision aborts boot with EChannelConflict
+    - kind 0 is core-reserved; registering kind 0 aborts with EChannelReserved
+    - Core dispatches HostToGuest::ChannelData { kind, .. } to the handler
+    - Unknown kinds abort delivery with EUnknownChannel
+    - SDK channel surface: see: 03-sdk-architecture.md#Language-surfaces
   - ToolAction-method-mapping
     - ToolAction::Allow: forward raw JSON-RPC frame to hvc1
     - ToolAction::Deny(errno, msg): emit JSON-RPC -32001 error response frame

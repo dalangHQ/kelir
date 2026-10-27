@@ -106,7 +106,7 @@ kelir/
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs
 │   │   │   │   ├── mask.rs            # Sliding-window read replacement (MaskRule regex redaction, fixed-width)
-│   │   │   │   ├── ghost.rs           # Synthetic RAM-only inode injector (VfsInodeAttr: mode/uid/gid/size)
+│   │   │   │   ├── ghost.rs           # Synthetic RAM-only inode injector (FsInodeAttr: mode/uid/gid/size)
 │   │   │   │   ├── reconciler.rs      # Atomic workspace staging reconciler (.kelir-staging-<nonce> -> atomic renameat2)
 │   │   │   │   ├── idmap.rs           # FUSE dynamic UID/GID translation (0 -> geteuid())
 │   │   │   │   └── lock_broker.rs     # Cross-VM lock broker keyed on host-mapped physical inodes
@@ -116,7 +116,7 @@ kelir/
 │   │   │   │   ├── test_ghost.rs
 │   │   │   │   ├── test_idmap.rs
 │   │   │   │   ├── test_lock_broker.rs
-│   │   │   │   └── test_write_gating.rs# on_vfs_write: Ok(Allow) allows, Reject denies with errno
+│   │   │   │   └── test_write_gating.rs# on_fs_write: Ok(Allow) allows, Reject denies with errno
 │   │   │   └── fixtures/overlay/      # Synthetic upperdirs
 │   │   ├── plugin-wire/               # Zero-Knowledge credential proxy & DNS Sinkhole
 │   │   │   ├── Cargo.toml
@@ -149,7 +149,7 @@ kelir/
 │   │   │       └── test_otel.rs
 │   │   ├── plugin-mcp/                # MCP stdio JSON-RPC ↔ VirtIO rings
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # Hooks: on_vm_ready, on_pty_*, on_vfs_*, on_trap, on_process_exit, on_disclosure
+│   │   │   ├── src/lib.rs             # Hooks: on_vm_ready, on_console_*, on_fs_*, on_trap, on_process_exit, on_disclosure
 │   │   │   ├── tests/test_mcp_mapping.rs
 │   │   │   └── examples/mcp-stdio.rs
 │   │   ├── plugin-db-proxy/           # Agnostic DB mediation: pgwire (port 5432) & /run/kelir/db.sock vsock proxy

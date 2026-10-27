@@ -3,20 +3,18 @@
     - see: artifacts/diagrams/storage-architecture.txt
     - Owner: kelir-core (virtio-fs storage domain pipeline)
     - Single SSOT: plugin-vfs and plugin-lock-broker execute as stages in this pipeline
-    - All hooks receive strongly-typed StorageContext; ambient c.fs is eliminated
+    - All hooks receive strongly-typed FsContext; ambient c.fs is eliminated
     - Emits StorageDelta directly to the event bus; ledger consumes without VFS introspection
-    - Storage layout
-      - Host workspace mounted read-only as lower overlay layer
-      - Host encapsulation: raw workspace locked to mode 000 on host
+    - Encapsulation invariant
+      - Host workspace is locked to mode 000 on host; only the hypervisor
+        descriptor bridges access to virtio-fs lowerdir
       - Native toolchains outside Kelir observe EACCES on workspace access
-      - Only Kelir hypervisor descriptor bridges access to virtio-fs lowerdir
       - Granular knob: workspace_encapsulation = Locked | Passthrough
-      - Guest modifications isolated to volatile tmpfs upperdir
-      - FUSE dispatch journal tracks deletions and node overwrites in memory
-      - Reconciler scans upperdir diffs only under RESOLVE_BENEATH invariants
+    - Reconciliation containment invariant
+      - Reconciler scans upperdir diffs only under RESOLVE_BENEATH
       - Whiteout char devices (st_rdev == 0) unlink files strictly beneath target
-      - Symlink resolution escapes during reconciliation abort with E_PATH_TRAVERSAL
-      - Opaque directories purge host directory trees without crossing mount roots
+      - Symlink escapes abort with E_PATH_TRAVERSAL
+      - Opaque directories purge without crossing mount roots
     - Deterministic 64-bit metadata hash for OCC fences
     - Hashes device, inode, generation counter, and mode in O(1) time
     - Zero payload hashing on file open across all inode types
@@ -45,10 +43,10 @@
     - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE
     - Prevents tmpfs upperdir memory exhaustion when loading large packages
   - Write gating
-    - Synchronous VirtIO-FS interception gates FUSE write() via on_vfs_write
+    - Synchronous VirtIO-FS interception gates FUSE write() via on_fs_write
     - Signature: see: artifacts/code/plugin-trait.rs
     - Write-gating error variants: see: 02-plugin-model.md#Hook-return-semantics
-    - Receives &StorageContext (inode, path, locks, journal); zero ambient context
+    - Receives &FsContext (inode, path, locks, journal); zero ambient context
     - Payloads exceeding configured inspection ceiling reject with BufferCeilingExceeded
     - Buffer lifecycle invariants: see: 02-plugin-model.md#FFI-buffer-lifecycle
     - SyncVerdict::Allow = allow; kernel proceeds with write to upperdir

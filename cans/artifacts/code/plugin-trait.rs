@@ -61,7 +61,7 @@ impl PluginError {
 
 /// Complete inode attribute set surfaced by storage-plane lookups.
 #[derive(Debug, Clone)]
-pub struct VfsInodeAttr {
+pub struct FsInodeAttr {
     pub mode: u32,
     pub uid: u32,
     pub gid: u32,
@@ -181,10 +181,10 @@ pub trait ServiceRegistry: Send + Sync {
 
 /// Binds inline interceptors into the linear monotonic pipeline.
 pub trait PipelineBinder: ServiceRegistry {
-    fn bind_storage(&mut self, stage: Arc<dyn StorageInterposer>);
-    fn bind_wire(&mut self, stage: Arc<dyn WireInterposer>);
+    fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>);
+    fn bind_net(&mut self, stage: Arc<dyn NetInterposer>);
     fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>);
-    fn bind_terminal(&mut self, stage: Arc<dyn TerminalInterposer>);
+    fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>);
 }
 
 /// Binds non-blocking observers to the immutable telemetry bus.
@@ -263,7 +263,7 @@ impl<'a> LifecycleCtx<'a> {
 // NOTE (follow-up, not implemented here): at builder `.plugin(p)`
 // assembly, core is to inspect the plugin's declared taxonomy().rings
 // and register handlers into dedicated, ring-specific contiguous
-// arrays (e.g. Vec<Arc<dyn StorageInterposer>>), so unused rings cost
+// arrays (e.g. Vec<Arc<dyn FsInterposer>>), so unused rings cost
 // zero vtable lookups. No dispatch-registration code lives in this file.
 
 // ── Core Identity Trait (Mandatory) ──────────────────────────────
@@ -336,9 +336,9 @@ pub trait TrapInterposer {
 }
 
 #[async_trait]
-pub trait TerminalInterposer {
-    async fn on_pty_input(&self, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
-    async fn on_pty_output(&self, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
+pub trait ConsoleInterposer {
+    async fn on_console_input(&self, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
+    async fn on_console_output(&self, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
     async fn on_window_resize(
         &self, _event: &WindowResize,
     ) -> Result<(), PluginError> { Ok(()) }
@@ -351,16 +351,16 @@ pub trait TerminalInterposer {
     ) -> Result<Option<Vec<u8>>, PluginError> { Ok(None) }
 }
 
-pub trait StorageInterposer {
-    fn on_vfs_lookup(&self, _path: &Path) -> Result<Option<VfsInodeAttr>, PluginError> { Ok(None) }
-    fn on_vfs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
+pub trait FsInterposer {
+    fn on_fs_lookup(&self, _path: &Path) -> Result<Option<FsInodeAttr>, PluginError> { Ok(None) }
+    fn on_fs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
     /// Synchronous hot-path inspection. Returns Ok(Allow) or Ok(YieldToHost) before write applies.
-    fn on_vfs_write(
+    fn on_fs_write(
         &self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx,
     ) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
 }
 
-pub trait WireInterposer {
+pub trait NetInterposer {
     /// Synchronous L2 outbound inspection.
     fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
     /// Synchronous L2 inbound inspection.

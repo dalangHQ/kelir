@@ -4,7 +4,7 @@
     - Allocates isolated linear interceptor pipelines per paravirtual channel:
       - Channel hvc0: PTY Master pipeline (plugin-pty ANSI filters and Token Shield)
       - Channel hvc1: Binary RPC pipeline (plugin-tool-guard -> plugin-mcp)
-    - Handlers receive strongly-typed TerminalContext; ambient c.term is eliminated
+    - Handlers receive strongly-typed ConsoleContext; ambient c.term is eliminated
     - Interactive channel preserves isatty(1) and raw mode
     - Streaming ring buffers route directly to host supervisor memory
     - Stateful stream processing: regex and token shields maintain sliding
@@ -30,7 +30,7 @@
   - Disclosure
     - Host-originated mandatory notification stream
     - Wire message
-      - HostToGuest::Disclosure { body } over vsock:5252
+      - HostToGuest::ChannelData on the pty-disclosure kind over vsock:5252
       - Wire message definition: see: 09-protocol.md#Wire-messages
     - Guest-side
       - Supervisor routes disclosure directly to active PTY channel

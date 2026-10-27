@@ -1,9 +1,10 @@
 - Operations
   - Execution philosophy
-    - Resource constraints: <50KB shim, <60ms boot, <15s build
+    - Resource constraints: <50KB shim, <15s build
+    - Boot-budget target: see: 01-architecture.md#Boot-budget
     - Sub-minute local cycles via just
     - Zero-bloat crate boundary: tokio full banned; libc/sys-crates strictly scoped
-    - Guest shim strictly under 50KB: zero external serialization or runtime crates
+    - Shim size invariant: <50KB, zero external serialization or runtime crates
     - Default posture
       - Primitive telemetry on; derived telemetry off unless configured
       - Ecosystem apparatus gated on registry size; not shipped ahead of it
@@ -36,7 +37,7 @@
       - macOS Apple Silicon jobs limited to compile gate for driver-hvf
       - Do not waste runner minutes on full matrix
     - Enforced invariants: CI matrix
-      - Rootfs EROFS image builds clean and cold-boots in <60ms
+      - Rootfs EROFS image cold-boot budget: see: 01-architecture.md#Boot-budget
       - Concurrency cancelled per ref (cancel-in-progress)
       - Shim musl binary strictly verified below 51200 bytes
       - sccache enabled via SCCACHE_GHA_ENABLED
@@ -94,15 +95,15 @@
       - Leaf-node rule: plugin files do not chain further references; bus
         pointers are direct 1-hop
     - Matrix job: test-plugins
-      - One cell per community plugin (13 total)
-      - Plugins: [pty, vfs, wire, chaos, ledger, mcp, profile]
-      - Plugins: [db-proxy, mesh, lock-broker, supply-chain, wire-ingress, tool-guard]
+      - One cell per community plugin; cell set: see: artifacts/config/ci.yml
+      - Plugin roster: see: 02-plugin-model.md#First-class-plugins
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
       - Structural decoupling proof: see: 02-plugin-model.md#Plugin-ownership
     - Matrix job: plugin-audit
       - Each cell runs `kelir-plugin-cli check -p plugin-<name>` — the same
         contract audit `just plugin-check` runs locally
+      - Cell set: see: artifacts/config/ci.yml
       - Taxonomy check: asserts boundary URN and ring mask in code trait
       - Dev-dep edge gate: `cargo tree -p plugin-<name> --edges dev` contains
         only plugin-testkit among plugins
@@ -118,7 +119,7 @@
       - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
   - Decoupling proof
     - Job: plugin-isolation
-    - Audit scope: 13 community plugins
+    - Audit scope: see: 02-plugin-model.md#First-class-plugins
     - Claim executed: see: 02-plugin-model.md#Plugin-ownership
     - Per cell: remove crate, workspace member, and facade feature; build and
       nextest the remainder
@@ -199,9 +200,8 @@
       - kelir: facade crate, single Cargo dependency, feature-gated plugins
       - kelir-interface: pure leaf types, traits, wire framing, zero engine deps
       - kelir-core: stripped microkernel (bus, dispatch, vmm, trap gate)
-      - kelir-plugins: community plugin family (13 plugins; 4 in kelir-cloud)
-        - pty, vfs, wire, chaos, ledger, mcp, profile, db-proxy, mesh
-        - lock-broker, supply-chain, wire-ingress, tool-guard
+      - kelir-plugins: community plugin family
+        - Community roster: see: 02-plugin-model.md#First-class-plugins
       - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
       - kelir-shim: in-guest musl PID 1 (<50KB)
     - Decoupled spec layout

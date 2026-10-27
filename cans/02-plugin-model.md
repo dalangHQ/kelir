@@ -60,9 +60,9 @@
       - Core identity only: KelirPlugin is mandatory; see: artifacts/code/plugin-trait.rs
       - LifecycleParticipant: vm lifecycle, commit, host preempt
       - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
-      - TerminalInterposer: pty input, pty output, window resize, disclosure
-      - StorageInterposer: vfs lookup, read, write; synchronous hot path
-      - WireInterposer: net outbound, net inbound; synchronous hot path
+      - ConsoleInterposer: console input, console output, window resize, disclosure
+      - FsInterposer: fs lookup, read, write; synchronous hot path
+      - NetInterposer: net outbound, net inbound; synchronous hot path
       - AnyPlugin: identity marker for any KelirPlugin (fork/composite)
       - Plugins implement only traits for rings they touch; rest default no-op
       - Dispatch: taxonomy rings register into ring-specific contiguous arrays
@@ -89,16 +89,16 @@
       - No hook receives &mut Box<dyn VmmDriver> or &Session
       - LifecycleCtx exposes: set_watchdog, adjust_balloon, register_veto
       - Lifecycle commit: on_pre_commit, on_post_commit, on_host_preempt
-    - VfsInodeAttr carries full mode, uid, gid, size, content
+    - FsInodeAttr carries full mode, uid, gid, size, content
       - Populated verbatim into FUSE LOOKUP replies
       - Synthetic FUSE inodes honor mode: 0o400 exactly, no permission fallback
     - Plane semantics
       - Wire plane fully bidirectional: outbound and inbound mutation points
-      - Storage plane fully attributed: on_vfs_write carries PID and HandlerCtx
+      - Storage plane fully attributed: on_fs_write carries PID and HandlerCtx
       - Control plane messages hook-observable; nothing bypasses the graph
     - Hook return semantics
-      - on_vfs_write: see: 05-storage-plane.md#Write-gating (storage owns it)
-      - on_vfs_lookup → Ok(None) = fall through; Ok(Some(attr)) = serve
+      - on_fs_write: see: 05-storage-plane.md#Write-gating (storage owns it)
+      - on_fs_lookup → Ok(None) = fall through; Ok(Some(attr)) = serve
       - on_net_outbound / on_net_inbound → see: artifacts/code/plugin-trait.rs
   - Declarative error mapping
     - Host exceptions map directly to POSIX errnos via builder error registry
@@ -166,9 +166,9 @@
       - c.vm: restricted lifecycle actuation handle
       - c.receipt(): hardware execution proof generation
     - Scoped domain contexts:
-      - StorageContext: scoped to virtio-fs operations (inode, path, journal)
-      - WireContext: scoped to virtio-net operations (L2 frame, L4 stream, socket)
-      - TerminalContext: scoped to virtio-console operations (PTY, grid, window)
+      - FsContext: scoped to virtio-fs operations (inode, path, journal)
+      - NetContext: scoped to virtio-net operations (L2 frame, L4 stream, socket)
+      - ConsoleContext: scoped to virtio-console operations (PTY, grid, window)
     - Inter-plugin capability injection:
       - Plugins consume peer capabilities via ctx.get_service::<T>()
       - Service resolution is verified at boot during DAG compilation
@@ -213,8 +213,8 @@
         - LifecycleParticipant: on_host_preempt
         - TrapInterposer: on_pressure
         - TrapInterposer: on_port, on_signal
-        - TerminalInterposer: on_window_resize, on_signal_send
-        - WireInterposer: on_net_inbound
+        - ConsoleInterposer: on_window_resize, on_signal_send
+        - NetInterposer: on_net_inbound
         - CompositePlugin flattening: no example flattens a bundle
         - derive() vs decorate(): only decorate() is demonstrated
         - Gap list is evidence, not a waiver: unhit items still fail gates

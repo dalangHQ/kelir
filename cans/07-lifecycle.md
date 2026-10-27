@@ -49,7 +49,8 @@
       - Bare-metal executions lack the paravirtual token and abort immediately
       - Protects developers running harness scripts natively by mistake
   - CoW fork
-    - Driver primitive: fork returns Box<dyn VmmDriver> in <15ms
+    - Driver primitive: fork returns Box<dyn VmmDriver>
+      (timing: see: artifacts/code/vmm-driver-trait.rs)
     - KVM path: userfaultfd + KVM memory cloning
     - HVF path: Stage-2 translation table write protection (hv_vm_protect)
     - Host runtime calls fork_state() to isolate plugin states per branch
@@ -65,13 +66,14 @@
     - Child handoff scope: TBD
     - Typical use: parallel agent exploration (5+ candidate strategies)
     - Policy dry-run CoW probing
-      - Clones parent VM in <15ms to evaluate untrusted candidate commands
+      - Clones parent VM to evaluate untrusted candidate commands
       - Policy denial in probe child aborts branch in <1ms with zero parent impact
       - Probe execution asserts hardware receipts before parent commits diff
     - Veto: Fork (hard)
       - Callback false → ESessionVeto; no child VM
   - Rollback
-    - Driver primitive: rollback reverts in <8ms
+    - Driver primitive: rollback reverts
+      (timing: see: artifacts/code/vmm-driver-trait.rs)
     - Reverts guest memory, registers, and tmpfs overlay diffs
     - HVF path: resets Stage-2 translation table roots to snapshot base
     - Used by HandlerCtx post-exec on post-condition violation
@@ -83,11 +85,11 @@
     - suspend
       - Freezes vCPU registers
       - lz4_flex-compresses dirty memory pages
-      - Flushes to local NVMe in <50ms
+      - Flushes to local NVMe
       - Deallocates host memory; host RAM consumption drops to 0 MB
     - Zero-RSS working-set swap via lz4_flex & io_uring
     - resume
-      - Restores registers and memory in <50ms
+      - Restores registers and memory
       - Resumes at exact cycle boundary
     - Snapshot contents: TBD
     - Veto: Suspend (hard), Resume (observation)
@@ -99,7 +101,7 @@
     - Flash preservation: guest tmpfs writes stay in RAM; zero random SD card writes
     - Policy approval suspension
       - Triggered by TrapAction::SuspendForApproval on policy denials
-      - Freezes vCPUs and flushes memory to local NVMe via io_uring in <50ms
+      - Freezes vCPUs and flushes memory to local NVMe via io_uring
       - Host RAM drops to 0 MB while waiting for out-of-band approval
       - Resume executes cycle-exact upon monotonic RFC 6902 patch submission
   - Portable snapshot bundles

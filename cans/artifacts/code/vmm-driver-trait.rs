@@ -73,8 +73,6 @@ pub enum WatchdogAction {
     Reboot,
     /// Unresponsive VM → emit structured diagnostic payload, then terminate instance
     Terminate { emit_diagnostic: bool },
-    /// Delegate action to a registered host plugin handler
-    Delegate { target_plugin: String },
 }
 
 #[derive(Debug, Clone)]

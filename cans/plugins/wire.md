@@ -45,8 +45,9 @@
         - Real secret crosses wire plane exclusively on host side
     - Paravirtualized signing gateway
       - Mediates cryptographic requests (AWS SigV4, HMAC, Stripe signatures)
-      - Unhashed canonical payload streams over vsock Channel 2
-      - Host signs using real host keyring; returns header signature
+      - Unhashed canonical payload streams over the wire-signing kind
+      - Host signs using real host keyring; returns header signature through
+        HostToGuest::ChannelData on the same kind
       - Real secret never enters guest address space
       - TLS interception contract
         - plugin-wire generates ephemeral per-session root CA at boot

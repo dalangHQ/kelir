@@ -54,7 +54,7 @@
       - FUSE low-level binding: raw kernel ABI structs; bans fuser and fuse3
     - Synthetic FUSE inodes
       - Architecture (synthetic inodes): see: artifacts/diagrams/storage-architecture.txt
-      - VfsInodeAttr mode: 0o400 honored strictly; no permission fallback
+      - FsInodeAttr mode: 0o400 honored strictly; no permission fallback
       - Dynamic hash formula: BLAKE3(path || generation_counter || mode)
       - TS synthetic content may be a thunk evaluated per read
         - Same lifecycle as SyntheticFile.dynamic (Py/RS)

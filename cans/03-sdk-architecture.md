@@ -59,7 +59,9 @@
       - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
       - Lifecycle vetoes: LifecycleCtx.register_veto(event, cb)
         - Event classes: see: 07-lifecycle.md#Lifecycle-vetoes
-    - Multiplexed binary RPC: session.vsock.channel(2), binary framing
+    - Multiplexed binary RPC: session.vsock.channel(kind), binary framing
+      - Channel kind registration: builder.register_channel(kind, handler)
+        - kind 0 is core-reserved; see: 09-protocol.md#Channel-registration
     - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
     - Three-tier binary distribution model
       - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
@@ -102,8 +104,8 @@
     - Typestate transitions: KelirBuilder<Unset> to KelirBuilder<Sealed> to Session
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
     - .plugin() accepts core KelirPlugin plus only needed capability traits
-    - Capability traits: LifecycleParticipant, TrapInterposer, TerminalInterposer
-    - StorageInterposer and WireInterposer are synchronous hot-path traits
+    - Capability traits: LifecycleParticipant, TrapInterposer, ConsoleInterposer
+    - FsInterposer and NetInterposer are synchronous hot-path traits
     - AnyPlugin: identity marker for any KelirPlugin, not a capability bundle
     - Example trait bounds follow the split; unneeded traits stay unimplemented
     - .trap(pattern, handler): pre-exec gate; dual pre/post handler also supported

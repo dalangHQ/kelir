@@ -101,14 +101,13 @@ pub enum HostToGuest {
     AdjustBalloon {
         target_mb: u32,
     },
-    /// See cans/04-terminal-plane.md#Disclosure
-    Disclosure {
-        body: Vec<u8>,
-    },
-    /// Paravirtualized signing service response over vsock Channel 2
-    SignatureResult {
+    /// Extension frame on a host-registered channel kind.
+    /// `kind` resolution: see: cans/09-protocol.md#Channel-registration
+    /// Unknown kinds abort delivery with EUnknownChannel.
+    ChannelData {
+        kind: u16,
         seq: u64,
-        signature: Vec<u8>,
+        payload: Vec<u8>,
     },
 }
 

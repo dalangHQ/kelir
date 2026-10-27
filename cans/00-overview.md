@@ -27,7 +27,7 @@
   - What it is
     - Embeddable in-process microVM hypervisor microkernel
     - Mediates guest interaction through the VirtIO Device Complex
-    - Boots stripped Linux microVMs in sub-60ms
+    - Cold-boot budget: see: 01-architecture.md#Boot-budget
     - Definition details: see: 01-architecture.md#Axiomatic-foundations
   - What it is not
     - Not a container wrapper
