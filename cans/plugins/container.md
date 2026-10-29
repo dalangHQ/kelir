@@ -4,7 +4,7 @@
     - Owner crate: crates/kelir-plugins/plugin-container
     - name() = "container"
     - Tier 2 governance and protocol proxy (container)
-    - Depends on (container): kelir-interface, plugin-vfs
+    - Depends on (container): kelir-interface only (interacts with native Storage Plane)
     - Exposes: ContainerService
     - VirtIO device attachment (container): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (container): see: 07-lifecycle.md#Lifecycle-vetoes

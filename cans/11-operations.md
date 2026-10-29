@@ -92,15 +92,16 @@
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
     - Per-plugin specs
-      - One spec file per plugin: 15 in cans plugin folder, 4 in kelir-cloud
+      - One spec file per plugin: 13 in cans plugin folder, 4 in kelir-cloud
       - Leaf-node rule: plugin files do not chain further references; bus
         pointers are direct 1-hop
     - Matrix job: test-plugins
-      - One cell per community plugin; cell set: see: artifacts/config/ci.yml
+      - One cell per community domain plugin (13 total); cell set: see: artifacts/config/ci.yml
       - Plugin roster: see: 02-plugin-model.md#First-class-plugins
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
       - Upstream dependencies: see: 02-plugin-model.md#Plugin-tiering
+      - Core planes (terminal, storage, wire, checkpoint) execute under test-core
     - Matrix job: plugin-audit
       - Each cell runs `kelir-plugin-cli check -p plugin-<name>` — the same
         contract audit `just plugin-check` runs locally

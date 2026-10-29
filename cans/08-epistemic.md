@@ -48,8 +48,7 @@
     - Tracks physical page deltas, modified inodes, and process lineage
     - L7 protocol telemetry lives outside core structs, in extensions
     - Type ownership
-      - Struct is a shared context type; it lives in kelir-interface next to
-        ExecutionReceipt
+      - Struct is a shared context type; defined in kelir-interface next to ExecutionReceipt
       - Core aggregates domain deltas into CausalDelta on checkpoint boundaries
   - Telemetry provenance classification
     - Invariant: A higher classification never falls back to a lower classification
@@ -84,9 +83,9 @@
     - Post-step verification compares physical receipts against pre-step states
     - StepSlot semantics
       - Single slot per active PID lineage; sub-steps push to stacked savepoints
-      - StepSlot managed by plugin-checkpoint: see: plugins/checkpoint.md
+      - StepSlot managed natively by kelir-core::checkpoint
       - Fork operations clone active StepSlot state into child sessions
-      - Post-hook failure triggers immediate driver rollback to slot base
+      - Post-hook failure triggers immediate session.rollback() to slot base
     - Typical wiring
       - Trap match triggers pre-hook: checkpoint creation & intent analysis
       - Guest executes process

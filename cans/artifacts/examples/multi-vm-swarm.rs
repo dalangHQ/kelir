@@ -5,7 +5,7 @@
 //! peer streams over the mesh. A session Fork veto holds until the
 //! shared fixture cache is hydrated.
 //!
-//! Mounts:     mesh, lock-broker, supply-chain.
+//! Mounts:     mesh, supply-chain.
 //! Primitives: map_shared_region, register_veto(Fork).
 
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
@@ -18,11 +18,11 @@ use kelir::{
     DriverChoice, KelirBuilder, Session, VmConfig,
     plugin::VetoEvent,
     plugins::{
-        lock_broker::{LockBrokerConfig, LockBrokerPlugin, LockMode, LockScope},
         mesh::{MeshConfig, MeshPlugin, PeerIdentity, TraceParentPropagation},
         supply_chain::{
             LifecyclePolicy, PackageManager, SupplyChainConfig, SupplyChainPlugin,
         },
+    planes::storage::{StorageConfig, LockScope, LockMode},
     },
 };
 
@@ -46,7 +46,7 @@ fn swarm_builder() -> KelirBuilder {
         entropy_seed: Some(0x5EED),
     })
     // Lock-broker: FUSE_SETLK on declared globs delegates to host flock.
-    .plugin(LockBrokerPlugin::new(LockBrokerConfig {
+    .storage(StorageConfig {
         scope: LockScope::Globs(vec![
             "**/Cargo.lock".into(),
             "**/package-lock.json".into(),

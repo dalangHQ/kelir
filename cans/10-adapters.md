@@ -8,7 +8,7 @@
     - Rule: the plugin owns translation and policy; the binary owns the wire
     - Process vs plugin boundary
       - Shim process owns wire; plugin-oci-translator owns policy
-      - Server process owns stdio wire; plugin-mcp owns policy
+      - Server process owns stdio wire; plugin-mcp owns JSON-RPC translation
       - Driver process owns gRPC wire; plugin-profile owns policy
       - SDK wrapper only: no process, no plugin
     - Tri-native SDKs are the fourth ingestion family; see: 03-sdk-architecture.md
@@ -19,9 +19,8 @@
   - MCP adapter
     - Architecture (mcp): see: artifacts/diagrams/ingestion-adapters.txt
     - Server binary crate: kelir-adapters/mcp-server
-    - Server plugin: see: plugins/mcp.md
-    - Binding maps to Session execution with flat mcp plugin config
-    - MCP boundary: see: #Process-vs-plugin-boundary
+    - Server plugin: plugin-mcp (translates JSON-RPC to native terminal/storage planes)
+    - Binds to dynamic console port "kelir-mcp" without interfering with Port 0 PTY
   - Containerd shim v2
     - Architecture (containerd)
       - see: kelir-cloud://artifacts/diagrams/ingestion-adapters-commercial.txt

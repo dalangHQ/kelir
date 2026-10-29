@@ -1,11 +1,11 @@
-// crates/kelir-plugins/plugin-vfs/src/reconciler.rs
+// crates/kelir-core/src/planes/storage/reconciler.rs
 //
 // Diff-only atomic reconciler: scans guest tmpfs upperdir, resolves
 // overlayfs whiteouts (char devices st_rdev == 0 and opaque dirs),
 // applies file mutations via atomic temporary swaps, and never duplicates
 // unmodified base workspace files.
 //
-// Canonical spec home: cans/05-storage-plane.md#Atomic-workspace-staging
+// Canonical spec home: cans/05-storage-plane.md#Atomic-workspace-reconciler
 
 use std::fs;
 use std::os::unix::fs::{FileTypeExt, MetadataExt};

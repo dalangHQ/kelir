@@ -13,8 +13,7 @@
   - Invariants and policy (vault)
     - Single source of truth for secret handling
       - Compiles unified Aho-Corasick automaton across all registered host secrets
-      - Shared across plugin-vfs, plugin-wire, and plugin-pty
-        - Read masking (vfs), L7 egress swap (wire), leak scan (pty)
+      - Shared across native Storage, Wire, and Terminal planes
       - Enforces vault:// placeholder URN generation: real secrets never enter guest physical RAM
     - Memory isolation and zeroization
       - Host secret memory pinned with mlock(2) to prevent swapping to disk

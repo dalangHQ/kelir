@@ -21,7 +21,7 @@
 //!
 //! Cargo.toml:
 //!   [dependencies]
-//!   kelir = { version = "3.0", features = ["pty","vfs","wire","chaos","ledger"] }
+//!   kelir = { version = "3.0", features = ["chaos", "ledger"] }
 //!   tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "time"] }
 //!   async-trait = "0.1"
 //!   serde = { version = "1", features = ["derive"] }
@@ -51,12 +51,11 @@ use kelir::{
     plugins::{
         chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
         ledger::{FinalReceipt, LedgerConfig, LedgerPlugin, OtelConfig, ReceiptConfig},
-        pty::{PtyConfig, PtyPlugin, PromptRule, TokenShield},
-        vfs::{
-            DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopHandler, SnoopRule,
-            VfsConfig, VfsPlugin,
-        },
-        wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig, WirePlugin},
+    },
+    planes::{
+        terminal::{PtyConfig, PromptRule, TokenShield},
+        storage::{DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopHandler, SnoopRule, StorageConfig},
+        wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig},
     },
     protocol::{CausalDelta, ExecutionReceipt, TrapAction, TrapEvent},
 };
@@ -267,7 +266,7 @@ async fn build_runtime(
     })
 
         // ── TERMINAL PLANE (§7) ────────────────────────────────────────
-        .plugin(PtyPlugin::new(PtyConfig {
+        .terminal(PtyConfig {
             cols: 120,
             rows: 40,
             drop_osc52: true,
@@ -291,10 +290,10 @@ async fn build_runtime(
             // StatelessRegex instead of the StreamingAutomata default.
             // The filters above are unchanged; only the match engine is.
             stream_engine: "StatelessRegex".into(),
-        }))
+        })
 
         // ── STORAGE PLANE (§8) ─────────────────────────────────────────
-        .plugin(VfsPlugin::new(VfsConfig {
+        .storage(StorageConfig {
             idmap: IdmapConfig {
                 guest_uid: 0,
                 host_uid: unsafe { libc::getuid() },
@@ -330,7 +329,7 @@ async fn build_runtime(
         }))
 
         // ── WIRE PLANE (§9) ─────────────────────────────────────────────
-        .plugin(WirePlugin::new(WireConfig {
+        .wire(WireConfig {
             sinkhole: SinkholeConfig {
                 allowlist: vec![
                     "api.stripe.com".into(), "github.com".into(), "*.internal.net".into(),
@@ -353,11 +352,11 @@ async fn build_runtime(
                 destination: "pg.internal.net:5432".into(),
                 inject_mtls: Some(Mtls { cert_path: pg_cert, key_path: pg_key }),
             }],
-            // Non-default knob (plugins/wire.md): AllowUdpProxied instead
+            // Non-default knob (06-wire-plane.md): AllowUdpProxied instead
             // of the StrictTcpOnly default. The TCP sinkhole / drop_all
             // above is unchanged; only the UDP path moves to proxied.
             tap_filter: TapFilter::AllowUdpProxied,
-        }))
+        })
 
         // ── CHAOS (§10) ─────────────────────────────────────────────────
         .plugin(ChaosPlugin::new(ChaosConfig {
@@ -471,7 +470,7 @@ async fn build_runtime(
                     // Binary hash integrity — the agent cannot fake this
                     if receipt.binary_blake3 != c.trap.binary_blake3 {
                         c.vm.rollback(&pre).await?;
-                        c.service::<PtyService>().notice(
+                        c.terminal.notice(
                             "⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n",
                         );
                         return Ok(PostExecAction::RollbackAndHalt);
@@ -482,7 +481,7 @@ async fn build_runtime(
                         && c.trap.cwd.contains("/checkout-service")
                     {
                         c.vm.rollback(&pre).await?;
-                        c.service::<PtyService>().notice(&format!(
+                        c.terminal.notice(&format!(
                             "⚡ [KELIR]: hermetic test emitted {}B egress — REVERTED\n",
                             receipt.egress_bytes
                         ));
@@ -491,7 +490,7 @@ async fn build_runtime(
                     // Oracle post-condition (§12.5)
                     if !oracle.verify_physical_receipt(&receipt).await? {
                         c.vm.rollback(&pre).await?;
-                        c.service::<PtyService>().notice(
+                        c.terminal.notice(
                             "⚡ [KELIR]: post-condition violated — REVERTED\n",
                         );
                         return Ok(PostExecAction::RollbackAndHalt);
@@ -527,7 +526,7 @@ async fn build_runtime(
             }
             // Workspace-scoped observation (08-epistemic.md#Execution-receipts):
             // dirty_bytes counts all hypervisor-dirtied bytes; the
-            // workspace counter now arrives as a plugin-vfs
+            // workspace counter now arrives as a native storage plane
             // TelemetryExtension (namespace "fs:vfs"), whose payload is
             // plugin-defined and opaque to core. The gate above still keys
             // on dirty_bytes; this line logs only the extension's
@@ -585,7 +584,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("[kelir] driver={} boot={}ms", session.driver_name(), session.boot_ms());
 
     // Port forward the dev server for human smoke testing (§11.7)
-    session.extension::<WireExtension>()?.forward_port(8080, 3000).await?;
+    session.wire.forward_port(8080, 3000).await?;
 
     let base = session.vm.checkpoint("clean_base").await?;
     let mut winning_delta: Option<CausalDelta> = None;
@@ -648,7 +647,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         session.resume("/tmp/eval.snap").await?;
 
         // ── Phase 4: overlay reconcile to host, then git commit (§8.1) ─
-        let stats = session.extension::<VfsExtension>()?.reconcile(FsReconcileRequest {
+        let stats = session.storage.reconcile(FsReconcileRequest {
             cwd: "/workspace/checkout-service".into(),
             atomic_staging: true,
             fsync: true,

@@ -11,7 +11,7 @@
 // is set to a NON-DEFAULT value; the comment on each line names the
 // default it departs from:
 //
-//   VFS (plugins/vfs.md):
+//   STORAGE (05-storage-plane.md):
 //     encapsulation   Passthrough     (default Locked)
 //     scanEngine      FastRegex       (default StreamingAutomata)
 //     carryoverBytes  1024            (default 512)
@@ -38,15 +38,13 @@
 //     TelemetryExtensions instead, so this example no longer sets
 //     it. entropyBypassPaths was likewise removed from VmConfig
 //     (entropy analysis moved to plugin-supply-chain).
-//   - VFS/PTY knob spellings in TS: plugins/vfs.md attests the field
+//   - Storage/Terminal knob spellings in TS: 05-storage-plane.md attests the field
 //     names (encapsulation, scan_engine, carryover_bytes); the TS
 //     camelCase forms follow the tapFilter precedent, and
 //     carryoverBufferBytes follows the vfs carryover_bytes name in
 //     the pty config's idiom.
 
 import { kelir, type Session } from "@kelir/core";
-import { pty }    from "@kelir/plugin-pty";
-import { vfs }    from "@kelir/plugin-vfs";
 import { ledger } from "@kelir/plugin-ledger";
 
 const runtime = kelir({
@@ -68,14 +66,14 @@ const runtime = kelir({
   // → c.fs — Passthrough, NOT the Locked default, so the guest
   // workspace is not locked to mode 000; FastRegex, NOT the
   // StreamingAutomata default; 1024-byte carryover, NOT 512.
-}).use(vfs({
+}).storage({
   encapsulation: "Passthrough",
   scanEngine: "FastRegex",
   carryoverBytes: 1024,
   lockBroker: false,
 
   // → terminal extension — 1024-byte carryover buffer, NOT the 512 default.
-})).use(pty({
+}).terminal({
   cols: 120, rows: 40,
   dropOsc52: true, stripTitle: true,
   carryoverBufferBytes: 1024,

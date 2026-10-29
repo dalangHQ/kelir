@@ -34,20 +34,20 @@
         - .on(LifecycleEvent.VmReady, handler) for lifecycle events
         - .intercept(Ring.NetOutbound, handler) for ring interception
         - .trap(TrapFilter::default(), handler)
-      - Session extension pattern
-        - Core Session: boot, fork, suspend, resume, rollback, terminate
-        - Core Session: raw ring channel access alongside primitives
-        - No domain APIs on core Session: no forward_port, term, fs members
-        - Rust: let session = builder.boot().await?
-        - Rust: let pty = session.extension::<PtyExtension>()?
-        - Rust: pty.resize(120, 40).await?
-        - TypeScript: const session = await builder.boot()
-        - TypeScript: const pty = session.use(ptyExtension)
-        - TypeScript: await pty.resize(120, 40)
+      - Native Engine Planes on Session
+        - Core Session directly exposes the 4 planes
+        - session.terminal, session.storage, session.wire, session.checkpoint
+        - Terminal: session.terminal.resize(120, 40), session.terminal.export_screen_matrix()
+        - Storage: session.storage.reconcile(), session.storage.discard()
+        - Wire: session.wire.forward_port(guest_port, host_port)
+        - Checkpoint: session.checkpoint.create(label), session.rollback()
+      - Plugin extension pattern
+        - Optional domain plugins attach via typed extensions
+        - session.ext::<T>() (Rust/Py), session.use(ext) (TS)
         - Python: async with builder as session
-        - Python: pty = session.ext(PtyExtension)
-        - Python: await pty.resize(120, 40)
-        - Services resolve via c.service::<PtyService>() in handlers
+        - Python: tx = session.ext(TransactionExtension)
+        - Python: await tx.commit()
+        - Services resolve via c.service::<TransactionService>() in handlers
     - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
     - Language surfaces
       - Rust: borrow-checker verified typestate, zero-cost Serde
@@ -68,8 +68,6 @@
         - SnoopRule glob (Py/RS) vs path (TS)
         - Decision static constructors (Py/RS) vs c.deny/c.resume/c.rewrite (TS)
         - Lifecycle decorators/methods (Py/RS) vs .on(LifecycleEvent.VmReady) (TS)
-        - TS lock-broker via vfs lockBroker config, not LockBrokerPlugin import
-          - Accepted idiom; same lock-broker concept
     - Trap verdict surface: see: 09-protocol.md#TrapAction-method-mapping
     - Session surfaces
       - Session data operations
@@ -129,7 +127,7 @@
     - AnyPlugin: identity marker for any KelirPlugin, not a capability bundle
     - Example trait bounds follow the split; unneeded traits stay unimplemented
     - .trap(matcher, handler): pre-exec gate; dual pre/post handler also supported
-    - .intercept_vfs(pathGlob, handler): synchronous VFS write filter
+    - .intercept_storage(pathGlob, handler): synchronous native storage write filter
     - .on_vm_ready(handler): session callback; .boot().await seals and boots
     - Inter-plugin services queryable via c.service::<T>()
     - Composite bundles flatten into builder via CompositePlugin trait

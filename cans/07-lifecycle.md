@@ -4,7 +4,6 @@
       - States: Initializing, Running, Suspended(SuspendReason), Terminated
       - SuspendReason: External(u32) | ResourcePressure
       - Eliminates independent suspend implementations outside core
-      - Working-set swap: see: #Suspend-and-resume
       - Cycle-exact resume triggered via vsock Channel 0 patch or TAP frame arrival
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
@@ -51,12 +50,13 @@
   - Rollback
     - Pre-condition invariant: Rollback is prohibited while vCPUs hold unreleased syscall traps
     - Attempting rollback on a frozen syscall trap aborts with E_INVALID_LIFECYCLE_STATE
-    - Driver primitive: rollback reverts
-      (timing: see: artifacts/code/vmm-driver-trait.rs)
-    - Reverts guest memory, registers, and tmpfs overlay diffs
-    - HVF path: resets Stage-2 translation table roots to snapshot base
-    - Used by HandlerCtx post-exec on post-condition violation
-    - Does not touch host SSD or Merkle WAL
+    - Two-phase execution boundary
+      - 1. Storage reset: Session::rollback() truncates and purges guest tmpfs upperdir
+      - 2. Hardware reset: driver.rollback(&snapshot) resets physical RAM
+        and vCPU registers in <8ms
+      - HVF path: resets Stage-2 translation table roots to snapshot base
+      - KVM path: restores userfaultfd memory tracking to checkpoint slot
+    - Host SSD workspace and host-side Merkle WAL remain completely untouched
     - Veto: Rollback (observation)
       - Cannot be vetoed; rollback is the recovery action
       - Use for ledger/trace of recovery events
@@ -80,8 +80,23 @@
     - Flash preservation: guest tmpfs writes stay in RAM; zero random SD card writes
     - External suspension
       - Triggered by SuspendReason::External(u32) awaiting out-of-band release
-      - Managed by plugin-checkpoint: see: plugins/checkpoint.md
       - Resume executes cycle-exact upon external release signal
+  - Native checkpoint plane (kelir-core::checkpoint)
+    - Zero-harness boundary detection
+      - Tracks process group exits and foreground PTY idle quiescence
+      - Traps sentinel FUSE inodes on unbacked virtual paths (/dev/kelir-gate)
+      - Intercepts configured clean execution targets before workload exit
+    - Autonomous step verification loop
+      - Host registers StepEvaluator closure through CheckpointService
+      - Captures atomic pre-step SnapshotDescriptor before workload execution
+      - Evaluates physical ExecutionReceipt upon trapped process exit
+      - Step lattice:
+        - StepVerdict::Commit: flushes staging delta, advances active step slot
+        - StepVerdict::Rollback(reason): calls session.rollback(), reverting RAM in <8ms
+          and dropping tmpfs diffs
+        - StepVerdict::YieldToHost: halts vCPU registers awaiting external input
+      - Fail-closed invariant: unhandled post-execution failures or evaluation
+        timeouts trigger automatic hardware rollback before releasing workload
   - Portable snapshot bundles
     - Content-addressed snapshot sync
     - Streamed archive packaging vmm_state.json, ram.zst, and upperdir diff
@@ -138,7 +153,7 @@
     - Subshell exit clears screen, refreshes window size, and unfreezes agent group
     - Spelling: `breakGlass()` (TS), `break_glass()` (Rust, Py);
       `session.break-glass()` never exists
-  - Wire port forwarding: see: plugins/wire.md#Port-forwarding
+  - Wire port forwarding: details at 06-wire-plane.md#Port-forwarding
   - Zombie reaping
     - Shim runs as guest PID 1
     - waitpid(-1, WNOHANG) pass integrated into async event loop

@@ -12,13 +12,13 @@
 │   │                                                                                     │
 │   ├── Rootfs Mounting: Ultra-fast read-only EROFS block device (cold-mounted)           │
 │   │                                                                                     │
-│   ├── Standard Linux Init (PID 1):                                                      │
-│   │     - Standard uninstrumented musl init (tini/sysvinit); reaps zombies cleanly      │
+│   ├── Paravirtual Micro-Init (PID 1: kelir-shim, <50KB musl):                          │
+│   │     - Reaps zombies cleanly; establishes controlling terminal for workload          │
 │   │     - Kernel-level eBPF & seccomp-unotify filters trap security-critical syscalls   │
 │   │     - Streams trap notifications over virtio-vsock port 5252 (Channel 0)            │
 │   │     - Hypervisor freezes task groups via cgroup.freeze during inspection            │
 │   │     - virtio-console ports: console master, dynamic ports                           │
-│   │     - Zero guest-side orchestration agents, CLI shims, or env var injections        │
+│   │     - Zero workload instrumentation; guest application binary runs untouched        │
 │   │                                                                                     │
 │   └── UNTOUCHED GUEST WORKLOAD: Target application binary execution                 │
 └─────────────────────────────────────────────────────────────────────────────────────────┘

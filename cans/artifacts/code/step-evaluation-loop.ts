@@ -8,17 +8,12 @@
 // Canonical spec home:    cans/08-epistemic.md#Step-evaluation-loop
 
 import { kelir } from "@kelir/core";
-import { vfs } from "@kelir/plugin-vfs";
-import { pty } from "@kelir/plugin-pty";
-import { checkpoint } from "@kelir/plugin-checkpoint";
 
 const orchestrator = new VerificationEvaluator();
 let activeCheckpoint: SnapshotDescriptor | null = null;
 
 const session = await kelir({ vcpus: 2, memoryMb: 2048 })
-  .use(vfs())
-  .use(pty())
-  .use(checkpoint({ sentinelPath: "/dev/kelir-gate" }))
+  .storage({ sentinelPath: "/dev/kelir-gate" })
   .trap("*", {
     pre: async (c) => {
       // 1. Hardware Snapshot: record clean state in orchestrator scope
@@ -43,7 +38,7 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
       if (!await orchestrator.verifyPhysicalReceipt(receipt)) {
         // 4. Instant Hardware Rollback: memory and disk revert via driver rollback
         if (activeCheckpoint) await c.vm.rollback(activeCheckpoint);
-        c.service(PtyService).notice("⚡ [VERIFICATION ENGINE]: Reverted.\n");
+        session.terminal.notice("⚡ [VERIFICATION ENGINE]: Reverted.\n");
       }
     },
   })

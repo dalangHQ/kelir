@@ -54,7 +54,7 @@
 //!
 //! Cargo.toml:
 //!   [dependencies]
-//!   kelir = { version = "3.0", features = ["pty", "vfs", "wire"] }
+//!   kelir = { version = "3.0" }
 //!   tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 //!   async-trait = "0.1"
 //!   serde = { version = "1", features = ["derive"] }

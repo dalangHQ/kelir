@@ -4,7 +4,7 @@
     - Owner crate: crates/kelir-plugins/plugin-wire-ingress
     - name() = "wire-ingress"
     - Tier 2 governance and protocol proxy (wire-ingress)
-    - Depends on (wire-ingress): kelir-interface, plugin-wire
+    - Depends on (wire-ingress): kelir-interface only (binds to native Wire Plane)
     - Exposes: IngressRoutingService
     - VirtIO attachment (wire-ingress): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (wire-ingress): see: 07-lifecycle.md#Lifecycle-vetoes

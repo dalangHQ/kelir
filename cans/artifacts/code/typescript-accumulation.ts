@@ -10,7 +10,6 @@
 // Canonical spec home:    cans/03-sdk-architecture.md#TypeScript-SDK
 
 import { kelir, createPlugin, t } from "@kelir/core";
-import { vfs } from "@kelir/plugin-vfs";
 import { ledger } from "@kelir/plugin-ledger";
 
 // 1. Level 3 leaf plugin
@@ -19,7 +18,6 @@ const secretMask = createPlugin("secret-mask")
 
 // 2. Level 2 composite plugin (nests Level 3 + vfs)
 const secureWorkspace = createPlugin("secure-workspace")
-  .use(vfs())
   .use(secretMask);
 
 // 3. Level 1 runtime builder mounts composite
@@ -49,7 +47,6 @@ const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
     return c.resume();
   });
 
-// Session extension pattern: core Session carries no domain APIs.
+// Native engine planes directly on Session.
 const session = await runtime.boot();
-const pty = session.use(ptyExtension);
-await pty.resize(120, 40);
+await session.terminal.resize(120, 40);

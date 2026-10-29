@@ -128,7 +128,8 @@ pub trait VmmDriver: Send + Sync {
     /// Hydrates microVM registers and memory pages from a portable snapshot stream
     async fn import_snapshot(&mut self, reader: Box<dyn AsyncRead + Send + Sync + Unpin>) -> Result<(), VmmError>;
 
-    /// Reverts guest memory and registers to a prior checkpoint in <8ms
+    /// Reverts guest physical RAM and vCPU registers to a prior checkpoint in <8ms.
+    /// Host filesystem diffs and overlayfs whiteouts are managed by kelir-core Session::rollback.
     async fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), VmmError>;
 
     /// Flushes dirty RAM pages to disk and drops host memory consumption to 0 MB.

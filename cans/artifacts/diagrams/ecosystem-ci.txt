@@ -5,7 +5,7 @@ DECOUPLED PLUGIN CI + REGISTRY FLOW
 
   ┌──────────────────────┐
   │  PLUGIN REPO (ext)   │   own cadence, own source, own CI shell
-  │  github.com/x/pty    │
+  │  github.com/x/chaos  │
   └──────────┬───────────┘
              │  uses: <canon>/.github/workflows/plugin-ci-reusable.yml@main
              ▼

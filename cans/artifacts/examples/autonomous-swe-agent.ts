@@ -9,9 +9,6 @@
 import { kelir, createPlugin, t,
          type Session, type SnapshotDescriptor, type ExecutionReceipt,
          type PostExecAction, type CausalDelta } from "@kelir/core";
-import { pty }    from "@kelir/plugin-pty";
-import { vfs }    from "@kelir/plugin-vfs";
-import { wire }   from "@kelir/plugin-wire";
 import { chaos }  from "@kelir/plugin-chaos";
 import { ledger } from "@kelir/plugin-ledger";
 import crypto from "node:crypto";
@@ -52,8 +49,8 @@ const runtime = kelir({
   tscLocked: true, enableWatchdog: true,
 })
 
-  // → terminal extension
-  .use(pty({
+  // → native terminal plane
+  .terminal({
     cols: 120, rows: 40,
     dropOsc52: true, stripTitle: true,
     tokenShield: { maxBytesTotal: 128 * 1024, maxLinesTotal: 500,
@@ -68,8 +65,8 @@ const runtime = kelir({
     streamEngine: "StatelessRegex",
   }))
 
-  // → c.fs (sliding-window read replacement via MaskRule included)
-  .use(vfs({
+  // → native storage plane
+  .storage({
     idmap: { guestUid: 0, hostUid: process.getuid!() },
     sharedCaches: ["~/.npm", "~/.cache/pip", "~/.cargo/registry"],
     lockBroker: true,
@@ -110,8 +107,8 @@ const runtime = kelir({
     ],
   }))
 
-  // → c.wire
-  .use(wire({
+  // → native wire plane
+  .wire({
     sinkhole: { dnsExcept: ["api.stripe.com", "github.com", "*.internal.net"] },
     sshAgentBridge: true,
     vaults: [{ name: "STRIPE_SECRET",
@@ -122,7 +119,7 @@ const runtime = kelir({
     l4Proxies: [{ listenPort: 5432, destination: "pg.internal.net:5432",
                   injectMtls: { certPath: "/etc/ssl/client.crt",
                                 keyPath:  "/etc/ssl/client.key" } }],
-    // Non-default knob (plugins/wire.md): AllowUdpProxied instead of the
+    // Non-default knob (06-wire-plane.md): AllowUdpProxied instead of the
     // StrictTcpOnly default. The sinkhole allowlist above is unchanged;
     // only the UDP path moves to proxied.
     tapFilter: "AllowUdpProxied",
@@ -181,18 +178,18 @@ const runtime = kelir({
       const receipt: ExecutionReceipt = await c.receipt();
       if (receipt.binary_blake3 !== c.trap.binary_blake3) {
         await c.vm.rollback(pre);
-        c.service(PtyService).notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n");
+        session.terminal.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n");
         return PostExecAction.RollbackAndHalt;
       }
       if (c.trap.binary_path.endsWith("/npm") && receipt.egress_bytes > 0 &&
           c.trap.cwd.includes("/checkout-service")) {
         await c.vm.rollback(pre);
-        c.service(PtyService).notice(`⚡ [KELIR]: hermetic test emitted ${receipt.egress_bytes}B — REVERTED\n`);
+        session.terminal.notice(`⚡ [KELIR]: hermetic test emitted ${receipt.egress_bytes}B — REVERTED\n`);
         return PostExecAction.RollbackAndHalt;
       }
       if (!(await oracle.verifyPhysicalReceipt(receipt))) {
         await c.vm.rollback(pre);
-        c.service(PtyService).notice("⚡ [KELIR]: post-condition violated — REVERTED\n");
+        session.terminal.notice("⚡ [KELIR]: post-condition violated — REVERTED\n");
         return PostExecAction.RollbackAndHalt;
       }
       return PostExecAction.Proceed;
@@ -233,7 +230,7 @@ const runtime = kelir({
         throw new Error("Verification anomaly: zero-byte delta commit attempted.");
       // Workspace-scoped observation (08-epistemic.md#Execution-receipts):
       // dirtyBytes counts all hypervisor-dirtied bytes; the workspace
-      // counter now arrives as a plugin-vfs TelemetryExtension
+      // counter now arrives as a native storage plane TelemetryExtension
       // (namespace "fs:vfs"), whose payload is plugin-defined and
       // opaque to core. The gate above still keys on dirtyBytes;
       // this logs only the extension's presence and payload length,
@@ -269,7 +266,7 @@ async function main() {
   const session = await runtime.boot();
   console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
 
-  await session.forwardPort({ host: 8080, guest: 3000 });
+  await session.wire.forwardPort({ host: 8080, guest: 3000 });
   const baseSnap = await session.vm.checkpoint("clean_base");
   let winningDelta: CausalDelta | null = null;
 
@@ -303,7 +300,7 @@ async function main() {
     await session.resume("/tmp/eval.snap");                       // <50ms
 
     // Sync the guest overlay to host storage, then commit via plain guest git.
-    const stats = await session.use(vfsExtension).reconcile({
+    const stats = await session.storage.reconcile({
       cwd: "/workspace/checkout-service",
       atomicStaging: true, fsync: true,
     });

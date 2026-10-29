@@ -58,8 +58,6 @@ let builder = builder
         Ok(Decision::Resume)
     }));
 
-// 3. Session extension pattern: core Session carries no domain APIs.
-// Domain access attaches via typed extensions, never via ambient properties.
+// 3. Native engine planes directly on Session.
 let session = builder.boot().await?;
-let pty = session.extension::<PtyExtension>()?;
-pty.resize(120, 40).await?;
+session.terminal.resize(120, 40).await?;

@@ -8,8 +8,7 @@ equivalent), async/await natively, decorator-registered handlers, and
 every VirtIO ring, and the three-tier evidence verification model.
 
 Requirements:
-    kelir>=3.0          (PyO3 bindings; ships plugin-pty, plugin-vfs,
-                         plugin-wire, plugin-chaos, plugin-ledger)
+    kelir>=3.0          (PyO3 bindings; 4 native planes + domain plugins)
     pydantic>=2.6
     blake3>=0.4
 """
@@ -47,25 +46,12 @@ from kelir import (
     TrapEvent,
 )
 from kelir.plugin import BasePlugin, PluginError
-from kelir.plugins.pty import (
-    PromptRule,
-    PtyPlugin,
-    TokenShield,
+from kelir.planes.terminal import PromptRule, TokenShield
+from kelir.planes.storage import (
+    DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopRule
 )
-from kelir.plugins.vfs import (
-    DynamicFile,
-    SyntheticFile,
-    IdmapConfig,
-    MaskRule,
-    SnoopRule,
-    VfsPlugin,
-)
-from kelir.plugins.wire import (
-    L4Proxy,
-    Mtls,
-    SinkholeConfig,
-    VaultEntry,
-    WirePlugin,
+from kelir.planes.wire import (
+    L4Proxy, Mtls, SinkholeConfig, VaultEntry
 )
 from kelir.plugins.chaos import (
     ChaosConfig,
@@ -273,7 +259,7 @@ def make_verify_receipt(oracle: Oracle) -> PostExecHandler:
 
         if receipt.binary_blake3 != c.trap.binary_blake3:
             await c.vm.rollback(pre)
-            c.service(PtyService).notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
+            session.terminal.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
             return PostExecAction.rollback_and_halt()
 
         if (
@@ -282,7 +268,7 @@ def make_verify_receipt(oracle: Oracle) -> PostExecHandler:
             and "/checkout-service" in c.trap.cwd
         ):
             await c.vm.rollback(pre)
-            c.service(PtyService).notice(
+            session.terminal.notice(
                 f"⚡ [KELIR]: hermetic test emitted {receipt.egress_bytes}B "
                 "egress — REVERTED\n"
             )
@@ -290,7 +276,7 @@ def make_verify_receipt(oracle: Oracle) -> PostExecHandler:
 
         if not await oracle.verify_physical_receipt(receipt):
             await c.vm.rollback(pre)
-            c.service(PtyService).notice("⚡ [KELIR]: post-condition violated — REVERTED\n")
+            session.terminal.notice("⚡ [KELIR]: post-condition violated — REVERTED\n")
             return PostExecAction.rollback_and_halt()
 
         return PostExecAction.proceed()
@@ -314,7 +300,7 @@ def make_zero_byte_check() -> PostExecHandler:
             raise RuntimeError("Verification anomaly: zero-byte delta commit attempted.")
         # Workspace-scoped observation (08-epistemic.md#Execution-receipts):
         # dirty_bytes counts all hypervisor-dirtied bytes; the workspace
-        # counter now arrives as a plugin-vfs TelemetryExtension
+        # counter now arrives as a native storage plane TelemetryExtension
         # (namespace "fs:vfs"), whose payload is plugin-defined and
         # opaque to core. The gate above still keys on dirty_bytes;
         # this logs only the extension's presence and payload length,
@@ -361,7 +347,7 @@ async def build_runtime(
         )
 
         # ── TERMINAL PLANE (§7) ───────────────────────────────────────────
-        .plugin(PtyPlugin(
+        .terminal(
             cols=120,
             rows=40,
             drop_osc52=True,
@@ -386,10 +372,10 @@ async def build_runtime(
             # StatelessRegex instead of the StreamingAutomata default.
             # The filters above are unchanged; only the match engine is.
             stream_engine="StatelessRegex",
-        ))
+        )
 
         # ── STORAGE PLANE (§8) — sliding-window read replacement via MaskRule ──
-        .plugin(VfsPlugin(
+        .storage(
             idmap=IdmapConfig(guest_uid=0, host_uid=os.getuid()),
             shared_caches=[
                 "~/.npm", "~/.cache/pip", "~/.cargo/registry",
@@ -424,10 +410,10 @@ async def build_runtime(
                     on_write=make_snoop(oracle),  # does NOT capture session
                 ),
             ],
-        ))
+        )
 
         # ── WIRE PLANE (§9) ───────────────────────────────────────────────
-        .plugin(WirePlugin(
+        .wire(
             sinkhole=SinkholeConfig(
                 allowlist=[
                     "api.stripe.com", "github.com", "*.internal.net",
@@ -451,11 +437,11 @@ async def build_runtime(
                     inject_mtls=Mtls(cert_path=pg_cert, key_path=pg_key),
                 ),
             ],
-            # Non-default knob (plugins/wire.md): AllowUdpProxied instead
+            # Non-default knob (06-wire-plane.md): AllowUdpProxied instead
             # of the StrictTcpOnly default. The TCP sinkhole / drop_all
             # above is unchanged; only the UDP path moves to proxied.
             tap_filter="AllowUdpProxied",
-        ))
+        )
 
         # ── CHAOS (§10) ───────────────────────────────────────────────────
         .plugin(ChaosPlugin(ChaosConfig(
@@ -488,7 +474,7 @@ async def build_runtime(
                     error_probability=0.05,
                 ),
             ],
-        )))
+        )
 
         # ── LEDGER (§12.1–§12.3) — must precede repo-policy (requires) ──
         .plugin(LedgerPlugin(LedgerConfig(
@@ -503,7 +489,7 @@ async def build_runtime(
             receipts=ReceiptConfig(
                 include_syscall_count=True,
             ),
-        )))
+        ))
     )
 
     # ── CUSTOM PLUGIN: fluid registration ───────────────────────────────
@@ -582,8 +568,7 @@ async def main() -> None:
         log.info("[kelir] booted driver=%s boot_ms=%s",
                  session.driver_name, session.boot_ms)
 
-        wire = session.ext(WireExtension)
-        await wire.forward_port(8080, 3000)                          # §11.7
+        await session.wire.forward_port(8080, 3000)                  # §11.7
         base = await session.vm.checkpoint("clean_base")
         winning_delta: Optional[CausalDelta] = None
 
@@ -609,7 +594,7 @@ async def main() -> None:
         # ── Phase 2: 4-way CoW fork fan-out (§11.1, §11.3) ────────────
         branches = await asyncio.gather(*(
             fork_and_verify(session, hid) for hid in "ABCD"
-        ))
+        )
         winner = next(
             ((hid, d) for hid, run, d in branches if run.exit_code == 0),
             None,
@@ -626,7 +611,7 @@ async def main() -> None:
         await session.resume("/tmp/eval.snap")
 
         # ── Phase 4: overlay reconciliation + guest git commit (§8.1) ──
-        stats = await session.ext(VfsExtension).reconcile(
+        stats = await session.storage.reconcile(
             cwd="/workspace/checkout-service",
             atomic_staging=True,
             fsync=True,

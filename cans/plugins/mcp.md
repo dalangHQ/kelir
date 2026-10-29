@@ -3,8 +3,8 @@
     - Plugin identifier: plugin-mcp
     - Owner crate: crates/kelir-plugins/plugin-mcp
     - name() = "mcp"
-    - Tier 1 base ring adapter (mcp)
-    - Depends on (mcp): kelir-interface, plugin-vfs
+    - Tier 1 base transport adapter (mcp)
+    - Depends on (mcp): kelir-interface only (routes stdio to native Terminal/Storage Planes)
     - Exposes: McpEndpointService
     - VirtIO device attachment (mcp): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mcp): see: 07-lifecycle.md#Lifecycle-vetoes
@@ -21,10 +21,10 @@
       - on_trap: observe syscalls to correlate execute_command with trap
       - on_process_exit: emit MCP task completion events
     - Mapping (external tool → ring op)
-      - execute_command → virtio-console via spawn, wrapped
-      - read_file → delegates to VfsStorageService.read_overlay_file() (merges tmpfs diffs)
-      - write_file → delegates to VfsStorageService.write_overlay_file()
-    - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
+      - execute_command → routed through native Terminal Plane
+      - read_file → delegates to native Storage Plane overlay reader
+      - write_file → delegates to native Storage Plane overlay writer
+    - Composes with plugin-chaos, plugin-ledger, and native Terminal/Wire planes
     - Composes with plugin-tool-guard: tool-guard sits upstream on the MCP console port
     - Port multiplexing routes its console port directly to MCP client without PTY conflict
     - MCP contract

@@ -4,7 +4,7 @@
     - Owner crate: crates/kelir-plugins/plugin-chaos
     - name() = "chaos"
     - Tier 3 cross-cutting aggregator (chaos)
-    - Depends on (chaos): kelir-interface, plugin-wire, plugin-vfs
+    - Depends on (chaos): kelir-interface only (injects faults into native planes)
     - Exposes: FaultInjectionService
     - VirtIO device attachment (chaos): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (chaos): see: 07-lifecycle.md#Lifecycle-vetoes

@@ -36,9 +36,8 @@ builder.trap(TrapFilter.binary("git").with_arg("commit"), commit_gate)
 
 # 3. RAII Execution: __aenter__ boots microVM; __aexit__ guarantees termination
 async with builder as session:
-    # Session extension pattern: core Session carries no domain APIs.
-    pty = session.ext(PtyExtension)
-    await pty.resize(120, 40)
+    # Native engine planes directly exposed on session
+    await session.terminal.resize(120, 40)
     await session.spawn(
         "npm", ["test"],
         params=FixWebhookParams(action="fix-webhook", issue_id="ISSUE-8412"),

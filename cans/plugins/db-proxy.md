@@ -4,10 +4,9 @@
     - Owner crate: crates/kelir-plugins/plugin-db-proxy
     - name() = "db-proxy"
     - Tier 2 governance and protocol proxy (db-proxy)
-    - Depends on (db-proxy): kelir-interface, plugin-wire
-    - Imports plugin-wire L4 proxy primitives directly
+    - Depends on (db-proxy): kelir-interface only (binds to native Wire Plane)
     - Exposes: SqlProxyService
-    - VirtIO Ring attachment: virtio-net (port 5432) and virtio-vsock (/run/kelir/db.sock)
+    - VirtIO Ring attachment: virtio-net (port 5432) and dynamic vsock Channel Kind 0x0004
     - Lifecycle attachment (db-proxy): see: 07-lifecycle.md#Lifecycle-vetoes
   - Service exports (db-proxy)
     - Exports SqlProxyService via PipelineBinder for statement and dialect queries
@@ -15,8 +14,8 @@
     - Mediates relational database communication
     - PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser
     - SQLite UDS bridge mechanics:
-      - Guest shim binds Unix Domain Socket at /run/kelir/db.sock at on_vm_ready
-      - Forwards client connections over vsock Channel Kind 0x0004 (db-sqlite)
+      - Guest helper binds Unix Domain Socket at /run/kelir/db.sock on demand
+      - Forwards client connections over dynamic vsock Channel Kind 0x0004 (db-sqlite)
       - Host SqlProxyService receives stream and delegates queries to host database file
     - Verdict execution: DbAction::Allow, DbAction::Deny, DbAction::Rewrite
     - Database proxying

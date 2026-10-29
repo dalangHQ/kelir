@@ -1,12 +1,28 @@
 - Terminal plane
   - Terminal pipeline
-    - Owner: kelir-core (virtio-console domain)
-    - Hardware abstraction: virtio-console multi-port paravirtual character bus
+    - Owner: kelir-core native terminal subsystem (kelir-core::terminal)
+    - Hardware abstraction: virtio-console paravirtual character bus
     - Port 0 allocated to standard console IO; Ports 1-16 dynamically allocated
     - Transport: Raw byte-stream rings mapped to host supervisor memory
     - Zero-copy ringbuffer backpressure and queue management
-    - Pipeline isolation: Separate interceptor dispatch array per port ID
-    - Interceptors implement ConsoleInterposer with byte-level access
-    - High-level PTY line discipline, window geometry, and signals: see: plugins/pty.md
+    - PTY line discipline initialization (kelir-shim)
+      - Shim initializes master/slave pair via openpty()
+      - Configures slave termios: CS8, CREAD, B38400, CLOCAL
+      - Sets sid and controlling terminal: ioctl(slave_fd, TIOCSCTTY, 0)
+      - Workload stdin/stdout/stderr bound directly to slave PTY fd
+    - Window geometry and signals
+      - Carried across vsock Channel Kind 0x0010 (pty-control)
+      - MsgType 0x01 (WindowResize): pushes rows, cols, xpixel, ypixel
+      - MsgType 0x02 (SignalForward): pushes signal and pgid; shim executes killpg
+    - Host filter pipeline execution order
+      - 1. ANSI strip: drops OSC 52 (clipboard hijack) and strips OSC 0/1/2 (title spoof)
+      - 2. Prompt match: matches foreground prompts against ANSI-stripped shadow text
+      - 3. Token Shield: clamps scrollback grid to maxLines/maxBytes without mid-stream slicing
+      - 4. Leak scan: Aho-Corasick automaton scans post-sanitized buffer for vault secrets
+    - Headless VT100 wireframe grid
+      - Lean embedded VT100 state machine tracks active terminal matrix
+      - session.terminal.export_screen_matrix() yields deterministic terminal wireframe receipts
   - Disclosure
-    - Host notices: see: plugins/pty.md#Mandatory-disclosure-mechanics
+    - Mandatory host disclosure invariant: host mutations publish TerminalNotice to EventBus
+    - Injects formatted ANSI box into host-to-guest console Port 0 stream
+    - Disclosures render inline on workload TTY without corrupting cursor state

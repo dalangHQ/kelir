@@ -14,5 +14,5 @@
 │     │                                                                       │
 │     ├── Port Multiplexer ─────────► Routes port IDs to discrete dispatchers │
 │     └── Interceptor Pipeline ─────► Synchronous ConsoleInterposer execution │
-│                                     (High-level PTY policy: see plugin-pty) │
+│                                     (High-level PTY policy: see 04-terminal-plane.md) │
 └─────────────────────────────────────────────────────────────────────────────┘

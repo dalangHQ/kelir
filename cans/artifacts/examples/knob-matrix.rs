@@ -10,7 +10,7 @@
 //! is set to a NON-DEFAULT value; the comment on each line names the
 //! default it departs from:
 //!
-//!   VFS (plugins/vfs.md):
+//!   STORAGE (05-storage-plane.md):
 //!     encapsulation   Passthrough     (default Locked)
 //!     scan_engine     FastRegex       (default StreamingAutomata)
 //!     carryover_bytes 1024            (default 512)
@@ -38,14 +38,14 @@
 //!     TelemetryExtensions instead, so this example no longer sets
 //!     it. entropy_bypass_paths was likewise removed from VmConfig
 //!     (entropy analysis moved to plugin-supply-chain).
-//!   - VFS/PTY knob enum spellings (WorkspaceEncapsulation::
+//!   - Storage/Terminal knob enum spellings (WorkspaceEncapsulation::
 //!     Passthrough, ReadMaskEngine::FastRegex) are attested in
-//!     plugins/vfs.md; carryover_buffer_bytes is the pty config's
+//!     05-storage-plane.md; carryover_buffer_bytes is the terminal config's
 //!     snake_case form of the vfs carryover_bytes name.
 //!
 //! Cargo.toml:
 //!   [dependencies]
-//!   kelir = { version = "3.0", features = ["pty", "vfs", "ledger"] }
+//!   kelir = { version = "3.0", features = ["ledger"] }
 //!   tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 use kelir::{
@@ -53,8 +53,10 @@ use kelir::{
     driver::{DriverPolicy, WxPolicy},
     plugins::{
         ledger::{LedgerConfig, LedgerPlugin, ReceiptConfig},
-        pty::{PtyConfig, PtyPlugin},
-        vfs::{IdmapConfig, VfsConfig, VfsPlugin, WorkspaceEncapsulation, ReadMaskEngine},
+    },
+    planes::{
+        terminal::PtyConfig,
+        storage::{IdmapConfig, StorageConfig, WorkspaceEncapsulation, ReadMaskEngine},
     },
 };
 
@@ -94,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // VFS — Passthrough, NOT the Locked default, so the guest
     // workspace is not locked to mode 000; FastRegex, NOT the
     // StreamingAutomata default; 1024-byte carryover, NOT 512.
-    .plugin(VfsPlugin::new(VfsConfig {
+    .storage(StorageConfig {
         idmap: IdmapConfig { guest_uid: 0, host_uid: 0 },
         shared_caches: vec![],
         lock_broker: false,
@@ -104,9 +106,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         encapsulation: WorkspaceEncapsulation::Passthrough,
         scan_engine: ReadMaskEngine::FastRegex,
         carryover_bytes: 1024,
-    }))
+    })
     // PTY — 1024-byte carryover buffer, NOT the 512 default.
-    .plugin(PtyPlugin::new(PtyConfig {
+    .terminal(PtyConfig {
         cols: 120,
         rows: 40,
         drop_osc52: true,
@@ -115,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         prompts: vec![],
         stream_engine: "StreamingAutomata".into(),
         carryover_buffer_bytes: 1024,
-    }))
+    })
     // LEDGER — receipts include syscall counts.
     .plugin(LedgerPlugin::new(LedgerConfig {
         store: ".kelir/audit.merkle.db".into(),

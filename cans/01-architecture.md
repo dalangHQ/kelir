@@ -1,14 +1,14 @@
 - Architecture
   - Axiomatic foundations
     - Six invariants
-      - Zero harness awareness
-        - Guest sees standard POSIX kernel and standard system init
-        - Zero guest-side SDKs, agent daemons, or harness environment variables
-        - Zero external crate dependencies inside shim: libc and raw syscalls only
+      - Zero workload intrusion
+        - Workload runs uninstrumented: standard POSIX binary, zero guest SDKs
+        - Guest PID 1 is minimal paravirtual micro-init (kelir-shim, <50KB musl)
+        - Shim provides VirtIO channel multiplexing, seccomp trap forward, and zombie reaping
+        - Workload environment variables, libraries, and syscall paths remain untouched
       - In-process microkernel
         - Virtualization runs in host consumer memory via direct C-FFI
-        - Interposition occurs directly at VirtIO device complex using
-          synchronous native gates and asynchronous trap handlers
+        - Core owns four native engine planes: Terminal, Storage, Wire, and Checkpoint
         - Hardware backends: driver-rustvmm, driver-hvf, driver-openvmm, driver-avf
         - Unprivileged fallbacks (driver-bwrap, driver-proot) banned by default
         - Silent driver downgrade is an uncatchable fatal error: E_NOHARDWAREVMM
@@ -22,7 +22,9 @@
         - Native linear capability isolation: zero-WASM, zero-JIT overhead
         - Compile-time ownership tokens enforce plugin memory boundaries
         - Hardware memory protection keys (MPK) isolate in-process heap
-        - Filter-before-FFI boundary stops thrash: see: 02-plugin-model.md#Latency-ceiling
+        - Filter-before-FFI boundary stops thrash: native rules evaluate in <2µs
+        - Foreign async handlers (V8/Python) evaluate out-of-band; synchronous hot-paths
+          execute native Rust interposers or require explicit YieldToHost
         - No dockerd, containerd, background root socket, daemon maintenance
       - Strict hardware/kernel abstraction layer
         - Zero knowledge of prompts, evaluation loops, or orchestration logic
@@ -38,7 +40,7 @@
       - Modular VirtIO interposition microkernel
         - Core controls hypervisor execution and dispatches VirtIO events
         - Core defines zero domain policies, protocols, or agent schemas
-        - Plugins declare direct Cargo dependencies on peer plugin crates
+        - Plugins depend on kelir-interface and resolve peer capabilities via ServiceRegistry
         - Core compiles plugins in registration order against typed traits
         - Cyclic crate dependencies abort compilation with EConfig
         - Plugins communicate through typed peer traits and core abstractions
@@ -73,19 +75,19 @@
       - Contract-bound process on the wire
       - Examples: containerd-shim-v2, MCP stdio
       - Adapter implementations: see: 10-adapters.md#Ingestion-matrix
-      - Translation logic delegated to a plugin the binary loads
+      - Translation logic delegated to domain plugin
     - Plugin
-      - External input mapping, or policy over a core primitive
+      - Optional domain extensions (13 catalog plugins)
       - Declares typed lifecycle and interposer traits: see: 02-plugin-model.md#KelirPlugin-trait
       - Native: systems-grade engine plugin compiled in Rust
       - Foreign: userland policy plugin written in host language
       - Dual-plane execution details: see: 02-plugin-model.md#Dual-plane-execution-architecture
       - Owns crate, tests, fixtures, examples: see: 02-plugin-model.md#Plugin-ownership
     - Boundary decision test
-      - Invariant with no policy? → core primitive
+      - Core plane (Terminal, Storage, Wire, Checkpoint)? → engine primitive
       - Backend driver contract? → interface
       - Wire contract with a process boundary? → adapter binary
-      - Otherwise → plugin
+      - Optional domain policy (DB proxy, MCP, Chaos, Vault)? → plugin
   - Core invariants
     - The closed set of core primitives
     - Interposition is total: every device channel is hooked
@@ -162,6 +164,9 @@
       - Every backend implements every primitive; optional primitives are
         not part of the trait
       - Callers hold `Box<dyn VmmDriver>` only; no backend type is surfaced
+    - Pure OS physics boundary
+      - Driver rollback resets physical RAM and vCPU registers only (<8ms)
+      - Storage diff discard is orchestrated by Session::rollback() in kelir-core
     - SnapshotDescriptor.dirty_bytes
       - Byte count, not page count: page size is 16KB on Apple Silicon ARM64
         and 4KB on Linux/x86

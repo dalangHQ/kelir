@@ -1,7 +1,7 @@
 - Wire plane
   - Wire architecture
     - see: artifacts/diagrams/wire-plane.txt
-    - Owner: kelir-core (virtio-net wire domain pipeline)
+    - Owner: kelir-core native wire subsystem (kelir-core::wire)
     - Hardware abstraction: virtio-net paravirtual L2 TAP network bridge
     - Hook points: on_net_outbound and on_net_inbound
     - Interceptor hooks receive NetContext containing raw Ethernet frames
@@ -23,11 +23,23 @@
     - Ok(Allow) on outbound = forward; Ok(Allow) on inbound = deliver
     - Ok(YieldToHost) = yield frame to host for async policy
     - Err(Reject) = silent drop (no RST, no guest error)
-  - Protocol proxies and credential masking
-    - L4/L7 policy, DNS entropy analysis, and vault proxying: see: plugins/wire.md
-    - Default forward: frames pass unless a mounted plugin returns
-      PluginError::Reject (silent drop)
+  - DNS entropy gate and sinkhole
+    - Intercepts all UDP port 53 traffic crossing TAP interface
+    - Computes Shannon entropy on subdomain query labels for wildcard allowlists
+    - Queries exceeding entropy threshold (default: 4.5) drop with NXDOMAIN
+    - Prevents data exfiltration over DNS label encoding
+  - Paravirtual L7 credential proxy
+    - Real secrets never enter guest physical address space
+    - Guest shell receives placeholder URNs (e.g. vault://stripe_key)
+    - Ephemeral per-session root CA generated at boot and grafted into guest trust store
+    - Guest TLS handshakes terminate at host forward proxy
+    - Proxy validates destination allowlist and swaps placeholder URN with real credential
+    - Upstream TLS handshake originates host-side; response re-encrypted under session CA
+  - Port forwarding
+    - Guest-initiated: forward tunnels over vsock:5252 (Channel 1) on PortBound
+    - Host-initiated: session.wire.forward_port() opens host listener multiplexed to guest
   - Connection parking
     - Parked connections queue in TAP buffers and raw virtqueues
-    - Emits standard LifecycleRequest::Suspend(External) to core state machine
-    - Mechanics (parking): see: plugins/wire-ingress.md
+    - Terminates client TCP handshake host-side; buffers initial request payload (up to 64KB)
+    - Emits LifecycleRequest::Suspend(External) to hypervisor state machine
+    - Resumes VM cycle-exact upon traffic arrival and splices duplex stream across vsock

@@ -18,4 +18,4 @@
                              wakes microVM and splices duplex stream across vsock:5252 (Channel 1).
 
   Database proxying: see plugins/db-proxy.md.
-  L7 proxy and credential signing: see plugins/wire.md.
+  L7 proxy and credential signing: see 06-wire-plane.md.

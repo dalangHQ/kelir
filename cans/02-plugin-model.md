@@ -1,31 +1,26 @@
 - Plugin model
   - Plugin tiering
-    - Tier 1 base ring adapters
-      - plugin-pty: console ring adapter
-      - plugin-vfs: storage ring adapter
-      - plugin-wire: wire ring adapter
-      - plugin-mcp: console channel adapter
+    - Foundation: Terminal, Storage, Wire, and Checkpoint are native engine planes in kelir-core
+    - Tier 1 base transports and channel adapters
+      - plugin-mcp: JSON-RPC MCP console channel adapter
+      - plugin-mesh: vsock IPC sovereign federation peer transport
       - Tier 1 plugins depend strictly on kelir-interface only
-    - Tier 2 security, governance, and protocol proxies
+    - Tier 2 governance and protocol proxies
       - plugin-tool-guard: tool-call governance proxy
-      - plugin-lock-broker: cross-VM lock governance proxy
       - plugin-db-proxy: database protocol proxy
       - plugin-supply-chain: execution governance proxy
       - plugin-wire-ingress: inbound wire proxy
-      - plugin-checkpoint: autonomous state gating and pause proxy
       - plugin-vault: unified secret and placeholder governance proxy
       - plugin-container: rootless OCI container execution proxy
       - plugin-replay: deterministic PMU-stepped clock replay proxy
-      - Tier 2 plugins declare direct Cargo dependencies on Tier 1 plugins
+      - Tier 2 plugins depend on kelir-interface and consume Tier 1 services via ServiceRegistry
     - Tier 3 cross-cutting aggregators
       - plugin-ledger: audit aggregation over Tier 1 and Tier 2 plugins
       - plugin-profile: configuration aggregation over Tier 1 and Tier 2 plugins
       - plugin-chaos: fault aggregation over Tier 1 and Tier 2 plugins
       - plugin-transaction: multi-resource 2PC coordination aggregator
-      - Tier 3 plugins declare direct Cargo dependencies on Tier 1 and Tier 2 plugins
-    - Tier 1-adjacent base transport
-      - plugin-mesh: vsock IPC peer transport
-      - plugin-mesh depends strictly on kelir-interface only
+      - Tier 3 plugins depend on kelir-interface and consume peer services via ServiceRegistry
+    - Dependency invariant: Zero concrete peer imports within the same tier
     - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
     - Code is sole SSOT: declared programmatically via KelirPlugin trait
     - Manifest artifact is strictly auto-generated for zero-compile indexing
@@ -158,15 +153,17 @@
   - Filter-before-FFI gate
     - Unmonitored guest operations bypass host language runtimes entirely
     - Host core checks MountScope in native memory before crossing FFI
-    - Evaluates native compiled schema validators alongside MountScope
+    - Evaluates native compiled schema validators and path/CIDR rules in Rust
+    - Foreign runtimes (V8/Python) do not evaluate synchronous hot-paths inline
     - Zero FFI allocation on non-matching or invalid events
     - FFI trampoline executes only when ring event satisfies scope match
     - Protects guest toolchain execution speed (cargo build, npm install)
-    - TAP dispatcher application: see: 06-wire-plane.md#Raw-packet-interception-points
+    - TAP dispatcher applies MountScope natively before forwarding frames
   - Latency ceiling
     - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs
     - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs
-    - Gate 3: Async FFI hook trampolines dispatch on positive match only in <12µs
+    - Gate 3: Foreign FFI trampolines (V8/Python) dispatch out-of-band in 50-150µs
+    - Sync hot-paths require native filters or SyncVerdict::YieldToHost
     - Latency overhead on guest toolchains (cargo, npm) must remain below 3%
     - Violation of latency budget blocks core and plugin releases in CI
     - This node is the sole numerical home for gate latency budgets
@@ -191,22 +188,20 @@
       - Plugins consume peer services via ctx.get_service::<T>()
   - First-class plugins
     - Catalog tiering
-      - Community plugins (hosted in core repo):
-        - pty, vfs, wire, chaos, ledger, mcp, profile
-        - db-proxy, mesh, lock-broker, supply-chain, wire-ingress
-        - tool-guard, checkpoint, transaction
+      - Community plugins: 13 optional domain extensions in cans/plugins/
+        - mcp, mesh, tool-guard, db-proxy, supply-chain, wire-ingress
+        - vault, container, replay, ledger, profile, chaos, transaction
       - Commercial plugins (SSOT hosted in kelir-cloud):
         - hyper-density: see: kelir-cloud://plugins/hyper-density.md
         - cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md
         - oci-translator: see: kelir-cloud://plugins/oci-translator.md
         - openshell-coordinator: see: kelir-cloud://plugins/openshell-coordinator.md
     - Coverage matrix (community plugins -> demonstrating example)
-      - pty, vfs, wire, chaos, ledger: autonomous-swe-agent.{rs,ts,py}
-      - mesh, lock-broker, supply-chain: multi-vm-swarm.rs
+      - chaos, ledger, vault: autonomous-swe-agent.{rs,ts,py}
+      - mesh, supply-chain, container: multi-vm-swarm.rs
       - db-proxy, transaction: db-backed-runtime.py
       - wire-ingress, mcp: serverless-webhook.ts
-      - tool-guard, checkpoint: autonomous-swe-agent.ts
-      - profile: autonomous-swe-agent.ts
+      - tool-guard, replay, profile: autonomous-swe-agent.ts
     - Coverage invariant
       - Every first-class plugin names one demonstrating example
       - Community examples live in cans/artifacts/examples
@@ -229,20 +224,15 @@
         - Knob-coverage gate: see: 11-operations.md#Coverage-gates
     - Behavior of each: at its plugin file
       - Community plugins
-        - plugin-pty: home: see: plugins/pty.md
-        - plugin-vfs: home: see: plugins/vfs.md
-        - plugin-wire: home: see: plugins/wire.md
         - plugin-chaos: home: see: plugins/chaos.md
         - plugin-ledger: home: see: plugins/ledger.md
         - plugin-db-proxy: home: see: plugins/db-proxy.md
         - plugin-mesh: home: see: plugins/mesh.md
-        - plugin-lock-broker: home: see: plugins/lock-broker.md
         - plugin-supply-chain: home: see: plugins/supply-chain.md
         - plugin-profile: home: see: plugins/profile.md
         - plugin-wire-ingress: home: see: plugins/wire-ingress.md
         - plugin-mcp: home: see: plugins/mcp.md
         - plugin-tool-guard: home: see: plugins/tool-guard.md
-        - plugin-checkpoint: home: see: plugins/checkpoint.md
         - plugin-transaction: home: see: plugins/transaction.md
         - plugin-vault: home: see: plugins/vault.md
         - plugin-container: home: see: plugins/container.md
@@ -255,12 +245,8 @@
       - Pointer rule: plugin files are leaf targets; crate dependencies live in the plugin file
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session extension surface: attached per plane
-      - Filesystem extension: see: plugins/vfs.md
-      - Terminal extension: see: plugins/pty.md
-      - Port-forwarding extension: see: plugins/wire.md#Port-forwarding
       - Ledger extension: see: plugins/ledger.md
       - Causal-delta extension: see: plugins/ledger.md
-      - Checkpoint extension: see: plugins/checkpoint.md
       - Transaction extension: see: plugins/transaction.md
   - Plugin ownership
     - Dependency rules

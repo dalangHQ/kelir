@@ -1,10 +1,9 @@
 - Storage plane
   - Storage architecture
     - see: artifacts/diagrams/storage-architecture.txt
-    - Owner: kelir-core (virtio-fs storage domain pipeline)
+    - Owner: kelir-core native storage subsystem (kelir-core::storage)
     - Low-level FUSE pass-through bridge directly linking guest VFS to host workspace
     - Pipeline engine exposes synchronous lookup, read, and write interception
-    - Hooks receive strongly-typed FsContext; ambient access eliminated
     - Emits physical StorageDelta events directly to host event bus on commit
     - Encapsulation invariant
       - Host workspace is locked to mode 000 on host; only the hypervisor
@@ -20,8 +19,29 @@
     - overlayfs upperdir lives in guest tmpfs
     - All writes stay in-memory until explicit reconcile
     - Instant revert: drop overlayfs upperdir in ~1ms, host SSD untouched
-  - Reconciler integration
-    - Upperdir diff scanning, whiteout unlinking, and atomic swap: see: plugins/vfs.md
+  - Atomic workspace reconciler
+    - Scans tmpfs upperdir diffs; unmodified base files remain untouched
+    - OverlayFS whiteout resolution
+      - Deleted files: char devices with st_rdev == 0 trigger unlink on host target
+      - Deleted or opaque dirs: trusted.overlay.opaque="y" triggers host remove_dir_all
+    - Atomic staging exchange
+      - Writes mutated files to sibling temporary files (.tmp.<nonce>)
+      - Executes atomic exchange or directory swap directly under host root
+      - Strict containment: rejects symlink hops and traversals outside host root
+  - Synthetic FUSE inodes
+    - Injects RAM-only configuration files (.env, .gitconfig) into guest VFS
+    - Lookups return synthetic FsInodeAttr (mode: 0o400 honored strictly)
+    - Served directly from host supervisor memory; physically absent on host SSD
+  - In-flight read masking
+    - Stateful Aho-Corasick automaton carries scan state across read offsets
+    - Fixed-width pattern replacement on-the-fly; zero full-file buffering
+    - Carryover window buffers boundary fragments until pattern match or flush
+  - Host inode lock broker
+    - Cross-VM advisory file lock mediation native to storage plane
+    - Intercepts FUSE SETLK and SETLKW requests on declared repository paths
+    - Maps virtual guest inode to physical host inode via virtio-fs mount
+    - Delegates acquisition directly to host OS advisory locks (flock)
+    - Conflicting lock returns EWOULDBLOCK without host thread latency
   - Secondary image mounts
     - Grafts host-opened squashfs/EROFS images into guest VFS namespace
     - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE
@@ -38,5 +58,3 @@
     - Err(PluginError::Halt) = deny + halt pipeline
   - Virtual ID remapping
     - FUSE driver dynamically maps guest UID 0/1000 to caller process UID
-  - Read inspection and content masking
-    - Dynamic content synthesis and streaming read replacement: see: plugins/vfs.md

@@ -10,7 +10,7 @@ SAME KNOB SET as knob-matrix.rs and knob-matrix.ts. Each knob below
 is set to a NON-DEFAULT value; the comment on each line names the
 default it departs from:
 
-  VFS (plugins/vfs.md):
+  STORAGE (05-storage-plane.md):
     encapsulation    Passthrough     (default Locked)
     scan_engine      FastRegex       (default StreamingAutomata)
     carryover_bytes  1024            (default 512)
@@ -38,7 +38,7 @@ GAPS (flagged, not silently invented):
     TelemetryExtensions instead, so this example no longer sets it.
     entropy_bypass_paths was likewise removed from VmConfig
     (entropy analysis moved to plugin-supply-chain).
-  - VFS/PTY knob spellings in Python: plugins/vfs.md attests the
+  - Storage/Terminal knob spellings in Python: 05-storage-plane.md attests the
     field names (encapsulation, scan_engine, carryover_bytes); the
     Python string forms follow the tap_filter precedent, and
     carryover_buffer_bytes follows the vfs carryover_bytes name in
@@ -55,8 +55,6 @@ import platform
 
 import kelir
 from kelir.plugins.ledger import LedgerConfig, LedgerPlugin, ReceiptConfig
-from kelir.plugins.pty import PtyPlugin
-from kelir.plugins.vfs import VfsPlugin
 
 
 async def main() -> None:
@@ -82,20 +80,20 @@ async def main() -> None:
         # VFS — Passthrough, NOT the Locked default, so the guest
         # workspace is not locked to mode 000; FastRegex, NOT the
         # StreamingAutomata default; 1024-byte carryover, NOT 512.
-        .plugin(VfsPlugin(
+        .storage(
             encapsulation="Passthrough",
             scan_engine="FastRegex",
             carryover_bytes=1024,
             lock_broker=False,
-        ))
+        )
         # PTY — 1024-byte carryover buffer, NOT the 512 default.
-        .plugin(PtyPlugin(
+        .terminal(
             cols=120,
             rows=40,
             drop_osc52=True,
             strip_title=True,
             carryover_buffer_bytes=1024,
-        ))
+        )
         # LEDGER — receipts include syscall counts.
         .plugin(LedgerPlugin(LedgerConfig(
             store="sqlite://.kelir/audit.merkle.db",

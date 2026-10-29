@@ -317,7 +317,8 @@ pub trait SystemTelemetryParticipant {
 pub trait FsInterposer {
     fn on_fs_lookup(&self, _path: &Path) -> Result<Option<FsInodeAttr>, PluginError> { Ok(None) }
     fn on_fs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
-    /// Synchronous hot-path inspection. Returns Ok(Allow) or Ok(YieldToHost) before write applies.
+    /// Synchronous hot-path inspection. Must be evaluated in native Rust.
+    /// Foreign language runtimes must yield frame via SyncVerdict::YieldToHost to avoid event-loop deadlock.
     fn on_fs_write(
         &self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx,
     ) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }

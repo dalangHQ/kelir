@@ -27,7 +27,8 @@
     - Bayang: shadow cast by the puppet onto the screen, observed by the audience
   - What it is
     - Embeddable in-process microVM hypervisor microkernel
-    - Mediates guest interaction through the VirtIO Device Complex
+    - Four integrated engine planes: terminal, storage, wire, checkpoint
+    - Mediates guest interaction through paravirtual VirtIO Device Complex
     - Cold-boot budget: see: 01-architecture.md#Boot-budget
     - Definition details: see: 01-architecture.md#Axiomatic-foundations
   - What it is not
@@ -43,14 +44,14 @@
     - Terminal hacks: tmux send-keys, regex screen scraping
     - Storage hacks: host-boundary write mutations and whiteout corruption
     - Virtualization hacks: fragmented platform-specific VM scripts
-    - Agent trust hacks: polling self-reported harness JSON
-    - Terminal details: see: plugins/pty.md#Prompt-responder
-    - Storage details: see: plugins/vfs.md#Reconciler
+    - Agent trust hacks: polling unverified guest JSON harnesses
+    - Terminal details: see: 04-terminal-plane.md
+    - Storage details: see: 05-storage-plane.md
     - Trust details: see: 08-epistemic.md
   - Use cases
     - Parallel agent exploration: see: 07-lifecycle.md#CoW-fork
     - Human approval waits at zero CPU: see: 07-lifecycle.md#Suspend-and-resume
-    - Autonomous step gating & idle pause: see: plugins/checkpoint.md
+    - Autonomous step gating & idle pause: see: 07-lifecycle.md
     - Multi-resource atomic commit (2PC): see: plugins/transaction.md
     - Time-sensitive tests (JWT, cron, certs): see: 07-lifecycle.md#Clock-skew
     - Deterministic execution replay
@@ -69,12 +70,12 @@
     - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends
   - Spec map
     - Foundation: see: 01-architecture.md
-    - Plugin model & catalog: see: 02-plugin-model.md#First-class-plugins
+    - Plugin model & catalog (13 optional domain plugins): see: 02-plugin-model.md
     - SDK architecture: see: 03-sdk-architecture.md (parity)
-    - Terminal plane: see: 04-terminal-plane.md (virtio-console)
-    - Storage plane: see: 05-storage-plane.md (virtio-fs)
-    - Wire plane: see: 06-wire-plane.md (virtio-net)
-    - Lifecycle: see: 07-lifecycle.md (suspend/resume)
+    - Terminal plane: see: 04-terminal-plane.md (engine native)
+    - Storage plane: see: 05-storage-plane.md (engine native)
+    - Wire plane: see: 06-wire-plane.md (engine native)
+    - Lifecycle: see: 07-lifecycle.md (checkpoint engine)
     - Verification and hardware telemetry (08-epistemic): see: 08-epistemic.md
     - Protocol: see: 09-protocol.md (wire messages)
     - Ecosystem and ops

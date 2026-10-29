@@ -17,7 +17,7 @@ kelir/
 │   ├── kelir/                         # Facade crate: single Cargo dependency re-exporting kelir-core + feature-gated kelir-plugins/*
 │   │   ├── Cargo.toml
 │   │   ├── src/
-│   │   │   └── lib.rs                 # Re-export surface: kelir-core API + feature-gated plugin modules (pty, vfs, wire, chaos, ledger)
+│   │   │   └── lib.rs                 # Re-export surface: kelir-core API (4 native planes) + optional feature-gated plugins
 │   │
 │   ├── kelir-interface/               # Centralized leaf traits, wire framing, and context types (zero engine dependencies)
 │   │   ├── Cargo.toml                 # Dependencies: serde, ciborium, thiserror only
@@ -33,12 +33,12 @@ kelir/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs                 # Core initialization exports
-│   │       ├── bus/                   # VirtIO Device Complex Multiplexer
-│   │       │   ├── mod.rs             # BusDispatcher trait
-│   │       │   ├── console.rs         # Ring 1: Raw terminal stream broker
-│   │       │   ├── vsock.rs           # Ring 2: Syscall trap & IPC multiplexer
-│   │       │   ├── fs.rs              # Ring 3: virtio-fs in-memory bridge
-│   │       │   └── net.rs             # Ring 4: virtio-net frame interception
+│   │       ├── planes/                # Core Foundation Planes (Merged Engine Subsystems)
+│   │       │   ├── terminal/          # Terminal Plane: virtio-console, VT100 grid, ANSI sanitizer, PTY discipline
+│   │       │   ├── storage/           # Storage Plane: virtio-fs, reconciler, whiteouts, synthetic inodes, flock broker
+│   │       │   ├── wire/              # Wire Plane: virtio-net, L2 TAP bridge, DNS sinkhole, connection parking
+│   │       │   └── checkpoint/        # Checkpoint Plane: Step verification loop, CoW diffs, hardware rollback
+│   │       ├── bus/                   # VirtIO Device Multiplexer (vsock, console, fs, net)
 │   │       ├── dispatch.rs            # Static dispatch array & ArcSwap pipeline runner
 │   │       ├── vmm/                   # Driver orchestration
 │   │       │   ├── mod.rs
@@ -55,16 +55,14 @@ kelir/
 │   │       ├── fixtures.rs            # Synthetic PTY streams, overlay upperdirs, synthetic configs
 │   │       └── assertions.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
 │   │
-│   ├── kelir-shim/                    # Guest musl PID 1 (<50KB), zero external serialization or runtime crates
+│   ├── kelir-shim/                    # Guest Paravirtual Micro-Init (<50KB musl PID 1)
 │   │   ├── Cargo.toml                 # Zero third-party crates: libc only, lto = "fat", panic = "abort"
 │   │   ├── src/
 │   │   │   ├── codec.rs               # Raw slice bit-shift frame codec (zero serde/ciborium)
-│   │   │   ├── main.rs                # Guest helper entrypoint
-│   │   │   ├── ingress.rs             # vsock:5252 (Channel 1) stream forwarder
-│   │   │   ├── pty_broker.rs          # openpty() master/slave broker: setsid() + TIOCSCTTY controlling terminals
-│   │   │   ├── trap.rs                # seccomp-unotify loop + cgroup.freeze + process_vm_readv anti-TOCTOU
-│   │   │   ├── audit.rs               # ELF static scan (DT_NEEDED, PT_INTERP) + LD_PRELOAD verification
-│   │   │   └── vsock.rs               # /dev/vhost-vsock hardware client socket
+│   │   │   ├── main.rs                # Guest PID 1 reaper & loop
+│   │   │   ├── multiplexer.rs         # Raw VirtIO channel multiplexer (vsock:5252 & virtio-ports)
+│   │   │   ├── pty.rs                 # openpty() line discipline broker for console ring
+│   │   │   └── trap.rs                # seccomp-unotify trap forwarder
 │   │   └── tests/
 │   │       ├── test_anti_toctou.rs    # Concurrent thread execution race
 │   │       └── test_reaper.rs         # Zombie reclamation under load
@@ -84,58 +82,7 @@ kelir/
 │   │       ├── Cargo.toml
 │   │       └── src/lib.rs             # Bubblewrap/user-namespace driver implementation
 │   │
-│   ├── kelir-plugins/                 # Modular First-Class Rust Plugins
-│   │   # ── Every plugin-* has: src/, tests/, fixtures/, examples/, README.md ──
-│   │   # ── Crate dependency rules ──
-│   │   # ── Tier 1 plugins depend only on kelir-interface ──
-│   │   # ── Tier 2 plugins depend on Tier 1 plugins ──
-│   │   # ── Tier 3 plugins depend on Tier 1 and Tier 2 plugins ──
-│   │   # ── Every plugin also dev-depends on kelir-plugin-testkit ──
-│   │   ├── plugin-pty/                # virtio-console broker, ANSI sanitizer, Token Shield
-│   │   │   ├── Cargo.toml
-│   │   │   ├── src/
-│   │   │   │   ├── lib.rs
-│   │   │   │   ├── ansi.rs            # Drop OSC 52 clipboard & OSC 0/1/2 title sequences
-│   │   │   │   ├── responder.rs       # onPrompt engine matching ANSI-stripped plaintext (foreground-verified)
-│   │   │   │   ├── shield.rs          # UTF-8/ANSI boundary-safe head-and-tail token clamping
-│   │   │   │   └── grid.rs            # Headless VT100 parser grid for wireframe receipts
-│   │   │   ├── tests/
-│   │   │   │   ├── test_ansi_sanitizer.rs
-│   │   │   │   ├── test_prompt_responder.rs
-│   │   │   │   ├── test_disclosure.rs # on_disclosure: annotations append, body immutable
-│   │   │   │   └── test_token_shield.rs
-│   │   │   └── examples/pty-only.rs
-│   │   ├── plugin-vfs/                # virtio-fs engine, Synthetic FUSE inodes, sliding-window read replacement
-│   │   │   ├── Cargo.toml
-│   │   │   ├── src/
-│   │   │   │   ├── lib.rs
-│   │   │   │   ├── mask.rs            # Sliding-window read replacement (MaskRule regex redaction, fixed-width)
-│   │   │   │   ├── ghost.rs           # Synthetic RAM-only inode injector (FsInodeAttr: mode/uid/gid/size)
-│   │   │   │   ├── reconciler.rs      # Atomic workspace staging reconciler (.kelir-staging-<nonce> -> atomic renameat2)
-│   │   │   │   ├── idmap.rs           # FUSE dynamic UID/GID translation (0 -> geteuid())
-│   │   │   │   └── lock_broker.rs     # Cross-VM lock broker keyed on host-mapped physical inodes
-│   │   │   ├── tests/
-│   │   │   │   ├── test_whiteout.rs   # File + dir whiteouts → host unlink/remove_dir_all
-│   │   │   │   ├── test_mask.rs
-│   │   │   │   ├── test_ghost.rs
-│   │   │   │   ├── test_idmap.rs
-│   │   │   │   ├── test_lock_broker.rs
-│   │   │   │   └── test_write_gating.rs# on_fs_write: Ok(Allow) allows, Reject denies with errno
-│   │   │   └── fixtures/overlay/      # Synthetic upperdirs
-│   │   ├── plugin-wire/               # Zero-Knowledge credential proxy & DNS Sinkhole
-│   │   │   ├── Cargo.toml
-│   │   │   ├── src/
-│   │   │   │   ├── lib.rs
-│   │   │   │   ├── l7_proxy.rs        # Plaintext swap prior to outbound TLS handshake
-│   │   │   │   ├── l4_socks.rs        # Database connection proxy (mTLS & dynamic auth)
-│   │   │   │   ├── ssh_gate.rs        # Secure Enclave host SSH-Agent forwarder
-│   │   │   │   ├── dns.rs             # Port 53 UDP interception & NXDOMAIN sinkhole
-│   │   │   │   └── port_forward.rs    # extension forward_port()
-│   │   │   └── tests/
-│   │   │       ├── test_l7_proxy.rs
-│   │   │       ├── test_l4_socks.rs
-│   │   │       ├── test_dns_sinkhole.rs
-│   │   │       └── test_port_forward.rs
+│   ├── kelir-plugins/                 # 13 Optional Domain Extensions (Zero Core Dependency Bleed)
 │   │   ├── plugin-chaos/              # Fault Injection Engine
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # Network jitter/drop & VFS ENOSPC simulation
@@ -164,10 +111,6 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # Cross-hypervisor traceparent & hop-count propagation
 │   │   │   └── tests/test_mesh.rs
-│   │   ├── plugin-lock-broker/        # Cross-VM FUSE flock/fcntl mapped to host physical file locks
-│   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # Direct delegation to host OS advisory locks (flock)
-│   │   │   └── tests/test_lock_broker.rs
 │   │   ├── plugin-supply-chain/       # Package guard: blocks dynamic lifecycle scripts in package manager trees
 │   │   │   ├── Cargo.toml
 │   │   │   │   ├── src/lib.rs             # Trap hook rejecting postinstall/setup.py via ancestor chain
@@ -235,9 +178,6 @@ kelir/
 │   │   │       └── binding.ts         # Auto-generated NAPI loader
 │   │   ├── plugins/                   # @kelir/plugin-*
 │   │   │   ├── wire-ingress/          # TS bindings for connection parking
-│   │   │   ├── pty/                   # TS bindings for virtio-console
-│   │   │   ├── vfs/                   # TS bindings for virtio-fs
-│   │   │   ├── wire/                  # TS bindings for credential vaulting
 │   │   │   ├── chaos/                 # TS bindings for fault injection
 │   │   │   └── ledger/                # TS bindings for Merkle WAL audit ledger
 │   │   ├── presets/                   # @kelir/presets (Pre-configured agent setups)
@@ -253,9 +193,6 @@ kelir/
 │           ├── context.py             # Type-hinted context chain
 │           ├── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
 │           │   ├── wire_ingress.py    # Python bindings for connection parking
-│           │   ├── pty.py             # Python bindings for the pty plugin
-│           │   ├── vfs.py             # Python bindings for the vfs plugin
-│           │   ├── wire.py            # Python bindings for the wire plugin
 │           │   ├── chaos.py           # Python bindings for the chaos plugin
 │           │   └── ledger.py          # Python bindings for the ledger plugin
 │           └── compat/
@@ -266,7 +203,7 @@ kelir/
 │   │   ├── kernel/                    # Per-arch vmlinux binaries (arm64 16K, x86_64 4K) — selected dynamically at boot
 │   │   ├── rootfs/                    # Build scripts generating minimal EROFS base images
 │   │   │   └── build-erofs.sh
-│   │   └── payloads/                  # Binaries with Shannon entropy >5.2 (shared: plugin-pty + core trap tests)
+│   │   └── payloads/                  # Binaries with Shannon entropy >5.2 (shared: core trap tests)
 │   └── e2e/
 │       ├── test_claude_code.ts        # End-to-end Claude Code session under PTY controls
 │       └── test_openrig_driver.ts     # Verifies swarm execution replacing OpenRig tmux

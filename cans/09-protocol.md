@@ -3,16 +3,20 @@
     - virtio-vsock port 5252: unified multiplexed transport
     - Binary framing isolates sub-protocols via channel_id
       - Channel 0: Core hypervisor lifecycle and trap control
-      - Channel 1: Dynamic L4 stream forwarding
+      - Channel 1: Dynamic L4 stream forwarding (native wire plane)
       - Channels 2-65535: Dynamically registered extension endpoints
-      - Channel kinds map via explicit registration: see: #Channel-registration
-    - Eliminates multi-port socket allocation and port collisions
+    - Guest paravirtual micro-init boundary (kelir-shim)
+      - Shim runs strictly as uninstrumented musl PID 1 (<50KB binary)
+      - Implements zombie process reaping via waitpid(-1, WNOHANG)
+      - Multiplexes raw VirtIO ring bytes; carries zero database, proxy, or domain logic
+      - Domain Unix sockets are provisioned dynamically over vsock, never hardcoded in PID 1
   - Trap fast-path
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
     - Three-tier gate pipeline
       - Gate 1: guest in-kernel BPF allowlist returns for harmless tools
-      - Gate 2: native MountScope/schema eval (0 FFI)
-      - Gate 3: trap handler dispatch through FFI trampoline on match only
+      - Gate 2: native MountScope/schema eval in host RAM (<2µs, 0 FFI)
+      - Gate 3: trap handler dispatch through foreign FFI trampoline (50-150µs)
+      - Synchronous write/packet filters evaluate native Rust rules; foreign callbacks yield
       - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
       - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
       - A single trap-on-every-syscall design adds ~µs per fork/exec at
