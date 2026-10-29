@@ -238,13 +238,13 @@ def build_runtime() -> KelirBuilder:
     builder.register_vsock_service(2, {"type": "object", "properties": {}}, echo)
 
     # Trap rows, in dispatch order. Each pattern hits exactly one row.
-    builder.trap("policy-allow", pre=row_allow)
-    builder.trap("policy-deny", pre=row_deny)
-    builder.trap("policy-rewrite", pre=row_rewrite)
-    builder.trap("policy-abort", pre=row_abort)
-    builder.trap("policy-yield", pre=row_yield)
-    builder.trap("policy-approval", pre=row_approval)
-    builder.trap("policy-custom", pre=row_custom)
+    builder.trap(TrapFilter.binary("policy-allow"), pre=row_allow)
+    builder.trap(TrapFilter.binary("policy-deny"), pre=row_deny)
+    builder.trap(TrapFilter.binary("policy-rewrite"), pre=row_rewrite)
+    builder.trap(TrapFilter.binary("policy-abort"), pre=row_abort)
+    builder.trap(TrapFilter.binary("policy-yield"), pre=row_yield)
+    builder.trap(TrapFilter.binary("policy-approval"), pre=row_approval)
+    builder.trap(TrapFilter.binary("policy-custom"), pre=row_custom)
 
     return builder
 

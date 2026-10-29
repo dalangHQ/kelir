@@ -102,7 +102,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
 
-    builder.trap("migrate *", pre=pre_migrate, post=post_migrate)
+    builder.trap(TrapFilter.binary("migrate"), pre=pre_migrate, post=post_migrate)
 
     # ── TWO-PHASE COMMIT (§07-lifecycle.md#Two-phase-commit) ──────────
     # LifecycleParticipant commit hooks, registered the same decorator
@@ -115,7 +115,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         # snapshot is staged. A crash between export and ledger finalize
         # must not leave host DB state ahead of guest state — the exact
         # desynchronization the commit protocol exists to prevent.
-        await session.ledger.flush()
+        await session.ext(LedgerExtension).flush()
 
     @builder.on_post_commit
     async def _post_commit(session: Session, committed: bool) -> None:
@@ -163,9 +163,10 @@ async def main() -> None:
         with open(LOCAL_SNAPSHOT, "wb") as f:
             f.write(out)
 
-        final = await session.ledger.finalize(
+        ledger = session.ext(LedgerExtension)
+        final = await ledger.finalize(
             include_merkle_root=True,
-            include_delta=await session.get_causal_delta_from_parent(),
+            include_delta=await ledger.get_causal_delta_from_parent(),
         )
         print(f"[kelir] merkle={final.merkle_root} jws={final.signed_jws[:64]}…")
 

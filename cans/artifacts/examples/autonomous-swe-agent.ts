@@ -198,14 +198,14 @@ const runtime = kelir({
       return PostExecAction.Proceed;
     },
   })
-  .trap("npm test -- --runInBand", async (c) => {
+  .trap(TrapFilter.binary("npm").withArg("test").withArg("--").withArg("--runInBand"), async (c) => {
     await c.fs.warmCache(["node_modules", ".next/cache"]);
     // Env injection via Rewrite, not env.set + resume (09 Env-injection:
     // env.set + resume returns EINVALIDDECISION). Same binary/argv.
     return c.rewrite({ binary: c.trap.binary_path, argv: c.trap.argv,
                        env: { OTEL_TRACE_ID: oracle.currentTraceId(), CI: "1" } });
   })
-  .trap("git push *", async (c) => {
+  .trap(TrapFilter.binary("git").withArg("push"), async (c) => {
     // Merged repo-policy push gate + runtime push gate.
     if (c.policy.isProtected()) {
       c.store.violations += 1;
@@ -221,7 +221,7 @@ const runtime = kelir({
       env:  { KELIR_REWRITTEN: "1" },
     });
   })
-  .trap("git commit *", {
+  .trap(TrapFilter.binary("git").withArg("commit"), {
     pre: async (c) =>
       c.policy.violations > 0
         ? c.deny(1, `EPOLICY: ${c.policy.violations} prior violation(s).`)
@@ -249,11 +249,11 @@ const runtime = kelir({
   // ── LIFECYCLE: vm:init receives the driver; the rest receive `session`
   //    typed against the full accumulated context. No handler references
   //    a pre-boot variable. ────
-  .on("vm:init",     async (driver) => driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
-  .on("vm:ready",    async (s) => { await s.execInGuest("npm", ["ci", "--prefer-offline"]); })
-  .on("vm:shutdown", async (s) => { await s.ledger.flush(); })
-  .on("trap:deny",   async (e, s) => {
-    if (await s.ledger.countDenials(e.ppid) > 5) {
+  .on(LifecycleEvent.VmInit,     async (driver) => driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
+  .on(LifecycleEvent.VmReady,    async (s) => { await s.execInGuest("npm", ["ci", "--prefer-offline"]); })
+  .on(LifecycleEvent.VmShutdown, async (s) => { await s.use(ledgerExtension).flush(); })
+  .on(LifecycleEvent.TrapDeny,   async (e, s) => {
+    if (await s.use(ledgerExtension).countDenials(e.ppid) > 5) {
       await s.vm.suspend("./.kelir/quarantine.snap");
       await s.breakGlass();
     }
@@ -261,7 +261,8 @@ const runtime = kelir({
 
 // ============================================================================
 // BOOT — the chain terminates here. Everything after uses `session`, which
-// re-exposes the SAME typed surface (s.vm, s.fs, s.ledger, s.policy, s.step…).
+// re-exposes the SAME typed surface (s.vm, s.policy, s.step…);
+// domain APIs arrive via session.use(extension).
 // ============================================================================
 
 async function main() {
@@ -312,7 +313,7 @@ async function main() {
       ["commit", "-am", `fix(stripe): dedupe webhook body reads (${winner.id})`],
       { cwd: "/workspace/checkout-service" });
 
-    const final = await session.ledger.finalize({ includeDelta: winningDelta!, includeMerkleRoot: true });
+    const final = await session.use(ledgerExtension).finalize({ includeDelta: winningDelta!, includeMerkleRoot: true });
     console.log("[kelir] merkle root:", final.merkleRoot);
     console.log("[kelir] signed JWS: ", final.signedJws.slice(0, 80) + "…");
   } finally {

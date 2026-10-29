@@ -126,38 +126,38 @@ const runtime = kelir({
     async (request) => request)
 
   // Row 1: Allow.
-  .trap("policy-allow", async (c) => c.resume())
+  .trap(TrapFilter.binary("policy-allow"), async (c) => c.resume())
   // Row 2: Deny.
-  .trap("policy-deny", async (c) =>
+  .trap(TrapFilter.binary("policy-deny"), async (c) =>
     c.deny(1, "EPOLICY: policy-matrix denies this binary."))
   // Row 3: Rewrite — env ONLY through the rewrite payload.
-  .trap("policy-rewrite", async (c) =>
+  .trap(TrapFilter.binary("policy-rewrite"), async (c) =>
     c.rewrite({ binary: "/bin/policy-allow",
                 argv: ["policy-allow", "--rewritten"],
                 env: { KELIR_POLICY_REWRITE: "1" } }))
   // Row 4: Abort, pre-exec.
-  .trap("policy-abort", async (c) =>
+  .trap(TrapFilter.binary("policy-abort"), async (c) =>
     c.abort(1, "EPOLICY: abort row"))
   // Row 5: Yield — checkpoint first, then freeze to the host.
-  .trap("policy-yield", async (c) => {
+  .trap(TrapFilter.binary("policy-yield"), async (c) => {
     await c.vm.checkpoint("policy-yield");
     return c.yield("policy-yield");
   })
   // Row 6: Hold — host holds 500 ms pending approval.
-  .trap("policy-approval", async (c) => c.hold(500))
+  .trap(TrapFilter.binary("policy-approval"), async (c) => c.hold(500))
   // Row 7: Custom — dispatched by name to the handler above.
-  .trap("policy-custom", async (c) =>
+  .trap(TrapFilter.binary("policy-custom"), async (c) =>
     c.custom("quarantine", { pid: c.trap.pid,
                              reason: "policy-matrix quarantine row" }))
 
   // Vetoes (row 8): registered at vm:init, mirroring
   // LifecycleCtx.register_veto. Both allow only once vm:ready has set
   // the ready flag; before that Suspend / ClockSkew abort (07).
-  .on("vm:init", async (lifecycle) => {
+  .on(LifecycleEvent.VmInit, async (lifecycle) => {
     lifecycle.registerVeto("suspend", () => policyState.ready);
     lifecycle.registerVeto("clock-skew", () => policyState.ready);
   })
-  .on("vm:ready", async () => { policyState.ready = true; });
+  .on(LifecycleEvent.VmReady, async () => { policyState.ready = true; });
 
 // ============================================================================
 // BOOT — drive every row in chain order

@@ -432,7 +432,7 @@ async fn build_runtime(
         }))
 
         // Warm caches + stamp traceparent for hermetic test
-        .trap("npm test -- --runInBand", handler(|c: HandlerCtx| async move {
+        .trap(TrapFilter::binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), handler(|c: HandlerCtx| async move {
             c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
             // Env injection via Rewrite, not env.set + Resume (09: EINVALIDDECISION).
             Ok(Decision::rewrite(
@@ -444,7 +444,7 @@ async fn build_runtime(
         }))
 
         // `--force` strip
-        .trap("git push *", handler(|c: HandlerCtx| async move {
+        .trap(TrapFilter::binary("git").with_arg("push"), handler(|c: HandlerCtx| async move {
             if c.trap.argv.iter().any(|a| a == "--force") {
                 let argv = c.trap.argv.iter()
                     .filter(|a| *a != "--force").cloned().collect();
@@ -502,7 +502,7 @@ async fn build_runtime(
         }))
 
         // Commit gate — refuses if the policy plugin logged anything
-        .trap("git commit -m *", handler({
+        .trap(TrapFilter::binary("git").with_arg("commit").with_arg("-m"), handler({
             let policy = policy_for_commit.clone();
             move |_c: HandlerCtx| {
                 let policy = policy.clone();
@@ -519,7 +519,7 @@ async fn build_runtime(
         }))
 
         // Tier-1 sanity: a commit must have dirtied at least one byte
-        .trap("git commit *", handler(|c: HandlerCtx| async move {
+        .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: HandlerCtx| async move {
             let receipt = c.receipt().await?;
             // dirty_bytes is always populated; zero is a real measurement
             if receipt.dirty_bytes == 0 {
@@ -551,10 +551,10 @@ async fn build_runtime(
             session.exec_in_guest("npm", &["ci", "--prefer-offline"]).await
         })
         .on_vm_shutdown(|session: &Session| async move {
-            session.ledger.flush().await
+            session.extension::<LedgerExtension>()?.flush().await
         })
         .on_trap_deny(|event, session: &Session| async move {
-            if session.ledger.count_denials(event.ppid).await? > 5 {
+            if session.extension::<LedgerExtension>()?.count_denials(event.ppid).await? > 5 {
                 session.vm.suspend("./.kelir/quarantine.snap").await?;
                 session.break_glass().await?;
             }
@@ -671,7 +671,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         // ── Phase 5: signed Merkle receipt (§12.3) ─────────────────────
         let receipt: FinalReceipt = session
-            .ledger
+            .extension::<LedgerExtension>()?
             .finalize(FinalizeRequest {
                 include_delta: winning_delta.clone(),
                 include_merkle_root: true,

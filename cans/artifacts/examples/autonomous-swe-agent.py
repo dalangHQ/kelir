@@ -514,10 +514,10 @@ async def build_runtime(
     # Decision, post gates return a PostExecAction.
     # Universal atomic step loop: checkpoint → oracle → resume
     builder.trap("*", pre=make_universal_step(oracle), post=make_verify_receipt(oracle))
-    builder.trap("npm test -- --runInBand", pre=make_warm_caches(oracle))
-    builder.trap("git push *", pre=make_force_strip())
-    builder.trap("git commit -m *", pre=make_commit_gate(policy))
-    builder.trap("git commit *", post=make_zero_byte_check())
+    builder.trap(TrapFilter.binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), pre=make_warm_caches(oracle))
+    builder.trap(TrapFilter.binary("git").with_arg("push"), pre=make_force_strip())
+    builder.trap(TrapFilter.binary("git").with_arg("commit").with_arg("-m"), pre=make_commit_gate(policy))
+    builder.trap(TrapFilter.binary("git").with_arg("commit"), post=make_zero_byte_check())
 
     # ── LIFECYCLE HOOKS (§11.4, §12) — every handler receives `session` ─
     @builder.on_vm_init
@@ -530,11 +530,11 @@ async def build_runtime(
 
     @builder.on_vm_shutdown
     async def _shutdown(session: Session) -> None:
-        await session.ledger.flush()
+        await session.ext(LedgerExtension).flush()
 
     @builder.on_trap_deny
     async def _deny(event: TrapEvent, session: Session) -> None:
-        if await session.ledger.count_denials(event.ppid) > 5:
+        if await session.ext(LedgerExtension).count_denials(event.ppid) > 5:
             await session.vm.suspend("./.kelir/quarantine.snap")
             await session.break_glass()
 
@@ -641,7 +641,7 @@ async def main() -> None:
         )
 
         # ── Phase 5: signed Merkle receipt (§12.3) ────────────────────
-        final = await session.ledger.finalize(
+        final = await session.ext(LedgerExtension).finalize(
             include_delta=winning_delta,
             include_merkle_root=True,
         )
