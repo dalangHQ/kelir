@@ -98,6 +98,7 @@
     - Flash preservation: guest tmpfs writes stay in RAM; zero random SD card writes
     - External suspension
       - Triggered by SuspendReason::External(u32) awaiting out-of-band release
+      - Managed via plugin-checkpoint: see: plugins/checkpoint.md
       - Resume executes cycle-exact upon external release signal
   - Portable snapshot bundles
     - Content-addressed snapshot sync
@@ -150,6 +151,7 @@
     - Platform coverage: TBD
   - Two-phase commit
     - MicroVM and host database state synchronization protocol
+    - Coordinated via plugin-transaction: see: plugins/transaction.md
     - on_pre_commit pauses vCPUs and flushes in-flight VFS write buffers
     - Staging subtree prepared atomically in host workspace
     - on_post_commit(true) executes atomic directory swap into workspace

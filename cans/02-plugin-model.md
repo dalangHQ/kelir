@@ -12,11 +12,13 @@
       - plugin-db-proxy: database protocol proxy
       - plugin-supply-chain: execution governance proxy
       - plugin-wire-ingress: inbound wire proxy
+      - plugin-checkpoint: autonomous state gating and pause proxy
       - Tier 2 plugins declare direct Cargo dependencies on Tier 1 plugins
     - Tier 3 cross-cutting aggregators
       - plugin-ledger: audit aggregation over Tier 1 and Tier 2 plugins
       - plugin-profile: configuration aggregation over Tier 1 and Tier 2 plugins
       - plugin-chaos: fault aggregation over Tier 1 and Tier 2 plugins
+      - plugin-transaction: multi-resource 2PC coordination aggregator
       - Tier 3 plugins declare direct Cargo dependencies on Tier 1 and Tier 2 plugins
     - Tier 1-adjacent base transport
       - plugin-mesh: vsock IPC peer transport
@@ -189,7 +191,7 @@
     - Catalog tiering
       - Community plugins (hosted in core repo):
         - pty, vfs, wire, chaos, ledger, mcp, profile
-        - db-proxy, mesh, lock-broker, supply-chain, wire-ingress, tool-guard
+        - db-proxy, mesh, lock-broker, supply-chain, wire-ingress, tool-guard, checkpoint, transaction
       - Commercial plugins (SSOT hosted in kelir-cloud):
         - hyper-density: see: kelir-cloud://plugins/hyper-density.md
         - cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md
@@ -198,9 +200,9 @@
     - Coverage matrix (community plugins -> demonstrating example)
       - pty, vfs, wire, chaos, ledger: autonomous-swe-agent.{rs,ts,py}
       - mesh, lock-broker, supply-chain: multi-vm-swarm.rs
-      - db-proxy: db-backed-runtime.py
+      - db-proxy, transaction: db-backed-runtime.py
       - wire-ingress, mcp: serverless-webhook.ts
-      - tool-guard: autonomous-swe-agent.ts
+      - tool-guard, checkpoint: autonomous-swe-agent.ts
       - profile: autonomous-swe-agent.ts
     - Coverage invariant
       - Every first-class plugin names one demonstrating example
@@ -247,6 +249,8 @@
       - plugin-wire-ingress: home: see: plugins/wire-ingress.md
       - plugin-mcp: home: see: plugins/mcp.md
       - plugin-tool-guard: home: see: plugins/tool-guard.md
+      - plugin-checkpoint: home: see: plugins/checkpoint.md
+      - plugin-transaction: home: see: plugins/transaction.md
       - plugin-oci-translator: home: see: kelir-cloud://plugins/oci-translator.md
       - plugin-openshell-coordinator: home: see: kelir-cloud://plugins/openshell-coordinator.md
       - Pointer rule: plugin files are leaf targets; crate dependencies live in the plugin file
@@ -257,6 +261,8 @@
       - Port-forwarding extension: see: plugins/wire.md#Port-forwarding
       - Ledger extension: see: plugins/ledger.md
       - Causal-delta extension: see: plugins/ledger.md
+      - Checkpoint extension: see: plugins/checkpoint.md
+      - Transaction extension: see: plugins/transaction.md
   - Plugin ownership
     - Dependency rules
       - Tier dependency rules: see: #Plugin-tiering

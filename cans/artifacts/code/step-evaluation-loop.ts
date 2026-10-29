@@ -10,6 +10,7 @@
 import { kelir } from "@kelir/core";
 import { vfs } from "@kelir/plugin-vfs";
 import { pty } from "@kelir/plugin-pty";
+import { checkpoint } from "@kelir/plugin-checkpoint";
 
 const orchestrator = new VerificationEvaluator();
 let activeCheckpoint: SnapshotDescriptor | null = null;
@@ -17,6 +18,7 @@ let activeCheckpoint: SnapshotDescriptor | null = null;
 const session = await kelir({ vcpus: 2, memoryMb: 2048 })
   .use(vfs())
   .use(pty())
+  .use(checkpoint({ sentinelPath: "/dev/kelir-gate" }))
   .trap("*", {
     pre: async (c) => {
       // 1. Hardware Snapshot: record clean state in orchestrator scope

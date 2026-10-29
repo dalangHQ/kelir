@@ -118,11 +118,11 @@
     - Orchestrators execute unmodified agent binaries
     - Checkpoint descriptors are retained in userland orchestrator state
     - Post-step verification compares physical receipts against pre-step states
-    - StepSlot semantics: TBD
-      - Stack vs single slot
-      - Multiple marks per PID
-      - Fork inheritance
-      - post-hook raise behavior
+    - StepSlot semantics
+      - Single slot per active PID lineage; sub-steps push to stacked savepoints
+      - Managed via plugin-checkpoint: see: plugins/checkpoint.md
+      - Fork operations clone active StepSlot state into child sessions
+      - Post-hook failure triggers immediate driver rollback to slot base
     - Typical wiring
       - Trap match triggers pre-hook: checkpoint creation & intent analysis
       - Guest executes process

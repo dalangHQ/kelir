@@ -49,6 +49,8 @@
   - Use cases
     - Parallel agent exploration: see: 07-lifecycle.md#CoW-fork
     - Human approval waits at zero CPU: see: 07-lifecycle.md#Suspend-and-resume
+    - Autonomous step gating & idle pause: see: plugins/checkpoint.md
+    - Multi-resource atomic commit (2PC): see: plugins/transaction.md
     - Time-sensitive tests (JWT, cron, certs): see: 07-lifecycle.md#Clock-skew
     - Deterministic execution replay: see: 07-lifecycle.md#Clock-skew
     - Relational database governance: see: plugins/db-proxy.md

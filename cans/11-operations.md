@@ -93,7 +93,7 @@
     - Flag-drift gate between `just cans-check` and the cans-check job: TBD
   - Per-plugin CI
     - Per-plugin specs
-      - One spec file per plugin: 13 in cans plugin folder, 4 in kelir-cloud
+      - One spec file per plugin: 15 in cans plugin folder, 4 in kelir-cloud
       - Leaf-node rule: plugin files do not chain further references; bus
         pointers are direct 1-hop
     - Matrix job: test-plugins

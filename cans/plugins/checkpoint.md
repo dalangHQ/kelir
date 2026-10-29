@@ -1,0 +1,36 @@
+- Plugin checkpoint
+  - Crate dependencies (checkpoint)
+    - Plugin identifier: plugin-checkpoint
+    - Owner crate: crates/kelir-plugins/plugin-checkpoint
+    - name() = "checkpoint"
+    - Tier 2 governance and protocol proxy (checkpoint)
+    - Depends on (checkpoint): kelir-interface, plugin-vfs, plugin-pty
+    - Exposes: CheckpointService
+    - VirtIO device attachment (checkpoint): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (checkpoint): see: 07-lifecycle.md#Lifecycle-vetoes
+  - Service exports (checkpoint)
+    - Exports CheckpointService via PipelineBinder for state tree and snapshot inspection
+  - Invariants and policy (checkpoint)
+    - Zero-harness boundary detection
+      - Tracks process group exits and foreground PTY idle quiescence
+      - Traps sentinel FUSE inodes on unbacked virtual paths (/dev/kelir-gate)
+      - Intercepts configured clean execution targets before workload exit
+      - Detection operates with zero guest-side agent daemons or harness variables
+    - Automated state packaging
+      - Flushes in-flight FUSE buffers via on_pre_commit on step boundaries
+      - Captures CausalDelta: modified inodes, dirty bytes, and ExecutionReceipt
+      - Captures headless VT100 terminal wireframe grid from plugin-pty
+    - Idle suspension protocol
+      - Emits LifecycleRequest::Suspend(External) on verified boundary triggers
+      - Compresses physical guest RAM to host NVMe via direct I/O LZ4
+      - Drops host memory footprint to 0 MB RSS while waiting for external resolution
+    - Monotonic resolution lattice
+      - GateAction::Commit: flushes staging directory into host workspace via reconcile()
+      - GateAction::Reject: reverts tmpfs overlay and resets Stage-2 page tables
+      - GateAction::Fork(id): clones suspended base into isolated CoW exploration branches
+      - GateAction::Mutate(payload): injects host input before cycle-exact resume
+  - Error and return semantics (checkpoint)
+    - Hook signature (checkpoint): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (checkpoint)
+      - Unresolved gate timeout drops vCPU execution and preserves freeze
+      - Corrupted delta serialization aborts resolution with ECheckpointCorrupt

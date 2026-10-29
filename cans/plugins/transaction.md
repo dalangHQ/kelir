@@ -1,0 +1,37 @@
+- Plugin transaction
+  - Crate dependencies (transaction)
+    - Plugin identifier: plugin-transaction
+    - Owner crate: crates/kelir-plugins/plugin-transaction
+    - name() = "transaction"
+    - Tier 3 cross-cutting aggregator (transaction)
+    - Depends on (transaction): kelir-interface, plugin-vfs, plugin-db-proxy, plugin-lock-broker
+    - Exposes: TransactionService
+    - VirtIO device attachment (transaction): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (transaction): see: 07-lifecycle.md#Lifecycle-vetoes
+  - Service exports (transaction)
+    - Exports TransactionService via PipelineBinder for multi-resource 2PC management
+  - Invariants and policy (transaction)
+    - Multi-resource 2PC coordination
+      - Synchronizes atomic commit/abort across plugin-vfs, plugin-db-proxy, and plugin-lock-broker
+      - on_pre_commit validates all participants before committing host disk or DB
+      - on_post_commit(true) atomically swaps files and commits SQL connections
+      - on_post_commit(false) drops VFS upperdir diffs, sends SQL ROLLBACK, releases locks
+    - Spatial blast radius scoping
+      - Scopes filesystem mutations to declared path subtrees; undeclared writes fail closed
+      - Enforces database query boundaries to declared schemas via pgwire frame filter
+      - Restricts advisory lock acquisition to declared physical host inodes
+    - Temporal savepoints
+      - Injects transparent SQL SAVEPOINT markers into active pgwire connections
+      - Marks VFS upperdir whiteout journals to isolate sub-command mutations
+      - Rollback to savepoint restores intermediate state without aborting parent transaction
+    - Side-effect quarantine
+      - Un-rollbackable L7 egress requests during active transaction abort with E_TRANSACTION_TAINT
+      - PTY disclosure and event bus notifications buffer until successful post-commit
+    - Strict deadline
+      - Uncommitted transactions exceeding timeout_ms abort automatically
+  - Error and return semantics (transaction)
+    - Hook signature (transaction): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (transaction)
+      - Participant failure during pre-commit triggers global rollback with EPOLICY
+      - Out-of-scope mutation attempts reject with EACCES or EAmbiguousMutation
+      - Deadlock or timeout aborts transaction with ETIMEDOUT
