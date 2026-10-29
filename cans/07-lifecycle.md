@@ -9,31 +9,11 @@
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
       cooperation.
-    - Per-primitive exercise map
-      - fork, rollback: autonomous-swe-agent.{rs,ts,py}
-      - suspend, resume, skew_clock: autonomous-swe-agent.{rs,ts,py}
-      - watchdog, breakGlass, forward_port: autonomous-swe-agent.{rs,ts,py}
-      - map_shared_region: multi-vm-swarm.rs
-      - register_veto: multi-vm-swarm.rs
-      - export_snapshot, import_snapshot: db-backed-runtime.py
-      - adjust_balloon: serverless-webhook.ts
-    - Exercise invariant
-      - Every primitive mounts end-to-end in one example file
-      - An unexercised primitive fails --lifecycle-coverage
-      - Lifecycle-coverage gate: see: 11-operations.md#Coverage-gates
-      - Veto-coverage: every VetoEvent registered at least once
-        - Fork, Suspend, ClockSkew, Checkpoint, Rollback, Resume, Terminate
-        - An unregistered VetoEvent fails --veto-coverage
-        - Veto-coverage gate: see: 11-operations.md#Coverage-gates
-        - Veto classes: see: #Lifecycle-vetoes
-      - Watchdog-coverage: Suppress and Mitigate returned at least once
-        - ExecuteDefault alone does not satisfy watchdog-coverage
-        - An unreturned verdict fails --watchdog-coverage
-        - Watchdog-coverage gate: see: 11-operations.md#Coverage-gates
-        - Verdicts: see: #Watchdog
+    - Session lifecycle handles: fork, suspend, resume, rollback, skew_clock
+    - Context lifecycle configuration: set_watchdog, adjust_balloon, register_veto
+    - All primitives execute via active VmmDriver backend without in-guest agents
     - Shared memory mapping: see: 01-architecture.md#Shared-memory-channel
     - Portable snapshots: see: #Portable-snapshot-bundles
-    - Two-phase commit protocol: see: #Two-phase-commit
     - Preemption window: see: #Host-crash-reaper
     - Every item exposes one lifecycle point via LifecycleCtx
       - Typestate boundary: fork, suspend, rollback, skew_clock exist
@@ -69,6 +49,8 @@
     - Veto: Fork (hard)
       - Callback false → ESessionVeto; no child VM
   - Rollback
+    - Pre-condition invariant: Rollback is prohibited while vCPUs hold unreleased syscall traps
+    - Attempting rollback on a frozen syscall trap aborts with E_INVALID_LIFECYCLE_STATE
     - Driver primitive: rollback reverts
       (timing: see: artifacts/code/vmm-driver-trait.rs)
     - Reverts guest memory, registers, and tmpfs overlay diffs
@@ -98,7 +80,7 @@
     - Flash preservation: guest tmpfs writes stay in RAM; zero random SD card writes
     - External suspension
       - Triggered by SuspendReason::External(u32) awaiting out-of-band release
-      - Managed via plugin-checkpoint: see: plugins/checkpoint.md
+      - Managed by plugin-checkpoint: see: plugins/checkpoint.md
       - Resume executes cycle-exact upon external release signal
   - Portable snapshot bundles
     - Content-addressed snapshot sync
@@ -149,22 +131,6 @@
       - Android LMK hook: executes session.suspend() before OS termination
       - Prevents session state corruption during mobile app backgrounding
     - Platform coverage: TBD
-  - Two-phase commit
-    - MicroVM and host database state synchronization protocol
-    - Coordinated via plugin-transaction: see: plugins/transaction.md
-    - on_pre_commit pauses vCPUs and flushes in-flight VFS write buffers
-    - Staging subtree prepared atomically in host workspace
-    - on_post_commit(true) executes atomic directory swap into workspace
-    - on_post_commit(false) unlinks staging directory and purges tmpfs diffs
-    - Prevents desynchronization between host DB and guest workspace
-    - Demonstration target: see: artifacts/examples/db-backed-runtime.py
-  - Docker-in-kelir
-    - Constraint: Apple Silicon HVF offers no nested VMX/SVM
-    - Invariant: OCI containers run without a nested hypervisor and without
-      a host daemon
-    - Mechanism: rootless Podman + crun inside the read-only EROFS rootfs;
-      ephemeral state on tmpfs so the rootfs stays immutable
-    - Container contract: TBD
   - Break-glass
     - Supervisor freezes guest agent task group via cgroup freezer prior to attach
     - In-flight PTY buffer drained before exposing raw console master

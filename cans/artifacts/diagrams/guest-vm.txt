@@ -20,5 +20,5 @@
 │   │     - virtio-console ports: console master, dynamic ports                           │
 │   │     - Zero guest-side orchestration agents, CLI shims, or env var injections        │
 │   │                                                                                     │
-│   └── UNTOUCHED GUEST WORKLOAD: Claude Code / Cursor / SWE-bench / Node / Rust / Python │
+│   └── UNTOUCHED GUEST WORKLOAD: Target application binary execution                 │
 └─────────────────────────────────────────────────────────────────────────────────────────┘

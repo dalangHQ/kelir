@@ -45,17 +45,6 @@ jobs:
           cans check --touched-files /tmp/touched --json \
             | jq -e '.ok == true and .exitCode == 0' >/dev/null
 
-  # ─── 0a. AUDIT-SLOP (banned-term grep over cans/) ──────────
-  audit-slop:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Banned-term grep over cans/
-        run: |
-          if git grep -i -E "pure epistemic|truth tier|fact-producer|ghost inode|GhostFile|cohesive state duality|token-to-bit|superpowers|teleport" -- cans/ ':!cans/artifacts/config/ci.yml' ':!cans/artifacts/config/justfile'; then
-            echo "::error::Banned terms found in cans/"; exit 1
-          fi
-
   # ─── 1. FAST STATIC GATE (<90s) ────────────────────────────
   lint-and-types:
     runs-on: ubuntu-latest

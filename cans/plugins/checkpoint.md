@@ -20,6 +20,17 @@
       - Flushes in-flight FUSE buffers via on_pre_commit on step boundaries
       - Captures CausalDelta: modified inodes, dirty bytes, and ExecutionReceipt
       - Captures headless VT100 terminal wireframe grid from plugin-pty
+    - Autonomous step verification loop
+      - Host registers StepEvaluator closure through CheckpointService
+      - Captures atomic pre-step SnapshotDescriptor before workload execution
+      - Evaluates physical ExecutionReceipt upon trapped process exit
+      - Step lattice:
+        - StepVerdict::Commit: persists staging delta, advances active step slot
+        - StepVerdict::Rollback(reason): calls driver.rollback(&pre_step_snapshot),
+          reverting guest physical RAM in <8ms and dropping overlayfs tmpfs diffs
+        - StepVerdict::YieldToHost: halts vCPU registers awaiting external input
+      - Fail-closed invariant: unhandled post-execution failures or evaluation
+        timeouts trigger automatic hardware rollback before releasing workload
     - Idle suspension protocol
       - Emits LifecycleRequest::Suspend(External) on verified boundary triggers
       - Compresses physical guest RAM to host NVMe via direct I/O LZ4

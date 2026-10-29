@@ -13,6 +13,9 @@
       - plugin-supply-chain: execution governance proxy
       - plugin-wire-ingress: inbound wire proxy
       - plugin-checkpoint: autonomous state gating and pause proxy
+      - plugin-vault: unified secret and placeholder governance proxy
+      - plugin-container: rootless OCI container execution proxy
+      - plugin-replay: deterministic PMU-stepped clock replay proxy
       - Tier 2 plugins declare direct Cargo dependencies on Tier 1 plugins
     - Tier 3 cross-cutting aggregators
       - plugin-ledger: audit aggregation over Tier 1 and Tier 2 plugins
@@ -24,16 +27,14 @@
       - plugin-mesh: vsock IPC peer transport
       - plugin-mesh depends strictly on kelir-interface only
     - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
-    - Typed cross-plugin communication
-      - plugin-tool-guard imports plugin-mcp AST and call definitions directly
-      - plugin-lock-broker imports plugin-vfs inode abstractions directly
-      - plugin-db-proxy imports plugin-wire L4 proxy primitives directly
     - Code is sole SSOT: declared programmatically via KelirPlugin trait
     - Manifest artifact is strictly auto-generated for zero-compile indexing
     - Execution kind: Native (Rust in-process) | Foreign (host FFI)
     - First-class catalog default: kind is Native unless stated
     - Mutation scope manifest: mutators declare target paths, ports, or envs
-    - Overlapping mutation scopes between plugins fail validation at boot
+    - Mutation scope conflict rule: Overlapping mutators on identical operation targets
+      (multiple mutators writing to the same path, port, or env key) fail validation at boot with EAmbiguousMutation
+    - Non-mutating observers may overlap freely with mutators across arbitrary path subtrees
     - Cycle detection and unfulfilled dependencies fail closed at boot
     - Clean-room boundary invariant
       - kelir-interface is strictly dual-licensed (MIT OR Apache-2.0)
@@ -83,10 +84,11 @@
       - Dispatch: taxonomy rings register into ring-specific contiguous arrays
       - Unused rings cost zero vtable lookups
     - Error variants
-      - Ok(()) = allow; kernel proceeds
-      - Err(Reject { errno, reason }) = deny with named errno, pre-write
-      - Err(Halt(msg)) = deny and halt pipeline for human review
-      - Err(Io(_)) = internal failure, surfaced to runtime
+      - Interceptor traits return typed verdicts: SyncVerdict (FS/Net), Option<TrapAction> (Trap)
+      - Ok(SyncVerdict::Allow) = allow hot-path operation
+      - Ok(SyncVerdict::YieldToHost(ns)) = delay or yield operation to host event loop
+      - Err(PluginError::Reject { errno, reason }) = reject with POSIX errno surfaced to guest
+      - Err(PluginError::Halt(msg)) = unrecoverable failure; freezes VM pipeline
     - Shape of the surface
       - Lifecycle, trap, and terminal hooks are `async`; storage and wire
         hooks are synchronous; neither blocks the dispatch array
@@ -191,7 +193,8 @@
     - Catalog tiering
       - Community plugins (hosted in core repo):
         - pty, vfs, wire, chaos, ledger, mcp, profile
-        - db-proxy, mesh, lock-broker, supply-chain, wire-ingress, tool-guard, checkpoint, transaction
+        - db-proxy, mesh, lock-broker, supply-chain, wire-ingress
+        - tool-guard, checkpoint, transaction
       - Commercial plugins (SSOT hosted in kelir-cloud):
         - hyper-density: see: kelir-cloud://plugins/hyper-density.md
         - cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md
@@ -224,35 +227,31 @@
         - Set in some example in cans/artifacts/examples
         - An all-default field fails --knob-coverage
         - Knob-coverage gate: see: 11-operations.md#Coverage-gates
-      - Depth gap list: hooks and surfaces currently unhit
-        - LifecycleParticipant: on_host_preempt
-        - TrapInterposer: on_pressure
-        - TrapInterposer: on_port, on_signal
-        - ConsoleInterposer: on_window_resize, on_signal_send
-        - NetInterposer: on_net_inbound
-        - CompositePlugin flattening: no example flattens a bundle
-        - derive() vs decorate(): only decorate() is demonstrated
-        - Gap list is evidence, not a waiver: unhit items still fail gates
     - Behavior of each: at its plugin file
-      - plugin-pty: home: see: plugins/pty.md
-      - plugin-vfs: home: see: plugins/vfs.md
-      - plugin-wire: home: see: plugins/wire.md
-      - plugin-chaos: home: see: plugins/chaos.md
-      - plugin-ledger: home: see: plugins/ledger.md
-      - plugin-db-proxy: home: see: plugins/db-proxy.md
-      - plugin-mesh: home: see: plugins/mesh.md
-      - plugin-lock-broker: home: see: plugins/lock-broker.md
-      - plugin-supply-chain: home: see: plugins/supply-chain.md
-      - plugin-profile: home: see: plugins/profile.md
-      - plugin-hyper-density: home: see: kelir-cloud://plugins/hyper-density.md
-      - plugin-cas-snapshot: home: see: kelir-cloud://plugins/cas-snapshot.md
-      - plugin-wire-ingress: home: see: plugins/wire-ingress.md
-      - plugin-mcp: home: see: plugins/mcp.md
-      - plugin-tool-guard: home: see: plugins/tool-guard.md
-      - plugin-checkpoint: home: see: plugins/checkpoint.md
-      - plugin-transaction: home: see: plugins/transaction.md
-      - plugin-oci-translator: home: see: kelir-cloud://plugins/oci-translator.md
-      - plugin-openshell-coordinator: home: see: kelir-cloud://plugins/openshell-coordinator.md
+      - Community plugins
+        - plugin-pty: home: see: plugins/pty.md
+        - plugin-vfs: home: see: plugins/vfs.md
+        - plugin-wire: home: see: plugins/wire.md
+        - plugin-chaos: home: see: plugins/chaos.md
+        - plugin-ledger: home: see: plugins/ledger.md
+        - plugin-db-proxy: home: see: plugins/db-proxy.md
+        - plugin-mesh: home: see: plugins/mesh.md
+        - plugin-lock-broker: home: see: plugins/lock-broker.md
+        - plugin-supply-chain: home: see: plugins/supply-chain.md
+        - plugin-profile: home: see: plugins/profile.md
+        - plugin-wire-ingress: home: see: plugins/wire-ingress.md
+        - plugin-mcp: home: see: plugins/mcp.md
+        - plugin-tool-guard: home: see: plugins/tool-guard.md
+        - plugin-checkpoint: home: see: plugins/checkpoint.md
+        - plugin-transaction: home: see: plugins/transaction.md
+        - plugin-vault: home: see: plugins/vault.md
+        - plugin-container: home: see: plugins/container.md
+        - plugin-replay: home: see: plugins/replay.md
+      - Commercial plugins
+        - plugin-hyper-density: home: see: kelir-cloud://plugins/hyper-density.md
+        - plugin-cas-snapshot: home: see: kelir-cloud://plugins/cas-snapshot.md
+        - plugin-oci-translator: home: see: kelir-cloud://plugins/oci-translator.md
+        - plugin-openshell-coordinator: home: see: kelir-cloud://plugins/openshell-coordinator.md
       - Pointer rule: plugin files are leaf targets; crate dependencies live in the plugin file
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session extension surface: attached per plane

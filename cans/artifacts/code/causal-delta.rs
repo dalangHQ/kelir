@@ -16,4 +16,8 @@ pub struct CausalDelta {
     pub spawned_pids: Vec<u32>,
     /// Wire egress bytes between the two checkpoints
     pub egress_bytes: u64,
+    /// BLAKE3 root of modified storage inodes (from StorageDelta)
+    pub storage_delta_root: [u8; 32],
+    /// Merkle leaf hash of the associated ExecutionReceipt
+    pub receipt_leaf_hash: [u8; 32],
 }

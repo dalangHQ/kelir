@@ -47,12 +47,7 @@
   - E2B compatibility
     - TypeScript: @kelir/e2b-compat
     - Python: kelir.compat.e2b
-    - Preserves existing E2B Sandbox method signatures
-      - Sandbox.create, sandbox.commands.run, sandbox.files, sandbox.pty, sandbox.kill
-    - Replaces remote cloud VM roundtrips with sub-60ms local hardware execution
-    - Drop-in: frameworks built against E2B SDK require no code change
-    - Implementation: thin SDK wrapper
-      - No plugin: Sandbox methods map directly to Session methods
-      - No binary: consumes the same in-process SDK as first-class consumers
-      - E2B boundary: see: #Process-vs-plugin-boundary
-    - E2B coverage: TBD
+    - External translation shim mapping Sandbox abstractions to Kelir Session primitives
+    - In-process SDK client wrapper
+      - Consumes standard Kelir runtime without hypervisor modifications
+    - Process vs plugin boundary: thin client wrapper, no in-guest shims or daemons

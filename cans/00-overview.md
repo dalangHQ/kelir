@@ -20,7 +20,8 @@
         - Managed platform: Kelir Cloud SaaS execution over HTTPS/gRPC
   - Wayang elements
     - Kelir: taut white fabric screen onto which shadows are cast
-    - Dalang: master puppeteer who manipulates the puppets, speaks all dialogue, and conducts the performance
+    - Dalang: master puppeteer who manipulates the puppets
+      - Speaks all dialogue, and conducts the performance
     - Wayang: flat, carved leather or wooden puppets manipulated behind the screen
     - Blencong: oil lamp suspended above the puppeteer that provides the light source
     - Bayang: shadow cast by the puppet onto the screen, observed by the audience
@@ -52,13 +53,14 @@
     - Autonomous step gating & idle pause: see: plugins/checkpoint.md
     - Multi-resource atomic commit (2PC): see: plugins/transaction.md
     - Time-sensitive tests (JWT, cron, certs): see: 07-lifecycle.md#Clock-skew
-    - Deterministic execution replay: see: 07-lifecycle.md#Clock-skew
+    - Deterministic execution replay
+      - see: plugins/replay.md#Cycle-exact-instruction-clock-stepping
     - Relational database governance: see: plugins/db-proxy.md
     - Supply chain package protection: see: plugins/supply-chain.md
     - Zero-copy high-throughput IPC: see: 01-architecture.md#Shared-memory-channel
     - Cross-host portable snapshot bundles: see: 07-lifecycle.md#Portable-snapshot-bundles
     - Flaky-API and disk-full resilience: see: plugins/chaos.md
-    - Container builds without nested VMX: see: 07-lifecycle.md#Docker-in-kelir
+    - Container builds without nested VMX: see: plugins/container.md
     - Human break-glass on agent loops: see: 07-lifecycle.md#Break-glass
     - Low-memory SBC execution: see: 01-architecture.md#Embedded-profile
     - Idle scale-to-zero: see: kelir-cloud://plugins/hyper-density.md

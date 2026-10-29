@@ -14,8 +14,11 @@
     - Holds inbound client TCP connections without dropped frames during suspend
     - Host proxy terminates TCP handshake and buffers up to 64KB initial request data
     - Sniffs routing metadata with zero allocation via httparse
-    - Wakes target microVM via LifecycleCtx on frame arrival
-    - Splices buffered stream to vsock:5252 Channel 1 once VM is confirmed ready
+    - Wakes target microVM via SessionWakeHandle::resume
+      - ExternalSuspendKind::WireConnectionParking
+    - Ingress stream framing across vsock:5252 Channel 1:
+      - Frame header: target_port: u16, connection_id: u64, payload_len: u32
+      - Guest shim ingress forwarder connects to 127.0.0.1:target_port and splices duplex bytes
     - Zero-downtime webhook and interactive terminal connection continuity
   - Error and return semantics (wire-ingress)
     - Hook signature (wire-ingress): see: artifacts/code/plugin-trait.rs

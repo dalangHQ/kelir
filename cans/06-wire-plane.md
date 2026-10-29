@@ -2,12 +2,9 @@
   - Wire architecture
     - see: artifacts/diagrams/wire-plane.txt
     - Owner: kelir-core (virtio-net wire domain pipeline)
-    - virtio-net is an L2 TAP bridge
+    - Hardware abstraction: virtio-net paravirtual L2 TAP network bridge
     - Hook points: on_net_outbound and on_net_inbound
-    - Database proxying lives in db-proxy: see: plugins/db-proxy.md
-    - Credential signing: see: plugins/wire.md
-    - Interceptor hooks receive strongly-typed NetContext; ambient c.wire is eliminated
-    - Return contract: see: 02-plugin-model.md#Hook-return-semantics
+    - Interceptor hooks receive NetContext containing raw Ethernet frames
   - TAP L2 bridge
     - TAP interface bridge connects the guest virtio-net device to the host
     - All frames in both directions cross the TAP boundary
@@ -22,20 +19,12 @@
     - on_net_outbound: hook on frames leaving the guest
     - on_net_inbound: hook on frames arriving at the guest
     - TAP Dispatcher checks MountScope in native memory before FFI
-    - Pinned frame inspection ceiling: see: 02-plugin-model.md#FFI-buffer-lifecycle
-  - L7 forward proxy
-    - Terminates guest L7 protocols at host boundary
-    - Re-originates requests from host side
-    - L7 proxy mechanics: see: plugins/wire.md
   - Frame drop and forward semantics
     - Ok(Allow) on outbound = forward; Ok(Allow) on inbound = deliver
     - Ok(YieldToHost) = yield frame to host for async policy
     - Err(Reject) = silent drop (no RST, no guest error)
-    - DNS sinkhole enforces subdomain entropy checks on wildcard masks (*.dom)
-    - Subdomain queries exceeding entropy threshold 4.5 drop with NXDOMAIN
-    - Blocks exfiltration through DNS query labels across allowed domain masks
-    - Admission match order: TLS SNI -> HTTP Host -> Destination IP
-    - Mismatched SNI and HTTP Host headers drop as domain fronting
+  - Protocol proxies and credential masking
+    - L4/L7 policy, DNS entropy analysis, and vault proxying: see: plugins/wire.md
     - Default forward: frames pass unless a mounted plugin returns
       PluginError::Reject (silent drop)
   - Connection parking

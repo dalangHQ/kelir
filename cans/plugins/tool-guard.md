@@ -30,8 +30,13 @@
         matching calls cross FFI trampoline to host
     - Decision lattice (tool-guard)
       - ToolAction::Allow: forwards frame untouched
-      - ToolAction::Rewrite(args): mutates payload before dispatch
-        (e.g. forced flags, path sandboxing)
+      - ToolAction::Rewrite(mutation): serializes canonical ExecveMutation ABI:
+        - new_binary: Option<String> (overrides target ELF path)
+        - new_argv: Option<Vec<String>> (replaces execution arguments)
+        - set_env: HashMap<String, String> (injected environment variables)
+        - unset_env: Vec<String> (stripped environment variables)
+        Packed into target_mutation bytes; guest shim decodes and applies
+        atomically before releasing trapped execve syscall
       - ToolAction::Deny(errno, reason): drops call, synthesizes standard JSON-RPC error response
       - ToolAction::Hold: requests hypervisor
         LifecycleRequest::Suspend(External)

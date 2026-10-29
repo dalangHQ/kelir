@@ -1,13 +1,11 @@
 - Protocol
   - Control channel
     - virtio-vsock port 5252: unified multiplexed transport
-    - Binary channel framing isolates sub-protocols via channel_id
-      - Channel 0: hypervisor control
-      - Profile patches arrive as ChannelData on Channel 0: see: plugins/profile.md
-      - Channels 1-65535: dynamic multiplexed endpoints
-      - No core symbol names a channel endpoint
-      - Kind registration: see: #Channel-registration
-      - Unchecked raw RW shared memory without vsock sync fails validation
+    - Binary framing isolates sub-protocols via channel_id
+      - Channel 0: Core hypervisor lifecycle and trap control
+      - Channel 1: Dynamic L4 stream forwarding
+      - Channels 2-65535: Dynamically registered extension endpoints
+      - Channel kinds map via explicit registration: see: #Channel-registration
     - Eliminates multi-port socket allocation and port collisions
   - Trap fast-path
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
@@ -17,8 +15,6 @@
       - Gate 3: trap handler dispatch through FFI trampoline on match only
       - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
       - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
-    - Goal: the trap path must not slow `cargo build` / `npm install`
-    - Why three layers, not one
       - A single trap-on-every-syscall design adds ~µs per fork/exec at
         toolchain scale; the allowlist exists to pay that cost only where
         policy is possible
@@ -62,8 +58,8 @@
       - Contract: see: 02-plugin-model.md#KelirPlugin-trait
     - TrapAction-method-mapping
       - TrapAction::Allow: c.resume()
-      - TrapAction::Deny: c.deny(errno, msg)
-      - TrapAction::Rewrite: c.rewrite({ binary, argv, env })
+      - TrapAction::Deny: c.deny(exit_code, diagnostic_payload)
+      - TrapAction::Rewrite: c.rewrite(target_mutation)
       - TrapAction::Yield: c.yield(checkpoint_id)
       - TrapAction::Abort: c.abort(exit_code, reason)
       - TrapAction::Hold: c.hold(duration_ms)
@@ -85,13 +81,9 @@
     - Unknown kinds abort delivery with EUnknownChannel
     - SDK channel surface: see: 03-sdk-architecture.md#Language-surfaces
   - Env injection
-    - Allow cannot mutate guest environment
-      - Registers, memory, and environment variables remain untouched
-    - Handler environment mutations require an explicit Rewrite decision
-    - Multi-handler env merge: disjoint keys compose monotonically
-    - Key collision policy: overlapping env keys abort with EAmbiguousMutation
-    - Mutation decision lattice: Allow -> Rewrite -> Deny -> Abort
-    - Calling c.env.set() and returning Decision.resume() returns EINVALIDDECISION
+    - Workload environment variables, registers, and execution paths remain
+      immutable under Allow verdicts
+    - State mutations require explicit Rewrite with validated disjoint keys
   - Trap decision gaps: TBD
     - Rewrite loop prevention
     - new_binary canonicalisation

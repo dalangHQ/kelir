@@ -4,11 +4,11 @@
     - Owner crate: crates/kelir-plugins/plugin-mcp
     - name() = "mcp"
     - Tier 1 base ring adapter (mcp)
-    - Depends on (mcp): kelir-interface only
+    - Depends on (mcp): kelir-interface, plugin-vfs
     - Exposes: McpEndpointService
     - VirtIO device attachment (mcp): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mcp): see: 07-lifecycle.md#Lifecycle-vetoes
-    - Binds to a dynamically allocated virtio-console port for JSON-RPC transport
+    - Binds to virtio-console port named "kelir-mcp" (/dev/virtio-ports/kelir-mcp)
   - Service exports (mcp)
     - Exports McpEndpointService via PipelineBinder for JSON-RPC transport routing
   - Invariants and policy (mcp)
@@ -20,11 +20,10 @@
       - on_fs_read / on_fs_write: expose as read_file / write_file
       - on_trap: observe syscalls to correlate execute_command with trap
       - on_process_exit: emit MCP task completion events
-      - on_disclosure: route mandatory notices into MCP stream
     - Mapping (external tool → ring op)
       - execute_command → virtio-console via spawn, wrapped
-      - read_file → virtio-fs lookup + read
-      - write_file → virtio-fs write
+      - read_file → delegates to VfsStorageService.read_overlay_file() (merges tmpfs diffs)
+      - write_file → delegates to VfsStorageService.write_overlay_file()
     - Composes with plugin-chaos, plugin-ledger, plugin-wire, plugin-pty
     - Composes with plugin-tool-guard: tool-guard sits upstream on the MCP console port
     - Port multiplexing routes its console port directly to MCP client without PTY conflict

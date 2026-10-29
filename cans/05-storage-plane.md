@@ -2,41 +2,26 @@
   - Storage architecture
     - see: artifacts/diagrams/storage-architecture.txt
     - Owner: kelir-core (virtio-fs storage domain pipeline)
-    - Single SSOT: plugin-vfs and plugin-lock-broker attach hooks to this pipeline
-    - All hooks receive strongly-typed FsContext; ambient c.fs is eliminated
-    - Emits StorageDelta directly to the event bus; ledger consumes without VFS introspection
+    - Low-level FUSE pass-through bridge directly linking guest VFS to host workspace
+    - Pipeline engine exposes synchronous lookup, read, and write interception
+    - Hooks receive strongly-typed FsContext; ambient access eliminated
+    - Emits physical StorageDelta events directly to host event bus on commit
     - Encapsulation invariant
       - Host workspace is locked to mode 000 on host; only the hypervisor
         descriptor bridges access to virtio-fs lowerdir
       - Native toolchains outside Kelir observe EACCES on workspace access
       - Granular knob: workspace_encapsulation = Locked | Passthrough
-    - Reconciliation containment invariant
-      - Reconciler scans upperdir diffs only under RESOLVE_BENEATH
-      - Whiteout char devices (st_rdev == 0) unlink files strictly beneath target
-      - Symlink escapes abort with E_PATH_TRAVERSAL
-      - Opaque directories purge without crossing mount roots
-    - virtio-fs is an unadulterated FUSE pass-through bridge
-    - Read and write interposition hooks attach to the FUSE bridge
   - EROFS rootfs
     - Stripped base system pre-baked into read-only EROFS
-    - Python, Node, Rust, Bash pre-installed
     - Cold-mounted as virtio-blk block device in <2ms
     - Zero tarball decompression
   - CoW overlay scratchpad
-    - Host workspace mounted strictly read-only as lower layer
+    - Base workspace mounted strictly read-only as lower layer
     - overlayfs upperdir lives in guest tmpfs
     - All writes stay in-memory until explicit reconcile
     - Instant revert: drop overlayfs upperdir in ~1ms, host SSD untouched
-  - Atomic workspace staging
-    - Writes modified files to sibling temporary files (.tmp.<nonce>)
-    - Atomic rename swaps updated files directly over host target paths
-    - Parent directory fsync flushes updated inodes to disk
-  - Storage delta generation
-    - Storage pipeline computes modified inode delta during reconcile
-    - Emits immutable StorageDelta event to the EventBus on commit:
-      - modified_inodes: Vec<PathBuf>
-      - whiteouts_purged: u64
-      - workspace_dirty_bytes: u64
+  - Reconciler integration
+    - Upperdir diff scanning, whiteout unlinking, and atomic swap: see: plugins/vfs.md
   - Secondary image mounts
     - Grafts host-opened squashfs/EROFS images into guest VFS namespace
     - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE
@@ -50,20 +35,8 @@
     - Buffer lifecycle invariants: see: 02-plugin-model.md#FFI-buffer-lifecycle
     - SyncVerdict::Allow = allow; kernel proceeds with write to upperdir
     - Err(PluginError::Reject { errno, reason }) = deny
-      - Guest write() fails with named errno; error surfaces in workload
-      - Returned before any bytes enter upperdir
     - Err(PluginError::Halt) = deny + halt pipeline
   - Virtual ID remapping
     - FUSE driver dynamically maps guest UID 0/1000 to caller process UID
-    - File creation on host workspace executes under unprivileged host credentials
-    - Prevents ambient host UID values leaking into guest filesystem metadata
-  - Synthetic FUSE inodes (storage plane)
-    - Virtual files served from host memory into guest VFS
-    - No backing file on host SSD
-  - Sliding-window replacement over FUSE read buffers
-    - Stateful Aho-Corasick automaton carries state across read chunk offsets
-    - Splitting target secrets across 1-byte read calls fails evasion
-    - Carryover window buffers boundary fragments until pattern match or flush
-    - Replaces matches with fixed-width byte patterns preserving file offset
-    - Zero full-file memory buffering on inode open
-    - Observation-only snoop callbacks: see: plugins/vfs.md#Snoop-plane
+  - Read inspection and content masking
+    - Dynamic content synthesis and streaming read replacement: see: plugins/vfs.md

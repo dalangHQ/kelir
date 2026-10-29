@@ -7,7 +7,14 @@
     - Depends on (supply-chain): kelir-interface and Tier 1 crates
     - VirtIO attachment (supply-chain): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (supply-chain): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Exposes: JitValidationService
   - Invariants and policy (supply-chain)
+    - Dynamic W^X JIT execution mediation
+      - Traps in-guest seccomp-unotify events for mprotect(PROT_EXEC) and memfd_create
+      - Inspects caller task: verifies calling binary BLAKE3
+        - Against verified JIT engine catalog (Node, Bun, V8)
+      - Verified JIT runtimes receive dynamic one-time MMU allocation token over vsock
+      - Unverified binaries attempting PROT_EXEC or memfd memory allocation halt with EWXVIOLATION
     - Monitors package manager process trees
     - Inspects binary_path and argv on TrapEvent for package managers (npm, pip)
     - Blocks execution of lifecycle scripts in dependency directories

@@ -1,0 +1,29 @@
+- Plugin vault
+  - Crate dependencies (vault)
+    - Plugin identifier: plugin-vault
+    - Owner crate: crates/kelir-plugins/plugin-vault
+    - name() = "vault"
+    - Tier 2 governance and protocol proxy (vault)
+    - Depends on (vault): kelir-interface only
+    - Exposes: VaultService
+    - VirtIO device attachment (vault): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (vault): see: 07-lifecycle.md#Lifecycle-vetoes
+  - Service exports (vault)
+    - Exports VaultService through PipelineBinder for secret resolution and redaction
+  - Invariants and policy (vault)
+    - Single source of truth for secret handling
+      - Compiles unified Aho-Corasick automaton across all registered host secrets
+      - Shared across plugin-vfs, plugin-wire, and plugin-pty
+        - Read masking (vfs), L7 egress swap (wire), leak scan (pty)
+      - Enforces vault:// placeholder URN generation: real secrets never enter guest physical RAM
+    - Memory isolation and zeroization
+      - Host secret memory pinned with mlock(2) to prevent swapping to disk
+      - Memory zeroed using explicit volatile writes upon session termination or drop
+    - Out-of-band secret resolution
+      - Host-side forward proxy resolves vault:// placeholders against secure host keyring
+      - Ephemeral per-session CA certificates injected into guest trust stores transparently
+  - Error and return semantics (vault)
+    - Hook signature (vault): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (vault)
+      - Plaintext secret detected in guest-to-host trap event rejects with ESecurityViolation
+      - Unresolvable placeholder URN returns ENODATA

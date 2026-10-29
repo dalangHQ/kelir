@@ -33,7 +33,7 @@
       - Typed event hooks
         - .on(LifecycleEvent.VmReady, handler) for lifecycle events
         - .intercept(Ring.NetOutbound, handler) for ring interception
-        - .trap(TrapFilter.binary("git").withArg("commit"), handler)
+        - .trap(TrapFilter::default(), handler)
       - Session extension pattern
         - Core Session: boot, fork, suspend, resume, rollback, terminate
         - Core Session: raw ring channel access alongside primitives
@@ -133,16 +133,11 @@
     - .on_vm_ready(handler): session callback; .boot().await seals and boots
     - Inter-plugin services queryable via c.service::<T>()
     - Composite bundles flatten into builder via CompositePlugin trait
-    - Zero-Allocation Validation via Serde
-      - #[derive(Deserialize)] enum Action with serde(tag = "action")
-      - c.params::<Action>() fails at perimeter before traps execute
     - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
     - see: artifacts/code/typescript-accumulation.ts
     - Fluent model: .use().params().trap().intercept().on(), then .boot()
     - .use() takes flat plugin instances; no callback builder arguments
-    - .params(schema): TypeBox AOT push-down compiles to native Rust
-      validators at boot; falsified actions fail with EINVAL before dispatch
     - .trap(matcher, handler): simple pre-exec gate returning a Decision
     - .trap(matcher, { pre, post }): dual pre/post gate; post returns a
       PostExecAction
@@ -164,9 +159,6 @@
     - Builder assembly inspects closure freevars against mounted plugins
     - Unbound closure references raise KelirConfigurationError before boot
     - Composite plugins unpack nested plugins atomically before boot
-    - Pydantic v2 BaseModel with frozen=True
-      - Field(pattern=r"^fix-webhook$")
-      - Raises EINVAL before hook evaluation
     - Service resolution via c.service(RepoPolicyService)
     - Mount scoping via kwargs: rings=..., binaries=..., paths=...
   - Full-surface examples
@@ -192,10 +184,3 @@
       - Rust: async-trait, JoinSet, Arc<Mutex<>> states
       - TypeScript: Promise.all fan-out, generic inference
       - Python: asyncio.gather, async with, Pydantic v2
-  - Oracle contract
-    - Oracle interface: see: 08-epistemic.md#Oracle
-    - Language-specific realization
-      - Rust: Arc<dyn Oracle>, threaded through handler closures
-      - TypeScript: Oracle object literal, captured by closures
-      - Python: subclass kelir.Oracle, methods async
-    - Missing method fails at compile / import time in every language

@@ -6,8 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Telemetry extension entry. Core never inspects `payload`;
-/// `namespace` is opaque; core never interprets it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelemetryExtension {
     pub namespace: String,
@@ -26,9 +24,7 @@ pub struct PhaseTimings {
 pub struct ExecutionReceipt {
     pub pid: u32,
     pub binary_path: String,
-    /// BLAKE3 digest, canonical 64-char lowercase hex
     pub binary_blake3: String,
-    /// Correlation token for model-generation-to-trap attribution
     pub correlation_token: Option<String>,
     /// Hypervisor dirty-byte counter; always populated.
     /// Byte-not-page reason: see cans/01-architecture.md#VmmDriver-trait

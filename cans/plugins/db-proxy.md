@@ -14,7 +14,10 @@
   - Invariants and policy (db-proxy)
     - Mediates relational database communication
     - PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser
-    - SQLite: exposes /run/kelir/db.sock forwarded via vsock host service
+    - SQLite UDS bridge mechanics:
+      - Guest shim binds Unix Domain Socket at /run/kelir/db.sock at on_vm_ready
+      - Forwards client connections over vsock Channel Kind 0x0004 (db-sqlite)
+      - Host SqlProxyService receives stream and delegates queries to host database file
     - Verdict execution: DbAction::Allow, DbAction::Deny, DbAction::Rewrite
     - Database proxying
       - PostgreSQL on 5432, Redis on 6379

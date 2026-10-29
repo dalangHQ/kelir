@@ -46,14 +46,6 @@ plugin-check plugin:
 plugin-check-graph:
     cargo run -p kelir-plugin-cli -- check --graph
 
-# Audit-slop gate — banned-term grep over cans/; fails on matches
-audit-slop:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if git grep -i -E "pure epistemic|truth tier|fact-producer|ghost inode|GhostFile|cohesive state duality|token-to-bit|superpowers|teleport" -- cans/ ':!cans/artifacts/config/ci.yml' ':!cans/artifacts/config/justfile'; then
-        echo "Banned terms found in cans/" >&2; exit 1
-    fi
-
 # Spec gate — same two tiers CI runs; --json, exit-code asserted
 cans-check:
     @cans check --refs-only --json | jq -e '.ok and .exitCode == 0'

@@ -24,6 +24,14 @@
       - Pure stdlib implementation: zero external crate dependencies
       - Extension reconcile() is a pure storage-plane operation
       - Directly publishes StorageDelta to EventBus upon successful reconcile
+      - OverlayFS whiteout resolution
+        - Deleted files represented as char devices with st_rdev == 0 (mknod c 0 0)
+        - Deleted or opaque directories carry xattr trusted.overlay.opaque="y"
+        - Reconciler executes unlinks on host files strictly beneath target root
+        - Escapes via symlinks or path traversal abort with PermissionDenied
+      - Atomic staging exchange
+        - Writes mutated files to sibling temporary files (.tmp.<nonce>)
+        - Executes atomic directory swap (renameat2 / RENAME_EXCHANGE)
       - Lifecycle hook bindings
         - on_pre_commit flushes in-flight FUSE buffers
         - on_post_commit triggers sibling swap (.tmp.<nonce>) into host workspace
@@ -58,24 +66,26 @@
       - TS synthetic content may be a thunk evaluated per read
         - Same lifecycle as SyntheticFile.dynamic (Py/RS)
     - In-flight read masking
-      - Flow: see: 05-storage-plane.md#Sliding-window-replacement-over-FUSE-read-buffers
-      - Format-preserving masking (FPA) executes via synthetic FUSE inode generator
-      - Generates format-valid synthetic content before guest read calls
-      - Example patterns: sk_live_, AKIA, BEGIN PRIVATE KEY blocks
-      - see: artifacts/examples/autonomous-swe-agent.ts (vfs.maskRead)
+      - Stateful Aho-Corasick automaton carries scan state across read offsets
+      - Fixed-width pattern replacement on-the-fly; zero full-file buffering
+      - Carryover window buffers boundary fragments until pattern match or flush
+      - Format-preserving masking (FPA) swaps detected tokens (e.g. sk_live_, AKIA)
     - UID/GID idmap: see: 05-storage-plane.md#Virtual-ID-remapping
     - Shared host package caches: see: artifacts/diagrams/storage-architecture.txt
     - Snoop plane
       - Invariant: a snoop observation reflects the producing process, not a
         kernel flusher
-        - Achieved by bypassing guest page cache on snooped paths; mechanism
-          lives in plugin-vfs
       - Invariant: no host-side hook failure can leave the guest thread in D
         state
         - Achieved by a guaranteed FUSE reply from every user callback;
           mechanism lives in plugin-vfs
-      - Consumer: Oracle.ingest_harness_event; see: 08-epistemic.md#Oracle
-      - Producing process metadata is resolved via HandlerCtx extension slots
+      - Achieved by bypassing guest page cache on snooped paths (FOPEN_DIRECT_IO)
+      - Emits immutable FileAccessObserved domain event directly to EventBus:
+        - path: PathBuf
+        - pid: u32
+        - access_type: Read | Write
+        - bytes_transferred: usize
+      - Zero inline synchronous blocking; non-interfering observation plane
   - Error and return semantics (vfs)
     - Hook signature (vfs): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (vfs): see: 05-storage-plane.md#Write-gating

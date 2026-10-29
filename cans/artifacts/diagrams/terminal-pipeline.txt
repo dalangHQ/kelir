@@ -1,40 +1,18 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          HARDWARE TERMINAL PIPELINE                         │
+│                         PARAVIRTUAL CONSOLE PIPELINE                        │
 │                                                                             │
-│   GUEST WORKLOAD (Claude Code / Bash)                                       │
-│     │ Writes stdout/stderr bytes                                            │
+│   GUEST WORKLOAD PROCESS                                                    │
+│     │ Writes raw stdout/stderr bytes                                        │
 │     ▼                                                                       │
-│   Linux Kernel PTY Driver (virtio-console port: PTY Master -> /dev/pts/N)   │
-│     │ isatty(1) == true. Raw mode active. Zero CLI downgrade.               │
+│   Guest Kernel Console / TTY Subsystem                                      │
+│     │ Bridges character device streams to virtio-console driver             │
 │     ▼                                                                       │
 │   virtio-console Ring Buffer (Hardware Shared Memory)                       │
-│     │ Direct byte streaming to Host Memory (Zero TCP/UDS overhead)          │
+│     │ Zero-copy virtqueue streaming to Host Physical Memory                 │
 │     ▼                                                                       │
-│   HOST SUPERVISOR (@kelir/plugin-pty)                                       │
+│   HOST SUPERVISOR (kelir-core Console Plane)                                │
 │     │                                                                       │
-│     ├── 1. ANSI Stream Sanitizer ─► Drops OSC 52 (Clipboard Hijack) &       │
-│     │                             OSC 0/1/2 (Title spoofing) in-flight.     │
-│     │                                                                       │
-│     ├── 2. onPrompt Responder ────► Verifies authentic foreground TTY;      │
-│     │                             matches prompts; auto-injects keystrokes. │
-│     │                             (Kills tmux send-keys forever).           │
-│     │                                                                       │
-│     ├── 3. Console Control Bridge ───► Boot handshake pushes initial window    │
-│     │                             size (e.g. 120x40) at VM-ready; host      │
-│     │                             SIGWINCH resizes follow the same path:    │
-│     │                             ChannelData over vsock:5252 → shim        │
-│     │                             executes TIOCSWINSZ on guest PTY.         │
-│     │                                                                       │
-│     ├── 4. Signal Forwarding ─────► Ctrl+C (SIGINT) / Ctrl+D forwarded to   │
-│     │                             guest foreground process group.           │
-│     │                                                                       │
-│     ├── 5. Token Shield Filter ───► Clamps completed rows in VT100 grid.    │
-│     │                             Emits alerts in DECSTBM status margins.   │
-│     │                             Zero mid-stream raw ANSI slicing.         │
-│     │                                                                       │
-│     ├── 6. Active Leak Scanner ───► Scans stdout/stderr against registered  │
-│     │                             secret patterns; trips security panic.    │
-│     │                                                                       │
-│     └── 7. Grid Matrix Export ────► Maintains in-memory VT100 grid for      │
-│                                   structured terminal wireframe receipts.   │
+│     ├── Port Multiplexer ─────────► Routes port IDs to discrete dispatchers │
+│     └── Interceptor Pipeline ─────► Synchronous ConsoleInterposer execution │
+│                                     (High-level PTY policy: see plugin-pty) │
 └─────────────────────────────────────────────────────────────────────────────┘

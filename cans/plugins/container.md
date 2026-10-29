@@ -1,0 +1,27 @@
+- Plugin container
+  - Crate dependencies (container)
+    - Plugin identifier: plugin-container
+    - Owner crate: crates/kelir-plugins/plugin-container
+    - name() = "container"
+    - Tier 2 governance and protocol proxy (container)
+    - Depends on (container): kelir-interface, plugin-vfs
+    - Exposes: ContainerService
+    - VirtIO device attachment (container): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (container): see: 07-lifecycle.md#Lifecycle-vetoes
+  - Service exports (container)
+    - Exports ContainerService through PipelineBinder for container lifecycle tracking
+  - Invariants and policy (container)
+    - Non-nested OCI container execution
+      - Configures rootless Podman and crun runtime environments inside microVM
+      - Mounts ephemeral tmpfs scratchpad for /var/lib/containers to isolate storage diffs
+      - Constructs synthetic cgroup v2 delegation hierarchy at on_vm_ready
+    - UID/GID mapping isolation
+      - Intercepts newuidmap and newgidmap allocations through trap filters
+      - Pins subuid and subgid ranges to unprivileged guest user ranges
+    - Image extraction without nested VMX
+      - Ingests pre-cached OCI image tarballs from host package cache
+      - Prevents nested hypervisor escape vectors on platforms lacking nested VMX/SVM
+  - Error and return semantics (container)
+    - Hook signature (container): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (container)
+      - Privileged container escape attempt or raw device mount rejects with EPERM

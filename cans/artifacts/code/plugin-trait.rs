@@ -12,31 +12,23 @@ use std::time::Duration;
 use std::any::{Any, TypeId};
 use std::sync::Arc;
 use crate::handlers::HandlerCtx;
-use crate::protocol::messages::{
-    Heartbeat, MemoryPressureWarning, PortBound, ProcessExit,
-    TrapAction, TrapEvent,
-};
-
-// ── Decoded hook payloads ────────────────────────────────────────
-// Wire transport for terminal control and signals is ChannelData
-// (see cans/09-protocol.md#Wire-messages); these structs are the
-// decoded payloads delivered to TrapInterposer/ConsoleInterposer
-// hooks, not wire variants. Field layouts restored verbatim from
-// the pre-purge messages.rs definitions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindowResize {
-    pub rows: u16,
-    pub cols: u16,
-    pub xpixel: u16,
-    pub ypixel: u16,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SendSignal {
-    pub pid: u32,
-    pub signal: u32,
-}
+use crate::protocol::messages::{ProcessExit, TrapAction, TrapEvent};
 use crate::vmm::driver::{VmmDriver, VmConfig, WatchdogAction};
+
+/// Structured payloads carried across vsock Channel 0x0010 (pty-control).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PtyControlMessage {
+    WindowResize {
+        rows: u16,
+        cols: u16,
+        xpixel: u16,
+        ypixel: u16,
+    },
+    SignalForward {
+        signal: u32,
+        pgid: u32,
+    },
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {
@@ -166,6 +158,7 @@ impl MountScope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncVerdict {
     Allow,
+    /// Yields frame/op to host event loop with delayed release in nanoseconds.
     YieldToHost(u64),
 }
 
@@ -301,45 +294,36 @@ pub trait TrapInterposer {
     async fn on_process_exit(
         &self, _event: &ProcessExit, _ctx: &HandlerCtx,
     ) -> Result<(), PluginError> { Ok(()) }
-    async fn on_memory_pressure(
-        &self, _event: &MemoryPressureWarning,
-    ) -> Result<(), PluginError> { Ok(()) }
-    async fn on_heartbeat(
-        &self, _event: &Heartbeat,
-    ) -> Result<(), PluginError> { Ok(()) }
-    async fn on_port_bound(
-        &self, _event: &PortBound,
-    ) -> Result<(), PluginError> { Ok(()) }
-    async fn on_signal_send(
-        &self, _event: &SendSignal,
-    ) -> Result<(), PluginError> { Ok(()) }
-    async fn on_watchdog(
-        &self, _event: &WatchdogEvent,
-    ) -> Result<WatchdogVerdict, PluginError> { Ok(WatchdogVerdict::ExecuteDefault) }
 }
 
 #[async_trait]
 pub trait ConsoleInterposer {
-    async fn on_console_input(&self, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
-    async fn on_console_output(&self, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
-    async fn on_window_resize(
-        &self, _event: &WindowResize,
-    ) -> Result<(), PluginError> { Ok(()) }
     /// Mandatory core-originated disclosure (HostToGuest::ChannelData on the pty-disclosure kind).
     /// Body is immutable; return Some(bytes) to append. All annotations
     /// concatenate in registration order and follow the body on the PTY.
     /// See cans/04-terminal-plane.md#Disclosure
-    async fn on_disclosure(
-        &self, _body: &[u8],
-    ) -> Result<Option<Vec<u8>>, PluginError> { Ok(None) }
+    /// Raw paravirtual character stream input. Intercepts host -> guest port bytes.
+    async fn on_console_input(&self, _port: u32, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
+    /// Raw paravirtual character stream output. Intercepts guest -> host port bytes.
+    async fn on_console_output(&self, _port: u32, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
 }
 
+#[async_trait]
+pub trait SystemTelemetryParticipant {
+    async fn on_memory_pressure(&self, _available_mb: u32, _total_mb: u32) -> Result<(), PluginError> { Ok(()) }
+    async fn on_heartbeat(&self, _uptime_ms: u64) -> Result<(), PluginError> { Ok(()) }
+    async fn on_watchdog(&self, _event: &WatchdogEvent) -> Result<WatchdogVerdict, PluginError> { Ok(WatchdogVerdict::ExecuteDefault) }
+}
 pub trait FsInterposer {
     fn on_fs_lookup(&self, _path: &Path) -> Result<Option<FsInodeAttr>, PluginError> { Ok(None) }
     fn on_fs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
     /// Synchronous hot-path inspection. Returns Ok(Allow) or Ok(YieldToHost) before write applies.
     fn on_fs_write(
         &self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx,
+    ) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
+    /// Intercepts FUSE SETLK and SETLKW advisory lock requests.
+    fn on_fs_lock(
+        &self, _path: &Path, _flock_cmd: i32, _flock_type: i16, _pid: u32,
     ) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
 }
 

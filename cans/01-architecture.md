@@ -30,7 +30,7 @@
         - Hardware memory execution policy: strict W^X enforced at MMU boundary
         - Guest kernel traps anonymous PROT_EXEC mmap and mprotect allocations
         - In-memory elf loading through memfd_create aborts with E_WX_VIOLATION
-        - Granular knob: wx_enforcement = Strict | PermissiveAudit | Disabled
+        - Granular knob: wx_enforcement = Strict | PermissiveAudit
         - Factoring: see: 08-epistemic.md#Scope
       - Deterministic hardware isolation
         - Hardware-enforced virtualization: Intel VT-x, AMD-V, ARM64 EL2

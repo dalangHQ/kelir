@@ -76,13 +76,7 @@ pub enum HostToGuest {
     AdjustBalloon {
         target_mb: u32,
     },
-    /// Extension frame on a host-registered channel kind.
-    /// `kind` resolution: see: cans/09-protocol.md#Channel-registration
-    /// Unknown kinds abort delivery with EUnknownChannel.
-    /// Console control frames travel inside ChannelData addressed to a
-    /// console channel endpoint; there is no dedicated control variant.
     ChannelData {
-        kind: u16,
         seq: u64,
         payload: Vec<u8>,
     },
@@ -96,14 +90,11 @@ pub enum TrapAction {
     /// Inject exit code and stderr into the agent's TTY.
     Deny {
         exit_code: i32,
-        stderr_message: String,
+        diagnostic_payload: Vec<u8>,
     },
-    /// See cans/09-protocol.md#Env-injection
-    /// Injected env keys must remain disjoint across handlers; collisions raise EAmbiguousMutation.
+    /// Dynamic execution mutation. Target-specific payload resolved by interposer.
     Rewrite {
-        new_binary: String,
-        new_argv: Vec<String>,
-        injected_env: HashMap<String, String>,
+        target_mutation: Vec<u8>,
     },
     /// Hypervisor cgroup freeze: freeze guest task group, return control
     /// cleanly to host event loop

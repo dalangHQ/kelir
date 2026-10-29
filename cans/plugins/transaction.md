@@ -12,10 +12,14 @@
     - Exports TransactionService via PipelineBinder for multi-resource 2PC management
   - Invariants and policy (transaction)
     - Multi-resource 2PC coordination
-      - Synchronizes atomic commit/abort across plugin-vfs, plugin-db-proxy, and plugin-lock-broker
-      - on_pre_commit validates all participants before committing host disk or DB
-      - on_post_commit(true) atomically swaps files and commits SQL connections
-      - on_post_commit(false) drops VFS upperdir diffs, sends SQL ROLLBACK, releases locks
+      - Synchronizes commit/abort across plugin-vfs, plugin-db-proxy, and plugin-lock-broker
+      - Coordinates with hypervisor lifecycle: pauses vCPUs during commit evaluation
+      - on_pre_commit pauses guest vCPUs, flushes VFS buffers, and prepares staging files
+      - on_post_commit(true) executes atomic directory swap into host workspace
+        and issues SQL COMMIT across active proxy connections
+      - on_post_commit(false) purges guest tmpfs overlay diffs, drops staging directories,
+        issues SQL ROLLBACK, and releases advisory locks
+      - Prevents desynchronization between host database state and guest workspace diffs
     - Spatial blast radius scoping
       - Scopes filesystem mutations to declared path subtrees; undeclared writes fail closed
       - Enforces database query boundaries to declared schemas via pgwire frame filter
@@ -25,7 +29,7 @@
       - Marks VFS upperdir whiteout journals to isolate sub-command mutations
       - Rollback to savepoint restores intermediate state without aborting parent transaction
     - Side-effect quarantine
-      - Un-rollbackable L7 egress requests during active transaction abort with E_TRANSACTION_TAINT
+      - Un-rollbackable L7 egress during active transaction aborts with E_TRANSACTION_TAINT
       - PTY disclosure and event bus notifications buffer until successful post-commit
     - Strict deadline
       - Uncommitted transactions exceeding timeout_ms abort automatically

@@ -16,8 +16,6 @@ pub enum WxPolicy {
     Strict,
     /// Log violation to host ledger and continue execution.
     PermissiveAudit,
-    /// Disable W^X checks (required for JIT heavy runners like V8/Node).
-    Disabled,
 }
 
 /// Host virtualization selection and hardware validation parameters.
@@ -77,8 +75,16 @@ pub enum WatchdogAction {
 /// Generalized suspend reason. Carries no plugin identity:
 /// an external trigger is identified only by an opaque code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExternalSuspendKind {
+    HumanAuthorizationHold = 0x0001,
+    WireConnectionParking  = 0x0002,
+    StepEvaluationYield    = 0x0003,
+    HostPowerEventSnapshot = 0x0004,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SuspendReason {
-    External(u32),
+    External(ExternalSuspendKind),
     ResourcePressure,
 }
 
@@ -94,6 +100,8 @@ pub struct SharedMemoryHandle {
     pub tag: String,
     pub size_bytes: usize,
     pub guest_phys_addr: u64,
+    pub host_ptr: *mut u8,
+    pub memfd_raw: std::os::unix::io::RawFd,
 }
 
 #[async_trait]

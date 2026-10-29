@@ -1,0 +1,25 @@
+- Plugin replay
+  - Crate dependencies (replay)
+    - Plugin identifier: plugin-replay
+    - Owner crate: crates/kelir-plugins/plugin-replay
+    - name() = "replay"
+    - Tier 2 governance and protocol proxy (replay)
+    - Depends on (replay): kelir-interface only
+    - Exposes: ReplayService
+    - VirtIO device attachment (replay): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (replay): see: 07-lifecycle.md#Lifecycle-vetoes
+  - Service exports (replay)
+    - Exports ReplayService through PipelineBinder for deterministic clock stepping
+  - Invariants and policy (replay)
+    - Cycle-exact instruction clock stepping
+      - Decouples guest paravirtual clock from host physical TSC
+      - Arms host PMU hardware counters to sample instructions retired per vCPU
+      - Advances guest KVM_SET_CLOCK / CNTVOFF_EL2 strictly on retired-instruction windows
+      - Eliminates host scheduling jitter and timer interrupt variance across runs
+    - Kernel clocksource lockdown
+      - Injects kernel boot parameters: clocksource=kvm-clock tsc=reliable nohpet
+      - Intercepts clock_gettime and gettimeofday syscall traps to enforce monotonic progression
+  - Error and return semantics (replay)
+    - Hook signature (replay): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (replay)
+      - Negative time drift or clock backwards step raises EClockRegress

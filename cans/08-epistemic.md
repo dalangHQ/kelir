@@ -1,50 +1,22 @@
-- Verification & Hardware Telemetry
+- Hardware Telemetry & Cryptographic Verification
   - Scope
-    - Boundary specification; not a runtime subsystem
-    - Core owns facts, never judgments
-      - Facts: TrapEvent, ExecutionReceipt, CausalDelta (struct)
-      - Core owns physical hardware telemetry: registers, memory diffs, counters
-    - Epistemic asymmetry invariant
-      - Workload is presumed hostile and remains blind to active profile rules
-      - Policy drops surface as standard POSIX errors (EACCES, NXDOMAIN) or silent drops
-      - Workload cannot distinguish hypervisor policy drops from physical failures
-    - Judgment is defined in external userland orchestration layers
-      - Evaluators consume raw execution receipts independently of core
-    - Axiom enforcement: see: 01-architecture.md#Axiomatic-foundations
-  - Oracle
-    - Evaluator contract defined in orchestrator SDK layer, outside kelir-core
-    - Consumes physical execution receipts to evaluate workload correctness
+    - Telemetry ownership: Hypervisor core measures physical hardware events exclusively
+    - Fact emission: TrapEvent, ExecutionReceipt, CausalDelta
+    - Hardware counters: CPU instructions, dirty pages, MMU faults, wire byte volume
+    - Boundary opacity: Internal interception policies surface to the guest strictly
+      as physical bus errors, standard POSIX errnos, or silent packet drops
   - Primitive vs derived telemetry
     - Telemetry decision test
       - Single read API, hardware boundary, no policy → primitive, core-owned
       - Computed from primitives, policy-bearing → derived, plugin-owned
-      - A new derived metric is a plugin or Oracle change, never a core method
-    - Default posture: per-exec, per-trap, per-receipt signals on; per-syscall,
-      per-request, per-page signals off until enabled per config
-    - Boundaries
-      - Primitive set: see: 01-architecture.md#Core-invariants
-      - CausalDelta: see: #Causal-delta
-      - Merkle chain: see: plugins/ledger.md#Merkle-WAL
-      - OpenTelemetry spans: see: plugins/ledger.md#OpenTelemetry
-      - Oracle analyses: consumer's Oracle impl
+    - Default posture: per-exec, per-trap, per-receipt primitives enabled
   - Execution receipts
     - see: artifacts/code/execution-receipt.rs
-    - End-to-end instruction-counter and dirty-byte hardware attribution
-    - Cryptographic provenance chain: model generation -> trap -> receipt
-    - Granular hardware telemetry: micro-level execution telemetry per process
+    - Deterministic hardware counter attribution emitted per executed process
     - Emitted per executed process, at the trap/exit boundary
-    - Assertion form: receipts are compared as values, not as hashes of host
-      state; the canonical assertion is a per-field comparison
-    - profile_blake3 cryptographic identity
-      - Computes BLAKE3 hash over canonical declarative profile bytes at boot
-      - Injected as genesis block into Merkle WAL before guest vCPU starts
-      - Receipts bind profile_blake3 cryptographically to hardware counters
-    - Extension telemetry: producer writes a TelemetryExtension in `extensions`
-      - Example: namespace net:l7:sql carries statement counts
-      - Example: namespace fs:vfs carries workspace dirty bytes
-      - Example use: see: artifacts/examples/db-backed-runtime.py
-    - Attestation token: receipts carry cryptographic proof of hypervisor run
-    - Bare-metal executions lack hardware receipts and fail oracle evaluation
+    - Receipts compare as values via canonical per-field structural assertions
+    - Receipts carry opaque TelemetryExtension payloads emitted by mounted plugins
+    - Hardware attestation token: BLAKE3 cryptographic proof over execution tuple
     - Byte-not-page reason: see: 01-architecture.md#SnapshotDescriptor.dirty-bytes
     - Population: per ReceiptConfig; opt-in fields not enabled are absent
       (Option), never 0
@@ -78,23 +50,15 @@
     - Type ownership
       - Struct is a shared context type; it lives in kelir-interface next to
         ExecutionReceipt
-      - Computation is domain-local: StorageDomain emits StorageDelta;
-        ControlDomain emits ExecutionDelta
-      - Core aggregates domain deltas into CausalDelta at checkpoints
-      - Subscribers consume CausalDelta; never diff VFS journals directly
-  - Three-tier evidence verification model
-    - Tier 1: hardware/hypervisor sampling
-      - Signals: BLAKE3 receipts, PMU retired instructions, OCC inode hashes,
-        dirty-byte counts, egress telemetry
-      - Invariant: unforgeable outside guest VM memory boundary
-    - Tier 2: boundary paravirtual intercepts
-      - Signals: FUSE write journals, TAP L2/L4 counters, sanitized PTY digests
-      - Invariant: observed at the VirtIO boundary, never inside the guest
-    - Tier 3: guest userland self-reporting
-      - Signals: harness stdout/stderr, guest status JSON
-      - Invariant: unverified; never substitutes for Tier 1 evidence
-    - Forgeability invariant: Tier 1 is unforgeable outside guest VM memory;
-      Tier 2 is observed at the VirtIO boundary; Tier 3 is unverified
+      - Core aggregates domain deltas into CausalDelta on checkpoint boundaries
+  - Telemetry provenance classification
+    - Invariant: A higher classification never falls back to a lower classification
+    - Class 1 (Hardware Sampling): PMU instruction counters, dirty byte counts,
+      physical exit codes, hardware TSC timestamps. Unforgeable from guest space.
+    - Class 2 (Paravirtual Interception): FUSE buffers, virtqueue frames, character rings.
+      Observed at the hypervisor boundary.
+    - Class 3 (Guest Unverified Data): Workload stdout/stderr payloads, memory buffers.
+      Tainted by default; cannot satisfy hardware assertions.
     - Selection rule
       - Claim must resist forgery by guest code → Tier 1
       - Claim about a public, versioned contract → Tier 2
@@ -120,7 +84,7 @@
     - Post-step verification compares physical receipts against pre-step states
     - StepSlot semantics
       - Single slot per active PID lineage; sub-steps push to stacked savepoints
-      - Managed via plugin-checkpoint: see: plugins/checkpoint.md
+      - StepSlot managed by plugin-checkpoint: see: plugins/checkpoint.md
       - Fork operations clone active StepSlot state into child sessions
       - Post-hook failure triggers immediate driver rollback to slot base
     - Typical wiring

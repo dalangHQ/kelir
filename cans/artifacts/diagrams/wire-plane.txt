@@ -14,9 +14,8 @@
                                         │
                                         ▼
                              [CONNECTION PARKING]
-                             Host-terminates client TCP; parks frames in TAP buffers;
-                             buffers up to 64KB in raw virtqueues until guest resumes;
-                             wakes microVM and forwards to vsock:5252 (Channel 1).
+                             Host-terminates client TCP; buffers up to 64KB initial data;
+                             wakes microVM and splices duplex stream across vsock:5252 (Channel 1).
 
   Database proxying: see plugins/db-proxy.md.
   L7 proxy and credential signing: see plugins/wire.md.

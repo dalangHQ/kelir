@@ -22,8 +22,15 @@
     - Total egress rule
       - Egress is what the four channels admit; nothing else reaches NIC
       - Non-TCP traffic (raw sockets, ICMP echo) fails silently with 100% packet loss
-      - DNS queries matching wildcard allowlists inspect label entropy
-      - DNS sinkhole is the fallback that makes "unlisted ⇒ dropped" total
+    - DNS entropy gate and sinkhole
+      - Intercepts all UDP port 53 traffic crossing TAP interface
+      - Computes Shannon entropy on subdomain query labels for wildcard allowlists (*.domain)
+      - Drops queries with entropy exceeding threshold (default: 4.5) with NXDOMAIN
+      - Prevents exfiltration tunneling over DNS label encoding
+    - Admission and domain fronting protection
+      - Admission match priority: TLS SNI -> HTTP Host -> Destination IP
+      - Mismatched SNI and HTTP Host headers are dropped immediately as domain fronting
+      - Non-allowlisted destinations drop silently at host TAP forwarder
     - Per-channel admission
       - L7 proxy: TLS terminated under per-session CA; allowlist by host
       - L4 SOCKS5: connect-by-IP; used where TLS termination is invalid

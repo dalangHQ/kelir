@@ -26,22 +26,28 @@
       - Ownership: core generates receipts; plugin-ledger persists and exports
       - Ledger handler API
         - c.ledger.flush() forces WAL flush and OTel export
-      - WAL contract: TBD
-        - Record schema
-        - Chaining formula and root signing key
-        - Backend and concurrency model
-        - Secret redaction before append
+      - Merkle WAL specification
+        - Record Schema (Packed Little-Endian):
+          - seq: u64 (monotonic index)
+          - prev_hash: [u8; 32] (BLAKE3 hash of previous leaf)
+          - receipt_blake3: [u8; 32] (ExecutionReceipt digest)
+          - delta_root: [u8; 32] (StorageDelta modified inode tree root)
+          - timestamp_ns: u64 (host wall-clock timestamp)
+          - signature: [u8; 64] (Ed25519 signature by host session key)
+        - Merkle Hashing: RFC 6962 rules using BLAKE3:
+          - Leaf: BLAKE3(0x00 || record_bytes)
+          - Node: BLAKE3(0x01 || left_child || right_child)
+        - Append-only LMDB persistence with immediate fsync after each process reap
     - OpenTelemetry
       - Outbound HTTP requests carry W3C traceparent, injected host-side
       - Trace continuity rule: a guest-originated request and its guest-side
         cause (trap, spawn, receipt) resolve to the same trace
       - Config surface lives in plugin-ledger (OtelConfig); not restated here
-      - Span contract: TBD
-        - Names and parent/child
-        - Error mapping and sampling
-        - Attribute allowlist and redaction
-        - Export-failure behavior
+        - Spans mirror physical receipt phase timings: trap_ingress, policy, ffi, verdict
+        - Dropped or rejected spans log to local WAL before pipeline halts
       - Binds ExecutionReceipt correlation_token into Merkle WAL records
   - Error and return semantics (ledger)
     - Hook signature (ledger): see: artifacts/code/plugin-trait.rs
-    - Return errno and rejection behavior (ledger): TBD
+    - Return errno and rejection behavior (ledger)
+      - Pure observer: never returns Reject or blocks inline execution
+      - Disk-full on WAL partition triggers hypervisor LifecycleRequest::Suspend(ResourcePressure)

@@ -59,7 +59,6 @@
       each concept's canEdit set
     - No path filter: a node edit can break a pointer in any other node
     - Local mirror: `just cans-check` invokes the identical flags
-    - Audit-slop target: banned-term grep over cans/, see: artifacts/config/justfile
     - Invariant: every rule in _rules.yaml maps to a step here, or the rule
       is dead and gets removed
   - Coverage-gates

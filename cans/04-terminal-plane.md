@@ -1,37 +1,12 @@
 - Terminal plane
   - Terminal pipeline
     - Owner: kelir-core (virtio-console domain)
-    - virtio-console is a multi-port paravirtual character bus
-    - Channel 0 defaults to interactive console master
-    - Subsequent ports allocated dynamically at session configuration
-    - Allocates isolated interceptor pipelines per paravirtual channel
-    - Handlers receive strongly-typed ConsoleContext; ambient c.term is eliminated
-    - Interactive channel preserves isatty(1) and raw mode
-    - Streaming ring buffers route directly to host supervisor memory
-    - Stateful stream processing: regex and token shields maintain sliding
-      automata state across arbitrary chunk boundaries
-    - Split ANSI escapes spanning multiple virtqueue frames parse atomically
-    - Clamping and secret redactions evaluate across inter-frame buffers
-    - Terminal evidence uses Three-tier evidence verification model
-    - VT100 parser grid monitors virtual screen and scrollback rows
-    - Token Shield clamps scrollback rows, never mid-stream raw bytes
-    - Truncation notices inject ANSI resets inside DECSTBM status margins
-    - All filters configured strictly using flat PtyConfig, no callbacks
-    - PtyConfig fields: cols, rows, dropOsc52, stripTitle, tokenShield, prompts,
-      streamEngine, carryoverBufferBytes
-    - carryoverBufferBytes default: 512 bytes
-    - Filter stream engines: StreamingAutomata (default) | StatelessRegex
-  - Window resize
-    - Pipeline mechanics: see: artifacts/diagrams/terminal-pipeline.txt
-    - Live resize hook: on_window_resize is observation-only
-  - Signal forwarding
-    - Ctrl+C / Ctrl+D reach the guest foreground process group
-    - on_signal_send is observation-only; a hook cannot rewrite the signal
-    - Wire path: see: 09-protocol.md#Wire-messages
+    - Hardware abstraction: virtio-console multi-port paravirtual character bus
+    - Port 0 allocated to standard console IO; Ports 1-16 dynamically allocated
+    - Transport: Raw byte-stream rings mapped to host supervisor memory
+    - Zero-copy ringbuffer backpressure and queue management
+    - Pipeline isolation: Separate interceptor dispatch array per port ID
+    - Interceptors implement ConsoleInterposer with byte-level access
+    - High-level PTY line discipline, window geometry, and signals: see: plugins/pty.md
   - Disclosure
-    - Host-originated mandatory notification stream
-    - Wire message
-      - HostToGuest::ChannelData on the pty-disclosure kind over vsock:5252
-      - Wire message definition: see: 09-protocol.md#Wire-messages
-    - Guest-side
-      - Supervisor routes disclosure directly to active PTY channel
+    - Host notices: see: plugins/pty.md#Mandatory-disclosure-mechanics
