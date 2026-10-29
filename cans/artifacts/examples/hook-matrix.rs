@@ -24,7 +24,7 @@
 //!      sequences (ESC ] 52 ; … terminator) from guest-bound input.
 //!   5. ConsoleInterposer::on_console_output -> masks sk_live_ tokens in
 //!      the chunk before it reaches the host terminal.
-//!   6. TrapInterposer::on_heartbeat -> counts heartbeats; a receipt
+//!   6. SystemTelemetryParticipant::on_heartbeat -> counts heartbeats; a receipt
 //!      whose uptime_ms has not advanced since the previous receipt
 //!      increments the stall counter (observation only, per 07).
 //!   7. TrapInterposer::on_process_exit -> records (pid, exit_code);
@@ -44,13 +44,13 @@
 //!     (plugin-trait.rs). That is the runtime inspection ceiling, NOT
 //!     the swe-agent policy diff ceiling, which rejects with ENOSPC.
 //!
-//! GAPS (flagged, not silently invented):
-//!   - SyncVerdict::YieldToHost(u64): the u64's meaning (queue id?
-//!     reason code?) is specified nowhere. The outbound hook below
-//!     passes 0 as an explicit placeholder.
-//!   - on_console_input / on_console_output take &mut Vec<u8> in plugin-trait.rs
-//!     (whole-chunk mutation); there is no per-byte streaming hook, so
-//!     the OSC52 stripper below buffers one chunk at a time.
+//! NOTES:
+//!   - SyncVerdict::YieldToHost(u64): aa0e011 specifies the u64 as a
+//!     delayed-release interval in nanoseconds; 0 below is immediate.
+//!   - on_console_input / on_console_output take a virtio-console port
+//!     (u32) plus &mut Vec<u8> in plugin-trait.rs (whole-chunk
+//!     mutation); there is no per-byte streaming hook, so the OSC52
+//!     stripper below buffers one chunk at a time.
 //!
 //! Cargo.toml:
 //!   [dependencies]
@@ -70,10 +70,11 @@ use kelir::{
     plugin::{
         AnyPlugin, KelirPlugin, PluginError,
         FsInterposer, SyncVerdict, ConsoleInterposer,
-        TrapInterposer, FsInodeAttr, WatchdogEvent, WatchdogVerdict,
+        TrapInterposer, SystemTelemetryParticipant,
+        FsInodeAttr, WatchdogEvent, WatchdogVerdict,
         NetInterposer,
     },
-    protocol::{Heartbeat, ProcessExit},
+    protocol::ProcessExit,
 };
 
 /// Guest path served as a synthetic inode, and the secret-token shape the
@@ -166,8 +167,8 @@ impl NetInterposer for HookMatrixPlugin {
         // Sliding search, no allocation: any frame carrying the denylist
         // marker yields to host inspection instead of leaving the TAP.
         if frame.windows(DENY_MARKER.len()).any(|w| w == DENY_MARKER) {
-            // GAP: the u64 payload of YieldToHost is unspecified; 0 is
-            // an explicit placeholder (see file header).
+            // YieldToHost(u64) is a delayed release in nanoseconds
+            // (aa0e011); 0 is immediate, not a placeholder.
             return Ok(SyncVerdict::YieldToHost(0));
         }
         Ok(SyncVerdict::Allow)
@@ -262,7 +263,7 @@ impl FsInterposer for HookMatrixPlugin {
 
 #[async_trait]
 impl ConsoleInterposer for HookMatrixPlugin {
-    async fn on_console_input(&self, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_input(&self, _port: u32, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
         // Strip OSC52 clipboard exfiltration sequences: ESC ] 52 ; …
         // terminated by BEL (0x07) or ST (ESC \). Everything else passes.
         let mut out = Vec::with_capacity(bytes.len());
@@ -290,7 +291,7 @@ impl ConsoleInterposer for HookMatrixPlugin {
         Ok(())
     }
 
-    async fn on_console_output(&self, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_output(&self, _port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
         // Single-chunk masking; the cross-chunk case is the vfs read
         // path's sliding window above, not the terminal path.
         mask_tokens(chunk);
@@ -300,23 +301,26 @@ impl ConsoleInterposer for HookMatrixPlugin {
 
 #[async_trait]
 impl TrapInterposer for HookMatrixPlugin {
-    async fn on_heartbeat(&self, event: &Heartbeat) -> Result<(), PluginError> {
-        let mut state = self.state.lock().unwrap();
-        // Observation only (07): count, and note stalls, but never gate.
-        if state.last_uptime_ms == Some(event.uptime_ms) && state.heartbeats > 0 {
-            state.stalls += 1;
-        }
-        state.last_uptime_ms = Some(event.uptime_ms);
-        state.heartbeats += 1;
-        Ok(())
-    }
-
     async fn on_process_exit(&self, event: &ProcessExit, _ctx: &HandlerCtx) -> Result<(), PluginError> {
         let mut state = self.state.lock().unwrap();
         state.exits += 1;
         if event.exit_code != 0 {
             state.failures += 1;
         }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl SystemTelemetryParticipant for HookMatrixPlugin {
+    async fn on_heartbeat(&self, uptime_ms: u64) -> Result<(), PluginError> {
+        let mut state = self.state.lock().unwrap();
+        // Observation only (07): count, and note stalls, but never gate.
+        if state.last_uptime_ms == Some(uptime_ms) && state.heartbeats > 0 {
+            state.stalls += 1;
+        }
+        state.last_uptime_ms = Some(uptime_ms);
+        state.heartbeats += 1;
         Ok(())
     }
 

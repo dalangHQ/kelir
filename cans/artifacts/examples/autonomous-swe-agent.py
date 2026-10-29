@@ -5,7 +5,7 @@ Full-surface Python SDK consumer for kelir 3.0.
 Not a transliteration: this uses Pydantic for schema (the TS TypeBox
 equivalent), async/await natively, decorator-registered handlers, and
 `async with` for lifecycle enforcement. It exercises every plugin,
-every VirtIO ring, and the three-tier evidence verification model.
+every VirtIO ring, and the telemetry provenance classification.
 
 Requirements:
     kelir>=3.0          (PyO3 bindings; 4 native planes + domain plugins)
@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Awaitable, Callable, Literal, Optional, Protocol, Self
+from typing import Awaitable, Callable, Literal, Optional, Self
 
 from pydantic import BaseModel, Field
 
@@ -37,7 +37,6 @@ from kelir import (
     ExecutionReceipt,
     HandlerContext,
     KelirBuilder,
-    Oracle,
     PostExecAction,
     Session,
     SnapshotDescriptor,
@@ -164,14 +163,18 @@ class RepoPolicyPlugin(BasePlugin):
         if h.is_protected():
             h.record_violation()
             return TrapAction.deny(
-                1, f"EPOLICY: '{h.current_branch}' is protected."
+                1, f"EPOLICY: '{h.current_branch}' is protected.".encode()
             )
 
         new_branch = f"agent/{uuid.uuid4().hex[:8]}"
+        # ExecveMutation (plugins/tool-guard.md) serialized into target_mutation.
         return TrapAction.rewrite(
-            new_binary="/bin/git",
-            new_argv=[*event.argv, f"HEAD:refs/heads/{new_branch}"],
-            injected_env={"KELIR_REWRITTEN": "1"},
+            target_mutation=json.dumps({
+                "new_binary": "/bin/git",
+                "new_argv": [*event.argv, f"HEAD:refs/heads/{new_branch}"],
+                "set_env": {"KELIR_REWRITTEN": "1"},
+                "unset_env": [],
+            }).encode()
         )
 
     # ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
@@ -183,17 +186,20 @@ class RepoPolicyPlugin(BasePlugin):
             )
         return True
 
-    # ── Ring 1 (virtio-console): annotate mandatory disclosures ─────────
-    async def on_disclosure(self, body: bytes) -> Optional[bytes]:
+    # Disclosure is no longer a ConsoleInterposer hook (aa0e011): host
+    # mutations publish TerminalNotice to the EventBus and the native
+    # terminal plane formats the notice. This helper supplies the
+    # repo-policy annotation, delivered via terminal.notice.
+    async def disclosure_annotation(self) -> bytes:
         n = self.handle().violations
-        return body + f"[repo-policy: {n} open violations]\n".encode()
+        return f"[repo-policy: {n} open violations]\n".encode()
 
 
 # ============================================================================
 # 3. SNOOP FACTORY — does NOT capture session; only HandlerContext (§12.4 T3)
 # ============================================================================
 
-def make_snoop(oracle: Oracle) -> Callable[[Path, bytes, HandlerContext], Awaitable[None]]:
+def make_snoop(oracle: UserOracle) -> Callable[[Path, bytes, HandlerContext], Awaitable[None]]:
     async def on_write(path: Path, raw: bytes, c: HandlerContext) -> None:
         evt = json.loads(raw)
         if evt.get("falsifiedResult") is True:
@@ -214,7 +220,7 @@ PreExecHandler = Callable[[HandlerContext], Awaitable[Decision]]
 PostExecHandler = Callable[[HandlerContext], Awaitable[PostExecAction]]
 
 
-def make_universal_step(oracle: Oracle) -> PreExecHandler:
+def make_universal_step(oracle: UserOracle) -> PreExecHandler:
     async def universal_step(c: HandlerContext) -> Decision:
         await c.vm.checkpoint(f"pre:{c.trap.pid}")
         intent = await oracle.analyze_intent(c.trap)
@@ -227,11 +233,12 @@ def make_universal_step(oracle: Oracle) -> PreExecHandler:
     return universal_step
 
 
-def make_warm_caches(oracle: Oracle) -> PreExecHandler:
+def make_warm_caches(oracle: UserOracle) -> PreExecHandler:
     async def warm_caches(c: HandlerContext) -> Decision:
         await c.fs.warm_cache(["node_modules", ".next/cache"])
         # Env injection via Rewrite, not env.set + resume (09 Env-injection:
         # env.set + resume returns EINVALIDDECISION). Same binary/argv.
+        # The SDK rewrite serializes to ExecveMutation target_mutation.
         return Decision.rewrite(
             binary=c.trap.binary_path,
             argv=list(c.trap.argv),
@@ -252,7 +259,7 @@ def make_force_strip() -> PreExecHandler:
     return force_strip
 
 
-def make_verify_receipt(oracle: Oracle) -> PostExecHandler:
+def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
     async def verify_receipt(c: HandlerContext) -> PostExecAction:
         pre: SnapshotDescriptor = c.step.last()  # raises if no checkpoint was marked
         receipt: ExecutionReceipt = await c.receipt()
@@ -324,7 +331,7 @@ def make_zero_byte_check() -> PostExecHandler:
 
 async def build_runtime(
     *,
-    oracle: Oracle,
+    oracle: UserOracle,
     stripe_key: str,
     pg_cert: Path,
     pg_key: Path,
@@ -474,7 +481,7 @@ async def build_runtime(
                     error_probability=0.05,
                 ),
             ],
-        )
+        )))
 
         # ── LEDGER (§12.1–§12.3) — must precede repo-policy (requires) ──
         .plugin(LedgerPlugin(LedgerConfig(
@@ -489,7 +496,7 @@ async def build_runtime(
             receipts=ReceiptConfig(
                 include_syscall_count=True,
             ),
-        ))
+        )))
     )
 
     # ── CUSTOM PLUGIN: fluid registration ───────────────────────────────
@@ -594,7 +601,7 @@ async def main() -> None:
         # ── Phase 2: 4-way CoW fork fan-out (§11.1, §11.3) ────────────
         branches = await asyncio.gather(*(
             fork_and_verify(session, hid) for hid in "ABCD"
-        )
+        ))
         winner = next(
             ((hid, d) for hid, run, d in branches if run.exit_code == 0),
             None,
@@ -640,14 +647,18 @@ async def main() -> None:
 # 7. ORACLE — user-supplied post-condition verification engine
 # ============================================================================
 
-class _IntentAnalysis(Protocol):
+# Example-local evaluator, not a core trait: 03/08 deleted the core
+# Oracle contract in aa0e011. UserOracle is a plain class here.
+@dataclass
+class IntentAnalysis:
     is_hypothesis_valid: bool
-    falsification_reason: Optional[str]
+    falsification_reason: Optional[str] = None
+    allow_high_entropy: bool = False
 
 
-class UserOracle(Oracle):
+class UserOracle:
     async def analyze_intent(self, _trap: TrapEvent):
-        return kelir.oracle.IntentAnalysis(
+        return IntentAnalysis(
             is_hypothesis_valid=True,
             falsification_reason=None,
             allow_high_entropy=False,

@@ -79,7 +79,7 @@ const runtime = kelir({
   carryoverBufferBytes: 1024,
 
   // → c.ledger — receipts include syscall counts.
-})).use(ledger({
+}).use(ledger({
   store: "sqlite://.kelir/audit.merkle.db",
   merkleChain: true,
   receipts: { includeSyscallCount: true },

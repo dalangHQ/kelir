@@ -22,7 +22,7 @@ SAME HOOK SET in all three SDKs, in dispatch order:
      (ESC ] 52 ; … terminator) from guest-bound input.
   5. on_console_output -> masks sk_live_ tokens in the chunk before it
      reaches the host terminal.
-  6. on_heartbeat -> counts heartbeats; a receipt whose uptime_ms has
+  6. on_heartbeat (SystemTelemetryParticipant in Rust) -> counts heartbeats; a receipt whose uptime_ms has
      not advanced since the previous receipt increments the stall
      counter (observation only, per 07).
   7. on_process_exit -> records (pid, exit_code); non-zero exits
@@ -44,7 +44,7 @@ GUARDS (not new dispatch rows; hook order 1-7 above is unchanged):
 
 GAPS (flagged, not silently invented):
   - Python plugin-hook surface: only on_trap / on_fs_write /
-    on_disclosure appear in the swe-agent Python plugin. The
+    disclosure_annotation appear in the swe-agent Python plugin. The
     on_net_outbound / on_fs_lookup / on_fs_read / on_console_input /
     on_console_output / on_heartbeat / on_process_exit methods below mirror
     the Rust trait names in the existing snake_case idiom.
@@ -54,11 +54,14 @@ GAPS (flagged, not silently invented):
     follow the PostExecAction.proceed() / rollback_and_halt() static
     precedent in the swe-agent Python example; the import path follows
     the kelir.plugin precedent (PluginError, TrapAction).
-  - YieldToHost's numeric argument: unspecified anywhere (see
-    hook-matrix.rs header); 0 is an explicit placeholder.
+  - YieldToHost's numeric argument: aa0e011 specifies it as a
+    delayed release in nanoseconds; 0 below is immediate.
+  - Rust ConsoleInterposer now takes a virtio-console port (u32)
+    before the byte buffer; the Python SDK surface here stays
+    bytes-only, as already flagged for the plugin-hook surface above.
   - Hook return-vs-mutate shape: Rust mutates buffers in place; the
     Python hooks below return the transformed bytes (the swe-agent
-    Python on_disclosure returns bytes rather than mutating), which is
+    Python disclosure_annotation returns bytes rather than mutating), which is
     the Python-idiom equivalent of the same transformation.
   - Error idiom: no BufferCeilingExceeded variant or E_PATH_TRAVERSAL
     raise is attested in any Python example; both guards below use

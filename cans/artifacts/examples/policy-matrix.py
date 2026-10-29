@@ -10,7 +10,8 @@ is the dispatch order; each binary hits exactly one row:
   1. policy-allow    -> Allow            (resume untouched)
   2. policy-deny     -> Deny            (exit 1, EPOLICY)
   3. policy-rewrite  -> Rewrite         (new binary + argv, env ONLY via
-                                           Rewrite env — never env.set()
+                                           Rewrite target_mutation
+                                           (ExecveMutation) — never env.set()
                                            + resume, which is
                                            EINVALIDDECISION per 09)
   4. policy-abort    -> Abort           (pre-exec, exit 1)
@@ -33,7 +34,8 @@ expresses it through the plugin's on_trap returning TrapAction. The
 decision sequence and order are identical; only the registration
 mechanism follows SDK idiom. Watchdog/veto hooks live on BasePlugin
 subclasses, mirroring the Rust capability traits in snake_case (cf.
-on_trap / on_fs_write / on_disclosure in the swe-agent Python plugin).
+on_trap / on_fs_write / disclosure_annotation in the swe-agent Python
+plugin; Rust watchdog is now SystemTelemetryParticipant).
 
 GAPS (flagged, not silently invented):
   - Decision.abort / Decision.yield_ / Decision.hold /
@@ -56,7 +58,8 @@ GAPS (flagged, not silently invented):
     precedent (PluginError, TrapAction).
   - Watchdog hook in Python: no on_watchdog spelling appears in any
     Python example. The method below mirrors the Rust trait name in
-    snake_case, following the on_trap / on_disclosure precedent.
+    snake_case, following the on_trap / disclosure_annotation precedent
+    (Rust: SystemTelemetryParticipant).
   - builder.register_custom_action / builder.register_vsock_service:
     specified in 09/03 but handler signatures and schema types appear in
     no example; the dict schemas and handlers below are the closest

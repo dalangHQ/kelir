@@ -10,7 +10,8 @@
 //!   1. policy-allow    -> Allow            (resume untouched)
 //!   2. policy-deny     -> Deny            (exit 1, EPOLICY)
 //!   3. policy-rewrite  -> Rewrite         (new binary + argv, env ONLY via
-//!                                            Rewrite.injected_env — never
+//!                                            Rewrite target_mutation
+//!                                            (ExecveMutation) — never
 //!                                            env.set() + resume, which is
 //!                                            EINVALIDDECISION per 09)
 //!   4. policy-abort    -> Abort           (pre-exec, exit 1)
@@ -54,7 +55,6 @@
 //!   serde_json = "1"
 //!   ciborium = "0.2"
 
-use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -68,7 +68,7 @@ use kelir::{
     handler, DriverChoice, HandlerCtx, KelirBuilder, Session, VmConfig,
     plugin::{
         AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant,
-        PluginError, TrapInterposer,
+        PluginError, SystemTelemetryParticipant, TrapInterposer,
         VetoEvent, WatchdogEvent, WatchdogVerdict,
     },
     protocol::{TrapAction, TrapEvent},
@@ -172,19 +172,22 @@ impl TrapInterposer for PolicyMatrixPlugin {
         match binary {
             // Row 1: Allow — resume untouched.
             "policy-allow" => Ok(Some(TrapAction::Allow)),
-            // Row 2: Deny — exit code + stderr injected into the TTY.
+            // Row 2: Deny — exit code + diagnostic payload injected into the TTY.
             "policy-deny" => Ok(Some(TrapAction::Deny {
                 exit_code: 1,
-                stderr_message: "EPOLICY: policy-matrix denies this binary.".into(),
+                diagnostic_payload: b"EPOLICY: policy-matrix denies this binary.".to_vec(),
             })),
-            // Row 3: Rewrite — env mutation ONLY through injected_env.
+            // Row 3: Rewrite — env mutation ONLY through the ExecveMutation
+            // target_mutation payload (plugins/tool-guard.md).
             "policy-rewrite" => {
-                let mut env = HashMap::new();
-                env.insert("KELIR_POLICY_REWRITE".into(), "1".into());
+                let mutation = serde_json::json!({
+                    "new_binary": "/bin/policy-allow",
+                    "new_argv": ["policy-allow", "--rewritten"],
+                    "set_env": { "KELIR_POLICY_REWRITE": "1" },
+                    "unset_env": [],
+                });
                 Ok(Some(TrapAction::Rewrite {
-                    new_binary: "/bin/policy-allow".into(),
-                    new_argv: vec!["policy-allow".into(), "--rewritten".into()],
-                    injected_env: env,
+                    target_mutation: serde_json::to_vec(&mutation).unwrap(),
                 }))
             }
             // Row 4: Abort — pre-exec, hypervisor-level termination.
@@ -215,7 +218,10 @@ impl TrapInterposer for PolicyMatrixPlugin {
             _ => Ok(None),
         }
     }
+}
 
+#[async_trait]
+impl SystemTelemetryParticipant for PolicyMatrixPlugin {
     async fn on_watchdog(
         &self, event: &WatchdogEvent,
     ) -> Result<WatchdogVerdict, PluginError> {
@@ -254,7 +260,7 @@ impl KelirPlugin for WatchdogSilencerPlugin {
 }
 
 #[async_trait]
-impl TrapInterposer for WatchdogSilencerPlugin {
+impl SystemTelemetryParticipant for WatchdogSilencerPlugin {
     async fn on_watchdog(
         &self, _event: &WatchdogEvent,
     ) -> Result<WatchdogVerdict, PluginError> {

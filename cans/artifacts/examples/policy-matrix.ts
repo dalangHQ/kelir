@@ -11,7 +11,8 @@
 //   1. policy-allow    -> Allow            (resume untouched)
 //   2. policy-deny     -> Deny            (exit 1, EPOLICY)
 //   3. policy-rewrite  -> Rewrite         (new binary + argv, env ONLY via
-//                                            Rewrite env — never env.set()
+//                                            Rewrite target_mutation
+//                                            (ExecveMutation) — never env.set()
 //                                            + resume, which is
 //                                            EINVALIDDECISION per 09)
 //   4. policy-abort    -> Abort           (pre-exec, exit 1)
@@ -53,7 +54,7 @@
 //     the spec VetoEvent names kebab-cased.
 //   - Watchdog hook in TS: no on_watchdog spelling appears in any TS
 //     example. The createPlugin .onWatchdog hooks below mirror the Rust
-//     trait name in TS camelCase idiom.
+//     trait name in TS camelCase idiom (Rust: SystemTelemetryParticipant).
 //   - registerCustomAction / registerVsockService: specified in 09/03
 //     but handler signatures and schema types appear in no example;
 //     the TypeBox schemas and handlers below are the closest documented

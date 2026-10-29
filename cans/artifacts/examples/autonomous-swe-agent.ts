@@ -13,7 +13,7 @@ import { chaos }  from "@kelir/plugin-chaos";
 import { ledger } from "@kelir/plugin-ledger";
 import crypto from "node:crypto";
 
-// Oracle: post-condition verification engine.
+// Userland evaluator: post-condition verification engine (not a core trait).
 declare const oracle: {
   currentTraceId(): string;
   analyzeIntent(trap: { binary: string; binaryBlake3: string; argv: string[];
@@ -63,7 +63,7 @@ const runtime = kelir({
     // StatelessRegex instead of the StreamingAutomata default.
     // The filters above are unchanged; only the match engine is.
     streamEngine: "StatelessRegex",
-  }))
+  })
 
   // → native storage plane
   .storage({
@@ -105,7 +105,7 @@ const runtime = kelir({
             throw new Error("ENOSPC: diff exceeds policy ceiling");
         } },
     ],
-  }))
+  })
 
   // → native wire plane
   .wire({
@@ -123,7 +123,7 @@ const runtime = kelir({
     // StrictTcpOnly default. The sinkhole allowlist above is unchanged;
     // only the UDP path moves to proxied.
     tapFilter: "AllowUdpProxied",
-  }))
+  })
 
   // → c.chaos
   .use(chaos({
@@ -199,6 +199,7 @@ const runtime = kelir({
     await c.fs.warmCache(["node_modules", ".next/cache"]);
     // Env injection via Rewrite, not env.set + resume (09 Env-injection:
     // env.set + resume returns EINVALIDDECISION). Same binary/argv.
+    // The SDK rewrite object serializes to ExecveMutation target_mutation.
     return c.rewrite({ binary: c.trap.binary_path, argv: c.trap.argv,
                        env: { OTEL_TRACE_ID: oracle.currentTraceId(), CI: "1" } });
   })

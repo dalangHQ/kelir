@@ -104,7 +104,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
 
     builder.trap(TrapFilter.binary("migrate"), pre=pre_migrate, post=post_migrate)
 
-    # ── TWO-PHASE COMMIT (§07-lifecycle.md#Two-phase-commit) ──────────
+    # ── TWO-PHASE COMMIT (plugins/transaction.md) ──────────
     # LifecycleParticipant commit hooks, registered the same decorator
     # way as on_vm_ready / on_vm_shutdown in autonomous-swe-agent.py.
     # They bracket the snapshot export in main(): the runtime pauses
@@ -153,7 +153,7 @@ async def main() -> None:
         if run.exit_code != 0:
             raise SystemExit(f"migration failed: {run.exit_code}")
 
-        # Commit point (07-lifecycle.md#Two-phase-commit): exporting the
+        # Commit point (plugins/transaction.md): exporting the
         # post-migration state stages the snapshot; on_pre_commit already
         # flushed the host ledger, and on_post_commit(True) swaps the
         # staged snapshot into LOCAL_SNAPSHOT while on_post_commit(False)

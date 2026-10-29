@@ -23,7 +23,7 @@
 //      (ESC ] 52 ; … terminator) from guest-bound input.
 //   5. onConsoleOutput -> masks sk_live_ tokens in the chunk before it
 //      reaches the host terminal.
-//   6. onHeartbeat -> counts heartbeats; a receipt whose uptimeMs has
+//   6. onHeartbeat (SystemTelemetryParticipant in Rust) -> counts heartbeats; a receipt whose uptimeMs has
 //      not advanced since the previous receipt increments the stall
 //      counter (observation only, per 07).
 //   7. onProcessExit -> records (pid, exitCode); non-zero exits
@@ -56,8 +56,11 @@
 //     TS example. SyncVerdict.Allow / SyncVerdict.YieldToHost(0) below
 //     follow the PostExecAction.RollbackAndHalt enum precedent in the
 //     swe-agent TS example (imported from @kelir/core).
-//   - YieldToHost's numeric argument: unspecified anywhere (see
-//     hook-matrix.rs header); 0 is an explicit placeholder.
+//   - YieldToHost's numeric argument: aa0e011 specifies it as a
+//     delayed release in nanoseconds; 0 below is immediate.
+//   - Rust ConsoleInterposer now takes a virtio-console port (u32)
+//     before the byte buffer; the TS SDK surface here stays
+//     bytes-only, as already flagged for createPlugin above.
 //   - FsInodeAttr field names in TS: camelCase per TS idiom;
 //     the Rust struct fields are the documented source (plugin-trait.rs).
 
@@ -125,8 +128,7 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
   .onNetOutbound(async (frame) => {
     const text = Buffer.from(frame).toString("latin1");
     if (text.includes(DENY_MARKER)) {
-      // GAP: YieldToHost's numeric argument is unspecified; 0 is an
-      // explicit placeholder (see header).
+      // YieldToHost(u64) is a delayed release in nanoseconds; 0 is immediate.
       return SyncVerdict.YieldToHost(0);
     }
     return SyncVerdict.Allow;

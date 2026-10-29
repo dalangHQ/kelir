@@ -53,7 +53,7 @@ fn swarm_builder() -> KelirBuilder {
         ]),
         default_mode: LockMode::Exclusive,
         non_blocking: true,
-    }))
+    })
     // Mesh: peer vsock with mTLS + W3C traceparent propagation.
     .plugin(MeshPlugin::new(MeshConfig {
         peer_identity: PeerIdentity::Spiffe {

@@ -16,7 +16,7 @@
 //!      the TypeBox `t.Object({…})` runtime guard expressed as a zero-cost
 //!      serde target.
 //!
-//! Every plugin, every §11 hypervisor primitive, and the §12 three-tier evidence verification model,
+//! Every plugin, every §11 hypervisor primitive, and the §12 telemetry provenance classification,
 //! and all four VirtIO rings are exercised in the phases below.
 //!
 //! Cargo.toml:
@@ -30,7 +30,6 @@
 //!   blake3 = "1"
 //!   libc = "0.2"
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -42,10 +41,9 @@ use tokio::sync::Mutex;
 use kelir::{
     handler, Decision, DriverChoice, FinalizeRequest, FsReconcileRequest, HandlerCtx,
     KelirBuilder, PostExecAction, Session, SnapshotDescriptor, StepSlot, VmConfig,
-    oracle::{IntentAnalysis, Oracle},
     plugin::{
         AnyPlugin, KelirPlugin, PluginError,
-        FsInterposer, SyncVerdict, ConsoleInterposer,
+        FsInterposer, SyncVerdict,
         TrapInterposer,
     },
     plugins::{
@@ -172,19 +170,22 @@ impl TrapInterposer for RepoPolicyPlugin {
             h.record_violation().await;
             return Ok(Some(TrapAction::Deny {
                 exit_code: 1,
-                stderr_message: format!("EPOLICY: '{}' is protected.", h.branch().await),
+                diagnostic_payload: format!("EPOLICY: '{}' is protected.", h.branch().await).into_bytes(),
             }));
         }
 
         let new_branch = format!("agent/{:08x}", std::process::id());
         let mut argv = event.argv.clone();
         argv.push(format!("HEAD:refs/heads/{new_branch}"));
-        let mut env = HashMap::new();
-        env.insert("KELIR_REWRITTEN".into(), "1".into());
+        // ExecveMutation (plugins/tool-guard.md) serialized into target_mutation.
+        let mutation = serde_json::json!({
+            "new_binary": "/bin/git",
+            "new_argv": argv,
+            "set_env": { "KELIR_REWRITTEN": "1" },
+            "unset_env": [],
+        });
         Ok(Some(TrapAction::Rewrite {
-            new_binary: "/bin/git".into(),
-            new_argv: argv,
-            injected_env: env,
+            target_mutation: serde_json::to_vec(&mutation).unwrap(),
         }))
     }
 }
@@ -207,15 +208,13 @@ impl FsInterposer for RepoPolicyPlugin {
     }
 }
 
-#[async_trait]
-impl ConsoleInterposer for RepoPolicyPlugin {
-    /// on_disclosure: append policy trace to every mandatory notice.
-    /// Body is immutable; hook can only append.
-    async fn on_disclosure(
-        &self, body: &[u8],
-    ) -> Result<Option<Vec<u8>>, PluginError> {
-        let ann = format!("[repo-policy: {} open violations]\n", self.handle().violations().await);
-        Ok(Some([body, ann.as_bytes()].concat()))
+// Disclosure is no longer a ConsoleInterposer hook (aa0e011): host
+// mutations publish TerminalNotice to the EventBus and the native
+// terminal plane formats the notice. RepoPolicy's annotation is
+// delivered via terminal.notice at the post-exec sites, using this helper.
+impl RepoPolicyPlugin {
+    async fn disclosure_annotation(&self) -> Vec<u8> {
+        format!("[repo-policy: {} open violations]\n", self.handle().violations().await).into_bytes()
     }
 }
 
@@ -224,7 +223,7 @@ impl ConsoleInterposer for RepoPolicyPlugin {
 // ============================================================================
 
 async fn build_runtime(
-    oracle: Arc<dyn Oracle>,
+    oracle: Arc<UserOracle>,
     stripe_key: String,
     pg_cert: PathBuf,
     pg_key: PathBuf,
@@ -237,7 +236,7 @@ async fn build_runtime(
 
     // Snoop closure — does NOT capture `session`; uses only the `HandlerCtx`
     // it receives, whose `ledger` field is bound by `LedgerPlugin` below.
-    // Same invariant as the TS example (§12.4 Tier-3 truth).
+    // Same invariant as the TS example (08 Class 3 guest-unverified data).
     let snoop: SnoopHandler = Arc::new(|path: PathBuf, raw: Vec<u8>, c: HandlerCtx| {
         Box::pin(async move {
             let evt: serde_json::Value = serde_json::from_slice(&raw)
@@ -326,7 +325,7 @@ async fn build_runtime(
                 sync: true,
                 on_write: snoop,
             }],
-        }))
+        })
 
         // ── WIRE PLANE (§9) ─────────────────────────────────────────────
         .wire(WireConfig {
@@ -434,6 +433,7 @@ async fn build_runtime(
         .trap(TrapFilter::binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), handler(|c: HandlerCtx| async move {
             c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
             // Env injection via Rewrite, not env.set + Resume (09: EINVALIDDECISION).
+            // SDK rewrite serializes to ExecveMutation target_mutation.
             Ok(Decision::rewrite(
                 c.trap.binary_path.clone(),
                 c.trap.argv.clone(),
@@ -487,7 +487,7 @@ async fn build_runtime(
                         ));
                         return Ok(PostExecAction::RollbackAndHalt);
                     }
-                    // Oracle post-condition (§12.5)
+                    // Userland-evaluator post-condition (§12.5)
                     if !oracle.verify_physical_receipt(&receipt).await? {
                         c.vm.rollback(&pre).await?;
                         c.terminal.notice(
@@ -569,7 +569,7 @@ async fn build_runtime(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let oracle: Arc<dyn Oracle> = Arc::new(UserOracle::new());
+    let oracle: Arc<UserOracle> = Arc::new(UserOracle::new());
     let stripe_key = std::env::var("REAL_HOST_STRIPE_KEY")?;
 
     let builder = build_runtime(
@@ -695,12 +695,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 // ============================================================================
 // 5. ORACLE (user-supplied post-condition verification engine)
 // ============================================================================
+// Example-local evaluator, not a core trait: 03/08 deleted the core
+// Oracle contract in aa0e011. UserOracle is a plain struct here.
+
+pub struct IntentAnalysis {
+    pub is_hypothesis_valid: bool,
+    pub falsification_reason: Option<String>,
+    pub allow_high_entropy: bool,
+}
 
 struct UserOracle;
 impl UserOracle { fn new() -> Self { Self } }
 
 #[async_trait]
-impl Oracle for UserOracle {
+impl UserOracle {
     async fn analyze_intent(&self, _trap: &TrapEvent) -> Result<IntentAnalysis, Box<dyn std::error::Error + Send + Sync>> {
         Ok(IntentAnalysis {
             is_hypothesis_valid: true,
