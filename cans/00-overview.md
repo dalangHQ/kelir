@@ -2,7 +2,7 @@
   - Product
     - Name: kelir (Javanese ꦏꦼꦭꦶꦂ)
     - Meaning: taut white fabric screen in Wayang Kulit shadow puppetry
-    - Product metaphor: see: #Wayang-metaphor
+    - Product metaphor: see: #Wayang-elements
     - Version: 3.0.0-normative
     - Status: normative specification
     - Legal and licensing architecture
@@ -18,12 +18,12 @@
         - Dynamic SDKs: Precompiled native binaries via npm (@kelir-cloud) and PyPI (kelir-cloud)
         - Rust on-prem: Authenticated private Cargo registry with commercial license tokens
         - Managed platform: Kelir Cloud SaaS execution over HTTPS/gRPC
-  - Wayang metaphor
-    - Kelir: VirtIO mediation boundary between host and guest
-    - Dalang: host runtime supervisor owning hypervisor loops
-    - Wayang: sandboxed microVM workload, unmodified POSIX binaries
-    - Blencong: hardware clocksource and PMU retired-instruction counters
-    - Bayang: projected terminal streams and frame telemetry
+  - Wayang elements
+    - Kelir: taut white fabric screen onto which shadows are cast
+    - Dalang: master puppeteer who manipulates the puppets, speaks all dialogue, and conducts the performance
+    - Wayang: flat, carved leather or wooden puppets manipulated behind the screen
+    - Blencong: oil lamp suspended above the puppeteer that provides the light source
+    - Bayang: shadow cast by the puppet onto the screen, observed by the audience
   - What it is
     - Embeddable in-process microVM hypervisor microkernel
     - Mediates guest interaction through the VirtIO Device Complex
