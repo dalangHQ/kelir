@@ -12,6 +12,12 @@
     - Semantic invariant equivalence
       - Runtime safety matrix: see: artifacts/diagrams/sdks-invariants.txt
       - Failure occurs at the earliest lifecycle phase native to each runtime
+      - Affine builder consumption: every fluent verb consumes the previous
+        builder by value; no builder instance is reused, branched, or mutated
+      - Compile-time prerequisite gating: a plugin declaring a prerequisite
+        without its dependency installed fails at type-check, not boot
+      - Zero dynamic service lookups: handler context c statically intersects
+        each installed plugin's surface; no string keys, no runtime downcast
       - Unhandled errors abort hypervisor immediately to eliminate zombie runs
       - Distribution and error invariants
         - Zero runtime toolchain tax: distributed with precompiled NAPI/PyO3 wheels
@@ -43,8 +49,14 @@
         - Checkpoint: session.checkpoint.create(label), session.rollback()
       - Plugin extension pattern
         - Optional domain plugins attach via typed extensions
-        - session.ext::<T>() (Rust/Py), session.use(ext) (TS)
-        - Inter-plugin services resolve via c.service::<T>() in handlers
+        - Rust: session.ctx::<T>() infallible via `Session<Plugins, Params>`
+          where `Plugins: Has<T>`; no Result, no `ext`/`extension` surface
+        - TypeScript: session.<pluginKey> is a static member of
+          Session<TContext, TParams>; no session.use(ext)
+        - Python: session.cap.<plugin_key> is statically projected by the
+          PEP 695 Protocol intersection; no session.ext(T)
+        - Inter-plugin capabilities resolve via c.ctx::<T>() (Rust),
+          c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
     - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
     - Language surfaces
       - Rust: extension traits provide zero-cost fluent chaining on builder
@@ -110,7 +122,11 @@
     - Zero-allocation validation: operates on zero-copy guest memory
   - Rust SDK
     - see: artifacts/code/rust-handle-injection.rs
-    - Typestate transitions: KelirBuilder<Unset> to KelirBuilder<Sealed> to Session
+    - Typestate transitions: KelirBuilder<Unsealed, Plugins, Params> to
+      KelirBuilder<Sealed, Plugins, Params> to Session<Plugins, Params>
+    - Every verb consumes self by value: .plugin(), .params(), .trap(), .boot()
+    - Plugins accumulate in a monomorphic HList; HandlerCtx<'a, Plugins, Params>
+      resolves capabilities via Has<T>, infallible at the call site
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
     - .plugin() accepts core KelirPlugin plus only needed ring traits
     - Ring traits: LifecycleParticipant, TrapInterposer, ConsoleInterposer
@@ -120,36 +136,50 @@
     - .trap(matcher, handler): pre-exec gate; dual pre/post handler also supported
     - .intercept_storage(pathGlob, handler): synchronous native storage write filter
     - .on_vm_ready(handler): session callback; .boot().await seals and boots
-    - Inter-plugin services queryable via c.service::<T>()
+    - Inter-plugin capabilities resolve via c.ctx::<T>() where Plugins: Has<T>;
+      a missing plugin is a compile error, never a runtime Result
     - Composite bundles flatten into builder via CompositePlugin trait
     - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
     - see: artifacts/code/typescript-accumulation.ts
-    - Fluent Elysia-style chaining: .use(plugin) enriches builder type signature
-    - Chained plugins decorate builder with typed DSL verbs via generic intersections
-    - .use() takes flat plugin instances; no callback builder arguments
+    - KelirBuilder<TContext, TParams, TInstalledPlugins> carries the accumulated
+      surface in type parameters; every verb returns a new builder type
+    - .use(plugin) intersects TPluginCtx into TContext and unions TPluginId
+      into TInstalledPlugins; .use() takes flat plugin instances, no callbacks
+    - Prerequisite gate: a missing dependency yields
+      CompileError<"Missing ...">, so no method (including .params and .trap)
+      is callable on the returned type
     - .trap(matcher, handler): simple pre-exec gate returning a Decision
     - .trap(matcher, { pre, post }): dual pre/post gate; post returns a
       PostExecAction
     - .intercept(channel, filter, handler): ring-level synchronous hot-path
       filters returning SyncVerdict
     - .on(event, handler): lifecycle interceptors over LifecycleEvent values
-    - Typed service locator: c.service(ServiceToken) for peer lookup
+    - .params(schema) pins TParams = Static<TSchema>; handler c.params is typed
+      from that parameter, not from a runtime schema lookup
+    - Handlers receive HandlerContext<TContext, TParams>; plugin surfaces are
+      static members (c.policy, c.ledger), never c.service(Token)
     - AOT hook fusion compiles all TS pipeline handlers into a single flat closure
     - Invariant: exactly 1 NAPI trampoline jump per event regardless of depth
-    - Fully unified TContext passes to callbacks, resolving cross-plugin lookups
+    - Fully unified TContext passes to callbacks; cross-plugin reads are static
+      member accesses, not service-token resolution
     - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
-    - Null-object pattern: use(plugin({ enabled: false })) preserves service
-      interfaces with no-op dispatch
+    - Null-object pattern: use(plugin({ enabled: false })) preserves static
+      member shape with a no-op implementation
   - Python SDK
     - see: artifacts/code/python-raii-pydantic.py
     - async with builder as session
       - __aenter__ boots microVM
       - __aexit__ guarantees session.terminate() on any exception
-    - Builder assembly inspects closure freevars against mounted plugins
-    - Unbound closure references raise KelirConfigurationError before boot
+    - KelirBuilder[TCapabilities, TParams] carries the accumulated surface in
+      PEP 695 type parameters; every verb returns a new builder type
+    - .use(plugin) intersects TNewCap into TCapabilities via Protocol
+      intersection; the c.cap projection is statically typed by pyright/mypy
+    - .params(schema: type[TNewParams]) pins TParams; handler c.params is typed
+      from the Pydantic model class
     - Composite plugins unpack nested plugins atomically before boot
-    - Service resolution via c.service(ServiceType)
+    - Capabilities are static members of c.cap (c.cap.policy), never
+      c.service(ServiceType)
     - Mount scoping via kwargs: rings=..., binaries=..., paths=...
   - Full-surface examples
     - see: artifacts/examples/autonomous-swe-agent.rs

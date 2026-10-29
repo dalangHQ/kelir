@@ -204,7 +204,7 @@ def make_snoop(oracle: UserOracle) -> Callable[[Path, bytes, HandlerContext], Aw
         evt = json.loads(raw)
         if evt.get("falsifiedResult") is True:
             raise PluginError.deny(f"EPERM: harness hallucination at {path}")
-        producer_blake3 = await c.ledger.blake3_of_producing_process(path)
+        producer_blake3 = await c.cap.ledger.blake3_of_producing_process(path)
         await oracle.ingest_harness_event(path, evt, producer_blake3)
     return on_write
 
@@ -290,9 +290,11 @@ def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
     return verify_receipt
 
 
-def make_commit_gate(policy: RepoPolicyHandle) -> PreExecHandler:
-    async def commit_gate(_c: HandlerContext) -> Decision:
-        n = policy.violations
+def make_commit_gate() -> PreExecHandler:
+    async def commit_gate(c: HandlerContext) -> Decision:
+        # Statically projected by the PEP 695 Protocol intersection:
+        # c.cap.policy -> RepoPolicyHandle, guaranteed by pyright.
+        n = c.cap.policy.violations
         if n > 0:
             return Decision.deny(1, f"EPOLICY: {n} prior violation(s).")
         return Decision.resume()
@@ -340,8 +342,6 @@ async def build_runtime(
         max_diff_bytes=64 * 1024,
         protected_branches=["main", "master", "release/*"],
     )
-    policy = policy_plugin.handle()
-
     builder = (
         kelir.builder(
             vcpus=4,
@@ -509,7 +509,7 @@ async def build_runtime(
     builder.trap("*", pre=make_universal_step(oracle), post=make_verify_receipt(oracle))
     builder.trap(TrapFilter.binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), pre=make_warm_caches(oracle))
     builder.trap(TrapFilter.binary("git").with_arg("push"), pre=make_force_strip())
-    builder.trap(TrapFilter.binary("git").with_arg("commit").with_arg("-m"), pre=make_commit_gate(policy))
+    builder.trap(TrapFilter.binary("git").with_arg("commit").with_arg("-m"), pre=make_commit_gate())
     builder.trap(TrapFilter.binary("git").with_arg("commit"), post=make_zero_byte_check())
 
     # ── LIFECYCLE HOOKS (§11.4, §12) — every handler receives `session` ─
@@ -523,11 +523,11 @@ async def build_runtime(
 
     @builder.on_vm_shutdown
     async def _shutdown(session: Session) -> None:
-        await session.ext(LedgerExtension).flush()
+        await session.cap.ledger.flush()
 
     @builder.on_trap_deny
     async def _deny(event: TrapEvent, session: Session) -> None:
-        if await session.ext(LedgerExtension).count_denials(event.ppid) > 5:
+        if await session.cap.ledger.count_denials(event.ppid) > 5:
             await session.vm.suspend("./.kelir/quarantine.snap")
             await session.break_glass()
 
@@ -633,7 +633,7 @@ async def main() -> None:
         )
 
         # ── Phase 5: signed Merkle receipt (§12.3) ────────────────────
-        final = await session.ext(LedgerExtension).finalize(
+        final = await session.cap.ledger.finalize(
             include_delta=winning_delta,
             include_merkle_root=True,
         )

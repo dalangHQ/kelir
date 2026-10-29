@@ -185,7 +185,12 @@
       - ConsoleContext: scoped to virtio-console operations (PTY, grid, window)
     - Inter-plugin typed services:
       - Plugins import peer crate traits directly; see: #Plugin-tiering
-      - Plugins consume peer services via ctx.get_service::<T>()
+      - Rust: c.ctx::<T>() resolves via Has<T> on the monomorphic plugin HList;
+        a missing plugin is a compile error, never a runtime Result
+      - TypeScript: c.<pluginKey> is a static member of the intersected
+        TContext; no c.service(Token) lookup exists
+      - Python: c.cap.<plugin_key> is statically typed by the PEP 695
+        Protocol intersection; no c.service(Type) lookup exists
   - First-class plugins
     - Catalog tiering
       - Community plugins: 13 optional domain extensions in cans/plugins/
@@ -287,7 +292,10 @@
     - Same first-class plugins in Rust, TypeScript, Python, maintained 1:1
     - Trait surface and hook semantics identical across languages
     - Context & session projection, realized per language
-      - Rust: builder.plugin(p); context c.p() and session.p() projected
-      - TypeScript: builder.use(p); context c.p and session.p inferred
-      - Python: builder.use(p); context c.p and session.p exposed
+      - Rust: builder.plugin(p); context c.ctx::<P::Context>() infallible;
+        session.ctx::<P::Context>() infallible
+      - TypeScript: builder.use(p); context c.<pluginKey> and
+        session.<pluginKey> statically intersected
+      - Python: builder.use(p); context c.cap.<plugin_key> and
+        session.cap.<plugin_key> statically projected
     - All three realize the same 02-plugin-model.md#Core-context-keys contract

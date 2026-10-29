@@ -157,8 +157,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if join?? { passed += 1; }
     }
 
-    let winner = session.extension::<MeshExtension>()?.await_winner(Duration::from_secs(2)).await?;
-    let chain_denials = session.extension::<LedgerExtension>()?.count_by_kind("supply-chain-deny").await?;
+    let winner = session.ctx::<MeshCtx>().await_winner(Duration::from_secs(2)).await?;
+    let chain_denials = session.ctx::<LedgerCtx>().count_by_kind("supply-chain-deny").await?;
     eprintln!(
         "[kelir] {passed}/8 shards passed; winner={winner:?}; \
          supply-chain denials={chain_denials}"

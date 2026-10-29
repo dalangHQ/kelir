@@ -3,17 +3,21 @@
 ├──────────────┬────────────────────────────────────┬────────────────────────────────────┬────────────────────────────────────┤
 │ LANGUAGE     │ PLUGIN INSTALLATION PROOF          │ INBOUND PARAMETER VALIDATION       │ RECLAMATION & FAILURE VELOCITY     │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ Rust         │ Typestate transition pattern:      │ `c.params::<T>()` deserializes     │ RAII `Drop` terminates hypervisor; │
-│              │ builder bounds enforce capability  │ via Serde; failure halts spawn     │ Compile-time validation (rustc)    │
-│              │ presence on handler registration   │ before traps execute               │                                    │
+│ Rust         │ Monomorphic HList accumulation:    │ `c.params::<T>()` deserializes     │ RAII `Drop` terminates hypervisor; │
+│              │ each `.plugin()` appends P::Context│ via Serde; failure halts spawn     │ Compile-time validation (rustc)    │
+│              │ to Plugins; `c.ctx::<T>()`         │ before traps execute               │                                    │
+│              │ infallible via `Plugins: Has<T>`   │                                    │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ TypeScript   │ Type-level context accumulation;  │ `.params({ schema: t.Object(...) })`│ `try...finally` / `using` cleanup; │
-│              │ `c.pluginKey` fails `tsc` if       │ compiles to native Rust validator; │ `.error()` maps host exceptions to │
-│              │ `.use()` is absent upstream        │ invalid payload drops in Gate 2    │ POSIX errnos before crash/abort    │
+│ TypeScript   │ KelirBuilder<TContext, TParams,    │ `.params(schema)` pins TParams =   │ `try...finally` / `using` cleanup; │
+│              │ TInstalled>; `.use()` intersects   │ Static<TSchema>; `c.params` typed  │ `.error()` maps host exceptions to │
+│              │ TPluginCtx; missing prereq yields  │ from TSchema, not runtime lookup   │ POSIX errnos before crash/abort    │
+│              │ CompileError; `c.<pluginKey>`      │                                    │                                    │
+│              │ static                             │                                    │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ Python       │ Pre-instantiated plugin reference; │ Pydantic `BaseModel` on `spawn()`  │ `async with` __aexit__ terminates; │
-│              │ `c.plugin` and `session.plugin`    │ raises `EINVAL` before hook        │ Import-time + perimeter validation │
-│              │ projected automatically            │ evaluation                         │                                    │
+│ Python       │ PEP 695 Protocol intersection:    │ `.params(schema: type[TParams])`   │ `async with` __aexit__ terminates; │
+│              │ `.use()` returns KelirBuilder[    │ pins TParams; `c.params` typed     │ Import-time + perimeter validation │
+│              │ TCapabilities & TNewCap, TParams];│ from the Pydantic model class      │                                    │
+│              │ `c.cap.<plugin_key>` static        │                                    │                                    │
 └──────────────┴────────────────────────────────────┴────────────────────────────────────┴────────────────────────────────────┘
 AOT hook fusion: NAPI/PyO3 pipeline handlers fuse to one native closure per event.
 Typed enum compilation: LifecycleEvent, Ring, and TrapFilter values are checked

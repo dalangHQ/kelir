@@ -162,14 +162,10 @@ pub enum SyncVerdict {
     YieldToHost(u64),
 }
 
-/// Strongly-typed service locator eliminating ambient context string bags.
-pub trait ServiceRegistry: Send + Sync {
-    fn register_service<T: ?Sized + Any + Send + Sync>(&mut self, service: Arc<T>);
-    fn get_service<T: ?Sized + Any + Send + Sync>(&self) -> Option<Arc<T>>;
-}
-
 /// Binds inline interceptors into the linear monotonic pipeline.
-pub trait PipelineBinder: ServiceRegistry {
+/// No service registry: peer capabilities are typed Context values
+/// accumulated into the builder's Plugins tuple (see KelirPlugin::Context).
+pub trait PipelineBinder {
     fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>);
     fn bind_net(&mut self, stage: Arc<dyn NetInterposer>);
     fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>);
@@ -256,6 +252,14 @@ impl<'a> LifecycleCtx<'a> {
 
 // ── Core Identity Trait (Mandatory) ──────────────────────────────
 pub trait KelirPlugin: Send + Sync {
+    /// Context contributed to the builder's accumulated Plugins tuple.
+    /// HandlerCtx resolves it infallibly via `Plugins: Has<Self::Context>`.
+    /// `Clone` lets session.vm.fork() reproduce the tuple for the child.
+    type Context: Send + Sync + Clone + 'static;
+
+    /// Build the Context value that install_plugin appends to Plugins.
+    fn context(&self) -> Self::Context;
+
     /// Unique identifier for telemetry.
     fn name(&self) -> &'static str;
 

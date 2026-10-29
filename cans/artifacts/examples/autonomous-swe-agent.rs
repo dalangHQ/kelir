@@ -232,8 +232,6 @@ async fn build_runtime(
         max_diff_bytes: 64 * 1024,
         protected_branches: vec!["main".into(), "master".into(), "release/*".into()],
     });
-    let policy = policy_plugin.handle();
-
     // Snoop closure — does NOT capture `session`; uses only the `HandlerCtx`
     // it receives, whose `ledger` field is bound by `LedgerPlugin` below.
     // Same invariant as the TS example (08 Class 3 guest-unverified data).
@@ -244,7 +242,7 @@ async fn build_runtime(
             if evt.get("falsifiedResult").and_then(|v| v.as_bool()).unwrap_or(false) {
                 return Err(PluginError::reject("EPERM", "harness hallucination detected"));
             }
-            let blake3 = c.ledger.blake3_of_producing_process(&path).await?;
+            let blake3 = c.ctx::<LedgerCtx>().blake3_of_producing_process(&path).await?;
             oracle.ingest_harness_event(&path, &evt, &blake3).await?;
             Ok(())
         })
@@ -402,7 +400,6 @@ async fn build_runtime(
     // ── TRAP REGISTRATIONS (§4.3, §12.5) ─────────────────────────────
     // Direct root-level .trap() registrations: pre-exec gates return a
     // Decision, post-exec gates return a PostExecAction.
-    let policy_for_commit = policy.clone();
     let builder = builder
         // Universal atomic step loop: checkpoint → oracle → resume
         .trap("*", handler({
@@ -502,18 +499,17 @@ async fn build_runtime(
 
         // Commit gate — refuses if the policy plugin logged anything
         .trap(TrapFilter::binary("git").with_arg("commit").with_arg("-m"), handler({
-            let policy = policy_for_commit.clone();
-            move |_c: HandlerCtx| {
-                let policy = policy.clone();
-                async move {
-                    let n = policy.violations().await;
-                    if n > 0 {
-                        return Ok(Decision::deny(
-                            1, format!("EPOLICY: {n} prior violation(s)."),
-                        ));
-                    }
-                    Ok(Decision::Resume)
+            move |c: HandlerCtx<_, _>| async move {
+                // Static access via Plugins: Has<RepoPolicyHandle>;
+                // a missing .plugin(RepoPolicyPlugin) is a compile error.
+                let policy = c.ctx::<RepoPolicyHandle>();
+                let n = policy.violations().await;
+                if n > 0 {
+                    return Ok(Decision::deny(
+                        1, format!("EPOLICY: {n} prior violation(s)."),
+                    ));
                 }
+                Ok(Decision::Resume)
             }
         }))
 
@@ -550,10 +546,10 @@ async fn build_runtime(
             session.exec_in_guest("npm", &["ci", "--prefer-offline"]).await
         })
         .on_vm_shutdown(|session: &Session| async move {
-            session.extension::<LedgerExtension>()?.flush().await
+            session.ctx::<LedgerCtx>().flush().await
         })
         .on_trap_deny(|event, session: &Session| async move {
-            if session.extension::<LedgerExtension>()?.count_denials(event.ppid).await? > 5 {
+            if session.ctx::<LedgerCtx>().count_denials(event.ppid).await > 5 {
                 session.vm.suspend("./.kelir/quarantine.snap").await?;
                 session.break_glass().await?;
             }
@@ -670,7 +666,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         // ── Phase 5: signed Merkle receipt (§12.3) ─────────────────────
         let receipt: FinalReceipt = session
-            .extension::<LedgerExtension>()?
+            .ctx::<LedgerCtx>()
             .finalize(FinalizeRequest {
                 include_delta: winning_delta.clone(),
                 include_merkle_root: true,

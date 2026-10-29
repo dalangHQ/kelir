@@ -8,7 +8,7 @@
 
 import { kelir, createPlugin, t,
          type Session, type SnapshotDescriptor, type ExecutionReceipt,
-         type PostExecAction, type CausalDelta } from "@kelir/core";
+         type PostExecAction, type CausalDelta, type PluginContract } from "@kelir/core";
 import { chaos }  from "@kelir/plugin-chaos";
 import { ledger } from "@kelir/plugin-ledger";
 import crypto from "node:crypto";
@@ -28,15 +28,20 @@ declare const oracle: {
 // Plugin: repo-policy; rings: virtio-vsock, virtio-fs
 // Its push gate lives in the runtime "git push *" trap below; its
 // maxDiffBytes ceiling lives in the vfs diff-ceiling snoop below.
-const repoPolicyPlugin = (opts: { maxDiffBytes: number; protectedBranches: string[] }) =>
-  createPlugin("repo-policy")
-    .state("violations", 0)
-    .state("branch", "" as string)
-    .decorate("policy", (store) => ({
-      violations: store.violations,
-      currentBranch: store.branch,
-      isProtected: () => opts.protectedBranches.includes(store.branch),
-    }));
+// Context shape is a static type parameter; no .decorate() runtime bag.
+type RepoPolicyCtx = {
+  policy: {
+    violations: number;
+    currentBranch: string;
+    isProtected: () => boolean;
+    recordViolation: () => void;
+  };
+};
+
+const repoPolicyPlugin = (
+  opts: { maxDiffBytes: number; protectedBranches: string[] },
+): PluginContract<"repo-policy", RepoPolicyCtx, "ledger"> =>
+  createPlugin("repo-policy", { opts });
 
 // ============================================================================
 // SINGLE LINEAR CHAIN — order defines context keys; nothing mutates after boot
@@ -206,7 +211,7 @@ const runtime = kelir({
   .trap(TrapFilter.binary("git").withArg("push"), async (c) => {
     // Merged repo-policy push gate + runtime push gate.
     if (c.policy.isProtected()) {
-      c.store.violations += 1;
+      c.policy.recordViolation();
       return c.deny(1, `EPOLICY: '${c.policy.currentBranch}' protected.`);
     }
     if (c.trap.argv.includes("--force"))
@@ -249,9 +254,9 @@ const runtime = kelir({
   //    a pre-boot variable. ────
   .on(LifecycleEvent.VmInit,     async (driver) => driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
   .on(LifecycleEvent.VmReady,    async (s) => { await s.execInGuest("npm", ["ci", "--prefer-offline"]); })
-  .on(LifecycleEvent.VmShutdown, async (s) => { await s.use(ledgerExtension).flush(); })
+  .on(LifecycleEvent.VmShutdown, async (s) => { await s.ledger.flush(); })
   .on(LifecycleEvent.TrapDeny,   async (e, s) => {
-    if (await s.use(ledgerExtension).countDenials(e.ppid) > 5) {
+    if (await s.ledger.countDenials(e.ppid) > 5) {
       await s.vm.suspend("./.kelir/quarantine.snap");
       await s.breakGlass();
     }
@@ -311,7 +316,7 @@ async function main() {
       ["commit", "-am", `fix(stripe): dedupe webhook body reads (${winner.id})`],
       { cwd: "/workspace/checkout-service" });
 
-    const final = await session.use(ledgerExtension).finalize({ includeDelta: winningDelta!, includeMerkleRoot: true });
+    const final = await session.ledger.finalize({ includeDelta: winningDelta!, includeMerkleRoot: true });
     console.log("[kelir] merkle root:", final.merkleRoot);
     console.log("[kelir] signed JWS: ", final.signedJws.slice(0, 80) + "…");
   } finally {

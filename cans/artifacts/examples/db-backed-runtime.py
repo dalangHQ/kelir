@@ -87,9 +87,9 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         # Pin the pgwire rewrite to the expected schema prefix. A drift
         # means the proxy config diverged from the migration source;
         # the correct action is deny, not retry.
-        if c.db.rewrite_target != "migrate_schema.":
+        if c.cap.db.rewrite_target != "migrate_schema.":
             return Decision.deny(
-                1, f"EdbProxySchema: got {c.db.rewrite_target!r}",
+                1, f"EdbProxySchema: got {c.cap.db.rewrite_target!r}",
             )
         return Decision.resume()
 
@@ -115,7 +115,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         # snapshot is staged. A crash between export and ledger finalize
         # must not leave host DB state ahead of guest state — the exact
         # desynchronization the commit protocol exists to prevent.
-        await session.ext(LedgerExtension).flush()
+        await session.cap.ledger.flush()
 
     @builder.on_post_commit
     async def _post_commit(session: Session, committed: bool) -> None:
@@ -163,7 +163,7 @@ async def main() -> None:
         with open(LOCAL_SNAPSHOT, "wb") as f:
             f.write(out)
 
-        ledger = session.ext(LedgerExtension)
+        ledger = session.cap.ledger
         final = await ledger.finalize(
             include_merkle_root=True,
             include_delta=await ledger.get_causal_delta_from_parent(),

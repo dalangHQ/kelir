@@ -96,7 +96,7 @@ const runtime = kelir({
   // Shrink the ceiling once the handler binary is loaded; the trap
   // pre-handler grows it back on the next wake via adjust_balloon.
   .on(LifecycleEvent.VmReady,    async (s) => { await s.vm.adjust_balloon(384); })
-  .on(LifecycleEvent.VmShutdown, async (s) => { await s.use(ledgerExtension).flush(); });
+  .on(LifecycleEvent.VmShutdown, async (s) => { await s.ledger.flush(); });
 
 async function main() {
   const session = await runtime.boot();

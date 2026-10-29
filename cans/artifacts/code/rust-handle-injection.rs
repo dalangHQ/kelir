@@ -1,7 +1,9 @@
 // ILLUSTRATIVE EXCERPT — not standalone-compilable.
 //
 // Demonstrates Rust SDK's typestate builder pattern:
-// Builder chains stay fluid; capabilities project directly onto HandlerCtx.
+// Builder chains stay fluid; each `.plugin()` appends P::Context to a
+// monomorphic HList, and `c.ctx::<T>()` resolves infallibly via
+// `Plugins: Has<T>`. No `c.service::<dyn Trait>()?` exists.
 // SyntheticFile: FUSE-presented paths with no host backing file.
 // Verification Reject: Decision::deny returns a POSIX errno.
 //
@@ -47,8 +49,8 @@ let builder = builder
         let params = c.params::<Action>()?;
         Ok(Decision::Resume)
     }))
-    .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: HandlerCtx| async move {
-        let policy = c.service::<dyn RepoPolicyService>()?;
+    .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: HandlerCtx<_, _>| async move {
+        let policy = c.ctx::<RepoPolicyCtx>();
         if policy.violations().await > 0 {
             return Ok(Decision::deny(1, "Policy violations recorded"));
         }
