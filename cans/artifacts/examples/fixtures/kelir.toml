@@ -1,0 +1,13 @@
+# Profile fixture for profile.rs.
+# Demonstrates: plugins mount, monotonic budget, downward min cascade.
+[session]
+vcpus = 2
+memory_mb = 1024
+
+[plugins]
+ledger = { store = ".kelir/audit.merkle.db", merkle_chain = true }
+repo-policy = { max_diff_bytes = 65536, protected_branches = ["main"] }
+
+# Downward min: child cannot widen.
+[session.budget]
+exec_seconds = 300

@@ -27,24 +27,13 @@
 //!  10. Vsock: builder.register_vsock_service(2, …) + session.vsock.channel(2)
 //!      binary RPC round-trip in main().
 //!
-//! GAPS (spec-documented form used where it exists; the rest is flagged,
-//! not silently invented):
-//!   - Yield id: String wins (parent decision). TrapAction::Yield
-//!     carries checkpoint_id: String, matching SnapshotDescriptor.id
-//!     (vmm-driver-trait.rs) and the "policy-yield" label TS/Python
-//!     already pass; the yield row below passes "policy-yield".
-//!   - builder.register_custom_action / builder.register_vsock_service are
-//!     specified in 09/03 but their handler signatures and the schema
-//!     argument's type appear in no example; the closures and serde_json
-//!     schema values below are the closest documented form, not a claim
-//!     about the facade's exact signature.
-//!   - session.vsock.channel(2) is specified in 03; the channel's read/write
-//!     shape is not shown anywhere. This file treats it as an async byte
-//!     stream (the vsock_connect -> UnixStream precedent in
-//!     vmm-driver-trait.rs), which is the closest documented form.
-//!   - on_trap calls ctx.vm.checkpoint through &HandlerCtx; the swe-agent
-//!     example calls checkpoint through an owned HandlerCtx, so whether
-//!     the handle method takes &self is unconfirmed by any example.
+//! NOTES:
+//!   - TrapAction::Yield carries checkpoint_id: String.
+//!   - register_custom_action / register_vsock_service take a JSON schema
+//!     and an async handler; shapes below mirror 09/03.
+//!   - session.vsock.channel(kind) is an async byte stream, per
+//!     VmmDriver::vsock_connect (UnixStream).
+//!   - ctx.vm.checkpoint takes &self.
 //!
 //! Cargo.toml:
 //!   [dependencies]

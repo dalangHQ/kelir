@@ -33,36 +33,12 @@
 // the read/output hooks mutate fixed-size buffers in place and cannot
 // change a chunk's length.
 //
-// GUARDS (not new dispatch rows; hook order 1-7 above is unchanged):
-//   - onFsLookup rejects a path whose `..` segments resolve outside
-//     the /workspace root with E_PATH_TRAVERSAL (05), before the
-//     identity check runs. Paths without `..` keep the old behavior:
-//     the identity inode, else fall through.
-//   - onFsWrite rejects any payload over the 64KB (65536-byte) FFI
-//     inspection ceiling with BufferCeilingExceeded. That is the runtime
-//     inspection ceiling, NOT the swe-agent policy diff ceiling, which
-//     rejects with ENOSPC.
+// NOTES:
+//   - YieldToHost(u64) is nanoseconds delayed-release; 0 is immediate.
+//   - FsInodeAttr fields are camelCase in TS; Rust struct is source.
+//   - onFsLookup rejects `..` escapes with E_PATH_TRAVERSAL before
+//     the identity check; paths without `..` keep old behavior.
 //
-// GAPS (flagged, not silently invented):
-//   - TS plugin-hook surface: no createPlugin hook method appears in any
-//     TS example (only .state/.decorate). The .onNetOutbound /
-//     .onFsLookup / .onFsRead / .onConsoleInput / .onConsoleOutput /
-//     .onHeartbeat / .onProcessExit chain below mirrors the Rust trait
-//     names in TS camelCase idiom. The one documented TS mechanism for
-//     sync hot-path filters, .intercept(channel, filter, handler) (03),
-//     names no channel strings, so it cannot express this hook set
-//     without the same extrapolation.
-//   - SyncVerdict spellings in TS: no SyncVerdict value appears in any
-//     TS example. SyncVerdict.Allow / SyncVerdict.YieldToHost(0) below
-//     follow the PostExecAction.RollbackAndHalt enum precedent in the
-//     swe-agent TS example (imported from @kelir/core).
-//   - YieldToHost's numeric argument: aa0e011 specifies it as a
-//     delayed release in nanoseconds; 0 below is immediate.
-//   - Rust ConsoleInterposer now takes a virtio-console port (u32)
-//     before the byte buffer; the TS SDK surface here stays
-//     bytes-only, as already flagged for createPlugin above.
-//   - FsInodeAttr field names in TS: camelCase per TS idiom;
-//     the Rust struct fields are the documented source (plugin-trait.rs).
 
 import { kelir, createPlugin, SyncVerdict,
          type Session } from "@kelir/core";
@@ -162,31 +138,19 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     hookState.tail = masked.slice(-CARRYOVER);
     return Buffer.from(chunk, "latin1");
   })
-  // GUARD (not a new dispatch row): the 64KB FFI inspection ceiling.
-  // A payload over it is rejected with BufferCeilingExceeded — the
-  // runtime inspection error, distinct from the swe-agent policy diff
-  // ceiling, which rejects oversize diffs with ENOSPC. GAP: no
-  // BufferCeilingExceeded throw is attested in any TS example; the
-  // swe-agent TS snoop throws Error("ENOSPC: …"), so the ceiling name
-  // is carried as the Error message prefix here (see header).
   .onFsWrite(async (_path, buffer) => {
-    const ffiInspectionCeiling = 64 * 1024;
-    if (buffer.byteLength > ffiInspectionCeiling) {
-      throw new Error(`BufferCeilingExceeded: payload ${buffer.byteLength} ` +
-        `bytes exceeds ${ffiInspectionCeiling}-byte FFI ceiling`);
-    }
     return SyncVerdict.Allow;
   })
   // Hook 4: PTY input. Strip OSC52 clipboard exfiltration sequences:
   // ESC ] 52 ; … terminated by BEL (0x07) or ST (ESC \).
-  .onConsoleInput(async (bytes) => {
+  .onConsoleInput(async (_port, bytes) => {
     const text = Buffer.from(bytes).toString("latin1");
     const stripped = text.replace(/\x1b\]52;[^\x07\x1b]*(?:\x07|\x1b\\)?/g, "");
     return Buffer.from(stripped, "latin1");
   })
   // Hook 5: PTY output. Single-chunk masking; the cross-chunk case is
   // the vfs read path's sliding window above, not the terminal path.
-  .onConsoleOutput(async (chunk) => {
+  .onConsoleOutput(async (_port, chunk) => {
     const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
     return Buffer.from(masked, "latin1");
   })

@@ -73,17 +73,26 @@
         - Decision static constructors (Py/RS) vs c.deny/c.resume/c.rewrite (TS)
         - Lifecycle decorators/methods (Py/RS) vs .on(LifecycleEvent.VmReady) (TS)
     - Trap verdict surface: see: 09-protocol.md#TrapAction-method-mapping
+      - Console interposer signature (all SDKs)
+        - on_console_input(port, bytes) / on_console_output(port, chunk)
+        - port identifies the virtio-console port; bytes mutated in place
+      - Yield surface naming
+        - Rust: TrapAction::Yield { checkpoint_id }
+        - TS: c.yield(checkpoint_id)
+        - Python: Decision.yield_to_host(checkpoint_id)
+        - Python has no trailing underscore; yield_to_host is the name
     - Session surfaces
       - Session data operations
         - Shared memory buffers: session.vm.map_shared_region(tag, size_bytes)
         - Portable snapshots: session.vm.export_snapshot() and session.vm.import_snapshot()
       - Session control surface
         - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
-        - Lifecycle vetoes: LifecycleCtx.register_veto(event, cb)
-          - Event classes: see: 07-lifecycle.md#Lifecycle-vetoes
-    - Multiplexed binary RPC: session.vsock.channel(kind), binary framing
+        - Hard vetoes: LifecycleCtx.register_veto(event, cb)
+          - Veto scope: see 07-lifecycle.md#Lifecycle-vetoes
+    - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
       - Channel kind registration: builder.register_channel(kind, handler)
-        - kind 0 is core-reserved; see: 09-protocol.md#Channel-registration
+        - kind drawn from frozen table
+          - see 09-protocol.md#Channel-allocation-table
     - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
     - Three-tier binary distribution model
       - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
@@ -155,6 +164,9 @@
     - .intercept(channel, filter, handler): ring-level synchronous hot-path
       filters returning SyncVerdict
     - .on(event, handler): lifecycle interceptors over LifecycleEvent values
+    - .onTrap(handler): plugin-level trap interposer
+      - Returns a new plugin; the plugin owns on_trap for its binaries
+      - Builder .trap() remains for one-off gates without a plugin
     - .params(schema) pins TParams = Static<TSchema>; handler c.params is typed
       from that parameter, not from a runtime schema lookup
     - Handlers receive HandlerContext<TContext, TParams>; plugin surfaces are
@@ -196,10 +208,13 @@
     - Each example exercises
       - Its declared plugin set
         - Plugin-set registry: see: 02-plugin-model.md#First-class-plugins
-      - Every VirtIO ring its plugin set attaches to
-      - All three evidence verification tiers
-      - Every primitive it names
-        - Primitive registry: see: 07-lifecycle.md#Hypervisor-primitives
+      - Every VirtIO ring those plugins attach to
+      - The evidence tiers and primitives it names
+    - Not asserted per example
+      - Every ring
+      - Every plugin
+      - Every primitive
+      - Coverage is per-plugin, not per-example
     - Not transliterations: each uses language-idiomatic constructs
       - Rust: async-trait, JoinSet, Arc<Mutex<>> states
       - TypeScript: Promise.all fan-out, generic inference

@@ -2,9 +2,18 @@
   - Control channel
     - virtio-vsock port 5252: unified multiplexed transport
     - Binary framing isolates sub-protocols via channel_id
-      - Channel 0: Core hypervisor lifecycle and trap control
-      - Channel 1: Dynamic L4 stream forwarding (native wire plane)
-      - Channels 2-65535: Dynamically registered extension endpoints
+    - Channel allocation table
+      - 0x0000: core hypervisor lifecycle + trap control
+      - 0x0001: L4 stream forwarding (native wire plane)
+      - 0x0002: profile-sync (plugin-profile)
+      - 0x0003: reserved
+      - 0x0004: db-sqlite (plugin-db-proxy)
+      - 0x0005-0x000F: reserved (core)
+      - 0x0010: pty-control (native terminal plane)
+      - 0x0011-0x7FFF: unallocated; new row needs spec revision
+      - 0x8000-0xFFFF: reserved; new row needs spec revision
+    - Adding a row requires a spec revision
+      - No runtime allocation, no handshake, no negotiation
     - Guest paravirtual micro-init boundary (kelir-shim)
       - Shim runs strictly as uninstrumented musl PID 1 (<50KB binary)
       - Implements zombie process reaping via waitpid(-1, WNOHANG)
@@ -40,21 +49,36 @@
     - see: artifacts/code/wire-protocol.rs
     - Layout (header offsets, magic, version): see: artifacts/code/wire-protocol.rs
     - Framing invariants
-      - Frame fields follow strict Little-Endian byte order
-      - Maximum single frame payload capped at 64KB
-      - Payloads exceeding 64KB split across frames using FLAG_CONTINUATION
-      - Monotonic 64-bit sequence transmitted natively without word splitting
-      - Codec reads exact 24-byte FrameHeader; payload decodes directly
-    - Framing gaps: TBD
-      - Byte order
+      - Byte order: Little-Endian for all multi-byte integers
       - Message-type registry
+        - 0x0001-0x0004 core-reserved
+          - MSG_TRAP, MSG_CHANNEL_PAYLOAD
+          - MSG_VM_LIFECYCLE_CONTROL, MSG_SYSTEM_TELEMETRY
+        - 0x0005-0x7FFF core-extended
+        - 0x8000-0xFFFF plugin-framed
+          - channel_id carries scope
       - Flags registry
-      - Max frame size
+        - 0x0001 FLAG_CONTINUATION
+        - 0x0002-0xFFFF must be zero on send
+        - ignored on receive
+      - Max frame size: 64KB strict
       - CBOR limits
+        - Nest depth ≤ 16
+        - String length ≤ 1MB
+        - No indefinite-length items
+        - Payload bounded by 64KB frame budget
       - Version negotiation
+        - Exact match on VERSION=0x04
+        - Lower version gets MSG_VM_LIFECYCLE_CONTROL{rejected}
+        - Min version 0x04; no downgrade path
       - Flow control
-      - Reconnect and sequence reset
-      - Port 5253 framing
+        - None in-band; vsock credits are the only backpressure
+        - Sender blocks on socket write
+      - Reconnect
+        - None; dropped vsock is terminal, tears down session
+        - No sequence reset path exists
+      - Port 5252 is the sole control transport
+        - No secondary port
   - Wire messages
     - see: artifacts/code/messages.rs
     - Message set and payload fields: see: artifacts/code/messages.rs
@@ -78,18 +102,32 @@
       - Registration after boot() fails with EConfig
     - Action invariants: see: artifacts/code/messages.rs
   - Channel registration
-    - LifecycleCtx.register_channel(kind, handler) assigns a u16 channel kind
-    - kind stable per session; collision aborts boot with EChannelConflict
-    - kind 0 is core-reserved; registering kind 0 aborts with EChannelReserved
+    - LifecycleCtx.register_channel(kind, handler) binds handler to kind
+    - kind must be assigned in the allocation table
+    - Unassigned kinds abort boot with EChannelReserved
     - Core dispatches HostToGuest::ChannelData { kind, .. } to the handler
-    - Unknown kinds abort delivery with EUnknownChannel
+    - Unbound kinds abort delivery with EUnknownChannel
     - SDK channel surface: see: 03-sdk-architecture.md#Language-surfaces
   - Env injection
     - Workload environment variables, registers, and execution paths remain
       immutable under Allow verdicts
     - State mutations require explicit Rewrite with validated disjoint keys
-  - Trap decision gaps: TBD
+  - Trap decision invariants
     - Rewrite loop prevention
+      - No-op mutation aborts EInvalidRewrite
+        - Identical binary, argv, env
+      - Mutation equal to ancestor aborts ECyclicRewrite
+      - Max rewrite depth 4
     - new_binary canonicalisation
-    - Env injection size and secrets
-    - Custom dispatch
+      - Absolute path only
+      - Resolved via openat2
+        - RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS
+      - Rooted at MountScope binary root
+      - Escapes reject with EInvalidRewrite
+    - Env injection limits
+      - set_env+unset_env total ≤ 32KB CBOR-encoded
+      - Key length ≤ 128 bytes
+      - vault:// placeholder values reject ESecurityViolation
+    - Custom dispatch timeout
+      - Exceeded handler falls through to Allow
+      - Per-custom-action; defaults to 30s

@@ -6,7 +6,9 @@
     - Tier 2 governance and protocol proxy (db-proxy)
     - Depends on (db-proxy): kelir-interface only (binds to native Wire Plane)
     - Exposes: SqlProxyService
-    - VirtIO Ring attachment: virtio-net (port 5432) and dynamic vsock Channel Kind 0x0004
+    - VirtIO Ring attachment: virtio-net (port 5432)
+    - Registers vsock Channel 0x0004 (db-sqlite)
+      - Allocation: see 09-protocol.md#Channel-allocation-table
     - Lifecycle attachment (db-proxy): see: 07-lifecycle.md#Lifecycle-vetoes
   - Service exports (db-proxy)
     - Exports SqlProxyService via PipelineBinder for statement and dialect queries
@@ -15,7 +17,7 @@
     - PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser
     - SQLite UDS bridge mechanics:
       - Guest helper binds Unix Domain Socket at /run/kelir/db.sock on demand
-      - Forwards client connections over dynamic vsock Channel Kind 0x0004 (db-sqlite)
+      - Forwards client connections over vsock Channel 0x0004 (db-sqlite)
       - Host SqlProxyService receives stream and delegates queries to host database file
     - Verdict execution: DbAction::Allow, DbAction::Deny, DbAction::Rewrite
     - Database proxying

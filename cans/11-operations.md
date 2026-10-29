@@ -58,12 +58,14 @@
     - Pull-request tier: `cans check --touched-files` rejects edits outside
       each concept's canEdit set
     - No path filter: a node edit can break a pointer in any other node
-    - Local mirror: `just cans-check` invokes the identical flags
+    - Local mirror: `just check-spec` invokes the identical flags
     - Invariant: every rule in _rules.yaml maps to a step here, or the rule
       is dead and gets removed
   - Coverage-gates
     - --plugin-coverage
       - Plugin asserts: see: 02-plugin-model.md#First-class-plugins
+      - Each plugin appears in at least one example (any example)
+      - Not necessarily the same example across plugins
       - Tier model (coverage): see: 02-plugin-model.md#Plugin-tiering
       - Tiered compilation gate: plugins compile against explicit upstream deps
       - Builder registration gate: each plugin registers without string tokens
@@ -85,26 +87,26 @@
     - --watchdog-coverage
       - Asserts Suppress and Mitigate are each returned at least once
       - Watchdog home: see: 07-lifecycle.md#Watchdog
-    - --knob-coverage
-      - Asserts every *Config field set to a non-default value in some example
-      - Extends: see: 02-plugin-model.md#Coverage-invariant
     - All flags run in cans-check; exit code 1 on any orphan or gap
-    - Flag-drift gate between `just cans-check` and the cans-check job: TBD
+    - Flag-drift gate
+      - CI calls `just check-spec`, not raw flags
+      - Flag string lives only in the justfile
+      - A flag change is a one-line justfile edit
   - Per-plugin CI
     - Per-plugin specs
-      - One spec file per plugin: 13 in cans plugin folder, 4 in kelir-cloud
-      - Leaf-node rule: plugin files do not chain further references; bus
-        pointers are direct 1-hop
+      - One spec file per plugin in each plugin folder
+      - Leaf-node rule: plugin files do not chain further references
+        - plane pointers are direct 1-hop
     - Matrix job: test-plugins
-      - One cell per community domain plugin (13 total); cell set: see: artifacts/config/ci.yml
+      - One cell per community domain plugin; cell set: see: artifacts/config/ci.yml
       - Plugin roster: see: 02-plugin-model.md#First-class-plugins
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
       - Upstream dependencies: see: 02-plugin-model.md#Plugin-tiering
       - Core planes (terminal, storage, wire, checkpoint) execute under test-core
     - Matrix job: plugin-audit
-      - Each cell runs `kelir-plugin-cli check -p plugin-<name>` — the same
-        contract audit `just plugin-check` runs locally
+      - Each cell runs `kelir-plugin-cli check -p plugin-<name>`
+      - Same contract audit `just check-plugin` runs locally
       - Cell set: see: artifacts/config/ci.yml
       - Dependency check: asserts crate deps and ring mask in code trait
       - Tiered dependency gate: plugin Cargo deps follow the tier model
@@ -113,7 +115,7 @@
     - Local mirror
       - just test-plugins runs all in one invocation
       - just test-plugin <name> for a single plugin
-      - just plugin-check-all runs the loop
+      - just check-plugin-all runs the loop
     - Integration tier
       - Uses: kelir-integration
       - Runs only where KVM/HVF is available
@@ -124,7 +126,7 @@
     - Command: cargo check --workspace --all-targets
     - Tier model (compilation): see: 02-plugin-model.md#Plugin-tiering
     - Scope: every workspace crate and target, plugins included
-    - Local mirror: `just tiered-check` runs the identical command
+    - Local mirror: `just check-tiered` runs the identical command
     - Graph validation: `kelir-plugin-cli check --graph` asserts acyclic deps
   - External repository CI
     - Reusable attestation workflow for external plugin repositories

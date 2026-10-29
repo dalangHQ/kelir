@@ -10,6 +10,8 @@ Terminal content for the kelir CANS spec in `../`.
 | `config/` | Build and CI configuration: justfile, GitHub Actions workflow, project tree |
 | `diagrams/` | ASCII architecture diagrams that do not fit cleanly as CANS nodes |
 | `examples/` | Full-surface SDK consumer examples |
+| `examples/git-gate.rs` | Focused: terminal + trap interposition |
+| `examples/autonomous-swe-agent.{rs,ts,py}` | Composition example; not per-subsystem |
 
 ## What does not live here
 

@@ -28,40 +28,17 @@
 //  10. Vsock: registerVsockService(2, …) + session.vsock.channel(2)
 //      binary RPC round-trip in main().
 //
-// SDK-IDIOM NOTE: TS has no plugin on_trap surface in any example, so
-// this file expresses the same table through builder .trap rows (the
-// documented TS trap mechanism, 03), while Rust/Python express it
-// through the plugin's on_trap. Decision sequence and order are
-// identical; only the registration mechanism follows SDK idiom.
-// Shared veto/watchdog state lives in a module-level object closed over
-// by the plugin factories, the same closure pattern the swe-agent TS
-// plugin uses for its options.
-//
-// GAPS (flagged, not silently invented):
-//   - c.abort / c.yield / c.hold / c.custom: 09 maps the
-//     lattice to c.abort, c.yield(checkpoint_id),
-//     c.hold(duration_ms), c.custom(name, cbor_payload).
-//     Only c.resume / c.deny / c.rewrite appear in existing TS examples;
-//     the four new spellings below are 09's names in TS camelCase idiom
-//     (cf. warmCache, execInGuest), not spellings shown in any example.
-//   - Yield id: TrapAction::Yield checkpoint_id is String, matching
-//     SnapshotDescriptor.id, so this file yields with the "policy-yield"
-//     label.
-//   - Veto registration in TS: no veto spelling appears in any TS
-//     example or in 03's .on() list (vm:init, vm:ready, vm:shutdown,
-//     trap:deny). The registerVeto calls in the vm:init handler mirror
-//     LifecycleCtx.register_veto (02/03) in TS idiom; event names use
-//     the spec VetoEvent names kebab-cased.
-//   - Watchdog hook in TS: no on_watchdog spelling appears in any TS
-//     example. The createPlugin .onWatchdog hooks below mirror the Rust
-//     trait name in TS camelCase idiom (Rust: SystemTelemetryParticipant).
-//   - registerCustomAction / registerVsockService: specified in 09/03
-//     but handler signatures and schema types appear in no example;
-//     the TypeBox schemas and handlers below are the closest documented
-//     form.
-//   - session.vsock.channel(2) is specified in 03; the channel's
-//     read/write shape is not shown anywhere. write/read below are the
-//     closest generic duplex form.
+// NOTES:
+//   - Lattice methods: c.resume / c.deny / c.rewrite / c.abort /
+//     c.yield(checkpoint_id) / c.hold(ms) / c.custom(name, payload).
+//   - Yield id is a String; "policy-yield" is this example's label.
+//   - Vetoes register at vm:init via lifecycle.registerVeto(event, cb);
+//     events are kebab-cased VetoEvent names.
+//   - Watchdog hooks via createPlugin().onWatchdog — TS camelCase of
+//     SystemTelemetryParticipant::on_watchdog.
+//   - registerCustomAction / registerVsockService take TypeBox schema
+//     and an async handler, mirroring 09/03.
+//   - session.vsock.channel(kind) is an async duplex byte stream.
 
 import { kelir, createPlugin, t,
          type Session } from "@kelir/core";
@@ -77,6 +54,35 @@ const policyState = {
 };
 
 const policyPlugin = createPlugin("policy-matrix")
+  .onTrap(async (event, c) => {
+    const binary = event.binary_path.split("/").pop();
+    switch (binary) {
+      case "policy-allow":
+        return c.resume();
+      case "policy-deny":
+        return c.deny(1, "EPOLICY: policy-matrix denies this binary.");
+      case "policy-rewrite":
+        return c.rewrite({
+          binary: "/bin/policy-allow",
+          argv: ["policy-allow", "--rewritten"],
+          env: { KELIR_POLICY_REWRITE: "1" },
+        });
+      case "policy-abort":
+        return c.abort(1, "EPOLICY: abort row");
+      case "policy-yield":
+        await c.vm.checkpoint("policy-yield");
+        return c.yield("policy-yield");
+      case "policy-approval":
+        return c.hold(500);
+      case "policy-custom":
+        return c.custom("quarantine", {
+          pid: c.trap.pid,
+          reason: "policy-matrix quarantine row",
+        });
+      default:
+        return null;
+    }
+  })
   // Watchdog, policy half: a live PID was active at fire time, so do
   // not run the default Reboot/Terminate action — delegate recovery to
   // the host policy handler (07: Mitigate delegates recovery to host).
@@ -126,30 +132,6 @@ const runtime = kelir({
   .registerVsockService(2, t.Object({}),
     async (request) => request)
 
-  // Row 1: Allow.
-  .trap(TrapFilter.binary("policy-allow"), async (c) => c.resume())
-  // Row 2: Deny.
-  .trap(TrapFilter.binary("policy-deny"), async (c) =>
-    c.deny(1, "EPOLICY: policy-matrix denies this binary."))
-  // Row 3: Rewrite — env ONLY through the rewrite payload.
-  .trap(TrapFilter.binary("policy-rewrite"), async (c) =>
-    c.rewrite({ binary: "/bin/policy-allow",
-                argv: ["policy-allow", "--rewritten"],
-                env: { KELIR_POLICY_REWRITE: "1" } }))
-  // Row 4: Abort, pre-exec.
-  .trap(TrapFilter.binary("policy-abort"), async (c) =>
-    c.abort(1, "EPOLICY: abort row"))
-  // Row 5: Yield — checkpoint first, then freeze to the host.
-  .trap(TrapFilter.binary("policy-yield"), async (c) => {
-    await c.vm.checkpoint("policy-yield");
-    return c.yield("policy-yield");
-  })
-  // Row 6: Hold — host holds 500 ms pending approval.
-  .trap(TrapFilter.binary("policy-approval"), async (c) => c.hold(500))
-  // Row 7: Custom — dispatched by name to the handler above.
-  .trap(TrapFilter.binary("policy-custom"), async (c) =>
-    c.custom("quarantine", { pid: c.trap.pid,
-                             reason: "policy-matrix quarantine row" }))
 
   // Vetoes (row 8): registered at vm:init, mirroring
   // LifecycleCtx.register_veto. Both allow only once vm:ready has set

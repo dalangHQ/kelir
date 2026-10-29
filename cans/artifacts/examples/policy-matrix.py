@@ -27,50 +27,24 @@ is the dispatch order; each binary hits exactly one row:
  10. Vsock: builder.register_vsock_service(2, …) +
      session.vsock.channel(2) binary RPC round-trip in main().
 
-SDK-IDIOM NOTE: Python expresses the lattice through builder.trap
-pre-handlers returning Decision (the documented Python trap mechanism,
-cf. the swe-agent Python builder.trap(pre=…) rows), while Rust
-expresses it through the plugin's on_trap returning TrapAction. The
-decision sequence and order are identical; only the registration
-mechanism follows SDK idiom. Watchdog/veto hooks live on BasePlugin
-subclasses, mirroring the Rust capability traits in snake_case (cf.
-on_trap / on_fs_write / disclosure_annotation in the swe-agent Python
-plugin; Rust watchdog is now SystemTelemetryParticipant).
+SDK-IDIOM NOTE: two equivalent trap surfaces exist in every SDK —
+plugin.on_trap (Rust, Python) / plugin.onTrap (TS), and
+builder.trap() (all three). Both register into the same pipeline.
+This file uses builder.trap() because a lattice-table example reads
+as a table; the plugin.on_trap surface is exercised in
+hook-matrix.py.
 
-GAPS (flagged, not silently invented):
-  - Decision.abort / Decision.yield_ / Decision.hold /
-    Decision.custom: 09 maps the lattice to c.abort,
-    c.yield(checkpoint_id), c.hold(duration_ms),
-    c.custom(name, cbor_payload). Only Decision.deny / resume / rewrite
-    appear in existing Python examples; the four new spellings below are
-    09's names in the existing static-Decision idiom, not spellings
-    shown in any example. yield_ carries a trailing underscore because
-    bare `.yield` is a Python syntax error (yield is a keyword).
-  - Yield id: TrapAction::Yield checkpoint_id is String, matching
-    SnapshotDescriptor.id, so this file yields with the "policy-yield"
-    label.
-  - Veto registration in Python: no veto spelling appears in any Python
-    example, and the swe-agent Python lifecycle uses builder decorators
-    (@builder.on_vm_init), not plugin methods. The plugin on_vm_init /
-    on_vm_ready methods below mirror the Rust LifecycleParticipant
-    trait, and their register_veto calls mirror LifecycleCtx.register_veto
-    (02/03); the VetoEvent import path follows the kelir.plugin import
-    precedent (PluginError, TrapAction).
-  - Watchdog hook in Python: no on_watchdog spelling appears in any
-    Python example. The method below mirrors the Rust trait name in
-    snake_case, following the on_trap / disclosure_annotation precedent
-    (Rust: SystemTelemetryParticipant).
-  - builder.register_custom_action / builder.register_vsock_service:
-    specified in 09/03 but handler signatures and schema types appear in
-    no example; the dict schemas and handlers below are the closest
-    documented form.
-  - session.vsock.channel(2) is specified in 03; the channel's
-    read/write shape is not shown anywhere. write/read below are the
-    closest generic duplex form.
-  - Handler-context vm.checkpoint: the swe-agent Python handlers use
-    c.receipt() / terminal service but never c.vm.checkpoint; the yield row below
-    assumes the Python HandlerContext exposes vm like its TS/Rust
-    counterparts.
+NOTES:
+  - Lattice: Decision.resume / deny / rewrite / abort /
+    yield_to_host(checkpoint_id) / hold(ms) / custom(name, payload).
+  - Yield id is a String; "policy-yield" is this example's label.
+  - Vetoes register at on_vm_init via ctx.register_veto(event, cb).
+  - Watchdog via on_watchdog on BasePlugin
+    (SystemTelemetryParticipant in snake_case).
+  - register_custom_action / register_vsock_service take a dict
+    schema and an async handler, mirroring 09/03.
+  - session.vsock.channel(kind) is an async duplex byte stream.
+  - c.vm.checkpoint is available on HandlerContext in all SDKs.
 
 Requirements:
     kelir>=3.0
@@ -181,9 +155,7 @@ async def row_abort(c: HandlerContext) -> Decision:
 
 async def row_yield(c: HandlerContext) -> Decision:
     await c.vm.checkpoint("policy-yield")
-    # yield_ (trailing underscore): bare `.yield` is a Python syntax
-    # error, since yield is a keyword even after a dot.
-    return Decision.yield_("policy-yield")
+    return Decision.yield_to_host("policy-yield")
 
 
 async def row_approval(c: HandlerContext) -> Decision:

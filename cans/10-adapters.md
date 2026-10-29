@@ -15,21 +15,19 @@
     - Ingestion tiering and licensing
       - Community adapters: mcp-server (stdio wire), e2b-compat (thin client SDK)
       - Commercial adapters: containerd-shim-v2 (K8s), openshell-grpc (NVIDIA CDI)
-      - Commercial adapter SSOT: see: kelir-cloud://01-fleet-orchestration.md
+      - Commercial adapter interface: see: plugins/commercial.md#Adapter-binaries
   - MCP adapter
     - Architecture (mcp): see: artifacts/diagrams/ingestion-adapters.txt
     - Server binary crate: kelir-adapters/mcp-server
     - Server plugin: plugin-mcp (translates JSON-RPC to native terminal/storage planes)
     - Binds to dynamic console port "kelir-mcp" without interfering with Port 0 PTY
   - Containerd shim v2
-    - Architecture (containerd)
-      - see: kelir-cloud://artifacts/diagrams/ingestion-adapters-commercial.txt
-    - Shim plugin: see: kelir-cloud://plugins/oci-translator.md
+    - Architecture (containerd): see: artifacts/diagrams/ingestion-adapters.txt
+    - Shim plugin: see: plugins/commercial.md#oci-translator
     - Shim maps to Session execution with flat oci-translator config
     - Containerd boundary: see: #Process-vs-plugin-boundary
   - OpenShell gRPC driver
-    - Architecture (openshell)
-      - see: kelir-cloud://artifacts/diagrams/ingestion-adapters-commercial.txt
+    - Architecture (openshell): see: artifacts/diagrams/ingestion-adapters.txt
     - Server binary crate: kelir-adapters/openshell-driver
     - Translates OpenShell gRPC services directly to Session and plugin-profile
       - SandboxService maps to KelirBuilder boot and lifecycle primitives
@@ -43,6 +41,7 @@
       - Gateway admin approvals push RFC 6902 patches to plugin-profile before cycle-exact resume
     - CDI mapping: passes OpenShell GPU device requests to plugin-profile CDI parser
     - OpenShell boundary: see: #Process-vs-plugin-boundary
+    - OpenShell interface: see: plugins/commercial.md#openshell-coordinator
   - E2B compatibility
     - TypeScript: @kelir/e2b-compat
     - Python: kelir.compat.e2b

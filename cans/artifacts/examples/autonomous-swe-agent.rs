@@ -1,26 +1,11 @@
 //! examples/autonomous-swe-agent.rs
 //!
-//! Full-surface Rust SDK consumer. Not a TypeScript transliteration — this
-//! is the intended *native* Rust surface of the `kelir` facade crate
-//! (`kelir-core` + first-class plugins), written to be consumed directly
-//! (not through the napi/pyo3 bindings, which are for TS/Python consumers).
+//! Composition example: chaos + ledger + repo-policy custom plugin,
+//! chained across terminal / storage / wire / checkpoint planes.
+//! Subsystem demos live in git-gate.rs, hook-matrix.rs,
+//! policy-matrix.rs.
 //!
-//! Key runtime guarantees enforced natively:
-//!
-//!   1. Fluent builder chaining: `.plugin()` returns `Builder` directly;
-//!      capabilities project onto `c.policy()` and `session.policy()`,
-//!      while pre-boot host access is held via the instantiated handle.
-//!
-//!   2. `spawn().params::<P>(…)` requires `P: Deserialize`, and the runtime
-//!      deserializes the incoming JSON into `P` before any handler fires —
-//!      the TypeBox `t.Object({…})` runtime guard expressed as a zero-cost
-//!      serde target.
-//!
-//! Every plugin, every §11 hypervisor primitive, and the §12 telemetry provenance classification,
-//! and all four VirtIO rings are exercised in the phases below.
-//!
-//! Cargo.toml:
-//!   [dependencies]
+//! Cargo.toml://!   [dependencies]
 //!   kelir = { version = "3.0", features = ["chaos", "ledger"] }
 //!   tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "time"] }
 //!   async-trait = "0.1"

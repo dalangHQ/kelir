@@ -51,7 +51,12 @@
     - Signature: see: artifacts/code/plugin-trait.rs
     - Write-gating error variants: see: 02-plugin-model.md#Hook-return-semantics
     - Receives &FsContext (inode, path, locks, journal); zero ambient context
-    - Payloads exceeding configured inspection ceiling reject with BufferCeilingExceeded
+    - Writes chunked at 64KB by FUSE driver
+      - on_fs_write invoked once per chunk
+      - Guest write() of any size succeeds; chunking is transparent
+      - Whole-file inspection is the plugin's responsibility
+        - Accumulate across on_fs_write calls
+        - Or request stream mode through MountScope
     - Buffer lifecycle invariants: see: 02-plugin-model.md#FFI-buffer-lifecycle
     - SyncVerdict::Allow = allow; kernel proceeds with write to upperdir
     - Err(PluginError::Reject { errno, reason }) = deny

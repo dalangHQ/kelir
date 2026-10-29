@@ -8,7 +8,8 @@
     - Exposes: ConfigurablePlugin
     - VirtIO device attachment (profile): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (profile): see: 07-lifecycle.md#Lifecycle-vetoes
-    - Registers dynamic vsock Channel Kind 0x0002 (profile-sync)
+    - Registers vsock Channel 0x0002 (profile-sync)
+      - Allocation: see 09-protocol.md#Channel-allocation-table for profile-sync
   - Invariants and policy (profile)
     - Inversion-of-Control configuration router:
       - Ingests canonical kelir.toml and kelir.yaml specification files

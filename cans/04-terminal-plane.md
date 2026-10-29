@@ -11,7 +11,7 @@
       - Sets sid and controlling terminal: ioctl(slave_fd, TIOCSCTTY, 0)
       - Workload stdin/stdout/stderr bound directly to slave PTY fd
     - Window geometry and signals
-      - Carried across vsock Channel Kind 0x0010 (pty-control)
+      - Carried across vsock Channel 0x0010 (pty-control)
       - MsgType 0x01 (WindowResize): pushes rows, cols, xpixel, ypixel
       - MsgType 0x02 (SignalForward): pushes signal and pgid; shim executes killpg
     - Host filter pipeline execution order

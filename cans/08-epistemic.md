@@ -27,15 +27,48 @@
       - dirty_bytes is always populated: zero is a real measurement, not an
         absent value
     - binary_blake3 identity
-      - Canonical form: TBD
-      - Cache: keyed on (inode, size, mtime_ns); one hash per
-        binary identity, not per exec
-    - Receipt accounting: TBD
-      - syscall_count counting rule
-      - egress_bytes observation point
-      - wall_clock_ns across suspend
+      - Canonical form
+        - BLAKE3 of raw file bytes at binary_path
+        - Resolved at trap time
+          - openat2(RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS)
+          - Rooted at workspace
+        - No ELF parsing; bytes hashed as kernel opens them
+      - Cache key
+        - (st_dev, st_ino, st_size, st_mtime_ns)
+        - Invalidated on any key component change
+        - Negative cache: (st_dev, st_ino) for not-found
+      - Cache scope
+        - One hash per binary identity, not per exec
+        - Session-scoped; dropped on terminate
+      - Cache hit does not bypass trap boundary
+        - Trap still delivered; hash still attached
+        - Only the byte-read is skipped
+    - Receipt accounting
+      - syscall_count
+        - Counts trap ingress events to plugin pipeline
+        - Excludes Gate 1 BPF allowlist events
+        - Per trap invocation, not per syscall retry
+      - egress_bytes
+        - L2 bytes at on_net_outbound after pipeline settles
+        - Bytes dropped by sinkhole or Reject
+          - Counted separately as egress_dropped_bytes
+        - In-guest bytes pre-TAP not counted
+      - wall_clock_ns
+        - Physical spawn-to-reap time
+        - Regardless of guest suspend state
+        - 1-hour suspend records ~1 hour wall_clock_ns
+        - Measures physical time, not guest-CPU time
       - exit_code under Rewrite
-      - Sub-microsecond phase spans: trap_ingress_ns, ffi_hop_ns, policy_ns
+        - Exit code of final binary in rewrite chain
+        - TrapEvent records original_binary_blake3
+        - ExecutionReceipt records final_binary_blake3
+        - Divergence detectable at the receipt
+      - phase spans
+        - trap_ingress_ns: BPF decision to host handler entry
+        - ffi_hop_ns: time in foreign FFI boundary
+        - policy_ns: time in plugin pipeline after FFI returns
+        - verdict_egress_ns: verdict decision to guest re-exec
+        - Sum + base overhead = wall_clock_ns
     - Receipt ownership
       - kelir-core generates and holds at trap/exit boundary
       - c.receipt() is the single read API on HandlerCtx
@@ -92,6 +125,6 @@
       - Mismatch triggers hypervisor rollback
         (timing: see: artifacts/code/vmm-driver-trait.rs)
   - Lifecycle nano-tracer
-    - Trace hooks (.trace()) measure exact nanosecond overhead across phases
+    - Trace hooks (.trace()) measure per-phase overhead at ns resolution
     - Tracks trap ingress, FFI crossing, policy evaluation, and verdict dispatch
     - Zero-allocation timings pipe directly to receipts and OTel spans

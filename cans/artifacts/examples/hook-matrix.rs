@@ -34,23 +34,13 @@
 //! on_fs_read / on_console_output mutate fixed-size buffers in place and
 //! cannot change a chunk's length.
 //!
-//! GUARDS (not new dispatch rows; hook order 1-7 above is unchanged):
-//!   - on_fs_lookup rejects a path whose `..` segments resolve outside
-//!     the /workspace root with E_PATH_TRAVERSAL (05), before the
-//!     identity check runs. Paths without `..` keep the old behavior:
-//!     the identity inode, else fall through.
-//!   - on_fs_write rejects any payload over the 64KB (65536-byte) FFI
-//!     inspection ceiling with PluginError::BufferCeilingExceeded
-//!     (plugin-trait.rs). That is the runtime inspection ceiling, NOT
-//!     the swe-agent policy diff ceiling, which rejects with ENOSPC.
-//!
 //! NOTES:
-//!   - SyncVerdict::YieldToHost(u64): aa0e011 specifies the u64 as a
-//!     delayed-release interval in nanoseconds; 0 below is immediate.
-//!   - on_console_input / on_console_output take a virtio-console port
-//!     (u32) plus &mut Vec<u8> in plugin-trait.rs (whole-chunk
-//!     mutation); there is no per-byte streaming hook, so the OSC52
-//!     stripper below buffers one chunk at a time.
+//!   - SyncVerdict::YieldToHost(u64): nanoseconds delayed-release;
+//!     0 below is immediate.
+//!   - Console hooks receive a whole chunk; no per-byte streaming
+//!     hook exists, so the OSC52 stripper buffers one chunk at a time.
+//!   - on_fs_lookup rejects `..` escapes with E_PATH_TRAVERSAL before
+//!     the identity check; paths without `..` keep old behavior.
 //!
 //! Cargo.toml:
 //!   [dependencies]
@@ -243,20 +233,9 @@ impl FsInterposer for HookMatrixPlugin {
         Ok(())
     }
 
-    // GUARD (not a new dispatch row): the 64KB FFI inspection ceiling.
-    // A payload over it is rejected with BufferCeilingExceeded — the
-    // runtime inspection error, distinct from the swe-agent policy
-    // diff ceiling, which rejects oversize diffs with ENOSPC.
     fn on_fs_write(
         &self, _path: &Path, data: &[u8], _pid: u32, _ctx: &HandlerCtx,
     ) -> Result<SyncVerdict, PluginError> {
-        const FFI_INSPECTION_CEILING: usize = 64 * 1024;
-        if data.len() > FFI_INSPECTION_CEILING {
-            return Err(PluginError::BufferCeilingExceeded {
-                size: data.len(),
-                max_bytes: FFI_INSPECTION_CEILING,
-            });
-        }
         Ok(SyncVerdict::Allow)
     }
 }

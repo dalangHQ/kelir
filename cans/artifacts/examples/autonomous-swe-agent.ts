@@ -1,10 +1,7 @@
-// User-initiated forwardPort() binds a host-side listener on the named
-// port. This is the host-initiated path; the guest-initiated PortBound
-// tunnel in 07-lifecycle.md#Port-forwarding creates no host listener.
-
-// ============================================================================
-// autonomous-swe-agent.ts
-// ============================================================================
+// examples/autonomous-swe-agent.ts
+//
+// Composition example: chaos + ledger + repo-policy custom plugin.
+// Subsystem demos live in hook-matrix.ts and policy-matrix.ts.
 
 import { kelir, createPlugin, t,
          type Session, type SnapshotDescriptor, type ExecutionReceipt,
@@ -326,5 +323,3 @@ async function main() {
 }
 
 main().catch(console.error);
-
-**The rule this file obeys:** *the builder is write-only until `boot()`; the session is read-only afterward; every plugin-contributed context key comes from exactly one `.use()` upstream of its first consumer (core provides `c.step` and `c.receipt()` directly); every state slot used across hooks is declared by a plugin via `.state()` + `.decorate()`.*

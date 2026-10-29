@@ -170,8 +170,10 @@
   - FFI buffer lifecycle
     - Pinned memory slices exposed via streaming chunked iterators
     - Prevents use-after-free while host runtimes resolve handlers
-    - Payloads exceeding 64KB ceiling trigger BufferCeilingExceeded
-    - Handlers must reject uninspected payloads or delegate to Rust plugins
+    - 64KB is the per-chunk ceiling, not a guest-facing error
+      - FUSE driver chunks writes; interposer sees one chunk per call
+      - Guest write() never fails due to host buffer size
+    - Handlers must inspect each chunk or delegate to Rust plugins
   - Core context keys
     - Invariant: ambient untyped string bags (c.<key>) are eliminated
     - Handlers receive strictly-typed context tailored to event scope
@@ -193,40 +195,46 @@
         Protocol intersection; no c.service(Type) lookup exists
   - First-class plugins
     - Catalog tiering
-      - Community plugins: 13 optional domain extensions in cans/plugins/
+      - Community plugins: optional domain extensions in cans/plugins/
         - mcp, mesh, tool-guard, db-proxy, supply-chain, wire-ingress
         - vault, container, replay, ledger, profile, chaos, transaction
-      - Commercial plugins (SSOT hosted in kelir-cloud):
-        - hyper-density: see: kelir-cloud://plugins/hyper-density.md
-        - cas-snapshot: see: kelir-cloud://plugins/cas-snapshot.md
-        - oci-translator: see: kelir-cloud://plugins/oci-translator.md
-        - openshell-coordinator: see: kelir-cloud://plugins/openshell-coordinator.md
+      - Commercial plugins: interface in plugins/commercial.md
+        - hyper-density, cas-snapshot
+        - oci-translator, openshell-coordinator
+        - Implementation is proprietary; not in this repo
     - Coverage matrix (community plugins -> demonstrating example)
       - chaos, ledger, vault: autonomous-swe-agent.{rs,ts,py}
       - mesh, supply-chain, container: multi-vm-swarm.rs
       - db-proxy, transaction: db-backed-runtime.py
-      - wire-ingress, mcp: serverless-webhook.ts
-      - tool-guard, replay, profile: autonomous-swe-agent.ts
+      - wire-ingress, mcp, tool-guard: serverless-webhook.ts
+      - replay: replay.rs
+      - profile: profile.rs
+    - Non-plugin surface examples
+      - Exercises raw traits or SDK surfaces; no catalog plugin
+      - git-gate.rs: terminal + trap interposition
+      - hook-matrix.{rs,ts,py}: full hook surface
+      - policy-matrix.{rs,ts,py}: full TrapAction lattice
+      - Each maps to a spec surface, not a plugin
     - Coverage invariant
       - Every first-class plugin names one demonstrating example
+      - Coverage is per-plugin; no single example must cover all
+      - No dedicated matrix example exists to satisfy coverage alone
+      - Surface examples are separately gated by --hook-coverage
+        and --action-coverage; not by --plugin-coverage
       - Community examples live in cans/artifacts/examples
-      - Commercial examples live in ../kelir-cloud/cans/artifacts/examples
-      - An orphan plugin fails --plugin-coverage
-      - Plugin-coverage gate: see: 11-operations.md#Coverage-gates
+      - Commercial examples live in the proprietary implementation repo
       - Hook-coverage: every hook in Segregated-ring-traits is implemented
         - Implemented by some custom plugin in cans/artifacts/examples
         - Hook families: see: #Segregated-ring-traits
         - An unhit hook fails --hook-coverage
         - Hook-coverage gate: see: 11-operations.md#Coverage-gates
+        - Exercises via hook-matrix and policy-matrix, not via
+          autonomous-swe-agent
       - Action-coverage: every TrapAction, PostExecAction, SyncVerdict, PluginError
         - Each variant used at least once in cans/artifacts/examples
         - TrapAction variants: see: 09-protocol.md#TrapAction-method-mapping
         - An unused variant fails --action-coverage
         - Action-coverage gate: see: 11-operations.md#Coverage-gates
-      - Knob-coverage: every *Config field set non-default at least once
-        - Set in some example in cans/artifacts/examples
-        - An all-default field fails --knob-coverage
-        - Knob-coverage gate: see: 11-operations.md#Coverage-gates
     - Behavior of each: at its plugin file
       - Community plugins
         - plugin-chaos: home: see: plugins/chaos.md
@@ -243,10 +251,10 @@
         - plugin-container: home: see: plugins/container.md
         - plugin-replay: home: see: plugins/replay.md
       - Commercial plugins
-        - plugin-hyper-density: home: see: kelir-cloud://plugins/hyper-density.md
-        - plugin-cas-snapshot: home: see: kelir-cloud://plugins/cas-snapshot.md
-        - plugin-oci-translator: home: see: kelir-cloud://plugins/oci-translator.md
-        - plugin-openshell-coordinator: home: see: kelir-cloud://plugins/openshell-coordinator.md
+        - plugin-hyper-density: home: see: plugins/commercial.md#hyper-density
+        - plugin-cas-snapshot: home: see: plugins/commercial.md#cas-snapshot
+        - plugin-oci-translator: home: see: plugins/commercial.md#oci-translator
+        - plugin-openshell-coordinator: home: see: plugins/commercial.md#openshell-coordinator
       - Pointer rule: plugin files are leaf targets; crate dependencies live in the plugin file
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
     - Session extension surface: attached per plane

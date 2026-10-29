@@ -39,7 +39,27 @@
       - Rebinds 4-ring dispatch table, virtio channels, plugin graph
       - session.vm.fork() returns full Session
       - spawn() and every other session API directly callable on child
-    - Child handoff scope: TBD
+    - Child handoff scope
+      - Inherited
+        - Full parent memory snapshot (CoW)
+        - Plugin states via fork_state()
+        - StepSlot state
+        - 4-ring dispatch table
+        - virtio channel state
+      - Not inherited
+        - Host-side handles
+          - Files, sockets, PTY masters
+        - Merkle WAL (host-isolated per ledger plugin)
+        - Session attestation (child receives new one)
+        - Lifecycle veto registrations
+          - Re-fired in child's on_vm_init
+        - Watchdogs (child must re-arm)
+        - vsock channel registrations
+          - Child must re-register
+      - Rationale
+        - Inherited = driver fork() + per-plugin fork_state()
+        - Not-inherited items have host-side identity
+        - Cannot safely clone across a session boundary
     - Typical use: parallel agent exploration (5+ candidate strategies)
     - Policy dry-run CoW probing
       - Clones parent VM to evaluate untrusted candidate commands
@@ -70,7 +90,22 @@
     - resume
       - Restores registers and memory
       - Resumes at exact cycle boundary
-    - Snapshot contents: TBD
+    - Snapshot contents
+      - manifest.json
+        - Format version, arch, page size
+        - vmlinux BLAKE3, EROFS BLAKE3
+      - vmm_state.json
+        - vCPU registers, virtio state, timer state
+      - ram.zst
+        - Guest physical RAM, zstd level 3
+      - upperdir.tar.zst
+        - Overlayfs upperdir diff (mutated files only)
+        - Unmodified base workspace not packed
+      - attestation.jws
+        - Session attestation token in the snapshot
+        - Ed25519-signed by host session key
+      - Packaged as single Content-Addressed stream
+        - .kelir-snap is the only portable form
     - Veto: Suspend (hard), Resume (observation)
       - Suspend false → ESessionVeto; host RAM not flushed
       - Resume fires before primitive; return value ignored
@@ -139,7 +174,11 @@
       - Waits preemption_grace_ms; dispatches on_host_preempt() hook
       - Android LMK hook: executes session.suspend() before OS termination
       - Prevents session state corruption during mobile app backgrounding
-    - Platform coverage: TBD
+    - Platform coverage
+      - Linux: PR_SET_PDEATHSIG (kernel-enforced)
+      - macOS: kqueue NOTE_EXIT + heartbeat pipe
+      - Windows: Job Object KILL_ON_JOB_CLOSE
+      - Android: PR_SET_PDEATHSIG + LMK preempt window
   - Break-glass
     - Supervisor freezes guest agent task group via cgroup freezer prior to attach
     - In-flight PTY buffer drained before exposing raw console master
@@ -154,29 +193,31 @@
     - Foreground shell exit → orphaned daemons adopted and reaped
     - Prevents defunct <zombie> processes exhausting PID table
   - Lifecycle vetoes
+    - Scope: hard vetoes only
+      - Fork, Suspend, ClockSkew
     - Registration
-      - LifecycleCtx.register_veto(event, Box<dyn Fn() -> bool + Send + Sync>)
-      - Hard vetoes register in on_vm_init using LifecycleCtx.register_veto
-      - Pre-boot registration also allowed: builder lifecycle_mut().register_veto
-        - Before seal/boot; validated at boot; same VetoEvent, same firing point
-      - All veto registrations validated at boot
+      - LifecycleCtx.register_veto(event, Box<dyn Fn() -> bool>)
+      - Register in on_vm_init
+      - Pre-boot: builder lifecycle_mut().register_veto
+        - Before seal/boot; validated at boot
+      - All registrations validated at boot
       - Callbacks fire in DAG order across all plugins
-    - Two classes
-      - Hard veto: Fork, Suspend, ClockSkew
-        - Any false return aborts the action with ESessionVeto
-        - Use for policy gates (e.g. "no fork until fixtures ready")
-      - Observation only: Checkpoint, Rollback, Resume, Terminate
-        - Callback fires; return value logged and ignored
-        - Use for ledger / trace / metrics
-    - Class is determined by state-preservation, not by event name
-      - A state-preserving action cannot be vetoed: aborting it would leave
-        no recovery path
-      - A state-mutating action (Fork, Suspend, ClockSkew) is vetoable
-      - Terminate is observation-only because flush belongs to on_vm_shutdown
-    - VetoEvent is the uniform registration type for both classes
+    - Semantics
+      - Any false return aborts the action with ESessionVeto
+      - Vetoable = state-mutating action
+        - Aborting a state-preserving action leaves no recovery
+      - VetoEvent enum: Fork, Suspend, ClockSkew only
     - Firing point
       - Before the corresponding hypervisor primitive executes
       - Session-level actions also route through this point
+  - Lifecycle observation
+    - Scope: post-event telemetry
+      - Checkpoint, Rollback, Resume, Terminate
+    - Channel: EventBus subscribers
+      - register_subscribers(&mut dyn EventBusBinder)
+      - Non-blocking; cannot veto; no return value
+    - Use for ledger / trace / metrics
+    - Terminate flush belongs to on_vm_shutdown, not a subscriber
   - Watchdog
     - see: artifacts/code/vmm-driver-trait.rs (WatchdogAction)
     - Armed via LifecycleCtx.set_watchdog

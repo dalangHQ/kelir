@@ -40,9 +40,9 @@ pub enum PluginError {
     /// Wire plane:    frame dropped silently (errno for logging only).
     #[error("Plugin rejected: {errno} ({reason})")]
     Reject { errno: String, reason: String },
-    /// Payload size exceeds the foreign FFI boundary ceiling.
-    #[error("Inspection buffer ceiling exceeded: {size} bytes (max {max_bytes})")]
-    BufferCeilingExceeded { size: usize, max_bytes: usize },
+    // BufferCeilingExceeded removed: FUSE driver chunks writes at the
+    // 64KB boundary before interception. on_fs_write sees one chunk per
+    // call. Guest write() never fails on host buffer size.
     /// Host event loop or foreign runtime thread starvation detected.
     #[error("Foreign FFI channel saturated: worker queue depth exceeded ({depth})")]
     FfiQueueSaturated { depth: usize },
@@ -186,10 +186,20 @@ pub trait CompositePlugin: Send + Sync {
 // Restricted handle for on_vm_init. Exposes only mutating capabilities
 // that are pre-boot config; never the raw &mut dyn VmmDriver.
 
+/// Hard-veto events. Any registered callback returning false aborts the
+/// corresponding primitive with ESessionVeto. Observation-only events
+/// (Checkpoint, Rollback, Resume, Terminate) are not vetoable and are
+/// published via EventBusBinder::subscribe instead.
 #[derive(Debug, Clone, Copy)]
 pub enum VetoEvent {
-    Fork, Checkpoint, Rollback, Suspend, Resume,
-    Terminate, ClockSkew,
+    Fork, Suspend, ClockSkew,
+}
+
+/// Observation-only lifecycle events. Published via EventBusBinder
+/// as non-blocking telemetry. Not vetoable; no return value.
+#[derive(Debug, Clone, Copy)]
+pub enum LifecycleObservation {
+    Checkpoint, Rollback, Resume, Terminate,
 }
 
 #[derive(Debug, Clone)]
@@ -213,7 +223,7 @@ pub struct LifecycleCtx<'a> {
     pub config: &'a VmConfig,
     pub session_id: &'a str,
     driver: &'a mut dyn VmmDriver,
-    vetoes: &'a mut Vec<(VetoEvent, Box<dyn Fn() -> bool + Send + Sync>)>,
+    vetoes: &'a mut Vec<(VetoEvent, Box<dyn Fn() -> bool>)>,
 }
 
 impl<'a> LifecycleCtx<'a> {
@@ -231,7 +241,7 @@ impl<'a> LifecycleCtx<'a> {
     /// callbacks run before the action; any returning false aborts it.
     pub fn register_veto(
         &mut self, event: VetoEvent,
-        f: Box<dyn Fn() -> bool + Send + Sync>,
+        f: Box<dyn Fn() -> bool>,
     ) {
         self.vetoes.push((event, f));
     }

@@ -50,7 +50,8 @@ references:
   duplicate_home_check: true
   external_roots:
     kelir-cloud: "../kelir-cloud/cans"
-
+  # No public node references kelir-cloud://. The external root remains
+  # for kelir-cloud's own cans check when it links into the public spec.
 redundancy:
   enabled: true
   # A term is only "sprawl" if it has no canonical home; in this spec the

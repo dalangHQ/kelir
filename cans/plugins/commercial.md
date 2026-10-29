@@ -1,0 +1,29 @@
+- Commercial plugin interface
+  - Boundary
+    - Public interface defined here; implementation proprietary
+    - kelir-interface is dual-licensed; commercial plugins link freely
+    - No commercial URL appears in this repo
+  - hyper-density
+    - Tier 3 aggregator over native lifecycle primitives
+    - Interface: suspend/resume density scheduler
+    - Depends: kelir-interface only
+    - Channels: none (uses lifecycle primitives)
+  - cas-snapshot
+    - Tier 3 snapshot streaming over portable bundles
+    - Interface: streamed import/export through VmmDriver primitives
+    - Depends: kelir-interface, VmmDriver primitives
+    - Channels: reserved through frozen-table revision; see 09-protocol.md
+  - oci-translator
+    - Tier 2 policy for containerd shim v2
+    - Interface: OCI image to EROFS translation
+    - Depends: kelir-interface, containerd shim v2
+    - Channels: none (adapter process owns wire)
+  - openshell-coordinator
+    - Tier 3 OpenShell gRPC coordination
+    - Interface: profile + approval lifecycle bridge
+    - Depends: kelir-interface, plugin-profile
+    - Channels: 0x0002 (profile-sync)
+  - Adapter binaries
+    - containerd-shim-v2: owns containerd wire; plugin owns policy
+    - openshell-grpc: owns gRPC wire; plugin owns policy
+    - see 10-adapters.md#Process-vs-plugin-boundary

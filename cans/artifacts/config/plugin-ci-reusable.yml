@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Contract audit (same command as `just plugin-check`)
+      - name: Contract audit (same command as `just check-plugin`)
         run: cargo run -p kelir-plugin-cli -- check -p ${{ inputs.plugin }}
 
   vectors:

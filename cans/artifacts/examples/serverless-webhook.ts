@@ -8,7 +8,7 @@
 // standard c.vm.adjust_balloon() API so host RSS drops. MCP clients attach
 // on a dynamic console port without colliding with the PTY port.
 //
-// Mounts:     wire-ingress, mcp, ledger.
+// Mounts:     wire-ingress, mcp, tool-guard, ledger.
 // Primitives: adjust_balloon.
 
 import { kelir, t,
@@ -16,6 +16,7 @@ import { kelir, t,
          type PostExecAction } from "@kelir/core";
 import { wireIngress } from "@kelir/plugin-wire-ingress";
 import { mcp }         from "@kelir/plugin-mcp";
+import { toolGuard }   from "@kelir/plugin-tool-guard";
 import { ledger }      from "@kelir/plugin-ledger";
 
 interface WebhookRequest {
@@ -66,6 +67,17 @@ const runtime = kelir({
     advertise: { tools: ["webhook.dispatch", "webhook.replay"] },
   }))
 
+  // → c.tool-guard (upstream of mcp on the console port)
+  .use(toolGuard({
+    // Anti-rug-pull: BLAKE3 over all tool schemas locks at on_vm_ready.
+    // Any post-boot schema mutation halts with ESecurityViolation.
+    pinSchemas: true,
+    // Per-tool cadence ceiling; refuses ECYCLICREWRITE past this rate.
+    maxInvocationsPerTrace: 50,
+    approvals: {
+      "webhook.replay": { action: "hold", durationMs: 500 },
+    },
+  }))
   // → c.ledger
   .use(ledger({
     store: "sqlite://.kelir/webhook.merkle.db",

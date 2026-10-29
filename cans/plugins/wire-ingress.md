@@ -17,6 +17,7 @@
     - Wakes target microVM via SessionWakeHandle::resume
       - ExternalSuspendKind::WireConnectionParking
     - Ingress stream framing across vsock:5252 Channel 1:
+      - Channel 1: L4 stream forwarding; see 09-protocol.md#Channel-allocation-table
       - Frame header: target_port: u16, connection_id: u64, payload_len: u32
       - Guest shim ingress forwarder connects to 127.0.0.1:target_port and splices duplex bytes
     - Zero-downtime webhook and interactive terminal connection continuity

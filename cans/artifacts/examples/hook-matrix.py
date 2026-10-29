@@ -32,41 +32,12 @@ Masking is same-length (token bytes overwritten with "*"), because
 the read/output hooks mutate fixed-size buffers in place and cannot
 change a chunk's length.
 
-GUARDS (not new dispatch rows; hook order 1-7 above is unchanged):
-  - on_fs_lookup rejects a path whose `..` segments resolve outside
-    the /workspace root with E_PATH_TRAVERSAL (05), before the
-    identity check runs. Paths without `..` keep the old behavior:
-    the identity inode, else fall through.
-  - on_fs_write rejects any payload over the 64KB (65536-byte) FFI
-    inspection ceiling with BufferCeilingExceeded. That is the runtime
-    inspection ceiling, NOT the swe-agent policy diff ceiling, which
-    rejects with ENOSPC.
-
-GAPS (flagged, not silently invented):
-  - Python plugin-hook surface: only on_trap / on_fs_write /
-    disclosure_annotation appear in the swe-agent Python plugin. The
-    on_net_outbound / on_fs_lookup / on_fs_read / on_console_input /
-    on_console_output / on_heartbeat / on_process_exit methods below mirror
-    the Rust trait names in the existing snake_case idiom.
-  - SyncVerdict / FsInodeAttr spellings in Python: no SyncVerdict
-    value and no FsInodeAttr construction appear in any Python
-    example. SyncVerdict.allow() / SyncVerdict.yield_to_host(0) below
-    follow the PostExecAction.proceed() / rollback_and_halt() static
-    precedent in the swe-agent Python example; the import path follows
-    the kelir.plugin precedent (PluginError, TrapAction).
-  - YieldToHost's numeric argument: aa0e011 specifies it as a
-    delayed release in nanoseconds; 0 below is immediate.
-  - Rust ConsoleInterposer now takes a virtio-console port (u32)
-    before the byte buffer; the Python SDK surface here stays
-    bytes-only, as already flagged for the plugin-hook surface above.
-  - Hook return-vs-mutate shape: Rust mutates buffers in place; the
-    Python hooks below return the transformed bytes (the swe-agent
-    Python disclosure_annotation returns bytes rather than mutating), which is
-    the Python-idiom equivalent of the same transformation.
-  - Error idiom: no BufferCeilingExceeded variant or E_PATH_TRAVERSAL
-    raise is attested in any Python example; both guards below use
-    PluginError.reject (the swe-agent Python on_fs_write precedent),
-    carrying the error name as the errno, distinct from ENOSPC.
+NOTES:
+  - YieldToHost(u64) is nanoseconds delayed-release; 0 is immediate.
+  - Rust mutates buffers in place; Python returns transformed bytes.
+  - on_fs_lookup rejects `..` escapes with E_PATH_TRAVERSAL before
+    the identity check; paths without `..` keep old behavior.
+  - Reject errno surfaces via PluginError.reject(errno=...).
 
 Requirements:
     kelir>=3.0
@@ -86,6 +57,7 @@ from kelir.plugin import (
     PluginError,
     SyncVerdict,
     FsInodeAttr,
+    HandlerContext,
 )
 
 
@@ -197,31 +169,19 @@ class HookMatrixPlugin(BasePlugin):
         self._state.tail = masked[-CARRYOVER:] if masked else b""
         return chunk
 
-    # GUARD (not a new dispatch row): the 64KB FFI inspection ceiling.
-    # A payload over it is rejected with BufferCeilingExceeded — the
-    # runtime inspection error, distinct from the swe-agent policy diff
-    # ceiling, which rejects oversize diffs with ENOSPC. GAP: no
-    # BufferCeilingExceeded variant is attested in any Python example;
-    # the swe-agent Python on_fs_write raises PluginError.reject, so
-    # the ceiling name is carried as the errno here (see header).
-    async def on_fs_write(self, path: Path, data: bytes) -> bool:
-        ffi_inspection_ceiling = 64 * 1024
-        if len(data) > ffi_inspection_ceiling:
-            raise PluginError.reject(
-                errno="BufferCeilingExceeded",
-                reason=f"payload {len(data)} bytes exceeds "
-                       f"{ffi_inspection_ceiling}-byte FFI ceiling",
-            )
+    async def on_fs_write(
+        self, path: Path, data: bytes, pid: int, ctx: HandlerContext,
+    ) -> bool:
         return True
 
     # Hook 4: PTY input. Strip OSC52 clipboard exfiltration sequences:
     # ESC ] 52 ; … terminated by BEL (0x07) or ST (ESC \).
-    async def on_console_input(self, data: bytes) -> bytes:
+    async def on_console_input(self, port: int, data: bytes) -> bytes:
         return _OSC52_RE.sub(b"", data)
 
     # Hook 5: PTY output. Single-chunk masking; the cross-chunk case is
     # the vfs read path's sliding window above, not the terminal path.
-    async def on_console_output(self, chunk: bytes) -> bytes:
+    async def on_console_output(self, port: int, chunk: bytes) -> bytes:
         return mask_tokens(chunk)
 
     # Hook 6: heartbeat. Observation only (07): count, and note stalls,

@@ -1,6 +1,6 @@
 - Architecture
   - Axiomatic foundations
-    - Six invariants
+    - Invariants
       - Zero workload intrusion
         - Workload runs uninstrumented: standard POSIX binary, zero guest SDKs
         - Guest PID 1 is minimal paravirtual micro-init (kelir-shim, <50KB musl)
@@ -14,7 +14,7 @@
         - Silent driver downgrade is an uncatchable fatal error: E_NOHARDWAREVMM
         - Emulation tiers require explicit granular opt-in in DriverPolicy
         - DriverPolicy: wx_enforcement, allow_emulated_fallback, driver (bwrap/proot)
-          - Exercised by: see: artifacts/examples/knob-matrix.rs
+          - Exercised by: see: artifacts/examples/replay.rs
         - ForeignPluginProxy embeds V8 and Python event loops directly
         - ForeignPluginProxy isolates host event loops on dedicated OS threads
         - Ring-buffered async channels decouple host UI/IO from microVM vCPU loops
@@ -64,7 +64,7 @@
         - Guest reads KELIR_PARAMS like any other environment variable
         - No guest-side SDKs, CLI shims, or agents
   - Capability taxonomy
-    - Four categories; every capability falls into exactly one
+    - Every capability falls into exactly one category
     - Core primitive
       - Hardware/protocol invariant, no policy
       - Enumerated as pointers in 01-architecture.md#Core-invariants
@@ -110,7 +110,8 @@
     - Core routes paravirtual devices; plugins provide domain interpretation
     - Zero protocol domain logic lives in core
     - Channel 0 carries hypervisor control
-    - Channels 1-65535 are dynamic multiplexed endpoints
+    - Channel allocation is frozen
+      - see 09-protocol.md#Channel-allocation-table
     - Primary VirtIO Bus
       - virtio-vsock: multiplexed syscall traps and binary control channels
       - virtio-console: multi-port character streams
@@ -144,6 +145,7 @@
       - Measurement: host-side stopwatch to first workload exec
       - ACPI + PCI probing alone is ~40ms; kernel is built without both
       - Every device below earns its millisecond against that budget
+      - see: #Guest-VM-anatomy above
     - Device allocations: see: artifacts/diagrams/guest-vm.txt
     - Page size dynamic boot selection
       - 4KB guest MMU mapping standard across x86_64 and ARM64
@@ -155,7 +157,30 @@
       - Syscall notifications stream over dedicated virtio-vsock channel
       - Hypervisor cgroup freezer pauses task groups on trap matches
       - VM introspection resolves executable hashes
-    - Trust chain: TBD
+    - Trust chain
+      - Hardware root
+        - VT-x / AMD-V / ARM64 EL2
+        - Presence verified at boot
+        - Absence halts with E_NOHARDWAREVMM
+      - Guest kernel
+        - vmlinux BLAKE3 host-side pre-vCPU
+        - Recorded in session attestation token
+      - Guest rootfs
+        - EROFS BLAKE3 host-side pre-vCPU
+        - Recorded in session attestation token for the rootfs
+      - Shim (PID 1)
+        - Subsumed by EROFS measurement
+        - No separate attestation entry
+      - Workload
+        - binary_blake3 per ExecutionReceipt
+        - See 08-epistemic.md#Execution-receipts
+      - Session attestation token
+        - Injected over paravirtual config device
+        - Carries all four measurements above
+        - Workload consumes over vsock Channel 0
+      - Chain is unbroken
+        - Forged kernel/rootfs fails host-side BLAKE3
+        - Forged workload fails per-exec trap boundary
     - Workload contract: no guest-side SDK, shim, or agent
   - VmmDriver trait
     - see: artifacts/code/vmm-driver-trait.rs

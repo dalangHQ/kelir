@@ -1,11 +1,11 @@
 # examples/autonomous_swe_agent.py
 """
-Full-surface Python SDK consumer for kelir 3.0.
+Composition example: chaos + ledger + repo-policy custom plugin.
 
-Not a transliteration: this uses Pydantic for schema (the TS TypeBox
-equivalent), async/await natively, decorator-registered handlers, and
-`async with` for lifecycle enforcement. It exercises every plugin,
-every VirtIO ring, and the telemetry provenance classification.
+Python idiom throughout: Pydantic schema, native async/await,
+decorator-registered handlers, `async with` lifecycle. Not a
+TypeScript transliteration. Subsystem demos live in hook-matrix.py
+and policy-matrix.py.
 
 Requirements:
     kelir>=3.0          (PyO3 bindings; 4 native planes + domain plugins)

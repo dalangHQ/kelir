@@ -188,7 +188,7 @@ jobs:
         run: cargo run -p kelir-plugin-cli -- check --graph
 
   # ─── 4b. PLUGIN CONTRACT AUDIT ─────────────────────────────
-  # Same command as `just plugin-check`. The audit that
+  # Same command as `just check-plugin`. The audit that
   # 11-operations.md promises is actually executed here.
   plugin-audit:
     needs: [lint-and-types]
