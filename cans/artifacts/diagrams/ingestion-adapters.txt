@@ -23,5 +23,5 @@
 │    - Replicates the `Sandbox` interface with local hardware boots.          │
 └─────────────────────────────────────────────────────────────────────────────┘
 Boundary rule: the process owns the wire; the plugin owns policy and translation.
-URNs: containerd urn:kelir:fs:block:oci; MCP urn:kelir:io:channel:mcp;
-OpenShell urn:kelir:sys:proc:lifecycle; E2B: no plugin, no URN.
+Plugins: containerd oci-translator; MCP plugin-mcp;
+OpenShell plugin-profile; E2B: no plugin.

@@ -6,7 +6,7 @@
 // suspend; the first post-wake frame splices to vsock Channel 1. While
 // awaiting the next event, the guest memory ceiling is shrunk with the
 // standard c.vm.adjust_balloon() API so host RSS drops. MCP clients attach
-// on hvc1 without colliding with the hvc0 PTY.
+// on a dynamic console port without colliding with the PTY port.
 //
 // Mounts:     wire-ingress, mcp, ledger.
 // Primitives: adjust_balloon.
@@ -60,9 +60,9 @@ const runtime = kelir({
 
   // → c.mcp
   .use(mcp({
-    // hvc1 carries JSON-RPC 2.0 stdio directly to the MCP client. No
-    // PTY conflict with hvc0 (interactive shell on a separate port).
-    transport: { port: "hvc1", framing: "json-rpc-2.0-stdio" },
+    // A dynamic console port carries JSON-RPC 2.0 stdio directly to the MCP client. No
+    // PTY conflict (interactive shell on a separate port).
+    transport: { port: "dynamic", framing: "json-rpc-2.0-stdio" },
     advertise: { tools: ["webhook.dispatch", "webhook.replay"] },
   }))
 
@@ -96,7 +96,7 @@ const runtime = kelir({
   // Shrink the ceiling once the handler binary is loaded; the trap
   // pre-handler grows it back on the next wake via adjust_balloon.
   .on("vm:ready",    async (s) => { await s.vm.adjust_balloon(384); })
-  .on("vm:shutdown", async (s) => { await s.ledger.flush(); });
+  .on("vm:shutdown", async (s) => { await s.use(ledgerExtension).flush(); });
 
 async function main() {
   const session = await runtime.boot();

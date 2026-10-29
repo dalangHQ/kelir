@@ -22,7 +22,7 @@
         - Native linear capability isolation: zero-WASM, zero-JIT overhead
         - Compile-time ownership tokens enforce plugin memory boundaries
         - Hardware memory protection keys (MPK) isolate in-process heap
-        - Filter-before-FFI boundary stops hypervisor thrash at 0µs cost
+        - Filter-before-FFI boundary stops thrash: see: 02-plugin-model.md#Latency-ceiling
         - No dockerd, containerd, background root socket, daemon maintenance
       - Strict hardware/kernel abstraction layer
         - Zero knowledge of prompts, evaluation loops, or orchestration logic
@@ -45,7 +45,7 @@
         - Every plugin is a decoupled, composable crate
       - Transparent truthful steering
         - Any intercepted syscall, file read, or network packet is allowed,
-          steered with tty_notice, or rejected with a machine-parsable receipt
+          steered with a host disclosure, or rejected with a machine-parsable receipt
         - Mandatory TTY host disclosure invariant
     - Params ingress contract
       - Structured configuration delivered via paravirtual configuration device

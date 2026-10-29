@@ -2,7 +2,7 @@ GUEST KERNEL                               HOST HYPERVISOR (kelir-core)
 Agent invokes execve("/bin/git", ["push"])
       │
       ▼
-Kernel evaluates BPF allowlist ──► Allowlist match? ──► YES ──► Gate 1: In-kernel Fast Path (0µs)
+Kernel evaluates BPF allowlist ──► Allowlist match? ──► YES ──► Gate 1: In-kernel Fast Path
       │ NO
       ▼
 Kernel seccomp-unotify triggers
@@ -14,7 +14,7 @@ Kernel seccomp-unotify triggers
       ▼                              │
 Pipes TLV packet to vsock:5252 (Ch 0)► Host receives TrapEvent
                                      │ Gate 2: Checks MountScope & AOT Schema ──► INVALID ──► Deny (EINVAL)
-                                     │ Match? ──► NO ──► Resume (<2µs)
+                                     │ Match? ──► NO ──► Resume
                                      │ YES
                                      │ Evaluates Tier 1 Rust Plugins (at the latency ceiling)
                                      │ Gate 3: Crosses FFI Trampoline to TS/Python async handler

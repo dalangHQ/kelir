@@ -139,7 +139,7 @@ class HookState:
     failures: int = 0
 
 
-# Taxonomy: urn:kelir:sys:hook-matrix; rings: virtio-net, virtio-fs,
+# Plugin: hook-matrix; rings: virtio-net, virtio-fs,
 # virtio-console, virtio-vsock (heartbeat/exit events arrive over vsock).
 class HookMatrixPlugin(BasePlugin):
     name = "hook-matrix"

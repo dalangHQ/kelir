@@ -144,7 +144,7 @@ class RepoPolicyHandle:
         self._state.current_branch = b
 
 
-# Taxonomy: urn:kelir:sys:trap:exec; rings: virtio-vsock, virtio-fs
+# Plugin: repo-policy; rings: virtio-vsock, virtio-fs
 class RepoPolicyPlugin(BasePlugin):
     name = "repo-policy"
     requires: tuple[str, ...] = ("ledger",)  # runtime dependency check

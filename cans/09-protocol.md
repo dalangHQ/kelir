@@ -3,6 +3,7 @@
     - virtio-vsock port 5252: unified multiplexed transport
     - Binary channel framing isolates sub-protocols via channel_id
       - Channel 0: hypervisor control
+      - Profile patches arrive as ChannelData on Channel 0: see: plugins/profile.md
       - Channels 1-65535: dynamic multiplexed endpoints
       - No core symbol names a channel endpoint
       - Kind registration: see: #Channel-registration
@@ -11,9 +12,10 @@
   - Trap fast-path
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
     - Three-tier gate pipeline
-      - Gate 1: guest in-kernel BPF allowlist returns in 0µs for harmless tools
-      - Gate 2: native MountScope/schema eval in <2µs (0 FFI)
+      - Gate 1: guest in-kernel BPF allowlist returns for harmless tools
+      - Gate 2: native MountScope/schema eval (0 FFI)
       - Gate 3: trap handler dispatch through FFI trampoline on match only
+      - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
       - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
     - Goal: the trap path must not slow `cargo build` / `npm install`
     - Why three layers, not one
@@ -71,6 +73,7 @@
       - Host releases suspension when the hold duration elapses
     - Custom dispatch contract
       - Registration: builder.register_custom_action(name, schema, handler)
+      - Wire Custom carries the CBOR payload only; the name resolves at SDK registration
       - Unknown name at trap time fails with EUnknownAction
       - Registration after boot() fails with EConfig
     - Action invariants: see: artifacts/code/messages.rs

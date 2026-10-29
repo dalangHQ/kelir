@@ -39,7 +39,7 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
       // 3. Post-Condition Verification via Tier 1 Hardware Evidence
       const receipt = await c.receipt();
       if (!await orchestrator.verifyPhysicalReceipt(receipt)) {
-        // 4. Instant Hardware Rollback: memory and disk revert in <8ms
+        // 4. Instant Hardware Rollback: memory and disk revert via driver rollback
         if (activeCheckpoint) await c.vm.rollback(activeCheckpoint);
         c.service(PtyService).notice("⚡ [VERIFICATION ENGINE]: Reverted.\n");
       }

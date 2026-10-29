@@ -67,8 +67,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use kelir::{
     handler, DriverChoice, HandlerCtx, KelirBuilder, Session, VmConfig,
     plugin::{
-        AnyPlugin, ExecutionTier, KelirPlugin, LifecycleCtx, LifecycleParticipant,
-        PluginError, PluginTaxonomy, TelemetryRole, TrapInterposer, VirtioDevice,
+        AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant,
+        PluginError, TrapInterposer,
         VetoEvent, WatchdogEvent, WatchdogVerdict,
     },
     protocol::{TrapAction, TrapEvent},
@@ -103,7 +103,7 @@ impl PolicyHandle {
 // 2. PLUGIN — the lattice lives in on_trap; vetoes in on_vm_init
 // ============================================================================
 
-/// Taxonomy: urn:kelir:sys:trap:policy-matrix; rings: virtio-vsock, virtio-fs
+/// Plugin: policy-matrix; rings: virtio-vsock, virtio-fs
 pub struct PolicyMatrixPlugin {
     state: Arc<PolicyState>,
 }
@@ -123,16 +123,6 @@ impl Default for PolicyMatrixPlugin {
 
 impl KelirPlugin for PolicyMatrixPlugin {
     fn name(&self) -> &'static str { "policy-matrix" }
-
-    fn taxonomy(&self) -> PluginTaxonomy {
-        PluginTaxonomy {
-            boundary: "urn:kelir:sys:trap:policy-matrix",
-            rings: &[VirtioDevice::Vsock, VirtioDevice::Fs],
-            role: TelemetryRole::Gate,
-            tier: ExecutionTier::Native,
-            mutation_targets: &["argv", "env"],
-        }
-    }
 
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
         // Snapshot copy of the counters, following the swe-agent precedent
@@ -257,16 +247,6 @@ impl WatchdogSilencerPlugin {
 
 impl KelirPlugin for WatchdogSilencerPlugin {
     fn name(&self) -> &'static str { "watchdog-silencer" }
-
-    fn taxonomy(&self) -> PluginTaxonomy {
-        PluginTaxonomy {
-            boundary: "urn:kelir:sys:trap:watchdog",
-            rings: &[VirtioDevice::Vsock],
-            role: TelemetryRole::Observer,
-            tier: ExecutionTier::Native,
-            mutation_targets: &[],
-        }
-    }
 
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
         Box::new(Self { state: Arc::clone(&self.state) })

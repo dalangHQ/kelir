@@ -388,7 +388,7 @@
                               { "id": "kelir-busdispatcher", "name": "BusDispatcher", "rank": "leaf", "desc": "Routes VirtIO events.", "children": [] },
                               { "id": "kelir-eventbus", "name": "EventBus", "rank": "leaf", "desc": "Typed handler dispatch (lock-free ArcSwap swap on hydration).", "children": [] },
                               { "id": "kelir-driverrouter", "name": "DriverRouter", "rank": "leaf", "desc": "Backend selection across rustvmm, hvf, openvmm, avf, bwrap, proot.", "children": [] },
-                              { "id": "kelir-trapgate", "name": "Trap Gate (3-tier)", "rank": "leaf", "desc": "Gate 1: in-kernel BPF allowlist (0µs). Gate 2: native schema + MountScope (<2µs, 0 FFI). Gate 3: FFI trampoline on match only.", "children": [] }
+                              { "id": "kelir-trapgate", "name": "Trap Gate (3-tier)", "rank": "leaf", "desc": "Gate 1: in-kernel BPF allowlist. Gate 2: native schema + MountScope (0 FFI). Gate 3: FFI trampoline on match only.", "children": [] }
                             ]},
                             { "id": "kelir-interface", "name": "KELIR-INTERFACE", "rank": "leaf", "desc": "Pure leaf types, traits, wire framing. Zero engine dependencies.", "children": [
                               { "id": "ki-plugin", "name": "KelirPlugin trait", "rank": "leaf", "desc": "Async hook surface mapped strictly to VirtIO transport events and hypervisor transitions.", "children": [] },
@@ -459,7 +459,7 @@
                             ]},
                             { "id": "kelir-lifecycle", "name": "Hypervisor primitives (10)", "rank": "leaf", "desc": "Set-level invariant: every item is a hypervisor primitive, not a guest-side simulation.", "children": [
                               { "id": "lc-fork", "name": "CoW fork (<15ms)", "rank": "leaf", "desc": "Driver primitive: fork returns Box<dyn VmmDriver> in <15ms. KVM: userfaultfd + memory cloning. HVF: memory-mapped page duplication. Children share warm parent memory. Veto: Fork (hard).", "children": [] },
-                              { "id": "lc-rollback", "name": "Rollback (<8ms)", "rank": "leaf", "desc": "Reverts guest memory, registers, tmpfs overlay diffs. Does not touch host SSD or Merkle WAL. Observation-only (cannot be vetoed; rollback is the recovery action).", "children": [] },
+                              { "id": "lc-rollback", "name": "Rollback", "rank": "leaf", "desc": "Reverts guest memory, registers, tmpfs overlay diffs. Does not touch host SSD or Merkle WAL. Observation-only (cannot be vetoed; rollback is the recovery action).", "children": [] },
                               { "id": "lc-suspend", "name": "Suspend / resume (<50ms)", "rank": "leaf", "desc": "Freezes vCPUs, zstd-compresses dirty pages, flushes to NVMe, RSS → 0MB. Resume restores at exact cycle boundary. Veto: Suspend (hard), Resume (observation).", "children": [] },
                               { "id": "lc-snapshot", "name": "Portable snapshot bundles", "rank": "leaf", "desc": ".kelir-snap archive: vmm_state.json + ram.zst + upperdir diff. export_snapshot() / import_snapshot() across identical hosts.", "children": [] },
                               { "id": "lc-clock", "name": "Clock skew", "rank": "leaf", "desc": "KVM_SET_CLOCK / ARM64 CNTVOFF_EL2. Synthetic virtual clocksource mode for cycle-exact deterministic replay. Veto: ClockSkew (hard).", "children": [] },

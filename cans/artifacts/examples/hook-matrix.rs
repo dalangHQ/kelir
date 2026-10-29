@@ -68,9 +68,9 @@ use async_trait::async_trait;
 use kelir::{
     DriverChoice, HandlerCtx, KelirBuilder, Session, VmConfig,
     plugin::{
-        AnyPlugin, ExecutionTier, KelirPlugin, PluginError, PluginTaxonomy,
-        FsInterposer, SyncVerdict, TelemetryRole, ConsoleInterposer,
-        TrapInterposer, FsInodeAttr, VirtioDevice, WatchdogEvent, WatchdogVerdict,
+        AnyPlugin, KelirPlugin, PluginError,
+        FsInterposer, SyncVerdict, ConsoleInterposer,
+        TrapInterposer, FsInodeAttr, WatchdogEvent, WatchdogVerdict,
         NetInterposer,
     },
     protocol::{Heartbeat, ProcessExit},
@@ -136,7 +136,7 @@ fn mask_tokens(window: &mut [u8]) {
     }
 }
 
-/// Taxonomy: urn:kelir:sys:hook-matrix; rings: virtio-net, virtio-fs,
+/// Plugin: hook-matrix; rings: virtio-net, virtio-fs,
 /// virtio-console, virtio-vsock (heartbeat/exit events arrive over vsock).
 pub struct HookMatrixPlugin {
     state: Arc<Mutex<HookState>>,
@@ -153,21 +153,6 @@ impl HookMatrixPlugin {
 
 impl KelirPlugin for HookMatrixPlugin {
     fn name(&self) -> &'static str { "hook-matrix" }
-
-    fn taxonomy(&self) -> PluginTaxonomy {
-        PluginTaxonomy {
-            boundary: "urn:kelir:sys:hook-matrix",
-            rings: &[
-                VirtioDevice::Net,
-                VirtioDevice::Fs,
-                VirtioDevice::Console,
-                VirtioDevice::Vsock,
-            ],
-            role: TelemetryRole::Gate,
-            tier: ExecutionTier::Native,
-            mutation_targets: &["net-frame", "vfs-read", "pty-stream"],
-        }
-    }
 
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
         // Fresh hook state per forked child; the tail must not leak

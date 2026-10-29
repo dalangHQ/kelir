@@ -159,7 +159,7 @@
     - FFI trampoline executes only when ring event satisfies scope match
     - Protects guest toolchain execution speed (cargo build, npm install)
     - TAP dispatcher application: see: 06-wire-plane.md#Raw-packet-interception-points
-  - Latency ceiling (0-2-12)
+  - Latency ceiling
     - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs
     - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs
     - Gate 3: Async FFI hook trampolines dispatch on positive match only in <12µs

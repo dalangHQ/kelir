@@ -123,8 +123,9 @@ pub trait VmmDriver: Send + Sync {
     /// Reverts guest memory and registers to a prior checkpoint in <8ms
     async fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), VmmError>;
 
-    /// Flushes dirty RAM pages to disk and drops host memory consumption to 0 MB
-    async fn suspend(&mut self, output_path: &Path) -> Result<(), VmmError>;
+    /// Flushes dirty RAM pages to disk and drops host memory consumption to 0 MB.
+    /// Reason is SuspendReason::External or ResourcePressure; no plugin identity.
+    async fn suspend(&mut self, reason: SuspendReason, output_path: &Path) -> Result<(), VmmError>;
 
     /// Restores a suspended VM image from storage in <50ms
     async fn resume(&mut self, image_path: &Path) -> Result<(), VmmError>;

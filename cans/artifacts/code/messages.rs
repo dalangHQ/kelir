@@ -119,8 +119,9 @@ pub enum TrapAction {
     Hold {
         duration_ms: u32,
     },
-    /// Extension point. Dispatched by name to a registered handler;
-    /// unknown names fail with EUnknownAction before the pipeline resumes.
+    /// Extension point. Carries the CBOR payload only; the handler name
+    /// resolves at SDK registration (see 09-protocol.md Custom dispatch).
+    /// Unknown names fail with EUnknownAction before the pipeline resumes.
     /// Closes the fixed-variant lock-in (quarantine, throttle, shadow-route).
     Custom(ciborium::value::Value),
 }

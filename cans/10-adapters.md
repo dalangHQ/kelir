@@ -7,10 +7,10 @@
       - Thin SDK wrapper: E2B (no plugin, no binary) — see: #E2B-compatibility
     - Rule: the plugin owns translation and policy; the binary owns the wire
     - Process vs plugin boundary
-      - Shim process owns wire; urn:kelir:fs:block:oci plugin owns policy
-      - Server process owns stdio wire; urn:kelir:io:channel:mcp plugin owns policy
-      - Driver process owns gRPC wire; urn:kelir:sys:proc:lifecycle plugin owns policy
-      - SDK wrapper only: no process, no plugin, no URN
+      - Shim process owns wire; plugin-oci-translator owns policy
+      - Server process owns stdio wire; plugin-mcp owns policy
+      - Driver process owns gRPC wire; plugin-profile owns policy
+      - SDK wrapper only: no process, no plugin
     - Tri-native SDKs are the fourth ingestion family; see: 03-sdk-architecture.md
     - Ingestion tiering and licensing
       - Community adapters: mcp-server (stdio wire), e2b-compat (thin client SDK)
@@ -40,8 +40,8 @@
       - Eliminates in-guest OpenShell supervisor process entirely
       - Enforces policy out-of-band via virtio-vsock Channel 0 and FUSE gates
     - Dynamic approval lifecycle bridge
-      - Denial triggers suspend_for_approval, dropping host RAM to 0 MB
-      - Gateway admin approvals push RFC 6902 patches before cycle-exact resume
+      - Denial triggers external suspension: see: 07-lifecycle.md#Suspend-and-resume
+      - Gateway admin approvals push RFC 6902 patches to plugin-profile before cycle-exact resume
     - CDI mapping: passes OpenShell GPU device requests to plugin-profile CDI parser
     - OpenShell boundary: see: #Process-vs-plugin-boundary
   - E2B compatibility

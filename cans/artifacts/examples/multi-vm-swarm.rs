@@ -79,7 +79,6 @@ fn swarm_builder() -> KelirBuilder {
             PackageManager::Cargo,
         ],
         policy: LifecyclePolicy::DenyInDependencyDirs,
-        trap_on_ancestor_chain: true,
     }))
 }
 

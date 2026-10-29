@@ -110,7 +110,7 @@
     - Facade method delegations
       - box.exec(cmd) routes through virtio-console and trap filters
       - box.tools exposes active MCP schema pins and call telemetry
-      - box.rollback() invokes driver rollback in <8ms
+      - box.rollback() invokes driver rollback: see: artifacts/code/vmm-driver-trait.rs
       - box.reconcile() invokes storage reconciler to host workspace
       - box.suspend() drops host RSS to 0 MB in <50ms
   - Params typed views

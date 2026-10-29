@@ -30,4 +30,4 @@
       - DbAction::Rewrite
         - Q/P frame payload replaced before upstream forward
         - Server sees rewritten frame as if client sent it
-        - rewrite_count incremented; >3 aborts ECYCLICREWRITE
+        - Per-connection rewrites tallied; >3 aborts ECYCLICREWRITE

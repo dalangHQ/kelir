@@ -134,7 +134,7 @@
   - Plugin registry
     - First-class plugin catalog is compiled in; external index poller is opt-in
     - Downstream state shape when enabled: see: artifacts/diagrams/ecosystem-ci.txt
-    - Index schema indexes by boundary URN, ring mask, and telemetry role
+    - Index schema indexes by plugin crate, tier, ring mask, telemetry role
   - Multi-language parity gate
     - Rust macros generate typed FFI stubs: napi-rs for TS, pyo3 for Python
     - Parity evaluated on identical wire frame inputs and outputs using vectors.json

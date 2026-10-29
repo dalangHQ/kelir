@@ -28,7 +28,7 @@ declare const oracle: {
 };
 
 // ── Plugin: repo policy (contributes `c.policy`) ──────────────────────────
-// Taxonomy: urn:kelir:sys:trap:exec; rings: virtio-vsock, virtio-fs
+// Plugin: repo-policy; rings: virtio-vsock, virtio-fs
 // Its push gate lives in the runtime "git push *" trap below; its
 // maxDiffBytes ceiling lives in the vfs diff-ceiling snoop below.
 const repoPolicyPlugin = (opts: { maxDiffBytes: number; protectedBranches: string[] }) =>

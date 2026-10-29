@@ -80,6 +80,7 @@
       - Use for ledger/trace of recovery events
   - Suspend and resume
     - suspend
+      - Reason: SuspendReason::External or ResourcePressure
       - Freezes vCPU registers
       - Page-dump engine: lz4_flex compression over io_uring direct I/O
       - Flushes compressed pages to local NVMe

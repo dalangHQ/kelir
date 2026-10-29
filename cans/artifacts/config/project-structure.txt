@@ -75,7 +75,7 @@ kelir/
 │   │   │   ├── src/lib.rs             # kvm-ioctls & userfaultfd CoW memory implementation
 │   │   │   └── tests/
 │   │   │       ├── test_cow_fork.rs   # KVM userfaultfd CoW fork in <15ms
-│   │   │       └── test_rollback.rs   # KVM rollback in <8ms
+│   │   │       └── test_rollback.rs   # KVM rollback test
 │   │   ├── driver-hvf/                # Native macOS Apple Silicon HVF via raw Hypervisor.framework FFI
 │   │   ├── driver-openvmm/            # Windows WHP + ConPTY + HV_SOCKET (scoped strictly to windows-sys)
 │   │   │   ├── Cargo.toml

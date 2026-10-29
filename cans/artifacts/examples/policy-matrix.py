@@ -110,7 +110,7 @@ POLICY_STATE = PolicyState()
 # 2. PLUGINS — vetoes + watchdog verdicts (the trap lattice is in §4)
 # ============================================================================
 
-# Taxonomy: urn:kelir:sys:trap:policy-matrix; rings: virtio-vsock, virtio-fs
+# Plugin: policy-matrix; rings: virtio-vsock, virtio-fs
 class PolicyMatrixPlugin(BasePlugin):
     name = "policy-matrix"
 

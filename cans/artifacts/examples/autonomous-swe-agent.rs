@@ -44,9 +44,9 @@ use kelir::{
     KelirBuilder, PostExecAction, Session, SnapshotDescriptor, StepSlot, VmConfig,
     oracle::{IntentAnalysis, Oracle},
     plugin::{
-        AnyPlugin, ExecutionTier, KelirPlugin, PluginError, PluginTaxonomy,
-        FsInterposer, SyncVerdict, TelemetryRole, ConsoleInterposer,
-        TrapInterposer, VirtioDevice,
+        AnyPlugin, KelirPlugin, PluginError,
+        FsInterposer, SyncVerdict, ConsoleInterposer,
+        TrapInterposer,
     },
     plugins::{
         chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
@@ -127,7 +127,7 @@ impl RepoPolicyHandle {
     }
 }
 
-/// Taxonomy: urn:kelir:sys:trap:exec
+/// Plugin: repo-policy
 /// Rings: virtio-vsock, virtio-fs
 pub struct RepoPolicyPlugin {
     opts: RepoPolicyOptions,
@@ -151,21 +151,6 @@ impl RepoPolicyPlugin {
 
 impl KelirPlugin for RepoPolicyPlugin {
     fn name(&self) -> &'static str { "repo-policy" }
-
-    // Coordinates from the TS example's comment (urn:kelir:sys:trap:exec;
-    // rings virtio-vsock, virtio-fs). Role/tier/targets are the struct's
-    // remaining required fields, filled from this plugin's hook behaviour:
-    // Gate (deny/reject gating), Native (native Rust), argv/env (what
-    // on_trap rewrites).
-    fn taxonomy(&self) -> PluginTaxonomy {
-        PluginTaxonomy {
-            boundary: "urn:kelir:sys:trap:exec",
-            rings: &[VirtioDevice::Vsock, VirtioDevice::Fs],
-            role: TelemetryRole::Gate,
-            tier: ExecutionTier::Native,
-            mutation_targets: &["argv", "env"],
-        }
-    }
 
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
         Box::new(Self {

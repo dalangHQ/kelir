@@ -19,10 +19,10 @@
 │     │                             matches prompts; auto-injects keystrokes. │
 │     │                             (Kills tmux send-keys forever).           │
 │     │                                                                       │
-│     ├── 3. WindowResize Bridge ───► Boot handshake pushes initial window    │
+│     ├── 3. Console Control Bridge ───► Boot handshake pushes initial window    │
 │     │                             size (e.g. 120x40) at VM-ready; host      │
 │     │                             SIGWINCH resizes follow the same path:    │
-│     │                             WindowResize over vsock:5252 → shim       │
+│     │                             ChannelData over vsock:5252 → shim        │
 │     │                             executes TIOCSWINSZ on guest PTY.         │
 │     │                                                                       │
 │     ├── 4. Signal Forwarding ─────► Ctrl+C (SIGINT) / Ctrl+D forwarded to   │

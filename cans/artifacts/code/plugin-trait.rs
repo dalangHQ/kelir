@@ -14,8 +14,28 @@ use std::sync::Arc;
 use crate::handlers::HandlerCtx;
 use crate::protocol::messages::{
     Heartbeat, MemoryPressureWarning, PortBound, ProcessExit,
-    SendSignal, TrapAction, TrapEvent, WindowResize,
+    TrapAction, TrapEvent,
 };
+
+// ── Decoded hook payloads ────────────────────────────────────────
+// Wire transport for terminal control and signals is ChannelData
+// (see cans/09-protocol.md#Wire-messages); these structs are the
+// decoded payloads delivered to TrapInterposer/ConsoleInterposer
+// hooks, not wire variants. Field layouts restored verbatim from
+// the pre-purge messages.rs definitions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowResize {
+    pub rows: u16,
+    pub cols: u16,
+    pub xpixel: u16,
+    pub ypixel: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendSignal {
+    pub pid: u32,
+    pub signal: u32,
+}
 use crate::vmm::driver::{VmmDriver, VmConfig, WatchdogAction};
 
 #[derive(Debug, thiserror::Error)]
@@ -305,7 +325,7 @@ pub trait ConsoleInterposer {
     async fn on_window_resize(
         &self, _event: &WindowResize,
     ) -> Result<(), PluginError> { Ok(()) }
-    /// Mandatory core-originated disclosure (TrapAction::Rewrite.tty_notice).
+    /// Mandatory core-originated disclosure (HostToGuest::ChannelData on the pty-disclosure kind).
     /// Body is immutable; return Some(bytes) to append. All annotations
     /// concatenate in registration order and follow the body on the PTY.
     /// See cans/04-terminal-plane.md#Disclosure
