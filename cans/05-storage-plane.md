@@ -33,9 +33,9 @@
     - Lookups return synthetic FsInodeAttr (mode: 0o400 honored strictly)
     - Served directly from host supervisor memory; physically absent on host SSD
   - In-flight read masking
-    - Stateful Aho-Corasick automaton carries scan state across read offsets
-    - Fixed-width pattern replacement on-the-fly; zero full-file buffering
-    - Carryover window buffers boundary fragments until pattern match or flush
+    - Pipeline exposes synchronous FsInterposer::on_fs_read hooks across offsets
+    - Zero-copy mutable slice passed directly to registered interposers
+    - Redaction and pattern replacement execute in-place before guest VFS return
   - Host inode lock broker
     - Cross-VM advisory file lock mediation native to storage plane
     - Intercepts FUSE SETLK and SETLKW requests on declared repository paths

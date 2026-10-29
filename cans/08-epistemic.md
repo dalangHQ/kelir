@@ -67,7 +67,6 @@
       - Missing Tier 1 evidence is a denial, not a Tier 3 downgrade
       - Rationale: silent downgrade is exactly the harness self-report failure
         this tier scheme exists to prevent
-    - Consumer of Tier 3: Oracle.ingest_harness_event; see: #Oracle
   - Lifecycle bridge
     - Orchestrator verbs: pause, resume, step, revert, fork, suspend
     - Each verb aliases exactly one mechanism in

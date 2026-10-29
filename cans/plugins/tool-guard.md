@@ -25,7 +25,9 @@
         post-boot halts with ESecurityViolation
     - Host extensible hook pipeline
       - Exposes typed pre-call and post-call interception to host runtimes
-      - Host registers closures via SDK: builder.intercept_tool(tool_name, handler)
+      - Mount via builder.use(toolGuard()) decorates builder with .tool()
+      - Rust: exposes ToolGuardExt extension trait for direct builder chaining
+      - Python: registers @builder.on_tool decorator dynamically on mount
       - Non-matching tool calls evaluate static MountScope allowlists;
         matching calls cross FFI trampoline to host
     - Decision lattice (tool-guard)

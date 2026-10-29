@@ -18,7 +18,7 @@
       - 1. ANSI strip: drops OSC 52 (clipboard hijack) and strips OSC 0/1/2 (title spoof)
       - 2. Prompt match: matches foreground prompts against ANSI-stripped shadow text
       - 3. Token Shield: clamps scrollback grid to maxLines/maxBytes without mid-stream slicing
-      - 4. Leak scan: Aho-Corasick automaton scans post-sanitized buffer for vault secrets
+      - 4. Interposer dispatch: fires ConsoleInterposer::on_console_output for in-place masking
     - Headless VT100 wireframe grid
       - Lean embedded VT100 state machine tracks active terminal matrix
       - session.terminal.export_screen_matrix() yields deterministic terminal wireframe receipts

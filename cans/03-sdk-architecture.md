@@ -44,28 +44,20 @@
       - Plugin extension pattern
         - Optional domain plugins attach via typed extensions
         - session.ext::<T>() (Rust/Py), session.use(ext) (TS)
-        - Python: async with builder as session
-        - Python: tx = session.ext(TransactionExtension)
-        - Python: await tx.commit()
-        - Services resolve via c.service::<TransactionService>() in handlers
+        - Inter-plugin services resolve via c.service::<T>() in handlers
     - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
     - Language surfaces
-      - Rust: borrow-checker verified typestate, zero-cost Serde
-      - TypeScript: generic context accumulation, TypeBox AOT validation
-      - Python: RAII context managers, Pydantic v2 validation
-      - Rust: .intercept_tool("bash", |call, ctx| async { ToolAction::Allow })
-      - TypeScript: .tool("bash", async (call, c) => c.tools.allow())
-      - Python: @builder.on_tool("bash") async def guard(call, c): ...
+      - Rust: extension traits provide zero-cost fluent chaining on builder
+      - TypeScript: generic context accumulation decorates fluent plugin verbs
+      - Python: dynamic protocol mixins inject fluent verbs on mount
+      - Chained verbs appear on builder instance only when plugin is mounted
     - Scoping: all SDKs support ring, binary, and path filters at mount point
     - Topology rule: distinct environments use separate profile factories
     - Parity mechanism: see: 11-operations.md#Multi-language-parity-gate
       - SDK naming idiom: same concept, per-SDK spelling; parity is concept parity
         - Sinkhole allowlist (Py/RS) vs dnsExcept (TS)
-        - OTel endpoint/service_name/propagate_traceparent vs traceParent/serviceName
         - ReceiptConfig: Py/RS include_syscall_count
           - TS: includeDirtyBytes, includeBinaryBlake3, includeSyscallCount
-        - MaskRule patterns list (Py/RS) vs single pattern+replace (TS)
-        - SnoopRule glob (Py/RS) vs path (TS)
         - Decision static constructors (Py/RS) vs c.deny/c.resume/c.rewrite (TS)
         - Lifecycle decorators/methods (Py/RS) vs .on(LifecycleEvent.VmReady) (TS)
     - Trap verdict surface: see: 09-protocol.md#TrapAction-method-mapping
@@ -92,7 +84,7 @@
     - TS, Python, and Rust do not copy each other's method names
     - Each enforces 1:1 behavioral and wire parity against vectors.json
   - Sandbox high-level facade
-    - High-level consumer DX wrapper around KelirBuilder and plugin-profile
+    - Pre-composed distribution wrapper bundling KelirBuilder, profile, and tools
     - Initialization via Sandbox.from_config(path) or Sandbox.create(opts)
     - Internal pipeline
       - Mounts plugin-profile to parse declared TOML or YAML specifications
@@ -107,7 +99,6 @@
       - Rust: Sandbox::from_config("kelir.toml")
     - Facade method delegations
       - box.exec(cmd) routes through virtio-console and trap filters
-      - box.tools exposes active MCP schema pins and call telemetry
       - box.rollback() invokes driver rollback: see: artifacts/code/vmm-driver-trait.rs
       - box.reconcile() invokes storage reconciler to host workspace
       - box.suspend() drops host RSS to 0 MB in <50ms
@@ -134,7 +125,8 @@
     - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
     - see: artifacts/code/typescript-accumulation.ts
-    - Fluent model: .use().params().trap().intercept().on(), then .boot()
+    - Fluent Elysia-style chaining: .use(plugin) enriches builder type signature
+    - Chained plugins decorate builder with typed DSL verbs via generic intersections
     - .use() takes flat plugin instances; no callback builder arguments
     - .trap(matcher, handler): simple pre-exec gate returning a Decision
     - .trap(matcher, { pre, post }): dual pre/post gate; post returns a
@@ -142,7 +134,7 @@
     - .intercept(channel, filter, handler): ring-level synchronous hot-path
       filters returning SyncVerdict
     - .on(event, handler): lifecycle interceptors over LifecycleEvent values
-    - Typed service locator: c.service(ToolRegistry) for typed service lookup
+    - Typed service locator: c.service(ServiceToken) for peer lookup
     - AOT hook fusion compiles all TS pipeline handlers into a single flat closure
     - Invariant: exactly 1 NAPI trampoline jump per event regardless of depth
     - Fully unified TContext passes to callbacks, resolving cross-plugin lookups
@@ -157,7 +149,7 @@
     - Builder assembly inspects closure freevars against mounted plugins
     - Unbound closure references raise KelirConfigurationError before boot
     - Composite plugins unpack nested plugins atomically before boot
-    - Service resolution via c.service(RepoPolicyService)
+    - Service resolution via c.service(ServiceType)
     - Mount scoping via kwargs: rings=..., binaries=..., paths=...
   - Full-surface examples
     - see: artifacts/examples/autonomous-swe-agent.rs

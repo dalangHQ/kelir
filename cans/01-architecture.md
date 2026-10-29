@@ -87,7 +87,7 @@
       - Core plane (Terminal, Storage, Wire, Checkpoint)? → engine primitive
       - Backend driver contract? → interface
       - Wire contract with a process boundary? → adapter binary
-      - Optional domain policy (DB proxy, MCP, Chaos, Vault)? → plugin
+      - Optional protocol proxy, governance, or domain aggregator? → plugin
   - Core invariants
     - The closed set of core primitives
     - Interposition is total: every device channel is hooked

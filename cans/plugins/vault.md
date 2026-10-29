@@ -15,6 +15,12 @@
       - Compiles unified Aho-Corasick automaton across all registered host secrets
       - Shared across native Storage, Wire, and Terminal planes
       - Enforces vault:// placeholder URN generation: real secrets never enter guest physical RAM
+    - Cross-plane interposer attachments
+      - Implements FsInterposer::on_fs_read for stream secret redaction
+      - Maintains carryover window across FUSE read buffers for split matches
+      - Implements ConsoleInterposer::on_console_output for terminal stream scrubbing
+      - Operates L7 forward proxy on wire plane transparent L4 diversion hooks
+      - Injects ephemeral session root CA into guest trust store at on_vm_ready
     - Memory isolation and zeroization
       - Host secret memory pinned with mlock(2) to prevent swapping to disk
       - Memory zeroed using explicit volatile writes upon session termination or drop

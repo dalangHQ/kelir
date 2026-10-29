@@ -28,18 +28,11 @@
     - Computes Shannon entropy on subdomain query labels for wildcard allowlists
     - Queries exceeding entropy threshold (default: 4.5) drop with NXDOMAIN
     - Prevents data exfiltration over DNS label encoding
-  - Paravirtual L7 credential proxy
-    - Real secrets never enter guest physical address space
-    - Guest shell receives placeholder URNs (e.g. vault://stripe_key)
-    - Ephemeral per-session root CA generated at boot and grafted into guest trust store
-    - Guest TLS handshakes terminate at host forward proxy
-    - Proxy validates destination allowlist and swaps placeholder URN with real credential
-    - Upstream TLS handshake originates host-side; response re-encrypted under session CA
+  - Transparent L4 stream diversion
+    - Directs guest TCP streams across VirtIO ring to designated host socket
+    - Exposes raw duplex stream to registered NetInterposer proxies
+    - Guest TLS and plaintext payloads traverse proxy without guest stack changes
+    - Diverted endpoints configured via MountScope port and CIDR allowlists
   - Port forwarding
     - Guest-initiated: forward tunnels over vsock:5252 (Channel 1) on PortBound
     - Host-initiated: session.wire.forward_port() opens host listener multiplexed to guest
-  - Connection parking
-    - Parked connections queue in TAP buffers and raw virtqueues
-    - Terminates client TCP handshake host-side; buffers initial request payload (up to 64KB)
-    - Emits LifecycleRequest::Suspend(External) to hypervisor state machine
-    - Resumes VM cycle-exact upon traffic arrival and splices duplex stream across vsock
