@@ -38,6 +38,13 @@
       - 90% of checks on Linux x86
       - macOS Apple Silicon jobs limited to compile gate for driver-hvf
       - Do not waste runner minutes on full matrix
+      - Windows CI cells run transport conformance only
+        - Shared-memory SPSC ring path
+        - Named-pipe fallback path
+        - No AF_VSOCK assumptions may leak into shared code; a compile
+          lint enforces the abstraction (see Transport engine abstraction)
+        - Full workflow runs on self-hosted Windows WHP runners
+        - GitHub-hosted cells run the transport unit tests only
     - Enforced invariants: CI matrix
       - Rootfs EROFS image cold-boot budget: see: 01-architecture.md#Boot-budget
       - Concurrency cancelled per ref (cancel-in-progress)
@@ -87,6 +94,27 @@
     - --watchdog-coverage
       - Asserts Suppress and Mitigate are each returned at least once
       - Watchdog home: see: 07-lifecycle.md#Watchdog
+    - --channel-coverage
+      - Asserts every channel in 09-protocol.md#Channel-allocation-table is
+        exercised by at least one integration test
+      - Specifically asserts 0x0005 (VFS) and 0x0006 (bulk) have live round-trip
+      - A channel with no test fails the gate
+    - --drain-coverage
+      - Asserts Running -> Draining -> Terminated transitions on
+        completion, on timeout, and on already-draining
+      - Asserts EBUSY is returned for new exec during Draining
+    - --transport-coverage
+      - Asserts every Transport backend is exercised by a build matrix cell
+      - Linux: shared-memory SPSC rings, AF_VSOCK fallback
+      - macOS: shared-memory SPSC rings, AF_VSOCK fallback
+      - Windows: shared-memory SPSC rings, named pipes fallback
+      - Missing backend test is a release blocker
+    - --snapshot-depth-coverage
+      - Asserts chain restores at depths 1, 2, 5, and 20 succeed
+      - Asserts branch-from-interior leaves ancestors intact
+    - --clock-continuity-coverage
+      - Asserts guest_clock manifest survives restore across multi-day offsets
+      - Asserts monotonic clock does not regress across restore
     - All flags run in cans-check; exit code 1 on any orphan or gap
     - Flag-drift gate
       - CI calls `just check-spec`, not raw flags
@@ -212,6 +240,11 @@
         - Community roster: see: 02-plugin-model.md#First-class-plugins
       - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
       - kelir-shim: in-guest musl PID 1 (<50KB)
+      - Supporting crates
+        - kelir-transport: Stream trait + SPSC ring, AF_VSOCK, named-pipe backends
+        - kelir-catalog: SQLite schema, pool, migration helpers (used by core)
+        - kelir-ssh: in-process SSH/SFTP server (russh), used by break-glass
+        - kelir-otlp: zero-allocation metric registry and OTLP exporter
     - Spec layout
       - Core plane files: cans/00-overview.md to cans/11-operations.md
       - Plugin spec files: one <name>.md per plugin

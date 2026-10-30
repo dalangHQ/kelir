@@ -155,6 +155,11 @@
     - Network filter: ingress dispatcher bypasses net hooks outside declared CIDR/port rules
     - Scope cascade: see: artifacts/code/plugin-trait.rs
     - Invariant: child effective scope is boolean intersection of ancestor scopes
+    - Scoping is transport-agnostic
+      - Filters evaluate above the Transport backend (SPSC ring, AF_VSOCK,
+        or named pipe); plugin authors never see the transport
+      - Windows hosts apply identical scoping semantics as Linux/macOS
+      - No plugin may key behavior on the transport identity
   - Filter-before-FFI gate
     - Unmonitored guest operations bypass host language runtimes entirely
     - Host core checks MountScope in native memory before crossing FFI

@@ -1,11 +1,20 @@
 - Lifecycle
   - Hypervisor primitives
     - Centralized Hypervisor Lifecycle State Machine:
-      - States: Initializing, Running, Suspended(SuspendReason), Terminated
+      - States: Initializing, Running, Draining, Suspended(SuspendReason), Terminated
       - SuspendReason: External(u32) | ResourcePressure
       - Eliminates independent suspend implementations outside core
       - Cycle-exact resume triggered via Channel 0 control frame or
         wire ingress frame arrival
+      - Draining is a first-class state
+        - Running -> Draining -> Terminated
+        - Entered via `session.drain(timeout_ms)`
+        - In `Draining`: new exec and tool calls are refused with EBUSY
+        - In-flight commands run to natural completion
+        - Storage buffers are flushed; Merkle WAL closed cleanly
+        - On completion or timeout, transition to Terminated
+        - On timeout, in-flight work is terminated with SIGTERM, then SIGKILL
+        - Preserves finished work in CI/CD pipelines and long agent chains
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
       cooperation.
@@ -83,12 +92,28 @@
       - Cannot be vetoed; rollback is the recovery action
       - Use for ledger/trace of recovery events
   - Pre-teardown flush
-    - Host issues MSG_SHUTDOWN_REQUEST{timeout_ms:500} on Channel 0x0000
-    - kelir-shim issues syncfs(2) across all VFS mounts, then SIGTERM to users
-    - Shim replies MSG_SHUTDOWN_ACK when VFS is clean or processes drain
-    - Host tears down vCPU loops only after ack or timeout expiry
-    - Prevents half-written ext4 journal, SQLite WAL, git index corruption
-    - Timeout expiry records ExitReason::DirtyShutdown in ExecutionReceipt
+    - Termination has two modes: graceful (default) and abrupt (kill)
+    - Graceful path
+      - Host issues MSG_SHUTDOWN_REQUEST{timeout_ms} on Channel 0x0000
+        - Default timeout: 10s; caller-tunable
+        - timeout_ms=0 skips graceful and jumps to abrupt
+      - kelir-shim issues syncfs(2) across all VFS mounts
+      - shim sends SIGTERM to the workload's foreground process group
+      - shim reaps children as they exit; workload has time to commit
+      - shim replies MSG_SHUTDOWN_ACK when VFS is clean and processes drained
+      - Host tears down vCPU loops only after ack or timeout expiry
+      - Preserves half-written ext4 journal, SQLite WAL, git index integrity
+      - Timeout expiry records ExitReason::DirtyShutdown in ExecutionReceipt
+    - Abrupt path
+      - `session.kill()` skips the flush and issues SIGKILL to the hypervisor
+      - Guest writes may be lost, exactly like a power cut
+      - Records ExitReason::HardKilled in ExecutionReceipt
+    - CLI and SDK
+      - `msb stop --timeout 30s` graceful; `msb kill` abrupt
+      - SDK exposes `session.stop()`, `session.stop_with_timeout(d)`,
+        `session.kill()`
+      - Draining is a superset of stop for pipelines that need to finish
+        queued work (Hypervisor primitives)
   - Suspend and resume
     - suspend
       - Reason: SuspendReason::External or ResourcePressure
@@ -119,6 +144,11 @@
       - attestation.jws
         - Session attestation token in the snapshot
         - Ed25519-signed by host session key
+      - guest_clock.json
+        - absolute_wall_clock_ns: CLOCK_REALTIME at capture
+        - monotonic_offset_ns: guest monotonic offset relative to host boot
+        - timezone: guest-configured zone (IANA name) or "UTC"
+        - Boot parameters this guest was launched with (clock source, nohpet)
       - Packaged as single Content-Addressed stream
         - .kelir-snap is the only portable form
     - Veto: Suspend (hard), Resume (observation)
@@ -142,6 +172,18 @@
     - No reboot, no teardown, no session re-attestation
     - Session surface: session.vm.set_vcpus(n)
     - Veto: none; resizing is state-preserving
+    - Topology awareness
+      - Host planner reads physical cores, NUMA domains, and LLC boundaries
+        at runtime launch
+      - vCPU threads are pinned to specific host cores per the planner
+      - Cross-NUMA placement only when explicitly requested
+      - Guest sees a coherent topology (per-NUMA CPU sets, LLC sizes) even
+        when the host allocation is fragmented
+      - Oversubscription is bounded by a per-host policy, not by guesswork
+    - Shared borrowing
+      - Idle VMs yield CPU slices to busy neighbors bounded by hard quotas
+      - No cross-NUMA migration; borrowed cores come from the same NUMA node
+      - The plan is recorded in the SQLite catalog per session for auditability
   - Native checkpoint plane (kelir-core::checkpoint)
     - Zero-harness boundary detection
       - Tracks process group exits and foreground PTY idle quiescence
@@ -158,21 +200,47 @@
         - StepVerdict::YieldToHost: halts vCPU registers awaiting external input
       - Fail-closed invariant: unhandled post-execution failures or evaluation
         timeouts trigger automatic hardware rollback before releasing workload
-    - StepSlot compaction
-      - A StepSlot holds strictly two states: Base and WorkingDelta
-      - Sub-steps do not form an unbounded linked list
-      - StepVerdict::Commit folds the sparse upperdir diff into the active
-        checkpoint via fallocate(FALLOC_FL_COLLAPSE_RANGE) or dirty-page bitmap union
-      - StepVerdict::Rollback discards the delta in ≤8ms
-      - Chain depth hard-capped at 1
-      - Diff resolution stays O(1) across agent loop depth
-      - Host memory does not grow monotonically across sequential savepoints
+    - Delta chain compaction
+      - A checkpoint chain holds: one immutable Base and N stacked WorkingDeltas
+      - Depth is unbounded; each delta records its parent via `parent_digest`
+      - StepVerdict::Commit folds the current delta into the active checkpoint
+        via fallocate(FALLOC_FL_COLLAPSE_RANGE) or dirty-page bitmap union
+      - StepVerdict::Rollback discards only the current delta in ≤8ms
+      - Fork branches from any point in the chain; child inherits the full prefix
+      - Branching agent trees (tree-of-thought, parallel MC search) are the
+        primary workload
+      - Lazy CoW page sharing (`--cow-mem`) lets forks share parent memory pages
+        until written; fork time stays <10ms regardless of depth
+      - Diff resolution is O(1) per depth step for reads; the runtime tracks
+        active chain head per session
+      - Host memory grows only with divergent deltas, not chain depth
+      - Lineage metadata (`parent_digest` -> `child_digest`) lands in the SQLite
+        catalog; reclamation walks the reachability graph
   - Portable snapshot bundles
     - Content-addressed snapshot sync
-    - Streamed archive packaging vmm_state.json, ram.zst, and upperdir diff
+    - Streamed archive packaging vmm_state.json, ram.zst, upperdir diff,
+      guest_clock.json, and attestation.jws
     - session.export_snapshot() yields portable binary stream (.kelir-snap)
     - session.import_snapshot() hydrates session across identical hosts
     - Decouples long-running human approval pauses from host machine uptime
+    - Archive framing is pinned
+      - Header: magic, format version, feature flags, entry table
+      - Entries: name, size, content digest, codec (zstd / stored)
+      - Trailer: manifest digest for whole-archive verification
+    - Unpack is a security boundary
+      - Snapshot archives are untrusted inputs
+      - Every path resolves through openat2(RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS)
+        rooted at the session staging directory
+      - Path traversal (`../`), absolute paths, and symlink chains outside the
+        staging root reject with EXDEV before extraction begins
+      - Sparse-file entries expand into pre-sized holes; no sparse-file bombs
+      - zstd decompression is bounded by the declared entry size; no unbounded
+        allocation on malicious frames
+      - Codec errors abort extraction; partial staging is discarded atomically
+    - Fuzzing
+      - Archive parser is a cargo-fuzz target with dense and sparse seed corpora
+      - Any panic, unbounded allocation, or traversal is a release blocker
+      - Corpus grows with every regression
   - Clock skew
     - KVM path: KVM_SET_CLOCK and kvm_clock MSRs
     - HVF path: ARM64 CNTVOFF_EL2 (Virtual Timer Offset Register)
@@ -192,6 +260,17 @@
       - Dispatch paravirtual clock resync frame over Channel 0x0000
         (identical mechanism to resume; see: #Suspend-and-resume)
       - Guest time snaps to host wall-clock in 0ms
+      - Snapshot restore uses the same mechanism with `guest_clock.json`
+        - Before unfreezing cgroups, kelir-shim sets both CLOCK_REALTIME and
+          monotonic offset from the manifest
+        - Guest processes observe time leap forward from capture to restore,
+          not from capture to power-on
+        - Certificates, JWTs, cron timers, and monotonic-based timeouts stay
+          coherent across multi-week suspensions
+        - Go, Node.js, and Python runtimes observe a consistent monotonic clock;
+          no timer-wheel corruption, no deadline reordering
+      - Fork inherits the parent's guest clock at fork instant; children diverge
+        monotonically from that point
   - Host crash reaper
     - Problem: host crash orphans guest vCPUs
       - Host Node.js / Python process killed abruptly (kill -9, OOM, segfault)
@@ -216,22 +295,66 @@
       - Windows: Job Object KILL_ON_JOB_CLOSE
       - Android: PR_SET_PDEATHSIG + LMK preempt window
   - Detached lifecycle
-    - Affine builder flag .detached(true) forks twice, setsid, redirects stdio
-    - Session state directory: ~/.kelir/sessions/<id>/relay.sock
-    - Runtime process adopts the VM and releases terminal locks
-      (disk_lock_handoff, memory_handoff)
-    - Spawning CLI/SDK drops its handle and exits 0
-    - Reattachment via Unix Domain Socket SCM_RIGHTS descriptor passing
-    - Internal watchdog terminates the guest if no client attaches within TTL
-    - No resident daemon; default (non-detached) sessions retain
-      PR_SET_PDEATHSIG / kqueue / Job Object reaping
+    - Affine builder flag .detached(true) spawns a dedicated runtime child
+    - The CLI never manages VM memory directly in detached mode
+    - Runner ownership is explicit
+      - The spawning process writes a `runtime` row into the SQLite catalog
+        before exec'ing the runner child; the row carries PID, argv, and
+        a liveness lease with a TTL
+      - The runner child inherits the row id via an environment variable
+      - The runner updates the row's lease heartbeat while alive
+      - If the runner dies without cleanup, the row's TTL expires and the
+        janitor reclaims the session directory
+      - No double-fork, no setsid race, no "drop the handle and hope"
+    - Lock handoff
+      - disk_lock_handoff: SQLite row transition from `pending` to `owned`
+        by the runner; atomic, survives parent panic
+      - memory_handoff: shared-memory descriptor passed via SCM_RIGHTS;
+        parent closes its end after handoff ack
+      - If the parent panics between spawn and ack, the runner either
+        completes the handoff (row absent -> self-cleanup) or exits
+    - Reattachment
+      - CLI reads the catalog, verifies the row's lease is live, and
+        connects to `~/.kelir/sessions/<id>/relay.sock`
+      - Running and Starting states both accept reattach; Starting defers
+        until boot completes
+      - Reattachment is idempotent across concurrent clients
+    - Runner watchdog
+      - A `parent_watchdog` thread in the runner monitors the SQLite catalog
+        for explicit `session.stop` or `session.drain` requests
+      - No fixed TTL terminates an active guest; the lease only proves
+        liveness, it does not impose a deadline
+      - Explicit stop, drain, or remove is the only path to termination
+    - No resident daemon
+      - Default sessions retain PR_SET_PDEATHSIG / kqueue / Job Object reaping
+      - Detached sessions have no PDEATHSIG; the SQLite lease replaces it
   - Break-glass
-    - Supervisor freezes guest agent task group via cgroup freezer prior to attach
-    - In-flight PTY buffer drained before exposing raw console master
-    - Developer attaches interactive TTY to the interactive console master port
-    - Subshell exit clears screen, refreshes window size, and unfreezes agent group
-    - Spelling: `breakGlass()` (TS), `break_glass()` (Rust, Py);
-      `session.break-glass()` never exists
+    - Human operators need real tooling: VS Code Remote, JetBrains Gateway,
+      rsync, sftp, multi-session shells. A raw PTY cannot satisfy these.
+    - Ephemeral SSH/SFTP subsystem
+      - In-process SSH server hosted inside the runtime (russh + russh-sftp)
+      - Listener bound to 127.0.0.1:<ephemeral> on the host
+      - Public key auth: Ed25519 keypair minted per `session.ssh()` call,
+        public key injected to the guest over the paravirtual control channel
+      - Default user `root`; configurable via connect options
+      - SFTP subsystem on by default
+      - Port forwarded from host to guest via the vsock transport
+    - Standard tools attach transparently
+      - ssh, sftp, rsync, scp, VS Code Remote SSH, JetBrains Gateway
+      - Multiple concurrent sessions; no head-of-line blocking
+    - Endpoint lifecycle
+      - `session.ssh()` opens the endpoint; caller receives host, port,
+        and fingerprint
+      - `close()` tears down the endpoint and invalidates the keypair
+      - Dropping the handle closes connections and unregisters the listener
+    - Interaction with draining and paused states
+      - SSH is available in Running and Draining
+      - Paused and Stopped refuse with ESSHUnavailable
+    - Coexistence with PTY break-glass
+      - Raw PTY console master remains for kernel-level recovery only
+      - Human debugging uses SSH by default
+    - Spelling: `session.ssh()` (all SDKs);
+      `session.breakGlass()` (TS) is a deprecated alias for `session.ssh()`
   - Wire port forwarding: details at 06-wire-plane.md#Port-forwarding
   - Zombie reaping
     - Shim runs as guest PID 1

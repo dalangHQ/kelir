@@ -41,8 +41,24 @@
     - PTY (Port 0) retained for interactive TTY human intervention
     - Break-glass uses PTY; agent tooling uses Channel 0x0003
   - Stream replay
-    - Each console port backed by chunked circular byte buffer
-    - Indexed by monotonic 64-bit stream_offset
-    - session.terminal.read_from(port, offset) -> (Vec<u8>, next_offset)
-    - Reconnection replays from last-acknowledged offset
-    - Zero missing bytes, zero duplicate allocations
+    - Each console port emits an append-only log
+      - stdout, stderr, and (when attached) PTY output are separate logs
+      - Every chunk carries an opaque 64-bit monotonic cursor
+      - Cursor is stable across process restarts and client reconnects
+    - Log storage is durable
+      - Flat chunk files under sessions/<id>/logs/, indexed in SQLite
+      - No circular buffer; no wrap-around loss
+      - A stalled or disconnected client never causes drops
+      - Host buffer size bounded by eviction policy, not by consumer speed
+    - Reconnect contract
+      - Consumer requests take an optional `since_cursor`
+      - Reissuing the same cursor returns the exact byte sequence
+      - Replay is idempotent; no byte duplication, no offset shift
+      - Guarantee spans disconnect-and-reattach, and process restart
+    - Tail mode
+      - `since_cursor=None` starts at the tail
+      - Optional `follow=true` streams new chunks as they append
+    - PTY byte streams carry the same cursor model
+      - session.terminal.read_from(port, cursor) -> (Vec<u8>, next_cursor)
+    - Exec channel (0x0003) streams share the cursor model per exec_id
+      - exec_log persists per-exec-id for post-run inspection

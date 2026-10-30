@@ -144,6 +144,23 @@
     - Identical binary protocol execution on Linux, macOS, and Windows
     - No host platform-specific IPC shims
     - No elevated host OS socket drivers
+    - Port 5252 is a logical channel identifier, not an AF_VSOCK port number
+    - Stream trait abstracts transport; three concrete backends
+      - Linux/macOS: shared-memory SPSC rings (primary) + AF_VSOCK (debug fallback)
+      - Windows: shared-memory SPSC rings (primary) + named pipes (debug fallback)
+      - Fallbacks carry identical framing; only the byte carrier differs
+    - Platform divergence hides at the transport driver boundary
+    - Channel multiplexing logic is identical across all OS targets
+  - Trust boundaries
+    - TLS terminates on the host before proxied bytes reach the guest
+      - Upstream certificates validate inside the proxy engine
+      - Plaintext never crosses the vm boundary
+      - Allowed domains alone get interception
+      - Upstream sockets originate from the host
+      - The host proxy performs secret substitution on plaintext HTTP; the guest
+        never runs an HPACK state machine and never sees raw secret bytes
+      - L4 diversion (Transparent L4 stream diversion) is the carrier; TLS
+        termination and plaintext inspection are the L7 stage
   - Embedded profile
     - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
@@ -164,21 +181,26 @@
     - kelir-core: stripped microkernel (BusDispatcher, PipelineEngine, EventBus, DriverRouter)
     - PipelineEngine: compiles inline interceptors into indexed contiguous tables
     - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
-  - Host CAS hierarchy
+  - Host state root
     - Content-addressed root: ~/.kelir/
+      - catalog.db: embedded SQLite (WAL mode)
+        - sandboxes, snapshots, labels, leases, layer refs, volume records
       - cas/blobs/blake3_<hash>: immutable layer storage
-      - locks/<hash>.lock: open/write serialization
       - sessions/<session_id>/: ephemeral runtime state
-    - Locking: flock(2) advisory locks over lock files
-    - Atomic replace via renameat2(RENAME_EXCHANGE)
-    - Kernel releases advisory locks on process death
-    - No resident daemon, no database migrations
-    - Concurrent orchestrator workers, CLI commands, and test runners coexist safely
-    - Session ownership: sessions/<id>/owner.pid held with flock(LOCK_EX|LOCK_NB)
-    - KelirBuilder init opportunistically scans sessions/* non-blocking
-    - flock(LOCK_EX|LOCK_NB) success on existing owner.pid proves owner dead
-    - Sweeper unlinks orphaned relay.sock, sparse backing file, staging trees
-    - No TTL, no maintenance lease; kernel lock is the liveness proof
+    - State engine
+      - Every process opens the SQLite file directly; no resident daemon
+      - WAL mode with connection pooling; ACID transactions replace POSIX lock logic
+      - Migration crate sequences schema steps; applied forward-only at open
+      - Multi-resource queries (sandbox + lease + layer + volume) are single atomic statements
+      - Backup copies shield upgrades; failed steps leave no partial marker
+    - Concurrency
+      - Writers serialize per database file via SQLite busy handlers; readers proceed concurrently
+      - Lockfile/PID-sweep absent; SQLite transaction semantics are the sole concurrency contract
+      - Kernel releases advisory state on process death; runtime janitor reclaims orphaned rows
+    - Session ownership and leases
+      - sessions/<id>/owner.pid records the runtime process
+      - catalog `maintenance_lease` row carries the liveness proof with explicit expiry
+      - Orphaned relay.sock, sparse backing file, staging trees reclaimed by runtime child janitor
   - Guest VM anatomy
     - see: artifacts/diagrams/guest-vm.txt
     - Boot budget
@@ -219,6 +241,14 @@
         - Injected over paravirtual config device
         - Carries all four measurements above
         - Workload consumes over vsock Channel 0
+      - Host TLS proxy boundary
+        - Outbound TLS to secret-bound hosts terminates host-side
+        - Ephemeral per-session CA signed into the guest trust store
+        - Secret values never exist in guest RAM, guest VFS, or VirtIO rings
+        - Substitution operates on host plaintext HTTP; no HPACK state
+          machine runs in guest
+        - The guest's own TLS stack still validates the ephemeral CA;
+          forged responses fail the guest handshake
       - Chain is unbroken
         - Forged kernel/rootfs fails host-side BLAKE3
         - Forged workload fails per-exec trap boundary

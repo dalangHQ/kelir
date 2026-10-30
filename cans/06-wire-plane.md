@@ -30,19 +30,33 @@
     - Err(Reject) on L7 HTTP = synthesize 403 with machine-readable JSON receipt
     - Guest observes ECONNREFUSED in <1ms
     - Agent corrects action without orchestration timeout
-  - DNS entropy gate and sinkhole
-    - Intercepts all UDP port 53 traffic crossing the userspace ingress ring
-    - Computes Shannon entropy on subdomain query labels for wildcard allowlists
-    - Queries exceeding entropy threshold (default: 4.5) drop with NXDOMAIN
-    - Prevents data exfiltration over DNS label encoding
+  - DNS policy filter
+    - Intercepts all UDP/TCP port 53 traffic crossing the userspace ingress ring
+    - Evaluates queries against the active domain allowlist (allow/deny rules)
+      - allowlist and denylist parsed from profile/network policy
+      - wildcard suffix support mirrors egress rules
+      - decision made before upstream forward
+    - Blocked queries return NXDOMAIN; allowed queries forward to the live upstream
+    - Filter decisions are name-based, not entropy-based
+    - Entropy gating is not a policy primitive: CDN labels, telemetry IDs, and
+      legitimate base64 URLs produce false positives, while an attacker who
+      controls encoding trivially defeats a fixed threshold
   - Synthetic DNS gateway
     - Guest paravirtual network binds synthetic gateway 192.168.127.1:53
     - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-core::wire
-    - Queries resolved host-side via native OS resolver primitives
-    - getaddrinfo or trust-dns-resolver bound to live system configuration
-    - Host DNS changes (Wi-Fi switch, VPN toggle) transparent to guest
+    - Queries resolved host-side via live OS resolver state
+      - Linux: /etc/resolv.conf watched via inotify; nameservers reloaded on change
+      - macOS: SCDynamicStore subscription per interface; VPN and Wi-Fi toggles
+        update upstream servers without restarting the guest
+      - Windows: DNS client API queried on each change notification
+    - Host DNS changes (Wi-Fi switch, corporate VPN toggle, split-horizon) are
+      transparent to guest; no VM restart, no guest kernel reconfiguration
     - Traffic to non-gateway resolvers redirected at ingress ring
-    - Split-horizon zones resolve; guest kernel reconfiguration not required
+    - Split-horizon zones resolve correctly because upstreams track host state
+    - DoT (DNS-over-TLS) upstreams supported when configured
+      - Length-prefixed message framing inside the TLS stream
+      - Certificate verified host-side; guest never sees the tunnel
+    - UDP and TCP 53 both handled; truncation flag promotes to TCP host-side
   - Transparent L4 stream diversion
     - Directs guest TCP streams across VirtIO ring to designated host socket
     - Exposes raw duplex stream to registered NetInterposer proxies
@@ -52,12 +66,27 @@
     - Other L7 consumers (db-proxy, wire-ingress) mount at the same carrier
     - Guest TLS and plaintext payloads traverse proxy without guest stack changes
     - Diverted endpoints configured via MountScope port and CIDR allowlists
+    - The carrier does not perform byte-slice substitution on L4 streams;
+      L7 stages terminate TLS host-side and operate on plaintext HTTP
+      (see 01-architecture.md#Trust-boundaries)
   - Upstream dial transport
-    - Outbound TCP permitted by policy checks HTTP_PROXY, HTTPS_PROXY, ALL_PROXY
-    - Host userspace netstack performs CONNECT or SOCKS5 handshake before splicing
-    - Upstream credentials sourced from host environment or builder spec
-    - Guest kernel believes it is dialing raw target IP
-    - Zero in-guest proxy environment variables required
+    - Outbound TCP permitted by policy is dialed through the host netstack
+    - Proxy chaining is first-class, not an afterthought
+      - Protocols: HTTP CONNECT, SOCKS5 (RFC 1928), SOCKS5 with username/password
+        auth (RFC 1929), SOCKS5h (remote DNS)
+      - Multi-hop: an upstream corporate proxy may itself dial through another
+      - Config sources: HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY, or builder spec
+      - Explicit auth: username/password for SOCKS5; Basic or Bearer for CONNECT
+      - Credentials read from host environment or host keyring; never persisted in
+        profile files
+    - The guest kernel believes it is dialing the raw target IP
+    - The host netstack performs the upstream handshake and splices bytes
+    - Zero in-guest proxy environment variables; zero guest awareness of chaining
+    - Failure modes
+      - Upstream auth failure surfaces to guest as ECONNREFUSED
+      - Upstream timeout surfaces as ETIMEDOUT after policy budget
+      - Reason recorded in host-side structured log; never leaked to guest
+    - Corporate egress (Zscaler, Squid, Envoy) works without guest cooperation
   - Port forwarding
     - Guest-initiated: forward tunnels over vsock:5252 (Channel 1) on PortBound
     - Host-initiated: session.wire.forward_port(guest_port, host_port)

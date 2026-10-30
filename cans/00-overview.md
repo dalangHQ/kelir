@@ -78,6 +78,13 @@
     - Lifecycle: see: 07-lifecycle.md (checkpoint engine)
     - Verification and hardware telemetry (08-epistemic): see: 08-epistemic.md
     - Protocol: see: 09-protocol.md (wire messages)
+    - Host state engine: SQLite catalog, WAL — see 01-architecture.md#Host-state-root
+    - Transport abstraction
+      - SPSC rings primary; AF_VSOCK and named pipes fallback
+      - see: 01-architecture.md#Transport-engine-abstraction
+    - Break-glass: ephemeral SSH/SFTP — see 07-lifecycle.md#Break-glass
+    - Draining: graceful retirement — see 07-lifecycle.md#Hypervisor-primitives
+    - Storage catalog — see: 09-storage-catalog.md
     - Ecosystem and ops
       - Ecosystem ingestion: see: 10-adapters.md#Ingestion-matrix
       - Build, CI, layout: see: 11-operations.md#Execution-philosophy

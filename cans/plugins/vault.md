@@ -25,17 +25,24 @@
       - Operates explicit L7 proxy stage on wire plane transparent L4 diversion hooks
       - Injects ephemeral session root CA into guest trust store at on_vm_ready
     - L7 proxy stage
-      - Byte-slice substitution on L4 streams is banned
-      - HTTP/1.x: parse header block, recalculate Content-Length,
-        rewrite chunk headers when body is modified
-      - HTTP/2: stateful HPACK decode → string substitution → HPACK encode
-      - HTTP/2 DATA frame substitution computes delta and emits WINDOW_UPDATE
-      - Flow-control window frames adjust to new payload length
-      - HPACK dynamic table state preserved across substitutions
-      - Huffman-coded header literals decoded before matching
+      - Host terminates outbound TLS for secret-bound hosts
+      - Ephemeral per-session CA minted by host runtime at on_vm_ready
+      - CA root cert injected into guest trust store transparently
+      - Plaintext HTTP request/response is the substitution surface
+      - Header substitution: by binding field name (Authorization, X-API-Key, ...)
+      - Body substitution: form-encoded, JSON, and text bodies up to 16 MiB
+      - Content-Length recomputed; chunked bodies re-encoded with fresh sizes
+      - HTTP/2 handled by the host TLS stack, not by kelir-core
+      - No guest-side HPACK manipulation; no dynamic table surgery; no WINDOW_UPDATE math
+      - No byte-slice substitution on raw L4 streams
+      - Host proxy opens a fresh upstream TLS session and forwards the mutated request
+      - Plain HTTP (port 80) uses the same substitution path without TLS
+      - Secret bytes never exist in guest physical RAM, guest VFS, or VirtIO rings
     - Memory isolation and zeroization
       - Host secret memory pinned with mlock(2) to prevent swapping to disk
       - Memory zeroed using explicit volatile writes upon session termination or drop
+      - Plaintext buffers at the L7 proxy stage are zeroized after each request
+        or response is forwarded; no plaintext lingers across connections
     - Out-of-band secret resolution
       - Host-side forward proxy resolves vault:// placeholders against secure host keyring
       - Ephemeral per-session CA certificates injected into guest trust stores transparently

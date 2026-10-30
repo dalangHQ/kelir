@@ -8,7 +8,9 @@
       - 0x0002: profile-sync (plugin-profile)
       - 0x0003: binary-exec (native terminal plane, programmatic exec streams)
       - 0x0004: db-sqlite (plugin-db-proxy)
-      - 0x0005-0x000F: reserved (core)
+      - 0x0005: control-plane VFS (paginated posix-like filesystem API)
+      - 0x0006: bulk transfer (raw chunked byte streams)
+      - 0x0007-0x000F: reserved (core)
       - 0x0010: pty-control (native terminal plane)
       - 0x0011-0x7FFF: unallocated; new row needs spec revision
       - 0x8000-0xFFFF: reserved; new row needs spec revision
@@ -28,9 +30,45 @@
       - 0x02: stderr
       - 0x03: control (exit code, signals, rlimit descriptors)
     - stdout and stderr carry raw bytes; no line wrapping, no escape injection
-    - Flow control: vsock credits; sender blocks on socket write
+    - Flow control: explicit frame protocol (`EXEC_IO_SPEC`)
+      - Control frames (EOF, window resize, signals) interleave with data frames
+      - Independent lanes per stream; stderr never blocks stdout
+      - Guest shim monitors consumer buffer drains
+      - On backpressure threshold, shim applies POSIX `input_stall` to the guest
+        process's file descriptor before guest socket buffers overflow
+      - Host consumer slow or stalled → producer fd is paused, not dropped
+      - No mid-flight frame loss; no guest kernel deadlock
     - PTY (virtio-console Port 0) remains the interactive human TTY
     - Programmatic tooling uses 0x0003 exclusively; PTY bypassed
+  - Control-plane VFS channel (0x0005)
+    - Transport: vsock channel 0x0005, framed CBOR
+    - Purpose: posix-like primitives without host-directory exposure or VM exit
+    - Requests: open, close, read_stream, write_stream, list, stat, mkdir, remove
+    - Pagination is mandatory
+      - list returns a cursor; client echoes the opaque cursor token
+      - Page budget fixed per response
+      - Large directories (node_modules) stream without one oversized reply
+      - Host memory stays flat (O(1) in directory size)
+    - Handle concurrency
+      - Handles indexed in a per-session table; close returns slots for reuse
+      - Reads and writes interleave per handle without head-of-line blocking
+      - Guest VFS bypasses FUSE for control-plane inspection paths
+    - Errors map to errno values; no host errno leaks
+    - Distinction from host-directory mounts
+      - vsock VFS is inspection/streaming; not the primary workload path
+      - Bind mounts remain for bulk workload trees
+  - Bulk transfer channel (0x0006)
+    - Purpose: large payload ingestion without CBOR, FUSE, or syscall interposition
+    - Workloads: dependency injection, test fixtures, model weights, build caches
+    - Framing: raw chunked byte streams over the transport backend
+      - No CBOR wrapping; no per-chunk context switches through FUSE
+      - Zero-copy DMA or shared-memory page mapping when transport supports it
+    - Targets: guest disk buffer, named volume, or overlay upperdir
+    - Distinction from VFS 0x0005
+      - VFS is paginated inspection/streaming with metadata
+      - Bulk is contiguous high-bandwidth byte movement
+    - Receiver acknowledges chunks; end-of-stream is a control frame
+    - Chunk size bounded by transport MTU; no fixed 64KB ceiling
   - Trap fast-path
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
     - Three-tier gate pipeline
@@ -68,6 +106,12 @@
       - Rogue tool run kills only itself via SIGSEGV or SIGKILL
       - MicroVM, kelir-shim, and sibling processes remain alive
       - Absent descriptor: process inherits microVM-level ceiling only
+      - Per-command rlimits survive Rewrite: applied to the rewritten binary,
+        not the original
+      - Shell invocations apply the limit to the shell; children inherit
+        unless they explicitly drop privileges (which drops rlimit authority)
+      - Limits reported in ExecutionReceipt for auditability
+      - Enforcement is inside the guest kernel; no host cooperation required
     - Flow diagram: see: artifacts/diagrams/trap-flow.txt
     - Fast-path policy: TBD
   - Wire framing
@@ -106,12 +150,21 @@
         - None in-band; ring slot availability is the only backpressure
         - SPSC ring full: sender parks on host eventfd / guest virtual interrupt
         - Guest-visible semantics unchanged (virtio-vsock credits)
+        - Named-pipe fallback (Windows) uses OS pipe buffer backpressure with
+          the same park semantics; framing identical
+        - AF_VSOCK fallback uses transport-credit backpressure; framing identical
+        - Exec channel (0x0003) additionally applies EXEC_IO_SPEC admission
+          (see 09-protocol.md#Binary-exec-channel-0x0003)
       - Reconnect
         - None; channel close is terminal, tears down session
         - Host-side ring shutdown flag is the semantic close event
         - No sequence reset path exists
       - Port 5252 is the sole control transport
         - No secondary port
+        - 5252 is a channel identifier, not an OS socket; carrier is chosen by Transport backend
+        - Windows hosts use shared-memory SPSC rings (primary) or named pipes (fallback)
+        - Linux/macOS hosts use shared-memory SPSC rings (primary) or AF_VSOCK (fallback)
+        - No protocol assumption requires AF_VSOCK semantics
   - Policy rejection receipt
     - L7 rejections surface as synthetic HTTP frames in guest ingress ring
     - Body: {"error":"E_POLICY_DENIED","rule":"<rule_id>","target":"<target>"}

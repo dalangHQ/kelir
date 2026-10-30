@@ -13,9 +13,14 @@
     - Zero participation in inline interceptor pipelines; non-blocking execution
     - Ingests immutable StorageDelta and ExecutionDelta domain events
     - Merkle WAL
-      - Pluggable LedgerSink trait owns persistence; Merkle DB is default impl
-      - Delegated audit persistence via external_sink replaces default sink
-      - suppress_local_db skips local SQLite to preserve host single SSOT
+      - Pluggable LedgerSink trait owns persistence; Merkle DB is an opt-in
+        compliance plugin, not a default
+      - Default ledger sink is OTLP: metrics and traces flow to the host's
+        existing OpenTelemetry Collector without local disk overhead
+      - Merkle WAL is selected explicitly via `ledger.merkle.enabled = true`
+        for regulated environments that require tamper-evident on-disk audit
+      - External sink delegates persistence; no default local DB is written
+      - suppress_local_db skips any local sink to preserve host single SSOT
       - Host-isolated by construction
         - Store path resolved relative to consumer CWD; guest paths rejected
           at plugin construction
@@ -38,14 +43,29 @@
           - Leaf: BLAKE3(0x00 || record_bytes)
           - Node: BLAKE3(0x01 || left_child || right_child)
         - Append-only LMDB persistence with immediate fsync after each process reap
+        - WAL is opt-in (ledger.merkle.enabled = true); default off
+        - When off, receipts flow to OTLP only; no on-disk audit is written
+        - When on, WAL records carry the same receipt correlation_token used
+          by the OTLP spans for cross-reference
     - OpenTelemetry
-      - Outbound HTTP requests carry W3C traceparent, injected host-side
-      - Trace continuity rule: a guest-originated request and its guest-side
-        cause (trap, spawn, receipt) resolve to the same trace
-      - Config surface lives in plugin-ledger (OtelConfig); not restated here
-        - Spans mirror physical receipt phase timings: trap_ingress, policy, ffi, verdict
-        - Dropped or rejected spans log to local WAL before pipeline halts
-      - Binds ExecutionReceipt correlation_token into Merkle WAL records
+      - Default exporter: OTLP over gRPC and HTTP
+        - Standard OTLP endpoints via OTEL_EXPORTER_OTLP_ENDPOINT
+        - Metrics: counters (execs, syscalls, drops), gauges (RSS, dirty pages,
+          active vCPUs)
+        - Traces: one span per physical receipt phase (trap_ingress, policy,
+          ffi_hop, verdict_egress)
+        - Context propagation: W3C traceparent injected on outbound requests
+        - Trace continuity: a guest-originated request and its cause
+          (trap, spawn, receipt) share a trace
+      - Zero-allocation metric registry in the core; ledger plugin reads
+        and exports
+      - Config lives in plugin-ledger (`OtelConfig`); not restated here
+      - Merkle WAL is a separate sink; when enabled it binds the receipt's
+        correlation_token into its records
+      - Failure handling
+        - Export failures are logged locally and retried by the OTLP client
+        - Export failure never blocks the pipeline
+        - Export buffer bounded; excess samples dropped with a metric
   - Error and return semantics (ledger)
     - Hook signature (ledger): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (ledger)

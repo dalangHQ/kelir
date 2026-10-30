@@ -127,7 +127,7 @@
     - StepSlot semantics
       - Single slot per active PID lineage; sub-steps fold into Base on
         StepVerdict::Commit, discard on StepVerdict::Rollback
-        - see: 07-lifecycle.md#StepSlot-compaction
+        - see: 07-lifecycle.md#Delta-chain-compaction
       - StepSlot managed natively by kelir-core::checkpoint
       - Fork operations clone active StepSlot state into child sessions
       - Post-hook failure triggers immediate session.rollback() to slot base

@@ -92,6 +92,14 @@
         - Dynamic vCPU roster: session.vm.set_vcpus(n)
         - Hard vetoes: LifecycleCtx.register_veto(event, cb)
           - Veto scope: see 07-lifecycle.md#Lifecycle-vetoes
+        - Graceful retirement: session.drain(timeout_ms) -> DrainOutcome
+          - Refuses new work, awaits in-flight completion, then terminates
+          - Returns Completed | TimedOut | AlreadyDraining
+        - Break-glass SSH/SFTP: session.ssh() -> SshHandle
+          - In-process SSH server, ephemeral Ed25519 keypair
+          - SFTP subsystem enabled by default
+          - close() tears down; drop() closes connections
+          - Spelling: session.ssh() in all SDKs; breakGlass() is a TS alias
     - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
       - Channel kind registration: builder.register_channel(kind, handler)
         - kind drawn from frozen table
