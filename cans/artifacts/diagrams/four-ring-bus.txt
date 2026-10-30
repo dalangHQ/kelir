@@ -4,7 +4,7 @@ THE VIRTIO DEVICE COMPLEX
       ▼                  ▼                       ▼                  ▼
  [virtio-vsock]  [virtio-console]          [virtio-fs]        [virtio-net]
   CONTROL PLANE   TERMINAL PLANE          STORAGE PLANE        WIRE PLANE
-  Control &       Multiplexed             FUSE Inode &         Raw L2 TAP
-  Multiplexed IPC Character Streams       File Data            Ethernet Frames
+  Control &       Multiplexed             FUSE Inode &         Userspace smoltcp
+  Multiplexed IPC Character Streams       File Data            ingress-ring frames
                          │                       │
          [virtio-shm] ───┴────────── [virtio-blk / wdt / balloon]

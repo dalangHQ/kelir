@@ -15,6 +15,8 @@
 │  │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │
 │  │   ├── PipelineEngine: Cargo-linked contiguous interceptor execution tables        │  │
 │  │   ├── EventBus: Unified compile-time and async hook pipeline                      │  │
+│  │   ├── Transport: SPSC rings primary; AF_VSOCK / named-pipe fallback                │ │
+│  │   ├── Host state: ~/.kelir/catalog.db (SQLite WAL), cas/, sessions/               │  │
 │  │   └── DriverRouter: Lifecycle controller mediating Box<dyn VmmDriver>             │  │
 │  └──────────────────────────────────────────┬────────────────────────────────────────┘  │
 │                                             │ Dynamic Driver Trait Interface            │

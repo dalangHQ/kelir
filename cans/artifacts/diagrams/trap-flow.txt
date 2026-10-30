@@ -12,18 +12,19 @@ Kernel seccomp-unotify triggers
       │ Reads process lineage and parameters out-of-band
       │                              │
       ▼                              │
-Pipes TLV packet to vsock:5252 (Ch 0)► Host receives TrapEvent
+Pipes TLV packet to logical channel 5252 (Ch 0)► Host receives TrapEvent
                                      │ Gate 2: Checks MountScope & AOT Schema ──► INVALID ──► Deny (EINVAL)
                                      │ Match? ──► NO ──► Resume
-                                     │ YES
-                                     │ Evaluates Tier 1 Rust Plugins (at the latency ceiling)
+                                     │ YES ──► EROFS trusted prefix (/usr/bin, /bin, /usr/lib)?
+                                     │   YES ──► Gate 3 SKIP: Allow without FFI crossing
+                                     │   NO ──► Evaluates Tier 1 Rust Plugins (at the latency ceiling)
                                      │ Gate 3: Crosses FFI Trampoline to TS/Python async handler
                                      │
                                      ├──────────────────────────────┐
                                      ▼                              ▼
                                ALLOW / REWRITE                     DENY
                                      │                              │
-Pipes Decision to vsock:5252 (Ch 0)◄─┘                              │
+Pipes Decision to logical channel 5252 (Ch 0)◄─┘                     │
       │                                                             │
       ▼                                                             ▼
 kelir-shim releases syscall                               Injects exit code + stderr

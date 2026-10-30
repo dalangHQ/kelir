@@ -5,13 +5,19 @@
 │    - Stripped base system (Python, Node, Rust, Bash) pre-baked into EROFS.  │
 │    - Cold-mounted as block device. Zero tarball decompression.              │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 2. COPY-ON-WRITE RAM SCRATCHPAD (overlayfs):                                │
+│ 2. COPY-ON-WRITE SCRATCHPAD (overlayfs over sparse host file):              │
 │    - Base host workspace mounted STRICTLY READ-ONLY.                        │
-│    - Instant Revert: Drop overlayfs layer. Host SSD is untouched.           │
+│    - overlayfs upperdir maps a sparse host-backed file via virtio-blk.      │
+│    - Writes hit sparse disk blocks, never guest RAM: no guest OOM on        │
+│      large writes, host footprint independent of write volume.              │
+│    - Instant Revert: truncate the sparse backing file or punch holes        │
+│      in <1ms. Host SSD blocks are reclaimed, not a RAM layer dropped.       │
 │ 3. THE SUCCESS PATH RECONCILER (extension-based reconcile):                 │
 │    - Storage-plane sync: stages upperdir into .kelir-staging-<nonce>.       │
 │    - Executes atomic directory exchange (renameat2 / RENAME_EXCHANGE).      │
 │    - Zero filesystem corruption; Git commits stay ordinary guest runs.      │
+│    - Host inode resolution via openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGIC-    │
+│      LINKS); S_ISUID/S_ISGID stripped on write, create, chmod.              │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 4. UID / GID ID-MAPPING (idmap):                                            │
 │    - Translates guest root (UID 0) and node (UID 1000) to host geteuid().   │
@@ -35,4 +41,14 @@
 │ 9. HOST INODE LOCK BROKER (Cross-VM Concurrency):                           │
 │    - Intercepts FUSE SETLK / SETLKW; delegates to host OS advisory locks.   │
 │    - Maps virtual guest inodes to host physical inodes to avoid collisions. │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 10. HOST STATE ROOT (~/.kelir/) + STORAGE QUOTAS:                           │
+│    - catalog.db: embedded SQLite (WAL); sandboxes, snapshots, labels,       │
+│      leases, layer refs, volume records. No resident daemon; every          │
+│      process opens the SQLite file directly, ACID replaces lock logic.      │
+│    - cas/blobs/blake3_<hash>: immutable layer storage (kelir-pack output).  │
+│    - sessions/<id>/: ephemeral runtime state, logs/, relay.sock, owner.pid. │
+│    - Quotas: allocated_bytes / allocated_inodes atomics gate on_fs_write    │
+│      and FUSE mknod/create/mkdir; over budget fails synchronously ENOSPC,   │
+│      zero disk writes on rejection.                                         │
 └─────────────────────────────────────────────────────────────────────────────┘

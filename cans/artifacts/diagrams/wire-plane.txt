@@ -2,20 +2,39 @@
                                         │
            ┌────────────────────────────┼────────────────────────────┐
            ▼                            ▼                            ▼
-  [L2 TAP BRIDGE]              [on_net_outbound]            [on_net_inbound]
-  Raw L2 TAP Ethernet frames   Hook on frames leaving       Hook on frames arriving
-  cross the TAP boundary in    the guest.                    at the guest.
-  both directions.
+  [USERSPACE SMOLTCP INGRESS RING] [on_net_outbound]            [on_net_inbound]
+  Guest virtio-net Ethernet frames Hook on frames leaving       Hook on frames arriving
+  terminate in host process memory; the guest.                    at the guest.
+  no TAP device, no CAP_NET_ADMIN, no host routing change.
+  Ingress dispatcher checks MountScope natively before FFI.
                                         │
                                         ▼
-                              [DNS SINKHOLE]
-                              Traps all UDP 53; drops non-whitelisted
-                              domains with NXDOMAIN. Blocks exfiltration.
+                              [DNS POLICY FILTER + SYNTHETIC GATEWAY]
+                              Gateway 192.168.127.1:53; UDP/TCP 53 intercepted
+                              in kelir-core::wire. Allow/deny by domain
+                              allowlist (wildcard suffixes); blocked queries
+                              return NXDOMAIN, allowed queries forward to the
+                              live upstream. Upstreams track host resolver
+                              state (inotify / SCDynamicStore / DNS client API),
+                              so Wi-Fi/VPN changes need no VM restart.
+                              No entropy gating: it is not a policy primitive.
+                                        │
+                                        ▼
+                             [POLICY REJECTION — FAST-FAIL, NEVER SILENT]
+                             L4 TCP Reject: TCP RST or ICMP Port Unreachable
+                             into the guest ingress ring (guest: ECONNREFUSED).
+                             L7 HTTP Reject: synthetic 403, JSON receipt
+                             {"error":"E_POLICY_DENIED","rule":..,"target":..}.
+                             Silent discard exists only as SyncVerdict::Drop
+                             for plugin-chaos loss injection, never for policy.
                                         │
                                         ▼
                              [CONNECTION PARKING]
                              Host-terminates client TCP; buffers up to 64KB initial data;
-                             wakes microVM and splices duplex stream across vsock:5252 (Channel 1).
+                             wakes microVM and splices duplex stream across logical
+                             Channel 1 (L4 stream forwarding). L4 diversion is the
+                             carrier; L7 proxies (vault, db-proxy, wire-ingress)
+                             mount their stages atop it and terminate TLS host-side.
 
   Database proxying: see plugins/db-proxy.md.
   L7 proxy and credential signing: see 06-wire-plane.md.

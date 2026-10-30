@@ -335,7 +335,7 @@ async fn build_runtime(
                 inject_mtls: Some(Mtls { cert_path: pg_cert, key_path: pg_key }),
             }],
             // Non-default knob (06-wire-plane.md): AllowUdpProxied instead
-            // of the StrictTcpOnly default. The TCP sinkhole / drop_all
+            // of the StrictTcpOnly default. The DNS policy-filter drop_all
             // above is unchanged; only the UDP path moves to proxied.
             tap_filter: TapFilter::AllowUdpProxied,
         })
@@ -367,6 +367,8 @@ async fn build_runtime(
         // ── LEDGER (§12.1–§12.3) ────────────────────────────────────────
         .plugin(LedgerPlugin::new(LedgerConfig {
             // The audit DB lives on the host, immune to guest rollback/fork.
+            // Merkle WAL is opt-in (ledger.merkle.enabled = true);
+            // OTLP is the default sink. This example opts in explicitly.
             store: ".kelir/audit.merkle.db".into(),
             merkle_chain: true,
             otel: Some(OtelConfig {
@@ -536,7 +538,7 @@ async fn build_runtime(
         .on_trap_deny(|event, session: &Session| async move {
             if session.ctx::<LedgerCtx>().count_denials(event.ppid).await > 5 {
                 session.vm.suspend("./.kelir/quarantine.snap").await?;
-                session.break_glass().await?;
+                session.ssh().await?;
             }
             Ok(())
         });
@@ -584,7 +586,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .await?;
         if test.exit_code != 0 {
             session.vm.rollback(&base).await?;
-            session.break_glass().await?;   // §11.6
+            session.ssh().await?;   // §11.6
             return Ok(());
         }
 

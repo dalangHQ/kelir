@@ -1,9 +1,14 @@
 // crates/kelir-core/src/planes/storage/reconciler.rs
 //
-// Diff-only atomic reconciler: scans guest tmpfs upperdir, resolves
+// Diff-only atomic reconciler: scans the sparse host-backed upperdir
+// file (writes hit sparse disk blocks, never guest RAM; revert is
+// truncate / punch holes, not dropping a tmpfs layer), resolves
 // overlayfs whiteouts (char devices st_rdev == 0 and opaque dirs),
 // applies file mutations via atomic temporary swaps, and never duplicates
 // unmodified base workspace files.
+// All host-side inode resolution uses openat2(RESOLVE_BENEATH |
+// RESOLVE_NO_MAGICLINKS); S_ISUID/S_ISGID are stripped on every write
+// (mode & !0o6000).
 //
 // Canonical spec home: cans/05-storage-plane.md#Atomic-workspace-reconciler
 
@@ -14,7 +19,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TraversalGuard {
-    /// Uses openat2 with RESOLVE_BENEATH and RESOLVE_NO_SYMLINKS.
+    /// Uses openat2 with RESOLVE_BENEATH and RESOLVE_NO_MAGICLINKS
+    /// (spec spelling; variant name kept for compatibility).
     StrictResolveBeneath,
     /// Fallback lexical prefix verification for platforms lacking openat2.
     LexicalPrefixCheck,
@@ -102,6 +108,13 @@ fn reconcile_diff(
             }
             let tmp_swap = target_path.with_extension(format!("tmp.{:x}", nonce));
             fs::copy(&path, &tmp_swap)?;
+            // Strip setuid/setgid on every write: in-guest root cannot
+            // mint setuid host binaries (mode & !0o6000).
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = fs::metadata(&tmp_swap)?.permissions().mode();
+                fs::set_permissions(&tmp_swap, fs::Permissions::from_mode(mode & !0o6000))?;
+            }
             fs::rename(&tmp_swap, &target_path)?;
             stats.files_changed += 1;
         }

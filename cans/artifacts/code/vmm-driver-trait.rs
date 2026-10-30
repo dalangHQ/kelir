@@ -37,6 +37,9 @@ pub struct DriverPolicy {
 
 #[derive(Debug, Clone)]
 pub struct VmConfig {
+    /// Elastic roster: session.vm.set_vcpus(n) parks/unparks host vCPU
+    /// threads and onlines/offlines guest cores with no reboot, no
+    /// teardown, and no session re-attestation.
     pub vcpus: u8,
     pub memory_mb: u32,
     pub kernel_path: PathBuf,
@@ -46,6 +49,12 @@ pub struct VmConfig {
     ///   fixture before cold boot; see cans/01-architecture.md#Guest-VM-anatomy
     pub page_size_kb: u32,
     pub tsc_locked: bool,
+    /// Replay-mode seed: when replay is active, the virtio-rng backend
+    /// is substituted with a seeded ChaCha20 stream and this seed is
+    /// captured in the snapshot manifest, so getrandom() payloads match
+    /// byte-for-byte across runs. Outside replay, virtio-rng is the
+    /// mandatory, unconfigurable host-entropy device (Linux
+    /// /dev/urandom, macOS getentropy(2)); a profile cannot remove it.
     pub entropy_seed: Option<u64>,
     pub driver_policy: DriverPolicy,
     pub enable_gpu_passthrough: bool,
@@ -56,12 +65,29 @@ pub struct VmConfig {
     pub preemption_grace_ms: u64,
 }
 
+/// Guest clock captured with a snapshot, stored as guest_clock.json in
+/// the snapshot manifest. Restores set both clocks from it before
+/// unfreezing, so guest time leaps from capture to restore.
+#[derive(Debug, Clone)]
+pub struct GuestClock {
+    pub absolute_wall_clock_ns: u64,
+    pub monotonic_offset_ns: u64,
+    pub timezone: String, // IANA name, or "UTC"
+    pub boot_params: String, // e.g. clock source, nohpet
+}
+
 #[derive(Debug, Clone)]
 pub struct SnapshotDescriptor {
     pub id: String,
     /// Byte count; see cans/01-architecture.md#VmmDriver-trait
     pub dirty_bytes: u64,
     pub created_at_ns: u64,
+    /// Parent in the snapshot chain. Depth is unbounded and restore
+    /// accepts any digest in the chain, not only the leaf; the restored
+    /// session's working delta becomes a new child of that digest.
+    /// child_digests live on the catalog row, not on this descriptor.
+    pub parent_digest: Option<String>,
+    pub guest_clock: Option<GuestClock>,
 }
 
 #[derive(Debug, Clone)]
@@ -129,14 +155,19 @@ pub trait VmmDriver: Send + Sync {
     async fn import_snapshot(&mut self, reader: Box<dyn AsyncRead + Send + Sync + Unpin>) -> Result<(), VmmError>;
 
     /// Reverts guest physical RAM and vCPU registers to a prior checkpoint in <8ms.
-    /// Host filesystem diffs and overlayfs whiteouts are managed by kelir-core Session::rollback.
+    /// Host filesystem state is the sparse upperdir delta, discarded by
+    /// kelir-core Session::rollback (truncate / punch holes), not a tmpfs diff.
     async fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), VmmError>;
 
     /// Flushes dirty RAM pages to disk and drops host memory consumption to 0 MB.
     /// Reason is SuspendReason::External or ResourcePressure; no plugin identity.
     async fn suspend(&mut self, reason: SuspendReason, output_path: &Path) -> Result<(), VmmError>;
 
-    /// Restores a suspended VM image from storage in <50ms
+    /// Restores a suspended VM image from storage in <50ms.
+    /// Host samples CLOCK_REALTIME and dispatches a paravirtual clock
+    /// update frame over Channel 0x0000; kelir-shim issues
+    /// clock_settime(CLOCK_REALTIME) before unfreezing cgroups or
+    /// releasing trapped tasks, so guest time snaps forward instantly.
     async fn resume(&mut self, image_path: &Path) -> Result<(), VmmError>;
 
     /// Offsets the virtual hardware clock (KVM_SET_CLOCK / CNTVOFF_EL2)
@@ -149,7 +180,11 @@ pub trait VmmDriver: Send + Sync {
     /// the driver executes `action` (Reboot / Terminate)
     async fn set_watchdog(&mut self, timeout: Duration, action: WatchdogAction) -> Result<(), VmmError>;
 
-    /// Yields raw duplex channel to virtio-vsock / HV_SOCKET multiplexer
+    /// Yields raw duplex channel to the Transport backend multiplexer
+    /// (SPSC rings primary; AF_VSOCK / named-pipe fallback). The port
+    /// argument is the logical channel identifier (5252 is a channel
+    /// identifier, not an OS socket number). Method name kept for
+    /// compatibility; it does not imply AF_VSOCK semantics.
     fn vsock_connect(&self, port: u32) -> Result<tokio::net::UnixStream, VmmError>;
 
     /// Terminates hypervisor instance and releases memory allocations

@@ -16,7 +16,7 @@
 │     LangGraph, E2B) │ virtio-shm, PMU counters │ Abort, 2PC sync hooks  │ OCC conflicts │
 ├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
 │ 4. VERIFIERS & AUDIT│ Unforgeable execution    │ Hardware TSC offsets;  │ LLM hallucina-│
-│    SYSTEMS (Axiom,     │ receipts; 8ms RAM roll-  │ Merkle-chained audit   │ tions, untaxed│
+│    SYSTEMS (Axiom,     │ receipts; 8ms RAM roll-  │ OTLP traces + opt-in   │ tions, untaxed│
 │    RLVR, Formal        │ backs; dynamic chaos     │ ledger; CausalDelta    │ side effects  │
 │    Falsifiers)         │                          │                        │               │
 └─────────────────────┴──────────────────────────┴────────────────────────┴───────────────┘

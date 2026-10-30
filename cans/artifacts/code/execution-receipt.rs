@@ -20,11 +20,27 @@ pub struct PhaseTimings {
     pub verdict_egress_ns: u64,
 }
 
+/// Boot-failure classification. Always populated; replaces reliance on
+/// exit_code alone. KernelPanic payloads are scraped from the fixed 64KB
+/// early-boot UART ring buffer in host memory (no guest cooperation).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExitKind {
+    Normal,
+    Signal(u32),
+    KernelPanic(String),
+    HypervisorFault(String),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionReceipt {
     pub pid: u32,
     pub binary_path: String,
+    /// Trusted-prefix fast path: executables under an EROFS trusted prefix
+    /// (/usr/bin, /bin, /usr/lib) resolve through a pre-computed
+    /// inode-to-BLAKE3 table (O(1), no file read at trap time); the
+    /// identity is still recorded here per receipt.
     pub binary_blake3: String,
+    pub exit_kind: ExitKind,
     pub correlation_token: Option<String>,
     /// Hypervisor dirty-byte counter; always populated.
     /// Byte-not-page reason: see cans/01-architecture.md#VmmDriver-trait
@@ -41,8 +57,15 @@ pub struct ExecutionReceipt {
     pub wall_clock_ns: u64,
     /// Optional nano-tracer sub-microsecond breakdown
     pub phase_timings: Option<PhaseTimings>,
-    /// Total network egress bytes transmitted
+    /// Total network egress bytes transmitted.
+    /// In-guest bytes pre-ingress are not counted; bytes dropped by the
+    /// sinkhole or by Reject are counted separately here.
     pub egress_bytes: u64,
+    pub egress_dropped_bytes: u64,
+    // NOTE: per-command rlimits from the Channel 0x0003 exec request
+    // (max_as_bytes, max_nofile, max_nproc, max_cpu_seconds) are
+    // reported in the receipt for auditability. The field name for the
+    // limits block is not pinned in spec yet — TBD, do not invent one.
     /// Extension entries. Core treats entries as opaque;
     /// empty for sessions with no extension producer.
     pub extensions: Vec<TelemetryExtension>,

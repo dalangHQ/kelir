@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Scale-to-zero webhook handler. Inbound TCP parks at the host proxy during
-// suspend; the first post-wake frame splices to vsock Channel 1. While
+// suspend; the first post-wake frame splices to logical Channel 1. While
 // awaiting the next event, the guest memory ceiling is shrunk with the
 // standard c.vm.adjust_balloon() API so host RSS drops. MCP clients attach
 // on a dynamic console port without colliding with the PTY port.
@@ -46,7 +46,7 @@ const runtime = kelir({
     // handshake completes host-side and the frames queue without dropping.
     listen: { port: 8443, protocol: "https" },
     parking: { maxBufferedBytes: 64 * 1024, idleTimeoutMs: 30_000 },
-    // First post-wake frame splices to vsock Channel 1. The host proxy
+    // First post-wake frame splices to logical Channel 1. The host proxy
     // has already parsed routing metadata with zero allocation.
     wakeOnPacket: { vsockChannel: 1 },
     // Burst absorption: queue up to 256 inbound connections across the

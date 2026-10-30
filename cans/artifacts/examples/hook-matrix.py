@@ -127,7 +127,7 @@ class HookMatrixPlugin(BasePlugin):
         return self._state
 
     # Hook 1: wire outbound. Any frame carrying the denylist marker
-    # yields to host inspection instead of leaving the TAP.
+    # yields to host inspection instead of leaving the ingress ring.
     async def on_net_outbound(self, frame: bytes) -> SyncVerdict:
         if DENY_MARKER in frame:
             # GAP: YieldToHost's numeric argument is unspecified; 0 is

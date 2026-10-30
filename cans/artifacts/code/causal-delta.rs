@@ -8,6 +8,11 @@
 
 use std::path::PathBuf;
 
+// Delta chain (07): one immutable Base and N stacked WorkingDeltas,
+// depth unbounded. StepVerdict::Commit folds the current delta into the
+// active checkpoint; StepVerdict::Rollback discards only the current
+// delta (≤8ms, sparse upperdir delta dropped). Lineage (parent_digest
+// -> child_digest) lives in the SQLite catalog, not in this struct.
 pub struct CausalDelta {
     /// Hardware-agnostic byte-level RAM delta
     pub memory_diff_bytes: u64,

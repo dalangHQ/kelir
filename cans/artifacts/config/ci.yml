@@ -265,6 +265,20 @@ jobs:
         if: steps.kvm.outputs.available == 'true'
         run: cargo nextest run -p kelir-integration
 
+  # ─── 6b. WINDOWS TRANSPORT CONFORMANCE (transport only) ───
+  # GitHub-hosted cells run transport unit tests only: SPSC ring path
+  # and named-pipe fallback path. No AF_VSOCK assumptions may leak into
+  # shared code. Full workflow runs on self-hosted Windows WHP runners.
+  transport-windows:
+    needs: [lint-and-types]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Transport conformance (SPSC rings + named pipes only)
+        run: cargo nextest run -p kelir-transport
+
   # ─── 7. MACOS APPLE SILICON GATE (Zero Bloat) ──────────────
   check-macos-hvf:
     needs: [lint-and-types]

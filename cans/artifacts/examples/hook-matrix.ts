@@ -100,7 +100,7 @@ function maskTokens(window: string): string {
 
 const hookMatrixPlugin = createPlugin("hook-matrix")
   // Hook 1: wire outbound. Any frame carrying the denylist marker yields
-  // to host inspection instead of leaving the TAP.
+  // to host inspection instead of leaving the ingress ring.
   .onNetOutbound(async (frame) => {
     const text = Buffer.from(frame).toString("latin1");
     if (text.includes(DENY_MARKER)) {

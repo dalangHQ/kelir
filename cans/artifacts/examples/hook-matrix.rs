@@ -155,7 +155,7 @@ impl KelirPlugin for HookMatrixPlugin {
 impl NetInterposer for HookMatrixPlugin {
     fn on_net_outbound(&self, frame: &mut [u8]) -> Result<SyncVerdict, PluginError> {
         // Sliding search, no allocation: any frame carrying the denylist
-        // marker yields to host inspection instead of leaving the TAP.
+        // marker yields to host inspection instead of leaving the ingress ring.
         if frame.windows(DENY_MARKER.len()).any(|w| w == DENY_MARKER) {
             // YieldToHost(u64) is a delayed release in nanoseconds
             // (aa0e011); 0 is immediate, not a placeholder.

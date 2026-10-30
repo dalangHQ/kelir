@@ -4,18 +4,27 @@
 │   ├── Minimal vmlinux: Stripped Linux kernel (no ACPI, no PCI bloat)                    │
 │   │     - macOS Host: Built with CONFIG_ARM64_16K_PAGES=y (Apple Silicon parity)        │
 │   │     - Linux Host: Built with CONFIG_ARM64_4K_PAGES=y or x86 4KB standard            │
+│   │     - Boot params (unconditional): kptr_restrict=2 dmesg_restrict=1                 │
+│   │       panic_on_oops=1 slab_nomerge pti=on slub_debug=FZP; shim remounts             │
+│   │       /proc with hidepid=2; kallsyms / firmware / version leaks suppressed          │
+│   │     - macOS ARM64: Rosetta mounted at /run/rosetta (read-only VirtIO-FS);           │
+│   │       shim registers it in /proc/sys/fs/binfmt_misc; x86_64 runs transparently      │
 │   │                                                                                     │
 │   ├── Hardware Paravirtualized Devices:                                                 │
-│   │     - virtio-rng: Hardware entropy feeding /dev/urandom (no boot hangs)             │
+│   │     - virtio-rng: MANDATORY default device, unconfigurable; profile cannot          │
+│   │       remove it. Host entropy passthrough (/dev/urandom Linux, getentropy(2)        │
+│   │       macOS) seeds the guest CSPRNG at early probe; non-blocking getrandom()        │
+│   │       before kelir-shim PID 1. Replay substitutes a seeded ChaCha20 stream.         │
 │   │     - virtio-wdt: Hardware watchdog timer preventing guest kernel lockups           │
 │   │     - virtio-balloon: Dynamic memory inflation/deflation under host pressure        │
 │   │                                                                                     │
 │   ├── Rootfs Mounting: Ultra-fast read-only EROFS block device (cold-mounted)           │
 │   │                                                                                     │
-│   ├── Paravirtual Micro-Init (PID 1: kelir-shim, <50KB musl):                          │
+│   ├── Paravirtual Micro-Init (PID 1: kelir-shim, <50KB musl):                           │
 │   │     - Reaps zombies cleanly; establishes controlling terminal for workload          │
 │   │     - Kernel-level eBPF & seccomp-unotify filters trap security-critical syscalls   │
-│   │     - Streams trap notifications over virtio-vsock port 5252 (Channel 0)            │
+│   │     - Streams trap notifications over logical channel 5252 (Channel 0);             │
+│   │       Transport: SPSC rings primary, AF_VSOCK / named-pipe fallback                 │
 │   │     - Hypervisor freezes task groups via cgroup.freeze during inspection            │
 │   │     - virtio-console ports: console master, dynamic ports                           │
 │   │     - Zero workload instrumentation; guest application binary runs untouched        │

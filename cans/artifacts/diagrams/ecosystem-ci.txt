@@ -47,3 +47,5 @@ DECOUPLED PLUGIN CI + REGISTRY FLOW
     matrix update, poll, dashboard          →  automatic on who is current
 
   Canon CI also runs audit-slop: banned-term grep over cans/.
+  Canon CI coverage gates (see ci.yml): channel, drain, transport,
+  snapshot-depth, clock-continuity; Windows cells transport-only.

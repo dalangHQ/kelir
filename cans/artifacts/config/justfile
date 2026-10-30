@@ -26,6 +26,10 @@ build-ts:
     pnpm --filter @kelir/core build
 
 # ── Audit & validation ──
+# cans check runs the coverage gates: channel (0x0005 VFS / 0x0006 bulk
+# round-trips), drain (Running -> Draining -> Terminated, EBUSY on new
+# exec), transport (every backend, per OS), snapshot-depth (1, 2, 5, 20),
+# and clock-continuity (guest_clock survives restore, monotonic never regresses).
 check-spec:
     @cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
     @cans check --json          | jq -e '.ok and .exitCode == 0'

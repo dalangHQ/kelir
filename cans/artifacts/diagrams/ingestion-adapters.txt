@@ -13,6 +13,10 @@
 │ 3. CONTAINERD SHIM V2 (Kubernetes Bare-Metal Execution):                    │
 │    - Commercial adapter — full diagram in kelir-cloud (private repo).       │
 │    - See kelir-cloud ingestion-adapters-commercial diagram.                 │
+│    - Image→EROFS translation is kelir-pack (core primitive), NOT the        │
+│      commercial plugin: kelir-pack streams tar/OCI blob → EROFS chunks      │
+│      into cas/blobs/blake3_<hash>. oci-translator owns containerd-shim      │
+│      boundary policy only.                                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 4. OPENSHELL COMPUTE DRIVER (NVIDIA AI Infrastructure):                     │
 │    - Commercial adapter — full diagram in kelir-cloud (private repo).       │
@@ -22,6 +26,7 @@
 │    - `@kelir/e2b-compat` (TS) and `kelir.compat.e2b` (Python).              │
 │    - Replicates the `Sandbox` interface with local hardware boots.          │
 └─────────────────────────────────────────────────────────────────────────────┘
-Boundary rule: the process owns the wire; the plugin owns policy and translation.
-Plugins: containerd oci-translator; MCP plugin-mcp;
+Boundary rule: the process owns the wire; kelir-pack owns image→EROFS
+translation; the plugin owns policy only.
+Plugins: containerd kelir-pack (translation) + oci-translator (policy); MCP plugin-mcp;
 OpenShell plugin-profile; E2B: no plugin.

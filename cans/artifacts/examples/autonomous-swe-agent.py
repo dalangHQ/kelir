@@ -445,7 +445,7 @@ async def build_runtime(
                 ),
             ],
             # Non-default knob (06-wire-plane.md): AllowUdpProxied instead
-            # of the StrictTcpOnly default. The TCP sinkhole / drop_all
+            # of the StrictTcpOnly default. The DNS policy-filter drop_all
             # above is unchanged; only the UDP path moves to proxied.
             tap_filter="AllowUdpProxied",
         )
@@ -486,6 +486,8 @@ async def build_runtime(
         # ── LEDGER (§12.1–§12.3) — must precede repo-policy (requires) ──
         .plugin(LedgerPlugin(LedgerConfig(
             # audit DB lives on the host, immune to guest rollback/fork
+            # Merkle WAL is opt-in (ledger.merkle.enabled = true);
+            # OTLP is the default sink. This example opts in explicitly.
             store="sqlite://.kelir/audit.merkle.db",
             merkle_chain=True,
             otel=OtelConfig(
@@ -529,7 +531,7 @@ async def build_runtime(
     async def _deny(event: TrapEvent, session: Session) -> None:
         if await session.cap.ledger.count_denials(event.ppid) > 5:
             await session.vm.suspend("./.kelir/quarantine.snap")
-            await session.break_glass()
+            await session.ssh()
 
     return builder
 
@@ -595,7 +597,7 @@ async def main() -> None:
         )
         if test.exit_code != 0:
             await session.vm.rollback(base)
-            await session.break_glass()                              # §11.6
+            await session.ssh()                              # §11.6
             return
 
         # ── Phase 2: 4-way CoW fork fan-out (§11.1, §11.3) ────────────

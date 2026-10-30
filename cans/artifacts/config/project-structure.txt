@@ -36,14 +36,20 @@ kelir/
 │   │       ├── planes/                # Core Foundation Planes (Merged Engine Subsystems)
 │   │       │   ├── terminal/          # Terminal Plane: virtio-console, VT100 grid, ANSI sanitizer, PTY discipline
 │   │       │   ├── storage/           # Storage Plane: virtio-fs, reconciler, whiteouts, synthetic inodes, flock broker
-│   │       │   ├── wire/              # Wire Plane: virtio-net, L2 TAP bridge, DNS sinkhole, connection parking
+│   │       │   ├── wire/              # Wire Plane: virtio-net, userspace smoltcp ingress ring, DNS policy filter + synthetic gateway, connection parking
 │   │       │   └── checkpoint/        # Checkpoint Plane: Step verification loop, CoW diffs, hardware rollback
-│   │       ├── bus/                   # VirtIO Device Multiplexer (vsock, console, fs, net)
+│   │       ├── bus/                   # VirtIO Device Multiplexer (vsock, console, fs, net) over kelir-transport
 │   │       ├── dispatch.rs            # Static dispatch array & ArcSwap pipeline runner
 │   │       ├── vmm/                   # Driver orchestration
 │   │       │   ├── mod.rs
 │   │       │   └── router.rs          # Dynamic backend loader (rustvmm vs hvf)
 │   │       └── trap_gate.rs           # Filter-before-FFI trampoline & entropy analyzer
+│   │
+│   ├── kelir-transport/               # Supporting crate: Stream trait + SPSC ring, AF_VSOCK, named-pipe backends
+│   ├── kelir-catalog/                 # Supporting crate: SQLite schema, pool, migration helpers (used by core)
+│   ├── kelir-ssh/                     # Supporting crate: in-process SSH/SFTP server (russh), used by break-glass
+│   ├── kelir-otlp/                    # Supporting crate: zero-allocation metric registry and OTLP exporter
+│   ├── kelir-pack/                    # Core primitive CLI: OCI layer blob(s) → EROFS at host CAS (kelir-pack --oci <ref|blob-dir> --out ~/.kelir/cas; exit 0 only when BLAKE3 digest is written to cas/blobs/blake3_<hash>)
 │   │
 │   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
 │   │   ├── Cargo.toml                 # Depends on kelir-interface only
@@ -60,7 +66,7 @@ kelir/
 │   │   ├── src/
 │   │   │   ├── codec.rs               # Raw slice bit-shift frame codec (zero serde/ciborium)
 │   │   │   ├── main.rs                # Guest PID 1 reaper & loop
-│   │   │   ├── multiplexer.rs         # Raw VirtIO channel multiplexer (vsock:5252 & virtio-ports)
+│   │   │   ├── multiplexer.rs         # Raw VirtIO channel multiplexer (logical channel 5252 & virtio-ports; Transport backend)
 │   │   │   ├── pty.rs                 # openpty() line discipline broker for console ring
 │   │   │   └── trap.rs                # seccomp-unotify trap forwarder
 │   │   └── tests/
@@ -91,7 +97,7 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs
-│   │   │   │   ├── wal.rs             # LedgerSink trait: LocalMerkleDbSink + external delegation
+│   │   │   │   ├── wal.rs             # LedgerSink trait: OTLP default; LocalMerkleDbSink opt-in (ledger.merkle.enabled = true) + external delegation
 │   │   │   │   ├── otel.rs            # W3C traceparent context propagator
 │   │   │   │   └── compute.rs         # compute_causal_delta() — CausalDelta computation (struct lives in kelir-interface)
 │   │   │   └── tests/
@@ -179,7 +185,7 @@ kelir/
 │   │   ├── plugins/                   # @kelir/plugin-*
 │   │   │   ├── wire-ingress/          # TS bindings for connection parking
 │   │   │   ├── chaos/                 # TS bindings for fault injection
-│   │   │   └── ledger/                # TS bindings for Merkle WAL audit ledger
+│   │   │   └── ledger/                # TS bindings for OTLP + opt-in Merkle WAL audit ledger
 │   │   ├── presets/                   # @kelir/presets (Pre-configured agent setups)
 │   │   │   └── src/openrig.ts         # Drop-in driver replacing OpenRig's tmux backend
 │   │   └── e2b-compat/                # @kelir/e2b-compat
@@ -194,7 +200,7 @@ kelir/
 │           ├── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
 │           │   ├── wire_ingress.py    # Python bindings for connection parking
 │           │   ├── chaos.py           # Python bindings for the chaos plugin
-│           │   └── ledger.py          # Python bindings for the ledger plugin
+│           │   └── ledger.py          # Python bindings for the ledger plugin (OTLP default, Merkle WAL opt-in)
 │           └── compat/
 │               └── e2b.py             # Drop-in E2B Sandbox replacement class
 │

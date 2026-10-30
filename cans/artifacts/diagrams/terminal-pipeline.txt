@@ -1,18 +1,23 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         PARAVIRTUAL CONSOLE PIPELINE                        │
+│ PARAVIRTUAL CONSOLE PIPELINE                                                │
 │                                                                             │
-│   GUEST WORKLOAD PROCESS                                                    │
-│     │ Writes raw stdout/stderr bytes                                        │
-│     ▼                                                                       │
-│   Guest Kernel Console / TTY Subsystem                                      │
-│     │ Bridges character device streams to virtio-console driver             │
-│     ▼                                                                       │
-│   virtio-console Ring Buffer (Hardware Shared Memory)                       │
-│     │ Zero-copy virtqueue streaming to Host Physical Memory                 │
-│     ▼                                                                       │
-│   HOST SUPERVISOR (kelir-core Console Plane)                                │
-│     │                                                                       │
-│     ├── Port Multiplexer ─────────► Routes port IDs to discrete dispatchers │
-│     └── Interceptor Pipeline ─────► Synchronous ConsoleInterposer execution │
-│                                     (High-level PTY policy: see 04-terminal-plane.md) │
+│ GUEST WORKLOAD PROCESS                                                      │
+│   │ Writes raw stdout/stderr bytes                                          │
+│   ▼                                                                         │
+│ Guest Kernel Console / TTY Subsystem                                        │
+│   │ Bridges character device streams to virtio-console driver               │
+│   ▼                                                                         │
+│ virtio-console Ring Buffer (Hardware Shared Memory)                         │
+│   │ Zero-copy virtqueue streaming to Host Physical Memory                   │
+│   ▼                                                                         │
+│ HOST SUPERVISOR (kelir-core Console Plane)                                  │
+│   │                                                                         │
+│   ├── Port Multiplexer ─────────► Routes port IDs to discrete dispatchers   │
+│   ├── Interceptor Pipeline ─────► Synchronous ConsoleInterposer execution   │
+│   │                                (PTY policy: see 04-terminal-plane.md)   │
+│   ├── Binary Exec (Ch 0x0003) ──► stdin/stdout/stderr/control streams;      │
+│   │                                no PTY; exec_id-keyed, bitwise fidelity  │
+│   └── Stream Replay ────────────► Append-only logs under sessions/<id>/     │
+│                                    logs/, 64-bit monotonic cursor,          │
+│                                    read_from(port, cursor) -> (bytes, next) │
 └─────────────────────────────────────────────────────────────────────────────┘

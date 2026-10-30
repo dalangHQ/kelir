@@ -121,7 +121,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
     async def _post_commit(session: Session, committed: bool) -> None:
         # Commit phase: committed=True executes the atomic swap into the
         # workspace — here the staged snapshot becomes the next cold-start
-        # fixture; False unlinks staging and purges tmpfs diffs, so a
+        # fixture; False unlinks staging and discards the sparse overlay delta, so a
         # failed export never overwrites the last good snapshot.
         if committed:
             print("[kelir] commit: snapshot staged as next cold-start fixture")

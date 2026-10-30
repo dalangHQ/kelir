@@ -37,7 +37,10 @@ pub enum PluginError {
     Halt(String),
     /// Deny with a POSIX errno name surfaced to the guest.
     /// Storage plane: guest write() fails with this errno.
-    /// Wire plane:    frame dropped silently (errno for logging only).
+    /// Wire plane:    policy denial is fast-fail, never silent — L4 TCP
+    ///   gets a TCP RST (or ICMP Port Unreachable), L7 HTTP gets a
+    ///   synthetic 403 with a JSON receipt. Silent discard is only
+    ///   SyncVerdict::Drop, and only for plugin-chaos loss injection.
     #[error("Plugin rejected: {errno} ({reason})")]
     Reject { errno: String, reason: String },
     // BufferCeilingExceeded removed: FUSE driver chunks writes at the
@@ -69,6 +72,10 @@ impl PluginError {
 }
 
 /// Complete inode attribute set surfaced by storage-plane lookups.
+/// Populated into FUSE LOOKUP replies with S_ISUID and S_ISGID masked
+/// (mode & !0o6000); host writes, creates, and chmods strip the setuid /
+/// setgid bits the same way, so in-guest root cannot mint setuid host
+/// binaries.
 #[derive(Debug, Clone)]
 pub struct FsInodeAttr {
     pub mode: u32,
@@ -108,8 +115,9 @@ pub enum ExecutionTier {
 }
 
 /// Mount-level scoping filters evaluated before dispatch array registration.
-#[derive(Debug, Clone, Default)]
-pub struct MountScope {
+/// Scoping is transport-agnostic: filters evaluate above the Transport
+/// backend (SPSC ring, AF_VSOCK, or named pipe) and no plugin may key
+/// behavior on the transport identity.
     pub devices: Option<Vec<VirtioDevice>>,
     pub binaries: Option<Vec<String>>,
     pub paths: Option<Vec<PathBuf>>,
@@ -160,6 +168,10 @@ pub enum SyncVerdict {
     Allow,
     /// Yields frame/op to host event loop with delayed release in nanoseconds.
     YieldToHost(u64),
+    /// Chaos-only silent discard: drops the frame, injects no RST,
+    /// surfaces no errno. PluginError::Reject is policy semantics
+    /// (fast-fail RST / 403 receipt) and must never be used for loss.
+    Drop,
 }
 
 /// Binds inline interceptors into the linear monotonic pipeline.
@@ -320,6 +332,16 @@ pub trait ConsoleInterposer {
     async fn on_console_input(&self, _port: u32, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
     /// Raw paravirtual character stream output. Intercepts guest -> host port bytes.
     async fn on_console_output(&self, _port: u32, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
+    /// Binary exec channel (0x0003) stdout: programmatic exec streams,
+    /// no PTY involvement. PTY (Port 0) path unchanged; the exec path
+    /// keys on exec_id rather than port. stream_id 1.
+    /// ExecContext (02) carries pid, exec_id, stream_id, chunk, and
+    /// rlimits; the stream_id is fixed by which method fires, and the
+    /// rlimits ride the Channel 0x0003 control stream, not this hook.
+    async fn on_exec_stdout(&self, _pid: u32, _exec_id: u64, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
+    /// Binary exec channel (0x0003) stderr. stream_id 2; same
+    /// no-PTY, exec_id-keyed contract as on_exec_stdout.
+    async fn on_exec_stderr(&self, _pid: u32, _exec_id: u64, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
 }
 
 #[async_trait]

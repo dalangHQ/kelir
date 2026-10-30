@@ -39,6 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         pinned_clocksource: Some("kvm-clock".into()),
         ns_per_instruction: Some(1),
         preemption_grace_ms: 0,
+        // Replay mode: virtio-rng is substituted with a seeded ChaCha20
+        // stream, so getrandom() payloads match across runs.
         entropy_seed: Some(0x5EED),
     })
     .plugin(ReplayPlugin::new(ReplayConfig {

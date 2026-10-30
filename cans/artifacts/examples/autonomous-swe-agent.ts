@@ -122,7 +122,7 @@ const runtime = kelir({
                   injectMtls: { certPath: "/etc/ssl/client.crt",
                                 keyPath:  "/etc/ssl/client.key" } }],
     // Non-default knob (06-wire-plane.md): AllowUdpProxied instead of the
-    // StrictTcpOnly default. The sinkhole allowlist above is unchanged;
+    // StrictTcpOnly default. The DNS policy-filter allowlist above is unchanged;
     // only the UDP path moves to proxied.
     tapFilter: "AllowUdpProxied",
   })
@@ -144,6 +144,8 @@ const runtime = kelir({
   // → c.ledger
   .use(ledger({
     // audit DB lives on the host, immune to guest rollback/fork
+    // Merkle WAL is opt-in (ledger.merkle.enabled = true);
+    // OTLP is the default sink. This example opts in explicitly.
     store: "sqlite://.kelir/audit.merkle.db",
     merkleChain: true,
     otel: { traceParent: true, serviceName: "kelir-swe-agent" },
@@ -255,7 +257,7 @@ const runtime = kelir({
   .on(LifecycleEvent.TrapDeny,   async (e, s) => {
     if (await s.ledger.countDenials(e.ppid) > 5) {
       await s.vm.suspend("./.kelir/quarantine.snap");
-      await s.breakGlass();
+      await s.ssh();
     }
   });
 
@@ -281,7 +283,7 @@ async function main() {
       params: { action: "fix-stripe-webhook", repo: "checkout-service",
                 issueId: "ISSUE-8412", env: "staging" },
     });
-    if (testRun.exitCode !== 0) { await session.vm.rollback(baseSnap); await session.breakGlass(); return; }
+    if (testRun.exitCode !== 0) { await session.vm.rollback(baseSnap); await session.ssh(); return; }
 
     const branches = await Promise.all(
       ["A", "B", "C", "D"].map(async (id) => {

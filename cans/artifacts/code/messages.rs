@@ -1,7 +1,10 @@
 // crates/kelir-interface/src/protocol.rs
 //
-// All wire messages exchanged over vsock:5252. Payloads encode as CBOR
-// inside the TLV frame defined in codec.rs.
+// All wire messages exchanged over logical channel 5252. 5252 is a
+// channel identifier, not an AF_VSOCK port: the Transport backend
+// carries it (shared-memory SPSC rings primary; AF_VSOCK on
+// Linux/macOS and named pipes on Windows as debug fallbacks).
+// Payloads encode as CBOR inside the TLV frame defined in codec.rs.
 //
 // Owned by: cans/09-protocol.md#Wire-messages
 
@@ -64,6 +67,25 @@ pub enum GuestToHost {
     PortBound(PortBound),
     Heartbeat(Heartbeat),
 }
+
+/// Version negotiation on Channel 0x0000 initialization. Host and guest
+/// exchange Handshakes; negotiated_capabilities = host.capabilities &
+/// guest.capabilities. A missing mandatory feature bit aborts with
+/// E_INCOMPATIBLE_SHIM_VERSION; a missing optional bit disables that
+/// interposer path gracefully. Min version 0x04; no downgrade path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Handshake {
+    pub version: u16, // 0x04
+    pub capabilities: u64,
+}
+
+/// Binary exec channel (0x0003) stream identifiers. Framing: 4-byte
+/// channel, 1-byte stream_id, 4-byte len, payload. stdout/stderr carry
+/// raw bytes; no line wrapping, no escape injection; PTY bypassed.
+pub const EXEC_STREAM_STDIN: u8 = 0x00;
+pub const EXEC_STREAM_STDOUT: u8 = 0x01;
+pub const EXEC_STREAM_STDERR: u8 = 0x02;
+pub const EXEC_STREAM_CONTROL: u8 = 0x03; // exit code, signals, rlimit descriptors
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum HostToGuest {
