@@ -4,7 +4,8 @@
       - States: Initializing, Running, Suspended(SuspendReason), Terminated
       - SuspendReason: External(u32) | ResourcePressure
       - Eliminates independent suspend implementations outside core
-      - Cycle-exact resume triggered via vsock Channel 0 patch or TAP frame arrival
+      - Cycle-exact resume triggered via Channel 0 control frame or
+        wire ingress frame arrival
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
       cooperation.
@@ -71,7 +72,8 @@
     - Pre-condition invariant: Rollback is prohibited while vCPUs hold unreleased syscall traps
     - Attempting rollback on a frozen syscall trap aborts with E_INVALID_LIFECYCLE_STATE
     - Two-phase execution boundary
-      - 1. Storage reset: Session::rollback() truncates and purges guest tmpfs upperdir
+      - 1. Storage reset: Session::rollback() truncates the sparse host-backed
+        upperdir file and punches holes (FALLOC_FL_PUNCH_HOLE)
       - 2. Hardware reset: driver.rollback(&snapshot) resets physical RAM
         and vCPU registers in <8ms
       - HVF path: resets Stage-2 translation table roots to snapshot base
@@ -80,6 +82,13 @@
     - Veto: Rollback (observation)
       - Cannot be vetoed; rollback is the recovery action
       - Use for ledger/trace of recovery events
+  - Pre-teardown flush
+    - Host issues MSG_SHUTDOWN_REQUEST{timeout_ms:500} on Channel 0x0000
+    - kelir-shim issues syncfs(2) across all VFS mounts, then SIGTERM to users
+    - Shim replies MSG_SHUTDOWN_ACK when VFS is clean or processes drain
+    - Host tears down vCPU loops only after ack or timeout expiry
+    - Prevents half-written ext4 journal, SQLite WAL, git index corruption
+    - Timeout expiry records ExitReason::DirtyShutdown in ExecutionReceipt
   - Suspend and resume
     - suspend
       - Reason: SuspendReason::External or ResourcePressure
@@ -90,6 +99,12 @@
     - resume
       - Restores registers and memory
       - Resumes at exact cycle boundary
+      - Host samples CLOCK_REALTIME and dispatches a paravirtual clock
+        update frame over Channel 0x0000
+      - kelir-shim issues clock_settime(CLOCK_REALTIME) before unfreezing
+        cgroups or releasing trapped tasks
+      - Guest time snaps forward instantly after multi-day suspension
+      - Zero CERT_HAS_EXPIRED or CERT_NOT_YET_VALID on first outbound TLS
     - Snapshot contents
       - manifest.json
         - Format version, arch, page size
@@ -99,7 +114,7 @@
       - ram.zst
         - Guest physical RAM, zstd level 3
       - upperdir.tar.zst
-        - Overlayfs upperdir diff (mutated files only)
+        - Sparse upperdir diff (mutated files only; unmodified base excluded)
         - Unmodified base workspace not packed
       - attestation.jws
         - Session attestation token in the snapshot
@@ -112,10 +127,21 @@
       - Note: on_vm_ready does not re-fire on resume
     - Typical use: waiting for human approval with zero host CPU cost
     - Mobile and SBC use: full RSS deallocation under Android LMK memory pressure
-    - Flash preservation: guest tmpfs writes stay in RAM; zero random SD card writes
+    - Flash preservation: sparse upperdir backing file may be placed on a
+      tmpfs host path when write volume fits RAM; SBC profile selects this
+      by default. Otherwise writes hit disk blocks as normal.
     - External suspension
       - Triggered by SuspendReason::External(u32) awaiting out-of-band release
       - Resume executes cycle-exact upon external release signal
+  - Elastic compute
+    - Guest kernel boots with maxcpus=N; configured count online at boot
+    - Scale up: hypervisor unparks host vCPU threads; shim writes
+      /sys/devices/system/cpu/cpuX/online
+    - Scale down: host parks surplus vCPU threads; guest offlines cores
+    - Warm memory, caches, and loaded dependencies retained across resize
+    - No reboot, no teardown, no session re-attestation
+    - Session surface: session.vm.set_vcpus(n)
+    - Veto: none; resizing is state-preserving
   - Native checkpoint plane (kelir-core::checkpoint)
     - Zero-harness boundary detection
       - Tracks process group exits and foreground PTY idle quiescence
@@ -128,10 +154,19 @@
       - Step lattice:
         - StepVerdict::Commit: flushes staging delta, advances active step slot
         - StepVerdict::Rollback(reason): calls session.rollback(), reverting RAM in <8ms
-          and dropping tmpfs diffs
+          and discarding the sparse upperdir delta
         - StepVerdict::YieldToHost: halts vCPU registers awaiting external input
       - Fail-closed invariant: unhandled post-execution failures or evaluation
         timeouts trigger automatic hardware rollback before releasing workload
+    - StepSlot compaction
+      - A StepSlot holds strictly two states: Base and WorkingDelta
+      - Sub-steps do not form an unbounded linked list
+      - StepVerdict::Commit folds the sparse upperdir diff into the active
+        checkpoint via fallocate(FALLOC_FL_COLLAPSE_RANGE) or dirty-page bitmap union
+      - StepVerdict::Rollback discards the delta in ≤8ms
+      - Chain depth hard-capped at 1
+      - Diff resolution stays O(1) across agent loop depth
+      - Host memory does not grow monotonically across sequential savepoints
   - Portable snapshot bundles
     - Content-addressed snapshot sync
     - Streamed archive packaging vmm_state.json, ram.zst, and upperdir diff
@@ -154,7 +189,8 @@
       - TLS handshakes fail on wake due to clock mismatch
     - Solution
       - Listen to host power events: IOPMrootDomain (macOS), systemd-logind (Linux)
-      - Dispatch immediate hardware clock resync over AF_VSOCK
+      - Dispatch paravirtual clock resync frame over Channel 0x0000
+        (identical mechanism to resume; see: #Suspend-and-resume)
       - Guest time snaps to host wall-clock in 0ms
   - Host crash reaper
     - Problem: host crash orphans guest vCPUs
@@ -179,6 +215,16 @@
       - macOS: kqueue NOTE_EXIT + heartbeat pipe
       - Windows: Job Object KILL_ON_JOB_CLOSE
       - Android: PR_SET_PDEATHSIG + LMK preempt window
+  - Detached lifecycle
+    - Affine builder flag .detached(true) forks twice, setsid, redirects stdio
+    - Session state directory: ~/.kelir/sessions/<id>/relay.sock
+    - Runtime process adopts the VM and releases terminal locks
+      (disk_lock_handoff, memory_handoff)
+    - Spawning CLI/SDK drops its handle and exits 0
+    - Reattachment via Unix Domain Socket SCM_RIGHTS descriptor passing
+    - Internal watchdog terminates the guest if no client attaches within TTL
+    - No resident daemon; default (non-detached) sessions retain
+      PR_SET_PDEATHSIG / kqueue / Job Object reaping
   - Break-glass
     - Supervisor freezes guest agent task group via cgroup freezer prior to attach
     - In-flight PTY buffer drained before exposing raw console master

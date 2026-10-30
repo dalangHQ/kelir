@@ -117,6 +117,11 @@
       - virtio-console: multi-port character streams
       - virtio-fs: FUSE filesystem operations and virtual inode dispatch
       - virtio-net: bidirectional L2 ethernet frame interception
+      - virtio-rng: mandatory default device; host entropy passthrough
+        - /dev/urandom on Linux; getentropy(2) on macOS
+        - Seeds guest CSPRNG during early device probe
+        - Non-blocking getrandom() before kelir-shim PID 1
+        - Unconfigurable; profile cannot remove the device
     - Paravirtual Auxiliaries
       - virtio-blk: read-only EROFS rootfs block device
       - virtio-shm: zero-copy shared memory regions with host memory barriers
@@ -126,10 +131,31 @@
     - Anonymous host memfd segment mapped into guest physical address space
     - Bypasses FUSE and vsock serialization under explicit host memory fences
     - Region mappings unmap automatically on VM instance teardown
+    - Ring header: head: AtomicU32, tail: AtomicU32, capacity: u32
+    - Single-producer single-consumer semantics across host/guest boundary
+    - Guest doorbell: MMIO/PCI write triggers host eventfd read
+    - Host doorbell: paravirtual virtual interrupt injected into guest vCPU
+    - No CPU spin-polling on memory flags
+    - Fence provides coherency; doorbell provides notification
+  - Transport engine abstraction
+    - Host hypervisor backend terminates virtqueue rings directly in kelir-core memory
+    - Channel multiplexing (0x0000–0x0010) routes to in-memory lock-free SPSC rings
+    - Bypasses host OS socket subsystems (AF_VSOCK, HV_SOCKET, named pipes)
+    - Identical binary protocol execution on Linux, macOS, and Windows
+    - No host platform-specific IPC shims
+    - No elevated host OS socket drivers
   - Embedded profile
     - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
     - Host memory preservation: suspend drops host RSS to 0 MB under system pressure
+  - Host memory pressure watcher
+    - Active balloon inflation/deflation loop in kelir-core
+    - Linux: subscribe to cgroup v2 memory.pressure via io_uring/epoll
+    - macOS: register DISPATCH_SOURCE_TYPE_MEMORYPRESSURE kernel listener
+    - Pressure signal inflates virtio-balloon queue
+    - Guest kswapd evicts clean page caches into balloon
+    - Host madvise(MADV_DONTNEED) reclaims physical frames immediately
+    - Zero manual tuning; zero guest cooperation beyond standard kernel
   - Host runtime
     - see: artifacts/diagrams/host-runtime.txt
     - Native Rust consumer: direct Cargo crate, zero-cost monomorphization
@@ -138,6 +164,21 @@
     - kelir-core: stripped microkernel (BusDispatcher, PipelineEngine, EventBus, DriverRouter)
     - PipelineEngine: compiles inline interceptors into indexed contiguous tables
     - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
+  - Host CAS hierarchy
+    - Content-addressed root: ~/.kelir/
+      - cas/blobs/blake3_<hash>: immutable layer storage
+      - locks/<hash>.lock: open/write serialization
+      - sessions/<session_id>/: ephemeral runtime state
+    - Locking: flock(2) advisory locks over lock files
+    - Atomic replace via renameat2(RENAME_EXCHANGE)
+    - Kernel releases advisory locks on process death
+    - No resident daemon, no database migrations
+    - Concurrent orchestrator workers, CLI commands, and test runners coexist safely
+    - Session ownership: sessions/<id>/owner.pid held with flock(LOCK_EX|LOCK_NB)
+    - KelirBuilder init opportunistically scans sessions/* non-blocking
+    - flock(LOCK_EX|LOCK_NB) success on existing owner.pid proves owner dead
+    - Sweeper unlinks orphaned relay.sock, sparse backing file, staging trees
+    - No TTL, no maintenance lease; kernel lock is the liveness proof
   - Guest VM anatomy
     - see: artifacts/diagrams/guest-vm.txt
     - Boot budget
@@ -181,6 +222,25 @@
       - Chain is unbroken
         - Forged kernel/rootfs fails host-side BLAKE3
         - Forged workload fails per-exec trap boundary
+    - Early boot diagnostics
+      - Fixed 64KB circular ring buffer in host memory
+      - Mapped to hypervisor 8250 UART / PL011 from instruction zero
+      - Scraped if VmReady not reached within cold-boot budget
+      - Kernel panic signatures parsed into ExitReason::KernelPanic(String)
+      - Recorded in ExecutionReceipt; no guest cooperation required
+    - Multi-architecture execution
+      - macOS ARM64: detect /Library/Apple/usr/libexec/oah/libRosettaRuntime
+      - Rosetta directory mounted at /run/rosetta via read-only VirtIO-FS
+      - kelir-shim registers Rosetta into /proc/sys/fs/binfmt_misc on boot
+      - x86_64 binaries execute transparently on Apple Silicon
+      - Zero guest container rebuild; near-native emulation speed
+      - Other hosts: arch mismatch fails with ENOEXEC; no silent fallback
+    - Guest kernel hardening
+      - Unconditional boot params: kptr_restrict=2 dmesg_restrict=1
+        panic_on_oops=1 slab_nomerge pti=on slub_debug=FZP
+      - kelir-shim remounts /proc with hidepid=2 during early init
+      - /proc/kallsyms, /sys/firmware, /proc/version leak signatures suppressed
+      - Untrusted scripts cannot probe kernel pointers or peer processes
     - Workload contract: no guest-side SDK, shim, or agent
   - VmmDriver trait
     - see: artifacts/code/vmm-driver-trait.rs

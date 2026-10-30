@@ -16,8 +16,9 @@
     - Hook signature (mesh): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (mesh)
       - mTLS validation failure
-        - Connection reset; Err(Reject { errno: "ECONNREFUSED" })
-        - Silent to guest; ledger records peer fingerprint
+        - Err(Reject { errno: ECONNREFUSED })
+        - Guest observes ECONNREFUSED: see: 06-wire-plane.md#Frame-drop-and-forward-semantics
+        - Ledger records peer fingerprint
       - Peer identity
         - SPIFFE SVID issued by host at on_vm_ready
         - Validity bounded by session lifetime; never reused across forks

@@ -6,7 +6,7 @@
       - 0x0000: core hypervisor lifecycle + trap control
       - 0x0001: L4 stream forwarding (native wire plane)
       - 0x0002: profile-sync (plugin-profile)
-      - 0x0003: reserved
+      - 0x0003: binary-exec (native terminal plane, programmatic exec streams)
       - 0x0004: db-sqlite (plugin-db-proxy)
       - 0x0005-0x000F: reserved (core)
       - 0x0010: pty-control (native terminal plane)
@@ -19,6 +19,18 @@
       - Implements zombie process reaping via waitpid(-1, WNOHANG)
       - Multiplexes raw VirtIO ring bytes; carries zero database, proxy, or domain logic
       - Domain Unix sockets are provisioned dynamically over vsock, never hardcoded in PID 1
+  - Binary exec channel (0x0003)
+    - Transport: vsock port 5252, channel_id 0x0003
+    - Frame layout: 4-byte channel, 1-byte stream_id, 4-byte len, payload
+    - stream_id values
+      - 0x00: stdin
+      - 0x01: stdout
+      - 0x02: stderr
+      - 0x03: control (exit code, signals, rlimit descriptors)
+    - stdout and stderr carry raw bytes; no line wrapping, no escape injection
+    - Flow control: vsock credits; sender blocks on socket write
+    - PTY (virtio-console Port 0) remains the interactive human TTY
+    - Programmatic tooling uses 0x0003 exclusively; PTY bypassed
   - Trap fast-path
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
     - Three-tier gate pipeline
@@ -26,6 +38,11 @@
       - Gate 2: native MountScope/schema eval in host RAM (<2µs, 0 FFI)
       - Gate 3: trap handler dispatch through foreign FFI trampoline (50-150µs)
       - Synchronous write/packet filters evaluate native Rust rules; foreign callbacks yield
+      - Gate 3 skip: binary_path rooted in EROFS trusted prefix
+        - /usr/bin, /bin, /usr/lib bypass foreign FFI entirely
+        - Gate 2 still evaluates; Allow proceeds without FFI crossing
+        - Untrusted /workspace/** always traverses Gate 3
+        - Compiler and test-suite fork/exec storms run at hardware speed
       - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
       - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
       - A single trap-on-every-syscall design adds ~µs per fork/exec at
@@ -43,6 +60,14 @@
       - ELF is read from disk at trap time: /proc/$PID/maps still describes
         the pre-exec image and cannot be trusted
       - Scans /proc/$PID/auxv, envp, and PT_INTERP before cgroup unfreeze
+    - Per-command rlimits
+      - Exec request on Channel 0x0003 control stream carries optional ProcessLimits
+      - Fields: max_as_bytes (RLIMIT_AS), max_nofile (RLIMIT_NOFILE),
+        max_nproc (RLIMIT_NPROC), max_cpu_seconds (RLIMIT_CPU)
+      - kelir-shim calls setrlimit(2) between fork() and execve()
+      - Rogue tool run kills only itself via SIGSEGV or SIGKILL
+      - MicroVM, kelir-shim, and sibling processes remain alive
+      - Absent descriptor: process inherits microVM-level ceiling only
     - Flow diagram: see: artifacts/diagrams/trap-flow.txt
     - Fast-path policy: TBD
   - Wire framing
@@ -68,17 +93,32 @@
         - No indefinite-length items
         - Payload bounded by 64KB frame budget
       - Version negotiation
-        - Exact match on VERSION=0x04
-        - Lower version gets MSG_VM_LIFECYCLE_CONTROL{rejected}
+        - Handshake struct: version: u16 (0x04), capabilities: u64
+        - Host and guest exchange Handshake on Channel 0x0000 initialization
+        - negotiated_capabilities = host.capabilities & guest.capabilities
+        - Mandatory feature bit missing: abort with E_INCOMPATIBLE_SHIM_VERSION
+        - Optional feature bit missing: disable that interposer path gracefully
+        - Lower version: MSG_VM_LIFECYCLE_CONTROL{rejected}
         - Min version 0x04; no downgrade path
+        - Older guest shims in cached EROFS images run against newer hosts
+        - No unparsed binary noise; no broken framing on struct layout change
       - Flow control
-        - None in-band; vsock credits are the only backpressure
-        - Sender blocks on socket write
+        - None in-band; ring slot availability is the only backpressure
+        - SPSC ring full: sender parks on host eventfd / guest virtual interrupt
+        - Guest-visible semantics unchanged (virtio-vsock credits)
       - Reconnect
-        - None; dropped vsock is terminal, tears down session
+        - None; channel close is terminal, tears down session
+        - Host-side ring shutdown flag is the semantic close event
         - No sequence reset path exists
       - Port 5252 is the sole control transport
         - No secondary port
+  - Policy rejection receipt
+    - L7 rejections surface as synthetic HTTP frames in guest ingress ring
+    - Body: {"error":"E_POLICY_DENIED","rule":"<rule_id>","target":"<target>"}
+    - Content-Type: application/json
+    - Status: 403 Forbidden
+    - L4 rejections surface as TCP RST or ICMP Port Unreachable
+    - Silent blackholing eliminated for policy denials
   - Wire messages
     - see: artifacts/code/messages.rs
     - Message set and payload fields: see: artifacts/code/messages.rs

@@ -21,6 +21,11 @@
     - Population: per ReceiptConfig; opt-in fields not enabled are absent
       (Option), never 0
       - retired_instructions: sampled from host vCPU thread via perf_event_open
+      - exit_kind: ExitKind enum, always populated
+        - Normal | Signal(u32) | KernelPanic(String) | HypervisorFault(String)
+        - KernelPanic payload scraped from 64KB early-boot UART buffer
+          - see: 01-architecture.md#Early-boot-diagnostics
+        - Replaces reliance on exit_code alone for boot failure classification
       - Apple Silicon: queried via native Mach thread instruction counters
       - Eliminates cross-architecture dirty-page and wall-clock variance
       - Opt-in: syscall_count
@@ -40,6 +45,12 @@
       - Cache scope
         - One hash per binary identity, not per exec
         - Session-scoped; dropped on terminate
+      - Trusted-prefix fast path
+        - Executables under /usr/bin, /bin, /usr/lib covered by EROFS manifest
+        - Pre-computed inode-to-BLAKE3 table loaded at boot
+        - Lookup is O(1) integer index; no file read at trap time
+        - Untrusted /workspace/** retains full BLAKE3 hash path
+        - Trusted-prefix identity still recorded per ExecutionReceipt
       - Cache hit does not bypass trap boundary
         - Trap still delivered; hash still attached
         - Only the byte-read is skipped
@@ -52,7 +63,7 @@
         - L2 bytes at on_net_outbound after pipeline settles
         - Bytes dropped by sinkhole or Reject
           - Counted separately as egress_dropped_bytes
-        - In-guest bytes pre-TAP not counted
+        - In-guest bytes pre-ingress not counted
       - wall_clock_ns
         - Physical spawn-to-reap time
         - Regardless of guest suspend state
@@ -114,7 +125,9 @@
     - Checkpoint descriptors are retained in userland orchestrator state
     - Post-step verification compares physical receipts against pre-step states
     - StepSlot semantics
-      - Single slot per active PID lineage; sub-steps push to stacked savepoints
+      - Single slot per active PID lineage; sub-steps fold into Base on
+        StepVerdict::Commit, discard on StepVerdict::Rollback
+        - see: 07-lifecycle.md#StepSlot-compaction
       - StepSlot managed natively by kelir-core::checkpoint
       - Fork operations clone active StepSlot state into child sessions
       - Post-hook failure triggers immediate session.rollback() to slot base

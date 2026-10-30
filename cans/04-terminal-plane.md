@@ -5,6 +5,12 @@
     - Port 0 allocated to standard console IO; Ports 1-16 dynamically allocated
     - Transport: Raw byte-stream rings mapped to host supervisor memory
     - Zero-copy ringbuffer backpressure and queue management
+    - HostTerminalGuard (RAII)
+      - On attach: tcgetattr saves host termios; cfmakeraw enters raw mode
+      - SIGINT and SIGTSTP masked on host thread; keystrokes forwarded raw
+      - Ctrl+C (0x03) traverses virtio-console to guest foreground pgid
+      - On drop/panic: tcsetattr(TCSAFLUSH) restores saved termios unconditionally
+      - Host shell state never corrupted after crash
     - PTY line discipline initialization (kelir-shim)
       - Shim initializes master/slave pair via openpty()
       - Configures slave termios: CS8, CREAD, B38400, CLOCAL
@@ -26,3 +32,17 @@
     - Mandatory host disclosure invariant: host mutations publish TerminalNotice to EventBus
     - Injects formatted ANSI box into host-to-guest console Port 0 stream
     - Disclosures render inline on workload TTY without corrupting cursor state
+  - Binary exec channel
+    - Channel 0x0003 carries programmatic execution streams
+    - Framing: 4-byte channel, 1-byte stream_id, 4-byte len, payload
+    - stream_id: 0=stdin, 1=stdout, 2=stderr, 3=control
+    - stdout and stderr retain bitwise fidelity; zero terminal escape pollution
+    - Programmatic commands bypass PTY entirely
+    - PTY (Port 0) retained for interactive TTY human intervention
+    - Break-glass uses PTY; agent tooling uses Channel 0x0003
+  - Stream replay
+    - Each console port backed by chunked circular byte buffer
+    - Indexed by monotonic 64-bit stream_offset
+    - session.terminal.read_from(port, offset) -> (Vec<u8>, next_offset)
+    - Reconnection replays from last-acknowledged offset
+    - Zero missing bytes, zero duplicate allocations

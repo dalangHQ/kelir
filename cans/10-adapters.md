@@ -1,19 +1,28 @@
 - Adapters
   - Ingestion matrix
-    - see: artifacts/diagrams/ingestion-adapters.txt
     - Adapter set and ecosystem binding: see: artifacts/diagrams/ingestion-adapters.txt
+    - Core ingestion primitive: kelir-pack
+      - Host-side single-pass compiler: OCI layer blob → EROFS
+      - Streams tar/OCI blob → parses whiteouts → writes contiguous EROFS
+        chunks directly to host CAS
+      - Computes canonical rootfs BLAKE3 digest during the single-pass build
+      - No OCI registry daemon, no content store, no resident puller
+      - Emits cas/blobs/blake3_<hash> consumed by boot path
+      - Distributable as compile-time CLI or host-side library call
     - Two shapes, one rule
       - Contract-bound binary + plugin: MCP, containerd shim v2, OpenShell
       - Thin SDK wrapper: E2B (no plugin, no binary) — see: #E2B-compatibility
     - Rule: the plugin owns translation and policy; the binary owns the wire
     - Process vs plugin boundary
-      - Shim process owns wire; plugin-oci-translator owns policy
+      - Shim process owns wire; kelir-pack owns image→EROFS translation
+      - plugin-oci-translator (commercial) owns containerd-shim-specific policy only
       - Server process owns stdio wire; plugin-mcp owns JSON-RPC translation
       - Driver process owns gRPC wire; plugin-profile owns policy
       - SDK wrapper only: no process, no plugin
     - Tri-native SDKs are the fourth ingestion family; see: 03-sdk-architecture.md
     - Ingestion tiering and licensing
-      - Community adapters: mcp-server (stdio wire), e2b-compat (thin client SDK)
+      - Community adapters: kelir-pack (OCI→EROFS compiler), mcp-server (stdio wire),
+        e2b-compat (thin client SDK)
       - Commercial adapters: containerd-shim-v2 (K8s), openshell-grpc (NVIDIA CDI)
       - Commercial adapter interface: see: plugins/commercial.md#Adapter-binaries
   - MCP adapter
@@ -23,8 +32,10 @@
     - Binds to dynamic console port "kelir-mcp" without interfering with Port 0 PTY
   - Containerd shim v2
     - Architecture (containerd): see: artifacts/diagrams/ingestion-adapters.txt
-    - Shim plugin: see: plugins/commercial.md#oci-translator
-    - Shim maps to Session execution with flat oci-translator config
+    - Image translation (kelir-pack): see: #Ingestion-matrix
+    - Containerd policy: plugin-oci-translator (commercial)
+      - see: plugins/commercial.md#oci-translator
+    - Shim maps to Session execution with flat kelir-pack + oci-translator config
     - Containerd boundary: see: #Process-vs-plugin-boundary
   - OpenShell gRPC driver
     - Architecture (openshell): see: artifacts/diagrams/ingestion-adapters.txt

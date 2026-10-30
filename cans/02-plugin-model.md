@@ -72,6 +72,9 @@
       - LifecycleParticipant: vm lifecycle, commit, host preempt
       - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
       - ConsoleInterposer: console input, console output, window resize, disclosure
+        - Expanded: on_exec_stdout(pid, exec_id, chunk), on_exec_stderr(pid, exec_id, chunk)
+        - Fires for Channel 0x0003 stream_id 1 and 2 respectively
+        - PTY (Port 0) path unchanged; exec path uses exec_id rather than port
       - FsInterposer: fs lookup, read, write; synchronous hot path
       - NetInterposer: net outbound, net inbound; synchronous hot path
       - AnyPlugin: identity marker for any KelirPlugin (fork/composite)
@@ -102,7 +105,9 @@
       - LifecycleCtx exposes: set_watchdog, adjust_balloon, register_veto
       - Lifecycle commit: on_pre_commit, on_post_commit, on_host_preempt
     - FsInodeAttr carries full mode, uid, gid, size, content
-      - Populated verbatim into FUSE LOOKUP replies
+      - Populated into FUSE LOOKUP replies with S_ISUID and S_ISGID masked
+        (mode & !0o6000)
+        - see: 05-storage-plane.md#Atomic-workspace-reconciler
       - Synthetic FUSE inodes honor mode: 0o400 exactly, no permission fallback
     - Plane semantics
       - Wire plane fully bidirectional: outbound and inbound mutation points
@@ -147,7 +152,7 @@
     - Multi-port console partition: ports allocated dynamically at session configuration
     - Binary filter: in-kernel BPF drops traps for unlisted paths
     - Path filter: FUSE layer bypasses VFS hooks outside declared subtrees
-    - Network filter: TAP dispatcher bypasses net hooks outside declared CIDR/port rules
+    - Network filter: ingress dispatcher bypasses net hooks outside declared CIDR/port rules
     - Scope cascade: see: artifacts/code/plugin-trait.rs
     - Invariant: child effective scope is boolean intersection of ancestor scopes
   - Filter-before-FFI gate
@@ -157,12 +162,17 @@
     - Foreign runtimes (V8/Python) do not evaluate synchronous hot-paths inline
     - Zero FFI allocation on non-matching or invalid events
     - FFI trampoline executes only when ring event satisfies scope match
+    - Trusted-prefix execve bypass is distinct from scope rejection
+      - Scope rejection: no handler is registered; FFI not crossed
+      - Gate 3 skip: handler exists; FFI deliberately not crossed (trusted binary)
     - Protects guest toolchain execution speed (cargo build, npm install)
-    - TAP dispatcher applies MountScope natively before forwarding frames
+    - Ingress dispatcher applies MountScope natively before forwarding frames
   - Latency ceiling
     - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs
     - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs
     - Gate 3: Foreign FFI trampolines (V8/Python) dispatch out-of-band in 50-150µs
+    - Gate 3 skip: EROFS trusted prefixes bypass foreign FFI
+      - Gate 2 still evaluates; see: 09-protocol.md#Trap-fast-path
     - Sync hot-paths require native filters or SyncVerdict::YieldToHost
     - Latency overhead on guest toolchains (cargo, npm) must remain below 3%
     - Violation of latency budget blocks core and plugin releases in CI
@@ -185,6 +195,9 @@
       - FsContext: scoped to virtio-fs operations (inode, path, journal)
       - NetContext: scoped to virtio-net operations (L2 frame, L4 stream, socket)
       - ConsoleContext: scoped to virtio-console operations (PTY, grid, window)
+      - ExecContext: scoped to Channel 0x0003 stream ops
+        - Carries pid, exec_id, stream_id (stdout|stderr), chunk, rlimits
+        - Invoked through ConsoleInterposer::on_exec_std{out,err}
     - Inter-plugin typed services:
       - Plugins import peer crate traits directly; see: #Plugin-tiering
       - Rust: c.ctx::<T>() resolves via Has<T> on the monomorphic plugin HList;
@@ -254,6 +267,9 @@
         - plugin-hyper-density: home: see: plugins/commercial.md#hyper-density
         - plugin-cas-snapshot: home: see: plugins/commercial.md#cas-snapshot
         - plugin-oci-translator: home: see: plugins/commercial.md#oci-translator
+          - containerd-boundary policy only
+          - Not the OCI ingestion path; ingestion is kelir-pack (core primitive)
+            - see: 10-adapters.md#Ingestion-matrix
         - plugin-openshell-coordinator: home: see: plugins/commercial.md#openshell-coordinator
       - Pointer rule: plugin files are leaf targets; crate dependencies live in the plugin file
     - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership

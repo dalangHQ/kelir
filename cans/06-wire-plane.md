@@ -2,37 +2,66 @@
   - Wire architecture
     - see: artifacts/diagrams/wire-plane.txt
     - Owner: kelir-core native wire subsystem (kelir-core::wire)
-    - Hardware abstraction: virtio-net paravirtual L2 TAP network bridge
+    - Hardware abstraction: virtio-net bound host-side to embedded smoltcp TCP/IP stack
     - Hook points: on_net_outbound and on_net_inbound
     - Interceptor hooks receive NetContext containing raw Ethernet frames
-  - TAP L2 bridge
-    - TAP interface bridge connects the guest virtio-net device to the host
-    - All frames in both directions cross the TAP boundary
-    - L2 frames are intercepted at the TAP boundary before forwarding
-    - Default-deny protocol filter: all non-TCP L2/L3 frames are silently dropped
-    - ICMP, raw sockets, and unencapsulated UDP are dropped at the TAP boundary
-    - IPv6 disabled at TAP interface unless explicit wire configuration opts in
+  - Userspace network stack
+    - Guest virtio-net Ethernet frames terminate directly in host process memory
+    - Outbound connections translated to plain unprivileged host sockets
+    - Zero host interface creation, zero CAP_NET_ADMIN, zero IP routing changes
+    - Host firewall remains untouched
+    - Default-deny protocol filter: all non-TCP L2/L3 frames dropped at ingress ring
+    - UDP default-deny emits ICMP Port Unreachable back into guest ingress ring
+    - Raw/IPv6 default-deny has no response path; guest observes send success only
+    - Fast-fail TCP RST applies exclusively to interceptor Err(Reject), not protocol filter
+    - ICMP, raw sockets, and unencapsulated UDP dropped at the ingress ring
+    - IPv6 disabled unless explicit wire configuration opts in
     - QUIC transport dropped unless an explicit UDP L4 proxy is configured
   - Raw packet interception points
     - L2/L4 interception dispatched by .intercept(Ring.NetOutbound, ...)
     - L2/L4 interception dispatched by .intercept(Ring.NetInbound, ...)
     - on_net_outbound: hook on frames leaving the guest
     - on_net_inbound: hook on frames arriving at the guest
-    - TAP Dispatcher checks MountScope in native memory before FFI
+    - Ingress dispatcher checks MountScope in native memory before FFI
   - Frame drop and forward semantics
     - Ok(Allow) on outbound = forward; Ok(Allow) on inbound = deliver
     - Ok(YieldToHost) = yield frame to host for async policy
-    - Err(Reject) = silent drop (no RST, no guest error)
+    - Err(Reject) on L4 TCP = inject TCP RST or ICMP Port Unreachable into guest ingress ring
+    - Err(Reject) on L7 HTTP = synthesize 403 with machine-readable JSON receipt
+    - Guest observes ECONNREFUSED in <1ms
+    - Agent corrects action without orchestration timeout
   - DNS entropy gate and sinkhole
-    - Intercepts all UDP port 53 traffic crossing TAP interface
+    - Intercepts all UDP port 53 traffic crossing the userspace ingress ring
     - Computes Shannon entropy on subdomain query labels for wildcard allowlists
     - Queries exceeding entropy threshold (default: 4.5) drop with NXDOMAIN
     - Prevents data exfiltration over DNS label encoding
+  - Synthetic DNS gateway
+    - Guest paravirtual network binds synthetic gateway 192.168.127.1:53
+    - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-core::wire
+    - Queries resolved host-side via native OS resolver primitives
+    - getaddrinfo or trust-dns-resolver bound to live system configuration
+    - Host DNS changes (Wi-Fi switch, VPN toggle) transparent to guest
+    - Traffic to non-gateway resolvers redirected at ingress ring
+    - Split-horizon zones resolve; guest kernel reconfiguration not required
   - Transparent L4 stream diversion
     - Directs guest TCP streams across VirtIO ring to designated host socket
     - Exposes raw duplex stream to registered NetInterposer proxies
+    - L4 diversion is the wire-level carrier for L7 proxies
+    - plugin-vault mounts an explicit L7 proxy stage atop this carrier
+      - see: plugins/vault.md#L7-proxy-stage
+    - Other L7 consumers (db-proxy, wire-ingress) mount at the same carrier
     - Guest TLS and plaintext payloads traverse proxy without guest stack changes
     - Diverted endpoints configured via MountScope port and CIDR allowlists
+  - Upstream dial transport
+    - Outbound TCP permitted by policy checks HTTP_PROXY, HTTPS_PROXY, ALL_PROXY
+    - Host userspace netstack performs CONNECT or SOCKS5 handshake before splicing
+    - Upstream credentials sourced from host environment or builder spec
+    - Guest kernel believes it is dialing raw target IP
+    - Zero in-guest proxy environment variables required
   - Port forwarding
     - Guest-initiated: forward tunnels over vsock:5252 (Channel 1) on PortBound
-    - Host-initiated: session.wire.forward_port() opens host listener multiplexed to guest
+    - Host-initiated: session.wire.forward_port(guest_port, host_port)
+      - Returns Result<u16, WireError> with bound port
+    - host_port = None or 0 binds ephemeral port 0; host kernel allocates free port
+    - Bound port returned immediately; zero collision probability
+    - Parallel test suites share a host with zero hardcoded port conflicts

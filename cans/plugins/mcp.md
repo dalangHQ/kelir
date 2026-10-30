@@ -21,7 +21,10 @@
       - on_trap: observe syscalls to correlate execute_command with trap
       - on_process_exit: emit MCP task completion events
     - Mapping (external tool → ring op)
-      - execute_command → routed through native Terminal Plane
+      - execute_command → routed through Channel 0x0003 (binary-exec)
+        - Streams stdout/stderr via separate stream_ids
+        - No PTY wrap; no ANSI escape noise
+        - Interactive terminal attach (break-glass) still uses PTY / Port 0
       - read_file → delegates to native Storage Plane overlay reader
       - write_file → delegates to native Storage Plane overlay writer
     - Composes with plugin-chaos, plugin-ledger, and native Terminal/Wire planes

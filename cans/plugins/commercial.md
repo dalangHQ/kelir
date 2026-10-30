@@ -14,9 +14,12 @@
     - Depends: kelir-interface, VmmDriver primitives
     - Channels: reserved through frozen-table revision; see 09-protocol.md
   - oci-translator
-    - Tier 2 policy for containerd shim v2
-    - Interface: OCI image to EROFS translation
-    - Depends: kelir-interface, containerd shim v2
+    - Tier 2 policy layer for the containerd shim v2 boundary
+    - Scope: containerd-specific orchestration policy only
+    - Image→EROFS translation is NOT owned by this plugin
+      - Translation is the core kelir-pack primitive
+        - see: 10-adapters.md#Ingestion-matrix
+    - Depends: kelir-interface, containerd shim v2, kelir-pack
     - Channels: none (adapter process owns wire)
   - openshell-coordinator
     - Tier 3 OpenShell gRPC coordination

@@ -19,6 +19,12 @@
     - Kernel clocksource lockdown
       - Injects kernel boot parameters: clocksource=kvm-clock tsc=reliable nohpet
       - Intercepts clock_gettime and gettimeofday syscall traps to enforce monotonic progression
+    - Deterministic RNG
+      - When replay is active, virtio-rng backend is substituted with a
+        seeded ChaCha20 stream
+      - Seed captured in snapshot manifest at replay start
+      - getrandom() payloads match byte-for-byte across replay runs
+      - Outside replay mode, virtio-rng uses host entropy normally
   - Error and return semantics (replay)
     - Hook signature (replay): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (replay)

@@ -190,6 +190,12 @@
       - `plugin check`: same audit as CI, <30s, no network
       - `plugin vectors`: regenerate vectors.json from fixtures
       - `plugin rings --show`
+      - `kelir-pack`: ingest OCI layer blob(s) into EROFS at host CAS
+        - Usage: kelir-pack --oci <ref|blob-dir> --out ~/.kelir/cas
+        - Streams tar/OCI layer blob → parses whiteouts → writes contiguous EROFS chunks
+        - Computes canonical rootfs BLAKE3 digest during the single pass
+        - No registry daemon, no content store, no network puller resident
+        - Exit 0 only when BLAKE3 digest is written to cas/blobs/blake3_<hash>
     - Shares implementation with CI
       - A local pass that CI rejects means the CLI is broken
   - Project structure

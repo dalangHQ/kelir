@@ -19,8 +19,20 @@
       - Implements FsInterposer::on_fs_read for stream secret redaction
       - Maintains carryover window across FUSE read buffers for split matches
       - Implements ConsoleInterposer::on_console_output for terminal stream scrubbing
-      - Operates L7 forward proxy on wire plane transparent L4 diversion hooks
+      - Implements ConsoleInterposer::on_exec_stdout and on_exec_stderr
+        - Scrubs Channel 0x0003 stdout/stderr byte streams
+        - Uses same Aho-Corasick automaton and carryover window
+      - Operates explicit L7 proxy stage on wire plane transparent L4 diversion hooks
       - Injects ephemeral session root CA into guest trust store at on_vm_ready
+    - L7 proxy stage
+      - Byte-slice substitution on L4 streams is banned
+      - HTTP/1.x: parse header block, recalculate Content-Length,
+        rewrite chunk headers when body is modified
+      - HTTP/2: stateful HPACK decode → string substitution → HPACK encode
+      - HTTP/2 DATA frame substitution computes delta and emits WINDOW_UPDATE
+      - Flow-control window frames adjust to new payload length
+      - HPACK dynamic table state preserved across substitutions
+      - Huffman-coded header literals decoded before matching
     - Memory isolation and zeroization
       - Host secret memory pinned with mlock(2) to prevent swapping to disk
       - Memory zeroed using explicit volatile writes upon session termination or drop

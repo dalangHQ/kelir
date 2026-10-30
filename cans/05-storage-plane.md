@@ -16,11 +16,13 @@
     - Zero tarball decompression
   - CoW overlay scratchpad
     - Base workspace mounted strictly read-only as lower layer
-    - overlayfs upperdir lives in guest tmpfs
-    - All writes stay in-memory until explicit reconcile
-    - Instant revert: drop overlayfs upperdir in ~1ms, host SSD untouched
+    - overlayfs upperdir maps a sparse host-backed file via virtio-blk
+    - Writes hit sparse disk blocks, never guest RAM
+    - Instant revert: truncate sparse backing file or punch holes in <1ms
+    - No guest kernel OOM on large writes (npm install, pip install torch, git clone)
+    - Host memory footprint independent of guest write volume
   - Atomic workspace reconciler
-    - Scans tmpfs upperdir diffs; unmodified base files remain untouched
+    - Scans sparse upperdir diffs; unmodified base files remain untouched
     - OverlayFS whiteout resolution
       - Deleted files: char devices with st_rdev == 0 trigger unlink on host target
       - Deleted or opaque dirs: trusted.overlay.opaque="y" triggers host remove_dir_all
@@ -28,6 +30,10 @@
       - Writes mutated files to sibling temporary files (.tmp.<nonce>)
       - Executes atomic exchange or directory swap directly under host root
       - Strict containment: rejects symlink hops and traversals outside host root
+      - All host-side inode resolution uses openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)
+      - Symlink traversals escaping root fail with EXDEV at host VFS layer
+      - S_ISUID and S_ISGID stripped on every write, create, chmod (mode & !0o6000)
+      - In-guest root cannot mint setuid host binaries
   - Synthetic FUSE inodes
     - Injects RAM-only configuration files (.env, .gitconfig) into guest VFS
     - Lookups return synthetic FsInodeAttr (mode: 0o400 honored strictly)
@@ -42,6 +48,13 @@
     - Maps virtual guest inode to physical host inode via virtio-fs mount
     - Delegates acquisition directly to host OS advisory locks (flock)
     - Conflicting lock returns EWOULDBLOCK without host thread latency
+  - Storage quotas
+    - kelir-core::storage maintains allocated_bytes and allocated_inodes atomics
+    - on_fs_write and FUSE mknod/create/mkdir gate against MountScope budget
+    - Exceeding max_bytes fails synchronously with ENOSPC
+    - Exceeding max_inodes fails synchronously with ENOSPC
+    - Zero disk writes occur on quota rejection
+    - Host filesystem and neighboring microVMs remain protected
   - Secondary image mounts
     - Grafts host-opened squashfs/EROFS images into guest VFS namespace
     - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE

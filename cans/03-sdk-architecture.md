@@ -44,8 +44,10 @@
         - Core Session directly exposes the 4 planes
         - session.terminal, session.storage, session.wire, session.checkpoint
         - Terminal: session.terminal.resize(120, 40), session.terminal.export_screen_matrix()
+          - Replay: session.terminal.read_from(port, offset) -> (Vec<u8>, next_offset)
         - Storage: session.storage.reconcile(), session.storage.discard()
         - Wire: session.wire.forward_port(guest_port, host_port)
+          - Returns Result<u16, WireError> with allocated port
         - Checkpoint: session.checkpoint.create(label), session.rollback()
       - Plugin extension pattern
         - Optional domain plugins attach via typed extensions
@@ -87,12 +89,18 @@
         - Portable snapshots: session.vm.export_snapshot() and session.vm.import_snapshot()
       - Session control surface
         - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
+        - Dynamic vCPU roster: session.vm.set_vcpus(n)
         - Hard vetoes: LifecycleCtx.register_veto(event, cb)
           - Veto scope: see 07-lifecycle.md#Lifecycle-vetoes
     - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
       - Channel kind registration: builder.register_channel(kind, handler)
         - kind drawn from frozen table
           - see 09-protocol.md#Channel-allocation-table
+      - Programmatic exec surface: session.exec(cmd, limits?)
+        - Writes on Channel 0x0003; streams stdin/stdout/stderr/control separately
+        - Accepts optional ProcessLimits
+          - see: 09-protocol.md#Trap-fast-path
+        - No PTY involvement
     - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
     - Three-tier binary distribution model
       - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
@@ -134,6 +142,10 @@
     - Typestate transitions: KelirBuilder<Unsealed, Plugins, Params> to
       KelirBuilder<Sealed, Plugins, Params> to Session<Plugins, Params>
     - Every verb consumes self by value: .plugin(), .params(), .trap(), .boot()
+    - .detached(true) forks twice, setsid, redirects stdio to
+      ~/.kelir/sessions/<id>/relay.sock
+      - see: 07-lifecycle.md#Detached-lifecycle
+    - Reattachment via session.attach(session_id) returns Session
     - Plugins accumulate in a monomorphic HList; HandlerCtx<'a, Plugins, Params>
       resolves capabilities via Has<T>, infallible at the call site
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema

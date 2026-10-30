@@ -23,10 +23,14 @@
       - Violations of downward min cascade fail validation with ESecurityViolation
     - Default-zero capability invariant
       - Undeclared subsystems receive zero physical hardware allocations
-      - Omitted network section allocates zero TAP devices and drops all L2 frames
+      - Omitted network section allocates zero userspace network stacks
+        and drops all L2 frames at the ingress ring
       - Omitted storage mounts allocate zero host paths, running read-only EROFS
     - Physicality invariant
-      - Every schema key must terminate in MMU flags, BPF bytecode, or PMU counters
+      - Every schema key must terminate in a physically enforceable mechanism:
+        MMU flags, BPF bytecode, PMU counters, kernel-enforced resource
+        limits (rlimits, quotas), or host hardware device allocation
+        (virtio-rng, virtio-shm doorbells)
       - Decorative or non-enforceable configuration keys are rejected at boot
     - Strict serialization boundary
       - Static knobs, limits, and scopes serialize cleanly to schema files
