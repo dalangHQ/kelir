@@ -11,6 +11,9 @@
     - Zero host interface creation, zero CAP_NET_ADMIN, zero IP routing changes
     - Host firewall remains untouched
     - Default-deny protocol filter: all non-TCP L2/L3 frames dropped at ingress ring
+    - Permitted UDP egress uses endpoint-independent mapping (Full Cone NAT)
+    - Single host UDP socket per guest source port serves multiple remote peers
+    - Preserves external source port identity for STUN, WebRTC, and Tailscale
     - UDP default-deny emits ICMP Port Unreachable back into guest ingress ring
     - Raw/IPv6 default-deny has no response path; guest observes send success only
     - Link-local quarantine: 169.254.0.0/16 and fe80::/10 dropped before policy eval
@@ -48,6 +51,12 @@
     - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-core::wire
     - Queries resolved host-side via live OS resolver state
       - Linux: /etc/resolv.conf watched via inotify; nameservers reloaded on change
+      - Search domain expansion: host search domains and ndots parsed from OS state
+      - Single-label queries expand against host search candidates before policy eval
+      - Bare hostnames in corporate VPN and internal split-horizon resolve transparently
+      - SOCKS5h synthetic pool: remote proxy DNS maps domains to 198.18.0.0/15
+      - Synthetic IPs bypass local CIDR filters; domain policy rules govern admission
+      - Original target hostname preserved verbatim in upstream proxy CONNECT frame
       - macOS: SCDynamicStore subscription per interface; VPN and Wi-Fi toggles
         update upstream servers without restarting the guest
       - Windows: DNS client API queried on each change notification
@@ -62,6 +71,10 @@
   - Transparent L4 stream diversion
     - Directs guest TCP streams across VirtIO ring to designated host socket
     - Exposes raw duplex stream to registered NetInterposer proxies
+    - Protocol sniff gate: carrier inspects initial 16 bytes of diverted stream
+    - Valid HTTP verb or TLS ClientHello promotes stream to L7 proxy stage
+    - Non-HTTP byte streams bypass L7 stages with zero-copy L4 socket splicing
+    - Prevents stream stalls on Redis, NATS, and custom binary protocols
     - L4 diversion is the wire-level carrier for L7 proxies
     - plugin-vault mounts an explicit L7 proxy stage atop this carrier
       - see: plugins/vault.md#L7-proxy-stage
@@ -71,6 +84,9 @@
     - The carrier does not perform byte-slice substitution on L4 streams;
       L7 stages terminate TLS host-side and operate on plaintext HTTP
       see: 01-architecture.md#Trust-boundaries
+    - Streaming payloads maintain MAX_PLACEHOLDER_LEN - 1 carryover window
+    - Frame reassembly eliminates token fragmentation across TCP boundaries
+    - Normalizes HTTP/2 streams into framed request buffers before scan
   - Upstream dial transport
     - Outbound TCP permitted by policy is dialed through the host netstack
     - Proxy chaining is first-class, not an afterthought
@@ -92,6 +108,9 @@
   - Port forwarding
     - Guest-initiated: forward tunnels over vsock:5252 Channel 0x0001 on PortBound
     - Host-initiated: session.wire.forward_port(guest_port, host_port)
+      - Host listener flags: SO_REUSEADDR and SO_REUSEPORT set on all host binds
+      - Immediate teardown release: SO_LINGER zero forces instant TCP RST
+      - Eliminates TIME_WAIT socket exhaustion across rapid test iterations
       - Returns Result<u16, WireError> with bound port
     - host_port = None or 0 binds ephemeral port 0; host kernel allocates free port
     - Bound port returned immediately; zero collision probability

@@ -2,7 +2,8 @@
   - Entity model
     - Minimal 3-table ledger: sessions, cas_leases, schema_version
     - Single Source of Truth for runtime persistence schema
-      - sessions table tracks session_id, status, pids, rootfs_hash, expires_at
+      - sessions table tracks detached sessions exclusively; ephemeral runs bypass it
+      - Ephemeral session state stays resident in host process memory only
       - cas_leases tracks blob_hash, holder_pid, expires_at_unix with 30s TTL
       - schema_version tracks single-digit schema state
       - Lineage parent_digest edges are stored inside immutable snapshot manifests

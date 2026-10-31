@@ -118,6 +118,7 @@
     - --clock-continuity-coverage
       - Asserts guest_clock manifest survives restore across multi-day offsets
       - Asserts monotonic clock does not regress across restore
+      - Asserts CLOCK_MONOTONIC never produces negative deltas across fork branches
     - All flags run in cans-check; exit code 1 on any orphan or gap
     - Flag-drift gate
       - CI calls `just check-spec`, not raw flags
@@ -201,8 +202,10 @@
     - Subcommands
       - `kelir doctor`: Probes hardware KVM/HVF virtualization and page size
         - Linux / RPi probe: /dev/kvm access, 4KB vs 16KB host page size
+        - Linux probe: verifies pidfd_open(2) and pidfd_send_signal(2) kernel support
         - Android probe: /dev/avf, pKVM node, or proot ptrace readiness
-        - macOS probe: HVF entitlements, ARM64 16K page alignment
+        - macOS probe: HVF entitlements, Stage-2 unmap support, PMCCNTR_EL0 access
+        - x86_64 probe: asserts invariant TSC and Leaf 0x1 TSC-deadline in CPUID
       - `kelir doctor --enforce`: Writes immutable /etc/kelir/hw.lock
       - `kelir setup`: Executes host machine hardening against bare-metal runs:
         - shims: Prepends ~/.kelir/shims to PATH for claude, pytest, python

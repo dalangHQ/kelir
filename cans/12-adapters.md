@@ -6,6 +6,11 @@
       - Streaming HTTPS client pulls OCI manifest and layer tar chunks directly
       - Layers stream directly into RAM compiler; no intermediate tarballs on disk
       - Parses whiteouts inline and writes contiguous EROFS chunks to host CAS
+      - Streaming unpack admission clamps maximum expansion ratio to 15:1
+      - Single layer uncompressed extraction budget capped at 8 GiB strictly
+      - Layer entry count bounded to a ceiling of 500,000 inodes
+      - Exceeding decompression budget aborts compilation with E_LAYER_OVERSIZE
+      - Eliminates host memory exhaustion and layer zip-bomb vectors during pull
       - Computes canonical rootfs BLAKE3 digest during the single-pass build
       - No OCI registry daemon, no content store, no resident puller
       - Emits cas/blobs/blake3_<hash> consumed by boot path

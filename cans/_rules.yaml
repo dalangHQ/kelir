@@ -68,7 +68,7 @@ redundancy:
   fuzzy: false
   # Load-bearing vocabulary of this corpus: every node mentions these nouns,
   # so keyword sprawl on them is not a canonical-home violation.
-  stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires, host, guest, plugin, on, is, kelir, virtio, via, no, session]
+  stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires, host, guest, plugin, on, is, kelir, virtio, via, no, zero, session]
   synonyms:
     - [postgres, postgresql, pg]
     - [auth, authentication, sign-in, signin]

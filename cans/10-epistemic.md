@@ -21,13 +21,16 @@
     - Population: per ReceiptConfig; opt-in fields not enabled are absent
       (Option), never 0
       - retired_instructions: sampled from host vCPU thread via perf_event_open
+        - Linux: perf_event_open with exclude_host=1 and exclude_hypervisor=1
+        - Sampled strictly during active KVM_RUN state
+        - macOS ARM64: read via hv_vcpu_get_sys_reg from PMCCNTR_EL0 / PMEVCNTR<n>_EL0
+        - Mach thread counters banned; host hypervisor overhead excluded
+        - Guarantees cross-host deterministic counter equivalence
       - exit_kind: ExitKind enum, always populated
         - Normal | Signal(u32) | KernelPanic(String) | HypervisorFault(String)
         - KernelPanic payload scraped from 64KB early-boot UART buffer
           - see: 01-architecture.md#Early-boot-diagnostics
         - Replaces reliance on exit_code alone for boot failure classification
-      - Apple Silicon: queried via native Mach thread instruction counters
-      - Eliminates cross-architecture dirty-page and wall-clock variance
       - Opt-in: syscall_count
       - dirty_bytes is always populated: zero is a real measurement, not an
         absent value

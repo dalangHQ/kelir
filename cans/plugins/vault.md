@@ -17,20 +17,28 @@
       - Enforces vault:// placeholder URN generation: real secrets never enter guest physical RAM
     - Cross-plane interposer attachments
       - Implements FsInterposer::on_fs_read for stream secret redaction
-      - Maintains carryover window across FUSE read buffers for split matches
+      - Maintains carryover window of MAX_PLACEHOLDER_LEN - 1 bytes across chunks
       - Implements ConsoleInterposer::on_console_output for terminal stream scrubbing
       - Implements ConsoleInterposer::on_exec_stdout and on_exec_stderr
         - Scrubs Channel 0x0003 stdout/stderr byte streams
         - Uses same Aho-Corasick automaton and carryover window
       - Operates explicit L7 proxy stage on wire plane transparent L4 diversion hooks
       - Injects ephemeral session root CA into guest trust store at on_vm_ready
+      - Forces runtime CA environment variables across all spawned task contexts:
+        - SSL_CERT_FILE, NODE_EXTRA_CA_CERTS, REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE
+      - Mounts synthetic FUSE inodes over site-packages certifi bundles
     - L7 proxy stage
       - Host terminates outbound TLS for secret-bound hosts
       - Ephemeral per-session CA minted by host runtime at on_vm_ready
-      - CA root cert injected into guest trust store transparently
+      - CA injected via trust store, env pointers, and synthetic FUSE overrides
       - Plaintext HTTP request/response is the substitution surface
+      - Mandatory auth header lockdown on all secret-bound destination hosts
+      - Non-placeholder authentication headers reject instantly with ESecurityViolation
+      - Prevents model context exfiltration using attacker-supplied personal API keys
       - Header substitution: by binding field name (Authorization, X-API-Key, ...)
       - Body substitution: form-encoded, JSON, and text bodies up to 16 MiB
+      - Streaming bodies reassembled with MAX_PLACEHOLDER_LEN - 1 carryover window
+      - Eliminates pattern fragmentation across TCP frames and chunked transfers
       - Content-Length recomputed; chunked bodies re-encoded with fresh sizes
       - Normalizes guest HTTP/2 into semantic HTTP/1.1 request structures in host RAM
       - Substitutes headers and bodies before re-encoding for upstream TLS/H2 session

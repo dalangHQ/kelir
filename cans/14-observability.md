@@ -28,7 +28,8 @@
   - Health signals
     - Heartbeat loss marks a guest as stalled or wedged
     - Parent watchdogs reap orphaned runtime processes
-      - Watchdog in runtime child reads SQLite lease; see: 01-architecture.md#Host-state-root
+      - Detached sessions: watchdog in runtime child polls SQLite lease TTL
+      - Ephemeral sessions: Linux pidfd and OS death signals drive zero-delay reaping
       - Lease heartbeat from the runtime proves liveness; TTL expiry
         triggers the janitor
       - OS kernel death signals terminate backends on host parent exit

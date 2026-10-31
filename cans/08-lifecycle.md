@@ -18,6 +18,9 @@
     - Set-level invariant: every item is a hypervisor primitive, not a
       guest-side simulation. Nothing in this set is achievable without driver
       cooperation.
+    - Monotonic clock clamp: CLOCK_MONOTONIC never regresses across restore
+    - Restored monotonic time clamps to max(current_monotonic, snapshot_monotonic)
+    - Preserves timer loop invariants for guest Tokio, Go, and libuv runtimes
     - Session lifecycle handles: fork, suspend, resume, rollback, skew_clock
     - Context lifecycle configuration: set_watchdog, adjust_balloon, register_veto
     - All primitives execute via active VmmDriver backend without in-guest agents
@@ -37,7 +40,13 @@
     - Driver primitive: fork returns Box<dyn VmmDriver>
       see: artifacts/code/vmm-driver-trait.rs
     - KVM path: userfaultfd + KVM memory cloning
-    - HVF path: Stage-2 translation table write protection (hv_vm_protect)
+    - HVF path: Stage-2 translation write protection via hv_vm_protect
+      - Stage-2 data aborts resolve via Chunked Page Promoter
+      - Eagerly promotes 2MB contiguous blocks via Mach vm_copy CoW
+      - macOS fork isolation: child sessions inherit zero CoreFoundation state
+      - SCDynamicStore and Keychain bindings isolated to pre-fork supervisor
+      - Forked children resolve DNS via POSIX structures to prevent SIGABRT
+      - Eliminates vCPU exit storms during large heap allocations
     - Host runtime calls fork_state() to isolate plugin states per branch
     - Children share warm parent memory
       - Warmed compilers, loaded dependencies, in-process caches
@@ -185,6 +194,9 @@
     - Zero-harness boundary detection
       - Tracks process group exits and foreground PTY idle quiescence
       - Traps sentinel FUSE inodes on unbacked virtual paths (/dev/kelir-gate)
+      - Pre-checkpoint dentry trim: VirtIO-FS issues active FUSE forget pass
+      - Unreferenced dentry nodes with zero open handles evicted before capture
+      - Prevents checkpoint descriptor explosion from recursive directory sweeps
       - Intercepts configured clean execution targets before workload exit
     - Autonomous step verification loop
       - Host registers StepEvaluator closure through CheckpointService
@@ -260,6 +272,9 @@
     - Runner ownership is explicit
       - The spawning process inserts an active row into SQLite sessions table
       - Row carries session_id, runner child pid, and expires_at lease TTL
+      - Linux signaling uses pidfd_open and pidfd_send_signal exclusively
+      - Signal delivery verifies host_boot_id and proc start_time before dispatch
+      - Stale catalog rows with recycled PIDs abort signal delivery safely
       - Runner updates expires_at every 30s; expired lease triggers cleanup
       - The runner child inherits the row id via an environment variable
       - The runner updates the row's lease heartbeat while alive

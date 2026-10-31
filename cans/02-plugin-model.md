@@ -168,12 +168,12 @@
     - Evaluates native compiled schema validators, CIDR, and path rules in Rust
     - Foreign runtimes skip FFI on non-matching events
     - FFI trampoline executes only when ring event satisfies scope match
-    - Trusted-prefix execve bypass executes Gate 3 skip; see: 11-protocol.md#Trap-fast-path
+    - Trusted-prefix execve bypass executes Gate 3 skip if argv targets are trusted
   - Latency ceiling
     - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs
     - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs
     - Gate 3: Foreign FFI trampolines (V8/Python) dispatch out-of-band in 50-150µs
-    - Gate 3 skip: EROFS trusted prefixes bypass foreign FFI; see: 11-protocol.md#Trap-fast-path
+    - Gate 3 skip: EROFS trusted binary and payload paths bypass foreign FFI
     - Sync hot-paths require native filters or SyncVerdict::YieldToHost
     - Latency overhead on guest toolchains (cargo, npm) must remain below 3%
     - Violation of latency budget blocks core and plugin releases in CI

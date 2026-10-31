@@ -5,6 +5,9 @@
     - Low-level FUSE pass-through bridge directly linking guest VFS to host workspace
     - Pipeline engine exposes synchronous lookup, read, and write interception
     - Emits physical StorageDelta events directly to host event bus on commit
+    - Mandatory non-blocking host I/O: host descriptors open with O_NONBLOCK
+    - Host FIFO and socket rejection: S_IFIFO and S_IFSOCK fail lookup with ENXIO
+    - Host blocking prevention: zero guest syscalls may sleep host ring workers
     - Encapsulation invariant
       - Host workspace is locked to mode 000 on host; only the hypervisor
         descriptor bridges access to virtio-fs lowerdir
@@ -17,6 +20,8 @@
   - CoW overlay scratchpad
     - Base workspace mounted strictly read-only as lower layer
     - overlayfs upperdir maps a sparse host-backed file via virtio-blk
+    - Rollback page purge: FALLOC_FL_PUNCH_HOLE follows with posix_fadvise
+    - posix_fadvise(POSIX_FADV_DONTNEED) purges host kernel dirty page cache
     - Writes hit sparse disk blocks, never guest RAM
     - Instant revert: truncate sparse backing file or punch holes in <1ms
     - No guest kernel OOM on large writes (npm install, pip install torch, git clone)
@@ -31,9 +36,15 @@
     - OverlayFS whiteout resolution
       - Deleted files: char devices with st_rdev == 0 trigger unlink on host target
       - Deleted or opaque dirs: trusted.overlay.opaque="y" triggers host remove_dir_all
+      - RAII staging guard: StagingGuard struct owns all .tmp.<nonce> files
+      - Staging cleanup: uncommitted staging files unlink unconditionally on Drop
+      - Disarm on commit: guard disarms only after atomic directory swap succeeds
     - Atomic staging exchange
       - Writes mutated files to sibling temporary files (.tmp.<nonce>)
       - Executes atomic exchange or directory swap directly under host root
+      - Fast path uses renameat2(RENAME_EXCHANGE) directly
+      - Host Inode Broker pre-checks active host flock descriptors
+      - Fallback on EBUSY or EPERM: in-place write with 2000ms backoff
       - Strict containment: rejects symlink hops and traversals outside host root
       - All host-side inode resolution uses openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)
       - Symlink traversals escaping root fail with EXDEV at host VFS layer
@@ -56,6 +67,9 @@
   - Storage quotas
     - kelir-core::storage maintains allocated_bytes and allocated_inodes atomics
     - on_fs_write and FUSE mknod/create/mkdir gate against MountScope budget
+    - Quota isolation: quotas evaluate exclusively against sparse upperdir delta
+    - Zero-crawl baseline: lowerdir host workspace incurs zero statfs traversal
+    - statfs reporting: returns remaining upperdir quota in O(1) time
     - Exceeding max_bytes fails synchronously with ENOSPC
     - Exceeding max_inodes fails synchronously with ENOSPC
     - Zero disk writes occur on quota rejection

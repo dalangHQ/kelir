@@ -4,6 +4,7 @@
     - Binary framing isolates sub-protocols via channel_id
     - Channel allocation table
       - 0x0000: core hypervisor lifecycle + trap control
+      - 0x0000 also dispatches out-of-band process signals and window resize
       - 0x0001: L4 stream forwarding (native wire plane)
       - 0x0002: profile-sync (plugin-profile)
       - 0x0003: binary-exec (native terminal plane, programmatic exec streams)
@@ -30,7 +31,10 @@
       - 0x00: stdin
       - 0x01: stdout
       - 0x02: stderr
-      - 0x03: control (exit code, signals, rlimit descriptors)
+      - 0x03: stream control (exit code, EOF, rlimit descriptors)
+    - Out-of-band signal isolation: SIGINT, SIGTERM, and resize bypass 0x0003
+    - High-priority process signals route exclusively over Channel 0x0000
+    - Eliminates signal delivery stalls behind saturated stdout/stderr rings
     - stdout and stderr carry raw bytes; no line wrapping, no escape injection
     - Flow control: explicit frame protocol (`EXEC_IO_SPEC`)
       - Control frames (EOF, window resize, signals) interleave with data frames
@@ -79,7 +83,10 @@
       - Gate 3: trap handler dispatch through foreign FFI trampoline (50-150µs)
       - Synchronous write/packet filters evaluate native Rust rules; foreign callbacks yield
       - Gate 3 skip: binary_path rooted in EROFS trusted prefix
-        - /usr/bin, /bin, /usr/lib bypass foreign FFI entirely
+        - /usr/bin, /bin, /usr/lib bypass foreign FFI only when payload is trusted
+        - Target script and argument paths must resolve strictly within EROFS
+        - Dynamic interpreters (python, node, bash, sh, perl, ruby) inspect argv[1..]
+        - Script arguments targeting /workspace/** forfeit skip and traverse Gate 3
         - Gate 2 still evaluates; Allow proceeds without FFI crossing
         - Untrusted /workspace/** always traverses Gate 3
         - Compiler and test-suite fork/exec storms run at hardware speed

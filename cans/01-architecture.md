@@ -170,6 +170,8 @@
     - TLS terminates on the host via L7 proxy stage before bytes reach the guest
     - Carrier is transparent L4 diversion; see: 07-wire-plane.md#Transparent-L4-stream-diversion
     - Inspection, HTTP/2 normalization, and substitution: see: plugins/vault.md#L7-proxy-stage
+    - Injects runtime CA env pointers and synthetic FUSE bundles across all tasks
+    - Streaming substitution preserves sliding carryover window across frames
     - Upstream certificates validate host-side; guest never runs HPACK dynamic table surgery
   - Embedded profile
     - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
@@ -178,6 +180,11 @@
   - Host memory pressure watcher
     - Active balloon inflation/deflation loop in kelir-core
     - Linux: subscribe to cgroup v2 memory.pressure via io_uring/epoll
+    - Linux reclaim: madvise(MADV_DONTNEED) releases physical frames immediately
+    - macOS reclaim: stage-2 hv_vm_unmap unbinds guest physical frames
+    - macOS deallocation: mach_vm_deallocate purges host wired footprints
+    - macOS zero-fill swap: Mach copy-on-write zero pages replace reclaimed extents
+    - macOS madvise-alone is banned: does not drop physical hypervisor RSS
     - macOS: register DISPATCH_SOURCE_TYPE_MEMORYPRESSURE kernel listener
     - Pressure signal inflates virtio-balloon queue
     - Guest kswapd evicts clean page caches into balloon
@@ -194,6 +201,10 @@
   - Host state root
     - Content-addressed root: ~/.kelir/
       - catalog.db: embedded SQLite (WAL mode)
+      - Lockless ephemeral path: detached=false sessions bypass catalog.db
+      - Ephemeral sessions allocate zero SQLite transactions or rows
+      - Ephemeral state anchors strictly to parent process lifetime
+      - catalog.db tracks detached sessions and shared CAS blob leases only
       - cas/blobs/blake3_<hash>: immutable layer storage
       - sessions/<session_id>/: ephemeral runtime state
     - State engine
@@ -289,8 +300,13 @@
   - Driver backends
     - Hardware tier (Default, Zero-Escape Boundary):
       - driver-rustvmm: Linux bare-metal KVM + userfaultfd CoW + CUDA CDI
-      - driver-hvf: macOS native Apple Silicon HVF via Hypervisor.framework
+        - CPUID synthetic filter: force standard invariant TSC and Leaf 0x1
+        - TSC-deadline advertised unconditionally across AMD and Hygon
+        - Unknown x86 vendor masks normalize to canonical KVM profile
+      - driver-hvf: macOS HVF + 2MB Stage-2 chunked page promoter CoW
       - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET
+        - Restore sequence invariant: Local APIC state commits before TSC
+        - Setting TSC deadlines before APIC initialization is prohibited
       - driver-avf: Android Virtualization Framework via /dev/avf and pKVM
     - Emulated tier (Strict Opt-In, Development Only):
       - driver-bwrap: Linux user namespaces; requires allow_emulated_fallback=true
