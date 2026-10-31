@@ -17,6 +17,8 @@
 │      commercial plugin: streaming HTTPS client pulls OCI manifest and       │
 │      layer chunks directly into a RAM compiler; whiteouts parsed inline;    │
 │      contiguous EROFS chunks land in cas/blobs/blake3_<hash>.               │
+│      Unpack admission: max expansion 15:1, single-layer budget 8 GiB,       │
+│      max 500,000 inodes; over budget aborts with E_LAYER_OVERSIZE.          │
 │      oci-translator owns containerd-shim boundary policy only.              │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 4. OPENSHELL COMPUTE DRIVER (NVIDIA AI Infrastructure):                     │

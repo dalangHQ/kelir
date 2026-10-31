@@ -24,8 +24,12 @@
 │  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
 │  │                           kelir-drivers (Pluggable Backends)                      │  │
 │  │   ├── driver-rustvmm (DEFAULT Linux): KVM + userfaultfd CoW + CUDA CDI            │  │
+│  │   │   CPUID synthetic filter: invariant TSC, Leaf 0x1 TSC-deadline,               │  │
+│  │   │   unconditional across AMD/Hygon; unknown vendors -> canonical KVM.           │  │
 │  │   ├── driver-hvf (DEFAULT macOS): Native HVF + direct Mach vm_copy CoW            │  │
+│  │   │   Stage-2 chunked promoter: eager 2MB blocks via Mach vm_copy CoW.            │  │
 │  │   ├── driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure Linux MSHV         │  │
+│  │   │   Restore: Local APIC commits before TSC; TSC-before-APIC prohibited.         │  │
 │  │   ├── driver-avf: Android Virtualization Framework via /dev/avf & pKVM            │  │
 │  │   ├── driver-bwrap: Unprivileged Linux user namespaces + seccomp-unotify fallback │  │
 │  │   └── driver-proot: Unprivileged Android/Termux ptrace emulation fallback         │  │

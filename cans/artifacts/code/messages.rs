@@ -84,10 +84,13 @@ pub struct Handshake {
 /// raw bytes; no line wrapping, no escape injection; PTY bypassed.
 /// Guest shim holds a fixed 64-slot ExecSlot table mapping guest pid to
 /// exec_id; exit frames on 0x0003 defer until stdout/stderr EOF flush.
+/// Out-of-band isolation: SIGINT, SIGTERM, and window resize bypass
+/// 0x0003 and route exclusively over Channel 0x0000, so signals never
+/// stall behind saturated stdout/stderr rings.
 pub const EXEC_STREAM_STDIN: u8 = 0x00;
 pub const EXEC_STREAM_STDOUT: u8 = 0x01;
 pub const EXEC_STREAM_STDERR: u8 = 0x02;
-pub const EXEC_STREAM_CONTROL: u8 = 0x03; // exit code, signals, rlimit descriptors
+pub const EXEC_STREAM_CONTROL: u8 = 0x03; // stream control: exit code, EOF, rlimit descriptors (signals + resize ride Channel 0x0000)
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum HostToGuest {

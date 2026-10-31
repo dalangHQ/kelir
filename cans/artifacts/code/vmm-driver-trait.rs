@@ -68,6 +68,9 @@ pub struct VmConfig {
 /// Guest clock captured with a snapshot, stored as guest_clock.json in
 /// the snapshot manifest. Restores set both clocks from it before
 /// unfreezing, so guest time leaps from capture to restore.
+/// Restored monotonic time clamps to max(current_monotonic,
+/// snapshot_monotonic): CLOCK_MONOTONIC never regresses across restore,
+/// and fork branches never produce negative deltas.
 #[derive(Debug, Clone)]
 pub struct GuestClock {
     pub absolute_wall_clock_ns: u64,
@@ -141,10 +144,17 @@ pub trait VmmDriver: Send + Sync {
 
     /// Branches the running VM into an isolated CoW clone in <15ms
     /// - Linux: userfaultfd + KVM memory cloning
-    /// - macOS: HVF memory-mapped page duplication
+    /// - macOS: HVF Stage-2 chunked page promoter: Stage-2 data aborts
+    ///   promote eager 2MB blocks via Mach vm_copy CoW; children inherit
+    ///   zero CoreFoundation state, SCDynamicStore/Keychain stay with the
+    ///   pre-fork supervisor, and forked children resolve DNS via POSIX
+    ///   structures (no SIGABRT); no vCPU exit storms on large heaps
     async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError>;
 
     /// Creates an atomic in-memory checkpoint of guest RAM and vCPU registers
+    /// Pre-checkpoint dentry trim: VirtIO-FS issues an active FUSE forget
+    /// pass; unreferenced dentries with zero open handles are evicted
+    /// before capture, preventing descriptor explosion from recursive sweeps
     async fn checkpoint(&mut self, label: &str) -> Result<SnapshotDescriptor, VmmError>;
 
     /// Maps an anonymous zero-copy host memory segment into guest address space
@@ -159,6 +169,8 @@ pub trait VmmDriver: Send + Sync {
     /// Reverts guest physical RAM and vCPU registers to a prior checkpoint in <8ms.
     /// Host filesystem state is the sparse upperdir delta, discarded by
     /// kelir-core Session::rollback (truncate / punch holes), not a tmpfs diff.
+    /// Rollback page purge follows with posix_fadvise(POSIX_FADV_DONTNEED)
+    /// to purge the host kernel dirty page cache.
     async fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), VmmError>;
 
     /// Flushes dirty RAM pages to disk and drops host memory consumption to 0 MB.

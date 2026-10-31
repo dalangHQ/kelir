@@ -20,6 +20,13 @@
                               live upstream. Upstreams track host resolver
                               state (inotify / SCDynamicStore / DNS client API),
                               so Wi-Fi/VPN changes need no VM restart.
+                              Single-label queries expand against host search
+                              domains (ndots parsed from OS state) before policy
+                              eval; bare hostnames resolve transparently.
+                              SOCKS5h synthetic pool maps domains to 198.18.0.0/15;
+                              synthetic IPs bypass local CIDR filters, domain
+                              policy governs admission, and the original hostname
+                              is preserved verbatim in the CONNECT frame.
                               No entropy gating: it is not a policy primitive.
                                         │
                                         ▼
@@ -38,6 +45,20 @@
                              Channel 0x0001 (L4 stream forwarding). L4 diversion is the
                              carrier; L7 proxies (vault, db-proxy, wire-ingress)
                              mount their stages atop it and terminate TLS host-side.
+                             Protocol sniff gate: the carrier inspects the initial
+                             16 bytes; an HTTP verb or TLS ClientHello promotes the
+                             stream to L7, non-HTTP streams bypass L7 with zero-copy
+                             L4 splicing (no stalls on Redis, NATS, binary protocols).
+                             Permitted UDP egress uses endpoint-independent (Full Cone)
+                             NAT: one host UDP socket per guest source port, external
+                             source port preserved for STUN, WebRTC, Tailscale.
+                             Streaming L7 payloads keep a MAX_PLACEHOLDER_LEN - 1
+                             carryover window; frame reassembly eliminates token
+                             fragmentation across TCP boundaries; HTTP/2 streams
+                             normalize into framed request buffers before scan.
+                             Port-forward host binds set SO_REUSEADDR + SO_REUSEPORT;
+                             SO_LINGER zero forces instant TCP RST on teardown,
+                             eliminating TIME_WAIT exhaustion across rapid iterations.
 
   Database proxying: see plugins/db-proxy.md.
   L7 proxy and credential signing: see 07-wire-plane.md.

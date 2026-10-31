@@ -12,6 +12,8 @@
 │      large writes, host footprint independent of write volume.              │
 │    - Instant Revert: truncate the sparse backing file or punch holes        │
 │      in <1ms. Host SSD blocks are reclaimed, not a RAM layer dropped.       │
+│    - Rollback page purge: FALLOC_FL_PUNCH_HOLE + posix_fadvise              │
+│      (POSIX_FADV_DONTNEED) purges the host kernel dirty page cache.         │
 │    - Ephemeral scratch device: dedicated virtio-blk sparse disk at /tmp     │
 │      and /var/cache, discarded on teardown without reconciliation; keeps    │
 │      high-churn caches out of workspace git diffs and whiteout tracking.    │
@@ -50,9 +52,18 @@
 │      cas_leases, schema_version. No resident daemon; every process opens    │
 │      the file directly. WAL + busy_timeout 5000ms; writers serialize via    │
 │      busy handlers, readers proceed concurrently.                           │
-│    - sessions: session_id, status, pids, rootfs_hash, expires_at; the       │
-│      sessions row carries the detached-runner lease (runner refreshes       │
-│      expires_at every 30s; expiry triggers a janitor sweep on startup).     │
+│    - sessions: DETACHED sessions only (session_id, status, pids,            │
+│      rootfs_hash, expires_at); the sessions row carries the detached-       │
+│      runner lease (runner refreshes expires_at every 30s; expiry            │
+│      triggers a janitor sweep on startup).                                  │
+│    - Lockless ephemeral path: detached=false sessions bypass catalog.db     │
+│      entirely: zero SQLite transactions or rows; ephemeral state stays      │
+│      resident in host process memory, anchored to parent lifetime.          │
+│    - Runner signaling uses pidfd_open/pidfd_send_signal exclusively,        │
+│      verified against host_boot_id + proc start_time; stale rows with       │
+│      recycled PIDs abort delivery.                                          │
+│    - Ephemeral reaping: Linux pidfd + OS death signals drive zero-delay     │
+│      reaping (no lease polling; detached sessions use the watchdog poll).   │
 │    - cas_leases: blob_hash, holder_pid, expires_at_unix (30s TTL);          │
 │      blobs with zero unexpired leases are pruned without locks.             │
 │    - Schema evolution drops ephemeral tables; immutable CAS files stay      │
@@ -64,4 +75,7 @@
 │    - Quotas: allocated_bytes / allocated_inodes atomics gate on_fs_write    │
 │      and FUSE mknod/create/mkdir; over budget fails synchronously ENOSPC,   │
 │      zero disk writes on rejection.                                         │
+│    - statfs returns remaining upperdir quota in O(1); quotas evaluate       │
+│      against the sparse upperdir delta only; the lowerdir host workspace    │
+│      incurs zero statfs traversal (zero-crawl baseline).                    │
 └─────────────────────────────────────────────────────────────────────────────┘

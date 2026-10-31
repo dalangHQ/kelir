@@ -15,6 +15,8 @@
 │   ├── Port Multiplexer ─────────► Routes port IDs to discrete dispatchers   │
 │   ├── Interceptor Pipeline ─────► Synchronous ConsoleInterposer execution   │
 │   │                                (PTY policy: see 04-terminal-plane.md)   │
+│    │                                Masking keeps MAX_PLACEHOLDER_LEN - 1   │
+│    │                                carryover window across chunks.         │
 │   ├── Binary Exec (Ch 0x0003) ──► stdin/stdout/stderr/control streams;      │
 │   │                                no PTY; exec_id-keyed, bitwise fidelity  │
 │   └── Stream Replay ────────────► Append-only logs under sessions/<id>/     │

@@ -9,6 +9,12 @@
 // All host-side inode resolution uses openat2(RESOLVE_BENEATH |
 // RESOLVE_NO_MAGICLINKS); S_ISUID/S_ISGID are stripped on every write
 // (mode & !0o6000).
+// Phases: Detect (scan upperdir diffs) -> Classify whiteouts -> Stage
+// (StagingGuard owns .tmp.<nonce> files) -> Commit (atomic exchange or
+// directory swap) -> Contain (strict root containment, EXDEV on escape).
+// Host I/O on this plane is mandatory non-blocking: descriptors open
+// with O_NONBLOCK, FIFO/socket lookups fail with ENXIO, and zero guest
+// syscalls may sleep host ring workers.
 //
 // Canonical spec home: cans/05-storage-plane.md#Atomic-workspace-reconciler
 
@@ -31,6 +37,29 @@ pub struct CommitStats {
     pub files_changed: u64,
     pub whiteouts_resolved: u64,
 }
+
+/// Owns every .tmp.<nonce> staging file for one commit. Uncommitted
+/// staging files unlink unconditionally on Drop; the guard disarms only
+/// after the atomic directory swap succeeds, so a failed commit never
+/// leaves staging files behind.
+pub struct StagingGuard {
+    pub staged: Vec<PathBuf>,
+    pub disarmed: bool,
+}
+
+impl Drop for StagingGuard {
+    fn drop(&mut self) {
+        if !self.disarmed {
+            for path in &self.staged {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+}
+
+// Commit fast path: renameat2(RENAME_EXCHANGE) directly, after the Host
+// Inode Broker pre-checks active host flock descriptors. Fallback on
+// EBUSY or EPERM: in-place write with 2000ms backoff.
 
 pub async fn reconcile_upperdir(
     upperdir: &Path,

@@ -38,7 +38,11 @@ pub struct ExecutionReceipt {
     /// Trusted-prefix fast path: executables under an EROFS trusted prefix
     /// (/usr/bin, /bin, /usr/lib) resolve through a pre-computed BLAKE3
     /// table in host RAM via O(1) index (no file read at trap time); the
-    /// identity is still recorded here per receipt.
+    /// identity is still recorded here per receipt. The skip requires the
+    /// target script and argument paths to resolve strictly within EROFS;
+    /// dynamic interpreters (python, node, bash, sh, perl, ruby) inspect
+    /// argv[1..], and arguments targeting /workspace/** forfeit the skip
+    /// to Gate 3.
     pub binary_blake3: String,
     pub exit_kind: ExitKind,
     pub correlation_token: Option<String>,
@@ -47,7 +51,10 @@ pub struct ExecutionReceipt {
     pub dirty_bytes: u64,
     /// Cryptographic hardware attestation signature issued by hypervisor
     pub hardware_attestation: [u8; 32],
-    /// PMU retired instruction count sampled from host vCPU thread perf counter
+    /// PMU retired instruction count sampled strictly during active KVM_RUN:
+    /// Linux via perf_event_open (exclude_host=1, exclude_hypervisor=1);
+    /// macOS ARM64 via hv_vcpu_get_sys_reg from PMCCNTR_EL0 / PMEVCNTR<n>_EL0.
+    /// Mach thread counters are banned; cross-host deterministic equivalence.
     pub retired_instructions: u64,
     /// Populated when ReceiptConfig::include_syscall_count.
     pub syscall_count: Option<u64>,

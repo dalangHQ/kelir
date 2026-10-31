@@ -57,7 +57,7 @@ kelir/
 │   ├── kelir-catalog/                 # Supporting crate: SQLite schema, pool, migration helpers (used by core)
 │   ├── kelir-ssh/                     # Supporting crate: in-process SSH/SFTP server (russh), used by break-glass
 │   ├── kelir-otlp/                    # Supporting crate: zero-allocation metric registry and OTLP exporter
-│   ├── kelir-pack/                    # Core primitive: streaming HTTPS client pulls OCI manifest + layer chunks directly into RAM compiler, whiteouts parsed inline, contiguous EROFS chunks to host CAS, canonical rootfs BLAKE3 digest computed during the single pass
+│   ├── kelir-pack/                    # Core primitive: streaming HTTPS client pulls OCI manifest + layer chunks directly into RAM compiler, whiteouts parsed inline, contiguous EROFS chunks to host CAS, canonical rootfs BLAKE3 digest computed during the single pass; unpack admission: 15:1 expansion clamp, 8 GiB single-layer budget, 500,000 inode ceiling, E_LAYER_OVERSIZE on excess
 │   │
 │   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
 │   │   ├── Cargo.toml                 # Depends on kelir-interface only

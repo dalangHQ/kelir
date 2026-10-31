@@ -17,6 +17,8 @@ Pipes TLV packet to logical channel 5252 (Ch 0)► Host receives TrapEvent
                                      │ Match? ──► NO ──► Resume
                                      │ YES ──► EROFS trusted prefix (/usr/bin, /bin, /usr/lib)?
                                      │   YES ──► Gate 3 SKIP: Allow without FFI crossing
+                                     │   (target script + argv paths must resolve strictly within EROFS;
+                                     │   interpreter argv[1..] into /workspace/** forfeits the skip)
                                      │   NO ──► Evaluates Tier 1 Rust Plugins (at the latency ceiling)
                                      │ Gate 3: Crosses FFI Trampoline to TS/Python async handler
                                      │
