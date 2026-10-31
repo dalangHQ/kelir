@@ -28,8 +28,8 @@
       - Link-local quarantine: 169.254.0.0/16 and fe80::/10 dropped before policy
       - Cloud metadata IMDS endpoints dropped unconditionally at L3 ingress ring
   - Raw packet interception points
-    - L2/L4 interception dispatched by .intercept(Ring.NetOutbound, ...)
-    - L2/L4 interception dispatched by .intercept(Ring.NetInbound, ...)
+    - Outbound frames: .intercept(Ring.NetOutbound, ...) dispatches L2/L4
+    - Inbound frames: .intercept(Ring.NetInbound, ...) dispatches L2/L4
     - on_net_outbound: hook on frames leaving the guest
     - on_net_inbound: hook on frames arriving at the guest
     - Ingress dispatcher checks MountScope in native memory before FFI

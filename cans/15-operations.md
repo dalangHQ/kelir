@@ -108,8 +108,7 @@
       - Asserts EBUSY is returned for new exec during Draining
     - --transport-coverage
       - Asserts every Transport backend is exercised by a build matrix cell
-      - Linux: shared-memory SPSC rings, AF_VSOCK fallback
-      - macOS: shared-memory SPSC rings, AF_VSOCK fallback
+      - Linux/macOS: shared-memory SPSC rings, AF_VSOCK fallback
       - Windows: shared-memory SPSC rings, named pipes fallback
       - Missing backend test is a release blocker
     - --snapshot-depth-coverage

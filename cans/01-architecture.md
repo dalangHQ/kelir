@@ -186,7 +186,7 @@
   - Embedded profile
     - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
-    - Host memory preservation: suspend drops host RSS to 0 MB under system pressure
+    - Host memory preservation: see: 08-lifecycle.md#Suspend-and-resume
   - Host memory pressure watcher
     - Active balloon inflation/deflation loop in kelir-core
     - Linux: subscribe to cgroup v2 memory.pressure via io_uring/epoll
@@ -236,7 +236,6 @@
       - Measurement: host-side stopwatch to first workload exec
       - ACPI + PCI probing alone is ~40ms; kernel is built without both
       - Every device below earns its millisecond against that budget
-      - see: #Guest-VM-anatomy above
     - Device allocations: see: artifacts/diagrams/guest-vm.txt
     - Page size dynamic boot selection
       - 4KB guest MMU mapping standard across x86_64 and ARM64

@@ -50,13 +50,7 @@
     - OpenTelemetry
       - Default exporter: OTLP over gRPC and HTTP
         - Standard OTLP endpoints via OTEL_EXPORTER_OTLP_ENDPOINT
-        - Metrics: counters (execs, syscalls, drops), gauges (RSS, dirty pages,
-          - active vCPUs)
-        - Traces: one span per physical receipt phase (trap_ingress, policy,
-          - ffi_hop, verdict_egress)
-        - Context propagation: W3C traceparent injected on outbound requests
-        - Trace continuity: a guest-originated request and its cause
-          - (trap, spawn, receipt) share a trace
+        - Metric and span sets, context propagation: 14-observability.md#Metrics-pipeline
       - Zero-allocation metric registry in the core; ledger plugin reads
         - and exports
       - Config lives in plugin-ledger (`OtelConfig`); not restated here

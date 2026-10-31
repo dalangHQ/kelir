@@ -11,7 +11,8 @@
     - Sovereign cross-hypervisor peer transport
     - Routes point-to-point peer streams via vsock listener services
     - Injects and validates mTLS framing across hypervisor boundaries
-    - Propagates W3C traceparents and call-hop counters across routines
+    - Propagates call-hop counters across routines
+    - Traceparent continuity: 14-observability.md#Metrics-pipeline
   - Error and return semantics (mesh)
     - Hook signature (mesh): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (mesh)

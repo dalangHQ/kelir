@@ -19,8 +19,7 @@
     - Kernel clocksource lockdown
       - Injects kernel boot parameters: clocksource=kvm-clock tsc=reliable nohpet
       - Intercepts clock_gettime and gettimeofday syscall traps to enforce monotonic progression
-      - Snapshot restore clamps CLOCK_MONOTONIC to max(current, snapshot_monotonic)
-      - Guest monotonic clock never regresses across forks, rollbacks, or resumes
+      - Restore clamp and monotonicity: see: 08-lifecycle.md#Hypervisor-primitives
     - Deterministic RNG
       - When replay is active, virtio-rng backend is substituted with a
         - seeded ChaCha20 stream

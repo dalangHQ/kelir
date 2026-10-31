@@ -92,8 +92,9 @@ redundancy:
   # (What-it-is / What-it-is-not, Inherited / Not-inherited), and
   # stopwording it mints false 100% overlaps there.
   word_frequency_threshold: 88
-  # 1.00 = literal duplicates only; sub-100% overlap on spec prose is normal.
-  phrase_overlap_threshold: 0.95
+  # 0.85 catches restatements that swap a verb but keep the noun set.
+  # Semantic duplicates in a different register remain a human audit.
+  phrase_overlap_threshold: 0.85
   cross_file_threshold: 5
   fuzzy: false
   # Load-bearing vocabulary of this corpus: every node mentions these nouns,

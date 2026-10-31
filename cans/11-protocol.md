@@ -79,8 +79,8 @@
     - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
     - Three-tier gate pipeline
       - Gate 1: guest in-kernel BPF allowlist returns for harmless tools
-      - Gate 2: native MountScope/schema eval in host RAM (<2µs, 0 FFI)
-      - Gate 3: trap handler dispatch through foreign FFI trampoline (50-150µs)
+      - Gate 2: native MountScope/schema eval in host RAM; 0 FFI
+      - Gate 3: trap handler dispatch through foreign FFI trampoline
       - Synchronous write/packet filters evaluate native Rust rules; foreign callbacks yield
       - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
       - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate

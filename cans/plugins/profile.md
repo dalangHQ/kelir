@@ -4,7 +4,7 @@
     - Owner crate: crates/kelir-plugins/plugin-profile
     - name() = "profile"
     - Tier 3 cross-cutting aggregator (profile)
-    - Depends on (profile): kelir-interface, Tier 1 and Tier 2 crates
+    - Depends on (profile): kelir-interface, Tier 1 and Tier 2 crates (config aggregator)
     - Exposes: ConfigurablePlugin
     - VirtIO device attachment (profile): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (profile): see: 08-lifecycle.md#Lifecycle-vetoes

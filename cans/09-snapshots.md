@@ -23,6 +23,7 @@
   - Groups and lineage
     - Lineage tracks parent child edges for garbage collection
       - Every snapshot manifest immutably records its parent_digest
+      - Depth is unbounded; WorkingDelta chains extend the same DAG at head
       - Lineage is resolved via CAS manifest graph walks; zero relational joins
       - Compaction writes a new consolidated manifest pointing to ancestor base
       - SQLite stores zero child arrays; catalog tracks session leases only

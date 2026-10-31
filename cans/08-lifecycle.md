@@ -31,8 +31,7 @@
       - Split by state-preservation, not by privilege: see: #Lifecycle-vetoes
     - Ownership attribution: see: 02-plugin-model.md#First-class-plugins
     - Hardware session attestation:
-      - Core injects ephemeral one-time session token over paravirtual config
-      - Workloads verify token over vsock Channel 0 before starting harnesses
+      - Token injection and verification path: see: 01-architecture.md#Guest-VM-anatomy
       - Bare-metal executions lack the paravirtual token and abort immediately
       - Protects developers running harness scripts natively by mistake
   - CoW fork
@@ -125,7 +124,7 @@
       - Freezes vCPU registers
       - Page-dump engine: lz4_flex compression over io_uring direct I/O
       - Flushes compressed pages to local NVMe
-      - Host RSS drops to 0 MB; see: artifacts/code/vmm-driver-trait.rs (suspend)
+      - Host RSS drops to 0 MB in <50ms; see: artifacts/code/vmm-driver-trait.rs (suspend)
     - resume
       - Restores registers and memory
       - Resumes at exact cycle boundary
@@ -136,26 +135,8 @@
       - Guest time snaps forward instantly after multi-day suspension
       - Zero CERT_HAS_EXPIRED or CERT_NOT_YET_VALID on first outbound TLS
     - Snapshot contents
-      - manifest.json
-        - Format version, arch, page size
-        - vmlinux BLAKE3, EROFS BLAKE3
-      - vmm_state.json
-        - vCPU registers, virtio state, timer state
-      - ram.zst
-        - Guest physical RAM, zstd level 3
-      - upperdir.tar.zst
-        - Sparse upperdir diff (mutated files only; unmodified base excluded)
-        - Unmodified base workspace not packed
-      - attestation.jws
-        - Session attestation token in the snapshot
-        - Ed25519-signed by host session key
-      - guest_clock.json
-        - absolute_wall_clock_ns: CLOCK_REALTIME at capture
-        - monotonic_offset_ns: guest monotonic offset relative to host boot
-        - timezone: guest-configured zone (IANA name) or "UTC"
-        - Boot parameters this guest was launched with (clock source, nohpet)
-      - Packaged as single Content-Addressed stream
-        - .kelir-snap is the only portable form
+      - Entry list and per-entry fields: 09-snapshots.md#Archives-and-portability
+      - .kelir-snap is the only portable form: 09-snapshots.md#Archives-and-portability
     - Veto: Suspend (hard), Resume (observation)
       - Suspend false → ESessionVeto; host RAM not flushed
       - Resume fires before primitive; return value ignored
@@ -210,7 +191,7 @@
         - timeouts trigger automatic hardware rollback before releasing workload
     - Delta chain compaction
       - A checkpoint chain holds: one immutable Base and N stacked WorkingDeltas
-      - Depth is unbounded; each delta records its parent via `parent_digest`
+      - Depth is unbounded; lineage edges: 09-snapshots.md#Groups-and-lineage
       - StepVerdict::Commit advances delta DAG head; writes remain in sparse extents
       - Compaction flattens ancestor deltas in a single-pass block copy on export
       - StepVerdict::Rollback discards only the current delta in ≤8ms

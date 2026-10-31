@@ -173,7 +173,7 @@
     - Evaluates native compiled schema validators, CIDR, and path rules in Rust
     - Foreign runtimes skip FFI on non-matching events
     - FFI trampoline executes only when ring event satisfies scope match
-    - Trusted-prefix execve bypass executes Gate 3 skip if argv targets are trusted
+    - Trusted-prefix bypass: see: 11-protocol.md#Trap-fast-path
   - Latency ceiling
     - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs
     - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs
@@ -245,7 +245,6 @@
         - Exercises via hook-matrix and policy-matrix, not via
           - autonomous-swe-agent
       - Action-coverage: every TrapAction, PostExecAction, SyncVerdict, PluginError
-        - Each variant used at least once in cans/artifacts/examples
         - TrapAction variants: see: 11-protocol.md#TrapAction-method-mapping
         - An unused variant fails --action-coverage
         - Action-coverage gate: see: 15-operations.md#Coverage-gates

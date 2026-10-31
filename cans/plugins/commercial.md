@@ -27,6 +27,5 @@
     - Depends: kelir-interface, plugin-profile
     - Channels: 0x0002 (profile-sync)
   - Adapter binaries
-    - containerd-shim-v2: owns containerd wire; plugin owns policy
-    - openshell-grpc: owns gRPC wire; plugin owns policy
-    - see 12-adapters.md#Process-vs-plugin-boundary
+    - containerd-shim-v2, openshell-grpc
+    - Boundary and ownership: see: 12-adapters.md#Process-vs-plugin-boundary

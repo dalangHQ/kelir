@@ -25,17 +25,16 @@
         - Consumers never require cargo, zig, or C compilers on target systems
         - Unhandled foreign handler error catches cleanly; guest never hangs
         - Declarative error maps convert host exceptions to exact POSIX errnos
-        - Unmapped exceptions convert to Decision::Deny or hypervisor abort
+        - Unmapped exceptions: see: 02-plugin-model.md#Declarative-error-mapping
         - Structured error envelope carries driver, ring, pid, binary, and errno
     - Filter-before-FFI declaration
-      - Declarative filters passed to builder during plugin registration
-      - Host core evaluates rules natively; non-matching events skip FFI
+      - Declared filters register during builder plugin mount
+      - Evaluation semantics: see: 02-plugin-model.md#Filter-before-FFI-gate
     - Type-safety invariants
       - Rust borrow checker and Serde perimeter validation: see: #Rust-SDK
       - TypeScript tsc and TypeBox AOT native validators: see: #TypeScript-SDK
       - Python Pydantic v2 frozen models, import-time checks: see: #Python-SDK
-      - NAPI/PyO3 AOT hook fusion: pipeline handlers fuse to one native closure
-      - Foreign handlers cross FFI at most once per event
+      - AOT hook fusion and FFI crossing: see: 02-plugin-model.md#Foreign-plugin-proxy
     - Typed dispatch and session extensions
       - Typed event hooks
         - .on(LifecycleEvent.VmReady, handler) for lifecycle events
@@ -129,7 +128,7 @@
       - box.exec(cmd) routes through virtio-console and trap filters
       - box.rollback() invokes driver rollback: see: artifacts/code/vmm-driver-trait.rs
       - box.reconcile() invokes storage reconciler to host workspace
-      - box.suspend() drops host RSS to 0 MB in <50ms
+      - box.suspend() delegates to session suspend: see: 08-lifecycle.md#Suspend-and-resume
   - Params typed views
     - Host-side typed access on HandlerCtx
       - Rust: c.params::<T>() deserializes from validated buffer
