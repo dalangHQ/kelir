@@ -96,7 +96,7 @@
       - Config sources: HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY, or builder spec
       - Explicit auth: username/password for SOCKS5; Basic or Bearer for CONNECT
       - Credentials read from host environment or host keyring; never persisted in
-        profile files
+        - profile files
     - The guest kernel believes it is dialing the raw target IP
     - The host netstack performs the upstream handshake and splices bytes
     - Zero in-guest proxy environment variables; zero guest awareness of chaining

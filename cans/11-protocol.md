@@ -115,7 +115,7 @@
       - MicroVM, kelir-shim, and sibling processes remain alive
       - Absent descriptor: process inherits microVM-level ceiling only
       - Per-command rlimits survive Rewrite: applied to the rewritten binary,
-        not the original
+        - not the original
       - Shell invocations apply the limit to the shell; children inherit
         - unless they explicitly drop privileges (which drops rlimit authority)
       - Limits reported in ExecutionReceipt for auditability

@@ -171,7 +171,7 @@
       - is callable on the returned type
     - .trap(matcher, handler): simple pre-exec gate returning a Decision
     - .trap(matcher, { pre, post }): dual pre/post gate; post returns a
-      PostExecAction
+      - PostExecAction
     - .intercept(channel, filter, handler): ring-level synchronous hot-path
       - filters returning SyncVerdict
     - .on(event, handler): lifecycle interceptors over LifecycleEvent values
@@ -202,7 +202,7 @@
       - from the Pydantic model class
     - Composite plugins unpack nested plugins atomically before boot
     - Capabilities are static members of c.cap (c.cap.policy), never
-      c.service(ServiceType)
+      - c.service(ServiceType)
     - Mount scoping via kwargs: rings=..., binaries=..., paths=...
   - Full-surface examples
     - see: artifacts/examples/autonomous-swe-agent.rs

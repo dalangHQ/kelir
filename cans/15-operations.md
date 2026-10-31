@@ -25,7 +25,7 @@
       - `test-all` excludes integration: integration needs a real hypervisor
         - and would fail every local run
       - `test-drivers` excludes `test_hw_*`: real-hardware paths are not
-        locally reproducible
+        - locally reproducible
       - `pre-flight` is the only gate that must pass before push; it is the
         - union of the three exclusions above plus physical code hygiene gates
     - `pre-flight` runs parity, plugin audit, tiered check before push

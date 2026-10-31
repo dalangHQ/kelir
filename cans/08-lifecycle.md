@@ -5,7 +5,7 @@
       - SuspendReason: External(u32) | ResourcePressure
       - Eliminates independent suspend implementations outside core
       - Cycle-exact resume triggered via Channel 0 control frame or
-        wire ingress frame arrival
+        - wire ingress frame arrival
       - Draining is a first-class state
         - Running -> Draining -> Terminated
         - Entered via `session.drain(timeout_ms)`
@@ -37,7 +37,7 @@
       - Protects developers running harness scripts natively by mistake
   - CoW fork
     - Driver primitive: fork returns Box<dyn VmmDriver>
-      see: artifacts/code/vmm-driver-trait.rs
+      - see: artifacts/code/vmm-driver-trait.rs
     - KVM path: userfaultfd + KVM memory cloning
     - HVF path: Stage-2 translation write protection via hv_vm_protect
       - Stage-2 data aborts resolve via Chunked Page Promoter
@@ -179,7 +179,7 @@
     - Veto: none; resizing is state-preserving
     - Topology awareness
       - Host planner reads physical cores, NUMA domains, and LLC boundaries
-        at runtime launch
+        - at runtime launch
       - vCPU threads are pinned to specific host cores per the planner
       - Cross-NUMA placement only when explicitly requested
       - Guest sees a coherent topology (per-NUMA CPU sets, LLC sizes) even
@@ -216,7 +216,7 @@
       - StepVerdict::Rollback discards only the current delta in ≤8ms
       - Fork branches from any point in the chain; child inherits the full prefix
       - Branching agent trees (tree-of-thought, parallel MC search) are the
-        primary workload
+        - primary workload
       - Lazy CoW page sharing (`--cow-mem`) lets forks share parent memory pages
         - until written; fork time stays <10ms regardless of depth
       - Diff resolution is O(1) per depth step for reads; the runtime tracks
@@ -291,7 +291,7 @@
       - CLI reads the catalog, verifies the row's lease is live, and
         - connects to `~/.kelir/sessions/<id>/relay.sock`
       - Running and Starting states both accept reattach; Starting defers
-        until boot completes
+        - until boot completes
       - Reattachment is idempotent across concurrent clients
     - Runner watchdog
       - A `parent_watchdog` thread in the runner monitors the SQLite catalog
@@ -318,7 +318,7 @@
       - Multiple concurrent sessions; no head-of-line blocking
     - Endpoint lifecycle
       - `session.ssh()` opens the endpoint; caller receives host, port,
-        and fingerprint
+        - and fingerprint
       - `close()` tears down the endpoint and invalidates the keypair
       - Dropping the handle closes connections and unregisters the listener
     - Interaction with draining and paused states

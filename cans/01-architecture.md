@@ -285,14 +285,14 @@
     - Primitive list and signatures: see: artifacts/code/vmm-driver-trait.rs
     - Single backend contract
       - Every backend implements every primitive; optional primitives are
-        not part of the trait
+        - not part of the trait
       - Callers hold `Box<dyn VmmDriver>` only; no backend type is surfaced
     - Pure OS physics boundary
       - Driver rollback resets physical RAM and vCPU registers only (<8ms)
       - Storage diff discard is orchestrated by Session::rollback() in kelir-core
     - SnapshotDescriptor.dirty_bytes
       - Byte count, not page count: page size is 16KB on Apple Silicon ARM64
-        and 4KB on Linux/x86
+        - and 4KB on Linux/x86
       - Rationale: a byte count yields identical receipts, deltas, and
         - Merkle roots across hosts; a page count does not
       - Sole home of the page-size fact for receipts and Merkle roots

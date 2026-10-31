@@ -41,7 +41,7 @@
         atomically before releasing trapped execve syscall
       - ToolAction::Deny(errno, reason): drops call, synthesizes standard JSON-RPC error response
       - ToolAction::Hold: requests hypervisor
-        LifecycleRequest::Suspend(External)
+        - LifecycleRequest::Suspend(External)
         - Swap mechanics: see: 08-lifecycle.md#Suspend-and-resume
         - Host waits for human out-of-band authorization via vsock Channel 0
     - "Denial of Wallet" recursion limiter

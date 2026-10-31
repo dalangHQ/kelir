@@ -98,7 +98,7 @@
       - Every ring has both an observation and a mutation point; the trait
         - never exposes a ring for observation only
       - The surface is closed per ring; adding a hook is a spec change, not
-        a plugin concern
+        - a plugin concern
     - Why the surface is this size
       - A hook exists only if a ring delivers the event it consumes
       - A hook that a plugin does not implement defaults to `Ok(())`;
@@ -110,7 +110,7 @@
       - Lifecycle commit: on_pre_commit, on_post_commit, on_host_preempt
     - FsInodeAttr carries full mode, uid, gid, size, content
       - Populated into FUSE LOOKUP replies with S_ISUID and S_ISGID masked
-        (mode & !0o6000)
+        - (mode & !0o6000)
         - see: 05-storage-plane.md#Atomic-workspace-reconciler
       - Synthetic FUSE inodes honor mode: 0o400 exactly, no permission fallback
     - Plane semantics
@@ -239,7 +239,7 @@
         - An unhit hook fails --hook-coverage
         - Hook-coverage gate: see: 15-operations.md#Coverage-gates
         - Exercises via hook-matrix and policy-matrix, not via
-          autonomous-swe-agent
+          - autonomous-swe-agent
       - Action-coverage: every TrapAction, PostExecAction, SyncVerdict, PluginError
         - Each variant used at least once in cans/artifacts/examples
         - TrapAction variants: see: 11-protocol.md#TrapAction-method-mapping

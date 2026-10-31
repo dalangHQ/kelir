@@ -35,10 +35,12 @@ structure:
     scope: total
     strip_references: false
     severity: error
-  # Multiline policy (issue #61): OFF, by design. No `multiline:` section
-  # (cans 0.11: absent = no policy). Wrapped prose is governed by
-  # node_length scope total above, not by a separate line cap or
-  # alignment rule.
+  # Multiline policy (issue #61): FORBID. No wrapped prose continuations:
+  # every node is a single bullet line, measured as a whole by
+  # node_length scope total above (max 90, non-negotiable).
+  multiline:
+    mode: forbid
+    severity: error
   # spec-shaped docs: a node may legitimately own 1-2 children (a "Problem"
   # node with one line, a "Fields" node with one field). min 1 = the check
   # never fires; single_child_collapse is the knob for the 1-child advisory.
@@ -82,13 +84,14 @@ redundancy:
   # corpus. Fuzzy near-miss word forms are off: Levenshtein on technical
   # identifiers (rc/vc, ts/tsx) is pure noise here.
   # wire is load-bearing (canonical homes: wire plugin, wire plane), currently 71 nodes;
-  # Absolute node count, so it scales with the corpus: the #61 split added
-  # 129 nodes (2752 -> 2881), so 80 * 2881/2752 = 83.8 -> 84 keeps the layer
-  # live for genuine sprawl without flagging function words. `not` is NOT a
-  # stopword: it is the only distinguishing token in contrast pairs
+  # Absolute node count, so it scales with the corpus by formula, not by
+  # hand: threshold = ceil(80 * nodes / 2752), the corpus size when 80 was
+  # set. #61 splits took it to 2881 -> 84; forbid splits take it to 3004
+  # -> 88. The layer stays live for genuine sprawl above that. `not` is
+  # NOT a stopword: it is the only distinguishing token in contrast pairs
   # (What-it-is / What-it-is-not, Inherited / Not-inherited), and
   # stopwording it mints false 100% overlaps there.
-  word_frequency_threshold: 84
+  word_frequency_threshold: 88
   # 1.00 = literal duplicates only; sub-100% overlap on spec prose is normal.
   phrase_overlap_threshold: 0.95
   cross_file_threshold: 5

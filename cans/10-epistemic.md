@@ -19,7 +19,7 @@
     - Hardware attestation token: BLAKE3 cryptographic proof over execution tuple
     - Byte-not-page reason: see: 01-architecture.md#SnapshotDescriptor.dirty-bytes
     - Population: per ReceiptConfig; opt-in fields not enabled are absent
-      (Option), never 0
+      - (Option), never 0
       - retired_instructions: sampled from host vCPU thread via perf_event_open
         - Linux: perf_event_open with exclude_host=1 and exclude_hypervisor=1
         - Sampled strictly during active KVM_RUN state
@@ -33,7 +33,7 @@
         - Replaces reliance on exit_code alone for boot failure classification
       - Opt-in: syscall_count
       - dirty_bytes is always populated: zero is a real measurement, not an
-        absent value
+        - absent value
     - binary_blake3 identity
       - Canonical form
         - BLAKE3 of raw file bytes at binary_path
@@ -115,11 +115,11 @@
   - Lifecycle bridge
     - Orchestrator verbs: pause, resume, step, rollback, fork, suspend
     - Each verb aliases exactly one mechanism in
-      08-lifecycle.md#Hypervisor-primitives
+      - 08-lifecycle.md#Hypervisor-primitives
     - pause: vCPU-only halt at cycle boundary; guest RAM stays resident
     - step: run to next virtio-vsock syscall trap, then pause for eval
     - suspend is the only verb that flushes RAM; every other verb is
-      cycle-exact
+      - cycle-exact
     - Veto points: see: 08-lifecycle.md#Lifecycle-vetoes
   - Step evaluation loop
     - Orchestrators execute unmodified agent binaries
@@ -137,7 +137,7 @@
       - Guest executes process
       - Process exit triggers post-hook: physical ExecutionReceipt assertion
       - Mismatch triggers hypervisor rollback
-        see: artifacts/code/vmm-driver-trait.rs
+        - see: artifacts/code/vmm-driver-trait.rs
   - Lifecycle nano-tracer
     - Trace hooks (.trace()) measure per-phase overhead at ns resolution
     - Tracks trap ingress, FFI crossing, policy evaluation, and verdict dispatch

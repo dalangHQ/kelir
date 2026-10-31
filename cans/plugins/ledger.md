@@ -23,10 +23,10 @@
       - suppress_local_db skips any local sink to preserve host single SSOT
       - Host-isolated by construction
         - Store path resolved relative to consumer CWD; guest paths rejected
-          at plugin construction
+          - at plugin construction
         - Default path: .kelir/audit.merkle.db relative to consumer CWD
         - WAL survives guest rollback() and fork(); no guest operation can
-          rewrite or duplicate it
+          - rewrite or duplicate it
         - This invariant is the reason the WAL exists separately from receipts
       - Ownership: core generates receipts; plugin-ledger persists and exports
       - Ledger handler API
@@ -51,14 +51,14 @@
       - Default exporter: OTLP over gRPC and HTTP
         - Standard OTLP endpoints via OTEL_EXPORTER_OTLP_ENDPOINT
         - Metrics: counters (execs, syscalls, drops), gauges (RSS, dirty pages,
-          active vCPUs)
+          - active vCPUs)
         - Traces: one span per physical receipt phase (trap_ingress, policy,
           - ffi_hop, verdict_egress)
         - Context propagation: W3C traceparent injected on outbound requests
         - Trace continuity: a guest-originated request and its cause
           - (trap, spawn, receipt) share a trace
       - Zero-allocation metric registry in the core; ledger plugin reads
-        and exports
+        - and exports
       - Config lives in plugin-ledger (`OtelConfig`); not restated here
       - Merkle WAL is a separate sink; when enabled it binds the receipt's
         - correlation_token into its records

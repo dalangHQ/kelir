@@ -23,7 +23,7 @@
       - Guest monotonic clock never regresses across forks, rollbacks, or resumes
     - Deterministic RNG
       - When replay is active, virtio-rng backend is substituted with a
-        seeded ChaCha20 stream
+        - seeded ChaCha20 stream
       - Seed captured in snapshot manifest at replay start
       - getrandom() payloads match byte-for-byte across replay runs
       - Outside replay mode, virtio-rng uses host entropy normally
