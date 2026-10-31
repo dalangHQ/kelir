@@ -35,14 +35,10 @@ structure:
     scope: total
     strip_references: false
     severity: error
-  # Wrapped-prose policy (issue #61): continuations are allowed, capped
-  # at 4 lines, aligned to the bullet text column, fatal on violation.
-  # Measured clean on this corpus: 0 multiline findings at this policy.
-  multiline:
-    mode: allow
-    max_lines: 4
-    indent_aligned: true
-    severity: error
+  # Multiline policy (issue #61): OFF, by design. No `multiline:` section
+  # (cans 0.11: absent = no policy). Wrapped prose is governed by
+  # node_length scope total above, not by a separate line cap or
+  # alignment rule.
   # spec-shaped docs: a node may legitimately own 1-2 children (a "Problem"
   # node with one line, a "Fields" node with one field). min 1 = the check
   # never fires; single_child_collapse is the knob for the 1-child advisory.
