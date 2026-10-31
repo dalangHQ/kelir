@@ -6,6 +6,9 @@
   Guest virtio-net Ethernet frames Hook on frames leaving       Hook on frames arriving
   terminate in host process memory; the guest.                    at the guest.
   no TAP device, no CAP_NET_ADMIN, no host routing change.
+  Link-local quarantine: 169.254.0.0/16 and fe80::/10 dropped before
+  policy eval; cloud metadata IMDS endpoints dropped unconditionally
+  at the L3 ingress ring.
   Ingress dispatcher checks MountScope natively before FFI.
                                         │
                                         ▼
@@ -32,9 +35,9 @@
                              [CONNECTION PARKING]
                              Host-terminates client TCP; buffers up to 64KB initial data;
                              wakes microVM and splices duplex stream across logical
-                             Channel 1 (L4 stream forwarding). L4 diversion is the
+                             Channel 0x0001 (L4 stream forwarding). L4 diversion is the
                              carrier; L7 proxies (vault, db-proxy, wire-ingress)
                              mount their stages atop it and terminate TLS host-side.
 
   Database proxying: see plugins/db-proxy.md.
-  L7 proxy and credential signing: see 06-wire-plane.md.
+  L7 proxy and credential signing: see 07-wire-plane.md.

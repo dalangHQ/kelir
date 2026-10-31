@@ -14,9 +14,10 @@
 │    - Commercial adapter — full diagram in kelir-cloud (private repo).       │
 │    - See kelir-cloud ingestion-adapters-commercial diagram.                 │
 │    - Image→EROFS translation is kelir-pack (core primitive), NOT the        │
-│      commercial plugin: kelir-pack streams tar/OCI blob → EROFS chunks      │
-│      into cas/blobs/blake3_<hash>. oci-translator owns containerd-shim      │
-│      boundary policy only.                                                  │
+│      commercial plugin: streaming HTTPS client pulls OCI manifest and       │
+│      layer chunks directly into a RAM compiler; whiteouts parsed inline;    │
+│      contiguous EROFS chunks land in cas/blobs/blake3_<hash>.               │
+│      oci-translator owns containerd-shim boundary policy only.              │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 4. OPENSHELL COMPUTE DRIVER (NVIDIA AI Infrastructure):                     │
 │    - Commercial adapter — full diagram in kelir-cloud (private repo).       │

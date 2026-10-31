@@ -6,7 +6,7 @@
 // Linux/macOS and named pipes on Windows as debug fallbacks).
 // Payloads encode as CBOR inside the TLV frame defined in codec.rs.
 //
-// Owned by: cans/09-protocol.md#Wire-messages
+// Owned by: cans/11-protocol.md#Wire-messages
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -82,6 +82,8 @@ pub struct Handshake {
 /// Binary exec channel (0x0003) stream identifiers. Framing: 4-byte
 /// channel, 1-byte stream_id, 4-byte len, payload. stdout/stderr carry
 /// raw bytes; no line wrapping, no escape injection; PTY bypassed.
+/// Guest shim holds a fixed 64-slot ExecSlot table mapping guest pid to
+/// exec_id; exit frames on 0x0003 defer until stdout/stderr EOF flush.
 pub const EXEC_STREAM_STDIN: u8 = 0x00;
 pub const EXEC_STREAM_STDOUT: u8 = 0x01;
 pub const EXEC_STREAM_STDERR: u8 = 0x02;
@@ -133,7 +135,7 @@ pub enum TrapAction {
         duration_ms: u32,
     },
     /// Extension point. Carries the CBOR payload only; the handler name
-    /// resolves at SDK registration (see 09-protocol.md Custom dispatch).
+    /// resolves at SDK registration (see 11-protocol.md Custom dispatch).
     /// Unknown names fail with EUnknownAction before the pipeline resumes.
     /// Closes the fixed-variant lock-in (quarantine, throttle, shadow-route).
     Custom(ciborium::value::Value),

@@ -94,7 +94,7 @@ class PolicyMatrixPlugin(BasePlugin):
     async def on_vm_init(self, ctx) -> None:
         # Spec form (02: LifecycleCtx exposes register_veto). Both vetoes
         # allow only once on_vm_ready has set the ready flag; before that
-        # any Suspend or ClockSkew aborts with ESessionVeto (07).
+        # any Suspend or ClockSkew aborts with ESessionVeto (08).
         ctx.register_veto(VetoEvent.Suspend, lambda: POLICY_STATE.ready)
         ctx.register_veto(VetoEvent.ClockSkew, lambda: POLICY_STATE.ready)
 
@@ -164,7 +164,7 @@ async def row_approval(c: HandlerContext) -> Decision:
 
 async def row_custom(c: HandlerContext) -> Decision:
     # Dispatched by name to the handler registered on the builder below.
-    # Unknown names fail with EUnknownAction (09).
+    # Unknown names fail with EUnknownAction (11).
     return Decision.custom(
         "quarantine",
         {"pid": c.trap.pid, "reason": "policy-matrix quarantine row"},

@@ -4,15 +4,19 @@
 // Δ = S_A - S_B over memory, inodes, and wire egress.
 // Computes exactly what an agent branch did differently from its parent.
 //
-// Canonical spec home: cans/08-epistemic.md#Causal-delta
+// Canonical spec home: cans/10-epistemic.md#Causal-delta
 
 use std::path::PathBuf;
 
-// Delta chain (07): one immutable Base and N stacked WorkingDeltas,
-// depth unbounded. StepVerdict::Commit folds the current delta into the
-// active checkpoint; StepVerdict::Rollback discards only the current
-// delta (≤8ms, sparse upperdir delta dropped). Lineage (parent_digest
-// -> child_digest) lives in the SQLite catalog, not in this struct.
+// Delta chain (08): one immutable Base and N stacked WorkingDeltas,
+// depth unbounded. StepVerdict::Commit advances the delta DAG head;
+// writes remain in sparse extents. Compaction flattens ancestor deltas
+// in a single-pass block copy on export; compaction writes a new
+// consolidated manifest pointing to the ancestor base. StepVerdict::Rollback discards
+// only the current delta (≤8ms, sparse upperdir delta dropped).
+// Lineage walks the CAS manifest DAG: every snapshot manifest immutably
+// records its parent_digest; SQLite stores zero child arrays and tracks
+// session leases only, so lineage is not a field of this struct.
 pub struct CausalDelta {
     /// Hardware-agnostic byte-level RAM delta
     pub memory_diff_bytes: u64,

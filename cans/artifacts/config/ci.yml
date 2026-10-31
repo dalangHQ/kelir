@@ -201,7 +201,7 @@ jobs:
 
   # ─── 4b. PLUGIN CONTRACT AUDIT ─────────────────────────────
   # Same command as `just check-plugin`. The audit that
-  # 11-operations.md promises is actually executed here.
+  # 15-operations.md promises is actually executed here.
   plugin-audit:
     needs: [lint-and-types]
     runs-on: ubuntu-latest

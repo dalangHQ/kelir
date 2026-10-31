@@ -120,7 +120,7 @@ const runtime = kelir({
   .use(watchdogSilencer)
 
   // Custom action "quarantine": row 7 dispatches here by name.
-  // Unknown names fail with EUnknownAction (09).
+  // Unknown names fail with EUnknownAction (11).
   .registerCustomAction("quarantine",
     t.Object({ pid: t.Number(), reason: t.String() }),
     async (payload) => {
@@ -135,7 +135,7 @@ const runtime = kelir({
 
   // Vetoes (row 8): registered at vm:init, mirroring
   // LifecycleCtx.register_veto. Both allow only once vm:ready has set
-  // the ready flag; before that Suspend / ClockSkew abort (07).
+  // the ready flag; before that Suspend / ClockSkew abort (08).
   .on(LifecycleEvent.VmInit, async (lifecycle) => {
     lifecycle.registerVeto("suspend", () => policyState.ready);
     lifecycle.registerVeto("clock-skew", () => policyState.ready);

@@ -334,7 +334,7 @@ async fn build_runtime(
                 destination: "pg.internal.net:5432".into(),
                 inject_mtls: Some(Mtls { cert_path: pg_cert, key_path: pg_key }),
             }],
-            // Non-default knob (06-wire-plane.md): AllowUdpProxied instead
+            // Non-default knob (07-wire-plane.md): AllowUdpProxied instead
             // of the StrictTcpOnly default. The DNS policy-filter drop_all
             // above is unchanged; only the UDP path moves to proxied.
             tap_filter: TapFilter::AllowUdpProxied,
@@ -507,7 +507,7 @@ async fn build_runtime(
             if receipt.dirty_bytes == 0 {
                 return Err(PluginError::Halt("zero-byte delta commit".into()));
             }
-            // Workspace-scoped observation (08-epistemic.md#Execution-receipts):
+            // Workspace-scoped observation (10-epistemic.md#Execution-receipts):
             // dirty_bytes counts all hypervisor-dirtied bytes; the
             // workspace counter now arrives as a native storage plane
             // TelemetryExtension (namespace "fs:vfs"), whose payload is

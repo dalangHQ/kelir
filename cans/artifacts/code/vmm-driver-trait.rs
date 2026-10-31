@@ -85,7 +85,9 @@ pub struct SnapshotDescriptor {
     /// Parent in the snapshot chain. Depth is unbounded and restore
     /// accepts any digest in the chain, not only the leaf; the restored
     /// session's working delta becomes a new child of that digest.
-    /// child_digests live on the catalog row, not on this descriptor.
+    /// SQLite stores zero child arrays: each snapshot manifest immutably
+    /// records its parent_digest, and lineage is resolved by CAS manifest
+    /// graph walks, not by a catalog row.
     pub parent_digest: Option<String>,
     pub guest_clock: Option<GuestClock>,
 }

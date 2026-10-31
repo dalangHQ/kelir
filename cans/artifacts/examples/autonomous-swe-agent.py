@@ -307,7 +307,7 @@ def make_zero_byte_check() -> PostExecHandler:
         # dirty_bytes is always populated; zero is a real measurement
         if receipt.dirty_bytes == 0:
             raise RuntimeError("Verification anomaly: zero-byte delta commit attempted.")
-        # Workspace-scoped observation (08-epistemic.md#Execution-receipts):
+        # Workspace-scoped observation (10-epistemic.md#Execution-receipts):
         # dirty_bytes counts all hypervisor-dirtied bytes; the workspace
         # counter now arrives as a native storage plane TelemetryExtension
         # (namespace "fs:vfs"), whose payload is plugin-defined and
@@ -444,7 +444,7 @@ async def build_runtime(
                     inject_mtls=Mtls(cert_path=pg_cert, key_path=pg_key),
                 ),
             ],
-            # Non-default knob (06-wire-plane.md): AllowUdpProxied instead
+            # Non-default knob (07-wire-plane.md): AllowUdpProxied instead
             # of the StrictTcpOnly default. The DNS policy-filter drop_all
             # above is unchanged; only the UDP path moves to proxied.
             tap_filter="AllowUdpProxied",

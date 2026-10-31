@@ -18,6 +18,8 @@
 │   ├── Binary Exec (Ch 0x0003) ──► stdin/stdout/stderr/control streams;      │
 │   │                                no PTY; exec_id-keyed, bitwise fidelity  │
 │   └── Stream Replay ────────────► Append-only logs under sessions/<id>/     │
-│                                    logs/, 64-bit monotonic cursor,          │
-│                                    read_from(port, cursor) -> (bytes, next) │
+│                                    logs/ + index.bin, 64-bit monotonic      │
+│                                    cursor, read_from(port, cursor) ->       │
+│                                    (bytes, next). Global SQLite catalog is  │
+│                                    bypassed for streaming writes.           │
 └─────────────────────────────────────────────────────────────────────────────┘

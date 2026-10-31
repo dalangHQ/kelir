@@ -2,7 +2,7 @@
 //
 // Per-process cryptographic execution receipt.
 //
-// Owned by: cans/08-epistemic.md#Execution-receipts
+// Owned by: cans/10-epistemic.md#Execution-receipts
 
 use serde::{Deserialize, Serialize};
 
@@ -36,8 +36,8 @@ pub struct ExecutionReceipt {
     pub pid: u32,
     pub binary_path: String,
     /// Trusted-prefix fast path: executables under an EROFS trusted prefix
-    /// (/usr/bin, /bin, /usr/lib) resolve through a pre-computed
-    /// inode-to-BLAKE3 table (O(1), no file read at trap time); the
+    /// (/usr/bin, /bin, /usr/lib) resolve through a pre-computed BLAKE3
+    /// table in host RAM via O(1) index (no file read at trap time); the
     /// identity is still recorded here per receipt.
     pub binary_blake3: String,
     pub exit_kind: ExitKind,

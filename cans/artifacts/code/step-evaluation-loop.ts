@@ -5,7 +5,7 @@
 // orchestrator scope, decoupled from hypervisor microkernel core.
 //
 // Full runnable example: artifacts/examples/autonomous-swe-agent.ts
-// Canonical spec home:    cans/08-epistemic.md#Step-evaluation-loop
+// Canonical spec home:    cans/10-epistemic.md#Step-evaluation-loop
 
 import { kelir } from "@kelir/core";
 

@@ -121,7 +121,7 @@ const runtime = kelir({
     l4Proxies: [{ listenPort: 5432, destination: "pg.internal.net:5432",
                   injectMtls: { certPath: "/etc/ssl/client.crt",
                                 keyPath:  "/etc/ssl/client.key" } }],
-    // Non-default knob (06-wire-plane.md): AllowUdpProxied instead of the
+    // Non-default knob (07-wire-plane.md): AllowUdpProxied instead of the
     // StrictTcpOnly default. The DNS policy-filter allowlist above is unchanged;
     // only the UDP path moves to proxied.
     tapFilter: "AllowUdpProxied",
@@ -233,7 +233,7 @@ const runtime = kelir({
       // dirtyBytes is always populated; zero is a real measurement
       if (receipt.dirtyBytes === 0)
         throw new Error("Verification anomaly: zero-byte delta commit attempted.");
-      // Workspace-scoped observation (08-epistemic.md#Execution-receipts):
+      // Workspace-scoped observation (10-epistemic.md#Execution-receipts):
       // dirtyBytes counts all hypervisor-dirtied bytes; the workspace
       // counter now arrives as a native storage plane TelemetryExtension
       // (namespace "fs:vfs"), whose payload is plugin-defined and

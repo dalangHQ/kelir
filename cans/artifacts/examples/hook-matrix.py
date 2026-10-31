@@ -184,7 +184,7 @@ class HookMatrixPlugin(BasePlugin):
     async def on_console_output(self, port: int, chunk: bytes) -> bytes:
         return mask_tokens(chunk)
 
-    # Hook 6: heartbeat. Observation only (07): count, and note stalls,
+    # Hook 6: heartbeat. Observation only (08): count, and note stalls,
     # but never gate.
     async def on_heartbeat(self, event) -> None:
         if (self._state.last_uptime_ms == event.uptime_ms

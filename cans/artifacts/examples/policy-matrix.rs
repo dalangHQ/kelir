@@ -132,7 +132,7 @@ impl LifecycleParticipant for PolicyMatrixPlugin {
     async fn on_vm_init(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
         // Spec form (02: LifecycleCtx exposes register_veto). Both vetoes
         // allow only once on_vm_ready has set the ready flag; before that
-        // any Suspend or ClockSkew aborts with ESessionVeto (07).
+        // any Suspend or ClockSkew aborts with ESessionVeto (08).
         let ready = Arc::clone(&self.state);
         ctx.register_veto(
             VetoEvent::Suspend,
@@ -195,7 +195,7 @@ impl TrapInterposer for PolicyMatrixPlugin {
                 duration_ms: 500,
             })),
             // Row 7: Custom — dispatched by name to the registered handler.
-            // Unknown names fail with EUnknownAction (09); "quarantine"
+            // Unknown names fail with EUnknownAction (11); "quarantine"
             // is registered on the builder below.
             "policy-custom" => Ok(Some(TrapAction::Custom(CborValue::Map(vec![
                 (CborValue::Text("pid".into()), CborValue::Integer(event.pid.into())),

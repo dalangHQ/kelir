@@ -154,7 +154,7 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
     return Buffer.from(masked, "latin1");
   })
-  // Hook 6: heartbeat. Observation only (07): count, and note stalls,
+  // Hook 6: heartbeat. Observation only (08): count, and note stalls,
   // but never gate.
   .onHeartbeat(async (event) => {
     if (hookState.lastUptimeMs === event.uptimeMs && hookState.heartbeats > 0) {

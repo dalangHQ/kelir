@@ -4,7 +4,7 @@
 // channel 5252 (Transport backend: SPSC rings primary; AF_VSOCK /
 // named-pipe fallback — framing identical, only the byte carrier differs).
 //
-// Owned by: cans/09-protocol.md#Wire-framing
+// Owned by: cans/11-protocol.md#Wire-framing
 
 // Wire header layout (24 bytes, Little-Endian bit numbering):
 //
@@ -39,7 +39,7 @@ pub const MSG_CHANNEL_PAYLOAD: u16 = 0x0002; // Channel Payload (ChannelData)
 pub const MSG_VM_LIFECYCLE_CONTROL: u16 = 0x0003; // VM Lifecycle Control
 pub const MSG_SYSTEM_TELEMETRY: u16 = 0x0004; // System Telemetry (Heartbeat, Pressure)
 
-// Channel allocation table (09-protocol). Message types above are
+// Channel allocation table (11-protocol). Message types above are
 // distinct from channel IDs: 0x0003 here is a message type, while
 // CHANNEL_BINARY_EXEC below is the channel that carries exec streams.
 // 0x0003: binary-exec (native terminal plane, programmatic exec)

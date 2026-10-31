@@ -294,7 +294,7 @@ impl TrapInterposer for HookMatrixPlugin {
 impl SystemTelemetryParticipant for HookMatrixPlugin {
     async fn on_heartbeat(&self, uptime_ms: u64) -> Result<(), PluginError> {
         let mut state = self.state.lock().unwrap();
-        // Observation only (07): count, and note stalls, but never gate.
+        // Observation only (08): count, and note stalls, but never gate.
         if state.last_uptime_ms == Some(uptime_ms) && state.heartbeats > 0 {
             state.stalls += 1;
         }

@@ -12,6 +12,9 @@
 │      large writes, host footprint independent of write volume.              │
 │    - Instant Revert: truncate the sparse backing file or punch holes        │
 │      in <1ms. Host SSD blocks are reclaimed, not a RAM layer dropped.       │
+│    - Ephemeral scratch device: dedicated virtio-blk sparse disk at /tmp     │
+│      and /var/cache, discarded on teardown without reconciliation; keeps    │
+│      high-churn caches out of workspace git diffs and whiteout tracking.    │
 │ 3. THE SUCCESS PATH RECONCILER (extension-based reconcile):                 │
 │    - Storage-plane sync: stages upperdir into .kelir-staging-<nonce>.       │
 │    - Executes atomic directory exchange (renameat2 / RENAME_EXCHANGE).      │
@@ -42,12 +45,22 @@
 │    - Intercepts FUSE SETLK / SETLKW; delegates to host OS advisory locks.   │
 │    - Maps virtual guest inodes to host physical inodes to avoid collisions. │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 10. HOST STATE ROOT (~/.kelir/) + STORAGE QUOTAS:                           │
-│    - catalog.db: embedded SQLite (WAL); sandboxes, snapshots, labels,       │
-│      leases, layer refs, volume records. No resident daemon; every          │
-│      process opens the SQLite file directly, ACID replaces lock logic.      │
+│ 10. HOST STATE ROOT (~/.kelir/) + STORAGE CATALOG (06):                     │
+│    - catalog.db: embedded SQLite (WAL), 3 tables only: sessions,            │
+│      cas_leases, schema_version. No resident daemon; every process opens    │
+│      the file directly. WAL + busy_timeout 5000ms; writers serialize via    │
+│      busy handlers, readers proceed concurrently.                           │
+│    - sessions: session_id, status, pids, rootfs_hash, expires_at; the       │
+│      sessions row carries the detached-runner lease (runner refreshes       │
+│      expires_at every 30s; expiry triggers a janitor sweep on startup).     │
+│    - cas_leases: blob_hash, holder_pid, expires_at_unix (30s TTL);          │
+│      blobs with zero unexpired leases are pruned without locks.             │
+│    - Schema evolution drops ephemeral tables; immutable CAS files stay      │
+│      intact.                                                                │
 │    - cas/blobs/blake3_<hash>: immutable layer storage (kelir-pack output).  │
-│    - sessions/<id>/: ephemeral runtime state, logs/, relay.sock, owner.pid. │
+│    - sessions/<id>/: ephemeral runtime state, logs/ + index.bin, relay.sock,│
+│      owner.pid. Lineage is NOT in SQLite: snapshot manifests immutably      │
+│      record parent_digest; lineage walks the CAS manifest DAG.              │
 │    - Quotas: allocated_bytes / allocated_inodes atomics gate on_fs_write    │
 │      and FUSE mknod/create/mkdir; over budget fails synchronously ENOSPC,   │
 │      zero disk writes on rejection.                                         │
