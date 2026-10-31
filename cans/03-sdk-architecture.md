@@ -150,8 +150,8 @@
     - Typestate transitions: KelirBuilder<Unsealed, Plugins, Params> to
       KelirBuilder<Sealed, Plugins, Params> to Session<Plugins, Params>
     - Every verb consumes self by value: .plugin(), .params(), .trap(), .boot()
-    - .detached(true) forks twice, setsid, redirects stdio to
-      ~/.kelir/sessions/<id>/relay.sock
+    - .detached(true) spawns unowned runtime child registered in SQLite sessions
+    - Relay endpoint binds to ~/.kelir/sessions/<id>/relay.sock
       - see: 07-lifecycle.md#Detached-lifecycle
     - Reattachment via session.attach(session_id) returns Session
     - Plugins accumulate in a monomorphic HList; HandlerCtx<'a, Plugins, Params>

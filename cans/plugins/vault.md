@@ -32,8 +32,9 @@
       - Header substitution: by binding field name (Authorization, X-API-Key, ...)
       - Body substitution: form-encoded, JSON, and text bodies up to 16 MiB
       - Content-Length recomputed; chunked bodies re-encoded with fresh sizes
-      - HTTP/2 handled by the host TLS stack, not by kelir-core
-      - No guest-side HPACK manipulation; no dynamic table surgery; no WINDOW_UPDATE math
+      - Normalizes guest HTTP/2 into semantic HTTP/1.1 request structures in host RAM
+      - Substitutes headers and bodies before re-encoding for upstream TLS/H2 session
+      - Eliminates in-flight HPACK dynamic table surgery and stream frame desync
       - No byte-slice substitution on raw L4 streams
       - Host proxy opens a fresh upstream TLS session and forwards the mutated request
       - Plain HTTP (port 80) uses the same substitution path without TLS

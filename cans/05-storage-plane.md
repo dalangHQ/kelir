@@ -21,6 +21,11 @@
     - Instant revert: truncate sparse backing file or punch holes in <1ms
     - No guest kernel OOM on large writes (npm install, pip install torch, git clone)
     - Host memory footprint independent of guest write volume
+  - Ephemeral scratch device
+    - Dedicated virtio-blk sparse scratch disk mounted at /tmp and /var/cache
+    - Isolates high-churn dependencies from workspace git diffs
+    - Automatically discarded on session teardown without reconciliation
+    - Prevents cache pollution and unneeded whiteout tracking on host root
   - Atomic workspace reconciler
     - Scans sparse upperdir diffs; unmodified base files remain untouched
     - OverlayFS whiteout resolution

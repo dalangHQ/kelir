@@ -13,6 +13,8 @@
     - Default-deny protocol filter: all non-TCP L2/L3 frames dropped at ingress ring
     - UDP default-deny emits ICMP Port Unreachable back into guest ingress ring
     - Raw/IPv6 default-deny has no response path; guest observes send success only
+    - Link-local quarantine: 169.254.0.0/16 and fe80::/10 dropped before policy eval
+    - Cloud metadata IMDS endpoints dropped unconditionally at L3 ingress ring
     - Fast-fail TCP RST applies exclusively to interceptor Err(Reject), not protocol filter
     - ICMP, raw sockets, and unencapsulated UDP dropped at the ingress ring
     - IPv6 disabled unless explicit wire configuration opts in

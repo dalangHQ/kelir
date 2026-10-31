@@ -46,7 +46,8 @@
       - Every chunk carries an opaque 64-bit monotonic cursor
       - Cursor is stable across process restarts and client reconnects
     - Log storage is durable
-      - Flat chunk files under sessions/<id>/logs/, indexed in SQLite
+      - Flat chunk files under sessions/<id>/logs/ with append-only index.bin
+      - Global SQLite catalog is bypassed for stdout/stderr streaming writes
       - No circular buffer; no wrap-around loss
       - A stalled or disconnected client never causes drops
       - Host buffer size bounded by eviction policy, not by consumer speed

@@ -39,7 +39,7 @@
     - Not a daemon or container runtime: see: 01-architecture.md#In-process-microkernel
   - Target audience
     - Audience matrix: see: artifacts/diagrams/target-audience.txt
-    - Value and trigger per audience: at the matrix
+    - Value and trigger per audience: in the matrix
   - What kelir replaces
     - Terminal hacks: tmux send-keys, regex screen scraping
     - Storage hacks: host-boundary write mutations and whiteout corruption
@@ -50,7 +50,7 @@
     - Trust details: see: 08-epistemic.md
   - Use cases
     - Parallel agent exploration: see: 07-lifecycle.md#CoW-fork
-    - Human approval waits at zero CPU: see: 07-lifecycle.md#Suspend-and-resume
+    - Human approval waits with zero CPU: see: 07-lifecycle.md#Suspend-and-resume
     - Autonomous step gating & idle pause: see: 07-lifecycle.md
     - Multi-resource atomic commit (2PC): see: plugins/transaction.md
     - Time-sensitive tests (JWT, cron, certs): see: 07-lifecycle.md#Clock-skew
@@ -74,6 +74,7 @@
     - SDK architecture: see: 03-sdk-architecture.md (parity)
     - Terminal plane: see: 04-terminal-plane.md (engine native)
     - Storage plane: see: 05-storage-plane.md (engine native)
+    - Snapshots & archives: see: 05-snapshots.md (portable state)
     - Wire plane: see: 06-wire-plane.md (engine native)
     - Lifecycle: see: 07-lifecycle.md (checkpoint engine)
     - Verification and hardware telemetry (08-epistemic): see: 08-epistemic.md
@@ -87,4 +88,6 @@
     - Storage catalog — see: 09-storage-catalog.md
     - Ecosystem and ops
       - Ecosystem ingestion: see: 10-adapters.md#Ingestion-matrix
+      - Developer CLI: see: 11-cli.md (diagnostics)
       - Build, CI, layout: see: 11-operations.md#Execution-philosophy
+      - Observability & logs: see: 12-observability.md (telemetry)

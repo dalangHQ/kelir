@@ -1,10 +1,10 @@
 - Storage catalog schema
   - Entity model
+    - Minimal 3-table ledger: sessions, cas_leases, schema_version
     - Snapshot rows link artifacts to their lineage group
-      - Snapshot rows carry `parent_digest` and, on interior nodes,
-        `child_digests` as an indexed JSON array
-      - Chain depth is unbounded; reachability walks handle traversal
-      - `guest_clock` is stored as JSON (absolute_wall_clock_ns, monotonic_offset_ns,
-        timezone, boot_params) on every captured snapshot
-      - Runtime rows carry an explicit `maintenance_lease` link for detached
-        sessions; TTL expiry reclaims
+      - sessions table tracks session_id, status, pids, rootfs_hash, expires_at
+      - cas_leases tracks blob_hash, holder_pid, expires_at_unix with 30s TTL
+      - schema_version tracks single-digit schema state
+      - Lineage parent_digest edges are stored inside immutable snapshot manifests
+      - CAS blobs with zero active unexpired leases are safely pruned without locks
+      - Schema evolution drops ephemeral tables; immutable CAS files stay intact

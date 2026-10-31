@@ -3,8 +3,9 @@
     - Adapter set and ecosystem binding: see: artifacts/diagrams/ingestion-adapters.txt
     - Core ingestion primitive: kelir-pack
       - Host-side single-pass compiler: OCI layer blob → EROFS
-      - Streams tar/OCI blob → parses whiteouts → writes contiguous EROFS
-        chunks directly to host CAS
+      - Streaming HTTPS client pulls OCI manifest and layer tar chunks directly
+      - Layers stream directly into RAM compiler; no intermediate tarballs on disk
+      - Parses whiteouts inline and writes contiguous EROFS chunks to host CAS
       - Computes canonical rootfs BLAKE3 digest during the single-pass build
       - No OCI registry daemon, no content store, no resident puller
       - Emits cas/blobs/blake3_<hash> consumed by boot path

@@ -112,7 +112,7 @@
       - Rationale: silent downgrade is exactly the harness self-report failure
         this tier scheme exists to prevent
   - Lifecycle bridge
-    - Orchestrator verbs: pause, resume, step, revert, fork, suspend
+    - Orchestrator verbs: pause, resume, step, rollback, fork, suspend
     - Each verb aliases exactly one mechanism in
       07-lifecycle.md#Hypervisor-primitives
     - pause: vCPU-only halt at cycle boundary; guest RAM stays resident

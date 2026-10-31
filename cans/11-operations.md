@@ -213,14 +213,15 @@
       - `kelir spec export`: Emits canonical kelir.toml or kelir.yaml
       - Granular flags: --install-shims, --attach-lsm, --quarantine-credentials
       - `kelir doctor --json`: structured for onboarding scripts
+      - `kelir logs <session_id>`: Tails session output using cursor index.bin
       - `plugin new`: scaffold crate, code trait stubs, empty vectors
       - `plugin manifest`: emits auto-generated manifest artifact from AST
       - `plugin check`: same audit as CI, <30s, no network
       - `plugin vectors`: regenerate vectors.json from fixtures
       - `plugin rings --show`
-      - `kelir-pack`: ingest OCI layer blob(s) into EROFS at host CAS
-        - Usage: kelir-pack --oci <ref|blob-dir> --out ~/.kelir/cas
-        - Streams tar/OCI layer blob → parses whiteouts → writes contiguous EROFS chunks
+      - `kelir-pack`: stream OCI image or local tar into EROFS at host CAS
+        - Usage: kelir-pack <docker-reference|tar-path> --out ~/.kelir/cas
+        - Streams registry blobs directly to RAM compiler; zero intermediate tars
         - Computes canonical rootfs BLAKE3 digest during the single pass
         - No registry daemon, no content store, no network puller resident
         - Exit 0 only when BLAKE3 digest is written to cas/blobs/blake3_<hash>

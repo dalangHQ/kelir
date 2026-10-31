@@ -21,7 +21,7 @@
         - Rate limits evaluated in native memory before FFI queue insertion
         - Native linear capability isolation: zero-WASM, zero-JIT overhead
         - Compile-time ownership tokens enforce plugin memory boundaries
-        - Hardware memory protection keys (MPK) isolate in-process heap
+        - Hardware memory protection keys (MPK on x86_64) isolate in-process heap
         - Filter-before-FFI boundary stops thrash: native rules evaluate in <2µs
         - Foreign async handlers (V8/Python) evaluate out-of-band; synchronous hot-paths
           execute native Rust interposers or require explicit YieldToHost
@@ -156,6 +156,8 @@
       - Upstream certificates validate inside the proxy engine
       - Plaintext never crosses the vm boundary
       - Allowed domains alone get interception
+      - L7 proxy normalizes guest HTTP/2 into semantic HTTP/1.1 in host RAM
+      - Upstream re-originates clean TLS; eliminates guest HPACK table surgery
       - Upstream sockets originate from the host
       - The host proxy performs secret substitution on plaintext HTTP; the guest
         never runs an HPACK state machine and never sees raw secret bytes
@@ -184,22 +186,22 @@
   - Host state root
     - Content-addressed root: ~/.kelir/
       - catalog.db: embedded SQLite (WAL mode)
-        - sandboxes, snapshots, labels, leases, layer refs, volume records
+        - 3 tables: sessions, cas_leases, schema_version
+        - cas_leases tracks blob_hash, holder_pid, expires_at_unix
+        - Background heartbeat refreshes lease TTL every 30s
       - cas/blobs/blake3_<hash>: immutable layer storage
       - sessions/<session_id>/: ephemeral runtime state
     - State engine
       - Every process opens the SQLite file directly; no resident daemon
-      - WAL mode with connection pooling; ACID transactions replace POSIX lock logic
-      - Migration crate sequences schema steps; applied forward-only at open
-      - Multi-resource queries (sandbox + lease + layer + volume) are single atomic statements
-      - Backup copies shield upgrades; failed steps leave no partial marker
+      - WAL mode with connection pooling; busy_timeout set to 5000ms
+      - Unreferenced CAS blobs purged only when active lease count reaches zero
     - Concurrency
       - Writers serialize per database file via SQLite busy handlers; readers proceed concurrently
       - Lockfile/PID-sweep absent; SQLite transaction semantics are the sole concurrency contract
       - Kernel releases advisory state on process death; runtime janitor reclaims orphaned rows
     - Session ownership and leases
       - sessions/<id>/owner.pid records the runtime process
-      - catalog `maintenance_lease` row carries the liveness proof with explicit expiry
+      - catalog sessions row carries the liveness lease proof with explicit expiry
       - Orphaned relay.sock, sparse backing file, staging trees reclaimed by runtime child janitor
   - Guest VM anatomy
     - see: artifacts/diagrams/guest-vm.txt

@@ -138,12 +138,12 @@
     - fork_state() deep-clones state instances during session.vm.fork()
     - Native zero-WASM isolation: compile-time crate linkage
     - Immutable &[u8] slice views prevent cross-plugin heap tampering
-    - Hardware MPK page keys isolate per-plugin memory domains in-process
+    - Hardware MPK page keys (x86_64) isolate per-plugin memory domains
     - Missing declared dependency aborts boot with EConfig
     - Lock-free dispatch swap via ArcSwap on the host event bus (internal)
     - ArcSwap serves atomic dispatch swapping during snapshot hydration only
     - Not a public runtime API; session configuration is frozen after boot
-    - First Deny or Rewrite halts pipeline, dispatches over AF_VSOCK
+    - First Deny or Rewrite halts pipeline, dispatches over control transport
     - on_trap_deny is builder-level, not a plugin hook
       - Deny-observation composition is a user concern
   - Mount scoping

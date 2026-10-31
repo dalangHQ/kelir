@@ -109,9 +109,7 @@
       - Guest writes may be lost, exactly like a power cut
       - Records ExitReason::HardKilled in ExecutionReceipt
     - CLI and SDK
-      - `msb stop --timeout 30s` graceful; `msb kill` abrupt
-      - SDK exposes `session.stop()`, `session.stop_with_timeout(d)`,
-        `session.kill()`
+      - SDK exposes session.stop() and session.stop_with_timeout(d) for graceful exit
       - Draining is a superset of stop for pipelines that need to finish
         queued work (Hypervisor primitives)
   - Suspend and resume
@@ -203,8 +201,8 @@
     - Delta chain compaction
       - A checkpoint chain holds: one immutable Base and N stacked WorkingDeltas
       - Depth is unbounded; each delta records its parent via `parent_digest`
-      - StepVerdict::Commit folds the current delta into the active checkpoint
-        via fallocate(FALLOC_FL_COLLAPSE_RANGE) or dirty-page bitmap union
+      - StepVerdict::Commit advances delta DAG head; writes remain in sparse extents
+      - Compaction flattens ancestor deltas in a single-pass block copy on export
       - StepVerdict::Rollback discards only the current delta in ≤8ms
       - Fork branches from any point in the chain; child inherits the full prefix
       - Branching agent trees (tree-of-thought, parallel MC search) are the
@@ -298,9 +296,9 @@
     - Affine builder flag .detached(true) spawns a dedicated runtime child
     - The CLI never manages VM memory directly in detached mode
     - Runner ownership is explicit
-      - The spawning process writes a `runtime` row into the SQLite catalog
-        before exec'ing the runner child; the row carries PID, argv, and
-        a liveness lease with a TTL
+      - The spawning process inserts an active row into SQLite sessions table
+      - Row carries session_id, runner child pid, and expires_at lease TTL
+      - Runner updates expires_at every 30s; expired lease triggers cleanup
       - The runner child inherits the row id via an environment variable
       - The runner updates the row's lease heartbeat while alive
       - If the runner dies without cleanup, the row's TTL expires and the

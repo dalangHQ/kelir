@@ -17,8 +17,10 @@
     - Adding a row requires a spec revision
       - No runtime allocation, no handshake, no negotiation
     - Guest paravirtual micro-init boundary (kelir-shim)
-      - Shim runs strictly as uninstrumented musl PID 1 (<50KB binary)
-      - Implements zombie process reaping via waitpid(-1, WNOHANG)
+      - Shim runs as uninstrumented musl PID 1 (<50KB binary)
+      - Fixed 64-slot ExecSlot table maps guest pid to exec_id
+      - waitpid(-1, WNOHANG) updates slot exit status without blocking
+      - Exit frames on Channel 0x0003 defer until stdout/stderr EOF flush
       - Multiplexes raw VirtIO ring bytes; carries zero database, proxy, or domain logic
       - Domain Unix sockets are provisioned dynamically over vsock, never hardcoded in PID 1
   - Binary exec channel (0x0003)
@@ -113,7 +115,7 @@
       - Limits reported in ExecutionReceipt for auditability
       - Enforcement is inside the guest kernel; no host cooperation required
     - Flow diagram: see: artifacts/diagrams/trap-flow.txt
-    - Fast-path policy: TBD
+    - Fast-path policy: Gate 3 FFI skip applies to trusted /usr/bin, /bin, /usr/lib
   - Wire framing
     - see: artifacts/code/wire-protocol.rs
     - Layout (header offsets, magic, version): see: artifacts/code/wire-protocol.rs
