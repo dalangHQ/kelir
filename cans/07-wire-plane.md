@@ -6,22 +6,27 @@
     - Hook points: on_net_outbound and on_net_inbound
     - Interceptor hooks receive NetContext containing raw Ethernet frames
   - Userspace network stack
-    - Guest virtio-net Ethernet frames terminate directly in host process memory
-    - Outbound connections translated to plain unprivileged host sockets
-    - Zero host interface creation, zero CAP_NET_ADMIN, zero IP routing changes
-    - Host firewall remains untouched
-    - Default-deny protocol filter: all non-TCP L2/L3 frames dropped at ingress ring
-    - Permitted UDP egress uses endpoint-independent mapping (Full Cone NAT)
-    - Single host UDP socket per guest source port serves multiple remote peers
-    - Preserves external source port identity for STUN, WebRTC, and Tailscale
-    - UDP default-deny emits ICMP Port Unreachable back into guest ingress ring
-    - Raw/IPv6 default-deny has no response path; guest observes send success only
-    - Link-local quarantine: 169.254.0.0/16 and fe80::/10 dropped before policy eval
-    - Cloud metadata IMDS endpoints dropped unconditionally at L3 ingress ring
-    - Fast-fail TCP RST applies exclusively to interceptor Err(Reject), not protocol filter
-    - ICMP, raw sockets, and unencapsulated UDP dropped at the ingress ring
-    - IPv6 disabled unless explicit wire configuration opts in
-    - QUIC transport dropped unless an explicit UDP L4 proxy is configured
+    - Frame termination
+      - Guest virtio-net Ethernet frames terminate directly in host process memory
+      - Outbound connections translated to plain unprivileged host sockets
+      - Zero host interface creation, zero CAP_NET_ADMIN, zero IP routing changes
+      - Host firewall remains untouched
+    - Default-deny admission
+      - All non-TCP L2/L3 frames dropped at ingress ring
+      - ICMP, raw sockets, and unencapsulated UDP dropped at the ingress ring
+      - IPv6 disabled unless explicit wire configuration opts in
+      - QUIC dropped unless an explicit UDP L4 proxy is configured
+    - UDP NAT semantics
+      - Permitted UDP egress uses endpoint-independent mapping (Full Cone NAT)
+      - Single host UDP socket per guest source port serves multiple remote peers
+      - Preserves external source port identity for STUN, WebRTC, and Tailscale
+    - Rejection observation
+      - UDP default-deny emits ICMP Port Unreachable into the guest ingress ring
+      - Raw/IPv6 default-deny has no response path; guest observes send success only
+      - Fast-fail TCP RST applies exclusively to interceptor Err(Reject)
+    - Pre-policy drop zones
+      - Link-local quarantine: 169.254.0.0/16 and fe80::/10 dropped before policy
+      - Cloud metadata IMDS endpoints dropped unconditionally at L3 ingress ring
   - Raw packet interception points
     - L2/L4 interception dispatched by .intercept(Ring.NetOutbound, ...)
     - L2/L4 interception dispatched by .intercept(Ring.NetInbound, ...)
@@ -47,27 +52,29 @@
       - legitimate base64 URLs produce false positives, while an attacker who
       - controls encoding trivially defeats a fixed threshold
   - Synthetic DNS gateway
-    - Guest paravirtual network binds synthetic gateway 192.168.127.1:53
-    - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-core::wire
-    - Queries resolved host-side via live OS resolver state
-      - Linux: /etc/resolv.conf watched via inotify; nameservers reloaded on change
-      - Search domain expansion: host search domains and ndots parsed from OS state
-      - Single-label queries expand against host search candidates before policy eval
-      - Bare hostnames in corporate VPN and internal split-horizon resolve transparently
-      - SOCKS5h synthetic pool: remote proxy DNS maps domains to 198.18.0.0/15
-      - Synthetic IPs bypass local CIDR filters; domain policy rules govern admission
-      - Original target hostname preserved verbatim in upstream proxy CONNECT frame
-      - macOS: SCDynamicStore subscription per interface; VPN and Wi-Fi toggles
-        - update upstream servers without restarting the guest
-      - Windows: DNS client API queried on each change notification
-    - Host DNS changes (Wi-Fi switch, corporate VPN toggle, split-horizon) are
-      - transparent to guest; no VM restart, no guest kernel reconfiguration
-    - Traffic to non-gateway resolvers redirected at ingress ring
-    - Split-horizon zones resolve correctly because upstreams track host state
-    - DoT (DNS-over-TLS) upstreams supported when configured
-      - Length-prefixed message framing inside the TLS stream
-      - Certificate verified host-side; guest never sees the tunnel
-    - UDP and TCP 53 both handled; truncation flag promotes to TCP host-side
+    - Gateway binding
+      - Guest paravirtual network binds synthetic gateway 192.168.127.1:53
+      - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-core::wire
+      - Traffic to non-gateway resolvers redirected at ingress ring
+    - Host-state resolution
+      - Queries resolved host-side via live OS resolver state
+        - Linux: /etc/resolv.conf watched via inotify; nameservers reloaded on change
+        - Search domain expansion: host search domains and ndots parsed from OS state
+        - Single-label queries expand against host search candidates before policy eval
+        - Bare hostnames in corporate VPN and internal split-horizon resolve transparently
+        - SOCKS5h synthetic pool: remote proxy DNS maps domains to 198.18.0.0/15
+        - Synthetic IPs bypass local CIDR filters; domain policy rules govern admission
+        - Original target hostname preserved verbatim in upstream proxy CONNECT frame
+        - macOS: SCDynamicStore subscription per interface; VPN and Wi-Fi toggles
+          - update upstream servers without restarting the guest
+        - Windows: DNS client API queried on each change notification
+      - Host DNS changes are transparent; no VM restart, no reconfiguration
+      - Split-horizon zones resolve correctly because upstreams track host state
+    - Upstream transport
+      - UDP and TCP 53 both handled; truncation flag promotes to TCP host-side
+      - DoT (DNS-over-TLS) upstreams supported when configured
+        - Length-prefixed message framing inside the TLS stream
+        - Certificate verified host-side; guest never sees the tunnel
   - Transparent L4 stream diversion
     - Directs guest TCP streams across VirtIO ring to designated host socket
     - Exposes raw duplex stream to registered NetInterposer proxies

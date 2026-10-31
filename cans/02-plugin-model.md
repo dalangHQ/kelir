@@ -71,19 +71,23 @@
     - Typed registration: register_interceptors, register_subscribers
     - Inter-plugin linkage is direct Cargo crate imports, not string tokens
     - Segregated ring traits
-      - Core identity only: KelirPlugin is mandatory; see: artifacts/code/plugin-trait.rs
-      - LifecycleParticipant: vm lifecycle, commit, host preempt
-      - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
-      - ConsoleInterposer: console input, console output, window resize, disclosure
-        - Expanded: on_exec_stdout(pid, exec_id, chunk), on_exec_stderr(pid, exec_id, chunk)
-        - Fires for Channel 0x0003 streams; see: 11-protocol.md#Binary-exec-channel
-        - PTY (Port 0) path unchanged; exec path uses exec_id rather than port
-      - FsInterposer: fs lookup, read, write; synchronous hot path
-      - NetInterposer: net outbound, net inbound; synchronous hot path
-      - AnyPlugin: identity marker for any KelirPlugin (fork/composite)
-      - Plugins implement only traits for rings they touch; rest default no-op
-      - Dispatch: taxonomy rings register into ring-specific contiguous arrays
-      - Unused rings cost zero vtable lookups
+      - Core identity
+        - KelirPlugin is mandatory; see: artifacts/code/plugin-trait.rs
+      - Ring traits
+        - LifecycleParticipant: vm lifecycle, commit, host preempt
+        - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
+        - ConsoleInterposer: console input, console output, window resize, disclosure
+          - Expanded: on_exec_stdout(pid, exec_id, chunk), on_exec_stderr(pid, exec_id, chunk)
+          - Fires for Channel 0x0003 streams; see: 11-protocol.md#Binary-exec-channel
+          - PTY (Port 0) path unchanged; exec path uses exec_id rather than port
+        - FsInterposer: fs lookup, read, write; synchronous hot path
+        - NetInterposer: net outbound, net inbound; synchronous hot path
+      - Identity markers
+        - AnyPlugin: identity marker for any KelirPlugin (fork/composite)
+      - Dispatch cost model
+        - Plugins implement only traits for rings they touch; rest default no-op
+        - Dispatch: taxonomy rings register into ring-specific contiguous arrays
+        - Unused rings cost zero vtable lookups
     - Error variants
       - Interceptor traits return typed verdicts: SyncVerdict (FS/Net), Option<TrapAction> (Trap)
       - Idempotency and density: see: 01-architecture.md#Codebase-invariants

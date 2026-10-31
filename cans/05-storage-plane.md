@@ -32,19 +32,22 @@
     - Automatically discarded on session teardown without reconciliation
     - Prevents cache pollution and unneeded whiteout tracking on host root
   - Atomic workspace reconciler
-    - Scans sparse upperdir diffs; unmodified base files remain untouched
-    - OverlayFS whiteout resolution
+    - Detect
+      - Scans sparse upperdir diffs; unmodified base files remain untouched
+    - Classify whiteouts
       - Deleted files: char devices with st_rdev == 0 trigger unlink on host target
       - Deleted or opaque dirs: trusted.overlay.opaque="y" triggers host remove_dir_all
-      - RAII staging guard: StagingGuard struct owns all .tmp.<nonce> files
+    - Stage
+      - Writes mutated files to sibling temporary files (.tmp.<nonce>)
+      - StagingGuard struct owns all .tmp.<nonce> files
       - Staging cleanup: uncommitted staging files unlink unconditionally on Drop
       - Disarm on commit: guard disarms only after atomic directory swap succeeds
-    - Atomic staging exchange
-      - Writes mutated files to sibling temporary files (.tmp.<nonce>)
+    - Commit
       - Executes atomic exchange or directory swap directly under host root
       - Fast path uses renameat2(RENAME_EXCHANGE) directly
       - Host Inode Broker pre-checks active host flock descriptors
       - Fallback on EBUSY or EPERM: in-place write with 2000ms backoff
+    - Contain
       - Strict containment: rejects symlink hops and traversals outside host root
       - All host-side inode resolution uses openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)
       - Symlink traversals escaping root fail with EXDEV at host VFS layer
@@ -65,15 +68,20 @@
     - Delegates acquisition directly to host OS advisory locks (flock)
     - Conflicting lock returns EWOULDBLOCK without host thread latency
   - Storage quotas
-    - kelir-core::storage maintains allocated_bytes and allocated_inodes atomics
-    - on_fs_write and FUSE mknod/create/mkdir gate against MountScope budget
-    - Quota isolation: quotas evaluate exclusively against sparse upperdir delta
-    - Zero-crawl baseline: lowerdir host workspace incurs zero statfs traversal
-    - statfs reporting: returns remaining upperdir quota in O(1) time
-    - Exceeding max_bytes fails synchronously with ENOSPC
-    - Exceeding max_inodes fails synchronously with ENOSPC
-    - Zero disk writes occur on quota rejection
-    - Host filesystem and neighboring microVMs remain protected
+    - Tracked state
+      - kelir-core::storage maintains allocated_bytes and allocated_inodes atomics
+    - Enforcement
+      - on_fs_write and FUSE mknod/create/mkdir gate against MountScope budget
+      - statfs reporting: returns remaining upperdir quota in O(1) time
+    - Isolation semantics
+      - Quota isolation: quotas evaluate exclusively against sparse upperdir delta
+      - Zero-crawl baseline: lowerdir host workspace incurs zero statfs traversal
+    - Failure behavior
+      - Exceeding max_bytes fails synchronously with ENOSPC
+      - Exceeding max_inodes fails synchronously with ENOSPC
+      - Zero disk writes occur on quota rejection
+    - Blast radius
+      - Host filesystem and neighboring microVMs remain protected
   - Secondary image mounts
     - Grafts host-opened squashfs/EROFS images into guest VFS namespace
     - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE

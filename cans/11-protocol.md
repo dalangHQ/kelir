@@ -82,18 +82,21 @@
       - Gate 2: native MountScope/schema eval in host RAM (<2µs, 0 FFI)
       - Gate 3: trap handler dispatch through foreign FFI trampoline (50-150µs)
       - Synchronous write/packet filters evaluate native Rust rules; foreign callbacks yield
-      - Gate 3 skip: binary_path rooted in EROFS trusted prefix
-        - /usr/bin, /bin, /usr/lib bypass foreign FFI only when payload is trusted
-        - Target script and argument paths must resolve strictly within EROFS
-        - Dynamic interpreters (python, node, bash, sh, perl, ruby) inspect argv[1..]
-        - Script arguments targeting /workspace/** forfeit skip and traverse Gate 3
-        - Gate 2 still evaluates; Allow proceeds without FFI crossing
-        - Untrusted /workspace/** always traverses Gate 3
-        - Compiler and test-suite fork/exec storms run at hardware speed
       - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
       - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
+    - Gate 3 trusted-prefix skip
+      - Binary rooted in EROFS trusted prefix bypasses foreign FFI
+      - /usr/bin, /bin, /usr/lib are trusted prefixes
+      - Target script and argument paths must resolve strictly within EROFS
+      - Dynamic interpreters (python, node, bash, sh, perl, ruby) inspect argv[1..]
+      - Script arguments targeting /workspace/** forfeit skip and traverse Gate 3
+      - Gate 2 still evaluates; Allow proceeds without FFI crossing
+      - Untrusted /workspace/** always traverses Gate 3
+      - Compiler and test-suite fork/exec storms run at hardware speed
+    - Cost rationale
       - A single trap-on-every-syscall design adds ~µs per fork/exec at
         - toolchain scale; the allowlist exists to pay that cost only where policy is possible
+    - Frozen inspection mechanics
       - cgroup v2 freezer closes check-to-use race without ptrace latency
       - process_vm_readv captures exact memory without thread attachment
       - A frozen inspection is still blind to what the loader *will* do;
@@ -120,8 +123,6 @@
         - unless they explicitly drop privileges (which drops rlimit authority)
       - Limits reported in ExecutionReceipt for auditability
       - Enforcement is inside the guest kernel; no host cooperation required
-    - Flow diagram: see: artifacts/diagrams/trap-flow.txt
-    - Fast-path policy: Gate 3 FFI skip applies to trusted /usr/bin, /bin, /usr/lib
   - Wire framing
     - see: artifacts/code/wire-protocol.rs
     - Layout (header offsets, magic, version): see: artifacts/code/wire-protocol.rs
