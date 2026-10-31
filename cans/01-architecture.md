@@ -49,6 +49,21 @@
         - Any intercepted syscall, file read, or network packet is allowed,
           steered with a host disclosure, or rejected with a machine-parsable receipt
         - Mandatory TTY host disclosure invariant
+      - Codebase invariants
+        - Strict file bounds: 500 LOC target, 1,000 LOC hard ceiling per .rs file
+        - Test segregation: zero `#[cfg(test)]` in `src/`; tests live in sibling `tests/`
+        - Pure functional core: evaluation follows `f(State, Event) -> (State, Actions)`
+        - Immutability by default: shared state uses atomics; mutations emit deltas
+        - Native-first execution: kernel ioctls and syscalls direct; wrappers banned
+        - Polymorphism over conditionals: static trait dispatch over `match` branches
+        - Absolute idempotency: rollback and stream replay produce bitwise identical states
+        - High cohesion, loose coupling: four planes share zero state outside rings
+        - Minimal LOC density: functional combinators over nested conditionals
+        - Deletion posture: dead code, single-use traits, and speculative shims purged
+        - Single-line documentation: maximum one line of docstring per public item
+        - Basics non-simplification: POSIX errnos, isolation, and limits never bypassed
+        - DRY and SSOT: `kelir-interface` owns shared types; zero type duplication
+        - YAGNI: concrete structs first; traits require multiple implementations
     - Params ingress contract
       - Structured configuration delivered via paravirtual configuration device
       - Params API: .params(schema), validated out-of-band by paravirtual

@@ -7,6 +7,7 @@
     - Zero-bloat crate boundary: tokio full banned; libc/sys-crates strictly scoped
     - Shim size invariant: see: artifacts/config/ci.yml (build-guest-shim)
     - Shim crate invariant: zero external serialization or runtime crates
+    - Code hygiene and physical bounds: see: 01-architecture.md#Codebase-invariants
     - Default posture
       - Primitive telemetry on; derived telemetry off unless configured
       - Ecosystem apparatus gated on registry size; not shipped ahead of it
@@ -26,7 +27,7 @@
       - `test-drivers` excludes `test_hw_*`: real-hardware paths are not
         locally reproducible
       - `pre-flight` is the only gate that must pass before push; it is the
-        union of the three exclusions above
+        union of the three exclusions above plus physical code hygiene gates
     - `pre-flight` runs parity, plugin audit, tiered check before push
       - see: #Multi-language-parity-gate and #Developer-CLI
   - CI matrix
@@ -57,6 +58,8 @@
     - Spec gate: cans-check; see: #Spec-gate
     - Plugin audit tier: plugin-audit; see: #Per-plugin-CI
     - Tiered compilation tier: verify-tiered-compilation; see: #Tiered-compilation
+    - Code hygiene gate: check-hygiene enforces 1,000 LOC ceiling and bans
+      inline `#[cfg(test)]` in `src/` across the entire workspace
   - Spec gate
     - Job: cans-check
     - Two tiers, exit-code asserted on parsed JSON, no stderr grep

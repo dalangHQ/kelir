@@ -34,6 +34,20 @@ check-spec:
     @cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
     @cans check --json          | jq -e '.ok and .exitCode == 0'
 
+check-hygiene:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    oversized=$(find crates -name "*.rs" -exec wc -l {} + | awk '$1 > 1000 && $2 != "total" {print $2 " (" $1 " lines)"}')
+    if [ -n "$oversized" ]; then
+        echo "FAIL: Files > 1,000 LOC detected:" && echo "$oversized" && exit 1
+    fi
+    inline_tests=$(grep -rn --include="*.rs" '#\[cfg(test)\]' crates/*/src/ || true)
+    if [ -n "$inline_tests" ]; then
+        echo "FAIL: Inline #[cfg(test)] forbidden in src/. Move to tests/:"
+        echo "$inline_tests" && exit 1
+    fi
+    echo "OK: All files <= 1000 LOC; zero inline tests in src/."
+
 check-tiered:
     cargo check --workspace --all-targets
 
@@ -104,5 +118,5 @@ parity: build-ts
 # build-shim is not in this chain: shim has its own CI gate and its
 # own time budget. check-plugin-all is not here: parity already runs
 # the same per-plugin audit. Lint is a target, not an inline body.
-pre-flight: check-spec check-graph check-tiered lint typecheck parity
+pre-flight: check-hygiene check-spec check-graph check-tiered lint typecheck parity
     just test-all

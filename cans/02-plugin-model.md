@@ -22,6 +22,7 @@
       - Tier 3 plugins depend on kelir-interface and consume peer services via ServiceRegistry
     - Dependency invariant: Zero concrete peer imports within the same tier
     - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
+    - Invariants and purity: see: 01-architecture.md#Codebase-invariants
     - Code is sole SSOT: declared programmatically via KelirPlugin trait
     - Manifest artifact is strictly auto-generated for zero-compile indexing
     - Execution kind: Native (Rust in-process) | Foreign (host FFI)
@@ -41,6 +42,7 @@
       - Synchronous or bounded latency inline processors
       - Evaluates monotonic verdict lattice: Allow < Rewrite < Deny < Abort
       - Single mutator owns target byte slice at any stage
+      - Trait dispatch: see: 01-architecture.md#Codebase-invariants
       - Compiled into contiguous zero-cost dispatch tables
       - Latency bounded by #Latency-ceiling; foreign FFI filter-gated
     - Reactive event bus plane
@@ -83,6 +85,7 @@
       - Unused rings cost zero vtable lookups
     - Error variants
       - Interceptor traits return typed verdicts: SyncVerdict (FS/Net), Option<TrapAction> (Trap)
+      - Idempotency and density: see: 01-architecture.md#Codebase-invariants
       - Ok(SyncVerdict::Allow) = allow hot-path operation
       - Ok(SyncVerdict::YieldToHost(ns)) = delay or yield operation to host event loop
       - Err(PluginError::Reject { errno, reason }) = reject with POSIX errno surfaced to guest

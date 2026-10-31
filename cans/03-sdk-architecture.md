@@ -18,6 +18,7 @@
         without its dependency installed fails at type-check, not boot
       - Zero dynamic service lookups: handler context c statically intersects
         each installed plugin's surface; no string keys, no runtime downcast
+      - Handler purity and idempotency: see: 01-architecture.md#Codebase-invariants
       - Unhandled errors abort hypervisor immediately to eliminate zombie runs
       - Distribution and error invariants
         - Zero runtime toolchain tax: distributed with precompiled NAPI/PyO3 wheels

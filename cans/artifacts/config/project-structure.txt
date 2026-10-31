@@ -18,6 +18,7 @@ kelir/
 │   │   ├── Cargo.toml
 │   │   ├── src/
 │   │   │   └── lib.rs                 # Re-export surface: kelir-core API (4 native planes) + optional feature-gated plugins
+│   │   └── tests/                     # Facade integration tests only (zero tests in src/)
 │   │
 │   ├── kelir-interface/               # Centralized leaf traits, wire framing, and context types (zero engine dependencies)
 │   │   ├── Cargo.toml                 # Dependencies: serde, ciborium, thiserror only
@@ -28,6 +29,9 @@ kelir/
 │   │       ├── protocol.rs            # 24-byte FrameHeader (0x4B45), TrapEvent, TrapAction, GuestToHost, HostToGuest
 │   │       ├── telemetry.rs           # ExecutionReceipt, CausalDelta
 │   │       └── oracle.rs              # Oracle evaluator trait
+│   │   └── tests/
+│   │       ├── unit_codec.rs          # Isolated frame codec tests
+│   │       └── unit_traits.rs         # Trait contract verification
 │   │
 │   ├── kelir-core/                    # In-process stripped microkernel
 │   │   ├── Cargo.toml
@@ -44,6 +48,10 @@ kelir/
 │   │       │   ├── mod.rs
 │   │       │   └── router.rs          # Dynamic backend loader (rustvmm vs hvf)
 │   │       └── trap_gate.rs           # Filter-before-FFI trampoline & entropy analyzer
+│   │   └── tests/
+│   │       ├── unit_bus.rs            # Pure bus multiplexing tests
+│   │       ├── unit_dispatch.rs       # Static dispatch table tests
+│   │       └── unit_planes.rs         # Subsystem plane unit tests
 │   │
 │   ├── kelir-transport/               # Supporting crate: Stream trait + SPSC ring, AF_VSOCK, named-pipe backends
 │   ├── kelir-catalog/                 # Supporting crate: SQLite schema, pool, migration helpers (used by core)
