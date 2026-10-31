@@ -1,7 +1,7 @@
 - Operations
   - Execution philosophy
     - Resource constraints: see: artifacts/config/justfile (build)
-      and artifacts/config/ci.yml (shim size)
+      - and artifacts/config/ci.yml (shim size)
     - Boot-budget target: see: 01-architecture.md#Boot-budget
     - Sub-minute local cycles via just
     - Zero-bloat crate boundary: tokio full banned; libc/sys-crates strictly scoped
@@ -21,13 +21,13 @@
     - Targets: <15s host build, <10s unit tests, sub-minute pre-flight
     - Velocity invariants
       - `build-host` excludes kelir-shim: shim has its own cross-compile
-        target and its own time budget
+        - target and its own time budget
       - `test-all` excludes integration: integration needs a real hypervisor
-        and would fail every local run
+        - and would fail every local run
       - `test-drivers` excludes `test_hw_*`: real-hardware paths are not
         locally reproducible
       - `pre-flight` is the only gate that must pass before push; it is the
-        union of the three exclusions above plus physical code hygiene gates
+        - union of the three exclusions above plus physical code hygiene gates
     - `pre-flight` runs parity, plugin audit, tiered check before push
       - see: #Multi-language-parity-gate and #Developer-CLI
   - CI matrix
@@ -43,7 +43,7 @@
         - Shared-memory SPSC ring path
         - Named-pipe fallback path
         - No AF_VSOCK assumptions may leak into shared code; a compile
-          lint enforces the abstraction; see: 01-architecture.md#Transport-engine-abstraction
+          - lint enforces the abstraction; see: 01-architecture.md#Transport-engine-abstraction
         - Full workflow runs on self-hosted Windows WHP runners
         - GitHub-hosted cells run the transport unit tests only
     - Enforced invariants: CI matrix
@@ -59,18 +59,18 @@
     - Plugin audit tier: plugin-audit; see: #Per-plugin-CI
     - Tiered compilation tier: verify-tiered-compilation; see: #Tiered-compilation
     - Code hygiene gate: check-hygiene enforces 1,000 LOC ceiling and bans
-      inline `#[cfg(test)]` in `src/` across the entire workspace
+      - inline `#[cfg(test)]` in `src/` across the entire workspace
   - Spec gate
     - Job: cans-check
     - Two tiers, exit-code asserted on parsed JSON, no stderr grep
       - `cans check --refs-only`: every reference resolves, no deep hop, no orphan
       - `cans check`: duplicate-home, node_vs_artifact invariant, redundancy
     - Pull-request tier: `cans check --touched-files` rejects edits outside
-      each concept's canEdit set
+      - each concept's canEdit set
     - No path filter: a node edit can break a pointer in any other node
     - Local mirror: `just check-spec` invokes the identical flags
     - Invariant: every rule in _rules.yaml maps to a step here, or the rule
-      is dead and gets removed
+      - is dead and gets removed
   - Coverage-gates
     - --plugin-coverage
       - Plugin asserts: see: 02-plugin-model.md#First-class-plugins
@@ -82,14 +82,14 @@
     - --lifecycle-coverage
       - Lifecycle asserts: see: 08-lifecycle.md#Hypervisor-primitives
       - State machine assert: verifies all SuspendReason variants execute through
-        centralized lifecycle
+        - centralized lifecycle
     - --hook-coverage
       - Asserts every hook in the segregated traits is implemented by some
-        custom plugin in cans/artifacts/examples
+        - custom plugin in cans/artifacts/examples
       - Hook home: see: 02-plugin-model.md#Segregated-ring-traits
     - --action-coverage
       - Asserts every TrapAction, PostExecAction, SyncVerdict, and PluginError
-        variant is used at least once in cans/artifacts/examples
+        - variant is used at least once in cans/artifacts/examples
       - Action home: see: 11-protocol.md#TrapAction-method-mapping
     - --veto-coverage
       - Asserts every VetoEvent is registered at least once in an example
@@ -99,12 +99,12 @@
       - Watchdog home: see: 08-lifecycle.md#Watchdog
     - --channel-coverage
       - Asserts every channel in 11-protocol.md#Channel-allocation-table is
-        exercised by at least one integration test
+        - exercised by at least one integration test
       - Specifically asserts 0x0005 (VFS) and 0x0006 (bulk) have live round-trip
       - A channel with no test fails the gate
     - --drain-coverage
       - Asserts Running -> Draining -> Terminated transitions on
-        completion, on timeout, and on already-draining
+        - completion, on timeout, and on already-draining
       - Asserts EBUSY is returned for new exec during Draining
     - --transport-coverage
       - Asserts every Transport backend is exercised by a build matrix cell
@@ -184,7 +184,7 @@
     - Chain parity
       - vectors.json must encode the same trap/pre/post/hook chain for each SDK
       - Each SDK executes that identical chain; CI diffs the observed
-        ExecutionReceipt per chain and any divergence blocks CI
+        - ExecutionReceipt per chain and any divergence blocks CI
       - AST method-name parity alone does not assert chain parity
     - Precompiled zero-toolchain distribution
       - Release builds native NAPI addons and PyO3 wheels across target matrix
@@ -226,7 +226,7 @@
       - `plugin vectors`: regenerate vectors.json from fixtures
       - `plugin rings --show`
       - `kelir-pack`: CLI invocation for single-pass ingestion compiler;
-        see: 12-adapters.md#Ingestion-matrix
+        - see: 12-adapters.md#Ingestion-matrix
     - Shares implementation with CI
       - A local pass that CI rejects means the CLI is broken
   - Project structure

@@ -10,7 +10,7 @@
     - Host blocking prevention: zero guest syscalls may sleep host ring workers
     - Encapsulation invariant
       - Host workspace is locked to mode 000 on host; only the hypervisor
-        descriptor bridges access to virtio-fs lowerdir
+        - descriptor bridges access to virtio-fs lowerdir
       - Native toolchains outside Kelir observe EACCES on workspace access
       - Granular knob: workspace_encapsulation = Locked | Passthrough
   - EROFS rootfs

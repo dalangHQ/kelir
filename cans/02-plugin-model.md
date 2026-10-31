@@ -29,7 +29,8 @@
     - First-class catalog default: kind is Native unless stated
     - Mutation scope manifest: mutators declare target paths, ports, or envs
     - Mutation scope conflict rule: Overlapping mutators on identical operation targets
-      (multiple mutators writing to the same path, port, or env key) fail validation at boot with EAmbiguousMutation
+      - (multiple mutators writing to the same path, port, or env key) fail validation at boot
+      - with EAmbiguousMutation
     - Non-mutating observers may overlap freely with mutators across arbitrary path subtrees
     - Cycle detection and unfulfilled dependencies fail closed at boot
     - Clean-room boundary invariant
@@ -92,16 +93,16 @@
       - Err(PluginError::Halt(msg)) = unrecoverable failure; freezes VM pipeline
     - Shape of the surface
       - Lifecycle, trap, and terminal hooks are `async`; storage and wire
-        hooks are synchronous; neither blocks the dispatch array
+        - hooks are synchronous; neither blocks the dispatch array
       - Hooks map strictly to VirtIO transport events and hypervisor transitions
       - Every ring has both an observation and a mutation point; the trait
-        never exposes a ring for observation only
+        - never exposes a ring for observation only
       - The surface is closed per ring; adding a hook is a spec change, not
         a plugin concern
     - Why the surface is this size
       - A hook exists only if a ring delivers the event it consumes
       - A hook that a plugin does not implement defaults to `Ok(())`;
-        "opt-in" is each ring trait's typing, not a runtime branch
+        - "opt-in" is each ring trait's typing, not a runtime branch
     - Hook context restriction
       - Trap and lifecycle hooks receive HandlerCtx or a restricted lifecycle context
       - No hook receives &mut Box<dyn VmmDriver> or &Session
@@ -160,7 +161,7 @@
     - Invariant: child effective scope is boolean intersection of ancestor scopes
     - Scoping is transport-agnostic
       - Filters evaluate above the Transport backend (SPSC ring, AF_VSOCK,
-        or named pipe); plugin authors never see the transport
+        - or named pipe); plugin authors never observe the transport
       - Windows hosts apply identical scoping semantics as Linux/macOS
       - No plugin may key behavior on the transport identity
   - Filter-before-FFI gate
@@ -229,7 +230,7 @@
       - Coverage is per-plugin; no single example must cover all
       - No dedicated matrix example exists to satisfy coverage alone
       - Surface examples are separately gated by --hook-coverage
-        and --action-coverage; not by --plugin-coverage
+        - and --action-coverage; not by --plugin-coverage
       - Community examples live in cans/artifacts/examples
       - Commercial examples live in the proprietary implementation repo
       - Hook-coverage: every hook in Segregated-ring-traits is implemented
@@ -286,7 +287,7 @@
       - Removing an upstream crate breaks only its declared dependents
       - Executed per plugin by tiered compilation; see: 15-operations.md#Tiered-compilation
       - Scope: excludes facade (re-exports every plugin), adapter binaries
-        (one plugin each), and kelir-integration (dev-depends on all)
+        - (one plugin each), and kelir-integration (dev-depends on all)
       - Tiered dependency edges: gated by plugin-audit
       - Audit gate detail: see: 15-operations.md#Per-plugin-CI
     - External plugins: same contract; no adaptation

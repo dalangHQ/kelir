@@ -24,7 +24,7 @@
         - Hardware memory protection keys (MPK on x86_64) isolate in-process heap
         - Filter-before-FFI boundary stops thrash: native rules evaluate in <2µs
         - Foreign async handlers (V8/Python) evaluate out-of-band; synchronous hot-paths
-          execute native Rust interposers or require explicit YieldToHost
+          - execute native Rust interposers or require explicit YieldToHost
         - No dockerd, containerd, background root socket, daemon maintenance
       - Strict hardware/kernel abstraction layer
         - Zero knowledge of prompts, evaluation loops, or orchestration logic
@@ -47,7 +47,7 @@
         - Every plugin is a decoupled, composable crate
       - Transparent truthful steering
         - Any intercepted syscall, file read, or network packet is allowed,
-          steered with a host disclosure, or rejected with a machine-parsable receipt
+          - steered with a host disclosure, or rejected with a machine-parsable receipt
         - Mandatory TTY host disclosure invariant
       - Codebase invariants
         - Strict file bounds: 500 LOC target, 1,000 LOC hard ceiling per .rs file
@@ -67,7 +67,7 @@
     - Params ingress contract
       - Structured configuration delivered via paravirtual configuration device
       - Params API: .params(schema), validated out-of-band by paravirtual
-        configuration device before guest instruction execution
+        - configuration device before guest instruction execution
       - Host-side validation before any guest instruction
         - Serde (Rust), TypeBox (TypeScript), Pydantic v2 (Python)
         - Schema push-down: builder compiles schemas into native Rust validators
@@ -275,7 +275,7 @@
       - Other hosts: arch mismatch fails with ENOEXEC; no silent fallback
     - Guest kernel hardening
       - Unconditional boot params: kptr_restrict=2 dmesg_restrict=1
-        panic_on_oops=1 slab_nomerge pti=on slub_debug=FZP
+        - panic_on_oops=1 slab_nomerge pti=on slub_debug=FZP
       - kelir-shim remounts /proc with hidepid=2 during early init
       - /proc/kallsyms, /sys/firmware, /proc/version leak signatures suppressed
       - Untrusted scripts cannot probe kernel pointers or peer processes
@@ -294,7 +294,7 @@
       - Byte count, not page count: page size is 16KB on Apple Silicon ARM64
         and 4KB on Linux/x86
       - Rationale: a byte count yields identical receipts, deltas, and
-        Merkle roots across hosts; a page count does not
+        - Merkle roots across hosts; a page count does not
       - Sole home of the page-size fact for receipts and Merkle roots
       - Kernel fixture selection: see: #Page-size-dynamic-boot-selection
   - Driver backends

@@ -41,7 +41,7 @@
       - Independent lanes per stream; stderr never blocks stdout
       - Guest shim monitors consumer buffer drains
       - On backpressure threshold, shim applies POSIX `input_stall` to the guest
-        process's file descriptor before guest socket buffers overflow
+        - process's file descriptor before guest socket buffers overflow
       - Host consumer slow or stalled → producer fd is paused, not dropped
       - No mid-flight frame loss; no guest kernel deadlock
     - PTY (virtio-console Port 0) remains the interactive human TTY
@@ -93,24 +93,23 @@
       - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
       - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
       - A single trap-on-every-syscall design adds ~µs per fork/exec at
-        toolchain scale; the allowlist exists to pay that cost only where
-        policy is possible
+        - toolchain scale; the allowlist exists to pay that cost only where policy is possible
       - cgroup v2 freezer closes check-to-use race without ptrace latency
       - process_vm_readv captures exact memory without thread attachment
       - A frozen inspection is still blind to what the loader *will* do;
-        the linker audit exists to make the inspection meaningful
+        - the linker audit exists to make the inspection meaningful
     - Measurement rule
       - Syscall trap resolves target binaries by kernel (st_dev, st_ino)
       - Prevents path confusion across nested namespaces, chroots, and crun roots
       - In-kernel BPF denies CLONE_NEWUSER unless explicitly allowed in MountScope
       - Agents cannot hide execution by spawning unprivileged child containers
       - ELF is read from disk at trap time: /proc/$PID/maps still describes
-        the pre-exec image and cannot be trusted
+        - the pre-exec image and cannot be trusted
       - Scans /proc/$PID/auxv, envp, and PT_INTERP before cgroup unfreeze
     - Per-command rlimits
       - Exec request on Channel 0x0003 control stream carries optional ProcessLimits
       - Fields: max_as_bytes (RLIMIT_AS), max_nofile (RLIMIT_NOFILE),
-        max_nproc (RLIMIT_NPROC), max_cpu_seconds (RLIMIT_CPU)
+        - max_nproc (RLIMIT_NPROC), max_cpu_seconds (RLIMIT_CPU)
       - kelir-shim calls setrlimit(2) between fork() and execve()
       - Rogue tool run kills only itself via SIGSEGV or SIGKILL
       - MicroVM, kelir-shim, and sibling processes remain alive
@@ -118,7 +117,7 @@
       - Per-command rlimits survive Rewrite: applied to the rewritten binary,
         not the original
       - Shell invocations apply the limit to the shell; children inherit
-        unless they explicitly drop privileges (which drops rlimit authority)
+        - unless they explicitly drop privileges (which drops rlimit authority)
       - Limits reported in ExecutionReceipt for auditability
       - Enforcement is inside the guest kernel; no host cooperation required
     - Flow diagram: see: artifacts/diagrams/trap-flow.txt
@@ -160,7 +159,7 @@
         - SPSC ring full: sender parks on host eventfd / guest virtual interrupt
         - Guest-visible semantics unchanged (virtio-vsock credits)
         - Named-pipe fallback (Windows) uses OS pipe buffer backpressure with
-          the same park semantics; framing identical
+          - the same park semantics; framing identical
         - AF_VSOCK fallback uses transport-credit backpressure; framing identical
         - Exec channel (0x0003) applies EXEC_IO_SPEC admission; see: #Binary-exec-channel
       - Reconnect
@@ -208,7 +207,7 @@
     - SDK channel surface: see: 03-sdk-architecture.md#Language-surfaces
   - Env injection
     - Workload environment variables, registers, and execution paths remain
-      immutable under Allow verdicts
+      - immutable under Allow verdicts
     - State mutations require explicit Rewrite with validated disjoint keys
   - Trap decision invariants
     - Rewrite loop prevention

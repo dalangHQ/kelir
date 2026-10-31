@@ -28,7 +28,7 @@
     - Tri-native SDKs are the fourth ingestion family; see: 03-sdk-architecture.md
     - Ingestion tiering and licensing
       - Community adapters: kelir-pack (OCI→EROFS compiler), mcp-server (stdio wire),
-        e2b-compat (thin client SDK)
+        - e2b-compat (thin client SDK)
       - Commercial adapters: containerd-shim-v2 (K8s), openshell-grpc (NVIDIA CDI)
       - Commercial adapter interface: see: plugins/commercial.md#Adapter-binaries
   - MCP adapter

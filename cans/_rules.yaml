@@ -16,7 +16,33 @@ slug:
   example: 'Layer 1 — C authorizer -> Layer-1-C-authorizer'
 
 structure:
-  node_length: { min: 3, max: 90 }
+  # cans-spec issue #61 (cans 0.11.0): the bare { min, max } form measured
+  # only the bullet title, so wrapped prose continuations were invisible
+  # and the check reported 0 problems while 122 folded nodes exceeded 90
+  # chars. Granular form below makes the same 90-char budget real:
+  # scope total = title + continuations folded with single spaces.
+  # severity error restores the pre-0.11 fatality: 0.11 defaults both
+  # sides to warn, so a bare block would stay exit 0 under `cans check`.
+  # unit chars keeps the original budget (words would re-scale it).
+  # strip_references stays false, measured: true strips pure `see:` nodes
+  # to length 0 and trips min on all 37 of them (false positives); false
+  # trips only 3 pointer-inflated nodes, fixed as prose splits like the
+  # rest instead of exempted.
+  node_length:
+    min: 3
+    max: 90
+    unit: chars
+    scope: total
+    strip_references: false
+    severity: error
+  # Wrapped-prose policy (issue #61): continuations are allowed, capped
+  # at 4 lines, aligned to the bullet text column, fatal on violation.
+  # Measured clean on this corpus: 0 multiline findings at this policy.
+  multiline:
+    mode: allow
+    max_lines: 4
+    indent_aligned: true
+    severity: error
   # spec-shaped docs: a node may legitimately own 1-2 children (a "Problem"
   # node with one line, a "Fields" node with one field). min 1 = the check
   # never fires; single_child_collapse is the knob for the 1-child advisory.
@@ -60,15 +86,20 @@ redundancy:
   # corpus. Fuzzy near-miss word forms are off: Levenshtein on technical
   # identifiers (rc/vc, ts/tsx) is pure noise here.
   # wire is load-bearing (canonical homes: wire plugin, wire plane), currently 71 nodes;
-  # 80 keeps the layer live for genuine sprawl without flagging a core domain term.
-  word_frequency_threshold: 80
+  # Absolute node count, so it scales with the corpus: the #61 split added
+  # 129 nodes (2752 -> 2881), so 80 * 2881/2752 = 83.8 -> 84 keeps the layer
+  # live for genuine sprawl without flagging function words. `not` is NOT a
+  # stopword: it is the only distinguishing token in contrast pairs
+  # (What-it-is / What-it-is-not, Inherited / Not-inherited), and
+  # stopwording it mints false 100% overlaps there.
+  word_frequency_threshold: 84
   # 1.00 = literal duplicates only; sub-100% overlap on spec prose is normal.
   phrase_overlap_threshold: 0.95
   cross_file_threshold: 5
   fuzzy: false
   # Load-bearing vocabulary of this corpus: every node mentions these nouns,
   # so keyword sprawl on them is not a canonical-home violation.
-  stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires, host, guest, plugin, on, is, kelir, virtio, via, no, zero, session]
+  stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires, host, guest, plugin, on, is, kelir, virtio, via, no, zero, at, session]
   synonyms:
     - [postgres, postgresql, pg]
     - [auth, authentication, sign-in, signin]

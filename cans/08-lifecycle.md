@@ -16,8 +16,7 @@
         - On timeout, in-flight work is terminated with SIGTERM, then SIGKILL
         - Preserves finished work in CI/CD pipelines and long agent chains
     - Set-level invariant: every item is a hypervisor primitive, not a
-      guest-side simulation. Nothing in this set is achievable without driver
-      cooperation.
+      - guest-side simulation. Nothing in this set is achievable without driver cooperation.
     - Monotonic clock clamp: CLOCK_MONOTONIC never regresses across restore
     - Restored monotonic time clamps to max(current_monotonic, snapshot_monotonic)
     - Preserves timer loop invariants for guest Tokio, Go, and libuv runtimes
@@ -28,7 +27,7 @@
     - Preemption window: see: #Host-crash-reaper
     - Every item exposes one lifecycle point via LifecycleCtx
       - Typestate boundary: fork, suspend, rollback, skew_clock exist
-        exclusively on Session, never on KelirBuilder
+        - exclusively on Session, never on KelirBuilder
       - Split by state-preservation, not by privilege: see: #Lifecycle-vetoes
     - Ownership attribution: see: 02-plugin-model.md#First-class-plugins
     - Hardware session attestation:
@@ -90,9 +89,9 @@
     - Attempting rollback on a frozen syscall trap aborts with E_INVALID_LIFECYCLE_STATE
     - Two-phase execution boundary
       - 1. Storage reset: Session::rollback() truncates the sparse host-backed
-        upperdir file and punches holes (FALLOC_FL_PUNCH_HOLE)
+        - upperdir file and punches holes (FALLOC_FL_PUNCH_HOLE)
       - 2. Hardware reset: driver.rollback(&snapshot) resets physical RAM
-        and vCPU registers in <8ms
+        - and vCPU registers in <8ms
       - HVF path: resets Stage-2 translation table roots to snapshot base
       - KVM path: restores userfaultfd memory tracking to checkpoint slot
     - Host SSD workspace and host-side Merkle WAL remain completely untouched
@@ -119,7 +118,7 @@
     - CLI and SDK
       - SDK exposes session.stop() and session.stop_with_timeout(d) for graceful exit
       - Draining is a superset of stop for pipelines that need to finish
-        queued work; see: #Hypervisor-primitives
+        - queued work; see: #Hypervisor-primitives
   - Suspend and resume
     - suspend
       - Reason: SuspendReason::External or ResourcePressure
@@ -131,9 +130,9 @@
       - Restores registers and memory
       - Resumes at exact cycle boundary
       - Host samples CLOCK_REALTIME and dispatches a paravirtual clock
-        update frame over Channel 0x0000
+        - update frame over Channel 0x0000
       - kelir-shim issues clock_settime(CLOCK_REALTIME) before unfreezing
-        cgroups or releasing trapped tasks
+        - cgroups or releasing trapped tasks
       - Guest time snaps forward instantly after multi-day suspension
       - Zero CERT_HAS_EXPIRED or CERT_NOT_YET_VALID on first outbound TLS
     - Snapshot contents
@@ -164,15 +163,15 @@
     - Typical use: waiting for human approval with zero host CPU cost
     - Mobile and SBC use: full RSS deallocation under Android LMK memory pressure
     - Flash preservation: sparse upperdir backing file may be placed on a
-      tmpfs host path when write volume fits RAM; SBC profile selects this
-      by default. Otherwise writes hit disk blocks as normal.
+      - tmpfs host path when write volume fits RAM; SBC profile selects this
+      - by default. Otherwise writes hit disk blocks as normal.
     - External suspension
       - Triggered by SuspendReason::External(u32) awaiting out-of-band release
       - Resume executes cycle-exact upon external release signal
   - Elastic compute
     - Guest kernel boots with maxcpus=N; configured count online at boot
     - Scale up: hypervisor unparks host vCPU threads; shim writes
-      /sys/devices/system/cpu/cpuX/online
+      - /sys/devices/system/cpu/cpuX/online
     - Scale down: host parks surplus vCPU threads; guest offlines cores
     - Warm memory, caches, and loaded dependencies retained across resize
     - No reboot, no teardown, no session re-attestation
@@ -184,7 +183,7 @@
       - vCPU threads are pinned to specific host cores per the planner
       - Cross-NUMA placement only when explicitly requested
       - Guest sees a coherent topology (per-NUMA CPU sets, LLC sizes) even
-        when the host allocation is fragmented
+        - when the host allocation is fragmented
       - Oversubscription is bounded by a per-host policy, not by guesswork
     - Shared borrowing
       - Idle VMs yield CPU slices to busy neighbors bounded by hard quotas
@@ -205,10 +204,10 @@
       - Step lattice:
         - StepVerdict::Commit: flushes staging delta, advances active step slot
         - StepVerdict::Rollback(reason): calls session.rollback(), reverting RAM in <8ms
-          and discarding the sparse upperdir delta
+          - and discarding the sparse upperdir delta
         - StepVerdict::YieldToHost: halts vCPU registers awaiting external input
       - Fail-closed invariant: unhandled post-execution failures or evaluation
-        timeouts trigger automatic hardware rollback before releasing workload
+        - timeouts trigger automatic hardware rollback before releasing workload
     - Delta chain compaction
       - A checkpoint chain holds: one immutable Base and N stacked WorkingDeltas
       - Depth is unbounded; each delta records its parent via `parent_digest`
@@ -219,9 +218,9 @@
       - Branching agent trees (tree-of-thought, parallel MC search) are the
         primary workload
       - Lazy CoW page sharing (`--cow-mem`) lets forks share parent memory pages
-        until written; fork time stays <10ms regardless of depth
+        - until written; fork time stays <10ms regardless of depth
       - Diff resolution is O(1) per depth step for reads; the runtime tracks
-        active chain head per session
+        - active chain head per session
       - Host memory grows only with divergent deltas, not chain depth
       - Lineage metadata walks the CAS manifest DAG
   - Portable snapshot bundles
@@ -248,7 +247,7 @@
       - Dispatch paravirtual clock resync frame over Channel 0x0000; see: #Suspend-and-resume
       - Guest time snaps to host wall-clock in 0ms; prevents wake TLS failure
       - Fork inherits the parent's guest clock at fork instant; children diverge
-        monotonically from that point
+        - monotonically from that point
   - Host crash reaper
     - Problem: host crash orphans guest vCPUs
       - Host Node.js / Python process killed abruptly (kill -9, OOM, segfault)
@@ -279,38 +278,38 @@
       - The runner child inherits the row id via an environment variable
       - The runner updates the row's lease heartbeat while alive
       - If the runner dies without cleanup, the row's TTL expires and the
-        janitor reclaims the session directory
+        - janitor reclaims the session directory
       - No double-fork, no setsid race, no "drop the handle and hope"
     - Lock handoff
       - disk_lock_handoff: SQLite row transition from `pending` to `owned`
-        by the runner; atomic, survives parent panic
+        - by the runner; atomic, survives parent panic
       - memory_handoff: shared-memory descriptor passed via SCM_RIGHTS;
-        parent closes its end after handoff ack
+        - parent closes its end after handoff ack
       - If the parent panics between spawn and ack, the runner either
-        completes the handoff (row absent -> self-cleanup) or exits
+        - completes the handoff (row absent -> self-cleanup) or exits
     - Reattachment
       - CLI reads the catalog, verifies the row's lease is live, and
-        connects to `~/.kelir/sessions/<id>/relay.sock`
+        - connects to `~/.kelir/sessions/<id>/relay.sock`
       - Running and Starting states both accept reattach; Starting defers
         until boot completes
       - Reattachment is idempotent across concurrent clients
     - Runner watchdog
       - A `parent_watchdog` thread in the runner monitors the SQLite catalog
-        for explicit `session.stop` or `session.drain` requests
+        - for explicit `session.stop` or `session.drain` requests
       - No fixed TTL terminates an active guest; the lease only proves
-        liveness, it does not impose a deadline
+        - liveness, it does not impose a deadline
       - Explicit stop, drain, or remove is the only path to termination
     - No resident daemon
       - Default sessions retain PR_SET_PDEATHSIG / kqueue / Job Object reaping
       - Detached sessions have no PDEATHSIG; the SQLite lease replaces it
   - Break-glass
     - Human operators need real tooling: VS Code Remote, JetBrains Gateway,
-      rsync, sftp, multi-session shells. A raw PTY cannot satisfy these.
+      - rsync, sftp, multi-session shells. A raw PTY cannot satisfy these.
     - Ephemeral SSH/SFTP subsystem
       - In-process SSH server hosted inside the runtime (russh + russh-sftp)
       - Listener bound to 127.0.0.1:<ephemeral> on the host
       - Public key auth: Ed25519 keypair minted per `session.ssh()` call,
-        public key injected to the guest over the paravirtual control channel
+        - public key injected to the guest over the paravirtual control channel
       - Default user `root`; configurable via connect options
       - SFTP subsystem on by default
       - Port forwarded from host to guest via the vsock transport
@@ -329,7 +328,7 @@
       - Raw PTY console master remains for kernel-level recovery only
       - Human debugging uses SSH by default
     - Spelling: `session.ssh()` (all SDKs);
-      `session.breakGlass()` (TS) is a deprecated alias for `session.ssh()`
+      - `session.breakGlass()` (TS) is a deprecated alias for `session.ssh()`
   - Wire port forwarding: details at 07-wire-plane.md#Port-forwarding
   - Zombie reaping
     - Shim runs as guest PID 1

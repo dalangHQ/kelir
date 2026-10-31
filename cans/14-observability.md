@@ -10,7 +10,7 @@
     - Shutdown
       - Drain flushes logs before termination; see: 08-lifecycle.md#Hypervisor-primitives
       - Abrupt kill may leave logs truncated at last flushed chunk; the
-        cursor remains monotonic and replay-safe
+        - cursor remains monotonic and replay-safe
   - Metrics pipeline
     - A shared registry exports machine readable counters
       - Exporters ship to stdout or an otel compatible endpoint
@@ -18,13 +18,13 @@
     - OTLP is the default export surface
       - Native gRPC and HTTP exporters via OpenTelemetry SDK
       - Metrics: counters (execs, syscalls, drops, backpressure events),
-        gauges (RSS, dirty pages, active vCPUs, in-flight execs)
+        - gauges (RSS, dirty pages, active vCPUs, in-flight execs)
       - Traces: one span per receipt phase (trap_ingress, policy, ffi_hop,
-        verdict_egress); see: 10-epistemic.md#Execution-receipts
+        - verdict_egress); see: 10-epistemic.md#Execution-receipts
       - Trace continuity across guest-originated requests via W3C traceparent
       - No local Merkle WAL is written by default; see: plugins/ledger.md
     - Host dashboards (Prometheus, Datadog, Grafana Alloy, OTel Collector)
-      consume without bespoke scrapers
+      - consume without bespoke scrapers
   - Health signals
     - Heartbeat loss marks a guest as stalled or wedged
     - Parent watchdogs reap orphaned runtime processes

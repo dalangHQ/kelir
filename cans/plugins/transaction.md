@@ -17,9 +17,9 @@
       - Coordinates with hypervisor lifecycle: pauses vCPUs during commit evaluation
       - on_pre_commit pauses guest vCPUs, flushes VFS buffers, and prepares staging files
       - on_post_commit(true) executes atomic directory swap into host workspace
-        and issues SQL COMMIT across active proxy connections
+        - and issues SQL COMMIT across active proxy connections
       - on_post_commit(false) discards the sparse overlay delta, drops staging directories,
-        issues SQL ROLLBACK, and releases advisory locks
+        - issues SQL ROLLBACK, and releases advisory locks
       - Prevents desynchronization between host database state and guest workspace diffs
     - Spatial blast radius scoping
       - Scopes filesystem mutations to declared path subtrees; undeclared writes fail closed

@@ -14,11 +14,11 @@
     - Ingests immutable StorageDelta and ExecutionDelta domain events
     - Merkle WAL
       - Pluggable LedgerSink trait owns persistence; Merkle DB is an opt-in
-        compliance plugin, not a default
+        - compliance plugin, not a default
       - Default ledger sink is OTLP: metrics and traces flow to the host's
-        existing OpenTelemetry Collector without local disk overhead
+        - existing OpenTelemetry Collector without local disk overhead
       - Merkle WAL is selected explicitly via `ledger.merkle.enabled = true`
-        for regulated environments that require tamper-evident on-disk audit
+        - for regulated environments that require tamper-evident on-disk audit
       - External sink delegates persistence; no default local DB is written
       - suppress_local_db skips any local sink to preserve host single SSOT
       - Host-isolated by construction
@@ -46,22 +46,22 @@
         - WAL is opt-in (ledger.merkle.enabled = true); default off
         - When off, receipts flow to OTLP only; no on-disk audit is written
         - When on, WAL records carry the same receipt correlation_token used
-          by the OTLP spans for cross-reference
+          - by the OTLP spans for cross-reference
     - OpenTelemetry
       - Default exporter: OTLP over gRPC and HTTP
         - Standard OTLP endpoints via OTEL_EXPORTER_OTLP_ENDPOINT
         - Metrics: counters (execs, syscalls, drops), gauges (RSS, dirty pages,
           active vCPUs)
         - Traces: one span per physical receipt phase (trap_ingress, policy,
-          ffi_hop, verdict_egress)
+          - ffi_hop, verdict_egress)
         - Context propagation: W3C traceparent injected on outbound requests
         - Trace continuity: a guest-originated request and its cause
-          (trap, spawn, receipt) share a trace
+          - (trap, spawn, receipt) share a trace
       - Zero-allocation metric registry in the core; ledger plugin reads
         and exports
       - Config lives in plugin-ledger (`OtelConfig`); not restated here
       - Merkle WAL is a separate sink; when enabled it binds the receipt's
-        correlation_token into its records
+        - correlation_token into its records
       - Failure handling
         - Export failures are logged locally and retried by the OTLP client
         - Export failure never blocks the pipeline

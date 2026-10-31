@@ -6,13 +6,13 @@
         - The runtime materializes the full ancestor prefix as read-only layers
         - The restored session's working delta becomes a new child of that digest
         - Ancestors remain shareable by later restores; CoW page sharing
-          applies across all concurrent children of the same ancestor
+          - applies across all concurrent children of the same ancestor
         - Depth is unbounded; there is no depth-1 StepSlot ceiling
   - Archives and portability
     - Export format: single Content-Addressed .kelir-snap binary stream
       - Archive header: magic, format version, feature flags, entry table
       - Stream contents: manifest.json, vmm_state.json, ram.zst, upperdir.tar.zst,
-        guest_clock.json, attestation.jws
+        - guest_clock.json, attestation.jws
       - Verification: trailer carries manifest digest for end-to-end integrity
     - Unpack containment invariants (Single Source of Truth)
       - Untrusted input boundary: zero ambient host filesystem trust
@@ -27,4 +27,4 @@
       - Compaction writes a new consolidated manifest pointing to ancestor base
       - SQLite stores zero child arrays; catalog tracks session leases only
       - A live head pins its full ancestor prefix; interior nodes with multiple
-        live descendants remain materialized
+        - live descendants remain materialized

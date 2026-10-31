@@ -4,7 +4,7 @@
     - Fact emission: TrapEvent, ExecutionReceipt, CausalDelta
     - Hardware counters: CPU instructions, dirty pages, MMU faults, wire byte volume
     - Boundary opacity: Internal interception policies surface to the guest strictly
-      as physical bus errors, standard POSIX errnos, or silent packet drops
+      - as physical bus errors, standard POSIX errnos, or silent packet drops
   - Primitive vs derived telemetry
     - Telemetry decision test
       - Single read API, hardware boundary, no policy → primitive, core-owned
@@ -98,11 +98,11 @@
   - Telemetry provenance classification
     - Invariant: A higher classification never falls back to a lower classification
     - Class 1 (Hardware Sampling): PMU instruction counters, dirty byte counts,
-      physical exit codes, hardware TSC timestamps. Unforgeable from guest space.
+      - physical exit codes, hardware TSC timestamps. Unforgeable from guest space.
     - Class 2 (Paravirtual Interception): FUSE buffers, virtqueue frames, character rings.
-      Observed at the hypervisor boundary.
+      - Observed at the hypervisor boundary.
     - Class 3 (Guest Unverified Data): Workload stdout/stderr payloads, memory buffers.
-      Tainted by default; cannot satisfy hardware assertions.
+      - Tainted by default; cannot satisfy hardware assertions.
     - Selection rule
       - Claim must resist forgery by guest code → Tier 1
       - Claim about a public, versioned contract → Tier 2
@@ -111,7 +111,7 @@
       - A higher-tier claim never falls back to a lower-tier signal
       - Missing Tier 1 evidence is a denial, not a Tier 3 downgrade
       - Rationale: silent downgrade is exactly the harness self-report failure
-        this tier scheme exists to prevent
+        - this tier scheme exists to prevent
   - Lifecycle bridge
     - Orchestrator verbs: pause, resume, step, rollback, fork, suspend
     - Each verb aliases exactly one mechanism in
@@ -127,7 +127,7 @@
     - Post-step verification compares physical receipts against pre-step states
     - StepSlot semantics
       - Single slot per active PID lineage; sub-steps fold into Base on
-        StepVerdict::Commit, discard on StepVerdict::Rollback
+        - StepVerdict::Commit, discard on StepVerdict::Rollback
         - see: 08-lifecycle.md#Delta-chain-compaction
       - StepSlot managed natively by kelir-core::checkpoint
       - Fork operations clone active StepSlot state into child sessions

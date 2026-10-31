@@ -17,19 +17,19 @@
       - Intercepts all JSON-RPC 2.0 frames on the MCP console port matching "tools/call"
       - Deserializes tool name and arguments in native memory before execution
       - Interposition is complete: no tool invocation reaches guest
-        execution shims without passing tool-guard
+        - execution shims without passing tool-guard
     - Anti-Rug-Pull schema pinning
       - Intercepts initial "tools/list" advertisement at on_vm_ready
       - Computes BLAKE3 hash over all tool schemas, signatures, and descriptions
       - Locks the catalog: dynamic schema mutation or description injection
-        post-boot halts with ESecurityViolation
+        - post-boot halts with ESecurityViolation
     - Host extensible hook pipeline
       - Exposes typed pre-call and post-call interception to host runtimes
       - Mount via builder.use(toolGuard()) decorates builder with .tool()
       - Rust: exposes ToolGuardExt extension trait for direct builder chaining
       - Python: registers @builder.on_tool decorator dynamically on mount
       - Non-matching tool calls evaluate static MountScope allowlists;
-        matching calls cross FFI trampoline to host
+        - matching calls cross FFI trampoline to host
     - Decision lattice (tool-guard)
       - ToolAction::Allow: forwards frame untouched
       - ToolAction::Rewrite(mutation): serializes canonical ExecveMutation ABI:
@@ -52,7 +52,7 @@
       - Zero-copy regex & Aho-Corasick scanning over string arguments
       - Injects vault:// placeholder dereferencing: raw secrets in arguments reject immediately
       - Output scrubber: scans tool execution responses on return;
-        strips host secrets before model context ingests bytes
+        - strips host secrets before model context ingests bytes
   - Error and return semantics (tool-guard)
     - Hook signature (tool-guard): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (tool-guard)
@@ -60,4 +60,4 @@
         - code = -32001 (EPERM) or mapped POSIX errno
         - message = user-defined reason or "Policy violation: tool execution rejected"
       - Schema drift or unpinned tool tampering returns -32601
-        (Method not found) + VM Security Panic
+        - (Method not found) + VM Security Panic

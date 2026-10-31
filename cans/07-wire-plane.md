@@ -44,8 +44,8 @@
     - Blocked queries return NXDOMAIN; allowed queries forward to the live upstream
     - Filter decisions are name-based, not entropy-based
     - Entropy gating is not a policy primitive: CDN labels, telemetry IDs, and
-      legitimate base64 URLs produce false positives, while an attacker who
-      controls encoding trivially defeats a fixed threshold
+      - legitimate base64 URLs produce false positives, while an attacker who
+      - controls encoding trivially defeats a fixed threshold
   - Synthetic DNS gateway
     - Guest paravirtual network binds synthetic gateway 192.168.127.1:53
     - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-core::wire
@@ -58,10 +58,10 @@
       - Synthetic IPs bypass local CIDR filters; domain policy rules govern admission
       - Original target hostname preserved verbatim in upstream proxy CONNECT frame
       - macOS: SCDynamicStore subscription per interface; VPN and Wi-Fi toggles
-        update upstream servers without restarting the guest
+        - update upstream servers without restarting the guest
       - Windows: DNS client API queried on each change notification
     - Host DNS changes (Wi-Fi switch, corporate VPN toggle, split-horizon) are
-      transparent to guest; no VM restart, no guest kernel reconfiguration
+      - transparent to guest; no VM restart, no guest kernel reconfiguration
     - Traffic to non-gateway resolvers redirected at ingress ring
     - Split-horizon zones resolve correctly because upstreams track host state
     - DoT (DNS-over-TLS) upstreams supported when configured
@@ -82,8 +82,8 @@
     - Guest TLS and plaintext payloads traverse proxy without guest stack changes
     - Diverted endpoints configured via MountScope port and CIDR allowlists
     - The carrier does not perform byte-slice substitution on L4 streams;
-      L7 stages terminate TLS host-side and operate on plaintext HTTP
-      see: 01-architecture.md#Trust-boundaries
+      - L7 stages terminate TLS host-side and operate on plaintext HTTP
+      - see: 01-architecture.md#Trust-boundaries
     - Streaming payloads maintain MAX_PLACEHOLDER_LEN - 1 carryover window
     - Frame reassembly eliminates token fragmentation across TCP boundaries
     - Normalizes HTTP/2 streams into framed request buffers before scan
@@ -91,7 +91,7 @@
     - Outbound TCP permitted by policy is dialed through the host netstack
     - Proxy chaining is first-class, not an afterthought
       - Protocols: HTTP CONNECT, SOCKS5 (RFC 1928), SOCKS5 with username/password
-        auth (RFC 1929), SOCKS5h (remote DNS)
+        - auth (RFC 1929), SOCKS5h (remote DNS)
       - Multi-hop: an upstream corporate proxy may itself dial through another
       - Config sources: HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY, or builder spec
       - Explicit auth: username/password for SOCKS5; Basic or Bearer for CONNECT

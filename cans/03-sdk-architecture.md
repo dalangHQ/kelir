@@ -13,11 +13,11 @@
       - Runtime safety matrix: see: artifacts/diagrams/sdks-invariants.txt
       - Failure occurs at the earliest lifecycle phase native to each runtime
       - Affine builder consumption: every fluent verb consumes the previous
-        builder by value; no builder instance is reused, branched, or mutated
+        - builder by value; no builder instance is reused, branched, or mutated
       - Compile-time prerequisite gating: a plugin declaring a prerequisite
-        without its dependency installed fails at type-check, not boot
+        - without its dependency installed fails at type-check, not boot
       - Zero dynamic service lookups: handler context c statically intersects
-        each installed plugin's surface; no string keys, no runtime downcast
+        - each installed plugin's surface; no string keys, no runtime downcast
       - Handler purity and idempotency: see: 01-architecture.md#Codebase-invariants
       - Unhandled errors abort hypervisor immediately to eliminate zombie runs
       - Distribution and error invariants
@@ -53,13 +53,13 @@
       - Plugin extension pattern
         - Optional domain plugins attach via typed extensions
         - Rust: session.ctx::<T>() infallible via `Session<Plugins, Params>`
-          where `Plugins: Has<T>`; no Result, no `ext`/`extension` surface
+          - where `Plugins: Has<T>`; no Result, no `ext`/`extension` surface
         - TypeScript: session.<pluginKey> is a static member of
-          Session<TContext, TParams>; no session.use(ext)
+          - Session<TContext, TParams>; no session.use(ext)
         - Python: session.cap.<plugin_key> is statically projected by the
-          PEP 695 Protocol intersection; no session.ext(T)
+          - PEP 695 Protocol intersection; no session.ext(T)
         - Inter-plugin capabilities resolve via c.ctx::<T>() (Rust),
-          c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
+          - c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
     - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
     - Language surfaces
       - Rust: extension traits provide zero-cost fluent chaining on builder
@@ -103,11 +103,11 @@
     - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
     - Three-tier binary distribution model
       - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
-        NAPI-RS .node and PyO3 .whl native shared libraries
+        - NAPI-RS .node and PyO3 .whl native shared libraries
       - Pure Rust enterprise: Gated private Cargo registry (crates.kelir.dev) requiring license
-        tokens for on-premise compilation (commercial tier)
+        - tokens for on-premise compilation (commercial tier)
       - Kelir Cloud SaaS: Execution over HTTP/gRPC; internal hyper-density and cas-snapshot
-        optimization applied transparently on host servers
+        - optimization applied transparently on host servers
   - Idiomatic Surfaces Law
     - TS, Python, and Rust do not copy each other's method names
     - Each enforces 1:1 behavioral and wire parity against vectors.json
@@ -139,14 +139,14 @@
   - Rust SDK
     - see: artifacts/code/rust-handle-injection.rs
     - Typestate transitions: KelirBuilder<Unsealed, Plugins, Params> to
-      KelirBuilder<Sealed, Plugins, Params> to Session<Plugins, Params>
+      - KelirBuilder<Sealed, Plugins, Params> to Session<Plugins, Params>
     - Every verb consumes self by value: .plugin(), .params(), .trap(), .boot()
     - .detached(true) spawns unowned runtime child registered in SQLite sessions
     - Relay endpoint binds to ~/.kelir/sessions/<id>/relay.sock
       - see: 08-lifecycle.md#Detached-lifecycle
     - Reattachment via session.attach(session_id) returns Session
     - Plugins accumulate in a monomorphic HList; HandlerCtx<'a, Plugins, Params>
-      resolves capabilities via Has<T>, infallible at the call site
+      - resolves capabilities via Has<T>, infallible at the call site
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
     - .plugin() accepts core KelirPlugin plus only needed ring traits
     - Ring traits: LifecycleParticipant, TrapInterposer, ConsoleInterposer
@@ -157,49 +157,49 @@
     - .intercept_storage(pathGlob, handler): synchronous native storage write filter
     - .on_vm_ready(handler): session callback; .boot().await seals and boots
     - Inter-plugin capabilities resolve via c.ctx::<T>() where Plugins: Has<T>;
-      a missing plugin is a compile error, never a runtime Result
+      - a missing plugin is a compile error, never a runtime Result
     - Composite bundles flatten into builder via CompositePlugin trait
     - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
     - see: artifacts/code/typescript-accumulation.ts
     - KelirBuilder<TContext, TParams, TInstalledPlugins> carries the accumulated
-      surface in type parameters; every verb returns a new builder type
+      - surface in type parameters; every verb returns a new builder type
     - .use(plugin) intersects TPluginCtx into TContext and unions TPluginId
-      into TInstalledPlugins; .use() takes flat plugin instances, no callbacks
+      - into TInstalledPlugins; .use() takes flat plugin instances, no callbacks
     - Prerequisite gate: a missing dependency yields
-      CompileError<"Missing ...">, so no method (including .params and .trap)
-      is callable on the returned type
+      - CompileError<"Missing ...">, so no method (including .params and .trap)
+      - is callable on the returned type
     - .trap(matcher, handler): simple pre-exec gate returning a Decision
     - .trap(matcher, { pre, post }): dual pre/post gate; post returns a
       PostExecAction
     - .intercept(channel, filter, handler): ring-level synchronous hot-path
-      filters returning SyncVerdict
+      - filters returning SyncVerdict
     - .on(event, handler): lifecycle interceptors over LifecycleEvent values
     - .onTrap(handler): plugin-level trap interposer
       - Returns a new plugin; the plugin owns on_trap for its binaries
       - Builder .trap() remains for one-off gates without a plugin
     - .params(schema) pins TParams = Static<TSchema>; handler c.params is typed
-      from that parameter, not from a runtime schema lookup
+      - from that parameter, not from a runtime schema lookup
     - Handlers receive HandlerContext<TContext, TParams>; plugin surfaces are
-      static members (c.policy, c.ledger), never c.service(Token)
+      - static members (c.policy, c.ledger), never c.service(Token)
     - AOT hook fusion compiles all TS pipeline handlers into a single flat closure
     - Invariant: exactly 1 NAPI trampoline jump per event regardless of depth
     - Fully unified TContext passes to callbacks; cross-plugin reads are static
-      member accesses, not service-token resolution
+      - member accesses, not service-token resolution
     - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
     - Null-object pattern: use(plugin({ enabled: false })) preserves static
-      member shape with a no-op implementation
+      - member shape with a no-op implementation
   - Python SDK
     - see: artifacts/code/python-raii-pydantic.py
     - async with builder as session
       - __aenter__ boots microVM
       - __aexit__ guarantees session.terminate() on any exception
     - KelirBuilder[TCapabilities, TParams] carries the accumulated surface in
-      PEP 695 type parameters; every verb returns a new builder type
+      - PEP 695 type parameters; every verb returns a new builder type
     - .use(plugin) intersects TNewCap into TCapabilities via Protocol
-      intersection; the c.cap projection is statically typed by pyright/mypy
+      - intersection; the c.cap projection is statically typed by pyright/mypy
     - .params(schema: type[TNewParams]) pins TParams; handler c.params is typed
-      from the Pydantic model class
+      - from the Pydantic model class
     - Composite plugins unpack nested plugins atomically before boot
     - Capabilities are static members of c.cap (c.cap.policy), never
       c.service(ServiceType)
@@ -215,7 +215,7 @@
       - Each plugin's own tests/ and examples/ are canonical for that plugin
       - These three demonstrate composition across plugins and rings
       - The additional three demonstrate the primitives and plugins
-        that the SWE-bench family does not mount
+        - that the SWE-bench family does not mount
     - Each example exercises
       - Its declared plugin set
         - Plugin-set registry: see: 02-plugin-model.md#First-class-plugins

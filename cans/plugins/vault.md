@@ -51,7 +51,7 @@
       - Host secret memory pinned with mlock(2) to prevent swapping to disk
       - Memory zeroed using explicit volatile writes upon session termination or drop
       - Plaintext buffers at the L7 proxy stage are zeroized after each request
-        or response is forwarded; no plaintext lingers across connections
+        - or response is forwarded; no plaintext lingers across connections
     - Out-of-band secret resolution
       - Host-side forward proxy resolves vault:// placeholders against secure host keyring
       - Ephemeral per-session CA certificates injected into guest trust stores transparently
