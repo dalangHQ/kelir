@@ -105,7 +105,7 @@
     - In-kernel trap engine: see: #Guest-VM-anatomy
     - EROFS mount: see: 05-storage-plane.md#EROFS-rootfs
     - Shared memory mapping: see: #Shared-memory-channel
-    - Portable snapshots: see: 09-snapshots.md#Archives-and-portability
+    - Portable snapshots: single .kelir-snap binary stream
   - VirtIO Device Complex
     - Core routes paravirtual devices; plugins provide domain interpretation
     - Zero protocol domain logic lives in core
@@ -178,7 +178,7 @@
     - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
   - Host state root
     - Content-addressed root: ~/.kelir/
-      - catalog.db: embedded SQLite (WAL mode); see: 06-storage-catalog.md#Entity-model
+      - catalog.db: embedded SQLite (WAL mode)
       - cas/blobs/blake3_<hash>: immutable layer storage
       - sessions/<session_id>/: ephemeral runtime state
     - State engine

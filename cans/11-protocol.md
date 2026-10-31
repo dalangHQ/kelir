@@ -23,7 +23,7 @@
       - Exit frames on Channel 0x0003 defer until stdout/stderr EOF flush
       - Multiplexes raw VirtIO ring bytes; carries zero database, proxy, or domain logic
       - Domain Unix sockets are provisioned dynamically over vsock, never hardcoded in PID 1
-  - Binary exec channel (0x0003)
+  - Binary exec channel
     - Transport: vsock port 5252, channel_id 0x0003
     - Frame layout: 4-byte channel, 1-byte stream_id, 4-byte len, payload
     - stream_id values
@@ -155,7 +155,7 @@
         - Named-pipe fallback (Windows) uses OS pipe buffer backpressure with
           the same park semantics; framing identical
         - AF_VSOCK fallback uses transport-credit backpressure; framing identical
-        - Exec channel (0x0003) additionally applies EXEC_IO_SPEC admission; see: #Binary-exec-channel
+        - Exec channel (0x0003) applies EXEC_IO_SPEC admission; see: #Binary-exec-channel
       - Reconnect
         - None; channel close is terminal, tears down session
         - Host-side ring shutdown flag is the semantic close event

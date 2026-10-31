@@ -32,9 +32,9 @@
     - Mandatory host disclosure invariant: host mutations publish TerminalNotice to EventBus
     - Injects formatted ANSI box into host-to-guest console Port 0 stream
     - Disclosures render inline on workload TTY without corrupting cursor state
-  - Binary exec channel
+  - Binary exec channel (terminal plane)
     - Carries programmatic execution streams over Channel 0x0003
-    - Byte framing and stream_id values: see: 11-protocol.md#Binary-exec-channel
+    - Byte framing and stream_id values defined on Channel 0x0003
     - stdout and stderr retain bitwise fidelity; zero terminal escape pollution
     - Programmatic commands bypass PTY entirely; PTY (Port 0) is reserved for human attach
   - Stream replay

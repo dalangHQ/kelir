@@ -88,6 +88,4 @@
     - Draining: graceful retirement — see 08-lifecycle.md#Hypervisor-primitives
     - Ecosystem and ops
       - Ecosystem ingestion: see: 12-adapters.md#Ingestion-matrix
-      - Developer CLI: see: 13-cli.md (diagnostics)
-      - Observability & logs: see: 14-observability.md (telemetry)
       - Build, CI, layout: see: 15-operations.md#Execution-philosophy

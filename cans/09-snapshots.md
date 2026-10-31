@@ -25,6 +25,6 @@
       - Every snapshot manifest immutably records its parent_digest
       - Lineage is resolved via CAS manifest graph walks; zero relational joins
       - Compaction writes a new consolidated manifest pointing to ancestor base
-      - SQLite stores zero child arrays; see: 06-storage-catalog.md#Entity-model
+      - SQLite stores zero child arrays; catalog tracks session leases only
       - A live head pins its full ancestor prefix; interior nodes with multiple
         live descendants remain materialized

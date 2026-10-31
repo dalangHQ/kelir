@@ -91,7 +91,7 @@
         - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
         - Dynamic vCPU roster: session.vm.set_vcpus(n)
         - Hard vetoes: LifecycleCtx.register_veto(event, cb); see: 08-lifecycle.md#Lifecycle-vetoes
-        - Graceful retirement: session.drain(timeout_ms) -> DrainOutcome; see: 08-lifecycle.md#Hypervisor-primitives
+        - Graceful drain: session.drain(ms); see: 08-lifecycle.md#Hypervisor-primitives
         - Break-glass SSH/SFTP: session.ssh() -> SshHandle; see: 08-lifecycle.md#Break-glass
     - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
       - Channel kind registration: builder.register_channel(kind, handler)

@@ -21,8 +21,7 @@
     - Session lifecycle handles: fork, suspend, resume, rollback, skew_clock
     - Context lifecycle configuration: set_watchdog, adjust_balloon, register_veto
     - All primitives execute via active VmmDriver backend without in-guest agents
-    - Shared memory mapping: see: 01-architecture.md#Shared-memory-channel
-    - Portable snapshots: see: 09-snapshots.md#Archives-and-portability
+    - Portable snapshots: see: #Portable-snapshot-bundles
     - Preemption window: see: #Host-crash-reaper
     - Every item exposes one lifecycle point via LifecycleCtx
       - Typestate boundary: fork, suspend, rollback, skew_clock exist
@@ -212,11 +211,11 @@
       - Diff resolution is O(1) per depth step for reads; the runtime tracks
         active chain head per session
       - Host memory grows only with divergent deltas, not chain depth
-      - Lineage metadata walks the CAS manifest DAG; see: 06-storage-catalog.md#Entity-model
+      - Lineage metadata walks the CAS manifest DAG
   - Portable snapshot bundles
     - Streamed archive packaging: manifest, registers, ram.zst, and upperdir
     - session.export_snapshot() yields portable binary stream (.kelir-snap)
-    - Hydration and unpack security invariants: see: 09-snapshots.md#Archives-and-portability
+    - Hydration and unpack security invariants
     - Fuzzing
       - Archive parser is a cargo-fuzz target with dense and sparse seed corpora
       - Any panic, unbounded allocation, or traversal is a release blocker
