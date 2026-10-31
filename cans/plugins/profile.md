@@ -7,9 +7,9 @@
     - Depends on (profile): kelir-interface, Tier 1 and Tier 2 crates
     - Exposes: ConfigurablePlugin
     - VirtIO device attachment (profile): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (profile): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (profile): see: 08-lifecycle.md#Lifecycle-vetoes
     - Registers vsock Channel 0x0002 (profile-sync)
-      - Allocation: see 09-protocol.md#Channel-allocation-table for profile-sync
+      - Allocation: see 11-protocol.md#Channel-allocation-table for profile-sync
   - Invariants and policy (profile)
     - Inversion-of-Control configuration router:
       - Ingests canonical kelir.toml and kelir.yaml specification files

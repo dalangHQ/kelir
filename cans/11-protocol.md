@@ -155,18 +155,14 @@
         - Named-pipe fallback (Windows) uses OS pipe buffer backpressure with
           the same park semantics; framing identical
         - AF_VSOCK fallback uses transport-credit backpressure; framing identical
-        - Exec channel (0x0003) additionally applies EXEC_IO_SPEC admission
-          (see 09-protocol.md#Binary-exec-channel-0x0003)
+        - Exec channel (0x0003) additionally applies EXEC_IO_SPEC admission; see: #Binary-exec-channel
       - Reconnect
         - None; channel close is terminal, tears down session
         - Host-side ring shutdown flag is the semantic close event
         - No sequence reset path exists
       - Port 5252 is the sole control transport
-        - No secondary port
-        - 5252 is a channel identifier, not an OS socket; carrier is chosen by Transport backend
-        - Windows hosts use shared-memory SPSC rings (primary) or named pipes (fallback)
-        - Linux/macOS hosts use shared-memory SPSC rings (primary) or AF_VSOCK (fallback)
-        - No protocol assumption requires AF_VSOCK semantics
+        - Logical channel identifier; see: 01-architecture.md#Transport-engine-abstraction
+        - Transport backend multiplexes channels over host-terminated rings
   - Policy rejection receipt
     - L7 rejections surface as synthetic HTTP frames in guest ingress ring
     - Body: {"error":"E_POLICY_DENIED","rule":"<rule_id>","target":"<target>"}

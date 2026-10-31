@@ -7,7 +7,7 @@
     - Depends on (ledger): kelir-interface, Tier 1 and Tier 2 crates
     - Exposes: LedgerSink
     - VirtIO device attachment (ledger): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (ledger): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (ledger): see: 08-lifecycle.md#Lifecycle-vetoes
   - Invariants and policy (ledger)
     - Pure reactive observer: registers subscribers exclusively on the EventBus
     - Zero participation in inline interceptor pipelines; non-blocking execution

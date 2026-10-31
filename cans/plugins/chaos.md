@@ -7,7 +7,7 @@
     - Depends on (chaos): kelir-interface only (injects faults into native planes)
     - Exposes: FaultInjectionService
     - VirtIO device attachment (chaos): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (chaos): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (chaos): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (chaos)
     - Exports FaultInjectionService through PipelineBinder for dynamic rule mutations
   - Invariants and policy (chaos)
@@ -36,6 +36,6 @@
       - Fault injection adheres to monotonic lattice via PluginError::Reject
       - Synthetic loss uses SyncVerdict::Drop, a chaos-only variant
         - Silently discards frame, injects no RST, surfaces no errno
-        - see: 06-wire-plane.md#Frame-drop-and-forward-semantics
+        - see: 07-wire-plane.md#Frame-drop-and-forward-semantics
       - PluginError::Reject retains policy semantics (fast-fail RST)
         - Chaos never returns Reject for loss; Reject is used only for RST injection

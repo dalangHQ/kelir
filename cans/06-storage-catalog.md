@@ -1,7 +1,7 @@
 - Storage catalog schema
   - Entity model
     - Minimal 3-table ledger: sessions, cas_leases, schema_version
-    - Snapshot rows link artifacts to their lineage group
+    - Single Source of Truth for runtime persistence schema
       - sessions table tracks session_id, status, pids, rootfs_hash, expires_at
       - cas_leases tracks blob_hash, holder_pid, expires_at_unix with 30s TTL
       - schema_version tracks single-digit schema state

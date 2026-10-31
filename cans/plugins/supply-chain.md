@@ -6,7 +6,7 @@
     - Tier 2 governance and protocol proxy (supply-chain)
     - Depends on (supply-chain): kelir-interface and Tier 1 crates
     - VirtIO attachment (supply-chain): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (supply-chain): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (supply-chain): see: 08-lifecycle.md#Lifecycle-vetoes
     - Exposes: JitValidationService
   - Invariants and policy (supply-chain)
     - Dynamic W^X JIT execution mediation

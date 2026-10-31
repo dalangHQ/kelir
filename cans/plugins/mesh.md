@@ -6,7 +6,7 @@
     - Tier 1-adjacent base transport (mesh)
     - Depends on (mesh): kelir-interface only
     - VirtIO device attachment (mesh): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (mesh): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (mesh): see: 08-lifecycle.md#Lifecycle-vetoes
   - Invariants and policy (mesh)
     - Sovereign cross-hypervisor peer transport
     - Routes point-to-point peer streams via vsock listener services
@@ -17,7 +17,7 @@
     - Return errno and rejection behavior (mesh)
       - mTLS validation failure
         - Err(Reject { errno: ECONNREFUSED })
-        - Guest observes ECONNREFUSED: see: 06-wire-plane.md#Frame-drop-and-forward-semantics
+        - Guest observes ECONNREFUSED: see: 07-wire-plane.md#Frame-drop-and-forward-semantics
         - Ledger records peer fingerprint
       - Peer identity
         - SPIFFE SVID issued by host at on_vm_ready

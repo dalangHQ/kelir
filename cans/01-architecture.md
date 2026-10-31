@@ -33,7 +33,7 @@
         - Guest kernel traps anonymous PROT_EXEC mmap and mprotect allocations
         - In-memory elf loading through memfd_create aborts with E_WX_VIOLATION
         - Granular knob: wx_enforcement = Strict | PermissiveAudit
-        - Factoring: see: 08-epistemic.md#Scope
+        - Factoring: see: 10-epistemic.md#Scope
       - Deterministic hardware isolation
         - Hardware-enforced virtualization: Intel VT-x, AMD-V, ARM64 EL2
         - Escaped guest root cannot touch host memory or host kernel space
@@ -67,14 +67,14 @@
     - Every capability falls into exactly one category
     - Core primitive
       - Hardware/protocol invariant, no policy
-      - Enumerated as pointers in 01-architecture.md#Core-invariants
+      - Enumerated as pointers in #Core-invariants
     - Interface
       - Pluggable backend contracts (e.g. VmmDriver)
       - Documented at the owning plane node
     - Adapter binary
       - Contract-bound process on the wire
       - Examples: containerd-shim-v2, MCP stdio
-      - Adapter implementations: see: 10-adapters.md#Ingestion-matrix
+      - Adapter implementations: see: 12-adapters.md#Ingestion-matrix
       - Translation logic delegated to domain plugin
     - Plugin
       - Optional domain extensions (13 catalog plugins)
@@ -96,22 +96,22 @@
       - Trait contract: see: 02-plugin-model.md#KelirPlugin-trait
       - Tiered dependency contract: see: 02-plugin-model.md#Plugin-tiering
       - VmmDriver trait definition: see: #VmmDriver-trait
-    - Context types: see: 09-protocol.md#Wire-messages
-    - Wire framing layout: see: 09-protocol.md#Wire-framing
+    - Context types: see: 11-protocol.md#Wire-messages
+    - Wire framing layout: see: 11-protocol.md#Wire-framing
     - Dispatch loop: see: 02-plugin-model.md#Static-dispatch
     - Device multiplexing: see: #VirtIO-Device-Complex
     - Params ingress contract (core): see: #Params-ingress-contract
-    - Receipts: see: 08-epistemic.md#Execution-receipts
+    - Receipts: see: 10-epistemic.md#Execution-receipts
     - In-kernel trap engine: see: #Guest-VM-anatomy
     - EROFS mount: see: 05-storage-plane.md#EROFS-rootfs
     - Shared memory mapping: see: #Shared-memory-channel
-    - Portable snapshots: see: 07-lifecycle.md#Portable-snapshot-bundles
+    - Portable snapshots: see: 09-snapshots.md#Archives-and-portability
   - VirtIO Device Complex
     - Core routes paravirtual devices; plugins provide domain interpretation
     - Zero protocol domain logic lives in core
     - Channel 0 carries hypervisor control
     - Channel allocation is frozen
-      - see 09-protocol.md#Channel-allocation-table
+      - see 11-protocol.md#Channel-allocation-table
     - Primary VirtIO Bus
       - virtio-vsock: multiplexed syscall traps and binary control channels
       - virtio-console: multi-port character streams
@@ -152,17 +152,10 @@
     - Platform divergence hides at the transport driver boundary
     - Channel multiplexing logic is identical across all OS targets
   - Trust boundaries
-    - TLS terminates on the host before proxied bytes reach the guest
-      - Upstream certificates validate inside the proxy engine
-      - Plaintext never crosses the vm boundary
-      - Allowed domains alone get interception
-      - L7 proxy normalizes guest HTTP/2 into semantic HTTP/1.1 in host RAM
-      - Upstream re-originates clean TLS; eliminates guest HPACK table surgery
-      - Upstream sockets originate from the host
-      - The host proxy performs secret substitution on plaintext HTTP; the guest
-        never runs an HPACK state machine and never sees raw secret bytes
-      - L4 diversion (Transparent L4 stream diversion) is the carrier; TLS
-        termination and plaintext inspection are the L7 stage
+    - TLS terminates on the host via L7 proxy stage before bytes reach the guest
+    - Carrier is transparent L4 diversion; see: 07-wire-plane.md#Transparent-L4-stream-diversion
+    - Inspection, HTTP/2 normalization, and substitution: see: plugins/vault.md#L7-proxy-stage
+    - Upstream certificates validate host-side; guest never runs HPACK dynamic table surgery
   - Embedded profile
     - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
@@ -185,10 +178,7 @@
     - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
   - Host state root
     - Content-addressed root: ~/.kelir/
-      - catalog.db: embedded SQLite (WAL mode)
-        - 3 tables: sessions, cas_leases, schema_version
-        - cas_leases tracks blob_hash, holder_pid, expires_at_unix
-        - Background heartbeat refreshes lease TTL every 30s
+      - catalog.db: embedded SQLite (WAL mode); see: 06-storage-catalog.md#Entity-model
       - cas/blobs/blake3_<hash>: immutable layer storage
       - sessions/<session_id>/: ephemeral runtime state
     - State engine
@@ -237,20 +227,10 @@
         - Subsumed by EROFS measurement
         - No separate attestation entry
       - Workload
-        - binary_blake3 per ExecutionReceipt
-        - See 08-epistemic.md#Execution-receipts
+        - binary_blake3 per ExecutionReceipt; see: 10-epistemic.md#Execution-receipts
       - Session attestation token
-        - Injected over paravirtual config device
-        - Carries all four measurements above
-        - Workload consumes over vsock Channel 0
-      - Host TLS proxy boundary
-        - Outbound TLS to secret-bound hosts terminates host-side
-        - Ephemeral per-session CA signed into the guest trust store
-        - Secret values never exist in guest RAM, guest VFS, or VirtIO rings
-        - Substitution operates on host plaintext HTTP; no HPACK state
-          machine runs in guest
-        - The guest's own TLS stack still validates the ephemeral CA;
-          forged responses fail the guest handshake
+        - Injected over paravirtual config device; workload verifies over vsock Channel 0
+      - Host TLS proxy boundary: see: plugins/vault.md#L7-proxy-stage
       - Chain is unbroken
         - Forged kernel/rootfs fails host-side BLAKE3
         - Forged workload fails per-exec trap boundary

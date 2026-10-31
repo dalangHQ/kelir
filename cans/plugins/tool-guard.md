@@ -8,7 +8,7 @@
     - Imports plugin-mcp AST and call definitions directly
     - Exposes: ToolRegistryService
     - VirtIO device attachment (tool-guard): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (tool-guard): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (tool-guard): see: 08-lifecycle.md#Lifecycle-vetoes
     - Executes upstream of plugin-mcp on the MCP console port
   - Service exports (tool-guard)
     - Exports ToolRegistryService via PipelineBinder for schema and approval lookups
@@ -42,7 +42,7 @@
       - ToolAction::Deny(errno, reason): drops call, synthesizes standard JSON-RPC error response
       - ToolAction::Hold: requests hypervisor
         LifecycleRequest::Suspend(External)
-        - Swap mechanics: see: 07-lifecycle.md#Suspend-and-resume
+        - Swap mechanics: see: 08-lifecycle.md#Suspend-and-resume
         - Host waits for human out-of-band authorization via vsock Channel 0
     - "Denial of Wallet" recursion limiter
       - Per-tool token-bucket governor clamps call cadence

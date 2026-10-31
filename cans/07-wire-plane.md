@@ -70,7 +70,7 @@
     - Diverted endpoints configured via MountScope port and CIDR allowlists
     - The carrier does not perform byte-slice substitution on L4 streams;
       L7 stages terminate TLS host-side and operate on plaintext HTTP
-      (see 01-architecture.md#Trust-boundaries)
+      see: 01-architecture.md#Trust-boundaries
   - Upstream dial transport
     - Outbound TCP permitted by policy is dialed through the host netstack
     - Proxy chaining is first-class, not an afterthought
@@ -90,7 +90,7 @@
       - Reason recorded in host-side structured log; never leaked to guest
     - Corporate egress (Zscaler, Squid, Envoy) works without guest cooperation
   - Port forwarding
-    - Guest-initiated: forward tunnels over vsock:5252 (Channel 1) on PortBound
+    - Guest-initiated: forward tunnels over vsock:5252 Channel 0x0001 on PortBound
     - Host-initiated: session.wire.forward_port(guest_port, host_port)
       - Returns Result<u16, WireError> with bound port
     - host_port = None or 0 binds ephemeral port 0; host kernel allocates free port

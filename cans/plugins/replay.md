@@ -7,7 +7,7 @@
     - Depends on (replay): kelir-interface only
     - Exposes: ReplayService
     - VirtIO device attachment (replay): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (replay): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (replay): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (replay)
     - Exports ReplayService through PipelineBinder for deterministic clock stepping
   - Invariants and policy (replay)

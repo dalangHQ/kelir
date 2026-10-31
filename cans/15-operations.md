@@ -10,7 +10,7 @@
     - Default posture
       - Primitive telemetry on; derived telemetry off unless configured
       - Ecosystem apparatus gated on registry size; not shipped ahead of it
-      - see: 08-epistemic.md#Primitive-vs-derived-telemetry
+      - see: 10-epistemic.md#Primitive-vs-derived-telemetry
     - Maximize GitHub Actions free tier
       - Public repo: unlimited Linux minutes
       - Private repo: 2,000 min ceiling
@@ -42,7 +42,7 @@
         - Shared-memory SPSC ring path
         - Named-pipe fallback path
         - No AF_VSOCK assumptions may leak into shared code; a compile
-          lint enforces the abstraction (see Transport engine abstraction)
+          lint enforces the abstraction; see: 01-architecture.md#Transport-engine-abstraction
         - Full workflow runs on self-hosted Windows WHP runners
         - GitHub-hosted cells run the transport unit tests only
     - Enforced invariants: CI matrix
@@ -77,7 +77,7 @@
       - Tiered compilation gate: plugins compile against explicit upstream deps
       - Builder registration gate: each plugin registers without string tokens
     - --lifecycle-coverage
-      - Lifecycle asserts: see: 07-lifecycle.md#Hypervisor-primitives
+      - Lifecycle asserts: see: 08-lifecycle.md#Hypervisor-primitives
       - State machine assert: verifies all SuspendReason variants execute through
         centralized lifecycle
     - --hook-coverage
@@ -87,15 +87,15 @@
     - --action-coverage
       - Asserts every TrapAction, PostExecAction, SyncVerdict, and PluginError
         variant is used at least once in cans/artifacts/examples
-      - Action home: see: 09-protocol.md#TrapAction-method-mapping
+      - Action home: see: 11-protocol.md#TrapAction-method-mapping
     - --veto-coverage
       - Asserts every VetoEvent is registered at least once in an example
-      - Veto home: see: 07-lifecycle.md#Lifecycle-vetoes
+      - Veto home: see: 08-lifecycle.md#Lifecycle-vetoes
     - --watchdog-coverage
       - Asserts Suppress and Mitigate are each returned at least once
-      - Watchdog home: see: 07-lifecycle.md#Watchdog
+      - Watchdog home: see: 08-lifecycle.md#Watchdog
     - --channel-coverage
-      - Asserts every channel in 09-protocol.md#Channel-allocation-table is
+      - Asserts every channel in 11-protocol.md#Channel-allocation-table is
         exercised by at least one integration test
       - Specifically asserts 0x0005 (VFS) and 0x0006 (bulk) have live round-trip
       - A channel with no test fails the gate
@@ -219,12 +219,8 @@
       - `plugin check`: same audit as CI, <30s, no network
       - `plugin vectors`: regenerate vectors.json from fixtures
       - `plugin rings --show`
-      - `kelir-pack`: stream OCI image or local tar into EROFS at host CAS
-        - Usage: kelir-pack <docker-reference|tar-path> --out ~/.kelir/cas
-        - Streams registry blobs directly to RAM compiler; zero intermediate tars
-        - Computes canonical rootfs BLAKE3 digest during the single pass
-        - No registry daemon, no content store, no network puller resident
-        - Exit 0 only when BLAKE3 digest is written to cas/blobs/blake3_<hash>
+      - `kelir-pack`: CLI invocation for single-pass ingestion compiler;
+        see: 12-adapters.md#Ingestion-matrix
     - Shares implementation with CI
       - A local pass that CI rejects means the CLI is broken
   - Project structure
@@ -247,7 +243,7 @@
         - kelir-ssh: in-process SSH/SFTP server (russh), used by break-glass
         - kelir-otlp: zero-allocation metric registry and OTLP exporter
     - Spec layout
-      - Core plane files: cans/00-overview.md to cans/11-operations.md
+      - Core plane files: cans/00-overview.md to cans/15-operations.md
       - Plugin spec files: one <name>.md per plugin
         - Community: cans/plugins
         - Commercial: ../kelir-cloud/cans/plugins
@@ -258,7 +254,7 @@
       - kelir-integration: cross-plugin paths; real hypervisor required
     - Three adapter crates
       - mcp-server (community); containerd-shim, openshell-grpc (kelir-cloud)
-      - see: 10-adapters.md
+      - see: 12-adapters.md
     - Two binding crates
       - napi, pyo3
     - Tooling crate

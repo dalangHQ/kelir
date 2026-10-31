@@ -7,7 +7,7 @@
     - Depends on (container): kelir-interface only (interacts with native Storage Plane)
     - Exposes: ContainerService
     - VirtIO device attachment (container): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (container): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (container): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (container)
     - Exports ContainerService through PipelineBinder for container lifecycle tracking
   - Invariants and policy (container)

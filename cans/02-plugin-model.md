@@ -73,7 +73,7 @@
       - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
       - ConsoleInterposer: console input, console output, window resize, disclosure
         - Expanded: on_exec_stdout(pid, exec_id, chunk), on_exec_stderr(pid, exec_id, chunk)
-        - Fires for Channel 0x0003 stream_id 1 and 2 respectively
+        - Fires for Channel 0x0003 streams; see: 11-protocol.md#Binary-exec-channel
         - PTY (Port 0) path unchanged; exec path uses exec_id rather than port
       - FsInterposer: fs lookup, read, write; synchronous hot path
       - NetInterposer: net outbound, net inbound; synchronous hot path
@@ -161,23 +161,16 @@
       - Windows hosts apply identical scoping semantics as Linux/macOS
       - No plugin may key behavior on the transport identity
   - Filter-before-FFI gate
-    - Unmonitored guest operations bypass host language runtimes entirely
     - Host core checks MountScope in native memory before crossing FFI
-    - Evaluates native compiled schema validators and path/CIDR rules in Rust
-    - Foreign runtimes (V8/Python) do not evaluate synchronous hot-paths inline
-    - Zero FFI allocation on non-matching or invalid events
+    - Evaluates native compiled schema validators, CIDR, and path rules in Rust
+    - Foreign runtimes skip FFI on non-matching events
     - FFI trampoline executes only when ring event satisfies scope match
-    - Trusted-prefix execve bypass is distinct from scope rejection
-      - Scope rejection: no handler is registered; FFI not crossed
-      - Gate 3 skip: handler exists; FFI deliberately not crossed (trusted binary)
-    - Protects guest toolchain execution speed (cargo build, npm install)
-    - Ingress dispatcher applies MountScope natively before forwarding frames
+    - Trusted-prefix execve bypass executes Gate 3 skip; see: 11-protocol.md#Trap-fast-path
   - Latency ceiling
     - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs
     - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs
     - Gate 3: Foreign FFI trampolines (V8/Python) dispatch out-of-band in 50-150µs
-    - Gate 3 skip: EROFS trusted prefixes bypass foreign FFI
-      - Gate 2 still evaluates; see: 09-protocol.md#Trap-fast-path
+    - Gate 3 skip: EROFS trusted prefixes bypass foreign FFI; see: 11-protocol.md#Trap-fast-path
     - Sync hot-paths require native filters or SyncVerdict::YieldToHost
     - Latency overhead on guest toolchains (cargo, npm) must remain below 3%
     - Violation of latency budget blocks core and plugin releases in CI
@@ -204,13 +197,8 @@
         - Carries pid, exec_id, stream_id (stdout|stderr), chunk, rlimits
         - Invoked through ConsoleInterposer::on_exec_std{out,err}
     - Inter-plugin typed services:
-      - Plugins import peer crate traits directly; see: #Plugin-tiering
-      - Rust: c.ctx::<T>() resolves via Has<T> on the monomorphic plugin HList;
-        a missing plugin is a compile error, never a runtime Result
-      - TypeScript: c.<pluginKey> is a static member of the intersected
-        TContext; no c.service(Token) lookup exists
-      - Python: c.cap.<plugin_key> is statically typed by the PEP 695
-        Protocol intersection; no c.service(Type) lookup exists
+      - Direct peer crate imports resolved at compile time; see: #Plugin-tiering
+      - Language context projections: see: 03-sdk-architecture.md#Language-surfaces
   - First-class plugins
     - Catalog tiering
       - Community plugins: optional domain extensions in cans/plugins/
@@ -245,14 +233,14 @@
         - Implemented by some custom plugin in cans/artifacts/examples
         - Hook families: see: #Segregated-ring-traits
         - An unhit hook fails --hook-coverage
-        - Hook-coverage gate: see: 11-operations.md#Coverage-gates
+        - Hook-coverage gate: see: 15-operations.md#Coverage-gates
         - Exercises via hook-matrix and policy-matrix, not via
           autonomous-swe-agent
       - Action-coverage: every TrapAction, PostExecAction, SyncVerdict, PluginError
         - Each variant used at least once in cans/artifacts/examples
-        - TrapAction variants: see: 09-protocol.md#TrapAction-method-mapping
+        - TrapAction variants: see: 11-protocol.md#TrapAction-method-mapping
         - An unused variant fails --action-coverage
-        - Action-coverage gate: see: 11-operations.md#Coverage-gates
+        - Action-coverage gate: see: 15-operations.md#Coverage-gates
     - Behavior of each: at its plugin file
       - Community plugins
         - plugin-chaos: home: see: plugins/chaos.md
@@ -273,11 +261,10 @@
         - plugin-cas-snapshot: home: see: plugins/commercial.md#cas-snapshot
         - plugin-oci-translator: home: see: plugins/commercial.md#oci-translator
           - containerd-boundary policy only
-          - Not the OCI ingestion path; ingestion is kelir-pack (core primitive)
-            - see: 10-adapters.md#Ingestion-matrix
+          - Ingestion primitive: see: 12-adapters.md#Ingestion-matrix
         - plugin-openshell-coordinator: home: see: plugins/commercial.md#openshell-coordinator
       - Pointer rule: plugin files are leaf targets; crate dependencies live in the plugin file
-    - Ecosystem additions follow 02-plugin-model.md#Plugin-ownership
+    - Ecosystem additions follow: #Plugin-ownership
     - Session extension surface: attached per plane
       - Ledger extension: see: plugins/ledger.md
       - Causal-delta extension: see: plugins/ledger.md
@@ -294,14 +281,14 @@
     - Decoupling test
       - A failing plugin's tests are attributable to that plugin alone
       - Removing an upstream crate breaks only its declared dependents
-      - Executed per plugin by tiered compilation; see: 11-operations.md#Tiered-compilation
+      - Executed per plugin by tiered compilation; see: 15-operations.md#Tiered-compilation
       - Scope: excludes facade (re-exports every plugin), adapter binaries
         (one plugin each), and kelir-integration (dev-depends on all)
       - Tiered dependency edges: gated by plugin-audit
-      - Audit gate detail: see: 11-operations.md#Per-plugin-CI
+      - Audit gate detail: see: 15-operations.md#Per-plugin-CI
     - External plugins: same contract; no adaptation
   - Plugin testkit
-    - Crate layout: see: 11-operations.md#Project-structure
+    - Crate layout: see: 15-operations.md#Project-structure
     - Boundary contract
       - Depends on kelir-interface only; never on a plugin or the facade crate
       - Every plugin depends on it as a dev-dependency
@@ -315,16 +302,6 @@
     - Validates tier dependencies, acyclic imports, and disjoint scopes
     - Missing or invalid crate metadata rejects compilation at boot
   - Language parity
-    - see: artifacts/diagrams/sdks-invariants.txt
-    - SDK surface: see: 03-sdk-architecture.md#N-native-design
-    - Parity enforcement: see: 11-operations.md#Multi-language-parity-gate
-    - Same first-class plugins in Rust, TypeScript, Python, maintained 1:1
-    - Trait surface and hook semantics identical across languages
-    - Context & session projection, realized per language
-      - Rust: builder.plugin(p); context c.ctx::<P::Context>() infallible;
-        session.ctx::<P::Context>() infallible
-      - TypeScript: builder.use(p); context c.<pluginKey> and
-        session.<pluginKey> statically intersected
-      - Python: builder.use(p); context c.cap.<plugin_key> and
-        session.cap.<plugin_key> statically projected
-    - All three realize the same 02-plugin-model.md#Core-context-keys contract
+    - Invariant: Same first-class plugins across Rust, TypeScript, Python (1:1)
+    - Enforcement gate: see: 15-operations.md#Multi-language-parity-gate
+    - Projection implementations: see: 03-sdk-architecture.md#Language-surfaces

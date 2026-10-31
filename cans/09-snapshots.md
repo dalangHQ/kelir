@@ -9,17 +9,22 @@
           applies across all concurrent children of the same ancestor
         - Depth is unbounded; there is no depth-1 StepSlot ceiling
   - Archives and portability
-    - Portable snapshot bundles export as single .kelir-snap binary stream
-      - Unpack invariants (07-lifecycle.md#Portable-snapshot-bundles)
+    - Export format: single Content-Addressed .kelir-snap binary stream
+      - Archive header: magic, format version, feature flags, entry table
+      - Stream contents: manifest.json, vmm_state.json, ram.zst, upperdir.tar.zst,
+        guest_clock.json, attestation.jws
+      - Verification: trailer carries manifest digest for end-to-end integrity
+    - Unpack containment invariants (Single Source of Truth)
+      - Untrusted input boundary: zero ambient host filesystem trust
         - Extraction is contained to the staging root via openat2 RESOLVE_BENEATH
         - Sparse entries pre-sized; zstd frames bounded by declared size
-        - Traversal, absolute paths, and symlink escapes rejected before extraction
+        - Traversal, absolute paths, and symlink escapes reject with EXDEV
         - Codec errors discard staging atomically; no partial roots leak
   - Groups and lineage
     - Lineage tracks parent child edges for garbage collection
       - Every snapshot manifest immutably records its parent_digest
       - Lineage is resolved via CAS manifest graph walks; zero relational joins
       - Compaction writes a new consolidated manifest pointing to ancestor base
-      - SQLite stores no child arrays; reachability walks query CAS manifests
+      - SQLite stores zero child arrays; see: 06-storage-catalog.md#Entity-model
       - A live head pins its full ancestor prefix; interior nodes with multiple
         live descendants remain materialized

@@ -46,11 +46,9 @@
         - One hash per binary identity, not per exec
         - Session-scoped; dropped on terminate
       - Trusted-prefix fast path
-        - Executables under /usr/bin, /bin, /usr/lib covered by EROFS manifest
-        - Pre-computed inode-to-BLAKE3 table loaded at boot
-        - Lookup is O(1) integer index; no file read at trap time
-        - Untrusted /workspace/** retains full BLAKE3 hash path
-        - Trusted-prefix identity still recorded per ExecutionReceipt
+        - EROFS trusted prefixes execute Gate 3 skip; see: 11-protocol.md#Trap-fast-path
+        - Lookup resolves pre-computed BLAKE3 table in host RAM via O(1) index
+        - Untrusted /workspace/** retains full hash resolution path
       - Cache hit does not bypass trap boundary
         - Trap still delivered; hash still attached
         - Only the byte-read is skipped
@@ -114,12 +112,12 @@
   - Lifecycle bridge
     - Orchestrator verbs: pause, resume, step, rollback, fork, suspend
     - Each verb aliases exactly one mechanism in
-      07-lifecycle.md#Hypervisor-primitives
+      08-lifecycle.md#Hypervisor-primitives
     - pause: vCPU-only halt at cycle boundary; guest RAM stays resident
     - step: run to next virtio-vsock syscall trap, then pause for eval
     - suspend is the only verb that flushes RAM; every other verb is
       cycle-exact
-    - Veto points: see: 07-lifecycle.md#Lifecycle-vetoes
+    - Veto points: see: 08-lifecycle.md#Lifecycle-vetoes
   - Step evaluation loop
     - Orchestrators execute unmodified agent binaries
     - Checkpoint descriptors are retained in userland orchestrator state
@@ -127,7 +125,7 @@
     - StepSlot semantics
       - Single slot per active PID lineage; sub-steps fold into Base on
         StepVerdict::Commit, discard on StepVerdict::Rollback
-        - see: 07-lifecycle.md#Delta-chain-compaction
+        - see: 08-lifecycle.md#Delta-chain-compaction
       - StepSlot managed natively by kelir-core::checkpoint
       - Fork operations clone active StepSlot state into child sessions
       - Post-hook failure triggers immediate session.rollback() to slot base
@@ -136,7 +134,7 @@
       - Guest executes process
       - Process exit triggers post-hook: physical ExecutionReceipt assertion
       - Mismatch triggers hypervisor rollback
-        (timing: see: artifacts/code/vmm-driver-trait.rs)
+        see: artifacts/code/vmm-driver-trait.rs
   - Lifecycle nano-tracer
     - Trace hooks (.trace()) measure per-phase overhead at ns resolution
     - Tracks trap ingress, FFI crossing, policy evaluation, and verdict dispatch

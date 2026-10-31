@@ -12,13 +12,13 @@
     - Tier 3 snapshot streaming over portable bundles
     - Interface: streamed import/export through VmmDriver primitives
     - Depends: kelir-interface, VmmDriver primitives
-    - Channels: reserved through frozen-table revision; see 09-protocol.md
+    - Channels: reserved through frozen-table revision; see 11-protocol.md
   - oci-translator
     - Tier 2 policy layer for the containerd shim v2 boundary
     - Scope: containerd-specific orchestration policy only
     - Image→EROFS translation is NOT owned by this plugin
       - Translation is the core kelir-pack primitive
-        - see: 10-adapters.md#Ingestion-matrix
+        - see: 12-adapters.md#Ingestion-matrix
     - Depends: kelir-interface, containerd shim v2, kelir-pack
     - Channels: none (adapter process owns wire)
   - openshell-coordinator
@@ -29,4 +29,4 @@
   - Adapter binaries
     - containerd-shim-v2: owns containerd wire; plugin owns policy
     - openshell-grpc: owns gRPC wire; plugin owns policy
-    - see 10-adapters.md#Process-vs-plugin-boundary
+    - see 12-adapters.md#Process-vs-plugin-boundary

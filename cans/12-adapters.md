@@ -49,7 +49,7 @@
       - Eliminates in-guest OpenShell supervisor process entirely
       - Enforces policy out-of-band via virtio-vsock Channel 0 and FUSE gates
     - Dynamic approval lifecycle bridge
-      - Denial triggers external suspension: see: 07-lifecycle.md#Suspend-and-resume
+      - Denial triggers external suspension: see: 08-lifecycle.md#Suspend-and-resume
       - Gateway admin approvals push RFC 6902 patches to plugin-profile before cycle-exact resume
     - CDI mapping: passes OpenShell GPU device requests to plugin-profile CDI parser
     - OpenShell boundary: see: #Process-vs-plugin-boundary

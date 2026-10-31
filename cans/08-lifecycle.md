@@ -22,7 +22,7 @@
     - Context lifecycle configuration: set_watchdog, adjust_balloon, register_veto
     - All primitives execute via active VmmDriver backend without in-guest agents
     - Shared memory mapping: see: 01-architecture.md#Shared-memory-channel
-    - Portable snapshots: see: #Portable-snapshot-bundles
+    - Portable snapshots: see: 09-snapshots.md#Archives-and-portability
     - Preemption window: see: #Host-crash-reaper
     - Every item exposes one lifecycle point via LifecycleCtx
       - Typestate boundary: fork, suspend, rollback, skew_clock exist
@@ -36,7 +36,7 @@
       - Protects developers running harness scripts natively by mistake
   - CoW fork
     - Driver primitive: fork returns Box<dyn VmmDriver>
-      (timing: see: artifacts/code/vmm-driver-trait.rs)
+      see: artifacts/code/vmm-driver-trait.rs
     - KVM path: userfaultfd + KVM memory cloning
     - HVF path: Stage-2 translation table write protection (hv_vm_protect)
     - Host runtime calls fork_state() to isolate plugin states per branch
@@ -111,7 +111,7 @@
     - CLI and SDK
       - SDK exposes session.stop() and session.stop_with_timeout(d) for graceful exit
       - Draining is a superset of stop for pipelines that need to finish
-        queued work (Hypervisor primitives)
+        queued work; see: #Hypervisor-primitives
   - Suspend and resume
     - suspend
       - Reason: SuspendReason::External or ResourcePressure
@@ -212,29 +212,11 @@
       - Diff resolution is O(1) per depth step for reads; the runtime tracks
         active chain head per session
       - Host memory grows only with divergent deltas, not chain depth
-      - Lineage metadata (`parent_digest` -> `child_digest`) lands in the SQLite
-        catalog; reclamation walks the reachability graph
+      - Lineage metadata walks the CAS manifest DAG; see: 06-storage-catalog.md#Entity-model
   - Portable snapshot bundles
-    - Content-addressed snapshot sync
-    - Streamed archive packaging vmm_state.json, ram.zst, upperdir diff,
-      guest_clock.json, and attestation.jws
+    - Streamed archive packaging: manifest, registers, ram.zst, and upperdir
     - session.export_snapshot() yields portable binary stream (.kelir-snap)
-    - session.import_snapshot() hydrates session across identical hosts
-    - Decouples long-running human approval pauses from host machine uptime
-    - Archive framing is pinned
-      - Header: magic, format version, feature flags, entry table
-      - Entries: name, size, content digest, codec (zstd / stored)
-      - Trailer: manifest digest for whole-archive verification
-    - Unpack is a security boundary
-      - Snapshot archives are untrusted inputs
-      - Every path resolves through openat2(RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS)
-        rooted at the session staging directory
-      - Path traversal (`../`), absolute paths, and symlink chains outside the
-        staging root reject with EXDEV before extraction begins
-      - Sparse-file entries expand into pre-sized holes; no sparse-file bombs
-      - zstd decompression is bounded by the declared entry size; no unbounded
-        allocation on malicious frames
-      - Codec errors abort extraction; partial staging is discarded atomically
+    - Hydration and unpack security invariants: see: 09-snapshots.md#Archives-and-portability
     - Fuzzing
       - Archive parser is a cargo-fuzz target with dense and sparse seed corpora
       - Any panic, unbounded allocation, or traversal is a release blocker
@@ -250,23 +232,10 @@
       - Callback false → ESessionVeto; guest clock unchanged
   - Lid sleep/wake clock snapping
     - Problem: guest clock stalls on lid close
-      - Laptop lid close pauses guest monotonic time
-      - Host wall-clock advances; guest time does not
-      - TLS handshakes fail on wake due to clock mismatch
     - Solution
       - Listen to host power events: IOPMrootDomain (macOS), systemd-logind (Linux)
-      - Dispatch paravirtual clock resync frame over Channel 0x0000
-        (identical mechanism to resume; see: #Suspend-and-resume)
-      - Guest time snaps to host wall-clock in 0ms
-      - Snapshot restore uses the same mechanism with `guest_clock.json`
-        - Before unfreezing cgroups, kelir-shim sets both CLOCK_REALTIME and
-          monotonic offset from the manifest
-        - Guest processes observe time leap forward from capture to restore,
-          not from capture to power-on
-        - Certificates, JWTs, cron timers, and monotonic-based timeouts stay
-          coherent across multi-week suspensions
-        - Go, Node.js, and Python runtimes observe a consistent monotonic clock;
-          no timer-wheel corruption, no deadline reordering
+      - Dispatch paravirtual clock resync frame over Channel 0x0000; see: #Suspend-and-resume
+      - Guest time snaps to host wall-clock in 0ms; prevents wake TLS failure
       - Fork inherits the parent's guest clock at fork instant; children diverge
         monotonically from that point
   - Host crash reaper
@@ -275,13 +244,7 @@
       - Hypervisor children must not survive as orphaned CPU spinners
     - Dual-path by design
       - Linux: prctl(PR_SET_PDEATHSIG, SIGKILL)
-        - Applied to every hypervisor backend thread
-        - Kernel terminates backend and unmaps memory immediately
-        - No polling involved
       - macOS: kqueue(EVFILT_PROC, NOTE_EXIT) watcher on host PID
-        - Second channel: parent-monitoring heartbeat pipe
-        - On host exit or pipe close: SIGKILL to backend process group
-        - Reclaims VM memory mappings
     - Graceful host preemption window
       - In-process Tokio handler catches host SIGTERM; delays SIGKILL
       - Waits preemption_grace_ms; dispatches on_host_preempt() hook
@@ -353,7 +316,7 @@
       - Human debugging uses SSH by default
     - Spelling: `session.ssh()` (all SDKs);
       `session.breakGlass()` (TS) is a deprecated alias for `session.ssh()`
-  - Wire port forwarding: details at 06-wire-plane.md#Port-forwarding
+  - Wire port forwarding: details at 07-wire-plane.md#Port-forwarding
   - Zombie reaping
     - Shim runs as guest PID 1
     - waitpid(-1, WNOHANG) pass integrated into async event loop

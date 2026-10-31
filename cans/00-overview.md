@@ -35,7 +35,7 @@
     - Not a container wrapper
     - Not an MCP server
     - Not a background daemon
-    - Not a standalone CLI runner or daemon client: see: 11-operations.md#Developer-CLI
+    - Not a standalone CLI runner or daemon client: see: 15-operations.md#Developer-CLI
     - Not a daemon or container runtime: see: 01-architecture.md#In-process-microkernel
   - Target audience
     - Audience matrix: see: artifacts/diagrams/target-audience.txt
@@ -47,22 +47,22 @@
     - Agent trust hacks: polling unverified guest JSON harnesses
     - Terminal details: see: 04-terminal-plane.md
     - Storage details: see: 05-storage-plane.md
-    - Trust details: see: 08-epistemic.md
+    - Trust details: see: 10-epistemic.md
   - Use cases
-    - Parallel agent exploration: see: 07-lifecycle.md#CoW-fork
-    - Human approval waits with zero CPU: see: 07-lifecycle.md#Suspend-and-resume
-    - Autonomous step gating & idle pause: see: 07-lifecycle.md
+    - Parallel agent exploration: see: 08-lifecycle.md#CoW-fork
+    - Human approval waits with zero CPU: see: 08-lifecycle.md#Suspend-and-resume
+    - Autonomous step gating & idle pause: see: 08-lifecycle.md
     - Multi-resource atomic commit (2PC): see: plugins/transaction.md
-    - Time-sensitive tests (JWT, cron, certs): see: 07-lifecycle.md#Clock-skew
+    - Time-sensitive tests (JWT, cron, certs): see: 08-lifecycle.md#Clock-skew
     - Deterministic execution replay
       - see: plugins/replay.md#Cycle-exact-instruction-clock-stepping
     - Relational database governance: see: plugins/db-proxy.md
     - Supply chain package protection: see: plugins/supply-chain.md
     - Zero-copy high-throughput IPC: see: 01-architecture.md#Shared-memory-channel
-    - Cross-host portable snapshot bundles: see: 07-lifecycle.md#Portable-snapshot-bundles
+    - Cross-host portable snapshot bundles: see: 09-snapshots.md#Archives-and-portability
     - Flaky-API and disk-full resilience: see: plugins/chaos.md
     - Container builds without nested VMX: see: plugins/container.md
-    - Human break-glass on agent loops: see: 07-lifecycle.md#Break-glass
+    - Human break-glass on agent loops: see: 08-lifecycle.md#Break-glass
     - Low-memory SBC execution: see: 01-architecture.md#Embedded-profile
     - Idle scale-to-zero: see: plugins/commercial.md#hyper-density
     - Hydrate state from streaming snapshot bundle: see: plugins/commercial.md#cas-snapshot
@@ -74,20 +74,20 @@
     - SDK architecture: see: 03-sdk-architecture.md (parity)
     - Terminal plane: see: 04-terminal-plane.md (engine native)
     - Storage plane: see: 05-storage-plane.md (engine native)
-    - Snapshots & archives: see: 05-snapshots.md (portable state)
-    - Wire plane: see: 06-wire-plane.md (engine native)
-    - Lifecycle: see: 07-lifecycle.md (checkpoint engine)
-    - Verification and hardware telemetry (08-epistemic): see: 08-epistemic.md
-    - Protocol: see: 09-protocol.md (wire messages)
+    - Storage catalog: see: 06-storage-catalog.md (catalog ledger)
+    - Wire plane: see: 07-wire-plane.md (engine native)
+    - Lifecycle: see: 08-lifecycle.md (checkpoint engine)
+    - Snapshots & archives: see: 09-snapshots.md (portable state)
+    - Verification and hardware telemetry: see: 10-epistemic.md
+    - Protocol: see: 11-protocol.md (wire messages)
     - Host state engine: SQLite catalog, WAL — see 01-architecture.md#Host-state-root
     - Transport abstraction
       - SPSC rings primary; AF_VSOCK and named pipes fallback
       - see: 01-architecture.md#Transport-engine-abstraction
-    - Break-glass: ephemeral SSH/SFTP — see 07-lifecycle.md#Break-glass
-    - Draining: graceful retirement — see 07-lifecycle.md#Hypervisor-primitives
-    - Storage catalog — see: 09-storage-catalog.md
+    - Break-glass: ephemeral SSH/SFTP — see 08-lifecycle.md#Break-glass
+    - Draining: graceful retirement — see 08-lifecycle.md#Hypervisor-primitives
     - Ecosystem and ops
-      - Ecosystem ingestion: see: 10-adapters.md#Ingestion-matrix
-      - Developer CLI: see: 11-cli.md (diagnostics)
-      - Build, CI, layout: see: 11-operations.md#Execution-philosophy
-      - Observability & logs: see: 12-observability.md (telemetry)
+      - Ecosystem ingestion: see: 12-adapters.md#Ingestion-matrix
+      - Developer CLI: see: 13-cli.md (diagnostics)
+      - Observability & logs: see: 14-observability.md (telemetry)
+      - Build, CI, layout: see: 15-operations.md#Execution-philosophy

@@ -67,14 +67,14 @@
       - Chained verbs appear on builder instance only when plugin is mounted
     - Scoping: all SDKs support ring, binary, and path filters at mount point
     - Topology rule: distinct environments use separate profile factories
-    - Parity mechanism: see: 11-operations.md#Multi-language-parity-gate
+    - Parity mechanism: see: 15-operations.md#Multi-language-parity-gate
       - SDK naming idiom: same concept, per-SDK spelling; parity is concept parity
         - Sinkhole allowlist (Py/RS) vs dnsExcept (TS)
         - ReceiptConfig: Py/RS include_syscall_count
           - TS: includeDirtyBytes, includeBinaryBlake3, includeSyscallCount
         - Decision static constructors (Py/RS) vs c.deny/c.resume/c.rewrite (TS)
         - Lifecycle decorators/methods (Py/RS) vs .on(LifecycleEvent.VmReady) (TS)
-    - Trap verdict surface: see: 09-protocol.md#TrapAction-method-mapping
+    - Trap verdict surface: see: 11-protocol.md#TrapAction-method-mapping
       - Console interposer signature (all SDKs)
         - on_console_input(port, bytes) / on_console_output(port, chunk)
         - port identifies the virtio-console port; bytes mutated in place
@@ -90,25 +90,15 @@
       - Session control surface
         - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
         - Dynamic vCPU roster: session.vm.set_vcpus(n)
-        - Hard vetoes: LifecycleCtx.register_veto(event, cb)
-          - Veto scope: see 07-lifecycle.md#Lifecycle-vetoes
-        - Graceful retirement: session.drain(timeout_ms) -> DrainOutcome
-          - Refuses new work, awaits in-flight completion, then terminates
-          - Returns Completed | TimedOut | AlreadyDraining
-        - Break-glass SSH/SFTP: session.ssh() -> SshHandle
-          - In-process SSH server, ephemeral Ed25519 keypair
-          - SFTP subsystem enabled by default
-          - close() tears down; drop() closes connections
-          - Spelling: session.ssh() in all SDKs; breakGlass() is a TS alias
+        - Hard vetoes: LifecycleCtx.register_veto(event, cb); see: 08-lifecycle.md#Lifecycle-vetoes
+        - Graceful retirement: session.drain(timeout_ms) -> DrainOutcome; see: 08-lifecycle.md#Hypervisor-primitives
+        - Break-glass SSH/SFTP: session.ssh() -> SshHandle; see: 08-lifecycle.md#Break-glass
     - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
       - Channel kind registration: builder.register_channel(kind, handler)
-        - kind drawn from frozen table
-          - see 09-protocol.md#Channel-allocation-table
+        - kind drawn from frozen table; see: 11-protocol.md#Channel-allocation-table
       - Programmatic exec surface: session.exec(cmd, limits?)
-        - Writes on Channel 0x0003; streams stdin/stdout/stderr/control separately
-        - Accepts optional ProcessLimits
-          - see: 09-protocol.md#Trap-fast-path
-        - No PTY involvement
+        - Writes on Channel 0x0003; framing see: 11-protocol.md#Binary-exec-channel
+        - Accepts optional ProcessLimits; see: 11-protocol.md#Trap-fast-path
     - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
     - Three-tier binary distribution model
       - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
@@ -152,7 +142,7 @@
     - Every verb consumes self by value: .plugin(), .params(), .trap(), .boot()
     - .detached(true) spawns unowned runtime child registered in SQLite sessions
     - Relay endpoint binds to ~/.kelir/sessions/<id>/relay.sock
-      - see: 07-lifecycle.md#Detached-lifecycle
+      - see: 08-lifecycle.md#Detached-lifecycle
     - Reattachment via session.attach(session_id) returns Session
     - Plugins accumulate in a monomorphic HList; HandlerCtx<'a, Plugins, Params>
       resolves capabilities via Has<T>, infallible at the call site

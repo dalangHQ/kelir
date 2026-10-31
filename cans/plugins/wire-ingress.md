@@ -7,7 +7,7 @@
     - Depends on (wire-ingress): kelir-interface only (binds to native Wire Plane)
     - Exposes: IngressRoutingService
     - VirtIO attachment (wire-ingress): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (wire-ingress): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (wire-ingress): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (wire-ingress)
     - Exports IngressRoutingService via PipelineBinder for socket forwarding
   - Invariants and policy (wire-ingress)
@@ -17,7 +17,7 @@
     - Wakes target microVM via SessionWakeHandle::resume
       - ExternalSuspendKind::WireConnectionParking
     - Ingress stream framing across vsock:5252 Channel 1:
-      - Channel 1: L4 stream forwarding; see 09-protocol.md#Channel-allocation-table
+      - Channel 1: L4 stream forwarding; see 11-protocol.md#Channel-allocation-table
       - Frame header: target_port: u16, connection_id: u64, payload_len: u32
       - Guest shim ingress forwarder connects to 127.0.0.1:target_port and splices duplex bytes
     - Zero-downtime webhook and interactive terminal connection continuity

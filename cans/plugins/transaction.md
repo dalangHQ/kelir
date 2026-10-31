@@ -8,7 +8,7 @@
     - Interacts with native Storage Plane 2PC hooks and SqlProxyService via ServiceRegistry
     - Exposes: TransactionService
     - VirtIO device attachment (transaction): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (transaction): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (transaction): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (transaction)
     - Exports TransactionService via PipelineBinder for multi-resource 2PC management
   - Invariants and policy (transaction)

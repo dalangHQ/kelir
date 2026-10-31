@@ -8,8 +8,8 @@
     - Exposes: SqlProxyService
     - VirtIO Ring attachment: virtio-net (port 5432)
     - Registers vsock Channel 0x0004 (db-sqlite)
-      - Allocation: see 09-protocol.md#Channel-allocation-table
-    - Lifecycle attachment (db-proxy): see: 07-lifecycle.md#Lifecycle-vetoes
+      - Allocation: see 11-protocol.md#Channel-allocation-table
+    - Lifecycle attachment (db-proxy): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (db-proxy)
     - Exports SqlProxyService via PipelineBinder for statement and dialect queries
   - Invariants and policy (db-proxy)

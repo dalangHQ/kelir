@@ -7,7 +7,7 @@
     - Depends on (vault): kelir-interface only
     - Exposes: VaultService
     - VirtIO device attachment (vault): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (vault): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (vault): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (vault)
     - Exports VaultService through PipelineBinder for secret resolution and redaction
   - Invariants and policy (vault)

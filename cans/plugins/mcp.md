@@ -7,7 +7,7 @@
     - Depends on (mcp): kelir-interface only (routes stdio to native Terminal/Storage Planes)
     - Exposes: McpEndpointService
     - VirtIO device attachment (mcp): see: 01-architecture.md#VirtIO-Device-Complex
-    - Lifecycle attachment (mcp): see: 07-lifecycle.md#Lifecycle-vetoes
+    - Lifecycle attachment (mcp): see: 08-lifecycle.md#Lifecycle-vetoes
     - Binds to virtio-console port named "kelir-mcp" (/dev/virtio-ports/kelir-mcp)
   - Service exports (mcp)
     - Exports McpEndpointService via PipelineBinder for JSON-RPC transport routing

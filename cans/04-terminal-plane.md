@@ -33,13 +33,10 @@
     - Injects formatted ANSI box into host-to-guest console Port 0 stream
     - Disclosures render inline on workload TTY without corrupting cursor state
   - Binary exec channel
-    - Channel 0x0003 carries programmatic execution streams
-    - Framing: 4-byte channel, 1-byte stream_id, 4-byte len, payload
-    - stream_id: 0=stdin, 1=stdout, 2=stderr, 3=control
+    - Carries programmatic execution streams over Channel 0x0003
+    - Byte framing and stream_id values: see: 11-protocol.md#Binary-exec-channel
     - stdout and stderr retain bitwise fidelity; zero terminal escape pollution
-    - Programmatic commands bypass PTY entirely
-    - PTY (Port 0) retained for interactive TTY human intervention
-    - Break-glass uses PTY; agent tooling uses Channel 0x0003
+    - Programmatic commands bypass PTY entirely; PTY (Port 0) is reserved for human attach
   - Stream replay
     - Each console port emits an append-only log
       - stdout, stderr, and (when attached) PTY output are separate logs
