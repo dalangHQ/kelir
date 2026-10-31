@@ -102,13 +102,16 @@
       - A frozen inspection is still blind to what the loader *will* do;
         - the linker audit exists to make the inspection meaningful
     - Measurement rule
-      - Syscall trap resolves target binaries by kernel (st_dev, st_ino)
-      - Prevents path confusion across nested namespaces, chroots, and crun roots
-      - In-kernel BPF denies CLONE_NEWUSER unless explicitly allowed in MountScope
-      - Agents cannot hide execution by spawning unprivileged child containers
-      - ELF is read from disk at trap time: /proc/$PID/maps still describes
-        - the pre-exec image and cannot be trusted
-      - Scans /proc/$PID/auxv, envp, and PT_INTERP before cgroup unfreeze
+      - Binary resolution
+        - Syscall trap resolves target binaries by kernel (st_dev, st_ino)
+        - Prevents path confusion across nested namespaces, chroots, and crun roots
+      - Namespace invariants
+        - In-kernel BPF denies CLONE_NEWUSER unless explicitly allowed in MountScope
+        - Agents cannot hide execution by spawning unprivileged child containers
+      - Pre-exec inspection
+        - ELF is read from disk at trap time, not from /proc/$PID/maps
+        - /proc/$PID/maps still describes the pre-exec image and is untrusted
+        - Scans /proc/$PID/auxv, envp, and PT_INTERP before cgroup unfreeze
     - Per-command rlimits
       - Exec request on Channel 0x0003 control stream carries optional ProcessLimits
       - Fields: max_as_bytes (RLIMIT_AS), max_nofile (RLIMIT_NOFILE),

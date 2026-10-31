@@ -1,15 +1,10 @@
 - SDK architecture
   - N-native design
-    - No dynamic any-typing, no second-class shims
-    - All SDKs enforce identical runtime guarantees through native type systems
-    - Bootstrap: Rust, TypeScript, Python
-    - Adding a language: bindings crate + vector consumer + surface manifest
-    - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
-    - Two-tier authoring model
-      - Native plugins: distributed as precompiled npm/pip native binaries
-      - Foreign policy plugins: authored in userland code via native async closures
-      - Native vs Foreign: see: 02-plugin-model.md#Dual-plane-execution-architecture
-    - Semantic invariant equivalence
+    - Foundation
+      - No dynamic any-typing, no second-class shims
+      - All SDKs enforce identical runtime guarantees through native type systems
+      - Bootstrap: Rust, TypeScript, Python
+      - Adding a language: bindings crate + vector consumer + surface manifest
       - Runtime safety matrix: see: artifacts/diagrams/sdks-invariants.txt
       - Failure occurs at the earliest lifecycle phase native to each runtime
       - Affine builder consumption: every fluent verb consumes the previous
@@ -20,6 +15,85 @@
         - each installed plugin's surface; no string keys, no runtime downcast
       - Handler purity and idempotency: see: 01-architecture.md#Codebase-invariants
       - Unhandled errors abort hypervisor immediately to eliminate zombie runs
+    - Authoring model
+      - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
+      - Two-tier authoring model
+        - Native plugins: distributed as precompiled npm/pip native binaries
+        - Foreign policy plugins: authored in userland code via native async closures
+        - Native vs Foreign: see: 02-plugin-model.md#Dual-plane-execution-architecture
+    - Type-safety
+      - Type-safety invariants
+        - Rust borrow checker and Serde perimeter validation: see: #Rust-SDK
+        - TypeScript tsc and TypeBox AOT native validators: see: #TypeScript-SDK
+        - Python Pydantic v2 frozen models, import-time checks: see: #Python-SDK
+        - AOT hook fusion and FFI crossing: see: 02-plugin-model.md#Foreign-plugin-proxy
+      - Filter-before-FFI declaration
+        - Declared filters register during builder plugin mount
+        - Evaluation semantics: see: 02-plugin-model.md#Filter-before-FFI-gate
+    - Runtime surface
+      - Language surfaces
+        - Rust: extension traits provide zero-cost fluent chaining on builder
+        - TypeScript: generic context accumulation decorates fluent plugin verbs
+        - Python: dynamic protocol mixins inject fluent verbs on mount
+        - Chained verbs appear on builder instance only when plugin is mounted
+      - Typed dispatch and session extensions
+        - Typed event hooks
+          - .on(LifecycleEvent.VmReady, handler) for lifecycle events
+          - .intercept(Ring.NetOutbound, handler) for ring interception
+          - .trap(TrapFilter::default(), handler)
+        - Native Engine Planes on Session
+          - Core Session directly exposes the 4 planes
+          - session.terminal, session.storage, session.wire, session.checkpoint
+          - Terminal: session.terminal.resize(120, 40), export_screen_matrix()
+            - Replay: session.terminal.read_from(port, offset) -> (Vec<u8>, next_offset)
+          - Storage: session.storage.reconcile(), session.storage.discard()
+          - Wire: session.wire.forward_port(guest_port, host_port)
+            - Returns Result<u16, WireError> with allocated port
+          - Checkpoint: session.checkpoint.create(label), session.rollback()
+        - Plugin extension pattern
+          - Optional domain plugins attach via typed extensions
+          - Rust: session.ctx::<T>() infallible via `Session<Plugins, Params>`
+            - where `Plugins: Has<T>`; no Result, no `ext`/`extension` surface
+          - TypeScript: session.<pluginKey> is a static member of
+            - Session<TContext, TParams>; no session.use(ext)
+          - Python: session.cap.<plugin_key> is statically projected by the
+            - PEP 695 Protocol intersection; no session.ext(T)
+          - Inter-plugin capabilities resolve via c.ctx::<T>() (Rust),
+            - c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
+      - Trap verdict surface: see: 11-protocol.md#TrapAction-method-mapping
+        - Console interposer signature (all SDKs)
+          - on_console_input(port, bytes) / on_console_output(port, chunk)
+          - port identifies the virtio-console port; bytes mutated in place
+        - Yield surface naming
+          - Rust: TrapAction::Yield { checkpoint_id }
+          - TS: c.yield(checkpoint_id)
+          - Python: Decision.yield_to_host(checkpoint_id)
+          - Python has no trailing underscore; yield_to_host is the name
+      - Session surfaces
+        - Session data operations
+          - Shared memory buffers: session.vm.map_shared_region(tag, size_bytes)
+          - Portable snapshots: session.vm.export_snapshot() and session.vm.import_snapshot()
+        - Session control surface
+          - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
+          - Dynamic vCPU roster: session.vm.set_vcpus(n)
+          - Hard vetoes: LifecycleCtx.register_veto(event, cb); see: 08-lifecycle.md#Lifecycle-vetoes
+          - Graceful drain: session.drain(ms); see: 08-lifecycle.md#Hypervisor-primitives
+          - Break-glass SSH/SFTP: session.ssh() -> SshHandle; see: 08-lifecycle.md#Break-glass
+      - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
+        - Channel kind registration: builder.register_channel(kind, handler)
+          - kind drawn from frozen table; see: 11-protocol.md#Channel-allocation-table
+        - Programmatic exec surface: session.exec(cmd, limits?)
+          - Writes on Channel 0x0003; framing see: 11-protocol.md#Binary-exec-channel
+          - Accepts optional ProcessLimits; see: 11-protocol.md#Trap-fast-path
+      - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
+    - Cross-SDK guarantees
+      - Three-tier binary distribution model
+        - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
+          - NAPI-RS .node and PyO3 .whl native shared libraries
+        - Pure Rust enterprise: Gated private Cargo registry (crates.kelir.dev) requiring license
+          - tokens for on-premise compilation (commercial tier)
+        - Kelir Cloud SaaS: Execution over HTTP/gRPC; internal hyper-density and cas-snapshot
+          - optimization applied transparently on host servers
       - Distribution and error invariants
         - Zero runtime toolchain tax: distributed with precompiled NAPI/PyO3 wheels
         - Consumers never require cargo, zig, or C compilers on target systems
@@ -27,86 +101,16 @@
         - Declarative error maps convert host exceptions to exact POSIX errnos
         - Unmapped exceptions: see: 02-plugin-model.md#Declarative-error-mapping
         - Structured error envelope carries driver, ring, pid, binary, and errno
-    - Filter-before-FFI declaration
-      - Declared filters register during builder plugin mount
-      - Evaluation semantics: see: 02-plugin-model.md#Filter-before-FFI-gate
-    - Type-safety invariants
-      - Rust borrow checker and Serde perimeter validation: see: #Rust-SDK
-      - TypeScript tsc and TypeBox AOT native validators: see: #TypeScript-SDK
-      - Python Pydantic v2 frozen models, import-time checks: see: #Python-SDK
-      - AOT hook fusion and FFI crossing: see: 02-plugin-model.md#Foreign-plugin-proxy
-    - Typed dispatch and session extensions
-      - Typed event hooks
-        - .on(LifecycleEvent.VmReady, handler) for lifecycle events
-        - .intercept(Ring.NetOutbound, handler) for ring interception
-        - .trap(TrapFilter::default(), handler)
-      - Native Engine Planes on Session
-        - Core Session directly exposes the 4 planes
-        - session.terminal, session.storage, session.wire, session.checkpoint
-        - Terminal: session.terminal.resize(120, 40), session.terminal.export_screen_matrix()
-          - Replay: session.terminal.read_from(port, offset) -> (Vec<u8>, next_offset)
-        - Storage: session.storage.reconcile(), session.storage.discard()
-        - Wire: session.wire.forward_port(guest_port, host_port)
-          - Returns Result<u16, WireError> with allocated port
-        - Checkpoint: session.checkpoint.create(label), session.rollback()
-      - Plugin extension pattern
-        - Optional domain plugins attach via typed extensions
-        - Rust: session.ctx::<T>() infallible via `Session<Plugins, Params>`
-          - where `Plugins: Has<T>`; no Result, no `ext`/`extension` surface
-        - TypeScript: session.<pluginKey> is a static member of
-          - Session<TContext, TParams>; no session.use(ext)
-        - Python: session.cap.<plugin_key> is statically projected by the
-          - PEP 695 Protocol intersection; no session.ext(T)
-        - Inter-plugin capabilities resolve via c.ctx::<T>() (Rust),
-          - c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
-    - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
-    - Language surfaces
-      - Rust: extension traits provide zero-cost fluent chaining on builder
-      - TypeScript: generic context accumulation decorates fluent plugin verbs
-      - Python: dynamic protocol mixins inject fluent verbs on mount
-      - Chained verbs appear on builder instance only when plugin is mounted
-    - Scoping: all SDKs support ring, binary, and path filters at mount point
-    - Topology rule: distinct environments use separate profile factories
-    - Parity mechanism: see: 15-operations.md#Multi-language-parity-gate
-      - SDK naming idiom: same concept, per-SDK spelling; parity is concept parity
+      - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
+      - Scoping: all SDKs support ring, binary, and path filters at mount point
+      - Topology rule: distinct environments use separate profile factories
+      - Parity mechanism: see: 15-operations.md#Multi-language-parity-gate
+        - SDK naming idiom: same concept, per-SDK spelling; parity is concept parity
         - Sinkhole allowlist (Py/RS) vs dnsExcept (TS)
         - ReceiptConfig: Py/RS include_syscall_count
           - TS: includeDirtyBytes, includeBinaryBlake3, includeSyscallCount
         - Decision static constructors (Py/RS) vs c.deny/c.resume/c.rewrite (TS)
         - Lifecycle decorators/methods (Py/RS) vs .on(LifecycleEvent.VmReady) (TS)
-    - Trap verdict surface: see: 11-protocol.md#TrapAction-method-mapping
-      - Console interposer signature (all SDKs)
-        - on_console_input(port, bytes) / on_console_output(port, chunk)
-        - port identifies the virtio-console port; bytes mutated in place
-      - Yield surface naming
-        - Rust: TrapAction::Yield { checkpoint_id }
-        - TS: c.yield(checkpoint_id)
-        - Python: Decision.yield_to_host(checkpoint_id)
-        - Python has no trailing underscore; yield_to_host is the name
-    - Session surfaces
-      - Session data operations
-        - Shared memory buffers: session.vm.map_shared_region(tag, size_bytes)
-        - Portable snapshots: session.vm.export_snapshot() and session.vm.import_snapshot()
-      - Session control surface
-        - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
-        - Dynamic vCPU roster: session.vm.set_vcpus(n)
-        - Hard vetoes: LifecycleCtx.register_veto(event, cb); see: 08-lifecycle.md#Lifecycle-vetoes
-        - Graceful drain: session.drain(ms); see: 08-lifecycle.md#Hypervisor-primitives
-        - Break-glass SSH/SFTP: session.ssh() -> SshHandle; see: 08-lifecycle.md#Break-glass
-    - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
-      - Channel kind registration: builder.register_channel(kind, handler)
-        - kind drawn from frozen table; see: 11-protocol.md#Channel-allocation-table
-      - Programmatic exec surface: session.exec(cmd, limits?)
-        - Writes on Channel 0x0003; framing see: 11-protocol.md#Binary-exec-channel
-        - Accepts optional ProcessLimits; see: 11-protocol.md#Trap-fast-path
-    - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
-    - Three-tier binary distribution model
-      - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
-        - NAPI-RS .node and PyO3 .whl native shared libraries
-      - Pure Rust enterprise: Gated private Cargo registry (crates.kelir.dev) requiring license
-        - tokens for on-premise compilation (commercial tier)
-      - Kelir Cloud SaaS: Execution over HTTP/gRPC; internal hyper-density and cas-snapshot
-        - optimization applied transparently on host servers
   - Idiomatic Surfaces Law
     - TS, Python, and Rust do not copy each other's method names
     - Each enforces 1:1 behavioral and wire parity against vectors.json

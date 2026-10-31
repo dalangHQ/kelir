@@ -95,30 +95,32 @@
     - Frame reassembly eliminates token fragmentation across TCP boundaries
     - Normalizes HTTP/2 streams into framed request buffers before scan
   - Upstream dial transport
-    - Outbound TCP permitted by policy is dialed through the host netstack
-    - Proxy chaining is first-class, not an afterthought
-      - Protocols: HTTP CONNECT, SOCKS5 (RFC 1928), SOCKS5 with username/password
-        - auth (RFC 1929), SOCKS5h (remote DNS)
-      - Multi-hop: an upstream corporate proxy may itself dial through another
-      - Config sources: HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY, or builder spec
-      - Explicit auth: username/password for SOCKS5; Basic or Bearer for CONNECT
-      - Credentials read from host environment or host keyring; never persisted in
-        - profile files
-    - The guest kernel believes it is dialing the raw target IP
-    - The host netstack performs the upstream handshake and splices bytes
-    - Zero in-guest proxy environment variables; zero guest awareness of chaining
+    - Dial policy
+      - Proxy chaining is first-class, not an afterthought
+        - Protocols: HTTP CONNECT, SOCKS5 (RFC 1928), SOCKS5h (remote DNS)
+        - SOCKS5 auth extension: username/password (RFC 1929)
+        - Multi-hop: an upstream corporate proxy may itself dial through another
+        - Config sources: HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY, or builder spec
+        - Explicit auth: username/password for SOCKS5; Basic or Bearer for CONNECT
+        - Credentials read from host environment or host keyring; never persisted in profile files
+      - Corporate egress (Zscaler, Squid, Envoy) works without guest cooperation
+    - Dial mechanics
+      - Outbound TCP permitted by policy is dialed through the host netstack
+      - The guest kernel believes it is dialing the raw target IP
+      - The host netstack performs the upstream handshake and splices bytes
+      - Zero in-guest proxy environment variables; zero guest awareness of chaining
     - Failure modes
       - Upstream auth failure surfaces to guest as ECONNREFUSED
       - Upstream timeout surfaces as ETIMEDOUT after policy budget
       - Reason recorded in host-side structured log; never leaked to guest
-    - Corporate egress (Zscaler, Squid, Envoy) works without guest cooperation
   - Port forwarding
     - Guest-initiated: forward tunnels over vsock:5252 Channel 0x0001 on PortBound
-    - Host-initiated: session.wire.forward_port(guest_port, host_port)
-      - Host listener flags: SO_REUSEADDR and SO_REUSEPORT set on all host binds
-      - Immediate teardown release: SO_LINGER zero forces instant TCP RST
-      - Eliminates TIME_WAIT socket exhaustion across rapid test iterations
-      - Returns Result<u16, WireError> with bound port
-    - host_port = None or 0 binds ephemeral port 0; host kernel allocates free port
-    - Bound port returned immediately; zero collision probability
-    - Parallel test suites share a host with zero hardcoded port conflicts
+    - Host-initiated: session.wire.forward_port(guest_port, host_port) -> Result<u16, WireError>
+      - Port allocation
+        - host_port = None or 0 binds ephemeral port 0; host kernel allocates free port
+        - Bound port returned immediately; zero collision probability
+        - Parallel test suites share a host with zero hardcoded port conflicts
+      - Socket lifecycle
+        - Host listener flags: SO_REUSEADDR and SO_REUSEPORT set on all host binds
+        - Immediate teardown release: SO_LINGER zero forces instant TCP RST
+        - Eliminates TIME_WAIT socket exhaustion across rapid test iterations

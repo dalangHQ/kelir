@@ -1,10 +1,11 @@
 - Terminal plane
   - Terminal pipeline
-    - Owner: kelir-core native terminal subsystem (kelir-core::terminal)
-    - Hardware abstraction: virtio-console paravirtual character bus
-    - Port 0 allocated to standard console IO; Ports 1-16 dynamically allocated
-    - Transport: Raw byte-stream rings mapped to host supervisor memory
-    - Zero-copy ringbuffer backpressure and queue management
+    - Terminal plane attributes
+      - Owner: kelir-core native terminal subsystem (kelir-core::terminal)
+      - Hardware abstraction: virtio-console paravirtual character bus
+      - Port 0 allocated to standard console IO; Ports 1-16 dynamically allocated
+      - Transport: Raw byte-stream rings mapped to host supervisor memory
+      - Zero-copy ringbuffer backpressure and queue management
     - HostTerminalGuard (RAII)
       - On attach: tcgetattr saves host termios; cfmakeraw enters raw mode
       - SIGINT and SIGTSTP masked on host thread; keystrokes forwarded raw

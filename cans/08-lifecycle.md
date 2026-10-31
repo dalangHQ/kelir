@@ -1,36 +1,37 @@
 - Lifecycle
   - Hypervisor primitives
-    - Centralized Hypervisor Lifecycle State Machine:
-      - States: Initializing, Running, Draining, Suspended(SuspendReason), Terminated
-      - SuspendReason: External(u32) | ResourcePressure
-      - Eliminates independent suspend implementations outside core
-      - Cycle-exact resume triggered via Channel 0 control frame or
-        - wire ingress frame arrival
-      - Draining is a first-class state
-        - Running -> Draining -> Terminated
-        - Entered via `session.drain(timeout_ms)`
-        - In `Draining`: new exec and tool calls are refused with EBUSY
-        - In-flight commands run to natural completion
-        - Storage buffers are flushed; Merkle WAL closed cleanly
-        - On completion or timeout, transition to Terminated
-        - On timeout, in-flight work is terminated with SIGTERM, then SIGKILL
-        - Preserves finished work in CI/CD pipelines and long agent chains
-    - Set-level invariant: every item is a hypervisor primitive, not a
-      - guest-side simulation. Nothing in this set is achievable without driver cooperation.
-    - Monotonic clock clamp: CLOCK_MONOTONIC never regresses across restore
-    - Restored monotonic time clamps to max(current_monotonic, snapshot_monotonic)
-    - Preserves timer loop invariants for guest Tokio, Go, and libuv runtimes
-    - Session lifecycle handles: fork, suspend, resume, rollback, skew_clock
-    - Context lifecycle configuration: set_watchdog, adjust_balloon, register_veto
-    - All primitives execute via active VmmDriver backend without in-guest agents
-    - Portable snapshots: see: #Portable-snapshot-bundles
-    - Preemption window: see: #Host-crash-reaper
-    - Every item exposes one lifecycle point via LifecycleCtx
-      - Typestate boundary: fork, suspend, rollback, skew_clock exist
-        - exclusively on Session, never on KelirBuilder
+    - Set-level invariant: every item is a hypervisor primitive, not guest-side simulation
+    - State machine
+      - Centralized Hypervisor Lifecycle State Machine:
+        - States: Initializing, Running, Draining, Suspended(SuspendReason), Terminated
+        - SuspendReason: External(u32) | ResourcePressure
+        - Eliminates independent suspend implementations outside core
+        - Cycle-exact resume via Channel 0 control frame or wire ingress frame
+        - Draining is a first-class state
+          - Running -> Draining -> Terminated
+          - Entered via `session.drain(timeout_ms)`
+          - In `Draining`: new exec and tool calls are refused with EBUSY
+          - In-flight commands run to natural completion
+          - Storage buffers are flushed; Merkle WAL closed cleanly
+          - On completion or timeout, transition to Terminated
+          - On timeout, in-flight work is terminated with SIGTERM, then SIGKILL
+          - Preserves finished work in CI/CD pipelines and long agent chains
+    - Clock invariants
+      - Monotonic clock clamp: CLOCK_MONOTONIC never regresses across restore
+      - Restored monotonic time clamps to max(current_monotonic, snapshot_monotonic)
+      - Preserves timer loop invariants for guest Tokio, Go, and libuv runtimes
+    - Session and context handles
+      - Session lifecycle handles: fork, suspend, resume, rollback, skew_clock
+      - Context lifecycle configuration: set_watchdog, adjust_balloon, register_veto
+      - Every item exposes one lifecycle point via LifecycleCtx
+      - Typestate boundary: fork, suspend, rollback, skew_clock exist on Session only
       - Split by state-preservation, not by privilege: see: #Lifecycle-vetoes
-    - Ownership attribution: see: 02-plugin-model.md#First-class-plugins
-    - Hardware session attestation:
+    - Driver-backed execution
+      - All primitives execute via active VmmDriver backend without in-guest agents
+      - Portable snapshots: see: #Portable-snapshot-bundles
+      - Preemption window: see: #Host-crash-reaper
+      - Ownership attribution: see: 02-plugin-model.md#First-class-plugins
+    - Hardware session attestation
       - Token injection and verification path: see: 01-architecture.md#Guest-VM-anatomy
       - Bare-metal executions lack the paravirtual token and abort immediately
       - Protects developers running harness scripts natively by mistake

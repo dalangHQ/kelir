@@ -69,7 +69,7 @@
     - Zero-downtime connection parking: see: plugins/wire-ingress.md
     - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends
   - Spec map
-    - Foundation: see: 01-architecture.md
+    - Core foundation: see: 01-architecture.md
     - Plugin model & catalog (13 optional domain plugins): see: 02-plugin-model.md
     - SDK architecture: see: 03-sdk-architecture.md (parity)
     - Terminal plane: see: 04-terminal-plane.md (engine native)

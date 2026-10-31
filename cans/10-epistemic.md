@@ -11,76 +11,78 @@
       - Computed from primitives, policy-bearing → derived, plugin-owned
     - Default posture: per-exec, per-trap, per-receipt primitives enabled
   - Execution receipts
-    - see: artifacts/code/execution-receipt.rs
-    - Deterministic hardware counter attribution emitted per executed process
-    - Emitted per executed process, at the trap/exit boundary
-    - Receipts compare as values via canonical per-field structural assertions
-    - Receipts carry opaque TelemetryExtension payloads emitted by mounted plugins
-    - Hardware attestation token: BLAKE3 cryptographic proof over execution tuple
-    - Byte-not-page reason: see: 01-architecture.md#SnapshotDescriptor.dirty-bytes
-    - Population: per ReceiptConfig; opt-in fields not enabled are absent
-      - (Option), never 0
-      - retired_instructions: sampled from host vCPU thread via perf_event_open
-        - Linux: perf_event_open with exclude_host=1 and exclude_hypervisor=1
-        - Sampled strictly during active KVM_RUN state
-        - macOS ARM64: read via hv_vcpu_get_sys_reg from PMCCNTR_EL0 / PMEVCNTR<n>_EL0
-        - Mach thread counters banned; host hypervisor overhead excluded
-        - Guarantees cross-host deterministic counter equivalence
-      - exit_kind: ExitKind enum, always populated
-        - Normal | Signal(u32) | KernelPanic(String) | HypervisorFault(String)
-        - KernelPanic payload scraped from 64KB early-boot UART buffer
-          - see: 01-architecture.md#Early-boot-diagnostics
-        - Replaces reliance on exit_code alone for boot failure classification
-      - Opt-in: syscall_count
-      - dirty_bytes is always populated: zero is a real measurement, not an
-        - absent value
-    - binary_blake3 identity
-      - Canonical form
-        - BLAKE3 of raw file bytes at binary_path
-        - Resolved at trap time
-          - openat2(RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS)
-          - Rooted at workspace
-        - No ELF parsing; bytes hashed as kernel opens them
-      - Cache key
-        - (st_dev, st_ino, st_size, st_mtime_ns)
-        - Invalidated on any key component change
-        - Negative cache: (st_dev, st_ino) for not-found
-      - Cache scope
-        - One hash per binary identity, not per exec
-        - Session-scoped; dropped on terminate
-      - Trusted-prefix fast path
-        - EROFS trusted prefixes execute Gate 3 skip; see: 11-protocol.md#Trap-fast-path
-        - Lookup resolves pre-computed BLAKE3 table in host RAM via O(1) index
-        - Untrusted /workspace/** retains full hash resolution path
-      - Cache hit does not bypass trap boundary
-        - Trap still delivered; hash still attached
-        - Only the byte-read is skipped
-    - Receipt accounting
-      - syscall_count
-        - Counts trap ingress events to plugin pipeline
-        - Excludes Gate 1 BPF allowlist events
-        - Per trap invocation, not per syscall retry
-      - egress_bytes
-        - L2 bytes at on_net_outbound after pipeline settles
-        - Bytes dropped by sinkhole or Reject
-          - Counted separately as egress_dropped_bytes
-        - In-guest bytes pre-ingress not counted
-      - wall_clock_ns
-        - Physical spawn-to-reap time
-        - Regardless of guest suspend state
-        - 1-hour suspend records ~1 hour wall_clock_ns
-        - Measures physical time, not guest-CPU time
-      - exit_code under Rewrite
-        - Exit code of final binary in rewrite chain
-        - TrapEvent records original_binary_blake3
-        - ExecutionReceipt records final_binary_blake3
-        - Divergence detectable at the receipt
-      - phase spans
-        - trap_ingress_ns: BPF decision to host handler entry
-        - ffi_hop_ns: time in foreign FFI boundary
-        - policy_ns: time in plugin pipeline after FFI returns
-        - verdict_egress_ns: verdict decision to guest re-exec
-        - Sum + base overhead = wall_clock_ns
+    - Receipt foundation
+      - see: artifacts/code/execution-receipt.rs
+      - Deterministic hardware counter attribution emitted per executed process
+      - Emitted per executed process, at the trap/exit boundary
+      - Receipts compare as values via canonical per-field structural assertions
+      - Receipts carry opaque TelemetryExtension payloads emitted by mounted plugins
+    - Identity
+      - Hardware attestation token: BLAKE3 cryptographic proof over execution tuple
+      - binary_blake3 identity
+        - Canonical form
+          - BLAKE3 of raw file bytes at binary_path
+          - Resolved at trap time
+            - openat2(RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS)
+            - Rooted at workspace
+          - No ELF parsing; bytes hashed as kernel opens them
+        - Cache key
+          - (st_dev, st_ino, st_size, st_mtime_ns)
+          - Invalidated on any key component change
+          - Negative cache: (st_dev, st_ino) for not-found
+        - Cache scope
+          - One hash per binary identity, not per exec
+          - Session-scoped; dropped on terminate
+        - Trusted-prefix fast path
+          - EROFS trusted prefixes execute Gate 3 skip; see: 11-protocol.md#Trap-fast-path
+          - Lookup resolves pre-computed BLAKE3 table in host RAM via O(1) index
+          - Untrusted /workspace/** retains full hash resolution path
+        - Cache hit does not bypass trap boundary
+          - Trap still delivered; hash still attached
+          - Only the byte-read is skipped
+    - Field semantics
+      - Population
+        - Per ReceiptConfig; opt-in fields not enabled are absent (Option), never 0
+        - retired_instructions: sampled from host vCPU thread via perf_event_open
+          - Linux: perf_event_open with exclude_host=1 and exclude_hypervisor=1
+          - Sampled strictly during active KVM_RUN state
+          - macOS ARM64: read via hv_vcpu_get_sys_reg from PMCCNTR_EL0 / PMEVCNTR<n>_EL0
+          - Mach thread counters banned; host hypervisor overhead excluded
+          - Guarantees cross-host deterministic counter equivalence
+        - exit_kind: ExitKind enum, always populated
+          - Normal | Signal(u32) | KernelPanic(String) | HypervisorFault(String)
+          - KernelPanic payload scraped from 64KB early-boot UART buffer
+            - see: 01-architecture.md#Early-boot-diagnostics
+          - Replaces reliance on exit_code alone for boot failure classification
+        - Opt-in: syscall_count
+        - dirty_bytes is always populated: zero is a real measurement, not absent
+        - Byte-not-page reason: see: 01-architecture.md#SnapshotDescriptor.dirty-bytes
+      - Receipt accounting
+        - syscall_count
+          - Counts trap ingress events to plugin pipeline
+          - Excludes Gate 1 BPF allowlist events
+          - Per trap invocation, not per syscall retry
+        - egress_bytes
+          - L2 bytes at on_net_outbound after pipeline settles
+          - Bytes dropped by sinkhole or Reject
+            - Counted separately as egress_dropped_bytes
+          - In-guest bytes pre-ingress not counted
+        - wall_clock_ns
+          - Physical spawn-to-reap time
+          - Regardless of guest suspend state
+          - 1-hour suspend records ~1 hour wall_clock_ns
+          - Measures physical time, not guest-CPU time
+        - exit_code under Rewrite
+          - Exit code of final binary in rewrite chain
+          - TrapEvent records original_binary_blake3
+          - ExecutionReceipt records final_binary_blake3
+          - Divergence detectable at the receipt
+        - phase spans
+          - trap_ingress_ns: BPF decision to host handler entry
+          - ffi_hop_ns: time in foreign FFI boundary
+          - policy_ns: time in plugin pipeline after FFI returns
+          - verdict_egress_ns: verdict decision to guest re-exec
+          - Sum + base overhead = wall_clock_ns
     - Receipt ownership
       - kelir-core generates and holds at trap/exit boundary
       - c.receipt() is the single read API on HandlerCtx

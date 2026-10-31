@@ -1,13 +1,16 @@
 - Storage plane
   - Storage architecture
-    - see: artifacts/diagrams/storage-architecture.txt
-    - Owner: kelir-core native storage subsystem (kelir-core::storage)
-    - Low-level FUSE pass-through bridge directly linking guest VFS to host workspace
-    - Pipeline engine exposes synchronous lookup, read, and write interception
-    - Emits physical StorageDelta events directly to host event bus on commit
-    - Mandatory non-blocking host I/O: host descriptors open with O_NONBLOCK
-    - Host FIFO and socket rejection: S_IFIFO and S_IFSOCK fail lookup with ENXIO
-    - Host blocking prevention: zero guest syscalls may sleep host ring workers
+    - Storage plane attributes
+      - see: artifacts/diagrams/storage-architecture.txt
+      - Owner: kelir-core native storage subsystem (kelir-core::storage)
+    - Interception pipeline
+      - Low-level FUSE pass-through bridge directly linking guest VFS to host workspace
+      - Pipeline engine exposes synchronous lookup, read, and write interception
+      - Emits physical StorageDelta events directly to host event bus on commit
+    - Host I/O invariants
+      - Mandatory non-blocking host I/O: host descriptors open with O_NONBLOCK
+      - Host FIFO and socket rejection: S_IFIFO and S_IFSOCK fail lookup with ENXIO
+      - Host blocking prevention: zero guest syscalls may sleep host ring workers
     - Encapsulation invariant
       - Host workspace is locked to mode 000 on host; only the hypervisor
         - descriptor bridges access to virtio-fs lowerdir
