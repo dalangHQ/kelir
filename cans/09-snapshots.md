@@ -12,13 +12,15 @@
     - Export format: single Content-Addressed .kelir-snap binary stream
       - Archive header: magic, format version, feature flags, entry table
       - Stream contents: manifest.json, vmm_state.json, ram.zst, upperdir.tar.zst,
-        - guest_clock.json, attestation.jws
+        - guest_clock.json, attestation.jws, tls_ca.jws
+      - tls_ca.jws carries vault CA cert + key under session key
+        - Only present when plugin-vault is mounted in the snapshot lineage
       - Verification: trailer carries manifest digest for end-to-end integrity
     - Unpack containment invariants (Single Source of Truth)
       - Untrusted input boundary: zero ambient host filesystem trust
-        - Extraction is contained to the staging root via openat2 RESOLVE_BENEATH
+        - Containment engine: 05-storage-plane.md#Atomic-workspace-reconciler
+        - Traversal, absolute paths, and symlink escapes reject with EXDEV there
         - Sparse entries pre-sized; zstd frames bounded by declared size
-        - Traversal, absolute paths, and symlink escapes reject with EXDEV
         - Codec errors discard staging atomically; no partial roots leak
   - Groups and lineage
     - Lineage tracks parent child edges for garbage collection

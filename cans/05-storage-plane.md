@@ -44,15 +44,22 @@
       - Writes mutated files to sibling temporary files (.tmp.<nonce>)
       - StagingGuard struct owns all .tmp.<nonce> files
       - Staging cleanup: uncommitted staging files unlink unconditionally on Drop
-      - Disarm on commit: guard disarms only after atomic directory swap succeeds
+      - Disarm on commit: guard disarms only after leaf-level atomic commit succeeds
     - Commit
-      - Executes atomic exchange or directory swap directly under host root
-      - Fast path uses renameat2(RENAME_EXCHANGE) directly
+      - Reconcile operates on leaf and intermediate directory level exclusively
+      - Host workspace root and intermediate directory inodes are never swapped
+      - Mutated files replace via platform-native single-file atomic rename
+        - Linux: renameat2; macOS: renameatx_np(RENAME_SWAP); Windows:
+        - SetFileInformationByHandle(FileRenameInfoEx)
+      - Deleted files unlink in place; new subdirectories create in place
       - Host Inode Broker pre-checks active host flock descriptors
       - Fallback on EBUSY or EPERM: in-place write with 2000ms backoff
     - Contain
       - Strict containment: rejects symlink hops and traversals outside host root
-      - All host-side inode resolution uses openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)
+      - Host containment engine resolves via platform-native root handle
+        - Linux: openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)
+        - macOS: iterative openat(O_NOFOLLOW) with st_dev/st_ino root verification
+        - Windows: FILE_FLAG_OPEN_REPARSE_POINT against declared root handle
       - Symlink traversals escaping root fail with EXDEV at host VFS layer
       - S_ISUID and S_ISGID stripped on every write, create, chmod (mode & !0o6000)
       - In-guest root cannot mint setuid host binaries

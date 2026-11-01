@@ -37,6 +37,10 @@
       - Prevents model context exfiltration using attacker-supplied personal API keys
       - Header substitution: by binding field name (Authorization, X-API-Key, ...)
       - Body substitution: form-encoded, JSON, and text bodies up to 16 MiB
+        - Ceiling is fail-closed: bodies exceeding 16 MiB to secret-bound hosts
+        - reject immediately with ESecurityViolation(E_PAYLOAD_TOO_LARGE)
+      - Query string decoded and scanned by the same Aho-Corasick automaton
+        - before the HTTP request line forwards upstream
       - Streaming bodies reassembled with MAX_PLACEHOLDER_LEN - 1 carryover window
       - Eliminates pattern fragmentation across TCP frames and chunked transfers
       - Content-Length recomputed; chunked bodies re-encoded with fresh sizes
@@ -47,6 +51,17 @@
       - Host proxy opens a fresh upstream TLS session and forwards the mutated request
       - Plain HTTP (port 80) uses the same substitution path without TLS
       - Secret bytes never exist in guest physical RAM, guest VFS, or VirtIO rings
+    - CA lifecycle
+      - Ephemeral session CA minted at on_vm_ready for fresh sessions
+      - Snapshot restore hydrates recorded ca_cert/ca_key from .kelir-snap
+      - Missing vault in lineage or fingerprint mismatch aborts boot
+      - Abort code E_RESTORE_TLS_MISMATCH
+    - Opaque tunnel bypass
+      - Protocol demotion: Upgrade: websocket or completed CONNECT handshake
+        - transitions the stream to OpaqueTunnel state
+      - OpaqueTunnel skips Aho-Corasick and substitution entirely
+      - Socket pair delegates to kernel zero-copy splice
+        - splice on Linux, direct ring copy on macOS
     - Memory isolation and zeroization
       - Host secret memory pinned with mlock(2) to prevent swapping to disk
       - Memory zeroed using explicit volatile writes upon session termination or drop

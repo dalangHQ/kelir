@@ -20,7 +20,9 @@
     - Guest paravirtual micro-init boundary (kelir-shim)
       - Shim runs as uninstrumented musl PID 1 (<50KB binary)
       - Fixed 64-slot ExecSlot table maps guest pid to exec_id
+      - ExecSlot saturation: shim returns MSG_EXEC_REJECT{EBUSY} in-band
       - waitpid(-1, WNOHANG) updates slot exit status without blocking
+      - Unmatched reaped PIDs discard into a zero-allocation sink
       - Exit frames on Channel 0x0003 defer until stdout/stderr EOF flush
       - Multiplexes raw VirtIO ring bytes; carries zero database, proxy, or domain logic
       - Domain Unix sockets are provisioned dynamically over vsock, never hardcoded in PID 1
@@ -35,6 +37,20 @@
     - Out-of-band signal isolation: SIGINT, SIGTERM, and resize bypass 0x0003
     - High-priority process signals route exclusively over Channel 0x0000
     - Eliminates signal delivery stalls behind saturated stdout/stderr rings
+    - Signal targeting
+      - Channel 0x0000 signals carry exec_id, never raw guest pid
+      - Shim translates exec_id to pid; unknown or already-exited exec_id drops silently
+      - No cross-channel ordering dependency exists between 0x0000 and 0x0003
+    - PTY allocation flag
+      - EXEC_IO_SPEC header carries FLAG_ALLOC_PTY (0x04), zero by default
+      - Set: shim calls openpty() for the ExecSlot; workload binds slave PTY
+      - Window resize rides stream 0x03 (stream control), not Channel 0x0010
+      - stdout and stderr remain raw over 0x01 and 0x02 regardless of PTY
+      - Port 0 console stays reserved for human break-glass attach only
+    - Slot saturation backpressure
+      - All 64 ExecSlots occupied: MSG_EXEC_REJECT{reason: EBUSY} returns in-band
+      - No queue growth, no PID 1 termination on burst, no silent drop
+      - Orchestrator retries after slot release or escalates to drain
     - stdout and stderr carry raw bytes; no line wrapping, no escape injection
     - Flow control: explicit frame protocol (`EXEC_IO_SPEC`)
       - Control frames (EOF, window resize, signals) interleave with data frames

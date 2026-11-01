@@ -85,6 +85,8 @@
         - Programmatic exec surface: session.exec(cmd, limits?)
           - Writes on Channel 0x0003; framing see: 11-protocol.md#Binary-exec-channel
           - Accepts optional ProcessLimits; see: 11-protocol.md#Trap-fast-path
+          - Accepts optional allocPty flag; rides FLAG_ALLOC_PTY on EXEC_IO_SPEC
+          - Signal cancellation targets exec_id, not raw guest pid
       - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
     - Cross-SDK guarantees
       - Three-tier binary distribution model

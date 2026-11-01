@@ -2,10 +2,15 @@
   - Ingestion matrix
     - Adapter set and ecosystem binding: see: artifacts/diagrams/ingestion-adapters.txt
     - Core ingestion primitive: kelir-pack
-      - Host-side single-pass compiler: OCI layer blob → EROFS
+      - Host-side two-phase in-memory compiler: OCI layer blob → EROFS
       - Streaming HTTPS client pulls OCI manifest and layer tar chunks directly
-      - Layers stream directly into RAM compiler; no intermediate tarballs on disk
-      - Parses whiteouts inline and writes contiguous EROFS chunks to host CAS
+      - Phase 1: layer tar headers only stream into a radix tree in host RAM
+        - Inline whiteouts (`.wh.`, `.wh..wh..opq`) mutate tree nodes in place
+        - Final directory topology, inode count, and chunk extents computed
+      - Phase 2: layer payload bodies stream into CAS blobs
+        - Finalized EROFS data and directory blocks emitted from Phase 1 map
+      - Zero intermediate tarballs on disk; zero unfixable EROFS metadata rewrites
+      - Phase 1 RAM cost bounded by 500k inode ceiling (<30MB typical)
       - Streaming unpack admission clamps maximum expansion ratio to 15:1
       - Single layer uncompressed extraction budget capped at 8 GiB strictly
       - Layer entry count bounded to a ceiling of 500,000 inodes

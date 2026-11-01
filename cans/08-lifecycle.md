@@ -142,6 +142,11 @@
       - Suspend false → ESessionVeto; host RAM not flushed
       - Resume fires before primitive; return value ignored
       - Note: on_vm_ready does not re-fire on resume
+    - Snapshot CA hydration
+      - .kelir-snap carries encrypted ca_cert + ca_key under session key
+      - vault restores exact recorded CA on resume; fingerprint mismatch aborts
+      - E_RESTORE_TLS_MISMATCH fires before any vCPU cycle
+      - Fresh boot without snapshot mints a new CA at on_vm_ready as usual
     - Typical use: waiting for human approval with zero host CPU cost
     - Mobile and SBC use: full RSS deallocation under Android LMK memory pressure
     - Flash preservation: sparse upperdir backing file may be placed on a
@@ -171,6 +176,11 @@
       - Idle VMs yield CPU slices to busy neighbors bounded by hard quotas
       - No cross-NUMA migration; borrowed cores come from the same NUMA node
       - The plan is recorded in the SQLite catalog per session for auditability
+    - Balloon convergence
+      - adjust_balloon returns BalloonConvergence handle, not void
+      - Host subscribes to VIRTIO_BALLOON_S_MEMFREE / S_AVAIL event queue
+      - Host reclaim (madvise / hv_vm_unmap) gates on guest ack, not target set
+      - Fork, snapshot, and heavy exec require prior convergence completion
   - Native checkpoint plane (kelir-core::checkpoint)
     - Zero-harness boundary detection
       - Tracks process group exits and foreground PTY idle quiescence
@@ -284,6 +294,11 @@
     - No resident daemon
       - Default sessions retain PR_SET_PDEATHSIG / kqueue / Job Object reaping
       - Detached sessions have no PDEATHSIG; the SQLite lease replaces it
+    - Cross-platform incarnation proof
+      - Linux: pidfd + host_boot_id + proc start_time
+      - macOS: kqueue NOTE_EXIT + proc_pidinfo PROC_PIDTBSDINFO start time
+      - Windows: Job Object + OpenProcess + GetProcessTimes admission check
+      - Any (boot_id, start_time_ns, pid) mismatch marks row Crashed; no signal
   - Break-glass
     - Human operators need real tooling: VS Code Remote, JetBrains Gateway,
       - rsync, sftp, multi-session shells. A raw PTY cannot satisfy these.
@@ -317,6 +332,12 @@
     - waitpid(-1, WNOHANG) pass integrated into async event loop
     - Foreground shell exit → orphaned daemons adopted and reaped
     - Prevents defunct <zombie> processes exhausting PID table
+  - Session incarnation
+    - Every microVM spawn mints a 128-bit UUIDv7 incarnation_id
+    - Destructive lifecycle verbs accept expected incarnation_id
+      - stop, kill, drain, rollback, remove
+    - Compare-and-swap on the catalog row; mismatch aborts E_STALE_INCARNATION
+    - Eliminates same-session_id replacement destruction across workers
   - Lifecycle vetoes
     - Scope: hard vetoes only
       - Fork, Suspend, ClockSkew

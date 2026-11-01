@@ -20,6 +20,12 @@
       - Permitted UDP egress uses endpoint-independent mapping (Full Cone NAT)
       - Single host UDP socket per guest source port serves multiple remote peers
       - Preserves external source port identity for STUN, WebRTC, and Tailscale
+    - UDP socket reaper
+      - Guest source ports map into an indexed slab with 1,024-entry hard cap
+      - Cap exhausted on new source port: oldest idle socket reclaims first
+      - Idle 30s with zero ingress or egress: close socket, release descriptor
+      - Fresh packet on a reclaimed source port reopens an ephemeral host socket
+      - Prevents host fd exhaustion under DNS spam, UDP scans, or WebRTC churn
     - Rejection observation
       - UDP default-deny emits ICMP Port Unreachable into the guest ingress ring
       - Raw/IPv6 default-deny has no response path; guest observes send success only
@@ -75,6 +81,12 @@
       - DoT (DNS-over-TLS) upstreams supported when configured
         - Length-prefixed message framing inside the TLS stream
         - Certificate verified host-side; guest never sees the tunnel
+    - EDNS0 downgrade
+      - Incoming query with DO=1: interceptor strips DO before upstream forward
+      - Synthesized response clears AD bit before returning to guest ingress ring
+      - Signals authenticating recursive resolver to guest DNSSEC stubs
+      - Prevents guest SERVFAIL aborts on split-horizon and SOCKS5h translation
+      - Host resolver state and policy outcomes are unchanged by downgrade
   - Transparent L4 stream diversion
     - Directs guest TCP streams across VirtIO ring to designated host socket
     - Exposes raw duplex stream to registered NetInterposer proxies
@@ -82,6 +94,12 @@
     - Valid HTTP verb or TLS ClientHello promotes stream to L7 proxy stage
     - Non-HTTP byte streams bypass L7 stages with zero-copy L4 socket splicing
     - Prevents stream stalls on Redis, NATS, and custom binary protocols
+    - Tunnel demotion
+      - Mid-stream upgrade (Upgrade: websocket) demotes to OpaqueTunnel
+      - Completed HTTP CONNECT handshake demotes to OpaqueTunnel
+      - OpaqueTunnel bypasses Aho-Corasick and substitution; splice(2) on Linux
+      - Demotion is one-way per stream; no re-promotion to L7 stages
+      - Vault-side bypass semantics: see: plugins/vault.md#Opaque-tunnel-bypass
     - L7 interposer stage
       - Registers as L7Interposer hooks on the L4 diversion carrier
       - Receives normalized HTTP/1.1 frames for mutation
@@ -119,7 +137,12 @@
         - host_port = None or 0 binds ephemeral port 0; host kernel allocates free port
         - Bound port returned immediately; zero collision probability
         - Parallel test suites share a host with zero hardcoded port conflicts
+        - Explicit host_port bind failure returns Err(WireError::PortOccupied)
+        - Bootstrap-time bind failure aborts VM launch before first vCPU cycle
+        - No silent fallback to ephemeral port on explicit collision
       - Socket lifecycle
         - Host listener flags: SO_REUSEADDR and SO_REUSEPORT set on all host binds
         - Immediate teardown release: SO_LINGER zero forces instant TCP RST
         - Eliminates TIME_WAIT socket exhaustion across rapid test iterations
+        - Teardown verifies listener release before session state transitions Stopped
+        - Management API reports port published only after successful host bind

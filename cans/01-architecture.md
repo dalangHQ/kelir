@@ -176,6 +176,8 @@
       - Fallbacks carry identical framing; only the byte carrier differs
     - Platform divergence hides at the transport driver boundary
     - Channel multiplexing logic is identical across all OS targets
+    - Host OS containment and path resolution divergence hides at the storage driver boundary
+    - Plugin and channel semantics are identical across targets
   - Trust boundaries
     - TLS terminates on the host via L7 proxy stage before bytes reach the guest
     - Carrier is transparent L4 diversion; see: 07-wire-plane.md#Transparent-L4-stream-diversion
@@ -229,6 +231,8 @@
     - Session ownership and leases
       - sessions/<id>/owner.pid records the runtime process
       - catalog sessions row carries the liveness lease proof with explicit expiry
+      - catalog sessions row carries (incarnation_id, boot_id, start_time_ns, pid)
+      - Incarnation proof semantics: see: 08-lifecycle.md#Session-incarnation
       - Orphaned relay.sock, sparse backing file, staging trees reclaimed by runtime child janitor
   - Guest VM anatomy
     - see: artifacts/diagrams/guest-vm.txt

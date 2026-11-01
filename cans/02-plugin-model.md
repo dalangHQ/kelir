@@ -249,16 +249,10 @@
         - An unused variant fails --action-coverage
         - Action-coverage gate: see: 15-operations.md#Coverage-gates
     - Behavior of each: at its plugin file
-      - Community plugins
-        - mcp, mesh, tool-guard, db-proxy, supply-chain, wire-ingress
-        - vault, container, replay, ledger, profile, chaos, transaction
-        - File resolution: see: 15-operations.md#Spec-layout
-      - Commercial plugins
-        - hyper-density, cas-snapshot
-        - oci-translator: containerd-boundary policy only
-          - Ingestion primitive: see: 12-adapters.md#Ingestion-matrix
-        - openshell-coordinator
-        - File resolution: see: 15-operations.md#Spec-layout
+      - Rosters: see: #Catalog-tiering
+      - File resolution: see: 15-operations.md#Spec-layout
+      - oci-translator: containerd-boundary policy only
+        - Ingestion primitive: see: 12-adapters.md#Ingestion-matrix
       - Pointer rule: plugin files are leaf targets; crate dependencies live in the plugin file
     - Ecosystem additions follow: #Plugin-ownership
     - Session extension surface: attached per plane

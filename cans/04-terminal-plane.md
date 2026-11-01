@@ -39,6 +39,11 @@
     - Byte framing and stream_id values defined on Channel 0x0003
     - stdout and stderr retain bitwise fidelity; zero terminal escape pollution
     - Programmatic commands bypass PTY entirely; PTY (Port 0) is reserved for human attach
+    - Per-exec PTY opt-in
+      - FLAG_ALLOC_PTY on EXEC_IO_SPEC allocates a private slave PTY per ExecSlot
+      - isatty(3) semantics satisfied for language REPLs, git, and build runners
+      - Concurrent interactive execs run without Port 0 serialization
+      - Port 0 remains the sole human break-glass channel
   - Stream replay
     - Each console port emits an append-only log
       - stdout, stderr, and (when attached) PTY output are separate logs
