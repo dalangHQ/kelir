@@ -30,7 +30,7 @@
       - Community adapters: kelir-pack (OCI→EROFS compiler), mcp-server (stdio wire),
         - e2b-compat (thin client SDK)
       - Commercial adapters: containerd-shim-v2 (K8s), openshell-grpc (NVIDIA CDI)
-      - Commercial adapter interface: see: plugins/commercial.md#Adapter-binaries
+      - Commercial adapter interface: policy traits only; impls out-of-tree
   - MCP adapter
     - Architecture (mcp): see: artifacts/diagrams/ingestion-adapters.txt
     - Server binary crate: kelir-adapters/mcp-server
@@ -39,9 +39,8 @@
   - Containerd shim v2
     - Architecture (containerd): see: artifacts/diagrams/ingestion-adapters.txt
     - Image translation (kelir-pack): see: #Ingestion-matrix
-    - Containerd policy: plugin-oci-translator (commercial)
-      - see: plugins/commercial.md#oci-translator
-    - Shim maps to Session execution with flat kelir-pack + oci-translator config
+    - Containerd policy: ContainerdOrchestrationPolicy registered via PipelineBinder
+    - Shim maps to Session execution with flat kelir-pack + policy config
     - Containerd boundary: see: #Process-vs-plugin-boundary
   - OpenShell gRPC driver
     - Architecture (openshell): see: artifacts/diagrams/ingestion-adapters.txt
@@ -58,7 +57,7 @@
       - Gateway admin approvals push RFC 6902 patches to plugin-profile before cycle-exact resume
     - CDI mapping: passes OpenShell GPU device requests to plugin-profile CDI parser
     - OpenShell boundary: see: #Process-vs-plugin-boundary
-    - OpenShell interface: see: plugins/commercial.md#openshell-coordinator
+    - OpenShell interface: OpenShellCoordinationPolicy trait
   - E2B compatibility
     - TypeScript: @kelir/e2b-compat
     - Python: kelir.compat.e2b

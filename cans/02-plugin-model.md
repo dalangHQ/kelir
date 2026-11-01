@@ -250,32 +250,20 @@
         - Action-coverage gate: see: 15-operations.md#Coverage-gates
     - Behavior of each: at its plugin file
       - Community plugins
-        - plugin-chaos: home: see: plugins/chaos.md
-        - plugin-ledger: home: see: plugins/ledger.md
-        - plugin-db-proxy: home: see: plugins/db-proxy.md
-        - plugin-mesh: home: see: plugins/mesh.md
-        - plugin-supply-chain: home: see: plugins/supply-chain.md
-        - plugin-profile: home: see: plugins/profile.md
-        - plugin-wire-ingress: home: see: plugins/wire-ingress.md
-        - plugin-mcp: home: see: plugins/mcp.md
-        - plugin-tool-guard: home: see: plugins/tool-guard.md
-        - plugin-transaction: home: see: plugins/transaction.md
-        - plugin-vault: home: see: plugins/vault.md
-        - plugin-container: home: see: plugins/container.md
-        - plugin-replay: home: see: plugins/replay.md
+        - mcp, mesh, tool-guard, db-proxy, supply-chain, wire-ingress
+        - vault, container, replay, ledger, profile, chaos, transaction
+        - File resolution: see: 15-operations.md#Spec-layout
       - Commercial plugins
-        - plugin-hyper-density: home: see: plugins/commercial.md#hyper-density
-        - plugin-cas-snapshot: home: see: plugins/commercial.md#cas-snapshot
-        - plugin-oci-translator: home: see: plugins/commercial.md#oci-translator
-          - containerd-boundary policy only
+        - hyper-density, cas-snapshot
+        - oci-translator: containerd-boundary policy only
           - Ingestion primitive: see: 12-adapters.md#Ingestion-matrix
-        - plugin-openshell-coordinator: home: see: plugins/commercial.md#openshell-coordinator
+        - openshell-coordinator
+        - File resolution: see: 15-operations.md#Spec-layout
       - Pointer rule: plugin files are leaf targets; crate dependencies live in the plugin file
     - Ecosystem additions follow: #Plugin-ownership
     - Session extension surface: attached per plane
-      - Ledger extension: see: plugins/ledger.md
-      - Causal-delta extension: see: plugins/ledger.md
-      - Transaction extension: see: plugins/transaction.md
+      - Extensions are declared in their owning plugin spec file
+      - This node defines no concrete extension typing
   - Plugin ownership
     - Dependency rules
       - Tier dependency rules: see: #Plugin-tiering

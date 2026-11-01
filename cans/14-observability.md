@@ -22,7 +22,8 @@
       - Traces: one span per receipt phase (trap_ingress, policy, ffi_hop,
         - verdict_egress); see: 10-epistemic.md#Execution-receipts
       - Trace continuity across guest-originated requests via W3C traceparent
-      - No local Merkle WAL is written by default; see: plugins/ledger.md
+      - No local Merkle WAL is written by default
+      - Local disk audit requires an explicit EventBus subscriber
     - Host dashboards (Prometheus, Datadog, Grafana Alloy, OTel Collector)
       - consume without bespoke scrapers
   - Health signals

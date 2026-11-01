@@ -82,15 +82,14 @@
     - Valid HTTP verb or TLS ClientHello promotes stream to L7 proxy stage
     - Non-HTTP byte streams bypass L7 stages with zero-copy L4 socket splicing
     - Prevents stream stalls on Redis, NATS, and custom binary protocols
-    - L4 diversion is the wire-level carrier for L7 proxies
-    - plugin-vault mounts an explicit L7 proxy stage atop this carrier
-      - see: plugins/vault.md#L7-proxy-stage
-    - Other L7 consumers (db-proxy, wire-ingress) mount at the same carrier
+    - L7 interposer stage
+      - Registers as L7Interposer hooks on the L4 diversion carrier
+      - Receives normalized HTTP/1.1 frames for mutation
+      - Multiple interposers mount at distinct host:port scopes
     - Guest TLS and plaintext payloads traverse proxy without guest stack changes
     - Diverted endpoints configured via MountScope port and CIDR allowlists
     - The carrier does not perform byte-slice substitution on L4 streams;
       - L7 stages terminate TLS host-side and operate on plaintext HTTP
-      - see: 01-architecture.md#Trust-boundaries
     - Streaming payloads maintain MAX_PLACEHOLDER_LEN - 1 carryover window
     - Frame reassembly eliminates token fragmentation across TCP boundaries
     - Normalizes HTTP/2 streams into framed request buffers before scan

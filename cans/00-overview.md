@@ -52,21 +52,22 @@
     - Parallel agent exploration: see: 08-lifecycle.md#CoW-fork
     - Human approval waits with zero CPU: see: 08-lifecycle.md#Suspend-and-resume
     - Autonomous step gating & idle pause: see: 08-lifecycle.md
-    - Multi-resource atomic commit (2PC): see: plugins/transaction.md
+    - Multi-resource atomic commit (2PC): see: 02-plugin-model.md#First-class-plugins
     - Time-sensitive tests (JWT, cron, certs): see: 08-lifecycle.md#Clock-skew
-    - Deterministic execution replay
-      - see: plugins/replay.md#Cycle-exact-instruction-clock-stepping
-    - Relational database governance: see: plugins/db-proxy.md
-    - Supply chain package protection: see: plugins/supply-chain.md
+    - Deterministic execution replay: see: 08-lifecycle.md#Clock-invariants
+    - Relational database governance: see: 02-plugin-model.md#First-class-plugins
+    - Supply chain package protection: see: 02-plugin-model.md#First-class-plugins
     - Zero-copy high-throughput IPC: see: 01-architecture.md#Shared-memory-channel
     - Cross-host portable snapshot bundles: see: 09-snapshots.md#Archives-and-portability
-    - Flaky-API and disk-full resilience: see: plugins/chaos.md
-    - Container builds without nested VMX: see: plugins/container.md
+    - Flaky-API and disk-full resilience: see: 02-plugin-model.md#First-class-plugins
+    - Container builds without nested VMX: see: 02-plugin-model.md#First-class-plugins
     - Human break-glass on agent loops: see: 08-lifecycle.md#Break-glass
     - Low-memory SBC execution: see: 01-architecture.md#Embedded-profile
-    - Idle scale-to-zero: see: plugins/commercial.md#hyper-density
-    - Hydrate state from streaming snapshot bundle: see: plugins/commercial.md#cas-snapshot
-    - Zero-downtime connection parking: see: plugins/wire-ingress.md
+    - Idle scale-to-zero: see: 08-lifecycle.md#Suspend-and-resume
+    - Hydrate state from streaming snapshot bundle
+      - see: 09-snapshots.md#Archives-and-portability
+    - Zero-downtime connection parking
+      - see: 07-wire-plane.md#Transparent-L4-stream-diversion
     - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends
   - Spec map
     - Core foundation: see: 01-architecture.md

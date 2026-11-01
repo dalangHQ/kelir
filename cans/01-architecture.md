@@ -179,7 +179,8 @@
   - Trust boundaries
     - TLS terminates on the host via L7 proxy stage before bytes reach the guest
     - Carrier is transparent L4 diversion; see: 07-wire-plane.md#Transparent-L4-stream-diversion
-    - Inspection, HTTP/2 normalization, and substitution: see: plugins/vault.md#L7-proxy-stage
+    - Inspection, normalization, and substitution run on the native L7 stage
+      - see: 07-wire-plane.md#L7-interposer-stage
     - Injects runtime CA env pointers and synthetic FUSE bundles across all tasks
     - Streaming substitution preserves sliding carryover window across frames
     - Upstream certificates validate host-side; guest never runs HPACK dynamic table surgery
@@ -265,7 +266,7 @@
         - binary_blake3 per ExecutionReceipt; see: 10-epistemic.md#Execution-receipts
       - Session attestation token
         - Injected over paravirtual config device; workload verifies over vsock Channel 0
-      - Host TLS proxy boundary: see: plugins/vault.md#L7-proxy-stage
+      - Host TLS proxy boundary: see: 07-wire-plane.md#L7-interposer-stage
       - Chain is unbroken
         - Forged kernel/rootfs fails host-side BLAKE3
         - Forged workload fails per-exec trap boundary
