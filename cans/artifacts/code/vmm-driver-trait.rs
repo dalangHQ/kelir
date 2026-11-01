@@ -173,7 +173,7 @@ pub trait VmmDriver: Send + Sync {
     /// to purge the host kernel dirty page cache.
     async fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), VmmError>;
 
-    /// Flushes dirty RAM pages to disk and drops host memory consumption to 0 MB.
+    /// Flushes dirty RAM pages to disk and drops host memory consumption to 0 MB in <50ms.
     /// Reason is SuspendReason::External or ResourcePressure; no plugin identity.
     async fn suspend(&mut self, reason: SuspendReason, output_path: &Path) -> Result<(), VmmError>;
 
