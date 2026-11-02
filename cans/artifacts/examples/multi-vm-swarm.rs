@@ -115,9 +115,9 @@ async fn boot_swarm() -> Result<Session, Box<dyn std::error::Error + Send + Sync
     // marks the shared cache ready.
     let cache_ready = Arc::new(AtomicBool::new(false));
     let veto_flag = cache_ready.clone();
-    let mut lifecycle = swarm_builder().lifecycle_mut();
-    lifecycle.register_veto(VetoEvent::Fork, Box::new(move || veto_flag.load(Ordering::SeqCst)));
-    let session = lifecycle.seal().boot().await?;
+    let mut builder = swarm_builder();
+    builder.lifecycle_mut().register_veto(VetoEvent::Fork, Box::new(move || veto_flag.load(Ordering::SeqCst)));
+    let session = builder.seal().boot().await?;
 
     // Base VM hydrates caches. The veto blocks every child fork until
     // this returns; there is no flag the caller can flip early.

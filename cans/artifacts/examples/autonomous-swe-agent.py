@@ -168,13 +168,12 @@ class RepoPolicyPlugin(BasePlugin):
 
         new_branch = f"agent/{uuid.uuid4().hex[:8]}"
         # ExecveMutation (plugins/tool-guard.md) as the Patch payload.
+        # Canonical kwargs, as in warm_caches/force_strip below:
+        # binary/argv/env (unset_env was empty, so nothing to unset).
         return Verdict.patch(
-            target_mutation=json.dumps({
-                "new_binary": "/bin/git",
-                "new_argv": [*event.argv, f"HEAD:refs/heads/{new_branch}"],
-                "set_env": {"KELIR_REWRITTEN": "1"},
-                "unset_env": [],
-            }).encode()
+            binary="/bin/git",
+            argv=[*event.argv, f"HEAD:refs/heads/{new_branch}"],
+            env={"KELIR_REWRITTEN": "1"},
         )
 
     # ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─

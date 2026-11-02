@@ -92,11 +92,12 @@ const runtime = kelir({
     // time, which is post-boot.
     snoops: [
       { path: "~/.claude/sessions/*.json", sync: true,
-        onWrite: async (path, raw) => {
+        onWrite: async (path, raw, c) => {
           const evt = JSON.parse(raw.toString());
           if (evt.falsifiedResult) throw new Error("EPERM: harness hallucination detected.");
+          const producerBlake3 = await c.ledger.blake3OfProducingProcess(path);
           await oracle.ingestHarnessEvent({
-            path, event: evt, producerBlake3: "verified-process-identity"
+            path, event: evt, producerBlake3
           });
         } },
       // Diff ceiling (repo-policy maxDiffBytes): oversize diffs are

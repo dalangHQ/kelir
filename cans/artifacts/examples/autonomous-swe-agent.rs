@@ -40,7 +40,8 @@ use kelir::{
         storage::{DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopHandler, SnoopRule, StorageConfig},
         wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig},
     },
-    protocol::{CausalDelta, ExecutionReceipt, PatchPayload, TrapEvent},
+    protocol::{PatchPayload, TrapEvent},
+    telemetry::{CausalDelta, ExecutionReceipt},
 };
 
 // ============================================================================
@@ -132,8 +133,8 @@ impl RepoPolicyPlugin {
 }
 
 impl KelirPlugin for RepoPolicyPlugin {
-    type Context = ();
-    fn context(&self) -> Self::Context { () }
+    type Context = RepoPolicyHandle;
+    fn context(&self) -> Self::Context { self.handle() }
     fn name(&self) -> &'static str { "repo-policy" }
 
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
