@@ -14,9 +14,8 @@
 // Mounts:     wire-ingress, mcp, tool-guard, ledger.
 // Primitives: adjust_balloon.
 
-import { kelir, t,
-         type ExecutionReceipt,
-         type PostExecAction } from "@kelir/core";
+import { kelir, t, LifecycleEvent, PostExecAction,
+         type ExecutionReceipt } from "@kelir/core";
 import { wireIngress } from "@kelir/plugin-wire-ingress";
 import { mcp }         from "@kelir/plugin-mcp";
 import { toolGuard }   from "@kelir/plugin-tool-guard";

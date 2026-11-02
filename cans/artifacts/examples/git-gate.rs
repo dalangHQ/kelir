@@ -45,7 +45,7 @@ impl TrapInterposer for GitGatePlugin {
             Some("push") => {
                 if event.argv.iter().any(|a| a == "--force") {
                     return Ok(Verdict::Drop {
-                        errno: Some("EPOLICY"),
+                        errno: Some("EPOLICY".into()),
                         reason: "EPOLICY: --force rejected".into(),
                     });
                 }

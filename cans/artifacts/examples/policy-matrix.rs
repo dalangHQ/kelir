@@ -168,7 +168,7 @@ impl TrapInterposer for PolicyMatrixPlugin {
             // Row 2: Drop — EPOLICY diagnostic payload becomes
             // Drop { errno: "EPOLICY", reason }.
             "policy-deny" => Ok(Verdict::Drop {
-                errno: Some("EPOLICY"),
+                errno: Some("EPOLICY".into()),
                 reason: "EPOLICY: policy-matrix denies this binary.".into(),
             }),
             // Row 3: Patch — env mutation ONLY through the ExecveMutation

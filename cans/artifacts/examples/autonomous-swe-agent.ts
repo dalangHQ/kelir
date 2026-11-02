@@ -3,9 +3,9 @@
 // Composition example: chaos + ledger + repo-policy custom plugin.
 // Subsystem demos live in hook-matrix.ts and policy-matrix.ts.
 
-import { kelir, createPlugin, t,
+import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction,
          type Session, type SnapshotDescriptor, type ExecutionReceipt,
-         type PostExecAction, type CausalDelta, type PluginContract } from "@kelir/core";
+         type CausalDelta, type PluginContract } from "@kelir/core";
 import { chaos }  from "@kelir/plugin-chaos";
 import { ledger } from "@kelir/plugin-ledger";
 import crypto from "node:crypto";
@@ -257,7 +257,7 @@ const runtime = kelir({
   .on(LifecycleEvent.VmInit,     async (driver) => driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
   .on(LifecycleEvent.VmReady,    async (s) => { await s.execInGuest("npm", ["ci", "--prefer-offline"]); })
   .on(LifecycleEvent.VmShutdown, async (s) => { await s.ledger.flush(); })
-  .on(LifecycleEvent.TrapDeny,   async (e, s) => {
+  .onTrapDeny(async (e, s) => {
     if (await s.ledger.countDenials(e.ppid) > 5) {
       await s.vm.suspend("./.kelir/quarantine.snap");
       // PTY console master (Port 0) is the sole in-process
@@ -279,7 +279,7 @@ async function main() {
   const session = await runtime.boot();
   console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
 
-  await session.wire.forwardPort({ host: 8080, guest: 3000 });
+  await session.wire.forwardPort(3000, 8080); // guest 3000 -> host 8080, arity parity with RS/PY forward_port
   const baseSnap = await session.vm.checkpoint("clean_base");
   let winningDelta: CausalDelta | null = null;
 

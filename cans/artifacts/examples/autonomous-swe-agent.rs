@@ -37,7 +37,7 @@ use kelir::{
     },
     planes::{
         terminal::{PtyConfig, PromptRule, TokenShield},
-        storage::{DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopHandler, SnoopRule, StorageConfig},
+        storage::{DynamicFile, SyntheticFile, IdmapConfig, MaskRule, ReadMaskEngine, SnoopHandler, SnoopRule, StorageConfig, WorkspaceEncapsulation},
         wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig},
     },
     protocol::{PatchPayload, TrapEvent},
@@ -157,7 +157,7 @@ impl TrapInterposer for RepoPolicyPlugin {
         if h.is_protected().await {
             h.record_violation().await;
             return Ok(Verdict::Drop {
-                errno: Some("EPERM"),
+                errno: Some("EPERM".into()),
                 reason: format!("EPOLICY: '{}' is protected.", h.branch().await),
             });
         }
@@ -186,7 +186,7 @@ impl FsInterposer for RepoPolicyPlugin {
         {
             self.state.blocking_lock().violations += 1;
             return Ok(Verdict::Drop {
-                errno: Some("ENOSPC"),
+                errno: Some("ENOSPC".into()),
                 reason: "diff exceeds policy ceiling".into(),
             });
         }
@@ -321,6 +321,9 @@ async fn build_runtime(
                 sync: true,
                 on_write: snoop,
             }],
+            encapsulation: WorkspaceEncapsulation::Passthrough,
+            scan_engine: ReadMaskEngine::FastRegex,
+            carryover_bytes: 1024,
         })
 
         // ── WIRE PLANE (§9) ─────────────────────────────────────────────
@@ -413,7 +416,7 @@ async fn build_runtime(
                     let intent: IntentAnalysis = oracle.analyze_intent(&c.trap).await?;
                     if !intent.is_hypothesis_valid {
                         return Ok(Verdict::Drop {
-                            errno: Some("EPERM"),
+                            errno: Some("EPERM".into()),
                             reason: format!(
                                 "Verification Reject: {}",
                                 intent.falsification_reason.unwrap_or_default()
@@ -509,7 +512,7 @@ async fn build_runtime(
                 let n = policy.violations().await;
                 if n > 0 {
                     return Ok(Verdict::Drop {
-                        errno: Some("EPERM"),
+                        errno: Some("EPERM".into()),
                         reason: format!("EPOLICY: {n} prior violation(s)."),
                     });
                 }
