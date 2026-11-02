@@ -74,6 +74,12 @@ references:
   duplicate_home_check: true
   external_roots:
     kelir-cloud: "../kelir-cloud/cans"
+  # Core spec must never point down into plugin leaves
+  forbidden_targets:
+    - source: "cans/[0-9]*.md"
+      pattern: "^(cans/)?plugins/.*"
+      severity: error
+      message: "Abstraction leak: Core plane specs cannot reference individual plugin files."
   # No public node references kelir-cloud://. The external root remains
   # for kelir-cloud's own cans check when it links into the public spec.
 redundancy:
