@@ -31,7 +31,8 @@
           - Resolved at trap time
             - openat2(RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS)
             - Rooted at workspace
-          - No ELF parsing; bytes hashed as kernel opens them
+          - No ELF parsing in this hash; bytes hashed as kernel opens them
+          - Trap-time ELF/auxv inspection is separate; see: 11-protocol.md#Trap-fast-path
         - Cache key
           - (st_dev, st_ino, st_size, st_mtime_ns)
           - Invalidated on any key component change

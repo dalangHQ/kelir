@@ -15,7 +15,7 @@
 // RESOLVE_NO_MAGICLINKS); S_ISUID/S_ISGID are stripped on every write
 // (mode & !0o6000).
 // Phases: Detect (scan broker upper + tombstones) -> Classify tombstones
-// -> Stage (StagingGuard owns .tmp.<nonce> files) -> Commit (per-entry
+// -> Stage (StagingGuard owns staging temp files) -> Commit (per-entry
 // temp+rename; deletes unlink in place; new dirs create in place)
 // -> Contain (strict root containment, EXDEV on escape).
 // Host I/O on this plane is mandatory non-blocking: descriptors open
@@ -63,9 +63,11 @@ impl Drop for StagingGuard {
     }
 }
 
-// Commit: per-entry temp+rename, after the Host Inode Broker pre-checks
-// active host flock descriptors. Fallback on EBUSY or EPERM: in-place
-// write with 2000ms backoff.
+// Commit: per-entry temp+rename. Fallback on EBUSY or EPERM: in-place
+// write with 2000ms backoff (implemented below). Host flock pre-check
+// is NOT implemented here: no flock table is passed to this reconciler,
+// so the broker-side pre-check from 05-storage-plane.md#Workspace-commit
+// remains outstanding; see the held item in the work.md §10 report.
 //
 // Broker state dir layout: sessions/<id>/upper (per-session sparse
 // upper file contents, walked as a directory tree) and
@@ -84,10 +86,13 @@ pub async fn reconcile_upperdir(
     let canonical_root = host_target.canonicalize()?;
     let upperdir = broker_dir.join("upper");
     let tombstones_dir = broker_dir.join("tombstones");
+    // The guard owns every staging temp file: on any early `?` return it
+    // drops and unlinks whatever was staged but not yet committed.
+    let mut staging = StagingGuard { staged: Vec::new(), disarmed: false };
     if upperdir.exists() {
         reconcile_diff(
             &upperdir, &upperdir, host_target, &canonical_root,
-            nonce, guard, &mut stats
+            nonce, guard, &mut staging, &mut stats
         )?;
     }
     if tombstones_dir.exists() {
@@ -103,6 +108,9 @@ pub async fn reconcile_upperdir(
         f.sync_all()?;
     }
 
+    // Every staged temp was renamed or removed on success; disarm so Drop
+    // is a no-op even if a staged path somehow remains listed.
+    staging.disarmed = true;
     Ok(stats)
 }
 
@@ -113,6 +121,7 @@ fn reconcile_diff(
     canonical_root: &Path,
     nonce: u128,
     guard: TraversalGuard,
+    staging: &mut StagingGuard,
     stats: &mut CommitStats,
 ) -> Result<(), std::io::Error> {
     for entry in fs::read_dir(current)? {
@@ -137,13 +146,16 @@ fn reconcile_diff(
             if !target_path.exists() {
                 fs::create_dir_all(&target_path)?;
             }
-            reconcile_diff(upper_root, &path, host_target, canonical_root, nonce, guard, stats)?;
+            reconcile_diff(upper_root, &path, host_target, canonical_root, nonce, guard, staging, stats)?;
         } else if file_type.is_file() {
             if let Some(parent) = target_path.parent() {
                 fs::create_dir_all(parent)?;
             }
             let tmp_swap = target_path.with_extension(format!("tmp.{:x}", nonce));
             fs::copy(&path, &tmp_swap)?;
+            // Register before any fallible step so a failure below leaves
+            // the temp file to the guard's Drop instead of stranding it.
+            staging.staged.push(tmp_swap.clone());
             // Strip setuid/setgid on every write: in-guest root cannot
             // mint setuid host binaries (mode & !0o6000).
             {
@@ -151,7 +163,21 @@ fn reconcile_diff(
                 let mode = fs::metadata(&tmp_swap)?.permissions().mode();
                 fs::set_permissions(&tmp_swap, fs::Permissions::from_mode(mode & !0o6000))?;
             }
-            fs::rename(&tmp_swap, &target_path)?;
+            match fs::rename(&tmp_swap, &target_path) {
+                Ok(()) => {}
+                // EBUSY (16) / EPERM (1), Linux and macOS values: 2000ms
+                // backoff, then in-place write per
+                // 05-storage-plane.md#Workspace-commit. The temp file is
+                // removed here; any other error propagates and the guard
+                // unlinks the staged temp on Drop.
+                Err(e) if matches!(e.raw_os_error(), Some(16) | Some(1)) => {
+                    std::thread::sleep(std::time::Duration::from_millis(2000));
+                    fs::copy(&path, &target_path)?;
+                    let _ = fs::remove_file(&tmp_swap);
+                }
+                Err(e) => return Err(e),
+            }
+            staging.staged.retain(|p| p != &tmp_swap);
             stats.files_changed += 1;
         }
     }
