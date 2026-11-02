@@ -3,14 +3,14 @@
 //! Focused example: terminal + trap interposition.
 //! One plugin, one hook (on_trap), one binary family (git).
 //!
-//! Non-default storage knobs exercised in context (formerly knob-matrix):
+//! Non-default storage knobs exercised in context:
 //!   encapsulation   Passthrough     (git-gate does not lock workspace)
 //!   scan_engine     FastRegex       (diff inspection is regex-shaped)
 //!   carryover_bytes 1024            (diff chunks exceed 512)
 //!
 //! Cargo.toml:
 //!   [dependencies]
-//!   kelir = "3.0"
+//!   kelir = "1.0"
 //!   tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 //!   async-trait = "0.1"
 

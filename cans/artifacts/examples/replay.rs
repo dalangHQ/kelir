@@ -3,14 +3,14 @@
 //! Focused example: cycle-exact instruction clock stepping.
 //! One plugin (replay), one primitive (clock), one workload.
 //!
-//! Non-default driver knobs exercised in context (formerly knob-matrix):
+//! Non-default driver knobs exercised in context:
 //!   wx_enforcement PermissiveAudit (replay binary is not JIT-tight)
 //!   allow_emulated_fallback true    (replay works under bwrap)
 //!   driver bwrap                    (emulated tier; replay is host-CPU)
 //!
 //! Cargo.toml:
 //!   [dependencies]
-//!   kelir = { version = "3.0", features = ["replay"] }
+//!   kelir = { version = "1.0", features = ["replay"] }
 //!   tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 use kelir::{

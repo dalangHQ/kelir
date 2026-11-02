@@ -30,8 +30,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TraversalGuard {
-    /// Uses openat2 with RESOLVE_BENEATH and RESOLVE_NO_MAGICLINKS
-    /// (spec spelling; variant name kept for compatibility).
+    /// Uses openat2 with RESOLVE_BENEATH and RESOLVE_NO_MAGICLINKS.
     StrictResolveBeneath,
     /// Fallback lexical prefix verification for platforms lacking openat2.
     LexicalPrefixCheck,

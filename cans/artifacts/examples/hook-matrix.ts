@@ -11,7 +11,8 @@
 //
 //   1. onNetOutbound -> Verdict. Frames containing the
 //      documentation-range marker 198.51.100. suspend to the host for
-//      inspection (Suspend until Deadline(0)); all other frames Pass.
+//      inspection (Verdict.Suspend(SuspendUntil.deadline(0)));
+//      all other frames Pass.
 //   2. onFsLookup -> Verdict. Patch(attr) serves exactly one path,
 //      /workspace/.policy/identity, with mode 0o400 (no permission
 //      fallback, per 02); Pass — fall through — everywhere else.
@@ -34,8 +35,6 @@
 // change a chunk's length.
 //
 // NOTES:
-//   - Verdict Suspend until Deadline(0) replaces the old YieldToHost(0):
-//     0 is immediate release to the host.
 //   - FsInodeAttr fields are camelCase in TS; Rust struct is source.
 //   - onFsLookup rejects `..` escapes with E_PATH_TRAVERSAL before
 //     the identity check; paths without `..` keep old behavior.
@@ -105,7 +104,7 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
   .onNetOutbound(async (frame) => {
     const text = Buffer.from(frame).toString("latin1");
     if (text.includes(DENY_MARKER)) {
-      // Suspend until Deadline(0): 0 is immediate, not a placeholder.
+      // Suspend until Deadline(0): 0 is immediate release to the host.
       return FilterAction.Suspend(SuspendUntil.deadline(0));
     }
     return FilterAction.Forward;

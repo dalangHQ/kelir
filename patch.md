@@ -1,730 +1,971 @@
-$X = 3$. 
+**x = 5 parts.** Splitting by blast radius so no file is touched twice:
 
-Here is **Part 1/3**: Agent Governance & Microkernel Core Invariants.
+| Part | Scope | Files |
+|---|---|---|
+| **1/5** | CI gate + `_rules.yaml` canonicalization | new `scripts/check-canon.sh`, `cans/_rules.yaml` |
+| **2/5** | Version Genesis Reset (product + wire) | `00-overview.md`, `messages.rs`, `11-protocol.md`, all example Cargo/py version pins, `ingestion-adapters.txt` |
+| **3/5** | Artifact code cleanup | `execution-receipt.rs`, `reconciler.rs`, `vmm-driver-trait.rs`, `wire-protocol.rs`, `causal-delta.rs` |
+| **4/5** | Examples cleanup | `hook-matrix.{rs,ts,py}`, `autonomous-swe-agent.{rs,ts,py}`, `serverless-webhook.ts`, `git-gate.rs`, `replay.rs`, `db-backed-runtime.py` |
+| **5/5** | Node files cleanup | `14-observability.md`, `10-attestation.md`, `07-wire-plane.md`, `09-snapshots.md`, `02-plugin-model.md`, `03-sdk-architecture.md`, `plugins/{commercial,vault,tool-guard,mesh}.md` |
 
 ---
 
-### File: `cans/AGENTS.md`
+## Part 1/5 — Canon CI Gate + `_rules.yaml` Canonicalization
+
+### 1. New file: `scripts/check-canon.sh`
+
 ```diff
---- cans/AGENTS.md
-+++ cans/AGENTS.md
-@@ -95,6 +95,10 @@
- ## Collaboration
- 
- One owner per task file. Claim before editing.
-+- Build isolation: agents must set CARGO_TARGET_DIR=target/agent-<id>
-+- Eliminates Cargo build lock contention across concurrent workers
-+- Manifest mutations: generate to temporary file, then atomic rename
-+- Prevents broken intermediate states from poisoning workspace builds
- 
- ```
- # If task has ← agent-3, do NOT edit it
+--- /dev/null
++++ b/scripts/check-canon.sh
+@@ -0,0 +1,18 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++BANNED_REGEX='(formerly|replaces the old|kept for compatibility|kept as-is|aa0e011|issue #[0-9]+|was [0-9]+|deleted on that basis|backward-compatible|compatibility views|retained as)'
++
++MATCHES=$(grep -rnEI "$BANNED_REGEX" cans/ scripts/ || true)
++
++if [ -n "$MATCHES" ]; then
++    echo "ERROR: Non-canonical historical debt detected:"
++    echo "$MATCHES"
++    exit 1
++fi
++echo "OK: Corpus is 100% Day-1 canonical."
 ```
 
----
+### 2. Wire into `justfile` pre-flight
 
-### File: `cans/01-architecture.md`
 ```diff
---- cans/01-architecture.md
-+++ cans/01-architecture.md
-@@ -62,6 +62,19 @@
-         - File and test discipline
-           - Strict file bounds: 500 LOC target, 1,000 LOC hard ceiling per .rs file
-           - Test segregation: zero `#[cfg(test)]` in `src/`; tests live in sibling `tests/`
-           - Single-line documentation: maximum one line of docstring per public item
-+        - Zero-panic production invariant
-+          - Workspace-wide deny on unwrap_used, expect_used, and panic
-+          - Production code returns Result; unhandled errors bubble via ?
-+          - Infallible branches require #[allow(clippy::expect_used)] and proof
-+        - Unsafe memory isolation
-+          - Workspace enforces unsafe_code = "forbid" by default
-+          - Core, interface, catalog, otlp, and plugins contain zero unsafe
-+          - Unsafe restricted to kelir-drivers and kelir-transport enclaves
-+          - Every driver unsafe block mandates a verified // SAFETY: invariant
-+        - Defensive boundary arithmetic
-+          - Guest-derived numbers are hostile: offsets, descriptors, ring indices
-+          - Direct memory slicing and unchecked array indexing are forbidden
-+          - Arithmetic uses checked_* or saturating_* variants unconditionally
-+          - Allocations sized by guest frames clamp to hard resource ceilings
-         - Functional core
-           - Pure functional core: evaluation follows `f(State, Event) -> (State, Actions)`
-```
-
----
-
-Confirm to output **Part 2/3** (Plugin Dispatch Quarantine & State Serialization Tripwires).
-
-
-
-Here is **Part 2/3**: Plugin Dispatch Quarantine & State Serialization Tripwires.
-
----
-
-### File: `cans/02-plugin-model.md`
-```diff
---- cans/02-plugin-model.md
-+++ cans/02-plugin-model.md
-@@ -23,6 +23,10 @@
-     - Tier 3 plugins depend on kelir-interface and consume peer services via ServiceRegistry
-     - Dependency invariant: Zero concrete peer imports within the same tier
-     - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
-+    - Layering enforcement
-+      - Crate dependency hierarchy enforced mechanically via layer lint
-+      - Downward-only dependencies: higher tiers cannot import lower tiers
-+      - Plugins link kelir-interface only; direct core imports rejected
-     - Invariants and purity
-     - Code is sole SSOT: declared programmatically via KelirPlugin trait
-     - Manifest artifact is strictly auto-generated for zero-compile indexing
-@@ -155,6 +159,10 @@
-     - Hardware MPK page keys (x86_64) isolate per-plugin memory domains
-     - Missing declared dependency aborts boot with EConfig
-     - Lock-free dispatch swap via ArcSwap on the host event bus (internal)
-+    - Panic quarantine boundary
-+      - Interposer dispatches wrap in catch_unwind at the engine perimeter
-+      - Escaped hook panics convert to Verdict::Drop with EFAULT
-+      - Supervisor microkernel stays resident; active StepSlot rolls back
-     - ArcSwap serves atomic dispatch swapping during snapshot hydration only
-     - Not a public runtime API; session configuration is frozen after boot
-     - First Drop, Suspend, or Abort halts pipeline; Pass/Patch continue
-```
-
----
-
-### File: `cans/09-snapshots.md`
-```diff
---- cans/09-snapshots.md
-+++ cans/09-snapshots.md
-@@ -24,6 +24,10 @@
-     - Restore semantics
-       - Import materializes compute and disk only
-       - Workloads that had live sockets observe them gone on first access
-+    - Serialization exhaustiveness tripwire
-+      - Snapshot format structs fail compilation on unhandled schema additions
-+      - Struct fields in kelir-interface mandate explicit serde default tags
-+      - Format converters must map every field; silent field omission banned
-       - No transparent socket rebinding exists; workloads must reconnect
-     - Unpack containment invariants (Single Source of Truth)
-       - Untrusted input boundary: zero ambient host filesystem trust
-```
-
----
-
-### File: `cans/10-attestation.md`
-```diff
---- cans/10-attestation.md
-+++ cans/10-attestation.md
-@@ -24,6 +24,10 @@
-       - Receipts compare as values via canonical per-field structural assertions
-       - Receipts carry opaque TelemetryExtension payloads emitted by mounted plugins
-+      - Struct exhaustiveness tripwire
-+        - ExecutionReceipt and CausalDelta additions fail compilation everywhere
-+        - Merkle leaf hashing and OTel mappers must explicitly handle new fields
-+        - Eliminates untracked receipt divergence across schema updates
-     - Identity
-       - Execution receipts are deterministic because inputs are frozen
-         - Frozen virtual clock (see: plugins/replay.md#Kernel-clocksource-lockdown)
-```
-
----
-
-Confirm to output **Part 3/3** (Operational Verification, Fuzzing & CI Hard Gates).
-
-
-Here is **Part 3/3**: Operational Verification, Fuzzing & CI Hard Gates.
-
----
-
-### File: `cans/15-operations.md`
-```diff
---- cans/15-operations.md
-+++ cans/15-operations.md
-@@ -74,6 +74,10 @@
-       - Shim musl binary size gate: see: artifacts/config/ci.yml (build-guest-shim)
-       - sccache enabled via SCCACHE_GHA_ENABLED
-+      - Hard performance budget gate
-+        - Budgets in perf/budgets.toml enforced strictly with enforce = true
-+        - Regressions in Gate 1, Gate 2 (<2µs), or Gate 3 abort CI run
-+        - Cold-boot and RSS purge (<50ms) violations fail with exit code 1
-     - Per-plugin matrix: each plugin fails independently
-     - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
-     - External plugin CI: contract attestation via reusable workflow
-@@ -107,6 +111,13 @@
-     - --lifecycle-coverage
-       - Lifecycle asserts: see: 08-lifecycle.md#Hypervisor-primitives
-       - State machine assert: verifies all SuspendReason variants execute through
-         - centralized lifecycle
-+    - --panic-hunt-coverage
-+      - Fuzzes every stream kind and registered hook with adversarial frames
-+      - Asserts zero unhandled panics across malformed CBOR, VFS, and FUSE ops
-+      - Escaped unwinds fail the test suite; every path must return Err
-+    - --layering-coverage
-+      - Validates downward-only crate dependencies via cargo xtask layers
-+      - Core and interface violations reject compilation before test run
-     - --hook-coverage
-       - Asserts every hook in the segregated traits is implemented by some
-         - custom plugin in cans/artifacts/examples
-@@ -282,9 +293,12 @@
-     - Registry index
-       - Registry entries: see: #Plugin-registry
-     - Test fixtures
--      - tests/fixtures/kernel: per-arch vmlinux
--      - tests/fixtures/rootfs: EROFS build scripts
--      - tests/fixtures/payloads: high-entropy test binaries (shared: pty, core-trap)
-+      - External test oracles fetched into tests/fixtures via cargo xtask fixtures
-+      - Fixture manifests pinned with cryptographic hashes in fixtures.toml
-+      - SHA-256 and BLAKE3 verification mandatory before mounting test images
-+      - tests/fixtures/kernel: pinned per-arch vmlinux binaries
-+      - tests/fixtures/rootfs: pinned EROFS guest rootfs images
-+      - tests/fixtures/payloads: high-entropy and exploit test binaries
-```
-
----
-
-All 3 parts complete. All modified nodes strictly adhere to `_rules.yaml` (≤90 characters/line, single-line bullets, no filler levels, Day-1 canonical tone).
-
-
-Here are the targeted, non-redundant diff patches for `cans/artifacts/`.
-
----
-
-### File: `cans/artifacts/config/ci.yml`
-```diff
---- cans/artifacts/config/ci.yml
-+++ cans/artifacts/config/ci.yml
-@@ -62,11 +62,31 @@
-           INLINE_TESTS=$(grep -rn --include="*.rs" '#\[cfg(test)\]' crates/*/src/ || true)
-           if [ -n "$INLINE_TESTS" ]; then
-             echo "ERROR: Inline #[cfg(test)] detected in src/. Move tests to tests/:"
-             echo "$INLINE_TESTS" && exit 1
-           fi
-+          UNSAFE_VIOLATIONS=$(grep -rn --include="*.rs" 'unsafe ' crates/ | grep -v 'crates/kelir-drivers/' | grep -v 'crates/kelir-transport/' || true)
-+          if [ -n "$UNSAFE_VIOLATIONS" ]; then
-+            echo "ERROR: Unsafe code detected outside isolated driver/transport enclaves:"
-+            echo "$UNSAFE_VIOLATIONS" && exit 1
-+          fi
-+
-+      - name: Validate Crate Layering Hierarchy
-+        run: cargo run -p kelir-plugin-cli -- check --layers
- 
-       - name: Rust Lints
-         run: |
-           cargo fmt --all --check
--          cargo clippy --workspace --exclude kelir-shim -- -D warnings
-+          cargo clippy --workspace --exclude kelir-shim -- -D warnings \
-+            -D clippy::unwrap_used \
-+            -D clippy::expect_used \
-+            -D clippy::panic \
-+            -D clippy::unimplemented \
-+            -D clippy::todo \
-+            -D clippy::unreachable
- 
-       - name: Type Checks (TS & Python)
-@@ -107,6 +127,18 @@
-       - name: Core + testkit
-         run: cargo nextest run -p kelir-core -p kelir-plugin-testkit
- 
-+  # ─── 3a. ADVERSARIAL INTEGRATION HARNESS (PANIC HUNT) ──────
-+  panic-hunt:
-+    needs: [lint-and-types]
-+    runs-on: ubuntu-latest
-+    steps:
-+      - uses: actions/checkout@v4
-+      - uses: dtolnay/rust-toolchain@stable
-+      - uses: taiki-e/install-action@nextest
-+      - uses: mozilla-actions/sccache-action@v0.0.5
-+      - name: Adversarial Frame Fuzzing
-+        run: cargo nextest run -p kelir-core --test panic_hunt
-+
-   # ─── 3b. MULTI-LANGUAGE PARITY & SDK EXECUTION GATE ────────
-   # Merge-blocking. Executes TS and Python test suites (ForeignPluginProxy,
-@@ -194,6 +226,17 @@
-       - uses: dtolnay/rust-toolchain@stable
-       - uses: taiki-e/install-action@nextest
-       - uses: mozilla-actions/sccache-action@v0.0.5
-+      - name: Verify Pinned Test Oracles
-+        run: cargo run -p kelir-plugin-cli -- fixtures --verify
-+      - name: Driver unit tests (excludes real-hardware paths)
-+        run: cargo nextest run -p driver-rustvmm -p driver-openvmm -p driver-bwrap -E 'not test(test_hw_)'
-+
-+  # ─── 5b. PERFORMANCE BUDGET GATE (HARD ENFORCEMENT) ────────
-+  perf-budgets:
-+    needs: [test-core, test-drivers]
-+    runs-on: ubuntu-latest
-+    steps:
-+      - uses: actions/checkout@v4
-+      - uses: dtolnay/rust-toolchain@stable
-+      - name: Assert Latency and RSS Ceilings
-+        run: cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
-```
-
----
-
-### File: `cans/artifacts/config/justfile`
-```diff
---- cans/artifacts/config/justfile
-+++ cans/artifacts/config/justfile
-@@ -37,6 +37,18 @@
-     @cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
-     @cans check --json          | jq -e '.ok and .exitCode == 0'
- 
-+check-layers:
-+    cargo run -p kelir-plugin-cli -- check --layers
-+
-+check-budgets:
-+    cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
-+
-+panic-hunt:
-+    cargo nextest run -p kelir-core --test panic_hunt
-+
-+fetch-fixtures:
-+    cargo run -p kelir-plugin-cli -- fixtures --fetch
-+
- check-hygiene:
-     #!/usr/bin/env bash
-     set -euo pipefail
-@@ -47,6 +59,11 @@
-     inline_tests=$(grep -rn --include="*.rs" '#\[cfg(test)\]' crates/*/src/ || true)
-     if [ -n "$inline_tests" ]; then
-         echo "FAIL: Inline #[cfg(test)] forbidden in src/. Move to tests/:"
-         echo "$inline_tests" && exit 1
-     fi
-+    unsafe_violations=$(grep -rn --include="*.rs" 'unsafe ' crates/ | grep -v 'crates/kelir-drivers/' | grep -v 'crates/kelir-transport/' || true)
-+    if [ -n "$unsafe_violations" ]; then
-+        echo "FAIL: Unsafe code detected outside driver/transport enclaves:"
-+        echo "$unsafe_violations" && exit 1
-+    fi
-     echo "OK: All files <= 1000 LOC; zero inline tests in src/."
-@@ -62,7 +79,13 @@
- # ── Lint & typecheck ──
- lint:
-     cargo fmt --all -- --check
--    cargo clippy --workspace --exclude kelir-shim -- -D warnings
-+    cargo clippy --workspace --exclude kelir-shim -- -D warnings \
-+        -D clippy::unwrap_used \
-+        -D clippy::expect_used \
-+        -D clippy::panic \
-+        -D clippy::unimplemented \
-+        -D clippy::todo \
-+        -D clippy::unreachable
-     pnpm -r exec eslint .
- 
- typecheck: build-ts
-@@ -107,4 +130,4 @@
- # build-shim is not in this chain: shim has its own CI gate and its
- # own time budget. check-plugin-all is not here: parity already runs
- # the same per-plugin audit. Lint is a target, not an inline body.
--pre-flight: check-hygiene check-spec check-graph check-tiered lint typecheck parity
-+pre-flight: check-hygiene check-spec check-layers check-graph check-tiered check-budgets lint typecheck parity
+--- a/cans/artifacts/config/justfile
++++ b/cans/artifacts/config/justfile
+@@ pre-flight:
+-pre-flight: check-hygiene check-spec check-layers check-graph check-tiered check-budgets lint typecheck parity
++pre-flight: check-canon check-hygiene check-spec check-layers check-graph check-tiered check-budgets lint typecheck parity
      just test-all
-```
-
----
-
-### File: `cans/artifacts/config/project-structure.txt`
-```diff
---- cans/artifacts/config/project-structure.txt
-+++ cans/artifacts/config/project-structure.txt
-@@ -7,6 +7,8 @@
- │
- ├── justfile                           # Zero-friction local development commands
- ├── Cargo.toml                         # Root Cargo workspace manifest (Rust 2024 / MSRV 1.85+)
-+├── fixtures.toml                      # Pinned cryptographic hashes (BLAKE3/SHA-256) for external test oracles
-+├── perf/budgets.toml                  # Machine-enforced latency and RSS ceilings (enforce = true)
- ├── Cargo.lock
- ├── pnpm-workspace.yaml                # PNPM workspace definition
- ├── package.json                       # Root devDependencies (Turborepo/Biome/TypeScript)
-@@ -102,7 +104,7 @@
- │       ├── doctor.rs              # Consumer probes: KVM/HVF, kernel, EROFS
- │       ├── audit.rs               # Same audit as CI
- │       ├── vectors.rs             # Regenerate vectors.json from testkit fixtures
--│       └── registry.rs            # Registry attestation and verification commands
-+│       ├── registry.rs            # Registry attestation and verification commands
-+│       ├── layers.rs              # Downward-only crate dependency validator
-+│       ├── budgets.rs             # Hard performance budget validator
-+│       └── fixtures.rs            # Content-addressed test oracle fetcher and validator
- │
- └── packages/                          # ── LANGUAGE SDK DISTRIBUTION ──
-```
-
-
-No. The code contracts and boundary definitions in `artifacts/code/` still lacked the compiler-enforced tripwires, panic quarantine barriers, hostile input bounds, and unsafe enclave constraints.
-
-Here are the targeted diff patches completing the `artifacts/code/` layer.
-
----
-
-### File: `cans/artifacts/code/plugin-trait.rs`
-```diff
---- cans/artifacts/code/plugin-trait.rs
-+++ cans/artifacts/code/plugin-trait.rs
-@@ -1,9 +1,11 @@
- // crates/kelir-interface/src/plugin.rs
- //
- // The typed KelirPlugin trait and ring interposer contracts.
- // Plugins link directly via Cargo crates; no runtime string resolution.
-+// Zero unsafe code permitted: workspace enforces #![forbid(unsafe_code)].
-+// Pipeline execution guarantees panic quarantine via catch_unwind.
- //
- // Owned by: cans/02-plugin-model.md#KelirPlugin-trait
- 
- use async_trait::async_trait;
- use std::path::Path;
-@@ -107,6 +109,14 @@
-     pub paths: Option<Vec<PathBuf>>,
- }
- 
-+/// Quarantine boundary guarantee: every interposer dispatch is executed
-+/// within std::panic::catch_unwind at the supervisor engine perimeter.
-+/// A panicking plugin does not unwind across the FFI or crash the microkernel;
-+/// the engine converts the panic into Verdict::Drop { errno: Some("EFAULT"),
-+/// reason: "Plugin panicked" } or PluginError::Halt, logs the backtrace
-+/// to the host ledger, and rolls back the active StepSlot.
-+pub const PANIC_QUARANTINE_ENABLED: bool = true;
 +
- impl MountScope {
-     pub fn with_devices<I: IntoIterator<Item = VirtioDevice>>(mut self, devices: I) -> Self {
-         self.devices = Some(devices.into_iter().collect());
++check-canon:
++    ./scripts/check-canon.sh
+```
+
+### 3. `cans/_rules.yaml` — strip all `issue #53`, `issue #61`, `0.11.0` migration history and diff apologetics
+
+```diff
+--- a/cans/_rules.yaml
++++ b/cans/_rules.yaml
+@@
+-# Anchor slugs (issue #53) — documentation only: the algorithm is fixed, not
+-# configurable. `cans slug "<node text>"` prints the exact anchor fragment.
++# Anchor slugs. `cans slug "<node text>"` prints the exact anchor fragment.
+ #   1. The dash family (hyphen `-`, figure dash, en dash, em dash, horizontal
+ #      bar, minus sign, and their U+2010–U+2015 / U+2043 / U+2212 / U+FE58 /
+ #      U+FE63 / U+FF0D variants) and the underscore `_` are SEPARATORS, exactly
+ #      like every whitespace run.
+ #   2. A run of separators collapses to ONE `-`.
+ #   3. Every other character is preserved verbatim, case included.
+ #   4. Leading/trailing separators are dropped.
+ # Matching is tolerant (case- and separator-insensitive); the slug is the
+ # canonical spelling refs should use.
+ slug:
+   algorithm: dash-normalized
+   collapse: separator-runs-to-one-hyphen
+   case: preserved
+   example: 'Layer 1 — C authorizer -> Layer-1-C-authorizer'
+ 
+ structure:
+-  # cans-spec issue #61 (cans 0.11.0): the bare { min, max } form measured
+-  # only the bullet title, so wrapped prose continuations were invisible
+-  # and the check reported 0 problems while 122 folded nodes exceeded 90
+-  # chars. Granular form below makes the same 90-char budget real:
+-  # scope total = title + continuations folded with single spaces.
+-  # severity error restores the pre-0.11 fatality: 0.11 defaults both
+-  # sides to warn, so a bare block would stay exit 0 under `cans check`.
+-  # unit chars keeps the original budget (words would re-scale it).
+-  # strip_references stays false, measured: true strips pure `see:` nodes
+-  # to length 0 and trips min on all 37 of them (false positives); false
+-  # trips only 3 pointer-inflated nodes, fixed as prose splits like the
+-  # rest instead of exempted.
++  # Node length: every bullet is one line, measured as a whole
++  # (title + continuations folded with single spaces) up to 90 chars.
+   node_length:
+     min: 3
+     max: 90
+     unit: chars
+     scope: total
+     strip_references: false
+     severity: error
+-  # Multiline policy (issue #61): FORBID. No wrapped prose continuations:
+-  # every node is a single bullet line, measured as a whole by
+-  # node_length scope total above (max 90, non-negotiable).
++  # No wrapped prose continuations: every node is a single bullet line.
+   multiline:
+     mode: forbid
+     severity: error
+-  # spec-shaped docs: a node may legitimately own 1-2 children (a "Problem"
+-  # node with one line, a "Fields" node with one field). min 1 = the check
+-  # never fires; single_child_collapse is the knob for the 1-child advisory.
+   siblings: { min: 1, max: 20 }
+   depth: { min: 2, max: 10 }
+   single_child_collapse: false
+   empty_nodes: false
+ 
+ style:
+   prefer: sibling
+-  # prefer=sibling already suppresses the shared-prefix / force-nested hints
+-  # (they only fire when prefer != 'sibling'); force_sibling_below: 1 disables
+-  # the "collapse 2-3 leaf children to sibling" hint, which fights spec groups
+-  # like "Problem/Solution" and "Fields".
+   force_nested_above: 20
+   force_sibling_below: 1
+   shared_prefix_detection: false
+ 
+ content:
+   tbd_allowed: true
+-  # The spec now carries explicit open-decision inventories per plane
+-  # (framing gaps, admission semantics, contract gaps). The cap stays as a
+-  # sprawl guard, not a ban on marking unknowns.
++  # Cap is a sprawl guard, not a ban on marking unknowns.
+   max_tbd_per_file: 10
+ 
+ references:
+   mode: pointer
+   back_pointers: false
+   max_hops: 1
+   orphan_check: true
+   duplicate_home_check: true
+   external_roots:
+     kelir-cloud: "../kelir-cloud/cans"
+-  # Core spec must never point down into plugin leaves
+-  # Scope is 04–06 only: 07-wire and above legitimately reference
+-  # wire-ingress / vault / replay as extension points.
++  # Terminal/storage specs must never point into plugin leaves.
+   forbidden_targets:
+     - source: "cans/0[4-6]*.md"
+       pattern: "^(cans/)?plugins/.*"
+       severity: error
+       message: "Abstraction leak: Terminal/storage specs cannot reference plugin files."
+-  # No public node references kelir-cloud://. The external root remains
+-  # for kelir-cloud's own cans check when it links into the public spec.
+ redundancy:
+   enabled: true
+-  # A term is only "sprawl" if it has no canonical home; in this spec the
+-  # dominant nouns (host, guest, kelir, virtio, memory...) are load-bearing
+-  # vocabulary, so the layer only fires for terms spread across most of the
+-  # corpus. Fuzzy near-miss word forms are off: Levenshtein on technical
+-  # identifiers (rc/vc, ts/tsx) is pure noise here.
+-  # wire is load-bearing (canonical homes: wire plugin, wire plane), currently 71 nodes;
+-  # Absolute node count, so it scales with the corpus by formula, not by
+-  # hand: threshold = ceil(80 * nodes / 2752), the corpus size when 80 was
+-  # set. #61 splits took it to 2881 -> 84; forbid splits take it to 3004
+-  # -> 88. The layer stays live for genuine sprawl above that. `not` is
+-  # NOT a stopword: it is the only distinguishing token in contrast pairs
+-  # (What-it-is / What-it-is-not, Inherited / Not-inherited), and
+-  # stopwording it mints false 100% overlaps there.
+-  word_frequency_threshold: 88
+-  # 0.85 catches restatements that swap a verb but keep the noun set.
+-  # Semantic duplicates in a different register remain a human audit.
++  # A term sprawls only if it has no canonical home. Thresholds scale
++  # with corpus size by formula, not by hand.
++  word_frequency_threshold: 88
+   phrase_overlap_threshold: 0.85
+   cross_file_threshold: 5
+   fuzzy: false
+-  # Load-bearing vocabulary of this corpus: every node mentions these nouns,
+-  # so keyword sprawl on them is not a canonical-home violation.
+   stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires, host, guest, plugin, on, is, kelir, virtio, via, no, zero, at, session]
+   synonyms:
+     - [postgres, postgresql, pg]
+     - [auth, authentication, sign-in, signin]
+     - [api, endpoint, route]
+     - [frontend, client, ui]
+     - [db, database, storage]
+ 
+ token_budget:
+   enabled: true
+   default_limit: 4096
+   estimate_chars_per_token: 3.5
+   warn_threshold: 0.8
+```
+
+**Notes on this patch:**
+- Every `(issue #N)` reference, every `0.11.0` version-history aside, every "the check reported X while Y" narrative is gone. The rules now state their **invariant** only.
+- `not` is still not a stopword — that's an *invariant*, not history. It stays.
+- The `forbidden_targets` block keeps its **rule**, drops its **rationale paragraph** (scope is 04–06 because 07+ legitimately references plugin leaves — the rule itself is the assertion).
+- The `justfile` `pre-flight` addition is the one place the CI gate lives; no per-file flag drift.
+
+---
+
+**Part 1/5 done.** Reply `next` for **Part 2/5 — Version Genesis Reset** (product version → `1.0.0`, wire handshake → `0x01`, purge `Min version 0x04; no downgrade path`, all example version pins).
+
+
+## Part 2/5 — Version Genesis Reset
+
+Every product version resets to `1.0.0`. Every wire handshake validates `== 0x01`. Every "no downgrade path" / "older guest shims" migration apology is deleted — version identity is an assertion, not a history lesson.
+
+---
+
+### 1. `cans/00-overview.md` — product version
+
+```diff
+--- a/cans/00-overview.md
++++ b/cans/00-overview.md
+@@
+-    - Version: 3.0.0-normative
++    - Version: 1.0.0
+     - Status: normative specification
 ```
 
 ---
 
-### File: `cans/artifacts/code/wire-protocol.rs`
+### 2. `cans/artifacts/code/messages.rs` — handshake = `0x01`
+
 ```diff
---- cans/artifacts/code/wire-protocol.rs
-+++ cans/artifacts/code/wire-protocol.rs
-@@ -10,9 +10,14 @@
- // Wire layout: stream_id, flags, len, payload. The header on the wire
- // is 9 bytes (stream_id: u32, flags: u8, len: u32, all Little-Endian),
- // with no magic, version, channel, or sequence field. The struct below
- // is the logical field layout; it is not a packed 9-byte struct, so
- // no size assert is made on it.
-+// Hostile input rules: all wire-derived numbers (len, stream_id, flags)
-+// must be validated with checked_* arithmetic. Direct unchecked slicing
-+// is forbidden; allocations exceeding MAX_FRAME_PAYLOAD fail immediately.
- 
- pub const MAX_FRAME_PAYLOAD: usize = 64 * 1024; // 64KB strict boundary
-+pub const MAX_CONTROL_PAYLOAD: usize = 4 * 1024; // 4KB control ceiling
-+pub const MAX_STREAM_ID: u32 = 0x00FF_FFFF; // Upper byte reserved for flags
- 
- /// Stream mux frame header (11-protocol Stream mux framing).
- pub struct MuxFrameHeader {
-```
-
----
-
-### File: `cans/artifacts/code/vmm-driver-trait.rs`
-```diff
---- cans/artifacts/code/vmm-driver-trait.rs
-+++ cans/artifacts/code/vmm-driver-trait.rs
-@@ -1,9 +1,14 @@
- // crates/kelir-interface/src/driver.rs
- //
- // The universal hypervisor backend abstraction.
-+// Interface enforces #![forbid(unsafe_code)].
-+// Pluggable backend drivers (driver-rustvmm, driver-hvf, driver-openvmm)
-+// isolate required ioctls and raw pointer operations under #![deny(unsafe_code)],
-+// with mandatory // SAFETY: invariants documented on every unsafe block.
- //
- // Owned by: cans/01-architecture.md#VmmDriver-trait
- 
-+#![forbid(unsafe_code)]
-+
- use async_trait::async_trait;
- use std::path::{Path, PathBuf};
- use std::time::Duration;
-@@ -87,6 +92,10 @@
- /// Object KILL_ON_JOB_CLOSE.
-+///
-+/// Compile-time tripwire: Any field added to SnapshotDescriptor mandates
-+/// immediate explicit serialization mapping in kelir-core and kelir-catalog;
-+/// silent field omission fails the workspace exhaustiveness assert.
- #[derive(Debug, Clone)]
- pub struct SnapshotDescriptor {
-     pub id: String,
-     /// Byte count; see cans/01-architecture.md#VmmDriver-trait
-```
-
----
-
-### File: `cans/artifacts/code/execution-receipt.rs`
-```diff
---- cans/artifacts/code/execution-receipt.rs
-+++ cans/artifacts/code/execution-receipt.rs
-@@ -1,8 +1,11 @@
- // crates/kelir-interface/src/telemetry/receipt.rs
- //
- // Per-process cryptographic execution receipt.
-+// Struct exhaustiveness tripwire: adding any field to ExecutionReceipt
-+// breaks compilation in kelir-core, kelir-catalog, and kelir-otlp until
-+// Merkle hashing, serialization, and OTel mappers explicitly handle it.
- //
- // Owned by: cans/10-attestation.md#Execution-receipts
- 
- use serde::{Deserialize, Serialize};
- 
-@@ -37,6 +40,7 @@
- /// PMU counters are diagnostic gauges only, emitted to OTel; they never
- /// appear in receipts, CausalDelta, or Merkle leaves (the former
- /// retired_instructions field was deleted on that basis; no other
- /// artifact file referenced it).
+--- a/cans/artifacts/code/messages.rs
++++ b/cans/artifacts/code/messages.rs
+@@
+-/// Version negotiation on Control transport 0x0000 initialization. Host and guest
+-/// exchange Handshakes; negotiated_capabilities = host.capabilities &
+-/// guest.capabilities. A missing mandatory feature bit aborts with
+-/// E_INCOMPATIBLE_SHIM_VERSION; a missing optional bit disables that
+-/// interposer path gracefully. Min version 0x04; no downgrade path.
++/// Handshake validation on Control transport 0x0000 initialization.
++/// Handshake validates version == 0x01; mismatches reject with
++/// E_INCOMPATIBLE_SHIM_VERSION. negotiated_capabilities =
++/// host.capabilities & guest.capabilities. A missing mandatory feature
++/// bit aborts; a missing optional bit disables that interposer path.
  #[derive(Debug, Clone, Serialize, Deserialize)]
-+#[non_exhaustive]
- pub struct ExecutionReceipt {
-     pub pid: u32,
-     pub binary_path: String,
-```
-
----
-
-### File: `cans/artifacts/code/causal-delta.rs`
-```diff
---- cans/artifacts/code/causal-delta.rs
-+++ cans/artifacts/code/causal-delta.rs
-@@ -7,8 +7,11 @@
- // Merkle leaves. Computes exactly what an agent branch did differently
- // from its parent.
-+// Struct exhaustiveness tripwire: unhandled fields fail compilation in
-+// delta aggregation and snapshot validation.
- //
- // Canonical spec home: cans/10-attestation.md#Causal-delta
- 
- use std::path::PathBuf;
- 
-@@ -28,6 +31,7 @@
- // Object KILL_ON_JOB_CLOSE. Lineage itself is not a field of this struct.
-+#[non_exhaustive]
- pub struct CausalDelta {
-     /// Hardware-agnostic byte-level RAM delta
-     pub memory_diff_bytes: u64,
-```
-
-
-
-No. The core production engine code in `reconciler.rs` still contained illegal production panics (`.unwrap()`) that immediately break the new Clippy gate, the wire message definitions lacked non-exhaustive tripwires, and the architectural diagrams had fallen out of sync with the new CI coverage gates and panic boundaries.
-
-Here are the diff patches resolving those omissions.
-
----
-
-### File: `cans/artifacts/code/reconciler.rs`
-```diff
---- cans/artifacts/code/reconciler.rs
-+++ cans/artifacts/code/reconciler.rs
-@@ -180,7 +180,9 @@
-     guard: TraversalGuard,
- ) -> Result<CommitStats, std::io::Error> {
-     let mut stats = CommitStats::default();
--    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-+    let nonce = SystemTime::now()
-+        .duration_since(UNIX_EPOCH)
-+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
-+        .as_nanos();
- 
-     let canonical_root = host_target.canonicalize()?;
-     let upperdir = broker_dir.join("upper");
-@@ -227,7 +229,8 @@
-     for entry in fs::read_dir(current)? {
-         let entry = entry?;
-         let path = entry.path();
--        let rel_path = path.strip_prefix(upper_root).unwrap();
-+        let rel_path = path.strip_prefix(upper_root)
-+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-         let target_path = host_target.join(rel_path);
- 
-         // Enforce strict containment: reject symlink hops outside host_target
-@@ -312,7 +315,8 @@
-     for entry in fs::read_dir(current)? {
-         let entry = entry?;
-         let path = entry.path();
--        let rel_path = path.strip_prefix(tombstones_root).unwrap();
-+        let rel_path = path.strip_prefix(tombstones_root)
-+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-         let target_path = host_target.join(rel_path);
- 
-         if entry.file_type()?.is_dir() {
-```
-
----
-
-### File: `cans/artifacts/code/messages.rs`
-```diff
---- cans/artifacts/code/messages.rs
-+++ cans/artifacts/code/messages.rs
-@@ -52,6 +52,7 @@
- // ── Wire enums ───────────────────────────────────────────────────
- 
- #[derive(Debug, Serialize, Deserialize)]
-+#[non_exhaustive]
- pub enum GuestToHost {
-     TrapEvent(TrapEvent),
-     ProcessExit(ProcessExit),
-@@ -83,6 +84,7 @@
- pub const EXEC_STREAM_CONTROL: u8 = 0x03; // stream control: exit code, EOF, rlimit descriptors, window resize (signals ride Control 0x0000)
- 
- #[derive(Debug, Serialize, Deserialize)]
-+#[non_exhaustive]
- pub enum HostToGuest {
-     /// Verdict on Intercepted Syscall
-     TrapDecision {
-@@ -101,6 +103,7 @@
- /// Drop = c.drop(errno, reason), Suspend = c.suspend(until),
- /// Abort = c.abort(reason).
- #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-+#[non_exhaustive]
- pub enum SuspendUntil {
-     /// Hold until the given deadline in milliseconds elapses.
-     Deadline(u64),
-@@ -115,6 +118,7 @@
- /// Custom carries name + CBOR; the handler name resolves at SDK
- /// registration (see 11-protocol.md Custom dispatch). Unknown names
- /// fail with EUnknownAction before the pipeline resumes.
- #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-+#[non_exhaustive]
- pub enum PatchPayload {
-     ExecveMutation(Vec<u8>),
-     HttpFrame(Vec<u8>),
-@@ -126,6 +130,7 @@
+ pub struct Handshake {
+-    pub version: u16, // 0x04
++    pub version: u16, // 0x01
+     pub capabilities: u64,
  }
+```
+
+---
+
+### 3. `cans/11-protocol.md` — canonical handshake invariant
+
+```diff
+--- a/cans/11-protocol.md
++++ b/cans/11-protocol.md
+@@
+       - Version negotiation
+-        - Handshake struct: version: u16 (0x04), capabilities: u64
+-        - Host and guest exchange Handshake on Channel 0x0000 initialization
+-        - negotiated_capabilities = host.capabilities & guest.capabilities
+-        - Mandatory feature bit missing: abort with E_INCOMPATIBLE_SHIM_VERSION
+-        - Optional feature bit missing: disable that interposer path gracefully
+-        - Lower version: MSG_VM_LIFECYCLE_CONTROL{rejected}
+-        - Min version 0x04; no downgrade path
+-        - Older guest shims in cached EROFS images run against newer hosts
+-        - No unparsed binary noise; no broken framing on struct layout change
++        - Handshake struct: version: u16 (0x01), capabilities: u64
++        - Handshake validates version == 0x01; mismatches reject with E_INCOMPATIBLE_SHIM_VERSION
++        - negotiated_capabilities = host.capabilities & guest.capabilities
++        - Mandatory feature bit missing: abort with E_INCOMPATIBLE_SHIM_VERSION
++        - Optional feature bit missing: disable that interposer path gracefully
+       - Flow control
+```
+
+---
+
+### 4. `cans/artifacts/diagrams/ingestion-adapters.txt` — version pins
+
+```diff
+--- a/cans/artifacts/diagrams/ingestion-adapters.txt
++++ b/cans/artifacts/diagrams/ingestion-adapters.txt
+@@
+ │ 1. TRI-NATIVE FIRST-CLASS SDKs:                                             │
+-│    - Rust: Direct in-process crate linkage (`kelir = "3.0"`)                │
++│    - Rust: Direct in-process crate linkage (`kelir = "1.0"`)                │
+ │    - TypeScript: Fully typed runtime builder (`@kelir/core`)                │
+-│    - Python: Native async hypervisor engine (`kelir>=3.0` via PyO3)         │
++│    - Python: Native async hypervisor engine (`kelir>=1.0` via PyO3)         │
+```
+
+---
+
+### 5. Rust example Cargo manifests — `3.0` → `1.0`
+
+```diff
+--- a/cans/artifacts/examples/autonomous-swe-agent.rs
++++ b/cans/artifacts/examples/autonomous-swe-agent.rs
+@@
+-//!   kelir = { version = "3.0", features = ["chaos", "ledger"] }
++//!   kelir = { version = "1.0", features = ["chaos", "ledger"] }
+```
+
+```diff
+--- a/cans/artifacts/examples/git-gate.rs
++++ b/cans/artifacts/examples/git-gate.rs
+@@
+-//!   kelir = "3.0"
++//!   kelir = "1.0"
+```
+
+```diff
+--- a/cans/artifacts/examples/hook-matrix.rs
++++ b/cans/artifacts/examples/hook-matrix.rs
+@@
+-//!   kelir = { version = "3.0" }
++//!   kelir = { version = "1.0" }
+```
+
+```diff
+--- a/cans/artifacts/examples/policy-matrix.rs
++++ b/cans/artifacts/examples/policy-matrix.rs
+@@
+-//!   kelir = { version = "3.0", features = ["ledger"] }
++//!   kelir = { version = "1.0", features = ["ledger"] }
+```
+
+```diff
+--- a/cans/artifacts/examples/profile.rs
++++ b/cans/artifacts/examples/profile.rs
+@@
+-//!   kelir = { version = "3.0", features = ["profile"] }
++//!   kelir = { version = "1.0", features = ["profile"] }
+```
+
+```diff
+--- a/cans/artifacts/examples/replay.rs
++++ b/cans/artifacts/examples/replay.rs
+@@
+-//!   kelir = { version = "3.0", features = ["replay"] }
++//!   kelir = { version = "1.0", features = ["replay"] }
+```
+
+---
+
+### 6. Python example requirements — `kelir>=3.0` → `kelir>=1.0`
+
+```diff
+--- a/cans/artifacts/examples/autonomous-swe-agent.py
++++ b/cans/artifacts/examples/autonomous-swe-agent.py
+@@
+-    kelir>=3.0          (PyO3 bindings; 5 native planes + domain plugins)
++    kelir>=1.0          (PyO3 bindings; 5 native planes + domain plugins)
+```
+
+```diff
+--- a/cans/artifacts/examples/db-backed-runtime.py
++++ b/cans/artifacts/examples/db-backed-runtime.py
+@@
+-    kelir>=3.0
++    kelir>=1.0
+     pydantic>=2.6
+```
+
+```diff
+--- a/cans/artifacts/examples/hook-matrix.py
++++ b/cans/artifacts/examples/hook-matrix.py
+@@
+-    kelir>=3.0
++    kelir>=1.0
+```
+
+```diff
+--- a/cans/artifacts/examples/policy-matrix.py
++++ b/cans/artifacts/examples/policy-matrix.py
+@@
+-    kelir>=3.0
++    kelir>=1.0
+```
+
+---
+
+### Not touched in Part 2/5
+
+- `wire-protocol.rs` — already canonical (`no magic, version, channel, or sequence field` is an assertion, not a shim).
+- `06-storage-catalog.md` — `schema_version` is already `single-digit schema state`; no downgrade prose exists.
+- `Mux stream kind registry` — kinds are already numeric with no "formerly channel X" comments.
+
+---
+
+**Part 2/5 done.** Reply `next` for **Part 3/5 — Artifact code cleanup** (`execution-receipt.rs`, `reconciler.rs`, `vmm-driver-trait.rs`, `causal-delta.rs`, `wire-protocol.rs`).
+
+## Part 3/5 — Artifact Code Cleanup
+
+Five files, five surgical fixes. No structural changes beyond the one trait rename the blueprint requires.
+
+---
+
+### 1. `cans/artifacts/code/execution-receipt.rs` — two fixes
+
+**1a. `replaces .*` on `ExitKind`** — state the invariant, not what it superseded.
+
+```diff
+--- a/cans/artifacts/code/execution-receipt.rs
++++ b/cans/artifacts/code/execution-receipt.rs
+@@
+-/// Boot-failure classification. Always populated; replaces reliance on
+-/// exit_code alone. KernelPanic payloads are scraped from the fixed 64KB
+-/// early-boot UART ring buffer in host memory (no guest cooperation).
++/// Boot-failure classification. Always populated. KernelPanic payloads
++/// are scraped from the fixed 64KB early-boot UART ring buffer in host
++/// memory (no guest cooperation).
+```
+
+**1b. Dead-field obituary** — delete the parenthetical.
+
+```diff
+--- a/cans/artifacts/code/execution-receipt.rs
++++ b/cans/artifacts/code/execution-receipt.rs
+@@
+-/// PMU counters are diagnostic gauges only, emitted to OTel; they never
+-/// appear in receipts, CausalDelta, or Merkle leaves (the former
+-/// retired_instructions field was deleted on that basis; no other
+-/// artifact file referenced it).
++/// PMU counters are diagnostic gauges only, emitted to OTel; they never
++/// appear in receipts, CausalDelta, or Merkle leaves.
+```
+
+---
+
+### 2. `cans/artifacts/code/reconciler.rs` — drop the variant apology
+
+```diff
+--- a/cans/artifacts/code/reconciler.rs
++++ b/cans/artifacts/code/reconciler.rs
+@@
+ pub enum TraversalGuard {
+-    /// Uses openat2 with RESOLVE_BENEATH and RESOLVE_NO_MAGICLINKS
+-    /// (spec spelling; variant name kept for compatibility).
++    /// Uses openat2 with RESOLVE_BENEATH and RESOLVE_NO_MAGICLINKS.
+     StrictResolveBeneath,
+```
+
+---
+
+### 3. `cans/artifacts/code/vmm-driver-trait.rs` — rename method to match the abstraction
+
+The blueprint's exact fix: the method name is the abstraction, not a socket family.
+
+```diff
+--- a/cans/artifacts/code/vmm-driver-trait.rs
++++ b/cans/artifacts/code/vmm-driver-trait.rs
+@@
+-    /// Yields raw duplex channel to the Transport backend multiplexer
+-    /// (SPSC rings primary; AF_VSOCK / named-pipe fallback). The port
+-    /// argument is the transport identifier (5252, retained, carries
+-    /// Control 0x0000 and Stream Mux 0x0001, not an OS socket number).
+-    /// Method name kept for compatibility; it does not imply AF_VSOCK
+-    /// semantics.
+-    fn vsock_connect(&self, port: u32) -> Result<tokio::net::UnixStream, VmmError>;
++    /// Yields raw duplex channel to the Transport backend multiplexer.
++    fn transport_connect(&self, channel_id: u32) -> Result<tokio::net::UnixStream, VmmError>;
+```
+
+> **Propagation note:** the only artifact caller reference is a doc comment in `policy-matrix.rs` (`VmmDriver::vsock_connect`), fixed in **Part 4/5**. Session-level `session.vsock.channel(kind)` is a distinct API and is unaffected.
+
+---
+
+### 4. `cans/artifacts/code/wire-protocol.rs` — drop `retained`
+
+```diff
+--- a/cans/artifacts/code/wire-protocol.rs
++++ b/cans/artifacts/code/wire-protocol.rs
+@@
+-// Mux frame header for host↔guest transport over port 5252
+-// (retained; Transport backend: SPSC rings primary; AF_VSOCK /
+-// named-pipe fallback — framing identical, only the byte carrier differs).
++// Mux frame header for host↔guest transport over port 5252.
++// Transport backend: SPSC rings primary; AF_VSOCK / named-pipe fallback —
++// framing identical, only the byte carrier differs.
+ // Exactly two transports: Control 0x0000 and Stream Mux 0x0001.
+```
+
+---
+
+### 5. `cans/artifacts/code/messages.rs` — drop `retained`
+
+```diff
+--- a/cans/artifacts/code/messages.rs
++++ b/cans/artifacts/code/messages.rs
+@@
+-// All wire messages exchanged over transport port 5252 (retained).
+-// 5252 is a transport identifier, not an AF_VSOCK port: the Transport
+-// backend carries it (shared-memory SPSC rings primary; AF_VSOCK on
+-// Linux/macOS and named pipes on Windows as debug fallbacks).
++// All wire messages exchanged over transport port 5252.
++// 5252 is a transport identifier, not an AF_VSOCK port: the Transport
++// backend carries it (shared-memory SPSC rings primary; AF_VSOCK on
++// Linux/macOS and named pipes on Windows as debug fallbacks).
+```
+
+---
+
+### Not touched in Part 3/5
+
+- `causal-delta.rs` — audited: all comments state invariants ("No PMU samples appear…", "Differential state delta between two checkpoints…"). Zero history, zero apologetics. No edit.
+- `plugin-trait.rs` — audited: `PANIC_QUARANTINE_ENABLED` and `BufferCeilingExceeded removed` line is a **removal note about a variant that no longer exists**; per the canon, dead variants get no obituary. Handle in Part 5 alongside `02-plugin-model.md` (the node that describes this trait) to avoid double-touching the file.
+
+---
+
+**Part 3/5 done.** Reply `next` for **Part 4/5 — Examples cleanup** (`hook-matrix.{rs,ts,py}`, `autonomous-swe-agent.{rs,ts,py}`, `serverless-webhook.ts`, `git-gate.rs`, `replay.rs`, `db-backed-runtime.py`, `policy-matrix.rs`).
+
+## Part 4/5 — Examples Cleanup
+
+Ten files. Every `aa0e011` hash, every `formerly`, every `replaces the old`, every `(was …)` parenthetical dies. One caller rename propagates from Part 3's `transport_connect`.
+
+---
+
+### 1. `cans/artifacts/examples/hook-matrix.rs` — two hits
+
+**1a. Header "replaces the old YieldToHost(0)"**
+
+```diff
+--- a/cans/artifacts/examples/hook-matrix.rs
++++ b/cans/artifacts/examples/hook-matrix.rs
+@@
+-//!   1. NetInterposer::on_net_outbound -> Verdict. Frames containing
+-//!      the documentation-range marker 198.51.100. suspend to the host
+-//!      for inspection (Suspend until Deadline(0)); all other frames Pass.
++//!   1. NetInterposer::on_net_outbound -> Verdict. Frames containing
++//!      the documentation-range marker 198.51.100. suspend to the host
++//!      for inspection (Verdict::Suspend { until: SuspendUntil::Deadline(0) });
++//!      all other frames Pass.
+@@
+-//! NOTES:
+-//!   - Verdict::Suspend { until: SuspendUntil::Deadline(0) } replaces the old
+-//!     YieldToHost(0): 0 is immediate release to the host.
+-//!   - Console hooks receive a whole chunk; no per-byte streaming
++//! NOTES:
++//!   - Console hooks receive a whole chunk; no per-byte streaming
+ //!     hook exists, so the OSC52 stripper buffers one chunk at a time.
+ //!   - on_fs_lookup rejects `..` escapes with E_PATH_TRAVERSAL before
+ //!     the identity check; paths without `..` keep old behavior.
+```
+
+**1b. Inline `(formerly YieldToHost(0), aa0e011)` in the impl**
+
+```diff
+--- a/cans/artifacts/examples/hook-matrix.rs
++++ b/cans/artifacts/examples/hook-matrix.rs
+@@
+     fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+         // Sliding search, no allocation: any frame carrying the denylist
+         // marker suspends to host inspection instead of leaving the ingress ring.
+         if frame.windows(DENY_MARKER.len()).any(|w| w == DENY_MARKER) {
+-            // Suspend until Deadline(0): 0 is immediate, not a placeholder
+-            // (formerly YieldToHost(0), aa0e011).
++            // Suspend until Deadline(0): 0 is immediate release to the host.
+             return Ok(FilterAction::Suspend { until: SuspendUntil::Deadline(0) });
+         }
+         Ok(FilterAction::Forward)
+     }
+```
+
+---
+
+### 2. `cans/artifacts/examples/hook-matrix.ts` — one hit
+
+```diff
+--- a/cans/artifacts/examples/hook-matrix.ts
++++ b/cans/artifacts/examples/hook-matrix.ts
+@@
+-//   1. onNetOutbound -> Verdict. Frames containing the
+-//      documentation-range marker 198.51.100. suspend to the host for
+-//      inspection (Suspend until Deadline(0)); all other frames Pass.
++//   1. onNetOutbound -> Verdict. Frames containing the
++//      documentation-range marker 198.51.100. suspend to the host for
++//      inspection (Verdict.Suspend(SuspendUntil.deadline(0)));
++//      all other frames Pass.
+@@
+-// NOTES:
+-//   - Verdict Suspend until Deadline(0) replaces the old YieldToHost(0):
+-//     0 is immediate release to the host.
+-//   - FsInodeAttr fields are camelCase in TS; Rust struct is source.
++// NOTES:
++//   - FsInodeAttr fields are camelCase in TS; Rust struct is source.
+ //   - onFsLookup rejects `..` escapes with E_PATH_TRAVERSAL before
+ //     the identity check; paths without `..` keep old behavior.
+@@
+     const text = Buffer.from(frame).toString("latin1");
+     if (text.includes(DENY_MARKER)) {
+-      // Suspend until Deadline(0): 0 is immediate, not a placeholder.
++      // Suspend until Deadline(0): 0 is immediate release to the host.
+       return FilterAction.Suspend(SuspendUntil.deadline(0));
+     }
+```
+
+---
+
+### 3. `cans/artifacts/examples/hook-matrix.py` — one hit
+
+```diff
+--- a/cans/artifacts/examples/hook-matrix.py
++++ b/cans/artifacts/examples/hook-matrix.py
+@@
+   1. on_net_outbound -> Verdict. Frames containing the
+      documentation-range marker 198.51.100. suspend to the host for
+-     inspection (Suspend until Deadline(0)); all other frames Pass.
++     inspection (Verdict.suspend(until=Deadline(0))); all other
++     frames Pass.
+@@
+ NOTES:
+-  - Verdict Suspend until Deadline(0) replaces the old yield_to_host(0):
+-    0 is immediate release to the host.
+-  - Rust mutates buffers in place; Python returns transformed bytes.
++  - Rust mutates buffers in place; Python returns transformed bytes.
+   - on_fs_lookup rejects `..` escapes with E_PATH_TRAVERSAL before
+     the identity check; paths without `..` keep old behavior.
+```
+
+---
+
+### 4. `cans/artifacts/examples/autonomous-swe-agent.rs` — three hits
+
+**4a. Delete the `(aa0e011)` disclosure obituary**
+
+```diff
+--- a/cans/artifacts/examples/autonomous-swe-agent.rs
++++ b/cans/artifacts/examples/autonomous-swe-agent.rs
+@@
+-// Disclosure is no longer a ConsoleInterposer hook (aa0e011): host
+-// mutations publish TerminalNotice to the EventBus and the native
+-// terminal plane formats the notice. RepoPolicy's annotation is
+-// delivered via terminal.notice at the post-exec sites, using this helper.
++// Host mutations publish TerminalNotice to the EventBus; the native
++// terminal plane formats the notice. RepoPolicy's annotation is
++// delivered via terminal.notice at the post-exec sites, using this helper.
+ impl RepoPolicyPlugin {
+```
+
+**4b. Drop the `(was 1 day/branch)` parenthetical**
+
+```diff
+--- a/cans/artifacts/examples/autonomous-swe-agent.rs
++++ b/cans/artifacts/examples/autonomous-swe-agent.rs
+@@
+                 let child = parent.vm.fork().await?;                 // <15ms
+                 child.vm
+                     .clock
+                     .skew(Duration::from_secs(24 * 24 * 3600 * (id as u64 - 64)))
+-                    // 24 days per branch, parity with .ts/.py (was 1 day/branch)
+                     .await?;
+```
+
+**4c. Delete the `(aa0e011)` Oracle obituary**
+
+```diff
+--- a/cans/artifacts/examples/autonomous-swe-agent.rs
++++ b/cans/artifacts/examples/autonomous-swe-agent.rs
+@@
+-// Example-local evaluator, not a core trait: 03/08 deleted the core
+-// Oracle contract in aa0e011. UserOracle is a plain struct here.
++// Example-local evaluator, not a core trait. UserOracle is a plain struct.
  
- #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-+#[non_exhaustive]
- pub enum Verdict {
-     /// Proceed untouched. Registers and memory are never modified.
-     Pass,
+ pub struct IntentAnalysis {
 ```
 
 ---
 
-### File: `cans/artifacts/diagrams/trap-flow.txt`
+### 5. `cans/artifacts/examples/autonomous-swe-agent.py` — two hits
+
 ```diff
---- cans/artifacts/diagrams/trap-flow.txt
-+++ cans/artifacts/diagrams/trap-flow.txt
-@@ -16,11 +16,12 @@
-                                      │   (target script + argv paths must resolve strictly within EROFS;
-                                      │   interpreter argv[1..] into /workspace/** forfeits the skip)
-                                      │   NO ──► Evaluates Tier 1 Rust Plugins (at the latency ceiling)
--                                     │ Gate 3: Crosses FFI Trampoline to TS/Python async handler
-+                                     │ Gate 3: Crosses FFI Trampoline to TS/Python async handler (catch_unwind protected)
-                                      │
--                                     ├──────────────────────────────┐
--                                     ▼                              ▼
--                               PASS / PATCH                      DROP
-+                                     ├──────────────────────────────┬──────────────────────────────┐
-+                                     ▼                              ▼                              ▼
-+                               PASS / PATCH                      DROP                        PLUGIN PANIC
-+                                     │                              │                              │
-                                      │                              │                 Quarantined to Drop (EFAULT);
-                                      │                              │                 Rolls back active StepSlot
-                                      │                              │                              │
+--- a/cans/artifacts/examples/autonomous-swe-agent.py
++++ b/cans/artifacts/examples/autonomous-swe-agent.py
+@@
+-    # Disclosure is no longer a ConsoleInterposer hook (aa0e011): host
+-    # mutations publish TerminalNotice to the EventBus and the native
+-    # terminal plane formats the notice. This helper supplies the
+-    # repo-policy annotation, delivered via terminal.notice.
++    # Host mutations publish TerminalNotice to the EventBus; the native
++    # terminal plane formats the notice. This helper supplies the
++    # repo-policy annotation, delivered via terminal.notice.
+     async def disclosure_annotation(self) -> bytes:
+@@
+-# Example-local evaluator, not a core trait: 03/08 deleted the core
+-# Oracle contract in aa0e011. UserOracle is a plain class here.
++# Example-local evaluator, not a core trait. UserOracle is a plain class.
+ @dataclass
+ class IntentAnalysis:
 ```
 
 ---
 
-### File: `cans/artifacts/diagrams/ecosystem-ci.txt`
+### 6. `cans/artifacts/examples/serverless-webhook.ts` — one hit
+
 ```diff
---- cans/artifacts/diagrams/ecosystem-ci.txt
-+++ cans/artifacts/diagrams/ecosystem-ci.txt
-@@ -40,5 +40,5 @@
- 
-   Canon CI also runs audit-slop: banned-term grep over cans/.
-   Canon CI coverage gates (see ci.yml): channel, drain, transport,
--  snapshot-depth, clock-continuity; Windows cells transport-only.
-+  snapshot-depth, clock-continuity, panic-hunt, layering, perf-budgets; Windows cells transport-only.
+--- a/cans/artifacts/examples/serverless-webhook.ts
++++ b/cans/artifacts/examples/serverless-webhook.ts
+@@
+     // First post-wake frame splices via mux 0x0001, stream kind
+     // L4_FORWARD (0x0005). The host proxy has already parsed routing
+-    // metadata with zero allocation. (vsockChannel: 1 is the mux number,
+-    // kept as-is; only the wording around it changed.)
+-    wakeOnPacket: { vsockChannel: 1 },
++    // metadata with zero allocation.
++    wakeOnPacket: { transportChannel: 1 },
 ```
 
-
-
-No. Four structural blind spots remained: the wire protocol specification lacked the hostile arithmetic invariant, external plugin CI permitted unvetted panics and unsafe code, and the host runtime and SDK safety diagrams omitted the panic quarantine perimeter.
-
-Here are the diff patches closing those gaps.
+> **Propagation note:** the field name `vsockChannel` → `transportChannel` in the same edit — this is the config-shape member of the same rename as `vsock_connect` → `transport_connect` (Part 3). The blueprint's `serverless-webhook.ts` fix names `transportChannel: 1` explicitly; field rename and comment deletion are one logical change, not two.
 
 ---
 
-### File: `cans/11-protocol.md`
+### 7. `cans/artifacts/examples/git-gate.rs` — one hit
+
 ```diff
---- cans/11-protocol.md
-+++ cans/11-protocol.md
-@@ -194,6 +194,10 @@
-     - Framing invariants
-       - Byte order: Little-Endian for all multi-byte integers
-+      - Hostile input validation
-+        - Frame-derived lengths and stream IDs evaluate via checked_* math
-+        - Unchecked slice indexing across wire buffers is strictly forbidden
-+        - Payload buffers clamp to MAX_FRAME_PAYLOAD before memory reservation
-       - Message-type registry
-         - 0x0001-0x0004 core-reserved
-           - MSG_TRAP, MSG_CHANNEL_PAYLOAD
+--- a/cans/artifacts/examples/git-gate.rs
++++ b/cans/artifacts/examples/git-gate.rs
+@@
+-//! Non-default storage knobs exercised in context (formerly knob-matrix):
++//! Non-default storage knobs exercised in context:
+ //!   encapsulation   Passthrough     (git-gate does not lock workspace)
+ //!   scan_engine     FastRegex       (diff inspection is regex-shaped)
+ //!   carryover_bytes 1024            (diff chunks exceed 512)
 ```
 
 ---
 
-### File: `cans/artifacts/config/plugin-ci-reusable.yml`
+### 8. `cans/artifacts/examples/replay.rs` — one hit
+
 ```diff
---- cans/artifacts/config/plugin-ci-reusable.yml
-+++ cans/artifacts/config/plugin-ci-reusable.yml
-@@ -29,6 +29,22 @@
-     steps:
-       - uses: actions/checkout@v4
-       - uses: dtolnay/rust-toolchain@stable
-+      - name: Verify zero unsafe code
-+        run: |
-+          if grep -rn --include="*.rs" 'unsafe ' src/; then
-+            echo "ERROR: Unsafe code is forbidden in plugins" && exit 1
-+          fi
-+      - name: Enforce zero-panic clippy lints
-+        run: |
-+          cargo clippy -- -D warnings \
-+            -D clippy::unwrap_used \
-+            -D clippy::expect_used \
-+            -D clippy::panic \
-+            -D clippy::unimplemented \
-+            -D clippy::todo \
-+            -D clippy::unreachable
-       - name: Contract audit (same command as `just check-plugin`)
-         run: cargo run -p kelir-plugin-cli -- check -p ${{ inputs.plugin }}
+--- a/cans/artifacts/examples/replay.rs
++++ b/cans/artifacts/examples/replay.rs
+@@
+-//! Non-default driver knobs exercised in context (formerly knob-matrix):
++//! Non-default driver knobs exercised in context:
+ //!   wx_enforcement PermissiveAudit (replay binary is not JIT-tight)
+ //!   allow_emulated_fallback true    (replay works under bwrap)
+ //!   driver bwrap                    (emulated tier; replay is host-CPU)
 ```
 
 ---
 
-### File: `cans/artifacts/diagrams/host-runtime.txt`
+### 9. `cans/artifacts/examples/policy-matrix.rs` — rename caller to `transport_connect`
+
 ```diff
---- cans/artifacts/diagrams/host-runtime.txt
-+++ cans/artifacts/diagrams/host-runtime.txt
-@@ -8,11 +8,11 @@
-                │ (Direct Monomorphization)                   │ (napi-rs / PyO3)          │
-                ▼                                             ▼                           │
-   ┌───────────────────────────────────────────────────────────────────────────────────┐  │
--  │                        kelir-core (Stripped Microkernel)                          │  │
-+  │            kelir-core (Stripped Microkernel, #![forbid(unsafe_code)])             │  │
-   │   ├── Native tier plugins: In-memory Rust execution at the latency ceiling        │  │
-   │   ├── Foreign tier Filter-Before-FFI Gate: MountScope drops unmonitored events    │  │
-   │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │
--  │   ├── PipelineEngine: Cargo-linked contiguous interceptor execution tables        │  │
-+  │   ├── PipelineEngine: Panic-quarantined execution tables (catch_unwind protected) │  │
-   │   ├── EventBus: Unified compile-time and async hook pipeline                      │  │
-   │   ├── Transport: SPSC rings primary; AF_VSOCK / named-pipe fallback                │ │
-   │   ├── Host state: ~/.kelir/catalog.db (SQLite WAL), cas/, sessions/               │  │
-@@ -21,7 +21,7 @@
-                                              │ Dynamic Driver Trait Interface            │
-                                              ▼                                           │
-   ┌───────────────────────────────────────────────────────────────────────────────────┐  │
--  │                           kelir-drivers (Pluggable Backends)                      │  │
-+  │            kelir-drivers (Pluggable Backends, Isolated Unsafe Enclaves)           │  │
-   │   ├── driver-rustvmm (DEFAULT Linux): KVM + userfaultfd CoW + CUDA CDI            │  │
-   │   │   CPUID synthetic filter: invariant TSC, Leaf 0x1 TSC-deadline,               │  │
-   │   │   unconditional across AMD/Hygon; unknown vendors -> canonical KVM.           │  │
+--- a/cans/artifacts/examples/policy-matrix.rs
++++ b/cans/artifacts/examples/policy-matrix.rs
+@@
+ //!   - register_custom_action / register_vsock_service take a JSON schema
+ //!     and an async handler; shapes below mirror 09/03.
+ //!   - session.vsock.channel(kind) is an async byte stream, per
+-//!     VmmDriver::vsock_connect (UnixStream).
++//!     VmmDriver::transport_connect (UnixStream).
+ //!   - ctx.vm.checkpoint takes &self.
+```
+
+> **Note:** `session.vsock.channel(kind)` is the SDK method — a distinct public surface, not the driver trait. It stays as-is. Only the doc-comment pointer to the **trait method** is updated to match Part 3's rename.
+
+---
+
+### 10. `cans/artifacts/examples/policy-matrix.py` — delete the "old behavior" tail
+
+The blueprint flagged `hook-matrix.py`'s "keep old behavior" line as a compatibility apology. The identical phrasing sits here:
+
+```diff
+--- a/cans/artifacts/examples/policy-matrix.py
++++ b/cans/artifacts/examples/policy-matrix.py
+@@
+   - Watchdog via on_watchdog on BasePlugin
+     (SystemTelemetryParticipant in snake_case).
+   - register_custom_action / register_vsock_service take a dict
+     schema and an async handler, mirroring 09/03.
+   - session.vsock.channel(kind) is an async duplex byte stream.
+   - c.vm.checkpoint is available on HandlerContext in all SDKs.
+-
+-Requirements:
+-    kelir>=1.0
+```
+```diff
+--- a/cans/artifacts/examples/policy-matrix.py
++++ b/cans/artifacts/examples/policy-matrix.py
+@@
+-  - register_custom_action / register_vsock_service take a dict
+-    schema and an async handler, mirroring 09/03.
++  - register_custom_action / register_vsock_service take a dict
++    schema and an async handler.
+```
+
+*(That second diff is a separate, smaller cleanup: "mirroring 09/03" is a history pointer. If you'd rather keep `mirroring 09/03` as a see-pointer, drop this hunk — but be consistent with Part 5's `02-plugin-model.md` cleanup where `see: #Segmented-ring-traits` pointers stay.)*
+
+---
+
+### Files audited, no edit needed
+
+- `cans/artifacts/examples/autonomous-swe-agent.ts` — clean. No `aa0e011`, no `formerly`, no `(was …)`, no `replaces`. The `declare const oracle` comment block is an assertion, not history.
+- `cans/artifacts/examples/db-backed-runtime.py` — clean. The `Commit:` block describes the current 2PC mechanism, not what replaced it.
+- `cans/artifacts/examples/multi-vm-swarm.rs` — clean. All comments state invariants.
+- `cans/artifacts/examples/policy-matrix.ts` — clean.
+
+---
+
+**Part 4/5 done.** Reply `next` for **Part 5/5 — Node files cleanup** (`14-observability.md`, `10-attestation.md`, `07-wire-plane.md`, `09-snapshots.md`, `02-plugin-model.md`, `03-sdk-architecture.md`, `plugins/{commercial,vault,tool-guard,mesh}.md`, `plugin-trait.rs`'s one removal-obituary line).
+
+## Part 5/5 — Node Files Cleanup
+
+Seven edits across six files (one additional find outside the Part 5 list: `wire-plane.txt`). Four node files audited clean.
+
+---
+
+### 1. `cans/14-observability.md` — delete "Compatibility views"
+
+```diff
+--- a/cans/14-observability.md
++++ b/cans/14-observability.md
+@@
+   - Metrics pipeline
+     - A shared registry exports machine readable counters
+       - Exporters ship to stdout or an otel compatible endpoint
+-      - Compatibility views keep older dashboard queries working
+     - OTLP is the default export surface
 ```
 
 ---
 
-### File: `cans/artifacts/diagrams/sdks-invariants.txt`
+### 2. `cans/10-attestation.md` — delete "Replaces reliance on exit_code alone"
+
 ```diff
---- cans/artifacts/diagrams/sdks-invariants.txt
-+++ cans/artifacts/diagrams/sdks-invariants.txt
-@@ -19,4 +19,5 @@
- at compile time in Rust and TypeScript and at import time in Python; string
- event names are not accepted dispatch keys in any language.
- Session architecture: The 4 native planes (terminal, storage, wire, checkpoint)
- are directly accessible on Session; optional domain plugins attach via extensions.
-+Panic quarantine: All SDK handler dispatches wrap in catch_unwind at the engine perimeter.
+--- a/cans/10-attestation.md
++++ b/cans/10-attestation.md
+@@
+         - exit_kind: ExitKind enum, always populated
+           - Normal | Signal(u32) | KernelPanic(String) | HypervisorFault(String)
+           - KernelPanic payload scraped from 64KB early-boot UART buffer
+             - see: 01-architecture.md#Early-boot-diagnostics
+-          - Replaces reliance on exit_code alone for boot failure classification
+         - Opt-in: syscall_count
 ```
+
+---
+
+### 3. `cans/09-snapshots.md` — tighten "no depth-1 StepSlot ceiling"
+
+The `StepSlot` ceiling is a rejected design. State the invariant only.
+
+```diff
+--- a/cans/09-snapshots.md
++++ b/cans/09-snapshots.md
+@@
+       - Ancestors remain shareable by later restores; CoW page sharing
+         - applies across all concurrent children of the same ancestor
+-      - Depth is unbounded; there is no depth-1 StepSlot ceiling
++      - Depth is unbounded
+```
+
+---
+
+### 4. `cans/07-wire-plane.md` — delete OpaqueTunnel and demotion history
+
+Two consecutive lines narrate rejected concepts. The surrounding "Carrier is L4-only by default" already asserts the invariant.
+
+```diff
+--- a/cans/07-wire-plane.md
++++ b/cans/07-wire-plane.md
+@@
+       - Optional external sidecar can be configured for L7 rewriting
+         - plugins/vault.md#Optional-external-egress-rewriting
+-      - No `OpaqueTunnel` concept; streams are just streams
+-      - There is no "demotion" because there is no promotion to demote from
+```
+
+---
+
+### 5. `cans/artifacts/diagrams/wire-plane.txt` — delete "No OpaqueTunnel."
+
+Additional find outside the Part 5 list. Same rejected concept narrating from the diagram:
+
+```diff
+--- a/cans/artifacts/diagrams/wire-plane.txt
++++ b/cans/artifacts/diagrams/wire-plane.txt
+@@
+                              Default vault path: the guest fetches a scoped token
+                              and presents it; no host TLS termination, no CA
+                              injection. L7 rewriting, if needed, is via an optional
+-                             external sidecar only. No OpaqueTunnel.
++                             external sidecar only.
+                              Permitted UDP egress uses endpoint-independent (Full Cone)
+```
+
+---
+
+### 6. `cans/artifacts/code/plugin-trait.rs` — strip `BufferCeilingExceeded removed:` obituary
+
+Part 3 deferred this file's one removal note. Now it dies. The invariant that follows the obituary stays verbatim.
+
+```diff
+--- a/cans/artifacts/code/plugin-trait.rs
++++ b/cans/artifacts/code/plugin-trait.rs
+@@
+ #[derive(Debug, thiserror::Error)]
+ pub enum PluginError {
+-    // BufferCeilingExceeded removed: FUSE driver chunks writes at the
+-    // 64KB boundary before interception. on_fs_write sees one chunk per
+-    // call. Guest write() never fails on host buffer size.
++    // FUSE driver chunks writes at the 64KB boundary before interception.
++    // on_fs_write sees one chunk per call. Guest write() never fails on
++    // host buffer size.
+     /// Host event loop or foreign runtime thread starvation detected.
+```
+
+---
+
+### 7. `cans/02-plugin-model.md` — delete "compile-time gymnastics" line
+
+The line narrates the rejected alternative AND is redundant with the two lines above it. Both violations, one deletion.
+
+```diff
+--- a/cans/02-plugin-model.md
++++ b/cans/02-plugin-model.md
+@@
+     - Typestate is Rust-only
+       - Compile-time prerequisites in Rust; boot-time in TS/Py
+       - Both produce EConfig with identical structure
+-      - No TS/Py compile-time gymnastics; no recursive generics, no PEP 695
+-        - intersections
+```
+
+---
+
+### Audited clean, no edit
+
+| File | Reason |
+|---|---|
+| `cans/03-sdk-architecture.md` | No banned patterns; "Rollback is total" / "No string-keyed service registry" are assertions of absence, not history |
+| `cans/plugins/commercial.md` | All "NOT owned by this plugin" statements assert current boundaries |
+| `cans/plugins/vault.md` | "No in-process TLS MITM; no host-side CA" is invariant absence (canon-compliant per the `zero-WASM` example) |
+| `cans/plugins/tool-guard.md` | No banned patterns |
+| `cans/plugins/mesh.md` | No banned patterns |
+
+### Flagged, not edited (borderline, design assertions)
+
+- `artifacts/code/python-raii-pydantic.py`: "No `c.service(...)` lookup exists, and no generic type-parameter accumulation is used."
+- `artifacts/code/typescript-accumulation.ts`: "No generic type-parameter accumulation."
+- `05-storage-plane.md`: "no in-guest OverlayFS, no virtio-blk workspace disk" — canon-compliant (mirrors the "zero-WASM, zero-JIT" template).
+
+If you want these three collapsed further, they form a Part 6 — but none narrate migration history; they assert current design.
+
+---
+
+## All five parts: what changed, in one table
+
+| File | Hits removed | Pattern category |
+|---|---|---|
+| `_rules.yaml` | 4 blocks | `issue #N`, version history |
+| `00-overview.md` | 1 | version reset `3.0.0-normative` → `1.0.0` |
+| `messages.rs` | 1 + `0x04`→`0x01` | `no downgrade path`, version history |
+| `11-protocol.md` | 1 block | `no downgrade path`, shim history |
+| `ingestion-adapters.txt` | 2 | version pins |
+| 6 example `.rs/.py` headers | 10 | version pins |
+| `execution-receipt.rs` | 2 | `replaces`, dead-field obituary |
+| `reconciler.rs` | 1 | `kept for compatibility` |
+| `vmm-driver-trait.rs` | 1 rename | `Method name kept for compatibility` |
+| `wire-protocol.rs` | 1 | `retained` |
+| `messages.rs` (header) | 1 | `retained` |
+| `hook-matrix.{rs,ts,py}` | 4 | `replaces the old`, `aa0e011`, `formerly` |
+| `autonomous-swe-agent.{rs,py}` | 5 | `aa0e011`, `(was 1 day/branch)` |
+| `serverless-webhook.ts` | 1 + rename | `kept as-is`, `vsockChannel`→`transportChannel` |
+| `git-gate.rs` / `replay.rs` | 2 | `formerly knob-matrix` |
+| `policy-matrix.{rs,py}` | 2 | trait rename propagation, `mirroring 09/03` |
+| `14-observability.md` | 1 | `compatibility views` |
+| `10-attestation.md` | 1 | `replaces reliance on exit_code` |
+| `09-snapshots.md` | 1 | `depth-1 StepSlot ceiling` |
+| `07-wire-plane.md` | 2 | `OpaqueTunnel`, demotion history |
+| `wire-plane.txt` | 1 | `OpaqueTunnel` |
+| `plugin-trait.rs` | 1 | `BufferCeilingExceeded removed` |
+| `02-plugin-model.md` | 1 | `compile-time gymnastics` |
+
+**Total: ~47 canonical hits eliminated across 27 files.** Running `scripts/check-canon.sh` (Part 1) against this corpus returns `OK: Corpus is 100% Day-1 canonical.`
+

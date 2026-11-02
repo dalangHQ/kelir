@@ -23,9 +23,9 @@ pub struct PhaseTimings {
     pub verdict_egress_ns: u64,
 }
 
-/// Boot-failure classification. Always populated; replaces reliance on
-/// exit_code alone. KernelPanic payloads are scraped from the fixed 64KB
-/// early-boot UART ring buffer in host memory (no guest cooperation).
+/// Boot-failure classification. Always populated. KernelPanic payloads
+/// are scraped from the fixed 64KB early-boot UART ring buffer in host
+/// memory (no guest cooperation).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExitKind {
     Normal,
@@ -39,9 +39,7 @@ pub enum ExitKind {
 }
 
 /// PMU counters are diagnostic gauges only, emitted to OTel; they never
-/// appear in receipts, CausalDelta, or Merkle leaves (the former
-/// retired_instructions field was deleted on that basis; no other
-/// artifact file referenced it).
+/// appear in receipts, CausalDelta, or Merkle leaves.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ExecutionReceipt {

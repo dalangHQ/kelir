@@ -14,7 +14,6 @@
   - Metrics pipeline
     - A shared registry exports machine readable counters
       - Exporters ship to stdout or an otel compatible endpoint
-      - Compatibility views keep older dashboard queries working
     - OTLP is the default export surface
       - Native gRPC and HTTP exporters via OpenTelemetry SDK
       - Metrics: counters (execs, syscalls, drops, backpressure events),

@@ -3,7 +3,7 @@
     - Name: kelir (Javanese ꦏꦼꦭꦶꦂ)
     - Meaning: taut white fabric screen in Wayang Kulit shadow puppetry
     - Product metaphor: see: #Wayang-elements
-    - Version: 3.0.0-normative
+    - Version: 1.0.0
     - Status: normative specification
     - Legal and licensing architecture
       - Tri-license topology

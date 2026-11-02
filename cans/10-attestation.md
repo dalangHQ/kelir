@@ -66,7 +66,6 @@
           - Normal | Signal(u32) | KernelPanic(String) | HypervisorFault(String)
           - KernelPanic payload scraped from 64KB early-boot UART buffer
             - see: 01-architecture.md#Early-boot-diagnostics
-          - Replaces reliance on exit_code alone for boot failure classification
         - Opt-in: syscall_count
         - dirty_bytes is a receipt field: byte count, not page count
           - Deterministic because it counts guest writes, not host page churn

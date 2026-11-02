@@ -10,7 +10,8 @@ SAME HOOK SET in all three SDKs, in dispatch order:
 
   1. on_net_outbound -> Verdict. Frames containing the
      documentation-range marker 198.51.100. suspend to the host for
-     inspection (Suspend until Deadline(0)); all other frames Pass.
+     inspection (Verdict.suspend(until=Deadline(0))); all other
+     frames Pass.
   2. on_fs_lookup -> Verdict. Patch(attr) serves exactly one path,
      /workspace/.policy/identity, with mode 0o400 (no permission
      fallback, per 02); Pass — fall through — everywhere else.
@@ -33,15 +34,13 @@ the read/output hooks mutate fixed-size buffers in place and cannot
 change a chunk's length.
 
 NOTES:
-  - Verdict Suspend until Deadline(0) replaces the old yield_to_host(0):
-    0 is immediate release to the host.
   - Rust mutates buffers in place; Python returns transformed bytes.
   - on_fs_lookup rejects `..` escapes with E_PATH_TRAVERSAL before
     the identity check; paths without `..` keep old behavior.
   - Reject errno surfaces via PluginError.reject(errno=...).
 
 Requirements:
-    kelir>=3.0
+    kelir>=1.0
 """
 
 from __future__ import annotations

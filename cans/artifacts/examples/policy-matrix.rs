@@ -34,12 +34,12 @@
 //!   - register_custom_action / register_vsock_service take a JSON schema
 //!     and an async handler; shapes below mirror 09/03.
 //!   - session.vsock.channel(kind) is an async byte stream, per
-//!     VmmDriver::vsock_connect (UnixStream).
+//!     VmmDriver::transport_connect (UnixStream).
 //!   - ctx.vm.checkpoint takes &self.
 //!
 //! Cargo.toml:
 //!   [dependencies]
-//!   kelir = { version = "3.0", features = ["ledger"] }
+//!   kelir = { version = "1.0", features = ["ledger"] }
 //!   tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util", "time"] }
 //!   async-trait = "0.1"
 //!   serde = { version = "1", features = ["derive"] }

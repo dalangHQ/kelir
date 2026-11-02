@@ -1,8 +1,8 @@
 // crates/kelir-interface/src/codec.rs
 //
-// Mux frame header for host↔guest transport over port 5252
-// (retained; Transport backend: SPSC rings primary; AF_VSOCK /
-// named-pipe fallback — framing identical, only the byte carrier differs).
+// Mux frame header for host↔guest transport over port 5252.
+// Transport backend: SPSC rings primary; AF_VSOCK / named-pipe fallback —
+// framing identical, only the byte carrier differs.
 // Exactly two transports: Control 0x0000 and Stream Mux 0x0001.
 //
 // Owned by: cans/11-protocol.md#Wire-framing

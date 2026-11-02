@@ -7,7 +7,7 @@
         - The restored session's working delta becomes a new child of that digest
         - Ancestors remain shareable by later restores; CoW page sharing
           - applies across all concurrent children of the same ancestor
-        - Depth is unbounded; there is no depth-1 StepSlot ceiling
+        - Depth is unbounded
   - Archives and portability
     - Export format: single Content-Addressed .kelir-snap binary stream
       - Archive header: magic, format version, feature flags, entry table

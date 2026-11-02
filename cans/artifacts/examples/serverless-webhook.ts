@@ -50,9 +50,8 @@ const runtime = kelir({
     parking: { maxBufferedBytes: 64 * 1024, idleTimeoutMs: 30_000 },
     // First post-wake frame splices via mux 0x0001, stream kind
     // L4_FORWARD (0x0005). The host proxy has already parsed routing
-    // metadata with zero allocation. (vsockChannel: 1 is the mux number,
-    // kept as-is; only the wording around it changed.)
-    wakeOnPacket: { vsockChannel: 1 },
+    // metadata with zero allocation.
+    wakeOnPacket: { transportChannel: 1 },
     // Burst absorption: queue up to 256 inbound connections across the
     // suspend→resume window; overflow returns 503 without touching RAM.
     backlog: { maxConnections: 256, overflow: "reject-503" },

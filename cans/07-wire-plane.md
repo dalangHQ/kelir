@@ -112,8 +112,6 @@
       - No host-side TLS termination; no CA injection
       - Optional external sidecar can be configured for L7 rewriting
         - plugins/vault.md#Optional-external-egress-rewriting
-      - No `OpaqueTunnel` concept; streams are just streams
-      - There is no "demotion" because there is no promotion to demote from
     - Diverted endpoints configured via MountScope port and CIDR allowlists
   - Upstream dial transport    - Dial policy
       - Proxy chaining is first-class, not an afterthought

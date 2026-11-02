@@ -180,15 +180,11 @@
         - No indefinite-length items
         - Payload bounded by 64KB frame budget
       - Version negotiation
-        - Handshake struct: version: u16 (0x04), capabilities: u64
-        - Host and guest exchange Handshake on Channel 0x0000 initialization
+        - Handshake struct: version: u16 (0x01), capabilities: u64
+        - Handshake validates version == 0x01; mismatches reject with E_INCOMPATIBLE_SHIM_VERSION
         - negotiated_capabilities = host.capabilities & guest.capabilities
         - Mandatory feature bit missing: abort with E_INCOMPATIBLE_SHIM_VERSION
         - Optional feature bit missing: disable that interposer path gracefully
-        - Lower version: MSG_VM_LIFECYCLE_CONTROL{rejected}
-        - Min version 0x04; no downgrade path
-        - Older guest shims in cached EROFS images run against newer hosts
-        - No unparsed binary noise; no broken framing on struct layout change
       - Flow control
         - None in-band; ring slot availability is the only backpressure
         - SPSC ring full: sender parks on host eventfd / guest virtual interrupt

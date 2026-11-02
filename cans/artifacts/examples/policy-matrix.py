@@ -43,12 +43,9 @@ NOTES:
   - Watchdog via on_watchdog on BasePlugin
     (SystemTelemetryParticipant in snake_case).
   - register_custom_action / register_vsock_service take a dict
-    schema and an async handler, mirroring 09/03.
+    schema and an async handler.
   - session.vsock.channel(kind) is an async duplex byte stream.
   - c.vm.checkpoint is available on HandlerContext in all SDKs.
-
-Requirements:
-    kelir>=3.0
 """
 
 from __future__ import annotations

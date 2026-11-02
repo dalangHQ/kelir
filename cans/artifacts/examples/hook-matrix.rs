@@ -10,7 +10,8 @@
 //!
 //!   1. NetInterposer::on_net_outbound -> Verdict. Frames containing
 //!      the documentation-range marker 198.51.100. suspend to the host
-//!      for inspection (Suspend until Deadline(0)); all other frames Pass.
+//!      for inspection (Verdict::Suspend { until: SuspendUntil::Deadline(0) });
+//!      all other frames Pass.
 //!   2. FsInterposer::on_fs_lookup -> Verdict. Patch(attr) serves
 //!      exactly one path, /workspace/.policy/identity, with mode 0o400
 //!      (no permission fallback, per 02); Pass — fall through —
@@ -35,8 +36,6 @@
 //! cannot change a chunk's length.
 //!
 //! NOTES:
-//!   - Verdict::Suspend { until: SuspendUntil::Deadline(0) } replaces the old
-//!     YieldToHost(0): 0 is immediate release to the host.
 //!   - Console hooks receive a whole chunk; no per-byte streaming
 //!     hook exists, so the OSC52 stripper buffers one chunk at a time.
 //!   - on_fs_lookup rejects `..` escapes with E_PATH_TRAVERSAL before
@@ -44,7 +43,7 @@
 //!
 //! Cargo.toml:
 //!   [dependencies]
-//!   kelir = { version = "3.0" }
+//!   kelir = { version = "1.0" }
 //!   tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 //!   async-trait = "0.1"
 //!   serde = { version = "1", features = ["derive"] }
@@ -160,8 +159,7 @@ impl NetInterposer for HookMatrixPlugin {
         // Sliding search, no allocation: any frame carrying the denylist
         // marker suspends to host inspection instead of leaving the ingress ring.
         if frame.windows(DENY_MARKER.len()).any(|w| w == DENY_MARKER) {
-            // Suspend until Deadline(0): 0 is immediate, not a placeholder
-            // (formerly YieldToHost(0), aa0e011).
+            // Suspend until Deadline(0): 0 is immediate release to the host.
             return Ok(FilterAction::Suspend { until: SuspendUntil::Deadline(0) });
         }
         Ok(FilterAction::Forward)

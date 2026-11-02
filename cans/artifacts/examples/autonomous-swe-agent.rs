@@ -6,7 +6,7 @@
 //! policy-matrix.rs.
 //!
 //! Cargo.toml://!   [dependencies]
-//!   kelir = { version = "3.0", features = ["chaos", "ledger"] }
+//!   kelir = { version = "1.0", features = ["chaos", "ledger"] }
 //!   tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "time"] }
 //!   async-trait = "0.1"
 //!   serde = { version = "1", features = ["derive"] }
@@ -194,8 +194,7 @@ impl FsInterposer for RepoPolicyPlugin {
     }
 }
 
-// Disclosure is no longer a ConsoleInterposer hook (aa0e011): host
-// mutations publish TerminalNotice to the EventBus and the native
+// Host mutations publish TerminalNotice to the EventBus; the native
 // terminal plane formats the notice. RepoPolicy's annotation is
 // delivered via terminal.notice at the post-exec sites, using this helper.
 impl RepoPolicyPlugin {
@@ -622,7 +621,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 child.vm
                     .clock
                     .skew(Duration::from_secs(24 * 24 * 3600 * (id as u64 - 64)))
-                    // 24 days per branch, parity with .ts/.py (was 1 day/branch)
                     .await?;
                 let run = child.spawn("npm")
                     .args(["run", &format!("verify-hypothesis-{id}")])
@@ -702,8 +700,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 // ============================================================================
 // 5. ORACLE (user-supplied post-condition verification engine)
 // ============================================================================
-// Example-local evaluator, not a core trait: 03/08 deleted the core
-// Oracle contract in aa0e011. UserOracle is a plain struct here.
+// Example-local evaluator, not a core trait. UserOracle is a plain struct.
 
 pub struct IntentAnalysis {
     pub is_hypothesis_valid: bool,

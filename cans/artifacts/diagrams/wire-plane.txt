@@ -58,7 +58,7 @@
                              Default vault path: the guest fetches a scoped token
                              and presents it; no host TLS termination, no CA
                              injection. L7 rewriting, if needed, is via an optional
-                             external sidecar only. No OpaqueTunnel.
+                             external sidecar only.
                              Permitted UDP egress uses endpoint-independent (Full Cone)
                              NAT: one host UDP socket per guest source port, external
                              source port preserved for STUN, WebRTC, Tailscale.

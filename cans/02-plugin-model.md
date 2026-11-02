@@ -342,5 +342,3 @@
     - Typestate is Rust-only
       - Compile-time prerequisites in Rust; boot-time in TS/Py
       - Both produce EConfig with identical structure
-      - No TS/Py compile-time gymnastics; no recursive generics, no PEP 695
-        - intersections

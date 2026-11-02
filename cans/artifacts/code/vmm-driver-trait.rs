@@ -294,13 +294,8 @@ pub trait VmmDriver: Send + Sync {
     /// the driver executes `action` (Reboot / Terminate)
     async fn set_watchdog(&mut self, timeout: Duration, action: WatchdogAction) -> Result<(), VmmError>;
 
-    /// Yields raw duplex channel to the Transport backend multiplexer
-    /// (SPSC rings primary; AF_VSOCK / named-pipe fallback). The port
-    /// argument is the transport identifier (5252, retained, carries
-    /// Control 0x0000 and Stream Mux 0x0001, not an OS socket number).
-    /// Method name kept for compatibility; it does not imply AF_VSOCK
-    /// semantics.
-    fn vsock_connect(&self, port: u32) -> Result<tokio::net::UnixStream, VmmError>;
+    /// Yields raw duplex channel to the Transport backend multiplexer.
+    fn transport_connect(&self, channel_id: u32) -> Result<tokio::net::UnixStream, VmmError>;
 
     /// Terminates hypervisor instance and releases memory allocations
     async fn terminate(&mut self) -> Result<(), VmmError>;

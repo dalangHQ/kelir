@@ -5,7 +5,7 @@
 //!
 //! Cargo.toml:
 //!   [dependencies]
-//!   kelir = { version = "3.0", features = ["profile"] }
+//!   kelir = { version = "1.0", features = ["profile"] }
 //!   tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 use kelir::Sandbox;

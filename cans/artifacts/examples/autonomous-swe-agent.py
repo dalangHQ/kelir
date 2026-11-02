@@ -8,7 +8,7 @@ TypeScript transliteration. Subsystem demos live in hook-matrix.py
 and policy-matrix.py.
 
 Requirements:
-    kelir>=3.0          (PyO3 bindings; 5 native planes + domain plugins)
+    kelir>=1.0          (PyO3 bindings; 5 native planes + domain plugins)
     pydantic>=2.6
     blake3>=0.4
 """
@@ -185,8 +185,7 @@ class RepoPolicyPlugin(BasePlugin):
             )
         return Verdict.pass_()
 
-    # Disclosure is no longer a ConsoleInterposer hook (aa0e011): host
-    # mutations publish TerminalNotice to the EventBus and the native
+    # Host mutations publish TerminalNotice to the EventBus; the native
     # terminal plane formats the notice. This helper supplies the
     # repo-policy annotation, delivered via terminal.notice.
     async def disclosure_annotation(self) -> bytes:
@@ -656,8 +655,7 @@ async def main() -> None:
 # 7. ORACLE — user-supplied post-condition verification engine
 # ============================================================================
 
-# Example-local evaluator, not a core trait: 03/08 deleted the core
-# Oracle contract in aa0e011. UserOracle is a plain class here.
+# Example-local evaluator, not a core trait. UserOracle is a plain class.
 @dataclass
 class IntentAnalysis:
     is_hypothesis_valid: bool

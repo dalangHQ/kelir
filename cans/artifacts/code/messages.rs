@@ -1,6 +1,6 @@
 // crates/kelir-interface/src/protocol.rs
 //
-// All wire messages exchanged over transport port 5252 (retained).
+// All wire messages exchanged over transport port 5252.
 // 5252 is a transport identifier, not an AF_VSOCK port: the Transport
 // backend carries it (shared-memory SPSC rings primary; AF_VSOCK on
 // Linux/macOS and named pipes on Windows as debug fallbacks).
@@ -73,14 +73,14 @@ pub enum GuestToHost {
     Heartbeat(Heartbeat),
 }
 
-/// Version negotiation on Control transport 0x0000 initialization. Host and guest
-/// exchange Handshakes; negotiated_capabilities = host.capabilities &
-/// guest.capabilities. A missing mandatory feature bit aborts with
-/// E_INCOMPATIBLE_SHIM_VERSION; a missing optional bit disables that
-/// interposer path gracefully. Min version 0x04; no downgrade path.
+/// Handshake validation on Control transport 0x0000 initialization.
+/// Handshake validates version == 0x01; mismatches reject with
+/// E_INCOMPATIBLE_SHIM_VERSION. negotiated_capabilities =
+/// host.capabilities & guest.capabilities. A missing mandatory feature
+/// bit aborts; a missing optional bit disables that interposer path.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Handshake {
-    pub version: u16, // 0x04
+    pub version: u16, // 0x01
     pub capabilities: u64,
 }
 

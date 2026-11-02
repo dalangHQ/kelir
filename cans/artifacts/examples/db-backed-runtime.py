@@ -16,7 +16,7 @@ Commit:     two-phase commit around the snapshot export — on_pre_commit
             staging and drops the broker upper file and tombstones.
 
 Requirements:
-    kelir>=3.0
+    kelir>=1.0
     pydantic>=2.6
 """
 

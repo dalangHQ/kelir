@@ -42,11 +42,11 @@
       "cans/_adr",
       "cans/_collab",
       "cans/_tasks",
-      "cans/AGENTS.md",
-      "cans/artifacts/code",
-      "cans/artifacts/config",
-      "cans/artifacts/diagrams",
-      "cans/artifacts/examples",
+ //     "cans/AGENTS.md",
+ //     "cans/artifacts/code",
+ //     "cans/artifacts/config",
+ //     "cans/artifacts/diagrams",
+ //     "cans/artifacts/examples",
         "cans/artifacts/taxonomy.html"
     ]
   },

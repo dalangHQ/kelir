@@ -2,9 +2,9 @@
 │                           KELIR INGESTION ADAPTERS                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 1. TRI-NATIVE FIRST-CLASS SDKs:                                             │
-│    - Rust: Direct in-process crate linkage (`kelir = "3.0"`)                │
+│    - Rust: Direct in-process crate linkage (`kelir = "1.0"`)                │
 │    - TypeScript: Fully typed runtime builder (`@kelir/core`)                │
-│    - Python: Native async hypervisor engine (`kelir>=3.0` via PyO3)         │
+│    - Python: Native async hypervisor engine (`kelir>=1.0` via PyO3)         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 2. MODEL CONTEXT PROTOCOL (MCP):                                            │
 │    - In-process `plugin-mcp` connects Claude Desktop/Cursor to VirtIO rings.│

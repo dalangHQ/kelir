@@ -142,5 +142,8 @@ parity: build-ts
 # build-shim is not in this chain: shim has its own CI gate and its
 # own time budget. check-plugin-all is not here: parity already runs
 # the same per-plugin audit. Lint is a target, not an inline body.
-pre-flight: check-hygiene check-spec check-layers check-graph check-tiered check-budgets lint typecheck parity
+pre-flight: check-canon check-hygiene check-spec check-layers check-graph check-tiered check-budgets lint typecheck parity
+
+check-canon:
+    ./scripts/check-canon.sh
     just test-all

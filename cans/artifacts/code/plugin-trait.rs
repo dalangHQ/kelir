@@ -43,9 +43,9 @@ pub enum PtyControlMessage {
 /// with a JSON receipt.
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {
-    // BufferCeilingExceeded removed: FUSE driver chunks writes at the
-    // 64KB boundary before interception. on_fs_write sees one chunk per
-    // call. Guest write() never fails on host buffer size.
+    // FUSE driver chunks writes at the 64KB boundary before interception.
+    // on_fs_write sees one chunk per call. Guest write() never fails on
+    // host buffer size.
     /// Host event loop or foreign runtime thread starvation detected.
     #[error("Foreign FFI channel saturated: worker queue depth exceeded ({depth})")]
     FfiQueueSaturated { depth: usize },
