@@ -9,7 +9,7 @@
       - In-process microkernel
         - Execution substrate
           - Virtualization runs in host consumer memory via direct C-FFI
-          - Core owns four native engine planes: Terminal, Storage, Wire, and Checkpoint
+          - Core owns five native engine planes: Terminal, Storage, Wire, Checkpoint, Host
           - Hardware backends: driver-rustvmm, driver-hvf, driver-openvmm, driver-avf
           - No dockerd, containerd, background root socket, daemon maintenance
         - Fallback policy
@@ -82,7 +82,7 @@
           - Polymorphism over conditionals: static trait dispatch over `match` branches
         - State invariants
           - Absolute idempotency: rollback and stream replay produce bitwise identical states
-          - High cohesion, loose coupling: four planes share zero state outside rings
+          - High cohesion, loose coupling: five planes share zero state outside rings
           - POSIX integrity: standard errnos, isolation, and limits never bypassed
         - Execution style
           - Native-first execution: kernel ioctls and syscalls direct; wrappers banned
@@ -126,7 +126,7 @@
       - Dual-plane execution details: see: 02-plugin-model.md#Dual-plane-execution-architecture
       - Owns crate, tests, fixtures, examples: see: 02-plugin-model.md#Plugin-ownership
     - Boundary decision test
-      - Core plane (Terminal, Storage, Wire, Checkpoint)? → engine primitive
+      - Core plane (Terminal, Storage, Wire, Checkpoint, Host)? → engine primitive
       - Backend driver contract? → interface
       - Wire contract with a process boundary? → adapter binary
       - Optional protocol proxy, governance, or domain aggregator? → plugin
@@ -198,6 +198,13 @@
     - Channel multiplexing logic is identical across all OS targets
     - Host OS containment and path resolution divergence hides at the storage driver boundary
     - Plugin and channel semantics are identical across targets
+  - Host plane subsystem
+    - Owner: kelir-core native host subsystem (kelir-core::host)
+    - Physical anchor: host kernel boundaries (eBPF/LSM, cgroup v2, keyrings)
+    - HostInterposer pipeline executes synchronous native checks before ring transit
+    - Gate budget: HostInterposer evaluation bounded to <2µs in native memory
+    - Security boundary: zero ambient host privilege expansion permitted
+    - Physicality invariant: decorative or non-enforceable host hooks reject at boot
   - Trust boundaries
     - Guest TLS sessions are end-to-end between workload and peer
       - Host does not terminate TLS by default

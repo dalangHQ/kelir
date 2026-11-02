@@ -1,7 +1,7 @@
 //! examples/autonomous-swe-agent.rs
 //!
 //! Composition example: chaos + ledger + repo-policy custom plugin,
-//! chained across terminal / storage / wire / checkpoint planes.
+//! chained across terminal / storage / wire / checkpoint / host planes.
 //! Subsystem demos live in git-gate.rs, hook-matrix.rs,
 //! policy-matrix.rs.
 //!

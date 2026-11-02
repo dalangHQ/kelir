@@ -1,6 +1,6 @@
 - Plugin model
   - Plugin tiering
-    - Foundation: Terminal, Storage, Wire, and Checkpoint are native engine planes in kelir-core
+    - Foundation: Terminal, Storage, Wire, Checkpoint, and Host are native engine planes
     - Tier 1 base transports and channel adapters
       - plugin-mcp: JSON-RPC MCP console channel adapter
       - plugin-mesh: vsock IPC sovereign federation peer transport
@@ -84,6 +84,7 @@
           - PTY (Port 0) path unchanged; exec path uses exec_id rather than port
         - FsInterposer: fs lookup, read, write; synchronous hot path
         - NetInterposer: net outbound, net inbound; synchronous hot path
+        - HostInterposer: host lsm exec, host pressure, host keyring; sync hot path
       - Identity markers
         - AnyPlugin: identity marker for any KelirPlugin (fork/composite)
       - Dispatch cost model
@@ -92,7 +93,7 @@
         - Unused rings cost zero vtable lookups
     - Unified verdict
       - Every interposer hook returns the same engine-level `Verdict`
-      - One enum across Trap, Fs, Net, Console, Exec, MCP, and DB rings
+      - One enum across Trap, Fs, Net, Host, Console, Exec, MCP, and DB rings
       - Variants
         - Verdict::Pass = proceed untouched
         - Verdict::Patch(payload) = in-place mutation; payload schema per ring
@@ -134,7 +135,7 @@
     - Hook return semantics
       - Every hook returns Verdict; no per-ring aliases
       - on_fs_lookup → Verdict::Pass = fall through; Patch(attr) = serve
-      - on_fs_write / on_net_outbound / on_net_inbound → Verdict
+      - on_fs_write / on_net_outbound / on_net_inbound / on_host_exec → Verdict
       - Trap hooks → Verdict; ring-specific defaults documented per plane
   - Declarative error mapping
     - Host exceptions map directly to POSIX errnos via builder error registry
@@ -228,6 +229,7 @@
     - Scoped domain contexts:
       - FsContext: scoped to virtio-fs operations (inode, path, journal)
       - NetContext: scoped to virtio-net operations (L2 frame, L4 stream, socket)
+      - HostContext: scoped to host OS operations (lsm event, host pid, key)
       - ConsoleContext: scoped to virtio-console operations (PTY, grid, window)
       - ExecContext: scoped to EXEC stream kind ops
         - Carries pid, exec_id, stream_id (stdout|stderr), chunk, rlimits

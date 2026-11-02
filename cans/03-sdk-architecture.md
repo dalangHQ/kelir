@@ -53,8 +53,9 @@
           - .intercept(Ring.NetOutbound, handler) for ring interception
           - .trap(TrapFilter::default(), handler)
         - Native Engine Planes on Session
-          - Core Session directly exposes the 4 planes
-          - session.terminal, session.storage, session.wire, session.checkpoint
+          - Core Session directly exposes the 5 planes
+          - session.terminal, session.storage, session.wire, session.checkpoint, session.host
+          - Host: session.host.lsm_status(), session.host.pressure_level()
           - Terminal: session.terminal.resize(120, 40), export_screen_matrix()
             - Replay: session.terminal.read_from(port, offset) -> (Vec<u8>, next_offset)
           - Storage: session.storage.reconcile(), session.storage.discard()
@@ -178,10 +179,11 @@
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
     - .plugin() accepts core KelirPlugin plus only needed ring traits
     - Ring traits: LifecycleParticipant, TrapInterposer, ConsoleInterposer
-    - FsInterposer and NetInterposer are synchronous hot-path traits
+    - FsInterposer, NetInterposer, and HostInterposer are sync hot-path traits
     - AnyPlugin: identity marker for any KelirPlugin, not a capability bundle
     - Example trait bounds follow the split; unneeded traits stay unimplemented
     - .trap(matcher, handler): pre-exec gate; dual pre/post handler also supported
+    - .intercept_host(filter, handler): synchronous native host security filter
     - .intercept_storage(pathGlob, handler): synchronous native storage write filter
     - .on_vm_ready(handler): session callback; .boot().await seals and boots
     - Inter-plugin capabilities resolve via c.ctx::<T>() where Plugins: Has<T>;

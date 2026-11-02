@@ -145,7 +145,7 @@
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
       - Upstream dependencies: see: 02-plugin-model.md#Plugin-tiering
-      - Core planes (terminal, storage, wire, checkpoint) execute under test-core
+      - Core planes (terminal, storage, wire, checkpoint, host) execute under test-core
     - Matrix job: plugin-audit
       - Each cell runs `kelir-plugin-cli check -p plugin-<name>`
       - Same contract audit `just check-plugin` runs locally

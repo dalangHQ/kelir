@@ -8,7 +8,7 @@ TypeScript transliteration. Subsystem demos live in hook-matrix.py
 and policy-matrix.py.
 
 Requirements:
-    kelir>=3.0          (PyO3 bindings; 4 native planes + domain plugins)
+    kelir>=3.0          (PyO3 bindings; 5 native planes + domain plugins)
     pydantic>=2.6
     blake3>=0.4
 """

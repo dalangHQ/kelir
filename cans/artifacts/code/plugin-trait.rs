@@ -196,6 +196,7 @@ pub trait PipelineBinder {
     fn bind_net(&mut self, stage: Arc<dyn NetInterposer>);
     fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>);
     fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>);
+    fn bind_host(&mut self, stage: Arc<dyn HostInterposer>);
 }
 
 /// Binds non-blocking observers to the immutable telemetry bus.
@@ -385,6 +386,12 @@ pub trait NetInterposer {
     fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
     /// Synchronous L2 inbound inspection.
     fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+}
+
+pub trait HostInterposer {
+    fn on_host_lsm_exec(&self, _path: &Path, _pid: u32) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    fn on_host_pressure(&self, _level: u32) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    fn on_host_keyring_access(&self, _key: &str) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
 }
 
 /// Identity marker for any plugin object: core identity only.

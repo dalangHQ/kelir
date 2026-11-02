@@ -61,6 +61,7 @@ use kelir::{
         AnyPlugin, KelirPlugin, PluginError,
         FsInterposer, Verdict, ConsoleInterposer,
         TrapInterposer, SystemTelemetryParticipant,
+        HostInterposer,
         WatchdogEvent, WatchdogVerdict,
         NetInterposer,
     },
@@ -239,6 +240,18 @@ impl FsInterposer for HookMatrixPlugin {
     fn on_fs_write(
         &self, _path: &Path, data: &[u8], _pid: u32, _ctx: &HandlerCtx,
     ) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+}
+
+impl HostInterposer for HookMatrixPlugin {
+    fn on_host_lsm_exec(&self, _path: &Path, _pid: u32) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+    fn on_host_pressure(&self, _level: u32) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+    fn on_host_keyring_access(&self, _key: &str) -> Result<Verdict, PluginError> {
         Ok(Verdict::Pass)
     }
 }

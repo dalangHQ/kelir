@@ -19,7 +19,7 @@ kelir/
 │   ├── kelir/                         # Facade crate: single Cargo dependency re-exporting kelir-core + feature-gated kelir-plugins/*
 │   │   ├── Cargo.toml
 │   │   ├── src/
-│   │   │   └── lib.rs                 # Re-export surface: kelir-core API (4 native planes) + optional feature-gated plugins
+│   │   │   └── lib.rs                 # Re-export surface: kelir-core API (5 native planes) + optional feature-gated plugins
 │   │   └── tests/                     # Facade integration tests only (zero tests in src/)
 │   │
 │   ├── kelir-interface/               # Centralized leaf traits, wire framing, and context types (zero engine dependencies)
@@ -42,6 +42,7 @@ kelir/
 │   │       │   ├── terminal/          # Terminal Plane: virtio-console, VT100 grid, ANSI sanitizer, PTY discipline
 │   │       │   ├── storage/           # Storage Plane: virtio-fs, host CoW broker, reconciler, tombstones, synthetic inodes, flock broker
 │   │       │   ├── wire/              # Wire Plane: virtio-net, userspace smoltcp ingress ring, DNS policy filter + synthetic gateway, connection parking
+│       │   ├── host/              # Host Plane: eBPF/LSM hooks, cgroup v2 pressure, host keyring mediation
 │   │       │   └── checkpoint/        # Checkpoint Plane: Step verification loop, CoW diffs, hardware rollback
 │   │       ├── bus/                   # VirtIO Device Multiplexer (vsock, console, fs, net) over kelir-transport
 │   │       ├── dispatch.rs            # Static dispatch array & ArcSwap pipeline runner

@@ -26,7 +26,7 @@
     - Bayang: shadow cast by the puppet onto the screen, observed by the audience
   - What it is
     - Embeddable in-process microVM hypervisor microkernel
-    - Four integrated engine planes: terminal, storage, wire, checkpoint
+    - Five integrated engine planes: terminal, storage, wire, checkpoint, host
     - Mediates guest interaction through paravirtual VirtIO Device Complex
     - Cold-boot budget: see: 01-architecture.md#Boot-budget
     - Definition details: see: 01-architecture.md#Axiomatic-foundations
@@ -76,6 +76,7 @@
     - Storage plane: see: 05-storage-plane.md (engine native)
     - Storage catalog: see: 06-storage-catalog.md (catalog ledger)
     - Wire plane: see: 07-wire-plane.md (engine native)
+    - Host plane: host OS hooks — see: 01-architecture.md#Host-plane-subsystem
     - Lifecycle: see: 08-lifecycle.md (checkpoint engine)
     - Snapshots & archives: see: 09-snapshots.md (portable state)
     - Attestation subsystem proofs: see: 10-attestation.md

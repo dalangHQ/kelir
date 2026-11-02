@@ -23,6 +23,6 @@ AOT hook fusion: NAPI/PyO3 pipeline handlers fuse to one native closure per even
 Typed enum compilation: LifecycleEvent, Ring, and TrapFilter values are checked
 at compile time in Rust and TypeScript and at import time in Python; string
 event names are not accepted dispatch keys in any language.
-Session architecture: The 4 native planes (terminal, storage, wire, checkpoint)
+Session architecture: The 5 native planes (terminal, storage, wire, checkpoint, host)
 are directly accessible on Session; optional domain plugins attach via extensions.
 Panic quarantine: All SDK handler dispatches wrap in catch_unwind at the engine perimeter.

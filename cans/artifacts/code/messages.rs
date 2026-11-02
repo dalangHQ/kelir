@@ -120,7 +120,7 @@ pub enum HostToGuest {
 }
 
 /// Unified verdict (02-plugin-model, 11-protocol): one enum across
-/// Trap, Fs, Net, Console, Exec, MCP, and DB rings. No per-ring aliases.
+/// Trap, Fs, Net, Host, Console, Exec, MCP, and DB rings. No per-ring aliases.
 /// Method mapping: Pass = c.pass(), Patch = c.patch(mutation),
 /// Drop = c.drop(errno, reason), Suspend = c.suspend(until),
 /// Abort = c.abort(reason).
