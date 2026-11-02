@@ -3,75 +3,58 @@
     - Plugin identifier: plugin-vault
     - Owner crate: crates/kelir-plugins/plugin-vault
     - name() = "vault"
-    - Tier 2 governance and protocol proxy (vault)
+    - Tier 2 governance (vault)
     - Depends on (vault): kelir-interface only
-    - Exposes: VaultService
+    - Exposes: CredentialBrokerService
     - VirtIO device attachment (vault): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (vault): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (vault)
-    - Exports VaultService through PipelineBinder for secret resolution and redaction
+    - Exports CredentialBrokerService via PipelineBinder for scoped token issuance
   - Invariants and policy (vault)
-    - Single source of truth for secret handling
-      - Compiles unified Aho-Corasick automaton across all registered host secrets
-      - Shared across native Storage, Wire, and Terminal planes
-      - Enforces vault:// placeholder URN generation: real secrets never enter guest physical RAM
-    - Cross-plane interposer attachments
-      - Implements FsInterposer::on_fs_read for stream secret redaction
-      - Maintains carryover window of MAX_PLACEHOLDER_LEN - 1 bytes across chunks
-      - Implements ConsoleInterposer::on_console_output for terminal stream scrubbing
-      - Implements ConsoleInterposer::on_exec_stdout and on_exec_stderr
-        - Scrubs Channel 0x0003 stdout/stderr byte streams
-        - Uses same Aho-Corasick automaton and carryover window
-      - Operates explicit L7 proxy stage on wire plane transparent L4 diversion hooks
-      - Injects ephemeral session root CA into guest trust store at on_vm_ready
-      - Forces runtime CA environment variables across all spawned task contexts:
-        - SSL_CERT_FILE, NODE_EXTRA_CA_CERTS, REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE
-      - Mounts synthetic FUSE inodes over site-packages certifi bundles
-    - L7 proxy stage
-      - Host terminates outbound TLS for secret-bound hosts
-      - Ephemeral per-session CA minted by host runtime at on_vm_ready
-      - CA injected via trust store, env pointers, and synthetic FUSE overrides
-      - Plaintext HTTP request/response is the substitution surface
-      - Mandatory auth header lockdown on all secret-bound destination hosts
-      - Non-placeholder authentication headers reject instantly with ESecurityViolation
-      - Prevents model context exfiltration using attacker-supplied personal API keys
-      - Header substitution: by binding field name (Authorization, X-API-Key, ...)
-      - Body substitution: form-encoded, JSON, and text bodies up to 16 MiB
-        - Ceiling is fail-closed: bodies exceeding 16 MiB to secret-bound hosts
-        - reject immediately with ESecurityViolation(E_PAYLOAD_TOO_LARGE)
-      - Query string decoded and scanned by the same Aho-Corasick automaton
-        - before the HTTP request line forwards upstream
-      - Streaming bodies reassembled with MAX_PLACEHOLDER_LEN - 1 carryover window
-      - Eliminates pattern fragmentation across TCP frames and chunked transfers
-      - Content-Length recomputed; chunked bodies re-encoded with fresh sizes
-      - Normalizes guest HTTP/2 into semantic HTTP/1.1 request structures in host RAM
-      - Substitutes headers and bodies before re-encoding for upstream TLS/H2 session
-      - Eliminates in-flight HPACK dynamic table surgery and stream frame desync
-      - No byte-slice substitution on raw L4 streams
-      - Host proxy opens a fresh upstream TLS session and forwards the mutated request
-      - Plain HTTP (port 80) uses the same substitution path without TLS
-      - Secret bytes never exist in guest physical RAM, guest VFS, or VirtIO rings
-    - CA lifecycle
-      - Ephemeral session CA minted at on_vm_ready for fresh sessions
-      - Snapshot restore hydrates recorded ca_cert/ca_key from .kelir-snap
-      - Missing vault in lineage or fingerprint mismatch aborts boot
-      - Abort code E_RESTORE_TLS_MISMATCH
-    - Opaque tunnel bypass
-      - Protocol demotion: Upgrade: websocket or completed CONNECT handshake
-        - transitions the stream to OpaqueTunnel state
-      - OpaqueTunnel skips Aho-Corasick and substitution entirely
-      - Socket pair delegates to kernel zero-copy splice
-        - splice on Linux, direct ring copy on macOS
+    - Out-of-band credential brokerage
+      - Host keyring is the sole secret store; secrets never enter guest memory
+      - In-guest metadata service issues scoped, short-lived credentials on demand
+        - Guest-visible endpoint: virtio-vsock 169.254.169.254 equivalents:
+        - http://169.254.169.254/kelir/credentials/<name> (HTTP over vsock)
+        - Response body: { token, ttl_seconds, scope, audience }
+      - Token TTL default 60s; configurable to 900s ceiling
+      - Scope is the declared MountScope capability from the builder profile
+      - Audience is the destination host pattern (e.g. api.openai.com)
+      - Token is a signed opaque bearer; host keyring never exposed raw
+      - No in-process TLS MITM; no host-side CA; no HTTP body rewriting
+    - Credential types
+      - Bearer token (Authorization: Bearer <token>)
+      - Signed request V4 (AWS SigV4, GCP SA JWT, Azure AAD)
+      - mTLS client cert (short-lived cert + key pair, PEM bundle)
+      - Each type has a declared issuer backend (host keyring entry kind)
+      - Issuance is fail-closed: unregistered name → ENODATA; expired scope → EPERM
+    - Guest integration
+      - Zero SDK required; workload fetches over plain HTTP from metadata service
+      - Common language runtime helpers ship as userland libraries, not engine
+      - vault:// placeholder in profiles resolves to a metadata path at boot
+      - Guest cert store is untouched; no CA injection
+      - Guest env vars are workload-owned; no forced CA env pointers
+    - Optional external egress rewriting
+      - Not the default; the default is metadata-broker-only
+      - Selected via vault.external_egress = { kind: "envoy" | "squid", ... }
+      - Sidecar process owns TLS termination, HTTP rewriting, and secret
+        - substitution; runs outside the supervisor binary
+      - Wire plane forwards marked egress through the sidecar via L4 diversion
+      - Supervisor memory never sees plaintext secrets or HTTP bodies
+      - Required only when a workload cannot fetch tokens itself (legacy HTTP-only,
+        - no ability to set Authorization headers)
     - Memory isolation and zeroization
-      - Host secret memory pinned with mlock(2) to prevent swapping to disk
-      - Memory zeroed using explicit volatile writes upon session termination or drop
-      - Plaintext buffers at the L7 proxy stage are zeroized after each request
-        - or response is forwarded; no plaintext lingers across connections
-    - Out-of-band secret resolution
-      - Host-side forward proxy resolves vault:// placeholders against secure host keyring
-      - Ephemeral per-session CA certificates injected into guest trust stores transparently
+      - Host keyring memory pinned with mlock(2); excluded from swap
+      - Issued token buffers zeroized on drop; TTL expiry revokes host-side
+      - No plaintext token lingers in the supervisor after issuance returns
+    - Revocation
+      - Session terminate revokes all outstanding tokens for that session
+      - Token validation is host-side; guest cannot forge or replay post-revoke
   - Error and return semantics (vault)
     - Hook signature (vault): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (vault)
-      - Plaintext secret detected in guest-to-host trap event rejects with ESecurityViolation
-      - Unresolvable placeholder URN returns ENODATA
+      - Unregistered credential name → ENODATA
+      - Credential name outside declared scope → EPERM
+      - Audience mismatch → EACCES
+      - TTL request above ceiling → EINVAL
+      - Metadata service request from non-session vsock peer → ECONNREFUSED

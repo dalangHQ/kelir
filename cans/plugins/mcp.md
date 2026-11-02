@@ -8,7 +8,9 @@
     - Exposes: McpEndpointService
     - VirtIO device attachment (mcp): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mcp): see: 08-lifecycle.md#Lifecycle-vetoes
-    - Binds to virtio-console port named "kelir-mcp" (/dev/virtio-ports/kelir-mcp)
+    - Registers stream kind MCP_CONSOLE on the mux
+      - Kind 0x0012; see: 11-protocol.md#Control-channel
+      - Guest shim exposes /run/kelir/mcp.sock to the guest MCP server
   - Service exports (mcp)
     - Exports McpEndpointService via PipelineBinder for JSON-RPC transport routing
   - Invariants and policy (mcp)
@@ -21,17 +23,16 @@
       - on_trap: observe syscalls to correlate execute_command with trap
       - on_process_exit: emit MCP task completion events
     - Mapping (external tool → ring op)
-      - execute_command → routed through Channel 0x0003 (binary-exec)
+      - execute_command → routed through stream kind EXEC
         - Streams stdout/stderr via separate stream_ids
         - No PTY wrap; no ANSI escape noise
         - Interactive terminal attach (break-glass) still uses PTY / Port 0
-      - read_file → delegates to native Storage Plane overlay reader
-      - write_file → delegates to native Storage Plane overlay writer
-    - Composes with plugin-chaos, plugin-ledger, and native Terminal/Wire planes
+      - read_file → delegates to native Storage Plane broker reader
+      - write_file → delegates to native Storage Plane broker writer    - Composes with plugin-chaos, plugin-ledger, and native Terminal/Wire planes
     - Composes with plugin-tool-guard: tool-guard sits upstream on the MCP console port
-    - Port multiplexing routes its console port directly to MCP client without PTY conflict
+    - Stream kind MCP_CONSOLE routes directly to MCP client without PTY conflict
     - MCP contract
-      - Transport: JSON-RPC 2.0 over its virtio-console port
+      - Transport: JSON-RPC 2.0 over MCP_CONSOLE mux stream
       - Framing: JSON Lines; one object per \n, no Content-Length
       - Max frame: 64 KB; larger split via FLAG_CONTINUATION
   - Error and return semantics (mcp)

@@ -39,6 +39,8 @@
           - delta_root: [u8; 32] (StorageDelta modified inode tree root)
           - timestamp_ns: u64 (host wall-clock timestamp)
           - signature: [u8; 64] (Ed25519 signature by host session key)
+        - No PMU samples appear in any leaf
+          - Determinism comes from logical trace, seeded RNG, frozen clock
         - Merkle Hashing: RFC 6962 rules using BLAKE3:
           - Leaf: BLAKE3(0x00 || record_bytes)
           - Node: BLAKE3(0x01 || left_child || right_child)

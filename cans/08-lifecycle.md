@@ -12,7 +12,7 @@
           - Entered via `session.drain(timeout_ms)`
           - In `Draining`: new exec and tool calls are refused with EBUSY
           - In-flight commands run to natural completion
-          - Storage buffers are flushed; Merkle WAL closed cleanly
+          - Storage buffers and active ledger sinks flushed cleanly
           - On completion or timeout, transition to Terminated
           - On timeout, in-flight work is terminated with SIGTERM, then SIGKILL
           - Preserves finished work in CI/CD pipelines and long agent chains
@@ -87,21 +87,45 @@
   - Rollback
     - Pre-condition invariant: Rollback is prohibited while vCPUs hold unreleased syscall traps
     - Attempting rollback on a frozen syscall trap aborts with E_INVALID_LIFECYCLE_STATE
-    - Two-phase execution boundary
-      - 1. Storage reset: Session::rollback() truncates the sparse host-backed
-        - upperdir file and punches holes (FALLOC_FL_PUNCH_HOLE)
-      - 2. Hardware reset: driver.rollback(&snapshot) resets physical RAM
+    - State boundary (rollback covers compute + disk, not remote state)
+      - Rollback resets: vCPU registers, guest RAM, broker upper file,
+        - tombstones, session-local RNG position, virtual clock position
+      - Rollback preserves: host workspace, host Merkle WAL,
+        - external network peer state, issued credential tokens (revoked),
+        - host keyring, in-flight upstream sockets
+    - Network truth
+      - All L4 host-side sockets for the session are closed immediately
+      - TCP peers receive a clean FIN or RST depending on shutdown path
+      - Guest observes ECONNRESET on next read or EPIPE on next write
+      - WebSocket, HTTP/2, and gRPC connections are terminated the same way
+      - No proxy-level socket reconnection protocol exists in core
+      - Workloads that need transparent reconnection must implement it above L4
+    - Credential truth
+      - plugin-vault revokes all outstanding tokens on rollback
+      - Workload must re-fetch credentials from the metadata service
+    - Three-phase execution boundary
+      - 1. Network quiesce: cancel in-flight L4 streams, emit RST to peers,
+        - drain wire-plane splicing buffers, drop UDP NAT entries for session
+      - 2. Storage reset: broker drops upper file and tombstones;
+        - FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on the sparse upper
+      - 3. Hardware reset: driver.rollback(&snapshot) resets physical RAM
         - and vCPU registers in <8ms
       - HVF path: resets Stage-2 translation table roots to snapshot base
       - KVM path: restores userfaultfd memory tracking to checkpoint slot
     - Host SSD workspace and host-side Merkle WAL remain completely untouched
+    - Sockets are not part of the snapshot; they are never restored
     - Veto: Rollback (observation)
       - Cannot be vetoed; rollback is the recovery action
       - Use for ledger/trace of recovery events
+    - Anti-claims
+      - Rollback drops all active TCP connections
+      - Rollback invalidates existing TLS sessions and certificate leases
+      - Rollback ignores external peer network state
+      - Rollback omits cycle-exact replay for remote network I/O
   - Pre-teardown flush
     - Termination has two modes: graceful (default) and abrupt (kill)
     - Graceful path
-      - Host issues MSG_SHUTDOWN_REQUEST{timeout_ms} on Channel 0x0000
+      - Host issues MSG_SHUTDOWN_REQUEST{timeout_ms} on Control 0x0000
         - Default timeout: 10s; caller-tunable
         - timeout_ms=0 skips graceful and jumps to abrupt
       - kelir-shim issues syncfs(2) across all VFS mounts
@@ -130,7 +154,7 @@
       - Restores registers and memory
       - Resumes at exact cycle boundary
       - Host samples CLOCK_REALTIME and dispatches a paravirtual clock
-        - update frame over Channel 0x0000
+        - update frame over Control 0x0000
       - kelir-shim issues clock_settime(CLOCK_REALTIME) before unfreezing
         - cgroups or releasing trapped tasks
       - Guest time snaps forward instantly after multi-day suspension
@@ -142,11 +166,6 @@
       - Suspend false → ESessionVeto; host RAM not flushed
       - Resume fires before primitive; return value ignored
       - Note: on_vm_ready does not re-fire on resume
-    - Snapshot CA hydration
-      - .kelir-snap carries encrypted ca_cert + ca_key under session key
-      - vault restores exact recorded CA on resume; fingerprint mismatch aborts
-      - E_RESTORE_TLS_MISMATCH fires before any vCPU cycle
-      - Fresh boot without snapshot mints a new CA at on_vm_ready as usual
     - Typical use: waiting for human approval with zero host CPU cost
     - Mobile and SBC use: full RSS deallocation under Android LMK memory pressure
     - Flash preservation: sparse upperdir backing file may be placed on a
@@ -155,6 +174,7 @@
     - External suspension
       - Triggered by SuspendReason::External(u32) awaiting out-of-band release
       - Resume executes cycle-exact upon external release signal
+      - Release signal arrives on Control 0x0000
   - Elastic compute
     - Guest kernel boots with maxcpus=N; configured count online at boot
     - Scale up: hypervisor unparks host vCPU threads; shim writes
@@ -236,7 +256,7 @@
     - Problem: guest clock stalls on lid close
     - Solution
       - Listen to host power events: IOPMrootDomain (macOS), systemd-logind (Linux)
-      - Dispatch paravirtual clock resync frame over Channel 0x0000; see: #Suspend-and-resume
+      - Dispatch paravirtual clock resync frame over Control 0x0000; see: #Suspend-and-resume
       - Guest time snaps to host wall-clock in 0ms; prevents wake TLS failure
       - Fork inherits the parent's guest clock at fork instant; children diverge
         - monotonically from that point
@@ -255,13 +275,13 @@
     - Platform coverage
       - Linux: PR_SET_PDEATHSIG (kernel-enforced)
       - macOS: kqueue NOTE_EXIT + heartbeat pipe
-      - Windows: Job Object KILL_ON_JOB_CLOSE
+      - Windows: Job Object assigning KILL_ON_JOB_CLOSE
       - Android: PR_SET_PDEATHSIG + LMK preempt window
   - Detached lifecycle
     - Affine builder flag .detached(true) spawns a dedicated runtime child
     - The CLI never manages VM memory directly in detached mode
     - Runner ownership is explicit
-      - The spawning process inserts an active row into SQLite sessions table
+      - The spawning process inserts a row with lease_kind='lease'
       - Row carries session_id, runner child pid, and expires_at lease TTL
       - Linux signaling uses pidfd_open and pidfd_send_signal exclusively
       - Signal delivery verifies host_boot_id and proc start_time before dispatch
@@ -291,41 +311,26 @@
       - No fixed TTL terminates an active guest; the lease only proves
         - liveness, it does not impose a deadline
       - Explicit stop, drain, or remove is the only path to termination
-    - No resident daemon
-      - Default sessions retain PR_SET_PDEATHSIG / kqueue / Job Object reaping
-      - Detached sessions have no PDEATHSIG; the SQLite lease replaces it
+    - Liveness
+    - Every session row registers lease_kind = 'ephemeral' | 'lease'
+    - Ephemeral: OS-native reap on parent death; no lease TTL
+      - PR_SET_PDEATHSIG, kqueue NOTE_EXIT, Job Object on parent exit
+    - Detached: SQLite lease TTL; no OS-native reap of parent
+    - Both kinds share one row schema; the kind column selects the reaper
     - Cross-platform incarnation proof
       - Linux: pidfd + host_boot_id + proc start_time
       - macOS: kqueue NOTE_EXIT + proc_pidinfo PROC_PIDTBSDINFO start time
       - Windows: Job Object + OpenProcess + GetProcessTimes admission check
       - Any (boot_id, start_time_ns, pid) mismatch marks row Crashed; no signal
   - Break-glass
-    - Human operators need real tooling: VS Code Remote, JetBrains Gateway,
-      - rsync, sftp, multi-session shells. A raw PTY cannot satisfy these.
-    - Ephemeral SSH/SFTP subsystem
-      - In-process SSH server hosted inside the runtime (russh + russh-sftp)
-      - Listener bound to 127.0.0.1:<ephemeral> on the host
-      - Public key auth: Ed25519 keypair minted per `session.ssh()` call,
-        - public key injected to the guest over the paravirtual control channel
-      - Default user `root`; configurable via connect options
-      - SFTP subsystem on by default
-      - Port forwarded from host to guest via the vsock transport
-    - Standard tools attach transparently
-      - ssh, sftp, rsync, scp, VS Code Remote SSH, JetBrains Gateway
-      - Multiple concurrent sessions; no head-of-line blocking
-    - Endpoint lifecycle
-      - `session.ssh()` opens the endpoint; caller receives host, port,
-        - and fingerprint
-      - `close()` tears down the endpoint and invalidates the keypair
-      - Dropping the handle closes connections and unregisters the listener
-    - Interaction with draining and paused states
-      - SSH is available in Running and Draining
-      - Paused and Stopped refuse with ESSHUnavailable
-    - Coexistence with PTY break-glass
-      - Raw PTY console master remains for kernel-level recovery only
-      - Human debugging uses SSH by default
-    - Spelling: `session.ssh()` (all SDKs);
-      - `session.breakGlass()` (TS) is a deprecated alias for `session.ssh()`
+    - PTY console master (Port 0) is the sole in-process break-glass surface
+    - Exec channel (0x0003) carries programmatic break-glass commands
+    - No in-process SSH/SFTP daemon; zero russh, russh-sftp in runtime
+    - Guest workloads that need sshd ship it inside their EROFS rootfs
+    - Host operators run ssh as a subprocess against the guest sshd
+    - Interaction with lifecycle states
+      - Running and Draining: available
+      - Paused and Stopped: refuse with ESSHUnavailable
   - Wire port forwarding: details at 07-wire-plane.md#Port-forwarding
   - Zombie reaping
     - Shim runs as guest PID 1

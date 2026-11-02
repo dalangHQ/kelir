@@ -5,8 +5,13 @@
     - Hardware abstraction: virtio-net bound host-side to embedded smoltcp TCP/IP stack
     - Hook points: on_net_outbound and on_net_inbound
     - Interceptor hooks receive NetContext containing raw Ethernet frames
-  - Userspace network stack
-    - Frame termination
+    - Rollback interaction
+      - session.rollback() closes every host-side socket for the session
+      - Guest TCP stack observes RST/FIN; subsequent sends fail ECONNRESET
+      - UDP NAT slab entries for the session are dropped; no port leak
+      - Sockets are not restored from snapshots; there is no socket state to restore
+      - rollback semantics: 08-lifecycle.md#Rollback
+  - Userspace network stack    - Frame termination
       - Guest virtio-net Ethernet frames terminate directly in host process memory
       - Outbound connections translated to plain unprivileged host sockets
       - Zero host interface creation, zero CAP_NET_ADMIN, zero IP routing changes
@@ -40,10 +45,12 @@
     - on_net_inbound: hook on frames arriving at the guest
     - Ingress dispatcher checks MountScope in native memory before FFI
   - Frame drop and forward semantics
-    - Ok(Allow) on outbound = forward; Ok(Allow) on inbound = deliver
-    - Ok(YieldToHost) = yield frame to host for async policy
-    - Err(Reject) on L4 TCP = inject TCP RST or ICMP Port Unreachable into guest ingress ring
-    - Err(Reject) on L7 HTTP = synthesize 403 with machine-readable JSON receipt
+    - Verdict::Pass on outbound = forward; Pass on inbound = deliver
+    - Verdict::Suspend = yield frame to host for async policy
+    - Verdict::Drop { errno: ECONNREFUSED } on L4 TCP = inject TCP RST
+      - or ICMP Port Unreachable into guest ingress ring
+    - Verdict::Drop { errno: EACCES } on L7 HTTP = synthesize 403 JSON receipt
+    - Verdict::Drop { errno: None } discards packet without host response injection
     - Guest observes ECONNREFUSED in <1ms
     - Agent corrects action without orchestration timeout
   - DNS policy filter
@@ -90,29 +97,23 @@
   - Transparent L4 stream diversion
     - Directs guest TCP streams across VirtIO ring to designated host socket
     - Exposes raw duplex stream to registered NetInterposer proxies
-    - Protocol sniff gate: carrier inspects initial 16 bytes of diverted stream
-    - Valid HTTP verb or TLS ClientHello promotes stream to L7 proxy stage
-    - Non-HTTP byte streams bypass L7 stages with zero-copy L4 socket splicing
-    - Prevents stream stalls on Redis, NATS, and custom binary protocols
-    - Tunnel demotion
-      - Mid-stream upgrade (Upgrade: websocket) demotes to OpaqueTunnel
-      - Completed HTTP CONNECT handshake demotes to OpaqueTunnel
-      - OpaqueTunnel bypasses Aho-Corasick and substitution; splice(2) on Linux
-      - Demotion is one-way per stream; no re-promotion to L7 stages
-      - Vault-side bypass semantics: see: plugins/vault.md#Opaque-tunnel-bypass
-    - L7 interposer stage
-      - Registers as L7Interposer hooks on the L4 diversion carrier
-      - Receives normalized HTTP/1.1 frames for mutation
-      - Multiple interposers mount at distinct host:port scopes
-    - Guest TLS and plaintext payloads traverse proxy without guest stack changes
+    - Carrier is L4-only by default
+      - Bytes are relayed to the upstream host through the dial transport
+      - No protocol sniff, no L7 parsing, no HTTP rewriting in the supervisor
+      - TLS between guest and peer passes through byte-for-byte
+    - L7 interposition is off by default
+      - Enabled only when the builder mounts a NetInterposer with an L7 scope
+      - L7 scopes are declared at mount; no implicit sniff-and-promote
+      - Interposer receives reassembled stream bytes; it never terminates TLS
+    - Vault and credential flow
+      - Default path: guest fetches scoped token from plugin-vault, presents it
+      - No host-side TLS termination; no CA injection
+      - Optional external sidecar can be configured for L7 rewriting
+        - plugins/vault.md#Optional-external-egress-rewriting
+      - No `OpaqueTunnel` concept; streams are just streams
+      - There is no "demotion" because there is no promotion to demote from
     - Diverted endpoints configured via MountScope port and CIDR allowlists
-    - The carrier does not perform byte-slice substitution on L4 streams;
-      - L7 stages terminate TLS host-side and operate on plaintext HTTP
-    - Streaming payloads maintain MAX_PLACEHOLDER_LEN - 1 carryover window
-    - Frame reassembly eliminates token fragmentation across TCP boundaries
-    - Normalizes HTTP/2 streams into framed request buffers before scan
-  - Upstream dial transport
-    - Dial policy
+  - Upstream dial transport    - Dial policy
       - Proxy chaining is first-class, not an afterthought
         - Protocols: HTTP CONNECT, SOCKS5 (RFC 1928), SOCKS5h (remote DNS)
         - SOCKS5 auth extension: username/password (RFC 1929)
@@ -131,7 +132,7 @@
       - Upstream timeout surfaces as ETIMEDOUT after policy budget
       - Reason recorded in host-side structured log; never leaked to guest
   - Port forwarding
-    - Guest-initiated: forward tunnels over vsock:5252 Channel 0x0001 on PortBound
+    - Guest-initiated: forward tunnels on stream kind L4_FORWARD on PortBound
     - Host-initiated: session.wire.forward_port(guest_port, host_port) -> Result<u16, WireError>
       - Port allocation
         - host_port = None or 0 binds ephemeral port 0; host kernel allocates free port

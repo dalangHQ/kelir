@@ -31,29 +31,32 @@
           - Native linear capability isolation: zero-WASM, zero-JIT overhead
           - Compile-time ownership tokens enforce plugin memory boundaries
           - Hardware memory protection keys (MPK on x86_64) isolate in-process heap
+      - Snapshot and rollback scope
+        - Snapshots capture compute + disk, not distributed network state
+        - Rollback closes session sockets; guests observe ECONNRESET
+        - Lifecycle rollback boundary: see: 08-lifecycle.md#Rollback
       - Strict hardware/kernel abstraction layer
         - Zero knowledge of prompts, evaluation loops, or orchestration logic
-        - Operates strictly as OS physics: pages, registers, descriptors, frames
+        - Operates strictly on physical primitives: pages, registers, descriptors, frames
         - Hardware memory execution policy: strict W^X enforced at MMU boundary
         - Guest kernel traps anonymous PROT_EXEC mmap and mprotect allocations
         - In-memory elf loading through memfd_create aborts with E_WX_VIOLATION
         - Granular knob: wx_enforcement = Strict | PermissiveAudit
-        - Factoring: see: 10-epistemic.md#Scope
+        - Factoring: see: 10-attestation.md#Scope
       - Deterministic hardware isolation
         - Hardware-enforced virtualization: Intel VT-x, AMD-V, ARM64 EL2
         - Escaped guest root cannot touch host memory or host kernel space
       - Modular VirtIO interposition microkernel
         - Core controls hypervisor execution and dispatches VirtIO events
+        - Single unified interposition pipeline; no per-ring bespoke paths
+          - see: 02-plugin-model.md#Unified-interposition-pipeline
         - Core defines zero domain policies, protocols, or agent schemas
         - Plugins depend on kelir-interface and resolve peer capabilities via ServiceRegistry
         - Core compiles plugins in registration order against typed traits
         - Cyclic crate dependencies abort compilation with EConfig
         - Plugins communicate through typed peer traits and core abstractions
         - Every plugin is a decoupled, composable crate
-      - Transparent truthful steering
-        - Any intercepted syscall, file read, or network packet is allowed,
-          - steered with a host disclosure, or rejected with a machine-parsable receipt
-        - Mandatory TTY host disclosure invariant
+
       - Codebase invariants
         - File and test discipline
           - Strict file bounds: 500 LOC target, 1,000 LOC hard ceiling per .rs file
@@ -66,7 +69,7 @@
         - State invariants
           - Absolute idempotency: rollback and stream replay produce bitwise identical states
           - High cohesion, loose coupling: four planes share zero state outside rings
-          - Basics non-simplification: POSIX errnos, isolation, and limits never bypassed
+          - POSIX integrity: standard errnos, isolation, and limits never bypassed
         - Execution style
           - Native-first execution: kernel ioctls and syscalls direct; wrappers banned
           - Minimal LOC density: functional combinators over nested conditionals
@@ -116,6 +119,7 @@
   - Core invariants
     - The closed set of core primitives
     - Interposition is total: every device channel is hooked
+    - Interposition verdict model: see: 02-plugin-model.md#Unified-verdict
     - Trait definitions
       - Low-footprint preset contract: see: #Embedded-profile
       - Trait contract: see: 02-plugin-model.md#KelirPlugin-trait
@@ -126,7 +130,7 @@
     - Dispatch loop: see: 02-plugin-model.md#Static-dispatch
     - Device multiplexing: see: #VirtIO-Device-Complex
     - Params ingress contract (core): see: #Params-ingress-contract
-    - Receipts: see: 10-epistemic.md#Execution-receipts
+    - Receipts: see: 10-attestation.md#Execution-receipts
     - In-kernel trap engine: see: #Guest-VM-anatomy
     - EROFS mount: see: 05-storage-plane.md#EROFS-rootfs
     - Shared memory mapping: see: #Shared-memory-channel
@@ -136,8 +140,7 @@
     - Zero protocol domain logic lives in core
     - Channel 0 carries hypervisor control
     - Channel allocation is frozen
-      - see 11-protocol.md#Channel-allocation-table
-    - Primary VirtIO Bus
+      - see 11-protocol.md#Control-channel    - Primary VirtIO Bus
       - virtio-vsock: multiplexed syscall traps and binary control channels
       - virtio-console: multi-port character streams
       - virtio-fs: FUSE filesystem operations and virtual inode dispatch
@@ -164,7 +167,10 @@
     - Fence provides coherency; doorbell provides notification
   - Transport engine abstraction
     - Host hypervisor backend terminates virtqueue rings directly in kelir-core memory
-    - Channel multiplexing (0x0000–0x0010) routes to in-memory lock-free SPSC rings
+    - Two transport channels: 0x0000 Control, 0x0001 Stream Mux
+      - see: 11-protocol.md#Control-channel
+    - Stream Mux routes all request/data flows as stream kinds
+    - Both channels terminate in in-memory lock-free SPSC rings
     - Bypasses host OS socket subsystems (AF_VSOCK, HV_SOCKET, named pipes)
     - Identical binary protocol execution on Linux, macOS, and Windows
     - No host platform-specific IPC shims
@@ -179,13 +185,15 @@
     - Host OS containment and path resolution divergence hides at the storage driver boundary
     - Plugin and channel semantics are identical across targets
   - Trust boundaries
-    - TLS terminates on the host via L7 proxy stage before bytes reach the guest
-    - Carrier is transparent L4 diversion; see: 07-wire-plane.md#Transparent-L4-stream-diversion
-    - Inspection, normalization, and substitution run on the native L7 stage
-      - see: 07-wire-plane.md#L7-interposer-stage
-    - Injects runtime CA env pointers and synthetic FUSE bundles across all tasks
-    - Streaming substitution preserves sliding carryover window across frames
-    - Upstream certificates validate host-side; guest never runs HPACK dynamic table surgery
+    - Guest TLS sessions are end-to-end between workload and peer
+      - Host does not terminate TLS by default
+      - Credentials are issued as scoped short-lived tokens by plugin-vault
+      - Workload presents tokens itself; no in-flight substitution
+    - Optional external sidecar can terminate TLS if the workload cannot
+      - see: plugins/vault.md#Optional-external-egress-rewriting
+      - Host never sees plaintext request bodies for credential-bound traffic
+    - Upstream certificate validation is the workload's responsibility
+      - System CA bundles ship inside the EROFS rootfs as normal
   - Embedded profile
     - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
@@ -213,11 +221,14 @@
     - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
   - Host state root
     - Content-addressed root: ~/.kelir/
-      - catalog.db: embedded SQLite (WAL mode)
-      - Lockless ephemeral path: detached=false sessions bypass catalog.db
-      - Ephemeral sessions allocate zero SQLite transactions or rows
-      - Ephemeral state anchors strictly to parent process lifetime
-      - catalog.db tracks detached sessions and shared CAS blob leases only
+      - catalog.db: embedded SQLite ledger tracking all session lifecycles
+      - Lease schema and row kinds: see: 06-storage-catalog.md#Entity-model
+      - OS-native liveness primitives are proof-of-life, not SSOT
+        - Linux: pidfd_open + pidfd_send_signal
+        - macOS: kqueue(EVFILT_PROC, NOTE_EXIT)
+        - Windows: Job Object termination with KILL_ON_JOB_CLOSE
+      - parent process death reaps ephemeral rows without lease wait
+      - catalog.db is SSOT for every session; no bypass path
       - cas/blobs/blake3_<hash>: immutable layer storage
       - sessions/<session_id>/: ephemeral runtime state
     - State engine
@@ -232,6 +243,8 @@
       - sessions/<id>/owner.pid records the runtime process
       - catalog sessions row carries the liveness lease proof with explicit expiry
       - catalog sessions row carries (incarnation_id, boot_id, start_time_ns, pid)
+      - ephemeral records declare lease_kind='ephemeral' with null expiry
+      - detached rows use lease_kind='lease' and update expires_at every 30s
       - Incarnation proof semantics: see: 08-lifecycle.md#Session-incarnation
       - Orphaned relay.sock, sparse backing file, staging trees reclaimed by runtime child janitor
   - Guest VM anatomy
@@ -267,10 +280,11 @@
         - Subsumed by EROFS measurement
         - No separate attestation entry
       - Workload
-        - binary_blake3 per ExecutionReceipt; see: 10-epistemic.md#Execution-receipts
+        - binary_blake3 per ExecutionReceipt; see: 10-attestation.md#Execution-receipts
       - Session attestation token
         - Injected over paravirtual config device; workload verifies over vsock Channel 0
-      - Host TLS proxy boundary: see: 07-wire-plane.md#L7-interposer-stage
+      - Host TLS proxy boundary: none by default
+        - see: plugins/vault.md#Optional-external-egress-rewriting
       - Chain is unbroken
         - Forged kernel/rootfs fails host-side BLAKE3
         - Forged workload fails per-exec trap boundary
@@ -301,7 +315,7 @@
       - Every backend implements every primitive; optional primitives are
         - not part of the trait
       - Callers hold `Box<dyn VmmDriver>` only; no backend type is surfaced
-    - Pure OS physics boundary
+    - Hypervisor hardware boundary
       - Driver rollback resets physical RAM and vCPU registers only (<8ms)
       - Storage diff discard is orchestrated by Session::rollback() in kelir-core
     - SnapshotDescriptor.dirty_bytes

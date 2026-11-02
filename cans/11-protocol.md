@@ -1,39 +1,50 @@
 - Protocol
   - Control channel
     - virtio-vsock port 5252: unified multiplexed transport
-    - Binary framing isolates sub-protocols via channel_id
-    - Channel allocation table
-      - 0x0000: core hypervisor lifecycle + trap control
-      - 0x0000 also dispatches out-of-band process signals and window resize
-      - 0x0001: L4 stream forwarding (native wire plane)
-      - 0x0002: profile-sync (plugin-profile)
-      - 0x0003: binary-exec (native terminal plane, programmatic exec streams)
-      - 0x0004: db-sqlite (plugin-db-proxy)
-      - 0x0005: control-plane VFS (paginated posix-like filesystem API)
-      - 0x0006: bulk transfer (raw chunked byte streams)
-      - 0x0007-0x000F: reserved (core)
-      - 0x0010: pty-control (native terminal plane)
-      - 0x0011-0x7FFF: unallocated; new row needs spec revision
-      - 0x8000-0xFFFF: reserved; new row needs spec revision
-    - Adding a row requires a spec revision
-      - No runtime allocation, no handshake, no negotiation
+    - Exactly two transport channels
+      - 0x0000: Hypervisor Control (lifecycle, trap control, signals)
+      - 0x0001: Generic Stream Mux (all request/response and data flows)
+    - Every other capability is a stream kind multiplexed on 0x0001
+    - Stream kind registry
+      - Core kinds (frozen)
+        - 0x0001: EXEC (programmatic exec + stdout/stderr/control)
+        - 0x0002: PTY_CONTROL (window resize, signal-forward per exec)
+        - 0x0003: VFS (paginated POSIX-like filesystem API)
+        - 0x0004: BULK (raw chunked byte streams)
+        - 0x0005: L4_FORWARD (native wire plane stream diversion)
+        - 0x0006: TERMINAL_CONSOLE (Port 0 human PTY bytes)
+        - 0x0007-0x000F: reserved (core)
+      - Plugin kinds (registered at boot, no spec revision)
+        - 0x0010: PROFILE_SYNC (plugin-profile)
+        - 0x0011: DB_SQLITE (plugin-db-proxy)
+        - 0x0012: MCP_CONSOLE (plugin-mcp)
+        - 0x0013-0x7FFF: plugin-registered; collision aborts EKindConflict
+      - 0x8000-0xFFFF: reserved
+    - Kind registration
+      - builder.register_stream_kind(kind, handler) binds a handler
+      - Core kinds abort re-registration with EKindReserved
+      - Unregistered kind on OPEN aborts with EUnknownKind
+      - Kinds are numbers; no per-kind spec edits required
     - Guest paravirtual micro-init boundary (kelir-shim)
       - Shim runs as uninstrumented musl PID 1 (<50KB binary)
-      - Fixed 64-slot ExecSlot table maps guest pid to exec_id
-      - ExecSlot saturation: shim returns MSG_EXEC_REJECT{EBUSY} in-band
+      - Dynamic ExecSlot slab maps guest pid to exec_id
+        - Backed by a chunked allocator; frees return chunks to the pool
+        - Sized by min(guest RLIMIT_NPROC, host max_exec_slots)
+        - Host max_exec_slots default 4096; configurable per session
+      - Slab saturation: shim returns MSG_EXEC_REJECT{ENOMEM} in-band
       - waitpid(-1, WNOHANG) updates slot exit status without blocking
       - Unmatched reaped PIDs discard into a zero-allocation sink
       - Exit frames on Channel 0x0003 defer until stdout/stderr EOF flush
       - Multiplexes raw VirtIO ring bytes; carries zero database, proxy, or domain logic
       - Domain Unix sockets are provisioned dynamically over vsock, never hardcoded in PID 1
   - Binary exec channel
-    - Transport: vsock port 5252, channel_id 0x0003
-    - Frame layout: 4-byte channel, 1-byte stream_id, 4-byte len, payload
-    - stream_id values
-      - 0x00: stdin
-      - 0x01: stdout
-      - 0x02: stderr
-      - 0x03: stream control (exit code, EOF, rlimit descriptors)
+    - Transport: stream mux 0x0001, stream kind EXEC
+    - Each exec is one mux stream; per-exec stream_id disambiguates
+    - Exec sub-lane codes (open-payload metadata)
+      - 0x00: stdin (exec-to-guest)
+      - 0x01: stdout (guest-to-exec)
+      - 0x02: stderr (guest-to-exec)
+      - 0x03: exec control (exit code, EOF, rlimit descriptors)
     - Out-of-band signal isolation: SIGINT, SIGTERM, and resize bypass 0x0003
     - High-priority process signals route exclusively over Channel 0x0000
     - Eliminates signal delivery stalls behind saturated stdout/stderr rings
@@ -48,7 +59,7 @@
       - stdout and stderr remain raw over 0x01 and 0x02 regardless of PTY
       - Port 0 console stays reserved for human break-glass attach only
     - Slot saturation backpressure
-      - All 64 ExecSlots occupied: MSG_EXEC_REJECT{reason: EBUSY} returns in-band
+      - Slab allocator returns MSG_EXEC_REJECT{reason: ENOMEM} when pool exhausted
       - No queue growth, no PID 1 termination on burst, no silent drop
       - Orchestrator retries after slot release or escalates to drain
     - stdout and stderr carry raw bytes; no line wrapping, no escape injection
@@ -62,8 +73,8 @@
       - No mid-flight frame loss; no guest kernel deadlock
     - PTY (virtio-console Port 0) remains the interactive human TTY
     - Programmatic tooling uses 0x0003 exclusively; PTY bypassed
-  - Control-plane VFS channel (0x0005)
-    - Transport: vsock channel 0x0005, framed CBOR
+  - Control-plane VFS stream
+    - Transport: mux 0x0001, stream kind VFS, framed CBOR
     - Purpose: posix-like primitives without host-directory exposure or VM exit
     - Requests: open, close, read_stream, write_stream, list, stat, mkdir, remove
     - Pagination is mandatory
@@ -79,14 +90,15 @@
     - Distinction from host-directory mounts
       - vsock VFS is inspection/streaming; not the primary workload path
       - Bind mounts remain for bulk workload trees
-  - Bulk transfer channel (0x0006)
+  - Bulk transfer stream
+    - Transport: mux 0x0001, stream kind BULK
     - Purpose: large payload ingestion without CBOR, FUSE, or syscall interposition
     - Workloads: dependency injection, test fixtures, model weights, build caches
     - Framing: raw chunked byte streams over the transport backend
       - No CBOR wrapping; no per-chunk context switches through FUSE
       - Zero-copy DMA or shared-memory page mapping when transport supports it
-    - Targets: guest disk buffer, named volume, or overlay upperdir
-    - Distinction from VFS 0x0005
+    - Targets: guest disk buffer, named volume, or broker upper file
+    - Distinction from VFS stream kind
       - VFS is paginated inspection/streaming with metadata
       - Bulk is contiguous high-bandwidth byte movement
     - Receiver acknowledges chunks; end-of-stream is a control frame
@@ -97,6 +109,7 @@
       - Gate 1: guest in-kernel BPF allowlist returns for harmless tools
       - Gate 2: native MountScope/schema eval in host RAM; 0 FFI
       - Gate 3: trap handler dispatch through foreign FFI trampoline
+      - Pipeline home: see: 02-plugin-model.md#Unified-interposition-pipeline
       - Synchronous write/packet filters evaluate native Rust rules; foreign callbacks yield
       - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
       - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
@@ -201,33 +214,38 @@
     - Message set and payload fields: see: artifacts/code/messages.rs
     - Hook binding: one hook per message
       - Contract: see: 02-plugin-model.md#KelirPlugin-trait
-    - TrapAction-method-mapping
-      - TrapAction::Allow: c.resume()
-      - TrapAction::Deny: c.deny(exit_code, diagnostic_payload)
-      - TrapAction::Rewrite: c.rewrite(target_mutation)
-      - TrapAction::Yield: c.yield(checkpoint_id)
-      - TrapAction::Abort: c.abort(exit_code, reason)
-      - TrapAction::Hold: c.hold(duration_ms)
-      - TrapAction::Custom: c.custom(name, cbor_payload)
+    - Verdict-method-mapping
+      - Verdict::Pass: c.pass()
+      - Verdict::Patch(ExecveMutation): c.patch(mutation)
+      - Verdict::Drop { errno, reason }: c.drop(errno, reason)
+      - Verdict::Suspend { until }: c.suspend(until)
+      - Verdict::Abort { reason }: c.abort(reason)
+      - SuspendUntil: Deadline(ms) | Approval | Handshake
+      - Custom payload: c.patch(Custom { name, cbor })
     - Hold wire contract
       - Host halts vCPU execution and drops RAM footprint via suspend primitive
       - Host releases suspension when the hold duration elapses
     - Custom dispatch contract
       - Registration: builder.register_custom_action(name, schema, handler)
-      - Wire Custom carries the CBOR payload only; the name resolves at SDK registration
+      - Wire Custom carries the CBOR payload only; the name resolves at SDK
+        - registration
       - Unknown name at trap time fails with EUnknownAction
       - Registration after boot() fails with EConfig
-    - Action invariants: see: artifacts/code/messages.rs
-  - Channel registration
-    - LifecycleCtx.register_channel(kind, handler) binds handler to kind
-    - kind must be assigned in the allocation table
-    - Unassigned kinds abort boot with EChannelReserved
-    - Core dispatches HostToGuest::ChannelData { kind, .. } to the handler
-    - Unbound kinds abort delivery with EUnknownChannel
-    - SDK channel surface: see: 03-sdk-architecture.md#Language-surfaces
+    - Verdict invariants: see: artifacts/code/messages.rs
+  - Stream mux framing
+    - Frame layout: stream_id: u32, flags: u8, len: u32, payload
+    - flags
+      - 0x01 OPEN: payload carries kind_id: u16 + tags
+      - 0x02 DATA
+      - 0x04 CLOSE
+      - 0x08 RST (peer aborted)
+      - 0x10 WINDOW_UPDATE (backpressure)
+    - Per-stream credit windows; credit exhausted parks sender
+    - Backpressure inherits ring/transport semantics, not new framing
+    - Zero-copy splice between mux and ring backends on supported platforms
   - Env injection
     - Workload environment variables, registers, and execution paths remain
-      - immutable under Allow verdicts
+      - immutable under Pass verdicts
     - State mutations require explicit Rewrite with validated disjoint keys
   - Trap decision invariants
     - Rewrite loop prevention
@@ -246,5 +264,5 @@
       - Key length ≤ 128 bytes
       - vault:// placeholder values reject ESecurityViolation
     - Custom dispatch timeout
-      - Exceeded handler falls through to Allow
+      - Exceeded handler falls through to Verdict::Pass
       - Per-custom-action; defaults to 30s

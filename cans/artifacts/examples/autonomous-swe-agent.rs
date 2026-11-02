@@ -507,7 +507,7 @@ async fn build_runtime(
             if receipt.dirty_bytes == 0 {
                 return Err(PluginError::Halt("zero-byte delta commit".into()));
             }
-            // Workspace-scoped observation (10-epistemic.md#Execution-receipts):
+            // Workspace-scoped observation (10-attestation.md#Execution-receipts):
             // dirty_bytes counts all hypervisor-dirtied bytes; the
             // workspace counter now arrives as a native storage plane
             // TelemetryExtension (namespace "fs:vfs"), whose payload is

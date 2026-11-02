@@ -13,7 +13,7 @@
   - Invariants and policy (container)
     - Non-nested OCI container execution
       - Configures rootless Podman and crun runtime environments inside microVM
-      - Mounts ephemeral tmpfs scratchpad for /var/lib/containers to isolate storage diffs
+      - Mounts ephemeral scratch device for /var/lib/containers to isolate storage diffs
       - Constructs synthetic cgroup v2 delegation hierarchy at on_vm_ready
     - UID/GID mapping isolation
       - Intercepts newuidmap and newgidmap allocations through trap filters

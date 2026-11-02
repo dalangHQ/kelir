@@ -3,7 +3,7 @@
     - Plugin identifier: plugin-supply-chain
     - Owner crate: crates/kelir-plugins/plugin-supply-chain
     - name() = "supply-chain"
-    - Tier 2 governance and protocol proxy (supply-chain)
+    - Tier 2 optional domain filter (supply-chain)
     - Depends on (supply-chain): kelir-interface and Tier 1 crates
     - VirtIO attachment (supply-chain): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (supply-chain): see: 08-lifecycle.md#Lifecycle-vetoes

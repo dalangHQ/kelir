@@ -1,24 +1,30 @@
-- Hardware Telemetry & Cryptographic Verification
+- Hardware Attestation & Verification
   - Scope
-    - Telemetry ownership: Hypervisor core measures physical hardware events exclusively
-    - Fact emission: TrapEvent, ExecutionReceipt, CausalDelta
-    - Hardware counters: CPU instructions, dirty pages, MMU faults, wire byte volume
+    - Attestation ownership: hypervisor core measures physical hardware events
+    - Fact emission: TrapEvent, ExecutionReceipt, CausalDelta, AttestationToken
+    - Attestation primitives: vmlinux BLAKE3, EROFS BLAKE3, session token
+    - Diagnostic metrics: PMU counters, dirty bytes, wire volume (gauges only)
     - Boundary opacity: Internal interception policies surface to the guest strictly
       - as physical bus errors, standard POSIX errnos, or silent packet drops
-  - Primitive vs derived telemetry
-    - Telemetry decision test
+  - Primitive vs derived metrics
+    - Metric decision test
       - Single read API, hardware boundary, no policy → primitive, core-owned
       - Computed from primitives, policy-bearing → derived, plugin-owned
-    - Default posture: per-exec, per-trap, per-receipt primitives enabled
+    - Default posture: exec, trap, and receipt primitives enabled
   - Execution receipts
     - Receipt foundation
       - see: artifacts/code/execution-receipt.rs
-      - Deterministic hardware counter attribution emitted per executed process
-      - Emitted per executed process, at the trap/exit boundary
+      - Deterministic logical-trace attribution emitted per executed process
+      - Emitted for every executed process at the trap/exit boundary
       - Receipts compare as values via canonical per-field structural assertions
       - Receipts carry opaque TelemetryExtension payloads emitted by mounted plugins
     - Identity
-      - Hardware attestation token: BLAKE3 cryptographic proof over execution tuple
+      - Execution receipts are deterministic because inputs are frozen
+        - Frozen virtual clock (see: plugins/replay.md#Kernel-clocksource-lockdown)
+        - Seeded ChaCha20 RNG (see: plugins/replay.md#Deterministic-RNG)
+        - Ordered syscall trace (intercepted argv, retval, errno)
+        - Ordered I/O streams (stdin/stdout/stderr bytes)
+      - No receipt field claims cross-host counter equivalence
       - binary_blake3 identity
         - Canonical form
           - BLAKE3 of raw file bytes at binary_path
@@ -31,7 +37,7 @@
           - Invalidated on any key component change
           - Negative cache: (st_dev, st_ino) for not-found
         - Cache scope
-          - One hash per binary identity, not per exec
+          - One hash per binary identity, cached across process executions
           - Session-scoped; dropped on terminate
         - Trusted-prefix fast path
           - EROFS trusted prefixes execute Gate 3 skip; see: 11-protocol.md#Trap-fast-path
@@ -42,26 +48,27 @@
           - Only the byte-read is skipped
     - Field semantics
       - Population
-        - Per ReceiptConfig; opt-in fields not enabled are absent (Option), never 0
-        - retired_instructions: sampled from host vCPU thread via perf_event_open
-          - Linux: perf_event_open with exclude_host=1 and exclude_hypervisor=1
+        - Per ReceiptConfig; opt-in fields left unconfigured remain absent (Option), never 0
+        - retired_instructions: diagnostic metric, not a receipt identity field
+          - Linux: perf_event_open with exclude_host=1, exclude_hypervisor=1
+          - macOS ARM64: hv_vcpu_get_sys_reg from PMCCNTR_EL0 / PMEVCNTR<n>_EL0
           - Sampled strictly during active KVM_RUN state
-          - macOS ARM64: read via hv_vcpu_get_sys_reg from PMCCNTR_EL0 / PMEVCNTR<n>_EL0
-          - Mach thread counters banned; host hypervisor overhead excluded
-          - Guarantees cross-host deterministic counter equivalence
+          - Emitted to OTel as a gauge; excluded from receipts and Merkle roots
+          - Never used to compare execution across hosts
         - exit_kind: ExitKind enum, always populated
           - Normal | Signal(u32) | KernelPanic(String) | HypervisorFault(String)
           - KernelPanic payload scraped from 64KB early-boot UART buffer
             - see: 01-architecture.md#Early-boot-diagnostics
           - Replaces reliance on exit_code alone for boot failure classification
         - Opt-in: syscall_count
-        - dirty_bytes is always populated: zero is a real measurement, not absent
+        - dirty_bytes is a receipt field: byte count, not page count
+          - Deterministic because it counts guest writes, not host page churn
         - Byte-not-page reason: see: 01-architecture.md#SnapshotDescriptor.dirty-bytes
       - Receipt accounting
         - syscall_count
           - Counts trap ingress events to plugin pipeline
           - Excludes Gate 1 BPF allowlist events
-          - Per trap invocation, not per syscall retry
+          - Measured per trap invocation, ignoring syscall retries
         - egress_bytes
           - L2 bytes at on_net_outbound after pipeline settles
           - Bytes dropped by sinkhole or Reject
@@ -71,7 +78,7 @@
           - Physical spawn-to-reap time
           - Regardless of guest suspend state
           - 1-hour suspend records ~1 hour wall_clock_ns
-          - Measures physical time, not guest-CPU time
+          - Measures physical time rather than guest-CPU time
         - exit_code under Rewrite
           - Exit code of final binary in rewrite chain
           - TrapEvent records original_binary_blake3
@@ -82,7 +89,8 @@
           - ffi_hop_ns: time in foreign FFI boundary
           - policy_ns: time in plugin pipeline after FFI returns
           - verdict_egress_ns: verdict decision to guest re-exec
-          - Sum + base overhead = wall_clock_ns
+          - Diagnostic only: spans emit to OTel; excluded from Merkle roots
+          - Sum + base overhead = wall_clock_ns (wall_clock only)
     - Receipt ownership
       - kelir-core generates and holds at trap/exit boundary
       - c.receipt() is the single read API on HandlerCtx
@@ -90,20 +98,23 @@
     - see: artifacts/code/causal-delta.rs
     - Definition: Δ = S_A − S_B between two checkpoint descriptors
     - Delta fields: see: artifacts/code/causal-delta.rs
-    - State diff aggregation: CausalDelta aggregates net physical diffs
+    - State diff aggregation: CausalDelta aggregates net logical diffs
+      - Filesystem: broker upper file + tombstones (see: 05-storage-plane.md)
+      - Memory: dirty bytes recorded by the checkpoint descriptor
+      - Process: process tree edges and exit statuses
     - Merkle root chaining links granular receipts to state diffs
-    - Tracks physical page deltas, modified inodes, and process lineage
+    - No PMU samples appear in CausalDelta
     - L7 protocol telemetry lives outside core structs, in extensions
     - Type ownership
       - Struct is a shared context type; defined in kelir-interface next to ExecutionReceipt
       - Core aggregates domain deltas into CausalDelta on checkpoint boundaries
-  - Telemetry provenance classification
+  - Attestation provenance classification
     - Invariant: A higher classification never falls back to a lower classification
-    - Class 1 (Hardware Sampling): PMU instruction counters, dirty byte counts,
-      - physical exit codes, hardware TSC timestamps. Unforgeable from guest space.
-    - Class 2 (Paravirtual Interception): FUSE buffers, virtqueue frames, character rings.
-      - Observed at the hypervisor boundary.
-    - Class 3 (Guest Unverified Data): Workload stdout/stderr payloads, memory buffers.
+    - Class 1 (Hardware-Anchored): vmlinux BLAKE3, EROFS BLAKE3, session token,
+      - guest clock reads, guest exit codes. Unforgeable from guest space.
+    - Class 2 (Paravirtual Interception): FUSE buffers, virtqueue frames,
+      - character rings. Observed at the hypervisor boundary.
+    - Class 3 (Guest Unverified Data): workload stdout/stderr, memory buffers.
       - Tainted by default; cannot satisfy hardware assertions.
     - Selection rule
       - Claim must resist forgery by guest code → Tier 1
@@ -126,7 +137,8 @@
   - Step evaluation loop
     - Orchestrators execute unmodified agent binaries
     - Checkpoint descriptors are retained in userland orchestrator state
-    - Post-step verification compares physical receipts against pre-step states
+    - Post-step verification compares logical receipts against pre-step states
+      - syscall trace, I/O streams, seeded RNG output, frozen clock
     - StepSlot semantics
       - Single slot per active PID lineage; sub-steps fold into Base on
         - StepVerdict::Commit, discard on StepVerdict::Rollback
@@ -138,9 +150,9 @@
       - Trap match triggers pre-hook: checkpoint creation & intent analysis
       - Guest executes process
       - Process exit triggers post-hook: physical ExecutionReceipt assertion
+        - "Physical" here means host-observed, not PMU-derived
       - Mismatch triggers hypervisor rollback
-        - see: artifacts/code/vmm-driver-trait.rs
-  - Lifecycle nano-tracer
+        - see: artifacts/code/vmm-driver-trait.rs  - Lifecycle nano-tracer
     - Trace hooks (.trace()) measure per-phase overhead at ns resolution
     - Tracks trap ingress, FFI crossing, policy evaluation, and verdict dispatch
     - Zero-allocation timings pipe directly to receipts and OTel spans

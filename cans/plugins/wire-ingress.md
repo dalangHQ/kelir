@@ -12,15 +12,20 @@
     - Exports IngressRoutingService via PipelineBinder for socket forwarding
   - Invariants and policy (wire-ingress)
     - Holds inbound client TCP connections without dropped frames during suspend
+      - Suspend preserves inbound parked connections; rollback does not
+      - On rollback: parked connections get TCP RST (post-handshake: 503 close)
+      - Post-rollback inbound clients must reconnect
     - Host proxy terminates TCP handshake and buffers up to 64KB initial request data
     - Sniffs routing metadata with zero allocation via httparse
     - Wakes target microVM via SessionWakeHandle::resume
       - ExternalSuspendKind::WireConnectionParking
-    - Ingress stream framing across vsock:5252 Channel 1:
-      - Channel 1: L4 stream forwarding; see 11-protocol.md#Channel-allocation-table
+    - Ingress stream framing on stream kind L4_FORWARD (mux 0x0001):
+      - Kind 0x0005; see: 11-protocol.md#Control-channel
       - Frame header: target_port: u16, connection_id: u64, payload_len: u32
       - Guest shim ingress forwarder connects to 127.0.0.1:target_port and splices duplex bytes
     - Zero-downtime webhook and interactive terminal connection continuity
+      - Continuity applies to suspend/resume only
+      - Rollback terminates parked connections; retry is client-side
   - Error and return semantics (wire-ingress)
     - Hook signature (wire-ingress): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (wire-ingress)

@@ -20,19 +20,24 @@
       - Metrics: counters (execs, syscalls, drops, backpressure events),
         - gauges (RSS, dirty pages, active vCPUs, in-flight execs)
       - Traces: one span per receipt phase (trap_ingress, policy, ffi_hop,
-        - verdict_egress); see: 10-epistemic.md#Execution-receipts
+        - verdict_egress); see: 10-attestation.md#Execution-receipts
       - Trace continuity across guest-originated requests via W3C traceparent
       - No local Merkle WAL is written by default
       - Local disk audit requires an explicit EventBus subscriber
+    - PMU counters are gauges only
+      - retired_instructions, cycle counts, cache misses emit as OTel gauges
+      - Never enter receipts, CausalDelta, or Merkle leaves
+      - Never compared across hosts; microarchitectural variance is expected
     - Host dashboards (Prometheus, Datadog, Grafana Alloy, OTel Collector)
       - consume without bespoke scrapers
   - Health signals
     - Heartbeat loss marks a guest as stalled or wedged
     - Parent watchdogs reap orphaned runtime processes
-      - Detached sessions: watchdog in runtime child polls SQLite lease TTL
-      - Ephemeral sessions: Linux pidfd and OS death signals drive zero-delay reaping
-      - Lease heartbeat from the runtime proves liveness; TTL expiry
-        - triggers the janitor
-      - OS kernel death signals terminate backends on host parent exit
-      - Runtime child janitor sweeps expired session directories on startup
+      - Every session registers a catalog row with lease_kind
+      - Ephemeral rows: pidfd / kqueue / Job Object drive zero-delay reaping
+      - Detached rows: lease heartbeat updates expires_at; TTL expiry drives reap
+      - Lease heartbeat from the runtime proves liveness for detached rows only
+      - Runtime child janitor sweeps both kinds on startup
+      - Ephemeral rows: row unlinked immediately on parent-process death
+      - Detached rows: row marked Crashed on (boot_id, start_time_ns, pid) mismatch
     - Correlation ids stitch spans across cli, runtime, agentd

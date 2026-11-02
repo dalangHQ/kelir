@@ -2,19 +2,30 @@
   - N-native design
     - Foundation
       - No dynamic any-typing, no second-class shims
-      - All SDKs enforce identical runtime guarantees through native type systems
+      - All SDKs enforce identical runtime guarantees at builder.boot()
       - Bootstrap: Rust, TypeScript, Python
       - Adding a language: bindings crate + vector consumer + surface manifest
       - Runtime safety matrix: see: artifacts/diagrams/sdks-invariants.txt
       - Failure occurs at the earliest lifecycle phase native to each runtime
-      - Affine builder consumption: every fluent verb consumes the previous
-        - builder by value; no builder instance is reused, branched, or mutated
-      - Compile-time prerequisite gating: a plugin declaring a prerequisite
-        - without its dependency installed fails at type-check, not boot
-      - Zero dynamic service lookups: handler context c statically intersects
-        - each installed plugin's surface; no string keys, no runtime downcast
       - Handler purity and idempotency: see: 01-architecture.md#Codebase-invariants
       - Unhandled errors abort hypervisor immediately to eliminate zombie runs
+    - Builder consumption model across languages
+      - Rust: affine typestate; .plugin() consumes self by value
+      - TypeScript: flat builder returning this; registry uses an ordered list
+      - Python: flat builder returning self; registry avoids Protocol intersection
+    - Prerequisite gating across languages
+      - Rust: compile-time, via Has<T> trait bounds and typestate
+      - TypeScript: validates plugin dependencies at builder.boot() before vCPU launch
+      - Python: inspects dependency registry at builder.boot() prior to vCPU start
+      - All three produce the same structured error code: EConfig
+      - Runtime check cost: O(plugins) at boot; <2µs; validated once
+    - Service lookup across languages
+      - Rust: c.ctx::<T>() infallible, statically resolved
+      - TypeScript: c.<pluginKey> typed by .use(plugin) overloads;
+        - exposes typed plugin context objects without string lookups
+      - Python: c.cap.<plugin_key> typed by .use(plugin) overloads;
+        - maps capability attributes directly without dictionary indexing
+      - No string-keyed service registry on any SDK
     - Authoring model
       - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
       - Two-tier authoring model
@@ -24,8 +35,8 @@
     - Type-safety
       - Type-safety invariants
         - Rust borrow checker and Serde perimeter validation: see: #Rust-SDK
-        - TypeScript tsc and TypeBox AOT native validators: see: #TypeScript-SDK
-        - Python Pydantic v2 frozen models, import-time checks: see: #Python-SDK
+        - TypeScript tsc + TypeBox runtime validators at builder.boot()
+        - Python Pydantic v2 frozen models, validated at builder.boot()
         - AOT hook fusion and FFI crossing: see: 02-plugin-model.md#Foreign-plugin-proxy
       - Filter-before-FFI declaration
         - Declared filters register during builder plugin mount
@@ -33,10 +44,10 @@
     - Runtime surface
       - Language surfaces
         - Rust: extension traits provide zero-cost fluent chaining on builder
-        - TypeScript: generic context accumulation decorates fluent plugin verbs
-        - Python: dynamic protocol mixins inject fluent verbs on mount
-        - Chained verbs appear on builder instance only when plugin is mounted
-      - Typed dispatch and session extensions
+        - TypeScript: fluent builder; plugin verbs are overloads of .use()
+        - Python: fluent builder; plugin verbs are overloads of .use()
+        - Verbs are available after .use() in all languages (typed in Rust,
+          - returned by overload in TS/Py)      - Typed dispatch and session extensions
         - Typed event hooks
           - .on(LifecycleEvent.VmReady, handler) for lifecycle events
           - .intercept(Ring.NetOutbound, handler) for ring interception
@@ -51,24 +62,28 @@
             - Returns Result<u16, WireError> with allocated port
           - Checkpoint: session.checkpoint.create(label), session.rollback()
         - Plugin extension pattern
-          - Optional domain plugins attach via typed extensions
-          - Rust: session.ctx::<T>() infallible via `Session<Plugins, Params>`
-            - where `Plugins: Has<T>`; no Result, no `ext`/`extension` surface
-          - TypeScript: session.<pluginKey> is a static member of
-            - Session<TContext, TParams>; no session.use(ext)
-          - Python: session.cap.<plugin_key> is statically projected by the
-            - PEP 695 Protocol intersection; no session.ext(T)
-          - Inter-plugin capabilities resolve via c.ctx::<T>() (Rust),
-            - c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
-      - Trap verdict surface: see: 11-protocol.md#TrapAction-method-mapping
+        - Optional domain plugins attach via typed extensions
+        - Rust: session.ctx::<T>() infallible via `Session<Plugins, Params>`
+          - where `Plugins: Has<T>`; no Result, no `ext`/`extension` surface
+        - TypeScript: session.<pluginKey> is typed by the .use() overload
+          - for that plugin; no session.use(ext), no session.ext(T)
+        - Python: session.cap.<plugin_key> is typed by the .use() overload
+          - for that plugin; no session.ext(T)
+        - Inter-plugin capabilities resolve via c.ctx::<T>() (Rust),
+          - c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
+      - Unified verdict surface: see: 02-plugin-model.md#Unified-verdict
+        - Rust: c.pass() / c.patch(m) / c.drop(e,r) / c.suspend(u) / c.abort(r)
+        - TS: c.pass / c.patch / c.drop / c.suspend / c.abort
+        - Python: Verdict.pass_() / Verdict.patch / Verdict.drop
+          - Verdict.suspend / Verdict.abort
         - Console interposer signature (all SDKs)
           - on_console_input(port, bytes) / on_console_output(port, chunk)
           - port identifies the virtio-console port; bytes mutated in place
-        - Yield surface naming
-          - Rust: TrapAction::Yield { checkpoint_id }
-          - TS: c.yield(checkpoint_id)
-          - Python: Decision.yield_to_host(checkpoint_id)
-          - Python has no trailing underscore; yield_to_host is the name
+        - Suspend surface naming
+          - Rust: Verdict::Suspend { until: SuspendUntil }
+          - TS: c.suspend(SuspendUntil.deadline | .approval | .handshake)
+          - Python: Verdict.suspend(until=...)
+          - No per-SDK aliases; one name across languages
       - Session surfaces
         - Session data operations
           - Shared memory buffers: session.vm.map_shared_region(tag, size_bytes)
@@ -78,12 +93,17 @@
           - Dynamic vCPU roster: session.vm.set_vcpus(n)
           - Hard vetoes: LifecycleCtx.register_veto(event, cb); see: 08-lifecycle.md#Lifecycle-vetoes
           - Graceful drain: session.drain(ms); see: 08-lifecycle.md#Hypervisor-primitives
-          - Break-glass SSH/SFTP: session.ssh() -> SshHandle; see: 08-lifecycle.md#Break-glass
+          - Rollback semantics
+            - session.rollback() resets compute + disk
+            - Closes all session sockets; guest sees ECONNRESET
+            - No opt-in flag preserves sockets; rollback is total
+            - Hardware state reset mechanics: see: 08-lifecycle.md#Rollback
       - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
-        - Channel kind registration: builder.register_channel(kind, handler)
-          - kind drawn from frozen table; see: 11-protocol.md#Channel-allocation-table
+        - Stream kind registration: builder.register_stream_kind(kind, handler)
+          - core kinds frozen; plugin kinds registered at boot
+          - see: 11-protocol.md#Control-channel
         - Programmatic exec surface: session.exec(cmd, limits?)
-          - Writes on Channel 0x0003; framing see: 11-protocol.md#Binary-exec-channel
+          - Writes on stream kind EXEC; framing see: 11-protocol.md#Binary-exec-channel
           - Accepts optional ProcessLimits; see: 11-protocol.md#Trap-fast-path
           - Accepts optional allocPty flag; rides FLAG_ALLOC_PTY on EXEC_IO_SPEC
           - Signal cancellation targets exec_id, not raw guest pid
@@ -111,6 +131,9 @@
         - Sinkhole allowlist (Py/RS) vs dnsExcept (TS)
         - ReceiptConfig: Py/RS include_syscall_count
           - TS: includeDirtyBytes, includeBinaryBlake3, includeSyscallCount
+        - Receipts are deterministic across hosts when replay is active
+          - Frozen clock, seeded RNG, ordered syscall + I/O traces
+          - No PMU-derived field is compared cross-host
         - Decision static constructors (Py/RS) vs c.deny/c.resume/c.rewrite (TS)
         - Lifecycle decorators/methods (Py/RS) vs .on(LifecycleEvent.VmReady) (TS)
   - Idiomatic Surfaces Law
@@ -167,44 +190,42 @@
     - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
     - see: artifacts/code/typescript-accumulation.ts
-    - KelirBuilder<TContext, TParams, TInstalledPlugins> carries the accumulated
-      - surface in type parameters; every verb returns a new builder type
-    - .use(plugin) intersects TPluginCtx into TContext and unions TPluginId
-      - into TInstalledPlugins; .use() takes flat plugin instances, no callbacks
-    - Prerequisite gate: a missing dependency yields
-      - CompileError<"Missing ...">, so no method (including .params and .trap)
-      - is callable on the returned type
-    - .trap(matcher, handler): simple pre-exec gate returning a Decision
-    - .trap(matcher, { pre, post }): dual pre/post gate; post returns a
-      - PostExecAction
-    - .intercept(channel, filter, handler): ring-level synchronous hot-path
-      - filters returning SyncVerdict
+    - TypeScript builder: KelirBuilder maintains an ordered plugin list
+    - .use(plugin) appends to the registry; returns this (typed overload)
+      - The overload is generic in P extends KelirPlugin; the returned type
+      - exposes session.<pluginKey> for that plugin
+    - Prerequisite validation happens at builder.boot()
+      - Missing dependencies throw EConfig with an error envelope
+      - Diagnostic envelope identifies missing requirement and declarer
+      - No compile-time generic gymnastics; TS compiler stays fast
+    - .trap(matcher, handler): pre-exec gate returning a Verdict
+    - .trap(matcher, { pre, post }): dual pre/post gate
+    - .intercept(ring, filter, handler): ring-level synchronous hot-path
     - .on(event, handler): lifecycle interceptors over LifecycleEvent values
-    - .onTrap(handler): plugin-level trap interposer
-      - Returns a new plugin; the plugin owns on_trap for its binaries
-      - Builder .trap() remains for one-off gates without a plugin
-    - .params(schema) pins TParams = Static<TSchema>; handler c.params is typed
-      - from that parameter, not from a runtime schema lookup
-    - Handlers receive HandlerContext<TContext, TParams>; plugin surfaces are
-      - static members (c.policy, c.ledger), never c.service(Token)
-    - AOT hook fusion compiles all TS pipeline handlers into a single flat closure
-    - Invariant: exactly 1 NAPI trampoline jump per event regardless of depth
-    - Fully unified TContext passes to callbacks; cross-plugin reads are static
-      - member accesses, not service-token resolution
+    - .onTrap(handler): plugin-level trap interposer; returns a new plugin
+    - .params(schema) pins Params from the schema; handler c.params is typed
+      - from TypeBox's Static<> type, resolved once at build time
+    - Handlers receive HandlerContext<Params>; plugin surfaces are typed
+      - members (c.policy, c.ledger), resolved via .use() overloads
+    - AOT hook fusion compiles all TS pipeline handlers into a single flat
+      - closure; exactly 1 NAPI trampoline per event regardless of depth
     - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
-    - Null-object pattern: use(plugin({ enabled: false })) preserves static
-      - member shape with a no-op implementation
+    - Null-object pattern: use(plugin({ enabled: false })) yields a no-op
+      - plugin; .boot() still validates but skips registration
   - Python SDK
     - see: artifacts/code/python-raii-pydantic.py
     - async with builder as session
       - __aenter__ boots microVM
       - __aexit__ guarantees session.terminate() on any exception
-    - KelirBuilder[TCapabilities, TParams] carries the accumulated surface in
-      - PEP 695 type parameters; every verb returns a new builder type
-    - .use(plugin) intersects TNewCap into TCapabilities via Protocol
-      - intersection; the c.cap projection is statically typed by pyright/mypy
-    - .params(schema: type[TNewParams]) pins TParams; handler c.params is typed
-      - from the Pydantic model class
+    - Python builder: KelirBuilder stores plugins alongside Pydantic models
+    - .use(plugin) appends to the registry; returns self
+      - .use() is overloaded per plugin so c.cap.<plugin_key> is typed
+    - Prerequisite validation happens at builder.boot()
+      - Unfulfilled requirements raise EConfig with structured details
+      - Error report isolates unsatisfied dependencies during bootstrap
+      - No runtime cost beyond a single O(plugins) walk at boot
+    - .params(model: type[P]) pins Params; handler c.params is typed
+      - from the Pydantic v2 model class
     - Composite plugins unpack nested plugins atomically before boot
     - Capabilities are static members of c.cap (c.cap.policy), never
       - c.service(ServiceType)

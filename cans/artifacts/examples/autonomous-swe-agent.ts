@@ -233,7 +233,7 @@ const runtime = kelir({
       // dirtyBytes is always populated; zero is a real measurement
       if (receipt.dirtyBytes === 0)
         throw new Error("Verification anomaly: zero-byte delta commit attempted.");
-      // Workspace-scoped observation (10-epistemic.md#Execution-receipts):
+      // Workspace-scoped observation (10-attestation.md#Execution-receipts):
       // dirtyBytes counts all hypervisor-dirtied bytes; the workspace
       // counter now arrives as a native storage plane TelemetryExtension
       // (namespace "fs:vfs"), whose payload is plugin-defined and

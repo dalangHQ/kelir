@@ -8,19 +8,19 @@
     - Exposes: ConfigurablePlugin
     - VirtIO device attachment (profile): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (profile): see: 08-lifecycle.md#Lifecycle-vetoes
-    - Registers vsock Channel 0x0002 (profile-sync)
-      - Allocation: see 11-protocol.md#Channel-allocation-table for profile-sync
+    - Registers stream kind PROFILE_SYNC on the mux
+      - Kind 0x0010; see: 11-protocol.md#Control-channel
   - Invariants and policy (profile)
     - Inversion-of-Control configuration router:
       - Ingests canonical kelir.toml and kelir.yaml specification files
       - Plugins register target schema namespaces dynamically via ConfigurablePlugin
       - Routes unparsed configuration fragments to registered namespace owners
       - Profile contains zero hardcoded child domain logic or expansion rules
-      - Downward min cascade enforced uniformly across scalar budget fields
-    - Downward min cascade
+      - Monotonic limits enforced uniformly across scalar budget fields
+    - Monotonic limits
       - Effective budget and resource limits evaluate as min(base, child)
       - Overlays cannot widen execution duration, memory, or instruction ceilings
-      - Violations of downward min cascade fail validation with ESecurityViolation
+      - Violations of monotonic limits fail validation with ESecurityViolation
     - Default-zero capability invariant
       - Undeclared subsystems receive zero physical hardware allocations
       - Omitted network section allocates zero userspace network stacks
@@ -40,7 +40,7 @@
       - Base profiles inherited via extends key
       - Deep-merge preserves monotonic lattice: cannot widen upstream denials
     - RFC 6902 dynamic policy patching
-      - Ingests JSON/YAML patches via ChannelData on Channel Kind 0x0002 (profile-sync)
+      - Ingests JSON/YAML patches via PROFILE_SYNC stream
       - Monotonic lattice validation: patches cannot loosen upstream denials
       - Monotonic violation halts patch dispatch with ESecurityViolation
       - Approved patches update active MountScope and BPF tables atomically

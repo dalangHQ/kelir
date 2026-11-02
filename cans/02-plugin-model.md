@@ -7,8 +7,6 @@
       - Tier 1 plugins depend strictly on kelir-interface only
     - Tier 2 governance and protocol proxies
       - plugin-tool-guard: tool-call governance proxy
-      - plugin-db-proxy: database protocol proxy
-      - plugin-supply-chain: execution governance proxy
       - plugin-wire-ingress: inbound wire proxy
       - plugin-vault: unified secret and placeholder governance proxy
       - plugin-container: rootless OCI container execution proxy
@@ -22,7 +20,7 @@
       - Tier 3 plugins depend on kelir-interface and consume peer services via ServiceRegistry
     - Dependency invariant: Zero concrete peer imports within the same tier
     - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
-    - Invariants and purity: see: 01-architecture.md#Codebase-invariants
+    - Invariants and purity: see: 06-storage-catalog.md#Entity-model
     - Code is sole SSOT: declared programmatically via KelirPlugin trait
     - Manifest artifact is strictly auto-generated for zero-compile indexing
     - Execution kind: Native (Rust in-process) | Foreign (host FFI)
@@ -41,9 +39,9 @@
   - Dual-plane execution architecture
     - Interceptor pipeline plane
       - Synchronous or bounded latency inline processors
-      - Evaluates monotonic verdict lattice: Allow < Rewrite < Deny < Abort
+      - Evaluates unified verdicts strictly by monotonic order: see: #Unified-verdict
       - Single mutator owns target byte slice at any stage
-      - Trait dispatch: see: 01-architecture.md#Codebase-invariants
+      - Trait dispatch: see: #Static-dispatch
       - Compiled into contiguous zero-cost dispatch tables
       - Latency bounded by #Latency-ceiling; foreign FFI filter-gated
     - Reactive event bus plane
@@ -61,7 +59,7 @@
     - see: artifacts/code/plugin-trait.rs
     - Assembly-time tree flattens into contiguous C-speed dispatch array
     - Declarative profile hydration maps schema sections to child plugins
-    - Composite expansion enforces downward min cascade across budget fields
+    - Composite expansion enforces monotonic limits across budget fields
     - Invariant: nested depth incurs zero runtime call-stack overhead
     - Deduplication merges identical name() nodes; deepest config wins
     - AOT hook fusion collapses nested closures into single FFI trampoline
@@ -78,7 +76,7 @@
         - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
         - ConsoleInterposer: console input, console output, window resize, disclosure
           - Expanded: on_exec_stdout(pid, exec_id, chunk), on_exec_stderr(pid, exec_id, chunk)
-          - Fires for Channel 0x0003 streams; see: 11-protocol.md#Binary-exec-channel
+          - Fires for EXEC stream kind; see: 11-protocol.md#Binary-exec-channel
           - PTY (Port 0) path unchanged; exec path uses exec_id rather than port
         - FsInterposer: fs lookup, read, write; synchronous hot path
         - NetInterposer: net outbound, net inbound; synchronous hot path
@@ -88,13 +86,19 @@
         - Plugins implement only traits for rings they touch; rest default no-op
         - Dispatch: taxonomy rings register into ring-specific contiguous arrays
         - Unused rings cost zero vtable lookups
-    - Error variants
-      - Interceptor traits return typed verdicts: SyncVerdict (FS/Net), Option<TrapAction> (Trap)
+    - Unified verdict
+      - Every interposer hook returns the same engine-level `Verdict`
+      - One enum across Trap, Fs, Net, Console, Exec, MCP, and DB rings
+      - Variants
+        - Verdict::Pass = proceed untouched
+        - Verdict::Patch(payload) = in-place mutation; payload schema per ring
+        - Verdict::Drop { errno, reason } = deny; errno surfaces to guest
+        - Verdict::Suspend { until } = yield or hold to host
+        - Verdict::Abort { reason } = fatal; pipeline freezes
+      - Drop without errno indicates silent blackholing for fault injection
+      - Patch payload is registered per ring: ExecveMutation, HttpFrame,
+        - FsChunk, JsonRpcFrame, PgFrame, Custom(schema)
       - Idempotency and density: see: 01-architecture.md#Codebase-invariants
-      - Ok(SyncVerdict::Allow) = allow hot-path operation
-      - Ok(SyncVerdict::YieldToHost(ns)) = delay or yield operation to host event loop
-      - Err(PluginError::Reject { errno, reason }) = reject with POSIX errno surfaced to guest
-      - Err(PluginError::Halt(msg)) = unrecoverable failure; freezes VM pipeline
     - Shape of the surface
       - Lifecycle, trap, and terminal hooks are `async`; storage and wire
         - hooks are synchronous; neither blocks the dispatch array
@@ -115,16 +119,17 @@
     - FsInodeAttr carries full mode, uid, gid, size, content
       - Populated into FUSE LOOKUP replies with S_ISUID and S_ISGID masked
         - (mode & !0o6000)
-        - see: 05-storage-plane.md#Atomic-workspace-reconciler
+        - see: 05-storage-plane.md#Containment
       - Synthetic FUSE inodes honor mode: 0o400 exactly, no permission fallback
     - Plane semantics
       - Wire plane fully bidirectional: outbound and inbound mutation points
       - Storage plane fully attributed: on_fs_write carries PID and HandlerCtx
       - Control plane messages hook-observable; nothing bypasses the graph
     - Hook return semantics
-      - on_fs_write: see: 05-storage-plane.md#Write-gating (storage owns it)
-      - on_fs_lookup → Ok(None) = fall through; Ok(Some(attr)) = serve
-      - on_net_outbound / on_net_inbound → see: artifacts/code/plugin-trait.rs
+      - Every hook returns Verdict; no per-ring aliases
+      - on_fs_lookup → Verdict::Pass = fall through; Patch(attr) = serve
+      - on_fs_write / on_net_outbound / on_net_inbound → Verdict
+      - Trap hooks → Verdict; ring-specific defaults documented per plane
   - Declarative error mapping
     - Host exceptions map directly to POSIX errnos via builder error registry
     - Unmapped exceptions convert cleanly to Decision::Deny or hypervisor abort
@@ -137,8 +142,7 @@
     - Dispatch compilation: direct Cargo linkage resolves plugin order at build time
     - Pipeline tables index linear interceptor chains per VirtIO ring
     - Core verifies plugin crate graph: cycles and missing deps halt boot
-    - Monotonic permission lattice: Allow -> Rewrite -> Deny -> Abort
-    - Restrictive monotonicity: downstream hooks cannot widen upstream denial
+    - Monotonic verdict progression: downstream hooks cannot widen upstream denial
     - Fail-closed mutation collisions: overlapping writes raise EAmbiguousMutation
     - Deduplication: identical name() instances merge; deepest config wins
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
@@ -151,9 +155,20 @@
     - Lock-free dispatch swap via ArcSwap on the host event bus (internal)
     - ArcSwap serves atomic dispatch swapping during snapshot hydration only
     - Not a public runtime API; session configuration is frozen after boot
-    - First Deny or Rewrite halts pipeline, dispatches over control transport
+    - First Drop, Suspend, or Abort halts pipeline; Pass/Patch continue
     - on_trap_deny is builder-level, not a plugin hook
       - Deny-observation composition is a user concern
+  - Unified interposition pipeline
+    - Single engine for every guest-to-host interaction
+    - Guest Ring Event (Syscall | NetFrame | FsOp | Msg) enters one path
+    - Stage 1: Fast Filter (native BPF, inode mask, CIDR/port table)
+    - Stage 2: Dispatcher evaluates MountScope; FFI gated here
+    - Stage 3: Execution commits Verdict to hardware or VirtIO ring
+    - Zero bespoke pipelines; zero per-ring verdict enums
+    - Ring, Fast Filter, and Dispatcher are native Rust; only Stage 3
+      - crosses FFI on scope match
+    - Fast Filter budget: <2µs; Dispatcher budget: <1µs
+    - See: #Latency-ceiling for FFI cross budget
   - Mount scoping
     - Mount-level filters restrict blast radius before dispatch evaluation
     - VirtIO ring mask: unselected rings bypass plugin completely
@@ -168,6 +183,9 @@
         - or named pipe); plugin authors never observe the transport
       - Windows hosts apply identical scoping semantics as Linux/macOS
       - No plugin may key behavior on the transport identity
+    - Stream kinds are registered, not hardcoded
+      - Core kinds frozen; plugin kinds declared via register_stream_kind
+      - see: 11-protocol.md#Control-channel
   - Filter-before-FFI gate
     - Host core checks MountScope in native memory before crossing FFI
     - Evaluates native compiled schema validators, CIDR, and path rules in Rust
@@ -179,7 +197,7 @@
     - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs
     - Gate 3: Foreign FFI trampolines (V8/Python) dispatch out-of-band in 50-150µs
     - Gate 3 skip: EROFS trusted binary and payload paths bypass foreign FFI
-    - Sync hot-paths require native filters or SyncVerdict::YieldToHost
+    - Sync hot-paths require native filters or Verdict::Suspend
     - Latency overhead on guest toolchains (cargo, npm) must remain below 3%
     - Violation of latency budget blocks core and plugin releases in CI
     - This node is the sole numerical home for gate latency budgets
@@ -201,7 +219,7 @@
       - FsContext: scoped to virtio-fs operations (inode, path, journal)
       - NetContext: scoped to virtio-net operations (L2 frame, L4 stream, socket)
       - ConsoleContext: scoped to virtio-console operations (PTY, grid, window)
-      - ExecContext: scoped to Channel 0x0003 stream ops
+      - ExecContext: scoped to EXEC stream kind ops
         - Carries pid, exec_id, stream_id (stdout|stderr), chunk, rlimits
         - Invoked through ConsoleInterposer::on_exec_std{out,err}
     - Inter-plugin typed services:
@@ -209,25 +227,30 @@
       - Language context projections: see: 03-sdk-architecture.md#Language-surfaces
   - First-class plugins
     - Catalog tiering
-      - Community plugins: optional domain extensions in cans/plugins/
-        - mcp, mesh, tool-guard, db-proxy, supply-chain, wire-ingress
-        - vault, container, replay, ledger, profile, chaos, transaction
+      - Community plugins (in-process engine): cans/plugins/
+        - mcp, mesh, tool-guard, wire-ingress, vault, container
+        - replay, ledger, profile, chaos, transaction
+      - Optional L7 domain filter plugins:
+        - db-proxy, supply-chain
       - Commercial plugins: interface in plugins/commercial.md
         - hyper-density, cas-snapshot
         - oci-translator, openshell-coordinator
         - Implementation is proprietary; not in this repo
     - Coverage matrix (community plugins -> demonstrating example)
       - chaos, ledger, vault: autonomous-swe-agent.{rs,ts,py}
-      - mesh, supply-chain, container: multi-vm-swarm.rs
-      - db-proxy, transaction: db-backed-runtime.py
+      - mesh, container: multi-vm-swarm.rs
+      - transaction: db-backed-runtime.py
       - wire-ingress, mcp, tool-guard: serverless-webhook.ts
       - replay: replay.rs
       - profile: profile.rs
+    - Userland SDK policy demonstrations
+      - db-proxy: db-backed-runtime.py
+      - supply-chain: multi-vm-swarm.rs
     - Non-plugin surface examples
       - Exercises raw traits or SDK surfaces; no catalog plugin
       - git-gate.rs: terminal + trap interposition
       - hook-matrix.{rs,ts,py}: full hook surface
-      - policy-matrix.{rs,ts,py}: full TrapAction lattice
+      - policy-matrix.{rs,ts,py}: full Verdict lattice
       - Each maps to a spec surface, not a plugin
     - Coverage invariant
       - Every first-class plugin names one demonstrating example
@@ -244,8 +267,8 @@
         - Hook-coverage gate: see: 15-operations.md#Coverage-gates
         - Exercises via hook-matrix and policy-matrix, not via
           - autonomous-swe-agent
-      - Action-coverage: every TrapAction, PostExecAction, SyncVerdict, PluginError
-        - TrapAction variants: see: 11-protocol.md#TrapAction-method-mapping
+      - Action-coverage: every Verdict variant
+        - Verdict variants: see: 11-protocol.md#Verdict-method-mapping
         - An unused variant fails --action-coverage
         - Action-coverage gate: see: 15-operations.md#Coverage-gates
     - Behavior of each: at its plugin file
@@ -263,7 +286,6 @@
       - Tier dependency rules: see: #Plugin-tiering
       - Data-flow dependencies expressed via typed bus schemas and direct imports
       - Inter-plugin coordination passes linear tokens via hypervisor bus
-      - Cryptographic Merkle handoff tracks every in-flight mutation per hook
       - Depends on plugin-testkit as dev-dependency
       - Never depends on crates/kelir facade
       - Cross-plugin coordination occurs via direct crate imports or userland closures
@@ -294,3 +316,8 @@
     - Invariant: Same first-class plugins across Rust, TypeScript, Python (1:1)
     - Enforcement gate: see: 15-operations.md#Multi-language-parity-gate
     - Projection implementations: see: 03-sdk-architecture.md#Language-surfaces
+    - Typestate is Rust-only
+      - Compile-time prerequisites in Rust; boot-time in TS/Py
+      - Both produce EConfig with identical structure
+      - No TS/Py compile-time gymnastics; no recursive generics, no PEP 695
+        - intersections

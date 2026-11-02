@@ -2,7 +2,7 @@
   - Snapshot taxonomy
     - Restore modes
       - Branch-from-any-depth
-        - Restore accepts any snapshot digest in the chain, not only the leaf
+        - Restore accepts any snapshot digest in the chain, including intermediate nodes
         - The runtime materializes the full ancestor prefix as read-only layers
         - The restored session's working delta becomes a new child of that digest
         - Ancestors remain shareable by later restores; CoW page sharing
@@ -12,13 +12,20 @@
     - Export format: single Content-Addressed .kelir-snap binary stream
       - Archive header: magic, format version, feature flags, entry table
       - Stream contents: manifest.json, vmm_state.json, ram.zst, upperdir.tar.zst,
-        - guest_clock.json, attestation.jws, tls_ca.jws
-      - tls_ca.jws carries vault CA cert + key under session key
-        - Only present when plugin-vault is mounted in the snapshot lineage
+        - guest_clock.json, attestation.jws
+      - No TLS CA material is snapshotted; no host CA exists
+      - Socket state, TCP sequence numbers, and connection metadata
+        - are omitted from snapshots; snapshots capture compute + disk only
+      - upperdir.tar.zst is broker state: sparse upper file + tombstones
+      - No whiteouts, no overlay metadata, no union driver artifacts
       - Verification: trailer carries manifest digest for end-to-end integrity
+    - Restore semantics
+      - Import materializes compute and disk only
+      - Workloads that had live sockets observe them gone on first access
+      - No transparent socket rebinding exists; workloads must reconnect
     - Unpack containment invariants (Single Source of Truth)
       - Untrusted input boundary: zero ambient host filesystem trust
-        - Containment engine: 05-storage-plane.md#Atomic-workspace-reconciler
+        - Containment engine: 05-storage-plane.md#Containment
         - Traversal, absolute paths, and symlink escapes reject with EXDEV there
         - Sparse entries pre-sized; zstd frames bounded by declared size
         - Codec errors discard staging atomically; no partial roots leak

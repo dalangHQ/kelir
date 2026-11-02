@@ -33,9 +33,9 @@
   - Error and return semantics (chaos)
     - Hook signature (chaos): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (chaos)
-      - Fault injection adheres to monotonic lattice via PluginError::Reject
-      - Synthetic loss uses SyncVerdict::Drop, a chaos-only variant
+      - Fault injection adheres to monotonic lattice via Verdict
+      - Synthetic loss uses Verdict::Drop { errno: None }, chaos-only
         - Silently discards frame, injects no RST, surfaces no errno
         - see: 07-wire-plane.md#Frame-drop-and-forward-semantics
-      - PluginError::Reject retains policy semantics (fast-fail RST)
-        - Chaos never returns Reject for loss; Reject is used only for RST injection
+      - Verdict::Drop { errno: ECONNREFUSED } retains policy semantics
+        - Chaos uses ECONNREFUSED only for RST injection

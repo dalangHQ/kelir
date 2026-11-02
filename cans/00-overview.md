@@ -20,8 +20,7 @@
         - Managed platform: Kelir Cloud SaaS execution over HTTPS/gRPC
   - Wayang elements
     - Kelir: taut white fabric screen onto which shadows are cast
-    - Dalang: master puppeteer who manipulates the puppets
-      - Speaks all dialogue, and conducts the performance
+    - Dalang: master puppeteer directing dialogue and performance
     - Wayang: flat, carved leather or wooden puppets manipulated behind the screen
     - Blencong: oil lamp suspended above the puppeteer that provides the light source
     - Bayang: shadow cast by the puppet onto the screen, observed by the audience
@@ -32,11 +31,11 @@
     - Cold-boot budget: see: 01-architecture.md#Boot-budget
     - Definition details: see: 01-architecture.md#Axiomatic-foundations
   - What it is not
-    - Not a container wrapper
-    - Not an MCP server
-    - Not a background daemon
-    - Not a standalone CLI runner or daemon client: see: 15-operations.md#Developer-CLI
-    - Not a daemon or container runtime: see: 01-architecture.md#In-process-microkernel
+    - Excludes container runtime wrappers
+    - Standalone from external MCP server binaries
+    - Zero background daemon architecture
+    - Excludes standalone CLI runner binaries: see: 15-operations.md#Developer-CLI
+    - Standalone from host daemon runtimes: see: 01-architecture.md#In-process-microkernel
   - Target audience
     - Audience matrix: see: artifacts/diagrams/target-audience.txt
     - Value and trigger per audience: in the matrix
@@ -47,7 +46,7 @@
     - Agent trust hacks: polling unverified guest JSON harnesses
     - Terminal details: see: 04-terminal-plane.md
     - Storage details: see: 05-storage-plane.md
-    - Trust details: see: 10-epistemic.md
+    - Trust details: see: 10-attestation.md
   - Use cases
     - Parallel agent exploration: see: 08-lifecycle.md#CoW-fork
     - Human approval waits with zero CPU: see: 08-lifecycle.md#Suspend-and-resume
@@ -79,13 +78,13 @@
     - Wire plane: see: 07-wire-plane.md (engine native)
     - Lifecycle: see: 08-lifecycle.md (checkpoint engine)
     - Snapshots & archives: see: 09-snapshots.md (portable state)
-    - Verification and hardware telemetry: see: 10-epistemic.md
+    - Attestation subsystem proofs: see: 10-attestation.md
     - Protocol: see: 11-protocol.md (wire messages)
     - Host state engine: SQLite catalog, WAL — see 01-architecture.md#Host-state-root
     - Transport abstraction
-      - SPSC rings primary; AF_VSOCK and named pipes fallback
-      - see: 01-architecture.md#Transport-engine-abstraction
-    - Break-glass: ephemeral SSH/SFTP — see 08-lifecycle.md#Break-glass
+      - SPSC rings with AF_VSOCK and named pipe fallbacks
+      - Details: see: 01-architecture.md#Transport-engine-abstraction
+    - Break-glass console access: see: 08-lifecycle.md#Break-glass
     - Draining: graceful retirement — see 08-lifecycle.md#Hypervisor-primitives
     - Ecosystem and ops
       - Ecosystem ingestion: see: 12-adapters.md#Ingestion-matrix

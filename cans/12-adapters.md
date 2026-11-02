@@ -2,13 +2,15 @@
   - Ingestion matrix
     - Adapter set and ecosystem binding: see: artifacts/diagrams/ingestion-adapters.txt
     - Core ingestion primitive: kelir-pack
-      - Host-side two-phase in-memory compiler: OCI layer blob → EROFS
+      - Offline two-phase in-memory compiler: OCI layer blob → EROFS
       - Streaming HTTPS client pulls OCI manifest and layer tar chunks directly
       - Phase 1: layer tar headers only stream into a radix tree in host RAM
         - Inline whiteouts (`.wh.`, `.wh..wh..opq`) mutate tree nodes in place
         - Final directory topology, inode count, and chunk extents computed
       - Phase 2: layer payload bodies stream into CAS blobs
         - Finalized EROFS data and directory blocks emitted from Phase 1 map
+      - Emits a session-ready EROFS image; workspace CoW is host-broker state
+        - No overlay or union driver is materialized by kelir-pack
       - Zero intermediate tarballs on disk; zero unfixable EROFS metadata rewrites
       - Phase 1 RAM cost bounded by 500k inode ceiling (<30MB typical)
       - Streaming unpack admission clamps maximum expansion ratio to 15:1
@@ -19,7 +21,8 @@
       - Computes canonical rootfs BLAKE3 digest during the single-pass build
       - No OCI registry daemon, no content store, no resident puller
       - Emits cas/blobs/blake3_<hash> consumed by boot path
-      - Distributable as compile-time CLI or host-side library call
+      - Distributed as external CLI binary only
+      - Zero in-process OCI client, layer unpacker, or EROFS builder in supervisor
     - Two shapes, one rule
       - Contract-bound binary + plugin: MCP, containerd shim v2, OpenShell
       - Thin SDK wrapper: E2B (no plugin, no binary) — see: #E2B-compatibility

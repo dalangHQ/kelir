@@ -7,7 +7,7 @@
   - status: resolved | file: cans/artifacts/examples/autonomous-swe-agent.{rs,ts,py} | resolution: TS now uses a per-read thunk; vfs.md documents it
   - status: resolved | file: artifacts/code/messages.rs | resolution: TrapAction::Yield checkpoint_id now String, matching SnapshotDescriptor.id
   - status: resolved | file: artifacts/code/execution-receipt.rs | resolution: statement_count field added to ExecutionReceipt struct
-  - status: resolved | file: 08-epistemic.md | resolution: wal.rs/otel.rs pointers dropped; Merkle-WAL and OpenTelemetry nodes state plugin-ledger ownership, no artifact pointer
+  - status: resolved | file: 10-attestation.md | resolution: wal.rs/otel.rs pointers dropped; Merkle-WAL and OpenTelemetry nodes state plugin-ledger ownership, no artifact pointer
   - status: resolved | file: plugins/*.md | resolution: compact taxonomy nodes
     - kelir and virtio joined the _rules.yaml stopwords (keyword sprawl)
     - execution axis hoisted to a catalog default node in the plugin model

@@ -11,7 +11,7 @@
     - Default posture
       - Primitive telemetry on; derived telemetry off unless configured
       - Ecosystem apparatus gated on registry size; not shipped ahead of it
-      - see: 10-epistemic.md#Primitive-vs-derived-telemetry
+      - see: 10-attestation.md#Primitive-vs-derived-metrics
     - Maximize GitHub Actions free tier
       - Public repo: unlimited Linux minutes
       - Private repo: 2,000 min ceiling
@@ -88,20 +88,19 @@
         - custom plugin in cans/artifacts/examples
       - Hook home: see: 02-plugin-model.md#Segregated-ring-traits
     - --action-coverage
-      - Asserts every TrapAction, PostExecAction, SyncVerdict, and PluginError
-        - variant is used at least once in cans/artifacts/examples
-      - Action home: see: 11-protocol.md#TrapAction-method-mapping
-    - --veto-coverage
+      - Asserts every Verdict variant is used at least once in cans/artifacts/examples
+      - Action home: see: 11-protocol.md#Verdict-method-mapping    - --veto-coverage
       - Asserts every VetoEvent is registered at least once in an example
       - Veto home: see: 08-lifecycle.md#Lifecycle-vetoes
     - --watchdog-coverage
       - Asserts Suppress and Mitigate are each returned at least once
       - Watchdog home: see: 08-lifecycle.md#Watchdog
     - --channel-coverage
-      - Asserts every channel in 11-protocol.md#Channel-allocation-table is
-        - exercised by at least one integration test
-      - Specifically asserts 0x0005 (VFS) and 0x0006 (bulk) have live round-trip
-      - A channel with no test fails the gate
+      - Asserts every core stream kind in 11-protocol.md#Control-channel has a
+        - live round-trip integration test
+      - Asserts VFS and BULK stream kinds have live round-trip tests
+      - Asserts at least one plugin-registered stream kind is exercised
+      - A core stream kind with no test fails the gate
     - --drain-coverage
       - Asserts Running -> Draining -> Terminated transitions on
         - completion, on timeout, and on already-draining
@@ -172,6 +171,10 @@
     - Rust macros generate typed FFI stubs: napi-rs for TS, pyo3 for Python
     - Parity evaluated on identical wire frame inputs and outputs using vectors.json
     - Syntax is idiomatic per language runtime, not copied across SDKs
+    - Gating is behavioral, not type-level
+      - Rust: compile-time Has<T> bounds (typestate)
+      - TS/Py: builder.boot() EConfig on missing dependency
+      - Identical vectors.json outcomes; runtime EConfig is a parity vector
     - Testkit ground truth
       - kelir-plugin-testkit serializes canonical ring events and verdicts
       - Emits raw binary frames, TrapEvent JSON, and Decision expectations
@@ -180,6 +183,9 @@
       - Automated AST scraper extracts public exported API signatures
       - Asserts 1:1 match across Rust, TypeScript, and Python SDK surfaces
       - Fails CI on divergent method names, parameter arity, or return types
+      - Divergence in typestate encoding is allowed: Rust may express a
+        - constraint at compile time that TS/Py expresses at boot(); the
+        - behavioral outcome in vectors.json is what the gate asserts
     - Chain parity
       - vectors.json must encode the same trap/pre/post/hook chain for each SDK
       - Each SDK executes that identical chain; CI diffs the observed
@@ -245,7 +251,6 @@
       - Supporting crates
         - kelir-transport: Stream trait + SPSC ring, AF_VSOCK, named-pipe backends
         - kelir-catalog: SQLite schema, pool, migration helpers (used by core)
-        - kelir-ssh: in-process SSH/SFTP server (russh), used by break-glass
         - kelir-otlp: zero-allocation metric registry and OTLP exporter
     - Spec layout
       - Core plane files: cans/00-overview.md to cans/15-operations.md

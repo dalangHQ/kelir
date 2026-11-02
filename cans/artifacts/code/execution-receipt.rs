@@ -2,7 +2,7 @@
 //
 // Per-process cryptographic execution receipt.
 //
-// Owned by: cans/10-epistemic.md#Execution-receipts
+// Owned by: cans/10-attestation.md#Execution-receipts
 
 use serde::{Deserialize, Serialize};
 

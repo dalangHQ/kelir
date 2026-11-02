@@ -13,12 +13,12 @@
     - Exports TransactionService via PipelineBinder for multi-resource 2PC management
   - Invariants and policy (transaction)
     - Multi-resource 2PC coordination
-      - Synchronizes commit/abort across native Storage Plane, db-proxy, and lock broker
+      - Synchronizes commit/abort across host CoW broker, db-proxy, and lock broker
       - Coordinates with hypervisor lifecycle: pauses vCPUs during commit evaluation
-      - on_pre_commit pauses guest vCPUs, flushes VFS buffers, and prepares staging files
-      - on_post_commit(true) executes atomic directory swap into host workspace
+      - on_pre_commit pauses guest vCPUs and drains FUSE in-flight ops
+      - on_post_commit(true) invokes broker commit: replay upper + tombstones
         - and issues SQL COMMIT across active proxy connections
-      - on_post_commit(false) discards the sparse overlay delta, drops staging directories,
+      - on_post_commit(false) discards the broker upper file and tombstones,
         - issues SQL ROLLBACK, and releases advisory locks
       - Prevents desynchronization between host database state and guest workspace diffs
     - Spatial blast radius scoping
@@ -27,7 +27,7 @@
       - Restricts advisory lock acquisition to declared physical host inodes
     - Temporal savepoints
       - Injects transparent SQL SAVEPOINT markers into active pgwire connections
-      - Marks VFS upperdir whiteout journals to isolate sub-command mutations
+      - Snapshots broker upper and tombstone state as opaque savepoint blobs
       - Rollback to savepoint restores intermediate state without aborting parent transaction
     - Side-effect quarantine
       - Un-rollbackable L7 egress during active transaction aborts with E_TRANSACTION_TAINT

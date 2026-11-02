@@ -18,7 +18,7 @@
       - Sets sid and controlling terminal: ioctl(slave_fd, TIOCSCTTY, 0)
       - Workload stdin/stdout/stderr bound directly to slave PTY fd
     - Window geometry and signals
-      - Carried across vsock Channel 0x0010 (pty-control)
+      - Carried on stream kind PTY_CONTROL (mux 0x0001)
       - MsgType 0x01 (WindowResize): pushes rows, cols, xpixel, ypixel
       - MsgType 0x02 (SignalForward): pushes signal and pgid; shim executes killpg
     - Host filter pipeline execution order
@@ -35,15 +35,15 @@
     - Injects formatted ANSI box into host-to-guest console Port 0 stream
     - Disclosures render inline on workload TTY without corrupting cursor state
   - Binary exec channel (terminal plane)
-    - Carries programmatic execution streams over Channel 0x0003
-    - Byte framing and stream_id values defined on Channel 0x0003
+    - Carries programmatic execution streams on stream kind EXEC (mux 0x0001)
+    - Sub-lane framing defined on EXEC stream kind
     - stdout and stderr retain bitwise fidelity; zero terminal escape pollution
     - Programmatic commands bypass PTY entirely; PTY (Port 0) is reserved for human attach
     - Per-exec PTY opt-in
       - FLAG_ALLOC_PTY on EXEC_IO_SPEC allocates a private slave PTY per ExecSlot
       - isatty(3) semantics satisfied for language REPLs, git, and build runners
       - Concurrent interactive execs run without Port 0 serialization
-      - Port 0 remains the sole human break-glass channel
+      - Port 0 remains the sole human break-glass console
   - Stream replay
     - Each console port emits an append-only log
       - stdout, stderr, and (when attached) PTY output are separate logs
@@ -65,5 +65,5 @@
       - Optional `follow=true` streams new chunks as they append
     - PTY byte streams carry the same cursor model
       - session.terminal.read_from(port, cursor) -> (Vec<u8>, next_cursor)
-    - Exec channel (0x0003) streams share the cursor model per exec_id
+    - EXEC stream kind shares the cursor model per exec_id
       - exec_log persists per-exec-id for post-run inspection

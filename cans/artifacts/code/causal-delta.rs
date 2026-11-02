@@ -4,7 +4,7 @@
 // Δ = S_A - S_B over memory, inodes, and wire egress.
 // Computes exactly what an agent branch did differently from its parent.
 //
-// Canonical spec home: cans/10-epistemic.md#Causal-delta
+// Canonical spec home: cans/10-attestation.md#Causal-delta
 
 use std::path::PathBuf;
 

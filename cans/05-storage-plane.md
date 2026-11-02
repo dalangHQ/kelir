@@ -3,8 +3,12 @@
     - Storage plane attributes
       - see: artifacts/diagrams/storage-architecture.txt
       - Owner: kelir-core native storage subsystem (kelir-core::storage)
+    - Single storage abstraction
+      - VirtIO-FS only; no in-guest OverlayFS, no virtio-blk workspace disk
+      - Host broker implements CoW layering, deletion tracking, quota, commit
+      - Guest sees one POSIX filesystem; zero union-driver behavior in guest
     - Interception pipeline
-      - Low-level FUSE pass-through bridge directly linking guest VFS to host workspace
+      - FUSE bridge directly links guest VFS to host broker
       - Pipeline engine exposes synchronous lookup, read, and write interception
       - Emits physical StorageDelta events directly to host event bus on commit
     - Host I/O invariants
@@ -20,53 +24,48 @@
     - Stripped base system pre-baked into read-only EROFS
     - Cold-mounted as virtio-blk block device in <2ms
     - Zero tarball decompression
-  - CoW overlay scratchpad
-    - Base workspace mounted strictly read-only as lower layer
-    - overlayfs upperdir maps a sparse host-backed file via virtio-blk
-    - Rollback page purge: FALLOC_FL_PUNCH_HOLE follows with posix_fadvise
-    - posix_fadvise(POSIX_FADV_DONTNEED) purges host kernel dirty page cache
-    - Writes hit sparse disk blocks, never guest RAM
-    - Instant revert: truncate sparse backing file or punch holes in <1ms
-    - No guest kernel OOM on large writes (npm install, pip install torch, git clone)
+  - Host CoW broker
+    - Base workspace mounted strictly read-only as host broker lower layer
+    - Writes land in per-session sparse upper file owned by the broker
+    - Deletions recorded as explicit tombstones in broker state (no whiteouts)
+    - Guest observes a normal writable mount; no union driver inside microVM
+    - Broker exposes lookup/read/write/getattr/readdir/unlink/mkdir/rename
+    - Dir merges (base + upper + tombstones) computed host-side during each readdir
+    - Rollback: broker drops upper file and tombstones; base untouched
+    - Rollback purge: FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on upper
+    - Instant revert: <1ms; guest kernel never sees a filesystem restart
+    - No guest kernel OOM on large writes (npm install, pip install torch)
     - Host memory footprint independent of guest write volume
+    - Sparse upper file bytes counted toward the session quota
   - Ephemeral scratch device
     - Dedicated virtio-blk sparse scratch disk mounted at /tmp and /var/cache
     - Isolates high-churn dependencies from workspace git diffs
     - Automatically discarded on session teardown without reconciliation
     - Prevents cache pollution and unneeded whiteout tracking on host root
-  - Atomic workspace reconciler
-    - Detect
-      - Scans sparse upperdir diffs; unmodified base files remain untouched
-    - Classify whiteouts
-      - Deleted files: char devices with st_rdev == 0 trigger unlink on host target
-      - Deleted or opaque dirs: trusted.overlay.opaque="y" triggers host remove_dir_all
-    - Stage
-      - Writes mutated files to sibling temporary files (.tmp.<nonce>)
-      - StagingGuard struct owns all .tmp.<nonce> files
-      - Staging cleanup: uncommitted staging files unlink unconditionally on Drop
-      - Disarm on commit: guard disarms only after leaf-level atomic commit succeeds
-    - Commit
-      - Reconcile operates on leaf and intermediate directory level exclusively
-      - Host workspace root and intermediate directory inodes are never swapped
-      - Mutated files replace via platform-native single-file atomic rename
-        - Linux: renameat2; macOS: renameatx_np(RENAME_SWAP); Windows:
-        - SetFileInformationByHandle(FileRenameInfoEx)
-      - Deleted files unlink in place; new subdirectories create in place
-      - Host Inode Broker pre-checks active host flock descriptors
-      - Fallback on EBUSY or EPERM: in-place write with 2000ms backoff
-    - Contain
-      - Strict containment: rejects symlink hops and traversals outside host root
-      - Host containment engine resolves via platform-native root handle
-        - Linux: openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)
-        - macOS: iterative openat(O_NOFOLLOW) with st_dev/st_ino root verification
-        - Windows: FILE_FLAG_OPEN_REPARSE_POINT against declared root handle
-      - Symlink traversals escaping root fail with EXDEV at host VFS layer
-      - S_ISUID and S_ISGID stripped on every write, create, chmod (mode & !0o6000)
-      - In-guest root cannot mint setuid host binaries
+  - Workspace commit
+    - Trigger: session.storage.reconcile() or session.stop() graceful flush
+    - Broker replays upper file + tombstones against the base workspace
+    - Per-entry atomic commit at leaf level: temp file + platform rename
+      - Linux: renameat2; macOS: renameatx_np(RENAME_SWAP); Windows:
+      - SetFileInformationByHandle(FileRenameInfoEx)
+    - Deletes unlink in place; new dirs create in place
+    - Host Inode Broker pre-checks active host flock descriptors
+    - Fallback on EBUSY or EPERM: in-place write with 2000ms backoff
+    - Whole commit is idempotent: replaying after crash converges
+  - Containment
+    - Strict containment: rejects symlink hops and traversals outside host root
+    - Host containment engine resolves via platform-native root handle
+      - Linux: openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)
+      - macOS: iterative openat(O_NOFOLLOW) with st_dev/st_ino root verification
+      - Windows: FILE_FLAG_OPEN_REPARSE_POINT against declared root handle
+    - Symlink traversals escaping root fail with EXDEV at host VFS layer
+    - S_ISUID and S_ISGID stripped on every write, create, chmod (mode & !0o6000)
+    - In-guest root cannot mint setuid host binaries
   - Synthetic FUSE inodes
     - Injects RAM-only configuration files (.env, .gitconfig) into guest VFS
     - Lookups return synthetic FsInodeAttr (mode: 0o400 honored strictly)
     - Served directly from host supervisor memory; physically absent on host SSD
+    - Synthetic inodes layer onto the host CoW broker namespace at lookup
   - In-flight read masking
     - Pipeline exposes synchronous FsInterposer::on_fs_read hooks across offsets
     - Zero-copy mutable slice passed directly to registered interposers
@@ -79,13 +78,14 @@
     - Conflicting lock returns EWOULDBLOCK without host thread latency
   - Storage quotas
     - Tracked state
-      - kelir-core::storage maintains allocated_bytes and allocated_inodes atomics
+      - Host broker maintains allocated_bytes and allocated_inodes atomics
+      - Counters track sparse upper file bytes + tombstone count + new inodes
     - Enforcement
       - on_fs_write and FUSE mknod/create/mkdir gate against MountScope budget
-      - statfs reporting: returns remaining upperdir quota in O(1) time
+      - statfs reporting: returns remaining broker quota in O(1) time
     - Isolation semantics
-      - Quota isolation: quotas evaluate exclusively against sparse upperdir delta
-      - Zero-crawl baseline: lowerdir host workspace incurs zero statfs traversal
+      - Quota isolation: quotas evaluate exclusively against broker delta state
+      - Zero-crawl baseline: base workspace incurs zero statfs traversal
     - Failure behavior
       - Exceeding max_bytes fails synchronously with ENOSPC
       - Exceeding max_inodes fails synchronously with ENOSPC
@@ -95,11 +95,11 @@
   - Secondary image mounts
     - Grafts host-opened squashfs/EROFS images into guest VFS namespace
     - Zero PCI hot-plug overhead; serves pack lookups directly via FUSE
-    - Prevents tmpfs upperdir memory exhaustion when loading large packages
+    - Prevents broker upper exhaustion when loading large packages
   - Write gating
     - Synchronous VirtIO-FS interception gates FUSE write() via on_fs_write
     - Signature: see: artifacts/code/plugin-trait.rs
-    - Write-gating error variants: see: 02-plugin-model.md#Hook-return-semantics
+    - Verdict surface: see: 02-plugin-model.md#Unified-verdict
     - Receives &FsContext (inode, path, locks, journal); zero ambient context
     - Writes chunked at 64KB by FUSE driver
       - on_fs_write invoked once per chunk
@@ -108,8 +108,9 @@
         - Accumulate across on_fs_write calls
         - Or request stream mode through MountScope
     - Buffer lifecycle invariants: see: 02-plugin-model.md#FFI-buffer-lifecycle
-    - SyncVerdict::Allow = allow; kernel proceeds with write to upperdir
-    - Err(PluginError::Reject { errno, reason }) = deny
-    - Err(PluginError::Halt) = deny + halt pipeline
+    - Verdict::Pass = allow; kernel proceeds with write to upperdir
+    - Verdict::Drop { errno, reason } = deny
+    - Verdict::Patch(FsChunk) = in-place mutate; then write
+    - Verdict::Abort { reason } = deny + halt pipeline
   - Virtual ID remapping
     - FUSE driver dynamically maps guest UID 0/1000 to caller process UID

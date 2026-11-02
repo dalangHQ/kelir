@@ -3,12 +3,12 @@
     - Plugin identifier: plugin-db-proxy
     - Owner crate: crates/kelir-plugins/plugin-db-proxy
     - name() = "db-proxy"
-    - Tier 2 governance and protocol proxy (db-proxy)
+    - Tier 2 optional domain filter (db-proxy)
     - Depends on (db-proxy): kelir-interface only (binds to native Wire Plane)
     - Exposes: SqlProxyService
     - VirtIO Ring attachment: virtio-net (port 5432)
-    - Registers vsock Channel 0x0004 (db-sqlite)
-      - Allocation: see 11-protocol.md#Channel-allocation-table
+    - Registers stream kind DB_SQLITE on the mux
+      - Kind 0x0011; see: 11-protocol.md#Control-channel
     - Lifecycle attachment (db-proxy): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (db-proxy)
     - Exports SqlProxyService via PipelineBinder for statement and dialect queries
@@ -17,9 +17,10 @@
     - PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser
     - SQLite UDS bridge mechanics:
       - Guest helper binds Unix Domain Socket at /run/kelir/db.sock on demand
-      - Forwards client connections over vsock Channel 0x0004 (db-sqlite)
+      - Forwards client connections over DB_SQLITE mux stream
       - Host SqlProxyService receives stream and delegates queries to host database file
-    - Verdict execution: DbAction::Allow, DbAction::Deny, DbAction::Rewrite
+    - Verdict execution: engine Verdict (Pass | Patch | Drop)
+      - see: 02-plugin-model.md#Unified-verdict
     - Database proxying
       - PostgreSQL on 5432, Redis on 6379
       - Ephemeral DB credentials injected at host connection boundary
@@ -27,11 +28,11 @@
   - Error and return semantics (db-proxy)
     - Hook signature (db-proxy): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (db-proxy)
-      - DbAction::Deny
+      - Verdict::Drop
         - pgwire ErrorResponse frame precedes connection close
         - SQLSTATE derived from errno (EPERM→42501, ENOENT→42P01)
         - Unmapped errno → SQLSTATE XX000 (internal_error)
-      - DbAction::Rewrite
+      - Verdict::Patch(PgFrame)
         - Q/P frame payload replaced before upstream forward
         - Server sees rewritten frame as if client sent it
         - Per-connection rewrites tallied; >3 aborts ECYCLICREWRITE
