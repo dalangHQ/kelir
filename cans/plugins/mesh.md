@@ -8,6 +8,7 @@
     - VirtIO device attachment (mesh): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mesh): see: 08-lifecycle.md#Lifecycle-vetoes
   - Invariants and policy (mesh)
+    - CoW swarm mesh federation: see: artifacts/examples/multi-vm-swarm.rs
     - Sovereign cross-hypervisor peer transport
     - Routes point-to-point peer streams via vsock listener services
     - Injects and validates mTLS framing across hypervisor boundaries

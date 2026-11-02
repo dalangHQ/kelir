@@ -11,6 +11,7 @@
   - Service exports (replay)
     - Exports ReplayService through PipelineBinder for deterministic clock stepping
   - Invariants and policy (replay)
+    - Stepped instruction replay: see: artifacts/examples/replay.rs
     - Cycle-exact instruction clock stepping
       - Decouples guest paravirtual clock from host physical TSC
       - Arms host PMU counters as a metric-only drive for clock stepping

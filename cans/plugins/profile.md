@@ -11,6 +11,8 @@
     - Registers stream kind PROFILE_SYNC on the mux
       - Kind 0x0010; see: 11-protocol.md#Control-channel
   - Invariants and policy (profile)
+    - Profile schema fixture: see: artifacts/examples/fixtures/kelir.toml
+    - Declarative profile execution: see: artifacts/examples/profile.rs
     - Inversion-of-Control configuration router:
       - Ingests canonical kelir.toml and kelir.yaml specification files
       - Plugins register target schema namespaces dynamically via ConfigurablePlugin

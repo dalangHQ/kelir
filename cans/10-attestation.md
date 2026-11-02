@@ -141,6 +141,7 @@
       - cycle-exact
     - Veto points: see: 08-lifecycle.md#Lifecycle-vetoes
   - Step evaluation loop
+    - Userland evaluation loop: see: artifacts/code/step-evaluation-loop.ts
     - Orchestrators execute unmodified agent binaries
     - Checkpoint descriptors are retained in userland orchestrator state
     - Post-step verification compares logical receipts against pre-step states

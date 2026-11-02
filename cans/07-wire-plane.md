@@ -21,6 +21,11 @@
       - ICMP, raw sockets, and unencapsulated UDP dropped at the ingress ring
       - IPv6 disabled unless explicit wire configuration opts in
       - QUIC dropped unless an explicit UDP L4 proxy is configured
+    - Egress exfiltration quarantine
+      - Outbound TCP dials clamp strictly to declared destination allowlists
+      - Unauthorized endpoints injected via untrusted context drop at L4 ring
+      - DNS queries for undeclared external targets return synthetic NXDOMAIN
+      - Out-of-band exfiltration via image rendering or webhooks fails closed
     - UDP NAT semantics
       - Permitted UDP egress uses endpoint-independent mapping (Full Cone NAT)
       - Single host UDP socket per guest source port serves multiple remote peers

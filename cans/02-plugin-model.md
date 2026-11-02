@@ -48,6 +48,10 @@
       - Trait dispatch: see: #Static-dispatch
       - Compiled into contiguous zero-cost dispatch tables
       - Latency bounded by #Latency-ceiling; foreign FFI filter-gated
+    - Authority lattice invariance
+      - Guest-side instruction changes cannot weaken registered pipeline verdicts
+      - Downstream stages evaluate monotonic denials without model intervention
+      - Host-declared interposition rules execute unconditionally outside guest
     - Reactive event bus plane
       - Asynchronous fan-out pub/sub for telemetry, audit, and OTel
       - Strictly immutable domain events emitted after pipeline settlement
@@ -270,9 +274,9 @@
       - supply-chain: multi-vm-swarm.rs
     - Non-plugin surface examples
       - Exercises raw traits or SDK surfaces; no catalog plugin
-      - git-gate.rs: terminal + trap interposition
-      - hook-matrix.{rs,ts,py}: full hook surface
-      - policy-matrix.{rs,ts,py}: full Verdict lattice
+      - Terminal and trap interposition: see: artifacts/examples/git-gate.rs
+      - Full hook surface: see: artifacts/examples/hook-matrix.rs
+      - Full Verdict lattice: see: artifacts/examples/policy-matrix.rs
       - Each maps to a spec surface, not a plugin
     - Coverage invariant
       - Every first-class plugin names a demonstrating example

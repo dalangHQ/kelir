@@ -38,6 +38,10 @@
       - Strict hardware/kernel abstraction layer
         - Zero knowledge of prompts, evaluation loops, or orchestration logic
         - Operates strictly on physical primitives: pages, registers, descriptors, frames
+        - Instruction integrity zero-trust
+          - Workload instructions and reasoning paths are untrusted by default
+          - Authority containment enforced at physical boundaries, not prompt filters
+          - Semantic prompt inspection is banned; policy gates act on side-effects
         - Hardware memory execution policy: strict W^X enforced at MMU boundary
         - Guest kernel traps anonymous PROT_EXEC mmap and mprotect allocations
         - In-memory elf loading through memfd_create aborts with E_WX_VIOLATION
@@ -153,6 +157,7 @@
     - Shared memory mapping: see: #Shared-memory-channel
     - Portable snapshots: single .kelir-snap binary stream
   - VirtIO Device Complex
+    - VirtIO bus topology: see: artifacts/diagrams/four-ring-bus.txt
     - Core routes paravirtual devices; plugins provide domain interpretation
     - Zero protocol domain logic lives in core
     - Channel 0 carries hypervisor control

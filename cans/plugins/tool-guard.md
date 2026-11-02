@@ -18,6 +18,12 @@
       - Deserializes tool name and arguments in native memory before execution
       - Interposition is complete: no tool invocation reaches guest
         - execution shims without passing tool-guard
+    - Taint tracking and mutation gating
+      - Ingestion tools consuming untrusted payloads mark trace as tainted
+      - Mutating tools under tainted state require Verdict::Suspend for approval
+      - Host approval binds strictly to canonical arguments and payload hash
+      - Model-controlled flags or parameters cannot bypass approval gates
+      - In-guest instructions cannot clear host-tracked taint flags
     - Immutable schema locking      - Intercepts initial "tools/list" advertisement at on_vm_ready
       - Computes BLAKE3 hash over all tool schemas, signatures, and descriptions
       - Locks the catalog: dynamic schema mutation or description injection

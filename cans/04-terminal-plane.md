@@ -1,5 +1,6 @@
 - Terminal plane
   - Terminal pipeline
+    - Console filter pipeline: see: artifacts/diagrams/terminal-pipeline.txt
     - Terminal plane attributes
       - Owner: kelir-core native terminal subsystem (kelir-core::terminal)
       - Hardware abstraction: virtio-console paravirtual character bus

@@ -46,6 +46,7 @@
     - Automatically discarded on session teardown without reconciliation
     - Prevents cache pollution and unneeded whiteout tracking on host root
   - Workspace commit
+    - Atomic commit reconciler: see: artifacts/code/reconciler.rs
     - Trigger: session.storage.reconcile() or session.stop() graceful flush
     - Broker replays upper file + tombstones against the base workspace
     - Per-entry atomic commit at leaf level: temp file + platform rename

@@ -221,6 +221,11 @@
         - StepVerdict::Commit: flushes staging delta, advances active step slot
         - StepVerdict::Rollback(reason): calls session.rollback(), reverting RAM in <8ms
           - and discarding the broker upper file + tombstones
+      - Tainted step verification
+        - StepEvaluator validates causal deltas against declared task scopes
+        - Unapproved filesystem writes or egress under tainted state force rollback
+        - Active delta is dropped in ≤8ms; memory reverts to pre-step slot base
+        - Rollback purges in-guest payload without persisting poisoned memory
         - StepVerdict::YieldToHost: halts vCPU registers awaiting external input
         - SDK post-exec gates return PostExecAction, mapped to this lattice
         - PostExecAction::Proceed maps to StepVerdict::Commit

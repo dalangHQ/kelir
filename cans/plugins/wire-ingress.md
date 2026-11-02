@@ -11,6 +11,7 @@
   - Service exports (wire-ingress)
     - Exports IngressRoutingService via PipelineBinder for socket forwarding
   - Invariants and policy (wire-ingress)
+    - Connection parking on suspend: see: artifacts/examples/serverless-webhook.ts
     - Holds inbound client TCP connections without dropped frames during suspend
       - Suspend preserves inbound parked connections; rollback does not
       - On rollback: parked connections get TCP RST (post-handshake: 503 close)

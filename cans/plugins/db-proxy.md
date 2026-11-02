@@ -13,6 +13,7 @@
   - Service exports (db-proxy)
     - Exports SqlProxyService via PipelineBinder for statement and dialect queries
   - Invariants and policy (db-proxy)
+    - L7 pgwire rewrite and 2PC commit: see: artifacts/examples/db-backed-runtime.py
     - Mediates relational database communication
     - PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser
     - SQLite UDS bridge mechanics:
