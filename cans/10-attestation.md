@@ -79,7 +79,7 @@
           - Regardless of guest suspend state
           - 1-hour suspend records ~1 hour wall_clock_ns
           - Measures physical time rather than guest-CPU time
-        - exit_code under Rewrite
+        - exit_code under Patch
           - Exit code of final binary in rewrite chain
           - TrapEvent records original_binary_blake3
           - ExecutionReceipt records final_binary_blake3

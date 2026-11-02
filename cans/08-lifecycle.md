@@ -92,7 +92,7 @@
         - tombstones, session-local RNG position, virtual clock position
       - Rollback preserves: host workspace, host Merkle WAL,
         - external network peer state, issued credential tokens (revoked),
-        - host keyring, in-flight upstream sockets
+        - host keyring
     - Network truth
       - All L4 host-side sockets for the session are closed immediately
       - TCP peers receive a clean FIN or RST depending on shutdown path
@@ -216,7 +216,7 @@
       - Step lattice:
         - StepVerdict::Commit: flushes staging delta, advances active step slot
         - StepVerdict::Rollback(reason): calls session.rollback(), reverting RAM in <8ms
-          - and discarding the sparse upperdir delta
+          - and discarding the broker upper file + tombstones
         - StepVerdict::YieldToHost: halts vCPU registers awaiting external input
       - Fail-closed invariant: unhandled post-execution failures or evaluation
         - timeouts trigger automatic hardware rollback before releasing workload
@@ -324,7 +324,7 @@
       - Any (boot_id, start_time_ns, pid) mismatch marks row Crashed; no signal
   - Break-glass
     - PTY console master (Port 0) is the sole in-process break-glass surface
-    - Exec channel (0x0003) carries programmatic break-glass commands
+    - EXEC stream kind (mux 0x0001) carries programmatic break-glass commands
     - No in-process SSH/SFTP daemon; zero russh, russh-sftp in runtime
     - Guest workloads that need sshd ship it inside their EROFS rootfs
     - Host operators run ssh as a subprocess against the guest sshd

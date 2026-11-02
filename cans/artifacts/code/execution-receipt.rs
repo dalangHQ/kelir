@@ -53,8 +53,6 @@ pub struct ExecutionReceipt {
     /// Hypervisor dirty-byte counter; always populated.
     /// Byte-not-page reason: see cans/01-architecture.md#VmmDriver-trait
     pub dirty_bytes: u64,
-    /// Cryptographic hardware attestation signature issued by hypervisor
-    pub hardware_attestation: [u8; 32],
     /// Populated when ReceiptConfig::include_syscall_count.
     pub syscall_count: Option<u64>,
     /// Kernel return code
@@ -78,4 +76,16 @@ pub struct ExecutionReceipt {
     /// Extension entries. Core treats entries as opaque;
     /// empty for sessions with no extension producer.
     pub extensions: Vec<TelemetryExtension>,
+}
+
+/// Attestation token: a separate fact emission per 10-attestation
+/// (TrapEvent, ExecutionReceipt, CausalDelta, AttestationToken). It
+/// is not a receipt field. Its fields are exactly the Class 1
+/// hardware-anchored primitives named in 10: session token, vmlinux
+/// BLAKE3, EROFS BLAKE3. No other fields are spec-pinned.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttestationToken {
+    pub session_token: String,
+    pub vmlinux_blake3: String,
+    pub erofs_blake3: String,
 }

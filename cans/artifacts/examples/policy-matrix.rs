@@ -15,9 +15,8 @@
 //!                                            which is EINVALIDDECISION
 //!                                            per 09)
 //!   4. policy-abort    -> Abort           (pre-exec, reason only)
-//!   5. policy-yield    -> checkpoint "policy-yield", then Yield to host
-//!                          (HELD: Yield{checkpoint_id} -> Suspend mapping
-//!                          undecided; row left untouched)
+//!   5. policy-yield    -> checkpoint "policy-yield" taken first, then
+//!                          Suspend{until: Approval}
 //!   6. policy-approval -> Suspend        (until Deadline(500))
 //!   7. policy-custom   -> Patch(Custom{name, cbor}) dispatched to
 //!                          builder.register_custom_action("quarantine", …)
@@ -30,7 +29,8 @@
 //!      binary RPC round-trip in main().
 //!
 //! NOTES:
-//!   - TrapAction::Yield carries checkpoint_id: String. (HELD row: see row 5.)
+//!   - Suspend{until: Approval}: checkpoint taken first, then suspend
+//!     awaiting host approval/external input (see row 5).
 //!   - register_custom_action / register_vsock_service take a JSON schema
 //!     and an async handler; shapes below mirror 09/03.
 //!   - session.vsock.channel(kind) is an async byte stream, per
@@ -62,7 +62,7 @@ use kelir::{
         PluginError, SystemTelemetryParticipant, TrapInterposer,
         VetoEvent, Verdict, WatchdogEvent, WatchdogVerdict,
     },
-    protocol::{TrapAction, TrapEvent},
+    protocol::{TrapEvent},
 };
 
 // ============================================================================
@@ -158,7 +158,7 @@ impl LifecycleParticipant for PolicyMatrixPlugin {
 impl TrapInterposer for PolicyMatrixPlugin {
     async fn on_trap(
         &self, event: &TrapEvent, ctx: &HandlerCtx,
-    ) -> Result<Option<TrapAction>, PluginError> {
+    ) -> Result<Option<Verdict>, PluginError> {
         let binary = event.binary_path.rsplit('/').next().unwrap_or(&event.binary_path);
         match binary {
             // Row 1: Pass — proceed untouched.
@@ -185,11 +185,13 @@ impl TrapInterposer for PolicyMatrixPlugin {
             "policy-abort" => Ok(Some(Verdict::Abort {
                 reason: "EPOLICY: abort row".into(),
             })),
-            // Row 5: Yield — checkpoint first, then freeze to the host.
-            // checkpoint_id is the String label of that checkpoint.
+            // Row 5: Suspend — checkpoint taken first, then suspend
+            // awaiting host approval/external input.
             "policy-yield" => {
                 let _snap = ctx.vm.checkpoint("policy-yield").await?;
-                Ok(Some(TrapAction::Yield { checkpoint_id: "policy-yield".into() }))
+                Ok(Some(Verdict::Suspend {
+                    until: Approval,
+                }))
             }
             // Row 6: Suspend — host holds 500 ms pending approval.
             "policy-approval" => Ok(Some(Verdict::Suspend {

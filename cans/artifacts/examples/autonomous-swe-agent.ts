@@ -113,11 +113,13 @@ const runtime = kelir({
   .wire({
     sinkhole: { dnsExcept: ["api.stripe.com", "github.com", "*.internal.net"] },
     sshAgentBridge: true,
+    // Broker: the workload fetches
+    // http://169.254.169.254/kelir/credentials/STRIPE_SECRET
+    // -> {token, ttl_seconds, scope, audience}, TTL default 60s /
+    // ceiling 900s, host keyring sole store, host code never
+    // sees the key.
     vaults: [{ name: "STRIPE_SECRET",
-               placeholder: "vault://stripe_key",
-               resolve: () => process.env.REAL_HOST_STRIPE_KEY!,
-               scopeUrls: ["https://api.stripe.com/v1/*"],
-               scrubResponseHeaders: ["set-cookie", "request-id"] }],
+               placeholder: "vault://stripe_key" }],
     l4Proxies: [{ listenPort: 5432, destination: "pg.internal.net:5432",
                   injectMtls: { certPath: "/etc/ssl/client.crt",
                                 keyPath:  "/etc/ssl/client.key" } }],
@@ -174,7 +176,7 @@ const runtime = kelir({
         cwd: c.trap.cwd,
       });
       if (!intent.isHypothesisValid)
-        return c.drop(1, `Verification Reject: ${intent.falsificationReason}`);
+        return c.drop("EPERM", `Verification Reject: ${intent.falsificationReason}`);
       return c.pass();
     },
     post: async (c) => {
@@ -211,7 +213,7 @@ const runtime = kelir({
     // Merged repo-policy push gate + runtime push gate.
     if (c.policy.isProtected()) {
       c.policy.recordViolation();
-      return c.drop(1, `EPOLICY: '${c.policy.currentBranch}' protected.`);
+      return c.drop("EPERM", `EPOLICY: '${c.policy.currentBranch}' protected.`);
     }
     if (c.trap.argv.includes("--force"))
       return c.patch({ binary: "/bin/git",
@@ -226,7 +228,7 @@ const runtime = kelir({
   .trap(TrapFilter.binary("git").withArg("commit"), {
     pre: async (c) =>
       c.policy.violations > 0
-        ? c.drop(1, `EPOLICY: ${c.policy.violations} prior violation(s).`)
+        ? c.drop("EPERM", `EPOLICY: ${c.policy.violations} prior violation(s).`)
         : c.pass(),
     post: async (c) => {
       const receipt = await c.receipt();
@@ -257,7 +259,12 @@ const runtime = kelir({
   .on(LifecycleEvent.TrapDeny,   async (e, s) => {
     if (await s.ledger.countDenials(e.ppid) > 5) {
       await s.vm.suspend("./.kelir/quarantine.snap");
-      await s.ssh();
+      // PTY console master (Port 0) is the sole in-process
+      // break-glass surface (08-lifecycle Break-glass);
+      // programmatic commands already go via exec_in_guest,
+      // these failure paths are human inspection after
+      // suspend/rollback.
+      await s.console();
     }
   });
 
@@ -283,7 +290,7 @@ async function main() {
       params: { action: "fix-stripe-webhook", repo: "checkout-service",
                 issueId: "ISSUE-8412", env: "staging" },
     });
-    if (testRun.exitCode !== 0) { await session.vm.rollback(baseSnap); await session.ssh(); return; }
+    if (testRun.exitCode !== 0) { await session.vm.rollback(baseSnap); await session.console(); return; }
 
     const branches = await Promise.all(
       ["A", "B", "C", "D"].map(async (id) => {
@@ -309,7 +316,7 @@ async function main() {
       cwd: "/workspace/checkout-service",
       atomicStaging: true, fsync: true,
     });
-    console.log(`[kelir] broker commit ${stats.filesChanged}f, ${stats.whiteoutsResolved} deletions`);
+    console.log(`[kelir] broker commit ${stats.filesChanged}f, ${stats.tombstonesResolved} deletions`);
 
     await session.spawn("git",
       ["commit", "-am", `fix(stripe): dedupe webhook body reads (${winner.id})`],

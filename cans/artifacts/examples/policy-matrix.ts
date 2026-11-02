@@ -16,9 +16,8 @@
 //                                            which is EINVALIDDECISION
 //                                            per 09)
 //   4. policy-abort    -> Abort           (pre-exec, reason only)
-//   5. policy-yield    -> checkpoint "policy-yield", then Yield to host
-//                          (HELD: Yield{checkpoint_id} -> Suspend mapping
-//                          undecided; row left untouched)
+//   5. policy-yield    -> checkpoint "policy-yield" taken first, then
+//                          Suspend{until: Approval}
 //   6. policy-approval -> Suspend        (until Deadline(500))
 //   7. policy-custom   -> Patch(Custom{name, cbor}) dispatched to
 //                          registerCustomAction("quarantine", …)
@@ -32,8 +31,8 @@
 //
 // NOTES:
 //   - Lattice methods: c.pass / c.patch / c.drop / c.suspend / c.abort.
-//     c.yield(checkpoint_id) is HELD (see row 5), left untouched.
-//   - Yield id is a String; "policy-yield" is this example's label.
+//   - Suspend{until: Approval}: checkpoint taken first, then suspend
+//     awaiting host approval/external input (see row 5).
 //   - Vetoes register at vm:init via lifecycle.registerVeto(event, cb);
 //     events are kebab-cased VetoEvent names.
 //   - Watchdog hooks via createPlugin().onWatchdog — TS camelCase of
@@ -73,7 +72,7 @@ const policyPlugin = createPlugin("policy-matrix")
         return c.abort("EPOLICY: abort row");
       case "policy-yield":
         await c.vm.checkpoint("policy-yield");
-        return c.yield("policy-yield");
+        return c.suspend(SuspendUntil.approval);
       case "policy-approval":
         return c.suspend(SuspendUntil.deadline(500));
       case "policy-custom":

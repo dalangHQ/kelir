@@ -13,7 +13,7 @@ use std::any::{Any, TypeId};
 use std::sync::Arc;
 use crate::handlers::HandlerCtx;
 use crate::protocol::messages::{ProcessExit, Verdict, TrapEvent};
-use crate::vmm::driver::{VmmDriver, VmConfig, WatchdogAction};
+use crate::vmm::driver::{BalloonConvergence, VmmDriver, VmConfig, WatchdogAction};
 
 /// Structured payloads carried over the stream mux (PTY_CONTROL kind
 /// 0x0002). Signal forwarding is exec_id-keyed, never raw guest pid;
@@ -234,8 +234,6 @@ impl<'a> LifecycleCtx<'a> {
     /// Returns a BalloonConvergence handle, not void. Host subscribes to
     /// VIRTIO_BALLOON_S_MEMFREE / S_AVAIL; host reclaim gates on guest
     /// ack; fork, snapshot, and heavy exec require prior convergence.
-    /// NOTE: BalloonConvergence is not defined in this file (held: no
-    /// field layout is pinned in the grounded spec facts).
     pub async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, PluginError> {
         self.driver.adjust_balloon(target_mb).await
             .map_err(PluginError::Io)

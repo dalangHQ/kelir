@@ -101,6 +101,44 @@ pub struct SnapshotDescriptor {
     pub guest_clock: Option<GuestClock>,
 }
 
+/// Catalog session row (06-storage-catalog / 08-lifecycle). Every
+/// session registers a row, no bypass.
+/// incarnation_id is a UUIDv7 minted per spawn, in string form.
+/// expires_at_unix is NULL (None) for ephemeral rows and set for
+/// detached rows (refreshed every 30s). Ephemeral rows are reaped on
+/// parent-process death, detached rows on lease TTL expiry, and the
+/// janitor reaps both kinds on runtime child startup. Liveness proof:
+/// Linux pidfd, macOS kqueue NOTE_EXIT, Windows Job Object
+/// KILL_ON_JOB_CLOSE. Any (boot_id, start_time_ns, pid) mismatch
+/// marks the row Crashed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LeaseKind {
+    Ephemeral,
+    Lease,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionRow {
+    pub session_id: String,
+    pub status: String,
+    pub incarnation_id: String,
+    pub boot_id: String,
+    pub start_time_ns: u64,
+    pub pid: u32,
+    pub lease_kind: LeaseKind,
+    pub expires_at_unix: Option<u64>,
+}
+
+/// Handle returned by adjust_balloon. converged becomes true on guest
+/// ack (VIRTIO_BALLOON_S_MEMFREE / S_AVAIL); host reclaim gates on
+/// guest ack; fork, snapshot, and heavy exec require prior convergence
+/// completion.
+#[derive(Debug, Clone)]
+pub struct BalloonConvergence {
+    pub target_mb: u32,
+    pub converged: bool,
+}
+
 #[derive(Debug, Clone)]
 pub enum WatchdogAction {
     /// Guest kernel lockup detected → hard-reset the vCPUs and reboot the microVM
@@ -200,8 +238,7 @@ pub trait VmmDriver: Send + Sync {
     /// Returns a BalloonConvergence handle, not void. Host subscribes
     /// to VIRTIO_BALLOON_S_MEMFREE / S_AVAIL; host reclaim gates on
     /// guest ack; fork, snapshot, and heavy exec require prior
-    /// convergence. NOTE: BalloonConvergence is not defined in this
-    /// file (held: no field layout is pinned in the grounded spec facts).
+    /// convergence.
     async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, VmmError>;
 
     /// Arms the hardware watchdog: when no heartbeat arrives within `timeout`,

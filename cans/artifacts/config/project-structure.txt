@@ -26,7 +26,7 @@ kelir/
 │   │       ├── lib.rs                 # Re-exports all core contracts
 │   │       ├── plugin.rs              # KelirPlugin, MountScope, LifecycleCtx, PluginError
 │   │       ├── driver.rs              # VmmDriver, VmConfig, SnapshotDescriptor, WatchdogAction
-│   │       ├── protocol.rs            # 24-byte FrameHeader (0x4B45), TrapEvent, Verdict, GuestToHost, HostToGuest
+│   │       ├── protocol.rs            # MuxFrameHeader (stream_id, flags, len), TrapEvent, Verdict, GuestToHost, HostToGuest
 │   │       ├── telemetry.rs           # ExecutionReceipt, CausalDelta
 │   │       └── oracle.rs              # Oracle evaluator trait
 │   │   └── tests/

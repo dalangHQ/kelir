@@ -207,7 +207,6 @@ impl RepoPolicyPlugin {
 
 async fn build_runtime(
     oracle: Arc<UserOracle>,
-    stripe_key: String,
     pg_cert: PathBuf,
     pg_key: PathBuf,
 ) -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sync>> {
@@ -317,15 +316,14 @@ async fn build_runtime(
                 drop_all: true,
             },
             ssh_agent_bridge: true,
+            // Broker: the workload fetches
+            // http://169.254.169.254/kelir/credentials/STRIPE_SECRET
+            // -> {token, ttl_seconds, scope, audience}, TTL default 60s /
+            // ceiling 900s, host keyring sole store, host code never
+            // sees the key.
             vaults: vec![VaultEntry {
                 name: "STRIPE_SECRET".into(),
                 placeholder: "vault://stripe_key".into(),
-                resolve: Arc::new(move || {
-                    let k = stripe_key.clone();
-                    Box::pin(async move { Ok(k) })
-                }),
-                scope_urls: vec!["https://api.stripe.com/v1/*".into()],
-                scrub_response_headers: vec!["set-cookie".into(), "request-id".into()],
             }],
             l4_proxies: vec![L4Proxy {
                 listen_port: 5432,
@@ -538,7 +536,12 @@ async fn build_runtime(
         .on_trap_deny(|event, session: &Session| async move {
             if session.ctx::<LedgerCtx>().count_denials(event.ppid).await > 5 {
                 session.vm.suspend("./.kelir/quarantine.snap").await?;
-                session.ssh().await?;
+                // PTY console master (Port 0) is the sole in-process
+                // break-glass surface (08-lifecycle Break-glass);
+                // programmatic commands already go via exec_in_guest,
+                // these failure paths are human inspection after
+                // suspend/rollback.
+                session.console().await?;
             }
             Ok(())
         });
@@ -553,11 +556,9 @@ async fn build_runtime(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let oracle: Arc<UserOracle> = Arc::new(UserOracle::new());
-    let stripe_key = std::env::var("REAL_HOST_STRIPE_KEY")?;
 
     let builder = build_runtime(
         Arc::clone(&oracle),
-        stripe_key,
         "/etc/ssl/client.crt".into(),
         "/etc/ssl/client.key".into(),
     ).await?;
@@ -586,7 +587,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .await?;
         if test.exit_code != 0 {
             session.vm.rollback(&base).await?;
-            session.ssh().await?;   // §11.6
+            session.console().await?;   // (08 Break-glass)
             return Ok(());
         }
 
@@ -637,7 +638,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }).await?;
         eprintln!(
             "[kelir] broker commit files={} deletes={}",
-            stats.files_changed, stats.whiteouts_resolved,
+            stats.files_changed, stats.tombstones_resolved,
         );
 
         // Git runs as an ordinary guest execution — the trap chain gates it

@@ -162,7 +162,7 @@ class RepoPolicyPlugin(BasePlugin):
         if h.is_protected():
             h.record_violation()
             return Verdict.drop(
-                1, f"EPOLICY: '{h.current_branch}' is protected."
+                "EPERM", f"EPOLICY: '{h.current_branch}' is protected."
             )
 
         new_branch = f"agent/{uuid.uuid4().hex[:8]}"
@@ -225,7 +225,7 @@ def make_universal_step(oracle: UserOracle) -> PreExecHandler:
         intent = await oracle.analyze_intent(c.trap)
         if not intent.is_hypothesis_valid:
             return Verdict.drop(
-                1,
+                "EPERM",
                 f"Verification Reject: {intent.falsification_reason or ''}",
             )
         return Verdict.pass_()
@@ -295,7 +295,7 @@ def make_commit_gate() -> PreExecHandler:
         # c.cap.policy -> RepoPolicyHandle, guaranteed by pyright.
         n = c.cap.policy.violations
         if n > 0:
-            return Verdict.drop(1, f"EPOLICY: {n} prior violation(s).")
+            return Verdict.drop("EPERM", f"EPOLICY: {n} prior violation(s).")
         return Verdict.pass_()
     return commit_gate
 
@@ -333,7 +333,6 @@ def make_zero_byte_check() -> PostExecHandler:
 async def build_runtime(
     *,
     oracle: UserOracle,
-    stripe_key: str,
     pg_cert: Path,
     pg_key: Path,
 ) -> KelirBuilder:
@@ -427,13 +426,15 @@ async def build_runtime(
                 drop_all=True,
             ),
             ssh_agent_bridge=True,
+            # Broker: the workload fetches
+            # http://169.254.169.254/kelir/credentials/STRIPE_SECRET
+            # -> {token, ttl_seconds, scope, audience}, TTL default 60s /
+            # ceiling 900s, host keyring sole store, host code never
+            # sees the key.
             vaults=[
                 VaultEntry(
                     name="STRIPE_SECRET",
                     placeholder="vault://stripe_key",
-                    resolve=lambda: stripe_key,
-                    scope_urls=["https://api.stripe.com/v1/*"],
-                    scrub_response_headers=["set-cookie", "request-id"],
                 ),
             ],
             l4_proxies=[
@@ -530,7 +531,12 @@ async def build_runtime(
     async def _deny(event: TrapEvent, session: Session) -> None:
         if await session.cap.ledger.count_denials(event.ppid) > 5:
             await session.vm.suspend("./.kelir/quarantine.snap")
-            await session.ssh()
+            # PTY console master (Port 0) is the sole in-process
+            # break-glass surface (08-lifecycle Break-glass);
+            # programmatic commands already go via exec_in_guest,
+            # these failure paths are human inspection after
+            # suspend/rollback.
+            await session.console()
 
     return builder
 
@@ -560,11 +566,9 @@ async def fork_and_verify(
 
 async def main() -> None:
     oracle = UserOracle()
-    stripe_key = os.environ["REAL_HOST_STRIPE_KEY"]
 
     builder = await build_runtime(
         oracle=oracle,
-        stripe_key=stripe_key,
         pg_cert=Path("/etc/ssl/client.crt"),
         pg_key=Path("/etc/ssl/client.key"),
     )
@@ -596,7 +600,7 @@ async def main() -> None:
         )
         if test.exit_code != 0:
             await session.vm.rollback(base)
-            await session.ssh()                              # §11.6
+            await session.console()                          # (08 Break-glass)
             return
 
         # ── Phase 2: 4-way CoW fork fan-out (§11.1, §11.3) ────────────
@@ -625,7 +629,7 @@ async def main() -> None:
             fsync=True,
         )
         log.info("[kelir] broker commit files=%s deletes=%s",
-                 stats.files_changed, stats.whiteouts_resolved)
+                 stats.files_changed, stats.tombstones_resolved)
 
         await session.spawn(
             "git",

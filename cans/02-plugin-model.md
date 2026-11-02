@@ -54,7 +54,7 @@
     - AOT hook fusion compiles chained host hooks into a single flat closure
     - Exactly one FFI trampoline crossing per ring event regardless of hook count
     - Marshals ring events across threadsafe boundaries on match
-    - Non-blocking trap returns: Allow, Deny, Rewrite, Yield, Abort
+    - Non-blocking trap returns: Pass, Patch, Drop, Suspend, Abort
   - Composite plugin hierarchy
     - see: artifacts/code/plugin-trait.rs
     - Assembly-time tree flattens into contiguous C-speed dispatch array
@@ -132,7 +132,7 @@
       - Trap hooks → Verdict; ring-specific defaults documented per plane
   - Declarative error mapping
     - Host exceptions map directly to POSIX errnos via builder error registry
-    - Unmapped exceptions convert cleanly to Decision::Deny or hypervisor abort
+    - Unmapped exceptions convert cleanly to Verdict::Drop or hypervisor abort
     - Preserves guest POSIX semantics without manual try-catch in hook bodies
   - Declarative plugin macros
     - Plugins expose declarative DSL attributes expanding at assembly time

@@ -1,41 +1,39 @@
 // crates/kelir-interface/src/codec.rs
 //
-// Little-Endian Frame header for host↔guest transport over port 5252
+// Mux frame header for host↔guest transport over port 5252
 // (retained; Transport backend: SPSC rings primary; AF_VSOCK /
 // named-pipe fallback — framing identical, only the byte carrier differs).
 // Exactly two transports: Control 0x0000 and Stream Mux 0x0001.
-// The 24-byte FrameHeader below is kept as-is.
 //
 // Owned by: cans/11-protocol.md#Wire-framing
 
-// Wire header layout (24 bytes, Little-Endian bit numbering):
-//
-//  0                   1                   2                   3
-//  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |          Magic (0x4B45)       |          Version (0x04)       |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |          Channel ID           |          Message Type         |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |             Flags             |            Reserved           |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |                     Sequence Number (u64)                     |
-// |                                                               |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |                         Payload Length                        |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// |                         Payload Data (CBOR)...                |
-// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// Wire layout: stream_id, flags, len, payload. The header on the wire
+// is 9 bytes (stream_id: u32, flags: u8, len: u32, all Little-Endian),
+// with no magic, version, channel, or sequence field. The struct below
+// is the logical field layout; it is not a packed 9-byte struct, so
+// no size assert is made on it.
 
-pub const MAGIC: u16 = 0x4B45;     // 'KE'
-pub const VERSION: u16 = 0x04;
-pub const HEADER_LEN: usize = 24;
 pub const MAX_FRAME_PAYLOAD: usize = 64 * 1024; // 64KB strict boundary
 
-pub const FLAG_CONTINUATION: u16 = 0x0001;
+/// Stream mux frame header (11-protocol Stream mux framing).
+pub struct MuxFrameHeader {
+    pub stream_id: u32,
+    pub flags: u8,
+    pub len: u32,
+}
 
-// Canonical message types. The header carries integers only; no
-// message type names a domain, device, or plugin.
+// Mux frame flags (u8). FLAG_OPEN payload carries kind_id: u16 + tags.
+pub const FLAG_OPEN: u8 = 0x01;
+pub const FLAG_DATA: u8 = 0x02;
+pub const FLAG_CLOSE: u8 = 0x04;
+pub const FLAG_RST: u8 = 0x08;
+pub const FLAG_WINDOW_UPDATE: u8 = 0x10;
+
+// Per-stream credit windows: a sender parks when its stream's credit
+// is exhausted, and resumes on FLAG_WINDOW_UPDATE.
+
+// Canonical message types. These are payload message-type IDs, not
+// header fields. No message type names a domain, device, or plugin.
 pub const MSG_TRAP: u16 = 0x0001; // Trap Notification / Decision
 pub const MSG_CHANNEL_PAYLOAD: u16 = 0x0002; // Channel Payload (ChannelData)
 pub const MSG_VM_LIFECYCLE_CONTROL: u16 = 0x0003; // VM Lifecycle Control
@@ -74,22 +72,6 @@ pub const KIND_DB_SQLITE: u16 = 0x0011;
 pub const KIND_MCP_CONSOLE: u16 = 0x0012;
 
 // Binary exec frame layout (mux 0x0001, kind EXEC 0x0001):
-// stream_id: u32, flags: u8, len: u32, payload. EXEC sub-lane codes
-// live in protocol.rs (EXEC_STREAM_*); 0=stdin, 1=stdout, 2=stderr,
-// 3=exec control.
-
-// Packed layout, exactly 24 bytes, matching the diagram above:
-// All multi-byte integers encoded in Little-Endian byte order.
-#[repr(C, packed)]
-pub struct FrameHeader {
-    pub magic: u16,
-    pub version: u16,
-    pub channel_id: u16,
-    pub message_type: u16,
-    pub flags: u16,
-    pub reserved: u16,
-    pub sequence: u64, // monotonic 64-bit sequence number
-    pub payload_len: u32,
-}
-
-const _: () = assert!(std::mem::size_of::<FrameHeader>() == HEADER_LEN);
+// MuxFrameHeader (stream_id: u32, flags: u8, len: u32), payload.
+// EXEC sub-lane codes live in protocol.rs (EXEC_STREAM_*); 0=stdin,
+// 1=stdout, 2=stderr, 3=exec control.

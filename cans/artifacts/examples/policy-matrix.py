@@ -15,9 +15,8 @@ is the dispatch order; each binary hits exactly one row:
                                            which is EINVALIDDECISION
                                            per 09)
   4. policy-abort    -> Abort           (pre-exec, reason only)
-  5. policy-yield    -> checkpoint "policy-yield", then Yield to host
-                         (HELD: Yield{checkpoint_id} -> Suspend mapping
-                         undecided; row left untouched)
+  5. policy-yield    -> checkpoint "policy-yield" taken first, then
+                         Suspend{until: Approval}
   6. policy-approval -> Suspend        (until Deadline(500))
   7. policy-custom   -> Patch(Custom{name, cbor}) dispatched to
                          builder.register_custom_action("quarantine", …)
@@ -38,8 +37,8 @@ hook-matrix.py.
 
 NOTES:
   - Lattice: Verdict.pass_ / patch / drop / suspend / abort.
-    Decision.yield_to_host(checkpoint_id) is HELD (see row 5).
-  - Yield id is a String; "policy-yield" is this example's label.
+  - Suspend{until: Approval}: checkpoint taken first, then suspend
+    awaiting host approval/external input (see row 5).
   - Vetoes register at on_vm_init via ctx.register_veto(event, cb).
   - Watchdog via on_watchdog on BasePlugin
     (SystemTelemetryParticipant in snake_case).
@@ -60,7 +59,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
 import kelir
-from kelir import Deadline, Decision, HandlerContext, KelirBuilder, Verdict
+from kelir import Approval, Deadline, HandlerContext, KelirBuilder, Verdict
 from kelir.plugin import (
     BasePlugin,
     VetoEvent,
@@ -155,10 +154,11 @@ async def row_abort(c: HandlerContext) -> Verdict:
     return Verdict.abort("EPOLICY: abort row")
 
 
-# HELD: Yield{checkpoint_id} -> Suspend mapping undecided; row untouched.
-async def row_yield(c: HandlerContext) -> Decision:
+# Suspend{until: Approval}: checkpoint taken first, then suspend
+# awaiting host approval/external input.
+async def row_yield(c: HandlerContext) -> Verdict:
     await c.vm.checkpoint("policy-yield")
-    return Decision.yield_to_host("policy-yield")
+    return Verdict.suspend(until=Approval)
 
 
 async def row_approval(c: HandlerContext) -> Verdict:

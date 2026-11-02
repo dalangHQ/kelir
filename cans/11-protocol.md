@@ -34,7 +34,7 @@
       - Slab saturation: shim returns MSG_EXEC_REJECT{ENOMEM} in-band
       - waitpid(-1, WNOHANG) updates slot exit status without blocking
       - Unmatched reaped PIDs discard into a zero-allocation sink
-      - Exit frames on Channel 0x0003 defer until stdout/stderr EOF flush
+      - Exit frames on EXEC stream kind defer until stdout/stderr EOF flush
       - Multiplexes raw VirtIO ring bytes; carries zero database, proxy, or domain logic
       - Domain Unix sockets are provisioned dynamically over vsock, never hardcoded in PID 1
   - Binary exec channel
@@ -142,7 +142,7 @@
         - /proc/$PID/maps still describes the pre-exec image and is untrusted
         - Scans /proc/$PID/auxv, envp, and PT_INTERP before cgroup unfreeze
     - Per-command rlimits
-      - Exec request on Channel 0x0003 control stream carries optional ProcessLimits
+      - Exec request on EXEC control sub-lane 0x03 carries optional ProcessLimits
       - Fields: max_as_bytes (RLIMIT_AS), max_nofile (RLIMIT_NOFILE),
         - max_nproc (RLIMIT_NPROC), max_cpu_seconds (RLIMIT_CPU)
       - kelir-shim calls setrlimit(2) between fork() and execve()

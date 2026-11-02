@@ -22,10 +22,9 @@
 // with O_NONBLOCK, FIFO/socket lookups fail with ENXIO, and zero guest
 // syscalls may sleep host ring workers.
 //
-// Canonical spec home: cans/05-storage-plane.md#Atomic-workspace-reconciler
+// Canonical spec home: cans/05-storage-plane.md#Workspace-commit
 
 use std::fs;
-use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -41,14 +40,13 @@ pub enum TraversalGuard {
 #[derive(Default)]
 pub struct CommitStats {
     pub files_changed: u64,
-    // Field name kept deliberately (held: rename not grounded in a code
-    // schema): counts broker tombstones resolved, not overlay whiteouts.
-    pub whiteouts_resolved: u64,
+    /// Counts broker tombstones resolved (deleted paths unlinked in place).
+    pub tombstones_resolved: u64,
 }
 
 /// Owns every .tmp.<nonce> staging file for one commit. Uncommitted
 /// staging files unlink unconditionally on Drop; the guard disarms only
-/// after the atomic directory swap succeeds, so a failed commit never
+/// after per-entry commit succeeds, so a failed commit never
 /// leaves staging files behind.
 pub struct StagingGuard {
     pub staged: Vec<PathBuf>,
@@ -65,12 +63,18 @@ impl Drop for StagingGuard {
     }
 }
 
-// Commit fast path: renameat2(RENAME_EXCHANGE) directly, after the Host
-// Inode Broker pre-checks active host flock descriptors. Fallback on
-// EBUSY or EPERM: in-place write with 2000ms backoff.
+// Commit: per-entry temp+rename, after the Host Inode Broker pre-checks
+// active host flock descriptors. Fallback on EBUSY or EPERM: in-place
+// write with 2000ms backoff.
+//
+// Broker state dir layout: sessions/<id>/upper (per-session sparse
+// upper file contents, walked as a directory tree) and
+// sessions/<id>/tombstones (one file per deleted path, path preserved
+// as subdirectories). reconcile_upperdir takes the broker state dir
+// (sessions/<id>/) rather than only the upper dir.
 
 pub async fn reconcile_upperdir(
-    upperdir: &Path,
+    broker_dir: &Path,
     host_target: &Path,
     guard: TraversalGuard,
 ) -> Result<CommitStats, std::io::Error> {
@@ -78,10 +82,20 @@ pub async fn reconcile_upperdir(
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
 
     let canonical_root = host_target.canonicalize()?;
-    reconcile_diff(
-        upperdir, upperdir, host_target, &canonical_root,
-        nonce, guard, &mut stats
-    )?;
+    let upperdir = broker_dir.join("upper");
+    let tombstones_dir = broker_dir.join("tombstones");
+    if upperdir.exists() {
+        reconcile_diff(
+            &upperdir, &upperdir, host_target, &canonical_root,
+            nonce, guard, &mut stats
+        )?;
+    }
+    if tombstones_dir.exists() {
+        reconcile_tombstones(
+            &tombstones_dir, &tombstones_dir, host_target,
+            &canonical_root, &mut stats
+        )?;
+    }
 
     // Scoped flush of parent directory metadata
     if host_target.exists() {
@@ -119,24 +133,6 @@ fn reconcile_diff(
         }
         let file_type = entry.file_type()?;
 
-        // Broker tombstone: a deletion recorded in broker state (no
-        // whiteouts); the entry below unlinks in place. The marker
-        // decoding here is left as-is — no tombstone record format is
-        // pinned in the grounded spec facts, so none is invented.
-        if file_type.is_char_device() {
-            let meta = entry.metadata()?;
-            if meta.rdev() == 0 {
-                if target_path.is_file() || target_path.is_symlink() {
-                    fs::remove_file(&target_path)?;
-                    stats.whiteouts_resolved += 1;
-                } else if target_path.is_dir() {
-                    fs::remove_dir_all(&target_path)?;
-                    stats.whiteouts_resolved += 1;
-                }
-                continue;
-            }
-        }
-
         if file_type.is_dir() {
             if !target_path.exists() {
                 fs::create_dir_all(&target_path)?;
@@ -157,6 +153,58 @@ fn reconcile_diff(
             }
             fs::rename(&tmp_swap, &target_path)?;
             stats.files_changed += 1;
+        }
+    }
+    Ok(())
+}
+
+/// Tombstone phase: walk sessions/<id>/tombstones/, where each entry
+/// mirrors a deleted path (path preserved as subdirectories), and
+/// unlink the corresponding target in place. A tombstone entry that
+/// is a directory is walked recursively, so nested deleted paths are
+/// resolved entry by entry. Targets already gone are converged
+/// (idempotent replay: nothing to remove, nothing counted). The same
+/// strict containment check as file writes applies: a target that
+/// exists is canonicalized and must stay under the canonical root,
+/// otherwise the commit fails with PermissionDenied.
+fn reconcile_tombstones(
+    tombstones_root: &Path,
+    current: &Path,
+    host_target: &Path,
+    canonical_root: &Path,
+    stats: &mut CommitStats,
+) -> Result<(), std::io::Error> {
+    for entry in fs::read_dir(current)? {
+        let entry = entry?;
+        let path = entry.path();
+        let rel_path = path.strip_prefix(tombstones_root).unwrap();
+        let target_path = host_target.join(rel_path);
+
+        if entry.file_type()?.is_dir() {
+            reconcile_tombstones(
+                tombstones_root, &path, host_target, canonical_root, stats
+            )?;
+            continue;
+        }
+
+        // Enforce strict containment, same check as file writes:
+        // reject symlink hops outside host_target
+        if target_path.exists() {
+            let target_canon = target_path.canonicalize()?;
+            if !target_canon.starts_with(canonical_root) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("Path traversal attempt detected: {:?}", target_path),
+                ));
+            }
+        }
+
+        if target_path.is_file() || target_path.is_symlink() {
+            fs::remove_file(&target_path)?;
+            stats.tombstones_resolved += 1;
+        } else if target_path.is_dir() {
+            fs::remove_dir_all(&target_path)?;
+            stats.tombstones_resolved += 1;
         }
     }
     Ok(())
