@@ -141,6 +141,7 @@
         - ELF is read from disk at trap time, not from /proc/$PID/maps
         - /proc/$PID/maps still describes the pre-exec image and is untrusted
         - Scans /proc/$PID/auxv, envp, and PT_INTERP before cgroup unfreeze
+        - Identity hash stays raw bytes; see: 10-attestation.md#Execution-receipts
     - Per-command rlimits
       - Exec request on EXEC control sub-lane 0x03 carries optional ProcessLimits
       - Fields: max_as_bytes (RLIMIT_AS), max_nofile (RLIMIT_NOFILE),

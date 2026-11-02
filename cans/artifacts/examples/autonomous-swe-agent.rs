@@ -611,7 +611,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let child = parent.vm.fork().await?;                 // <15ms
                 child.vm
                     .clock
-                    .skew(Duration::from_secs(24 * 3600 * (id as u64 - 64)))
+                    .skew(Duration::from_secs(24 * 24 * 3600 * (id as u64 - 64)))
+                    // 24 days per branch, parity with .ts/.py (was 1 day/branch)
                     .await?;
                 let run = child.spawn("npm")
                     .args(["run", &format!("verify-hypothesis-{id}")])
