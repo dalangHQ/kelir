@@ -16,9 +16,9 @@
 //!                                            per 09)
 //!   4. policy-abort    -> Abort           (pre-exec, reason only)
 //!   5. policy-yield    -> checkpoint "policy-yield" taken first, then
-//!                          Suspend{until: Approval}
+//!                          Suspend{until: SuspendUntil::Approval}
 //!   6. policy-approval -> Suspend        (until Deadline(500))
-//!   7. policy-custom   -> Patch(Custom{name, cbor}) dispatched to
+//!   7. policy-custom   -> Patch(PatchPayload::Custom{name, cbor}) dispatched to
 //!                          builder.register_custom_action("quarantine", …)
 //!   8. Vetoes (on_vm_init): Suspend and ClockSkew, each allowed only once
 //!      the ready flag is set in on_vm_ready; before that both abort.
@@ -29,7 +29,7 @@
 //!      binary RPC round-trip in main().
 //!
 //! NOTES:
-//!   - Suspend{until: Approval}: checkpoint taken first, then suspend
+//!   - Suspend{until: SuspendUntil::Approval}: checkpoint taken first, then suspend
 //!     awaiting host approval/external input (see row 5).
 //!   - register_custom_action / register_vsock_service take a JSON schema
 //!     and an async handler; shapes below mirror 09/03.
@@ -56,13 +56,13 @@ use ciborium::value::Value as CborValue;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use kelir::{
-    handler, DriverChoice, HandlerCtx, KelirBuilder, Session, VmConfig,
+    handler, driver::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
     plugin::{
         AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant,
         PluginError, SystemTelemetryParticipant, TrapInterposer,
         VetoEvent, Verdict, WatchdogEvent, WatchdogVerdict,
     },
-    protocol::{TrapEvent},
+    protocol::{PatchPayload, SuspendUntil, TrapEvent},
 };
 
 // ============================================================================
@@ -158,17 +158,17 @@ impl LifecycleParticipant for PolicyMatrixPlugin {
 impl TrapInterposer for PolicyMatrixPlugin {
     async fn on_trap(
         &self, event: &TrapEvent, ctx: &HandlerCtx,
-    ) -> Result<Option<Verdict>, PluginError> {
+    ) -> Result<Verdict, PluginError> {
         let binary = event.binary_path.rsplit('/').next().unwrap_or(&event.binary_path);
         match binary {
             // Row 1: Pass — proceed untouched.
-            "policy-allow" => Ok(Some(Verdict::Pass)),
+            "policy-allow" => Ok(Verdict::Pass),
             // Row 2: Drop — EPOLICY diagnostic payload becomes
             // Drop { errno: "EPOLICY", reason }.
-            "policy-deny" => Ok(Some(Verdict::Drop {
+            "policy-deny" => Ok(Verdict::Drop {
                 errno: Some("EPOLICY"),
                 reason: "EPOLICY: policy-matrix denies this binary.".into(),
-            })),
+            }),
             // Row 3: Patch — env mutation ONLY through the ExecveMutation
             // payload (plugins/tool-guard.md).
             "policy-rewrite" => {
@@ -178,30 +178,30 @@ impl TrapInterposer for PolicyMatrixPlugin {
                     "set_env": { "KELIR_POLICY_REWRITE": "1" },
                     "unset_env": [],
                 });
-                Ok(Some(Verdict::Patch(mutation)))
+                Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&mutation).unwrap())))
             }
             // Row 4: Abort — pre-exec, hypervisor-level termination.
             // Abort drops exit_code, keeps reason only.
-            "policy-abort" => Ok(Some(Verdict::Abort {
+            "policy-abort" => Ok(Verdict::Abort {
                 reason: "EPOLICY: abort row".into(),
-            })),
+            }),
             // Row 5: Suspend — checkpoint taken first, then suspend
             // awaiting host approval/external input.
             "policy-yield" => {
                 let _snap = ctx.vm.checkpoint("policy-yield").await?;
-                Ok(Some(Verdict::Suspend {
-                    until: Approval,
-                }))
+                Ok(Verdict::Suspend {
+                    until: SuspendUntil::Approval,
+                })
             }
             // Row 6: Suspend — host holds 500 ms pending approval.
-            "policy-approval" => Ok(Some(Verdict::Suspend {
-                until: Deadline(500),
-            })),
-            // Row 7: Patch(Custom{name, cbor}) — dispatched by name to
+            "policy-approval" => Ok(Verdict::Suspend {
+                until: SuspendUntil::Deadline(500),
+            }),
+            // Row 7: Patch(PatchPayload::Custom{name, cbor}) — dispatched by name to
             // the registered handler. Unknown names fail with
             // EUnknownAction (11); "quarantine" is registered on the
             // builder below.
-            "policy-custom" => Ok(Some(Verdict::Patch(Custom {
+            "policy-custom" => Ok(Verdict::Patch(PatchPayload::Custom {
                 name: "quarantine",
                 cbor: CborValue::Map(vec![
                     (CborValue::Text("pid".into()), CborValue::Integer(event.pid.into())),
@@ -210,8 +210,8 @@ impl TrapInterposer for PolicyMatrixPlugin {
                         CborValue::Text("policy-matrix quarantine row".into()),
                     ),
                 ]),
-            }))),
-            _ => Ok(None),
+            })),
+            _ => Ok(Verdict::Pass),
         }
     }
 }
@@ -284,12 +284,24 @@ fn build_runtime() -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sy
     let builder = KelirBuilder::new(VmConfig {
         vcpus: 2,
         memory_mb: 2048,
-        kernel: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
-        rootfs_erofs: "./fixtures/rootfs-policy.erofs".into(),
+        kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
+        rootfs_erofs_path: "./fixtures/rootfs-policy.erofs".into(),
         tsc_locked: true,
         enable_watchdog: true,
         enable_gpu_passthrough: false,
-        driver: DriverChoice::Auto,
+        driver_policy: DriverPolicy {
+            require_hardware_vmm: false,
+            allow_emulated_fallback: true,
+            verify_hw_lockfile: false,
+            wx_enforcement: WxPolicy::PermissiveAudit,
+            ffi_worker_threads: 2,
+            ffi_max_ops_per_sec: 1000,
+        },
+        page_size_kb: 4,
+        deterministic_clock: false,
+        pinned_clocksource: None,
+        ns_per_instruction: None,
+        preemption_grace_ms: 0,
         entropy_seed: None,
     })
     .plugin(policy)
@@ -324,7 +336,7 @@ fn build_runtime() -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sy
             }
         }),
     )
-    // Vsock service on vsock channel kind 2: the RPC peer of session.vsock.channel(2)
+    // Vsock service on vsock port 2: the RPC peer of session.vsock.channel(2)
     // in main(). Echoes the request frame back to the caller.
     .register_vsock_service(
         2,

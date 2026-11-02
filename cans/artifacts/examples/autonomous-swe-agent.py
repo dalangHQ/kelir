@@ -177,7 +177,7 @@ class RepoPolicyPlugin(BasePlugin):
         )
 
     # ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
-    async def on_fs_write(self, path: Path, data: bytes) -> Verdict:
+    async def on_fs_write(self, path: Path, data: bytes, pid: int, ctx: HandlerContext) -> Verdict:
         if path.suffix == ".diff" and len(data) > self._opts["max_diff_bytes"]:
             self.handle().record_violation()
             return Verdict.drop(
@@ -580,7 +580,7 @@ async def main() -> None:
         log.info("[kelir] booted driver=%s boot_ms=%s",
                  session.driver_name, session.boot_ms)
 
-        await session.wire.forward_port(8080, 3000)                  # §11.7
+        await session.wire.forward_port(3000, 8080)                  # §11.7
         base = await session.vm.checkpoint("clean_base")
         winning_delta: Optional[CausalDelta] = None
 

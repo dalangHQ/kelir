@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use kelir::{
-    handler, DriverChoice, FinalizeRequest, FsReconcileRequest, HandlerCtx,
+    handler, driver::{DriverPolicy, WxPolicy}, FinalizeRequest, FsReconcileRequest, HandlerCtx,
     KelirBuilder, PostExecAction, Session, SnapshotDescriptor, StepSlot, Verdict, VmConfig,
     plugin::{
         AnyPlugin, KelirPlugin, PluginError,
@@ -40,7 +40,7 @@ use kelir::{
         storage::{DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopHandler, SnoopRule, StorageConfig},
         wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig},
     },
-    protocol::{CausalDelta, ExecutionReceipt, TrapEvent},
+    protocol::{CausalDelta, ExecutionReceipt, PatchPayload, TrapEvent},
 };
 
 // ============================================================================
@@ -145,18 +145,18 @@ impl KelirPlugin for RepoPolicyPlugin {
 #[async_trait]
 impl TrapInterposer for RepoPolicyPlugin {
     // ── Ring 2 (virtio-vsock): veto or patch `git push` ────────────────
-    async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Option<Verdict>, PluginError> {
+    async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
         let is_git = event.binary_path.ends_with("/git") || event.binary_path == "git";
         let is_push = event.argv.get(1).map(String::as_str) == Some("push");
-        if !(is_git && is_push) { return Ok(None); }
+        if !(is_git && is_push) { return Ok(Verdict::Pass); }
 
         let h = self.handle();
         if h.is_protected().await {
             h.record_violation().await;
-            return Ok(Some(Verdict::Drop {
+            return Ok(Verdict::Drop {
                 errno: Some("EPERM"),
                 reason: format!("EPOLICY: '{}' is protected.", h.branch().await),
-            }));
+            });
         }
 
         let new_branch = format!("agent/{:08x}", std::process::id());
@@ -169,7 +169,7 @@ impl TrapInterposer for RepoPolicyPlugin {
             "set_env": { "KELIR_REWRITTEN": "1" },
             "unset_env": [],
         });
-        Ok(Some(Verdict::Patch(serde_json::to_vec(&mutation).unwrap())))
+        Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&mutation).unwrap())))
     }
 }
 
@@ -235,12 +235,24 @@ async fn build_runtime(
     let builder = KelirBuilder::new(VmConfig {
         vcpus: 4,
         memory_mb: 4096,
-        kernel: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
-        rootfs_erofs: "./fixtures/rootfs-swebench.erofs".into(),
+        kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
+        rootfs_erofs_path: "./fixtures/rootfs-swebench.erofs".into(),
         tsc_locked: true,
         enable_watchdog: true,
         enable_gpu_passthrough: false,
-        driver: DriverChoice::Auto,
+        driver_policy: DriverPolicy {
+            require_hardware_vmm: false,
+            allow_emulated_fallback: true,
+            verify_hw_lockfile: false,
+            wx_enforcement: WxPolicy::PermissiveAudit,
+            ffi_worker_threads: 2,
+            ffi_max_ops_per_sec: 1000,
+        },
+        page_size_kb: 4,
+        deterministic_clock: false,
+        pinned_clocksource: None,
+        ns_per_instruction: None,
+        preemption_grace_ms: 0,
         entropy_seed: None,
     })
 
@@ -414,12 +426,12 @@ async fn build_runtime(
             c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
             // Env injection via Patch, not env.set + Pass (09: EINVALIDDECISION).
             // SDK patch serializes to ExecveMutation.
-            Ok(Verdict::Patch(serde_json::to_vec(&serde_json::json!({
+            Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&serde_json::json!({
                 "new_binary": c.trap.binary_path.clone(),
                 "new_argv": c.trap.argv.clone(),
                 "set_env": { "OTEL_TRACE_ID": format!("{:032x}", std::process::id()), "CI": "1" },
                 "unset_env": [],
-            })).unwrap()))
+            })).unwrap())))
         }))
 
         // `--force` strip
@@ -427,12 +439,12 @@ async fn build_runtime(
             if c.trap.argv.iter().any(|a| a == "--force") {
                 let argv = c.trap.argv.iter()
                     .filter(|a| *a != "--force").cloned().collect();
-                return Ok(Verdict::Patch(serde_json::to_vec(&serde_json::json!({
+                return Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&serde_json::json!({
                     "new_binary": "/bin/git",
                     "new_argv": argv,
                     "set_env": { "KELIR_DISARMED": "1" },
                     "unset_env": [],
-                })).unwrap()));
+                })).unwrap())));
             }
             Ok(Verdict::Pass)
         }))
@@ -568,7 +580,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("[kelir] driver={} boot={}ms", session.driver_name(), session.boot_ms());
 
     // Port forward the dev server for human smoke testing (§11.7)
-    session.wire.forward_port(8080, 3000).await?;
+    session.wire.forward_port(3000, 8080).await?;
 
     let base = session.vm.checkpoint("clean_base").await?;
     let mut winning_delta: Option<CausalDelta> = None;

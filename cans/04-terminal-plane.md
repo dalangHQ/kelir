@@ -20,7 +20,7 @@
     - Window geometry and signals
       - Carried on stream kind PTY_CONTROL (mux 0x0001)
       - MsgType 0x01 (WindowResize): pushes rows, cols, xpixel, ypixel
-      - MsgType 0x02 (SignalForward): pushes signal and pgid; shim executes killpg
+      - MsgType 0x02 (SignalForward): pushes signal and exec_id; shim resolves exec_id
     - Host filter pipeline execution order
       - 1. ANSI strip: drops OSC 52 (clipboard hijack) and strips OSC 0/1/2 (title spoof)
       - 2. Prompt match: matches foreground prompts against ANSI-stripped shadow text

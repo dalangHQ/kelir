@@ -134,11 +134,11 @@
       - shim replies MSG_SHUTDOWN_ACK when VFS is clean and processes drained
       - Host tears down vCPU loops only after ack or timeout expiry
       - Preserves half-written ext4 journal, SQLite WAL, git index integrity
-      - Timeout expiry records ExitReason::DirtyShutdown in ExecutionReceipt
+      - Timeout expiry records ExitKind::DirtyShutdown in ExecutionReceipt
     - Abrupt path
       - `session.kill()` skips the flush and issues SIGKILL to the hypervisor
       - Guest writes may be lost, exactly like a power cut
-      - Records ExitReason::HardKilled in ExecutionReceipt
+      - Records ExitKind::HardKilled in ExecutionReceipt
     - CLI and SDK
       - SDK exposes session.stop() and session.stop_with_timeout(d) for graceful exit
       - Draining is a superset of stop for pipelines that need to finish

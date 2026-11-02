@@ -14,7 +14,7 @@
 //!   tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 use kelir::{
-    DriverChoice, KelirBuilder, Session, VmConfig,
+    KelirBuilder, Session, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     plugins::replay::{ReplayConfig, ReplayPlugin},
 };
@@ -23,8 +23,9 @@ use kelir::{
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let session: Session = KelirBuilder::new(VmConfig {
         vcpus: 2, memory_mb: 1024,
-        kernel: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
-        rootfs_erofs: "./fixtures/rootfs-replay.erofs".into(),
+        page_size_kb: 4,
+        kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
+        rootfs_erofs_path: "./fixtures/rootfs-replay.erofs".into(),
         tsc_locked: true, enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {

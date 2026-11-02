@@ -15,7 +15,7 @@ use serde::Deserialize;
 use tokio::task::JoinSet;
 
 use kelir::{
-    DriverChoice, KelirBuilder, Session, VmConfig,
+    driver::{DriverPolicy, WxPolicy}, KelirBuilder, Session, VmConfig,
     plugin::VetoEvent,
     plugins::{
         mesh::{MeshConfig, MeshPlugin, PeerIdentity, TraceParentPropagation},
@@ -38,11 +38,23 @@ const SWARM_BYTES: usize = 32;
 fn swarm_builder() -> KelirBuilder {
     KelirBuilder::new(VmConfig {
         vcpus: 4, memory_mb: 8192,
-        kernel: "./fixtures/vmlinux-6.6-aarch64-kelir".into(),
-        rootfs_erofs: "./fixtures/rootfs-swarm.erofs".into(),
+        kernel_path: "./fixtures/vmlinux-6.6-aarch64-kelir".into(),
+        rootfs_erofs_path: "./fixtures/rootfs-swarm.erofs".into(),
         tsc_locked: true, enable_watchdog: true,
         enable_gpu_passthrough: true,
-        driver: DriverChoice::Auto,
+        driver_policy: DriverPolicy {
+            require_hardware_vmm: false,
+            allow_emulated_fallback: true,
+            verify_hw_lockfile: false,
+            wx_enforcement: WxPolicy::PermissiveAudit,
+            ffi_worker_threads: 2,
+            ffi_max_ops_per_sec: 1000,
+        },
+        page_size_kb: 4,
+        deterministic_clock: false,
+        pinned_clocksource: None,
+        ns_per_instruction: None,
+        preemption_grace_ms: 0,
         entropy_seed: Some(0x5EED),
     })
     // Lock-broker: FUSE_SETLK on declared globs delegates to host flock.

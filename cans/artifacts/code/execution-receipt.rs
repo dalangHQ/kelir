@@ -29,6 +29,10 @@ pub enum ExitKind {
     Signal(u32),
     KernelPanic(String),
     HypervisorFault(String),
+    /// Graceful-stop timeout expiry (08-lifecycle Pre-teardown-flush).
+    DirtyShutdown,
+    /// session.kill() abrupt path (08-lifecycle Pre-teardown-flush).
+    HardKilled,
 }
 
 /// PMU counters are diagnostic gauges only, emitted to OTel; they never

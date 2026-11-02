@@ -28,7 +28,7 @@ pub enum PtyControlMessage {
     },
     SignalForward {
         signal: u32,
-        pgid: u32,
+        exec_id: u64,
     },
 }
 
@@ -113,6 +113,8 @@ pub enum ExecutionTier {
 /// Scoping is transport-agnostic: filters evaluate above the Transport
 /// backend (SPSC ring, AF_VSOCK, or named pipe) and no plugin may key
 /// behavior on the transport identity.
+#[derive(Debug, Clone, Default)]
+pub struct MountScope {
     pub devices: Option<Vec<VirtioDevice>>,
     pub binaries: Option<Vec<String>>,
     pub paths: Option<Vec<PathBuf>>,

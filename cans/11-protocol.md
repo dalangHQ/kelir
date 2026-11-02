@@ -157,7 +157,7 @@
       - Enforcement is inside the guest kernel; no host cooperation required
   - Wire framing
     - see: artifacts/code/wire-protocol.rs
-    - Layout (header offsets, magic, version): see: artifacts/code/wire-protocol.rs
+    - Layout: 9-byte header, stream_id u32, flags u8, len u32, LE, no magic/version
     - Framing invariants
       - Byte order: Little-Endian for all multi-byte integers
       - Message-type registry
@@ -167,10 +167,7 @@
         - 0x0005-0x7FFF core-extended
         - 0x8000-0xFFFF plugin-framed
           - channel_id carries scope
-      - Flags registry
-        - 0x0001 FLAG_CONTINUATION
-        - 0x0002-0xFFFF must be zero on send
-        - ignored on receive
+      - Flags registry: see: #Stream-mux-framing
       - Max frame size: 64KB strict
       - CBOR limits
         - Nest depth ≤ 16

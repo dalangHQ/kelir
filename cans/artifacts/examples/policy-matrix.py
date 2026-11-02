@@ -208,7 +208,7 @@ def build_runtime() -> KelirBuilder:
         quarantine,
     )
 
-    # Vsock service on vsock channel kind 2: the RPC peer of session.vsock.channel(2)
+    # Vsock service on vsock port 2: the RPC peer of session.vsock.channel(2)
     # in main(). Echoes the request frame back to the caller.
     async def echo(request: bytes) -> bytes:
         return request

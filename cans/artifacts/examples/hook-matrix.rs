@@ -35,7 +35,7 @@
 //! cannot change a chunk's length.
 //!
 //! NOTES:
-//!   - Verdict::Suspend { until: Deadline(0) } replaces the old
+//!   - Verdict::Suspend { until: SuspendUntil::Deadline(0) } replaces the old
 //!     YieldToHost(0): 0 is immediate release to the host.
 //!   - Console hooks receive a whole chunk; no per-byte streaming
 //!     hook exists, so the OSC52 stripper buffers one chunk at a time.
@@ -56,7 +56,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use kelir::{
-    DriverChoice, HandlerCtx, KelirBuilder, Session, VmConfig,
+    driver::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
     plugin::{
         AnyPlugin, KelirPlugin, PluginError,
         FsInterposer, Verdict, ConsoleInterposer,
@@ -64,7 +64,7 @@ use kelir::{
         FsInodeAttr, WatchdogEvent, WatchdogVerdict,
         NetInterposer,
     },
-    protocol::ProcessExit,
+    protocol::{ProcessExit, SuspendUntil},
 };
 
 /// Guest path served as a synthetic inode, and the secret-token shape the
@@ -159,7 +159,7 @@ impl NetInterposer for HookMatrixPlugin {
         if frame.windows(DENY_MARKER.len()).any(|w| w == DENY_MARKER) {
             // Suspend until Deadline(0): 0 is immediate, not a placeholder
             // (formerly YieldToHost(0), aa0e011).
-            return Ok(Verdict::Suspend { until: Deadline(0) });
+            return Ok(Verdict::Suspend { until: SuspendUntil::Deadline(0) });
         }
         Ok(Verdict::Pass)
     }
@@ -325,12 +325,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let session: Session = KelirBuilder::new(VmConfig {
         vcpus: 2,
         memory_mb: 2048,
-        kernel: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
-        rootfs_erofs: "./fixtures/rootfs-hooks.erofs".into(),
+        kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
+        rootfs_erofs_path: "./fixtures/rootfs-hooks.erofs".into(),
         tsc_locked: true,
         enable_watchdog: true,
         enable_gpu_passthrough: false,
-        driver: DriverChoice::Auto,
+        driver_policy: DriverPolicy {
+            require_hardware_vmm: false,
+            allow_emulated_fallback: true,
+            verify_hw_lockfile: false,
+            wx_enforcement: WxPolicy::PermissiveAudit,
+            ffi_worker_threads: 2,
+            ffi_max_ops_per_sec: 1000,
+        },
+        page_size_kb: 4,
+        deterministic_clock: false,
+        pinned_clocksource: None,
+        ns_per_instruction: None,
+        preemption_grace_ms: 0,
         entropy_seed: None,
     })
     .plugin(plugin)

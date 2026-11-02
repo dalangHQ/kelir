@@ -34,14 +34,14 @@
 //   - Suspend{until: Approval}: checkpoint taken first, then suspend
 //     awaiting host approval/external input (see row 5).
 //   - Vetoes register at vm:init via lifecycle.registerVeto(event, cb);
-//     events are kebab-cased VetoEvent names.
+//     events are typed VetoEvent members.
 //   - Watchdog hooks via createPlugin().onWatchdog — TS camelCase of
 //     SystemTelemetryParticipant::on_watchdog.
 //   - registerCustomAction / registerVsockService take TypeBox schema
 //     and an async handler, mirroring 09/03.
 //   - session.vsock.channel(kind) is an async duplex byte stream.
 
-import { kelir, createPlugin, t, SuspendUntil,
+import { kelir, createPlugin, t, SuspendUntil, VetoEvent,
          type Session } from "@kelir/core";
 
 // ── Shared policy state ───────────────────────────────────────────────────
@@ -131,7 +131,7 @@ const runtime = kelir({
       policyState.quarantinedPids.push(payload.pid);
     })
 
-  // Vsock service on vsock channel kind 2: the RPC peer of session.vsock.channel(2)
+  // Vsock service on vsock port 2: the RPC peer of session.vsock.channel(2)
   // in main(). Echoes the request frame back to the caller.
   .registerVsockService(2, t.Object({}),
     async (request) => request)
@@ -141,8 +141,8 @@ const runtime = kelir({
   // LifecycleCtx.register_veto. Both allow only once vm:ready has set
   // the ready flag; before that Suspend / ClockSkew abort (08).
   .on(LifecycleEvent.VmInit, async (lifecycle) => {
-    lifecycle.registerVeto("suspend", () => policyState.ready);
-    lifecycle.registerVeto("clock-skew", () => policyState.ready);
+    lifecycle.registerVeto(VetoEvent.Suspend, () => policyState.ready);
+    lifecycle.registerVeto(VetoEvent.ClockSkew, () => policyState.ready);
   })
   .on(LifecycleEvent.VmReady, async () => { policyState.ready = true; });
 
