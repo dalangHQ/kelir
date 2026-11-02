@@ -9,7 +9,7 @@
 │              │ infallible via `Plugins: Has<T>`   │                                    │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
 │ TypeScript   │ Flat builder returning this;       │ `.params(schema)` pins TParams =   │ `try...finally` / `using` cleanup; │
-│              │ `.use()` overloads; missing prereq │ Static<TSchema>; `c.params` typed  │ `.error()` maps host exceptions to │
+│              │ `.use()` overloads; fork-blind     │ Static<TSchema>; `c.params` typed  │ `.error()` maps host exceptions to │
 │              │ yields EConfig at builder.boot();  │ from TSchema, not runtime lookup   │ POSIX errnos before crash/abort    │
 │              │ `c.<pluginKey>` static             │                                    │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
@@ -20,6 +20,8 @@
 │              │ `c.cap.<plugin_key>` static    │                                    │                                    │
 └──────────────┴────────────────────────────────────┴────────────────────────────────────┴────────────────────────────────────┘
 AOT hook fusion: NAPI/PyO3 pipeline handlers fuse to one native closure per event.
+Fork isolation: Inline trap closures and stateless plugins inherit CoW state automatically;
+specialized host state branching overrides `fork_state()`, unclonable resources veto via `VetoEvent::Fork`.
 Typed enum compilation: LifecycleEvent, Ring, and TrapFilter values are checked
 at compile time in Rust and TypeScript and at import time in Python; string
 event names are not accepted dispatch keys in any language.

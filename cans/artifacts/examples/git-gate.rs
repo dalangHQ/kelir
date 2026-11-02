@@ -18,20 +18,20 @@ use std::path::Path;
 use async_trait::async_trait;
 use kelir::{
     driver::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
-    plugin::{AnyPlugin, KelirPlugin, PluginError, TrapInterposer, Verdict},
+    plugin::{KelirPlugin, PluginError, TrapInterposer, Verdict},
     protocol::TrapEvent,
     planes::storage::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
 };
 
 const PROTECTED: &[&str] = &["main", "master"];
 
+#[derive(Clone)]
 pub struct GitGatePlugin;
 
 impl KelirPlugin for GitGatePlugin {
     type Context = ();
     fn context(&self) -> Self::Context { () }
     fn name(&self) -> &'static str { "git-gate" }
-    fn fork_state(&self, _: &str) -> Box<dyn AnyPlugin> { Box::new(Self) }
 }
 
 #[async_trait]

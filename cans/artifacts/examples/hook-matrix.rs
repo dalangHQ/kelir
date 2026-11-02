@@ -129,6 +129,7 @@ fn mask_tokens(window: &mut [u8]) {
 
 /// Plugin: hook-matrix; rings: virtio-net, virtio-fs,
 /// virtio-console, virtio-vsock (heartbeat/exit events arrive over vsock).
+#[derive(Clone)]
 pub struct HookMatrixPlugin {
     state: Arc<Mutex<HookState>>,
 }

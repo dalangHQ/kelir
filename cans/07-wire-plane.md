@@ -67,7 +67,7 @@
       - wildcard suffix support mirrors egress rules
       - decision made before upstream forward
     - Blocked queries return NXDOMAIN; allowed queries forward to the live upstream
-    - Filter decisions are name-based, not entropy-based
+    - Filter decisions are name-based
     - Entropy gating is not a policy primitive: CDN labels, telemetry IDs, and
       - legitimate base64 URLs produce false positives, while an attacker who
       - controls encoding trivially defeats a fixed threshold

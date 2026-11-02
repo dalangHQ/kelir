@@ -11,8 +11,9 @@
       - Unhandled errors abort hypervisor immediately to eliminate zombie runs
     - Builder consumption model across languages
       - Rust: affine typestate; .plugin() consumes self by value
-      - TypeScript: flat builder returning this; registry uses an ordered list
-      - Python: flat builder returning self; registry avoids Protocol intersection
+      - TypeScript: fluent builder returning this; registers plugins and planes
+      - Python: fluent builder returning self; async context management
+      - Inline closures: trap and lifecycle handlers are fully fork-blind
     - Prerequisite gating across languages
       - Rust: compile-time, via Has<T> trait bounds and typestate
       - TypeScript: validates plugin dependencies at builder.boot() before vCPU launch
@@ -180,10 +181,11 @@
     - Engine functional-core invariant: see: 01-architecture.md#Codebase-invariants
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
     - .plugin() accepts core KelirPlugin plus only needed ring traits
+      - Stateless plugins implement KelirPlugin with zero fork_state boilerplate
+      - Example trait bounds follow the split; unneeded traits stay unimplemented
     - Ring traits: LifecycleParticipant, TrapInterposer, ConsoleInterposer
-    - FsInterposer, NetInterposer, and HostInterposer are sync hot-path traits
-    - AnyPlugin: identity marker for any KelirPlugin, not a capability bundle
-    - Example trait bounds follow the split; unneeded traits stay unimplemented
+      - FsInterposer, NetInterposer, and HostInterposer are sync hot-path traits
+    - AnyPlugin: identity marker for Clone KelirPlugin, without capability traits
     - .trap(matcher, handler): pre-exec gate; dual pre/post handler also supported
     - .intercept_host(filter, handler): synchronous native host security filter
     - .intercept_storage(pathGlob, handler): synchronous native storage write filter
@@ -211,6 +213,7 @@
       - from TypeBox's Static<> type, resolved once at build time
     - Handlers receive HandlerContext<Params>; plugin surfaces are typed
       - members (c.policy, c.ledger), resolved via .use() overloads
+    - Trap closures are fork-blind; active StepSlot forks state in core
     - AOT hook fusion compiles all TS pipeline handlers into a single flat
       - closure; exactly 1 NAPI trampoline per event regardless of depth
     - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
@@ -230,6 +233,7 @@
       - No runtime cost beyond a single O(plugins) walk at boot
     - .params(model: type[P]) pins Params; handler c.params is typed
       - from the Pydantic v2 model class
+    - Handlers remain fork-blind; microVM branch state clones automatically
     - Composite plugins unpack nested plugins atomically before boot
     - Capabilities are static members of c.cap (c.cap.policy), never
       - c.service(ServiceType)

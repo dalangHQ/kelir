@@ -112,6 +112,7 @@ impl RepoPolicyHandle {
 
 /// Plugin: repo-policy
 /// Rings: virtio-vsock, virtio-fs
+#[derive(Clone)]
 pub struct RepoPolicyPlugin {
     opts: RepoPolicyOptions,
     state: Arc<Mutex<RepoPolicyState>>,

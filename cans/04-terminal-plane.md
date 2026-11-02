@@ -55,7 +55,7 @@
       - Global SQLite catalog is bypassed for stdout/stderr streaming writes
       - No circular buffer; no wrap-around loss
       - A stalled or disconnected client never causes drops
-      - Host buffer size bounded by eviction policy, not by consumer speed
+      - Host buffer size bounded by eviction policy alone
     - Reconnect contract
       - Consumer requests take an optional `since_cursor`
       - Reissuing the same cursor returns the exact byte sequence

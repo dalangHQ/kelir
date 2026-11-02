@@ -309,8 +309,11 @@ pub trait KelirPlugin: Send + Sync {
     /// Null-object toggle. False omits all hooks from flat dispatch array.
     fn is_enabled(&self) -> bool { true }
 
-    /// Deep-clones plugin state when session.vm.fork() creates a CoW child.
-    fn fork_state(&self, child_session_id: &str) -> Box<dyn AnyPlugin>;
+    /// Specializes child state on fork; defaults to clone_box().
+    /// Stateless or standard-Clone plugins require no implementation.
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
+        self.clone_box()
+    }
 
     /// Register inline fallible interceptors into the hardware ring pipelines.
     fn register_interceptors(&self, _pipeline: &mut dyn PipelineBinder) {}
@@ -396,15 +399,29 @@ pub trait HostInterposer {
     fn on_host_keyring_access(&self, _key: &str) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
 }
 
+/// Object-safe clone bridge powering default fork_state implementation.
+pub trait PluginClone: Send + Sync {
+    fn clone_box(&self) -> Box<dyn AnyPlugin>;
+}
+
+impl<T> PluginClone for T
+where
+    T: 'static + KelirPlugin + Clone,
+{
+    fn clone_box(&self) -> Box<dyn AnyPlugin> {
+        Box::new(self.clone())
+    }
+}
+
 /// Identity marker for any plugin object: core identity only.
 /// fork_state and CompositePlugin::unpack return this type. It must NOT
 /// require the ring traits: requiring all five would force every
 /// forkable plugin to implement every ring, defeating segregation.
 /// Dispatch uses the per-ring trait objects, not this marker.
 /// Send + Sync are inherited via KelirPlugin.
-pub trait AnyPlugin: KelirPlugin {}
+pub trait AnyPlugin: KelirPlugin + PluginClone {}
 
-impl<T: KelirPlugin> AnyPlugin for T {}
+impl<T: KelirPlugin + PluginClone> AnyPlugin for T {}
 
 /// Trait marker for foreign runtime plugin proxies bridging V8 and Python.
 pub trait ForeignPluginBridge: KelirPlugin {

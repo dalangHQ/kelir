@@ -95,6 +95,7 @@ impl PolicyHandle {
 // ============================================================================
 
 /// Plugin: policy-matrix; rings: virtio-vsock, virtio-fs
+#[derive(Clone)]
 pub struct PolicyMatrixPlugin {
     state: Arc<PolicyState>,
 }
@@ -241,6 +242,7 @@ impl SystemTelemetryParticipant for PolicyMatrixPlugin {
 /// Returns Suppress while main() holds a planned suspend open, so a
 /// watchdog firing inside the suspend window does not reboot a VM that
 /// is intentionally parked. Otherwise it defers to the default action.
+#[derive(Clone)]
 pub struct WatchdogSilencerPlugin {
     state: Arc<PolicyState>,
 }
@@ -253,10 +255,6 @@ impl KelirPlugin for WatchdogSilencerPlugin {
     type Context = ();
     fn context(&self) -> Self::Context { () }
     fn name(&self) -> &'static str { "watchdog-silencer" }
-
-    fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
-        Box::new(Self { state: Arc::clone(&self.state) })
-    }
 }
 
 #[async_trait]

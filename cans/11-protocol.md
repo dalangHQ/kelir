@@ -88,7 +88,7 @@
       - Guest VFS bypasses FUSE for control-plane inspection paths
     - Errors map to errno values; no host errno leaks
     - Distinction from host-directory mounts
-      - vsock VFS is inspection/streaming; not the primary workload path
+      - vsock VFS is inspection/streaming
       - Bind mounts remain for bulk workload trees
   - Bulk transfer stream
     - Transport: mux 0x0001, stream kind BULK

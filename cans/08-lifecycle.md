@@ -46,7 +46,8 @@
       - SCDynamicStore and Keychain bindings isolated to pre-fork supervisor
       - Forked children resolve DNS via POSIX structures to prevent SIGABRT
       - Eliminates vCPU exit storms during large heap allocations
-    - Host runtime calls fork_state() to isolate plugin states per branch
+    - Host runtime isolates plugin state per branch via fork_state() or clone
+    - Plugins holding un-clonable host descriptors veto via VetoEvent::Fork
     - Children share warm parent memory
       - Warmed compilers, loaded dependencies, in-process caches
     - Host RAM dirtied only on child write
@@ -59,7 +60,7 @@
     - Child handoff scope
       - Inherited
         - Full parent memory snapshot (CoW)
-        - Plugin states via fork_state()
+        - Plugin states via default clone or specialized fork_state()
         - StepSlot state
         - 4-ring dispatch table
         - virtio channel state
@@ -74,7 +75,7 @@
         - vsock channel registrations
           - Child must re-register
       - Rationale
-        - Inherited = driver fork() + per-plugin fork_state()
+        - Inherited = driver fork() + default clone or specialized fork_state()
         - Not-inherited items have host-side identity
         - Cannot safely clone across a session boundary
     - Typical use: parallel agent exploration (5+ candidate strategies)
@@ -201,7 +202,7 @@
       - No cross-NUMA migration; borrowed cores come from the same NUMA node
       - The plan is recorded in the SQLite catalog per session for auditability
     - Balloon convergence
-      - adjust_balloon returns BalloonConvergence handle, not void
+      - adjust_balloon returns a BalloonConvergence handle
       - Host subscribes to VIRTIO_BALLOON_S_MEMFREE / S_AVAIL event queue
       - Host reclaim (madvise / hv_vm_unmap) gates on guest ack, not target set
       - Fork, snapshot, and heavy exec require prior convergence completion

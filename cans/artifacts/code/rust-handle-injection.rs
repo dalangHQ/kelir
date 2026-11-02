@@ -20,13 +20,14 @@ enum Action {
 }
 
 // 1. Composite tree definition unpacked at assembly time
+#[derive(Clone)]
 struct WorkspaceBundle {
     policy: RepoPolicyPlugin,
 }
 
 impl CompositePlugin for WorkspaceBundle {
-    // Unpacked plugins are AnyPlugin identity objects the builder
-    // sorts into the ring-specific dispatch arrays at assembly time.
+    // Unpacked plugins implement AnyPlugin (KelirPlugin + PluginClone);
+    // stateless/Clone plugins inherit default fork_state with zero code.
     fn unpack(self: Box<Self>, parent: &MountScope) -> Vec<(Box<dyn AnyPlugin>, MountScope)> {
         vec![(
             Box::new(self.policy),

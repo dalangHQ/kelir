@@ -73,7 +73,9 @@
     - AOT hook fusion collapses nested closures into single FFI trampoline
   - KelirPlugin trait
     - see: artifacts/code/plugin-trait.rs
-    - Typed lifecycle: name, default_scope, is_enabled, fork_state
+    - Typed lifecycle: name, default_scope, is_enabled, opt-in fork_state
+    - fork_state() specializes child state; defaults to clone_box()
+    - Stateless and pure-data plugins omit fork_state() with zero boilerplate
     - Typed registration: register_interceptors, register_subscribers
     - Inter-plugin linkage is direct Cargo crate imports, not string tokens
     - Segregated ring traits
@@ -90,7 +92,7 @@
         - NetInterposer: net outbound, net inbound; synchronous hot path
         - HostInterposer: host lsm exec, host pressure, host keyring; sync hot path
       - Identity markers
-        - AnyPlugin: identity marker for any KelirPlugin (fork/composite)
+        - AnyPlugin: identity marker for Clone KelirPlugin (fork/composite)
       - Dispatch cost model
         - Plugins implement only traits for rings they touch; rest default no-op
         - Dispatch: taxonomy rings register into ring-specific contiguous arrays
@@ -164,7 +166,8 @@
     - Deduplication: identical name() instances merge; deepest config wins
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
     - Zero-cost null objects: disabled plugins retain types, cost zero in core
-    - fork_state() deep-clones state instances during session.vm.fork()
+    - fork_state() customizes state branching; default clone runs unattended
+      - Inline builder closures remain fork-blind; StepSlot manages engine state
     - Native zero-WASM isolation: compile-time crate linkage
     - Immutable &[u8] slice views prevent cross-plugin heap tampering
     - Hardware MPK page keys (x86_64) isolate per-plugin memory domains
@@ -178,7 +181,7 @@
     - Configuration is frozen at seal; no runtime dispatch mutation exists
     - Rehydration on restore installs a fresh immutable table, not a swap-in-place
     - First Drop, Suspend, or Abort halts pipeline; Pass/Patch continue
-    - on_trap_deny is builder-level, not a plugin hook
+    - on_trap_deny is builder-level
       - Deny-observation composition is a user concern
   - Unified interposition pipeline
     - Single engine for every guest-to-host interaction
@@ -205,7 +208,7 @@
         - or named pipe); plugin authors never observe the transport
       - Windows hosts apply identical scoping semantics as Linux/macOS
       - No plugin may key behavior on the transport identity
-    - Stream kinds are registered, not hardcoded
+    - Stream kinds are registered at boot
       - Core kinds frozen; plugin kinds declared via register_stream_kind
       - see: 11-protocol.md#Control-channel
   - Filter-before-FFI gate
@@ -227,7 +230,7 @@
   - FFI buffer lifecycle
     - Pinned memory slices exposed via streaming chunked iterators
     - Prevents use-after-free while host runtimes resolve handlers
-    - 64KB is the per-chunk ceiling, not a guest-facing error
+    - 64KB is the per-chunk ceiling
       - FUSE driver chunks writes; interposer sees one chunk per call
       - Guest write() never fails due to host buffer size
     - Handlers must inspect each chunk or delegate to Rust plugins
