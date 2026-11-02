@@ -176,6 +176,8 @@
     - Reattachment via session.attach(session_id) returns Session
     - Plugins accumulate in a monomorphic HList; HandlerCtx<'a, Plugins, Params>
       - resolves capabilities via Has<T>, infallible at the call site
+    - Plugin context may hold Arc<Mutex<_>>; that is userland, not engine state
+    - Engine functional-core invariant: see: 01-architecture.md#Codebase-invariants
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
     - .plugin() accepts core KelirPlugin plus only needed ring traits
     - Ring traits: LifecycleParticipant, TrapInterposer, ConsoleInterposer

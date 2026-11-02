@@ -14,7 +14,7 @@ use std::time::Duration;
 use std::any::{Any, TypeId};
 use std::sync::Arc;
 use crate::handlers::HandlerCtx;
-use crate::protocol::messages::{ProcessExit, Verdict, TrapEvent};
+use crate::protocol::messages::{ProcessExit, Verdict, FilterAction, TrapEvent};
 use crate::vmm::driver::{BalloonConvergence, VmmDriver, VmConfig, WatchdogAction};
 
 /// Structured payloads carried over the stream mux (PTY_CONTROL kind
@@ -369,12 +369,13 @@ pub trait FsInterposer {
     /// FsInode carries the served inode attributes for lookup).
     fn on_fs_lookup(&self, _path: &Path) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
     fn on_fs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
-    /// Synchronous hot-path inspection. Must be evaluated in native Rust.
-    /// Foreign language runtimes must yield via Verdict::Suspend to avoid
-    /// event-loop deadlock; sync hot-paths require native filters or Suspend.
+    /// Sync hot-path buffer transform. Mutate `_data` in place, return
+    /// FilterAction::Forward to commit. No Patch variant: the buffer
+    /// is the payload. Native Rust only; foreign runtimes must yield
+    /// via FilterAction::Suspend.
     fn on_fs_write(
-        &self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+        &self, _path: &Path, _data: &mut [u8], _pid: u32, _ctx: &HandlerCtx,
+    ) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }
     /// Intercepts FUSE SETLK and SETLKW advisory lock requests.
     fn on_fs_lock(
         &self, _path: &Path, _flock_cmd: i32, _flock_type: i16, _pid: u32,
@@ -382,10 +383,11 @@ pub trait FsInterposer {
 }
 
 pub trait NetInterposer {
-    /// Synchronous L2 outbound inspection.
-    fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
-    /// Synchronous L2 inbound inspection.
-    fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    /// Sync L2 outbound buffer transform. Mutate `_frame` in place,
+    /// return FilterAction::Forward to commit.
+    fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }
+    /// Sync L2 inbound buffer transform. Same contract as outbound.
+    fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }
 }
 
 pub trait HostInterposer {

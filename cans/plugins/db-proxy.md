@@ -28,11 +28,11 @@
   - Error and return semantics (db-proxy)
     - Hook signature (db-proxy): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (db-proxy)
-      - Verdict::Drop
+      - FilterAction::Drop
         - pgwire ErrorResponse frame precedes connection close
         - SQLSTATE derived from errno (EPERM→42501, ENOENT→42P01)
         - Unmapped errno → SQLSTATE XX000 (internal_error)
-      - Verdict::Patch(PgFrame)
-        - Q/P frame payload replaced before upstream forward
+      - FilterAction::Forward after in-place Q/P frame rewrite
+        - Frame bytes mutated in place before upstream forward
         - Server sees rewritten frame as if client sent it
         - Per-connection rewrites tallied; >3 aborts ECYCLICREWRITE

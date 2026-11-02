@@ -93,7 +93,13 @@
         - Unused rings cost zero vtable lookups
     - Unified verdict
       - Every interposer hook returns the same engine-level `Verdict`
-      - One enum across Trap, Fs, Net, Host, Console, Exec, MCP, and DB rings
+      - Verdict covers decision hooks: Trap (execve), Fs lookup, Host, MCP
+        - A Verdict prescribes an outcome: different exec, serve-alternate, deny, abort
+      - FilterAction covers in-place byte-transform hooks:
+        - Rings: Fs write, Net outbound, Net inbound, DB pgwire
+        - A FilterAction mutates the payload in place, then forwards or gates
+        - FilterAction = { Forward, Drop{errno,reason}, Suspend{until}, Abort{reason} }
+        - No Patch variant: the transformed buffer IS the payload
       - Variants
         - Verdict::Pass = proceed untouched
         - Verdict::Patch(payload) = in-place mutation; payload schema per ring
@@ -101,8 +107,8 @@
         - Verdict::Suspend { until } = yield or hold to host
         - Verdict::Abort { reason } = fatal; pipeline freezes
       - Drop without errno indicates silent blackholing for fault injection
-      - Patch payload is registered per ring: ExecveMutation, HttpFrame,
-        - FsChunk, JsonRpcFrame, PgFrame, Custom(schema)
+      - Patch payload is registered per ring: ExecveMutation, FsInode,
+        - Custom(schema)
       - Idempotency and density: see: 01-architecture.md#Codebase-invariants
     - Shape of the surface
       - Lifecycle, trap, and terminal hooks are `async`; storage and wire
@@ -149,7 +155,7 @@
     - Dispatch compilation: direct Cargo linkage resolves plugin order at build time
     - Pipeline tables index linear interceptor chains per VirtIO ring
     - Core verifies plugin crate graph: cycles and missing deps halt boot
-    - Monotonic verdict progression: downstream hooks cannot widen upstream denial
+    - Monotonic decisions: downstream stages cannot widen upstream denial
     - Fail-closed mutation collisions: overlapping writes raise EAmbiguousMutation
     - Deduplication: identical name() instances merge; deepest config wins
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
@@ -159,13 +165,14 @@
     - Immutable &[u8] slice views prevent cross-plugin heap tampering
     - Hardware MPK page keys (x86_64) isolate per-plugin memory domains
     - Missing declared dependency aborts boot with EConfig
-    - Lock-free dispatch swap via ArcSwap on the host event bus (internal)
+    - Dispatch tables are immutable after seal; zero atomic loads on the ring path
     - Panic quarantine boundary
       - Interposer dispatches wrap in catch_unwind at the engine perimeter
       - Escaped hook panics convert to Verdict::Drop with EFAULT
       - Supervisor microkernel stays resident; active StepSlot rolls back
-    - ArcSwap serves atomic dispatch swapping during snapshot hydration only
-    - Not a public runtime API; session configuration is frozen after boot
+    - Hydration rebuilds tables pre-seal; ArcSwap is not used post-boot
+    - Configuration is frozen at seal; no runtime dispatch mutation exists
+    - Rehydration on restore installs a fresh immutable table, not a swap-in-place
     - First Drop, Suspend, or Abort halts pipeline; Pass/Patch continue
     - on_trap_deny is builder-level, not a plugin hook
       - Deny-observation composition is a user concern
@@ -209,8 +216,9 @@
     - Gate 3: Foreign FFI trampolines (V8/Python) dispatch out-of-band in 50-150µs
     - Gate 3 skip: EROFS trusted binary and payload paths bypass foreign FFI
     - Sync hot-paths require native filters or Verdict::Suspend
-    - Latency overhead on guest toolchains (cargo, npm) must remain below 3%
-    - Violation of latency budget blocks core and plugin releases in CI
+    - Toolchain overhead target on cargo/npm is a CI budget, not a spec claim
+    - Budget numbers live only in perf/budgets.toml (enforced by perf-budgets)
+    - Budget regressions block release; absolute overhead is not asserted here
     - This node is the sole numerical home for gate latency budgets
   - FFI buffer lifecycle
     - Pinned memory slices exposed via streaming chunked iterators

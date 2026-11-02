@@ -41,7 +41,7 @@
 //     the identity check; paths without `..` keep old behavior.
 //
 
-import { kelir, createPlugin, Verdict, SuspendUntil,
+import { kelir, createPlugin, Verdict, FilterAction, SuspendUntil,
          type Session } from "@kelir/core";
 
 // Guest path served as a synthetic inode, and the secret-token shape the
@@ -106,9 +106,9 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     const text = Buffer.from(frame).toString("latin1");
     if (text.includes(DENY_MARKER)) {
       // Suspend until Deadline(0): 0 is immediate, not a placeholder.
-      return Verdict.Suspend(SuspendUntil.deadline(0));
+      return FilterAction.Suspend(SuspendUntil.deadline(0));
     }
-    return Verdict.Pass;
+    return FilterAction.Forward;
   })
   // Hook 2: storage lookup. Exactly one synthetic inode, mode 0o400
   // with no permission fallback (02); everything else falls through.
@@ -141,7 +141,7 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     return Buffer.from(chunk, "latin1");
   })
   .onFsWrite(async (_path, buffer, _pid, _ctx) => {
-    return Verdict.Pass;
+    return FilterAction.Forward;
   })
   // Hook 4: PTY input. Strip OSC52 clipboard exfiltration sequences:
   // ESC ] 52 ; … terminated by BEL (0x07) or ST (ESC \).

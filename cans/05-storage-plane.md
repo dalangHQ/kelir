@@ -31,6 +31,9 @@
     - Guest observes a normal writable mount; no union driver inside microVM
     - Broker exposes lookup/read/write/getattr/readdir/unlink/mkdir/rename
     - Dir merges (base + upper + tombstones) computed host-side during each readdir
+    - Per-directory merge result cached; invalidated on broker mutation of that subtree
+    - Caching bounds repeated readdir cost during inode-heavy build storms
+    - Tradeoff named: host FUSE CoW buys isolation + instant revert, not native-local IOPS
     - Rollback: broker drops upper file and tombstones; base untouched
     - Rollback purge: FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on upper
     - Instant revert: <1ms; guest kernel never sees a filesystem restart
@@ -99,7 +102,7 @@
   - Write gating
     - Synchronous VirtIO-FS interception gates FUSE write() via on_fs_write
     - Signature: see: artifacts/code/plugin-trait.rs
-    - Verdict surface: see: 02-plugin-model.md#Unified-verdict
+    - FilterAction surface: see: 02-plugin-model.md#Unified-verdict
     - Receives &FsContext (inode, path, locks, journal); zero ambient context
     - Writes chunked at 64KB by FUSE driver
       - on_fs_write invoked once per chunk
@@ -108,9 +111,9 @@
         - Accumulate across on_fs_write calls
         - Or request stream mode through MountScope
     - Buffer lifecycle invariants: see: 02-plugin-model.md#FFI-buffer-lifecycle
-    - Verdict::Pass = allow; kernel proceeds with write to upperdir
-    - Verdict::Drop { errno, reason } = deny
-    - Verdict::Patch(FsChunk) = in-place mutate; then write
-    - Verdict::Abort { reason } = deny + halt pipeline
+    - FilterAction::Forward = allow; kernel proceeds with write to upperdir
+    - FilterAction::Drop { errno, reason } = deny
+    - In-place mutation is the buffer write itself; no Patch variant
+    - Abort = Err(PluginError::Halt) from the sync hook
   - Virtual ID remapping
     - FUSE driver dynamically maps guest UID 0/1000 to caller process UID

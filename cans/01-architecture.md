@@ -77,8 +77,11 @@
           - Arithmetic uses checked_* or saturating_* variants unconditionally
           - Allocations sized by guest frames clamp to hard resource ceilings
         - Functional core
-          - Pure functional core: evaluation follows `f(State, Event) -> (State, Actions)`
-          - Immutability by default: shared state uses atomics; mutations emit deltas
+          - Applies to engine planes only (terminal, storage, wire, checkpoint, host)
+          - Engine evaluation follows `f(State, Event) -> (State, Actions)`
+          - Engine shared state uses atomics; mutations emit deltas
+          - SDK userland (Rust Arc<Mutex>, TS closures, Python state) is not engine
+          - Plugin-authored state is userland and may use standard concurrency primitives
           - Polymorphism over conditionals: static trait dispatch over `match` branches
         - State invariants
           - Absolute idempotency: rollback and stream replay produce bitwise identical states

@@ -53,7 +53,7 @@ from pathlib import Path
 from typing import Optional
 
 import kelir
-from kelir import Deadline, Verdict
+from kelir import Deadline, FilterAction, Verdict
 from kelir.plugin import (
     BasePlugin,
     PluginError,
@@ -129,11 +129,11 @@ class HookMatrixPlugin(BasePlugin):
 
     # Hook 1: wire outbound. Any frame carrying the denylist marker
     # suspends to host inspection instead of leaving the ingress ring.
-    async def on_net_outbound(self, frame: bytes) -> Verdict:
+    async def on_net_outbound(self, frame: bytearray) -> FilterAction:
         if DENY_MARKER in frame:
             # Suspend until Deadline(0): 0 is immediate, not a placeholder.
-            return Verdict.suspend(until=Deadline(0))
-        return Verdict.pass_()
+            return FilterAction.suspend(until=Deadline(0))
+        return FilterAction.forward()
 
     # Hook 2: storage lookup. Exactly one synthetic inode, mode 0o400
     # with no permission fallback (02); everything else falls through.
@@ -171,9 +171,9 @@ class HookMatrixPlugin(BasePlugin):
         return chunk
 
     async def on_fs_write(
-        self, path: Path, data: bytes, pid: int, ctx: HandlerContext,
-    ) -> Verdict:
-        return Verdict.pass_()
+        self, path: Path, data: bytearray, pid: int, ctx: HandlerContext,
+    ) -> FilterAction:
+        return FilterAction.forward()
 
     # Hook 4: PTY input. Strip OSC52 clipboard exfiltration sequences:
     # ESC ] 52 ; … terminated by BEL (0x07) or ST (ESC \).

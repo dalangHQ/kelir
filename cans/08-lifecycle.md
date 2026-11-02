@@ -85,8 +85,12 @@
     - Veto: Fork (hard)
       - Callback false → ESessionVeto; no child VM
   - Rollback
-    - Pre-condition invariant: Rollback is prohibited while vCPUs hold unreleased syscall traps
-    - Attempting rollback on a frozen syscall trap aborts with E_INVALID_LIFECYCLE_STATE
+    - Pre-condition invariant: Rollback requires zero unreleased traps
+    - A held trap is released (Verdict::Drop{EFAULT}) before rollback begins
+    - Fail-closed ordering: release → network quiesce → storage reset → hardware reset
+    - No caller may issue rollback from on_trap (trap is held; return Verdict instead)
+    - Rollback is permitted from on_process_exit (trap already released)
+    - Pre-exec gates return Verdict; post-exec gates issue rollback directly
     - State boundary (rollback covers compute + disk, not remote state)
       - Rollback resets: vCPU registers, guest RAM, broker upper file,
         - tombstones, session-local RNG position, virtual clock position
@@ -213,7 +217,7 @@
       - Host registers StepEvaluator closure through CheckpointService
       - Captures atomic pre-step SnapshotDescriptor before workload execution
       - Evaluates physical ExecutionReceipt upon trapped process exit
-      - Step lattice:
+      - Step outcomes (StepVerdict):
         - StepVerdict::Commit: flushes staging delta, advances active step slot
         - StepVerdict::Rollback(reason): calls session.rollback(), reverting RAM in <8ms
           - and discarding the broker upper file + tombstones
@@ -223,7 +227,7 @@
         - PostExecAction::RollbackAndHalt maps to StepVerdict::Rollback
         - YieldToHost is reached via Verdict::Suspend { until: Approval }
       - Fail-closed invariant: unhandled post-execution failures or evaluation
-        - timeouts trigger automatic hardware rollback before releasing workload
+        - timeouts trigger rollback after trap release (see: #Rollback)
     - Delta chain compaction
       - A checkpoint chain holds: one immutable Base and N stacked WorkingDeltas
       - Depth is unbounded; lineage edges: 09-snapshots.md#Groups-and-lineage

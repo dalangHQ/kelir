@@ -4,8 +4,10 @@
     - Fact emission: TrapEvent, ExecutionReceipt, CausalDelta, AttestationToken
     - Attestation primitives: vmlinux BLAKE3, EROFS BLAKE3, session token
     - Diagnostic metrics: PMU counters, dirty bytes, wire volume (gauges only)
-    - Boundary opacity: Internal interception policies surface to the guest strictly
-      - as physical bus errors, standard POSIX errnos, or silent packet drops
+    - Boundary opacity (L3/L4): interception surfaces only as physical bus errors,
+      - standard POSIX errnos, or silent packet drops
+    - L7 wire-plane rejections are an explicit wire contract
+      - (see: 11-protocol.md#Policy-rejection-receipt), not an attestation fact
   - Primitive vs derived metrics
     - Metric decision test
       - Single read API, hardware boundary, no policy → primitive, core-owned

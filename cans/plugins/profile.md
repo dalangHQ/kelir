@@ -41,7 +41,7 @@
       - Deep-merge preserves monotonic lattice: cannot widen upstream denials
     - RFC 6902 dynamic policy patching
       - Ingests JSON/YAML patches via PROFILE_SYNC stream
-      - Monotonic lattice validation: patches cannot loosen upstream denials
+      - Monotonic validation: patches cannot loosen upstream denials
       - Monotonic violation halts patch dispatch with ESecurityViolation
       - Approved patches update active MountScope and BPF tables atomically
     - Container Device Interface (CDI) device mapping

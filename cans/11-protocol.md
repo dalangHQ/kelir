@@ -204,12 +204,14 @@
         - Logical channel identifier; see: 01-architecture.md#Transport-engine-abstraction
         - Transport backend multiplexes channels over host-terminated rings
   - Policy rejection receipt
+    - L7 wire-plane contract, not attestation state
     - L7 rejections surface as synthetic HTTP frames in guest ingress ring
     - Body: {"error":"E_POLICY_DENIED","rule":"<rule_id>","target":"<target>"}
     - Content-Type: application/json
     - Status: 403 Forbidden
     - L4 rejections surface as TCP RST or ICMP Port Unreachable
     - Silent blackholing eliminated for policy denials
+    - L3/L4 boundary opacity: see: 10-attestation.md#Scope
   - Wire messages
     - see: artifacts/code/messages.rs
     - Message set and payload fields: see: artifacts/code/messages.rs
@@ -223,6 +225,11 @@
       - Verdict::Abort { reason }: c.abort(reason)
       - SuspendUntil: Deadline(ms) | Approval | Handshake
       - Custom payload: c.patch(Custom { name, cbor })
+      - FilterAction (sync buffer rings: Fs write, Net inbound/outbound)
+        - FilterAction::Forward: c.forward(); buffer mutations already applied
+        - FilterAction::Drop { errno, reason }: c.filter_drop(errno, reason)
+        - FilterAction::Suspend { until }: c.filter_suspend(until)
+        - No c.patch() on filter rings: the buffer is mutated in place
     - Hold wire contract
       - Host halts vCPU execution and drops RAM footprint via suspend primitive
       - Host releases suspension when the hold duration elapses

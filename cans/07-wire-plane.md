@@ -46,12 +46,13 @@
     - on_net_inbound: hook on frames arriving at the guest
     - Ingress dispatcher checks MountScope in native memory before FFI
   - Frame drop and forward semantics
-    - Verdict::Pass on outbound = forward; Pass on inbound = deliver
-    - Verdict::Suspend = yield frame to host for async policy
-    - Verdict::Drop { errno: ECONNREFUSED } on L4 TCP = inject TCP RST
+    - FilterAction::Forward on outbound = forward; on inbound = deliver
+      - Buffer mutations already applied in place
+    - FilterAction::Suspend = yield frame to host for async policy
+    - FilterAction::Drop { errno: ECONNREFUSED } on L4 TCP = inject TCP RST
       - or ICMP Port Unreachable into guest ingress ring
-    - Verdict::Drop { errno: EACCES } on L7 HTTP = synthesize 403 JSON receipt
-    - Verdict::Drop { errno: None } discards packet without host response injection
+    - FilterAction::Drop { errno: EACCES } on L7 HTTP = synthesize 403 JSON receipt
+    - FilterAction::Drop { errno: None } discards packet without host response
     - Guest observes ECONNREFUSED in <1ms
     - Agent corrects action without orchestration timeout
   - DNS policy filter

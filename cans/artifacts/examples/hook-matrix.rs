@@ -59,7 +59,7 @@ use kelir::{
     driver::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
     plugin::{
         AnyPlugin, KelirPlugin, PluginError,
-        FsInterposer, Verdict, ConsoleInterposer,
+        FsInterposer, FilterAction, Verdict, ConsoleInterposer,
         TrapInterposer, SystemTelemetryParticipant,
         HostInterposer,
         WatchdogEvent, WatchdogVerdict,
@@ -156,15 +156,15 @@ impl KelirPlugin for HookMatrixPlugin {
 }
 
 impl NetInterposer for HookMatrixPlugin {
-    fn on_net_outbound(&self, frame: &mut [u8]) -> Result<Verdict, PluginError> {
+    fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // Sliding search, no allocation: any frame carrying the denylist
         // marker suspends to host inspection instead of leaving the ingress ring.
         if frame.windows(DENY_MARKER.len()).any(|w| w == DENY_MARKER) {
             // Suspend until Deadline(0): 0 is immediate, not a placeholder
             // (formerly YieldToHost(0), aa0e011).
-            return Ok(Verdict::Suspend { until: SuspendUntil::Deadline(0) });
+            return Ok(FilterAction::Suspend { until: SuspendUntil::Deadline(0) });
         }
-        Ok(Verdict::Pass)
+        Ok(FilterAction::Forward)
     }
 }
 
@@ -238,9 +238,9 @@ impl FsInterposer for HookMatrixPlugin {
     }
 
     fn on_fs_write(
-        &self, _path: &Path, data: &[u8], _pid: u32, _ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        Ok(Verdict::Pass)
+        &self, _path: &Path, _data: &mut [u8], _pid: u32, _ctx: &HandlerCtx,
+    ) -> Result<FilterAction, PluginError> {
+        Ok(FilterAction::Forward)
     }
 }
 

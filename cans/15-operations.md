@@ -232,7 +232,7 @@
       - `kelir spec check <file>`: AOT validation of kelir.toml or kelir.yaml:
         - Validates syntax and TypeBox/Serde schema without compiling code
         - Asserts acyclic inheritance trees across extends pointers
-        - Verifies monotonic lattice restrictions across deep-merged profiles
+        - Verifies monotonic limits across deep-merged profiles
       - `kelir spec export`: Emits canonical kelir.toml or kelir.yaml
       - Granular flags: --install-shims, --attach-lsm, --quarantine-credentials
       - `kelir doctor --json`: structured for onboarding scripts
