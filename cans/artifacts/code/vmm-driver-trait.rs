@@ -88,9 +88,15 @@ pub struct SnapshotDescriptor {
     /// Parent in the snapshot chain. Depth is unbounded and restore
     /// accepts any digest in the chain, not only the leaf; the restored
     /// session's working delta becomes a new child of that digest.
-    /// SQLite stores zero child arrays: each snapshot manifest immutably
-    /// records its parent_digest, and lineage is resolved by CAS manifest
-    /// graph walks, not by a catalog row.
+    /// The catalog stores zero child arrays: each snapshot manifest
+    /// immutably records its parent_digest, and lineage is resolved by
+    /// CAS manifest graph walks. Separately, every session registers a
+    /// catalog row, no bypass: ephemeral lease_kind='ephemeral',
+    /// expires_at NULL, reaped on parent death; detached
+    /// lease_kind='lease', expires_at refreshed 30s; the row carries
+    /// incarnation_id (UUIDv7 per spawn), boot_id, start_time_ns, pid;
+    /// liveness proof Linux pidfd, macOS kqueue NOTE_EXIT, Windows Job
+    /// Object KILL_ON_JOB_CLOSE.
     pub parent_digest: Option<String>,
     pub guest_clock: Option<GuestClock>,
 }
@@ -167,10 +173,13 @@ pub trait VmmDriver: Send + Sync {
     async fn import_snapshot(&mut self, reader: Box<dyn AsyncRead + Send + Sync + Unpin>) -> Result<(), VmmError>;
 
     /// Reverts guest physical RAM and vCPU registers to a prior checkpoint in <8ms.
-    /// Host filesystem state is the sparse upperdir delta, discarded by
-    /// kelir-core Session::rollback (truncate / punch holes), not a tmpfs diff.
-    /// Rollback page purge follows with posix_fadvise(POSIX_FADV_DONTNEED)
-    /// to purge the host kernel dirty page cache.
+    /// Host filesystem state is the host CoW broker per-session sparse
+    /// upper file + explicit tombstones (VirtIO-FS only; no in-guest
+    /// OverlayFS, no virtio-blk workspace disk): rollback drops the
+    /// upper file and tombstones, base untouched, FALLOC_FL_PUNCH_HOLE
+    /// + posix_fadvise(DONTNEED) on the upper. Rollback also closes
+    /// host sockets; the guest sees ECONNRESET/EPIPE, and sockets are
+    /// not restored from snapshots.
     async fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), VmmError>;
 
     /// Flushes dirty RAM pages to disk and drops host memory consumption to 0 MB in <50ms.
@@ -179,7 +188,7 @@ pub trait VmmDriver: Send + Sync {
 
     /// Restores a suspended VM image from storage in <50ms.
     /// Host samples CLOCK_REALTIME and dispatches a paravirtual clock
-    /// update frame over Channel 0x0000; kelir-shim issues
+    /// update frame over Control transport 0x0000; kelir-shim issues
     /// clock_settime(CLOCK_REALTIME) before unfreezing cgroups or
     /// releasing trapped tasks, so guest time snaps forward instantly.
     async fn resume(&mut self, image_path: &Path) -> Result<(), VmmError>;
@@ -187,8 +196,13 @@ pub trait VmmDriver: Send + Sync {
     /// Offsets the virtual hardware clock (KVM_SET_CLOCK / CNTVOFF_EL2)
     async fn skew_clock(&mut self, offset: Duration) -> Result<(), VmmError>;
 
-    /// Adjusts guest RAM ceiling dynamically via virtio-balloon
-    async fn adjust_balloon(&mut self, target_mb: u32) -> Result<(), VmmError>;
+    /// Adjusts guest RAM ceiling dynamically via virtio-balloon.
+    /// Returns a BalloonConvergence handle, not void. Host subscribes
+    /// to VIRTIO_BALLOON_S_MEMFREE / S_AVAIL; host reclaim gates on
+    /// guest ack; fork, snapshot, and heavy exec require prior
+    /// convergence. NOTE: BalloonConvergence is not defined in this
+    /// file (held: no field layout is pinned in the grounded spec facts).
+    async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, VmmError>;
 
     /// Arms the hardware watchdog: when no heartbeat arrives within `timeout`,
     /// the driver executes `action` (Reboot / Terminate)
@@ -196,9 +210,10 @@ pub trait VmmDriver: Send + Sync {
 
     /// Yields raw duplex channel to the Transport backend multiplexer
     /// (SPSC rings primary; AF_VSOCK / named-pipe fallback). The port
-    /// argument is the logical channel identifier (5252 is a channel
-    /// identifier, not an OS socket number). Method name kept for
-    /// compatibility; it does not imply AF_VSOCK semantics.
+    /// argument is the transport identifier (5252, retained, carries
+    /// Control 0x0000 and Stream Mux 0x0001, not an OS socket number).
+    /// Method name kept for compatibility; it does not imply AF_VSOCK
+    /// semantics.
     fn vsock_connect(&self, port: u32) -> Result<tokio::net::UnixStream, VmmError>;
 
     /// Terminates hypervisor instance and releases memory allocations

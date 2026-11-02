@@ -1,8 +1,12 @@
 // crates/kelir-interface/src/telemetry/delta.rs
 //
 // Differential state delta between two checkpoints: Δ = S_A - S_B.
-// Δ = S_A - S_B over memory, inodes, and wire egress.
-// Computes exactly what an agent branch did differently from its parent.
+// Net logical diffs only: host CoW broker upper file + explicit
+// tombstones, dirty bytes, process tree edges and exit statuses.
+// No PMU samples appear in CausalDelta; PMU counters are diagnostic
+// gauges only, emitted to OTel, never in receipts, CausalDelta, or
+// Merkle leaves. Computes exactly what an agent branch did differently
+// from its parent.
 //
 // Canonical spec home: cans/10-attestation.md#Causal-delta
 
@@ -12,11 +16,19 @@ use std::path::PathBuf;
 // depth unbounded. StepVerdict::Commit advances the delta DAG head;
 // writes remain in sparse extents. Compaction flattens ancestor deltas
 // in a single-pass block copy on export; compaction writes a new
-// consolidated manifest pointing to the ancestor base. StepVerdict::Rollback discards
-// only the current delta (≤8ms, sparse upperdir delta dropped).
+// consolidated manifest pointing to the ancestor base. Rollback:
+// the broker drops the upper file and tombstones, base untouched,
+// FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED); rollback also
+// closes host sockets, guest sees ECONNRESET/EPIPE, sockets are not
+// restored from snapshots.
 // Lineage walks the CAS manifest DAG: every snapshot manifest immutably
-// records its parent_digest; SQLite stores zero child arrays and tracks
-// session leases only, so lineage is not a field of this struct.
+// records its parent_digest; the catalog stores zero child arrays.
+// Separately, every session registers a catalog row, no bypass:
+// ephemeral lease_kind='ephemeral', expires_at NULL, reaped on parent
+// death; detached lease_kind='lease', expires_at refreshed 30s; the row
+// carries incarnation_id (UUIDv7 per spawn), boot_id, start_time_ns,
+// pid; liveness proof Linux pidfd, macOS kqueue NOTE_EXIT, Windows Job
+// Object KILL_ON_JOB_CLOSE. Lineage itself is not a field of this struct.
 pub struct CausalDelta {
     /// Hardware-agnostic byte-level RAM delta
     pub memory_diff_bytes: u64,

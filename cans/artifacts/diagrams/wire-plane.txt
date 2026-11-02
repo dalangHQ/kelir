@@ -28,27 +28,36 @@
                               policy governs admission, and the original hostname
                               is preserved verbatim in the CONNECT frame.
                               No entropy gating: it is not a policy primitive.
+                              EDNS0 downgrade: a query with DO=1 has DO stripped
+                              before upstream forward; the synthesized response
+                              clears AD. Host resolver state/policy unchanged.
                                         │
                                         ▼
                              [POLICY REJECTION — FAST-FAIL, NEVER SILENT]
-                             L4 TCP Reject: TCP RST or ICMP Port Unreachable
-                             into the guest ingress ring (guest: ECONNREFUSED).
-                             L7 HTTP Reject: synthetic 403, JSON receipt
+                             Verdict mapping:
+                             Pass: forward / deliver.
+                             Suspend: yield to host.
+                             Drop{errno:ECONNREFUSED}: L4 RST or ICMP Port
+                             Unreachable into the guest ingress ring.
+                             Drop{errno:EACCES}: L7 synthetic 403, JSON receipt
                              {"error":"E_POLICY_DENIED","rule":..,"target":..}.
-                             Silent discard exists only as SyncVerdict::Drop
-                             for plugin-chaos loss injection, never for policy.
+                             Drop{errno:None}: silent discard, chaos loss
+                             injection only, never for policy.
                                         │
                                         ▼
                              [CONNECTION PARKING]
                              Host-terminates client TCP; buffers up to 64KB initial data;
-                             wakes microVM and splices duplex stream across logical
-                             Channel 0x0001 (L4 stream forwarding). L4 diversion is the
-                             carrier; L7 proxies (vault, db-proxy, wire-ingress)
-                             mount their stages atop it and terminate TLS host-side.
-                             Protocol sniff gate: the carrier inspects the initial
-                             16 bytes; an HTTP verb or TLS ClientHello promotes the
-                             stream to L7, non-HTTP streams bypass L7 with zero-copy
-                             L4 splicing (no stalls on Redis, NATS, binary protocols).
+                             wakes microVM and splices duplex stream across stream
+                             mux 0x0001, kind L4_FORWARD 0x0005. The carrier is
+                             L4-only by default: no sniff, no L7 parsing, no HTTP
+                             rewriting in the supervisor, TLS byte-for-byte.
+                             L7 only when the builder mounts a NetInterposer with
+                             an L7 scope; the interposer never terminates TLS.
+                             L7 stages are db-proxy and wire-ingress only.
+                             Default vault path: the guest fetches a scoped token
+                             and presents it; no host TLS termination, no CA
+                             injection. L7 rewriting, if needed, is via an optional
+                             external sidecar only. No OpaqueTunnel.
                              Permitted UDP egress uses endpoint-independent (Full Cone)
                              NAT: one host UDP socket per guest source port, external
                              source port preserved for STUN, WebRTC, Tailscale.
@@ -59,6 +68,23 @@
                              Port-forward host binds set SO_REUSEADDR + SO_REUSEPORT;
                              SO_LINGER zero forces instant TCP RST on teardown,
                              eliminating TIME_WAIT exhaustion across rapid iterations.
+                             Explicit host_port bind failure returns
+                             Err(WireError::PortOccupied); a bootstrap bind failure
+                             aborts launch before the first vCPU cycle, with no
+                             silent ephemeral fallback. Teardown verifies listener
+                             release before Stopped; the management API reports a
+                             port published only after successful bind.
+                             UDP socket reaper: guest source ports map into an
+                             indexed slab, 1024-entry hard cap; cap exhausted ->
+                             oldest idle socket reclaimed first; idle 30s with
+                             zero ingress/egress -> close; a fresh packet on a
+                             reclaimed port reopens an ephemeral host socket.
+                             Rollback closes every host-side socket; guest TCP
+                             sees RST/FIN, subsequent sends fail ECONNRESET;
+                             UDP NAT slab entries are dropped; sockets are not
+                             restored from snapshots.
 
   Database proxying: see plugins/db-proxy.md.
-  L7 proxy and credential signing: see 07-wire-plane.md.
+  L7 stages (db-proxy, wire-ingress) and credential brokerage:
+  see 07-wire-plane.md. Vault L7 rewriting only via an optional
+  external sidecar, never in the supervisor.

@@ -18,8 +18,8 @@ use std::path::Path;
 use async_trait::async_trait;
 use kelir::{
     DriverChoice, HandlerCtx, KelirBuilder, Session, VmConfig,
-    plugin::{AnyPlugin, KelirPlugin, PluginError, TrapInterposer},
-    protocol::{TrapAction, TrapEvent},
+    plugin::{AnyPlugin, KelirPlugin, PluginError, TrapInterposer, Verdict},
+    protocol::TrapEvent,
     planes::storage::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
 };
 
@@ -36,15 +36,15 @@ impl KelirPlugin for GitGatePlugin {
 impl TrapInterposer for GitGatePlugin {
     async fn on_trap(
         &self, event: &TrapEvent, _c: &HandlerCtx,
-    ) -> Result<Option<TrapAction>, PluginError> {
+    ) -> Result<Option<Verdict>, PluginError> {
         let binary = event.binary_path.rsplit('/').next().unwrap_or("");
         if binary != "git" { return Ok(None); }
         match event.argv.get(1).map(String::as_str) {
             Some("push") => {
                 if event.argv.iter().any(|a| a == "--force") {
-                    return Ok(Some(TrapAction::Deny {
-                        exit_code: 1,
-                        diagnostic_payload: b"EPOLICY: --force rejected".to_vec(),
+                    return Ok(Some(Verdict::Drop {
+                        errno: Some("EPOLICY"),
+                        reason: "EPOLICY: --force rejected".into(),
                     }));
                 }
                 Ok(None)
@@ -56,8 +56,7 @@ impl TrapInterposer for GitGatePlugin {
                     .map(String::as_str)
                     .unwrap_or("");
                 if PROTECTED.iter().any(|p| msg.contains(p)) {
-                    return Ok(Some(TrapAction::Abort {
-                        exit_code: 1,
+                    return Ok(Some(Verdict::Abort {
                         reason: "EPOLICY: commit references protected branch".into(),
                     }));
                 }

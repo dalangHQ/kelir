@@ -8,12 +8,12 @@
 //!
 //! SAME HOOK SET in all three SDKs, in dispatch order:
 //!
-//!   1. NetInterposer::on_net_outbound -> SyncVerdict. Frames containing
-//!      the documentation-range marker 198.51.100. yield to the host for
-//!      inspection (YieldToHost); all other frames Allow.
-//!   2. FsInterposer::on_fs_lookup -> Ok(Some(FsInodeAttr)) for
+//!   1. NetInterposer::on_net_outbound -> Verdict. Frames containing
+//!      the documentation-range marker 198.51.100. suspend to the host
+//!      for inspection (Suspend until Deadline(0)); all other frames Pass.
+//!   2. FsInterposer::on_fs_lookup -> Verdict. Patch(attr) serves
 //!      exactly one path, /workspace/.policy/identity, with mode 0o400
-//!      (no permission fallback, per 02); Ok(None) — fall through —
+//!      (no permission fallback, per 02); Pass — fall through —
 //!      everywhere else.
 //!   3. FsInterposer::on_fs_read -> sliding-window masking. A
 //!      31-byte tail is carried between reads, so a secret token split
@@ -35,8 +35,8 @@
 //! cannot change a chunk's length.
 //!
 //! NOTES:
-//!   - SyncVerdict::YieldToHost(u64): nanoseconds delayed-release;
-//!     0 below is immediate.
+//!   - Verdict::Suspend { until: Deadline(0) } replaces the old
+//!     YieldToHost(0): 0 is immediate release to the host.
 //!   - Console hooks receive a whole chunk; no per-byte streaming
 //!     hook exists, so the OSC52 stripper buffers one chunk at a time.
 //!   - on_fs_lookup rejects `..` escapes with E_PATH_TRAVERSAL before
@@ -59,7 +59,7 @@ use kelir::{
     DriverChoice, HandlerCtx, KelirBuilder, Session, VmConfig,
     plugin::{
         AnyPlugin, KelirPlugin, PluginError,
-        FsInterposer, SyncVerdict, ConsoleInterposer,
+        FsInterposer, Verdict, ConsoleInterposer,
         TrapInterposer, SystemTelemetryParticipant,
         FsInodeAttr, WatchdogEvent, WatchdogVerdict,
         NetInterposer,
@@ -153,15 +153,15 @@ impl KelirPlugin for HookMatrixPlugin {
 }
 
 impl NetInterposer for HookMatrixPlugin {
-    fn on_net_outbound(&self, frame: &mut [u8]) -> Result<SyncVerdict, PluginError> {
+    fn on_net_outbound(&self, frame: &mut [u8]) -> Result<Verdict, PluginError> {
         // Sliding search, no allocation: any frame carrying the denylist
-        // marker yields to host inspection instead of leaving the ingress ring.
+        // marker suspends to host inspection instead of leaving the ingress ring.
         if frame.windows(DENY_MARKER.len()).any(|w| w == DENY_MARKER) {
-            // YieldToHost(u64) is a delayed release in nanoseconds
-            // (aa0e011); 0 is immediate, not a placeholder.
-            return Ok(SyncVerdict::YieldToHost(0));
+            // Suspend until Deadline(0): 0 is immediate, not a placeholder
+            // (formerly YieldToHost(0), aa0e011).
+            return Ok(Verdict::Suspend { until: Deadline(0) });
         }
-        Ok(SyncVerdict::Allow)
+        Ok(Verdict::Pass)
     }
 }
 
@@ -194,7 +194,7 @@ fn escapes_workspace(path: &Path) -> bool {
 }
 
 impl FsInterposer for HookMatrixPlugin {
-    fn on_fs_lookup(&self, path: &Path) -> Result<Option<FsInodeAttr>, PluginError> {
+    fn on_fs_lookup(&self, path: &Path) -> Result<Verdict, PluginError> {
         // GUARD: traversal first — an escaping path is rejected, never
         // served and never silently fallen through to the host fs.
         if escapes_workspace(path) {
@@ -203,10 +203,11 @@ impl FsInterposer for HookMatrixPlugin {
                 "lookup escapes the /workspace root",
             ));
         }
+        // Verdict::Pass = fall through; Patch(attr) = serve (02).
         if path.as_os_str() != IDENTITY_PATH {
-            return Ok(None);
+            return Ok(Verdict::Pass);
         }
-        Ok(Some(FsInodeAttr {
+        Ok(Verdict::Patch(FsInodeAttr {
             // 0o400 exactly, no permission fallback (02).
             mode: 0o400,
             uid: 0,
@@ -235,8 +236,8 @@ impl FsInterposer for HookMatrixPlugin {
 
     fn on_fs_write(
         &self, _path: &Path, data: &[u8], _pid: u32, _ctx: &HandlerCtx,
-    ) -> Result<SyncVerdict, PluginError> {
-        Ok(SyncVerdict::Allow)
+    ) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
     }
 }
 

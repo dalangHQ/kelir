@@ -5,21 +5,26 @@
 │    - Stripped base system (Python, Node, Rust, Bash) pre-baked into EROFS.  │
 │    - Cold-mounted as block device. Zero tarball decompression.              │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 2. COPY-ON-WRITE SCRATCHPAD (overlayfs over sparse host file):              │
-│    - Base host workspace mounted STRICTLY READ-ONLY.                        │
-│    - overlayfs upperdir maps a sparse host-backed file via virtio-blk.      │
-│    - Writes hit sparse disk blocks, never guest RAM: no guest OOM on        │
+│ 2. HOST COW BROKER (VirtIO-FS only, no in-guest overlay):                  │
+│    - Base host workspace mounted STRICTLY READ-ONLY as broker lower layer.  │
+│    - Writes land in a per-session sparse upper file owned by the broker.    │
+│    - Deletions are recorded as explicit tombstones in broker state;         │
+│      no whiteouts, no union driver inside the microVM. Guest observes      │
+│      a normal writable mount.                                              │
+│    - Writes hit sparse file blocks, never guest RAM: no guest OOM on        │
 │      large writes, host footprint independent of write volume.              │
-│    - Instant Revert: truncate the sparse backing file or punch holes        │
-│      in <1ms. Host SSD blocks are reclaimed, not a RAM layer dropped.       │
+│    - Instant Revert: broker drops the upper file and tombstones in <1ms.   │
+│      Host SSD blocks are reclaimed, not a RAM layer dropped.                │
 │    - Rollback page purge: FALLOC_FL_PUNCH_HOLE + posix_fadvise              │
 │      (POSIX_FADV_DONTNEED) purges the host kernel dirty page cache.         │
 │    - Ephemeral scratch device: dedicated virtio-blk sparse disk at /tmp     │
 │      and /var/cache, discarded on teardown without reconciliation; keeps    │
-│      high-churn caches out of workspace git diffs and whiteout tracking.    │
-│ 3. THE SUCCESS PATH RECONCILER (extension-based reconcile):                 │
-│    - Storage-plane sync: stages upperdir into .kelir-staging-<nonce>.       │
-│    - Executes atomic directory exchange (renameat2 / RENAME_EXCHANGE).      │
+│      high-churn caches out of workspace git diffs.                          │
+│ 3. THE SUCCESS PATH RECONCILER (broker commit):                              │
+│    - Broker replays the upper file + tombstones against the base workspace. │
+│    - Per-entry atomic commit at leaf level: temp file + platform rename.    │
+│    - Deletes unlink in place; new dirs create in place. Replay is           │
+│      idempotent: replaying after a crash converges.                          │
 │    - Zero filesystem corruption; Git commits stay ordinary guest runs.      │
 │    - Host inode resolution via openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGIC-    │
 │      LINKS); S_ISUID/S_ISGID stripped on write, create, chmod.              │
@@ -52,30 +57,30 @@
 │      cas_leases, schema_version. No resident daemon; every process opens    │
 │      the file directly. WAL + busy_timeout 5000ms; writers serialize via    │
 │      busy handlers, readers proceed concurrently.                           │
-│    - sessions: DETACHED sessions only (session_id, status, pids,            │
-│      rootfs_hash, expires_at); the sessions row carries the detached-       │
-│      runner lease (runner refreshes expires_at every 30s; expiry            │
-│      triggers a janitor sweep on startup).                                  │
-│    - Lockless ephemeral path: detached=false sessions bypass catalog.db     │
-│      entirely: zero SQLite transactions or rows; ephemeral state stays      │
-│      resident in host process memory, anchored to parent lifetime.          │
-│    - Runner signaling uses pidfd_open/pidfd_send_signal exclusively,        │
-│      verified against host_boot_id + proc start_time; stale rows with       │
-│      recycled PIDs abort delivery.                                          │
-│    - Ephemeral reaping: Linux pidfd + OS death signals drive zero-delay     │
-│      reaping (no lease polling; detached sessions use the watchdog poll).   │
+│    - sessions: EVERY session registers a row (session_id, status, pids,     │
+│      rootfs_hash, expires_at, lease_kind, incarnation_id, boot_id,          │
+│      start_time_ns, pid). Ephemeral rows carry lease_kind='ephemeral'       │
+│      and expires_at NULL, reaped on parent death; detached rows carry       │
+│      lease_kind='lease' and expires_at refreshed every 30s.                 │
+│    - Liveness is OS-native, verified against boot_id + start_time_ns +     │
+│      pid; stale rows with recycled PIDs abort delivery: Linux pidfd,        │
+│      macOS kqueue NOTE_EXIT, Windows Job Object KILL_ON_JOB_CLOSE.          │
+│    - Janitor reaps BOTH kinds on runtime child startup (ephemeral on        │
+│      parent death, detached on lease TTL expiry). No lockless bypass:       │
+│      every session has a row; the row is the SSOT for identity/liveness.    │
 │    - cas_leases: blob_hash, holder_pid, expires_at_unix (30s TTL);          │
 │      blobs with zero unexpired leases are pruned without locks.             │
 │    - Schema evolution drops ephemeral tables; immutable CAS files stay      │
 │      intact.                                                                │
 │    - cas/blobs/blake3_<hash>: immutable layer storage (kelir-pack output).  │
-│    - sessions/<id>/: ephemeral runtime state, logs/ + index.bin, relay.sock,│
-│      owner.pid. Lineage is NOT in SQLite: snapshot manifests immutably      │
+│    - sessions/<id>/: logs/, index.bin, relay.sock, owner.pid, upper/,      │
+│      tombstones/. Lineage is NOT in SQLite: snapshot manifests immutably    │
 │      record parent_digest; lineage walks the CAS manifest DAG.              │
 │    - Quotas: allocated_bytes / allocated_inodes atomics gate on_fs_write    │
 │      and FUSE mknod/create/mkdir; over budget fails synchronously ENOSPC,   │
 │      zero disk writes on rejection.                                         │
-│    - statfs returns remaining upperdir quota in O(1); quotas evaluate       │
-│      against the sparse upperdir delta only; the lowerdir host workspace    │
-│      incurs zero statfs traversal (zero-crawl baseline).                    │
+│    - statfs returns remaining broker quota in O(1); quotas evaluate         │
+│      against the broker delta only; counters track sparse upper file bytes  │
+│      + tombstone count + new inodes. The lowerdir host workspace incurs     │
+│      zero statfs traversal (zero-crawl baseline).                           │
 └─────────────────────────────────────────────────────────────────────────────┘

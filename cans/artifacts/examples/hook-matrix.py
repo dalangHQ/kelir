@@ -8,12 +8,12 @@ hook-matrix.ts.
 
 SAME HOOK SET in all three SDKs, in dispatch order:
 
-  1. on_net_outbound -> SyncVerdict. Frames containing the
-     documentation-range marker 198.51.100. yield to the host for
-     inspection (YieldToHost); all other frames Allow.
-  2. on_fs_lookup -> Some(FsInodeAttr) for exactly one path,
+  1. on_net_outbound -> Verdict. Frames containing the
+     documentation-range marker 198.51.100. suspend to the host for
+     inspection (Suspend until Deadline(0)); all other frames Pass.
+  2. on_fs_lookup -> Verdict. Patch(attr) serves exactly one path,
      /workspace/.policy/identity, with mode 0o400 (no permission
-     fallback, per 02); None — fall through — everywhere else.
+     fallback, per 02); Pass — fall through — everywhere else.
   3. on_fs_read -> sliding-window masking. A 31-byte tail is carried
      between reads, so a secret token split across two reads is still
      masked from the split point onward and no single read ever emits
@@ -33,7 +33,8 @@ the read/output hooks mutate fixed-size buffers in place and cannot
 change a chunk's length.
 
 NOTES:
-  - YieldToHost(u64) is nanoseconds delayed-release; 0 is immediate.
+  - Verdict Suspend until Deadline(0) replaces the old yield_to_host(0):
+    0 is immediate release to the host.
   - Rust mutates buffers in place; Python returns transformed bytes.
   - on_fs_lookup rejects `..` escapes with E_PATH_TRAVERSAL before
     the identity check; paths without `..` keep old behavior.
@@ -52,10 +53,10 @@ from pathlib import Path
 from typing import Optional
 
 import kelir
+from kelir import Deadline, Verdict
 from kelir.plugin import (
     BasePlugin,
     PluginError,
-    SyncVerdict,
     FsInodeAttr,
     HandlerContext,
 )
@@ -127,17 +128,16 @@ class HookMatrixPlugin(BasePlugin):
         return self._state
 
     # Hook 1: wire outbound. Any frame carrying the denylist marker
-    # yields to host inspection instead of leaving the ingress ring.
-    async def on_net_outbound(self, frame: bytes) -> SyncVerdict:
+    # suspends to host inspection instead of leaving the ingress ring.
+    async def on_net_outbound(self, frame: bytes) -> Verdict:
         if DENY_MARKER in frame:
-            # GAP: YieldToHost's numeric argument is unspecified; 0 is
-            # an explicit placeholder (see header).
-            return SyncVerdict.yield_to_host(0)
-        return SyncVerdict.allow()
+            # Suspend until Deadline(0): 0 is immediate, not a placeholder.
+            return Verdict.suspend(until=Deadline(0))
+        return Verdict.pass_()
 
     # Hook 2: storage lookup. Exactly one synthetic inode, mode 0o400
     # with no permission fallback (02); everything else falls through.
-    async def on_fs_lookup(self, path: Path) -> Optional[FsInodeAttr]:
+    async def on_fs_lookup(self, path: Path) -> Verdict:
         # GUARD: traversal first — an escaping path is rejected, never
         # served and never silently fallen through to the host fs.
         if escapes_workspace(str(path)):
@@ -145,15 +145,16 @@ class HookMatrixPlugin(BasePlugin):
                 errno="E_PATH_TRAVERSAL",
                 reason="lookup escapes the /workspace root",
             )
+        # Verdict Pass = fall through; Patch(attr) = serve (02).
         if str(path) != IDENTITY_PATH:
-            return None
-        return FsInodeAttr(
+            return Verdict.pass_()
+        return Verdict.patch(FsInodeAttr(
             mode=0o400,
             uid=0,
             gid=0,
             size=len(IDENTITY_CONTENT),
             content=IDENTITY_CONTENT,
-        )
+        ))
 
     # Hook 3: storage read, sliding-window masking. Window = carried
     # tail + this chunk; mask over the window, emit the chunk's
@@ -171,8 +172,8 @@ class HookMatrixPlugin(BasePlugin):
 
     async def on_fs_write(
         self, path: Path, data: bytes, pid: int, ctx: HandlerContext,
-    ) -> bool:
-        return True
+    ) -> Verdict:
+        return Verdict.pass_()
 
     # Hook 4: PTY input. Strip OSC52 clipboard exfiltration sequences:
     # ESC ] 52 ; … terminated by BEL (0x07) or ST (ESC \).

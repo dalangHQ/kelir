@@ -1,16 +1,19 @@
 # examples/db-backed-runtime.py
 """
 Database-backed secure runtime. pgwire traffic is rewritten at the L7
-boundary; credentials are injected per-connection host-side and never
-enter guest address space. The guest root filesystem and the migration
-snapshot are local EROFS fixtures under ./fixtures/; no remote image
-translation or snapshot streaming is involved.
+boundary; credentials are scoped short-lived tokens issued by
+plugin-vault and presented by the workload itself. No host TLS
+termination by default, no CA injection. The guest root filesystem
+and the migration snapshot are local EROFS fixtures under ./fixtures/;
+no remote image translation or snapshot streaming is involved.
 
 Mounts:     db-proxy.
 Primitives: export_snapshot, import_snapshot.
 Commit:     two-phase commit around the snapshot export — on_pre_commit
-            flushes the host ledger before staging, on_post_commit
-            reports whether the staged snapshot swapped in or was purged.
+            pauses vCPUs and drains FUSE in-flight ops (the handler
+            flushes the host ledger before staging); on_post_commit(True)
+            is a per-entry leaf commit, on_post_commit(False) unlinks
+            staging and drops the broker upper file and tombstones.
 
 Requirements:
     kelir>=3.0
@@ -26,7 +29,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 import kelir
-from kelir import Decision, HandlerContext, KelirBuilder, PostExecAction, Session
+from kelir import HandlerContext, KelirBuilder, PostExecAction, Session, Verdict
 from kelir.plugins.db_proxy import (
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials,
     PgWireRewrite, SqliteOverVsock,
@@ -67,8 +70,10 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
                     ("public.", "migrate_schema."),
                 ],
             ),
-            # Guest sees a vault:// URN; the proxy swaps in the real
-            # password after TLS termination. TTL bounds exposure.
+            # Guest sees a vault:// URN; the workload presents a scoped
+            # short-lived token issued by plugin-vault itself. No host
+            # TLS termination by default, no CA injection. TTL bounds
+            # exposure.
             credentials=EphemeralCredentials(
                 placeholder="vault://pg/app_migrate",
                 resolve=lambda: pg_secret,
@@ -83,15 +88,16 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         )))
     )
 
-    def pre_migrate(c: HandlerContext) -> Decision:
+    def pre_migrate(c: HandlerContext) -> Verdict:
         # Pin the pgwire rewrite to the expected schema prefix. A drift
         # means the proxy config diverged from the migration source;
-        # the correct action is deny, not retry.
+        # the correct action is drop, not retry.
         if c.cap.db.rewrite_target != "migrate_schema.":
-            return Decision.deny(
-                1, f"EdbProxySchema: got {c.cap.db.rewrite_target!r}",
+            return Verdict.drop(
+                "EdbProxySchema",
+                f"EdbProxySchema: got {c.cap.db.rewrite_target!r}",
             )
-        return Decision.resume()
+        return Verdict.pass_()
 
     def post_migrate(c: HandlerContext) -> PostExecAction:
         # A migration with no db-proxy telemetry is either a no-op
@@ -108,7 +114,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
     # LifecycleParticipant commit hooks, registered the same decorator
     # way as on_vm_ready / on_vm_shutdown in autonomous-swe-agent.py.
     # They bracket the snapshot export in main(): the runtime pauses
-    # vCPUs and flushes in-flight VFS buffers, then these handlers run.
+    # vCPUs and drains FUSE in-flight ops, then these handlers run.
     @builder.on_pre_commit
     async def _pre_commit(session: Session) -> None:
         # Prepare phase: make the host side durable BEFORE the guest
@@ -119,14 +125,18 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
 
     @builder.on_post_commit
     async def _post_commit(session: Session, committed: bool) -> None:
-        # Commit phase: committed=True executes the atomic swap into the
-        # workspace — here the staged snapshot becomes the next cold-start
-        # fixture; False unlinks staging and discards the sparse overlay delta, so a
-        # failed export never overwrites the last good snapshot.
+        # Commit phase: committed=True is a per-entry leaf commit —
+        # the broker replays the upper file + tombstones against the
+        # base workspace, so the staged snapshot becomes the next
+        # cold-start fixture; False unlinks staging and drops the
+        # broker upper file and tombstones, so a failed export never
+        # overwrites the last good snapshot.
         if committed:
-            print("[kelir] commit: snapshot staged as next cold-start fixture")
+            print("[kelir] commit: per-entry leaf commit, staged snapshot "
+                  "is next cold-start fixture")
         else:
-            print("[kelir] commit aborted: staging purged, last good snapshot kept")
+            print("[kelir] commit aborted: staging unlinked, broker upper "
+                  "and tombstones dropped, last good snapshot kept")
 
     return builder
 
@@ -155,10 +165,12 @@ async def main() -> None:
 
         # Commit point (plugins/transaction.md): exporting the
         # post-migration state stages the snapshot; on_pre_commit already
-        # flushed the host ledger, and on_post_commit(True) swaps the
+        # paused vCPUs, drained FUSE in-flight ops, and flushed the host
+        # ledger, and on_post_commit(True) per-entry leaf-commits the
         # staged snapshot into LOCAL_SNAPSHOT while on_post_commit(False)
-        # purges staging, leaving the last good fixture intact. The next
-        # cold start hydrates from the same local file.
+        # unlinks staging and drops the broker upper file and tombstones,
+        # leaving the last good fixture intact. The next cold start
+        # hydrates from the same local file.
         out = await session.vm.export_snapshot()
         with open(LOCAL_SNAPSHOT, "wb") as f:
             f.write(out)

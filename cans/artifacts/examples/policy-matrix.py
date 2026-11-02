@@ -1,23 +1,25 @@
 # examples/policy-matrix.py
 """
-Canonical depth example: the full TrapAction lattice, lifecycle vetoes,
+Canonical depth example: the full Verdict lattice, lifecycle vetoes,
 watchdog verdicts, a custom action, and binary vsock RPC — the surface
 the swe-agent family deliberately does not touch.
 
 SAME CHAIN as policy-matrix.rs and policy-matrix.ts. Registration order
 is the dispatch order; each binary hits exactly one row:
 
-  1. policy-allow    -> Allow            (resume untouched)
-  2. policy-deny     -> Deny            (exit 1, EPOLICY)
-  3. policy-rewrite  -> Rewrite         (new binary + argv, env ONLY via
-                                           Rewrite target_mutation
-                                           (ExecveMutation) — never env.set()
-                                           + resume, which is
-                                           EINVALIDDECISION per 09)
-  4. policy-abort    -> Abort           (pre-exec, exit 1)
+  1. policy-allow    -> Pass            (proceed untouched)
+  2. policy-deny     -> Drop           (errno EPOLICY, reason)
+  3. policy-rewrite  -> Patch          (new binary + argv, env ONLY via
+                                           the ExecveMutation payload
+                                           — never env.set() + pass,
+                                           which is EINVALIDDECISION
+                                           per 09)
+  4. policy-abort    -> Abort           (pre-exec, reason only)
   5. policy-yield    -> checkpoint "policy-yield", then Yield to host
-  6. policy-approval -> Hold (500 ms)
-  7. policy-custom   -> Custom("quarantine", payload) dispatched to
+                         (HELD: Yield{checkpoint_id} -> Suspend mapping
+                         undecided; row left untouched)
+  6. policy-approval -> Suspend        (until Deadline(500))
+  7. policy-custom   -> Patch(Custom{name, cbor}) dispatched to
                          builder.register_custom_action("quarantine", …)
   8. Vetoes (on_vm_init): Suspend and ClockSkew, each allowed only once
      the ready flag is set in on_vm_ready; before that both abort.
@@ -35,8 +37,8 @@ as a table; the plugin.on_trap surface is exercised in
 hook-matrix.py.
 
 NOTES:
-  - Lattice: Decision.resume / deny / rewrite / abort /
-    yield_to_host(checkpoint_id) / hold(ms) / custom(name, payload).
+  - Lattice: Verdict.pass_ / patch / drop / suspend / abort.
+    Decision.yield_to_host(checkpoint_id) is HELD (see row 5).
   - Yield id is a String; "policy-yield" is this example's label.
   - Vetoes register at on_vm_init via ctx.register_veto(event, cb).
   - Watchdog via on_watchdog on BasePlugin
@@ -58,7 +60,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
 import kelir
-from kelir import Decision, HandlerContext, KelirBuilder
+from kelir import Deadline, Decision, HandlerContext, KelirBuilder, Verdict
 from kelir.plugin import (
     BasePlugin,
     VetoEvent,
@@ -129,45 +131,46 @@ class WatchdogSilencerPlugin(BasePlugin):
 # 3. TRAP ROWS — one pre-handler per binary, in dispatch order
 # ============================================================================
 
-PreExecHandler = Callable[[HandlerContext], Awaitable[Decision]]
+PreExecHandler = Callable[[HandlerContext], Awaitable[Verdict]]
 
 
-async def row_allow(c: HandlerContext) -> Decision:
-    return Decision.resume()
+async def row_allow(c: HandlerContext) -> Verdict:
+    return Verdict.pass_()
 
 
-async def row_deny(c: HandlerContext) -> Decision:
-    return Decision.deny(1, "EPOLICY: policy-matrix denies this binary.")
+async def row_deny(c: HandlerContext) -> Verdict:
+    return Verdict.drop("EPOLICY", "EPOLICY: policy-matrix denies this binary.")
 
 
-async def row_rewrite(c: HandlerContext) -> Decision:
-    # Env mutation ONLY through the rewrite payload.
-    return Decision.rewrite(
+async def row_rewrite(c: HandlerContext) -> Verdict:
+    # Env mutation ONLY through the patch (ExecveMutation) payload.
+    return Verdict.patch(
         binary="/bin/policy-allow",
         argv=["policy-allow", "--rewritten"],
         env={"KELIR_POLICY_REWRITE": "1"},
     )
 
 
-async def row_abort(c: HandlerContext) -> Decision:
-    return Decision.abort(1, "EPOLICY: abort row")
+async def row_abort(c: HandlerContext) -> Verdict:
+    return Verdict.abort("EPOLICY: abort row")
 
 
+# HELD: Yield{checkpoint_id} -> Suspend mapping undecided; row untouched.
 async def row_yield(c: HandlerContext) -> Decision:
     await c.vm.checkpoint("policy-yield")
     return Decision.yield_to_host("policy-yield")
 
 
-async def row_approval(c: HandlerContext) -> Decision:
-    return Decision.hold(duration_ms=500)
+async def row_approval(c: HandlerContext) -> Verdict:
+    return Verdict.suspend(until=Deadline(500))
 
 
-async def row_custom(c: HandlerContext) -> Decision:
+async def row_custom(c: HandlerContext) -> Verdict:
     # Dispatched by name to the handler registered on the builder below.
     # Unknown names fail with EUnknownAction (11).
-    return Decision.custom(
-        "quarantine",
-        {"pid": c.trap.pid, "reason": "policy-matrix quarantine row"},
+    return Verdict.patch(
+        name="quarantine",
+        cbor={"pid": c.trap.pid, "reason": "policy-matrix quarantine row"},
     )
 
 

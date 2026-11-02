@@ -23,7 +23,7 @@
 │   ├── Paravirtual Micro-Init (PID 1: kelir-shim, <50KB musl):                           │
 │   │     - Reaps zombies cleanly; establishes controlling terminal for workload          │
 │   │     - Kernel-level eBPF & seccomp-unotify filters trap security-critical syscalls   │
-│   │     - Streams trap notifications over logical channel 5252 (Channel 0);             │
+│   │     - Streams trap notifications over Control 0x0000 (transport port 5252);        │
 │   │       Transport: SPSC rings primary, AF_VSOCK / named-pipe fallback                 │
 │   │     - Hypervisor freezes task groups via cgroup.freeze during inspection            │
 │   │     - virtio-console ports: console master, dynamic ports                           │

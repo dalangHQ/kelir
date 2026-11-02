@@ -1,9 +1,12 @@
 // crates/kelir-interface/src/protocol.rs
 //
-// All wire messages exchanged over logical channel 5252. 5252 is a
-// channel identifier, not an AF_VSOCK port: the Transport backend
-// carries it (shared-memory SPSC rings primary; AF_VSOCK on
+// All wire messages exchanged over transport port 5252 (retained).
+// 5252 is a transport identifier, not an AF_VSOCK port: the Transport
+// backend carries it (shared-memory SPSC rings primary; AF_VSOCK on
 // Linux/macOS and named pipes on Windows as debug fallbacks).
+// Exactly two transports: Control 0x0000 and Stream Mux 0x0001;
+// every other capability is a stream kind multiplexed on 0x0001
+// (see wire-protocol.rs for the kind registry).
 // Payloads encode as CBOR inside the TLV frame defined in codec.rs.
 //
 // Owned by: cans/11-protocol.md#Wire-messages
@@ -68,7 +71,7 @@ pub enum GuestToHost {
     Heartbeat(Heartbeat),
 }
 
-/// Version negotiation on Channel 0x0000 initialization. Host and guest
+/// Version negotiation on Control transport 0x0000 initialization. Host and guest
 /// exchange Handshakes; negotiated_capabilities = host.capabilities &
 /// guest.capabilities. A missing mandatory feature bit aborts with
 /// E_INCOMPATIBLE_SHIM_VERSION; a missing optional bit disables that
@@ -79,25 +82,29 @@ pub struct Handshake {
     pub capabilities: u64,
 }
 
-/// Binary exec channel (0x0003) stream identifiers. Framing: 4-byte
-/// channel, 1-byte stream_id, 4-byte len, payload. stdout/stderr carry
+/// Stream mux 0x0001, stream kind EXEC 0x0001, sub-lane codes.
+/// Framing: stream_id: u32, flags: u8, len: u32, payload. stdout/stderr carry
 /// raw bytes; no line wrapping, no escape injection; PTY bypassed.
-/// Guest shim holds a fixed 64-slot ExecSlot table mapping guest pid to
-/// exec_id; exit frames on 0x0003 defer until stdout/stderr EOF flush.
-/// Out-of-band isolation: SIGINT, SIGTERM, and window resize bypass
-/// 0x0003 and route exclusively over Channel 0x0000, so signals never
-/// stall behind saturated stdout/stderr rings.
+/// Guest shim holds a dynamic ExecSlot slab mapping guest pid to
+/// exec_id, sized min(guest RLIMIT_NPROC, host max_exec_slots),
+/// default 4096; slab saturation returns MSG_EXEC_REJECT{ENOMEM}
+/// in-band. Unmatched reaped PIDs discard into a zero-allocation sink.
+/// Exit frames defer until stdout/stderr EOF flush.
+/// Out-of-band isolation: SIGINT and SIGTERM route exclusively over
+/// Control transport 0x0000, so signals never stall behind saturated
+/// stdout/stderr rings; signals carry exec_id, never raw guest pid.
+/// Window resize rides EXEC control sub-lane 0x03.
 pub const EXEC_STREAM_STDIN: u8 = 0x00;
 pub const EXEC_STREAM_STDOUT: u8 = 0x01;
 pub const EXEC_STREAM_STDERR: u8 = 0x02;
-pub const EXEC_STREAM_CONTROL: u8 = 0x03; // stream control: exit code, EOF, rlimit descriptors (signals + resize ride Channel 0x0000)
+pub const EXEC_STREAM_CONTROL: u8 = 0x03; // stream control: exit code, EOF, rlimit descriptors, window resize (signals ride Control 0x0000)
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum HostToGuest {
-    /// Decision on Intercepted Syscall
+    /// Verdict on Intercepted Syscall
     TrapDecision {
         seq: u64,
-        action: TrapAction,
+        action: Verdict,
     },
     /// Dynamic Memory Balloon Adjustment
     AdjustBalloon {
@@ -109,37 +116,49 @@ pub enum HostToGuest {
     },
 }
 
-/// Permission lattice (monotonic): Allow < Rewrite < Deny < Abort.
+/// Unified verdict (02-plugin-model, 11-protocol): one enum across
+/// Trap, Fs, Net, Console, Exec, MCP, and DB rings. No per-ring aliases.
+/// Method mapping: Pass = c.pass(), Patch = c.patch(mutation),
+/// Drop = c.drop(errno, reason), Suspend = c.suspend(until),
+/// Abort = c.abort(reason).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TrapAction {
-    /// Resume the syscall untouched. Registers and memory are never modified.
-    Allow,
-    /// Inject exit code and stderr into the agent's TTY.
-    Deny {
-        exit_code: i32,
-        diagnostic_payload: Vec<u8>,
-    },
-    /// Dynamic execution mutation. Target-specific payload resolved by interposer.
-    Rewrite {
-        target_mutation: Vec<u8>,
-    },
-    /// Hypervisor cgroup freeze: freeze guest task group, return control
-    /// cleanly to host event loop
-    Yield {
-        checkpoint_id: String,
-    },
-    /// Immediate hypervisor-level uncatchable termination of guest workload
-    Abort {
-        exit_code: i32,
-        reason: String,
-    },
-    /// Hold guest execution for duration_ms.
-    Hold {
-        duration_ms: u32,
-    },
-    /// Extension point. Carries the CBOR payload only; the handler name
-    /// resolves at SDK registration (see 11-protocol.md Custom dispatch).
-    /// Unknown names fail with EUnknownAction before the pipeline resumes.
-    /// Closes the fixed-variant lock-in (quarantine, throttle, shadow-route).
-    Custom(ciborium::value::Value),
+pub enum SuspendUntil {
+    /// Hold until the given deadline in milliseconds elapses.
+    Deadline(u64),
+    /// Hold until an external approval arrives.
+    Approval,
+    /// Hold until the handshake completes.
+    Handshake,
+}
+
+/// Patch payload, registered per ring. The non-Custom variants carry the
+/// ring payload as CBOR bytes; no field layout is pinned here.
+/// Custom carries name + CBOR; the handler name resolves at SDK
+/// registration (see 11-protocol.md Custom dispatch). Unknown names
+/// fail with EUnknownAction before the pipeline resumes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PatchPayload {
+    ExecveMutation(Vec<u8>),
+    HttpFrame(Vec<u8>),
+    FsChunk(Vec<u8>),
+    JsonRpcFrame(Vec<u8>),
+    PgFrame(Vec<u8>),
+    Custom { name: String, cbor: ciborium::value::Value },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Verdict {
+    /// Proceed untouched. Registers and memory are never modified.
+    Pass,
+    /// In-place mutation; payload schema per ring.
+    Patch(PatchPayload),
+    /// Deny. errno surfaces to the guest (policy denial is fast-fail,
+    /// never silent: L4 TCP gets a TCP RST or ICMP Port Unreachable,
+    /// L7 HTTP gets a synthetic 403 with a JSON receipt). errno None
+    /// indicates silent blackholing, for plugin-chaos loss injection only.
+    Drop { errno: Option<String>, reason: String },
+    /// Yield or hold to host until `until`.
+    Suspend { until: SuspendUntil },
+    /// Fatal; pipeline freezes.
+    Abort { reason: String },
 }

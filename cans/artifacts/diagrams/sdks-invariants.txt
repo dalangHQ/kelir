@@ -8,16 +8,16 @@
 │              │ to Plugins; `c.ctx::<T>()`         │ before traps execute               │                                    │
 │              │ infallible via `Plugins: Has<T>`   │                                    │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ TypeScript   │ KelirBuilder<TContext, TParams,    │ `.params(schema)` pins TParams =   │ `try...finally` / `using` cleanup; │
-│              │ TInstalled>; `.use()` intersects   │ Static<TSchema>; `c.params` typed  │ `.error()` maps host exceptions to │
-│              │ TPluginCtx; missing prereq yields  │ from TSchema, not runtime lookup   │ POSIX errnos before crash/abort    │
-│              │ CompileError; `c.<pluginKey>`      │                                    │                                    │
-│              │ static                             │                                    │                                    │
+│ TypeScript   │ Flat builder returning this;       │ `.params(schema)` pins TParams =   │ `try...finally` / `using` cleanup; │
+│              │ `.use()` overloads; missing prereq │ Static<TSchema>; `c.params` typed  │ `.error()` maps host exceptions to │
+│              │ yields EConfig at builder.boot();  │ from TSchema, not runtime lookup   │ POSIX errnos before crash/abort    │
+│              │ `c.<pluginKey>` static             │                                    │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ Python       │ PEP 695 Protocol intersection:    │ `.params(schema: type[TParams])`   │ `async with` __aexit__ terminates; │
-│              │ `.use()` returns KelirBuilder[    │ pins TParams; `c.params` typed     │ Import-time + perimeter validation │
-│              │ TCapabilities & TNewCap, TParams];│ from the Pydantic model class      │                                    │
-│              │ `c.cap.<plugin_key>` static        │                                    │                                    │
+│ Python       │ Flat builder returning self;       │ `.params(schema: type[TParams])`   │ `async with` __aexit__ terminates; │
+│              │ `.use()` overloads; prereq         │ pins TParams; `c.params` typed     │ boot-time EConfig; perimeter       │
+│              │ validation at builder.boot()      │ from the Pydantic model class      │ validation                         │
+│              │ raises EConfig;                │                                    │                                    │
+│              │ `c.cap.<plugin_key>` static    │                                    │                                    │
 └──────────────┴────────────────────────────────────┴────────────────────────────────────┴────────────────────────────────────┘
 AOT hook fusion: NAPI/PyO3 pipeline handlers fuse to one native closure per event.
 Typed enum compilation: LifecycleEvent, Ring, and TrapFilter values are checked

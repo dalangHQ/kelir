@@ -1,23 +1,25 @@
 //! examples/policy-matrix.rs
 //!
-//! Canonical depth example: the full TrapAction lattice, lifecycle vetoes,
+//! Canonical depth example: the full Verdict lattice, lifecycle vetoes,
 //! watchdog verdicts, a custom action, and binary vsock RPC — the surface
 //! the swe-agent family deliberately does not touch.
 //!
 //! SAME CHAIN as policy-matrix.ts and policy-matrix.py. Registration order
 //! is the dispatch order; each binary hits exactly one row:
 //!
-//!   1. policy-allow    -> Allow            (resume untouched)
-//!   2. policy-deny     -> Deny            (exit 1, EPOLICY)
-//!   3. policy-rewrite  -> Rewrite         (new binary + argv, env ONLY via
-//!                                            Rewrite target_mutation
-//!                                            (ExecveMutation) — never
-//!                                            env.set() + resume, which is
-//!                                            EINVALIDDECISION per 09)
-//!   4. policy-abort    -> Abort           (pre-exec, exit 1)
+//!   1. policy-allow    -> Pass            (proceed untouched)
+//!   2. policy-deny     -> Drop           (errno EPOLICY, reason)
+//!   3. policy-rewrite  -> Patch          (new binary + argv, env ONLY via
+//!                                            the ExecveMutation payload
+//!                                            — never env.set() + pass,
+//!                                            which is EINVALIDDECISION
+//!                                            per 09)
+//!   4. policy-abort    -> Abort           (pre-exec, reason only)
 //!   5. policy-yield    -> checkpoint "policy-yield", then Yield to host
-//!   6. policy-approval -> Hold (500 ms)
-//!   7. policy-custom   -> Custom("quarantine", CBOR payload) dispatched to
+//!                          (HELD: Yield{checkpoint_id} -> Suspend mapping
+//!                          undecided; row left untouched)
+//!   6. policy-approval -> Suspend        (until Deadline(500))
+//!   7. policy-custom   -> Patch(Custom{name, cbor}) dispatched to
 //!                          builder.register_custom_action("quarantine", …)
 //!   8. Vetoes (on_vm_init): Suspend and ClockSkew, each allowed only once
 //!      the ready flag is set in on_vm_ready; before that both abort.
@@ -28,7 +30,7 @@
 //!      binary RPC round-trip in main().
 //!
 //! NOTES:
-//!   - TrapAction::Yield carries checkpoint_id: String.
+//!   - TrapAction::Yield carries checkpoint_id: String. (HELD row: see row 5.)
 //!   - register_custom_action / register_vsock_service take a JSON schema
 //!     and an async handler; shapes below mirror 09/03.
 //!   - session.vsock.channel(kind) is an async byte stream, per
@@ -58,7 +60,7 @@ use kelir::{
     plugin::{
         AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant,
         PluginError, SystemTelemetryParticipant, TrapInterposer,
-        VetoEvent, WatchdogEvent, WatchdogVerdict,
+        VetoEvent, Verdict, WatchdogEvent, WatchdogVerdict,
     },
     protocol::{TrapAction, TrapEvent},
 };
@@ -159,15 +161,16 @@ impl TrapInterposer for PolicyMatrixPlugin {
     ) -> Result<Option<TrapAction>, PluginError> {
         let binary = event.binary_path.rsplit('/').next().unwrap_or(&event.binary_path);
         match binary {
-            // Row 1: Allow — resume untouched.
-            "policy-allow" => Ok(Some(TrapAction::Allow)),
-            // Row 2: Deny — exit code + diagnostic payload injected into the TTY.
-            "policy-deny" => Ok(Some(TrapAction::Deny {
-                exit_code: 1,
-                diagnostic_payload: b"EPOLICY: policy-matrix denies this binary.".to_vec(),
+            // Row 1: Pass — proceed untouched.
+            "policy-allow" => Ok(Some(Verdict::Pass)),
+            // Row 2: Drop — EPOLICY diagnostic payload becomes
+            // Drop { errno: "EPOLICY", reason }.
+            "policy-deny" => Ok(Some(Verdict::Drop {
+                errno: Some("EPOLICY"),
+                reason: "EPOLICY: policy-matrix denies this binary.".into(),
             })),
-            // Row 3: Rewrite — env mutation ONLY through the ExecveMutation
-            // target_mutation payload (plugins/tool-guard.md).
+            // Row 3: Patch — env mutation ONLY through the ExecveMutation
+            // payload (plugins/tool-guard.md).
             "policy-rewrite" => {
                 let mutation = serde_json::json!({
                     "new_binary": "/bin/policy-allow",
@@ -175,13 +178,11 @@ impl TrapInterposer for PolicyMatrixPlugin {
                     "set_env": { "KELIR_POLICY_REWRITE": "1" },
                     "unset_env": [],
                 });
-                Ok(Some(TrapAction::Rewrite {
-                    target_mutation: serde_json::to_vec(&mutation).unwrap(),
-                }))
+                Ok(Some(Verdict::Patch(mutation)))
             }
             // Row 4: Abort — pre-exec, hypervisor-level termination.
-            "policy-abort" => Ok(Some(TrapAction::Abort {
-                exit_code: 1,
+            // Abort drops exit_code, keeps reason only.
+            "policy-abort" => Ok(Some(Verdict::Abort {
                 reason: "EPOLICY: abort row".into(),
             })),
             // Row 5: Yield — checkpoint first, then freeze to the host.
@@ -190,20 +191,24 @@ impl TrapInterposer for PolicyMatrixPlugin {
                 let _snap = ctx.vm.checkpoint("policy-yield").await?;
                 Ok(Some(TrapAction::Yield { checkpoint_id: "policy-yield".into() }))
             }
-            // Row 6: Hold — host holds 500 ms pending approval.
-            "policy-approval" => Ok(Some(TrapAction::Hold {
-                duration_ms: 500,
+            // Row 6: Suspend — host holds 500 ms pending approval.
+            "policy-approval" => Ok(Some(Verdict::Suspend {
+                until: Deadline(500),
             })),
-            // Row 7: Custom — dispatched by name to the registered handler.
-            // Unknown names fail with EUnknownAction (11); "quarantine"
-            // is registered on the builder below.
-            "policy-custom" => Ok(Some(TrapAction::Custom(CborValue::Map(vec![
-                (CborValue::Text("pid".into()), CborValue::Integer(event.pid.into())),
-                (
-                    CborValue::Text("reason".into()),
-                    CborValue::Text("policy-matrix quarantine row".into()),
-                ),
-            ])))),
+            // Row 7: Patch(Custom{name, cbor}) — dispatched by name to
+            // the registered handler. Unknown names fail with
+            // EUnknownAction (11); "quarantine" is registered on the
+            // builder below.
+            "policy-custom" => Ok(Some(Verdict::Patch(Custom {
+                name: "quarantine",
+                cbor: CborValue::Map(vec![
+                    (CborValue::Text("pid".into()), CborValue::Integer(event.pid.into())),
+                    (
+                        CborValue::Text("reason".into()),
+                        CborValue::Text("policy-matrix quarantine row".into()),
+                    ),
+                ]),
+            }))),
             _ => Ok(None),
         }
     }

@@ -24,11 +24,11 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use kelir::{
-    handler, Decision, DriverChoice, FinalizeRequest, FsReconcileRequest, HandlerCtx,
-    KelirBuilder, PostExecAction, Session, SnapshotDescriptor, StepSlot, VmConfig,
+    handler, DriverChoice, FinalizeRequest, FsReconcileRequest, HandlerCtx,
+    KelirBuilder, PostExecAction, Session, SnapshotDescriptor, StepSlot, Verdict, VmConfig,
     plugin::{
         AnyPlugin, KelirPlugin, PluginError,
-        FsInterposer, SyncVerdict,
+        FsInterposer,
         TrapInterposer,
     },
     plugins::{
@@ -40,7 +40,7 @@ use kelir::{
         storage::{DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopHandler, SnoopRule, StorageConfig},
         wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig},
     },
-    protocol::{CausalDelta, ExecutionReceipt, TrapAction, TrapEvent},
+    protocol::{CausalDelta, ExecutionReceipt, TrapEvent},
 };
 
 // ============================================================================
@@ -144,8 +144,8 @@ impl KelirPlugin for RepoPolicyPlugin {
 
 #[async_trait]
 impl TrapInterposer for RepoPolicyPlugin {
-    // ── Ring 2 (virtio-vsock): veto or rewrite `git push` ────────────────
-    async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Option<TrapAction>, PluginError> {
+    // ── Ring 2 (virtio-vsock): veto or patch `git push` ────────────────
+    async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Option<Verdict>, PluginError> {
         let is_git = event.binary_path.ends_with("/git") || event.binary_path == "git";
         let is_push = event.argv.get(1).map(String::as_str) == Some("push");
         if !(is_git && is_push) { return Ok(None); }
@@ -153,25 +153,23 @@ impl TrapInterposer for RepoPolicyPlugin {
         let h = self.handle();
         if h.is_protected().await {
             h.record_violation().await;
-            return Ok(Some(TrapAction::Deny {
-                exit_code: 1,
-                diagnostic_payload: format!("EPOLICY: '{}' is protected.", h.branch().await).into_bytes(),
+            return Ok(Some(Verdict::Drop {
+                errno: Some("EPERM"),
+                reason: format!("EPOLICY: '{}' is protected.", h.branch().await),
             }));
         }
 
         let new_branch = format!("agent/{:08x}", std::process::id());
         let mut argv = event.argv.clone();
         argv.push(format!("HEAD:refs/heads/{new_branch}"));
-        // ExecveMutation (plugins/tool-guard.md) serialized into target_mutation.
+        // ExecveMutation (plugins/tool-guard.md) as the Patch payload.
         let mutation = serde_json::json!({
             "new_binary": "/bin/git",
             "new_argv": argv,
             "set_env": { "KELIR_REWRITTEN": "1" },
             "unset_env": [],
         });
-        Ok(Some(TrapAction::Rewrite {
-            target_mutation: serde_json::to_vec(&mutation).unwrap(),
-        }))
+        Ok(Some(Verdict::Patch(serde_json::to_vec(&mutation).unwrap())))
     }
 }
 
@@ -179,17 +177,17 @@ impl FsInterposer for RepoPolicyPlugin {
     // ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
     fn on_fs_write(
         &self, path: &Path, data: &[u8], _pid: u32, _ctx: &HandlerCtx,
-    ) -> Result<SyncVerdict, PluginError> {
+    ) -> Result<Verdict, PluginError> {
         if path.extension().is_some_and(|e| e == "diff")
             && data.len() > self.opts.max_diff_bytes
         {
             self.state.blocking_lock().violations += 1;
-            return Err(PluginError::Reject {
-                errno: "ENOSPC".into(),
+            return Ok(Verdict::Drop {
+                errno: Some("ENOSPC"),
                 reason: "diff exceeds policy ceiling".into(),
             });
         }
-        Ok(SyncVerdict::Allow)
+        Ok(Verdict::Pass)
     }
 }
 
@@ -386,7 +384,7 @@ async fn build_runtime(
 
     // ── TRAP REGISTRATIONS (§4.3, §12.5) ─────────────────────────────
     // Direct root-level .trap() registrations: pre-exec gates return a
-    // Decision, post-exec gates return a PostExecAction.
+    // Verdict, post-exec gates return a PostExecAction.
     let builder = builder
         // Universal atomic step loop: checkpoint → oracle → resume
         .trap("*", handler({
@@ -400,15 +398,15 @@ async fn build_runtime(
 
                     let intent: IntentAnalysis = oracle.analyze_intent(&c.trap).await?;
                     if !intent.is_hypothesis_valid {
-                        return Ok(Decision::deny(
-                            1,
-                            format!(
+                        return Ok(Verdict::Drop {
+                            errno: Some("EPERM"),
+                            reason: format!(
                                 "Verification Reject: {}",
                                 intent.falsification_reason.unwrap_or_default()
                             ),
-                        ));
+                        });
                     }
-                    Ok(Decision::Resume)
+                    Ok(Verdict::Pass)
                 }
             }
         }))
@@ -416,14 +414,14 @@ async fn build_runtime(
         // Warm caches + stamp traceparent for hermetic test
         .trap(TrapFilter::binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), handler(|c: HandlerCtx| async move {
             c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
-            // Env injection via Rewrite, not env.set + Resume (09: EINVALIDDECISION).
-            // SDK rewrite serializes to ExecveMutation target_mutation.
-            Ok(Decision::rewrite(
-                c.trap.binary_path.clone(),
-                c.trap.argv.clone(),
-                [("OTEL_TRACE_ID".into(), format!("{:032x}", std::process::id())),
-                 ("CI".into(), "1".into())],
-            ))
+            // Env injection via Patch, not env.set + Pass (09: EINVALIDDECISION).
+            // SDK patch serializes to ExecveMutation.
+            Ok(Verdict::Patch(serde_json::to_vec(&serde_json::json!({
+                "new_binary": c.trap.binary_path.clone(),
+                "new_argv": c.trap.argv.clone(),
+                "set_env": { "OTEL_TRACE_ID": format!("{:032x}", std::process::id()), "CI": "1" },
+                "unset_env": [],
+            })).unwrap()))
         }))
 
         // `--force` strip
@@ -431,13 +429,14 @@ async fn build_runtime(
             if c.trap.argv.iter().any(|a| a == "--force") {
                 let argv = c.trap.argv.iter()
                     .filter(|a| *a != "--force").cloned().collect();
-                return Ok(Decision::rewrite(
-                    "/bin/git",
-                    argv,
-                    [("KELIR_DISARMED".into(), "1".into())],
-                ));
+                return Ok(Verdict::Patch(serde_json::to_vec(&serde_json::json!({
+                    "new_binary": "/bin/git",
+                    "new_argv": argv,
+                    "set_env": { "KELIR_DISARMED": "1" },
+                    "unset_env": [],
+                })).unwrap()));
             }
-            Ok(Decision::Resume)
+            Ok(Verdict::Pass)
         }))
 
         // Tier-1 post-condition verification + rollback (§12.5)
@@ -492,11 +491,12 @@ async fn build_runtime(
                 let policy = c.ctx::<RepoPolicyHandle>();
                 let n = policy.violations().await;
                 if n > 0 {
-                    return Ok(Decision::deny(
-                        1, format!("EPOLICY: {n} prior violation(s)."),
-                    ));
+                    return Ok(Verdict::Drop {
+                        errno: Some("EPERM"),
+                        reason: format!("EPOLICY: {n} prior violation(s)."),
+                    });
                 }
-                Ok(Decision::Resume)
+                Ok(Verdict::Pass)
             }
         }))
 
@@ -629,14 +629,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         oracle.await_human_approval().await?;
         session.resume("/tmp/eval.snap").await?;
 
-        // ── Phase 4: overlay reconcile to host, then git commit (§8.1) ─
+        // ── Phase 4: broker commit to host, then git commit (§8.1) ─
         let stats = session.storage.reconcile(FsReconcileRequest {
             cwd: "/workspace/checkout-service".into(),
             atomic_staging: true,
             fsync: true,
         }).await?;
         eprintln!(
-            "[kelir] overlay reconciled files={} deletes={}",
+            "[kelir] broker commit files={} deletes={}",
             stats.files_changed, stats.whiteouts_resolved,
         );
 

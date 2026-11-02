@@ -33,7 +33,6 @@ from pydantic import BaseModel, Field
 import kelir
 from kelir import (
     CausalDelta,
-    Decision,
     ExecutionReceipt,
     HandlerContext,
     KelirBuilder,
@@ -41,8 +40,8 @@ from kelir import (
     Session,
     SnapshotDescriptor,
     SpawnResult,
-    TrapAction,
     TrapEvent,
+    Verdict,
 )
 from kelir.plugin import BasePlugin, PluginError
 from kelir.planes.terminal import PromptRule, TokenShield
@@ -152,8 +151,8 @@ class RepoPolicyPlugin(BasePlugin):
             _protected=self._opts["protected_branches"],
         )
 
-    # ── Ring 2 (virtio-vsock): veto or rewrite `git push` ────────────────
-    async def on_trap(self, event: TrapEvent) -> Optional[TrapAction]:
+    # ── Ring 2 (virtio-vsock): veto or patch `git push` ────────────────
+    async def on_trap(self, event: TrapEvent) -> Optional[Verdict]:
         is_git = event.binary_path.endswith("/git") or event.binary_path == "git"
         is_push = len(event.argv) > 1 and event.argv[1] == "push"
         if not (is_git and is_push):
@@ -162,13 +161,13 @@ class RepoPolicyPlugin(BasePlugin):
         h = self.handle()
         if h.is_protected():
             h.record_violation()
-            return TrapAction.deny(
-                1, f"EPOLICY: '{h.current_branch}' is protected.".encode()
+            return Verdict.drop(
+                1, f"EPOLICY: '{h.current_branch}' is protected."
             )
 
         new_branch = f"agent/{uuid.uuid4().hex[:8]}"
-        # ExecveMutation (plugins/tool-guard.md) serialized into target_mutation.
-        return TrapAction.rewrite(
+        # ExecveMutation (plugins/tool-guard.md) as the Patch payload.
+        return Verdict.patch(
             target_mutation=json.dumps({
                 "new_binary": "/bin/git",
                 "new_argv": [*event.argv, f"HEAD:refs/heads/{new_branch}"],
@@ -178,13 +177,13 @@ class RepoPolicyPlugin(BasePlugin):
         )
 
     # ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
-    async def on_fs_write(self, path: Path, data: bytes) -> bool:
+    async def on_fs_write(self, path: Path, data: bytes) -> Verdict:
         if path.suffix == ".diff" and len(data) > self._opts["max_diff_bytes"]:
             self.handle().record_violation()
-            raise PluginError.reject(
+            return Verdict.drop(
                 errno="ENOSPC", reason="diff exceeds policy ceiling"
             )
-        return True
+        return Verdict.pass_()
 
     # Disclosure is no longer a ConsoleInterposer hook (aa0e011): host
     # mutations publish TerminalNotice to the EventBus and the native
@@ -214,32 +213,32 @@ def make_snoop(oracle: UserOracle) -> Callable[[Path, bytes, HandlerContext], Aw
 #    analogue for Python; missing handle → NameError at import time)
 # ============================================================================
 
-# `trap` pre hooks gate the syscall and return a `Decision`; `trap` post
+# `trap` pre hooks gate the syscall and return a `Verdict`; `trap` post
 # hooks run post-execution and return a `PostExecAction`.
-PreExecHandler = Callable[[HandlerContext], Awaitable[Decision]]
+PreExecHandler = Callable[[HandlerContext], Awaitable[Verdict]]
 PostExecHandler = Callable[[HandlerContext], Awaitable[PostExecAction]]
 
 
 def make_universal_step(oracle: UserOracle) -> PreExecHandler:
-    async def universal_step(c: HandlerContext) -> Decision:
+    async def universal_step(c: HandlerContext) -> Verdict:
         await c.vm.checkpoint(f"pre:{c.trap.pid}")
         intent = await oracle.analyze_intent(c.trap)
         if not intent.is_hypothesis_valid:
-            return Decision.deny(
+            return Verdict.drop(
                 1,
                 f"Verification Reject: {intent.falsification_reason or ''}",
             )
-        return Decision.resume()
+        return Verdict.pass_()
     return universal_step
 
 
 def make_warm_caches(oracle: UserOracle) -> PreExecHandler:
-    async def warm_caches(c: HandlerContext) -> Decision:
+    async def warm_caches(c: HandlerContext) -> Verdict:
         await c.fs.warm_cache(["node_modules", ".next/cache"])
-        # Env injection via Rewrite, not env.set + resume (09 Env-injection:
-        # env.set + resume returns EINVALIDDECISION). Same binary/argv.
-        # The SDK rewrite serializes to ExecveMutation target_mutation.
-        return Decision.rewrite(
+        # Env injection via Patch, not env.set + pass (09 Env-injection:
+        # env.set + pass returns EINVALIDDECISION). Same binary/argv.
+        # The SDK patch serializes to ExecveMutation.
+        return Verdict.patch(
             binary=c.trap.binary_path,
             argv=list(c.trap.argv),
             env={"OTEL_TRACE_ID": oracle.current_trace_id(), "CI": "1"},
@@ -248,14 +247,14 @@ def make_warm_caches(oracle: UserOracle) -> PreExecHandler:
 
 
 def make_force_strip() -> PreExecHandler:
-    async def force_strip(c: HandlerContext) -> Decision:
+    async def force_strip(c: HandlerContext) -> Verdict:
         if "--force" in c.trap.argv:
-            return Decision.rewrite(
+            return Verdict.patch(
                 binary="/bin/git",
                 argv=[a for a in c.trap.argv if a != "--force"],
                 env={"KELIR_DISARMED": "1"},
             )
-        return Decision.resume()
+        return Verdict.pass_()
     return force_strip
 
 
@@ -291,13 +290,13 @@ def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
 
 
 def make_commit_gate() -> PreExecHandler:
-    async def commit_gate(c: HandlerContext) -> Decision:
+    async def commit_gate(c: HandlerContext) -> Verdict:
         # Statically projected by the PEP 695 Protocol intersection:
         # c.cap.policy -> RepoPolicyHandle, guaranteed by pyright.
         n = c.cap.policy.violations
         if n > 0:
-            return Decision.deny(1, f"EPOLICY: {n} prior violation(s).")
-        return Decision.resume()
+            return Verdict.drop(1, f"EPOLICY: {n} prior violation(s).")
+        return Verdict.pass_()
     return commit_gate
 
 
@@ -506,7 +505,7 @@ async def build_runtime(
 
     # ── TRAP REGISTRATIONS (§4.3, §12.5) ───────────────────────────────
     # Direct builder.trap() registrations, per §1.3: pre gates return a
-    # Decision, post gates return a PostExecAction.
+    # Verdict, post gates return a PostExecAction.
     # Universal atomic step loop: checkpoint → oracle → resume
     builder.trap("*", pre=make_universal_step(oracle), post=make_verify_receipt(oracle))
     builder.trap(TrapFilter.binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), pre=make_warm_caches(oracle))
@@ -619,13 +618,13 @@ async def main() -> None:
         await oracle.await_human_approval()
         await session.resume("/tmp/eval.snap")
 
-        # ── Phase 4: overlay reconciliation + guest git commit (§8.1) ──
+        # ── Phase 4: broker commit + guest git commit (§8.1) ──
         stats = await session.storage.reconcile(
             cwd="/workspace/checkout-service",
             atomic_staging=True,
             fsync=True,
         )
-        log.info("[kelir] reconciled files=%s deletes=%s",
+        log.info("[kelir] broker commit files=%s deletes=%s",
                  stats.files_changed, stats.whiteouts_resolved)
 
         await session.spawn(

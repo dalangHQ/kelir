@@ -174,8 +174,8 @@ const runtime = kelir({
         cwd: c.trap.cwd,
       });
       if (!intent.isHypothesisValid)
-        return c.deny(1, `Verification Reject: ${intent.falsificationReason}`);
-      return c.resume();
+        return c.drop(1, `Verification Reject: ${intent.falsificationReason}`);
+      return c.pass();
     },
     post: async (c) => {
       const pre = c.step.last();
@@ -201,23 +201,23 @@ const runtime = kelir({
   })
   .trap(TrapFilter.binary("npm").withArg("test").withArg("--").withArg("--runInBand"), async (c) => {
     await c.fs.warmCache(["node_modules", ".next/cache"]);
-    // Env injection via Rewrite, not env.set + resume (09 Env-injection:
-    // env.set + resume returns EINVALIDDECISION). Same binary/argv.
-    // The SDK rewrite object serializes to ExecveMutation target_mutation.
-    return c.rewrite({ binary: c.trap.binary_path, argv: c.trap.argv,
-                       env: { OTEL_TRACE_ID: oracle.currentTraceId(), CI: "1" } });
+    // Env injection via Patch, not env.set + pass (09 Env-injection:
+    // env.set + pass returns EINVALIDDECISION). Same binary/argv.
+    // The SDK patch object serializes to ExecveMutation.
+    return c.patch({ binary: c.trap.binary_path, argv: c.trap.argv,
+                     env: { OTEL_TRACE_ID: oracle.currentTraceId(), CI: "1" } });
   })
   .trap(TrapFilter.binary("git").withArg("push"), async (c) => {
     // Merged repo-policy push gate + runtime push gate.
     if (c.policy.isProtected()) {
       c.policy.recordViolation();
-      return c.deny(1, `EPOLICY: '${c.policy.currentBranch}' protected.`);
+      return c.drop(1, `EPOLICY: '${c.policy.currentBranch}' protected.`);
     }
     if (c.trap.argv.includes("--force"))
-      return c.rewrite({ binary: "/bin/git",
-                         argv: c.trap.argv.filter((a) => a !== "--force"),
-                         env: { KELIR_DISARMED: "1" } });
-    return c.rewrite({
+      return c.patch({ binary: "/bin/git",
+                       argv: c.trap.argv.filter((a) => a !== "--force"),
+                       env: { KELIR_DISARMED: "1" } });
+    return c.patch({
       binary: "/bin/git",
       argv: ["git", "push", "origin", `HEAD:refs/heads/agent/${crypto.randomUUID().slice(0, 8)}`],
       env:  { KELIR_REWRITTEN: "1" },
@@ -226,8 +226,8 @@ const runtime = kelir({
   .trap(TrapFilter.binary("git").withArg("commit"), {
     pre: async (c) =>
       c.policy.violations > 0
-        ? c.deny(1, `EPOLICY: ${c.policy.violations} prior violation(s).`)
-        : c.resume(),
+        ? c.drop(1, `EPOLICY: ${c.policy.violations} prior violation(s).`)
+        : c.pass(),
     post: async (c) => {
       const receipt = await c.receipt();
       // dirtyBytes is always populated; zero is a real measurement
@@ -304,12 +304,12 @@ async function main() {
     await oracle.awaitHumanApproval();
     await session.resume("/tmp/eval.snap");                       // <50ms
 
-    // Sync the guest overlay to host storage, then commit via plain guest git.
+    // Broker-commit guest changes to host storage, then commit via plain guest git.
     const stats = await session.storage.reconcile({
       cwd: "/workspace/checkout-service",
       atomicStaging: true, fsync: true,
     });
-    console.log(`[kelir] reconciled ${stats.filesChanged}f, ${stats.whiteoutsResolved} deletions`);
+    console.log(`[kelir] broker commit ${stats.filesChanged}f, ${stats.whiteoutsResolved} deletions`);
 
     await session.spawn("git",
       ["commit", "-am", `fix(stripe): dedupe webhook body reads (${winner.id})`],

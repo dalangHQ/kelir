@@ -1,24 +1,26 @@
 // ============================================================================
 // policy-matrix.ts
 // ============================================================================
-// Canonical depth example: the full TrapAction lattice, lifecycle vetoes,
+// Canonical depth example: the full Verdict lattice, lifecycle vetoes,
 // watchdog verdicts, a custom action, and binary vsock RPC — the surface
 // the swe-agent family deliberately does not touch.
 //
 // SAME CHAIN as policy-matrix.rs and policy-matrix.py. Registration order
 // is the dispatch order; each binary hits exactly one row:
 //
-//   1. policy-allow    -> Allow            (resume untouched)
-//   2. policy-deny     -> Deny            (exit 1, EPOLICY)
-//   3. policy-rewrite  -> Rewrite         (new binary + argv, env ONLY via
-//                                            Rewrite target_mutation
-//                                            (ExecveMutation) — never env.set()
-//                                            + resume, which is
-//                                            EINVALIDDECISION per 09)
-//   4. policy-abort    -> Abort           (pre-exec, exit 1)
+//   1. policy-allow    -> Pass            (proceed untouched)
+//   2. policy-deny     -> Drop           (errno EPOLICY, reason)
+//   3. policy-rewrite  -> Patch          (new binary + argv, env ONLY via
+//                                            the ExecveMutation payload
+//                                            — never env.set() + pass,
+//                                            which is EINVALIDDECISION
+//                                            per 09)
+//   4. policy-abort    -> Abort           (pre-exec, reason only)
 //   5. policy-yield    -> checkpoint "policy-yield", then Yield to host
-//   6. policy-approval -> Hold (500 ms)
-//   7. policy-custom   -> Custom("quarantine", payload) dispatched to
+//                          (HELD: Yield{checkpoint_id} -> Suspend mapping
+//                          undecided; row left untouched)
+//   6. policy-approval -> Suspend        (until Deadline(500))
+//   7. policy-custom   -> Patch(Custom{name, cbor}) dispatched to
 //                          registerCustomAction("quarantine", …)
 //   8. Vetoes (vm:init): Suspend and ClockSkew, each allowed only once
 //      the ready flag is set in vm:ready; before that both abort.
@@ -29,8 +31,8 @@
 //      binary RPC round-trip in main().
 //
 // NOTES:
-//   - Lattice methods: c.resume / c.deny / c.rewrite / c.abort /
-//     c.yield(checkpoint_id) / c.hold(ms) / c.custom(name, payload).
+//   - Lattice methods: c.pass / c.patch / c.drop / c.suspend / c.abort.
+//     c.yield(checkpoint_id) is HELD (see row 5), left untouched.
 //   - Yield id is a String; "policy-yield" is this example's label.
 //   - Vetoes register at vm:init via lifecycle.registerVeto(event, cb);
 //     events are kebab-cased VetoEvent names.
@@ -40,7 +42,7 @@
 //     and an async handler, mirroring 09/03.
 //   - session.vsock.channel(kind) is an async duplex byte stream.
 
-import { kelir, createPlugin, t,
+import { kelir, createPlugin, t, SuspendUntil,
          type Session } from "@kelir/core";
 
 // ── Shared policy state ───────────────────────────────────────────────────
@@ -58,26 +60,29 @@ const policyPlugin = createPlugin("policy-matrix")
     const binary = event.binary_path.split("/").pop();
     switch (binary) {
       case "policy-allow":
-        return c.resume();
+        return c.pass();
       case "policy-deny":
-        return c.deny(1, "EPOLICY: policy-matrix denies this binary.");
+        return c.drop("EPOLICY", "EPOLICY: policy-matrix denies this binary.");
       case "policy-rewrite":
-        return c.rewrite({
+        return c.patch({
           binary: "/bin/policy-allow",
           argv: ["policy-allow", "--rewritten"],
           env: { KELIR_POLICY_REWRITE: "1" },
         });
       case "policy-abort":
-        return c.abort(1, "EPOLICY: abort row");
+        return c.abort("EPOLICY: abort row");
       case "policy-yield":
         await c.vm.checkpoint("policy-yield");
         return c.yield("policy-yield");
       case "policy-approval":
-        return c.hold(500);
+        return c.suspend(SuspendUntil.deadline(500));
       case "policy-custom":
-        return c.custom("quarantine", {
-          pid: c.trap.pid,
-          reason: "policy-matrix quarantine row",
+        return c.patch({
+          name: "quarantine",
+          cbor: {
+            pid: c.trap.pid,
+            reason: "policy-matrix quarantine row",
+          },
         });
       default:
         return null;

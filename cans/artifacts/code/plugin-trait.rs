@@ -12,10 +12,12 @@ use std::time::Duration;
 use std::any::{Any, TypeId};
 use std::sync::Arc;
 use crate::handlers::HandlerCtx;
-use crate::protocol::messages::{ProcessExit, TrapAction, TrapEvent};
+use crate::protocol::messages::{ProcessExit, Verdict, TrapEvent};
 use crate::vmm::driver::{VmmDriver, VmConfig, WatchdogAction};
 
-/// Structured payloads carried across vsock Channel 0x0010 (pty-control).
+/// Structured payloads carried over the stream mux (PTY_CONTROL kind
+/// 0x0002). Signal forwarding is exec_id-keyed, never raw guest pid;
+/// window resize rides the EXEC control sub-lane 0x03.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PtyControlMessage {
     WindowResize {
@@ -30,19 +32,15 @@ pub enum PtyControlMessage {
     },
 }
 
+/// Non-verdict errors only. Denial and fatal termination are verdicts,
+/// not errors: Verdict::Drop { errno, reason } (errno None = silent
+/// blackhole, plugin-chaos loss injection only) and Verdict::Abort
+/// { reason }. Storage plane: guest write() fails with the Drop errno.
+/// Wire plane: policy denial is fast-fail, never silent — L4 TCP gets
+/// a TCP RST (or ICMP Port Unreachable), L7 HTTP gets a synthetic 403
+/// with a JSON receipt.
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {
-    /// Hard failure; halts the pipeline and surfaces to the runtime.
-    #[error("Plugin execution rejected: {0}")]
-    Halt(String),
-    /// Deny with a POSIX errno name surfaced to the guest.
-    /// Storage plane: guest write() fails with this errno.
-    /// Wire plane:    policy denial is fast-fail, never silent — L4 TCP
-    ///   gets a TCP RST (or ICMP Port Unreachable), L7 HTTP gets a
-    ///   synthetic 403 with a JSON receipt. Silent discard is only
-    ///   SyncVerdict::Drop, and only for plugin-chaos loss injection.
-    #[error("Plugin rejected: {errno} ({reason})")]
-    Reject { errno: String, reason: String },
     // BufferCeilingExceeded removed: FUSE driver chunks writes at the
     // 64KB boundary before interception. on_fs_write sees one chunk per
     // call. Guest write() never fails on host buffer size.
@@ -65,9 +63,6 @@ impl PluginError {
         conflict: impl Into<String>,
     ) -> Self {
         Self::AmbiguousMutation { resource: resource.into(), conflict: conflict.into() }
-    }
-    pub fn reject(errno: impl Into<String>, reason: impl Into<String>) -> Self {
-        Self::Reject { errno: errno.into(), reason: reason.into() }
     }
 }
 
@@ -161,18 +156,9 @@ impl MountScope {
     }
 }
 
-/// Synchronous verdict on hot-path VirtIO rings (Fs, Net).
-/// Eliminates async allocation and libuv/asyncio event loop overhead on the fast path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SyncVerdict {
-    Allow,
-    /// Yields frame/op to host event loop with delayed release in nanoseconds.
-    YieldToHost(u64),
-    /// Chaos-only silent discard: drops the frame, injects no RST,
-    /// surfaces no errno. PluginError::Reject is policy semantics
-    /// (fast-fail RST / 403 receipt) and must never be used for loss.
-    Drop,
-}
+/// Unified verdict on hot-path VirtIO rings (Fs, Net): every interposer
+/// hook returns Verdict (see messages.rs). Sync hot-paths require native
+/// filters or Verdict::Suspend; no per-ring aliases remain.
 
 /// Binds inline interceptors into the linear monotonic pipeline.
 /// No service registry: peer capabilities are typed Context values
@@ -245,7 +231,12 @@ impl<'a> LifecycleCtx<'a> {
         self.driver.set_watchdog(timeout, action).await
             .map_err(PluginError::Io)
     }
-    pub async fn adjust_balloon(&mut self, target_mb: u32) -> Result<(), PluginError> {
+    /// Returns a BalloonConvergence handle, not void. Host subscribes to
+    /// VIRTIO_BALLOON_S_MEMFREE / S_AVAIL; host reclaim gates on guest
+    /// ack; fork, snapshot, and heavy exec require prior convergence.
+    /// NOTE: BalloonConvergence is not defined in this file (held: no
+    /// field layout is pinned in the grounded spec facts).
+    pub async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, PluginError> {
         self.driver.adjust_balloon(target_mb).await
             .map_err(PluginError::Io)
     }
@@ -316,7 +307,7 @@ pub trait LifecycleParticipant {
 pub trait TrapInterposer {
     async fn on_trap(
         &self, _event: &TrapEvent, _ctx: &HandlerCtx,
-    ) -> Result<Option<TrapAction>, PluginError> { Ok(None) }
+    ) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
     async fn on_process_exit(
         &self, _event: &ProcessExit, _ctx: &HandlerCtx,
     ) -> Result<(), PluginError> { Ok(()) }
@@ -332,15 +323,15 @@ pub trait ConsoleInterposer {
     async fn on_console_input(&self, _port: u32, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
     /// Raw paravirtual character stream output. Intercepts guest -> host port bytes.
     async fn on_console_output(&self, _port: u32, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
-    /// Binary exec channel (0x0003) stdout: programmatic exec streams,
-    /// no PTY involvement. PTY (Port 0) path unchanged; the exec path
-    /// keys on exec_id rather than port. stream_id 1.
+    /// Stream mux 0x0001, stream kind EXEC 0x0001, stdout sub-lane 0x01:
+    /// programmatic exec streams, no PTY involvement. PTY (Port 0) path
+    /// unchanged; the exec path keys on exec_id rather than port.
     /// ExecContext (02) carries pid, exec_id, stream_id, chunk, and
     /// rlimits; the stream_id is fixed by which method fires, and the
-    /// rlimits ride the Channel 0x0003 control stream, not this hook.
+    /// rlimits ride the EXEC control sub-lane 0x03, not this hook.
     async fn on_exec_stdout(&self, _pid: u32, _exec_id: u64, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
-    /// Binary exec channel (0x0003) stderr. stream_id 2; same
-    /// no-PTY, exec_id-keyed contract as on_exec_stdout.
+    /// Stream mux 0x0001, stream kind EXEC 0x0001, stderr sub-lane 0x02;
+    /// same no-PTY, exec_id-keyed contract as on_exec_stdout.
     async fn on_exec_stderr(&self, _pid: u32, _exec_id: u64, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
 }
 
@@ -351,24 +342,27 @@ pub trait SystemTelemetryParticipant {
     async fn on_watchdog(&self, _event: &WatchdogEvent) -> Result<WatchdogVerdict, PluginError> { Ok(WatchdogVerdict::ExecuteDefault) }
 }
 pub trait FsInterposer {
-    fn on_fs_lookup(&self, _path: &Path) -> Result<Option<FsInodeAttr>, PluginError> { Ok(None) }
+    /// Verdict::Pass = fall through; Patch = serve (payload per ring:
+    /// FsChunk carries the served inode attributes).
+    fn on_fs_lookup(&self, _path: &Path) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
     fn on_fs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
     /// Synchronous hot-path inspection. Must be evaluated in native Rust.
-    /// Foreign language runtimes must yield frame via SyncVerdict::YieldToHost to avoid event-loop deadlock.
+    /// Foreign language runtimes must yield via Verdict::Suspend to avoid
+    /// event-loop deadlock; sync hot-paths require native filters or Suspend.
     fn on_fs_write(
         &self, _path: &Path, _data: &[u8], _pid: u32, _ctx: &HandlerCtx,
-    ) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
+    ) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
     /// Intercepts FUSE SETLK and SETLKW advisory lock requests.
     fn on_fs_lock(
         &self, _path: &Path, _flock_cmd: i32, _flock_type: i16, _pid: u32,
-    ) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
+    ) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
 }
 
 pub trait NetInterposer {
     /// Synchronous L2 outbound inspection.
-    fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
+    fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
     /// Synchronous L2 inbound inspection.
-    fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<SyncVerdict, PluginError> { Ok(SyncVerdict::Allow) }
+    fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
 }
 
 /// Identity marker for any plugin object: core identity only.

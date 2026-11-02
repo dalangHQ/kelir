@@ -5,7 +5,8 @@
 // monomorphic HList, and `c.ctx::<T>()` resolves infallibly via
 // `Plugins: Has<T>`. No `c.service::<dyn Trait>()?` exists.
 // SyntheticFile: FUSE-presented paths with no host backing file.
-// Verification Reject: Decision::deny returns a POSIX errno.
+// Verification Drop: Verdict::Drop { errno, reason } carries a POSIX
+// errno; errno None = silent blackhole, chaos loss only.
 //
 // Full runnable example: artifacts/examples/autonomous-swe-agent.rs
 // Canonical spec home:    cans/03-sdk-architecture.md#Rust-SDK
@@ -47,17 +48,19 @@ let builder = builder
     // Serde deserializes `Action` before handler execution:
     .trap(TrapFilter::binary("npm").with_arg("test"), handler(|c: HandlerCtx| async move {
         let params = c.params::<Action>()?;
-        Ok(Decision::Resume)
+        Ok(Verdict::Pass)
     }))
     .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: HandlerCtx<_, _>| async move {
         let policy = c.ctx::<RepoPolicyCtx>();
         if policy.violations().await > 0 {
-            return Ok(Decision::deny(1, "Policy violations recorded"));
+            // EPERM is the generic POSIX denial used here; no
+            // policy-specific errno is pinned in the grounded spec facts.
+            return Ok(Verdict::Drop { errno: Some("EPERM".into()), reason: "Policy violations recorded".into() });
         }
-        Ok(Decision::Resume)
+        Ok(Verdict::Pass)
     }))
     .on(LifecycleEvent::VmReady, handler(|c: HandlerCtx| async move {
-        Ok(Decision::Resume)
+        Ok(Verdict::Pass)
     }));
 
 // 3. Native engine planes directly on Session.

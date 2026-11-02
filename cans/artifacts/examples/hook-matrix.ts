@@ -9,12 +9,12 @@
 //
 // SAME HOOK SET in all three SDKs, in dispatch order:
 //
-//   1. onNetOutbound -> SyncVerdict. Frames containing the
-//      documentation-range marker 198.51.100. yield to the host for
-//      inspection (YieldToHost); all other frames Allow.
-//   2. onFsLookup -> Some(FsInodeAttr) for exactly one path,
+//   1. onNetOutbound -> Verdict. Frames containing the
+//      documentation-range marker 198.51.100. suspend to the host for
+//      inspection (Suspend until Deadline(0)); all other frames Pass.
+//   2. onFsLookup -> Verdict. Patch(attr) serves exactly one path,
 //      /workspace/.policy/identity, with mode 0o400 (no permission
-//      fallback, per 02); None — fall through — everywhere else.
+//      fallback, per 02); Pass — fall through — everywhere else.
 //   3. onFsRead -> sliding-window masking. A 31-byte tail is carried
 //      between reads, so a secret token split across two reads is still
 //      masked from the split point onward and no single read ever emits
@@ -34,13 +34,14 @@
 // change a chunk's length.
 //
 // NOTES:
-//   - YieldToHost(u64) is nanoseconds delayed-release; 0 is immediate.
+//   - Verdict Suspend until Deadline(0) replaces the old YieldToHost(0):
+//     0 is immediate release to the host.
 //   - FsInodeAttr fields are camelCase in TS; Rust struct is source.
 //   - onFsLookup rejects `..` escapes with E_PATH_TRAVERSAL before
 //     the identity check; paths without `..` keep old behavior.
 //
 
-import { kelir, createPlugin, SyncVerdict,
+import { kelir, createPlugin, Verdict, SuspendUntil,
          type Session } from "@kelir/core";
 
 // Guest path served as a synthetic inode, and the secret-token shape the
@@ -99,15 +100,15 @@ function maskTokens(window: string): string {
 }
 
 const hookMatrixPlugin = createPlugin("hook-matrix")
-  // Hook 1: wire outbound. Any frame carrying the denylist marker yields
+  // Hook 1: wire outbound. Any frame carrying the denylist marker suspends
   // to host inspection instead of leaving the ingress ring.
   .onNetOutbound(async (frame) => {
     const text = Buffer.from(frame).toString("latin1");
     if (text.includes(DENY_MARKER)) {
-      // YieldToHost(u64) is a delayed release in nanoseconds; 0 is immediate.
-      return SyncVerdict.YieldToHost(0);
+      // Suspend until Deadline(0): 0 is immediate, not a placeholder.
+      return Verdict.Suspend(SuspendUntil.deadline(0));
     }
-    return SyncVerdict.Allow;
+    return Verdict.Pass;
   })
   // Hook 2: storage lookup. Exactly one synthetic inode, mode 0o400
   // with no permission fallback (02); everything else falls through.
@@ -117,13 +118,14 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     if (escapesWorkspace(path)) {
       throw new Error("E_PATH_TRAVERSAL: lookup escapes the /workspace root");
     }
-    if (path !== IDENTITY_PATH) return null;
-    return {
+    // Verdict Pass = fall through; Patch(attr) = serve (02).
+    if (path !== IDENTITY_PATH) return Verdict.Pass;
+    return Verdict.Patch({
       mode: 0o400, uid: 0, gid: 0,
       size: IDENTITY_CONTENT.length,
       // GAP: hash semantics unspecified; 0 is an explicit placeholder.
       content: IDENTITY_CONTENT,
-    };
+    });
   })
   // Hook 3: storage read, sliding-window masking. Window = carried tail
   // + this chunk; mask over the window, emit the chunk's portion, carry
@@ -139,7 +141,7 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     return Buffer.from(chunk, "latin1");
   })
   .onFsWrite(async (_path, buffer) => {
-    return SyncVerdict.Allow;
+    return Verdict.Pass;
   })
   // Hook 4: PTY input. Strip OSC52 clipboard exfiltration sequences:
   // ESC ] 52 ; … terminated by BEL (0x07) or ST (ESC \).

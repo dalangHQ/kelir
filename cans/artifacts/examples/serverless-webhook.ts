@@ -3,10 +3,13 @@
 // ============================================================================
 //
 // Scale-to-zero webhook handler. Inbound TCP parks at the host proxy during
-// suspend; the first post-wake frame splices to logical Channel 1. While
-// awaiting the next event, the guest memory ceiling is shrunk with the
-// standard c.vm.adjust_balloon() API so host RSS drops. MCP clients attach
-// on a dynamic console port without colliding with the PTY port.
+// suspend; the first post-wake frame splices via mux 0x0001, stream kind
+// L4_FORWARD (0x0005). Parking holds only across suspend/resume — on
+// rollback parked connections are RST (post-handshake 503) and clients
+// reconnect; retry is client-side. While awaiting the next event, the
+// guest memory ceiling is shrunk with the standard c.vm.adjust_balloon()
+// API so host RSS drops. MCP clients attach on a dynamic console port
+// without colliding with the PTY port.
 //
 // Mounts:     wire-ingress, mcp, tool-guard, ledger.
 // Primitives: adjust_balloon.
@@ -46,8 +49,10 @@ const runtime = kelir({
     // handshake completes host-side and the frames queue without dropping.
     listen: { port: 8443, protocol: "https" },
     parking: { maxBufferedBytes: 64 * 1024, idleTimeoutMs: 30_000 },
-    // First post-wake frame splices to logical Channel 1. The host proxy
-    // has already parsed routing metadata with zero allocation.
+    // First post-wake frame splices via mux 0x0001, stream kind
+    // L4_FORWARD (0x0005). The host proxy has already parsed routing
+    // metadata with zero allocation. (vsockChannel: 1 is the mux number,
+    // kept as-is; only the wording around it changed.)
     wakeOnPacket: { vsockChannel: 1 },
     // Burst absorption: queue up to 256 inbound connections across the
     // suspend→resume window; overflow returns 503 without touching RAM.
@@ -94,7 +99,7 @@ const runtime = kelir({
     // the handler runs. The idle balloon shrink had reduced it.
     pre: async (c) => {
       await c.vm.adjust_balloon(512);
-      return c.resume();
+      return c.pass();
     },
     post: async (c) => {
       const receipt: ExecutionReceipt = await c.receipt();
@@ -113,9 +118,10 @@ const runtime = kelir({
 async function main() {
   const session = await runtime.boot();
   try {
-    // Each parked connection emits one request through the vsock Ch1
-    // splice. `handleIngress` returns responses in arrival order and
-    // writes them back over the same channel; the loop body is a no-op
+    // Each parked connection emits one request through the mux 0x0001 /
+    // L4_FORWARD (0x0005) splice. `handleIngress` returns responses in
+    // arrival order and
+    // writes them back over the same stream; the loop body is a no-op
     // so the example can count traffic for the log line.
     let served = 0;
     for await (const _ of session.handleIngress<WebhookRequest, WebhookResponse>({

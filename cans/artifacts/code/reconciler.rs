@@ -1,17 +1,23 @@
 // crates/kelir-core/src/planes/storage/reconciler.rs
 //
-// Diff-only atomic reconciler: scans the sparse host-backed upperdir
-// file (writes hit sparse disk blocks, never guest RAM; revert is
-// truncate / punch holes, not dropping a tmpfs layer), resolves
-// overlayfs whiteouts (char devices st_rdev == 0 and opaque dirs),
-// applies file mutations via atomic temporary swaps, and never duplicates
-// unmodified base workspace files.
+// Diff-only atomic reconciler for the host CoW broker: VirtIO-FS only;
+// no in-guest OverlayFS, no virtio-blk workspace disk. The broker
+// replays the per-session sparse upper file + explicit tombstones
+// against the base workspace (writes hit sparse disk blocks, never
+// guest RAM; no whiteouts — deletions are explicit tombstones in
+// broker state), applies file mutations via per-entry temp+rename,
+// deletes unlink in place, new dirs create in place, and never
+// duplicates unmodified base workspace files. Whole commit is
+// idempotent: replaying after crash converges. Rollback: broker drops
+// the upper file and tombstones, base untouched,
+// FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED).
 // All host-side inode resolution uses openat2(RESOLVE_BENEATH |
 // RESOLVE_NO_MAGICLINKS); S_ISUID/S_ISGID are stripped on every write
 // (mode & !0o6000).
-// Phases: Detect (scan upperdir diffs) -> Classify whiteouts -> Stage
-// (StagingGuard owns .tmp.<nonce> files) -> Commit (atomic exchange or
-// directory swap) -> Contain (strict root containment, EXDEV on escape).
+// Phases: Detect (scan broker upper + tombstones) -> Classify tombstones
+// -> Stage (StagingGuard owns .tmp.<nonce> files) -> Commit (per-entry
+// temp+rename; deletes unlink in place; new dirs create in place)
+// -> Contain (strict root containment, EXDEV on escape).
 // Host I/O on this plane is mandatory non-blocking: descriptors open
 // with O_NONBLOCK, FIFO/socket lookups fail with ENXIO, and zero guest
 // syscalls may sleep host ring workers.
@@ -35,6 +41,8 @@ pub enum TraversalGuard {
 #[derive(Default)]
 pub struct CommitStats {
     pub files_changed: u64,
+    // Field name kept deliberately (held: rename not grounded in a code
+    // schema): counts broker tombstones resolved, not overlay whiteouts.
     pub whiteouts_resolved: u64,
 }
 
@@ -111,7 +119,10 @@ fn reconcile_diff(
         }
         let file_type = entry.file_type()?;
 
-        // Overlayfs file deletion: char device with st_rdev == 0
+        // Broker tombstone: a deletion recorded in broker state (no
+        // whiteouts); the entry below unlinks in place. The marker
+        // decoding here is left as-is — no tombstone record format is
+        // pinned in the grounded spec facts, so none is invented.
         if file_type.is_char_device() {
             let meta = entry.metadata()?;
             if meta.rdev() == 0 {

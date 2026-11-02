@@ -31,6 +31,10 @@ pub enum ExitKind {
     HypervisorFault(String),
 }
 
+/// PMU counters are diagnostic gauges only, emitted to OTel; they never
+/// appear in receipts, CausalDelta, or Merkle leaves (the former
+/// retired_instructions field was deleted on that basis; no other
+/// artifact file referenced it).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionReceipt {
     pub pid: u32,
@@ -51,25 +55,23 @@ pub struct ExecutionReceipt {
     pub dirty_bytes: u64,
     /// Cryptographic hardware attestation signature issued by hypervisor
     pub hardware_attestation: [u8; 32],
-    /// PMU retired instruction count sampled strictly during active KVM_RUN:
-    /// Linux via perf_event_open (exclude_host=1, exclude_hypervisor=1);
-    /// macOS ARM64 via hv_vcpu_get_sys_reg from PMCCNTR_EL0 / PMEVCNTR<n>_EL0.
-    /// Mach thread counters are banned; cross-host deterministic equivalence.
-    pub retired_instructions: u64,
     /// Populated when ReceiptConfig::include_syscall_count.
     pub syscall_count: Option<u64>,
     /// Kernel return code
     pub exit_code: i32,
     /// True physical elapsed time
     pub wall_clock_ns: u64,
-    /// Optional nano-tracer sub-microsecond breakdown
+    /// Optional nano-tracer sub-microsecond breakdown. Diagnostic only:
+    /// emitted to OTel, excluded from Merkle leaves and from receipt
+    /// identity; no field here claims cross-host counter equivalence.
     pub phase_timings: Option<PhaseTimings>,
     /// Total network egress bytes transmitted.
     /// In-guest bytes pre-ingress are not counted; bytes dropped by the
-    /// sinkhole or by Reject are counted separately here.
+    /// sinkhole or by Verdict::Drop are counted separately here.
     pub egress_bytes: u64,
     pub egress_dropped_bytes: u64,
-    // NOTE: per-command rlimits from the Channel 0x0003 exec request
+    // NOTE: per-command rlimits from the stream mux 0x0001, stream kind
+    // EXEC 0x0001, control sub-lane 0x03 exec request
     // (max_as_bytes, max_nofile, max_nproc, max_cpu_seconds) are
     // reported in the receipt for auditability. The field name for the
     // limits block is not pinned in spec yet — TBD, do not invent one.

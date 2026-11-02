@@ -27,17 +27,23 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
       });
 
       if (!intent.isHypothesisValid) {
-        return c.deny(1, intent.falsificationReason);
+        // Verdict::Drop { errno, reason }: EPERM is the generic POSIX
+        // denial used here; no verification-specific errno is pinned
+        // in the grounded spec facts. errno None would mean silent
+        // blackhole, chaos loss only.
+        return c.drop("EPERM", intent.falsificationReason);
       }
 
-      return c.resume();
+      return c.pass();
     },
     post: async (c) => {
       // 3. Post-Condition Verification via Tier 1 Hardware Evidence
       const receipt = await c.receipt();
       if (!await orchestrator.verifyPhysicalReceipt(receipt)) {
         // 4. Instant Hardware Rollback: memory reverts via driver rollback
-        // and the sparse upperdir delta is discarded (not a tmpfs diff).
+        // and the broker drops the upper file and tombstones, base
+        // untouched (FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED));
+        // rollback also closes host sockets, guest sees ECONNRESET/EPIPE.
         if (activeCheckpoint) await c.vm.rollback(activeCheckpoint);
         session.terminal.notice("⚡ [VERIFICATION ENGINE]: Reverted.\n");
       }

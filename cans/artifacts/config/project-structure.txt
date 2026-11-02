@@ -26,7 +26,7 @@ kelir/
 │   │       ├── lib.rs                 # Re-exports all core contracts
 │   │       ├── plugin.rs              # KelirPlugin, MountScope, LifecycleCtx, PluginError
 │   │       ├── driver.rs              # VmmDriver, VmConfig, SnapshotDescriptor, WatchdogAction
-│   │       ├── protocol.rs            # 24-byte FrameHeader (0x4B45), TrapEvent, TrapAction, GuestToHost, HostToGuest
+│   │       ├── protocol.rs            # 24-byte FrameHeader (0x4B45), TrapEvent, Verdict, GuestToHost, HostToGuest
 │   │       ├── telemetry.rs           # ExecutionReceipt, CausalDelta
 │   │       └── oracle.rs              # Oracle evaluator trait
 │   │   └── tests/
@@ -39,7 +39,7 @@ kelir/
 │   │       ├── lib.rs                 # Core initialization exports
 │   │       ├── planes/                # Core Foundation Planes (Merged Engine Subsystems)
 │   │       │   ├── terminal/          # Terminal Plane: virtio-console, VT100 grid, ANSI sanitizer, PTY discipline
-│   │       │   ├── storage/           # Storage Plane: virtio-fs, reconciler, whiteouts, synthetic inodes, flock broker
+│   │       │   ├── storage/           # Storage Plane: virtio-fs, host CoW broker, reconciler, tombstones, synthetic inodes, flock broker
 │   │       │   ├── wire/              # Wire Plane: virtio-net, userspace smoltcp ingress ring, DNS policy filter + synthetic gateway, connection parking
 │   │       │   └── checkpoint/        # Checkpoint Plane: Step verification loop, CoW diffs, hardware rollback
 │   │       ├── bus/                   # VirtIO Device Multiplexer (vsock, console, fs, net) over kelir-transport
@@ -55,9 +55,8 @@ kelir/
 │   │
 │   ├── kelir-transport/               # Supporting crate: Stream trait + SPSC ring, AF_VSOCK, named-pipe backends
 │   ├── kelir-catalog/                 # Supporting crate: SQLite schema, pool, migration helpers (used by core)
-│   ├── kelir-ssh/                     # Supporting crate: in-process SSH/SFTP server (russh), used by break-glass
 │   ├── kelir-otlp/                    # Supporting crate: zero-allocation metric registry and OTLP exporter
-│   ├── kelir-pack/                    # Core primitive: streaming HTTPS client pulls OCI manifest + layer chunks directly into RAM compiler, whiteouts parsed inline, contiguous EROFS chunks to host CAS, canonical rootfs BLAKE3 digest computed during the single pass; unpack admission: 15:1 expansion clamp, 8 GiB single-layer budget, 500,000 inode ceiling, E_LAYER_OVERSIZE on excess
+│   ├── kelir-pack/                    # Core primitive: offline two-phase in-memory compiler, distributed as external CLI binary only. Phase 1: layer tar headers only into a radix tree in host RAM, inline whiteouts mutate tree nodes in place, final topology/inode count/chunk extents computed; Phase 2: payload bodies into CAS blobs, finalized EROFS blocks emitted from Phase 1 map, no overlay/union driver materialized, Phase 1 RAM bounded by 500k inode ceiling (<30MB typical), zero in-process OCI client/layer unpacker/EROFS builder in supervisor; canonical rootfs BLAKE3 digest computed during the build; unpack admission: 15:1 expansion clamp, 8 GiB single-layer budget, 500,000 inode ceiling, E_LAYER_OVERSIZE on excess
 │   │
 │   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
 │   │   ├── Cargo.toml                 # Depends on kelir-interface only
@@ -66,7 +65,7 @@ kelir/
 │   │       ├── mock_driver.rs         # MockVmmDriver: checkpoint, fork, rollback without RAM
 │   │       ├── mock_bus.rs            # MockBusDispatcher: records ring messages per plane
 │   │       ├── handlers.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
-│   │       ├── fixtures.rs            # Synthetic PTY streams, overlay upperdirs, synthetic configs
+│   │       ├── fixtures.rs            # Synthetic PTY streams, broker upper files, synthetic configs
 │   │       └── assertions.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
 │   │
 │   ├── kelir-shim/                    # Guest Paravirtual Micro-Init (<50KB musl PID 1)
@@ -74,7 +73,7 @@ kelir/
 │   │   ├── src/
 │   │   │   ├── codec.rs               # Raw slice bit-shift frame codec (zero serde/ciborium)
 │   │   │   ├── main.rs                # Guest PID 1 reaper & loop
-│   │   │   ├── multiplexer.rs         # Raw VirtIO channel multiplexer (logical channel 5252 & virtio-ports; Transport backend)
+│   │   │   ├── multiplexer.rs         # Raw VirtIO stream multiplexer (Control 0x0000, stream mux 0x0001, transport port 5252 & virtio-ports; Transport backend)
 │   │   │   ├── pty.rs                 # openpty() line discipline broker for console ring
 │   │   │   └── trap.rs                # seccomp-unotify trap forwarder
 │   │   └── tests/
@@ -119,7 +118,7 @@ kelir/
 │   │   │   └── examples/mcp-stdio.rs
 │   │   ├── plugin-db-proxy/           # Agnostic DB mediation: pgwire (port 5432) & /run/kelir/db.sock vsock proxy
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # DbAction verdict engine (Allow, Deny, Rewrite)
+│   │   │   ├── src/lib.rs             # Verdict engine (Pass | Patch(PgFrame) | Drop | Suspend | Abort)
 │   │   │   └── tests/test_db_proxy.rs
 │   │   ├── plugin-mesh/               # Sovereign federation transport: peer vsock stream with mTLS framing
 │   │   │   ├── Cargo.toml
@@ -131,7 +130,7 @@ kelir/
 │   │   │   │   └── tests/test_supply_chain.rs
 │   │   ├── plugin-wire-ingress/       # Connection parking and wake-on-traffic L4/L7 proxy
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # socket2 buffer clamping, httparse sniffer, copy_bidirectional
+│   │   │   ├── src/lib.rs             # socket2 buffer clamping, L4 stream forwarding (mux 0x0001, kind L4_FORWARD 0x0005), copy_bidirectional
 │   │   │   └── tests/test_parking.rs
 │   │   ├── plugin-profile/            # Declarative kelir.toml/kelir.yaml ingestion, inheritance, schema export
 │   │   │   ├── Cargo.toml
@@ -141,7 +140,7 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/lib.rs             # ToolInterposer: on_tool_list, on_tool_call, on_tool_result
 │   │   │   └── tests/test_tool_guard.rs
-│   │   ├── plugin-vault/              # Unified secret redaction, mlock zeroization, Aho-Corasick tables
+│   │   ├── plugin-vault/              # Out-of-band credential broker, host keyring sole secret store, mlock zeroization on drop
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/lib.rs
 │   │   ├── plugin-container/          # Rootless OCI container runner & cgroup v2 setup

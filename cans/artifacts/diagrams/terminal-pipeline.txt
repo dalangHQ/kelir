@@ -17,8 +17,12 @@
 │   │                                (PTY policy: see 04-terminal-plane.md)   │
 │    │                                Masking keeps MAX_PLACEHOLDER_LEN - 1   │
 │    │                                carryover window across chunks.         │
-│   ├── Binary Exec (Ch 0x0003) ──► stdin/stdout/stderr/control streams;      │
-│   │                                no PTY; exec_id-keyed, bitwise fidelity  │
+│   ├── Binary Exec (mux 0x0001, stream kind EXEC) ─► stdin/stdout/       │
+│   │                                stderr/control sub-lanes; exec_id-      │
+│   │                                keyed, bitwise fidelity; no PTY except  │
+│   │                                FLAG_ALLOC_PTY per-exec private slave   │
+│   │                                PTY. Port 0 is the sole human break-     │
+│   │                                glass console (PTY console master).     │
 │   └── Stream Replay ────────────► Append-only logs under sessions/<id>/     │
 │                                    logs/ + index.bin, 64-bit monotonic      │
 │                                    cursor, read_from(port, cursor) ->       │
