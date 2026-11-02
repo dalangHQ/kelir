@@ -75,6 +75,7 @@
     - --plugin-coverage
       - Plugin asserts: see: 02-plugin-model.md#First-class-plugins
       - Each plugin appears in at least one example (any example)
+      - Or is explicitly marked in 02 as having none yet
       - Not necessarily the same example across plugins
       - Tier model (coverage): see: 02-plugin-model.md#Plugin-tiering
       - Tiered compilation gate: plugins compile against explicit upstream deps

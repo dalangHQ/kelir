@@ -267,7 +267,7 @@ def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
         # Receipt is hex of the trap's raw 32-byte digest.
         if receipt.binary_blake3 != c.trap.binary_blake3.hex():
             await c.vm.rollback(pre)
-            session.terminal.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
+            c.terminal.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
             return PostExecAction.rollback_and_halt()
 
         if (
@@ -276,7 +276,7 @@ def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
             and "/checkout-service" in c.trap.cwd
         ):
             await c.vm.rollback(pre)
-            session.terminal.notice(
+            c.terminal.notice(
                 f"⚡ [KELIR]: hermetic test emitted {receipt.egress_bytes}B "
                 "egress — REVERTED\n"
             )
@@ -284,7 +284,7 @@ def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
 
         if not await oracle.verify_physical_receipt(receipt):
             await c.vm.rollback(pre)
-            session.terminal.notice("⚡ [KELIR]: post-condition violated — REVERTED\n")
+            c.terminal.notice("⚡ [KELIR]: post-condition violated — REVERTED\n")
             return PostExecAction.rollback_and_halt()
 
         return PostExecAction.proceed()

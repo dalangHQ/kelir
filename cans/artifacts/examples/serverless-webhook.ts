@@ -8,8 +8,8 @@
 // rollback parked connections are RST (post-handshake 503) and clients
 // reconnect; retry is client-side. While awaiting the next event, the
 // guest memory ceiling is shrunk with the standard c.vm.adjust_balloon()
-// API so host RSS drops. MCP clients attach on a dynamic console port
-// without colliding with the PTY port.
+// API so host RSS drops. MCP clients attach via mux stream kind
+// MCP_CONSOLE (0x0012), not Port 0 PTY.
 //
 // Mounts:     wire-ingress, mcp, tool-guard, ledger.
 // Primitives: adjust_balloon.
@@ -66,13 +66,13 @@ const runtime = kelir({
 
   // → c.mcp
   .use(mcp({
-    // A dynamic console port carries JSON-RPC 2.0 stdio directly to the MCP client. No
-    // PTY conflict (interactive shell on a separate port).
-    transport: { port: "dynamic", framing: "json-rpc-2.0-stdio" },
+    // JSON-RPC 2.0 over MCP_CONSOLE mux stream (0x0012), not console-port
+    // stdio. No PTY conflict: Port 0 stays the human break-glass surface.
+    transport: { streamKind: "MCP_CONSOLE", framing: "json-rpc-2.0" },
     advertise: { tools: ["webhook.dispatch", "webhook.replay"] },
   }))
 
-  // → c.tool-guard (upstream of mcp on the console port)
+  // → c.tool-guard (upstream of mcp on MCP_CONSOLE)
   .use(toolGuard({
     // Anti-rug-pull: BLAKE3 over all tool schemas locks at on_vm_ready.
     // Any post-boot schema mutation halts with ESecurityViolation.

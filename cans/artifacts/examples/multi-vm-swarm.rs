@@ -5,7 +5,7 @@
 //! peer streams over the mesh. A session Fork veto holds until the
 //! shared fixture cache is hydrated.
 //!
-//! Mounts:     mesh, supply-chain.
+//! Mounts:     mesh, supply-chain, ledger.
 //! Primitives: map_shared_region, register_veto(Fork).
 
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
@@ -17,12 +17,13 @@ use tokio::task::JoinSet;
 use kelir::{
     driver::{DriverPolicy, WxPolicy}, KelirBuilder, Session, VmConfig,
     plugin::VetoEvent,
+    planes::storage::{LockBrokerConfig, LockScope, LockMode},
     plugins::{
+        ledger::{LedgerConfig, LedgerPlugin, ReceiptConfig},
         mesh::{MeshConfig, MeshPlugin, PeerIdentity, TraceParentPropagation},
         supply_chain::{
             LifecyclePolicy, PackageManager, SupplyChainConfig, SupplyChainPlugin,
         },
-    planes::storage::{LockBrokerConfig, LockScope, LockMode},
     },
 };
 
@@ -95,6 +96,16 @@ fn swarm_builder() -> KelirBuilder {
         ],
         policy: LifecyclePolicy::DenyInDependencyDirs,
     }))
+    // Ledger: mounted so session.ctx::<LedgerCtx>() in main() satisfies
+    // Has<LedgerCtx>; the swarm's supply-chain denials are counted there.
+    .plugin(LedgerPlugin::new(LedgerConfig {
+        store: ".kelir/swarm-audit.merkle.db".into(),
+        merkle_chain: true,
+        otel: None,
+        receipts: ReceiptConfig {
+            include_syscall_count: false,
+        },
+    }))
 }
 
 async fn boot_swarm() -> Result<Session, Box<dyn std::error::Error + Send + Sync>> {
@@ -150,7 +161,7 @@ async fn run_shard(
         // Mesh: peer-to-peer winner announcement on port 7002. The
         // traceparent flows from the winning shard's trap across the
         // swarm; the host ledger reconstructs one distributed trace.
-        child.mesh.publish(&mapped, shard_id).await?;
+        child.ctx::<MeshCtx>().publish(&mapped, shard_id).await?;
     }
 
     child.terminate().await?;

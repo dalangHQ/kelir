@@ -25,7 +25,7 @@
 //!   9. Watchdog: PolicyMatrixPlugin returns Mitigate when a live PID was
 //!      active at fire time; WatchdogSilencerPlugin returns Suppress while
 //!      a planned suspend is in progress, else ExecuteDefault.
-//!  10. Vsock: builder.register_vsock_service(2, …) + session.vsock.channel(2)
+//!  10. Vsock: builder.register_vsock_service(0x0013, …) + session.vsock.channel(0x0013)
 //!      binary RPC round-trip in main().
 //!
 //! NOTES:
@@ -337,10 +337,10 @@ fn build_runtime() -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sy
             }
         }),
     )
-    // Vsock service on vsock port 2: the RPC peer of session.vsock.channel(2)
+    // Vsock service on plugin kind 0x0013: the RPC peer of session.vsock.channel(0x0013)
     // in main(). Echoes the request frame back to the caller.
     .register_vsock_service(
-        2,
+        0x0013,
         serde_json::json!({ "type": "object", "properties": {} }),
         handler(|request: Vec<u8>| async move { Ok(request) }),
     );
@@ -357,12 +357,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let session: Session = build_runtime()?.boot().await?;
     eprintln!("[kelir] driver={} boot={}ms", session.driver_name(), session.boot_ms());
 
-    // Vsock binary RPC (03: session.vsock.channel(2), binary framing).
-    let mut channel = session.vsock.channel(2).await?;
+    // Vsock binary RPC (03: session.vsock.channel(0x0013), binary framing).
+    let mut channel = session.vsock.channel(0x0013).await?;
     channel.write_all(b"policy-matrix:ping").await?;
     let mut reply = vec![0u8; 64];
     let n = channel.read(&mut reply).await?;
-    eprintln!("[kelir] vsock channel 2 reply: {}", String::from_utf8_lossy(&reply[..n]));
+    eprintln!("[kelir] vsock channel 0x0013 reply: {}", String::from_utf8_lossy(&reply[..n]));
 
     // Rows 1-3 return to the guest; rows 4-7 park, abort, or divert.
     // Each spawn below exercises exactly one trap row, in chain order.

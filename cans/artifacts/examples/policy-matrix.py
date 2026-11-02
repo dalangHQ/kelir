@@ -25,8 +25,8 @@ is the dispatch order; each binary hits exactly one row:
   9. Watchdog: the policy plugin returns Mitigate when a live PID was
      active at fire time; the silencer plugin returns Suppress while a
      planned suspend is in progress, else ExecuteDefault.
- 10. Vsock: builder.register_vsock_service(2, …) +
-     session.vsock.channel(2) binary RPC round-trip in main().
+ 10. Vsock: builder.register_vsock_service(0x0013, …) +
+     session.vsock.channel(0x0013) binary RPC round-trip in main().
 
 SDK-IDIOM NOTE: two equivalent trap surfaces exist in every SDK —
 plugin.on_trap (Rust, Python) / plugin.onTrap (TS), and
@@ -208,12 +208,12 @@ def build_runtime() -> KelirBuilder:
         quarantine,
     )
 
-    # Vsock service on vsock port 2: the RPC peer of session.vsock.channel(2)
+    # Vsock service on plugin kind 0x0013: the RPC peer of session.vsock.channel(0x0013)
     # in main(). Echoes the request frame back to the caller.
     async def echo(request: bytes) -> bytes:
         return request
 
-    builder.register_vsock_service(2, {"type": "object", "properties": {}}, echo)
+    builder.register_vsock_service(0x0013, {"type": "object", "properties": {}}, echo)
 
     # Trap rows, in dispatch order. Each pattern hits exactly one row.
     builder.trap(TrapFilter.binary("policy-allow"), pre=row_allow)
@@ -236,11 +236,11 @@ async def main() -> None:
         print(f"[kelir] booted driver={session.driver_name} "
               f"boot_ms={session.boot_ms}")
 
-        # Vsock binary RPC (03: session.vsock.channel(2), binary framing).
-        channel = await session.vsock.channel(2)
+        # Vsock binary RPC (03: session.vsock.channel(0x0013), binary framing).
+        channel = await session.vsock.channel(0x0013)
         await channel.write(b"policy-matrix:ping")
         reply = await channel.read()
-        print(f"[kelir] vsock channel 2 reply: {reply!r}")
+        print(f"[kelir] vsock channel 0x0013 reply: {reply!r}")
 
         # Rows 1-3 return to the guest; rows 4-7 park, abort, or divert.
         # Each spawn exercises exactly one trap row, in chain order.

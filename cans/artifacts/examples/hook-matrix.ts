@@ -140,7 +140,7 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     hookState.tail = masked.slice(-CARRYOVER);
     return Buffer.from(chunk, "latin1");
   })
-  .onFsWrite(async (_path, buffer) => {
+  .onFsWrite(async (_path, buffer, _pid, _ctx) => {
     return Verdict.Pass;
   })
   // Hook 4: PTY input. Strip OSC52 clipboard exfiltration sequences:

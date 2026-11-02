@@ -45,13 +45,13 @@
       - 0x01: stdout (guest-to-exec)
       - 0x02: stderr (guest-to-exec)
       - 0x03: exec control (exit code, EOF, rlimit descriptors)
-    - Out-of-band signal isolation: SIGINT, SIGTERM, and resize bypass 0x0003
+    - Out-of-band signal isolation: SIGINT, SIGTERM, and resize bypass EXEC
     - High-priority process signals route exclusively over Channel 0x0000
     - Eliminates signal delivery stalls behind saturated stdout/stderr rings
     - Signal targeting
       - Channel 0x0000 signals carry exec_id, never raw guest pid
       - Shim translates exec_id to pid; unknown or already-exited exec_id drops silently
-      - No cross-channel ordering dependency exists between 0x0000 and 0x0003
+      - No cross-channel ordering dependency exists between 0x0000 and 0x0001
     - PTY allocation flag
       - EXEC_IO_SPEC header carries FLAG_ALLOC_PTY (0x04), zero by default
       - Set: shim calls openpty() for the ExecSlot; workload binds slave PTY
@@ -72,7 +72,7 @@
       - Host consumer slow or stalled → producer fd is paused, not dropped
       - No mid-flight frame loss; no guest kernel deadlock
     - PTY (virtio-console Port 0) remains the interactive human TTY
-    - Programmatic tooling uses 0x0003 exclusively; PTY bypassed
+    - Programmatic tooling uses stream kind EXEC (0x0001) exclusively; PTY bypassed
   - Control-plane VFS stream
     - Transport: mux 0x0001, stream kind VFS, framed CBOR
     - Purpose: posix-like primitives without host-directory exposure or VM exit
@@ -192,7 +192,6 @@
         - Named-pipe fallback (Windows) uses OS pipe buffer backpressure with
           - the same park semantics; framing identical
         - AF_VSOCK fallback uses transport-credit backpressure; framing identical
-        - Exec channel (0x0003) applies EXEC_IO_SPEC admission; see: #Binary-exec-channel
       - Reconnect
         - None; channel close is terminal, tears down session
         - Host-side ring shutdown flag is the semantic close event

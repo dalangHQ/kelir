@@ -182,20 +182,20 @@ const runtime = kelir({
     post: async (c) => {
       const pre = c.step.last();
       const receipt: ExecutionReceipt = await c.receipt();
-      if (receipt.binary_blake3 !== c.trap.binary_blake3) {
+      if (receipt.binaryBlake3 !== c.trap.binary_blake3) {
         await c.vm.rollback(pre);
-        session.terminal.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n");
+        c.terminal.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n");
         return PostExecAction.RollbackAndHalt;
       }
-      if (c.trap.binary_path.endsWith("/npm") && receipt.egress_bytes > 0 &&
+      if (c.trap.binary_path.endsWith("/npm") && receipt.egressBytes > 0 &&
           c.trap.cwd.includes("/checkout-service")) {
         await c.vm.rollback(pre);
-        session.terminal.notice(`⚡ [KELIR]: hermetic test emitted ${receipt.egress_bytes}B — REVERTED\n`);
+        c.terminal.notice(`⚡ [KELIR]: hermetic test emitted ${receipt.egressBytes}B — REVERTED\n`);
         return PostExecAction.RollbackAndHalt;
       }
       if (!(await oracle.verifyPhysicalReceipt(receipt))) {
         await c.vm.rollback(pre);
-        session.terminal.notice("⚡ [KELIR]: post-condition violated — REVERTED\n");
+        c.terminal.notice("⚡ [KELIR]: post-condition violated — REVERTED\n");
         return PostExecAction.RollbackAndHalt;
       }
       return PostExecAction.Proceed;
