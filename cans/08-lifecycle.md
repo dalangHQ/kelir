@@ -324,6 +324,7 @@
       - Any (boot_id, start_time_ns, pid) mismatch marks row Crashed; no signal
   - Break-glass
     - PTY console master (Port 0) is the sole in-process break-glass surface
+    - session.console() attaches the Port 0 PTY master for human inspection
     - EXEC stream kind (mux 0x0001) carries programmatic break-glass commands
     - No in-process SSH/SFTP daemon; zero russh, russh-sftp in runtime
     - Guest workloads that need sshd ship it inside their EROFS rootfs

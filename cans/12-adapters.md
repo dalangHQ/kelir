@@ -43,7 +43,7 @@
     - Architecture (mcp): see: artifacts/diagrams/ingestion-adapters.txt
     - Server binary crate: kelir-adapters/mcp-server
     - Server plugin: plugin-mcp (translates JSON-RPC to native terminal/storage planes)
-    - Binds to dynamic console port "kelir-mcp" without interfering with Port 0 PTY
+    - Binds mux stream kind MCP_CONSOLE (0x0012), not Port 0 PTY
   - Containerd shim v2
     - Architecture (containerd): see: artifacts/diagrams/ingestion-adapters.txt
     - Image translation (kelir-pack): see: #Ingestion-matrix
