@@ -22,6 +22,10 @@
     - Restore semantics
       - Import materializes compute and disk only
       - Workloads that had live sockets observe them gone on first access
+    - Serialization exhaustiveness tripwire
+      - Snapshot format structs fail compilation on unhandled schema additions
+      - Struct fields in kelir-interface mandate explicit serde default tags
+      - Format converters must map every field; silent field omission banned
       - No transparent socket rebinding exists; workloads must reconnect
     - Unpack containment invariants (Single Source of Truth)
       - Untrusted input boundary: zero ambient host filesystem trust

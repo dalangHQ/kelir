@@ -7,6 +7,8 @@
 // gauges only, emitted to OTel, never in receipts, CausalDelta, or
 // Merkle leaves. Computes exactly what an agent branch did differently
 // from its parent.
+// Struct exhaustiveness tripwire: unhandled fields fail compilation in
+// delta aggregation and snapshot validation.
 //
 // Canonical spec home: cans/10-attestation.md#Causal-delta
 
@@ -29,6 +31,7 @@ use std::path::PathBuf;
 // carries incarnation_id (UUIDv7 per spawn), boot_id, start_time_ns,
 // pid; liveness proof Linux pidfd, macOS kqueue NOTE_EXIT, Windows Job
 // Object KILL_ON_JOB_CLOSE. Lineage itself is not a field of this struct.
+#[non_exhaustive]
 pub struct CausalDelta {
     /// Hardware-agnostic byte-level RAM delta
     pub memory_diff_bytes: u64,

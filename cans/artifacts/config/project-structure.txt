@@ -7,6 +7,8 @@ kelir/
 │
 ├── justfile                           # Zero-friction local development commands
 ├── Cargo.toml                         # Root Cargo workspace manifest (Rust 2024 / MSRV 1.85+)
+├── fixtures.toml                      # Pinned cryptographic hashes (BLAKE3/SHA-256) for external test oracles
+├── perf/budgets.toml                  # Machine-enforced latency and RSS ceilings (enforce = true)
 ├── Cargo.lock
 ├── pnpm-workspace.yaml                # PNPM workspace definition
 ├── package.json                       # Root devDependencies (Turborepo/Biome/TypeScript)
@@ -169,7 +171,10 @@ kelir/
 │   │       ├── doctor.rs              # Consumer probes: KVM/HVF, kernel, EROFS
 │   │       ├── audit.rs               # Same audit as CI
 │   │       ├── vectors.rs             # Regenerate vectors.json from testkit fixtures
-│   │       └── registry.rs            # Registry attestation and verification commands
+│   │       ├── registry.rs            # Registry attestation and verification commands
+│       ├── layers.rs              # Downward-only crate dependency validator
+│       ├── budgets.rs             # Hard performance budget validator
+│       └── fixtures.rs            # Content-addressed test oracle fetcher and validator
 │   │
 │   └── kelir-bindings/                # FFI Translation Layers
 │       ├── napi/                      # Rust -> Node.js NAPI-RS bridge

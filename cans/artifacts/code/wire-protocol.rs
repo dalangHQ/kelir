@@ -12,8 +12,13 @@
 // with no magic, version, channel, or sequence field. The struct below
 // is the logical field layout; it is not a packed 9-byte struct, so
 // no size assert is made on it.
+// Hostile input rules: all wire-derived numbers (len, stream_id, flags)
+// must be validated with checked_* arithmetic. Direct unchecked slicing
+// is forbidden; allocations exceeding MAX_FRAME_PAYLOAD fail immediately.
 
 pub const MAX_FRAME_PAYLOAD: usize = 64 * 1024; // 64KB strict boundary
+pub const MAX_CONTROL_PAYLOAD: usize = 4 * 1024; // 4KB control ceiling
+pub const MAX_STREAM_ID: u32 = 0x00FF_FFFF; // Upper byte reserved for flags
 
 /// Stream mux frame header (11-protocol Stream mux framing).
 pub struct MuxFrameHeader {

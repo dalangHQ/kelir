@@ -62,6 +62,20 @@
           - Strict file bounds: 500 LOC target, 1,000 LOC hard ceiling per .rs file
           - Test segregation: zero `#[cfg(test)]` in `src/`; tests live in sibling `tests/`
           - Single-line documentation: maximum one line of docstring per public item
+        - Zero-panic production invariant
+          - Workspace-wide deny on unwrap_used, expect_used, and panic
+          - Production code returns Result; unhandled errors bubble via ?
+          - Infallible branches require #[allow(clippy::expect_used)] and proof
+        - Unsafe memory isolation
+          - Workspace enforces unsafe_code = "forbid" by default
+          - Core, interface, catalog, otlp, and plugins contain zero unsafe
+          - Unsafe restricted to kelir-drivers and kelir-transport enclaves
+          - Every driver unsafe block mandates a verified // SAFETY: invariant
+        - Defensive boundary arithmetic
+          - Guest-derived numbers are hostile: offsets, descriptors, ring indices
+          - Direct memory slicing and unchecked array indexing are forbidden
+          - Arithmetic uses checked_* or saturating_* variants unconditionally
+          - Allocations sized by guest frames clamp to hard resource ceilings
         - Functional core
           - Pure functional core: evaluation follows `f(State, Event) -> (State, Actions)`
           - Immutability by default: shared state uses atomics; mutations emit deltas

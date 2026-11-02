@@ -161,6 +161,10 @@
     - Layout: 9-byte header, stream_id u32, flags u8, len u32, LE, no magic/version
     - Framing invariants
       - Byte order: Little-Endian for all multi-byte integers
+      - Hostile input validation
+        - Frame-derived lengths and stream IDs evaluate via checked_* math
+        - Unchecked slice indexing across wire buffers is strictly forbidden
+        - Payload buffers clamp to MAX_FRAME_PAYLOAD before memory reservation
       - Message-type registry
         - 0x0001-0x0004 core-reserved
           - MSG_TRAP, MSG_CHANNEL_PAYLOAD

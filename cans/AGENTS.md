@@ -142,6 +142,10 @@ Blocks if `← @human` gates unchecked. Always.
 ## Collaboration
 
 One owner per task file. Claim before editing.
+- Build isolation: agents must set CARGO_TARGET_DIR=target/agent-<id>
+- Eliminates Cargo build lock contention across concurrent workers
+- Manifest mutations: generate to temporary file, then atomic rename
+- Prevents broken intermediate states from poisoning workspace builds
 
 ```
 # If task has ← agent-3, do NOT edit it

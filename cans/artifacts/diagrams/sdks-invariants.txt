@@ -25,3 +25,4 @@ at compile time in Rust and TypeScript and at import time in Python; string
 event names are not accepted dispatch keys in any language.
 Session architecture: The 4 native planes (terminal, storage, wire, checkpoint)
 are directly accessible on Session; optional domain plugins attach via extensions.
+Panic quarantine: All SDK handler dispatches wrap in catch_unwind at the engine perimeter.

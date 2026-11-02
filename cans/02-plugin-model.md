@@ -20,6 +20,10 @@
       - Tier 3 plugins depend on kelir-interface and consume peer services via ServiceRegistry
     - Dependency invariant: Zero concrete peer imports within the same tier
     - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
+    - Layering enforcement
+      - Crate dependency hierarchy enforced mechanically via layer lint
+      - Downward-only dependencies: higher tiers cannot import lower tiers
+      - Plugins link kelir-interface only; direct core imports rejected
     - Invariants and purity
     - Code is sole SSOT: declared programmatically via KelirPlugin trait
     - Manifest artifact is strictly auto-generated for zero-compile indexing
@@ -155,6 +159,10 @@
     - Hardware MPK page keys (x86_64) isolate per-plugin memory domains
     - Missing declared dependency aborts boot with EConfig
     - Lock-free dispatch swap via ArcSwap on the host event bus (internal)
+    - Panic quarantine boundary
+      - Interposer dispatches wrap in catch_unwind at the engine perimeter
+      - Escaped hook panics convert to Verdict::Drop with EFAULT
+      - Supervisor microkernel stays resident; active StepSlot rolls back
     - ArcSwap serves atomic dispatch swapping during snapshot hydration only
     - Not a public runtime API; session configuration is frozen after boot
     - First Drop, Suspend, or Abort halts pipeline; Pass/Patch continue

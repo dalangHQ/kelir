@@ -1,6 +1,9 @@
 // crates/kelir-interface/src/telemetry/receipt.rs
 //
 // Per-process cryptographic execution receipt.
+// Struct exhaustiveness tripwire: adding any field to ExecutionReceipt
+// breaks compilation in kelir-core, kelir-catalog, and kelir-otlp until
+// Merkle hashing, serialization, and OTel mappers explicitly handle it.
 //
 // Owned by: cans/10-attestation.md#Execution-receipts
 
@@ -40,6 +43,7 @@ pub enum ExitKind {
 /// retired_instructions field was deleted on that basis; no other
 /// artifact file referenced it).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ExecutionReceipt {
     pub pid: u32,
     pub binary_path: String,

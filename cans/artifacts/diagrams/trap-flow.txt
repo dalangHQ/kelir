@@ -20,12 +20,15 @@ Pipes TLV packet to Control 0x0000 (transport port 5252)► Host receives TrapEv
                                      │   (target script + argv paths must resolve strictly within EROFS;
                                      │   interpreter argv[1..] into /workspace/** forfeits the skip)
                                      │   NO ──► Evaluates Tier 1 Rust Plugins (at the latency ceiling)
-                                     │ Gate 3: Crosses FFI Trampoline to TS/Python async handler
+                                     │ Gate 3: Crosses FFI Trampoline to TS/Python async handler (catch_unwind protected)
                                      │
-                                     ├──────────────────────────────┐
-                                     ▼                              ▼
-                               PASS / PATCH                      DROP
-                                     │                              │
+                                     ├──────────────────────────────┬──────────────────────────────┐
+                                     ▼                              ▼                              ▼
+                               PASS / PATCH                      DROP                        PLUGIN PANIC
+                                     │                              │                              │
+                                      │                              │                 Quarantined to Drop (EFAULT);
+                                      │                              │                 Rolls back active StepSlot
+                                      │                              │                              │
 Pipes Verdict to Control 0x0000 (transport port 5252)◄─┘              │
       │                                                             │
       ▼                                                             ▼

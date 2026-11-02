@@ -51,6 +51,10 @@
       - Concurrency cancelled per ref (cancel-in-progress)
       - Shim musl binary size gate: see: artifacts/config/ci.yml (build-guest-shim)
       - sccache enabled via SCCACHE_GHA_ENABLED
+      - Hard performance budget gate
+        - Budgets in perf/budgets.toml enforced strictly with enforce = true
+        - Regressions in Gate 1, Gate 2 (<2µs), or Gate 3 abort CI run
+        - Cold-boot and RSS purge (<50ms) violations fail with exit code 1
     - Per-plugin matrix: each plugin fails independently
     - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
     - External plugin CI: contract attestation via reusable workflow
@@ -84,6 +88,13 @@
       - Lifecycle asserts: see: 08-lifecycle.md#Hypervisor-primitives
       - State machine assert: verifies all SuspendReason variants execute through
         - centralized lifecycle
+    - --panic-hunt-coverage
+      - Fuzzes every stream kind and registered hook with adversarial frames
+      - Asserts zero unhandled panics across malformed CBOR, VFS, and FUSE ops
+      - Escaped unwinds fail the test suite; every path must return Err
+    - --layering-coverage
+      - Validates downward-only crate dependencies via cargo xtask layers
+      - Core and interface violations reject compilation before test run
     - --hook-coverage
       - Asserts every hook in the segregated traits is implemented by some
         - custom plugin in cans/artifacts/examples
@@ -273,6 +284,9 @@
     - Registry index
       - Registry entries: see: #Plugin-registry
     - Test fixtures
-      - tests/fixtures/kernel: per-arch vmlinux
-      - tests/fixtures/rootfs: EROFS build scripts
-      - tests/fixtures/payloads: high-entropy test binaries (shared: pty, core-trap)
+      - External test oracles fetched into tests/fixtures via cargo xtask fixtures
+      - Fixture manifests pinned with cryptographic hashes in fixtures.toml
+      - SHA-256 and BLAKE3 verification mandatory before mounting test images
+      - tests/fixtures/kernel: pinned per-arch vmlinux binaries
+      - tests/fixtures/rootfs: pinned EROFS guest rootfs images
+      - tests/fixtures/payloads: high-entropy and exploit test binaries

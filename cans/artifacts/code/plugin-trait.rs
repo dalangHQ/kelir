@@ -2,6 +2,8 @@
 //
 // The typed KelirPlugin trait and ring interposer contracts.
 // Plugins link directly via Cargo crates; no runtime string resolution.
+// Zero unsafe code permitted: workspace enforces #![forbid(unsafe_code)].
+// Pipeline execution guarantees panic quarantine via catch_unwind.
 //
 // Owned by: cans/02-plugin-model.md#KelirPlugin-trait
 
@@ -135,6 +137,14 @@ pub struct MountScope {
     pub binaries: Option<Vec<String>>,
     pub paths: Option<Vec<PathBuf>>,
 }
+
+/// Quarantine boundary guarantee: every interposer dispatch is executed
+/// within std::panic::catch_unwind at the supervisor engine perimeter.
+/// A panicking plugin does not unwind across the FFI or crash the microkernel;
+/// the engine converts the panic into Verdict::Drop { errno: Some("EFAULT"),
+/// reason: "Plugin panicked" } or PluginError::Halt, logs the backtrace
+/// to the host ledger, and rolls back the active StepSlot.
+pub const PANIC_QUARANTINE_ENABLED: bool = true;
 
 impl MountScope {
     pub fn with_devices<I: IntoIterator<Item = VirtioDevice>>(mut self, devices: I) -> Self {

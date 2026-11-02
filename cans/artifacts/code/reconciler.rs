@@ -173,7 +173,10 @@ pub async fn reconcile_upperdir(
     guard: TraversalGuard,
 ) -> Result<CommitStats, std::io::Error> {
     let mut stats = CommitStats::default();
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+        .as_nanos();
 
     let canonical_root = host_target.canonicalize()?;
     let upperdir = broker_dir.join("upper");
@@ -219,7 +222,8 @@ async fn reconcile_diff(
     for entry in fs::read_dir(current)? {
         let entry = entry?;
         let path = entry.path();
-        let rel_path = path.strip_prefix(upper_root).unwrap();
+        let rel_path = path.strip_prefix(upper_root)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let target_path = host_target.join(rel_path);
 
         // Enforce strict containment: reject symlink hops outside host_target
@@ -310,7 +314,8 @@ fn reconcile_tombstones(
     for entry in fs::read_dir(current)? {
         let entry = entry?;
         let path = entry.path();
-        let rel_path = path.strip_prefix(tombstones_root).unwrap();
+        let rel_path = path.strip_prefix(tombstones_root)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let target_path = host_target.join(rel_path);
 
         if entry.file_type()?.is_dir() {

@@ -73,11 +73,25 @@ jobs:
             echo "ERROR: Inline #[cfg(test)] detected in src/. Move tests to tests/:"
             echo "$INLINE_TESTS" && exit 1
           fi
+          UNSAFE_VIOLATIONS=$(grep -rn --include="*.rs" 'unsafe ' crates/ | grep -v 'crates/kelir-drivers/' | grep -v 'crates/kelir-transport/' || true)
+          if [ -n "$UNSAFE_VIOLATIONS" ]; then
+            echo "ERROR: Unsafe code detected outside isolated driver/transport enclaves:"
+            echo "$UNSAFE_VIOLATIONS" && exit 1
+          fi
+
+      - name: Validate Crate Layering Hierarchy
+        run: cargo run -p kelir-plugin-cli -- check --layers
 
       - name: Rust Lints
         run: |
           cargo fmt --all --check
-          cargo clippy --workspace --exclude kelir-shim -- -D warnings
+          cargo clippy --workspace --exclude kelir-shim -- -D warnings \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used \
+            -D clippy::panic \
+            -D clippy::unimplemented \
+            -D clippy::todo \
+            -D clippy::unreachable
 
       - name: Type Checks (TS & Python)
         run: |
@@ -122,6 +136,18 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.5
       - name: Core + testkit
         run: cargo nextest run -p kelir-core -p kelir-plugin-testkit
+
+  # ─── 3a. ADVERSARIAL INTEGRATION HARNESS (PANIC HUNT) ──────
+  panic-hunt:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Adversarial Frame Fuzzing
+        run: cargo nextest run -p kelir-core --test panic_hunt
 
   # ─── 3b. MULTI-LANGUAGE PARITY & SDK EXECUTION GATE ────────
   # Merge-blocking. Executes TS and Python test suites (ForeignPluginProxy,
@@ -249,8 +275,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@nextest
       - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Verify Pinned Test Oracles
+        run: cargo run -p kelir-plugin-cli -- fixtures --verify
       - name: Driver unit tests (excludes real-hardware paths)
         run: cargo nextest run -p driver-rustvmm -p driver-openvmm -p driver-bwrap -E 'not test(test_hw_)'
+
+  # ─── 5b. PERFORMANCE BUDGET GATE (HARD ENFORCEMENT) ────────
+  perf-budgets:
+    needs: [test-core, test-drivers]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Assert Latency and RSS Ceilings
+        run: cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
 
   # ─── 6. CROSS-PLUGIN INTEGRATION (needs KVM) ───────────────
   # continue-on-error: GitHub-hosted runners usually lack /dev/kvm.

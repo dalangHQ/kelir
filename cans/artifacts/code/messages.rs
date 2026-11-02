@@ -64,6 +64,7 @@ pub struct Heartbeat {
 // ── Wire enums ───────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum GuestToHost {
     TrapEvent(TrapEvent),
     ProcessExit(ProcessExit),
@@ -101,6 +102,7 @@ pub const EXEC_STREAM_STDERR: u8 = 0x02;
 pub const EXEC_STREAM_CONTROL: u8 = 0x03; // stream control: exit code, EOF, rlimit descriptors, window resize (signals ride Control 0x0000)
 
 #[derive(Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum HostToGuest {
     /// Verdict on Intercepted Syscall
     TrapDecision {
@@ -123,6 +125,7 @@ pub enum HostToGuest {
 /// Drop = c.drop(errno, reason), Suspend = c.suspend(until),
 /// Abort = c.abort(reason).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum SuspendUntil {
     /// Hold until the given deadline in milliseconds elapses.
     Deadline(u64),
@@ -138,6 +141,7 @@ pub enum SuspendUntil {
 /// registration (see 11-protocol.md Custom dispatch). Unknown names
 /// fail with EUnknownAction before the pipeline resumes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum PatchPayload {
     ExecveMutation(Vec<u8>),
     HttpFrame(Vec<u8>),
@@ -151,6 +155,7 @@ pub enum PatchPayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum Verdict {
     /// Proceed untouched. Registers and memory are never modified.
     Pass,

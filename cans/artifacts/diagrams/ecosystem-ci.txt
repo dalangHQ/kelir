@@ -48,4 +48,4 @@ DECOUPLED PLUGIN CI + REGISTRY FLOW
 
   Canon CI also runs audit-slop: banned-term grep over cans/.
   Canon CI coverage gates (see ci.yml): channel, drain, transport,
-  snapshot-depth, clock-continuity; Windows cells transport-only.
+  snapshot-depth, clock-continuity, panic-hunt, layering, perf-budgets; Windows cells transport-only.

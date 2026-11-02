@@ -35,6 +35,18 @@ check-spec:
     @cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
     @cans check --json          | jq -e '.ok and .exitCode == 0'
 
+check-layers:
+    cargo run -p kelir-plugin-cli -- check --layers
+
+check-budgets:
+    cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
+
+panic-hunt:
+    cargo nextest run -p kelir-core --test panic_hunt
+
+fetch-fixtures:
+    cargo run -p kelir-plugin-cli -- fixtures --fetch
+
 check-hygiene:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -46,6 +58,11 @@ check-hygiene:
     if [ -n "$inline_tests" ]; then
         echo "FAIL: Inline #[cfg(test)] forbidden in src/. Move to tests/:"
         echo "$inline_tests" && exit 1
+    fi
+    unsafe_violations=$(grep -rn --include="*.rs" 'unsafe ' crates/ | grep -v 'crates/kelir-drivers/' | grep -v 'crates/kelir-transport/' || true)
+    if [ -n "$unsafe_violations" ]; then
+        echo "FAIL: Unsafe code detected outside driver/transport enclaves:"
+        echo "$unsafe_violations" && exit 1
     fi
     echo "OK: All files <= 1000 LOC; zero inline tests in src/."
 
@@ -68,7 +85,13 @@ check-plugin-all:
 # ── Lint & typecheck ──
 lint:
     cargo fmt --all -- --check
-    cargo clippy --workspace --exclude kelir-shim -- -D warnings
+    cargo clippy --workspace --exclude kelir-shim -- -D warnings \
+        -D clippy::unwrap_used \
+        -D clippy::expect_used \
+        -D clippy::panic \
+        -D clippy::unimplemented \
+        -D clippy::todo \
+        -D clippy::unreachable
     pnpm -r exec eslint .
 
 typecheck: build-ts
@@ -119,5 +142,5 @@ parity: build-ts
 # build-shim is not in this chain: shim has its own CI gate and its
 # own time budget. check-plugin-all is not here: parity already runs
 # the same per-plugin audit. Lint is a target, not an inline body.
-pre-flight: check-hygiene check-spec check-graph check-tiered lint typecheck parity
+pre-flight: check-hygiene check-spec check-layers check-graph check-tiered check-budgets lint typecheck parity
     just test-all

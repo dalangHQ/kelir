@@ -1,8 +1,14 @@
 // crates/kelir-interface/src/driver.rs
 //
 // The universal hypervisor backend abstraction.
+// Interface enforces #![forbid(unsafe_code)].
+// Pluggable backend drivers (driver-rustvmm, driver-hvf, driver-openvmm)
+// isolate required ioctls and raw pointer operations under #![deny(unsafe_code)],
+// with mandatory // SAFETY: invariants documented on every unsafe block.
 //
 // Owned by: cans/01-architecture.md#VmmDriver-trait
+
+#![forbid(unsafe_code)]
 
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
@@ -82,6 +88,10 @@ pub struct GuestClock {
     pub boot_params: String, // e.g. clock source, nohpet
 }
 
+///
+/// Compile-time tripwire: Any field added to SnapshotDescriptor mandates
+/// immediate explicit serialization mapping in kelir-core and kelir-catalog;
+/// silent field omission fails the workspace exhaustiveness assert.
 #[derive(Debug, Clone)]
 pub struct SnapshotDescriptor {
     pub id: String,

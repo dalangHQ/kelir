@@ -18,6 +18,10 @@
       - Emitted for every executed process at the trap/exit boundary
       - Receipts compare as values via canonical per-field structural assertions
       - Receipts carry opaque TelemetryExtension payloads emitted by mounted plugins
+      - Struct exhaustiveness tripwire
+        - ExecutionReceipt and CausalDelta additions fail compilation everywhere
+        - Merkle leaf hashing and OTel mappers must explicitly handle new fields
+        - Eliminates untracked receipt divergence across schema updates
     - Identity
       - Execution receipts are deterministic because inputs are frozen
         - Frozen virtual clock (see: plugins/replay.md#Kernel-clocksource-lockdown)
