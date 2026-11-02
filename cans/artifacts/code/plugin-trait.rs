@@ -313,10 +313,6 @@ pub trait TrapInterposer {
 
 #[async_trait]
 pub trait ConsoleInterposer {
-    /// Mandatory core-originated disclosure (HostToGuest::ChannelData on the pty-disclosure kind).
-    /// Body is immutable; return Some(bytes) to append. All annotations
-    /// concatenate in registration order and follow the body on the PTY.
-    /// See cans/04-terminal-plane.md#Disclosure
     /// Raw paravirtual character stream input. Intercepts host -> guest port bytes.
     async fn on_console_input(&self, _port: u32, _bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
     /// Raw paravirtual character stream output. Intercepts guest -> host port bytes.
