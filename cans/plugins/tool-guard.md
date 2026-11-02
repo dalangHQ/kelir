@@ -9,12 +9,12 @@
     - Exposes: ToolRegistryService
     - VirtIO device attachment (tool-guard): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (tool-guard): see: 08-lifecycle.md#Lifecycle-vetoes
-    - Executes upstream of plugin-mcp on the MCP console port
+    - Executes upstream of plugin-mcp on the MCP_CONSOLE mux stream
   - Service exports (tool-guard)
     - Exports ToolRegistryService via PipelineBinder for schema and approval lookups
   - Invariants and policy (tool-guard)
     - Total tool-call interposition
-      - Intercepts all JSON-RPC 2.0 frames on the MCP console port matching "tools/call"
+      - Intercepts JSON-RPC 2.0 frames on MCP_CONSOLE matching "tools/call"
       - Deserializes tool name and arguments in native memory before execution
       - Interposition is complete: no tool invocation reaches guest
         - execution shims without passing tool-guard

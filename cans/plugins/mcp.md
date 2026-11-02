@@ -10,7 +10,7 @@
     - Lifecycle attachment (mcp): see: 08-lifecycle.md#Lifecycle-vetoes
     - Registers stream kind MCP_CONSOLE on the mux
       - Kind 0x0012; see: 11-protocol.md#Control-channel
-      - Guest shim exposes /run/kelir/mcp.sock to the guest MCP server
+      - Guest shim exposes /run/kelir/mcp.sock, bridged over MCP_CONSOLE
   - Service exports (mcp)
     - Exports McpEndpointService via PipelineBinder for JSON-RPC transport routing
   - Invariants and policy (mcp)
@@ -29,7 +29,7 @@
         - Interactive terminal attach (break-glass) still uses PTY / Port 0
       - read_file → delegates to native Storage Plane broker reader
       - write_file → delegates to native Storage Plane broker writer    - Composes with plugin-chaos, plugin-ledger, and native Terminal/Wire planes
-    - Composes with plugin-tool-guard: tool-guard sits upstream on the MCP console port
+    - Composes with plugin-tool-guard: tool-guard sits upstream on MCP_CONSOLE
     - Stream kind MCP_CONSOLE routes directly to MCP client without PTY conflict
     - MCP contract
       - Transport: JSON-RPC 2.0 over MCP_CONSOLE mux stream
