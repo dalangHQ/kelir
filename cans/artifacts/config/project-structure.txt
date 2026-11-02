@@ -28,7 +28,6 @@ kelir/
 │   │       ├── driver.rs              # VmmDriver, VmConfig, SnapshotDescriptor, WatchdogAction
 │   │       ├── protocol.rs            # MuxFrameHeader (stream_id, flags, len), TrapEvent, Verdict, GuestToHost, HostToGuest
 │   │       ├── telemetry.rs           # ExecutionReceipt, CausalDelta
-│   │       └── oracle.rs              # Oracle evaluator trait
 │   │   └── tests/
 │   │       ├── unit_codec.rs          # Isolated frame codec tests
 │   │       └── unit_traits.rs         # Trait contract verification
@@ -91,9 +90,11 @@ kelir/
 │   │   ├── driver-openvmm/            # Windows WHP + ConPTY + HV_SOCKET (scoped strictly to windows-sys)
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/lib.rs             # Microsoft WHP & MSHV hypervisor implementation
-│   │   └── driver-bwrap/              # Unprivileged Linux user namespaces via libc (bans nix crate)
-│   │       ├── Cargo.toml
-│   │       └── src/lib.rs             # Bubblewrap/user-namespace driver implementation
+│   │   ├── driver-avf/                # Android Virtualization Framework via /dev/avf and pKVM
+│   │   ├── driver-bwrap/              # Unprivileged Linux user namespaces via libc (bans nix crate)
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/lib.rs             # Bubblewrap/user-namespace driver implementation
+│   │   └── driver-proot/              # Termux ptrace emulation; requires allow_emulated_fallback=true
 │   │
 │   ├── kelir-plugins/                 # 13 Optional Domain Extensions (Zero Core Dependency Bleed)
 │   │   ├── plugin-chaos/              # Fault Injection Engine
@@ -113,7 +114,7 @@ kelir/
 │   │   │       └── test_otel.rs
 │   │   ├── plugin-mcp/                # MCP stdio JSON-RPC ↔ VirtIO rings
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # Hooks: on_vm_ready, on_console_*, on_fs_*, on_trap, on_process_exit, on_disclosure
+│   │   │   ├── src/lib.rs             # Hooks: on_vm_ready, on_console_*, on_fs_*, on_trap, on_process_exit
 │   │   │   ├── tests/test_mcp_mapping.rs
 │   │   │   └── examples/mcp-stdio.rs
 │   │   ├── plugin-db-proxy/           # Agnostic DB mediation: pgwire (port 5432) & /run/kelir/db.sock vsock proxy
