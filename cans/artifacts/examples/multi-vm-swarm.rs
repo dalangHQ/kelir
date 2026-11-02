@@ -19,8 +19,8 @@ use kelir::{
     plugin::VetoEvent,
     planes::storage::{LockBrokerConfig, LockScope, LockMode},
     plugins::{
-        ledger::{LedgerConfig, LedgerPlugin, ReceiptConfig},
-        mesh::{MeshConfig, MeshPlugin, PeerIdentity, TraceParentPropagation},
+        ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, ReceiptConfig},
+        mesh::{MeshConfig, MeshCtx, MeshPlugin, PeerIdentity, TraceParentPropagation},
         supply_chain::{
             LifecyclePolicy, PackageManager, SupplyChainConfig, SupplyChainPlugin,
         },

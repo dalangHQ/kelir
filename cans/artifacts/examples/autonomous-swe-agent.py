@@ -203,7 +203,10 @@ def make_snoop(oracle: UserOracle) -> Callable[[Path, bytes, HandlerContext], Aw
     async def on_write(path: Path, raw: bytes, c: HandlerContext) -> None:
         evt = json.loads(raw)
         if evt.get("falsifiedResult") is True:
-            raise PluginError.deny(f"EPERM: harness hallucination at {path}")
+            raise PluginError.reject(
+                errno="EPERM",
+                reason=f"harness hallucination at {path}",
+            )
         producer_blake3 = await c.cap.ledger.blake3_of_producing_process(path)
         await oracle.ingest_harness_event(path, evt, producer_blake3)
     return on_write

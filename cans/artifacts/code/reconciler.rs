@@ -185,7 +185,7 @@ pub async fn reconcile_upperdir(
         reconcile_diff(
             &upperdir, &upperdir, host_target, &canonical_root,
             nonce, guard, &mut staging, &mut stats
-        )?;
+        ).await?;
     }
     if tombstones_dir.exists() {
         reconcile_tombstones(
@@ -206,7 +206,7 @@ pub async fn reconcile_upperdir(
     Ok(stats)
 }
 
-fn reconcile_diff(
+async fn reconcile_diff(
     upper_root: &Path,
     current: &Path,
     host_target: &Path,
@@ -238,7 +238,7 @@ fn reconcile_diff(
             if !target_path.exists() {
                 fs::create_dir_all(&target_path)?;
             }
-            reconcile_diff(upper_root, &path, host_target, canonical_root, nonce, guard, staging, stats)?;
+            reconcile_diff(upper_root, &path, host_target, canonical_root, nonce, guard, staging, stats).await?;
         } else if file_type.is_file() {
             if let Some(parent) = target_path.parent() {
                 fs::create_dir_all(parent)?;
@@ -249,7 +249,10 @@ fn reconcile_diff(
             // the temp file to the guard's Drop instead of stranding it.
             staging.staged.push(tmp_swap.clone());
             // Strip setuid/setgid on every write: in-guest root cannot
-            // mint setuid host binaries (mode & !0o6000).
+            // mint setuid host binaries (mode & !0o6000). Unix-only:
+            // Windows has no unix mode bits, so there is nothing to
+            // strip there and this block must not resolve std::os::unix.
+            #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 let mode = fs::metadata(&tmp_swap)?.permissions().mode();
@@ -273,7 +276,9 @@ fn reconcile_diff(
                 // removed here; any other error propagates and the guard
                 // unlinks the staged temp on Drop.
                 Err(e) if matches!(e.raw_os_error(), Some(16) | Some(1)) => {
-                    std::thread::sleep(std::time::Duration::from_millis(2000));
+                    // Async backoff, not thread::sleep: this reconciler
+                    // runs on a Tokio worker and must never park it.
+                    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
                     fs::copy(&path, &target_path)?;
                     let _ = fs::remove_file(&tmp_swap);
                 }

@@ -7,7 +7,7 @@ termination by default, no CA injection. The guest root filesystem
 and the migration snapshot are local EROFS fixtures under ./fixtures/;
 no remote image translation or snapshot streaming is involved.
 
-Mounts:     db-proxy.
+Mounts:     db-proxy, ledger.
 Primitives: export_snapshot, import_snapshot.
 Commit:     two-phase commit around the snapshot export — on_pre_commit
             pauses vCPUs and drains FUSE in-flight ops (the handler
@@ -33,6 +33,9 @@ from kelir import HandlerContext, KelirBuilder, PostExecAction, Session, TrapFil
 from kelir.plugins.db_proxy import (
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials,
     PgWireRewrite, SqliteOverVsock,
+)
+from kelir.plugins.ledger import (
+    LedgerConfig, LedgerPlugin, ReceiptConfig,
 )
 
 
@@ -84,6 +87,17 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             sqlite=SqliteOverVsock(
                 guest_socket="/run/kelir/db.sock",
                 host_path="/var/lib/app/migrations.sqlite",
+            ),
+        )))
+
+        # Ledger: mounted so session.cap.ledger in _pre_commit and main()
+        # resolves; without it the capability access fails at boot.
+        .plugin(LedgerPlugin(LedgerConfig(
+            store="sqlite://.kelir/migrate-audit.merkle.db",
+            merkle_chain=True,
+            otel=None,
+            receipts=ReceiptConfig(
+                include_syscall_count=False,
             ),
         )))
     )

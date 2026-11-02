@@ -28,6 +28,8 @@ const PROTECTED: &[&str] = &["main", "master"];
 pub struct GitGatePlugin;
 
 impl KelirPlugin for GitGatePlugin {
+    type Context = ();
+    fn context(&self) -> Self::Context { () }
     fn name(&self) -> &'static str { "git-gate" }
     fn fork_state(&self, _: &str) -> Box<dyn AnyPlugin> { Box::new(Self) }
 }

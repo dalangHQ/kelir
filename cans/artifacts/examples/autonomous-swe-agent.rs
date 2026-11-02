@@ -33,7 +33,7 @@ use kelir::{
     },
     plugins::{
         chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
-        ledger::{FinalReceipt, LedgerConfig, LedgerPlugin, OtelConfig, ReceiptConfig},
+        ledger::{FinalReceipt, LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
     },
     planes::{
         terminal::{PtyConfig, PromptRule, TokenShield},
@@ -132,6 +132,8 @@ impl RepoPolicyPlugin {
 }
 
 impl KelirPlugin for RepoPolicyPlugin {
+    type Context = ();
+    fn context(&self) -> Self::Context { () }
     fn name(&self) -> &'static str { "repo-policy" }
 
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {

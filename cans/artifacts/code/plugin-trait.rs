@@ -55,6 +55,12 @@ pub enum PluginError {
     AmbiguousMutation { resource: String, conflict: String },
     #[error("Internal I/O failure: {0}")]
     Io(#[from] std::io::Error),
+    /// Host-fatal error: the plugin cannot proceed and the pipeline
+    /// must halt. This is not a guest verdict (denial is Verdict::Drop,
+    /// termination is Verdict::Abort); it covers host-side failures
+    /// like a missing checkpoint or an unparseable harness event.
+    #[error("Plugin halted: {0}")]
+    Halt(String),
 }
 
 impl PluginError {
@@ -63,6 +69,16 @@ impl PluginError {
         conflict: impl Into<String>,
     ) -> Self {
         Self::AmbiguousMutation { resource: resource.into(), conflict: conflict.into() }
+    }
+
+    /// Policy rejection in a Result<(), PluginError> context, where no
+    /// Verdict is returnable. Carries errno + reason in the message;
+    /// handlers that can return a Verdict use Verdict::Drop instead.
+    pub fn reject(
+        errno: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self::Halt(format!("{}: {}", errno.into(), reason.into()))
     }
 }
 

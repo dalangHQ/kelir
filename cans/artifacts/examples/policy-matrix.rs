@@ -113,6 +113,8 @@ impl Default for PolicyMatrixPlugin {
 }
 
 impl KelirPlugin for PolicyMatrixPlugin {
+    type Context = ();
+    fn context(&self) -> Self::Context { () }
     fn name(&self) -> &'static str { "policy-matrix" }
 
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
@@ -248,6 +250,8 @@ impl WatchdogSilencerPlugin {
 }
 
 impl KelirPlugin for WatchdogSilencerPlugin {
+    type Context = ();
+    fn context(&self) -> Self::Context { () }
     fn name(&self) -> &'static str { "watchdog-silencer" }
 
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {

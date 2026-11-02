@@ -143,6 +143,8 @@ impl HookMatrixPlugin {
 }
 
 impl KelirPlugin for HookMatrixPlugin {
+    type Context = ();
+    fn context(&self) -> Self::Context { () }
     fn name(&self) -> &'static str { "hook-matrix" }
 
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
@@ -198,10 +200,10 @@ impl FsInterposer for HookMatrixPlugin {
         // GUARD: traversal first — an escaping path is rejected, never
         // served and never silently fallen through to the host fs.
         if escapes_workspace(path) {
-            return Err(PluginError::reject(
-                "E_PATH_TRAVERSAL",
-                "lookup escapes the /workspace root",
-            ));
+            return Ok(Verdict::Drop {
+                errno: Some("E_PATH_TRAVERSAL".into()),
+                reason: "lookup escapes the /workspace root".into(),
+            });
         }
         // Verdict::Pass = fall through; Patch(attr) = serve (02).
         if path.as_os_str() != IDENTITY_PATH {
