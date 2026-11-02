@@ -35,7 +35,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             ffi_worker_threads: 2,
             ffi_max_ops_per_sec: 1000,
         },
-        deterministic_clock: false,
+        // Replay mode requires a deterministic clock (plugins/replay.md:
+        // cycle-exact instruction clock stepping). Network isolation
+        // (network: off) is likewise required, but no VmConfig or
+        // ReplayConfig field declares it, so this example cannot express
+        // it — held, not silently dropped.
+        deterministic_clock: true,
         pinned_clocksource: Some("kvm-clock".into()),
         ns_per_instruction: Some(1),
         preemption_grace_ms: 0,
