@@ -45,7 +45,7 @@
       - Language surfaces
         - Rust: extension traits provide zero-cost fluent chaining on builder
         - TypeScript: fluent builder; plugin verbs are overloads of .use()
-        - Python: fluent builder; plugin verbs are overloads of .use()
+        - Python: builder chaining; plugin verbs are .use() overloads
         - Verbs are available after .use() in all languages (typed in Rust,
           - returned by overload in TS/Py)      - Typed dispatch and session extensions
         - Typed event hooks
@@ -220,7 +220,7 @@
     - Python builder: KelirBuilder stores plugins alongside Pydantic models
     - .use(plugin) appends to the registry; returns self
       - .use() is overloaded per plugin so c.cap.<plugin_key> is typed
-    - Prerequisite validation happens at builder.boot()
+    - Prerequisite validation runs at builder.boot()
       - Unfulfilled requirements raise EConfig with structured details
       - Error report isolates unsatisfied dependencies during bootstrap
       - No runtime cost beyond a single O(plugins) walk at boot

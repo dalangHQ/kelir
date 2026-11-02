@@ -37,7 +37,7 @@
       - Ephemeral rows: pidfd / kqueue / Job Object drive zero-delay reaping
       - Detached rows: lease heartbeat updates expires_at; TTL expiry drives reap
       - Lease heartbeat from the runtime proves liveness for detached rows only
-      - Runtime child janitor sweeps both kinds on startup
+      - Runtime child janitor reaps ephemeral and detached rows at startup
       - Ephemeral rows: row unlinked immediately on parent-process death
       - Detached rows: row marked Crashed on (boot_id, start_time_ns, pid) mismatch
     - Correlation ids stitch spans across cli, runtime, agentd

@@ -172,7 +172,7 @@
     - Parity evaluated on identical wire frame inputs and outputs using vectors.json
     - Syntax is idiomatic per language runtime, not copied across SDKs
     - Gating is behavioral, not type-level
-      - Rust: compile-time Has<T> bounds (typestate)
+      - Rust: dependency failures surface at compile time
       - TS/Py: builder.boot() EConfig on missing dependency
       - Identical vectors.json outcomes; runtime EConfig is a parity vector
     - Testkit ground truth

@@ -20,7 +20,7 @@
       - Tier 3 plugins depend on kelir-interface and consume peer services via ServiceRegistry
     - Dependency invariant: Zero concrete peer imports within the same tier
     - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
-    - Invariants and purity: see: 06-storage-catalog.md#Entity-model
+    - Invariants and purity
     - Code is sole SSOT: declared programmatically via KelirPlugin trait
     - Manifest artifact is strictly auto-generated for zero-compile indexing
     - Execution kind: Native (Rust in-process) | Foreign (host FFI)

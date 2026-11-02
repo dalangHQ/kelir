@@ -227,8 +227,7 @@
       - Host releases suspension when the hold duration elapses
     - Custom dispatch contract
       - Registration: builder.register_custom_action(name, schema, handler)
-      - Wire Custom carries the CBOR payload only; the name resolves at SDK
-        - registration
+      - Wire Custom carries the CBOR payload only; the name resolves at SDK registration
       - Unknown name at trap time fails with EUnknownAction
       - Registration after boot() fails with EConfig
     - Verdict invariants: see: artifacts/code/messages.rs

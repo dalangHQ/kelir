@@ -222,7 +222,7 @@
   - Host state root
     - Content-addressed root: ~/.kelir/
       - catalog.db: embedded SQLite ledger tracking all session lifecycles
-      - Lease schema and row kinds: see: 06-storage-catalog.md#Entity-model
+      - Lease schema and row kinds
       - OS-native liveness primitives are proof-of-life, not SSOT
         - Linux: pidfd_open + pidfd_send_signal
         - macOS: kqueue(EVFILT_PROC, NOTE_EXIT)
