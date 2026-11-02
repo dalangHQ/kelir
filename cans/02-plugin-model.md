@@ -115,6 +115,8 @@
       - Trap and lifecycle hooks receive HandlerCtx or a restricted lifecycle context
       - No hook receives &mut Box<dyn VmmDriver> or &Session
       - LifecycleCtx exposes: set_watchdog, adjust_balloon, register_veto
+      - Builder orchestration callbacks are not plugin hooks: the host-side
+        - builder may receive driver/session to wire the session it builds
       - Lifecycle commit: on_pre_commit, on_post_commit, on_host_preempt
     - FsInodeAttr carries full mode, uid, gid, size, content
       - Populated into FUSE LOOKUP replies with S_ISUID and S_ISGID masked
@@ -237,9 +239,11 @@
         - oci-translator, openshell-coordinator
         - Implementation is proprietary; not in this repo
     - Coverage matrix (community plugins -> demonstrating example)
-      - chaos, ledger, vault: autonomous-swe-agent.{rs,ts,py}
-      - mesh, container: multi-vm-swarm.rs
-      - transaction: db-backed-runtime.py
+      - chaos, ledger: autonomous-swe-agent.{rs,ts,py}
+      - vault: autonomous-swe-agent.{rs,ts,py} via wire-plane vaults only
+      - mesh: multi-vm-swarm.rs
+      - container: no demonstrating example yet
+      - transaction: no demonstrating example yet
       - wire-ingress, mcp, tool-guard: serverless-webhook.ts
       - replay: replay.rs
       - profile: profile.rs
@@ -253,7 +257,8 @@
       - policy-matrix.{rs,ts,py}: full Verdict lattice
       - Each maps to a spec surface, not a plugin
     - Coverage invariant
-      - Every first-class plugin names one demonstrating example
+      - Every first-class plugin names a demonstrating example
+      - Plugins with none yet are marked as having none yet
       - Coverage is per-plugin; no single example must cover all
       - No dedicated matrix example exists to satisfy coverage alone
       - Surface examples are separately gated by --hook-coverage

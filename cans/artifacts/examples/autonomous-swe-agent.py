@@ -41,6 +41,7 @@ from kelir import (
     SnapshotDescriptor,
     SpawnResult,
     TrapEvent,
+    TrapFilter,
     Verdict,
 )
 from kelir.plugin import BasePlugin, PluginError
@@ -263,7 +264,8 @@ def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
         pre: SnapshotDescriptor = c.step.last()  # raises if no checkpoint was marked
         receipt: ExecutionReceipt = await c.receipt()
 
-        if receipt.binary_blake3 != c.trap.binary_blake3:
+        # Receipt is hex of the trap's raw 32-byte digest.
+        if receipt.binary_blake3 != c.trap.binary_blake3.hex():
             await c.vm.rollback(pre)
             session.terminal.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
             return PostExecAction.rollback_and_halt()

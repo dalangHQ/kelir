@@ -63,11 +63,103 @@ impl Drop for StagingGuard {
     }
 }
 
+/// Platform rename + flock pre-check (05-storage-plane.md).
+/// Linux: renameat2 + flock via direct libc FFI. Other platforms:
+/// std rename, no flock pre-check in this artifact.
+mod platform {
+    #[cfg(target_os = "linux")]
+    mod imp {
+        use std::ffi::CString;
+        use std::fs;
+        use std::io;
+        use std::os::unix::ffi::OsStrExt;
+        use std::path::Path;
+
+        const AT_FDCWD: i32 = -100;
+        const LOCK_EX: i32 = 2;
+        const LOCK_NB: i32 = 4;
+
+        extern "C" {
+            fn renameat2(
+                olddirfd: i32, oldpath: *const u8,
+                newdirfd: i32, newpath: *const u8, flags: u32,
+            ) -> i32;
+            fn flock(fd: i32, operation: i32) -> i32;
+        }
+
+        pub fn rename(tmp: &Path, target: &Path) -> io::Result<()> {
+            let old = CString::new(tmp.as_os_str().as_bytes())
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in tmp path"))?;
+            let new = CString::new(target.as_os_str().as_bytes())
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in target path"))?;
+            let rc = unsafe {
+                renameat2(AT_FDCWD, old.as_ptr() as *const u8, AT_FDCWD, new.as_ptr() as *const u8, 0)
+            };
+            if rc == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+        }
+
+        /// Returns the locked file handle if the target exists and the
+        /// lock was acquired; Ok(None) if the target does not exist.
+        /// A held lock returns an EBUSY-style WouldBlock error.
+        pub fn flock_target(target: &Path) -> io::Result<Option<fs::File>> {
+            if !target.exists() {
+                return Ok(None);
+            }
+            let file = fs::File::open(target)?;
+            use std::os::unix::io::AsRawFd;
+            let rc = unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) };
+            if rc == 0 {
+                Ok(Some(file))
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    mod imp {
+        use std::fs;
+        use std::io;
+        use std::path::Path;
+
+        pub fn rename(tmp: &Path, target: &Path) -> io::Result<()> {
+            fs::rename(tmp, target)
+        }
+
+        pub fn flock_target(_target: &Path) -> io::Result<Option<fs::File>> {
+            Ok(None)
+        }
+    }
+
+    pub use imp::{flock_target, rename};
+}
+
+/// A flock failure is EBUSY for fallback purposes on every platform:
+/// Linux flock returns EWOULDBLOCK (11) when the lock is held.
+fn flock_is_busy(e: &std::io::Error) -> bool {
+    matches!(e.raw_os_error(), Some(11))
+}
+
+fn rename_platform(tmp: &Path, target: &Path) -> std::io::Result<()> {
+    platform::rename(tmp, target)
+}
+
+fn flock_target(target: &Path) -> std::io::Result<Option<fs::File>> {
+    platform::flock_target(target)
+}
+
 // Commit: per-entry temp+rename. Fallback on EBUSY or EPERM: in-place
 // write with 2000ms backoff (implemented below). Host flock pre-check
-// is NOT implemented here: no flock table is passed to this reconciler,
-// so the broker-side pre-check from 05-storage-plane.md#Workspace-commit
-// remains outstanding; see the held item in the work.md §10 report.
+// from 05-storage-plane.md#Workspace-commit is implemented here via
+// the kernel lock itself: before renaming, the target (if it exists)
+// is opened and flocked LOCK_EX|LOCK_NB; a held lock surfaces as
+// EBUSY and takes the same 2000ms fallback. No broker lock table is
+// needed because flock is the table.
+//
+// Platform rename (05-storage-plane.md#Workspace-commit): Linux uses
+// renameat2 via direct libc FFI (no new crate dependency); other
+// platforms use std rename, and renameatx_np / FileRenameInfoEx swap
+// remain the host broker's platform layer there, not this artifact.
 //
 // Broker state dir layout: sessions/<id>/upper (per-session sparse
 // upper file contents, walked as a directory tree) and
@@ -163,7 +255,17 @@ fn reconcile_diff(
                 let mode = fs::metadata(&tmp_swap)?.permissions().mode();
                 fs::set_permissions(&tmp_swap, fs::Permissions::from_mode(mode & !0o6000))?;
             }
-            match fs::rename(&tmp_swap, &target_path) {
+            // Flock pre-check first: a held host lock takes the same
+            // EBUSY fallback as a failed rename, below. The lock handle
+            // is held for the rename itself, then dropped.
+            let rename_result = match flock_target(&target_path) {
+                Ok(_lock) => rename_platform(&tmp_swap, &target_path),
+                Err(e) if flock_is_busy(&e) => {
+                    Err(std::io::Error::from_raw_os_error(16))
+                }
+                Err(e) => Err(e),
+            };
+            match rename_result {
                 Ok(()) => {}
                 // EBUSY (16) / EPERM (1), Linux and macOS values: 2000ms
                 // backoff, then in-place write per

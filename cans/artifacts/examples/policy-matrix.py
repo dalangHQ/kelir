@@ -59,7 +59,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
 import kelir
-from kelir import Approval, Deadline, HandlerContext, KelirBuilder, Verdict
+from kelir import Approval, Deadline, HandlerContext, KelirBuilder, TrapFilter, Verdict
 from kelir.plugin import (
     BasePlugin,
     VetoEvent,

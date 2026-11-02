@@ -51,6 +51,8 @@ pub struct ExecutionReceipt {
     /// dynamic interpreters (python, node, bash, sh, perl, ruby) inspect
     /// argv[1..], and arguments targeting /workspace/** forfeit the skip
     /// to Gate 3.
+    /// Lowercase hex encoding of the 32-byte BLAKE3 digest; the trap
+    /// event carries the same digest as raw bytes ([u8; 32]).
     pub binary_blake3: String,
     pub exit_kind: ExitKind,
     pub correlation_token: Option<String>,

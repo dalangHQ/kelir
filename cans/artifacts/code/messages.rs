@@ -29,6 +29,7 @@ pub struct TrapEvent {
     pub binary_dev: u64,
     /// Inode number of executable binary (resists mount/chroot spoofing)
     pub binary_ino: u64,
+    /// Raw 32-byte BLAKE3 digest; the receipt carries it as hex String.
     pub binary_blake3: [u8; 32],
     pub argv: Vec<String>,
     pub envp: HashMap<String, String>,
@@ -141,6 +142,9 @@ pub enum PatchPayload {
     ExecveMutation(Vec<u8>),
     HttpFrame(Vec<u8>),
     FsChunk(Vec<u8>),
+    /// Served inode for on_fs_lookup: same fields as FsInodeAttr, carried
+    /// on the wire so lookup serve is not confused with write mutation.
+    FsInode { mode: u32, uid: u32, gid: u32, size: u64, content: Vec<u8> },
     JsonRpcFrame(Vec<u8>),
     PgFrame(Vec<u8>),
     Custom { name: String, cbor: ciborium::value::Value },

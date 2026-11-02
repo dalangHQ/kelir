@@ -22,7 +22,7 @@ use kelir::{
         supply_chain::{
             LifecyclePolicy, PackageManager, SupplyChainConfig, SupplyChainPlugin,
         },
-    planes::storage::{StorageConfig, LockScope, LockMode},
+    planes::storage::{LockBrokerConfig, LockScope, LockMode},
     },
 };
 
@@ -52,13 +52,16 @@ fn swarm_builder() -> KelirBuilder {
         },
         page_size_kb: 4,
         deterministic_clock: false,
+        network_off: false,
         pinned_clocksource: None,
         ns_per_instruction: None,
         preemption_grace_ms: 0,
         entropy_seed: Some(0x5EED),
     })
     // Lock-broker: FUSE_SETLK on declared globs delegates to host flock.
-    .storage(StorageConfig {
+    // This is the lock-broker config, not StorageConfig: the full storage
+    // plane shape is git-gate.rs / autonomous-swe-agent.rs (idmap, caches).
+    .lock_broker(LockBrokerConfig {
         scope: LockScope::Globs(vec![
             "**/Cargo.lock".into(),
             "**/package-lock.json".into(),

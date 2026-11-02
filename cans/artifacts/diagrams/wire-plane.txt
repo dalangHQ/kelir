@@ -7,8 +7,9 @@
   terminate in host process memory; the guest.                    at the guest.
   no TAP device, no CAP_NET_ADMIN, no host routing change.
   Link-local quarantine: 169.254.0.0/16 and fe80::/10 dropped before
-  policy eval; cloud metadata IMDS endpoints dropped unconditionally
-  at the L3 ingress ring.
+  policy eval; cloud metadata IMDS endpoints except 169.254.169.254
+  dropped unconditionally at the L3 ingress ring. That one address is
+  intercepted and translated host-side to the vault vsock service.
   Ingress dispatcher checks MountScope natively before FFI.
                                         │
                                         ▼

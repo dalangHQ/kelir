@@ -250,6 +250,7 @@ async fn build_runtime(
         },
         page_size_kb: 4,
         deterministic_clock: false,
+        network_off: false,
         pinned_clocksource: None,
         ns_per_instruction: None,
         preemption_grace_ms: 0,
@@ -460,8 +461,11 @@ async fn build_runtime(
                     })?;
                     let receipt: ExecutionReceipt = c.receipt().await?;
 
-                    // Binary hash integrity — the agent cannot fake this
-                    if receipt.binary_blake3 != c.trap.binary_blake3 {
+                    // Binary hash integrity — the agent cannot fake this.
+                    // Receipt is hex of the trap's raw [u8; 32] digest.
+                    let trap_hex: String = c.trap.binary_blake3.iter()
+                        .map(|b| format!("{:02x}", b)).collect();
+                    if receipt.binary_blake3 != trap_hex {
                         c.vm.rollback(&pre).await?;
                         c.terminal.notice(
                             "⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n",

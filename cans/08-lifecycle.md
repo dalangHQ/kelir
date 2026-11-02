@@ -218,6 +218,10 @@
         - StepVerdict::Rollback(reason): calls session.rollback(), reverting RAM in <8ms
           - and discarding the broker upper file + tombstones
         - StepVerdict::YieldToHost: halts vCPU registers awaiting external input
+        - SDK post-exec gates return PostExecAction, mapped to this lattice
+        - PostExecAction::Proceed maps to StepVerdict::Commit
+        - PostExecAction::RollbackAndHalt maps to StepVerdict::Rollback
+        - YieldToHost is reached via Verdict::Suspend { until: Approval }
       - Fail-closed invariant: unhandled post-execution failures or evaluation
         - timeouts trigger automatic hardware rollback before releasing workload
     - Delta chain compaction

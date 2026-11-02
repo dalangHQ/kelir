@@ -339,7 +339,7 @@ pub trait SystemTelemetryParticipant {
 }
 pub trait FsInterposer {
     /// Verdict::Pass = fall through; Patch = serve (payload per ring:
-    /// FsChunk carries the served inode attributes).
+    /// FsInode carries the served inode attributes for lookup).
     fn on_fs_lookup(&self, _path: &Path) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
     fn on_fs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
     /// Synchronous hot-path inspection. Must be evaluated in native Rust.

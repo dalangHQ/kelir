@@ -37,7 +37,8 @@
       - Fast-fail TCP RST applies exclusively to interceptor Err(Reject)
     - Pre-policy drop zones
       - Link-local quarantine: 169.254.0.0/16 and fe80::/10 dropped before policy
-      - Cloud metadata IMDS endpoints dropped unconditionally at L3 ingress ring
+      - Exception: 169.254.169.254 is intercepted at L3 and translated to vault vsock
+      - Cloud metadata IMDS endpoints except 169.254.169.254 dropped at L3 ingress
   - Raw packet interception points
     - Outbound frames: .intercept(Ring.NetOutbound, ...) dispatches L2/L4
     - Inbound frames: .intercept(Ring.NetInbound, ...) dispatches L2/L4

@@ -61,10 +61,10 @@ use kelir::{
         AnyPlugin, KelirPlugin, PluginError,
         FsInterposer, Verdict, ConsoleInterposer,
         TrapInterposer, SystemTelemetryParticipant,
-        FsInodeAttr, WatchdogEvent, WatchdogVerdict,
+        WatchdogEvent, WatchdogVerdict,
         NetInterposer,
     },
-    protocol::{ProcessExit, SuspendUntil},
+    protocol::{PatchPayload, ProcessExit, SuspendUntil},
 };
 
 /// Guest path served as a synthetic inode, and the secret-token shape the
@@ -207,7 +207,7 @@ impl FsInterposer for HookMatrixPlugin {
         if path.as_os_str() != IDENTITY_PATH {
             return Ok(Verdict::Pass);
         }
-        Ok(Verdict::Patch(FsInodeAttr {
+        Ok(Verdict::Patch(PatchPayload::FsInode {
             // 0o400 exactly, no permission fallback (02).
             mode: 0o400,
             uid: 0,
@@ -340,6 +340,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         },
         page_size_kb: 4,
         deterministic_clock: false,
+        network_off: false,
         pinned_clocksource: None,
         ns_per_instruction: None,
         preemption_grace_ms: 0,

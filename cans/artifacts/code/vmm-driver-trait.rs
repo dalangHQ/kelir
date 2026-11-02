@@ -63,6 +63,9 @@ pub struct VmConfig {
     pub pinned_clocksource: Option<String>,
     pub ns_per_instruction: Option<u32>,
     pub preemption_grace_ms: u64,
+    /// Replay profiles declare network: off (plugins/replay.md): when
+    /// true, the wire plane drops all egress for this session.
+    pub network_off: bool,
 }
 
 /// Guest clock captured with a snapshot, stored as guest_clock.json in
@@ -177,6 +180,42 @@ pub struct SharedMemoryHandle {
     pub guest_phys_addr: u64,
     pub host_ptr: *mut u8,
     pub memfd_raw: std::os::unix::io::RawFd,
+}
+
+/// Driver-side error for every VmmDriver method. Distinct from
+/// PluginError (plugin-side, plugin-trait.rs): driver failures are
+/// backend failures, reported here so drivers never borrow the
+/// plugin error type. Variants cover the backend's own failure modes;
+/// a driver that only has an OS error reports it via Io.
+#[derive(Debug)]
+pub enum VmmError {
+    /// Backend does not support the requested operation on this host.
+    Unsupported(String),
+    /// Backend configuration or state is invalid for the operation.
+    InvalidState(String),
+    /// Underlying OS / hypervisor error.
+    Io(std::io::Error),
+    /// Guest or host resource exhausted (memory, fds, vCPUs).
+    ResourceExhausted(String),
+}
+
+impl std::fmt::Display for VmmError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VmmError::Unsupported(m) => write!(f, "unsupported: {}", m),
+            VmmError::InvalidState(m) => write!(f, "invalid state: {}", m),
+            VmmError::Io(e) => write!(f, "io: {}", e),
+            VmmError::ResourceExhausted(m) => write!(f, "exhausted: {}", m),
+        }
+    }
+}
+
+impl std::error::Error for VmmError {}
+
+impl From<std::io::Error> for VmmError {
+    fn from(e: std::io::Error) -> Self {
+        VmmError::Io(e)
+    }
 }
 
 #[async_trait]

@@ -85,6 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         },
         page_size_kb: 4,
         deterministic_clock: false,
+        network_off: false,
         pinned_clocksource: None,
         ns_per_instruction: None,
         preemption_grace_ms: 0,
