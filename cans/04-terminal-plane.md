@@ -61,6 +61,7 @@
       - Reissuing the same cursor returns the exact byte sequence
       - Replay is idempotent; no byte duplication, no offset shift
       - Guarantee spans disconnect-and-reattach, and process restart
+      - Web terminal resume: reissuing cursor prevents drops across socket reconnects
     - Tail mode
       - `since_cursor=None` starts at the tail
       - Optional `follow=true` streams new chunks as they append

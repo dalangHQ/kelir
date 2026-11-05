@@ -1,4 +1,6 @@
 - CLI
+  - Scope boundary
+    - Runner commands absent (no kelir run): see: 15-operations.md#Developer-CLI
   - Inspection commands
     - logs tails guest output with cursor based replay
       - Cursors resume a tail from an earlier point

@@ -11,7 +11,8 @@
       - UDP NAT slab entries for the session are dropped; no port leak
       - Sockets are not restored from snapshots; there is no socket state to restore
       - rollback semantics: 08-lifecycle.md#Rollback
-  - Userspace network stack    - Frame termination
+  - Userspace network stack
+    - Frame termination
       - Guest virtio-net Ethernet frames terminate directly in host process memory
       - Outbound connections translated to plain unprivileged host sockets
       - Zero host interface creation, zero CAP_NET_ADMIN, zero IP routing changes

@@ -50,6 +50,7 @@
     - Containerd policy: ContainerdOrchestrationPolicy registered via PipelineBinder
     - Shim maps to Session execution with flat kelir-pack + policy config
     - Containerd boundary: see: #Process-vs-plugin-boundary
+    - Kubernetes workload isolation: executes K8s pod specs as native microVMs
   - OpenShell gRPC driver
     - Architecture (openshell): see: [1]
     - Server binary crate: kelir-adapters/openshell-driver
@@ -73,5 +74,6 @@
     - In-process SDK client wrapper
       - Consumes standard Kelir runtime without hypervisor modifications
     - Process vs plugin boundary: thin client wrapper, no in-guest shims or daemons
+    - Drop-in SDK parity: existing agent harnesses execute against Kelir unmodified
 
 - [1]: artifacts/diagrams/ingestion-adapters.txt

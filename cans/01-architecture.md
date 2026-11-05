@@ -6,6 +6,7 @@
         - Guest PID 1 is minimal paravirtual micro-init (kelir-shim, <50KB musl)
         - Shim provides VirtIO channel multiplexing, seccomp trap forward, and zombie reaping
         - Workload environment variables, libraries, and syscall paths remain untouched
+        - Out-of-band lifecycle: forks and rollbacks execute beneath guest awareness
       - In-process microkernel
         - Execution substrate
           - Virtualization runs in host consumer memory via direct C-FFI

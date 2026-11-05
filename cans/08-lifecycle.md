@@ -79,6 +79,7 @@
         - Not-inherited items have host-side identity
         - Cannot safely clone across a session boundary
     - Typical use: parallel agent exploration (5+ candidate strategies)
+    - Warm tenant provisioning: clones pre-warmed base instances under 10ms
     - Policy dry-run CoW probing
       - Clones parent VM to evaluate untrusted candidate commands
       - Policy denial in probe child aborts branch in <1ms with zero parent impact
@@ -319,6 +320,7 @@
       - Running and Starting states both accept reattach; Starting defers
         - until boot completes
       - Reattachment is idempotent across concurrent clients
+        - Stateless host API daemons multiplex relay.sock across client sessions
     - Runner watchdog
       - A `parent_watchdog` thread in the runner monitors the SQLite catalog
         - for explicit `session.stop` or `session.drain` requests
