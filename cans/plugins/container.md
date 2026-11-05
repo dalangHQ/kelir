@@ -10,6 +10,7 @@
     - Lifecycle attachment (container): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (container)
     - Exports ContainerService through PipelineBinder for container lifecycle tracking
+    - Service surface (container): see: artifacts/code/container-service.rs
   - Invariants and policy (container)
     - Non-nested OCI container execution
       - Configures rootless Podman and crun runtime environments inside microVM
@@ -21,6 +22,7 @@
     - Image extraction without nested VMX
       - Ingests pre-cached OCI image tarballs from host package cache
       - Prevents nested hypervisor escape vectors on platforms lacking nested VMX/SVM
+    - Rootless container execution: see: artifacts/examples/container.py
   - Error and return semantics (container)
     - Hook signature (container): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (container)

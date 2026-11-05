@@ -7,13 +7,16 @@ termination by default, no CA injection. The guest root filesystem
 and the migration snapshot are local EROFS fixtures under ./fixtures/;
 no remote image translation or snapshot streaming is involved.
 
-Mounts:     db-proxy, ledger.
+Mounts:     db-proxy, ledger, transaction.
 Primitives: export_snapshot, import_snapshot.
-Commit:     two-phase commit around the snapshot export — on_pre_commit
-            pauses vCPUs and drains FUSE in-flight ops (the handler
-            flushes the host ledger before staging); on_post_commit(True)
-            is a per-entry leaf commit, on_post_commit(False) unlinks
-            staging and drops the broker upper file and tombstones.
+Commit:     two-phase commit around the snapshot export, inside a
+            TransactionService scope declaring the migration subtree
+            and schema. on_pre_commit pauses vCPUs and drains FUSE
+            in-flight ops (the handler flushes the host ledger before
+            staging); on_post_commit(True) is a per-entry leaf commit,
+            on_post_commit(False) unlinks staging and drops the broker
+            upper file and tombstones. A failed migration rolls back
+            to the pre-migration savepoint and aborts the scope.
 
 Requirements:
     kelir>=1.0
@@ -36,6 +39,9 @@ from kelir.plugins.db_proxy import (
 )
 from kelir.plugins.ledger import (
     LedgerConfig, LedgerPlugin, ReceiptConfig,
+)
+from kelir.plugins.transaction import (
+    TransactionConfig, TransactionPlugin,
 )
 
 
@@ -100,6 +106,17 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
                 include_syscall_count=False,
             ),
         )))
+
+        # Transaction: values from the default profile
+        # (fixtures/kelir.yaml#plugins.transaction.two_phase_commit).
+        # The plugin coordinates the 2PC commit across the CoW broker,
+        # db-proxy, and lock broker; the scope in main() declares the
+        # blast radius and the commit/abort decision.
+        .plugin(TransactionPlugin(TransactionConfig(
+            timeout_ms=30000,
+            auto_rollback_on_taint=True,
+            flush_fuse_before_commit=True,
+        )))
     )
 
     def pre_migrate(c: HandlerContext) -> Verdict:
@@ -127,8 +144,11 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
     # ── TWO-PHASE COMMIT (plugins/transaction.md) ──────────
     # LifecycleParticipant commit hooks, registered the same decorator
     # way as on_vm_ready / on_vm_shutdown in autonomous-swe-agent.py.
-    # They bracket the snapshot export in main(): the runtime pauses
-    # vCPUs and drains FUSE in-flight ops, then these handlers run.
+    # They bracket the snapshot export in main(): the mounted
+    # TransactionPlugin pauses vCPUs and drains FUSE in-flight ops
+    # and coordinates the broker commit and SQL COMMIT/ROLLBACK, while
+    # these handlers add this example's own prepare step — flushing
+    # the host ledger before staging.
     @builder.on_pre_commit
     async def _pre_commit(session: Session) -> None:
         # Prepare phase: make the host side durable BEFORE the guest
@@ -166,28 +186,40 @@ async def main() -> None:
         with open(LOCAL_SNAPSHOT, "rb") as f:
             await session.vm.import_snapshot(f.read())
 
-        run = await session.spawn(
-            "python", ["-m", "app.migrate", "--schema", "migrate"],
-            cwd="/workspace/migrations",
-            params=MigrateParams(
-                action="migrate", schema_name="migrate",
-                target_version=42, dry_run=False,
-            ),
-        )
-        if run.exit_code != 0:
-            raise SystemExit(f"migration failed: {run.exit_code}")
+        # Commit point (plugins/transaction.md): the migration and the
+        # snapshot export run inside a TransactionService scope declaring
+        # the migration subtree and schema. Exporting the post-migration
+        # state stages the snapshot; on_pre_commit already paused vCPUs,
+        # drained FUSE in-flight ops, and flushed the host ledger, and
+        # on_post_commit(True) per-entry leaf-commits the staged snapshot
+        # into LOCAL_SNAPSHOT while on_post_commit(False) unlinks staging
+        # and drops the broker upper file and tombstones, leaving the last
+        # good fixture intact. The next cold start hydrates from the same
+        # local file. Scope exit commits; a raised error aborts it.
+        async with session.cap.transaction.scope(
+            "migrate-42",
+            paths=["/workspace/migrations"],
+            schemas=["migrate_schema"],
+        ) as tx:
+            # Savepoint before the migration: a failed migration rolls
+            # back to the pre-migration state without aborting the
+            # parent transaction first; the raise below then aborts it.
+            sp = await tx.savepoint()
+            run = await session.spawn(
+                "python", ["-m", "app.migrate", "--schema", "migrate"],
+                cwd="/workspace/migrations",
+                params=MigrateParams(
+                    action="migrate", schema_name="migrate",
+                    target_version=42, dry_run=False,
+                ),
+            )
+            if run.exit_code != 0:
+                await tx.rollback_to_savepoint(sp)
+                raise SystemExit(f"migration failed: {run.exit_code}")
 
-        # Commit point (plugins/transaction.md): exporting the
-        # post-migration state stages the snapshot; on_pre_commit already
-        # paused vCPUs, drained FUSE in-flight ops, and flushed the host
-        # ledger, and on_post_commit(True) per-entry leaf-commits the
-        # staged snapshot into LOCAL_SNAPSHOT while on_post_commit(False)
-        # unlinks staging and drops the broker upper file and tombstones,
-        # leaving the last good fixture intact. The next cold start
-        # hydrates from the same local file.
-        out = await session.vm.export_snapshot()
-        with open(LOCAL_SNAPSHOT, "wb") as f:
-            f.write(out)
+            out = await session.vm.export_snapshot()
+            with open(LOCAL_SNAPSHOT, "wb") as f:
+                f.write(out)
 
         ledger = session.cap.ledger
         final = await ledger.finalize(

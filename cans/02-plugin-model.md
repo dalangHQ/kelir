@@ -268,8 +268,8 @@
       - chaos, ledger: autonomous-swe-agent.{rs,ts,py}
       - vault: autonomous-swe-agent.{rs,ts,py} via wire-plane vaults only
       - mesh: multi-vm-swarm.rs
-      - container: no demonstrating example yet
-      - transaction: no demonstrating example yet
+      - container: container.py
+      - transaction: db-backed-runtime.py
       - wire-ingress, mcp, tool-guard: serverless-webhook.ts
       - replay: replay.rs
       - profile: profile.rs

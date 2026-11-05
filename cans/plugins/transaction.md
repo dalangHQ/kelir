@@ -11,6 +11,7 @@
     - Lifecycle attachment (transaction): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (transaction)
     - Exports TransactionService via PipelineBinder for multi-resource 2PC management
+    - Service surface (transaction): see: artifacts/code/transaction-service.rs
   - Invariants and policy (transaction)
     - Multi-resource 2PC coordination
       - Synchronizes commit/abort across host CoW broker, db-proxy, and lock broker
@@ -36,6 +37,7 @@
       - Uncommitted transactions exceeding timeout_ms abort automatically
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.transaction.two_phase_commit.timeout_ms
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.transaction.two_phase_commit
+    - Two-phase commit demonstration: see: artifacts/examples/db-backed-runtime.py
   - Error and return semantics (transaction)
     - Hook signature (transaction): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (transaction)
