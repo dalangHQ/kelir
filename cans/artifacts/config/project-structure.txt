@@ -14,6 +14,20 @@ kelir/
 ├── package.json                       # Root devDependencies (Turborepo/Biome/TypeScript)
 ├── pyproject.toml                     # Root Python configuration (Ruff/Mypy/Hatchling)
 │
+├── cans/                              # ── SPECIFICATION (CANS corpus) ──
+│   ├── 00-overview.md to 15-operations.md  # 16 core spec files
+│   ├── _rules.yaml                    # Checker rules: node length, refs, aliasing, forbidden targets
+│   ├── AGENTS.md                      # Agent instructions for working in cans/
+│   ├── _collab/                       # Conflicts, handoffs, task tracking
+│   ├── plugins/                       # 14 plugin specs (13 community + commercial.md)
+│   └── artifacts/                     # Terminal artifacts: code, diagrams, examples, config
+│       ├── code/                      # SSOT code signatures (wire protocol, traits, services)
+│       ├── diagrams/                  # ASCII architecture diagrams
+│       ├── examples/                  # Demonstrating examples (Rust/TS/Python)
+│       ├── config/                    # ci.yml, justfile, plugin-ci-reusable.yml, project-structure.txt
+│       ├── README.md                  # SSOT contract for artifacts
+│       └── taxonomy.html              # Capability taxonomy
+│
 ├── crates/                            # ── RUST SYSTEMS LAYER ──
 │   │
 │   ├── kelir/                         # Facade crate: single Cargo dependency re-exporting kelir-core + feature-gated kelir-plugins/*
@@ -58,8 +72,6 @@ kelir/
 │   ├── kelir-transport/               # Supporting crate: Stream trait + SPSC ring, AF_VSOCK, named-pipe backends
 │   ├── kelir-catalog/                 # Supporting crate: SQLite schema, pool, migration helpers (used by core)
 │   ├── kelir-otlp/                    # Supporting crate: zero-allocation metric registry and OTLP exporter
-│   ├── kelir-pack/                    # Core primitive: offline two-phase in-memory compiler, distributed as external CLI binary only. Phase 1: layer tar headers only into a radix tree in host RAM, inline whiteouts mutate tree nodes in place, final topology/inode count/chunk extents computed; Phase 2: payload bodies into CAS blobs, finalized EROFS blocks emitted from Phase 1 map, no overlay/union driver materialized, Phase 1 RAM bounded by 500k inode ceiling (<30MB typical), zero in-process OCI client/layer unpacker/EROFS builder in supervisor; canonical rootfs BLAKE3 digest computed during the build; unpack admission: 15:1 expansion clamp, 8 GiB single-layer budget, 500,000 inode ceiling, E_LAYER_OVERSIZE on excess
-│   │
 │   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
 │   │   ├── Cargo.toml                 # Depends on kelir-interface only
 │   │   └── src/
@@ -90,7 +102,7 @@ kelir/
 │   │   │       ├── test_cow_fork.rs   # KVM userfaultfd CoW fork in <15ms
 │   │   │       └── test_rollback.rs   # KVM rollback test
 │   │   ├── driver-hvf/                # Native macOS Apple Silicon HVF via raw Hypervisor.framework FFI
-│   │   ├── driver-openvmm/            # Windows WHP + ConPTY + HV_SOCKET (scoped strictly to windows-sys)
+│   │   ├── driver-openvmm/            # Windows WHP + ConPTY (scoped strictly to windows-sys)
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/lib.rs             # Microsoft WHP & MSHV hypervisor implementation
 │   │   ├── driver-avf/                # Android Virtualization Framework via /dev/avf and pKVM
@@ -159,9 +171,12 @@ kelir/
 │   │       └── tests/test_transaction.rs
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
-│   │   └── mcp-server/                # Model Context Protocol stdio terminal server
+│   │   ├── mcp-server/                # Model Context Protocol stdio terminal server
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/main.rs            # Thin SDK client; loads plugin-mcp
+│   │   └── kelir-pack/                # OCI→EROFS compiler; community adapter, see: 12-adapters.md
 │   │       ├── Cargo.toml
-│   │       └── src/main.rs            # Thin SDK client; loads plugin-mcp
+│   │       └── src/main.rs            # External CLI binary only
 │   │
 │   ├── kelir-integration/             # Cross-plugin integration tests (real hypervisor required)
 │   │   ├── Cargo.toml                 # Dev-depends on all plugins + one driver
@@ -184,7 +199,8 @@ kelir/
 │   │       ├── spec.rs                # kelir spec check/export: AOT profile validation, canonical emit
 │   │       ├── scaffold.rs            # plugin new: scaffold crate, trait stubs, empty vectors
 │   │       ├── manifest.rs            # plugin manifest: auto-generated manifest from AST
-│   │       └── rings.rs               # plugin rings --show: ring inventory and masks
+│   │       ├── rings.rs               # plugin rings --show: ring inventory and masks
+│   │       └── logs.rs                # kelir logs: tail session output with cursor replay
 │   │
 │   └── kelir-bindings/                # FFI Translation Layers
 │       ├── napi/                      # Rust -> Node.js NAPI-RS bridge

@@ -21,9 +21,9 @@ build-shim target="aarch64-unknown-linux-musl":
     cargo zigbuild -p kelir-shim --release --target {{target}}
     @ls -lh target/{{target}}/release/kelir-shim
 
-# Builds TS napi bindings
+# Builds all TS packages: @kelir/core plus every @kelir/plugin-* binding
 build-ts:
-    pnpm --filter @kelir/core build
+    pnpm -r build
 
 # ── Audit & validation ──
 # check-spec is the spec gate only (refs + structure + redundancy).
@@ -71,9 +71,9 @@ check-hygiene:
         echo "FAIL: Inline #[cfg(test)] forbidden in src/. Move to tests/:"
         echo "$inline_tests" && exit 1
     fi
-    unsafe_violations=$(grep -rn --include="*.rs" 'unsafe ' crates/ | grep -v 'crates/kelir-drivers/' | grep -v 'crates/kelir-transport/' || true)
+    unsafe_violations=$(grep -rn --include="*.rs" 'unsafe ' crates/ | grep -v 'crates/kelir-drivers/' | grep -v 'crates/kelir-transport/' | grep -v 'crates/kelir-shim/' || true)
     if [ -n "$unsafe_violations" ]; then
-        echo "FAIL: Unsafe code detected outside driver/transport enclaves:"
+        echo "FAIL: Unsafe code detected outside driver/transport/shim enclaves:"
         echo "$unsafe_violations" && exit 1
     fi
     echo "OK: All files <= 1000 LOC; zero inline tests in src/."
@@ -127,13 +127,22 @@ test-plugin plugin:
 test-shim:
     cargo nextest run -p kelir-shim
 
-# Driver primitives; excludes test_hw_* paths that need real hardware
+# Driver primitives (Linux); excludes test_hw_* paths that need real hardware
+# Windows openvmm and macOS hvf run in their platform jobs, not here.
 test-drivers:
-    cargo nextest run -p driver-rustvmm -p driver-openvmm -p driver-bwrap -E 'not test(test_hw_)'
+    cargo nextest run -p driver-rustvmm -p driver-bwrap -E 'not test(test_hw_)'
+
+# Windows driver unit tests; run on Windows only (driver-openvmm is WHP).
+test-drivers-windows:
+    cargo nextest run -p driver-openvmm -E 'not test(test_hw_)'
+
+# macOS driver unit tests; run on Apple Silicon only (driver-hvf is HVF).
+test-drivers-macos:
+    cargo nextest run -p driver-hvf -E 'not test(test_hw_)'
 
 # Dynamic SDK test suites: ForeignPluginProxy, memory pinning, unhandled freeze recovery
 test-sdks: build-ts
-    pnpm --filter @kelir/core test
+    pnpm -r test
     uv run pytest packages/py
 
 # Cross-plugin integration; requires real hypervisor (KVM/HVF)

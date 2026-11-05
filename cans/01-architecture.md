@@ -74,8 +74,9 @@
         - Unsafe memory isolation
           - Workspace enforces unsafe_code = "forbid" by default
           - Core, interface, catalog, otlp, and plugins contain zero unsafe
-          - Unsafe restricted to kelir-drivers and kelir-transport enclaves
-          - Every driver unsafe block mandates a verified // SAFETY: invariant
+          - Unsafe restricted to kelir-drivers, kelir-transport, and kelir-shim enclaves
+          - kelir-shim needs unsafe for raw libc syscalls: ioctl, openpty, setrlimit, waitpid
+          - Every unsafe block in those enclaves mandates a verified // SAFETY: invariant
         - Defensive boundary arithmetic
           - Guest-derived numbers are hostile: offsets, descriptors, ring indices
           - Direct memory slicing and unchecked array indexing are forbidden
@@ -362,7 +363,7 @@
         - TSC-deadline advertised unconditionally across AMD and Hygon
         - Unknown x86 vendor masks normalize to canonical KVM profile
       - driver-hvf: macOS HVF + 2MB Stage-2 chunked page promoter CoW
-      - driver-openvmm: Windows WHP + ConPTY + HV_SOCKET
+      - driver-openvmm: Windows WHP + ConPTY
         - Restore sequence invariant: Local APIC state commits before TSC
         - Setting TSC deadlines before APIC initialization is prohibited
       - driver-avf: Android Virtualization Framework via /dev/avf and pKVM

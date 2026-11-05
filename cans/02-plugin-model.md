@@ -274,6 +274,7 @@
       - Community plugins (in-process engine): cans/plugins/
         - mcp, mesh, tool-guard, wire-ingress, vault, container
         - replay, ledger, profile, chaos, transaction
+        - db-proxy, supply-chain
       - Commercial plugins: interface in plugins/commercial.md
         - hyper-density, cas-snapshot
         - oci-translator, openshell-coordinator
@@ -319,7 +320,7 @@
         - Action-coverage gate: see: [3]
     - Behavior of each: at its plugin file
       - Rosters: see: #Catalog-tiering
-      - File resolution: see: 15-operations.md#Spec-layout
+      - File resolution: see: 15-operations.md#Project-structure
       - oci-translator: containerd-boundary policy only
         - Ingestion primitive: see: 12-adapters.md#Ingestion-matrix
       - Pointer rule: plugin files are leaf targets; crate dependencies live in the plugin file

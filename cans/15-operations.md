@@ -37,15 +37,15 @@
       - Public repos: free Linux minutes
     - Strategy
       - 90% of checks on Linux x86
-      - macOS Apple Silicon jobs limited to compile gate for driver-hvf
+      - macOS Apple Silicon jobs run driver-hvf unit tests
       - Do not waste runner minutes on full matrix
-      - Windows CI cells run transport conformance only
+      - Windows CI cells run transport conformance plus driver-openvmm unit tests
         - Shared-memory SPSC ring path
         - Named-pipe fallback path
         - No AF_VSOCK assumptions may leak into shared code; a compile
           - lint enforces the abstraction; see: 01-architecture.md#Transport-engine-abstraction
         - Full workflow runs on self-hosted Windows WHP runners
-        - GitHub-hosted cells run the transport unit tests only
+        - GitHub-hosted cells run transport and driver-openvmm unit tests only
     - Enforced invariants: CI matrix
       - Rootfs EROFS image cold-boot budget: see: [2]
       - Concurrency cancelled per ref (cancel-in-progress)
@@ -259,54 +259,23 @@
       - `plugin check`: same audit as CI, <30s, no network
       - `plugin vectors`: regenerate vectors.json from fixtures
       - `plugin rings --show`
+      - `kelir-plugin-cli -- bump-core --channel <released|main>`: pins the core channel
+        - External plugin repos pin released or main before running vectors
+      - `kelir-plugin-cli -- attest --sign`: signs attestation.json for a plugin repo
+      - `kelir-plugin-cli fixtures --verify`: verifies pinned test oracles against fixtures.toml
       - `kelir-pack`: CLI invocation for single-pass ingestion compiler;
         - see: 12-adapters.md#Ingestion-matrix
     - Shares implementation with CI
       - A local pass that CI rejects means the CLI is broken
   - Project structure
     - see: artifacts/config/project-structure.txt
-    - Three language layers
-      - Rust: crates/ via Cargo Workspaces
-      - TypeScript: packages/ts/ via PNPM Workspaces
-      - Python: packages/py/ via UV/Hatch
-    - Six crate families
-      - kelir: facade crate, single Cargo dependency, feature-gated plugins
-      - kelir-interface: pure leaf types, traits, wire framing, zero engine deps
-      - kelir-core: stripped microkernel (bus, dispatch, vmm, trap gate)
-      - kelir-plugins: community plugin family
-        - Community roster: see: [4]
-      - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
-      - kelir-shim: in-guest musl PID 1 (<50KB)
-      - Supporting crates
-        - kelir-transport: Stream trait + SPSC ring, AF_VSOCK, named-pipe backends
-        - kelir-catalog: SQLite schema, pool, migration helpers (used by core)
-        - kelir-otlp: zero-allocation metric registry and OTLP exporter
-    - Spec layout
-      - Core plane files: cans/00-overview.md to cans/15-operations.md
-      - Plugin spec files: one <name>.md per plugin
-        - Community: cans/plugins
-        - Commercial: ../kelir-cloud/cans/plugins
-    - Test infrastructure
-      - kelir-plugin-testkit: mock driver, mock bus, HandlerCtx constructors
-      - Not runtime; dev-dependency of every plugin-*
-    - Integration crate
-      - kelir-integration: cross-plugin paths; real hypervisor required
-    - Three adapter crates
-      - mcp-server (community); containerd-shim, openshell-grpc (kelir-cloud)
-      - see: 12-adapters.md
-    - Two binding crates
-      - napi, pyo3
-    - Tooling crate
-      - kelir-plugin-cli: see: #Subcommands
-    - Registry index
-      - Registry entries: see: #Plugin-registry
+    - Plugin testkit is dev-only; see: 02-plugin-model.md#Plugin-testkit
+    - Integration needs a real hypervisor; see: #Per-plugin-CI
+    - Adapter crates: see: 12-adapters.md
+    - Tooling crate kelir-plugin-cli: see: #Subcommands
+    - Registry index: see: #Plugin-registry
     - Test fixtures
-      - External test oracles fetched into tests/fixtures via kelir-plugin-cli fixtures --fetch
-      - Fixture manifests pinned with cryptographic hashes in fixtures.toml
       - SHA-256 and BLAKE3 verification mandatory before mounting test images
-      - tests/fixtures/kernel: pinned per-arch vmlinux binaries
-      - tests/fixtures/rootfs: pinned EROFS guest rootfs images
-      - tests/fixtures/payloads: high-entropy and exploit test binaries
 
 - [1]: artifacts/config/justfile
 - [2]: 01-architecture.md#Boot-budget

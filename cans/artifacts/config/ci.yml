@@ -71,9 +71,9 @@ jobs:
             echo "ERROR: Inline #[cfg(test)] detected in src/. Move tests to tests/:"
             echo "$INLINE_TESTS" && exit 1
           fi
-          UNSAFE_VIOLATIONS=$(grep -rn --include="*.rs" 'unsafe ' crates/ | grep -v 'crates/kelir-drivers/' | grep -v 'crates/kelir-transport/' || true)
+          UNSAFE_VIOLATIONS=$(grep -rn --include="*.rs" 'unsafe ' crates/ | grep -v 'crates/kelir-drivers/' | grep -v 'crates/kelir-transport/' | grep -v 'crates/kelir-shim/' || true)
           if [ -n "$UNSAFE_VIOLATIONS" ]; then
-            echo "ERROR: Unsafe code detected outside isolated driver/transport enclaves:"
+            echo "ERROR: Unsafe code detected outside driver/transport/shim enclaves:"
             echo "$UNSAFE_VIOLATIONS" && exit 1
           fi
 
@@ -166,10 +166,10 @@ jobs:
       - name: Build bindings
         run: |
           pnpm install --frozen-lockfile
-          pnpm --filter @kelir/core build
+          pnpm -r build
           uv venv && uv pip install -e "packages/py[dev]"
       - name: Execute TypeScript SDK tests
-        run: pnpm --filter @kelir/core test
+        run: pnpm -r test
       - name: Execute Python SDK tests
         run: uv run pytest packages/py
       - name: Parity
@@ -289,7 +289,7 @@ jobs:
       - name: Verify Pinned Test Oracles
         run: cargo run -p kelir-plugin-cli -- fixtures --verify
       - name: Driver unit tests (excludes real-hardware paths)
-        run: cargo nextest run -p driver-rustvmm -p driver-openvmm -p driver-bwrap -E 'not test(test_hw_)'
+        run: cargo nextest run -p driver-rustvmm -p driver-bwrap -E 'not test(test_hw_)'
       # Compile-only: driver-avf (Android) and driver-proot (Termux) have
       # no CI test runner; same as just check-drivers.
       - name: Check untested drivers (avf, proot)
@@ -343,6 +343,8 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.5
       - name: Transport conformance (SPSC rings + named pipes only)
         run: cargo nextest run -p kelir-transport
+      - name: Windows driver unit tests (excludes real-hardware paths)
+        run: cargo nextest run -p driver-openvmm -E 'not test(test_hw_)'
 
   # ─── 7. MACOS APPLE SILICON GATE (Zero Bloat) ──────────────
   check-macos-hvf:
@@ -352,7 +354,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: mozilla-actions/sccache-action@v0.0.5
-      # Verify compilation of native Apple Silicon HVF driver
-      - name: Check native HVF driver
-        run: cargo check -p driver-hvf
+      # Unit tests for the native Apple Silicon HVF driver (macOS runners
+      # have hypervisor entitlements; real-hardware paths stay excluded)
+      - name: Test native HVF driver
+        run: cargo nextest run -p driver-hvf -E 'not test(test_hw_)'
 

@@ -57,7 +57,7 @@
     - PTY allocation flag
       - EXEC_IO_SPEC header carries FLAG_ALLOC_PTY (0x04), zero by default
       - Set: shim calls openpty() for the ExecSlot; workload binds slave PTY
-      - Window resize rides stream 0x03 (stream control), not Channel 0x0010
+      - Window resize rides stream 0x03 (stream control)
       - stdout and stderr remain raw over 0x01 and 0x02 regardless of PTY
       - Port 0 console stays reserved for human break-glass attach only
     - Slot saturation backpressure
