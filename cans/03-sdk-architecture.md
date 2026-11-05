@@ -7,7 +7,7 @@
       - Adding a language: bindings crate + vector consumer + surface manifest
       - Runtime safety matrix: see: artifacts/diagrams/sdks-invariants.txt
       - Failure occurs at the earliest lifecycle phase native to each runtime
-      - Handler purity and idempotency: see: 01-architecture.md#Codebase-invariants
+      - Handler purity and idempotency: see: [1]
       - Unhandled errors abort hypervisor immediately to eliminate zombie runs
     - Builder consumption model across languages
       - Rust: affine typestate; .plugin() consumes self by value
@@ -178,7 +178,7 @@
     - Plugins accumulate in a monomorphic HList; HandlerCtx<'a, Plugins, Params>
       - resolves capabilities via Has<T>, infallible at the call site
     - Plugin context may hold Arc<Mutex<_>>; that is userland, not engine state
-    - Engine functional-core invariant: see: 01-architecture.md#Codebase-invariants
+    - Engine functional-core invariant: see: [1]
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
     - .plugin() accepts core KelirPlugin plus only needed ring traits
       - Stateless plugins implement KelirPlugin with zero fork_state boilerplate
@@ -264,3 +264,5 @@
       - Rust: async-trait, JoinSet, Arc<Mutex<>> states
       - TypeScript: Promise.all fan-out, generic inference
       - Python: asyncio.gather, async with, Pydantic v2
+
+- [1]: 01-architecture.md#Codebase-invariants

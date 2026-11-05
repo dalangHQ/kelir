@@ -44,27 +44,27 @@
     - Storage hacks: host-boundary write mutations and whiteout corruption
     - Virtualization hacks: fragmented platform-specific VM scripts
     - Agent trust hacks: polling unverified guest JSON harnesses
-    - Terminal details: see: 04-terminal-plane.md
-    - Storage details: see: 05-storage-plane.md
-    - Trust details: see: 10-attestation.md
+    - Terminal details: see: [1]
+    - Storage details: see: [2]
+    - Trust details: see: [3]
   - Use cases
     - Parallel agent exploration: see: 08-lifecycle.md#CoW-fork
-    - Human approval waits with zero CPU: see: 08-lifecycle.md#Suspend-and-resume
-    - Autonomous step gating & idle pause: see: 08-lifecycle.md
-    - Multi-resource atomic commit (2PC): see: 02-plugin-model.md#First-class-plugins
+    - Human approval waits with zero CPU: see: [4]
+    - Autonomous step gating & idle pause: see: [5]
+    - Multi-resource atomic commit (2PC): see: [6]
     - Time-sensitive tests (JWT, cron, certs): see: 08-lifecycle.md#Clock-skew
     - Deterministic execution replay: see: 08-lifecycle.md#Clock-invariants
-    - Relational database governance: see: 02-plugin-model.md#First-class-plugins
-    - Supply chain package protection: see: 02-plugin-model.md#First-class-plugins
+    - Relational database governance: see: [6]
+    - Supply chain package protection: see: [6]
     - Zero-copy high-throughput IPC: see: 01-architecture.md#Shared-memory-channel
-    - Cross-host portable snapshot bundles: see: 09-snapshots.md#Archives-and-portability
-    - Flaky-API and disk-full resilience: see: 02-plugin-model.md#First-class-plugins
-    - Container builds without nested VMX: see: 02-plugin-model.md#First-class-plugins
-    - Human break-glass on agent loops: see: 08-lifecycle.md#Break-glass
+    - Cross-host portable snapshot bundles: see: [7]
+    - Flaky-API and disk-full resilience: see: [6]
+    - Container builds without nested VMX: see: [6]
+    - Human break-glass on agent loops: see: [8]
     - Low-memory SBC execution: see: 01-architecture.md#Embedded-profile
-    - Idle scale-to-zero: see: 08-lifecycle.md#Suspend-and-resume
+    - Idle scale-to-zero: see: [4]
     - Hydrate state from streaming snapshot bundle
-      - see: 09-snapshots.md#Archives-and-portability
+      - see: [7]
     - Zero-downtime connection parking
       - see: 07-wire-plane.md#Transparent-L4-stream-diversion
     - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends
@@ -72,21 +72,30 @@
     - Core foundation: see: 01-architecture.md
     - Plugin model & catalog (13 optional domain plugins): see: 02-plugin-model.md
     - SDK architecture: see: 03-sdk-architecture.md (parity)
-    - Terminal plane: see: 04-terminal-plane.md (engine native)
-    - Storage plane: see: 05-storage-plane.md (engine native)
+    - Terminal plane: see: [1] (engine native)
+    - Storage plane: see: [2] (engine native)
     - Storage catalog: see: 06-storage-catalog.md (catalog ledger)
     - Wire plane: see: 07-wire-plane.md (engine native)
     - Host plane: host OS hooks — see: 01-architecture.md#Host-plane-subsystem
-    - Lifecycle: see: 08-lifecycle.md (checkpoint engine)
+    - Lifecycle: see: [5] (checkpoint engine)
     - Snapshots & archives: see: 09-snapshots.md (portable state)
-    - Attestation subsystem proofs: see: 10-attestation.md
+    - Attestation subsystem proofs: see: [3]
     - Protocol: see: 11-protocol.md (wire messages)
     - Host state engine: SQLite catalog, WAL — see 01-architecture.md#Host-state-root
     - Transport abstraction
       - SPSC rings with AF_VSOCK and named pipe fallbacks
       - Details: see: 01-architecture.md#Transport-engine-abstraction
-    - Break-glass console access: see: 08-lifecycle.md#Break-glass
+    - Break-glass console access: see: [8]
     - Draining: graceful retirement — see 08-lifecycle.md#Hypervisor-primitives
     - Ecosystem and ops
       - Ecosystem ingestion: see: 12-adapters.md#Ingestion-matrix
       - Build, CI, layout: see: 15-operations.md#Execution-philosophy
+
+- [1]: 04-terminal-plane.md
+- [2]: 05-storage-plane.md
+- [3]: 10-attestation.md
+- [4]: 08-lifecycle.md#Suspend-and-resume
+- [5]: 08-lifecycle.md
+- [6]: 02-plugin-model.md#First-class-plugins
+- [7]: 09-snapshots.md#Archives-and-portability
+- [8]: 08-lifecycle.md#Break-glass

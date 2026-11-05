@@ -209,8 +209,8 @@
     - Silent blackholing eliminated for policy denials
     - L3/L4 boundary opacity: see: 10-attestation.md#Scope
   - Wire messages
-    - see: artifacts/code/messages.rs
-    - Message set and payload fields: see: artifacts/code/messages.rs
+    - see: [1]
+    - Message set and payload fields: see: [1]
     - Hook binding: one hook per message
       - Contract: see: 02-plugin-model.md#KelirPlugin-trait
     - Verdict-method-mapping
@@ -234,7 +234,7 @@
       - Wire Custom carries name + CBOR; the name resolves at SDK registration
       - Unknown name at trap time fails with EUnknownAction
       - Registration after boot() fails with EConfig
-    - Verdict invariants: see: artifacts/code/messages.rs
+    - Verdict invariants: see: [1]
   - Stream mux framing
     - Frame layout: stream_id: u32, flags: u8, len: u32, payload
     - flags
@@ -269,3 +269,5 @@
     - Custom dispatch timeout
       - Exceeded handler falls through to Verdict::Pass
       - Per-custom-action; defaults to 30s
+
+- [1]: artifacts/code/messages.rs

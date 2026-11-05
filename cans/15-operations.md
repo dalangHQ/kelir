@@ -1,11 +1,11 @@
 - Operations
   - Execution philosophy
-    - Resource constraints: see: artifacts/config/justfile (build)
+    - Resource constraints: see: [1] (build)
       - and artifacts/config/ci.yml (shim size)
-    - Boot-budget target: see: 01-architecture.md#Boot-budget
+    - Boot-budget target: see: [2]
     - Sub-minute local cycles via just
     - Zero-bloat crate boundary: tokio full banned; libc/sys-crates strictly scoped
-    - Shim size invariant: see: artifacts/config/ci.yml (build-guest-shim)
+    - Shim size invariant: see: [3] (build-guest-shim)
     - Shim crate invariant: zero external serialization or runtime crates
     - Code hygiene and physical bounds: see: 01-architecture.md#Codebase-invariants
     - Default posture
@@ -17,7 +17,7 @@
       - Private repo: 2,000 min ceiling
       - macOS runners: 10x multiplier, scarce concurrency
   - Local velocity
-    - see: artifacts/config/justfile
+    - see: [1]
     - Targets: <15s host build, <10s unit tests, sub-minute pre-flight
     - Velocity invariants
       - `build-host` excludes kelir-shim: shim has its own cross-compile
@@ -31,7 +31,7 @@
     - `pre-flight` runs parity, plugin audit, tiered check before push
       - see: #Multi-language-parity-gate and #Developer-CLI
   - CI matrix
-    - see: artifacts/config/ci.yml
+    - see: [3]
     - Constraints
       - macOS runners scarce and 10x private multiplier
       - Public repos: free Linux minutes
@@ -47,9 +47,9 @@
         - Full workflow runs on self-hosted Windows WHP runners
         - GitHub-hosted cells run the transport unit tests only
     - Enforced invariants: CI matrix
-      - Rootfs EROFS image cold-boot budget: see: 01-architecture.md#Boot-budget
+      - Rootfs EROFS image cold-boot budget: see: [2]
       - Concurrency cancelled per ref (cancel-in-progress)
-      - Shim musl binary size gate: see: artifacts/config/ci.yml (build-guest-shim)
+      - Shim musl binary size gate: see: [3] (build-guest-shim)
       - sccache enabled via SCCACHE_GHA_ENABLED
       - Hard performance budget gate
         - Budgets in perf/budgets.toml enforced strictly with enforce = true
@@ -77,11 +77,11 @@
       - is dead and gets removed
   - Coverage-gates
     - --plugin-coverage
-      - Plugin asserts: see: 02-plugin-model.md#First-class-plugins
+      - Plugin asserts: see: [4]
       - Each plugin appears in at least one example (any example)
       - Or is explicitly marked in 02 as having none yet
       - Not necessarily the same example across plugins
-      - Tier model (coverage): see: 02-plugin-model.md#Plugin-tiering
+      - Tier model (coverage): see: [5]
       - Tiered compilation gate: plugins compile against explicit upstream deps
       - Builder registration gate: each plugin registers without string tokens
     - --lifecycle-coverage
@@ -140,19 +140,19 @@
       - Leaf-node rule: plugin files do not chain further references
         - plane pointers are direct 1-hop
     - Matrix job: test-plugins
-      - One cell per community domain plugin; cell set: see: artifacts/config/ci.yml
-      - Plugin roster: see: 02-plugin-model.md#First-class-plugins
+      - One cell per community domain plugin; cell set: see: [3]
+      - Plugin roster: see: [4]
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
-      - Upstream dependencies: see: 02-plugin-model.md#Plugin-tiering
+      - Upstream dependencies: see: [5]
       - Core planes (terminal, storage, wire, checkpoint, host) execute under test-core
     - Matrix job: plugin-audit
       - Each cell runs `kelir-plugin-cli check -p plugin-<name>`
       - Same contract audit `just check-plugin` runs locally
-      - Cell set: see: artifacts/config/ci.yml
+      - Cell set: see: [3]
       - Dependency check: asserts crate deps and ring mask in code trait
       - Tiered dependency gate: plugin Cargo deps follow the tier model
-      - Tier model (audit): see: 02-plugin-model.md#Plugin-tiering
+      - Tier model (audit): see: [5]
     - Matrix job: verify-tiered-compilation; see: #Tiered-compilation
     - Local mirror
       - just test-plugins runs all in one invocation
@@ -166,18 +166,18 @@
     - Job: verify-tiered-compilation
     - Step: Verify Tiered Plugin Compilation
     - Command: cargo check --workspace --all-targets
-    - Tier model (compilation): see: 02-plugin-model.md#Plugin-tiering
+    - Tier model (compilation): see: [5]
     - Scope: every workspace crate and target, plugins included
     - Local mirror: `just check-tiered` runs the identical command
     - Graph validation: `kelir-plugin-cli check --graph` asserts acyclic deps
   - External repository CI
     - Reusable attestation workflow for external plugin repositories
       - Reusable workflow sketch: see: artifacts/config/plugin-ci-reusable.yml
-      - Attestation flow sketch: see: artifacts/diagrams/ecosystem-ci.txt
+      - Attestation flow sketch: see: [6]
     - External repos run local contract audit via `kelir-plugin-cli check`
   - Plugin registry
     - First-class plugin catalog is compiled in; external index poller is opt-in
-    - Downstream state shape when enabled: see: artifacts/diagrams/ecosystem-ci.txt
+    - Downstream state shape when enabled: see: [6]
     - Index schema indexes by plugin crate, tier, ring mask, telemetry role
   - Multi-language parity gate
     - Rust macros generate typed FFI stubs: napi-rs for TS, pyo3 for Python
@@ -257,7 +257,7 @@
       - kelir-interface: pure leaf types, traits, wire framing, zero engine deps
       - kelir-core: stripped microkernel (bus, dispatch, vmm, trap gate)
       - kelir-plugins: community plugin family
-        - Community roster: see: 02-plugin-model.md#First-class-plugins
+        - Community roster: see: [4]
       - kelir-drivers: rustvmm, hvf, openvmm, avf, bwrap, proot
       - kelir-shim: in-guest musl PID 1 (<50KB)
       - Supporting crates
@@ -290,3 +290,10 @@
       - tests/fixtures/kernel: pinned per-arch vmlinux binaries
       - tests/fixtures/rootfs: pinned EROFS guest rootfs images
       - tests/fixtures/payloads: high-entropy and exploit test binaries
+
+- [1]: artifacts/config/justfile
+- [2]: 01-architecture.md#Boot-budget
+- [3]: artifacts/config/ci.yml
+- [4]: 02-plugin-model.md#First-class-plugins
+- [5]: 02-plugin-model.md#Plugin-tiering
+- [6]: artifacts/diagrams/ecosystem-ci.txt

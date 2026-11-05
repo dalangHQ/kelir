@@ -64,7 +64,7 @@
     - Marshals ring events across threadsafe boundaries on match
     - Non-blocking trap returns: Pass, Patch, Drop, Suspend, Abort
   - Composite plugin hierarchy
-    - see: artifacts/code/plugin-trait.rs
+    - see: [1]
     - Assembly-time tree flattens into contiguous C-speed dispatch array
     - Declarative profile hydration maps schema sections to child plugins
     - Profile root schema: see: plugins/profile.md
@@ -73,7 +73,7 @@
     - Deduplication merges identical name() nodes; deepest config wins
     - AOT hook fusion collapses nested closures into single FFI trampoline
   - KelirPlugin trait
-    - see: artifacts/code/plugin-trait.rs
+    - see: [1]
     - Typed lifecycle: name, default_scope, is_enabled, opt-in fork_state
     - fork_state() specializes child state; defaults to clone_box()
     - Stateless and pure-data plugins omit fork_state() with zero boilerplate
@@ -81,7 +81,7 @@
     - Inter-plugin linkage is direct Cargo crate imports, not string tokens
     - Segregated ring traits
       - Core identity
-        - KelirPlugin is mandatory; see: artifacts/code/plugin-trait.rs
+        - KelirPlugin is mandatory; see: [1]
       - Ring traits
         - LifecycleParticipant: vm lifecycle, commit, host preempt
         - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
@@ -202,7 +202,7 @@
     - Binary filter: in-kernel BPF drops traps for unlisted paths
     - Path filter: FUSE layer bypasses VFS hooks outside declared subtrees
     - Network filter: ingress dispatcher bypasses net hooks outside declared CIDR/port rules
-    - Scope cascade: see: artifacts/code/plugin-trait.rs
+    - Scope cascade: see: [1]
     - Invariant: child effective scope is boolean intersection of ancestor scopes
     - Scoping is transport-agnostic
       - Filters evaluate above the Transport backend (SPSC ring, AF_VSOCK,
@@ -252,7 +252,7 @@
         - Invoked through ConsoleInterposer::on_exec_std{out,err}
     - Inter-plugin typed services:
       - Direct peer crate imports resolved at compile time; see: #Plugin-tiering
-      - Language context projections: see: 03-sdk-architecture.md#Language-surfaces
+      - Language context projections: see: [2]
   - First-class plugins
     - Catalog tiering
       - Community plugins (in-process engine): cans/plugins/
@@ -295,13 +295,13 @@
         - Implemented by some custom plugin in cans/artifacts/examples
         - Hook families: see: #Segregated-ring-traits
         - An unhit hook fails --hook-coverage
-        - Hook-coverage gate: see: 15-operations.md#Coverage-gates
+        - Hook-coverage gate: see: [3]
         - Exercises via hook-matrix and policy-matrix, not via
           - autonomous-swe-agent
       - Action-coverage: every Verdict variant
         - Verdict variants: see: 11-protocol.md#Verdict-method-mapping
         - An unused variant fails --action-coverage
-        - Action-coverage gate: see: 15-operations.md#Coverage-gates
+        - Action-coverage gate: see: [3]
     - Behavior of each: at its plugin file
       - Rosters: see: #Catalog-tiering
       - File resolution: see: 15-operations.md#Spec-layout
@@ -346,7 +346,11 @@
   - Language parity
     - Invariant: Same first-class plugins across Rust, TypeScript, Python (1:1)
     - Enforcement gate: see: 15-operations.md#Multi-language-parity-gate
-    - Projection implementations: see: 03-sdk-architecture.md#Language-surfaces
+    - Projection implementations: see: [2]
     - Typestate is Rust-only
       - Compile-time prerequisites in Rust; boot-time in TS/Py
       - Both produce EConfig with identical structure
+
+- [1]: artifacts/code/plugin-trait.rs
+- [2]: 03-sdk-architecture.md#Language-surfaces
+- [3]: 15-operations.md#Coverage-gates

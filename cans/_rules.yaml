@@ -58,6 +58,13 @@ references:
       pattern: "^(cans/)?plugins/.*"
       severity: error
       message: "Abstraction leak: Terminal/storage specs cannot reference plugin files."
+  # Pointer aliasing (cans-spec #57, shipped v0.9.0): footnote-style short
+  # aliases for repeated see: targets, per-file scope only.
+  aliasing:
+    enabled: true
+    scope: file
+    style: both
+    min_uses: 2
 
 redundancy:
   enabled: true

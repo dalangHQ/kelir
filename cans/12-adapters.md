@@ -1,6 +1,6 @@
 - Adapters
   - Ingestion matrix
-    - Adapter set and ecosystem binding: see: artifacts/diagrams/ingestion-adapters.txt
+    - Adapter set and ecosystem binding: see: [1]
     - Core ingestion primitive: kelir-pack
       - Offline two-phase in-memory compiler: OCI layer blob → EROFS
       - Streaming HTTPS client pulls OCI manifest and layer tar chunks directly
@@ -40,18 +40,18 @@
       - Commercial adapters: containerd-shim-v2 (K8s), openshell-grpc (NVIDIA CDI)
       - Commercial adapter interface: policy traits only; impls out-of-tree
   - MCP adapter
-    - Architecture (mcp): see: artifacts/diagrams/ingestion-adapters.txt
+    - Architecture (mcp): see: [1]
     - Server binary crate: kelir-adapters/mcp-server
     - Server plugin: plugin-mcp (translates JSON-RPC to native terminal/storage planes)
     - Binds mux stream kind MCP_CONSOLE (0x0012), not Port 0 PTY
   - Containerd shim v2
-    - Architecture (containerd): see: artifacts/diagrams/ingestion-adapters.txt
+    - Architecture (containerd): see: [1]
     - Image translation (kelir-pack): see: #Ingestion-matrix
     - Containerd policy: ContainerdOrchestrationPolicy registered via PipelineBinder
     - Shim maps to Session execution with flat kelir-pack + policy config
     - Containerd boundary: see: #Process-vs-plugin-boundary
   - OpenShell gRPC driver
-    - Architecture (openshell): see: artifacts/diagrams/ingestion-adapters.txt
+    - Architecture (openshell): see: [1]
     - Server binary crate: kelir-adapters/openshell-driver
     - Translates OpenShell gRPC services directly to Session and plugin-profile
       - SandboxService maps to KelirBuilder boot and lifecycle primitives
@@ -73,3 +73,5 @@
     - In-process SDK client wrapper
       - Consumes standard Kelir runtime without hypervisor modifications
     - Process vs plugin boundary: thin client wrapper, no in-guest shims or daemons
+
+- [1]: artifacts/diagrams/ingestion-adapters.txt

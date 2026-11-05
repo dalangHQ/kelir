@@ -37,7 +37,7 @@
       - Protects developers running harness scripts natively by mistake
   - CoW fork
     - Driver primitive: fork returns Box<dyn VmmDriver>
-      - see: artifacts/code/vmm-driver-trait.rs
+      - see: [1]
     - KVM path: userfaultfd + KVM memory cloning
     - HVF path: Stage-2 translation write protection via hv_vm_protect
       - Stage-2 data aborts resolve via Chunked Page Promoter
@@ -154,7 +154,7 @@
       - Freezes vCPU registers
       - Page-dump engine: lz4_flex compression over io_uring direct I/O
       - Flushes compressed pages to local NVMe
-      - Host RSS drops to 0 MB in <50ms; see: artifacts/code/vmm-driver-trait.rs (suspend)
+      - Host RSS drops to 0 MB in <50ms; see: [1] (suspend)
     - resume
       - Restores registers and memory
       - Resumes at exact cycle boundary
@@ -385,7 +385,7 @@
     - Use for ledger / trace / metrics
     - Terminate flush belongs to on_vm_shutdown, not a subscriber
   - Watchdog
-    - see: artifacts/code/vmm-driver-trait.rs (WatchdogAction)
+    - see: [1] (WatchdogAction)
     - Armed via LifecycleCtx.set_watchdog
       - Typically called from on_vm_init by a policy plugin
       - WatchdogAction: Reboot | Terminate
@@ -403,3 +403,5 @@
       - This is the extension point for custom actions
         - A plugin may do work in on_watchdog then return Err(Halt)
         - WatchdogAction stays closed (Reboot | Terminate)
+
+- [1]: artifacts/code/vmm-driver-trait.rs

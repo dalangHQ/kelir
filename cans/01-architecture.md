@@ -127,7 +127,7 @@
       - Translation logic delegated to domain plugin
     - Plugin
       - Optional domain extensions (13 catalog plugins)
-      - Declares typed lifecycle and interposer traits: see: 02-plugin-model.md#KelirPlugin-trait
+      - Declares typed lifecycle and interposer traits: see: [1]
       - Native: systems-grade engine plugin compiled in Rust
       - Foreign: userland policy plugin written in host language
       - Dual-plane execution details: see: 02-plugin-model.md#Dual-plane-execution-architecture
@@ -143,7 +143,7 @@
     - Interposition verdict model: see: 02-plugin-model.md#Unified-verdict
     - Trait definitions
       - Low-footprint preset contract: see: #Embedded-profile
-      - Trait contract: see: 02-plugin-model.md#KelirPlugin-trait
+      - Trait contract: see: [1]
       - Tiered dependency contract: see: 02-plugin-model.md#Plugin-tiering
       - VmmDriver trait definition: see: #VmmDriver-trait
     - Context types: see: 11-protocol.md#Wire-messages
@@ -151,7 +151,7 @@
     - Dispatch loop: see: 02-plugin-model.md#Static-dispatch
     - Device multiplexing: see: #VirtIO-Device-Complex
     - Params ingress contract (core): see: #Params-ingress-contract
-    - Receipts: see: 10-attestation.md#Execution-receipts
+    - Receipts: see: [2]
     - In-kernel trap engine: see: #Guest-VM-anatomy
     - EROFS mount: see: 05-storage-plane.md#EROFS-rootfs
     - Shared memory mapping: see: #Shared-memory-channel
@@ -162,7 +162,7 @@
     - Zero protocol domain logic lives in core
     - Channel 0 carries hypervisor control
     - Channel allocation is frozen
-      - see 11-protocol.md#Control-channel    - Primary VirtIO Bus
+      - see [3]    - Primary VirtIO Bus
       - virtio-vsock: multiplexed syscall traps and binary control channels
       - virtio-console: multi-port character streams
       - virtio-fs: FUSE filesystem operations and virtual inode dispatch
@@ -190,7 +190,7 @@
   - Transport engine abstraction
     - Host hypervisor backend terminates virtqueue rings directly in kelir-core memory
     - Two transport channels: 0x0000 Control, 0x0001 Stream Mux
-      - see: 11-protocol.md#Control-channel
+      - see: [3]
     - Stream Mux routes all request/data flows as stream kinds
     - Both channels terminate in in-memory lock-free SPSC rings
     - Bypasses host OS socket subsystems (AF_VSOCK, HV_SOCKET, named pipes)
@@ -219,7 +219,7 @@
       - Credentials are issued as scoped short-lived tokens by plugin-vault
       - Workload presents tokens itself; no in-flight substitution
     - Optional external sidecar can terminate TLS if the workload cannot
-      - see: plugins/vault.md#Optional-external-egress-rewriting
+      - see: [4]
       - Host never sees plaintext request bodies for credential-bound traffic
     - Upstream certificate validation is the workload's responsibility
       - System CA bundles ship inside the EROFS rootfs as normal
@@ -277,13 +277,13 @@
       - Incarnation proof semantics: see: 08-lifecycle.md#Session-incarnation
       - Orphaned relay.sock, sparse backing file, staging trees reclaimed by runtime child janitor
   - Guest VM anatomy
-    - see: artifacts/diagrams/guest-vm.txt
+    - see: [5]
     - Boot budget
-      - Cold boot target: see: artifacts/code/vmm-driver-trait.rs (boot)
+      - Cold boot target: see: [6] (boot)
       - Measurement: host-side stopwatch to first workload exec
       - ACPI + PCI probing alone is ~40ms; kernel is built without both
       - Every device below earns its millisecond against that budget
-    - Device allocations: see: artifacts/diagrams/guest-vm.txt
+    - Device allocations: see: [5]
     - Page size dynamic boot selection
       - 4KB guest MMU mapping standard across x86_64 and ARM64
       - ARM64 Stage-2 tables configure 4KB leaf pages on 16KB host RAM
@@ -309,11 +309,11 @@
         - Subsumed by EROFS measurement
         - No separate attestation entry
       - Workload
-        - binary_blake3 per ExecutionReceipt; see: 10-attestation.md#Execution-receipts
+        - binary_blake3 per ExecutionReceipt; see: [2]
       - Session attestation token
         - Injected over paravirtual config device; workload verifies over vsock Channel 0
       - Host TLS proxy boundary: none by default
-        - see: plugins/vault.md#Optional-external-egress-rewriting
+        - see: [4]
       - Chain is unbroken
         - Forged kernel/rootfs fails host-side BLAKE3
         - Forged workload fails per-exec trap boundary
@@ -338,8 +338,8 @@
       - Untrusted scripts cannot probe kernel pointers or peer processes
     - Workload contract: no guest-side SDK, shim, or agent
   - VmmDriver trait
-    - see: artifacts/code/vmm-driver-trait.rs
-    - Primitive list and signatures: see: artifacts/code/vmm-driver-trait.rs
+    - see: [6]
+    - Primitive list and signatures: see: [6]
     - Single backend contract
       - Every backend implements every primitive; optional primitives are
         - not part of the trait
@@ -369,3 +369,10 @@
       - driver-bwrap: Linux user namespaces; requires allow_emulated_fallback=true
       - driver-proot: Termux ptrace emulation; requires allow_emulated_fallback=true
       - Attempting to boot emulated tier without flag throws E_NOHARDWAREVMM
+
+- [1]: 02-plugin-model.md#KelirPlugin-trait
+- [2]: 10-attestation.md#Execution-receipts
+- [3]: 11-protocol.md#Control-channel
+- [4]: plugins/vault.md#Optional-external-egress-rewriting
+- [5]: artifacts/diagrams/guest-vm.txt
+- [6]: artifacts/code/vmm-driver-trait.rs

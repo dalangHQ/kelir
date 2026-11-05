@@ -38,7 +38,7 @@
             - openat2(RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS)
             - Rooted at workspace
           - No ELF parsing in this hash; bytes hashed as kernel opens them
-          - Trap-time ELF/auxv inspection is separate; see: 11-protocol.md#Trap-fast-path
+          - Trap-time ELF/auxv inspection is separate; see: [1]
         - Cache key
           - (st_dev, st_ino, st_size, st_mtime_ns)
           - Invalidated on any key component change
@@ -47,7 +47,7 @@
           - One hash per binary identity, cached across process executions
           - Session-scoped; dropped on terminate
         - Trusted-prefix fast path
-          - EROFS trusted prefixes execute Gate 3 skip; see: 11-protocol.md#Trap-fast-path
+          - EROFS trusted prefixes execute Gate 3 skip; see: [1]
           - Lookup resolves pre-computed BLAKE3 table in host RAM via O(1) index
           - Untrusted /workspace/** retains full hash resolution path
         - Cache hit does not bypass trap boundary
@@ -101,9 +101,9 @@
       - kelir-core generates and holds at trap/exit boundary
       - c.receipt() is the single read API on HandlerCtx
   - Causal delta
-    - see: artifacts/code/causal-delta.rs
+    - see: [2]
     - Definition: Δ = S_A − S_B between two checkpoint descriptors
-    - Delta fields: see: artifacts/code/causal-delta.rs
+    - Delta fields: see: [2]
     - State diff aggregation: CausalDelta aggregates net logical diffs
       - Filesystem: broker upper file + tombstones (see: 05-storage-plane.md)
       - Memory: dirty bytes recorded by the checkpoint descriptor
@@ -163,3 +163,6 @@
     - Trace hooks (.trace()) measure per-phase overhead at ns resolution
     - Tracks trap ingress, FFI crossing, policy evaluation, and verdict dispatch
     - Zero-allocation timings pipe directly to receipts and OTel spans
+
+- [1]: 11-protocol.md#Trap-fast-path
+- [2]: artifacts/code/causal-delta.rs
