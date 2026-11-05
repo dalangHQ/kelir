@@ -1,0 +1,31 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PARAVIRTUAL CONSOLE PIPELINE                                                │
+│                                                                             │
+│ GUEST WORKLOAD PROCESS                                                      │
+│   │ Writes raw stdout/stderr bytes                                          │
+│   ▼                                                                         │
+│ Guest Kernel Console / TTY Subsystem                                        │
+│   │ Bridges character device streams to virtio-console driver               │
+│   ▼                                                                         │
+│ virtio-console Ring Buffer (Hardware Shared Memory)                         │
+│   │ Zero-copy virtqueue streaming to Host Physical Memory                   │
+│   ▼                                                                         │
+│ HOST SUPERVISOR (kelir-core Console Plane)                                  │
+│   │                                                                         │
+│   ├── Port Multiplexer ─────────► Routes port IDs to discrete dispatchers   │
+│   ├── Interceptor Pipeline ─────► Synchronous ConsoleInterposer execution   │
+│   │                                (PTY policy: see 04-terminal-plane.md)   │
+│    │                                Masking keeps MAX_PLACEHOLDER_LEN - 1   │
+│    │                                carryover window across chunks.         │
+│   ├── Binary Exec (mux 0x0001, stream kind EXEC) ─► stdin/stdout/       │
+│   │                                stderr/control sub-lanes; exec_id-      │
+│   │                                keyed, bitwise fidelity; no PTY except  │
+│   │                                FLAG_ALLOC_PTY per-exec private slave   │
+│   │                                PTY. Port 0 is the sole human break-     │
+│   │                                glass console (PTY console master).     │
+│   └── Stream Replay ────────────► Append-only logs under sessions/<id>/     │
+│                                    logs/ + index.bin, 64-bit monotonic      │
+│                                    cursor, read_from(port, cursor) ->       │
+│                                    (bytes, next). Global SQLite catalog is  │
+│                                    bypassed for streaming writes.           │
+└─────────────────────────────────────────────────────────────────────────────┘

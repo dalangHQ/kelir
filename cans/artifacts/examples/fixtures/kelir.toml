@@ -1,0 +1,480 @@
+# Profile fixture for profile.rs.
+# Demonstrates: plugins mount, monotonic limits.
+# Part 1/4 canonical shape (TOML form): invariants, driver, session.
+# Keys marked TBD exist in the schema only; no VmConfig/DriverPolicy field yet.
+
+version = 1
+
+[invariants]
+default_zero_capability = true
+physicality_check = "strict"
+inheritance_lattice = "monotonic"
+memory_safety = "forbid_unsafe"
+
+[driver]
+backend = "auto"
+require_hardware_vmm = true
+allow_emulated_fallback = false
+verify_hw_lockfile = true
+wx_enforcement = "Strict"
+
+[driver.ffi_boundary]
+worker_threads = 2
+max_ops_per_second = 10000
+# TBD: queue_capacity, max_buffer_bytes (no DriverPolicy field yet)
+
+[session]
+id = "ses_swe_bench_primary"
+topology = "local"
+
+[session.compute]
+vcpus = 2
+# TBD: max_vcpus (set_vcpus exists, no VmConfig ceiling field yet)
+memory_mb = 1024
+page_size_kb = 4
+
+[session.balloon]
+enabled = true
+initial_mb = 2048
+pressure_reclaim = true
+reclaim_strategy = "madvise_dontneed"
+# TBD: balloon is a schema section only; driver exposes adjust_balloon only
+
+[session.clock]
+tsc_locked = true
+pinned_clocksource = "kvm-clock"
+deterministic_clock = false
+preemption_grace_ms = 100
+
+[session.watchdog]
+enabled = true
+timeout_seconds = 300
+action = "reboot"
+# TBD: heartbeat_cadence_seconds (no driver cadence field yet)
+
+[session.devices.virtio_rng]
+enabled = true
+source = "/dev/urandom"
+
+[[session.devices.virtio_shm.regions]]
+tag = "shared-workspace"
+size_bytes = 33554432
+
+[session.artifacts]
+kernel_path = "./fixtures/vmlinux-6.6-kelir"
+rootfs_erofs_path = "./fixtures/rootfs-swebench.erofs"
+kernel_boot_params = ["kptr_restrict=2", "dmesg_restrict=1", "panic_on_oops=1", "slab_nomerge", "pti=on", "slub_debug=FZP", "quiet"]
+# TBD: boot_params list form (GuestClock carries one string)
+
+[session.shim]
+max_exec_slots = 4096
+hide_pid = 2
+anti_toctou_cgroups = true
+
+[plugins.ledger]
+enabled = true
+
+[plugins.ledger.merkle_wal]
+enabled = true
+store_path = ".kelir/audit.merkle.db"
+hashing_standard = "RFC_6962_BLAKE3"
+sign_leaves = true
+fsync_on_reap = true
+
+[plugins.ledger.otel]
+endpoint = "http://localhost:4318/v1/traces"
+service_name = "kelir-agent-swe"
+propagate_w3c_traceparent = true
+export_diagnostic_pmu_gauges = true
+
+[plugins.ledger.receipts]
+include_dirty_bytes = true
+include_binary_blake3 = true
+include_syscall_count = true
+include_wall_clock_ns = true
+include_phase_timings = true
+
+[plugins.vault]
+enabled = true
+
+[plugins.vault.metadata_service]
+listen_vsock_port = 80
+token_ttl_seconds = 60
+zeroize_on_drop = true
+fail_closed = true
+
+[[plugins.vault.credentials]]
+name = "STRIPE_SECRET"
+placeholder = "vault://stripe_key"
+type = "bearer_token"
+audience = "api.stripe.com"
+
+[[plugins.vault.credentials]]
+name = "AWS_DEPLOY_ROLE"
+placeholder = "vault://aws_role"
+type = "sigv4"
+audience = "*.amazonaws.com"
+
+[plugins.vault.external_sidecar]
+enabled = false
+kind = "envoy"
+divert_l4_marked = true
+
+[plugins.tool_guard]
+enabled = true
+
+[plugins.tool_guard.mcp_interposition]
+pin_schemas = true
+halt_on_schema_drift = true
+max_invocations_per_trace = 50
+
+[plugins.tool_guard.taint_governance]
+untrusted_ingress_taints = true
+mutating_verbs_require_approval = true
+
+[plugins.tool_guard.sanitization]
+scan_arguments = true
+scrub_output_secrets = true
+
+[plugins.db_proxy]
+enabled = true
+
+[plugins.db_proxy.postgres]
+listen_port = 5432
+upstream = "pg.internal.net:5432"
+max_rewrites_per_conn = 3
+
+[[plugins.db_proxy.postgres.schema_rewrites]]
+from = "public."
+to = "tenant_sandbox."
+
+[plugins.db_proxy.sqlite]
+guest_socket = "/run/kelir/db.sock"
+host_path = "/var/lib/app/data.sqlite"
+
+[plugins.chaos]
+enabled = false
+
+[[plugins.chaos.network]]
+target = "api.stripe.com"
+direction = "both"
+latency_ms = 150
+jitter_ms = 30
+drop_rate = 0.02
+inject_rst = false
+
+[[plugins.chaos.storage]]
+target_glob = "/workspace/build/cache/*"
+simulate_errno = "ENOSPC"
+probability = 0.05
+
+[plugins.supply_chain]
+enabled = true
+
+[plugins.supply_chain.wx_jit]
+trap_memfd = true
+trap_mprotect_exec = true
+allowed_jit_binaries = ["/usr/bin/node", "/usr/bin/python3.12"]
+
+[plugins.supply_chain.package_guard]
+deny_lifecycle_scripts = true
+managers = ["npm", "pip", "cargo"]
+shannon_entropy_threshold = 5.2
+
+[plugins.mesh]
+enabled = false
+
+[plugins.mesh.spiffe_identity]
+trust_domain = "kelir.local"
+workload_prefix = "agents/worker"
+mtls_peer_validation = true
+propagate_traceparent = true
+
+[[plugins.mesh.listeners]]
+port = 7001
+service = "swarm-coordination"
+
+[plugins.replay]
+enabled = false
+step_window_instructions = 1000000
+pinned_clocksource = "kvm-clock"
+network_isolation = true
+deterministic_rng_seed = 0x5EED
+
+[plugins.container]
+enabled = false
+runtime = "crun"
+isolate_var_lib_containers = true
+pin_subuid_ranges = true
+
+[plugins.transaction]
+enabled = true
+
+[plugins.transaction.two_phase_commit]
+auto_rollback_on_taint = true
+timeout_ms = 30000
+flush_fuse_before_commit = true
+
+[plugins.profile]
+enabled = true
+rfc6902_dynamic_patching = true
+enforce_monotonic_patches = true
+
+[plugins.profile.cdi_device_mapping]
+enabled = false
+spec_dir = "/etc/cdi"
+
+[plugins.mcp]
+enabled = true
+transport = "stream_mux"
+socket_path = "/run/kelir/mcp.sock"
+framing = "json_lines"
+max_frame_bytes = 65536
+
+[plugins.wire_ingress]
+enabled = true
+
+[plugins."repo-policy"]
+max_diff_bytes = 65536
+protected_branches = ["main"]
+
+# Monotonic limits: effective limit is min(base, child); child cannot widen.
+[session.budget]
+exec_seconds = 300
+
+[storage]
+workspace_root = "/workspace/repo"
+encapsulation = "Locked"
+
+[storage.cow_broker]
+enabled = true
+sparse_upper = true
+tombstone_tracking = true
+rollback_purge = true
+dir_merge_cache = true
+
+[storage.reconciler]
+atomic_leaf_commit = true
+traversal_guard = "strict_openat2"
+strip_privileges = true
+lock_precheck = true
+busy_retry_backoff_ms = 2000
+
+[storage.quotas]
+max_bytes = 10737418240
+max_inodes = 500000
+zero_crawl_statfs = true
+
+[storage.ephemeral_scratch]
+enabled = true
+mount_points = ["/tmp", "/var/cache", "/var/tmp"]
+size_mb = 2048
+
+[storage.idmap]
+guest_uid = 0
+guest_gid = 0
+host_uid = 1000
+host_gid = 1000
+
+[[storage.shared_caches]]
+host_path = "~/.npm"
+guest_mount = "/root/.npm"
+read_only = true
+
+[[storage.shared_caches]]
+host_path = "~/.cache/pip"
+guest_mount = "/root/.cache/pip"
+read_only = true
+
+[[storage.shared_caches]]
+host_path = "~/.cargo/registry"
+guest_mount = "/usr/local/cargo/registry"
+read_only = true
+
+[[storage.synthetic_files]]
+path = "/workspace/repo/.env.local"
+mode = 0o400
+content = "NODE_ENV=test\nDATABASE_URL=postgres://app:vault@127.0.0.1:5432/db\n"
+
+[[storage.synthetic_files]]
+path = "/workspace/repo/.gitconfig"
+mode = 0o400
+content = "[user]\n\tname = Kelir Agent\n\temail = agent@kelir.local\n"
+
+[storage.mask_read]
+engine = "FastRegex"
+carryover_bytes = 31
+
+[[storage.mask_read.rules]]
+glob = "**/*.env*"
+
+[[storage.mask_read.rules.patterns]]
+match = 'sk_live_[A-Za-z0-9]{24}'
+replacement = "[REDACTED_STRIPE_SECRET]"
+
+[[storage.mask_read.rules.patterns]]
+match = 'AKIA[0-9A-Z]{16}'
+replacement = "[REDACTED_AWS_KEY]"
+
+[storage.lock_broker]
+enabled = true
+scope_globs = ["**/Cargo.lock", "**/package-lock.json"]
+non_blocking = true
+
+[wire]
+userspace_netstack = true
+default_egress = "drop"
+allow_ipv6 = false
+allow_raw_sockets = false
+
+[wire.quarantine]
+drop_link_local = true
+cloud_metadata_block = true
+imds_exception = "169.254.169.254"
+
+[wire.dns]
+synthetic_gateway = "192.168.127.1:53"
+track_host_resolver = true
+edns0_downgrade = true
+socks5h_synthetic_pool = "198.18.0.0/15"
+allowlist = ["api.stripe.com", "github.com", "api.github.com", "*.internal.net"]
+
+[wire.l4_diversion.upstream_dial]
+env_lookup = true
+# TBD value: dial_timeout_ms has no budget number in 07-wire-plane.md
+dial_timeout_ms = 5000
+
+[[wire.l4_diversion.proxies]]
+listen_port = 5432
+destination = "pg.internal.net:5432"
+
+[wire.l4_diversion.proxies.inject_mtls]
+cert_path = "vault://tls/client.crt"
+key_path = "vault://tls/client.key"
+
+[wire.l4_diversion.udp_nat]
+enabled = true
+max_entries = 1024
+idle_timeout_seconds = 30
+
+[wire.connection_parking]
+enabled = true
+listen_port = 8443
+max_buffered_bytes = 65536
+idle_timeout_ms = 30000
+wake_on_packet = true
+rollback_policy = "reset"
+
+[[wire.port_forwards]]
+guest_port = 3000
+host_port = 8080
+reuse_port = true
+so_linger_zero = true
+
+[terminal]
+stream_engine = "StreamingAutomata"
+
+[terminal.pty]
+cols = 120
+rows = 40
+line_discipline = "raw_vt100"
+alloc_pty_default = false
+
+[terminal.sanitizer]
+drop_osc52 = true
+strip_title = true
+
+[terminal.sanitizer.token_shield]
+enabled = true
+max_bytes_total = 131072
+max_lines_total = 500
+clamp_strategy = "head_and_tail"
+notice = "\n⚠️ [SHIELD]: Output clamped to protect model context window.\n"
+
+[[terminal.sanitizer.prompts]]
+pattern = '(?i)overwrite production schema\? \[y/N\]'
+timeout_seconds = 3.0
+verify_foreground = true
+action = "y\n"
+
+[[terminal.sanitizer.prompts]]
+pattern = '(?i)do you want to continue\? \[Y/n\]'
+timeout_seconds = 2.0
+verify_foreground = true
+action = "Y\n"
+
+[terminal.replay_log]
+enabled = true
+storage_path = "sessions/{id}/logs"
+cursor_bits = 64
+bypass_sqlite_wal = true
+
+[terminal.wireframe_grid]
+track_screen_matrix = true
+# TBD: export_on_trap (no receipt screen field yet)
+
+[checkpoint.boundaries]
+sentinel_path = "/dev/kelir-gate"
+detect_pty_quiescence = true
+pre_checkpoint_dentry_trim = true
+
+[checkpoint.step_evaluation]
+enabled = true
+default_action = "proceed"
+
+[checkpoint.step_evaluation.assertions]
+assert_binary_blake3 = true
+max_egress_bytes_hermetic = 0
+require_non_zero_delta = true
+max_duration_seconds = 120
+
+[checkpoint.rollback]
+revert_memory_ms_target = 8
+drop_broker_delta = true
+terminate_host_sockets = true
+revoke_vault_tokens = true
+
+[checkpoint.lineage]
+unbounded_depth = true
+lazy_cow_sharing = true
+compaction_on_export = true
+
+[checkpoint.suspend]
+page_dump_codec = "lz4_flex"
+target_host_rss_mb = 0
+latency_target_ms = 50
+
+[host.reaper]
+linux_death_signal = "SIGKILL"
+darwin_kqueue_event = "NOTE_EXIT"
+windows_job_object = true
+
+[host.cgroups]
+path = "/sys/fs/cgroup/kelir"
+monitor_pressure = true
+auto_inflate_balloon = true
+
+[host.security]
+attach_lsm_bpf = true
+quarantine_host_keyring = true
+max_interposer_latency_us = 2
+
+[host.catalog]
+db_path = "~/.kelir/catalog.db"
+wal_mode = true
+busy_timeout_ms = 5000
+lease_ttl_seconds = 30
+prune_unreferenced_cas_blobs = true
+
+[attestation.hardware_facts]
+measure_vmlinux_blake3 = true
+measure_rootfs_erofs_blake3 = true
+inject_session_token = true
+
+[attestation.interception_facts]
+record_fuse_buffers = true
+record_virtqueue_frames = true
+log_exit_kinds = true
+
+[attestation]
+enforce_strict_provenance = true

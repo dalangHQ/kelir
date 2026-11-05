@@ -1,0 +1,44 @@
+- Plugin mcp
+  - Crate dependencies (mcp)
+    - Plugin identifier: plugin-mcp
+    - Owner crate: crates/kelir-plugins/plugin-mcp
+    - name() = "mcp"
+    - Tier 1 base transport adapter (mcp)
+    - Depends on (mcp): kelir-interface (routes stdio to native Terminal/Storage Planes)
+    - Exposes: McpEndpointService
+    - VirtIO device attachment (mcp): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (mcp): see: 08-lifecycle.md#Lifecycle-vetoes
+    - Registers stream kind MCP_CONSOLE on the mux
+      - Kind 0x0012; see: 11-protocol.md#Control-channel
+      - Guest shim exposes /run/kelir/mcp.sock, bridged over MCP_CONSOLE
+  - Service exports (mcp)
+    - Exports McpEndpointService via PipelineBinder for JSON-RPC transport routing
+  - Invariants and policy (mcp)
+    - Thin in-process adapter routing JSON-RPC stdio directly to VirtIO rings
+    - MCP plugin: maps tools directly to virtio-console, virtio-fs, and traps
+    - MCP hook wiring
+      - on_vm_ready: setup JSON-RPC transport, advertise capabilities
+      - on_console_output / on_console_input: stream terminal to/from MCP client
+      - on_fs_read / on_fs_write: expose as read_file / write_file
+      - on_trap: observe syscalls to correlate execute_command with trap
+      - on_process_exit: emit MCP task completion events
+    - Mapping (external tool → ring op)
+      - execute_command → routed through stream kind EXEC
+        - Streams stdout/stderr via separate stream_ids
+        - No PTY wrap; no ANSI escape noise
+        - Interactive terminal attach (break-glass) still uses PTY / Port 0
+      - read_file → delegates to native Storage Plane broker reader
+      - write_file → delegates to native Storage Plane broker writer
+    - Composes with plugin-chaos, plugin-ledger, and native Terminal/Wire planes
+    - Composes with plugin-tool-guard: tool-guard sits upstream on MCP_CONSOLE
+    - Stream kind MCP_CONSOLE routes directly to MCP client without PTY conflict
+    - MCP contract
+      - Transport: JSON-RPC 2.0 over MCP_CONSOLE mux stream
+      - Framing: JSON Lines; one object for each \n, no Content-Length
+      - Max frame: 64 KB; larger split via FLAG_CONTINUATION
+  - Error and return semantics (mcp)
+    - Hook signature (mcp): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (mcp)
+      - PluginError → JSON-RPC error object
+      - code = -32000 - errno_number (EPERM→-32001)
+      - data carries {errno, reason, pid, binary}

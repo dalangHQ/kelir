@@ -1,0 +1,45 @@
+- Plugin db-proxy
+  - Crate dependencies (db-proxy)
+    - Plugin identifier: plugin-db-proxy
+    - Owner crate: crates/kelir-plugins/plugin-db-proxy
+    - name() = "db-proxy"
+    - Tier 2 optional domain filter (db-proxy)
+    - Depends on (db-proxy): kelir-interface (binds to native Wire Plane)
+    - Exposes: SqlProxyService
+    - VirtIO Ring attachment: virtio-net (port 5432)
+    - Registers stream kind DB_SQLITE on the mux
+      - Kind 0x0011; see: 11-protocol.md#Control-channel
+    - Lifecycle attachment (db-proxy): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (db-proxy)
+    - Exports SqlProxyService via PipelineBinder for statement and dialect queries
+  - Invariants and policy (db-proxy)
+    - L7 pgwire rewrite and 2PC commit: see: artifacts/examples/db-backed-runtime.py
+    - Mediates relational protocol traffic
+    - PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser
+    - SQLite UDS bridge mechanics:
+      - Guest helper binds Unix Domain Socket at /run/kelir/db.sock on demand
+      - Forwards client connections over DB_SQLITE mux stream
+      - Host SqlProxyService receives stream and delegates queries to the host SQLite file
+    - PostgreSQL upstream (db-proxy)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.upstream
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.schema_rewrites
+    - SQLite host path (db-proxy)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.sqlite.host_path
+    - Verdict execution: engine Verdict (Pass | Patch | Drop)
+      - see: 02-plugin-model.md#Unified-verdict
+    - Protocol proxying
+      - PostgreSQL on 5432, Redis on 6379
+      - Ephemeral credentials injected at host connection boundary
+      - Client mTLS certificates injected at host boundary
+  - Error and return semantics (db-proxy)
+    - Hook signature (db-proxy): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (db-proxy)
+      - FilterAction::Drop
+        - pgwire ErrorResponse frame precedes connection close
+        - SQLSTATE derived from errno (EPERM→42501, ENOENT→42P01)
+        - Unmapped errno → SQLSTATE XX000 (internal_error)
+      - FilterAction::Forward after in-place Q/P frame rewrite
+        - Frame bytes mutated in place before upstream forward
+        - Server sees rewritten frame as if client sent it
+        - Each connection's rewrites tallied; >3 aborts ECYCLICREWRITE

@@ -1,0 +1,41 @@
+- Plugin replay
+  - Crate dependencies (replay)
+    - Plugin identifier: plugin-replay
+    - Owner crate: crates/kelir-plugins/plugin-replay
+    - name() = "replay"
+    - Tier 2 governance and protocol proxy (replay)
+    - Depends on (replay): kelir-interface
+    - Exposes: ReplayService
+    - VirtIO device attachment (replay): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (replay): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (replay)
+    - Exports ReplayService through PipelineBinder for deterministic clock stepping
+  - Invariants and policy (replay)
+    - Stepped instruction replay: see: artifacts/examples/replay.rs
+    - Cycle-exact instruction clock stepping
+      - Decouples guest paravirtual clock from host physical TSC
+      - Arms host PMU counters as a metrics drive for clock stepping
+      - Advances guest KVM_SET_CLOCK / CNTVOFF_EL2 on retired-instruction windows
+      - PMU values drive local stepping; never appear in receipts
+      - Eliminates host scheduling jitter and timer interrupt variance across runs
+      - Replay mode requires network isolation for determinism
+        - Deterministic replay cannot include live external network peers
+        - Replay profiles declare network: off; wire plane drops all egress
+        - I/O determinism draws from seeded inputs alone
+    - Replay stepping (replay)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.replay.step_window_instructions
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.replay.deterministic_rng_seed
+    - Kernel clocksource lockdown
+      - Injects kernel boot parameters: clocksource=kvm-clock tsc=reliable nohpet
+      - Intercepts clock_gettime and gettimeofday syscall traps to enforce monotonic progression
+      - Restore clamp and monotonicity: see: 08-lifecycle.md#Hypervisor-primitives
+    - Deterministic RNG
+      - When replay is active, virtio-rng backend is substituted with a
+        - seeded ChaCha20 stream
+      - Seed captured in snapshot manifest at replay start
+      - getrandom() payloads match byte-for-byte across replay runs
+      - Outside replay mode, virtio-rng uses host entropy normally
+  - Error and return semantics (replay)
+    - Hook signature (replay): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (replay)
+      - Negative time drift or clock backwards step raises EClockRegress

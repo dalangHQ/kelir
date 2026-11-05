@@ -1,0 +1,86 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       STORAGE & FILESYSTEM ARCHITECTURE                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 1. EROFS READ-ONLY ROOTFS (virtio-blk):                                     │
+│    - Stripped base system (Python, Node, Rust, Bash) pre-baked into EROFS.  │
+│    - Cold-mounted as block device. Zero tarball decompression.              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 2. HOST COW BROKER (VirtIO-FS only, no in-guest overlay):                  │
+│    - Base host workspace mounted STRICTLY READ-ONLY as broker lower layer.  │
+│    - Writes land in a per-session sparse upper file owned by the broker.    │
+│    - Deletions are recorded as explicit tombstones in broker state;         │
+│      no whiteouts, no union driver inside the microVM. Guest observes      │
+│      a normal writable mount.                                              │
+│    - Writes hit sparse file blocks, never guest RAM: no guest OOM on        │
+│      large writes, host footprint independent of write volume.              │
+│    - Instant Revert: broker drops the upper file and tombstones in <1ms.   │
+│      Host SSD blocks are reclaimed, not a RAM layer dropped.                │
+│    - Rollback page purge: FALLOC_FL_PUNCH_HOLE + posix_fadvise              │
+│      (POSIX_FADV_DONTNEED) purges the host kernel dirty page cache.         │
+│    - Ephemeral scratch device: dedicated virtio-blk sparse disk at /tmp     │
+│      and /var/cache, discarded on teardown without reconciliation; keeps    │
+│      high-churn caches out of workspace git diffs.                          │
+│ 3. THE SUCCESS PATH RECONCILER (broker commit):                              │
+│    - Broker replays the upper file + tombstones against the base workspace. │
+│    - Per-entry atomic commit at leaf level: temp file + platform rename.    │
+│    - Deletes unlink in place; new dirs create in place. Replay is           │
+│      idempotent: replaying after a crash converges.                          │
+│    - Zero filesystem corruption; Git commits stay ordinary guest runs.      │
+│    - Host inode resolution via openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGIC-    │
+│      LINKS); S_ISUID/S_ISGID stripped on write, create, chmod.              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 4. UID / GID ID-MAPPING (idmap):                                            │
+│    - Translates guest root (UID 0) and node (UID 1000) to host geteuid().   │
+│    - Prevents files written by microVM from requiring host `sudo` to edit.  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 5. SHARED HOST PACKAGE CACHES (virtio-fs read-only mounts):                 │
+│    - Mounts host ~/.npm, ~/.cache/pip, ~/.cargo/registry into guest.        │
+│    - Package installs drop from 2 minutes to <3 seconds on cold microVMs.   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 6. SYNTHETIC FUSE INODES (RAM-Only Virtual Files):                          │
+│    - Injects virtual configurations (.env, .gitconfig) directly into VFS.   │
+│    - Served from host memory; physically DOES NOT EXIST on host SSD.        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 7. SLIDING-WINDOW REPLACEMENT OVER FUSE READ BUFFERS:                       │
+│    - Intercepts FUSE read(); runs sliding-window chunk pattern scanner.     │
+│    - Fixed-width byte replacement on-the-fly; zero full-file RAM buffering. │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 8. SECONDARY READ-ONLY IMAGE MOUNTS:                                        │
+│    - Host-grafted FUSE subtrees for squashfs/EROFS pack images.             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 9. HOST INODE LOCK BROKER (Cross-VM Concurrency):                           │
+│    - Intercepts FUSE SETLK / SETLKW; delegates to host OS advisory locks.   │
+│    - Maps virtual guest inodes to host physical inodes to avoid collisions. │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 10. HOST STATE ROOT (~/.kelir/) + STORAGE CATALOG (06):                     │
+│    - catalog.db: embedded SQLite (WAL), 3 tables only: sessions,            │
+│      cas_leases, schema_version. No resident daemon; every process opens    │
+│      the file directly. WAL + busy_timeout 5000ms; writers serialize via    │
+│      busy handlers, readers proceed concurrently.                           │
+│    - sessions: EVERY session registers a row (session_id, status,           │
+│      incarnation_id, boot_id, start_time_ns, pid, lease_kind,               │
+│      expires_at_unix). Ephemeral rows carry lease_kind='ephemeral' and      │
+│      expires_at_unix NULL, reaped on parent death; detached rows carry      │
+│      lease_kind='lease' and expires_at_unix refreshed every 30s.            │
+│    - Liveness is OS-native, verified against boot_id + start_time_ns +     │
+│      pid; stale rows with recycled PIDs abort delivery: Linux pidfd,        │
+│      macOS kqueue NOTE_EXIT, Windows Job Object KILL_ON_JOB_CLOSE.          │
+│    - Janitor reaps BOTH kinds on runtime child startup (ephemeral on        │
+│      parent death, detached on lease TTL expiry). No lockless bypass:       │
+│      every session has a row; the row is the SSOT for identity/liveness.    │
+│    - cas_leases: blob_hash, holder_pid, expires_at_unix (30s TTL);          │
+│      blobs with zero unexpired leases are pruned without locks.             │
+│    - Schema evolution drops ephemeral tables; immutable CAS files stay      │
+│      intact.                                                                │
+│    - cas/blobs/blake3_<hash>: immutable layer storage (kelir-pack output).  │
+│    - sessions/<id>/: logs/, index.bin, relay.sock, owner.pid, upper/,      │
+│      tombstones/. Lineage is NOT in SQLite: snapshot manifests immutably    │
+│      record parent_digest; lineage walks the CAS manifest DAG.              │
+│    - Quotas: allocated_bytes / allocated_inodes atomics gate on_fs_write    │
+│      and FUSE mknod/create/mkdir; over budget fails synchronously ENOSPC,   │
+│      zero disk writes on rejection.                                         │
+│    - statfs returns remaining broker quota in O(1); quotas evaluate         │
+│      against the broker delta only; counters track sparse upper file bytes  │
+│      + tombstone count + new inodes. The lowerdir host workspace incurs     │
+│      zero statfs traversal (zero-crawl baseline).                           │
+└─────────────────────────────────────────────────────────────────────────────┘

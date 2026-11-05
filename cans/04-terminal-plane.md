@@ -1,0 +1,73 @@
+- Terminal plane
+  - Terminal pipeline
+    - Console filter pipeline: see: artifacts/diagrams/terminal-pipeline.txt
+    - Terminal plane attributes
+      - Owner: kelir-core native terminal subsystem (kelir-core::terminal)
+      - Hardware abstraction: virtio-console paravirtual character bus
+      - Port 0 allocated to standard console IO; Ports 1-16 dynamically allocated
+      - Transport: Raw byte-stream rings mapped to host supervisor memory
+      - Zero-copy ringbuffer backpressure and queue management
+    - HostTerminalGuard (RAII)
+      - On attach: tcgetattr saves host termios; cfmakeraw enters raw mode
+      - SIGINT and SIGTSTP masked on host thread; keystrokes forwarded raw
+      - Ctrl+C (0x03) traverses virtio-console to guest foreground pgid
+      - On drop/panic: tcsetattr(TCSAFLUSH) restores saved termios unconditionally
+      - Host shell state never corrupted after crash
+    - PTY line discipline initialization (kelir-shim)
+      - Shim initializes master/slave pair via openpty()
+      - Configures slave termios: CS8, CREAD, B38400, CLOCAL
+      - Sets sid and controlling terminal: ioctl(slave_fd, TIOCSCTTY, 0)
+      - Workload stdin/stdout/stderr bound directly to slave PTY fd
+    - Window geometry and signals
+      - Window resize rides EXEC control sub-lane 0x03
+      - SignalForward rides stream kind PTY_CONTROL (mux 0x0001)
+      - MsgType 0x02 (SignalForward): pushes signal and exec_id; shim resolves exec_id
+      - SignalForward is the interactive PTY forward only, for the foreground exec
+        - Programmatic signals never use it; they route over Channel 0x0000
+    - Host filter pipeline execution order
+      - 1. ANSI strip: drops OSC 52 (clipboard hijack) and strips OSC 0/1/2 (title spoof)
+      - 2. Prompt match: matches foreground prompts against ANSI-stripped shadow text
+      - 3. Token Shield: clamps scrollback grid to maxLines/maxBytes without mid-stream slicing
+      - 4. Interposer dispatch: fires ConsoleInterposer::on_console_output for in-place masking
+        - Maintains MAX_PLACEHOLDER_LEN - 1 carryover window across chunk boundaries
+    - Headless VT100 wireframe grid
+      - Lean embedded VT100 state machine tracks active terminal matrix
+      - session.terminal.export_screen_matrix() yields deterministic terminal wireframe receipts
+  - Disclosure
+    - Mandatory host disclosure invariant: host mutations publish TerminalNotice to EventBus
+    - Injects formatted ANSI box into host-to-guest console Port 0 stream
+    - Disclosures render inline on workload TTY without corrupting cursor state
+  - Binary exec channel (terminal plane)
+    - Carries programmatic execution streams on stream kind EXEC (mux 0x0001)
+    - Sub-lane framing defined on EXEC stream kind
+    - stdout and stderr retain bitwise fidelity; zero terminal escape pollution
+    - Programmatic commands bypass PTY entirely; PTY (Port 0) is reserved for human attach
+    - Per-exec PTY opt-in
+      - FLAG_ALLOC_PTY on EXEC_IO_SPEC allocates a private slave PTY per ExecSlot
+      - isatty(3) semantics satisfied for language REPLs, git, and build runners
+      - Concurrent interactive execs run without Port 0 serialization
+      - Port 0 remains the sole human break-glass console
+  - Stream replay
+    - Each console port emits an append-only log
+      - stdout, stderr, and (when attached) PTY output are separate logs
+      - Every chunk carries an opaque 64-bit monotonic cursor
+      - Cursor is stable across process restarts and client reconnects
+    - Log storage is durable
+      - Flat chunk files under sessions/<id>/logs/ with append-only index.bin
+      - Global SQLite catalog is bypassed for stdout/stderr streaming writes
+      - No circular buffer; no wrap-around loss
+      - A stalled or disconnected client never causes drops
+      - Host buffer size bounded by eviction policy alone
+    - Reconnect contract
+      - Consumer requests take an optional `since_cursor`
+      - Reissuing the same cursor returns the exact byte sequence
+      - Replay is idempotent; no byte duplication, no offset shift
+      - Guarantee spans disconnect-and-reattach, and process restart
+      - Web terminal resume: reissuing cursor prevents drops across socket reconnects
+    - Tail mode
+      - `since_cursor=None` starts at the tail
+      - Optional `follow=true` streams new chunks as they append
+    - PTY byte streams carry the same cursor model
+      - session.terminal.read_from(port, cursor) -> (Vec<u8>, next_cursor)
+    - EXEC stream kind shares the cursor model per exec_id
+      - exec_log persists per-exec-id for post-run inspection

@@ -1,0 +1,33 @@
+- Plugin supply-chain
+  - Crate dependencies (supply-chain)
+    - Plugin identifier: plugin-supply-chain
+    - Owner crate: crates/kelir-plugins/plugin-supply-chain
+    - name() = "supply-chain"
+    - Tier 2 optional domain filter (supply-chain)
+    - Depends on (supply-chain): kelir-interface and Tier 1 crates
+    - VirtIO attachment (supply-chain): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (supply-chain): see: 08-lifecycle.md#Lifecycle-vetoes
+    - Exposes: JitValidationService
+  - Invariants and policy (supply-chain)
+    - Dynamic W^X JIT execution mediation
+      - Traps in-guest seccomp-unotify events for mprotect(PROT_EXEC) and memfd_create
+      - Inspects caller task: verifies calling binary BLAKE3
+        - Against verified JIT engine catalog (Node, Bun, V8)
+      - Verified JIT runtimes receive dynamic one-time MMU allocation token over vsock
+      - Unverified binaries attempting PROT_EXEC or memfd memory allocation halt with EWXVIOLATION
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.supply_chain.wx_jit
+    - Monitors package manager process trees
+    - see: artifacts/examples/fixtures/kelir.yaml#plugins.supply_chain.package_guard.managers
+    - Inspects binary_path and argv on TrapEvent for package managers (npm, pip)
+    - Blocks execution of lifecycle scripts in dependency directories
+    - Entropy analysis
+      - Computes Shannon entropy of argv[1:] on every TrapEvent
+      - Flags values above 5.2 bits/char as encrypted or base64-obfuscated
+      - Bypass paths are plugin-private config, outside VmConfig
+      - Default bypass runners: node, python, language toolchains
+  - Error and return semantics (supply-chain)
+    - Hook signature (supply-chain): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (supply-chain)
+      - Lifecycle-script deny → exit 126 (permission denied)
+      - stderr_message names manager and blocked script
+      - Nested npm→sh→node traps at the sh ancestor

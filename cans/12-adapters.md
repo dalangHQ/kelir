@@ -1,0 +1,79 @@
+- Adapters
+  - Ingestion matrix
+    - Adapter set and ecosystem binding: see: [1]
+    - Core ingestion primitive: kelir-pack
+      - Offline two-phase in-memory compiler: OCI layer blob → EROFS
+      - Streaming HTTPS client pulls OCI manifest and layer tar chunks directly
+      - Phase 1: layer tar headers only stream into a radix tree in host RAM
+        - Inline whiteouts (`.wh.`, `.wh..wh..opq`) mutate tree nodes in place
+        - Final directory topology, inode count, and chunk extents computed
+      - Phase 2: layer payload bodies stream into CAS blobs
+        - Finalized EROFS data and directory blocks emitted from Phase 1 map
+      - Emits a session-ready EROFS image; workspace CoW is host-broker state
+        - No overlay or union driver is materialized by kelir-pack
+      - Zero intermediate tarballs on disk; zero unfixable EROFS metadata rewrites
+      - Phase 1 RAM cost bounded by 500k inode ceiling (<30MB typical)
+      - Streaming unpack admission clamps maximum expansion ratio to 15:1
+      - Single layer uncompressed extraction budget capped at 8 GiB strictly
+      - Layer entry count bounded to a ceiling of 500,000 inodes
+      - Exceeding decompression budget aborts compilation with E_LAYER_OVERSIZE
+      - Eliminates host memory exhaustion and layer zip-bomb vectors during pull
+      - Computes canonical rootfs BLAKE3 digest during the single-pass build
+      - No OCI registry daemon, no content store, no resident puller
+      - Emits cas/blobs/blake3_<hash> consumed by boot path
+      - Distributed as external CLI binary only
+      - Zero in-process OCI client, layer unpacker, or EROFS builder in supervisor
+    - Two shapes, one rule
+      - Contract-bound binary + plugin: MCP, containerd shim v2, OpenShell
+      - Thin SDK wrapper: E2B (no plugin, no binary) — see: #E2B-compatibility
+    - Rule: the plugin owns translation and policy; the binary owns the wire
+    - Process vs plugin boundary
+      - Shim process owns wire; kelir-pack owns image→EROFS translation
+      - plugin-oci-translator (commercial) owns containerd-shim-specific policy only
+      - Server process owns stdio wire; plugin-mcp owns JSON-RPC translation
+      - Driver process owns gRPC wire; plugin-profile owns policy
+      - SDK wrapper only: no process, no plugin
+    - Tri-native SDKs are the fourth ingestion family; see: 03-sdk-architecture.md
+    - Ingestion tiering and licensing
+      - Community adapters: kelir-pack (OCI→EROFS compiler), mcp-server (stdio wire),
+        - e2b-compat (thin client SDK)
+      - Commercial adapters: containerd-shim-v2 (K8s), openshell-grpc (NVIDIA CDI)
+      - Commercial adapter interface: policy traits only; impls out-of-tree
+  - MCP adapter
+    - Architecture (mcp): see: [1]
+    - Server binary crate: kelir-adapters/mcp-server
+    - Server plugin: plugin-mcp (translates JSON-RPC to native terminal/storage planes)
+    - Binds mux stream kind MCP_CONSOLE (0x0012), not Port 0 PTY
+  - Containerd shim v2
+    - Architecture (containerd): see: [1]
+    - Image translation (kelir-pack): see: #Ingestion-matrix
+    - Containerd policy: ContainerdOrchestrationPolicy registered via PipelineBinder
+    - Shim maps to Session execution with flat kelir-pack + policy config
+    - Containerd boundary: see: #Process-vs-plugin-boundary
+    - Kubernetes workload isolation: executes K8s pod specs as native microVMs
+  - OpenShell gRPC driver
+    - Architecture (openshell): see: [1]
+    - Server binary crate: kelir-adapters/openshell-driver
+    - Translates OpenShell gRPC services directly to Session and plugin-profile
+      - SandboxService maps to KelirBuilder boot and lifecycle primitives
+      - PolicyService maps OpenShell YAML directly into plugin-profile
+      - SupervisorService maps execution traps to OpenShell approval hooks
+    - Out-of-band supervisor elimination
+      - Eliminates in-guest OpenShell supervisor process entirely
+      - Enforces policy out-of-band via virtio-vsock Channel 0 and FUSE gates
+    - Dynamic approval lifecycle bridge
+      - Denial triggers external suspension: see: 08-lifecycle.md#Suspend-and-resume
+      - Gateway admin approvals push RFC 6902 patches to plugin-profile before cycle-exact resume
+    - CDI mapping: passes OpenShell GPU device requests to plugin-profile CDI parser
+    - OpenShell boundary: see: #Process-vs-plugin-boundary
+    - OpenShell interface: OpenShellCoordinationPolicy trait
+  - E2B compatibility
+    - TypeScript: @kelir/e2b-compat
+    - Python: kelir.compat.e2b
+    - External translation shim mapping Sandbox abstractions to Kelir Session primitives
+    - In-process SDK client wrapper
+      - Consumes standard Kelir runtime without hypervisor modifications
+    - Process vs plugin boundary: thin client wrapper, no in-guest shims or daemons
+    - Drop-in SDK parity: existing agent harnesses execute against Kelir unmodified
+
+- [1]: artifacts/diagrams/ingestion-adapters.txt

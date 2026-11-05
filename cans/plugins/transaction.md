@@ -1,0 +1,45 @@
+- Plugin transaction
+  - Crate dependencies (transaction)
+    - Plugin identifier: plugin-transaction
+    - Owner crate: crates/kelir-plugins/plugin-transaction
+    - name() = "transaction"
+    - Tier 3 cross-cutting aggregator (transaction)
+    - Depends on (transaction): kelir-interface, plugin-db-proxy
+    - Interacts with native Storage Plane 2PC hooks and SqlProxyService via ServiceRegistry
+    - Exposes: TransactionService
+    - VirtIO device attachment (transaction): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (transaction): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (transaction)
+    - Exports TransactionService via PipelineBinder for multi-resource 2PC management
+    - Service surface (transaction): see: artifacts/code/transaction-service.rs
+  - Invariants and policy (transaction)
+    - Multi-resource 2PC coordination
+      - Synchronizes commit/abort across host CoW broker, db-proxy, and lock broker
+      - Coordinates with hypervisor lifecycle: pauses vCPUs during commit evaluation
+      - on_pre_commit pauses guest vCPUs and drains FUSE in-flight ops
+      - on_post_commit(true) invokes broker commit: replay upper + tombstones
+        - and issues SQL COMMIT across active proxy connections
+      - on_post_commit(false) discards the broker upper file and tombstones,
+        - issues SQL ROLLBACK, and releases advisory locks
+      - Prevents desynchronization between host state and guest workspace diffs
+    - Spatial blast radius scoping
+      - Scopes filesystem mutations to declared path subtrees; undeclared writes fail closed
+      - Enforces query boundaries to declared schemas via pgwire frame filter
+      - Restricts advisory lock acquisition to declared physical host inodes
+    - Temporal savepoints
+      - Injects transparent SQL SAVEPOINT markers into active pgwire connections
+      - Snapshots broker upper and tombstone state as opaque savepoint blobs
+      - Rollback to savepoint restores intermediate state without aborting parent transaction
+    - Side-effect quarantine
+      - Un-rollbackable L7 egress during active transaction aborts with E_TRANSACTION_TAINT
+      - PTY disclosure and event bus notifications buffer until successful post-commit
+    - Strict deadline
+      - Uncommitted transactions exceeding timeout_ms abort automatically
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.transaction.two_phase_commit
+    - Two-phase commit demonstration: see: artifacts/examples/db-backed-runtime.py
+  - Error and return semantics (transaction)
+    - Hook signature (transaction): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (transaction)
+      - Participant failure during pre-commit triggers global rollback with EPOLICY
+      - Out-of-scope mutation attempts reject with EACCES or EAmbiguousMutation
+      - Deadlock or timeout aborts transaction with ETIMEDOUT

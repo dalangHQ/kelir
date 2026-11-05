@@ -1,0 +1,286 @@
+- Operations
+  - Execution philosophy
+    - Resource constraints: see: [1] (build)
+      - and artifacts/config/ci.yml (shim size)
+    - Boot-budget target: see: [2]
+    - Sub-minute local cycles via just
+    - Zero-bloat crate boundary: tokio full banned; libc/sys-crates strictly scoped
+    - Shim size invariant: see: [3] (build-guest-shim)
+    - Shim crate invariant: zero external serialization or runtime crates
+    - Code hygiene and physical bounds: see: 01-architecture.md#Codebase-invariants
+    - Default posture
+      - Primitive telemetry on; derived telemetry off unless configured
+      - Ecosystem apparatus gated on registry size; not shipped ahead of it
+      - see: 10-attestation.md#Primitive-vs-derived-metrics
+    - Maximize GitHub Actions free tier
+      - Public repo: unlimited Linux minutes
+      - Private repo: 2,000 min ceiling
+      - macOS runners: 10x multiplier, scarce concurrency
+  - Local velocity
+    - see: [1]
+    - Targets: <15s host build, <10s unit tests, sub-minute pre-flight
+    - Velocity invariants
+      - `build-host` excludes kelir-shim: shim has its own cross-compile
+        - target and its own time budget
+      - `test-all` excludes integration: integration needs a real hypervisor
+        - and would fail every local run
+      - `test-drivers` excludes `test_hw_*`: real-hardware paths are not
+        - locally reproducible
+      - `pre-flight` is the only gate that must pass before push; it is the
+        - union of the three exclusions above plus physical code hygiene gates
+    - `pre-flight` runs parity, plugin audit, tiered check before push
+      - see: #Multi-language-parity-gate and #Developer-CLI
+  - CI matrix
+    - see: [3]
+    - Constraints
+      - macOS runners scarce and 10x private multiplier
+      - Public repos: free Linux minutes
+    - Strategy
+      - 90% of checks on Linux x86
+      - macOS Apple Silicon jobs run driver-hvf unit tests
+      - Do not waste runner minutes on full matrix
+      - Windows CI cells run transport conformance plus driver-openvmm unit tests
+        - Shared-memory SPSC ring path
+        - Named-pipe fallback path
+        - No AF_VSOCK assumptions may leak into shared code; a compile
+          - lint enforces the abstraction; see: 01-architecture.md#Transport-engine-abstraction
+        - Full workflow runs on self-hosted Windows WHP runners
+        - GitHub-hosted cells run transport and driver-openvmm unit tests only
+    - Enforced invariants: CI matrix
+      - Rootfs EROFS image cold-boot budget: see: [2]
+      - Concurrency cancelled per ref (cancel-in-progress)
+      - Shim musl binary size gate: see: [3] (build-guest-shim)
+      - sccache enabled via SCCACHE_GHA_ENABLED
+      - Hard performance budget gate
+        - Budgets in perf/budgets.toml enforced strictly with enforce = true
+        - Regressions in Gate 1, Gate 2 (<2µs), or Gate 3 abort CI run
+        - Cold-boot and RSS purge (<50ms) violations fail with exit code 1
+    - Per-plugin matrix: each plugin fails independently
+    - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
+    - External plugin CI: contract attestation via reusable workflow
+    - Parity release gate: see: #Multi-language-parity-gate
+    - Spec gate: cans-check; see: #Spec-gate
+    - Plugin audit tier: plugin-audit; see: #Per-plugin-CI
+    - Tiered compilation tier: verify-tiered-compilation; see: #Tiered-compilation
+    - Code hygiene gate: check-hygiene enforces 1,000 LOC ceiling and bans
+      - inline `#[cfg(test)]` in `src/` across the entire workspace
+  - Spec gate
+    - Job: cans-check
+    - Two tiers, exit-code asserted on parsed JSON, no stderr grep
+      - `cans check --refs-only`: every reference resolves, no deep hop, no orphan
+      - `cans check`: duplicate-home, node_vs_artifact invariant, redundancy
+    - Pull-request tier: `just check-spec-touched` rejects edits outside
+      - each concept's canEdit set
+    - No path filter: a node edit can break a pointer in any other node
+    - Local mirror: `just check-spec` invokes the identical flags
+    - Invariant: every rule in _rules.yaml maps to a step here, or the rule
+      - is dead and gets removed
+  - Coverage-gates
+    - Coverage gates are gate names, distinct from cans check flags
+      - cans check has no --*-coverage flags; each gate names its enforcement below
+      - Veto and watchdog have no per-item enumeration gate; they ride parity vectors
+    - --plugin-coverage
+      - Plugin asserts: see: [4]
+      - Each plugin appears in at least one example (any example)
+      - Or is explicitly marked in 02 as having none yet
+      - Not necessarily the same example across plugins
+      - Tier model (coverage): see: [5]
+      - Tiered compilation gate: plugins compile against explicit upstream deps
+      - Builder registration gate: each plugin registers without string tokens
+      - Enforcement: scripts/check-plugin-coverage.sh via just check-plugin-coverage
+        - CI runs it in the cans-check job; exit 1 on any orphan or gap
+    - --lifecycle-coverage
+      - Lifecycle asserts: see: 08-lifecycle.md#Hypervisor-primitives
+      - State machine assert: verifies all SuspendReason variants execute through
+        - centralized lifecycle
+      - CI test-core runs the kelir-core lifecycle suite
+    - --panic-hunt-coverage
+      - Fuzzes every stream kind and registered hook with adversarial frames
+      - Asserts zero unhandled panics across malformed CBOR, VFS, and FUSE ops
+      - Escaped unwinds fail the test suite; every path must return Err
+      - Enforcement: CI panic-hunt job, local just panic-hunt
+    - --layering-coverage
+      - Validates downward-only crate dependencies via kelir-plugin-cli check --layers
+      - Core and interface violations reject compilation before test run
+      - Enforcement: just check-layers, CI layer-check job
+    - --hook-coverage
+      - Asserts every hook in the segregated traits is implemented by some
+        - custom plugin in cans/artifacts/examples
+      - Hook home: see: 02-plugin-model.md#Segregated-ring-traits
+      - hook-matrix enumerates the full hook surface; the CI parity job diffs its vectors
+    - --action-coverage
+      - Asserts every Verdict variant is used at least once in cans/artifacts/examples
+      - Action home: see: 11-protocol.md#Verdict-method-mapping
+      - The CI parity job diffs policy-matrix vectors against the Verdict lattice
+    - --veto-coverage
+      - Asserts every VetoEvent is registered at least once in an example
+      - Veto home: see: 08-lifecycle.md#Lifecycle-vetoes
+      - VetoEvent registrations ride vectors.json chains in the CI parity job
+    - --watchdog-coverage
+      - Asserts Suppress and Mitigate are each returned at least once
+      - Watchdog home: see: 08-lifecycle.md#Watchdog
+      - The parity job must observe both Suppress and Mitigate in vectors.json chains
+    - --channel-coverage
+      - Asserts every core stream kind in 11-protocol.md#Control-channel has a
+        - live round-trip integration test
+      - Asserts VFS and BULK stream kinds have live round-trip tests
+      - Asserts at least one plugin-registered stream kind is exercised
+      - A core stream kind with no test fails the gate
+      - Enforcement: CI test-integration job, KVM-gated, continue-on-error on hosted
+    - --drain-coverage
+      - Asserts Running -> Draining -> Terminated transitions on
+        - completion, on timeout, and on already-draining
+      - Asserts EBUSY is returned for new exec during Draining
+      - Drain transitions are asserted in kelir-core, gated by CI test-core
+    - --transport-coverage
+      - Asserts every Transport backend is exercised by a build matrix cell
+      - Linux/macOS: shared-memory SPSC rings, AF_VSOCK fallback
+      - Windows: shared-memory SPSC rings, named pipes fallback
+      - Missing backend test is a release blocker
+      - Enforcement: CI transport-windows job plus test-drivers matrix
+    - --snapshot-depth-coverage
+      - Asserts chain restores at depths 1, 2, 5, and 20 succeed
+      - Asserts branch-from-interior leaves ancestors intact
+      - Chain restores at depth are asserted by kelir-core snapshot tests in CI
+    - --clock-continuity-coverage
+      - Asserts guest_clock manifest survives restore across multi-day offsets
+      - Asserts monotonic clock does not regress across restore
+      - Asserts CLOCK_MONOTONIC never produces negative deltas across fork branches
+      - Enforcement: plugin-replay cell, CI test-plugins matrix
+    - Flag-drift gate
+      - CI calls `just check-spec`, not raw flags
+      - Flag string lives only in the justfile
+      - A flag change is a one-line justfile edit
+  - Per-plugin CI
+    - Per-plugin specs
+      - One spec file per plugin in each plugin folder
+      - Leaf-node rule: plugin files do not chain further references
+        - plane pointers are direct 1-hop
+    - Matrix job: test-plugins
+      - One cell per community domain plugin; cell set: see: [3]
+      - Plugin roster: see: [4]
+      - Each cell: cargo nextest run -p plugin-<name>
+      - fail-fast: false — a failure in one plugin does not mask others
+      - Upstream dependencies: see: [5]
+      - Core planes (terminal, storage, wire, checkpoint, host) execute under test-core
+    - Matrix job: plugin-audit
+      - Each cell runs `kelir-plugin-cli check -p plugin-<name>`
+      - Same contract audit `just check-plugin` runs locally
+      - Cell set: see: [3]
+      - Dependency check: asserts crate deps and ring mask in code trait
+      - Tiered dependency gate: plugin Cargo deps follow the tier model
+      - Tier model (audit): see: [5]
+    - Matrix job: verify-tiered-compilation; see: #Tiered-compilation
+    - Local mirror
+      - just test-plugins runs all in one invocation
+      - just test-plugin <name> for a single plugin
+      - just check-plugin-all runs the loop
+    - Integration tier
+      - Uses: kelir-integration
+      - Runs only where KVM/HVF is available
+      - workflow_dispatch or self-hosted; continue-on-error on GitHub-hosted
+  - Tiered compilation
+    - Job: verify-tiered-compilation
+    - Step: Verify Tiered Plugin Compilation
+    - Command: cargo check --workspace --all-targets
+    - Tier model (compilation): see: [5]
+    - Scope: every workspace crate and target, plugins included
+    - Local mirror: `just check-tiered` runs the identical command
+    - Graph validation: `kelir-plugin-cli check --graph` asserts acyclic deps
+  - External repository CI
+    - Reusable attestation workflow for external plugin repositories
+      - Reusable workflow sketch: see: artifacts/config/plugin-ci-reusable.yml
+      - Attestation flow sketch: see: [6]
+    - External repos run local contract audit via `kelir-plugin-cli check`
+    - Standalone plugin repo layout: see: 02-plugin-model.md#External-plugins
+  - Plugin registry
+    - First-class plugin catalog is compiled in; external index poller is opt-in
+    - Downstream state shape when enabled: see: [6]
+    - Index schema indexes by plugin crate, tier, ring mask, telemetry role
+  - Multi-language parity gate
+    - Rust macros generate typed FFI stubs: napi-rs for TS, pyo3 for Python
+    - Parity evaluated on identical wire frame inputs and outputs using vectors.json
+    - Syntax is idiomatic per language runtime, not copied across SDKs
+    - Gating is behavioral, not type-level
+      - Rust: dependency failures surface at compile time
+      - TS/Py: builder.boot() EConfig on missing dependency
+      - Identical vectors.json outcomes; runtime EConfig is a parity vector
+    - Testkit ground truth
+      - kelir-plugin-testkit serializes canonical ring events and verdicts
+      - Emits raw binary frames, TrapEvent JSON, and Decision expectations
+      - TS and Python suites consume vectors.json; divergent verdicts block CI
+    - AST surface manifest diff
+      - Automated AST scraper extracts public exported API signatures
+      - Asserts 1:1 match across Rust, TypeScript, and Python SDK surfaces
+      - Fails CI on divergent method names, parameter arity, or return types
+      - Divergence in typestate encoding is allowed: Rust may express a
+        - constraint at compile time that TS/Py expresses at boot(); the
+        - behavioral outcome in vectors.json is what the gate asserts
+    - Chain parity
+      - vectors.json must encode the same trap/pre/post/hook chain for each SDK
+      - Each SDK executes that identical chain; CI diffs the observed
+        - ExecutionReceipt per chain and any divergence blocks CI
+      - AST method-name parity alone does not assert chain parity
+    - Precompiled zero-toolchain distribution
+      - Release builds native NAPI addons and PyO3 wheels across target matrix
+      - Linux x86_64, aarch64 musl/glibc, macOS arm64/x86_64 prebuilt
+      - End-user installation via npm and pip requires zero C or Rust tools
+    - Binding coverage assertion
+      - Every kelir-core primitive exposed in FFI must have a parity test
+      - Missing coverage blocks core and plugin releases immediately
+    - Release gate: kelir-core release requires parity green
+  - Developer CLI
+    - Scope rule: only what types cannot encode
+      - Anything a compile error enforces is not shipped
+      - Kelir ships no runner CLI or daemon client; orchestrators embed directly
+      - Tooling exists exclusively to verify physical host boundaries and parity
+    - Subcommands
+      - `kelir doctor`: Probes hardware KVM/HVF virtualization and page size
+        - Linux / RPi probe: /dev/kvm access, 4KB vs 16KB host page size
+        - Linux probe: verifies pidfd_open(2) and pidfd_send_signal(2) kernel support
+        - Android probe: /dev/avf, pKVM node, or proot ptrace readiness
+        - macOS probe: HVF entitlements, Stage-2 unmap support, PMCCNTR_EL0 access
+        - x86_64 probe: asserts invariant TSC and Leaf 0x1 TSC-deadline in CPUID
+      - `kelir doctor --enforce`: Writes immutable /etc/kelir/hw.lock
+      - `kelir setup`: Executes host machine hardening against bare-metal runs:
+        - shims: Prepends ~/.kelir/shims to PATH for claude, pytest, python
+        - lsm: Attaches eBPF/LSM execve killswitch to designated workspace dirs
+        - vault: Migrates plaintext host credentials into Kelir host keyring
+        - hw-lock: Enforces strict permissions on /dev/kvm (group: kelir, 0660)
+      - `kelir spec check <file>`: AOT validation of kelir.toml or kelir.yaml:
+        - Validates syntax and TypeBox/Serde schema without compiling code
+        - Asserts acyclic inheritance trees across extends pointers
+        - Verifies monotonic limits across deep-merged profiles
+      - `kelir spec export`: Emits canonical kelir.toml or kelir.yaml
+      - Granular flags: --install-shims, --attach-lsm, --quarantine-credentials
+      - `kelir doctor --json`: structured for onboarding scripts
+      - `kelir logs <session_id>`: Tails session output using cursor index.bin
+      - `plugin new`: scaffold crate, code trait stubs, empty vectors
+      - `plugin manifest`: emits auto-generated manifest artifact from AST
+      - `plugin check`: same audit as CI, <30s, no network
+      - `plugin vectors`: regenerate vectors.json from fixtures
+      - `plugin rings --show`
+      - `kelir-plugin-cli -- bump-core --channel <released|main>`: pins the core channel
+        - External plugin repos pin released or main before running vectors
+      - `kelir-plugin-cli -- attest --sign`: signs attestation.json for a plugin repo
+      - `kelir-plugin-cli fixtures --verify`: verifies pinned test oracles against fixtures.toml
+      - `kelir-pack`: CLI invocation for single-pass ingestion compiler;
+        - see: 12-adapters.md#Ingestion-matrix
+    - Shares implementation with CI
+      - A local pass that CI rejects means the CLI is broken
+  - Project structure
+    - see: artifacts/config/project-structure.txt
+    - Plugin testkit is dev-only; see: 02-plugin-model.md#Plugin-testkit
+    - Integration needs a real hypervisor; see: #Per-plugin-CI
+    - Adapter crates: see: 12-adapters.md
+    - Tooling crate kelir-plugin-cli: see: #Subcommands
+    - Registry index: see: #Plugin-registry
+    - Test fixtures
+      - SHA-256 and BLAKE3 verification mandatory before mounting test images
+
+- [1]: artifacts/config/justfile
+- [2]: 01-architecture.md#Boot-budget
+- [3]: artifacts/config/ci.yml
+- [4]: 02-plugin-model.md#First-class-plugins
+- [5]: 02-plugin-model.md#Plugin-tiering
+- [6]: artifacts/diagrams/ecosystem-ci.txt

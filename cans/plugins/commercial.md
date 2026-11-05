@@ -1,0 +1,39 @@
+- Commercial plugin interface
+  - Boundary
+    - Public interface defined here; implementation proprietary
+    - kelir-interface is dual-licensed; commercial plugins link freely
+    - No commercial URL appears in this repo
+  - hyper-density
+    - Tier 3 aggregator over native lifecycle primitives
+    - Interface: suspend/resume density scheduler
+    - Depends: kelir-interface
+    - Channels: none (uses lifecycle primitives)
+  - cas-snapshot
+    - Tier 3 snapshot streaming over portable bundles
+    - Interface: streamed import/export through VmmDriver primitives
+    - Depends: kelir-interface, VmmDriver primitives
+    - Channels: reserved through frozen-table revision; see 11-protocol.md
+  - oci-translator
+    - Tier 2 policy layer for the containerd shim v2 boundary
+    - Scope: containerd-specific orchestration policy
+    - Image→EROFS translation lives in kelir-pack
+      - Translation is the core kelir-pack primitive
+        - see: 12-adapters.md#Ingestion-matrix
+    - Depends: kelir-interface, containerd shim v2, kelir-pack
+    - Channels: none (adapter process owns wire)
+  - openshell-coordinator
+    - Tier 3 OpenShell gRPC coordination
+    - Interface: profile + approval lifecycle bridge
+    - Depends: kelir-interface, plugin-profile
+    - Channels: 0x0010 (profile-sync)
+  - Commercial daemon (outside the plugin count)
+    - egress-sidecar (commercial)
+      - External egress rewriting daemon (Envoy/Squid wrapper)
+      - Out-of-process; runs outside the supervisor binary
+      - Implements optional L7 rewriting for legacy workloads
+        - see: plugins/vault.md#Optional-external-egress-rewriting
+      - Interface: EgressSidecarConfig (kind, socket, upstream policy)
+      - Depends: kelir-interface; runs as a separate OS process
+      - Channels: none; wire plane diverts marked egress via L4
+  - Adapter binaries    - containerd-shim-v2, openshell-grpc
+    - Boundary and ownership: see: 12-adapters.md#Process-vs-plugin-boundary

@@ -1,0 +1,80 @@
+# .github/workflows/plugin-ci-reusable.yml
+# Consumed by external plugin repos:
+#   uses: <kelir-repo>/.github/workflows/plugin-ci-reusable.yml@main
+#   with: { plugin: plugin-chaos }
+# Standalone repo layout required by this workflow:
+#   see: cans/02-plugin-model.md#External-plugins
+# Emits: signed attestation.json (commit SHA, tested core range, per-language
+# results, stable + canary channel outcomes). Canon repo consumes this via
+# registry-poll; never reads plugin source.
+
+name: plugin-ci-reusable
+
+on:
+  workflow_call:
+    inputs:
+      plugin:
+        required: true
+        type: string
+    secrets:
+      KELIR_ATTEST_KEY:
+        required: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify zero unsafe code
+        run: |
+          if grep -rn --include="*.rs" 'unsafe ' src/; then
+            echo "ERROR: Unsafe code is forbidden in plugins" && exit 1
+          fi
+      - name: Enforce zero-panic clippy lints
+        run: |
+          cargo clippy -- -D warnings \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used \
+            -D clippy::panic \
+            -D clippy::unimplemented \
+            -D clippy::todo \
+            -D clippy::unreachable
+      - name: Contract audit (same command as `just check-plugin`)
+        run: cargo run -p kelir-plugin-cli -- check -p ${{ inputs.plugin }}
+
+  vectors:
+    needs: [audit]
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [released, main]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: astral-sh/setup-uv@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - name: Pin core channel
+        run: cargo run -p kelir-plugin-cli -- bump-core --channel ${{ matrix.channel }}
+      - name: Vectors + surface diff (same as `just parity`)
+        run: cargo run -p kelir-plugin-cli -- parity run
+
+  attest:
+    needs: [vectors]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Sign attestation
+        env:
+          KEY: ${{ secrets.KELIR_ATTEST_KEY }}
+        run: cargo run -p kelir-plugin-cli -- attest --sign
+      - uses: actions/upload-artifact@v4
+        with:
+          name: attestation-${{ inputs.plugin }}
+          path: .kelir/attestation.json

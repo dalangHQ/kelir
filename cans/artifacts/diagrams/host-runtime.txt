@@ -1,0 +1,42 @@
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 HOST PROCESS RUNTIME                                    │
+│                                                                                         │
+│  ┌─────────────────────────┐       ┌─────────────────────────────────────────────────┐  │
+│  │   NATIVE RUST CONSUMER  │       │       DYNAMIC RUNTIME CONSUMERS                 │  │
+│  │   (Direct Cargo Crate)  │       │       TypeScript (@kelir/core) | Python (kelir) │  │
+│  └────────────┬────────────┘       └────────────────────────┬────────────────────────┘  │
+│               │ Zero-Cost Link                              │ ForeignPluginProxy FFI    │
+│               │ (Direct Monomorphization)                   │ (napi-rs / PyO3)          │
+│               ▼                                             ▼                           │
+│  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                        kelir-core (Stripped Microkernel, #![forbid(unsafe_code)])                          │  │
+│  │   ├── Native tier plugins: In-memory Rust execution at the latency ceiling        │  │
+│  │   ├── Foreign tier Filter-Before-FFI Gate: MountScope drops unmonitored events    │  │
+│  │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │
+│  │   ├── PipelineEngine: Panic-quarantined execution tables (catch_unwind protected)        │  │
+│  │   ├── EventBus: Unified compile-time and async hook pipeline                      │  │
+│  │   ├── Transport: SPSC rings primary; AF_VSOCK / named-pipe fallback                │ │
+│  │   ├── Host state: ~/.kelir/catalog.db (SQLite WAL), cas/, sessions/               │  │
+│  │   └── DriverRouter: Lifecycle controller mediating Box<dyn VmmDriver>             │  │
+│  └──────────────────────────────────────────┬────────────────────────────────────────┘  │
+│                                             │ Dynamic Driver Trait Interface            │
+│                                             ▼                                           │
+│  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                           kelir-drivers (Pluggable Backends, Isolated Unsafe Enclaves)                      │  │
+│  │   ├── driver-rustvmm (DEFAULT Linux): KVM + userfaultfd CoW + CUDA CDI            │  │
+│  │   │   CPUID synthetic filter: invariant TSC, Leaf 0x1 TSC-deadline,               │  │
+│  │   │   unconditional across AMD/Hygon; unknown vendors -> canonical KVM.           │  │
+│  │   ├── driver-hvf (DEFAULT macOS): Native HVF + direct Mach vm_copy CoW            │  │
+│  │   │   Stage-2 chunked promoter: eager 2MB blocks via Mach vm_copy CoW.            │  │
+│  │   ├── driver-openvmm: Windows WHP + ConPTY + HV_SOCKET + Azure Linux MSHV         │  │
+│  │   │   Restore: Local APIC commits before TSC; TSC-before-APIC prohibited.         │  │
+│  │   ├── driver-avf: Android Virtualization Framework via /dev/avf & pKVM            │  │
+│  │   ├── driver-bwrap: Unprivileged Linux user namespaces + seccomp-unotify fallback │  │
+│  │   └── driver-proot: Unprivileged Android/Termux ptrace emulation fallback         │  │
+│  └───────┬──────────────┬──────────────┬──────────────┬──────────────┬───────────────┘  │
+└──────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────────────┘
+           │ virtio-      │ virtio-      │ virtio-      │ virtio-blk   │ virtio-shm /
+           │ console      │ vsock        │ fs           │ (EROFS)      │ virtio-wdt /
+           │ [Ring 1]     │ [Ring 2]     │ [Ring 3]     │              │ virtio-balloon
+           ▼              ▼              ▼              ▼              ▼
+                             (see guest-vm.txt for the guest side)

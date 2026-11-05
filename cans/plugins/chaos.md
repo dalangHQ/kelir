@@ -1,0 +1,41 @@
+- Plugin chaos
+  - Crate dependencies (chaos)
+    - Plugin identifier: plugin-chaos
+    - Owner crate: crates/kelir-plugins/plugin-chaos
+    - name() = "chaos"
+    - Tier 3 cross-cutting aggregator (chaos)
+    - Depends on (chaos): kelir-interface (injects faults into native planes)
+    - Exposes: FaultInjectionService
+    - VirtIO device attachment (chaos): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (chaos): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (chaos)
+    - Exports FaultInjectionService through PipelineBinder for dynamic rule mutations
+  - Invariants and policy (chaos)
+    - Bidirectional across wire plane
+      - on_net_outbound mutates frames leaving guest
+      - on_net_inbound mutates frames arriving at guest
+      - Both directions flow through same chaos rule engine
+    - Network chaos
+      - target: domain or host pattern
+      - direction: "outbound" | "inbound" | "both"
+      - latency: { baseMs, jitterMs }
+      - dropRate: synthetic packet loss probability
+      - injectRst: synthetic TCP RST flags
+      - bandwidthKbps: link speed clamp
+    - Storage chaos
+      - targetPath: glob over guest filesystem
+      - simulateError: errno such as ENOSPC
+      - errorProbability: fraction of write() calls failed
+    - Typical uses
+      - Verify agent code handles flaky APIs, dialup speeds, RST resets
+      - Verify graceful degradation on disk-full conditions
+    - Wiring: see: artifacts/examples/autonomous-swe-agent.ts
+  - Error and return semantics (chaos)
+    - Hook signature (chaos): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (chaos)
+      - Fault injection adheres to monotonic lattice via FilterAction
+      - Synthetic loss uses FilterAction::Drop { errno: None } for chaos faults
+        - Silently discards frame, injects no RST, surfaces no errno
+        - see: 07-wire-plane.md#Frame-drop-and-forward-semantics
+      - FilterAction::Drop { errno: ECONNREFUSED } retains policy semantics
+        - Chaos reserves ECONNREFUSED for RST injection

@@ -1,0 +1,734 @@
+//! examples/autonomous-swe-agent.rs
+//!
+//! Composition example: chaos + ledger + repo-policy custom plugin,
+//! chained across terminal / storage / wire / checkpoint / host planes.
+//! Subsystem demos live in git-gate.rs, hook-matrix.rs,
+//! policy-matrix.rs.
+//!
+//! Cargo.toml://!   [dependencies]
+//!   kelir = { version = "1.0", features = ["chaos", "ledger"] }
+//!   tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "time"] }
+//!   async-trait = "0.1"
+//!   serde = { version = "1", features = ["derive"] }
+//!   serde_json = "1"
+//!   thiserror = "2"
+//!   blake3 = "1"
+//!   libc = "0.2"
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
+
+use kelir::{
+    handler, driver::{DriverPolicy, WxPolicy}, FinalizeRequest, FsReconcileRequest, HandlerCtx,
+    KelirBuilder, PostExecAction, Session, SnapshotDescriptor, StepSlot, Verdict, VmConfig,
+    plugin::{
+        AnyPlugin, KelirPlugin, PluginError,
+        FsInterposer,
+        TrapInterposer,
+    },
+    plugins::{
+        chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
+        ledger::{FinalReceipt, LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
+    },
+    planes::{
+        terminal::{PtyConfig, PromptRule, TokenShield},
+        storage::{DynamicFile, SyntheticFile, IdmapConfig, MaskRule, ReadMaskEngine, SnoopHandler, SnoopRule, StorageConfig, WorkspaceEncapsulation},
+        wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig},
+    },
+    protocol::{PatchPayload, TrapEvent},
+    telemetry::{CausalDelta, ExecutionReceipt},
+};
+
+// ============================================================================
+// 1. TYPED PARAMS — the serde analogue of the TypeBox object schema
+// ============================================================================
+
+/// Deserialization target for every `spawn()` call in this file. Any handler
+/// that calls `.params::<SpawnAction>(…)` forces serde to validate the
+/// inbound JSON against this shape before dispatch. If a field is missing
+/// or mistyped at runtime, the spawn fails with `EINVAL` *before* any hook
+/// fires — the TypeBox guarantee, enforced by `serde`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "action", rename_all = "kebab-case")]
+pub enum SpawnAction {
+    FixStripeWebhook {
+        repo: String,
+        issue_id: String,
+        env: Env,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Env { Staging, Production }
+
+// ============================================================================
+// 2. CUSTOM PLUGIN — `KelirPlugin` across 3 of the 4 VirtIO rings
+// ============================================================================
+
+#[derive(Debug, Clone)]
+pub struct RepoPolicyOptions {
+    pub max_diff_bytes: usize,
+    pub protected_branches: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RepoPolicyState {
+    violations: usize,
+    current_branch: String,
+}
+
+/// Typed handle — the compile-time proof of installation (§6's invariant,
+/// expressed in Rust). `Arc<Mutex<_>>` gives interior mutability while
+/// keeping the handle `Send + Sync + Clone`, so multiple async handler
+/// closures can share it across spawns.
+#[derive(Clone)]
+pub struct RepoPolicyHandle {
+    state: Arc<Mutex<RepoPolicyState>>,
+    protected: Arc<Vec<String>>,
+}
+
+impl RepoPolicyHandle {
+    pub async fn violations(&self) -> usize { self.state.lock().await.violations }
+    pub async fn branch(&self) -> String { self.state.lock().await.current_branch.clone() }
+    pub async fn record_violation(&self) { self.state.lock().await.violations += 1; }
+    pub async fn set_branch(&self, b: impl Into<String>) {
+        self.state.lock().await.current_branch = b.into();
+    }
+    pub async fn is_protected(&self) -> bool {
+        let s = self.state.lock().await;
+        self.protected.iter().any(|p| {
+            p == &s.current_branch
+                || p.strip_suffix('*')
+                    .is_some_and(|prefix| s.current_branch.starts_with(prefix))
+        })
+    }
+}
+
+/// Plugin: repo-policy
+/// Rings: virtio-vsock, virtio-fs
+#[derive(Clone)]
+pub struct RepoPolicyPlugin {
+    opts: RepoPolicyOptions,
+    state: Arc<Mutex<RepoPolicyState>>,
+}
+
+impl RepoPolicyPlugin {
+    pub fn new(opts: RepoPolicyOptions) -> Self {
+        Self { opts, state: Arc::new(Mutex::new(RepoPolicyState::default())) }
+    }
+}
+
+impl RepoPolicyPlugin {
+    pub fn handle(&self) -> RepoPolicyHandle {
+        RepoPolicyHandle {
+            state: Arc::clone(&self.state),
+            protected: Arc::new(self.opts.protected_branches.clone()),
+        }
+    }
+}
+
+impl KelirPlugin for RepoPolicyPlugin {
+    type Context = RepoPolicyHandle;
+    fn context(&self) -> Self::Context { self.handle() }
+    fn name(&self) -> &'static str { "repo-policy" }
+
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
+        Box::new(Self {
+            opts: self.opts.clone(),
+            state: Arc::new(Mutex::new(self.state.blocking_lock().clone())),
+        })
+    }
+}
+
+#[async_trait]
+impl TrapInterposer for RepoPolicyPlugin {
+    // ── Ring 2 (virtio-vsock): veto or patch `git push` ────────────────
+    async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+        let is_git = event.binary_path.ends_with("/git") || event.binary_path == "git";
+        let is_push = event.argv.get(1).map(String::as_str) == Some("push");
+        if !(is_git && is_push) { return Ok(Verdict::Pass); }
+
+        let h = self.handle();
+        if h.is_protected().await {
+            h.record_violation().await;
+            return Ok(Verdict::Drop {
+                errno: Some("EPERM".into()),
+                reason: format!("EPOLICY: '{}' is protected.", h.branch().await),
+            });
+        }
+
+        let new_branch = format!("agent/{:08x}", std::process::id());
+        let mut argv = event.argv.clone();
+        argv.push(format!("HEAD:refs/heads/{new_branch}"));
+        // ExecveMutation (plugins/tool-guard.md) as the Patch payload.
+        let mutation = serde_json::json!({
+            "new_binary": "/bin/git",
+            "new_argv": argv,
+            "set_env": { "KELIR_REWRITTEN": "1" },
+            "unset_env": [],
+        });
+        Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&mutation).unwrap())))
+    }
+}
+
+impl FsInterposer for RepoPolicyPlugin {
+    // ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
+    fn on_fs_write(
+        &self, path: &Path, data: &[u8], _pid: u32, _ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        if path.extension().is_some_and(|e| e == "diff")
+            && data.len() > self.opts.max_diff_bytes
+        {
+            self.state.blocking_lock().violations += 1;
+            return Ok(Verdict::Drop {
+                errno: Some("ENOSPC".into()),
+                reason: "diff exceeds policy ceiling".into(),
+            });
+        }
+        Ok(Verdict::Pass)
+    }
+}
+
+// Host mutations publish TerminalNotice to the EventBus; the native
+// terminal plane formats the notice. RepoPolicy's annotation is
+// delivered via terminal.notice at the post-exec sites, using this helper.
+impl RepoPolicyPlugin {
+    async fn disclosure_annotation(&self) -> Vec<u8> {
+        format!("[repo-policy: {} open violations]\n", self.handle().violations().await).into_bytes()
+    }
+}
+
+// ============================================================================
+// 3. RUNTIME BUILDER — the plugin chain (write-only until `.boot()`)
+// ============================================================================
+
+async fn build_runtime(
+    oracle: Arc<UserOracle>,
+    pg_cert: PathBuf,
+    pg_key: PathBuf,
+) -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sync>> {
+    let policy_plugin = RepoPolicyPlugin::new(RepoPolicyOptions {
+        max_diff_bytes: 64 * 1024,
+        protected_branches: vec!["main".into(), "master".into(), "release/*".into()],
+    });
+    // Snoop closure — does NOT capture `session`; uses only the `HandlerCtx`
+    // it receives, whose `ledger` field is bound by `LedgerPlugin` below.
+    // Same invariant as the TS example (08 Class 3 guest-unverified data).
+    let snoop: SnoopHandler = Arc::new(|path: PathBuf, raw: Vec<u8>, c: HandlerCtx| {
+        Box::pin(async move {
+            let evt: serde_json::Value = serde_json::from_slice(&raw)
+                .map_err(|e| PluginError::Halt(format!("session is not JSON: {e}")))?;
+            if evt.get("falsifiedResult").and_then(|v| v.as_bool()).unwrap_or(false) {
+                return Err(PluginError::reject("EPERM", "harness hallucination detected"));
+            }
+            let blake3 = c.ctx::<LedgerCtx>().blake3_of_producing_process(&path).await?;
+            oracle.ingest_harness_event(&path, &evt, &blake3).await?;
+            Ok(())
+        })
+    });
+
+    // Every plugin contributes exactly one typed handle slot; no two
+    // `.plugin_*()` calls touch the same downstream surface.
+    let builder = KelirBuilder::new(VmConfig {
+        vcpus: 4,
+        memory_mb: 4096,
+        kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
+        rootfs_erofs_path: "./fixtures/rootfs-swebench.erofs".into(),
+        tsc_locked: true,
+        enable_watchdog: true,
+        enable_gpu_passthrough: false,
+        driver_policy: DriverPolicy {
+            require_hardware_vmm: false,
+            allow_emulated_fallback: true,
+            verify_hw_lockfile: false,
+            wx_enforcement: WxPolicy::PermissiveAudit,
+            ffi_worker_threads: 2,
+            ffi_max_ops_per_sec: 1000,
+        },
+        page_size_kb: 4,
+        deterministic_clock: false,
+        network_off: false,
+        pinned_clocksource: None,
+        ns_per_instruction: None,
+        preemption_grace_ms: 0,
+        entropy_seed: None,
+    })
+
+        // ── TERMINAL PLANE (§7) ────────────────────────────────────────
+        .terminal(PtyConfig {
+            cols: 120,
+            rows: 40,
+            drop_osc52: true,
+            strip_title: true,
+            token_shield: Some(TokenShield {
+                max_bytes_total: 128 * 1024,
+                max_lines_total: 500,
+                clamp_strategy: "head-and-tail".into(),
+                notice: "⚠️ [SHIELD]".into(),
+            }),
+            prompts: vec![PromptRule {
+                pattern: r"(?i)Overwrite production schema\? \[y/N\]".into(),
+                timeout: Duration::from_secs(3),
+                verify_foreground: true,
+                action: Arc::new(|_, stream| Box::pin(async move {
+                    stream.write(b"y\n").await?;
+                    Ok(())
+                })),
+            }],
+            // Non-default knob (04-terminal-plane.md#Terminal-pipeline):
+            // StatelessRegex instead of the StreamingAutomata default.
+            // The filters above are unchanged; only the match engine is.
+            stream_engine: "StatelessRegex".into(),
+        })
+
+        // ── STORAGE PLANE (§8) ─────────────────────────────────────────
+        .storage(StorageConfig {
+            idmap: IdmapConfig {
+                guest_uid: 0,
+                host_uid: unsafe { libc::getuid() },
+            },
+            shared_caches: vec![
+                "~/.npm".into(), "~/.cache/pip".into(), "~/.cargo/registry".into(),
+            ],
+            lock_broker: true,
+            synthetic_files: vec![
+                SyntheticFile::static_(
+                    "/workspace/.env.local",
+                    "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n",
+                ),
+                SyntheticFile::dynamic("/workspace/identity.jwt", |_| Box::pin(async move {
+                    Ok(DynamicFile {
+                        content: format!("Bearer {:032x}", std::process::id()),
+                        mode: 0o400,
+                    })
+                })),
+            ],
+            mask_read: vec![MaskRule {
+                glob: "**/secrets/**".into(),
+                patterns: vec![
+                    (r"sk_live_[0-9a-zA-Z]{24}".into(), "[STRIPE_VAULT_KEY]".into()),
+                    (r"AKIA[0-9A-Z]{16}".into(), "[AWS_IAM_REDACTED]".into()),
+                ],
+            }],
+            snoops: vec![SnoopRule {
+                glob: "~/.claude/sessions/*.json".into(),
+                sync: true,
+                on_write: snoop,
+            }],
+            encapsulation: WorkspaceEncapsulation::Passthrough,
+            scan_engine: ReadMaskEngine::FastRegex,
+            carryover_bytes: 1024,
+        })
+
+        // ── WIRE PLANE (§9) ─────────────────────────────────────────────
+        .wire(WireConfig {
+            sinkhole: SinkholeConfig {
+                allowlist: vec![
+                    "api.stripe.com".into(), "github.com".into(), "*.internal.net".into(),
+                ],
+                drop_all: true,
+            },
+            ssh_agent_bridge: true,
+            // Broker: the workload fetches
+            // http://169.254.169.254/kelir/credentials/STRIPE_SECRET
+            // -> {token, ttl_seconds, scope, audience}, TTL default 60s /
+            // ceiling 900s, host keyring sole store, host code never
+            // sees the key.
+            vaults: vec![VaultEntry {
+                name: "STRIPE_SECRET".into(),
+                placeholder: "vault://stripe_key".into(),
+            }],
+            l4_proxies: vec![L4Proxy {
+                listen_port: 5432,
+                destination: "pg.internal.net:5432".into(),
+                inject_mtls: Some(Mtls { cert_path: pg_cert, key_path: pg_key }),
+            }],
+            // Non-default knob (07-wire-plane.md): AllowUdpProxied instead
+            // of the StrictTcpOnly default. The DNS policy-filter drop_all
+            // above is unchanged; only the UDP path moves to proxied.
+            tap_filter: TapFilter::AllowUdpProxied,
+        })
+
+        // ── CHAOS (§10) ─────────────────────────────────────────────────
+        .plugin(ChaosPlugin::new(ChaosConfig {
+            network: vec![NetworkChaos {
+                target: "api.stripe.com".into(),
+                base_ms: 150, jitter_ms: 30, drop_rate: 0.02,
+                inject_rst: false, bandwidth_kbps: None,
+            }, NetworkChaos {
+                target: "api.stripe.com".into(),
+                base_ms: 150, jitter_ms: 30, drop_rate: 0.02,
+                inject_rst: false, bandwidth_kbps: None,
+                direction: "inbound".into(),
+            }, NetworkChaos {
+                target: "api.stripe.com".into(),
+                base_ms: 150, jitter_ms: 30, drop_rate: 0.02,
+                inject_rst: false, bandwidth_kbps: None,
+                direction: "both".into(),
+            }],
+            fs: vec![FsChaos {
+                target_path: "/workspace/build/cache/*".into(),
+                simulate_error: "ENOSPC".into(),
+                error_probability: 0.05,
+            }],
+        }))
+
+        // ── LEDGER (§12.1–§12.3) ────────────────────────────────────────
+        .plugin(LedgerPlugin::new(LedgerConfig {
+            // The audit DB lives on the host, immune to guest rollback/fork.
+            // Merkle WAL is opt-in (ledger.merkle.enabled = true);
+            // OTLP is the default sink. This example opts in explicitly.
+            store: ".kelir/audit.merkle.db".into(),
+            merkle_chain: true,
+            otel: Some(OtelConfig {
+                endpoint: "http://localhost:4318/v1/traces".into(),
+                service_name: "kelir-swe-agent".into(),
+                propagate_traceparent: true,
+            }),
+            receipts: ReceiptConfig {
+                include_syscall_count: true,
+            },
+        }));
+
+    // ── CUSTOM PLUGIN: fluid registration ───────────────────────────────
+    let builder = builder.plugin(policy_plugin);
+
+    // ── TRAP REGISTRATIONS (§4.3, §12.5) ─────────────────────────────
+    // Direct root-level .trap() registrations: pre-exec gates return a
+    // Verdict, post-exec gates return a PostExecAction.
+    let builder = builder
+        // Universal atomic step loop: checkpoint → oracle → resume
+        .trap("*", handler({
+            let oracle = Arc::clone(&oracle);
+            move |c: HandlerCtx| {
+                let oracle = Arc::clone(&oracle);
+                async move {
+                    let pre = c.vm
+                        .checkpoint(format!("pre:{}", c.trap.pid))
+                        .await?;
+
+                    let intent: IntentAnalysis = oracle.analyze_intent(&c.trap).await?;
+                    if !intent.is_hypothesis_valid {
+                        return Ok(Verdict::Drop {
+                            errno: Some("EPERM".into()),
+                            reason: format!(
+                                "Verification Reject: {}",
+                                intent.falsification_reason.unwrap_or_default()
+                            ),
+                        });
+                    }
+                    Ok(Verdict::Pass)
+                }
+            }
+        }))
+
+        // Warm caches + stamp traceparent for hermetic test
+        .trap(TrapFilter::binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), handler(|c: HandlerCtx| async move {
+            c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
+            // Env injection via Patch, not env.set + Pass (09: EINVALIDDECISION).
+            // SDK patch serializes to ExecveMutation.
+            Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&serde_json::json!({
+                "new_binary": c.trap.binary_path.clone(),
+                "new_argv": c.trap.argv.clone(),
+                "set_env": { "OTEL_TRACE_ID": format!("{:032x}", std::process::id()), "CI": "1" },
+                "unset_env": [],
+            })).unwrap())))
+        }))
+
+        // `--force` strip
+        .trap(TrapFilter::binary("git").with_arg("push"), handler(|c: HandlerCtx| async move {
+            if c.trap.argv.iter().any(|a| a == "--force") {
+                let argv = c.trap.argv.iter()
+                    .filter(|a| *a != "--force").cloned().collect();
+                return Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&serde_json::json!({
+                    "new_binary": "/bin/git",
+                    "new_argv": argv,
+                    "set_env": { "KELIR_DISARMED": "1" },
+                    "unset_env": [],
+                })).unwrap())));
+            }
+            Ok(Verdict::Pass)
+        }))
+
+        // Tier-1 post-condition verification + rollback (§12.5)
+        .trap("*", handler({
+            let oracle = Arc::clone(&oracle);
+            move |c: HandlerCtx| {
+                let oracle = Arc::clone(&oracle);
+                async move {
+                    let pre: SnapshotDescriptor = c.step.last().ok_or_else(|| {
+                        PluginError::Halt("no pre-exec checkpoint".into())
+                    })?;
+                    let receipt: ExecutionReceipt = c.receipt().await?;
+
+                    // Binary hash integrity — the agent cannot fake this.
+                    // Receipt is hex of the trap's raw [u8; 32] digest.
+                    let trap_hex: String = c.trap.binary_blake3.iter()
+                        .map(|b| format!("{:02x}", b)).collect();
+                    if receipt.binary_blake3 != trap_hex {
+                        c.vm.rollback(&pre).await?;
+                        c.terminal.notice(
+                            "⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n",
+                        );
+                        return Ok(PostExecAction::RollbackAndHalt);
+                    }
+                    // Hermetic runs must not egress
+                    if c.trap.binary_path.ends_with("/npm")
+                        && receipt.egress_bytes > 0
+                        && c.trap.cwd.contains("/checkout-service")
+                    {
+                        c.vm.rollback(&pre).await?;
+                        c.terminal.notice(&format!(
+                            "⚡ [KELIR]: hermetic test emitted {}B egress — REVERTED\n",
+                            receipt.egress_bytes
+                        ));
+                        return Ok(PostExecAction::RollbackAndHalt);
+                    }
+                    // Userland-evaluator post-condition (§12.5)
+                    if !oracle.verify_physical_receipt(&receipt).await? {
+                        c.vm.rollback(&pre).await?;
+                        c.terminal.notice(
+                            "⚡ [KELIR]: post-condition violated — REVERTED\n",
+                        );
+                        return Ok(PostExecAction::RollbackAndHalt);
+                    }
+                    Ok(PostExecAction::Proceed)
+                }
+            }
+        }))
+
+        // Commit gate — refuses if the policy plugin logged anything
+        .trap(TrapFilter::binary("git").with_arg("commit").with_arg("-m"), handler({
+            move |c: HandlerCtx<_, _>| async move {
+                // Static access via Plugins: Has<RepoPolicyHandle>;
+                // a missing .plugin(RepoPolicyPlugin) is a compile error.
+                let policy = c.ctx::<RepoPolicyHandle>();
+                let n = policy.violations().await;
+                if n > 0 {
+                    return Ok(Verdict::Drop {
+                        errno: Some("EPERM".into()),
+                        reason: format!("EPOLICY: {n} prior violation(s)."),
+                    });
+                }
+                Ok(Verdict::Pass)
+            }
+        }))
+
+        // Tier-1 sanity: a commit must have dirtied at least one byte
+        .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: HandlerCtx| async move {
+            let receipt = c.receipt().await?;
+            // dirty_bytes is always populated; zero is a real measurement
+            if receipt.dirty_bytes == 0 {
+                return Err(PluginError::Halt("zero-byte delta commit".into()));
+            }
+            // Workspace-scoped observation (10-attestation.md#Execution-receipts):
+            // dirty_bytes counts all hypervisor-dirtied bytes; the
+            // workspace counter now arrives as a native storage plane
+            // TelemetryExtension (namespace "fs:vfs"), whose payload is
+            // plugin-defined and opaque to core. The gate above still keys
+            // on dirty_bytes; this line logs only the extension's
+            // presence and payload length, never a decoded count.
+            match receipt.extensions.iter().find(|e| e.namespace == "fs:vfs") {
+                Some(ext) => eprintln!(
+                    "[kelir] commit fs:vfs extension present, payload_len={}",
+                    ext.payload.len(),
+                ),
+                None => eprintln!("[kelir] commit fs:vfs extension absent"),
+            }
+            Ok(PostExecAction::Proceed)
+        }));
+
+    // ── LIFECYCLE HOOKS (§11.4, §12) ────────────────────────────────────
+    let builder = builder
+        .on_vm_init(|driver| async move {
+            driver.set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot).await
+        })
+        .on_vm_ready(|session: &Session| async move {
+            session.exec_in_guest("npm", &["ci", "--prefer-offline"]).await
+        })
+        .on_vm_shutdown(|session: &Session| async move {
+            session.ctx::<LedgerCtx>().flush().await
+        })
+        .on_trap_deny(|event, session: &Session| async move {
+            if session.ctx::<LedgerCtx>().count_denials(event.ppid).await > 5 {
+                session.vm.suspend("./.kelir/quarantine.snap").await?;
+                // PTY console master (Port 0) is the sole in-process
+                // break-glass surface (08-lifecycle Break-glass);
+                // programmatic commands already go via exec_in_guest,
+                // these failure paths are human inspection after
+                // suspend/rollback.
+                session.console().await?;
+            }
+            Ok(())
+        });
+
+    Ok(builder)
+}
+
+// ============================================================================
+// 4. ORCHESTRATION — the seven phases
+// ============================================================================
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let oracle: Arc<UserOracle> = Arc::new(UserOracle::new());
+
+    let builder = build_runtime(
+        Arc::clone(&oracle),
+        "/etc/ssl/client.crt".into(),
+        "/etc/ssl/client.key".into(),
+    ).await?;
+
+    // ── Boot: the sole point where the write-only chain becomes a session ─
+    let session = builder.boot().await?;
+    eprintln!("[kelir] driver={} boot={}ms", session.driver_name(), session.boot_ms());
+
+    // Port forward the dev server for human smoke testing (§11.7)
+    session.wire.forward_port(3000, 8080).await?;
+
+    let base = session.vm.checkpoint("clean_base").await?;
+    let mut winning_delta: Option<CausalDelta> = None;
+
+    let phase: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
+        // ── Phase 1: hermetic test (chaos on, egress forbidden) ──────────
+        let test = session.spawn("npm")
+            .args(["test", "--", "--runInBand"])
+            .cwd("/workspace/checkout-service")
+            // params cross into the guest as the KELIR_PARAMS=<json> environment variable
+            .params::<SpawnAction>(SpawnAction::FixStripeWebhook {
+                repo: "checkout-service".into(),
+                issue_id: "ISSUE-8412".into(),
+                env: Env::Staging,
+            })
+            .await?;
+        if test.exit_code != 0 {
+            session.vm.rollback(&base).await?;
+            session.console().await?;   // (08 Break-glass)
+            return Ok(());
+        }
+
+        // ── Phase 2: 4-way CoW fork fan-out (§11.1, §11.3) ──────────────
+        let mut joins = tokio::task::JoinSet::new();
+        for id in ['A', 'B', 'C', 'D'] {
+            let parent = session.clone();
+            joins.spawn(async move {
+                let child = parent.vm.fork().await?;                 // <15ms
+                child.vm
+                    .clock
+                    .skew(Duration::from_secs(24 * 24 * 3600 * (id as u64 - 64)))
+                    .await?;
+                let run = child.spawn("npm")
+                    .args(["run", &format!("verify-hypothesis-{id}")])
+                    .cwd("/workspace/checkout-service")
+                    .await?;
+                let delta = child.get_causal_delta_from_parent().await?;
+                child.terminate().await?;
+                Ok::<_, Box<dyn std::error::Error + Send + Sync>>((id, run, delta))
+            });
+        }
+
+        let mut winner: Option<(char, CausalDelta)> = None;
+        while let Some(joined) = joins.join_next().await {
+            let (id, run, delta) = joined??;
+            if run.exit_code == 0 && winner.is_none() {
+                winner = Some((id, delta));
+            }
+        }
+        let Some((id, delta)) = winner else {
+            session.vm.rollback(&base).await?;
+            return Ok(());
+        };
+        winning_delta = Some(delta);
+
+        // ── Phase 3: suspend to 0 MB RSS, await approval, resume (§11.2) ─
+        session.suspend("/tmp/eval.snap").await?;
+        eprintln!("[kelir] suspended: host RSS = 0 MB; awaiting approval");
+        oracle.await_human_approval().await?;
+        session.resume("/tmp/eval.snap").await?;
+
+        // ── Phase 4: broker commit to host, then git commit (§8.1) ─
+        let stats = session.storage.reconcile(FsReconcileRequest {
+            cwd: "/workspace/checkout-service".into(),
+            atomic_staging: true,
+            fsync: true,
+        }).await?;
+        eprintln!(
+            "[kelir] broker commit files={} deletes={}",
+            stats.files_changed, stats.tombstones_resolved,
+        );
+
+        // Git runs as an ordinary guest execution — the trap chain gates it
+        // like any other binary.
+        session.spawn("git")
+            .args([
+                "commit",
+                "-am",
+                &format!("fix(stripe): dedupe webhook body reads ({id})"),
+            ])
+            .cwd("/workspace/checkout-service")
+            .await?;
+
+        // ── Phase 5: signed Merkle receipt (§12.3) ─────────────────────
+        let receipt: FinalReceipt = session
+            .ctx::<LedgerCtx>()
+            .finalize(FinalizeRequest {
+                include_delta: winning_delta.clone(),
+                include_merkle_root: true,
+            })
+            .await?;
+        eprintln!(
+            "[kelir] final receipt merkle={} jws={}",
+            receipt.merkle_root, &receipt.signed_jws[..64.min(receipt.signed_jws.len())],
+        );
+
+        Ok(())
+    }.await;
+
+    // ── Phase 6-7: suspend to reclaim RAM, then terminate (§11.4) ───────
+    if let Err(e) = session.suspend("/tmp/eval.snap").await {
+        eprintln!("[kelir] final suspend failed: {e}");
+    }
+    session.terminate().await?;
+    phase
+}
+
+// ============================================================================
+// 5. ORACLE (user-supplied post-condition verification engine)
+// ============================================================================
+// Example-local evaluator, not a core trait. UserOracle is a plain struct.
+
+pub struct IntentAnalysis {
+    pub is_hypothesis_valid: bool,
+    pub falsification_reason: Option<String>,
+    pub allow_high_entropy: bool,
+}
+
+struct UserOracle;
+impl UserOracle { fn new() -> Self { Self } }
+
+#[async_trait]
+impl UserOracle {
+    async fn analyze_intent(&self, _trap: &TrapEvent) -> Result<IntentAnalysis, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(IntentAnalysis {
+            is_hypothesis_valid: true,
+            falsification_reason: None,
+            allow_high_entropy: false,
+        })
+    }
+    async fn verify_physical_receipt(&self, _r: &ExecutionReceipt) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(true)
+    }
+    async fn ingest_harness_event(
+        &self, _p: &Path, _e: &serde_json::Value, _b: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> { Ok(()) }
+    async fn await_human_approval(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        Ok(())
+    }
+}

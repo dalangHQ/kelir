@@ -1,0 +1,43 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           KELIR INGESTION ADAPTERS                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 1. TRI-NATIVE FIRST-CLASS SDKs:                                             │
+│    - Rust: Direct in-process crate linkage (`kelir = "1.0"`)                │
+│    - TypeScript: Fully typed runtime builder (`@kelir/core`)                │
+│    - Python: Native async hypervisor engine (`kelir>=1.0` via PyO3)         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 2. MODEL CONTEXT PROTOCOL (MCP):                                            │
+│    - In-process `plugin-mcp` connects Claude Desktop/Cursor to VirtIO rings.│
+│    - Mediates hardware-isolated execution without exposing host boundaries. │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 3. CONTAINERD SHIM V2 (Kubernetes Bare-Metal Execution):                    │
+│    - Commercial adapter — full diagram in kelir-cloud (private repo).       │
+│    - See kelir-cloud ingestion-adapters-commercial diagram.                 │
+│    - Image→EROFS translation is kelir-pack (core primitive), NOT the        │
+│      commercial plugin: kelir-pack is an offline two-phase in-memory      │
+│      compiler, distributed as an external CLI binary only. Phase 1: layer   │
+│      tar headers only stream into a radix tree in host RAM; inline          │
+│      whiteouts (image-format records) mutate tree nodes in place; final     │
+│      topology, inode count, and chunk extents are computed. Phase 2:        │
+│      payload bodies stream into CAS blobs; finalized EROFS blocks are       │
+│      emitted from the Phase 1 map into cas/blobs/blake3_<hash>. No          │
+│      overlay/union driver is materialized. Phase 1 RAM is bounded by the     │
+│      500,000 inode ceiling (<30MB typical); zero in-process OCI client,     │
+│      layer unpacker, or EROFS builder in the supervisor.                    │
+│      Unpack admission: max expansion 15:1, single-layer budget 8 GiB,       │
+│      max 500,000 inodes; over budget aborts with E_LAYER_OVERSIZE.          │
+│      ContainerdOrchestrationPolicy is registered via PipelineBinder; the    │
+│      shim maps to Session execution with flat kelir-pack + policy config.   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 4. OPENSHELL COMPUTE DRIVER (NVIDIA AI Infrastructure):                     │
+│    - Commercial adapter — full diagram in kelir-cloud (private repo).       │
+│    - See kelir-cloud ingestion-adapters-commercial diagram.                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 5. SANDBOX ENGINE COMPATIBILITY (E2B Drop-In):                              │
+│    - `@kelir/e2b-compat` (TS) and `kelir.compat.e2b` (Python).              │
+│    - Replicates the `Sandbox` interface with local hardware boots.          │
+└─────────────────────────────────────────────────────────────────────────────┘
+Boundary rule: the process owns the wire; kelir-pack owns image→EROFS
+translation; the plugin owns policy only.
+Plugins: containerd kelir-pack (translation) + ContainerdOrchestrationPolicy via PipelineBinder (policy); MCP plugin-mcp;
+OpenShell plugin-profile; E2B: no plugin.

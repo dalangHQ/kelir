@@ -1,0 +1,80 @@
+- Plugin ledger
+  - Crate dependencies (ledger)
+    - Plugin identifier: plugin-ledger
+    - Owner crate: crates/kelir-plugins/plugin-ledger
+    - name() = "ledger"
+    - Tier 3 cross-cutting aggregator (ledger)
+    - Depends on (ledger): kelir-interface, Tier 1 and Tier 2 crates
+    - Exposes: LedgerSink
+    - VirtIO device attachment (ledger): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (ledger): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Invariants and policy (ledger)
+    - Pure reactive observer: registers subscribers exclusively on the EventBus
+    - Zero participation in inline interceptor pipelines; non-blocking execution
+    - Ingests immutable StorageDelta and ExecutionDelta domain events
+    - Merkle WAL
+      - Pluggable LedgerSink trait owns persistence; Merkle store is an opt-in
+        - opt-in compliance plugin
+      - Default ledger sink is OTLP: metrics and traces flow to the host's
+        - existing OpenTelemetry Collector without local disk overhead
+      - Merkle WAL is selected explicitly via `ledger.merkle.enabled = true`
+        - for regulated environments that require tamper-evident on-disk audit
+      - External sink delegates persistence; no default local store is written
+      - suppress_local_db skips any local sink to preserve host single SSOT
+      - Host-isolated by construction
+        - Store path resolved relative to consumer CWD; guest paths rejected
+          - at plugin construction
+        - Default path: .kelir/audit.merkle.db relative to consumer CWD
+        - WAL survives guest rollback() and fork(); no guest operation can
+          - rewrite or duplicate it
+        - This invariant is the reason the WAL exists separately from receipts
+      - Ownership: core generates receipts; plugin-ledger persists and exports
+      - Ledger handler API
+        - c.ledger.flush() forces WAL flush and OTel export
+      - Merkle WAL specification
+        - Record Schema (Packed Little-Endian):
+          - seq: u64 (monotonic index)
+          - prev_hash: [u8; 32] (BLAKE3 hash of previous leaf)
+          - receipt_blake3: [u8; 32] (ExecutionReceipt digest)
+          - delta_root: [u8; 32] (StorageDelta modified inode tree root)
+          - timestamp_ns: u64 (host wall-clock timestamp)
+          - signature: [u8; 64] (Ed25519 signature by host session key)
+        - No PMU samples appear in any leaf
+          - Determinism comes from logical trace, seeded RNG, frozen clock
+        - Merkle Hashing: RFC 6962 rules using BLAKE3:
+          - Leaf: BLAKE3(0x00 || record_bytes)
+          - Node: BLAKE3(0x01 || left_child || right_child)
+        - LMDB persistence appends, with immediate fsync after each process reap
+        - WAL is opt-in (ledger.merkle.enabled = true); default off
+        - When off, receipts flow to OTLP alone; no on-disk audit is written
+        - When on, WAL records carry the same receipt correlation_token used
+          - by the OTLP spans for cross-reference
+    - OpenTelemetry
+      - Default exporter: OTLP over gRPC and HTTP
+        - Standard OTLP endpoints via OTEL_EXPORTER_OTLP_ENDPOINT
+        - Metric and span sets, context propagation: 14-observability.md#Metrics-pipeline
+      - Zero-allocation metric registry in the core; ledger plugin reads
+        - and exports
+      - Config lives in plugin-ledger (`OtelConfig`)
+      - Merkle WAL is a separate sink; when enabled it binds the receipt's
+        - correlation_token into its records
+      - Failure handling
+        - Export failures are logged locally and retried by the OTLP client
+        - Export failure never blocks the pipeline
+        - Export buffer bounded; excess samples dropped with a metric
+    - Receipts (ledger)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.receipts.include_dirty_bytes
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.receipts.include_binary_blake3
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.receipts.include_syscall_count
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.receipts.include_wall_clock_ns
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.receipts.include_phase_timings
+      - Receipt fields: see: artifacts/code/execution-receipt.rs
+    - OTLP defaults (ledger)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.otel.endpoint
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.otel.service_name
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.otel
+  - Error and return semantics (ledger)
+    - Hook signature (ledger): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (ledger)
+      - Pure observer: never returns Reject or blocks inline execution
+      - Disk-full on WAL partition triggers hypervisor LifecycleRequest::Suspend(ResourcePressure)

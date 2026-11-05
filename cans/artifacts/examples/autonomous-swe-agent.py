@@ -1,70 +1,56 @@
 # examples/autonomous_swe_agent.py
 """
-Full-surface Python SDK consumer for kelir 3.0.
+Composition example: chaos + ledger + repo-policy custom plugin.
 
-Not a transliteration: this uses Pydantic for schema (the TS TypeBox
-equivalent), async/await natively, decorator-registered handlers, and
-`async with` for lifecycle enforcement. It exercises every plugin,
-every VirtIO ring, and all three epistemic truth tiers.
+Python idiom throughout: Pydantic schema, native async/await,
+decorator-registered handlers, `async with` lifecycle. Not a
+TypeScript transliteration. Subsystem demos live in hook-matrix.py
+and policy-matrix.py.
 
 Requirements:
-    kelir>=3.0          (PyO3 bindings; ships plugin-pty, plugin-vfs,
-                         plugin-wire, plugin-chaos, plugin-ledger)
+    kelir>=1.0          (PyO3 bindings; 5 native planes + domain plugins)
     pydantic>=2.6
-    anyhow-py>=1.0
     blake3>=0.4
-    structlog>=24.0
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import platform
 import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Awaitable, Callable, Literal, Optional, Protocol, Self
+from typing import Awaitable, Callable, Literal, Optional, Self
 
 from pydantic import BaseModel, Field
 
 import kelir
 from kelir import (
     CausalDelta,
-    Decision,
     ExecutionReceipt,
     HandlerContext,
     KelirBuilder,
-    Oracle,
+    PostExecAction,
     Session,
     SnapshotDescriptor,
     SpawnResult,
-    TrapAction,
     TrapEvent,
+    TrapFilter,
+    Verdict,
 )
 from kelir.plugin import BasePlugin, PluginError
-from kelir.plugins.pty import (
-    PromptRule,
-    PtyPlugin,
-    TokenShield,
+from kelir.planes.terminal import PromptRule, TokenShield
+from kelir.planes.storage import (
+    DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopRule
 )
-from kelir.plugins.vfs import (
-    DynamicFile,
-    GhostFile,
-    IdmapConfig,
-    MaskRule,
-    SnoopRule,
-    VfsPlugin,
-)
-from kelir.plugins.wire import (
-    L4Proxy,
-    Mtls,
-    SinkholeConfig,
-    VaultEntry,
-    WirePlugin,
+from kelir.planes.wire import (
+    L4Proxy, Mtls, SinkholeConfig, VaultEntry
 )
 from kelir.plugins.chaos import (
     ChaosConfig,
@@ -79,13 +65,12 @@ from kelir.plugins.ledger import (
     ReceiptConfig,
 )
 
-import structlog
-
-log = structlog.get_logger("kelir.examples.swe-agent")
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+log = logging.getLogger("kelir.examples.swe-agent")
 
 
 # ============================================================================
-# 1. TYPED PARAMS — the Pydantic analogue of TypeBox's `.guard({ schema })`
+# 1. TYPED PARAMS — the Pydantic analogue of the TypeBox object schema
 # ============================================================================
 
 class Env(str, Enum):
@@ -117,10 +102,8 @@ class RepoPolicyState:
 
 @dataclass(frozen=True)
 class RepoPolicyHandle:
-    """Typed handle — the Python expression of §6's compile-time proof of
-    installation. `plugin_with_handle` returns this object *only* if the
-    plugin was successfully installed; removing the plugin from the chain
-    means the handler closures have no `policy` to capture."""
+    """Typed handle held by host scope. Created at instantiation, while
+    the builder chain remains 100% fluid."""
     _state: RepoPolicyState
     _protected: tuple[str, ...]
 
@@ -146,7 +129,8 @@ class RepoPolicyHandle:
         self._state.current_branch = b
 
 
-class RepoPolicyPlugin(BasePlugin[RepoPolicyHandle]):
+# Plugin: repo-policy; rings: virtio-vsock, virtio-fs
+class RepoPolicyPlugin(BasePlugin):
     name = "repo-policy"
     requires: tuple[str, ...] = ("ledger",)  # runtime dependency check
 
@@ -168,8 +152,8 @@ class RepoPolicyPlugin(BasePlugin[RepoPolicyHandle]):
             _protected=self._opts["protected_branches"],
         )
 
-    # ── Ring 2 (virtio-vsock): veto or rewrite `git push` ────────────────
-    async def on_trap(self, event: TrapEvent) -> Optional[TrapAction]:
+    # ── Ring 2 (virtio-vsock): veto or patch `git push` ────────────────
+    async def on_trap(self, event: TrapEvent) -> Optional[Verdict]:
         is_git = event.binary_path.endswith("/git") or event.binary_path == "git"
         is_push = len(event.argv) > 1 and event.argv[1] == "push"
         if not (is_git and is_push):
@@ -178,131 +162,114 @@ class RepoPolicyPlugin(BasePlugin[RepoPolicyHandle]):
         h = self.handle()
         if h.is_protected():
             h.record_violation()
-            return TrapAction.deny(
-                1, f"EPOLICY: '{h.current_branch}' is protected."
+            return Verdict.drop(
+                "EPERM", f"EPOLICY: '{h.current_branch}' is protected."
             )
 
         new_branch = f"agent/{uuid.uuid4().hex[:8]}"
-        return TrapAction.rewrite(
-            new_binary="/bin/git",
-            new_argv=[*event.argv, f"HEAD:refs/heads/{new_branch}"],
-            injected_env={"KELIR_REWRITTEN": "1"},
-            tty_notice="⚡ [KELIR]: push rewritten to isolated agent branch.\n",
+        # ExecveMutation (plugins/tool-guard.md) as the Patch payload.
+        # Canonical kwargs, as in warm_caches/force_strip below:
+        # binary/argv/env (unset_env was empty, so nothing to unset).
+        return Verdict.patch(
+            binary="/bin/git",
+            argv=[*event.argv, f"HEAD:refs/heads/{new_branch}"],
+            env={"KELIR_REWRITTEN": "1"},
         )
 
     # ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
-    async def on_vfs_write(self, path: Path, data: bytes) -> bool:
+    async def on_fs_write(self, path: Path, data: bytes, pid: int, ctx: HandlerContext) -> Verdict:
         if path.suffix == ".diff" and len(data) > self._opts["max_diff_bytes"]:
             self.handle().record_violation()
-            raise PluginError.reject(
+            return Verdict.drop(
                 errno="ENOSPC", reason="diff exceeds policy ceiling"
             )
-        return True
+        return Verdict.pass_()
+
+    # Host mutations publish TerminalNotice to the EventBus; the native
+    # terminal plane formats the notice. This helper supplies the
+    # repo-policy annotation, delivered via terminal.notice.
+    async def disclosure_annotation(self) -> bytes:
+        n = self.handle().violations
+        return f"[repo-policy: {n} open violations]\n".encode()
 
 
 # ============================================================================
-# 3. STEP-LOOP PLUGIN — typed pre-checkpoint slot (replaces ad-hoc scratch)
+# 3. SNOOP FACTORY — does NOT capture session; only HandlerContext (§12.4 T3)
 # ============================================================================
 
-@dataclass
-class StepLoopHandle:
-    slots: dict[int, SnapshotDescriptor] = field(default_factory=dict)
-
-    def mark(self, pid: int, cp: SnapshotDescriptor) -> None:
-        self.slots[pid] = cp
-
-    def last(self, pid: int) -> SnapshotDescriptor:
-        cp = self.slots.get(pid)
-        if cp is None:
-            raise RuntimeError(f"step-loop: no checkpoint for pid {pid}")
-        return cp
-
-
-class StepLoopPlugin(BasePlugin[StepLoopHandle]):
-    name = "step-loop"
-    requires: tuple[str, ...] = ()
-
-    def __init__(self) -> None:
-        self._h = StepLoopHandle()
-
-    def handle(self) -> StepLoopHandle:
-        return self._h
-
-
-# ============================================================================
-# 4. SNOOP FACTORY — does NOT capture session; only HandlerContext (§12.4 T3)
-# ============================================================================
-
-def make_snoop(oracle: Oracle) -> Callable[[Path, bytes, HandlerContext], Awaitable[None]]:
+def make_snoop(oracle: UserOracle) -> Callable[[Path, bytes, HandlerContext], Awaitable[None]]:
     async def on_write(path: Path, raw: bytes, c: HandlerContext) -> None:
         evt = json.loads(raw)
         if evt.get("falsifiedResult") is True:
-            raise PluginError.deny(f"EPERM: harness hallucination at {path}")
-        producer_blake3 = await c.ledger.blake3_of_producing_process(path)
+            raise PluginError.reject(
+                errno="EPERM",
+                reason=f"harness hallucination at {path}",
+            )
+        producer_blake3 = await c.cap.ledger.blake3_of_producing_process(path)
         await oracle.ingest_harness_event(path, evt, producer_blake3)
     return on_write
 
 
 # ============================================================================
-# 5. HANDLER FACTORIES — closure-captured typed handles (compile-time-proof
+# 4. HANDLER FACTORIES — closure-captured typed handles (compile-time-proof
 #    analogue for Python; missing handle → NameError at import time)
 # ============================================================================
 
-Handler = Callable[[HandlerContext], Awaitable[Decision]]
+# `trap` pre hooks gate the syscall and return a `Verdict`; `trap` post
+# hooks run post-execution and return a `PostExecAction`.
+PreExecHandler = Callable[[HandlerContext], Awaitable[Verdict]]
+PostExecHandler = Callable[[HandlerContext], Awaitable[PostExecAction]]
 
 
-def make_universal_step(step: StepLoopHandle, oracle: Oracle) -> Handler:
-    async def universal_step(c: HandlerContext) -> Decision:
-        pre = await c.vm.checkpoint(f"pre:{c.trap.pid}")
-        step.mark(c.trap.pid, pre)
-
+def make_universal_step(oracle: UserOracle) -> PreExecHandler:
+    async def universal_step(c: HandlerContext) -> Verdict:
+        await c.vm.checkpoint(f"pre:{c.trap.pid}")
         intent = await oracle.analyze_intent(c.trap)
         if not intent.is_hypothesis_valid:
-            return Decision.deny(
-                1,
-                f"Epistemic Reject: {intent.falsification_reason or ''}",
+            return Verdict.drop(
+                "EPERM",
+                f"Verification Reject: {intent.falsification_reason or ''}",
             )
-        if c.trap.entropy > 5.2 and not intent.allow_high_entropy:
-            return Decision.deny(
-                126, "EENTROPY: high-entropy argv requires oracle clearance."
-            )
-        return Decision.resume()
+        return Verdict.pass_()
     return universal_step
 
 
-def make_warm_caches(oracle: Oracle) -> Handler:
-    async def warm_caches(c: HandlerContext) -> Decision:
-        c.env.set("OTEL_TRACE_ID", oracle.current_trace_id())
-        c.env.set("CI", "1")
+def make_warm_caches(oracle: UserOracle) -> PreExecHandler:
+    async def warm_caches(c: HandlerContext) -> Verdict:
         await c.fs.warm_cache(["node_modules", ".next/cache"])
-        return Decision.resume()
+        # Env injection via Patch, not env.set + pass (09 Env-injection:
+        # env.set + pass returns EINVALIDDECISION). Same binary/argv.
+        # The SDK patch serializes to ExecveMutation.
+        return Verdict.patch(
+            binary=c.trap.binary_path,
+            argv=list(c.trap.argv),
+            env={"OTEL_TRACE_ID": oracle.current_trace_id(), "CI": "1"},
+        )
     return warm_caches
 
 
-def make_entropy_check() -> Handler:
-    async def entropy_check(c: HandlerContext) -> Decision:
-        if c.trap.entropy > 5.2:
-            return Decision.deny(1, "EPERM: high-entropy payload.")
+def make_force_strip() -> PreExecHandler:
+    async def force_strip(c: HandlerContext) -> Verdict:
         if "--force" in c.trap.argv:
-            return Decision.rewrite(
+            return Verdict.patch(
                 binary="/bin/git",
                 argv=[a for a in c.trap.argv if a != "--force"],
                 env={"KELIR_DISARMED": "1"},
-                notice="⚡ [KELIR NOTICE]: dropped '--force'.\n",
             )
-        return Decision.resume()
-    return entropy_check
+        return Verdict.pass_()
+    return force_strip
 
 
-def make_verify_receipt(step: StepLoopHandle, oracle: Oracle) -> Handler:
-    async def verify_receipt(c: HandlerContext) -> Decision:
-        pre = step.last(c.trap.pid)  # raises if invariant broken — no `!`
-        receipt: ExecutionReceipt = await c.ledger.last_receipt(c.trap.pid)
+def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
+    async def verify_receipt(c: HandlerContext) -> PostExecAction:
+        pre: SnapshotDescriptor = c.step.last()  # raises if no checkpoint was marked
+        receipt: ExecutionReceipt = await c.receipt()
 
-        if list(receipt.binary_blake3) != list(c.trap.binary_blake3):
+        # Receipt is hex of the trap's raw 32-byte digest.
+        if receipt.binary_blake3 != c.trap.binary_blake3.hex():
             await c.vm.rollback(pre)
-            c.term.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
-            return Decision.halt()
+            c.terminal.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
+            return PostExecAction.rollback_and_halt()
 
         if (
             c.trap.binary_path.endswith("/npm")
@@ -310,47 +277,65 @@ def make_verify_receipt(step: StepLoopHandle, oracle: Oracle) -> Handler:
             and "/checkout-service" in c.trap.cwd
         ):
             await c.vm.rollback(pre)
-            c.term.notice(
+            c.terminal.notice(
                 f"⚡ [KELIR]: hermetic test emitted {receipt.egress_bytes}B "
                 "egress — REVERTED\n"
             )
-            return Decision.halt()
+            return PostExecAction.rollback_and_halt()
 
         if not await oracle.verify_physical_receipt(receipt):
             await c.vm.rollback(pre)
-            c.term.notice("⚡ [KELIR]: post-condition violated — REVERTED\n")
-            return Decision.halt()
+            c.terminal.notice("⚡ [KELIR]: post-condition violated — REVERTED\n")
+            return PostExecAction.rollback_and_halt()
 
-        return Decision.resume()
+        return PostExecAction.proceed()
     return verify_receipt
 
 
-def make_commit_gate(policy: RepoPolicyHandle) -> Handler:
-    async def commit_gate(_c: HandlerContext) -> Decision:
-        n = policy.violations
+def make_commit_gate() -> PreExecHandler:
+    async def commit_gate(c: HandlerContext) -> Verdict:
+        # Statically projected by the PEP 695 Protocol intersection:
+        # c.cap.policy -> RepoPolicyHandle, guaranteed by pyright.
+        n = c.cap.policy.violations
         if n > 0:
-            return Decision.deny(1, f"EPOLICY: {n} prior violation(s).")
-        return Decision.resume()
+            return Verdict.drop("EPERM", f"EPOLICY: {n} prior violation(s).")
+        return Verdict.pass_()
     return commit_gate
 
 
-def make_zero_page_check() -> Handler:
-    async def zero_page_check(c: HandlerContext) -> Decision:
-        receipt = await c.get_receipt()
-        if receipt.dirty_memory_pages == 0:
-            raise RuntimeError("Epistemic anomaly: zero-page delta commit attempted.")
-        return Decision.resume()
-    return zero_page_check
+def make_zero_byte_check() -> PostExecHandler:
+    async def zero_byte_check(c: HandlerContext) -> PostExecAction:
+        receipt = await c.receipt()
+        # dirty_bytes is always populated; zero is a real measurement
+        if receipt.dirty_bytes == 0:
+            raise RuntimeError("Verification anomaly: zero-byte delta commit attempted.")
+        # Workspace-scoped observation (10-attestation.md#Execution-receipts):
+        # dirty_bytes counts all hypervisor-dirtied bytes; the workspace
+        # counter now arrives as a native storage plane TelemetryExtension
+        # (namespace "fs:vfs"), whose payload is plugin-defined and
+        # opaque to core. The gate above still keys on dirty_bytes;
+        # this logs only the extension's presence and payload length,
+        # never a decoded count.
+        vfs_ext = next(
+            (e for e in receipt.extensions if e.namespace == "fs:vfs"),
+            None,
+        )
+        if vfs_ext is None:
+            log.info("[kelir] commit fs:vfs extension absent")
+        else:
+            log.info("[kelir] commit fs:vfs extension present, payload_len=%s",
+                     len(vfs_ext.payload))
+        return PostExecAction.proceed()
+    return zero_byte_check
 
 
 # ============================================================================
-# 6. RUNTIME BUILDER — the linear chain (write-only until `.boot()`)
+# 5. RUNTIME BUILDER — the linear chain (write-only until `.boot()`)
 # ============================================================================
 
 async def build_runtime(
     *,
-    oracle: Oracle,
-    stripe_key: str,
+    oracle: UserOracle,
     pg_cert: Path,
     pg_key: Path,
 ) -> KelirBuilder:
@@ -358,12 +343,11 @@ async def build_runtime(
         max_diff_bytes=64 * 1024,
         protected_branches=["main", "master", "release/*"],
     )
-
     builder = (
         kelir.builder(
             vcpus=4,
             memory_mb=4096,
-            kernel="./fixtures/vmlinux-6.6-arm64-kelir",
+            kernel=f"./fixtures/vmlinux-6.6-{platform.machine()}-kelir",
             rootfs_erofs="./fixtures/rootfs-swebench.erofs",
             tsc_locked=True,
             enable_watchdog=True,
@@ -371,7 +355,7 @@ async def build_runtime(
         )
 
         # ── TERMINAL PLANE (§7) ───────────────────────────────────────────
-        .plugin(PtyPlugin(
+        .terminal(
             cols=120,
             rows=40,
             drop_osc52=True,
@@ -392,21 +376,25 @@ async def build_runtime(
                     action=lambda _p, stream: stream.write(b"y\n"),
                 ),
             ],
-        ))
+            # Non-default knob (04-terminal-plane.md#Terminal-pipeline):
+            # StatelessRegex instead of the StreamingAutomata default.
+            # The filters above are unchanged; only the match engine is.
+            stream_engine="StatelessRegex",
+        )
 
-        # ── STORAGE PLANE (§8) — maskRead folded in; no separate dlp() ──
-        .plugin(VfsPlugin(
+        # ── STORAGE PLANE (§8) — sliding-window read replacement via MaskRule ──
+        .storage(
             idmap=IdmapConfig(guest_uid=0, host_uid=os.getuid()),
             shared_caches=[
                 "~/.npm", "~/.cache/pip", "~/.cargo/registry",
             ],
             lock_broker=True,
-            ghosts=[
-                GhostFile.static(
+            synthetic_files=[
+                SyntheticFile.static(
                     "/workspace/.env.local",
                     "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n",
                 ),
-                GhostFile.dynamic(
+                SyntheticFile.dynamic(
                     "/workspace/identity.jwt",
                     lambda _p: DynamicFile(
                         content=f"Bearer {uuid.uuid4().hex}",
@@ -430,10 +418,10 @@ async def build_runtime(
                     on_write=make_snoop(oracle),  # does NOT capture session
                 ),
             ],
-        ))
+        )
 
         # ── WIRE PLANE (§9) ───────────────────────────────────────────────
-        .plugin(WirePlugin(
+        .wire(
             sinkhole=SinkholeConfig(
                 allowlist=[
                     "api.stripe.com", "github.com", "*.internal.net",
@@ -441,13 +429,15 @@ async def build_runtime(
                 drop_all=True,
             ),
             ssh_agent_bridge=True,
+            # Broker: the workload fetches
+            # http://169.254.169.254/kelir/credentials/STRIPE_SECRET
+            # -> {token, ttl_seconds, scope, audience}, TTL default 60s /
+            # ceiling 900s, host keyring sole store, host code never
+            # sees the key.
             vaults=[
                 VaultEntry(
                     name="STRIPE_SECRET",
                     placeholder="vault://stripe_key",
-                    resolve=lambda: stripe_key,
-                    scope_urls=["https://api.stripe.com/v1/*"],
-                    scrub_response_headers=["set-cookie", "request-id"],
                 ),
             ],
             l4_proxies=[
@@ -457,7 +447,11 @@ async def build_runtime(
                     inject_mtls=Mtls(cert_path=pg_cert, key_path=pg_key),
                 ),
             ],
-        ))
+            # Non-default knob (07-wire-plane.md): AllowUdpProxied instead
+            # of the StrictTcpOnly default. The DNS policy-filter drop_all
+            # above is unchanged; only the UDP path moves to proxied.
+            tap_filter="AllowUdpProxied",
+        )
 
         # ── CHAOS (§10) ───────────────────────────────────────────────────
         .plugin(ChaosPlugin(ChaosConfig(
@@ -467,6 +461,20 @@ async def build_runtime(
                     base_ms=150,
                     jitter_ms=30,
                     drop_rate=0.02,
+                ),
+                NetworkChaos(
+                    target="api.stripe.com",
+                    base_ms=150,
+                    jitter_ms=30,
+                    drop_rate=0.02,
+                    direction="inbound",
+                ),
+                NetworkChaos(
+                    target="api.stripe.com",
+                    base_ms=150,
+                    jitter_ms=30,
+                    drop_rate=0.02,
+                    direction="both",
                 ),
             ],
             fs=[
@@ -480,7 +488,10 @@ async def build_runtime(
 
         # ── LEDGER (§12.1–§12.3) — must precede repo-policy (requires) ──
         .plugin(LedgerPlugin(LedgerConfig(
-            store="sqlite:///workspace/audit.merkle.db",
+            # audit DB lives on the host, immune to guest rollback/fork
+            # Merkle WAL is opt-in (ledger.merkle.enabled = true);
+            # OTLP is the default sink. This example opts in explicitly.
+            store="sqlite://.kelir/audit.merkle.db",
             merkle_chain=True,
             otel=OtelConfig(
                 endpoint="http://localhost:4318/v1/traces",
@@ -488,38 +499,28 @@ async def build_runtime(
                 propagate_traceparent=True,
             ),
             receipts=ReceiptConfig(
-                include_dirty_pages=True,
-                include_binary_blake3=True,
                 include_syscall_count=True,
             ),
         )))
     )
 
-    # ── CUSTOM PLUGIN + TYPED HANDLES ────────────────────────────────────
-    #
-    # `plugin_with_handle` returns `(self, handle)`. If either line is
-    # removed, the handler closures below have no `policy` / `step` to
-    # capture → NameError at import time. That is the Python expression
-    # of §6's "downstream handlers fail to compile".
-    builder, policy = builder.plugin_with_handle(policy_plugin)
-    builder, step = builder.plugin_with_handle(StepLoopPlugin())
+    # ── CUSTOM PLUGIN: fluid registration ───────────────────────────────
+    builder = builder.plugin(policy_plugin)
 
-    # ── EXEC GRAPH (§4.3, §12.5) ─────────────────────────────────────────
-    def _register_handlers(cmd: kelir.ExecChain) -> None:
-        # Universal atomic step loop: checkpoint → oracle → resume
-        cmd.before("*", make_universal_step(step, oracle))
-        cmd.before("npm test -- --runInBand", make_warm_caches(oracle))
-        cmd.before("git push *", make_entropy_check())
-        cmd.after("*", make_verify_receipt(step, oracle))
-        cmd.before("git commit -m *", make_commit_gate(policy))
-        cmd.after("git commit *", make_zero_page_check())
-
-    builder = builder.exec(_register_handlers)
+    # ── TRAP REGISTRATIONS (§4.3, §12.5) ───────────────────────────────
+    # Direct builder.trap() registrations, per §1.3: pre gates return a
+    # Verdict, post gates return a PostExecAction.
+    # Universal atomic step loop: checkpoint → oracle → resume
+    builder.trap("*", pre=make_universal_step(oracle), post=make_verify_receipt(oracle))
+    builder.trap(TrapFilter.binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), pre=make_warm_caches(oracle))
+    builder.trap(TrapFilter.binary("git").with_arg("push"), pre=make_force_strip())
+    builder.trap(TrapFilter.binary("git").with_arg("commit").with_arg("-m"), pre=make_commit_gate())
+    builder.trap(TrapFilter.binary("git").with_arg("commit"), post=make_zero_byte_check())
 
     # ── LIFECYCLE HOOKS (§11.4, §12) — every handler receives `session` ─
     @builder.on_vm_init
     async def _init(driver: kelir.VmmDriver) -> None:
-        await driver.watchdog(timeout=timedelta(minutes=5), action="reboot")
+        await driver.set_watchdog(timeout=timedelta(minutes=5), action="reboot")
 
     @builder.on_vm_ready
     async def _ready(session: Session) -> None:
@@ -527,19 +528,24 @@ async def build_runtime(
 
     @builder.on_vm_shutdown
     async def _shutdown(session: Session) -> None:
-        await session.ledger.flush()
+        await session.cap.ledger.flush()
 
     @builder.on_trap_deny
     async def _deny(event: TrapEvent, session: Session) -> None:
-        if await session.ledger.count_denials(event.pid) > 5:
+        if await session.cap.ledger.count_denials(event.ppid) > 5:
             await session.vm.suspend("./.kelir/quarantine.snap")
-            await session.break_glass()
+            # PTY console master (Port 0) is the sole in-process
+            # break-glass surface (08-lifecycle Break-glass);
+            # programmatic commands already go via exec_in_guest,
+            # these failure paths are human inspection after
+            # suspend/rollback.
+            await session.console()
 
     return builder
 
 
 # ============================================================================
-# 7. ORCHESTRATION — the seven phases
+# 6. ORCHESTRATION — the seven phases
 # ============================================================================
 
 async def fork_and_verify(
@@ -563,11 +569,9 @@ async def fork_and_verify(
 
 async def main() -> None:
     oracle = UserOracle()
-    stripe_key = os.environ["REAL_HOST_STRIPE_KEY"]
 
     builder = await build_runtime(
         oracle=oracle,
-        stripe_key=stripe_key,
         pg_cert=Path("/etc/ssl/client.crt"),
         pg_key=Path("/etc/ssl/client.key"),
     )
@@ -576,10 +580,10 @@ async def main() -> None:
     # exception in the block — guarantees `session.terminate()` via
     # `__aexit__`. Rust gets this from `Drop`; Python gets it from the CM.
     async with builder as session:
-        log.info("booted", driver=session.driver_name,
-                 boot_ms=session.boot_ms)
+        log.info("[kelir] booted driver=%s boot_ms=%s",
+                 session.driver_name, session.boot_ms)
 
-        await session.forward_port(8080, 3000)                       # §11.7
+        await session.wire.forward_port(3000, 8080)                  # §11.7
         base = await session.vm.checkpoint("clean_base")
         winning_delta: Optional[CausalDelta] = None
 
@@ -588,6 +592,8 @@ async def main() -> None:
             "npm",
             ["test", "--", "--runInBand"],
             cwd="/workspace/checkout-service",
+            # params cross into the guest as the KELIR_PARAMS=<json>
+            # environment variable
             params=FixStripeWebhook(
                 action="fix-stripe-webhook",
                 repo="checkout-service",
@@ -597,7 +603,7 @@ async def main() -> None:
         )
         if test.exit_code != 0:
             await session.vm.rollback(base)
-            await session.break_glass()                              # §11.6
+            await session.console()                          # (08 Break-glass)
             return
 
         # ── Phase 2: 4-way CoW fork fan-out (§11.1, §11.3) ────────────
@@ -615,46 +621,51 @@ async def main() -> None:
 
         # ── Phase 3: suspend to 0 MB RSS, await approval, resume (§11.2)
         await session.suspend("/tmp/eval.snap")
-        log.info("suspended", rss_mb=0)
+        log.info("[kelir] suspended rss_mb=0")
         await oracle.await_human_approval()
         await session.resume("/tmp/eval.snap")
 
-        # ── Phase 4: atomic commit + whiteout reconciliation (§8.1) ───
-        commit = await session.commit(
+        # ── Phase 4: broker commit + guest git commit (§8.1) ──
+        stats = await session.storage.reconcile(
             cwd="/workspace/checkout-service",
-            message=f"fix(stripe): dedupe webhook body reads ({winning_id})",
-            reconcile_whiteouts=True,
-            atomic_rename=True,
+            atomic_staging=True,
             fsync=True,
         )
-        log.info("committed",
-                 files=commit.files_changed,
-                 deletes=commit.whiteouts_resolved)
+        log.info("[kelir] broker commit files=%s deletes=%s",
+                 stats.files_changed, stats.tombstones_resolved)
+
+        await session.spawn(
+            "git",
+            ["commit", "-am", f"fix(stripe): dedupe webhook body reads ({winning_id})"],
+            cwd="/workspace/checkout-service",
+        )
 
         # ── Phase 5: signed Merkle receipt (§12.3) ────────────────────
-        final = await session.ledger.finalize(
+        final = await session.cap.ledger.finalize(
             include_delta=winning_delta,
             include_merkle_root=True,
         )
-        log.info("receipt", merkle=final.merkle_root,
-                 jws=final.signed_jws[:64])
+        log.info("[kelir] receipt merkle=%s jws=%s",
+                 final.merkle_root, final.signed_jws[:64])
 
         # `async with` handles the final suspend+terminate on exit.
 
 
 # ============================================================================
-# 8. ORACLE — user-supplied epistemic engine
+# 7. ORACLE — user-supplied post-condition verification engine
 # ============================================================================
 
-class _IntentAnalysis(Protocol):
+# Example-local evaluator, not a core trait. UserOracle is a plain class.
+@dataclass
+class IntentAnalysis:
     is_hypothesis_valid: bool
-    falsification_reason: Optional[str]
-    allow_high_entropy: bool
+    falsification_reason: Optional[str] = None
+    allow_high_entropy: bool = False
 
 
-class UserOracle(Oracle):
+class UserOracle:
     async def analyze_intent(self, _trap: TrapEvent):
-        return kelir.oracle.IntentAnalysis(
+        return IntentAnalysis(
             is_hypothesis_valid=True,
             falsification_reason=None,
             allow_high_entropy=False,
@@ -674,7 +685,7 @@ class UserOracle(Oracle):
 
 
 # ============================================================================
-# 9. ENTRY
+# 8. ENTRY
 # ============================================================================
 
 if __name__ == "__main__":

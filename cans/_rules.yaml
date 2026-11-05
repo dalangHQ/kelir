@@ -1,0 +1,94 @@
+# Anchor slugs. `cans slug "<node text>"` prints the exact anchor fragment.
+#   1. The dash family (hyphen `-`, figure dash, en dash, em dash, horizontal
+#      bar, minus sign, and their U+2010–U+2015 / U+2043 / U+2212 / U+FE58 /
+#      U+FE63 / U+FF0D variants) and the underscore `_` are SEPARATORS, exactly
+#      like every whitespace run.
+#   2. A run of separators collapses to ONE `-`.
+#   3. Every other character is preserved verbatim, case included.
+#   4. Leading/trailing separators are dropped.
+# Matching is tolerant (case- and separator-insensitive); the slug is the
+# canonical spelling refs should use.
+slug:
+  algorithm: dash-normalized
+  collapse: separator-runs-to-one-hyphen
+  case: preserved
+  example: 'Layer 1 — C authorizer -> Layer-1-C-authorizer'
+
+structure:
+  # Node length: every bullet is one line, measured as a whole
+  # (title + continuations folded with single spaces) up to 90 chars.
+  node_length:
+    min: 3
+    max: 90
+    unit: chars
+    scope: total
+    strip_references: false
+    severity: error
+  # No wrapped prose continuations: every node is a single bullet line.
+  multiline:
+    mode: forbid
+    severity: error
+  siblings: { min: 1, max: 20 }
+  depth: { min: 2, max: 10 }
+  single_child_collapse: false
+  empty_nodes: false
+
+style:
+  prefer: sibling
+  force_nested_above: 20
+  force_sibling_below: 1
+  shared_prefix_detection: false
+
+content:
+  tbd_allowed: true
+  # Cap is a sprawl guard, not a ban on marking unknowns.
+  max_tbd_per_file: 10
+
+references:
+  mode: pointer
+  back_pointers: false
+  max_hops: 1
+  orphan_check: true
+  duplicate_home_check: true
+  external_roots:
+    kelir-cloud: "../kelir-cloud/cans"
+  # Terminal/storage specs must never point into plugin leaves.
+  forbidden_targets:
+    - source: "cans/0[4-6]*.md"
+      pattern: "^(cans/)?plugins/.*"
+      severity: error
+      message: "Abstraction leak: Terminal/storage specs cannot reference plugin files."
+  # Pointer aliasing (cans-spec #57, shipped v0.9.0): footnote-style short
+  # aliases for repeated see: targets, per-file scope only.
+  # #65 (shipped v0.14.0): include opens the plugin tier — matching files
+  # join the checked file set refs-only, so #leaf refs in cans/plugins/*.md
+  # can be aliased and verified like corpus files. Glob is workspace-
+  # relative, so spelled without the cans/ prefix here.
+  aliasing:
+    enabled: true
+    scope: file
+    style: both
+    min_uses: 2
+    include: [plugins/*.md]
+
+redundancy:
+  enabled: true
+  # A term sprawls only if it has no canonical home. Thresholds scale
+  # with corpus size by formula, not by hand.
+  word_frequency_threshold: 88
+  phrase_overlap_threshold: 0.85
+  cross_file_threshold: 5
+  fuzzy: false
+  stopwords: [the, a, an, of, to, in, for, and, or, with, must, shall, requires, host, guest, plugin, on, is, kelir, virtio, via, no, zero, at, session]
+  synonyms:
+    - [postgres, postgresql, pg]
+    - [auth, authentication, sign-in, signin]
+    - [api, endpoint, route]
+    - [frontend, client, ui]
+    - [db, database, storage]
+
+token_budget:
+  enabled: true
+  default_limit: 4096
+  estimate_chars_per_token: 3.5
+  warn_threshold: 0.8

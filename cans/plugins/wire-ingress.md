@@ -1,0 +1,37 @@
+- Plugin wire-ingress
+  - Crate dependencies (wire-ingress)
+    - Plugin identifier: plugin-wire-ingress
+    - Owner crate: crates/kelir-plugins/plugin-wire-ingress
+    - name() = "wire-ingress"
+    - Tier 2 governance and protocol proxy (wire-ingress)
+    - Depends on (wire-ingress): kelir-interface (binds to native Wire Plane)
+    - Exposes: IngressRoutingService
+    - VirtIO attachment (wire-ingress): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (wire-ingress): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (wire-ingress)
+    - Exports IngressRoutingService via PipelineBinder for socket forwarding
+  - Invariants and policy (wire-ingress)
+    - Connection parking on suspend: see: artifacts/examples/serverless-webhook.ts
+    - Holds inbound client TCP connections without dropped frames during suspend
+      - Suspend preserves inbound parked connections; rollback resets them
+      - On rollback: parked connections get TCP RST (post-handshake: 503 close)
+      - Post-rollback inbound clients must reconnect
+    - Host proxy terminates TCP handshake and buffers up to 64KB initial request data
+    - Sniffs routing metadata with zero allocation via httparse
+    - Wakes target microVM via SessionWakeHandle::resume
+      - ExternalSuspendKind::WireConnectionParking
+    - Ingress stream framing on stream kind L4_FORWARD (mux 0x0001):
+      - Kind 0x0005; see: 11-protocol.md#Control-channel
+      - Frame header: target_port: u16, connection_id: u64, payload_len: u32
+      - Guest shim ingress forwarder connects to 127.0.0.1:target_port and splices duplex bytes
+    - Zero-downtime webhook and interactive terminal connection continuity
+      - Continuity applies to suspend/resume alone
+      - Rollback terminates parked connections; retry is client-side
+  - Error and return semantics (wire-ingress)
+    - Hook signature (wire-ingress): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (wire-ingress)
+      - Parked-connection timeout
+        - Post-handshake: 504 Gateway Timeout
+        - Pre-handshake: TCP RST, no HTTP status
+      - Overflow
+        - 503 + Retry-After: 1 when backlog.maxConnections exceeded

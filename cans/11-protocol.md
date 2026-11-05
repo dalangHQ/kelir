@@ -1,0 +1,276 @@
+- Protocol
+  - Control channel
+    - virtio-vsock port 5252: unified multiplexed transport
+    - Exactly two transport channels
+      - 0x0000: Hypervisor Control (lifecycle, trap control, signals)
+      - 0x0001: Generic Stream Mux (all request/response and data flows)
+    - Every other capability is a stream kind multiplexed on 0x0001
+    - Stream kind registry
+      - Core kinds (frozen)
+        - 0x0001: EXEC (programmatic exec + stdout/stderr/control)
+        - 0x0002: PTY_CONTROL (signal-forward per exec)
+        - 0x0003: VFS (paginated POSIX-like filesystem API)
+        - 0x0004: BULK (raw chunked byte streams)
+        - 0x0005: L4_FORWARD (native wire plane stream diversion)
+        - 0x0006: TERMINAL_CONSOLE (Port 0 human PTY bytes)
+        - 0x0007-0x000F: reserved (core)
+      - Plugin kinds (registered at boot, no spec revision)
+        - 0x0010: PROFILE_SYNC (plugin-profile)
+        - 0x0011: DB_SQLITE (plugin-db-proxy)
+        - 0x0012: MCP_CONSOLE (plugin-mcp)
+        - 0x0013-0x7FFF: plugin-registered; collision aborts EKindConflict
+      - 0x8000-0xFFFF: reserved
+    - Kind registration
+      - builder.register_stream_kind(kind, handler) binds a handler
+      - Core kinds abort re-registration with EKindReserved
+      - Unregistered kind on OPEN aborts with EUnknownKind
+      - Kinds are numbers; no per-kind spec edits required
+    - Guest paravirtual micro-init boundary (kelir-shim)
+      - Shim runs as uninstrumented musl PID 1 (<50KB binary)
+      - Dynamic ExecSlot slab maps guest pid to exec_id
+        - Backed by a chunked allocator; frees return chunks to the pool
+        - Sized by min(guest RLIMIT_NPROC, host max_exec_slots)
+        - Host max_exec_slots default 4096; configurable per session
+      - Slab saturation: shim returns MSG_EXEC_REJECT{ENOMEM} in-band
+      - waitpid(-1, WNOHANG) updates slot exit status without blocking
+      - Unmatched reaped PIDs discard into a zero-allocation sink
+      - Exit frames on EXEC stream kind defer until stdout/stderr EOF flush
+      - Multiplexes raw VirtIO ring bytes; carries zero database, proxy, or domain logic
+      - Domain Unix sockets are provisioned dynamically over vsock, never hardcoded in PID 1
+  - Binary exec channel
+    - Transport: stream mux 0x0001, stream kind EXEC
+    - Each exec is one mux stream; per-exec stream_id disambiguates
+    - Exec sub-lane codes (open-payload metadata)
+      - 0x00: stdin (exec-to-guest)
+      - 0x01: stdout (guest-to-exec)
+      - 0x02: stderr (guest-to-exec)
+      - 0x03: exec control (exit code, EOF, rlimit descriptors)
+    - Out-of-band signal isolation: SIGINT and SIGTERM bypass EXEC
+    - Programmatic high-priority process signals route exclusively over Channel 0x0000
+    - Sole exception: the interactive PTY forward, MsgType 0x02 on PTY_CONTROL
+      - Scoped to the foreground exec of a human PTY session
+    - Eliminates signal delivery stalls behind saturated stdout/stderr rings
+    - Signal targeting
+      - Channel 0x0000 signals carry exec_id, never raw guest pid
+      - Shim translates exec_id to pid; unknown or already-exited exec_id drops silently
+      - No cross-channel ordering dependency exists between 0x0000 and 0x0001
+    - PTY allocation flag
+      - EXEC_IO_SPEC header carries FLAG_ALLOC_PTY (0x04), zero by default
+      - Set: shim calls openpty() for the ExecSlot; workload binds slave PTY
+      - Window resize rides stream 0x03 (stream control)
+      - stdout and stderr remain raw over 0x01 and 0x02 regardless of PTY
+      - Port 0 console stays reserved for human break-glass attach only
+    - Slot saturation backpressure
+      - Slab allocator returns MSG_EXEC_REJECT{reason: ENOMEM} when pool exhausted
+      - No queue growth, no PID 1 termination on burst, no silent drop
+      - Orchestrator retries after slot release or escalates to drain
+    - stdout and stderr carry raw bytes; no line wrapping, no escape injection
+    - Flow control: explicit frame protocol (`EXEC_IO_SPEC`)
+      - Control frames (EOF, window resize, signals) interleave with data frames
+      - Independent lanes per stream; stderr never blocks stdout
+      - Guest shim monitors consumer buffer drains
+      - On backpressure threshold, shim applies POSIX `input_stall` to the guest
+        - process's file descriptor before guest socket buffers overflow
+      - Host consumer slow or stalled → producer fd is paused, not dropped
+      - No mid-flight frame loss; no guest kernel deadlock
+    - PTY (virtio-console Port 0) remains the interactive human TTY
+    - Programmatic tooling uses stream kind EXEC (0x0001) exclusively; PTY bypassed
+  - Control-plane VFS stream
+    - Transport: mux 0x0001, stream kind VFS, framed CBOR
+    - Purpose: posix-like primitives without host-directory exposure or VM exit
+    - Requests: open, close, read_stream, write_stream, list, stat, mkdir, remove
+    - Pagination is mandatory
+      - list returns a cursor; client echoes the opaque cursor token
+      - Page budget fixed per response
+      - Large directories (node_modules) stream without one oversized reply
+      - Host memory stays flat (O(1) in directory size)
+    - Handle concurrency
+      - Handles indexed in a per-session table; close returns slots for reuse
+      - Reads and writes interleave per handle without head-of-line blocking
+      - Guest VFS bypasses FUSE for control-plane inspection paths
+    - Errors map to errno values; no host errno leaks
+    - Distinction from host-directory mounts
+      - vsock VFS is inspection/streaming
+      - Bind mounts remain for bulk workload trees
+  - Bulk transfer stream
+    - Transport: mux 0x0001, stream kind BULK
+    - Purpose: large payload ingestion without CBOR, FUSE, or syscall interposition
+    - Workloads: dependency injection, test fixtures, model weights, build caches
+    - Framing: raw chunked byte streams over the transport backend
+      - No CBOR wrapping; no per-chunk context switches through FUSE
+      - Zero-copy DMA or shared-memory page mapping when transport supports it
+    - Targets: guest disk buffer, named volume, or broker upper file
+    - Distinction from VFS stream kind
+      - VFS is paginated inspection/streaming with metadata
+      - Bulk is contiguous high-bandwidth byte movement
+    - Receiver acknowledges chunks; end-of-stream is a control frame
+    - Chunk size bounded by transport MTU; no fixed 64KB ceiling
+  - Trap fast-path
+    - Step sequence and per-step mechanics: see: artifacts/diagrams/trap-flow.txt
+    - Three-tier gate pipeline
+      - Gate 1: guest in-kernel BPF allowlist returns for harmless tools
+      - Gate 2: native MountScope/schema eval in host RAM; 0 FFI
+      - Gate 3: trap handler dispatch through foreign FFI trampoline
+      - Pipeline home: see: 02-plugin-model.md#Unified-interposition-pipeline
+      - Synchronous write/packet filters evaluate native Rust rules; foreign callbacks yield
+      - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
+      - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
+    - Gate 3 trusted-prefix skip
+      - Binary rooted in EROFS trusted prefix bypasses foreign FFI
+      - /usr/bin, /bin, /usr/lib are trusted prefixes
+      - Target script and argument paths must resolve strictly within EROFS
+      - Dynamic interpreters (python, node, bash, sh, perl, ruby) inspect argv[1..]
+      - Script arguments targeting /workspace/** forfeit skip and traverse Gate 3
+      - Gate 2 still evaluates; Allow proceeds without FFI crossing
+      - Untrusted /workspace/** always traverses Gate 3
+      - Compiler and test-suite fork/exec storms run at hardware speed
+    - Cost rationale
+      - A single trap-on-every-syscall design adds ~µs per fork/exec at
+        - toolchain scale; the allowlist exists to pay that cost only where policy is possible
+    - Frozen inspection mechanics
+      - cgroup v2 freezer closes check-to-use race without ptrace latency
+      - process_vm_readv captures exact memory without thread attachment
+      - A frozen inspection is still blind to what the loader *will* do;
+        - the linker audit exists to make the inspection meaningful
+    - Measurement rule
+      - Binary resolution
+        - Syscall trap resolves target binaries by kernel (st_dev, st_ino)
+        - Prevents path confusion across nested namespaces, chroots, and crun roots
+      - Namespace invariants
+        - In-kernel BPF denies CLONE_NEWUSER unless explicitly allowed in MountScope
+        - Agents cannot hide execution by spawning unprivileged child containers
+      - Pre-exec inspection
+        - ELF is read from disk at trap time, not from /proc/$PID/maps
+        - /proc/$PID/maps still describes the pre-exec image and is untrusted
+        - Scans /proc/$PID/auxv, envp, and PT_INTERP before cgroup unfreeze
+        - Identity hash stays raw bytes; see: 10-attestation.md#Execution-receipts
+    - Per-command rlimits
+      - Exec request on EXEC control sub-lane 0x03 carries optional ProcessLimits
+      - Fields: max_as_bytes (RLIMIT_AS), max_nofile (RLIMIT_NOFILE),
+        - max_nproc (RLIMIT_NPROC), max_cpu_seconds (RLIMIT_CPU)
+      - kelir-shim calls setrlimit(2) between fork() and execve()
+      - Rogue tool run kills only itself via SIGSEGV or SIGKILL
+      - MicroVM, kelir-shim, and sibling processes remain alive
+      - Absent descriptor: process inherits microVM-level ceiling only
+      - Per-command rlimits survive Rewrite: applied to the rewritten binary,
+        - not the original
+      - Shell invocations apply the limit to the shell; children inherit
+        - unless they explicitly drop privileges (which drops rlimit authority)
+      - Limits reported in ExecutionReceipt for auditability
+      - Enforcement is inside the guest kernel; no host cooperation required
+  - Wire framing
+    - see: artifacts/code/wire-protocol.rs
+    - Layout: 9-byte header, stream_id u32, flags u8, len u32, LE, no magic/version
+    - Message-type carrier: msg_type is first u16 of payload (LE); header carries no msg_type
+    - Framing invariants
+      - Byte order: Little-Endian for all multi-byte integers
+      - Hostile input validation
+        - Frame-derived lengths and stream IDs evaluate via checked_* math
+        - Unchecked slice indexing across wire buffers is strictly forbidden
+        - Payload buffers clamp to MAX_FRAME_PAYLOAD before memory reservation
+      - Message-type registry
+        - 0x0001-0x0004 core-reserved
+          - MSG_TRAP, MSG_CHANNEL_PAYLOAD
+          - MSG_VM_LIFECYCLE_CONTROL, MSG_SYSTEM_TELEMETRY
+        - 0x0005-0x7FFF core-extended
+        - 0x8000-0xFFFF plugin-framed
+          - channel_id carries scope
+      - Flags registry: see: #Stream-mux-framing
+      - Max frame size: 64KB strict
+      - CBOR limits
+        - Nest depth ≤ 16
+        - String length ≤ 1MB
+        - No indefinite-length items
+        - Payload bounded by 64KB frame budget
+      - Version negotiation
+        - Handshake struct: version: u16 (0x01), capabilities: u64
+        - Handshake validates version == 0x01; mismatches reject with E_INCOMPATIBLE_SHIM_VERSION
+        - negotiated_capabilities = host.capabilities & guest.capabilities
+        - Mandatory feature bit missing: abort with E_INCOMPATIBLE_SHIM_VERSION
+        - Optional feature bit missing: disable that interposer path gracefully
+      - Flow control
+        - None in-band; ring slot availability is the only backpressure
+        - SPSC ring full: sender parks on host eventfd / guest virtual interrupt
+        - Guest-visible semantics unchanged (virtio-vsock credits)
+        - Named-pipe fallback (Windows) uses OS pipe buffer backpressure with
+          - the same park semantics; framing identical
+        - AF_VSOCK fallback uses transport-credit backpressure; framing identical
+      - Reconnect
+        - None; channel close is terminal, tears down session
+        - Host-side ring shutdown flag is the semantic close event
+        - No sequence reset path exists
+      - Port 5252 is the sole control transport
+        - Logical channel identifier; see: 01-architecture.md#Transport-engine-abstraction
+        - Transport backend multiplexes channels over host-terminated rings
+  - Policy rejection receipt
+    - L7 wire-plane contract, not attestation state
+    - L7 rejections surface as synthetic HTTP frames in guest ingress ring
+    - Body: {"error":"E_POLICY_DENIED","rule":"<rule_id>","target":"<target>"}
+    - Content-Type: application/json
+    - Status: 403 Forbidden
+    - L4 rejections surface as TCP RST or ICMP Port Unreachable
+    - Silent blackholing eliminated for policy denials
+    - L3/L4 boundary opacity: see: 10-attestation.md#Scope
+  - Wire messages
+    - see: [1]
+    - Message set and payload fields: see: [1]
+    - Hook binding: one hook per message
+      - Contract: see: 02-plugin-model.md#KelirPlugin-trait
+    - Verdict-method-mapping
+      - Verdict::Pass: c.pass()
+      - Verdict::Patch(ExecveMutation): c.patch(mutation)
+      - Verdict::Drop { errno, reason }: c.drop(errno, reason)
+      - Verdict::Suspend { until }: c.suspend(until)
+      - Verdict::Abort { reason }: c.abort(reason)
+      - SuspendUntil: Deadline(ms) | Approval | Handshake
+      - Custom payload: c.patch(Custom { name, cbor })
+      - FilterAction (sync buffer rings: Fs write, Net inbound/outbound)
+        - FilterAction::Forward: c.forward(); buffer mutations already applied
+        - FilterAction::Drop { errno, reason }: c.filter_drop(errno, reason)
+        - FilterAction::Suspend { until }: c.filter_suspend(until)
+        - No c.patch() on filter rings: the buffer is mutated in place
+    - Hold wire contract
+      - Host halts vCPU execution and drops RAM footprint via suspend primitive
+      - Host releases suspension when the hold duration elapses
+    - Custom dispatch contract
+      - Registration: builder.register_custom_action(name, schema, handler)
+      - Wire Custom carries name + CBOR; the name resolves at SDK registration
+      - Unknown name at trap time fails with EUnknownAction
+      - Registration after boot() fails with EConfig
+    - Verdict invariants: see: [1]
+  - Stream mux framing
+    - Frame layout: stream_id: u32, flags: u8, len: u32, payload
+    - flags
+      - 0x01 OPEN: payload carries kind_id: u16 + tags
+      - 0x02 DATA
+      - 0x04 CLOSE
+      - 0x08 RST (peer aborted)
+      - 0x10 WINDOW_UPDATE (backpressure)
+    - Per-stream credit windows; credit exhausted parks sender
+    - Backpressure inherits ring/transport semantics, not new framing
+    - Zero-copy splice between mux and ring backends on supported platforms
+  - Env injection
+    - Workload environment variables, registers, and execution paths remain
+      - immutable under Pass verdicts
+    - State mutations require explicit Rewrite with validated disjoint keys
+  - Trap decision invariants
+    - Rewrite loop prevention
+      - No-op mutation aborts EInvalidRewrite
+        - Identical binary, argv, env
+      - Mutation equal to ancestor aborts ECyclicRewrite
+      - Max rewrite depth 4
+    - new_binary canonicalisation
+      - Absolute path only
+      - Resolved via openat2
+        - RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS
+      - Rooted at MountScope binary root
+      - Escapes reject with EInvalidRewrite
+    - Env injection limits
+      - set_env+unset_env total ≤ 32KB CBOR-encoded
+      - Key length ≤ 128 bytes
+      - vault:// placeholder values reject ESecurityViolation
+    - Custom dispatch timeout
+      - Exceeded handler falls through to Verdict::Pass
+      - Per-custom-action; defaults to 30s
+
+- [1]: artifacts/code/messages.rs

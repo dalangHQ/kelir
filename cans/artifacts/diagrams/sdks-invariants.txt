@@ -1,0 +1,30 @@
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        LANGUAGE-SPECIFIC SAFETY INVARIANTS                             │
+├──────────────┬────────────────────────────────────┬────────────────────────────────────┬────────────────────────────────────┤
+│ LANGUAGE     │ PLUGIN INSTALLATION PROOF          │ INBOUND PARAMETER VALIDATION       │ RECLAMATION & FAILURE VELOCITY     │
+├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
+│ Rust         │ Monomorphic HList accumulation:    │ `c.params::<T>()` deserializes     │ RAII `Drop` terminates hypervisor; │
+│              │ each `.plugin()` appends P::Context│ via Serde; failure halts spawn     │ Compile-time validation (rustc)    │
+│              │ to Plugins; `c.ctx::<T>()`         │ before traps execute               │                                    │
+│              │ infallible via `Plugins: Has<T>`   │                                    │                                    │
+├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
+│ TypeScript   │ Flat builder returning this;       │ `.params(schema)` pins TParams =   │ `try...finally` / `using` cleanup; │
+│              │ `.use()` overloads; fork-blind     │ Static<TSchema>; `c.params` typed  │ `.error()` maps host exceptions to │
+│              │ yields EConfig at builder.boot();  │ from TSchema, not runtime lookup   │ POSIX errnos before crash/abort    │
+│              │ `c.<pluginKey>` static             │                                    │                                    │
+├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
+│ Python       │ Flat builder returning self;       │ `.params(schema: type[TParams])`   │ `async with` __aexit__ terminates; │
+│              │ `.use()` overloads; prereq         │ pins TParams; `c.params` typed     │ boot-time EConfig; perimeter       │
+│              │ validation at builder.boot()      │ from the Pydantic model class      │ validation                         │
+│              │ raises EConfig;                │                                    │                                    │
+│              │ `c.cap.<plugin_key>` static    │                                    │                                    │
+└──────────────┴────────────────────────────────────┴────────────────────────────────────┴────────────────────────────────────┘
+AOT hook fusion: NAPI/PyO3 pipeline handlers fuse to one native closure per event.
+Fork isolation: Inline trap closures and stateless plugins inherit CoW state automatically;
+specialized host state branching overrides `fork_state()`, unclonable resources veto via `VetoEvent::Fork`.
+Typed enum compilation: LifecycleEvent, Ring, and TrapFilter values are checked
+at compile time in Rust and TypeScript and at import time in Python; string
+event names are not accepted dispatch keys in any language.
+Session architecture: The 5 native planes (terminal, storage, wire, checkpoint, host)
+are directly accessible on Session; optional domain plugins attach via extensions.
+Panic quarantine: All SDK handler dispatches wrap in catch_unwind at the engine perimeter.

@@ -1,0 +1,15 @@
+- conflicts
+  - status: resolved | file: 09-protocol.md | resolution: swe-agent examples now return Rewrite with env; 09 Env-injection rule unchanged
+  - status: resolved | file: cans/artifacts/examples/autonomous-swe-agent.ts | resolution: TS now checkpoints in pre and post reads c.step.last(), same as RS/Py
+  - status: resolved | file: 07-lifecycle.md | resolution: 07 now allows pre-boot lifecycle_mut registration validated at boot
+  - status: resolved | file: 07-lifecycle.md | resolution: 03 now documents session.vm.* per driver trait; swarm uses (tag, size_bytes)
+  - status: resolved | file: cans/artifacts/examples/autonomous-swe-agent.{rs,ts,py} | resolution: 03 now documents the naming-idiom mapping; parity is concept parity
+  - status: resolved | file: cans/artifacts/examples/autonomous-swe-agent.{rs,ts,py} | resolution: TS now uses a per-read thunk; vfs.md documents it
+  - status: resolved | file: artifacts/code/messages.rs | resolution: TrapAction::Yield checkpoint_id now String, matching SnapshotDescriptor.id
+  - status: resolved | file: artifacts/code/execution-receipt.rs | resolution: statement_count field added to ExecutionReceipt struct
+  - status: resolved | file: 10-attestation.md | resolution: wal.rs/otel.rs pointers dropped; Merkle-WAL and OpenTelemetry nodes state plugin-ledger ownership, no artifact pointer
+  - status: resolved | file: plugins/*.md | resolution: compact taxonomy nodes
+    - kelir and virtio joined the _rules.yaml stopwords (keyword sprawl)
+    - execution axis hoisted to a catalog default node in the plugin model
+    - per-plugin coordinate leaves condensed to 2 unique nodes each
+    - kelir stopword re-tokenization exposed 3 old overlaps; lines reworded

@@ -1,0 +1,73 @@
+- Plugin vault
+  - Crate dependencies (vault)
+    - Plugin identifier: plugin-vault
+    - Owner crate: crates/kelir-plugins/plugin-vault
+    - name() = "vault"
+    - Tier 2 governance (vault)
+    - Depends on (vault): kelir-interface
+    - Exposes: CredentialBrokerService
+    - VirtIO device attachment (vault): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (vault): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (vault)
+    - Exports CredentialBrokerService via PipelineBinder for scoped token issuance
+  - Invariants and policy (vault)
+    - Out-of-band credential brokerage
+      - Host keyring is the sole secret store; secrets never enter guest memory
+      - In-guest metadata service issues scoped, short-lived credentials on demand
+        - Guest-visible endpoint: virtio-vsock 169.254.169.254 equivalents:
+        - http://169.254.169.254/kelir/credentials/<name> (HTTP over vsock)
+        - Response body: { token, ttl_seconds, scope, audience }
+      - Token TTL default 60s; configurable to 900s ceiling
+      - Scope is the declared MountScope capability from the builder profile
+      - Audience is the destination host pattern (e.g. api.openai.com)
+      - Token is a signed opaque bearer; host keyring never exposed raw
+      - No in-process TLS MITM; no host-side CA; no HTTP body rewriting
+    - Metadata service (vault)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service.zeroize_on_drop
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service.fail_closed
+    - Credential descriptors (vault)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.credentials
+    - Scope confinement and audience locking
+      - Token requests cannot widen pre-declared builder MountScope permissions
+      - In-guest workload cannot synthesize credential requests for new audiences
+      - Destination host patterns are checked against network policy before issue
+      - Non-conforming or injected token requests reject synchronously with EACCES
+    - Credential types
+      - Bearer token (Authorization: Bearer <token>)
+      - Signed request V4 (AWS SigV4, GCP SA JWT, Azure AAD)
+      - mTLS client cert (short-lived cert + key pair, PEM bundle)
+      - Each type has a declared issuer backend (host keyring entry kind)
+      - Issuance is fail-closed: unregistered name → ENODATA; expired scope → EPERM
+    - Guest integration
+      - Zero SDK required; workload fetches over plain HTTP from metadata service
+      - Common language runtime helpers ship as userland libraries
+      - vault:// placeholder in profiles resolves to a metadata path at boot
+      - Guest cert store is untouched; no CA injection
+      - Guest env vars are workload-owned; no forced CA env pointers
+    - Optional external egress rewriting
+      - External egress rewriting is opt-in; the metadata broker is the default
+      - Selected via vault.external_egress = { kind: "envoy" | "squid", ... }
+      - Sidecar process owns TLS termination, HTTP rewriting, and secret
+        - substitution; runs outside the supervisor binary
+      - Wire plane forwards marked egress through the sidecar via L4 diversion
+      - Supervisor memory never sees plaintext secrets or HTTP bodies
+      - Required when a workload cannot fetch tokens itself (legacy HTTP clients with
+        - no ability to set Authorization headers)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.external_sidecar.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.external_sidecar
+    - Memory isolation and zeroization
+      - Host keyring memory pinned with mlock(2); excluded from swap
+      - Issued token buffers zeroized on drop; TTL expiry revokes host-side
+      - No plaintext token lingers in the supervisor after issuance returns
+    - Revocation
+      - Session terminate revokes all outstanding tokens for that session
+      - Token validation is host-side; guest cannot forge or replay post-revoke
+  - Error and return semantics (vault)
+    - Hook signature (vault): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (vault)
+      - Unregistered credential name → ENODATA
+      - Credential name outside declared scope → EPERM
+      - Audience mismatch → EACCES
+      - TTL request above ceiling → EINVAL
+      - Metadata service request from non-session vsock peer → ECONNREFUSED

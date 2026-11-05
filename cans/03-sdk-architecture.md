@@ -1,0 +1,268 @@
+- SDK architecture
+  - N-native design
+    - Foundation
+      - No dynamic any-typing, no second-class shims
+      - All SDKs enforce identical runtime guarantees at builder.boot()
+      - Bootstrap: Rust, TypeScript, Python
+      - Adding a language: bindings crate + vector consumer + surface manifest
+      - Runtime safety matrix: see: artifacts/diagrams/sdks-invariants.txt
+      - Failure occurs at the earliest lifecycle phase native to each runtime
+      - Handler purity and idempotency: see: [1]
+      - Unhandled errors abort hypervisor immediately to eliminate zombie runs
+    - Builder consumption model across languages
+      - Rust: affine typestate; .plugin() consumes self by value
+      - TypeScript: fluent builder returning this; registers plugins and planes
+      - Python: fluent builder returning self; async context management
+      - Inline closures: trap and lifecycle handlers are fully fork-blind
+    - Prerequisite gating across languages
+      - Rust: compile-time, via Has<T> trait bounds and typestate
+      - TypeScript: validates plugin dependencies at builder.boot() before vCPU launch
+      - Python: inspects dependency registry at builder.boot() prior to vCPU start
+      - All three produce the same structured error code: EConfig
+      - Runtime check cost: O(plugins) at boot; <2µs; validated once
+    - Service lookup across languages
+      - Rust: c.ctx::<T>() infallible, statically resolved
+      - TypeScript: c.<pluginKey> typed by .use(plugin) overloads;
+        - exposes typed plugin context objects without string lookups
+      - Python: c.cap.<plugin_key> typed by .use(plugin) overloads;
+        - maps capability attributes directly without dictionary indexing
+      - No string-keyed service registry on any SDK
+    - Authoring model
+      - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
+      - Two-tier authoring model
+        - Native plugins: distributed as precompiled npm/pip native binaries
+        - Foreign policy plugins: authored in userland code via native async closures
+        - Native vs Foreign: see: 02-plugin-model.md#Dual-plane-execution-architecture
+    - Type-safety
+      - Type-safety invariants
+        - Rust borrow checker and Serde perimeter validation: see: #Rust-SDK
+        - TypeScript tsc + TypeBox runtime validators at builder.boot()
+        - Python Pydantic v2 frozen models, validated at builder.boot()
+        - AOT hook fusion and FFI crossing: see: 02-plugin-model.md#Foreign-plugin-proxy
+      - Filter-before-FFI declaration
+        - Declared filters register during builder plugin mount
+        - Evaluation semantics: see: 02-plugin-model.md#Filter-before-FFI-gate
+    - Runtime surface
+      - Language surfaces
+        - Rust: extension traits provide zero-cost fluent chaining on builder
+        - TypeScript: fluent builder; plugin verbs are overloads of .use()
+        - Python: builder chaining; plugin verbs are .use() overloads
+        - Verbs are available after .use() in all languages (typed in Rust,
+          - returned by overload in TS/Py)      - Typed dispatch and session extensions
+        - Typed event hooks
+          - .on(LifecycleEvent.VmReady, handler) for lifecycle events
+          - .intercept(Ring.NetOutbound, handler) for ring interception
+          - .trap(TrapFilter::default(), handler)
+        - Native Engine Planes on Session
+          - Core Session directly exposes the 5 planes
+          - session.terminal, session.storage, session.wire, session.checkpoint, session.host
+          - Host: session.host.lsm_status(), session.host.pressure_level()
+          - Terminal: session.terminal.resize(120, 40), export_screen_matrix()
+            - Replay: session.terminal.read_from(port, offset) -> (Vec<u8>, next_offset)
+          - Storage: session.storage.reconcile(), session.storage.discard()
+          - Wire: session.wire.forward_port(guest_port, host_port)
+            - Returns Result<u16, WireError> with allocated port
+          - Checkpoint: session.checkpoint.create(label), session.rollback()
+        - Plugin extension pattern
+        - Optional domain plugins attach via typed extensions
+        - Rust: session.ctx::<T>() infallible via `Session<Plugins, Params>`
+          - where `Plugins: Has<T>`; no Result, no `ext`/`extension` surface
+        - TypeScript: session.<pluginKey> is typed by the .use() overload
+          - for that plugin; no session.use(ext), no session.ext(T)
+        - Python: session.cap.<plugin_key> is typed by the .use() overload
+          - for that plugin; no session.ext(T)
+        - Inter-plugin capabilities resolve via c.ctx::<T>() (Rust),
+          - c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
+      - Unified verdict surface: see: 02-plugin-model.md#Unified-verdict
+        - Rust: c.pass() / c.patch(m) / c.drop(e,r) / c.suspend(u) / c.abort(r)
+        - TS: c.pass / c.patch / c.drop / c.suspend / c.abort
+        - Python: Verdict.pass_() / Verdict.patch / Verdict.drop
+          - Verdict.suspend / Verdict.abort
+        - Console interposer signature (all SDKs)
+          - on_console_input(port, bytes) / on_console_output(port, chunk)
+          - port identifies the virtio-console port; bytes mutated in place
+        - Suspend surface naming
+          - Rust: Verdict::Suspend { until: SuspendUntil }
+          - TS: c.suspend(SuspendUntil.deadline | .approval | .handshake)
+          - Python: Verdict.suspend(until=...)
+          - No per-SDK aliases; one name across languages
+      - Session surfaces
+        - Session data operations
+          - Shared memory buffers: session.vm.map_shared_region(tag, size_bytes)
+          - Portable snapshots: session.vm.export_snapshot() and session.vm.import_snapshot()
+        - Session control surface
+          - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
+          - Dynamic vCPU roster: session.vm.set_vcpus(n)
+          - Hard vetoes: LifecycleCtx.register_veto(event, cb); see: 08-lifecycle.md#Lifecycle-vetoes
+          - Graceful drain: session.drain(ms); see: 08-lifecycle.md#Hypervisor-primitives
+          - Rollback semantics
+            - session.rollback() resets compute + disk
+            - Closes all session sockets; guest sees ECONNRESET
+            - No opt-in flag preserves sockets; rollback is total
+            - Hardware state reset mechanics: see: 08-lifecycle.md#Rollback
+      - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
+        - Stream kind registration: builder.register_stream_kind(kind, handler)
+          - core kinds frozen; plugin kinds registered at boot
+          - see: 11-protocol.md#Control-channel
+        - Programmatic exec surface: session.exec(cmd, limits?)
+          - Writes on stream kind EXEC; framing see: 11-protocol.md#Binary-exec-channel
+          - Accepts optional ProcessLimits; see: 11-protocol.md#Trap-fast-path
+          - Accepts optional allocPty flag; rides FLAG_ALLOC_PTY on EXEC_IO_SPEC
+          - Signal cancellation targets exec_id, not raw guest pid
+      - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
+    - Cross-SDK guarantees
+      - Three-tier binary distribution model
+        - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
+          - NAPI-RS .node and PyO3 .whl native shared libraries
+        - Pure Rust enterprise: Gated private Cargo registry (crates.kelir.dev) requiring license
+          - tokens for on-premise compilation (commercial tier)
+        - Kelir Cloud SaaS: Execution over HTTP/gRPC; internal hyper-density and cas-snapshot
+          - optimization applied transparently on host servers
+      - Distribution and error invariants
+        - Zero runtime toolchain tax: distributed with precompiled NAPI/PyO3 wheels
+        - Consumers never require cargo, zig, or C compilers on target systems
+        - Unhandled foreign handler error catches cleanly; guest never hangs
+        - Declarative error maps convert host exceptions to exact POSIX errnos
+        - Unmapped exceptions: see: 02-plugin-model.md#Declarative-error-mapping
+        - Structured error envelope carries driver, ring, pid, binary, and errno
+      - Testkit contract: see: 02-plugin-model.md#Plugin-testkit
+      - Scoping: all SDKs support ring, binary, and path filters at mount point
+      - Topology rule: distinct environments use separate profile factories
+      - Parity mechanism: see: 15-operations.md#Multi-language-parity-gate
+        - SDK naming idiom: same concept, per-SDK spelling; parity is concept parity
+        - Sinkhole allowlist (Py/RS) vs dnsExcept (TS)
+        - ReceiptConfig: Py/RS include_syscall_count
+          - TS: includeDirtyBytes, includeBinaryBlake3, includeSyscallCount
+        - Receipts are deterministic across hosts when replay is active
+          - Frozen clock, seeded RNG, ordered syscall + I/O traces
+          - No PMU-derived field is compared cross-host
+        - Decision static constructors (Py/RS) vs c.deny/c.resume/c.rewrite (TS)
+        - Lifecycle decorators/methods (Py/RS) vs .on(LifecycleEvent.VmReady) (TS)
+  - Idiomatic Surfaces Law
+    - TS, Python, and Rust do not copy each other's method names
+    - Each enforces 1:1 behavioral and wire parity against vectors.json
+  - Sandbox high-level facade
+    - Pre-composed distribution wrapper bundling KelirBuilder, profile, and tools
+    - Initialization via Sandbox.from_config(path) or Sandbox.create(opts)
+    - Internal pipeline
+      - Mounts plugin-profile to parse declared TOML or YAML specifications
+      - Flattens profile into child VirtIO plugins via CompositePlugin
+      - Transitions KelirBuilder<Unset> to KelirBuilder<Sealed> at boot
+    - Bidirectional synchronization
+      - box.export_spec(path) serializes active topology back to disk
+      - File hydration leaves builder open for host programmatic hooks
+    - Language parity (Sandbox)
+      - TypeScript: Sandbox.fromConfig("kelir.toml")
+      - Python: Sandbox.from_config("kelir.toml")
+      - Rust: Sandbox::from_config("kelir.toml")
+    - Facade method delegations
+      - box.exec(cmd) routes through virtio-console and trap filters
+      - box.rollback() invokes driver rollback: see: artifacts/code/vmm-driver-trait.rs
+      - box.reconcile() invokes storage reconciler to host workspace
+      - box.suspend() delegates to session suspend: see: 08-lifecycle.md#Suspend-and-resume
+  - Params typed views
+    - Host-side typed access on HandlerCtx
+      - Rust: c.params::<T>() deserializes from validated buffer
+      - TypeScript: params typed by .params(schema) (TypeBox)
+      - Python: params typed by Pydantic BaseModel
+    - Zero-allocation validation: operates on zero-copy guest memory
+  - Rust SDK
+    - see: artifacts/code/rust-handle-injection.rs
+    - Typestate transitions: KelirBuilder<Unsealed, Plugins, Params> to
+      - KelirBuilder<Sealed, Plugins, Params> to Session<Plugins, Params>
+    - Every verb consumes self by value: .plugin(), .params(), .trap(), .boot()
+    - .detached(true) spawns unowned runtime child registered in SQLite sessions
+    - Relay endpoint binds to ~/.kelir/sessions/<id>/relay.sock
+      - see: 08-lifecycle.md#Detached-lifecycle
+    - Reattachment via session.attach(session_id) returns Session
+    - Plugins accumulate in a monomorphic HList; HandlerCtx<'a, Plugins, Params>
+      - resolves capabilities via Has<T>, infallible at the call site
+    - Plugin context may hold Arc<Mutex<_>>; that is userland, not engine state
+    - Engine functional-core invariant: see: [1]
+    - .plugin() takes flat plugin instances; .params::<T>() carries the schema
+    - .plugin() accepts core KelirPlugin plus only needed ring traits
+      - Stateless plugins implement KelirPlugin with zero fork_state boilerplate
+      - Example trait bounds follow the split; unneeded traits stay unimplemented
+    - Ring traits: LifecycleParticipant, TrapInterposer, ConsoleInterposer
+      - FsInterposer, NetInterposer, and HostInterposer are sync hot-path traits
+    - AnyPlugin: identity marker for Clone KelirPlugin, without capability traits
+    - .trap(matcher, handler): pre-exec gate; dual pre/post handler also supported
+    - .intercept_host(filter, handler): synchronous native host security filter
+    - .intercept_storage(pathGlob, handler): synchronous native storage write filter
+    - .on_vm_ready(handler): session callback; .boot().await seals and boots
+    - Inter-plugin capabilities resolve via c.ctx::<T>() where Plugins: Has<T>;
+      - a missing plugin is a compile error, never a runtime Result
+    - Composite bundles flatten into builder via CompositePlugin trait
+    - Scope constraint via MountOptions: rings, binaries, paths
+  - TypeScript SDK
+    - see: artifacts/code/typescript-accumulation.ts
+    - TypeScript builder: KelirBuilder maintains an ordered plugin list
+    - .use(plugin) appends to the registry; returns this (typed overload)
+      - The overload is generic in P extends KelirPlugin; the returned type
+      - exposes session.<pluginKey> for that plugin
+    - Prerequisite validation happens at builder.boot()
+      - Missing dependencies throw EConfig with an error envelope
+      - Diagnostic envelope identifies missing requirement and declarer
+      - No compile-time generic gymnastics; TS compiler stays fast
+    - .trap(matcher, handler): pre-exec gate returning a Verdict
+    - .trap(matcher, { pre, post }): dual pre/post gate
+    - .intercept(ring, filter, handler): ring-level synchronous hot-path
+    - .on(event, handler): lifecycle interceptors over LifecycleEvent values
+    - .onTrap(handler): plugin-level trap interposer; returns a new plugin
+    - .params(schema) pins Params from the schema; handler c.params is typed
+      - from TypeBox's Static<> type, resolved once at build time
+    - Handlers receive HandlerContext<Params>; plugin surfaces are typed
+      - members (c.policy, c.ledger), resolved via .use() overloads
+    - Trap closures are fork-blind; active StepSlot forks state in core
+    - AOT hook fusion compiles all TS pipeline handlers into a single flat
+      - closure; exactly 1 NAPI trampoline per event regardless of depth
+    - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
+    - Null-object pattern: use(plugin({ enabled: false })) yields a no-op
+      - plugin; .boot() still validates but skips registration
+  - Python SDK
+    - see: artifacts/code/python-raii-pydantic.py
+    - async with builder as session
+      - __aenter__ boots microVM
+      - __aexit__ guarantees session.terminate() on any exception
+    - Python builder: KelirBuilder stores plugins alongside Pydantic models
+    - .use(plugin) appends to the registry; returns self
+      - .use() is overloaded per plugin so c.cap.<plugin_key> is typed
+    - Prerequisite validation runs at builder.boot()
+      - Unfulfilled requirements raise EConfig with structured details
+      - Error report isolates unsatisfied dependencies during bootstrap
+      - No runtime cost beyond a single O(plugins) walk at boot
+    - .params(model: type[P]) pins Params; handler c.params is typed
+      - from the Pydantic v2 model class
+    - Handlers remain fork-blind; microVM branch state clones automatically
+    - Composite plugins unpack nested plugins atomically before boot
+    - Capabilities are static members of c.cap (c.cap.policy), never
+      - c.service(ServiceType)
+    - Mount scoping via kwargs: rings=..., binaries=..., paths=...
+  - Full-surface examples
+    - see: artifacts/examples/autonomous-swe-agent.rs
+    - see: artifacts/examples/autonomous-swe-agent.ts
+    - see: artifacts/examples/autonomous-swe-agent.py
+    - see: artifacts/examples/multi-vm-swarm.rs
+    - see: artifacts/examples/serverless-webhook.ts
+    - see: artifacts/examples/db-backed-runtime.py
+    - Position: integration examples, not "the" example
+      - Each plugin's own tests/ and examples/ are canonical for that plugin
+      - These three demonstrate composition across plugins and rings
+      - The additional three demonstrate the primitives and plugins
+        - that the SWE-bench family does not mount
+    - Each example exercises
+      - Its declared plugin set
+        - Plugin-set registry: see: 02-plugin-model.md#First-class-plugins
+      - Every VirtIO ring those plugins attach to
+      - The evidence tiers and primitives it names
+    - Not asserted per example
+      - Every ring
+      - Every plugin
+      - Every primitive
+      - Coverage is per-plugin, not per-example
+    - Not transliterations: each uses language-idiomatic constructs
+      - Rust: async-trait, JoinSet, Arc<Mutex<>> states
+      - TypeScript: Promise.all fan-out, generic inference
+      - Python: asyncio.gather, async with, Pydantic v2
+
+- [1]: 01-architecture.md#Codebase-invariants

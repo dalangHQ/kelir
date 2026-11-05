@@ -1,0 +1,21 @@
+- Storage catalog schema
+  - Entity model
+    - Minimal 3-table ledger: sessions, cas_leases, schema_version
+    - Single Source of Truth for runtime persistence schema
+      - sessions table tracks every session: ephemeral and detached
+      - Ephemeral rows carry expires_at_unix = NULL and lease_kind = 'ephemeral'
+      - Detached rows carry expires_at_unix and lease_kind = 'lease'
+      - Both row kinds are the sole SSOT for session identity and liveness
+      - sessions row carries incarnation_id: 128-bit UUIDv7 minted per spawn
+      - sessions row carries boot_id, start_time_ns, pid for OS-native proof
+      - cas_leases tracks blob_hash, holder_pid, expires_at_unix with 30s TTL
+      - schema_version tracks single-digit schema state
+      - Lineage parent_digest edges are stored inside immutable snapshot manifests
+      - CAS blobs with zero active unexpired leases are safely pruned without locks
+      - Ephemeral rows are reaped on pidfd/kqueue/Job-Object death without lease wait
+      - Detached rows are reaped on lease TTL expiry
+      - janitor sweeps both kinds on runtime child startup
+    - No whiteout, overlay, or union-driver state is ever persisted
+      - Host CoW broker state lives under sessions/<id>/upper and /tombstones
+      - The broker's state is ephemeral by construction; catalog stores no rows
+      - Commit reads broker state, writes to workspace, then unlinks broker state

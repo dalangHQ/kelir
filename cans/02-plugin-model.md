@@ -1,0 +1,392 @@
+- Plugin model
+  - Plugin tiering
+    - Foundation: Terminal, Storage, Wire, Checkpoint, and Host are native engine planes
+    - Tier 1 base transports and channel adapters
+      - plugin-mcp: JSON-RPC MCP console channel adapter
+        - see: plugins/mcp.md
+      - plugin-mesh: vsock IPC sovereign federation peer transport
+        - see: plugins/mesh.md
+      - Tier 1 plugins depend strictly on kelir-interface only
+    - Tier 2 governance and protocol proxies
+      - plugin-tool-guard: tool-call governance proxy
+        - see: plugins/tool-guard.md
+      - plugin-wire-ingress: inbound wire proxy
+        - see: plugins/wire-ingress.md
+      - plugin-vault: unified secret and placeholder governance proxy
+        - see: plugins/vault.md
+      - plugin-container: rootless OCI container execution proxy
+        - see: plugins/container.md
+      - plugin-replay: deterministic PMU-stepped clock replay proxy
+        - see: plugins/replay.md
+      - plugin-db-proxy: L7 domain filter, agnostic relational mediation proxy
+        - see: plugins/db-proxy.md
+      - plugin-supply-chain: L7 domain filter, package lifecycle guard proxy
+        - see: plugins/supply-chain.md
+      - Tier 2 plugins depend on kelir-interface and consume Tier 1 services via ServiceRegistry
+    - Tier 3 cross-cutting aggregators
+      - plugin-ledger: audit aggregation over Tier 1 and Tier 2 plugins
+        - see: plugins/ledger.md
+      - plugin-profile: configuration aggregation over Tier 1 and Tier 2 plugins
+        - see: plugins/profile.md
+      - plugin-chaos: fault aggregation over Tier 1 and Tier 2 plugins
+        - see: plugins/chaos.md
+      - plugin-transaction: multi-resource 2PC coordination aggregator
+        - see: plugins/transaction.md
+      - Tier 3 plugins depend on kelir-interface and consume peer services via ServiceRegistry
+    - Dependency invariant: Zero concrete peer imports within the same tier
+    - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
+    - Layering enforcement
+      - Crate dependency hierarchy enforced mechanically via layer lint
+      - Downward-only dependencies: higher tiers import lower-tier crates, never the reverse
+      - Tier 1 plugins link kelir-interface only; direct core imports rejected
+      - Tier 2 and Tier 3 plugins add direct Cargo deps on lower-tier plugin crates
+    - Invariants and purity
+    - Code is sole SSOT: declared programmatically via KelirPlugin trait
+    - Manifest artifact is strictly auto-generated for zero-compile indexing
+    - Execution kind: Native (Rust in-process) | Foreign (host FFI)
+    - First-class catalog default: kind is Native unless stated
+    - Mutation scope manifest: mutators declare target paths, ports, or envs
+    - Mutation scope conflict rule: Overlapping mutators on identical operation targets
+      - (multiple mutators writing to the same path, port, or env key) fail validation at boot
+      - with EAmbiguousMutation
+    - Non-mutating observers may overlap freely with mutators across arbitrary path subtrees
+    - Cycle detection and unfulfilled dependencies fail closed at boot
+    - Clean-room boundary invariant
+      - kelir-interface is strictly dual-licensed (MIT OR Apache-2.0)
+      - Implementing KelirPlugin creates zero copyleft or viral licensing obligations
+      - Third-party authors retain 100% intellectual property rights over their plugins
+      - Commercial plugins in kelir-cloud link against kelir-interface without licensing conflict
+  - Dual-plane execution architecture
+    - Interceptor pipeline plane
+      - Synchronous or bounded latency inline processors
+      - Evaluates unified verdicts strictly by monotonic order: see: #Unified-verdict
+      - Single mutator owns target byte slice at any stage
+      - Trait dispatch: see: #Static-dispatch
+      - Compiled into contiguous zero-cost dispatch tables
+      - Latency bounded by #Latency-ceiling; foreign FFI filter-gated
+    - Authority lattice invariance
+      - Guest-side instruction changes cannot weaken registered pipeline verdicts
+      - Downstream stages evaluate monotonic denials without model intervention
+      - Host-declared interposition rules execute unconditionally outside guest
+    - Reactive event bus plane
+      - Asynchronous fan-out pub/sub for telemetry, audit, and OTel
+      - Strictly immutable domain events emitted after pipeline settlement
+      - Non-blocking: slow observers cannot stall microVM vCPU execution
+      - Zero participation in mutation or gating decisions
+  - Foreign plugin proxy
+    - Bridges language runtimes to KelirPlugin trait via NAPI/PyO3
+    - AOT hook fusion compiles chained host hooks into a single flat closure
+    - Exactly one FFI trampoline crossing per ring event regardless of hook count
+    - Marshals ring events across threadsafe boundaries on match
+    - Non-blocking trap returns: Pass, Patch, Drop, Suspend, Abort
+  - Composite plugin hierarchy
+    - see: [1]
+    - Assembly-time tree flattens into contiguous C-speed dispatch array
+    - Declarative profile hydration maps schema sections to child plugins
+    - Profile root schema: see: plugins/profile.md
+    - Composite expansion enforces monotonic limits across budget fields
+    - Invariant: nested depth incurs zero runtime call-stack overhead
+    - Deduplication merges identical name() nodes; deepest config wins
+    - AOT hook fusion collapses nested closures into single FFI trampoline
+  - KelirPlugin trait
+    - see: [1]
+    - Typed lifecycle: name, default_scope, is_enabled, opt-in fork_state
+    - fork_state() specializes child state; defaults to clone_box()
+    - Stateless and pure-data plugins omit fork_state() with zero boilerplate
+    - Typed registration: register_interceptors, register_subscribers
+    - Inter-plugin linkage is direct Cargo crate imports, not string tokens
+    - Segregated ring traits
+      - Core identity
+        - KelirPlugin is mandatory; see: [1]
+      - Ring traits
+        - LifecycleParticipant: vm lifecycle, commit, host preempt
+        - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
+        - ConsoleInterposer: console input, console output, window resize, disclosure
+          - Expanded: on_exec_stdout(pid, exec_id, chunk), on_exec_stderr(pid, exec_id, chunk)
+          - Fires for EXEC stream kind; see: 11-protocol.md#Binary-exec-channel
+          - PTY (Port 0) path unchanged; exec path uses exec_id rather than port
+        - FsInterposer: fs lookup, read, write; synchronous hot path
+        - NetInterposer: net outbound, net inbound; synchronous hot path
+        - HostInterposer: host lsm exec, host pressure, host keyring; sync hot path
+      - Identity markers
+        - AnyPlugin: identity marker for Clone KelirPlugin (fork/composite)
+      - Dispatch cost model
+        - Plugins implement only traits for rings they touch; rest default no-op
+        - Dispatch: taxonomy rings register into ring-specific contiguous arrays
+        - Unused rings cost zero vtable lookups
+    - Unified verdict
+      - Every interposer hook returns the same engine-level `Verdict`
+      - Verdict covers decision hooks: Trap (execve), Fs lookup, Host, MCP
+        - A Verdict prescribes an outcome: different exec, serve-alternate, deny, abort
+      - FilterAction covers in-place byte-transform hooks:
+        - Rings: Fs write, Net outbound, Net inbound, pgwire
+        - A FilterAction mutates the payload in place, then forwards or gates
+        - FilterAction = { Forward, Drop{errno,reason}, Suspend{until}, Abort{reason} }
+        - No Patch variant: the transformed buffer IS the payload
+      - Variants
+        - Verdict::Pass = proceed untouched
+        - Verdict::Patch(payload) = in-place mutation; payload schema per ring
+        - Verdict::Drop { errno, reason } = deny; errno surfaces to guest
+        - Verdict::Suspend { until } = yield or hold to host
+        - Verdict::Abort { reason } = fatal; pipeline freezes
+      - Drop without errno indicates silent blackholing for fault injection
+      - Patch payload is registered per ring: ExecveMutation, FsInode,
+        - Custom(schema)
+      - Idempotency and density: see: 01-architecture.md#Codebase-invariants
+    - Shape of the surface
+      - Lifecycle, trap, and terminal hooks are `async`; storage and wire
+        - hooks are synchronous; neither blocks the dispatch array
+      - Hooks map strictly to VirtIO transport events and hypervisor transitions
+      - Every ring has both an observation and a mutation point; the trait
+        - never exposes a ring for observation only
+      - The surface is closed per ring; adding a hook is a spec change, not
+        - a plugin concern
+    - Why the surface is this size
+      - A hook exists only if a ring delivers the event it consumes
+      - A hook that a plugin does not implement defaults to `Ok(())`;
+        - "opt-in" is each ring trait's typing, not a runtime branch
+    - Hook context restriction
+      - Trap and lifecycle hooks receive HandlerCtx or a restricted lifecycle context
+      - No hook receives &mut Box<dyn VmmDriver> or &Session
+      - LifecycleCtx exposes: set_watchdog, adjust_balloon, register_veto
+      - Builder orchestration callbacks are not plugin hooks: the host-side
+        - builder may receive driver/session to wire the session it builds
+      - Lifecycle commit: on_pre_commit, on_post_commit, on_host_preempt
+    - FsInodeAttr carries full mode, uid, gid, size, content
+      - Populated into FUSE LOOKUP replies with S_ISUID and S_ISGID masked
+        - (mode & !0o6000)
+        - see: 05-storage-plane.md#Containment
+      - Synthetic FUSE inodes honor mode: 0o400 exactly, no permission fallback
+    - Plane semantics
+      - Wire plane fully bidirectional: outbound and inbound mutation points
+      - Storage plane fully attributed: on_fs_write carries PID and HandlerCtx
+      - Control plane messages hook-observable; nothing bypasses the graph
+    - Hook return semantics
+      - Every hook returns Verdict; no per-ring aliases
+      - on_fs_lookup → Verdict::Pass = fall through; Patch(attr) = serve
+      - on_fs_write / on_net_outbound / on_net_inbound / on_host_exec → Verdict
+      - Trap hooks → Verdict; ring-specific defaults documented per plane
+  - Declarative error mapping
+    - Host exceptions map directly to POSIX errnos via builder error registry
+    - Unmapped exceptions convert cleanly to Verdict::Drop or hypervisor abort
+    - Preserves guest POSIX semantics without manual try-catch in hook bodies
+  - Declarative plugin macros
+    - Plugins expose declarative DSL attributes expanding at assembly time
+    - Macros expand to static MountScope masks and binary trap registrations
+    - Eliminates procedural condition checks inside userland hook bodies
+  - Static dispatch
+    - Dispatch compilation: direct Cargo linkage resolves plugin order at build time
+    - Pipeline tables index linear interceptor chains per VirtIO ring
+    - Core verifies plugin crate graph: cycles and missing deps halt boot
+    - Monotonic decisions: downstream stages cannot widen upstream denial
+    - Fail-closed mutation collisions: overlapping writes raise EAmbiguousMutation
+    - Deduplication: identical name() instances merge; deepest config wins
+    - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
+    - Zero-cost null objects: disabled plugins retain types, cost zero in core
+    - fork_state() customizes state branching; default clone runs unattended
+      - Inline builder closures remain fork-blind; StepSlot manages engine state
+    - Native zero-WASM isolation: compile-time crate linkage
+    - Immutable &[u8] slice views prevent cross-plugin heap tampering
+    - Hardware MPK page keys (x86_64) isolate per-plugin memory domains
+    - Missing declared dependency aborts boot with EConfig
+    - Dispatch tables are immutable after seal; zero atomic loads on the ring path
+    - Panic quarantine boundary
+      - Interposer dispatches wrap in catch_unwind at the engine perimeter
+      - Escaped hook panics convert to Verdict::Drop with EFAULT
+      - Supervisor microkernel stays resident; active StepSlot rolls back
+    - Hydration rebuilds tables pre-seal; ArcSwap is not used post-boot
+    - Configuration is frozen at seal; no runtime dispatch mutation exists
+    - Rehydration on restore installs a fresh immutable table, not a swap-in-place
+    - First Drop, Suspend, or Abort halts pipeline; Pass/Patch continue
+    - on_trap_deny is builder-level
+      - Deny-observation composition is a user concern
+  - Unified interposition pipeline
+    - Single engine for every guest-to-host interaction
+    - Guest Ring Event (Syscall | NetFrame | FsOp | Msg) enters one path
+    - Stage 1: Fast Filter (native BPF, inode mask, CIDR/port table)
+    - Stage 2: Dispatcher evaluates MountScope; FFI gated here
+    - Stage 3: Execution commits Verdict to hardware or VirtIO ring
+    - Zero bespoke pipelines; zero per-ring verdict enums
+    - Ring, Fast Filter, and Dispatcher are native Rust; only Stage 3
+      - crosses FFI on scope match
+    - Fast Filter budget: <2µs; Dispatcher budget: <1µs
+    - See: #Latency-ceiling for FFI cross budget
+  - Mount scoping
+    - Mount-level filters restrict blast radius before dispatch evaluation
+    - VirtIO ring mask: unselected rings bypass plugin completely
+    - Multi-port console partition: ports allocated dynamically at session configuration
+    - Binary filter: in-kernel BPF drops traps for unlisted paths
+    - Path filter: FUSE layer bypasses VFS hooks outside declared subtrees
+    - Network filter: ingress dispatcher bypasses net hooks outside declared CIDR/port rules
+    - Scope cascade: see: [1]
+    - Invariant: child effective scope is boolean intersection of ancestor scopes
+    - Scoping is transport-agnostic
+      - Filters evaluate above the Transport backend (SPSC ring, AF_VSOCK,
+        - or named pipe); plugin authors never observe the transport
+      - Windows hosts apply identical scoping semantics as Linux/macOS
+      - No plugin may key behavior on the transport identity
+    - Stream kinds are registered at boot
+      - Core kinds frozen; plugin kinds declared via register_stream_kind
+      - see: 11-protocol.md#Control-channel
+  - Filter-before-FFI gate
+    - Host core checks MountScope in native memory before crossing FFI
+    - Evaluates native compiled schema validators, CIDR, and path rules in Rust
+    - Foreign runtimes skip FFI on non-matching events
+    - FFI trampoline executes only when ring event satisfies scope match
+    - Trusted-prefix bypass: see: 11-protocol.md#Trap-fast-path
+  - Latency ceiling
+    - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs
+    - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs
+    - Gate 3: Foreign FFI trampolines (V8/Python) dispatch out-of-band in 50-150µs
+    - Gate 3 skip: EROFS trusted binary and payload paths bypass foreign FFI
+    - Sync hot-paths require native filters or Verdict::Suspend
+    - Toolchain overhead target on cargo/npm is a CI budget, not a spec claim
+    - Budget numbers live only in perf/budgets.toml (enforced by perf-budgets)
+    - Budget regressions block release; absolute overhead is not asserted here
+    - This node is the sole numerical home for gate latency budgets
+  - FFI buffer lifecycle
+    - Pinned memory slices exposed via streaming chunked iterators
+    - Prevents use-after-free while host runtimes resolve handlers
+    - 64KB is the per-chunk ceiling
+      - FUSE driver chunks writes; interposer sees one chunk per call
+      - Guest write() never fails due to host buffer size
+    - Handlers must inspect each chunk or delegate to Rust plugins
+  - Core context keys
+    - Invariant: ambient untyped string bags (c.<key>) are eliminated
+    - Handlers receive strictly-typed context tailored to event scope
+    - Core context primitives (invariable across all handlers):
+      - c.trap: immutable syscall inspection payload
+      - c.vm: restricted lifecycle actuation handle
+      - c.receipt(): hardware execution proof generation
+    - Scoped domain contexts:
+      - FsContext: scoped to virtio-fs operations (inode, path, journal)
+      - NetContext: scoped to virtio-net operations (L2 frame, L4 stream, socket)
+      - HostContext: scoped to host OS operations (lsm event, host pid, key)
+      - ConsoleContext: scoped to virtio-console operations (PTY, grid, window)
+      - ExecContext: scoped to EXEC stream kind ops
+        - Carries pid, exec_id, stream_id (stdout|stderr), chunk, rlimits
+        - Invoked through ConsoleInterposer::on_exec_std{out,err}
+    - Inter-plugin typed services:
+      - Direct peer crate imports resolved at compile time; see: #Plugin-tiering
+      - Language context projections: see: [2]
+  - First-class plugins
+    - Catalog tiering
+      - Community plugins (in-process engine): cans/plugins/
+        - mcp, mesh, tool-guard, wire-ingress, vault, container
+        - replay, ledger, profile, chaos, transaction
+        - db-proxy, supply-chain
+      - Commercial plugins: interface in plugins/commercial.md
+        - hyper-density, cas-snapshot
+        - oci-translator, openshell-coordinator
+        - Implementation is proprietary; not in this repo
+        - egress-sidecar is an out-of-process commercial daemon outside the plugin count
+    - Coverage matrix (community plugins -> demonstrating example)
+      - chaos, ledger: autonomous-swe-agent.{rs,ts,py}
+      - vault: autonomous-swe-agent.{rs,ts,py} via wire-plane vaults only
+      - mesh: multi-vm-swarm.rs
+      - container: container.py
+      - transaction: db-backed-runtime.py
+      - wire-ingress, mcp, tool-guard: serverless-webhook.ts
+      - replay: replay.rs
+      - profile: profile.rs
+    - Userland SDK policy demonstrations
+      - db-proxy: db-backed-runtime.py
+      - supply-chain: multi-vm-swarm.rs
+    - Non-plugin surface examples
+      - Exercises raw traits or SDK surfaces; no catalog plugin
+      - Terminal and trap interposition: see: artifacts/examples/git-gate.rs
+      - Full hook surface: see: artifacts/examples/hook-matrix.rs
+      - Full Verdict lattice: see: artifacts/examples/policy-matrix.rs
+      - Each maps to a spec surface, not a plugin
+    - Coverage invariant
+      - Every first-class plugin names a demonstrating example
+      - Plugins with none yet are marked as having none yet
+      - Coverage is per-plugin; no single example must cover all
+      - No dedicated matrix example exists to satisfy coverage alone
+      - Surface examples are separately gated by --hook-coverage
+        - and --action-coverage; not by --plugin-coverage
+      - Community examples live in cans/artifacts/examples
+      - Commercial examples live in the proprietary implementation repo
+      - Hook-coverage: every hook in Segregated-ring-traits is implemented
+        - Implemented by some custom plugin in cans/artifacts/examples
+        - Hook families: see: #Segregated-ring-traits
+        - An unhit hook fails --hook-coverage
+        - Hook-coverage gate: see: [3]
+        - Exercises via hook-matrix and policy-matrix, not via
+          - autonomous-swe-agent
+      - Action-coverage: every Verdict variant
+        - Verdict variants: see: 11-protocol.md#Verdict-method-mapping
+        - An unused variant fails --action-coverage
+        - Action-coverage gate: see: [3]
+    - Behavior of each: at its plugin file
+      - Rosters: see: #Catalog-tiering
+      - File resolution: see: 15-operations.md#Project-structure
+      - oci-translator: containerd-boundary policy only
+        - Ingestion primitive: see: 12-adapters.md#Ingestion-matrix
+      - Pointer rule: plugin files are leaf targets; crate dependencies live in the plugin file
+    - Ecosystem additions follow: #Plugin-ownership
+    - Session extension surface: attached per plane
+      - Extensions are declared in their owning plugin spec file
+      - This node defines no concrete extension typing
+  - Plugin ownership
+    - Dependency rules
+      - Tier dependency rules: see: #Plugin-tiering
+      - Data-flow dependencies expressed via typed bus schemas and direct imports
+      - Inter-plugin coordination passes linear tokens via hypervisor bus
+      - Depends on plugin-testkit as dev-dependency
+      - Never depends on crates/kelir facade
+      - Cross-plugin coordination occurs via direct crate imports or userland closures
+    - Decoupling test
+      - A failing plugin's tests are attributable to that plugin alone
+      - Removing an upstream crate breaks only its declared dependents
+      - Executed per plugin by tiered compilation; see: 15-operations.md#Tiered-compilation
+      - Scope: excludes facade (re-exports every plugin), adapter binaries
+        - (one plugin each), and kelir-integration (dev-depends on all)
+      - Tiered dependency edges: gated by plugin-audit
+      - Audit gate detail: see: 15-operations.md#Per-plugin-CI
+    - External plugins
+      - Same contract; no adaptation
+      - Standalone repo layout (hermetic; required for external plugins)
+        - Cargo.toml: Rust crate root, depends on kelir-interface only
+        - src/lib.rs: plugin logic, zero unsafe, zero panic
+        - tests/test_contract.rs: unit and integration via kelir-plugin-testkit
+        - tests/fixtures/: fixtures specific to this plugin
+        - bindings/ts/: @kelir/plugin-<name> (NAPI-RS) with parity tests
+        - bindings/py/: kelir-plugin-<name> (PyO3) with parity tests
+        - examples/<name>-basic.{rs,ts,py}: runnable demonstration in each SDK
+        - vectors/vectors.json: pinned parity truth for kelir-plugin-cli vectors
+        - .kelir/manifest.json: generated via kelir-plugin-cli manifest, never hand-written
+        - .kelir/attestation.json: signed via kelir-plugin-cli attest
+      - A standalone plugin carries its own examples, never an in-tree composite
+      - Its hooks and verdicts must be exercised by its own examples and vectors
+      - In-tree first-class plugins keep shared composite examples by design
+        - Coverage is per-plugin, not per-example; see: #Coverage-invariant
+      - Enforcement: reusable workflow jobs audit, vectors, attest
+        - audit runs kelir-plugin-cli check; vectors runs parity run; attest signs
+        - Missing vectors.json or a divergent vector fails the vectors job
+        - see: 15-operations.md#External-repository-CI
+  - Plugin testkit
+    - Crate layout: see: 15-operations.md#Project-structure
+    - Boundary contract
+      - Depends on kelir-interface only; never on a plugin or the facade crate
+      - Every plugin depends on it as a dev-dependency
+      - Not runtime: shipping it in the runtime crate graph is a defect
+    - Purpose: a plugin's tests run without a hypervisor
+    - Emits language-agnostic test vectors
+      - vectors.json derived from Rust fixtures
+  - Auto-generated manifest contract
+    - Tooling extracts metadata directly from code AST and KelirPlugin trait
+    - Manual manifest authoring is banned to eliminate dual-source drift
+    - Validates tier dependencies, acyclic imports, and disjoint scopes
+    - Missing or invalid crate metadata rejects compilation at boot
+  - Language parity
+    - Invariant: Same first-class plugins across Rust, TypeScript, Python (1:1)
+    - Enforcement gate: see: 15-operations.md#Multi-language-parity-gate
+    - Projection implementations: see: [2]
+    - Typestate is Rust-only
+      - Compile-time prerequisites in Rust; boot-time in TS/Py
+      - Both produce EConfig with identical structure
+
+- [1]: artifacts/code/plugin-trait.rs
+- [2]: 03-sdk-architecture.md#Language-surfaces
+- [3]: 15-operations.md#Coverage-gates

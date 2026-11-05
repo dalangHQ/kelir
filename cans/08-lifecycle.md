@@ -1,0 +1,409 @@
+- Lifecycle
+  - Hypervisor primitives
+    - Set-level invariant: every item is a hypervisor primitive, not guest-side simulation
+    - State machine
+      - Centralized Hypervisor Lifecycle State Machine:
+        - States: Initializing, Running, Draining, Suspended(SuspendReason), Terminated
+        - SuspendReason: External(u32) | ResourcePressure
+        - Eliminates independent suspend implementations outside core
+        - Cycle-exact resume via Channel 0 control frame or wire ingress frame
+        - Draining is a first-class state
+          - Running -> Draining -> Terminated
+          - Entered via `session.drain(timeout_ms)`
+          - In `Draining`: new exec and tool calls are refused with EBUSY
+          - In-flight commands run to natural completion
+          - Storage buffers and active ledger sinks flushed cleanly
+          - On completion or timeout, transition to Terminated
+          - On timeout, in-flight work is terminated with SIGTERM, then SIGKILL
+          - Preserves finished work in CI/CD pipelines and long agent chains
+    - Clock invariants
+      - Monotonic clock clamp: CLOCK_MONOTONIC never regresses across restore
+      - Restored monotonic time clamps to max(current_monotonic, snapshot_monotonic)
+      - Preserves timer loop invariants for guest Tokio, Go, and libuv runtimes
+    - Session and context handles
+      - Session lifecycle handles: fork, suspend, resume, rollback, skew_clock
+      - Context lifecycle configuration: set_watchdog, adjust_balloon, register_veto
+      - Every item exposes one lifecycle point via LifecycleCtx
+      - Typestate boundary: fork, suspend, rollback, skew_clock exist on Session only
+      - Split by state-preservation, not by privilege: see: #Lifecycle-vetoes
+    - Driver-backed execution
+      - All primitives execute via active VmmDriver backend without in-guest agents
+      - Portable snapshots: see: #Portable-snapshot-bundles
+      - Preemption window: see: #Host-crash-reaper
+      - Ownership attribution: see: 02-plugin-model.md#First-class-plugins
+    - Hardware session attestation
+      - Token injection and verification path: see: 01-architecture.md#Guest-VM-anatomy
+      - Bare-metal executions lack the paravirtual token and abort immediately
+      - Protects developers running harness scripts natively by mistake
+  - CoW fork
+    - Driver primitive: fork returns Box<dyn VmmDriver>
+      - see: [1]
+    - KVM path: userfaultfd + KVM memory cloning
+    - HVF path: Stage-2 translation write protection via hv_vm_protect
+      - Stage-2 data aborts resolve via Chunked Page Promoter
+      - Eagerly promotes 2MB contiguous blocks via Mach vm_copy CoW
+      - macOS fork isolation: child sessions inherit zero CoreFoundation state
+      - SCDynamicStore and Keychain bindings isolated to pre-fork supervisor
+      - Forked children resolve DNS via POSIX structures to prevent SIGABRT
+      - Eliminates vCPU exit storms during large heap allocations
+    - Host runtime isolates plugin state per branch via fork_state() or clone
+    - Plugins holding un-clonable host descriptors veto via VetoEvent::Fork
+    - Children share warm parent memory
+      - Warmed compilers, loaded dependencies, in-process caches
+    - Host RAM dirtied only on child write
+    - Session hydration
+      - Driver fork yields raw Box<dyn VmmDriver>
+      - Runtime re-hydrates complete Session around it
+      - Rebinds 4-ring dispatch table, virtio channels, plugin graph
+      - session.vm.fork() returns full Session
+      - spawn() and every other session API directly callable on child
+    - Child handoff scope
+      - Inherited
+        - Full parent memory snapshot (CoW)
+        - Plugin states via default clone or specialized fork_state()
+        - StepSlot state
+        - 4-ring dispatch table
+        - virtio channel state
+      - Not inherited
+        - Host-side handles
+          - Files, sockets, PTY masters
+        - Merkle WAL (host-isolated per ledger plugin)
+        - Session attestation (child receives new one)
+        - Lifecycle veto registrations
+          - Re-fired in child's on_vm_init
+        - Watchdogs (child must re-arm)
+        - vsock channel registrations
+          - Child must re-register
+      - Rationale
+        - Inherited = driver fork() + default clone or specialized fork_state()
+        - Not-inherited items have host-side identity
+        - Cannot safely clone across a session boundary
+    - Typical use: parallel agent exploration (5+ candidate strategies)
+    - Warm tenant provisioning: clones pre-warmed base instances under 10ms
+    - Policy dry-run CoW probing
+      - Clones parent VM to evaluate untrusted candidate commands
+      - Policy denial in probe child aborts branch in <1ms with zero parent impact
+      - Probe execution asserts hardware receipts before parent commits diff
+    - Veto: Fork (hard)
+      - Callback false → ESessionVeto; no child VM
+  - Rollback
+    - Pre-condition invariant: Rollback requires zero unreleased traps
+    - A held trap is released (Verdict::Drop{EFAULT}) before rollback begins
+    - Fail-closed ordering: release → network quiesce → storage reset → hardware reset
+    - No caller may issue rollback from on_trap (trap is held; return Verdict instead)
+    - Rollback is permitted from on_process_exit (trap already released)
+    - Pre-exec gates return Verdict; post-exec gates issue rollback directly
+    - State boundary (rollback covers compute + disk, not remote state)
+      - Rollback resets: vCPU registers, guest RAM, broker upper file,
+        - tombstones, session-local RNG position, virtual clock position
+      - Rollback preserves: host workspace, host Merkle WAL,
+        - external network peer state, issued credential tokens (revoked),
+        - host keyring
+    - Network truth
+      - All L4 host-side sockets for the session are closed immediately
+      - TCP peers receive a clean FIN or RST depending on shutdown path
+      - Guest observes ECONNRESET on next read or EPIPE on next write
+      - WebSocket, HTTP/2, and gRPC connections are terminated the same way
+      - No proxy-level socket reconnection protocol exists in core
+      - Workloads that need transparent reconnection must implement it above L4
+    - Credential truth
+      - plugin-vault revokes all outstanding tokens on rollback
+      - Workload must re-fetch credentials from the metadata service
+    - Three-phase execution boundary
+      - 1. Network quiesce: cancel in-flight L4 streams, emit RST to peers,
+        - drain wire-plane splicing buffers, drop UDP NAT entries for session
+      - 2. Storage reset: broker drops upper file and tombstones;
+        - FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on the sparse upper
+      - 3. Hardware reset: driver.rollback(&snapshot) resets physical RAM
+        - and vCPU registers in <8ms
+      - HVF path: resets Stage-2 translation table roots to snapshot base
+      - KVM path: restores userfaultfd memory tracking to checkpoint slot
+    - Host SSD workspace and host-side Merkle WAL remain completely untouched
+    - Sockets are not part of the snapshot; they are never restored
+    - Veto: Rollback (observation)
+      - Cannot be vetoed; rollback is the recovery action
+      - Use for ledger/trace of recovery events
+    - Anti-claims
+      - Rollback drops all active TCP connections
+      - Rollback invalidates existing TLS sessions and certificate leases
+      - Rollback ignores external peer network state
+      - Rollback omits cycle-exact replay for remote network I/O
+  - Pre-teardown flush
+    - Termination has two modes: graceful (default) and abrupt (kill)
+    - Graceful path
+      - Host issues MSG_SHUTDOWN_REQUEST{timeout_ms} on Control 0x0000
+        - Default timeout: 10s; caller-tunable
+        - timeout_ms=0 skips graceful and jumps to abrupt
+      - kelir-shim issues syncfs(2) across all VFS mounts
+      - shim sends SIGTERM to the workload's foreground process group
+      - shim reaps children as they exit; workload has time to commit
+      - shim replies MSG_SHUTDOWN_ACK when VFS is clean and processes drained
+      - Host tears down vCPU loops only after ack or timeout expiry
+      - Preserves half-written ext4 journal, SQLite WAL, git index integrity
+      - Timeout expiry records ExitKind::DirtyShutdown in ExecutionReceipt
+    - Abrupt path
+      - `session.kill()` skips the flush and issues SIGKILL to the hypervisor
+      - Guest writes may be lost, exactly like a power cut
+      - Records ExitKind::HardKilled in ExecutionReceipt
+    - CLI and SDK
+      - SDK exposes session.stop() and session.stop_with_timeout(d) for graceful exit
+      - Draining is a superset of stop for pipelines that need to finish
+        - queued work; see: #Hypervisor-primitives
+  - Suspend and resume
+    - suspend
+      - Reason: SuspendReason::External or ResourcePressure
+      - Freezes vCPU registers
+      - Page-dump engine: lz4_flex compression over io_uring direct I/O
+      - Flushes compressed pages to local NVMe
+      - Host RSS drops to 0 MB in <50ms; see: [1] (suspend)
+    - resume
+      - Restores registers and memory
+      - Resumes at exact cycle boundary
+      - Host samples CLOCK_REALTIME and dispatches a paravirtual clock
+        - update frame over Control 0x0000
+      - kelir-shim issues clock_settime(CLOCK_REALTIME) before unfreezing
+        - cgroups or releasing trapped tasks
+      - Guest time snaps forward instantly after multi-day suspension
+      - Zero CERT_HAS_EXPIRED or CERT_NOT_YET_VALID on first outbound TLS
+    - Snapshot contents
+      - Entry list and per-entry fields: 09-snapshots.md#Archives-and-portability
+      - .kelir-snap is the only portable form: 09-snapshots.md#Archives-and-portability
+    - Veto: Suspend (hard), Resume (observation)
+      - Suspend false → ESessionVeto; host RAM not flushed
+      - Resume fires before primitive; return value ignored
+      - Note: on_vm_ready does not re-fire on resume
+    - Typical use: waiting for human approval with zero host CPU cost
+    - Mobile and SBC use: full RSS deallocation under Android LMK memory pressure
+    - Flash preservation: sparse upperdir backing file may be placed on a
+      - tmpfs host path when write volume fits RAM; SBC profile selects this
+      - by default. Otherwise writes hit disk blocks as normal.
+    - External suspension
+      - Triggered by SuspendReason::External(u32) awaiting out-of-band release
+      - Resume executes cycle-exact upon external release signal
+      - Release signal arrives on Control 0x0000
+  - Elastic compute
+    - Guest kernel boots with maxcpus=N; configured count online at boot
+    - Scale up: hypervisor unparks host vCPU threads; shim writes
+      - /sys/devices/system/cpu/cpuX/online
+    - Scale down: host parks surplus vCPU threads; guest offlines cores
+    - Warm memory, caches, and loaded dependencies retained across resize
+    - No reboot, no teardown, no session re-attestation
+    - Session surface: session.vm.set_vcpus(n)
+    - Veto: none; resizing is state-preserving
+    - Topology awareness
+      - Host planner reads physical cores, NUMA domains, and LLC boundaries
+        - at runtime launch
+      - vCPU threads are pinned to specific host cores per the planner
+      - Cross-NUMA placement only when explicitly requested
+      - Guest sees a coherent topology (per-NUMA CPU sets, LLC sizes) even
+        - when the host allocation is fragmented
+      - Oversubscription is bounded by a per-host policy, not by guesswork
+    - Shared borrowing
+      - Idle VMs yield CPU slices to busy neighbors bounded by hard quotas
+      - No cross-NUMA migration; borrowed cores come from the same NUMA node
+      - The plan is recorded in the SQLite catalog per session for auditability
+    - Balloon convergence
+      - adjust_balloon returns a BalloonConvergence handle
+      - Host subscribes to VIRTIO_BALLOON_S_MEMFREE / S_AVAIL event queue
+      - Host reclaim (madvise / hv_vm_unmap) gates on guest ack, not target set
+      - Fork, snapshot, and heavy exec require prior convergence completion
+  - Native checkpoint plane (kelir-core::checkpoint)
+    - Zero-harness boundary detection
+      - Tracks process group exits and foreground PTY idle quiescence
+      - Traps sentinel FUSE inodes on unbacked virtual paths (/dev/kelir-gate)
+      - Pre-checkpoint dentry trim: VirtIO-FS issues active FUSE forget pass
+      - Unreferenced dentry nodes with zero open handles evicted before capture
+      - Prevents checkpoint descriptor explosion from recursive directory sweeps
+      - Intercepts configured clean execution targets before workload exit
+    - Autonomous step verification loop
+      - Host registers StepEvaluator closure through CheckpointService
+      - Captures atomic pre-step SnapshotDescriptor before workload execution
+      - Evaluates physical ExecutionReceipt upon trapped process exit
+      - Step outcomes (StepVerdict):
+        - StepVerdict::Commit: flushes staging delta, advances active step slot
+        - StepVerdict::Rollback(reason): calls session.rollback(), reverting RAM in <8ms
+          - and discarding the broker upper file + tombstones
+      - Tainted step verification
+        - StepEvaluator validates causal deltas against declared task scopes
+        - Unapproved filesystem writes or egress under tainted state force rollback
+        - Active delta is dropped in ≤8ms; memory reverts to pre-step slot base
+        - Rollback purges in-guest payload without persisting poisoned memory
+        - StepVerdict::YieldToHost: halts vCPU registers awaiting external input
+        - SDK post-exec gates return PostExecAction, mapped to this lattice
+        - PostExecAction::Proceed maps to StepVerdict::Commit
+        - PostExecAction::RollbackAndHalt maps to StepVerdict::Rollback
+        - YieldToHost is reached via Verdict::Suspend { until: Approval }
+      - Fail-closed invariant: unhandled post-execution failures or evaluation
+        - timeouts trigger rollback after trap release (see: #Rollback)
+    - Delta chain compaction
+      - A checkpoint chain holds: one immutable Base and N stacked WorkingDeltas
+      - Depth is unbounded; lineage edges: 09-snapshots.md#Groups-and-lineage
+      - StepVerdict::Commit advances delta DAG head; writes remain in sparse extents
+      - Compaction flattens ancestor deltas in a single-pass block copy on export
+      - StepVerdict::Rollback discards only the current delta in ≤8ms
+      - Fork branches from any point in the chain; child inherits the full prefix
+      - Branching agent trees (tree-of-thought, parallel MC search) are the
+        - primary workload
+      - Lazy CoW page sharing (`--cow-mem`) lets forks share parent memory pages
+        - until written; fork time stays <10ms regardless of depth
+      - Diff resolution is O(1) per depth step for reads; the runtime tracks
+        - active chain head per session
+      - Host memory grows only with divergent deltas, not chain depth
+      - Lineage metadata walks the CAS manifest DAG
+  - Portable snapshot bundles
+    - Streamed archive packaging: manifest, registers, ram.zst, and upperdir
+    - session.export_snapshot() yields portable binary stream (.kelir-snap)
+    - Hydration and unpack security invariants
+    - Fuzzing
+      - Archive parser is a cargo-fuzz target with dense and sparse seed corpora
+      - Any panic, unbounded allocation, or traversal is a release blocker
+      - Corpus grows with every regression
+  - Clock skew
+    - KVM path: KVM_SET_CLOCK and kvm_clock MSRs
+    - HVF path: ARM64 CNTVOFF_EL2 (Virtual Timer Offset Register)
+    - Guest CNTVCT_EL0 reads jump forward instantly
+    - Paravirtual clock updates route via pvclock structure without unpinning TSC
+    - Guest boots with pinned clocksource: clocksource=kvm-clock tsc=reliable nohpet
+    - Typical use: JWT expiry, cron cycles, certificate renewals
+    - Veto: ClockSkew (hard)
+      - Callback false → ESessionVeto; guest clock unchanged
+  - Lid sleep/wake clock snapping
+    - Problem: guest clock stalls on lid close
+    - Solution
+      - Listen to host power events: IOPMrootDomain (macOS), systemd-logind (Linux)
+      - Dispatch paravirtual clock resync frame over Control 0x0000; see: #Suspend-and-resume
+      - Guest time snaps to host wall-clock in 0ms; prevents wake TLS failure
+      - Fork inherits the parent's guest clock at fork instant; children diverge
+        - monotonically from that point
+  - Host crash reaper
+    - Problem: host crash orphans guest vCPUs
+      - Host Node.js / Python process killed abruptly (kill -9, OOM, segfault)
+      - Hypervisor children must not survive as orphaned CPU spinners
+    - Dual-path by design
+      - Linux: prctl(PR_SET_PDEATHSIG, SIGKILL)
+      - macOS: kqueue(EVFILT_PROC, NOTE_EXIT) watcher on host PID
+    - Graceful host preemption window
+      - In-process Tokio handler catches host SIGTERM; delays SIGKILL
+      - Waits preemption_grace_ms; dispatches on_host_preempt() hook
+      - Android LMK hook: executes session.suspend() before OS termination
+      - Prevents session state corruption during mobile app backgrounding
+    - Platform coverage
+      - Linux: PR_SET_PDEATHSIG (kernel-enforced)
+      - macOS: kqueue NOTE_EXIT + heartbeat pipe
+      - Windows: Job Object assigning KILL_ON_JOB_CLOSE
+      - Android: PR_SET_PDEATHSIG + LMK preempt window
+  - Detached lifecycle
+    - Affine builder flag .detached(true) spawns a dedicated runtime child
+    - The CLI never manages VM memory directly in detached mode
+    - Runner ownership is explicit
+      - The spawning process inserts a row with lease_kind='lease'
+      - Row carries session_id, runner child pid, and expires_at lease TTL
+      - Linux signaling uses pidfd_open and pidfd_send_signal exclusively
+      - Signal delivery verifies host_boot_id and proc start_time before dispatch
+      - Stale catalog rows with recycled PIDs abort signal delivery safely
+      - Runner updates expires_at every 30s; expired lease triggers cleanup
+      - The runner child inherits the row id via an environment variable
+      - The runner updates the row's lease heartbeat while alive
+      - If the runner dies without cleanup, the row's TTL expires and the
+        - janitor reclaims the session directory
+      - No double-fork, no setsid race, no "drop the handle and hope"
+    - Lock handoff
+      - disk_lock_handoff: SQLite row transition from `pending` to `owned`
+        - by the runner; atomic, survives parent panic
+      - memory_handoff: shared-memory descriptor passed via SCM_RIGHTS;
+        - parent closes its end after handoff ack
+      - If the parent panics between spawn and ack, the runner either
+        - completes the handoff (row absent -> self-cleanup) or exits
+    - Reattachment
+      - CLI reads the catalog, verifies the row's lease is live, and
+        - connects to `~/.kelir/sessions/<id>/relay.sock`
+      - Running and Starting states both accept reattach; Starting defers
+        - until boot completes
+      - Reattachment is idempotent across concurrent clients
+        - Stateless host API daemons multiplex relay.sock across client sessions
+    - Runner watchdog
+      - A `parent_watchdog` thread in the runner monitors the SQLite catalog
+        - for explicit `session.stop` or `session.drain` requests
+      - No fixed TTL terminates an active guest; the lease only proves
+        - liveness, it does not impose a deadline
+      - Explicit stop, drain, or remove is the only path to termination
+    - Liveness
+    - Every session row registers lease_kind = 'ephemeral' | 'lease'
+    - Ephemeral: OS-native reap on parent death; no lease TTL
+      - PR_SET_PDEATHSIG, kqueue NOTE_EXIT, Job Object on parent exit
+    - Detached: SQLite lease TTL; no OS-native reap of parent
+    - Both kinds share one row schema; the kind column selects the reaper
+    - Cross-platform incarnation proof
+      - Linux: pidfd + host_boot_id + proc start_time
+      - macOS: kqueue NOTE_EXIT + proc_pidinfo PROC_PIDTBSDINFO start time
+      - Windows: Job Object + OpenProcess + GetProcessTimes admission check
+      - Any (boot_id, start_time_ns, pid) mismatch marks row Crashed; no signal
+  - Break-glass
+    - PTY console master (Port 0) is the sole in-process break-glass surface
+    - session.console() attaches the Port 0 PTY master for human inspection
+    - EXEC stream kind (mux 0x0001) carries programmatic break-glass commands
+    - No in-process SSH/SFTP daemon; zero russh, russh-sftp in runtime
+    - Guest workloads that need sshd ship it inside their EROFS rootfs
+    - Host operators run ssh as a subprocess against the guest sshd
+    - Interaction with lifecycle states
+      - Running and Draining: available
+      - Paused and Stopped: refuse with ESSHUnavailable
+  - Wire port forwarding: details at 07-wire-plane.md#Port-forwarding
+  - Zombie reaping
+    - Shim runs as guest PID 1
+    - waitpid(-1, WNOHANG) pass integrated into async event loop
+    - Foreground shell exit → orphaned daemons adopted and reaped
+    - Prevents defunct <zombie> processes exhausting PID table
+  - Session incarnation
+    - Every microVM spawn mints a 128-bit UUIDv7 incarnation_id
+    - Destructive lifecycle verbs accept expected incarnation_id
+      - stop, kill, drain, rollback, remove
+    - Compare-and-swap on the catalog row; mismatch aborts E_STALE_INCARNATION
+    - Eliminates same-session_id replacement destruction across workers
+  - Lifecycle vetoes
+    - Scope: hard vetoes only
+      - Fork, Suspend, ClockSkew
+    - Registration
+      - LifecycleCtx.register_veto(event, Box<dyn Fn() -> bool>)
+      - Register in on_vm_init
+      - Pre-boot: builder lifecycle_mut().register_veto
+        - Before seal/boot; validated at boot
+      - All registrations validated at boot
+      - Callbacks fire in DAG order across all plugins
+    - Semantics
+      - Any false return aborts the action with ESessionVeto
+      - Vetoable = state-mutating action
+        - Aborting a state-preserving action leaves no recovery
+      - VetoEvent enum: Fork, Suspend, ClockSkew only
+    - Firing point
+      - Before the corresponding hypervisor primitive executes
+      - Session-level actions also route through this point
+  - Lifecycle observation
+    - Scope: post-event telemetry
+      - Checkpoint, Rollback, Resume, Terminate
+    - Channel: EventBus subscribers
+      - register_subscribers(&mut dyn EventBusBinder)
+      - Non-blocking; cannot veto; no return value
+    - Use for ledger / trace / metrics
+    - Terminate flush belongs to on_vm_shutdown, not a subscriber
+  - Watchdog
+    - see: [1] (WatchdogAction)
+    - Armed via LifecycleCtx.set_watchdog
+      - Typically called from on_vm_init by a policy plugin
+      - WatchdogAction: Reboot | Terminate
+    - Heartbeat
+      - Shim emits GuestToHost::Heartbeat at driver-configured cadence
+      - on_heartbeat fires per receipt; observation only
+    - Firing
+      - Driver fires on_watchdog(&WatchdogEvent) when heartbeat expires
+      - Hook returns WatchdogVerdict (ExecuteDefault | Suppress | Mitigate)
+      - ExecuteDefault triggers configured WatchdogAction (Reboot | Terminate)
+      - Mitigate delegates recovery to host policy handler
+      - WatchdogAction::Terminate synthesizes WatchdogDiagnostic from host
+      - Carries fired_at_ns, last_heartbeat_ms, and last active PID
+      - Evaluates completely host-side without guest kernel cooperation
+      - This is the extension point for custom actions
+        - A plugin may do work in on_watchdog then return Err(Halt)
+        - WatchdogAction stays closed (Reboot | Terminate)
+
+- [1]: artifacts/code/vmm-driver-trait.rs

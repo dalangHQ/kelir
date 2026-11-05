@@ -1,0 +1,275 @@
+- Plugin profile
+  - Crate dependencies (profile)
+    - Plugin identifier: plugin-profile
+    - Owner crate: crates/kelir-plugins/plugin-profile
+    - name() = "profile"
+    - Tier 3 cross-cutting aggregator (profile)
+    - Depends on (profile): kelir-interface, Tier 1 and Tier 2 crates (config aggregator)
+    - Exposes: ConfigurablePlugin
+    - VirtIO device attachment (profile): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (profile): see: 08-lifecycle.md#Lifecycle-vetoes
+    - Registers stream kind PROFILE_SYNC on the mux
+      - Kind 0x0010; see: 11-protocol.md#Control-channel
+  - Invariants and policy (profile)
+    - Profile schema fixture: see: artifacts/examples/fixtures/kelir.toml
+    - Canonical profile artifact: see: [1]
+    - Declarative profile execution: see: artifacts/examples/profile.rs
+    - Inversion-of-Control configuration router:
+      - Ingests canonical kelir.toml and kelir.yaml specification files
+      - Plugins register target schema namespaces dynamically via ConfigurablePlugin
+      - Routes unparsed configuration fragments to registered namespace owners
+      - Profile contains zero hardcoded child domain logic or expansion rules
+      - Monotonic limits enforced uniformly across scalar budget fields
+    - Monotonic limits
+      - Effective budget and resource limits evaluate as min(base, child)
+      - Overlays cannot widen execution duration, memory, or instruction ceilings
+      - Violations of monotonic limits fail validation with ESecurityViolation
+    - Default-zero capability invariant
+      - Undeclared subsystems receive zero physical hardware allocations
+      - Omitted network section allocates zero userspace network stacks
+        - and drops all L2 frames at the ingress ring
+      - Omitted storage mounts allocate zero host paths, running read-only EROFS
+    - Physicality invariant
+      - Every schema key must terminate in a physically enforceable mechanism:
+        - MMU flags, BPF bytecode, PMU counters, kernel-enforced resource
+        - limits (rlimits, quotas), or host hardware device allocation
+        - (virtio-rng, virtio-shm doorbells)
+      - Decorative or non-enforceable configuration keys are rejected at boot
+    - Strict serialization boundary
+      - Static knobs, limits, and scopes serialize cleanly to schema files
+      - Dynamic hook closures remain strictly in host code
+      - Serializing arbitrary executable code strings into schemas is banned
+    - Multi-file inheritance
+      - Base profiles inherited via extends key
+      - Deep-merge preserves monotonic lattice: cannot widen upstream denials
+    - RFC 6902 dynamic policy patching
+      - Ingests JSON/YAML patches via PROFILE_SYNC stream
+      - Monotonic validation: patches cannot loosen upstream denials
+      - Monotonic violation halts patch dispatch with ESecurityViolation
+      - Approved patches update active MountScope and BPF tables atomically
+    - Container Device Interface (CDI) device mapping
+      - Ingests /etc/cdi specification files declared in profile
+      - Maps designated host GPU nodes directly via virtio-shm and PCI
+      - Bypasses external container daemons for direct hardware assignment
+    - Out-of-band secret separation
+      - Public profiles reference vault:// placeholders exclusively
+      - Host keyring or gitignored kelir.vault.toml maps credentials
+      - Real credentials never enter guest physical RAM
+    - Bidirectional extraction
+      - export_spec() emits active plugin topologies to TOML or YAML
+    - Root invariants (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#invariants.default_zero_capability
+      - see: artifacts/examples/fixtures/kelir.yaml#invariants.physicality_check
+      - see: artifacts/examples/fixtures/kelir.yaml#invariants.inheritance_lattice
+      - see: artifacts/examples/fixtures/kelir.yaml#invariants.memory_safety
+      - Unsafe code is forbidden outside driver/transport enclaves
+  - Driver engine schema (profile)
+    - Driver semantics: see: 01-architecture.md#VmmDriver-trait
+    - see: artifacts/examples/fixtures/kelir.yaml#driver.backend
+    - driver.backend auto selects the host-native backend (KVM, HVF, WHP)
+    - see: artifacts/examples/fixtures/kelir.yaml#driver.require_hardware_vmm
+    - see: artifacts/examples/fixtures/kelir.yaml#driver.allow_emulated_fallback
+    - see: artifacts/examples/fixtures/kelir.yaml#driver.verify_hw_lockfile
+    - see: artifacts/examples/fixtures/kelir.yaml#driver.wx_enforcement
+    - Driver FFI boundary (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary.worker_threads
+      - see: artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary.max_ops_per_second
+      - driver.ffi_boundary.queue_capacity: TBD (no DriverPolicy field yet)
+      - driver.ffi_boundary.max_buffer_bytes: TBD (no DriverPolicy field yet)
+      - FFI keys map to DriverPolicy ffi_worker_threads, ffi_max_ops_per_sec
+  - Session compute schema (profile)
+    - Session compute semantics: see: artifacts/code/vmm-driver-trait.rs
+    - Session identity (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#session.id
+      - see: artifacts/examples/fixtures/kelir.yaml#session.topology
+      - session.topology consumption: TBD (no builder/Session surface yet)
+    - Session compute (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#session.compute.vcpus
+      - session.compute.max_vcpus: TBD (set_vcpus exists, no VmConfig field yet)
+      - see: artifacts/examples/fixtures/kelir.yaml#session.compute.memory_mb
+      - see: artifacts/examples/fixtures/kelir.yaml#session.compute.page_size_kb
+    - Session balloon (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#session.balloon.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#session.balloon.initial_mb
+      - see: artifacts/examples/fixtures/kelir.yaml#session.balloon.pressure_reclaim
+      - see: artifacts/examples/fixtures/kelir.yaml#session.balloon.reclaim_strategy
+      - session.balloon config struct: TBD (adjust_balloon is the driver verb)
+    - Session clock (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#session.clock.tsc_locked
+      - see: artifacts/examples/fixtures/kelir.yaml#session.clock.pinned_clocksource
+      - see: artifacts/examples/fixtures/kelir.yaml#session.clock.deterministic_clock
+      - see: artifacts/examples/fixtures/kelir.yaml#session.clock.preemption_grace_ms
+    - Session watchdog (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#session.watchdog.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#session.watchdog.timeout_seconds
+      - see: artifacts/examples/fixtures/kelir.yaml#session.watchdog.action
+      - session.watchdog.heartbeat_cadence_seconds: TBD (no driver field yet)
+    - Session devices (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#session.devices.virtio_rng.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#session.devices.virtio_rng.source
+      - see: artifacts/examples/fixtures/kelir.yaml#session.devices.virtio_shm.regions
+    - Session artifacts (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#session.artifacts
+      - session.artifacts.kernel_boot_params: list form TBD (GuestClock: one string)
+    - Session shim (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#session.shim.max_exec_slots
+      - see: artifacts/examples/fixtures/kelir.yaml#session.shim.hide_pid
+      - see: artifacts/examples/fixtures/kelir.yaml#session.shim.anti_toctou_cgroups
+  - Storage schema (profile)
+    - Storage semantics: see: 05-storage-plane.md
+    - see: artifacts/examples/fixtures/kelir.yaml#storage.workspace_root
+    - see: artifacts/examples/fixtures/kelir.yaml#storage.encapsulation
+    - Storage CoW broker (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.sparse_upper
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.tombstone_tracking
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.rollback_purge
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.dir_merge_cache
+    - Storage reconciler (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.reconciler.atomic_leaf_commit
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.reconciler.traversal_guard
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.reconciler.strip_privileges
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.reconciler.lock_precheck
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.reconciler.busy_retry_backoff_ms
+    - Storage quotas (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.quotas.max_bytes
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.quotas.max_inodes
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.quotas.zero_crawl_statfs
+    - Storage scratch and identity (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.ephemeral_scratch.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.ephemeral_scratch.mount_points
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.ephemeral_scratch.size_mb
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.idmap
+    - Storage shared caches (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.shared_caches
+    - Storage synthetic files (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.synthetic_files
+    - Storage read masking
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.mask_read.engine
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.mask_read.carryover_bytes
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.mask_read.rules
+    - Storage lock broker
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.lock_broker.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.lock_broker.scope_globs
+      - see: artifacts/examples/fixtures/kelir.yaml#storage.lock_broker.non_blocking
+  - Wire schema (profile)
+    - Wire schema values: see: [1]
+    - see: artifacts/examples/fixtures/kelir.yaml#wire.userspace_netstack
+    - see: artifacts/examples/fixtures/kelir.yaml#wire.default_egress
+    - see: artifacts/examples/fixtures/kelir.yaml#wire.allow_ipv6
+    - see: artifacts/examples/fixtures/kelir.yaml#wire.allow_raw_sockets
+    - Wire quarantine
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.quarantine.drop_link_local
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.quarantine.cloud_metadata_block
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.quarantine.imds_exception
+    - Wire DNS
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.dns.synthetic_gateway
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.dns.track_host_resolver
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.dns.edns0_downgrade
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.dns.socks5h_synthetic_pool
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.dns.allowlist
+    - Wire L4 diversion (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion.upstream_dial.env_lookup
+      - wire.l4_diversion.upstream_dial.dial_timeout_ms: TBD (no budget value in 07)
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion.proxies
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion.udp_nat.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion.udp_nat.max_entries
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion.udp_nat.idle_timeout_seconds
+    - Wire connection parking (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.connection_parking.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.connection_parking.listen_port
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.connection_parking.max_buffered_bytes
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.connection_parking.idle_timeout_ms
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.connection_parking.wake_on_packet
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.connection_parking.rollback_policy
+    - Wire port forwards (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#wire.port_forwards
+  - Terminal schema (profile)
+    - Terminal semantics (04-terminal-plane.md): see: [1]
+    - Terminal PTY (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#terminal.pty.cols
+      - see: artifacts/examples/fixtures/kelir.yaml#terminal.pty.rows
+      - see: artifacts/examples/fixtures/kelir.yaml#terminal.pty.line_discipline
+      - see: artifacts/examples/fixtures/kelir.yaml#terminal.pty.alloc_pty_default
+    - see: artifacts/examples/fixtures/kelir.yaml#terminal.stream_engine
+    - Terminal sanitizer (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#terminal.sanitizer.drop_osc52
+      - see: artifacts/examples/fixtures/kelir.yaml#terminal.sanitizer.strip_title
+      - Terminal TokenShield (profile)
+        - see: artifacts/examples/fixtures/kelir.yaml#terminal.sanitizer.token_shield.enabled
+        - see: artifacts/examples/fixtures/kelir.yaml#terminal.sanitizer.token_shield
+        - see: artifacts/examples/fixtures/kelir.yaml#terminal.sanitizer.token_shield.clamp_strategy
+      - Terminal prompts (profile)
+        - see: artifacts/examples/fixtures/kelir.yaml#terminal.sanitizer.prompts
+    - Terminal replay log (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#terminal.replay_log.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#terminal.replay_log.storage_path
+      - see: artifacts/examples/fixtures/kelir.yaml#terminal.replay_log.cursor_bits
+      - see: artifacts/examples/fixtures/kelir.yaml#terminal.replay_log.bypass_sqlite_wal
+    - Terminal wireframe grid (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#terminal.wireframe_grid.track_screen_matrix
+      - terminal.wireframe_grid.export_on_trap: TBD (no receipt screen field yet)
+  - Checkpoint schema (profile)
+    - Checkpoint semantics: see: [2]
+    - Lineage semantics (09-snapshots.md): see: [1]
+    - Checkpoint boundaries (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.boundaries.sentinel_path
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.boundaries.detect_pty_quiescence
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.boundaries
+    - Checkpoint step evaluation (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.step_evaluation.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.step_evaluation.default_action
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.step_evaluation.assertions
+    - Checkpoint rollback (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.rollback.revert_memory_ms_target
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.rollback.drop_broker_delta
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.rollback.terminate_host_sockets
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.rollback.revoke_vault_tokens
+    - Checkpoint lineage (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.lineage.unbounded_depth
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.lineage.lazy_cow_sharing
+      - Lineage compaction: see: [2]
+    - Checkpoint suspend (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.suspend.page_dump_codec
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.suspend.target_host_rss_mb
+      - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.suspend.latency_target_ms
+  - Host schema (profile)
+    - Host runtime semantics: see: [2]
+    - Host catalog (06-storage-catalog.md): see: [1]
+    - Host reaper (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#host.reaper.linux_death_signal
+      - see: artifacts/examples/fixtures/kelir.yaml#host.reaper.darwin_kqueue_event
+      - see: artifacts/examples/fixtures/kelir.yaml#host.reaper.windows_job_object
+    - Host cgroups (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#host.cgroups.path
+      - see: artifacts/examples/fixtures/kelir.yaml#host.cgroups.monitor_pressure
+      - see: artifacts/examples/fixtures/kelir.yaml#host.cgroups.auto_inflate_balloon
+    - Host security (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#host.security.attach_lsm_bpf
+      - see: artifacts/examples/fixtures/kelir.yaml#host.security.quarantine_host_keyring
+      - see: artifacts/examples/fixtures/kelir.yaml#host.security.max_interposer_latency_us
+    - Host catalog (profile)
+      - see: artifacts/examples/fixtures/kelir.yaml#host.catalog.db_path
+      - see: artifacts/examples/fixtures/kelir.yaml#host.catalog.wal_mode
+      - see: artifacts/examples/fixtures/kelir.yaml#host.catalog.lease_ttl_seconds
+      - see: artifacts/examples/fixtures/kelir.yaml#host.catalog.prune_unreferenced_cas_blobs
+  - Plugins catalog schema (profile)
+    - Plugin config lives in each plugin file; this catalog lists enabled flags
+    - Enabled plugins: ledger, vault, tool-guard, db-proxy, supply-chain
+    - Enabled plugins: transaction, profile, mcp, wire-ingress
+    - Disabled plugins: chaos, mesh, replay, container
+  - Attestation schema (profile)
+    - Attestation semantics (10-attestation.md): see: [1]
+    - see: artifacts/examples/fixtures/kelir.yaml#attestation.hardware_facts
+    - see: artifacts/examples/fixtures/kelir.yaml#attestation.interception_facts
+    - see: artifacts/examples/fixtures/kelir.yaml#attestation.interception_facts.log_exit_kinds
+    - see: artifacts/examples/fixtures/kelir.yaml#attestation.enforce_strict_provenance
+  - Error and return semantics (profile)
+    - Hook signature (profile): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (profile)
+      - Schema syntax or validation failure aborts boot with EConfig
+      - Upstream lattice widening attempts abort with ESecurityViolation
+      - Conflicting merge scopes abort with EAmbiguousMutation
+
+- [1]: artifacts/examples/fixtures/kelir.yaml
+- [2]: 08-lifecycle.md

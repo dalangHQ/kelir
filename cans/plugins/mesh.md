@@ -1,0 +1,30 @@
+- Plugin mesh
+  - Crate dependencies (mesh)
+    - Plugin identifier: plugin-mesh
+    - Owner crate: crates/kelir-plugins/plugin-mesh
+    - name() = "mesh"
+    - Tier 1-adjacent base transport (mesh)
+    - Depends on (mesh): kelir-interface
+    - VirtIO device attachment (mesh): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (mesh): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Invariants and policy (mesh)
+    - CoW swarm mesh federation: see: artifacts/examples/multi-vm-swarm.rs
+    - Sovereign cross-hypervisor peer transport
+    - Routes point-to-point peer streams via vsock listener services
+    - Injects and validates mTLS framing across hypervisor boundaries
+    - Propagates call-hop counters across routines
+    - SPIFFE identity (mesh)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.mesh.spiffe_identity.trust_domain
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.mesh.spiffe_identity.workload_prefix
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.mesh.listeners
+    - Traceparent continuity: 14-observability.md#Metrics-pipeline
+  - Error and return semantics (mesh)
+    - Hook signature (mesh): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (mesh)
+      - mTLS validation failure
+        - Err(Reject { errno: ECONNREFUSED })
+        - Guest observes ECONNREFUSED: see: 07-wire-plane.md#Frame-drop-and-forward-semantics
+        - Ledger records peer fingerprint
+      - Peer identity
+        - SPIFFE SVID issued by host at on_vm_ready
+        - Validity bounded by session lifetime; never reused across forks

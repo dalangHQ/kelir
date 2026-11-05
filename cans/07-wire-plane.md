@@ -1,0 +1,157 @@
+- Wire plane
+  - Wire architecture
+    - see: artifacts/diagrams/wire-plane.txt
+    - Owner: kelir-core native wire subsystem (kelir-core::wire)
+    - Hardware abstraction: virtio-net bound host-side to embedded smoltcp TCP/IP stack
+    - Hook points: on_net_outbound and on_net_inbound
+    - Interceptor hooks receive NetContext containing raw Ethernet frames
+    - Rollback interaction
+      - session.rollback() closes every host-side socket for the session
+      - Guest TCP stack observes RST/FIN; subsequent sends fail ECONNRESET
+      - UDP NAT slab entries for the session are dropped; no port leak
+      - Sockets are not restored from snapshots; there is no socket state to restore
+      - rollback semantics: 08-lifecycle.md#Rollback
+  - Userspace network stack
+    - Frame termination
+      - Guest virtio-net Ethernet frames terminate directly in host process memory
+      - Outbound connections translated to plain unprivileged host sockets
+      - Zero host interface creation, zero CAP_NET_ADMIN, zero IP routing changes
+      - Host firewall remains untouched
+    - Default-deny admission
+      - All non-TCP L2/L3 frames dropped at ingress ring
+      - ICMP, raw sockets, and unencapsulated UDP dropped at the ingress ring
+      - IPv6 disabled unless explicit wire configuration opts in
+      - QUIC dropped unless an explicit UDP L4 proxy is configured
+    - Egress exfiltration quarantine
+      - Outbound TCP dials clamp strictly to declared destination allowlists
+      - Unauthorized endpoints injected via untrusted context drop at L4 ring
+      - DNS queries for undeclared external targets return synthetic NXDOMAIN
+      - Out-of-band exfiltration via image rendering or webhooks fails closed
+    - UDP NAT semantics
+      - Permitted UDP egress uses endpoint-independent mapping (Full Cone NAT)
+      - Single host UDP socket per guest source port serves multiple remote peers
+      - Preserves external source port identity for STUN, WebRTC, and Tailscale
+    - UDP socket reaper
+      - Guest source ports map into an indexed slab with 1,024-entry hard cap
+      - Cap exhausted on new source port: oldest idle socket reclaims first
+      - Idle 30s with zero ingress or egress: close socket, release descriptor
+      - Fresh packet on a reclaimed source port reopens an ephemeral host socket
+      - Prevents host fd exhaustion under DNS spam, UDP scans, or WebRTC churn
+    - Rejection observation
+      - UDP default-deny emits ICMP Port Unreachable into the guest ingress ring
+      - Raw/IPv6 default-deny has no response path; guest observes send success only
+      - Fast-fail TCP RST applies exclusively to interceptor Err(Reject)
+    - Pre-policy drop zones
+      - Link-local quarantine: 169.254.0.0/16 and fe80::/10 dropped before policy
+      - Exception: 169.254.169.254 is intercepted at L3 and translated to vault vsock
+      - Cloud metadata IMDS endpoints except 169.254.169.254 dropped at L3 ingress
+  - Raw packet interception points
+    - Outbound frames: .intercept(Ring.NetOutbound, ...) dispatches L2/L4
+    - Inbound frames: .intercept(Ring.NetInbound, ...) dispatches L2/L4
+    - on_net_outbound: hook on frames leaving the guest
+    - on_net_inbound: hook on frames arriving at the guest
+    - Ingress dispatcher checks MountScope in native memory before FFI
+  - Frame drop and forward semantics
+    - FilterAction::Forward on outbound = forward; on inbound = deliver
+      - Buffer mutations already applied in place
+    - FilterAction::Suspend = yield frame to host for async policy
+    - FilterAction::Drop { errno: ECONNREFUSED } on L4 TCP = inject TCP RST
+      - Fault injection: see: plugins/chaos.md
+      - or ICMP Port Unreachable into guest ingress ring
+    - FilterAction::Drop { errno: EACCES } on L7 HTTP = synthesize 403 JSON receipt
+    - FilterAction::Drop { errno: None } discards packet without host response
+    - Guest observes ECONNREFUSED in <1ms
+      - Connection-failure observation: see: plugins/mesh.md
+    - Agent corrects action without orchestration timeout
+  - DNS policy filter
+    - Intercepts all UDP/TCP port 53 traffic crossing the userspace ingress ring
+    - Evaluates queries against the active domain allowlist (allow/deny rules)
+      - allowlist and denylist parsed from profile/network policy
+      - wildcard suffix support mirrors egress rules
+      - decision made before upstream forward
+    - Blocked queries return NXDOMAIN; allowed queries forward to the live upstream
+    - Filter decisions are name-based
+    - Entropy gating is not a policy primitive: CDN labels, telemetry IDs, and
+      - legitimate base64 URLs produce false positives, while an attacker who
+      - controls encoding trivially defeats a fixed threshold
+  - Synthetic DNS gateway
+    - Gateway binding
+      - Guest paravirtual network binds synthetic gateway 192.168.127.1:53
+      - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-core::wire
+      - Traffic to non-gateway resolvers redirected at ingress ring
+    - Host-state resolution
+      - Queries resolved host-side via live OS resolver state
+        - Linux: /etc/resolv.conf watched via inotify; nameservers reloaded on change
+        - Search domain expansion: host search domains and ndots parsed from OS state
+        - Single-label queries expand against host search candidates before policy eval
+        - Bare hostnames in corporate VPN and internal split-horizon resolve transparently
+        - SOCKS5h synthetic pool: remote proxy DNS maps domains to 198.18.0.0/15
+        - Synthetic IPs bypass local CIDR filters; domain policy rules govern admission
+        - Original target hostname preserved verbatim in upstream proxy CONNECT frame
+        - macOS: SCDynamicStore subscription per interface; VPN and Wi-Fi toggles
+          - update upstream servers without restarting the guest
+        - Windows: DNS client API queried on each change notification
+      - Host DNS changes are transparent; no VM restart, no reconfiguration
+      - Split-horizon zones resolve correctly because upstreams track host state
+    - Upstream transport
+      - UDP and TCP 53 both handled; truncation flag promotes to TCP host-side
+      - DoT (DNS-over-TLS) upstreams supported when configured
+        - Length-prefixed message framing inside the TLS stream
+        - Certificate verified host-side; guest never sees the tunnel
+    - EDNS0 downgrade
+      - Incoming query with DO=1: interceptor strips DO before upstream forward
+      - Synthesized response clears AD bit before returning to guest ingress ring
+      - Signals authenticating recursive resolver to guest DNSSEC stubs
+      - Prevents guest SERVFAIL aborts on split-horizon and SOCKS5h translation
+      - Host resolver state and policy outcomes are unchanged by downgrade
+  - Transparent L4 stream diversion
+    - Directs guest TCP streams across VirtIO ring to designated host socket
+    - Exposes raw duplex stream to registered NetInterposer proxies
+    - Carrier is L4-only by default
+      - Bytes are relayed to the upstream host through the dial transport
+      - No protocol sniff, no L7 parsing, no HTTP rewriting in the supervisor
+      - TLS between guest and peer passes through byte-for-byte
+    - L7 interposition is off by default
+      - Enabled only when the builder mounts a NetInterposer with an L7 scope
+      - L7 scopes are declared at mount; no implicit sniff-and-promote
+      - Interposer receives reassembled stream bytes; it never terminates TLS
+    - Vault and credential flow
+      - Default path: guest fetches scoped token from plugin-vault, presents it
+      - No host-side TLS termination; no CA injection
+      - Optional external sidecar can be configured for L7 rewriting
+        - plugins/vault.md#Optional-external-egress-rewriting
+    - Diverted endpoints configured via MountScope port and CIDR allowlists
+  - Upstream dial transport    - Dial policy
+      - Proxy chaining is first-class, not an afterthought
+        - Protocols: HTTP CONNECT, SOCKS5 (RFC 1928), SOCKS5h (remote DNS)
+        - SOCKS5 auth extension: username/password (RFC 1929)
+        - Multi-hop: an upstream corporate proxy may itself dial through another
+        - Config sources: HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY, or builder spec
+        - Explicit auth: username/password for SOCKS5; Basic or Bearer for CONNECT
+        - Credentials read from host environment or host keyring; never persisted in profile files
+      - Corporate egress (Zscaler, Squid, Envoy) works without guest cooperation
+    - Dial mechanics
+      - Outbound TCP permitted by policy is dialed through the host netstack
+      - The guest kernel believes it is dialing the raw target IP
+      - The host netstack performs the upstream handshake and splices bytes
+      - Zero in-guest proxy environment variables; zero guest awareness of chaining
+    - Failure modes
+      - Upstream auth failure surfaces to guest as ECONNREFUSED
+      - Upstream timeout surfaces as ETIMEDOUT after policy budget
+      - Reason recorded in host-side structured log; never leaked to guest
+  - Port forwarding
+    - Guest-initiated: forward tunnels on stream kind L4_FORWARD on PortBound
+    - Host-initiated: session.wire.forward_port(guest_port, host_port) -> Result<u16, WireError>
+      - Port allocation
+        - host_port = None or 0 binds ephemeral port 0; host kernel allocates free port
+        - Bound port returned immediately; zero collision probability
+        - Parallel test suites share a host with zero hardcoded port conflicts
+        - Explicit host_port bind failure returns Err(WireError::PortOccupied)
+        - Bootstrap-time bind failure aborts VM launch before first vCPU cycle
+        - No silent fallback to ephemeral port on explicit collision
+      - Socket lifecycle
+        - Host listener flags: SO_REUSEADDR and SO_REUSEPORT set on all host binds
+        - Immediate teardown release: SO_LINGER zero forces instant TCP RST
+        - Eliminates TIME_WAIT socket exhaustion across rapid test iterations
+        - Teardown verifies listener release before session state transitions Stopped
+        - Management API reports port published only after successful host bind

@@ -1,0 +1,380 @@
+- Architecture
+  - Axiomatic foundations
+    - Invariants
+      - Zero workload intrusion
+        - Workload runs uninstrumented: standard POSIX binary, zero guest SDKs
+        - Guest PID 1 is minimal paravirtual micro-init (kelir-shim, <50KB musl)
+        - Shim provides VirtIO channel multiplexing, seccomp trap forward, and zombie reaping
+        - Workload environment variables, libraries, and syscall paths remain untouched
+        - Out-of-band lifecycle: forks and rollbacks execute beneath guest awareness
+      - In-process microkernel
+        - Execution substrate
+          - Virtualization runs in host consumer memory via direct C-FFI
+          - Core owns five native engine planes: Terminal, Storage, Wire, Checkpoint, Host
+          - Hardware backends: driver-rustvmm, driver-hvf, driver-openvmm, driver-avf
+          - No dockerd, containerd, background root socket, daemon maintenance
+        - Fallback policy
+          - Unprivileged fallbacks (driver-bwrap, driver-proot) banned by default
+          - Silent driver downgrade is an uncatchable fatal error: E_NOHARDWAREVMM
+          - Emulation tiers require explicit granular opt-in in DriverPolicy
+          - DriverPolicy: wx_enforcement, allow_emulated_fallback, driver (bwrap/proot)
+            - Exercised by: see: artifacts/examples/replay.rs
+        - Foreign runtime embedding
+          - ForeignPluginProxy embeds V8 and Python event loops directly
+          - ForeignPluginProxy isolates host event loops on dedicated OS threads
+          - Ring-buffered async channels decouple host UI/IO from microVM vCPU loops
+        - FFI boundary economics
+          - Rate limits evaluated in native memory before FFI queue insertion
+          - Filter-before-FFI boundary stops thrash: native rules evaluate in <2µs
+          - Foreign async handlers (V8/Python) evaluate out-of-band; synchronous hot-paths
+            - execute native Rust interposers or require explicit YieldToHost
+        - Isolation mechanics
+          - Native linear capability isolation: zero-WASM, zero-JIT overhead
+          - Compile-time ownership tokens enforce plugin memory boundaries
+          - Hardware memory protection keys (MPK on x86_64) isolate in-process heap
+      - Snapshot and rollback scope
+        - Snapshots capture compute + disk, not distributed network state
+        - Rollback closes session sockets; guests observe ECONNRESET
+        - Lifecycle rollback boundary: see: 08-lifecycle.md#Rollback
+      - Strict hardware/kernel abstraction layer
+        - Zero knowledge of prompts, evaluation loops, or orchestration logic
+        - Operates strictly on physical primitives: pages, registers, descriptors, frames
+        - Instruction integrity zero-trust
+          - Workload instructions and reasoning paths are untrusted by default
+          - Authority containment enforced at physical boundaries, not prompt filters
+          - Semantic prompt inspection is banned; policy gates act on side-effects
+        - Hardware memory execution policy: strict W^X enforced at MMU boundary
+        - Guest kernel traps anonymous PROT_EXEC mmap and mprotect allocations
+        - In-memory elf loading through memfd_create aborts with E_WX_VIOLATION
+        - Granular knob: wx_enforcement = Strict | PermissiveAudit
+        - Factoring: see: 10-attestation.md#Scope
+      - Deterministic hardware isolation
+        - Hardware-enforced virtualization: Intel VT-x, AMD-V, ARM64 EL2
+        - Escaped guest root cannot touch host memory or host kernel space
+      - Modular VirtIO interposition microkernel
+        - Core controls hypervisor execution and dispatches VirtIO events
+        - Single unified interposition pipeline; no per-ring bespoke paths
+          - see: 02-plugin-model.md#Unified-interposition-pipeline
+        - Core defines zero domain policies, protocols, or agent schemas
+        - Plugins depend on kelir-interface and resolve peer capabilities via ServiceRegistry
+        - Core compiles plugins in registration order against typed traits
+        - Cyclic crate dependencies abort compilation with EConfig
+        - Plugins communicate through typed peer traits and core abstractions
+        - Every plugin is a decoupled, composable crate
+
+      - Codebase invariants
+        - File and test discipline
+          - Strict file bounds: 500 LOC target, 1,000 LOC hard ceiling per .rs file
+          - Test segregation: zero `#[cfg(test)]` in `src/`; tests live in sibling `tests/`
+          - Single-line documentation: maximum one line of docstring per public item
+        - Zero-panic production invariant
+          - Workspace-wide deny on unwrap_used, expect_used, and panic
+          - Production code returns Result; unhandled errors bubble via ?
+          - Infallible branches require #[allow(clippy::expect_used)] and proof
+        - Unsafe memory isolation
+          - Workspace enforces unsafe_code = "forbid" by default
+          - Core, interface, catalog, otlp, and plugins contain zero unsafe
+          - Unsafe restricted to kelir-drivers, kelir-transport, and kelir-shim enclaves
+          - kelir-shim needs unsafe for raw libc syscalls: ioctl, openpty, setrlimit, waitpid
+          - Every unsafe block in those enclaves mandates a verified // SAFETY: invariant
+        - Defensive boundary arithmetic
+          - Guest-derived numbers are hostile: offsets, descriptors, ring indices
+          - Direct memory slicing and unchecked array indexing are forbidden
+          - Arithmetic uses checked_* or saturating_* variants unconditionally
+          - Allocations sized by guest frames clamp to hard resource ceilings
+        - Functional core
+          - Applies to engine planes only (terminal, storage, wire, checkpoint, host)
+          - Engine evaluation follows `f(State, Event) -> (State, Actions)`
+          - Engine shared state uses atomics; mutations emit deltas
+          - SDK userland (Rust Arc<Mutex>, TS closures, Python state) is not engine
+          - Plugin-authored state is userland and may use standard concurrency primitives
+          - Polymorphism over conditionals: static trait dispatch over `match` branches
+        - State invariants
+          - Absolute idempotency: rollback and stream replay produce bitwise identical states
+          - High cohesion, loose coupling: five planes share zero state outside rings
+          - POSIX integrity: standard errnos, isolation, and limits never bypassed
+        - Execution style
+          - Native-first execution: kernel ioctls and syscalls direct; wrappers banned
+          - Minimal LOC density: functional combinators over nested conditionals
+        - Dependency and deletion posture
+          - Deletion posture: dead code, single-use traits, and speculative shims purged
+          - DRY and SSOT: `kelir-interface` owns shared types; zero type duplication
+          - YAGNI: concrete structs first; traits require multiple implementations
+    - Params ingress contract
+      - Structured configuration delivered via paravirtual configuration device
+      - Params API: .params(schema), validated out-of-band by paravirtual
+        - configuration device before guest instruction execution
+      - Host-side validation before any guest instruction
+        - Serde (Rust), TypeBox (TypeScript), Pydantic v2 (Python)
+        - Schema push-down: builder compiles schemas into native Rust validators
+        - Gate 2 validates ingress in native memory before V8/Python wake-up
+        - Falsified payloads fail at perimeter with EINVAL
+      - Out-of-band device consumption
+        - Workload reads parameters from mounted read-only configuration block
+      - Standard POSIX consumption
+        - Guest reads KELIR_PARAMS like any other environment variable
+        - No guest-side SDKs, CLI shims, or agents
+  - Capability taxonomy
+    - Every capability falls into exactly one category
+    - Core primitive
+      - Hardware/protocol invariant, no policy
+      - Enumerated as pointers in #Core-invariants
+    - Interface
+      - Pluggable backend contracts (e.g. VmmDriver)
+      - Documented at the owning plane node
+    - Adapter binary
+      - Contract-bound process on the wire
+      - Examples: containerd-shim-v2, MCP stdio
+      - Adapter implementations: see: 12-adapters.md#Ingestion-matrix
+      - Translation logic delegated to domain plugin
+    - Plugin
+      - Optional domain extensions (13 catalog plugins)
+      - Declares typed lifecycle and interposer traits: see: [1]
+      - Native: systems-grade engine plugin compiled in Rust
+      - Foreign: userland policy plugin written in host language
+      - Dual-plane execution details: see: 02-plugin-model.md#Dual-plane-execution-architecture
+      - Owns crate, tests, fixtures, examples: see: 02-plugin-model.md#Plugin-ownership
+    - Boundary decision test
+      - Core plane (Terminal, Storage, Wire, Checkpoint, Host)? → engine primitive
+      - Backend driver contract? → interface
+      - Wire contract with a process boundary? → adapter binary
+      - Optional protocol proxy, governance, or domain aggregator? → plugin
+  - Core invariants
+    - The closed set of core primitives
+    - Interposition is total: every device channel is hooked
+    - Interposition verdict model: see: 02-plugin-model.md#Unified-verdict
+    - Trait definitions
+      - Low-footprint preset contract: see: #Embedded-profile
+      - Trait contract: see: [1]
+      - Tiered dependency contract: see: 02-plugin-model.md#Plugin-tiering
+      - VmmDriver trait definition: see: #VmmDriver-trait
+    - Context types: see: 11-protocol.md#Wire-messages
+    - Wire framing layout: see: 11-protocol.md#Wire-framing
+    - Dispatch loop: see: 02-plugin-model.md#Static-dispatch
+    - Device multiplexing: see: #VirtIO-Device-Complex
+    - Params ingress contract (core): see: #Params-ingress-contract
+    - Receipts: see: [2]
+    - In-kernel trap engine: see: #Guest-VM-anatomy
+    - EROFS mount: see: 05-storage-plane.md#EROFS-rootfs
+    - Shared memory mapping: see: #Shared-memory-channel
+    - Portable snapshots: single .kelir-snap binary stream
+  - VirtIO Device Complex
+    - VirtIO bus topology: see: artifacts/diagrams/four-ring-bus.txt
+    - Core routes paravirtual devices; plugins provide domain interpretation
+    - Zero protocol domain logic lives in core
+    - Channel 0 carries hypervisor control
+    - Channel allocation is frozen
+      - see [3]    - Primary VirtIO Bus
+      - virtio-vsock: multiplexed syscall traps and binary control channels
+      - virtio-console: multi-port character streams
+      - virtio-fs: FUSE filesystem operations and virtual inode dispatch
+      - virtio-net: bidirectional L2 ethernet frame interception
+      - virtio-rng: mandatory default device; host entropy passthrough
+        - /dev/urandom on Linux; getentropy(2) on macOS
+        - Seeds guest CSPRNG during early device probe
+        - Non-blocking getrandom() before kelir-shim PID 1
+        - Unconfigurable; profile cannot remove the device
+    - Paravirtual Auxiliaries
+      - virtio-blk: read-only EROFS rootfs block device
+      - virtio-shm: zero-copy shared memory regions with host memory barriers
+      - virtio-wdt: hardware watchdog with structured diagnostic export
+      - virtio-balloon: host dynamic memory reclamation
+  - Shared memory channel
+    - Anonymous host memfd segment mapped into guest physical address space
+    - Bypasses FUSE and vsock serialization under explicit host memory fences
+    - Region mappings unmap automatically on VM instance teardown
+    - Ring header: head: AtomicU32, tail: AtomicU32, capacity: u32
+    - Single-producer single-consumer semantics across host/guest boundary
+    - Guest doorbell: MMIO/PCI write triggers host eventfd read
+    - Host doorbell: paravirtual virtual interrupt injected into guest vCPU
+    - No CPU spin-polling on memory flags
+    - Fence provides coherency; doorbell provides notification
+  - Transport engine abstraction
+    - Host hypervisor backend terminates virtqueue rings directly in kelir-core memory
+    - Two transport channels: 0x0000 Control, 0x0001 Stream Mux
+      - see: [3]
+    - Stream Mux routes all request/data flows as stream kinds
+    - Both channels terminate in in-memory lock-free SPSC rings
+    - Bypasses host OS socket subsystems (AF_VSOCK, HV_SOCKET, named pipes)
+    - Identical binary protocol execution on Linux, macOS, and Windows
+    - No host platform-specific IPC shims
+    - No elevated host OS socket drivers
+    - Port 5252 is a logical channel identifier, not an AF_VSOCK port number
+    - Stream trait abstracts transport; three concrete backends
+      - Linux/macOS: shared-memory SPSC rings (primary) + AF_VSOCK (debug fallback)
+      - Windows: shared-memory SPSC rings (primary) + named pipes (debug fallback)
+      - Fallbacks carry identical framing; only the byte carrier differs
+    - Platform divergence hides at the transport driver boundary
+    - Channel multiplexing logic is identical across all OS targets
+    - Host OS containment and path resolution divergence hides at the storage driver boundary
+    - Plugin and channel semantics are identical across targets
+  - Host plane subsystem
+    - Owner: kelir-core native host subsystem (kelir-core::host)
+    - Physical anchor: host kernel boundaries (eBPF/LSM, cgroup v2, keyrings)
+    - HostInterposer pipeline executes synchronous native checks before ring transit
+    - Gate budget: HostInterposer evaluation bounded to <2µs in native memory
+    - Security boundary: zero ambient host privilege expansion permitted
+    - Physicality invariant: decorative or non-enforceable host hooks reject at boot
+  - Trust boundaries
+    - Guest TLS sessions are end-to-end between workload and peer
+      - Host does not terminate TLS by default
+      - Credentials are issued as scoped short-lived tokens by plugin-vault
+      - Workload presents tokens itself; no in-flight substitution
+    - Optional external sidecar can terminate TLS if the workload cannot
+      - see: [4]
+      - Host never sees plaintext request bodies for credential-bound traffic
+    - Upstream certificate validation is the workload's responsibility
+      - System CA bundles ship inside the EROFS rootfs as normal
+  - Embedded profile
+    - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
+    - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
+    - Host memory preservation: see: 08-lifecycle.md#Suspend-and-resume
+  - Host memory pressure watcher
+    - Active balloon inflation/deflation loop in kelir-core
+    - Linux: subscribe to cgroup v2 memory.pressure via io_uring/epoll
+    - Linux reclaim: madvise(MADV_DONTNEED) releases physical frames immediately
+    - macOS reclaim: stage-2 hv_vm_unmap unbinds guest physical frames
+    - macOS deallocation: mach_vm_deallocate purges host wired footprints
+    - macOS zero-fill swap: Mach copy-on-write zero pages replace reclaimed extents
+    - macOS madvise-alone is banned: does not drop physical hypervisor RSS
+    - macOS: register DISPATCH_SOURCE_TYPE_MEMORYPRESSURE kernel listener
+    - Pressure signal inflates virtio-balloon queue
+    - Guest kswapd evicts clean page caches into balloon
+    - Host madvise(MADV_DONTNEED) reclaims physical frames immediately
+    - Zero manual tuning; zero guest cooperation beyond standard kernel
+  - Host runtime
+    - see: artifacts/diagrams/host-runtime.txt
+    - Native Rust consumer: direct Cargo crate, zero-cost monomorphization
+    - TypeScript consumer: @kelir/core via in-process NAPI-RS
+    - Python consumer: kelir via PyO3
+    - kelir-core: stripped microkernel (BusDispatcher, PipelineEngine, EventBus, DriverRouter)
+    - PipelineEngine: compiles inline interceptors into indexed contiguous tables
+    - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
+  - Host state root
+    - Content-addressed root: ~/.kelir/
+      - catalog.db: embedded SQLite ledger tracking all session lifecycles
+      - Lease schema and row kinds
+      - OS-native liveness primitives are proof-of-life, not SSOT
+        - Linux: pidfd_open + pidfd_send_signal
+        - macOS: kqueue(EVFILT_PROC, NOTE_EXIT)
+        - Windows: Job Object termination with KILL_ON_JOB_CLOSE
+      - parent process death reaps ephemeral rows without lease wait
+      - catalog.db is SSOT for every session; no bypass path
+      - cas/blobs/blake3_<hash>: immutable layer storage
+      - sessions/<session_id>/: ephemeral runtime state
+    - State engine
+      - Every process opens the SQLite file directly; no resident daemon
+      - WAL mode with connection pooling; busy_timeout set to 5000ms
+      - Unreferenced CAS blobs purged only when active lease count reaches zero
+    - Concurrency
+      - Writers serialize per database file via SQLite busy handlers; readers proceed concurrently
+      - Lockfile/PID-sweep absent; SQLite transaction semantics are the sole concurrency contract
+      - Kernel releases advisory state on process death; runtime janitor reclaims orphaned rows
+    - Session ownership and leases
+      - sessions/<id>/owner.pid records the runtime process
+      - catalog sessions row carries the liveness lease proof with explicit expiry
+      - catalog sessions row carries (incarnation_id, boot_id, start_time_ns, pid)
+      - ephemeral records declare lease_kind='ephemeral' with null expiry
+      - detached rows use lease_kind='lease' and update expires_at every 30s
+      - Incarnation proof semantics: see: 08-lifecycle.md#Session-incarnation
+      - Orphaned relay.sock, sparse backing file, staging trees reclaimed by runtime child janitor
+  - Guest VM anatomy
+    - see: [5]
+    - Boot budget
+      - Cold boot target: see: [6] (boot)
+      - Measurement: host-side stopwatch to first workload exec
+      - ACPI + PCI probing alone is ~40ms; kernel is built without both
+      - Every device below earns its millisecond against that budget
+    - Device allocations: see: [5]
+    - Page size dynamic boot selection
+      - 4KB guest MMU mapping standard across x86_64 and ARM64
+      - ARM64 Stage-2 tables configure 4KB leaf pages on 16KB host RAM
+      - Eliminates binary alignment faults for standard distro packages
+    - Isolation boundary
+      - Standard system init reaps orphan processes
+      - In-kernel eBPF and seccomp filters trap monitored syscalls
+      - Syscall notifications stream over dedicated virtio-vsock channel
+      - Hypervisor cgroup freezer pauses task groups on trap matches
+      - VM introspection resolves executable hashes
+    - Trust chain
+      - Hardware root
+        - VT-x / AMD-V / ARM64 EL2
+        - Presence verified at boot
+        - Absence halts with E_NOHARDWAREVMM
+      - Guest kernel
+        - vmlinux BLAKE3 host-side pre-vCPU
+        - Recorded in session attestation token
+      - Guest rootfs
+        - EROFS BLAKE3 host-side pre-vCPU
+        - Recorded in session attestation token for the rootfs
+      - Shim (PID 1)
+        - Subsumed by EROFS measurement
+        - No separate attestation entry
+      - Workload
+        - binary_blake3 per ExecutionReceipt; see: [2]
+      - Session attestation token
+        - Injected over paravirtual config device; workload verifies over vsock Channel 0
+      - Host TLS proxy boundary: none by default
+        - see: [4]
+      - Chain is unbroken
+        - Forged kernel/rootfs fails host-side BLAKE3
+        - Forged workload fails per-exec trap boundary
+    - Early boot diagnostics
+      - Fixed 64KB circular ring buffer in host memory
+      - Mapped to hypervisor 8250 UART / PL011 from instruction zero
+      - Scraped if VmReady not reached within cold-boot budget
+      - Kernel panic signatures parsed into ExitReason::KernelPanic(String)
+      - Recorded in ExecutionReceipt; no guest cooperation required
+    - Multi-architecture execution
+      - macOS ARM64: detect /Library/Apple/usr/libexec/oah/libRosettaRuntime
+      - Rosetta directory mounted at /run/rosetta via read-only VirtIO-FS
+      - kelir-shim registers Rosetta into /proc/sys/fs/binfmt_misc on boot
+      - x86_64 binaries execute transparently on Apple Silicon
+      - Zero guest container rebuild; near-native emulation speed
+      - Other hosts: arch mismatch fails with ENOEXEC; no silent fallback
+    - Guest kernel hardening
+      - Unconditional boot params: kptr_restrict=2 dmesg_restrict=1
+        - panic_on_oops=1 slab_nomerge pti=on slub_debug=FZP
+      - kelir-shim remounts /proc with hidepid=2 during early init
+      - /proc/kallsyms, /sys/firmware, /proc/version leak signatures suppressed
+      - Untrusted scripts cannot probe kernel pointers or peer processes
+    - Workload contract: no guest-side SDK, shim, or agent
+  - VmmDriver trait
+    - see: [6]
+    - Primitive list and signatures: see: [6]
+    - Single backend contract
+      - Every backend implements every primitive; optional primitives are
+        - not part of the trait
+      - Callers hold `Box<dyn VmmDriver>` only; no backend type is surfaced
+    - Hypervisor hardware boundary
+      - Driver rollback resets physical RAM and vCPU registers only (<8ms)
+      - Storage diff discard is orchestrated by Session::rollback() in kelir-core
+    - SnapshotDescriptor.dirty_bytes
+      - Byte count, not page count: page size is 16KB on Apple Silicon ARM64
+        - and 4KB on Linux/x86
+      - Rationale: a byte count yields identical receipts, deltas, and
+        - Merkle roots across hosts; a page count does not
+      - Sole home of the page-size fact for receipts and Merkle roots
+      - Kernel fixture selection: see: #Page-size-dynamic-boot-selection
+  - Driver backends
+    - Hardware tier (Default, Zero-Escape Boundary):
+      - driver-rustvmm: Linux bare-metal KVM + userfaultfd CoW + CUDA CDI
+        - CPUID synthetic filter: force standard invariant TSC and Leaf 0x1
+        - TSC-deadline advertised unconditionally across AMD and Hygon
+        - Unknown x86 vendor masks normalize to canonical KVM profile
+      - driver-hvf: macOS HVF + 2MB Stage-2 chunked page promoter CoW
+      - driver-openvmm: Windows WHP + ConPTY
+        - Restore sequence invariant: Local APIC state commits before TSC
+        - Setting TSC deadlines before APIC initialization is prohibited
+      - driver-avf: Android Virtualization Framework via /dev/avf and pKVM
+    - Emulated tier (Strict Opt-In, Development Only):
+      - driver-bwrap: Linux user namespaces; requires allow_emulated_fallback=true
+      - driver-proot: Termux ptrace emulation; requires allow_emulated_fallback=true
+      - Attempting to boot emulated tier without flag throws E_NOHARDWAREVMM
+
+- [1]: 02-plugin-model.md#KelirPlugin-trait
+- [2]: 10-attestation.md#Execution-receipts
+- [3]: 11-protocol.md#Control-channel
+- [4]: plugins/vault.md#Optional-external-egress-rewriting
+- [5]: artifacts/diagrams/guest-vm.txt
+- [6]: artifacts/code/vmm-driver-trait.rs

@@ -1,0 +1,101 @@
+- Overview
+  - Product
+    - Name: kelir (Javanese ꦏꦼꦭꦶꦂ)
+    - Meaning: taut white fabric screen in Wayang Kulit shadow puppetry
+    - Product metaphor: see: #Wayang-elements
+    - Version: 1.0.0
+    - Status: normative specification
+    - Legal and licensing architecture
+      - Tri-license topology
+        - Spec: Creative Commons Attribution 4.0 International (CC-BY-4.0)
+        - Core engine, drivers, and shim: Functional Source License (FSL-1.1-Apache-2.0)
+        - Interfaces, SDKs, and testkit: MIT OR Apache-2.0 dual license
+        - Enterprise extensions (EE): Commercial proprietary license
+      - Two-repo distribution invariant
+        - Public repo (kelir): core microkernel, local virtualization, community plugins
+        - Private repo (kelir-cloud): fleet compaction, S3 snapshot streaming, enterprise shims
+      - Enterprise distribution channels
+        - Dynamic SDKs: Precompiled native binaries via npm (@kelir-cloud) and PyPI (kelir-cloud)
+        - Rust on-prem: Authenticated private Cargo registry with commercial license tokens
+        - Managed platform: Kelir Cloud SaaS execution over HTTPS/gRPC
+  - Wayang elements
+    - Kelir: taut white fabric screen onto which shadows are cast
+    - Dalang: master puppeteer directing dialogue and performance
+    - Wayang: flat, carved leather or wooden puppets manipulated behind the screen
+    - Blencong: oil lamp suspended above the puppeteer that provides the light source
+    - Bayang: shadow cast by the puppet onto the screen, observed by the audience
+  - What it is
+    - Embeddable in-process microVM hypervisor microkernel
+    - Five integrated engine planes: terminal, storage, wire, checkpoint, host
+    - Mediates guest interaction through paravirtual VirtIO Device Complex
+    - Cold-boot budget: see: 01-architecture.md#Boot-budget
+    - Definition details: see: 01-architecture.md#Axiomatic-foundations
+  - What it is not
+    - Excludes container runtime wrappers
+    - Standalone from external MCP server binaries
+    - Zero background daemon architecture
+    - Excludes CLI runners (no kelir run): see: 15-operations.md#Developer-CLI
+    - Standalone from host daemon runtimes: see: 01-architecture.md#In-process-microkernel
+  - Target audience
+    - Audience matrix: see: artifacts/diagrams/target-audience.txt
+    - Value and trigger per audience: in the matrix
+  - What kelir replaces
+    - Terminal hacks: tmux send-keys, regex screen scraping
+    - Storage hacks: host-boundary write mutations and whiteout corruption
+    - Virtualization hacks: fragmented platform-specific VM scripts
+    - Agent trust hacks: polling unverified guest JSON harnesses
+    - Terminal details: see: [1]
+    - Storage details: see: [2]
+    - Trust details: see: [3]
+  - Use cases
+    - Parallel agent exploration: see: 08-lifecycle.md#CoW-fork
+    - Human approval waits with zero CPU: see: [4]
+    - Autonomous step gating & idle pause: see: [5]
+    - Multi-resource atomic commit (2PC): see: [6]
+    - Time-sensitive tests (JWT, cron, certs): see: 08-lifecycle.md#Clock-skew
+    - Deterministic execution replay: see: 08-lifecycle.md#Clock-invariants
+    - Relational database governance: see: [6]
+    - Supply chain package protection: see: [6]
+    - Zero-copy high-throughput IPC: see: 01-architecture.md#Shared-memory-channel
+    - Cross-host portable snapshot bundles: see: [7]
+    - Flaky-API and disk-full resilience: see: [6]
+    - Container builds without nested VMX: see: [6]
+    - Human break-glass on agent loops: see: [8]
+    - Low-memory SBC execution: see: 01-architecture.md#Embedded-profile
+    - Idle scale-to-zero: see: [4]
+    - Hydrate state from streaming snapshot bundle
+      - see: [7]
+    - Zero-downtime connection parking
+      - see: 07-wire-plane.md#Transparent-L4-stream-diversion
+    - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends
+  - Spec map
+    - Core foundation: see: 01-architecture.md
+    - Plugin model & catalog (13 optional domain plugins): see: 02-plugin-model.md
+    - SDK architecture: see: 03-sdk-architecture.md (parity)
+    - Terminal plane: see: [1] (engine native)
+    - Storage plane: see: [2] (engine native)
+    - Storage catalog: see: 06-storage-catalog.md (catalog ledger)
+    - Wire plane: see: 07-wire-plane.md (engine native)
+    - Host plane: host OS hooks — see: 01-architecture.md#Host-plane-subsystem
+    - Lifecycle: see: [5] (checkpoint engine)
+    - Snapshots & archives: see: 09-snapshots.md (portable state)
+    - Attestation subsystem proofs: see: [3]
+    - Protocol: see: 11-protocol.md (wire messages)
+    - Host state engine: SQLite catalog, WAL — see 01-architecture.md#Host-state-root
+    - Transport abstraction
+      - SPSC rings with AF_VSOCK and named pipe fallbacks
+      - Details: see: 01-architecture.md#Transport-engine-abstraction
+    - Break-glass console access: see: [8]
+    - Draining: graceful retirement — see 08-lifecycle.md#Hypervisor-primitives
+    - Ecosystem and ops
+      - Ecosystem ingestion: see: 12-adapters.md#Ingestion-matrix
+      - Build, CI, layout: see: 15-operations.md#Execution-philosophy
+
+- [1]: 04-terminal-plane.md
+- [2]: 05-storage-plane.md
+- [3]: 10-attestation.md
+- [4]: 08-lifecycle.md#Suspend-and-resume
+- [5]: 08-lifecycle.md
+- [6]: 02-plugin-model.md#First-class-plugins
+- [7]: 09-snapshots.md#Archives-and-portability
+- [8]: 08-lifecycle.md#Break-glass

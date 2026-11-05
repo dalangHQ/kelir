@@ -1,0 +1,22 @@
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   TARGET AUDIENCE MATRIX                                │
+├─────────────────────┬──────────────────────────┬────────────────────────┬───────────────┤
+│ TARGET AUDIENCE     │ VALUE DELIVERED          │ INTEGRATION METHOD     │ CORE TRIGGER  │
+├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
+│ 1. INFRA PLATFORMS  │ Hardware cold-boot micro-│ `containerd-shim-v2`   │ VM escapes,   │
+│    (K8s, Cube,      │ VMs; pluggable KVM/WHP/  │ `openshell-grpc`       │ daemon OOMs,  │
+│     OpenShell)      │ HVF bare-metal drivers   │ commercial adapters    │ multi-tenancy │
+├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
+│ 2. HARNESS CREATORS │ Virtio-console hardware  │ Drop-in `spawn()` shim │ Tmux breaks,  │
+│    (Claude Code,    │ PTY; ANSI sanitizing;    │ Native MCP Server      │ token bleed,  │
+│     Cursor, Devin)  │ automated prompt answers │ (`@kelir/mcp-server`)  │ PII leaks     │
+├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
+│ 3. ORCHESTRATORS    │ Hardware memory CoW fork;│ Drop-in E2B client SDK │ Non-determi-  │
+│    (Capcli,         │ 0MB RAM suspend/resume;  │ Non-blocking Yield/    │ nism, fuel,   │
+│     LangGraph, E2B) │ virtio-shm, PMU counters │ Abort, 2PC sync hooks  │ OCC conflicts │
+├─────────────────────┼──────────────────────────┼────────────────────────┼───────────────┤
+│ 4. VERIFIERS & AUDIT│ Unforgeable execution    │ Hardware TSC offsets;  │ LLM hallucina-│
+│    SYSTEMS (Axiom,     │ receipts; 8ms RAM roll-  │ OTLP traces + opt-in   │ tions, untaxed│
+│    RLVR, Formal        │ backs; dynamic chaos     │ ledger; CausalDelta    │ side effects  │
+│    Falsifiers)         │                          │                        │               │
+└─────────────────────┴──────────────────────────┴────────────────────────┴───────────────┘
