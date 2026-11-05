@@ -12,7 +12,7 @@
       - Kind 0x0010; see: 11-protocol.md#Control-channel
   - Invariants and policy (profile)
     - Profile schema fixture: see: artifacts/examples/fixtures/kelir.toml
-    - Canonical profile artifact: see: artifacts/examples/fixtures/kelir.yaml
+    - Canonical profile artifact: see: [1]
     - Declarative profile execution: see: artifacts/examples/profile.rs
     - Inversion-of-Control configuration router:
       - Ingests canonical kelir.toml and kelir.yaml specification files
@@ -153,7 +153,7 @@
       - see: artifacts/examples/fixtures/kelir.yaml#storage.lock_broker.scope_globs
       - see: artifacts/examples/fixtures/kelir.yaml#storage.lock_broker.non_blocking
   - Wire schema (profile)
-    - Wire schema values: see: artifacts/examples/fixtures/kelir.yaml
+    - Wire schema values: see: [1]
     - see: artifacts/examples/fixtures/kelir.yaml#wire.userspace_netstack
     - see: artifacts/examples/fixtures/kelir.yaml#wire.default_egress
     - see: artifacts/examples/fixtures/kelir.yaml#wire.allow_ipv6
@@ -185,7 +185,7 @@
     - Wire port forwards (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#wire.port_forwards
   - Terminal schema (profile)
-    - Terminal semantics (04-terminal-plane.md): see: artifacts/examples/fixtures/kelir.yaml
+    - Terminal semantics (04-terminal-plane.md): see: [1]
     - Terminal PTY (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#terminal.pty.cols
       - see: artifacts/examples/fixtures/kelir.yaml#terminal.pty.rows
@@ -210,8 +210,8 @@
       - see: artifacts/examples/fixtures/kelir.yaml#terminal.wireframe_grid.track_screen_matrix
       - terminal.wireframe_grid.export_on_trap: TBD (no receipt screen field yet)
   - Checkpoint schema (profile)
-    - Checkpoint semantics: see: 08-lifecycle.md
-    - Lineage semantics (09-snapshots.md): see: artifacts/examples/fixtures/kelir.yaml
+    - Checkpoint semantics: see: [2]
+    - Lineage semantics (09-snapshots.md): see: [1]
     - Checkpoint boundaries (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.boundaries.sentinel_path
       - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.boundaries.detect_pty_quiescence
@@ -228,14 +228,14 @@
     - Checkpoint lineage (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.lineage.unbounded_depth
       - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.lineage.lazy_cow_sharing
-      - Lineage compaction: see: 08-lifecycle.md
+      - Lineage compaction: see: [2]
     - Checkpoint suspend (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.suspend.page_dump_codec
       - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.suspend.target_host_rss_mb
       - see: artifacts/examples/fixtures/kelir.yaml#checkpoint.suspend.latency_target_ms
   - Host schema (profile)
-    - Host runtime semantics: see: 08-lifecycle.md
-    - Host catalog (06-storage-catalog.md): see: artifacts/examples/fixtures/kelir.yaml
+    - Host runtime semantics: see: [2]
+    - Host catalog (06-storage-catalog.md): see: [1]
     - Host reaper (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#host.reaper.linux_death_signal
       - see: artifacts/examples/fixtures/kelir.yaml#host.reaper.darwin_kqueue_event
@@ -259,7 +259,7 @@
     - Enabled plugins: transaction, profile, mcp, wire-ingress
     - Disabled plugins: chaos, mesh, replay, container
   - Attestation schema (profile)
-    - Attestation semantics (10-attestation.md): see: artifacts/examples/fixtures/kelir.yaml
+    - Attestation semantics (10-attestation.md): see: [1]
     - see: artifacts/examples/fixtures/kelir.yaml#attestation.hardware_facts
     - see: artifacts/examples/fixtures/kelir.yaml#attestation.interception_facts
     - see: artifacts/examples/fixtures/kelir.yaml#attestation.interception_facts.log_exit_kinds
@@ -270,3 +270,6 @@
       - Schema syntax or validation failure aborts boot with EConfig
       - Upstream lattice widening attempts abort with ESecurityViolation
       - Conflicting merge scopes abort with EAmbiguousMutation
+
+- [1]: artifacts/examples/fixtures/kelir.yaml
+- [2]: 08-lifecycle.md

@@ -60,11 +60,16 @@ references:
       message: "Abstraction leak: Terminal/storage specs cannot reference plugin files."
   # Pointer aliasing (cans-spec #57, shipped v0.9.0): footnote-style short
   # aliases for repeated see: targets, per-file scope only.
+  # #65 (shipped v0.14.0): include opens the plugin tier — matching files
+  # join the checked file set refs-only, so #leaf refs in cans/plugins/*.md
+  # can be aliased and verified like corpus files. Glob is workspace-
+  # relative, so spelled without the cans/ prefix here.
   aliasing:
     enabled: true
     scope: file
     style: both
     min_uses: 2
+    include: [plugins/*.md]
 
 redundancy:
   enabled: true
