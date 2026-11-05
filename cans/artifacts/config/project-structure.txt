@@ -42,7 +42,7 @@ kelir/
 │   │       │   ├── terminal/          # Terminal Plane: virtio-console, VT100 grid, ANSI sanitizer, PTY discipline
 │   │       │   ├── storage/           # Storage Plane: virtio-fs, host CoW broker, reconciler, tombstones, synthetic inodes, flock broker
 │   │       │   ├── wire/              # Wire Plane: virtio-net, userspace smoltcp ingress ring, DNS policy filter + synthetic gateway, connection parking
-│       │   ├── host/              # Host Plane: eBPF/LSM hooks, cgroup v2 pressure, host keyring mediation
+│   │       │   ├── host/              # Host Plane: eBPF/LSM hooks, cgroup v2 pressure, host keyring mediation
 │   │       │   └── checkpoint/        # Checkpoint Plane: Step verification loop, CoW diffs, hardware rollback
 │   │       ├── bus/                   # VirtIO Device Multiplexer (vsock, console, fs, net) over kelir-transport
 │   │       ├── dispatch.rs            # Static dispatch array & ArcSwap pipeline runner
@@ -150,9 +150,13 @@ kelir/
 │   │   ├── plugin-container/          # Rootless OCI container runner & cgroup v2 setup
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/lib.rs
-│   │   └── plugin-replay/             # PMU instruction-stepped deterministic clock replay
+│   │   ├── plugin-replay/             # PMU instruction-stepped deterministic clock replay
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/lib.rs
+│   │   └── plugin-transaction/        # Multi-resource 2PC coordination aggregator
 │   │       ├── Cargo.toml
-│   │       └── src/lib.rs
+│   │       ├── src/lib.rs             # TransactionService: scoped 2PC, savepoints, taint rollback
+│   │       └── tests/test_transaction.rs
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
 │   │   └── mcp-server/                # Model Context Protocol stdio terminal server
@@ -173,9 +177,14 @@ kelir/
 │   │       ├── audit.rs               # Same audit as CI
 │   │       ├── vectors.rs             # Regenerate vectors.json from testkit fixtures
 │   │       ├── registry.rs            # Registry attestation and verification commands
-│       ├── layers.rs              # Downward-only crate dependency validator
-│       ├── budgets.rs             # Hard performance budget validator
-│       └── fixtures.rs            # Content-addressed test oracle fetcher and validator
+│   │       ├── layers.rs              # Downward-only crate dependency validator
+│   │       ├── budgets.rs             # Hard performance budget validator
+│   │       ├── fixtures.rs            # Content-addressed test oracle fetcher and validator
+│   │       ├── setup.rs               # kelir setup: host hardening, shims, LSM, hw-lock
+│   │       ├── spec.rs                # kelir spec check/export: AOT profile validation, canonical emit
+│   │       ├── scaffold.rs            # plugin new: scaffold crate, trait stubs, empty vectors
+│   │       ├── manifest.rs            # plugin manifest: auto-generated manifest from AST
+│   │       └── rings.rs               # plugin rings --show: ring inventory and masks
 │   │
 │   └── kelir-bindings/                # FFI Translation Layers
 │       ├── napi/                      # Rust -> Node.js NAPI-RS bridge
@@ -196,12 +205,20 @@ kelir/
 │   │   │       ├── context.ts         # Generic accumulation context engine
 │   │   │       ├── schema.ts          # TypeBox command validation wrappers
 │   │   │       └── binding.ts         # Auto-generated NAPI loader
-│   │   ├── plugins/                   # @kelir/plugin-*
+│   │   ├── plugins/                   # @kelir/plugin-* (1:1 with Rust crates)
 │   │   │   ├── wire-ingress/          # TS bindings for connection parking
 │   │   │   ├── chaos/                 # TS bindings for fault injection
-│   │   │   └── ledger/                # TS bindings for OTLP + opt-in Merkle WAL audit ledger
-│   │   ├── presets/                   # @kelir/presets (Pre-configured agent setups)
-│   │   │   └── src/openrig.ts         # Drop-in driver replacing OpenRig's tmux backend
+│   │   │   ├── ledger/                # TS bindings for OTLP + opt-in Merkle WAL audit ledger
+│   │   │   ├── mcp/                   # TS bindings for MCP stdio JSON-RPC console
+│   │   │   ├── db-proxy/              # TS bindings for pgwire + vsock DB mediation
+│   │   │   ├── mesh/                  # TS bindings for vsock federation transport
+│   │   │   ├── supply-chain/          # TS bindings for package lifecycle guard
+│   │   │   ├── profile/               # TS bindings for declarative profile ingestion
+│   │   │   ├── tool-guard/            # TS bindings for MCP tool-call interposition
+│   │   │   ├── vault/                 # TS bindings for out-of-band credential broker
+│   │   │   ├── container/             # TS bindings for rootless OCI container runner
+│   │   │   ├── replay/                # TS bindings for deterministic clock replay
+│   │   │   └── transaction/           # TS bindings for multi-resource 2PC coordination
 │   │   └── e2b-compat/                # @kelir/e2b-compat
 │   │       └── src/index.ts           # Drop-in replacement for @e2b/code-interpreter
 │   │
@@ -214,7 +231,17 @@ kelir/
 │           ├── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
 │           │   ├── wire_ingress.py    # Python bindings for connection parking
 │           │   ├── chaos.py           # Python bindings for the chaos plugin
-│           │   └── ledger.py          # Python bindings for the ledger plugin (OTLP default, Merkle WAL opt-in)
+│           │   ├── ledger.py          # Python bindings for the ledger plugin (OTLP default, Merkle WAL opt-in)
+│           │   ├── mcp.py             # Python bindings for MCP stdio JSON-RPC console
+│           │   ├── db_proxy.py        # Python bindings for pgwire + vsock DB mediation
+│           │   ├── mesh.py            # Python bindings for vsock federation transport
+│           │   ├── supply_chain.py    # Python bindings for package lifecycle guard
+│           │   ├── profile.py         # Python bindings for declarative profile ingestion
+│           │   ├── tool_guard.py      # Python bindings for MCP tool-call interposition
+│           │   ├── vault.py           # Python bindings for out-of-band credential broker
+│           │   ├── container.py       # Python bindings for rootless OCI container runner
+│           │   ├── replay.py          # Python bindings for deterministic clock replay
+│           │   └── transaction.py     # Python bindings for multi-resource 2PC coordination
 │           └── compat/
 │               └── e2b.py             # Drop-in E2B Sandbox replacement class
 │
@@ -225,12 +252,12 @@ kelir/
 │   │   │   └── build-erofs.sh
 │   │   └── payloads/                  # Binaries with Shannon entropy >5.2 (shared: core trap tests)
 │   └── e2e/
-│       ├── test_claude_code.ts        # End-to-end Claude Code session under PTY controls
-│       └── test_openrig_driver.ts     # Verifies swarm execution replacing OpenRig tmux
+│       └── test_claude_code.ts        # End-to-end Claude Code session under PTY controls
 │
 └── README.md                          # Quickstart, Invariants & Architecture Summary
 
 ── KELIR-CLOUD (PRIVATE REPO) ──
 crates/kelir-ee-plugins/ (hyper-density, cas-snapshot, oci-translator, openshell-coordinator)
-crates/kelir-ee-adapters/ (containerd-shim, openshell-grpc)
+egress-sidecar daemon (out-of-process commercial daemon; not a plugin crate)
+crates/kelir-ee-adapters/ (containerd-shim [containerd-shim-v2 binary], openshell-grpc)
 services/ (control-plane, api-gateway, snapshot-relay, billing)

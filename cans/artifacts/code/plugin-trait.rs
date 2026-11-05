@@ -18,16 +18,10 @@ use crate::protocol::messages::{ProcessExit, Verdict, FilterAction, TrapEvent};
 use crate::vmm::driver::{BalloonConvergence, VmmDriver, VmConfig, WatchdogAction};
 
 /// Structured payloads carried over the stream mux (PTY_CONTROL kind
-/// 0x0002). Signal forwarding is exec_id-keyed, never raw guest pid;
-/// window resize rides the EXEC control sub-lane 0x03.
+/// 0x0002). Signal forwarding only, exec_id-keyed, never raw guest pid;
+/// window resize rides the EXEC control sub-lane 0x03, not this kind.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PtyControlMessage {
-    WindowResize {
-        rows: u16,
-        cols: u16,
-        xpixel: u16,
-        ypixel: u16,
-    },
     SignalForward {
         signal: u32,
         exec_id: u64,

@@ -25,13 +25,15 @@
     - Tier 3 OpenShell gRPC coordination
     - Interface: profile + approval lifecycle bridge
     - Depends: kelir-interface, plugin-profile
-    - Channels: 0x0002 (profile-sync)
-  - egress-sidecar (commercial)
-    - Tier 3 external egress rewriting daemon (Envoy/Squid wrapper)
-    - Out-of-process; runs outside the supervisor binary
-    - Implements optional L7 rewriting for legacy workloads
-      - see: plugins/vault.md#Optional-external-egress-rewriting    - Interface: EgressSidecarConfig (kind, socket, upstream policy)
-    - Depends: kelir-interface; runs as a separate OS process
-    - Channels: none; wire plane diverts marked egress via L4
+    - Channels: 0x0010 (profile-sync)
+  - Commercial daemon (outside the plugin count)
+    - egress-sidecar (commercial)
+      - External egress rewriting daemon (Envoy/Squid wrapper)
+      - Out-of-process; runs outside the supervisor binary
+      - Implements optional L7 rewriting for legacy workloads
+        - see: plugins/vault.md#Optional-external-egress-rewriting
+      - Interface: EgressSidecarConfig (kind, socket, upstream policy)
+      - Depends: kelir-interface; runs as a separate OS process
+      - Channels: none; wire plane diverts marked egress via L4
   - Adapter binaries    - containerd-shim-v2, openshell-grpc
     - Boundary and ownership: see: 12-adapters.md#Process-vs-plugin-boundary

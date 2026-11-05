@@ -19,9 +19,11 @@
       - Sets sid and controlling terminal: ioctl(slave_fd, TIOCSCTTY, 0)
       - Workload stdin/stdout/stderr bound directly to slave PTY fd
     - Window geometry and signals
-      - Carried on stream kind PTY_CONTROL (mux 0x0001)
-      - MsgType 0x01 (WindowResize): pushes rows, cols, xpixel, ypixel
+      - Window resize rides EXEC control sub-lane 0x03
+      - SignalForward rides stream kind PTY_CONTROL (mux 0x0001)
       - MsgType 0x02 (SignalForward): pushes signal and exec_id; shim resolves exec_id
+      - SignalForward is the interactive PTY forward only, for the foreground exec
+        - Programmatic signals never use it; they route over Channel 0x0000
     - Host filter pipeline execution order
       - 1. ANSI strip: drops OSC 52 (clipboard hijack) and strips OSC 0/1/2 (title spoof)
       - 2. Prompt match: matches foreground prompts against ANSI-stripped shadow text

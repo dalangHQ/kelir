@@ -8,7 +8,7 @@
     - Stream kind registry
       - Core kinds (frozen)
         - 0x0001: EXEC (programmatic exec + stdout/stderr/control)
-        - 0x0002: PTY_CONTROL (window resize, signal-forward per exec)
+        - 0x0002: PTY_CONTROL (signal-forward per exec)
         - 0x0003: VFS (paginated POSIX-like filesystem API)
         - 0x0004: BULK (raw chunked byte streams)
         - 0x0005: L4_FORWARD (native wire plane stream diversion)
@@ -45,8 +45,10 @@
       - 0x01: stdout (guest-to-exec)
       - 0x02: stderr (guest-to-exec)
       - 0x03: exec control (exit code, EOF, rlimit descriptors)
-    - Out-of-band signal isolation: SIGINT, SIGTERM, and resize bypass EXEC
-    - High-priority process signals route exclusively over Channel 0x0000
+    - Out-of-band signal isolation: SIGINT and SIGTERM bypass EXEC
+    - Programmatic high-priority process signals route exclusively over Channel 0x0000
+    - Sole exception: the interactive PTY forward, MsgType 0x02 on PTY_CONTROL
+      - Scoped to the foreground exec of a human PTY session
     - Eliminates signal delivery stalls behind saturated stdout/stderr rings
     - Signal targeting
       - Channel 0x0000 signals carry exec_id, never raw guest pid
@@ -159,6 +161,7 @@
   - Wire framing
     - see: artifacts/code/wire-protocol.rs
     - Layout: 9-byte header, stream_id u32, flags u8, len u32, LE, no magic/version
+    - Message-type carrier: msg_type is first u16 of payload (LE); header carries no msg_type
     - Framing invariants
       - Byte order: Little-Endian for all multi-byte integers
       - Hostile input validation

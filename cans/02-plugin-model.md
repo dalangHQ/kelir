@@ -11,6 +11,8 @@
       - plugin-vault: unified secret and placeholder governance proxy
       - plugin-container: rootless OCI container execution proxy
       - plugin-replay: deterministic PMU-stepped clock replay proxy
+      - plugin-db-proxy: L7 domain filter, agnostic DB mediation proxy
+      - plugin-supply-chain: L7 domain filter, package lifecycle guard proxy
       - Tier 2 plugins depend on kelir-interface and consume Tier 1 services via ServiceRegistry
     - Tier 3 cross-cutting aggregators
       - plugin-ledger: audit aggregation over Tier 1 and Tier 2 plugins
@@ -22,8 +24,9 @@
     - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
     - Layering enforcement
       - Crate dependency hierarchy enforced mechanically via layer lint
-      - Downward-only dependencies: higher tiers cannot import lower tiers
-      - Plugins link kelir-interface only; direct core imports rejected
+      - Downward-only dependencies: higher tiers import lower-tier crates, never the reverse
+      - Tier 1 plugins link kelir-interface only; direct core imports rejected
+      - Tier 2 and Tier 3 plugins add direct Cargo deps on lower-tier plugin crates
     - Invariants and purity
     - Code is sole SSOT: declared programmatically via KelirPlugin trait
     - Manifest artifact is strictly auto-generated for zero-compile indexing
@@ -258,12 +261,11 @@
       - Community plugins (in-process engine): cans/plugins/
         - mcp, mesh, tool-guard, wire-ingress, vault, container
         - replay, ledger, profile, chaos, transaction
-      - Optional L7 domain filter plugins:
-        - db-proxy, supply-chain
       - Commercial plugins: interface in plugins/commercial.md
         - hyper-density, cas-snapshot
         - oci-translator, openshell-coordinator
         - Implementation is proprietary; not in this repo
+        - egress-sidecar is an out-of-process commercial daemon outside the plugin count
     - Coverage matrix (community plugins -> demonstrating example)
       - chaos, ledger: autonomous-swe-agent.{rs,ts,py}
       - vault: autonomous-swe-agent.{rs,ts,py} via wire-plane vaults only

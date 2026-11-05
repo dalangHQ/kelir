@@ -28,22 +28,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@just
       - name: Install cans
         run: cargo install --git "${CANS_REPO:?set repo var}" cans-cli --locked
-      - name: Refs only (<2s)
-        run: |
-          out=$(cans check --refs-only --json)
-          echo "$out" | jq -e '.ok == true and .exitCode == 0' >/dev/null
-      - name: Full check
-        run: |
-          out=$(cans check --json)
-          echo "$out" | jq -e '.ok == true and .exitCode == 0' >/dev/null
+      # Flag-drift gate: CI calls just check-spec, not raw cans flags.
+      # The flag string lives only in the justfile.
+      - name: Spec gate (refs-only + full)
+        run: just check-spec
+      - name: Plugin coverage (--plugin-coverage)
+        run: just check-plugin-coverage
       - name: Touched files within write budget
         if: github.event_name == 'pull_request'
         run: |
           git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" > /tmp/touched
-          cans check --touched-files /tmp/touched --json \
-            | jq -e '.ok == true and .exitCode == 0' >/dev/null
+          just check-spec-touched
 
   # ─── 1. FAST STATIC GATE (<90s) ────────────────────────────
   lint-and-types:
@@ -225,6 +223,19 @@ jobs:
       - name: Validate Acyclic Plugin Dependency DAG
         run: cargo run -p kelir-plugin-cli -- check --graph
 
+  # ─── 4a2. LAYER CHECK (--layering-coverage) ────────────────
+  # Same command as `just check-layers`. Validates downward-only
+  # crate dependencies; core/interface violations reject the build.
+  layer-check:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Validate Downward-Only Dependencies
+        run: cargo run -p kelir-plugin-cli -- check --layers
+
   # ─── 4b. PLUGIN CONTRACT AUDIT ─────────────────────────────
   # Same command as `just check-plugin`. The audit that
   # 15-operations.md promises is actually executed here.
@@ -279,6 +290,10 @@ jobs:
         run: cargo run -p kelir-plugin-cli -- fixtures --verify
       - name: Driver unit tests (excludes real-hardware paths)
         run: cargo nextest run -p driver-rustvmm -p driver-openvmm -p driver-bwrap -E 'not test(test_hw_)'
+      # Compile-only: driver-avf (Android) and driver-proot (Termux) have
+      # no CI test runner; same as just check-drivers.
+      - name: Check untested drivers (avf, proot)
+        run: cargo check -p driver-avf -p driver-proot
 
   # ─── 5b. PERFORMANCE BUDGET GATE (HARD ENFORCEMENT) ────────
   perf-budgets:

@@ -69,13 +69,16 @@
     - Two tiers, exit-code asserted on parsed JSON, no stderr grep
       - `cans check --refs-only`: every reference resolves, no deep hop, no orphan
       - `cans check`: duplicate-home, node_vs_artifact invariant, redundancy
-    - Pull-request tier: `cans check --touched-files` rejects edits outside
+    - Pull-request tier: `just check-spec-touched` rejects edits outside
       - each concept's canEdit set
     - No path filter: a node edit can break a pointer in any other node
     - Local mirror: `just check-spec` invokes the identical flags
     - Invariant: every rule in _rules.yaml maps to a step here, or the rule
       - is dead and gets removed
   - Coverage-gates
+    - Coverage gates are gate names, distinct from cans check flags
+      - cans check has no --*-coverage flags; each gate names its enforcement below
+      - Veto and watchdog have no per-item enumeration gate; they ride parity vectors
     - --plugin-coverage
       - Plugin asserts: see: [4]
       - Each plugin appears in at least one example (any example)
@@ -84,52 +87,66 @@
       - Tier model (coverage): see: [5]
       - Tiered compilation gate: plugins compile against explicit upstream deps
       - Builder registration gate: each plugin registers without string tokens
+      - Enforcement: scripts/check-plugin-coverage.sh via just check-plugin-coverage
+        - CI runs it in the cans-check job; exit 1 on any orphan or gap
     - --lifecycle-coverage
       - Lifecycle asserts: see: 08-lifecycle.md#Hypervisor-primitives
       - State machine assert: verifies all SuspendReason variants execute through
         - centralized lifecycle
+      - CI test-core runs the kelir-core lifecycle suite
     - --panic-hunt-coverage
       - Fuzzes every stream kind and registered hook with adversarial frames
       - Asserts zero unhandled panics across malformed CBOR, VFS, and FUSE ops
       - Escaped unwinds fail the test suite; every path must return Err
+      - Enforcement: CI panic-hunt job, local just panic-hunt
     - --layering-coverage
-      - Validates downward-only crate dependencies via cargo xtask layers
+      - Validates downward-only crate dependencies via kelir-plugin-cli check --layers
       - Core and interface violations reject compilation before test run
+      - Enforcement: just check-layers, CI layer-check job
     - --hook-coverage
       - Asserts every hook in the segregated traits is implemented by some
         - custom plugin in cans/artifacts/examples
       - Hook home: see: 02-plugin-model.md#Segregated-ring-traits
+      - hook-matrix enumerates the full hook surface; the CI parity job diffs its vectors
     - --action-coverage
       - Asserts every Verdict variant is used at least once in cans/artifacts/examples
-      - Action home: see: 11-protocol.md#Verdict-method-mapping    - --veto-coverage
+      - Action home: see: 11-protocol.md#Verdict-method-mapping
+      - The CI parity job diffs policy-matrix vectors against the Verdict lattice
+    - --veto-coverage
       - Asserts every VetoEvent is registered at least once in an example
       - Veto home: see: 08-lifecycle.md#Lifecycle-vetoes
+      - VetoEvent registrations ride vectors.json chains in the CI parity job
     - --watchdog-coverage
       - Asserts Suppress and Mitigate are each returned at least once
       - Watchdog home: see: 08-lifecycle.md#Watchdog
+      - The parity job must observe both Suppress and Mitigate in vectors.json chains
     - --channel-coverage
       - Asserts every core stream kind in 11-protocol.md#Control-channel has a
         - live round-trip integration test
       - Asserts VFS and BULK stream kinds have live round-trip tests
       - Asserts at least one plugin-registered stream kind is exercised
       - A core stream kind with no test fails the gate
+      - Enforcement: CI test-integration job, KVM-gated, continue-on-error on hosted
     - --drain-coverage
       - Asserts Running -> Draining -> Terminated transitions on
         - completion, on timeout, and on already-draining
       - Asserts EBUSY is returned for new exec during Draining
+      - Drain transitions are asserted in kelir-core, gated by CI test-core
     - --transport-coverage
       - Asserts every Transport backend is exercised by a build matrix cell
       - Linux/macOS: shared-memory SPSC rings, AF_VSOCK fallback
       - Windows: shared-memory SPSC rings, named pipes fallback
       - Missing backend test is a release blocker
+      - Enforcement: CI transport-windows job plus test-drivers matrix
     - --snapshot-depth-coverage
       - Asserts chain restores at depths 1, 2, 5, and 20 succeed
       - Asserts branch-from-interior leaves ancestors intact
+      - Chain restores at depth are asserted by kelir-core snapshot tests in CI
     - --clock-continuity-coverage
       - Asserts guest_clock manifest survives restore across multi-day offsets
       - Asserts monotonic clock does not regress across restore
       - Asserts CLOCK_MONOTONIC never produces negative deltas across fork branches
-    - All flags run in cans-check; exit code 1 on any orphan or gap
+      - Enforcement: plugin-replay cell, CI test-plugins matrix
     - Flag-drift gate
       - CI calls `just check-spec`, not raw flags
       - Flag string lives only in the justfile
@@ -284,7 +301,7 @@
     - Registry index
       - Registry entries: see: #Plugin-registry
     - Test fixtures
-      - External test oracles fetched into tests/fixtures via cargo xtask fixtures
+      - External test oracles fetched into tests/fixtures via kelir-plugin-cli fixtures --fetch
       - Fixture manifests pinned with cryptographic hashes in fixtures.toml
       - SHA-256 and BLAKE3 verification mandatory before mounting test images
       - tests/fixtures/kernel: pinned per-arch vmlinux binaries

@@ -53,7 +53,7 @@ pub const MSG_SYSTEM_TELEMETRY: u16 = 0x0004; // System Telemetry (Heartbeat, Pr
 //   0x0001: Stream Mux (all request/response and data flows)
 // Stream kinds on 0x0001:
 //   0x0001: EXEC (programmatic exec + stdout/stderr/control)
-//   0x0002: PTY_CONTROL (window resize, signal-forward per exec)
+//   0x0002: PTY_CONTROL (signal-forward per exec)
 //   0x0003: VFS (paginated posix-like API, framed CBOR)
 //   0x0004: BULK (raw chunked byte streams; no CBOR, no per-chunk
 //     FUSE context switches; chunk size bounded by transport MTU, no
