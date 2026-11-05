@@ -15,7 +15,7 @@
         - Against verified JIT engine catalog (Node, Bun, V8)
       - Verified JIT runtimes receive dynamic one-time MMU allocation token over vsock
       - Unverified binaries attempting PROT_EXEC or memfd memory allocation halt with EWXVIOLATION
-      - see: artifacts/examples/fixtures/kelir.yaml#plugins.supply_chain.wx_jit.allowed_jit_binaries
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.supply_chain.wx_jit
     - Monitors package manager process trees
     - see: artifacts/examples/fixtures/kelir.yaml#plugins.supply_chain.package_guard.managers
     - Inspects binary_path and argv on TrapEvent for package managers (npm, pip)
@@ -23,7 +23,7 @@
     - Entropy analysis
       - Computes Shannon entropy of argv[1:] on every TrapEvent
       - Flags values above 5.2 bits/char as encrypted or base64-obfuscated
-      - Bypass paths are plugin-private config, not VmConfig
+      - Bypass paths are plugin-private config, outside VmConfig
       - Default bypass runners: node, python, language toolchains
   - Error and return semantics (supply-chain)
     - Hook signature (supply-chain): see: artifacts/code/plugin-trait.rs

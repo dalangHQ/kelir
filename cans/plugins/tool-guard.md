@@ -50,13 +50,13 @@
         - Host waits for human out-of-band authorization via vsock Channel 0
         - Swap mechanics: see: 08-lifecycle.md#Suspend-and-resume
     - Call quota
-      - Per-tool token-bucket governor clamps call cadence
+      - Each tool gets a token-bucket governor clamping call cadence
       - Call depth ceiling: max_invocations_per_trace (default: 50)
       - Infinite recursion or retries immediately reject with ECYCLICREWRITE / ETOOLQUOTA
     - Parameter & payload sanitization
       - Zero-copy regex & Aho-Corasick scanning over string arguments
       - Raw secret patterns in arguments reject immediately with ESecurityViolation
-      - vault:// placeholders are resolved by the workload, not by tool-guard
+      - vault:// placeholders are resolved by the workload
       - Output scrubber: scans tool execution responses on return;
         - strips host secrets before model context ingests bytes
   - Error and return semantics (tool-guard)

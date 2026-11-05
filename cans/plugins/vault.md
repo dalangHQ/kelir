@@ -4,7 +4,7 @@
     - Owner crate: crates/kelir-plugins/plugin-vault
     - name() = "vault"
     - Tier 2 governance (vault)
-    - Depends on (vault): kelir-interface only
+    - Depends on (vault): kelir-interface
     - Exposes: CredentialBrokerService
     - VirtIO device attachment (vault): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (vault): see: 08-lifecycle.md#Lifecycle-vetoes
@@ -41,18 +41,18 @@
       - Issuance is fail-closed: unregistered name → ENODATA; expired scope → EPERM
     - Guest integration
       - Zero SDK required; workload fetches over plain HTTP from metadata service
-      - Common language runtime helpers ship as userland libraries, not engine
+      - Common language runtime helpers ship as userland libraries
       - vault:// placeholder in profiles resolves to a metadata path at boot
       - Guest cert store is untouched; no CA injection
       - Guest env vars are workload-owned; no forced CA env pointers
     - Optional external egress rewriting
-      - Not the default; the default is metadata-broker-only
+      - External egress rewriting is opt-in; the metadata broker is the default
       - Selected via vault.external_egress = { kind: "envoy" | "squid", ... }
       - Sidecar process owns TLS termination, HTTP rewriting, and secret
         - substitution; runs outside the supervisor binary
       - Wire plane forwards marked egress through the sidecar via L4 diversion
       - Supervisor memory never sees plaintext secrets or HTTP bodies
-      - Required only when a workload cannot fetch tokens itself (legacy HTTP-only,
+      - Required when a workload cannot fetch tokens itself (legacy HTTP clients with
         - no ability to set Authorization headers)
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.external_sidecar.enabled
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.external_sidecar

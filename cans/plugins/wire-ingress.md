@@ -4,7 +4,7 @@
     - Owner crate: crates/kelir-plugins/plugin-wire-ingress
     - name() = "wire-ingress"
     - Tier 2 governance and protocol proxy (wire-ingress)
-    - Depends on (wire-ingress): kelir-interface only (binds to native Wire Plane)
+    - Depends on (wire-ingress): kelir-interface (binds to native Wire Plane)
     - Exposes: IngressRoutingService
     - VirtIO attachment (wire-ingress): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (wire-ingress): see: 08-lifecycle.md#Lifecycle-vetoes
@@ -13,7 +13,7 @@
   - Invariants and policy (wire-ingress)
     - Connection parking on suspend: see: artifacts/examples/serverless-webhook.ts
     - Holds inbound client TCP connections without dropped frames during suspend
-      - Suspend preserves inbound parked connections; rollback does not
+      - Suspend preserves inbound parked connections; rollback resets them
       - On rollback: parked connections get TCP RST (post-handshake: 503 close)
       - Post-rollback inbound clients must reconnect
     - Host proxy terminates TCP handshake and buffers up to 64KB initial request data
@@ -25,7 +25,7 @@
       - Frame header: target_port: u16, connection_id: u64, payload_len: u32
       - Guest shim ingress forwarder connects to 127.0.0.1:target_port and splices duplex bytes
     - Zero-downtime webhook and interactive terminal connection continuity
-      - Continuity applies to suspend/resume only
+      - Continuity applies to suspend/resume alone
       - Rollback terminates parked connections; retry is client-side
   - Error and return semantics (wire-ingress)
     - Hook signature (wire-ingress): see: artifacts/code/plugin-trait.rs

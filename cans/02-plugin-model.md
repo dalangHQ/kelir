@@ -3,22 +3,35 @@
     - Foundation: Terminal, Storage, Wire, Checkpoint, and Host are native engine planes
     - Tier 1 base transports and channel adapters
       - plugin-mcp: JSON-RPC MCP console channel adapter
+        - see: plugins/mcp.md
       - plugin-mesh: vsock IPC sovereign federation peer transport
+        - see: plugins/mesh.md
       - Tier 1 plugins depend strictly on kelir-interface only
     - Tier 2 governance and protocol proxies
       - plugin-tool-guard: tool-call governance proxy
+        - see: plugins/tool-guard.md
       - plugin-wire-ingress: inbound wire proxy
+        - see: plugins/wire-ingress.md
       - plugin-vault: unified secret and placeholder governance proxy
+        - see: plugins/vault.md
       - plugin-container: rootless OCI container execution proxy
+        - see: plugins/container.md
       - plugin-replay: deterministic PMU-stepped clock replay proxy
-      - plugin-db-proxy: L7 domain filter, agnostic DB mediation proxy
+        - see: plugins/replay.md
+      - plugin-db-proxy: L7 domain filter, agnostic relational mediation proxy
+        - see: plugins/db-proxy.md
       - plugin-supply-chain: L7 domain filter, package lifecycle guard proxy
+        - see: plugins/supply-chain.md
       - Tier 2 plugins depend on kelir-interface and consume Tier 1 services via ServiceRegistry
     - Tier 3 cross-cutting aggregators
       - plugin-ledger: audit aggregation over Tier 1 and Tier 2 plugins
+        - see: plugins/ledger.md
       - plugin-profile: configuration aggregation over Tier 1 and Tier 2 plugins
+        - see: plugins/profile.md
       - plugin-chaos: fault aggregation over Tier 1 and Tier 2 plugins
+        - see: plugins/chaos.md
       - plugin-transaction: multi-resource 2PC coordination aggregator
+        - see: plugins/transaction.md
       - Tier 3 plugins depend on kelir-interface and consume peer services via ServiceRegistry
     - Dependency invariant: Zero concrete peer imports within the same tier
     - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
@@ -106,7 +119,7 @@
       - Verdict covers decision hooks: Trap (execve), Fs lookup, Host, MCP
         - A Verdict prescribes an outcome: different exec, serve-alternate, deny, abort
       - FilterAction covers in-place byte-transform hooks:
-        - Rings: Fs write, Net outbound, Net inbound, DB pgwire
+        - Rings: Fs write, Net outbound, Net inbound, pgwire
         - A FilterAction mutates the payload in place, then forwards or gates
         - FilterAction = { Forward, Drop{errno,reason}, Suspend{until}, Abort{reason} }
         - No Patch variant: the transformed buffer IS the payload

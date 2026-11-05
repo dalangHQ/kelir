@@ -6,7 +6,7 @@
   - hyper-density
     - Tier 3 aggregator over native lifecycle primitives
     - Interface: suspend/resume density scheduler
-    - Depends: kelir-interface only
+    - Depends: kelir-interface
     - Channels: none (uses lifecycle primitives)
   - cas-snapshot
     - Tier 3 snapshot streaming over portable bundles
@@ -15,8 +15,8 @@
     - Channels: reserved through frozen-table revision; see 11-protocol.md
   - oci-translator
     - Tier 2 policy layer for the containerd shim v2 boundary
-    - Scope: containerd-specific orchestration policy only
-    - Image→EROFS translation is NOT owned by this plugin
+    - Scope: containerd-specific orchestration policy
+    - Image→EROFS translation lives in kelir-pack
       - Translation is the core kelir-pack primitive
         - see: 12-adapters.md#Ingestion-matrix
     - Depends: kelir-interface, containerd shim v2, kelir-pack

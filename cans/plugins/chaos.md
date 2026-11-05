@@ -4,7 +4,7 @@
     - Owner crate: crates/kelir-plugins/plugin-chaos
     - name() = "chaos"
     - Tier 3 cross-cutting aggregator (chaos)
-    - Depends on (chaos): kelir-interface only (injects faults into native planes)
+    - Depends on (chaos): kelir-interface (injects faults into native planes)
     - Exposes: FaultInjectionService
     - VirtIO device attachment (chaos): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (chaos): see: 08-lifecycle.md#Lifecycle-vetoes
@@ -34,8 +34,8 @@
     - Hook signature (chaos): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (chaos)
       - Fault injection adheres to monotonic lattice via FilterAction
-      - Synthetic loss uses FilterAction::Drop { errno: None }, chaos-only
+      - Synthetic loss uses FilterAction::Drop { errno: None } for chaos faults
         - Silently discards frame, injects no RST, surfaces no errno
         - see: 07-wire-plane.md#Frame-drop-and-forward-semantics
       - FilterAction::Drop { errno: ECONNREFUSED } retains policy semantics
-        - Chaos uses ECONNREFUSED only for RST injection
+        - Chaos reserves ECONNREFUSED for RST injection

@@ -4,7 +4,7 @@
     - Owner crate: crates/kelir-plugins/plugin-mcp
     - name() = "mcp"
     - Tier 1 base transport adapter (mcp)
-    - Depends on (mcp): kelir-interface only (routes stdio to native Terminal/Storage Planes)
+    - Depends on (mcp): kelir-interface (routes stdio to native Terminal/Storage Planes)
     - Exposes: McpEndpointService
     - VirtIO device attachment (mcp): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mcp): see: 08-lifecycle.md#Lifecycle-vetoes
@@ -34,7 +34,7 @@
     - Stream kind MCP_CONSOLE routes directly to MCP client without PTY conflict
     - MCP contract
       - Transport: JSON-RPC 2.0 over MCP_CONSOLE mux stream
-      - Framing: JSON Lines; one object per \n, no Content-Length
+      - Framing: JSON Lines; one object for each \n, no Content-Length
       - Max frame: 64 KB; larger split via FLAG_CONTINUATION
   - Error and return semantics (mcp)
     - Hook signature (mcp): see: artifacts/code/plugin-trait.rs

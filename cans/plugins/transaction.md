@@ -21,10 +21,10 @@
         - and issues SQL COMMIT across active proxy connections
       - on_post_commit(false) discards the broker upper file and tombstones,
         - issues SQL ROLLBACK, and releases advisory locks
-      - Prevents desynchronization between host database state and guest workspace diffs
+      - Prevents desynchronization between host state and guest workspace diffs
     - Spatial blast radius scoping
       - Scopes filesystem mutations to declared path subtrees; undeclared writes fail closed
-      - Enforces database query boundaries to declared schemas via pgwire frame filter
+      - Enforces query boundaries to declared schemas via pgwire frame filter
       - Restricts advisory lock acquisition to declared physical host inodes
     - Temporal savepoints
       - Injects transparent SQL SAVEPOINT markers into active pgwire connections
@@ -35,7 +35,6 @@
       - PTY disclosure and event bus notifications buffer until successful post-commit
     - Strict deadline
       - Uncommitted transactions exceeding timeout_ms abort automatically
-      - see: artifacts/examples/fixtures/kelir.yaml#plugins.transaction.two_phase_commit.timeout_ms
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.transaction.two_phase_commit
     - Two-phase commit demonstration: see: artifacts/examples/db-backed-runtime.py
   - Error and return semantics (transaction)

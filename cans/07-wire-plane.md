@@ -56,10 +56,12 @@
       - Buffer mutations already applied in place
     - FilterAction::Suspend = yield frame to host for async policy
     - FilterAction::Drop { errno: ECONNREFUSED } on L4 TCP = inject TCP RST
+      - Fault injection: see: plugins/chaos.md
       - or ICMP Port Unreachable into guest ingress ring
     - FilterAction::Drop { errno: EACCES } on L7 HTTP = synthesize 403 JSON receipt
     - FilterAction::Drop { errno: None } discards packet without host response
     - Guest observes ECONNREFUSED in <1ms
+      - Connection-failure observation: see: plugins/mesh.md
     - Agent corrects action without orchestration timeout
   - DNS policy filter
     - Intercepts all UDP/TCP port 53 traffic crossing the userspace ingress ring

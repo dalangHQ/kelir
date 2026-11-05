@@ -4,7 +4,7 @@
     - Owner crate: crates/kelir-plugins/plugin-replay
     - name() = "replay"
     - Tier 2 governance and protocol proxy (replay)
-    - Depends on (replay): kelir-interface only
+    - Depends on (replay): kelir-interface
     - Exposes: ReplayService
     - VirtIO device attachment (replay): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (replay): see: 08-lifecycle.md#Lifecycle-vetoes
@@ -14,14 +14,14 @@
     - Stepped instruction replay: see: artifacts/examples/replay.rs
     - Cycle-exact instruction clock stepping
       - Decouples guest paravirtual clock from host physical TSC
-      - Arms host PMU counters as a metric-only drive for clock stepping
+      - Arms host PMU counters as a metrics drive for clock stepping
       - Advances guest KVM_SET_CLOCK / CNTVOFF_EL2 on retired-instruction windows
-      - PMU values drive local stepping only; never appear in receipts
+      - PMU values drive local stepping; never appear in receipts
       - Eliminates host scheduling jitter and timer interrupt variance across runs
       - Replay mode requires network isolation for determinism
         - Deterministic replay cannot include live external network peers
         - Replay profiles declare network: off; wire plane drops all egress
-        - I/O determinism draws from seeded inputs, not from live sockets
+        - I/O determinism draws from seeded inputs alone
     - Replay stepping (replay)
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.replay.step_window_instructions
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.replay.deterministic_rng_seed
