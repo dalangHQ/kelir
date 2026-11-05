@@ -192,6 +192,7 @@
       - Reusable workflow sketch: see: artifacts/config/plugin-ci-reusable.yml
       - Attestation flow sketch: see: [6]
     - External repos run local contract audit via `kelir-plugin-cli check`
+    - Standalone plugin repo layout: see: 02-plugin-model.md#External-plugins
   - Plugin registry
     - First-class plugin catalog is compiled in; external index poller is opt-in
     - Downstream state shape when enabled: see: [6]

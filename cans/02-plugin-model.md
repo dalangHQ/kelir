@@ -344,7 +344,27 @@
         - (one plugin each), and kelir-integration (dev-depends on all)
       - Tiered dependency edges: gated by plugin-audit
       - Audit gate detail: see: 15-operations.md#Per-plugin-CI
-    - External plugins: same contract; no adaptation
+    - External plugins
+      - Same contract; no adaptation
+      - Standalone repo layout (hermetic; required for external plugins)
+        - Cargo.toml: Rust crate root, depends on kelir-interface only
+        - src/lib.rs: plugin logic, zero unsafe, zero panic
+        - tests/test_contract.rs: unit and integration via kelir-plugin-testkit
+        - tests/fixtures/: fixtures specific to this plugin
+        - bindings/ts/: @kelir/plugin-<name> (NAPI-RS) with parity tests
+        - bindings/py/: kelir-plugin-<name> (PyO3) with parity tests
+        - examples/<name>-basic.{rs,ts,py}: runnable demonstration in each SDK
+        - vectors/vectors.json: pinned parity truth for kelir-plugin-cli vectors
+        - .kelir/manifest.json: generated via kelir-plugin-cli manifest, never hand-written
+        - .kelir/attestation.json: signed via kelir-plugin-cli attest
+      - A standalone plugin carries its own examples, never an in-tree composite
+      - Its hooks and verdicts must be exercised by its own examples and vectors
+      - In-tree first-class plugins keep shared composite examples by design
+        - Coverage is per-plugin, not per-example; see: #Coverage-invariant
+      - Enforcement: reusable workflow jobs audit, vectors, attest
+        - audit runs kelir-plugin-cli check; vectors runs parity run; attest signs
+        - Missing vectors.json or a divergent vector fails the vectors job
+        - see: 15-operations.md#External-repository-CI
   - Plugin testkit
     - Crate layout: see: 15-operations.md#Project-structure
     - Boundary contract

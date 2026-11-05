@@ -2,6 +2,8 @@
 # Consumed by external plugin repos:
 #   uses: <kelir-repo>/.github/workflows/plugin-ci-reusable.yml@main
 #   with: { plugin: plugin-chaos }
+# Standalone repo layout required by this workflow:
+#   see: cans/02-plugin-model.md#External-plugins
 # Emits: signed attestation.json (commit SHA, tested core range, per-language
 # results, stable + canary channel outcomes). Canon repo consumes this via
 # registry-poll; never reads plugin source.
