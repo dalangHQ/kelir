@@ -20,6 +20,12 @@
       - Guest helper binds Unix Domain Socket at /run/kelir/db.sock on demand
       - Forwards client connections over DB_SQLITE mux stream
       - Host SqlProxyService receives stream and delegates queries to host database file
+    - PostgreSQL upstream (db-proxy)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.upstream
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.max_rewrites_per_conn
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.schema_rewrites
+    - SQLite host path (db-proxy)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.sqlite.host_path
     - Verdict execution: engine Verdict (Pass | Patch | Drop)
       - see: 02-plugin-model.md#Unified-verdict
     - Database proxying

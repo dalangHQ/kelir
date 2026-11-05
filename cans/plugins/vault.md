@@ -22,6 +22,12 @@
       - Audience is the destination host pattern (e.g. api.openai.com)
       - Token is a signed opaque bearer; host keyring never exposed raw
       - No in-process TLS MITM; no host-side CA; no HTTP body rewriting
+    - Metadata service (vault)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service.zeroize_on_drop
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service.fail_closed
+    - Credential descriptors (vault)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.credentials
     - Scope confinement and audience locking
       - Token requests cannot widen pre-declared builder MountScope permissions
       - In-guest workload cannot synthesize credential requests for new audiences
@@ -48,6 +54,8 @@
       - Supervisor memory never sees plaintext secrets or HTTP bodies
       - Required only when a workload cannot fetch tokens itself (legacy HTTP-only,
         - no ability to set Authorization headers)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.external_sidecar.enabled
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.external_sidecar
     - Memory isolation and zeroization
       - Host keyring memory pinned with mlock(2); excluded from swap
       - Issued token buffers zeroized on drop; TTL expiry revokes host-side

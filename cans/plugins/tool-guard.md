@@ -24,7 +24,8 @@
       - Host approval binds strictly to canonical arguments and payload hash
       - Model-controlled flags or parameters cannot bypass approval gates
       - In-guest instructions cannot clear host-tracked taint flags
-    - Immutable schema locking      - Intercepts initial "tools/list" advertisement at on_vm_ready
+    - Immutable schema locking
+      - Intercepts initial "tools/list" advertisement at on_vm_ready
       - Computes BLAKE3 hash over all tool schemas, signatures, and descriptions
       - Locks the catalog: dynamic schema mutation or description injection
         - post-boot halts with ESecurityViolation

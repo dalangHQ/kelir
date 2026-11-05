@@ -13,6 +13,10 @@
     - Routes point-to-point peer streams via vsock listener services
     - Injects and validates mTLS framing across hypervisor boundaries
     - Propagates call-hop counters across routines
+    - SPIFFE identity (mesh)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.mesh.spiffe_identity.trust_domain
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.mesh.spiffe_identity.workload_prefix
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.mesh.listeners
     - Traceparent continuity: 14-observability.md#Metrics-pipeline
   - Error and return semantics (mesh)
     - Hook signature (mesh): see: artifacts/code/plugin-trait.rs

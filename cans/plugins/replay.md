@@ -22,6 +22,9 @@
         - Deterministic replay cannot include live external network peers
         - Replay profiles declare network: off; wire plane drops all egress
         - I/O determinism draws from seeded inputs, not from live sockets
+    - Replay stepping (replay)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.replay.step_window_instructions
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.replay.deterministic_rng_seed
     - Kernel clocksource lockdown
       - Injects kernel boot parameters: clocksource=kvm-clock tsc=reliable nohpet
       - Intercepts clock_gettime and gettimeofday syscall traps to enforce monotonic progression

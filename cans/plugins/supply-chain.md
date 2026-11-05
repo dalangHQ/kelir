@@ -15,7 +15,9 @@
         - Against verified JIT engine catalog (Node, Bun, V8)
       - Verified JIT runtimes receive dynamic one-time MMU allocation token over vsock
       - Unverified binaries attempting PROT_EXEC or memfd memory allocation halt with EWXVIOLATION
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.supply_chain.wx_jit.allowed_jit_binaries
     - Monitors package manager process trees
+    - see: artifacts/examples/fixtures/kelir.yaml#plugins.supply_chain.package_guard.managers
     - Inspects binary_path and argv on TrapEvent for package managers (npm, pip)
     - Blocks execution of lifecycle scripts in dependency directories
     - Entropy analysis

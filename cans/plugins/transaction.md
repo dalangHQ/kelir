@@ -34,6 +34,8 @@
       - PTY disclosure and event bus notifications buffer until successful post-commit
     - Strict deadline
       - Uncommitted transactions exceeding timeout_ms abort automatically
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.transaction.two_phase_commit.timeout_ms
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.transaction.two_phase_commit
   - Error and return semantics (transaction)
     - Hook signature (transaction): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (transaction)

@@ -67,6 +67,7 @@
     - see: artifacts/code/plugin-trait.rs
     - Assembly-time tree flattens into contiguous C-speed dispatch array
     - Declarative profile hydration maps schema sections to child plugins
+    - Profile root schema: see: plugins/profile.md
     - Composite expansion enforces monotonic limits across budget fields
     - Invariant: nested depth incurs zero runtime call-stack overhead
     - Deduplication merges identical name() nodes; deepest config wins

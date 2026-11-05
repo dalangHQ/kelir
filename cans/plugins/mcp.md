@@ -28,7 +28,8 @@
         - No PTY wrap; no ANSI escape noise
         - Interactive terminal attach (break-glass) still uses PTY / Port 0
       - read_file → delegates to native Storage Plane broker reader
-      - write_file → delegates to native Storage Plane broker writer    - Composes with plugin-chaos, plugin-ledger, and native Terminal/Wire planes
+      - write_file → delegates to native Storage Plane broker writer
+    - Composes with plugin-chaos, plugin-ledger, and native Terminal/Wire planes
     - Composes with plugin-tool-guard: tool-guard sits upstream on MCP_CONSOLE
     - Stream kind MCP_CONSOLE routes directly to MCP client without PTY conflict
     - MCP contract

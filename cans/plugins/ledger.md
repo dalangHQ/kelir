@@ -62,6 +62,17 @@
         - Export failures are logged locally and retried by the OTLP client
         - Export failure never blocks the pipeline
         - Export buffer bounded; excess samples dropped with a metric
+    - Receipts (ledger)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.receipts.include_dirty_bytes
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.receipts.include_binary_blake3
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.receipts.include_syscall_count
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.receipts.include_wall_clock_ns
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.receipts.include_phase_timings
+      - Receipt fields: see: artifacts/code/execution-receipt.rs
+    - OTLP defaults (ledger)
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.otel.endpoint
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.otel.service_name
+      - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.otel
   - Error and return semantics (ledger)
     - Hook signature (ledger): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (ledger)

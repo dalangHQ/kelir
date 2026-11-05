@@ -1,0 +1,624 @@
+# ==============================================================================
+# KELIR CANONICAL SPECIFICATION PROFILE: kelir.yaml
+# PART 1/4: ROOT INVARIANTS, VMM DRIVER ENGINE & SESSION COMPUTE
+# ==============================================================================
+version: 1
+
+# ------------------------------------------------------------------------------
+# 1. CORE ARCHITECTURAL INVARIANTS (Compilation & Admissibility Gates)
+# ------------------------------------------------------------------------------
+invariants:
+  # Enforces default-zero physical allocation. Unmentioned planes materialize zero
+  # host resources and drop all corresponding guest frames at the ring boundary.
+  default_zero_capability: true
+
+  # Rejects decorative or non-enforceable configuration keys during AOT parsing.
+  # Every declared attribute must bind directly to an MMU register, BPF filter,
+  # virtqueue doorbell, or POSIX errno.
+  physicality_check: strict
+
+  # Lattice inheritance law: Effective = min(Base, Overlay).
+  # Overlays and environment forks can strictly tighten limits; attempts to widen
+  # ceilings fail validation at boot with ESecurityViolation.
+  inheritance_lattice: monotonic
+
+  # Strict memory isolation policy: forbids unsafe memory traversal and ambient host leaks.
+  memory_safety: forbid_unsafe
+
+# ------------------------------------------------------------------------------
+# 2. VMM DRIVER ENGINE (Host Hypervisor Interface & Hardware Enclaves)
+# ------------------------------------------------------------------------------
+driver:
+  # Virtualization backend: auto | rustvmm | hvf | openvmm | avf | bwrap | proot
+  # 'auto' selects native bare-metal KVM (Linux), HVF (macOS), or WHP (Windows).
+  backend: auto
+
+  # Hardware virtualization requirement. If true, missing KVM/HVF/AVF halts launch
+  # immediately with E_NOHARDWAREVMM. Silent fallback to emulation is forbidden.
+  require_hardware_vmm: true
+
+  # Emulated unprivileged fallbacks (bwrap/proot) must be explicitly opted into.
+  allow_emulated_fallback: false
+
+  # Asserts physical host integrity lockfile (/etc/kelir/hw.lock) before vCPU init.
+  verify_hw_lockfile: true
+
+  # Strict W^X memory execution boundary enforced at the MMU layer.
+  # Strict: Hard panic and instant trap drop on anonymous executable mappings.
+  # PermissiveAudit: Logs dynamic PROT_EXEC to ledger and allows continuation.
+  wx_enforcement: Strict
+
+  # Foreign language FFI execution gate (NAPI / PyO3 trampoline isolation).
+  ffi_boundary:
+    worker_threads: 2
+    max_ops_per_second: 10000
+    queue_capacity: 4096
+    max_buffer_bytes: 65536
+
+# ------------------------------------------------------------------------------
+# 3. SESSION COMPUTE PHYSICALITY (vCPU, Memory, Topology & Kernel Anatomy)
+# ------------------------------------------------------------------------------
+session:
+  # MicroVM identification and lifecycle lease model.
+  id: "ses_swe_bench_primary"
+  topology: local                     # local | hub | spoke_thin | spoke_fat | spoke_ephemeral
+
+  # Compute allocations.
+  compute:
+    vcpus: 4                          # Online vCPUs allocated at boot
+    max_vcpus: 8                      # Elastic scalability ceiling via session.vm.set_vcpus()
+    memory_mb: 4096                   # Physical guest RAM allocation ceiling
+    page_size_kb: 4                   # Guest MMU leaf mapping (4 on Linux/x86, 16 on Apple Silicon)
+
+  # Dynamic memory reclamation (virtio-balloon).
+  balloon:
+    enabled: true
+    initial_mb: 2048                  # Baseline active footprint post-boot
+    pressure_reclaim: true            # Host memory pressure shrinks ceiling automatically
+    reclaim_strategy: madvise_dontneed # Drops host RSS to zero without guest swap file
+
+  # Deterministic hardware clock & execution invariants.
+  clock:
+    tsc_locked: true                  # Enforces invariant TSC Leaf 0x1 deadline across CPUs
+    pinned_clocksource: "kvm-clock"   # Boot args: clocksource=kvm-clock tsc=reliable nohpet
+    deterministic_clock: false        # Set true only for cycle-exact PMU stepped replay
+    preemption_grace_ms: 100          # SIGTERM host window before SIGKILL
+
+  # Hardware-enforced watchdog timer (virtio-wdt).
+  watchdog:
+    enabled: true
+    timeout_seconds: 300              # Watchdog trigger threshold on guest kernel lockup
+    action: reboot                    # reboot | terminate
+    heartbeat_cadence_seconds: 5      # Shim pulse interval across Control 0x0000
+
+  # Hardware Paravirtualized Devices (VirtIO Complex Core).
+  devices:
+    virtio_rng:
+      enabled: true                   # Mandatory host entropy passthrough; cannot be removed
+      source: "/dev/urandom"          # Replaced by seeded ChaCha20 stream under replay mode
+    virtio_shm:
+      enabled: true                   # Zero-copy host memfd mapped to guest physical memory
+      regions:
+        - tag: "shared-workspace"
+          size_bytes: 33554432        # 32 MB doorbell-coordinated SPSC ring buffer
+
+  # Guest Linux Kernel & Rootfs Ingestion.
+  artifacts:
+    kernel_path: "./fixtures/vmlinux-6.6-kelir"
+    rootfs_erofs_path: "./fixtures/rootfs-swebench.erofs"
+    kernel_boot_params:
+      - "kptr_restrict=2"
+      - "dmesg_restrict=1"
+      - "panic_on_oops=1"
+      - "slab_nomerge"
+      - "pti=on"
+      - "slub_debug=FZP"
+      - "quiet"
+
+  # Guest Micro-Init Execution Envelope (kelir-shim PID 1, <50KB musl binary).
+  shim:
+    max_exec_slots: 4096              # Concurrent exec allocations before MSG_EXEC_REJECT(ENOMEM)
+    hide_pid: 2                       # Remounts /proc with hidepid=2 to conceal peer processes
+    anti_toctou_cgroups: true         # Freezes task group via cgroup v2 during syscall traps
+
+# ==============================================================================
+# KELIR CANONICAL SPECIFICATION PROFILE: kelir.yaml
+# PART 2/4: STORAGE & WIRE ENGINE PLANES
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 4. STORAGE PLANE (Host CoW Broker, VirtIO-FS, Virtual Inodes & Quotas)
+# ------------------------------------------------------------------------------
+storage:
+  # Host directory mounted as the immutable base layer via VirtIO-FS.
+  workspace_root: "/workspace/repo"
+
+  # Host workspace encapsulation invariant.
+  # Locked: Workspace directory chmod 000 on host SSD; only hypervisor fd has access.
+  # Passthrough: Normal host permissions retained.
+  encapsulation: Locked
+
+  # VirtIO-FS Host Copy-on-Write (CoW) Broker (Zero in-guest OverlayFS).
+  cow_broker:
+    enabled: true
+    sparse_upper: true                # Writes land in a sparse host file, avoiding guest OOM
+    tombstone_tracking: true          # Deletions tracked as explicit broker tombstones (no whiteouts)
+    rollback_purge: true              # Purges cache via FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED)
+    dir_merge_cache: true             # Caches merged lower+upper directory entries host-side
+
+  # Two-phase atomic commit reconciler (session.storage.reconcile()).
+  reconciler:
+    atomic_leaf_commit: true          # Per-entry temp+rename with platform-native swap
+    traversal_guard: strict_openat2   # Enforces openat2(RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS)
+    strip_privileges: true            # Strips S_ISUID and S_ISGID unconditionally on all writes
+    lock_precheck: true               # Probes host flock before rename
+    busy_retry_backoff_ms: 2000       # Fallback to in-place write with backoff on EBUSY/EPERM
+
+  # Storage Quotas (Enforced synchronously at FUSE mknod/create/write).
+  quotas:
+    max_bytes: 10737418240            # 10 GiB aggregate upper file quota (fails ENOSPC on breach)
+    max_inodes: 500000                # 500k inode count ceiling (fails ENOSPC on breach)
+    zero_crawl_statfs: true           # statfs() calculates free space in O(1) against broker delta
+
+  # Ephemeral Scratch Block Device (virtio-blk).
+  ephemeral_scratch:
+    enabled: true
+    mount_points: ["/tmp", "/var/cache", "/var/tmp"]
+    size_mb: 2048                     # Auto-discarded at teardown without host reconciliation
+
+  # POSIX UID/GID Idmapping.
+  idmap:
+    guest_uid: 0                      # Workload running as guest root
+    guest_gid: 0
+    host_uid: 1000                    # Remapped dynamically to host geteuid() without sudo
+    host_gid: 1000
+
+  # Shared Host Read-Only Package Caches (virtio-fs cold acceleration).
+  shared_caches:
+    - host_path: "~/.npm"
+      guest_mount: "/root/.npm"
+      read_only: true
+    - host_path: "~/.cache/pip"
+      guest_mount: "/root/.cache/pip"
+      read_only: true
+    - host_path: "~/.cargo/registry"
+      guest_mount: "/usr/local/cargo/registry"
+      read_only: true
+
+  # Synthetic Inodes (In-memory virtual files, physically absent on host disk).
+  synthetic_files:
+    - path: "/workspace/repo/.env.local"
+      mode: 0o400                     # Read-only; mode 0o400 strictly enforced
+      content: "NODE_ENV=test\nDATABASE_URL=postgres://app:vault@127.0.0.1:5432/db\n"
+    - path: "/workspace/repo/.gitconfig"
+      mode: 0o400
+      content: "[user]\n\tname = Kelir Agent\n\temail = agent@kelir.local\n"
+
+  # In-Flight Read Masking (Sliding-window token redactor over FUSE read buffers).
+  mask_read:
+    engine: FastRegex                 # FastRegex | StreamingAutomata
+    carryover_bytes: 31               # Window overlap to catch split tokens across 64KB reads
+    rules:
+      - glob: "**/*.env*"
+        patterns:
+          - match: 'sk_live_[A-Za-z0-9]{24}'
+            replacement: "[REDACTED_STRIPE_SECRET]"
+          - match: 'AKIA[0-9A-Z]{16}'
+            replacement: "[REDACTED_AWS_KEY]"
+
+  # Cross-VM Concurrency Lock Broker.
+  lock_broker:
+    enabled: true                     # Intercepts FUSE SETLK/SETLKW and delegates to host flock
+    scope_globs: ["**/Cargo.lock", "**/package-lock.json"]
+    non_blocking: true                # Conflicting writer receives EWOULDBLOCK, preventing vCPU hang
+
+# ------------------------------------------------------------------------------
+# 5. WIRE PLANE (virtio-net, Userspace smoltcp, DNS Gateway & L4 Routing)
+# ------------------------------------------------------------------------------
+wire:
+  # Stack initialization: embedded userspace smoltcp stack in host memory.
+  # Zero TAP devices, zero CAP_NET_ADMIN, zero host iptables mutations.
+  userspace_netstack: true
+
+  # Default-zero network admission posture.
+  # Dropped frames emit ICMP Port Unreachable or TCP RST into guest ingress ring.
+  default_egress: drop
+  allow_ipv6: false                   # IPv6 dropped unconditionally at L3 ingress ring
+  allow_raw_sockets: false            # Raw and ICMP sockets denied at virtio-net layer
+
+  # Pre-Policy Link-Local Quarantine.
+  quarantine:
+    drop_link_local: true             # Drops 169.254.0.0/16 and fe80::/10 pre-policy
+    cloud_metadata_block: true        # Drops AWS/GCP/Azure IMDS addresses
+    imds_exception: "169.254.169.254" # Rerouted host-side to Vault vsock service
+
+  # Synthetic DNS Policy Gateway (192.168.127.1:53).
+  dns:
+    synthetic_gateway: "192.168.127.1:53"
+    track_host_resolver: true         # Watch /etc/resolv.conf (Linux) or SCDynamicStore (macOS)
+    edns0_downgrade: true             # Strips DO bit and clears AD bit to stop DNSSEC aborts
+    socks5h_synthetic_pool: "198.18.0.0/15" # Maps remote domain dials to synthetic CIDR
+
+    # Destination allowlists (wildcard domains matching egress rules).
+    # Non-matching queries fail immediately with synthetic NXDOMAIN.
+    allowlist:
+      - "api.stripe.com"
+      - "github.com"
+      - "api.github.com"
+      - "*.internal.net"
+
+  # Transparent L4 Stream Routing & Diversion (Carrier is L4-only by default).
+  # TLS passes through byte-for-byte; no supervisor MITM or host CA injection.
+  l4_diversion:
+    # Upstream corporate proxy chaining.
+    upstream_dial:
+      env_lookup: true                # Reads HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY
+      dial_timeout_ms: 5000
+
+    # L4 TCP socket proxy mapping.
+    proxies:
+      - listen_port: 5432
+        destination: "pg.internal.net:5432"
+        inject_mtls:
+          cert_path: "vault://tls/client.crt"
+          key_path: "vault://tls/client.key"
+
+    # UDP Full Cone NAT Slab Governor.
+    udp_nat:
+      enabled: true
+      max_entries: 1024               # Hard ceiling on mapped guest UDP source ports
+      idle_timeout_seconds: 30        # Evicts idle sockets, preventing fd exhaustion
+
+  # Inbound Connection Parking (Scale-to-Zero Webhooks & Terminal Continuity).
+  connection_parking:
+    enabled: true
+    listen_port: 8443
+    max_buffered_bytes: 65536         # Buffers initial TCP handshake & request payload
+    idle_timeout_ms: 30000
+    wake_on_packet: true              # Wakes suspended microVM upon frame arrival
+    rollback_policy: reset            # Sockets closed with TCP RST on rollback (never restored)
+
+  # Host Port Forwarding (Port publishing without host firewall alterations).
+  port_forwards:
+    - guest_port: 3000
+      host_port: 8080                 # Set 0 for ephemeral; fails launch if occupied
+      reuse_port: true                # SO_REUSEADDR | SO_REUSEPORT
+      so_linger_zero: true            # Eliminates TIME_WAIT socket exhaustion across test runs
+
+# ==============================================================================
+# KELIR CANONICAL SPECIFICATION PROFILE: kelir.yaml
+# PART 3/4: TERMINAL, CHECKPOINT & HOST ENGINE PLANES
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 6. TERMINAL PLANE (virtio-console, PTY Discipline, TokenShield & Stream Replay)
+# ------------------------------------------------------------------------------
+terminal:
+  # Terminal bus allocation: Port 0 is reserved for interactive break-glass console.
+  # Programmatic agent tooling routes over Stream Mux 0x0001, Stream Kind EXEC (0x0001).
+  pty:
+    cols: 120
+    rows: 40
+    line_discipline: raw_vt100        # CS8, CREAD, B38400, CLOCAL via openpty()
+    alloc_pty_default: false          # FLAG_ALLOC_PTY: true allocates private PTY per exec
+
+  # Stream Engine & Parser Architecture.
+  # StreamingAutomata: Deterministic state-machine scanning (zero full-buffer buffering).
+  # StatelessRegex: Fallback regex engine.
+  stream_engine: StreamingAutomata
+
+  # Terminal Output Sanitizer (Executed in strict pipeline order).
+  sanitizer:
+    # Step 1: ANSI Control Sequence Stripping.
+    drop_osc52: true                  # Strips OSC 52 clipboard hijacking sequences (ESC ] 52)
+    strip_title: true                 # Strips OSC 0/1/2 terminal title injection attacks
+
+    # Step 2: TokenShield Context Overflow Guard (Clamps scrollback grid safely).
+    token_shield:
+      enabled: true
+      max_bytes_total: 131072         # 128 KiB total output budget per command
+      max_lines_total: 500            # 500 line hard limit
+      clamp_strategy: head_and_tail   # Preserves initial output + trailing error traces
+      notice: "\n⚠️ [SHIELD]: Output clamped to protect model context window.\n"
+
+    # Step 3: Interactive Prompt Auto-Responder (Matches against shadow stripped text).
+    prompts:
+      - pattern: "(?i)overwrite production schema\\? \\[y/N\\]"
+        timeout_seconds: 3.0
+        verify_foreground: true       # Verifies issuing process has active foreground pgid
+        action: "y\n"
+      - pattern: "(?i)do you want to continue\\? \\[Y/n\\]"
+        timeout_seconds: 2.0
+        verify_foreground: true
+        action: "Y\n"
+
+  # Durable Stream Replay & Inspection Log.
+  replay_log:
+    enabled: true
+    storage_path: "sessions/{id}/logs" # Flat binary chunk files + monotonic index.bin
+    cursor_bits: 64                   # 64-bit monotonic cursor surviving restarts/reconnects
+    bypass_sqlite_wal: true           # Streaming I/O bypasses catalog DB to maintain throughput
+
+  # Headless Screen Matrix Framebuffer.
+  wireframe_grid:
+    track_screen_matrix: true         # Maintains embedded VT100 state machine
+    export_on_trap: true              # Attaches terminal screenshot hash to ExecutionReceipt
+
+# ------------------------------------------------------------------------------
+# 7. CHECKPOINT PLANE (Step Verification Loop, CoW Diffs, Hardware Rollback)
+# ------------------------------------------------------------------------------
+checkpoint:
+  # Boundary Detection for Autonomous Agent Steps.
+  boundaries:
+    sentinel_path: "/dev/kelir-gate"  # Traps access to virtual sentinel FUSE inodes
+    detect_pty_quiescence: true       # Triggers boundary when foreground process exits & PTY idles
+    pre_checkpoint_dentry_trim: true  # Issues active FUSE forget pass to evict unreferenced dentries
+
+  # Autonomous Step Verification Loop (StepSlot Engine).
+  step_evaluation:
+    enabled: true
+    default_action: proceed           # proceed (Commit) | rollback_and_halt (Rollback)
+
+    # Post-Execution Physical Receipt Invariants.
+    # Evaluated at trapped process exit against hardware ExecutionReceipt.
+    assertions:
+      assert_binary_blake3: true      # Validates executing binary matches pre-exec identity
+      max_egress_bytes_hermetic: 0    # Forbids network egress during test verification steps
+      require_non_zero_delta: true    # Rejects commits that mutated zero dirty bytes (no-ops)
+      max_duration_seconds: 120       # Watchdog step deadline before forced rollback
+
+  # Hardware-Assisted Rollback Engine (driver.rollback()).
+  rollback:
+    revert_memory_ms_target: 8        # Resets physical RAM & vCPU registers in <8ms
+    drop_broker_delta: true           # FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on upper
+    terminate_host_sockets: true      # Closes all session TCP sockets; guest sees ECONNRESET
+    revoke_vault_tokens: true         # Invalidates all ephemeral credentials issued to guest
+
+  # Delta Chain & Branching Topology (WorkingDelta DAG).
+  lineage:
+    unbounded_depth: true             # Supports arbitrary branching depths for tree search
+    lazy_cow_sharing: true            # Child forks share parent memory pages via copy-on-write
+    compaction_on_export: true        # Flattens stacked deltas in single-pass copy on export
+
+  # Memory Suspend & Resume (Zero-CPU Standby).
+  suspend:
+    page_dump_codec: lz4_flex         # High-throughput page compression via io_uring direct I/O
+    target_host_rss_mb: 0             # Flushes dirty pages to local NVMe; drops host RSS to 0 MB
+    latency_target_ms: 50             # Restores registers and snaps virtual clock in <50ms
+
+# ------------------------------------------------------------------------------
+# 8. HOST PLANE (Host Kernel Enclaves, eBPF/LSM Hooks, Cgroups & Janitor)
+# ------------------------------------------------------------------------------
+host:
+  # Host Process Reaping & Parent Watchdog.
+  # Prevents orphan vCPUs from spinning on host if parent runtime crashes.
+  reaper:
+    linux_death_signal: SIGKILL       # prctl(PR_SET_PDEATHSIG, SIGKILL)
+    darwin_kqueue_event: NOTE_EXIT    # kqueue EVFILT_PROC death watcher
+    windows_job_object: true          # Assigns KILL_ON_JOB_CLOSE flag
+
+  # Cgroup v2 Host Resource & Memory Pressure Integration.
+  cgroups:
+    path: "/sys/fs/cgroup/kelir"
+    monitor_pressure: true            # Listens on cgroup v2 memory.pressure via epoll
+    auto_inflate_balloon: true        # Host memory squeeze inflates virtio-balloon to release RAM
+
+  # Host Security Modules & System LSM Integration.
+  security:
+    attach_lsm_bpf: true              # Hooks eBPF LSM execve killswitch on host workspace paths
+    quarantine_host_keyring: true     # Prevents microVM worker from inheriting caller keyring
+    max_interposer_latency_us: 2      # Strict 2µs evaluation ceiling on native host checks
+
+  # Catalog Database & Session Lease Janitor (~/.kelir/catalog.db).
+  catalog:
+    db_path: "~/.kelir/catalog.db"
+    wal_mode: true
+    busy_timeout_ms: 5000
+    lease_ttl_seconds: 30             # Detached session runner lease heartbeat refresh interval
+    prune_unreferenced_cas_blobs: true
+
+# ==============================================================================
+# KELIR CANONICAL SPECIFICATION PROFILE: kelir.yaml
+# PART 4/4: FIRST-CLASS PLUGIN CATALOG & HARDWARE ATTESTATION SUITE
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 9. PLUGINS CATALOG (13 Segregated Domain Extensions)
+# ------------------------------------------------------------------------------
+plugins:
+  # ─── PLUGIN: LEDGER (Tier 3 Cross-Cutting Audit & Compliance Aggregator) ───
+  ledger:
+    enabled: true
+    # Merkle Write-Ahead Log (WAL) — Tamper-evident on-disk audit trail.
+    # Completely isolated on host; survives guest rollback and fork branches.
+    merkle_wal:
+      enabled: true                   # Opt-in compliance ledger (default OTLP-only)
+      store_path: ".kelir/audit.merkle.db"
+      hashing_standard: "RFC_6962_BLAKE3"
+      sign_leaves: true               # Signs leaves via host session Ed25519 private key
+      fsync_on_reap: true             # Guarantees durability before process trap returns
+
+    # OpenTelemetry (OTLP) Native Wire Exporter.
+    otel:
+      endpoint: "http://localhost:4318/v1/traces"
+      service_name: "kelir-agent-swe"
+      propagate_w3c_traceparent: true
+      export_diagnostic_pmu_gauges: true # retired_instructions, cache misses (gauges only)
+
+    # Per-Process Hardware Execution Receipts.
+    receipts:
+      include_dirty_bytes: true       # Physical guest memory modification counter
+      include_binary_blake3: true     # BLAKE3 of executing binary resolved at trap time
+      include_syscall_count: true
+      include_wall_clock_ns: true
+      include_phase_timings: true     # Nano-tracer breakdown (trap_ingress, ffi_hop, policy)
+
+  # ─── PLUGIN: VAULT (Tier 2 Secret Governance & Out-of-Band Broker) ──────────
+  vault:
+    enabled: true
+    # Out-of-band credential issuance via vsock 169.254.169.254 metadata service.
+    # Secrets pinned in host memory with mlock(2); never enter guest physical RAM.
+    metadata_service:
+      listen_vsock_port: 80
+      token_ttl_seconds: 60           # Ephemeral token expiration window (max 900s)
+      zeroize_on_drop: true           # Memory buffers explicitly scrubbed post-dispatch
+      fail_closed: true               # Unregistered credential request raises ENODATA
+
+    # Declarative credential descriptors. Workloads query by placeholder handle.
+    credentials:
+      - name: "STRIPE_SECRET"
+        placeholder: "vault://stripe_key"
+        type: bearer_token            # bearer_token | sigv4 | mtls_bundle
+        audience: "api.stripe.com"    # Locked strictly to target destination
+      - name: "AWS_DEPLOY_ROLE"
+        placeholder: "vault://aws_role"
+        type: sigv4
+        audience: "*.amazonaws.com"
+
+    # Optional external egress sidecar (Legacy workloads unable to set headers).
+    # Runs in a separate process outside supervisor memory.
+    external_sidecar:
+      enabled: false
+      kind: envoy                     # envoy | squid
+      divert_l4_marked: true
+
+  # ─── PLUGIN: TOOL-GUARD (Tier 2 MCP Tool-Call Governance & Schema Locking) ──
+  tool_guard:
+    enabled: true
+    # Total tool-call interposition on Stream Kind MCP_CONSOLE (0x0012).
+    mcp_interposition:
+      pin_schemas: true               # BLAKE3 hash over all tool schemas locked at boot
+      halt_on_schema_drift: true      # Dynamic runtime tool injection triggers ESecurityViolation
+      max_invocations_per_trace: 50   # Anti-recursion governor (rejects ECYCLICREWRITE)
+
+    # Context Taint Tracking & Out-of-Band Human Approvals.
+    taint_governance:
+      untrusted_ingress_taints: true  # Ingestion of raw external data marks trace tainted
+      mutating_verbs_require_approval: true # Tainted mutating tool returns Verdict::Suspend
+
+    # Argument Sanitization & Secret Scrubbing.
+    sanitization:
+      scan_arguments: true            # Aho-Corasick regex scanning over tool parameter strings
+      scrub_output_secrets: true      # Redacts host credentials before model context ingestion
+
+  # ─── PLUGIN: DB-PROXY (Tier 2 Agnostic Relational Database Proxy) ───────────
+  db_proxy:
+    enabled: true
+    # PostgreSQL L7 pgwire protocol parser (Port 5432).
+    postgres:
+      listen_port: 5432
+      upstream: "pg.internal.net:5432"
+      max_rewrites_per_conn: 3        # Exceeding 3 query rewrites aborts ECYCLICREWRITE
+      schema_rewrites:
+        - from: "public."
+          to: "tenant_sandbox."
+
+    # SQLite Host Database Bridge over vsock (Stream Kind DB_SQLITE 0x0011).
+    sqlite:
+      guest_socket: "/run/kelir/db.sock"
+      host_path: "/var/lib/app/data.sqlite"
+
+  # ─── PLUGIN: CHAOS (Tier 3 Cross-Cutting Fault Injection Engine) ────────────
+  chaos:
+    enabled: false                    # Activate during verification & resilience suites
+    network:
+      - target: "api.stripe.com"
+        direction: both               # outbound | inbound | both
+        latency_ms: 150
+        jitter_ms: 30
+        drop_rate: 0.02               # 2% synthetic packet loss via FilterAction::Drop{None}
+        inject_rst: false
+    storage:
+      - target_glob: "/workspace/build/cache/*"
+        simulate_errno: "ENOSPC"      # Injects synthetic disk full condition
+        probability: 0.05
+
+  # ─── PLUGIN: SUPPLY-CHAIN (Tier 2 Package Manager & W^X Enforcement) ───────
+  supply_chain:
+    enabled: true
+    # Hardware MMU W^X Violation Trap.
+    wx_jit:
+      trap_memfd: true                # Traps seccomp-unotify memfd_create calls
+      trap_mprotect_exec: true        # Halts unapproved PROT_EXEC with EWXVIOLATION
+      allowed_jit_binaries:           # Pre-approved engines validated via disk BLAKE3
+        - "/usr/bin/node"
+        - "/usr/bin/python3.12"
+
+    # Dependency Tree Lifecycle Script Quarantine.
+    package_guard:
+      deny_lifecycle_scripts: true    # Denies preinstall/postinstall inside node_modules/
+      managers: ["npm", "pip", "cargo"]
+      shannon_entropy_threshold: 5.2  # Flags obfuscated or base64-packed command strings
+
+  # ─── PLUGIN: MESH (Tier 1 Sovereign Cross-VM Peer Transport) ────────────────
+  mesh:
+    enabled: false
+    spiffe_identity:
+      trust_domain: "kelir.local"
+      workload_prefix: "agents/worker"
+    mtls_peer_validation: true        # Rejects unauthorized spoke handshakes with ECONNREFUSED
+    propagate_traceparent: true       # Continuous distributed tracing across hypervisor hops
+    listeners:
+      - port: 7001
+        service: "swarm-coordination"
+
+  # ─── PLUGIN: REPLAY (Tier 2 Deterministic Instruction Clock Stepping) ───────
+  replay:
+    enabled: false                    # Active strictly for cycle-exact replay debugging
+    step_window_instructions: 1000000 # PMU counter step interval
+    pinned_clocksource: "kvm-clock"
+    network_isolation: true           # Replay enforces network: off unconditionally
+    deterministic_rng_seed: 0x5EED    # virtio-rng substituted with seeded ChaCha20 stream
+
+  # ─── PLUGIN: CONTAINER (Tier 2 Rootless OCI Execution Proxy) ────────────────
+  container:
+    enabled: false
+    runtime: "crun"                   # Rootless container runner inside MicroVM
+    isolate_var_lib_containers: true  # Mounts ephemeral scratch device for image layers
+    pin_subuid_ranges: true           # Intercepts newuidmap to unprivileged guest range
+
+  # ─── PLUGIN: TRANSACTION (Tier 3 Multi-Resource 2PC Coordinator) ───────────
+  transaction:
+    enabled: true
+    # Coordinates atomic commit across Host CoW Broker, DB Proxy, and Locks.
+    two_phase_commit:
+      auto_rollback_on_taint: true    # Un-rollbackable L7 egress taints active transaction
+      timeout_ms: 30000               # Uncommitted transactions abort with ETIMEDOUT
+      flush_fuse_before_commit: true  # Pauses vCPUs & drains pending FUSE writes host-side
+
+  # ─── PLUGIN: PROFILE (Tier 3 Configuration Aggregator & Patch Engine) ───────
+  profile:
+    enabled: true
+    rfc6902_dynamic_patching: true    # Permits runtime JSON patches over PROFILE_SYNC (0x0010)
+    enforce_monotonic_patches: true   # Dynamic patches attempting to widen denials fail
+    cdi_device_mapping:               # Container Device Interface direct GPU passthrough
+      enabled: false
+      spec_dir: "/etc/cdi"
+
+  # ─── PLUGIN: MCP (Tier 1 Base Model Context Protocol Console Adapter) ───────
+  mcp:
+    enabled: true
+    transport: "stream_mux"           # JSON-RPC 2.0 bridged via Stream Kind MCP_CONSOLE (0x0012)
+    socket_path: "/run/kelir/mcp.sock"
+    framing: "json_lines"             # Strict newline-delimited JSON (no Content-Length header)
+    max_frame_bytes: 65536
+
+# ------------------------------------------------------------------------------
+# 10. HARDWARE ATTESTATION & FACT EMISSION
+# ------------------------------------------------------------------------------
+attestation:
+  # Class 1 Hardware-Anchored Facts (Zero Guest Trust).
+  hardware_facts:
+    measure_vmlinux_blake3: true      # Measured directly from host RAM before vCPU start
+    measure_rootfs_erofs_blake3: true # Immutable CAS block device BLAKE3 measurement
+    inject_session_token: true        # Injected via paravirtual configuration device
+
+  # Class 2 Paravirtual Interception Evidence.
+  interception_facts:
+    record_fuse_buffers: true
+    record_virtqueue_frames: true
+    log_exit_kinds: true              # Normal | Signal | KernelPanic | HypervisorFault
+
+  # Strict Degradation Barrier.
+  # Higher classification claims never degrade to lower unverified guest signals.
+  enforce_strict_provenance: true
