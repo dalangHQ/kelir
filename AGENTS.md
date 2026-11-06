@@ -20,7 +20,6 @@ If this file and another doc disagree on *how* work is done, this file wins. If 
 - `cans/artifacts/` owns content: field layouts, schemas, wire formats, pipeline diagrams, code signatures. Artifacts are terminal — no outbound refs.
 - A node that re-lists artifact content is a defect. It must point at the artifact with a bare `see:` ref.
 - Where `work-order.md` contradicts `cans/` + `cans/artifacts/`, follow the artifacts and record the decision in the commit message.
-- `repomix.config.json` includes `cans/` only: the global system view is the spec, not the code. Read it before restructuring anything.
 
 ## 2. L1 / L2 / L3
 
@@ -76,10 +75,10 @@ Numbered as supplied, renumbered where the source duplicated 3. On conflict, the
 
 1. **Backward-compatibility slaves.** No bloated adapters to preserve deprecated patterns. Break cleanly to the new standard.
 2. **Tautology.** Green tests, broken system. A test that cannot fail is not a test.
-3. **Context blindness.** Breaking global architecture, async workflows, or system constraints; evading the repomix system view.
+3. **Context blindness.** Breaking global architecture, async workflows, or system constraints.
 4. **Band-aids.** Patching symptoms instead of refactoring root structural rot.
 5. **Bloat (DRY violations).** Reinventing utilities, interfaces, or logic that already exists in the global system.
-6. **Hallucination.** Inventing libraries, fabricating methods, speculative logic never mentioned in docs/artifacts. Every dependency and method must exist in the tree or be introduced by the patch itself.
+6. **Hallucination.** Inventing libraries, fabricating methods, speculative logic never mentioned in `cans/` or `cans/artifacts/`. Every dependency and method must exist in the tree or be introduced by the patch itself.
 7. **Happy-path bias.** Zero defensive programming. Every failure mode the spec names gets a path.
 8. **Goodhart's law.** Never optimize for green by hardcoding expected outputs or hallucinating mocks. A test that passes without the implementation working is a defect, not a pass.
 
