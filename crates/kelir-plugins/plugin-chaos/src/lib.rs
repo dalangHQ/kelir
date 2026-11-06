@@ -30,6 +30,8 @@ impl Default for ChaosPlugin {
 }
 
 impl KelirPlugin for ChaosPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "chaos"
     }

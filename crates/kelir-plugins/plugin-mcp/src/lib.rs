@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_mcp_mapping.rs + examples/mcp-stdio.rs per cans/artifacts/config/project-structure.txt.
+use async_trait::async_trait;
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{
     ConsoleInterposer, HandlerCtx, KelirPlugin, LifecycleParticipant, MountScope, TrapInterposer,
@@ -31,6 +32,8 @@ impl Default for McpPlugin {
 }
 
 impl KelirPlugin for McpPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "mcp"
     }
@@ -40,14 +43,16 @@ impl KelirPlugin for McpPlugin {
 }
 
 impl LifecycleParticipant for McpPlugin {}
+#[async_trait]
 impl ConsoleInterposer for McpPlugin {
-    fn on_console_output(&self, _port: u32, _buf: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_output(&self, _port: u32, _buf: &mut Vec<u8>) -> Result<(), PluginError> {
         // TODO: Bridge raw stdio frames to MCP JSON-RPC
         Ok(())
     }
 }
+#[async_trait]
 impl TrapInterposer for McpPlugin {
-    fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+    async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
         Ok(Verdict::Pass)
     }
 }

@@ -28,6 +28,8 @@ impl Default for VaultPlugin {
 }
 
 impl KelirPlugin for VaultPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "vault"
     }

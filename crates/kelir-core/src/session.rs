@@ -1,15 +1,13 @@
 // see: cans/08-lifecycle.md#Session-and-context-handles
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
-use std::sync::{Arc, Mutex};
-
 pub struct Session {
     pub terminal: crate::planes::terminal::TerminalPlane,
     pub storage: crate::planes::storage::StoragePlane,
     pub wire: crate::planes::wire::WirePlane,
     pub checkpoint: crate::planes::checkpoint::CheckpointPlane,
     pub host: crate::planes::host::HostPlane,
-    driver: Arc<Mutex<Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>>>,
-    bus: Arc<Mutex<crate::bus::BusDispatcher>>,
+    driver: Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>,
+    bus: crate::bus::BusDispatcher,
     incarnation_id: [u8; 16],
 }
 
@@ -17,14 +15,14 @@ impl Session {
     pub fn boot(
         config: kelir_interface::driver::VmConfig,
     ) -> Result<Self, kelir_interface::errors::PluginError> {
-        // TODO: load native driver, connect bus transports, build planes, mint incarnation_id.
+        // TODO (L3): load native driver, connect the control and mux SPSC rings, build planes, mint incarnation_id.
         let _ = config;
         Err(kelir_interface::errors::PluginError::Halt(
-            "TODO: Session::boot".into(),
+            "TODO (L3): Session::boot".into(),
         ))
     }
 
-    // TODO: from_parts is superseded once boot() binds real drivers
+    // TODO (L2): from_parts is superseded once boot() binds real drivers and rings.
     #[allow(clippy::too_many_arguments)]
     pub fn from_parts(
         terminal: crate::planes::terminal::TerminalPlane,
@@ -32,8 +30,8 @@ impl Session {
         wire: crate::planes::wire::WirePlane,
         checkpoint: crate::planes::checkpoint::CheckpointPlane,
         host: crate::planes::host::HostPlane,
-        driver: Arc<Mutex<Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>>>,
-        bus: Arc<Mutex<crate::bus::BusDispatcher>>,
+        driver: Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>,
+        bus: crate::bus::BusDispatcher,
         incarnation_id: [u8; 16],
     ) -> Self {
         Self {
@@ -49,45 +47,57 @@ impl Session {
     }
 
     pub fn fork(&self) -> Result<Self, kelir_interface::errors::PluginError> {
-        // TODO: fork driver, clone planes, mint a new incarnation_id for the child.
+        // TODO (L3): fork driver, clone planes, mint a new incarnation_id for the child.
         let _ = (&self.driver, &self.bus, &self.incarnation_id);
         Err(kelir_interface::errors::PluginError::Halt(
-            "TODO: Session::fork".into(),
+            "TODO (L3): Session::fork".into(),
         ))
     }
 
     pub fn rollback(&mut self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: roll driver back to the active step slot and drop the storage upper file.
-        Ok(())
+        // TODO (L3): roll driver back to the active checkpoint branch head and drop the storage upper file.
+        Err(kelir_interface::errors::PluginError::Halt(
+            "TODO (L3): Session::rollback".into(),
+        ))
     }
 
     pub fn suspend(
         &mut self,
         reason: kelir_interface::driver::SuspendReason,
     ) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: suspend the driver to disk per reason (L2: map SuspendReason to driver suspend).
+        // TODO (L3): suspend the driver to disk per reason.
         let _ = reason;
-        Ok(())
+        Err(kelir_interface::errors::PluginError::Halt(
+            "TODO (L3): Session::suspend".into(),
+        ))
     }
 
     pub fn resume(&mut self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: resume the driver from the suspended image.
-        Ok(())
+        // TODO (L3): resume the driver from the suspended image.
+        Err(kelir_interface::errors::PluginError::Halt(
+            "TODO (L3): Session::resume".into(),
+        ))
     }
 
     pub fn drain(&mut self, timeout_ms: u64) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: drain in-flight frames until quiescent or timeout_ms elapses.
+        // TODO (L3): drain in-flight frames until quiescent or timeout_ms elapses.
         let _ = timeout_ms;
-        Ok(())
+        Err(kelir_interface::errors::PluginError::Halt(
+            "TODO (L3): Session::drain".into(),
+        ))
     }
 
     pub fn stop(&mut self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: graceful driver terminate after drain.
-        Ok(())
+        // TODO (L3): graceful driver terminate after drain.
+        Err(kelir_interface::errors::PluginError::Halt(
+            "TODO (L3): Session::stop".into(),
+        ))
     }
 
     pub fn kill(&mut self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: hard driver terminate without drain.
-        Ok(())
+        // TODO (L3): hard driver terminate without drain.
+        Err(kelir_interface::errors::PluginError::Halt(
+            "TODO (L3): Session::kill".into(),
+        ))
     }
 }

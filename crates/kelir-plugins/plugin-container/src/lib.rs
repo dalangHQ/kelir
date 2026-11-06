@@ -1,6 +1,7 @@
 // see: cans/plugins/container.md
 #![forbid(unsafe_code)]
 
+use async_trait::async_trait;
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope};
 
@@ -22,6 +23,8 @@ impl Default for ContainerPlugin {
 }
 
 impl KelirPlugin for ContainerPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "container"
     }
@@ -30,8 +33,9 @@ impl KelirPlugin for ContainerPlugin {
     }
 }
 
+#[async_trait]
 impl LifecycleParticipant for ContainerPlugin {
-    fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
         // TODO: Configure rootless Podman/crun cgroup v2 hierarchy
         Ok(())
     }

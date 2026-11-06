@@ -16,119 +16,158 @@ import type {
   WireHandle,
 } from "./context.js";
 
-const zeroSnapshot = (name: string): SnapshotDescriptor => ({
-  id: `stub:${name}`,
-  name,
-});
-
-const zeroVm = (): VmHandle => ({
-  checkpoint: async (name: string): Promise<SnapshotDescriptor> =>
-    zeroSnapshot(name),
-  rollback: async (_snapshot: SnapshotDescriptor): Promise<void> => {},
-  fork: async (): Promise<Session> => new Session(),
-  suspend: async (_path: string): Promise<void> => {},
-  resume: async (_path: string): Promise<void> => {},
-  clock: {
-    skew: async (_options: {
+// see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
+export interface NativeVmHandle {
+  checkpoint(name: string): Promise<SnapshotDescriptor>;
+  rollback(snapshot: SnapshotDescriptor): Promise<void>;
+  fork(): Promise<NativeSessionHandle>;
+  suspend(path: string): Promise<void>;
+  resume(path: string): Promise<void>;
+  readonly clock: {
+    skew(options: {
       days?: number;
       hours?: number;
       ms?: number;
-    }): Promise<void> => {},
-  },
-  adjust_balloon: async (_megabytes: number): Promise<void> => {},
-  adjustBalloon: async (_megabytes: number): Promise<void> => {},
-});
+    }): Promise<void>;
+  };
+  adjust_balloon(megabytes: number): Promise<void>;
+  adjustBalloon(megabytes: number): Promise<void>;
+}
+
+// see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
+export interface NativeSessionHandle {
+  readonly driverName: string;
+  readonly bootMs: number;
+  readonly vm: NativeVmHandle;
+  readonly wire: WireHandle;
+  readonly storage: StorageHandle;
+  readonly ledger: LedgerHandle;
+  readonly vsock: VsockHandle;
+  readonly step: StepHandle;
+  readonly policy: PolicyHandle;
+  spawn(
+    binary: string,
+    argv: string[],
+    options?: SpawnOptions,
+  ): Promise<SpawnResult>;
+  execInGuest(
+    binary: string,
+    argv: string[],
+    options?: SpawnOptions,
+  ): Promise<SpawnResult>;
+  suspend(path: string): Promise<void>;
+  resume(path: string): Promise<void>;
+  rollback(): Promise<void>;
+  stop(): Promise<void>;
+  terminate(): Promise<void>;
+  console(): Promise<void>;
+  getCausalDeltaFromParent(): Promise<CausalDelta>;
+  handleIngress<Req, Resp>(options: {
+    cwd?: string;
+    handler: (req: Req) => Promise<Resp>;
+  }): AsyncGenerator<Resp, void, unknown>;
+  ctx<T>(): T;
+}
 
 export class Session {
   // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
-  readonly driverName = "auto";
-  readonly bootMs = 0;
-  readonly vm: VmHandle = zeroVm();
-  readonly wire: WireHandle = {
-    forwardPort: async (_guestPort: number, _hostPort: number): Promise<void> => {},
-  };
-  readonly storage: StorageHandle = {
-    reconcile: async (_options: {
-      cwd: string;
-      atomicStaging?: boolean;
-      fsync?: boolean;
-    }): Promise<{ filesChanged: number; tombstonesResolved: number }> => ({
-      filesChanged: 0,
-      tombstonesResolved: 0,
-    }),
-  };
-  readonly ledger: LedgerHandle = {
-    flush: async (): Promise<void> => {},
-    countDenials: async (_ppid: number): Promise<number> => 0,
-    finalize: async (_options: {
-      includeDelta?: CausalDelta | null;
-      includeMerkleRoot?: boolean;
-    }): Promise<{ merkleRoot: string; signedJws: string }> => ({
-      merkleRoot: "",
-      signedJws: "",
-    }),
-    blake3OfProducingProcess: async (_path: string): Promise<string> => "",
-  };
-  readonly vsock: VsockHandle = {
-    channel: async (_kind: number) => ({
-      write: async (_data: Uint8Array): Promise<void> => {},
-      read: async (): Promise<Uint8Array> => new Uint8Array(0),
-    }),
-  };
-  readonly step: StepHandle = {
-    last: (): SnapshotDescriptor => zeroSnapshot("last"),
-  };
-  readonly policy: PolicyHandle = {
-    violations: 0,
-    currentBranch: "",
-    isProtected: (): boolean => false,
-    recordViolation: (): void => {},
-  };
+  readonly driverName: string;
+  readonly bootMs: number;
+  readonly vm: VmHandle;
+  readonly wire: WireHandle;
+  readonly storage: StorageHandle;
+  readonly ledger: LedgerHandle;
+  readonly vsock: VsockHandle;
+  readonly step: StepHandle;
+  readonly policy: PolicyHandle;
+  private readonly native: NativeSessionHandle;
+
+  constructor(native: NativeSessionHandle) {
+    // TODO (L3): only the NAPI addon constructs Session, from a booted native handle.
+    this.native = native;
+    this.driverName = native.driverName;
+    this.bootMs = native.bootMs;
+    this.wire = native.wire;
+    this.storage = native.storage;
+    this.ledger = native.ledger;
+    this.vsock = native.vsock;
+    this.step = native.step;
+    this.policy = native.policy;
+    const vm = native.vm;
+    this.vm = {
+      checkpoint: (name: string): Promise<SnapshotDescriptor> =>
+        vm.checkpoint(name),
+      rollback: (snapshot: SnapshotDescriptor): Promise<void> =>
+        vm.rollback(snapshot),
+      fork: async (): Promise<Session> => new Session(await vm.fork()),
+      suspend: (path: string): Promise<void> => vm.suspend(path),
+      resume: (path: string): Promise<void> => vm.resume(path),
+      clock: {
+        skew: (options: {
+          days?: number;
+          hours?: number;
+          ms?: number;
+        }): Promise<void> => vm.clock.skew(options),
+      },
+      adjust_balloon: (megabytes: number): Promise<void> =>
+        vm.adjust_balloon(megabytes),
+      adjustBalloon: (megabytes: number): Promise<void> =>
+        vm.adjustBalloon(megabytes),
+    };
+  }
 
   async spawn(
-    _binary: string,
-    _argv: string[],
-    _options?: SpawnOptions,
+    binary: string,
+    argv: string[],
+    options?: SpawnOptions,
   ): Promise<SpawnResult> {
-    return { exitCode: 0 };
+    return this.native.spawn(binary, argv, options);
   }
 
   async execInGuest(
-    _binary: string,
-    _argv: string[],
-    _options?: SpawnOptions,
+    binary: string,
+    argv: string[],
+    options?: SpawnOptions,
   ): Promise<SpawnResult> {
-    return { exitCode: 0 };
+    return this.native.execInGuest(binary, argv, options);
   }
 
-  async suspend(_path: string): Promise<void> {}
+  async suspend(path: string): Promise<void> {
+    return this.native.suspend(path);
+  }
 
-  async resume(_path: string): Promise<void> {}
+  async resume(path: string): Promise<void> {
+    return this.native.resume(path);
+  }
 
   async rollback(): Promise<void> {
-    // TODO: Call native session rollback
+    return this.native.rollback();
   }
 
   async stop(): Promise<void> {
-    // TODO: Call native session stop
+    return this.native.stop();
   }
 
-  async terminate(): Promise<void> {}
+  async terminate(): Promise<void> {
+    return this.native.terminate();
+  }
 
-  async console(): Promise<void> {}
+  async console(): Promise<void> {
+    return this.native.console();
+  }
 
   async getCausalDeltaFromParent(): Promise<CausalDelta> {
-    return {};
+    return this.native.getCausalDeltaFromParent();
   }
 
-  async *handleIngress<Req, Resp>(_options: {
+  async *handleIngress<Req, Resp>(options: {
     cwd?: string;
     handler: (req: Req) => Promise<Resp>;
   }): AsyncGenerator<Resp, void, unknown> {
-    return;
+    yield* this.native.handleIngress(options);
   }
 
   ctx<T>(): T {
-    return undefined as unknown as T;
+    return this.native.ctx<T>();
   }
 }

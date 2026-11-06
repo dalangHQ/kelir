@@ -1,6 +1,7 @@
 # see: cans/03-sdk-architecture.md#Python-SDK
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Self
@@ -12,6 +13,15 @@ if TYPE_CHECKING:
 class EConfig(Exception):
     pass
 
+
+def _load_native_bridge() -> Any:
+    # TODO (L3): bind the precompiled PyO3 _kelir extension once its boot entry point lands.
+    try:
+        return importlib.import_module("_kelir")
+    except ImportError as exc:
+        raise EConfig(
+            "kelir native PyO3 extension (_kelir) is missing: install the precompiled wheel (L3)"
+        ) from exc
 
 
 class Approval:
@@ -179,34 +189,34 @@ class FinalReceipt:
 
 class LedgerService:
     async def flush(self) -> None:
-        # TODO: flush host ledger
-        pass
+        # TODO (L3): flush host ledger via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger flush (L3)")
 
     async def count_denials(self, ppid: int) -> int:
-        # TODO: count denials for ppid in host ledger
-        return 0
+        # TODO (L3): count denials for ppid in host ledger via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger count_denials (L3)")
 
     async def finalize(
         self,
         include_delta: CausalDelta | None = None,
         include_merkle_root: bool = False,
     ) -> FinalReceipt:
-        # TODO: finalize signed Merkle receipt
-        return FinalReceipt()
+        # TODO (L3): finalize signed Merkle receipt via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger finalize (L3)")
 
     async def get_causal_delta_from_parent(self) -> CausalDelta:
-        # TODO: fetch causal delta from parent session
-        return CausalDelta()
+        # TODO (L3): fetch causal delta from parent session via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger get_causal_delta_from_parent (L3)")
 
     async def blake3_of_producing_process(self, path: Any) -> str:
-        # TODO: resolve producing-process digest via ledger
-        return ""
+        # TODO (L3): resolve producing-process digest via ledger and the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger blake3_of_producing_process (L3)")
 
 
 class ContainerService:
     async def ingest_image(self, tarball: str) -> str:
-        # TODO: ingest pre-cached OCI tarball, return image ref
-        return tarball
+        # TODO (L3): ingest pre-cached OCI tarball via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: container ingest_image (L3)")
 
 
 class DbService:
@@ -225,8 +235,8 @@ class TransactionScope:
         self.name = name
 
     async def __aenter__(self) -> TransactionScope:
-        # TODO: begin 2PC scope
-        return self
+        # TODO (L3): begin 2PC scope via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction scope begin (L3)")
 
     async def __aexit__(
         self,
@@ -238,12 +248,12 @@ class TransactionScope:
         pass
 
     async def savepoint(self) -> str:
-        # TODO: create savepoint, return its handle
-        return ""
+        # TODO (L3): create savepoint via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction savepoint (L3)")
 
     async def rollback_to_savepoint(self, savepoint: str) -> None:
-        # TODO: roll back to savepoint
-        pass
+        # TODO (L3): roll back to savepoint via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction rollback_to_savepoint (L3)")
 
 
 class TransactionService:
@@ -270,8 +280,8 @@ class Caps:
 
 class ClockHandle:
     async def skew(self, delta: Any) -> None:
-        # TODO: skew guest clock
-        pass
+        # TODO (L3): skew guest clock via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm clock skew (L3)")
 
 
 class VmHandle:
@@ -280,34 +290,34 @@ class VmHandle:
         self.clock = ClockHandle()
 
     async def checkpoint(self, name: str) -> SnapshotDescriptor:
-        # TODO: checkpoint VM state
-        return SnapshotDescriptor(name=name)
+        # TODO (L3): checkpoint VM state via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm checkpoint (L3)")
 
     async def rollback(self, snapshot: SnapshotDescriptor) -> None:
-        # TODO: roll back VM state to snapshot
-        pass
+        # TODO (L3): roll back VM state to snapshot via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm rollback (L3)")
 
     async def fork(self) -> Session:
-        # TODO: CoW-fork the microVM
-        return Session()
+        # TODO (L3): CoW-fork the microVM via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm fork (L3)")
 
     async def suspend(self, path: str) -> None:
-        # TODO: suspend VM to snapshot file
-        pass
+        # TODO (L3): suspend VM to snapshot file via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm suspend (L3)")
 
     async def import_snapshot(self, data: bytes) -> None:
-        # TODO: hydrate registers/dirty pages from snapshot bytes
-        pass
+        # TODO (L3): hydrate registers/dirty pages from snapshot bytes via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm import_snapshot (L3)")
 
     async def export_snapshot(self) -> bytes:
-        # TODO: export snapshot bytes
-        return b""
+        # TODO (L3): export snapshot bytes via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm export_snapshot (L3)")
 
 
 class WireHandle:
     async def forward_port(self, guest_port: int, host_port: int) -> None:
-        # TODO: forward guest port to host port
-        pass
+        # TODO (L3): forward guest port to host port via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: wire forward_port (L3)")
 
 
 class StorageHandle:
@@ -317,42 +327,42 @@ class StorageHandle:
         atomic_staging: bool = False,
         fsync: bool = False,
     ) -> ReconcileStats:
-        # TODO: broker commit of the workspace
-        return ReconcileStats()
+        # TODO (L3): broker commit of the workspace via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: storage reconcile (L3)")
 
 
 class VsockChannel:
     async def write(self, data: bytes) -> None:
-        # TODO: write frame to vsock channel
-        pass
+        # TODO (L3): write frame to vsock channel via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vsock write (L3)")
 
     async def read(self) -> bytes:
-        # TODO: read frame from vsock channel
-        return b""
+        # TODO (L3): read frame from vsock channel via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vsock read (L3)")
 
 
 class VsockHandle:
     async def channel(self, kind: int) -> VsockChannel:
-        # TODO: open duplex byte stream on vsock kind
-        return VsockChannel()
+        # TODO (L3): open duplex byte stream on vsock kind via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vsock channel (L3)")
 
 
 class FsHandle:
     async def warm_cache(self, paths: list[str]) -> None:
-        # TODO: warm shared caches into the guest
-        pass
+        # TODO (L3): warm shared caches into the guest via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: fs warm_cache (L3)")
 
 
 class TerminalHandle:
     def notice(self, text: str) -> None:
-        # TODO: publish TerminalNotice to the event bus
-        pass
+        # TODO (L3): publish TerminalNotice to the event bus via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: terminal notice (L3)")
 
 
 class StepHandle:
     def last(self) -> SnapshotDescriptor:
-        # TODO: return the most recently marked checkpoint
-        return SnapshotDescriptor()
+        # TODO (L3): return the most recently marked checkpoint via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: step last (L3)")
 
 
 
@@ -367,8 +377,8 @@ class HandlerContext:
         self.cap = Caps()
 
     def receipt(self) -> ExecutionReceipt:
-        # TODO: fetch the trap's execution receipt (awaitable: see
-        return ExecutionReceipt()
+        # TODO (L3): fetch the trap's execution receipt via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: trap receipt (L3)")
 
 
 
@@ -390,15 +400,16 @@ class Session:
         self.vsock = VsockHandle()
 
     async def rollback(self) -> None:
-        # TODO: Call native driver rollback via PyO3 handle
-        pass
+        # TODO (L3): call native driver rollback via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session rollback (L3)")
 
     async def stop(self) -> None:
-        pass
+        # TODO (L3): stop the microVM session via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session stop (L3)")
 
     async def terminate(self) -> None:
-        # TODO: terminate the microVM session
-        pass
+        # TODO (L3): terminate the microVM session via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session terminate (L3)")
 
     async def spawn(
         self,
@@ -408,28 +419,28 @@ class Session:
         cwd: str | None = None,
         params: Any = None,
     ) -> SpawnResult:
-        # TODO: spawn binary in the guest (params cross as KELIR_PARAMS)
-        return SpawnResult()
+        # TODO (L3): spawn binary in the guest via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session spawn (L3)")
 
     async def exec_in_guest(self, binary: str, argv: list[str]) -> SpawnResult:
-        # TODO: exec binary in the guest without trap mediation
-        return SpawnResult()
+        # TODO (L3): exec binary in the guest via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session exec_in_guest (L3)")
 
     async def suspend(self, path: str) -> None:
-        # TODO: suspend session to snapshot file
-        pass
+        # TODO (L3): suspend session to snapshot file via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session suspend (L3)")
 
     async def resume(self, path: str) -> None:
-        # TODO: resume session from snapshot file
-        pass
+        # TODO (L3): resume session from snapshot file via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session resume (L3)")
 
     async def console(self) -> None:
-        # TODO: open the PTY console master (break-glass surface)
-        pass
+        # TODO (L3): open the PTY console master via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session console (L3)")
 
     async def get_causal_delta_from_parent(self) -> CausalDelta:
-        # TODO: fetch causal delta from parent session
-        return CausalDelta()
+        # TODO (L3): fetch causal delta from parent session via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session get_causal_delta_from_parent (L3)")
 
 
 
@@ -553,8 +564,9 @@ class KelirBuilder:
         return self
 
     async def boot(self) -> Session:
-        # TODO: Validate Pydantic dependencies and boot via PyO3
-        return Session()
+        # TODO (L3): validate Pydantic dependencies and boot via the PyO3 _kelir bridge.
+        _load_native_bridge()
+        raise EConfig("kelir native PyO3 boot binding is not implemented (L3)")
 
     async def __aenter__(self) -> Session:
         self._session = await self.boot()

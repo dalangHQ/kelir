@@ -2,12 +2,13 @@
 
 use async_trait::async_trait;
 use kelir::{
-    HandlerCtx, KelirBuilder, Session, VmConfig,
+    KelirBuilder, Session, SnapshotDescriptor, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     planes::storage::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
     plugin::{KelirPlugin, PluginError, TrapInterposer, Verdict},
     protocol::TrapEvent,
 };
+use kelir_interface::plugin::HandlerCtx;
 
 const PROTECTED: &[&str] = &["main", "master"];
 
@@ -61,7 +62,7 @@ impl TrapInterposer for GitGatePlugin {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let session: Session = KelirBuilder::new(VmConfig {
+    let mut session: Session = KelirBuilder::new(VmConfig {
         vcpus: 2,
         memory_mb: 1024,
         kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
@@ -103,13 +104,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     .boot()
     .await?;
 
-    let run = session
-        .spawn("git")
-        .args(["push", "--force", "origin", "main"])
-        .cwd("/workspace/repo")
-        .await?;
-    eprintln!("[kelir] git push --force -> exit={}", run.exit_code);
-
-    session.terminate().await?;
+    session.terminal.resize(120, 40)?;
+    let slot = session.checkpoint.create_step(SnapshotDescriptor {
+        id: "git-gate-base".into(),
+        dirty_bytes: 0,
+        created_at_ns: 0,
+        parent_digest: None,
+        guest_clock: None,
+    })?;
+    let node = session.checkpoint.commit_step()?;
+    eprintln!("[kelir] checkpoint slot={slot} node={node}");
+    // TODO (L3): spawn git push --force origin main in the guest and gate it via GitGatePlugin.
+    session.stop()?;
     Ok(())
 }

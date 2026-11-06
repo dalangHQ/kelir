@@ -27,10 +27,50 @@ pub enum LeaseKind {
     Lease,
 }
 
+impl LeaseKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LeaseKind::Ephemeral => "ephemeral",
+            LeaseKind::Lease => "lease",
+        }
+    }
+}
+
+// see: cans/06-storage-catalog.md#Entity-model
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IncarnationId(pub [u8; 16]);
+
+impl IncarnationId {
+    pub fn from_bytes(bytes: [u8; 16]) -> Self {
+        Self(bytes)
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 16] {
+        &self.0
+    }
+}
+
+// see: cans/01-architecture.md#Host-state-root
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LivenessProof {
+    LinuxPidfd { pid: u32 },
+    MacosKqueue { pid: u32 },
+    WindowsJobObject { pid: u32 },
+}
+
+// see: cans/06-storage-catalog.md#Entity-model
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CasLease {
+    pub blob_hash: Vec<u8>,
+    pub holder_pid: i64,
+    pub expires_at_unix: i64,
+}
+
+// see: cans/06-storage-catalog.md#Entity-model
 #[derive(Debug, Clone)]
 pub struct SessionRow {
     pub session_id: [u8; 16],
-    pub incarnation_id: [u8; 16],
+    pub incarnation_id: IncarnationId,
     pub lease_kind: LeaseKind,
     pub expires_at_unix: Option<i64>,
     pub runner_pid: i64,

@@ -4,7 +4,6 @@ use std::task::{Context, Poll};
 
 use kelir_interface::driver::SnapshotDescriptor;
 use kelir_interface::errors::PluginError;
-use kelir_interface::telemetry::CausalDelta;
 
 use crate::planes::storage::{FsReconcileRequest, ReconcileStats};
 
@@ -18,7 +17,7 @@ pub struct ClockHandle;
 
 impl ClockHandle {
     pub async fn skew(&self, _offset: std::time::Duration) -> Result<(), PluginError> {
-        Ok(())
+        Err(PluginError::Halt("TODO (L3): ClockHandle::skew".into()))
     }
 }
 
@@ -30,35 +29,31 @@ pub struct VmHandle {
 impl VmHandle {
     pub async fn checkpoint(
         &self,
-        name: impl Into<String>,
+        _name: impl Into<String>,
     ) -> Result<SnapshotDescriptor, PluginError> {
-        Ok(SnapshotDescriptor {
-            id: name.into(),
-            dirty_bytes: 0,
-            created_at_ns: 0,
-            parent_digest: None,
-            guest_clock: None,
-        })
+        Err(PluginError::Halt("TODO (L3): VmHandle::checkpoint".into()))
     }
 
     pub async fn rollback(&self, _snap: &SnapshotDescriptor) -> Result<(), PluginError> {
-        Ok(())
+        Err(PluginError::Halt("TODO (L3): VmHandle::rollback".into()))
     }
 
-    pub async fn fork(&self) -> Result<Session, PluginError> {
-        Ok(Session::default())
+    pub async fn fork(&self) -> Result<kelir_core::Session, PluginError> {
+        Err(PluginError::Halt("TODO (L3): VmHandle::fork".into()))
     }
 
     pub async fn suspend(&self, _path: &str) -> Result<(), PluginError> {
-        Ok(())
+        Err(PluginError::Halt("TODO (L3): VmHandle::suspend".into()))
     }
 
     pub async fn map_shared_region(
         &self,
         _name: &str,
-        bytes: usize,
+        _bytes: usize,
     ) -> Result<Vec<u8>, PluginError> {
-        Ok(vec![0; bytes])
+        Err(PluginError::Halt(
+            "TODO (L3): VmHandle::map_shared_region".into(),
+        ))
     }
 }
 
@@ -67,7 +62,9 @@ pub struct WireHandle;
 
 impl WireHandle {
     pub async fn forward_port(&self, _guest: u16, _host: u16) -> Result<(), PluginError> {
-        Ok(())
+        Err(PluginError::Halt(
+            "TODO (L3): WireHandle::forward_port".into(),
+        ))
     }
 }
 
@@ -76,10 +73,9 @@ pub struct StorageHandle;
 
 impl StorageHandle {
     pub async fn reconcile(&self, _req: FsReconcileRequest) -> Result<ReconcileStats, PluginError> {
-        Ok(ReconcileStats {
-            files_changed: 0,
-            tombstones_resolved: 0,
-        })
+        Err(PluginError::Halt(
+            "TODO (L3): StorageHandle::reconcile".into(),
+        ))
     }
 }
 
@@ -88,8 +84,7 @@ pub struct VsockHandle;
 
 impl VsockHandle {
     pub async fn channel(&self, _kind: u16) -> Result<VsockChannel, PluginError> {
-        let (stream, _peer) = tokio::io::duplex(65536);
-        Ok(VsockChannel { inner: stream })
+        Err(PluginError::Halt("TODO (L3): VsockHandle::channel".into()))
     }
 }
 
@@ -130,7 +125,7 @@ pub struct FsHandle;
 
 impl FsHandle {
     pub async fn warm_cache(&self, _paths: &[&str]) -> Result<(), PluginError> {
-        Ok(())
+        Err(PluginError::Halt("TODO (L3): FsHandle::warm_cache".into()))
     }
 }
 
@@ -182,62 +177,6 @@ impl Future for SpawnBuilder {
     type Output = Result<ExecResult, PluginError>;
 
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Poll::Ready(Ok(ExecResult { exit_code: 0 }))
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct Session {
-    pub vm: VmHandle,
-    pub wire: WireHandle,
-    pub storage: StorageHandle,
-    pub vsock: VsockHandle,
-}
-
-impl Session {
-    pub fn spawn(&self, _binary: &str) -> SpawnBuilder {
-        SpawnBuilder::default()
-    }
-
-    pub async fn exec_in_guest(
-        &self,
-        _binary: &str,
-        _args: &[&str],
-    ) -> Result<ExecResult, PluginError> {
-        Ok(ExecResult { exit_code: 0 })
-    }
-
-    pub async fn terminate(&self) -> Result<(), PluginError> {
-        Ok(())
-    }
-
-    pub async fn suspend(&self, _path: &str) -> Result<(), PluginError> {
-        Ok(())
-    }
-
-    pub async fn resume(&self, _path: &str) -> Result<(), PluginError> {
-        Ok(())
-    }
-
-    pub fn driver_name(&self) -> &'static str {
-        "stub"
-    }
-
-    pub fn boot_ms(&self) -> u64 {
-        0
-    }
-
-    pub fn ctx<T: Default>(&self) -> T {
-        T::default()
-    }
-
-    pub async fn console(&self) -> Result<(), PluginError> {
-        Ok(())
-    }
-
-    pub async fn get_causal_delta_from_parent(&self) -> Result<CausalDelta, PluginError> {
-        Err(PluginError::Halt(
-            "stub: no causal delta from parent".into(),
-        ))
+        Poll::Ready(Err(PluginError::Halt("TODO (L3): guest exec".into())))
     }
 }

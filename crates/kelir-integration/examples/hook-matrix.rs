@@ -7,9 +7,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use kelir_interface::plugin::HandlerCtx;
 
 use kelir::{
-    HandlerCtx, KelirBuilder, Session, VmConfig,
+    KelirBuilder, Session, SnapshotDescriptor, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     plugin::{
         AnyPlugin, ConsoleInterposer, FilterAction, FsInterposer, HostInterposer, KelirPlugin,
@@ -279,7 +280,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let plugin = HookMatrixPlugin::new();
     let handle = plugin.handle();
 
-    let session: Session = KelirBuilder::new(VmConfig {
+    let mut session: Session = KelirBuilder::new(VmConfig {
         vcpus: 2,
         memory_mb: 2048,
         kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
@@ -306,18 +307,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     .plugin(plugin)
     .boot()
     .await?;
-    eprintln!(
-        "[kelir] driver={} boot={}ms",
-        session.driver_name(),
-        session.boot_ms()
-    );
-
-    let probe = session
-        .spawn("cat")
-        .args([IDENTITY_PATH])
-        .cwd("/workspace")
-        .await?;
-    eprintln!("[kelir] cat identity -> exit={}", probe.exit_code);
+    session.terminal.resize(120, 40)?;
+    eprintln!("[kelir] host pressure={}", session.host.pressure_level());
+    let slot = session.checkpoint.create_step(SnapshotDescriptor {
+        id: "hook-matrix-probe".into(),
+        dirty_bytes: 0,
+        created_at_ns: 0,
+        parent_digest: None,
+        guest_clock: None,
+    })?;
+    let node = session.checkpoint.commit_step()?;
+    eprintln!("[kelir] checkpoint slot={slot} node={node}");
+    // TODO (L3): spawn cat IDENTITY_PATH in the guest and drive the hook matrix over it.
 
     tokio::time::sleep(Duration::from_millis(100)).await;
     eprintln!(
@@ -328,6 +329,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         handle.failures(),
     );
 
-    session.terminate().await?;
+    session.stop()?;
     Ok(())
 }

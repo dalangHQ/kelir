@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_transaction.rs per cans/artifacts/config/project-structure.txt.
+use async_trait::async_trait;
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope};
 
@@ -23,6 +24,8 @@ impl Default for TransactionPlugin {
 }
 
 impl KelirPlugin for TransactionPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "transaction"
     }
@@ -31,12 +34,13 @@ impl KelirPlugin for TransactionPlugin {
     }
 }
 
+#[async_trait]
 impl LifecycleParticipant for TransactionPlugin {
-    fn on_pre_commit(&self) -> Result<(), PluginError> {
+    async fn on_pre_commit(&self) -> Result<(), PluginError> {
         // TODO: Coordinate 2PC pre-commit with db-proxy
         Ok(())
     }
-    fn on_post_commit(&self, _success: bool) -> Result<(), PluginError> {
+    async fn on_post_commit(&self, _success: bool) -> Result<(), PluginError> {
         Ok(())
     }
 }

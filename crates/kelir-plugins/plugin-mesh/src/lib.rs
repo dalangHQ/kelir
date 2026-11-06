@@ -22,6 +22,8 @@ impl Default for MeshPlugin {
 }
 
 impl KelirPlugin for MeshPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "mesh"
     }

@@ -10,10 +10,11 @@ use std::sync::{
 
 use async_trait::async_trait;
 use ciborium::value::Value as CborValue;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use kelir_interface::driver::SuspendReason;
+use kelir_interface::plugin::HandlerCtx;
 
 use kelir::{
-    HandlerCtx, KelirBuilder, Session, VmConfig,
+    KelirBuilder, Session, SnapshotDescriptor, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     handler,
     plugin::{
@@ -133,12 +134,12 @@ impl KelirPlugin for PolicyMatrixPlugin {
 impl LifecycleParticipant for PolicyMatrixPlugin {
     async fn on_vm_init(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
         let ready = Arc::clone(&self.state);
-        ctx.register_veto(
+        let _ = ctx.register_veto(
             VetoEvent::Suspend,
             Box::new(move || ready.ready.load(Ordering::SeqCst)),
         );
         let ready = Arc::clone(&self.state);
-        ctx.register_veto(
+        let _ = ctx.register_veto(
             VetoEvent::ClockSkew,
             Box::new(move || ready.ready.load(Ordering::SeqCst)),
         );
@@ -184,7 +185,8 @@ impl TrapInterposer for PolicyMatrixPlugin {
             }),
 
             "policy-yield" => {
-                let _snap = ctx.vm.checkpoint("policy-yield").await?;
+                // TODO (L3): checkpoint via the session checkpoint plane; interface HandlerCtx carries no vm handle.
+                let _ = ctx;
                 Ok(Verdict::Suspend {
                     until: SuspendUntil::Approval,
                 })
@@ -333,21 +335,11 @@ fn build_runtime() -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sy
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let session: Session = build_runtime()?.boot().await?;
-    eprintln!(
-        "[kelir] driver={} boot={}ms",
-        session.driver_name(),
-        session.boot_ms()
-    );
-
-    let mut channel = session.vsock.channel(0x0013).await?;
-    channel.write_all(b"policy-matrix:ping").await?;
-    let mut reply = vec![0u8; 64];
-    let n = channel.read(&mut reply).await?;
-    eprintln!(
-        "[kelir] vsock channel 0x0013 reply: {}",
-        String::from_utf8_lossy(&reply[..n])
-    );
+    let mut session: Session = build_runtime()?.boot().await?;
+    session.terminal.resize(120, 40)?;
+    eprintln!("[kelir] host pressure={}", session.host.pressure_level());
+    let port = session.wire.forward_port(8080, Some(8080))?;
+    eprintln!("[kelir] wire forward_port -> {port}");
 
     for binary in [
         "policy-allow",
@@ -358,13 +350,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "policy-approval",
         "policy-custom",
     ] {
-        let run = session.spawn(binary).args(["--policy-matrix"]).await?;
-        eprintln!("[kelir] {binary} -> exit={}", run.exit_code);
+        let slot = session.checkpoint.create_step(SnapshotDescriptor {
+            id: format!("policy-matrix-{binary}"),
+            dirty_bytes: 0,
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
+        })?;
+        let node = session.checkpoint.commit_step()?;
+        eprintln!("[kelir] {binary} -> slot={slot} node={node}");
     }
+    // TODO (L3): spawn each policy binary in the guest and drive the policy matrix over it.
+    // TODO (L3): open a vsock channel on kind 0x0013 and echo policy-matrix:ping through it.
 
-    session.suspend("/tmp/policy-matrix.snap").await?;
-    session.resume("/tmp/policy-matrix.snap").await?;
+    session.suspend(SuspendReason::ResourcePressure)?;
+    session.resume()?;
 
-    session.terminate().await?;
+    session.stop()?;
     Ok(())
 }

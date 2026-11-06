@@ -6,7 +6,8 @@ import type { KelirPlugin } from "./plugin.js";
 import type { PostExecAction, LifecycleEvent } from "./verdict.js";
 import type { Verdict } from "./verdict.js";
 import type { TrapDenyEvent } from "./types.js";
-import { Session } from "./session.js";
+import type { Session } from "./session.js";
+import { EConfig } from "./errors.js";
 import { TrapFilter } from "./trap.js";
 
 export interface KelirConfig {
@@ -182,8 +183,20 @@ export class KelirBuilder {
   }
 
   async boot(): Promise<Session> {
-    // TODO: Cross NAPI boundary to NativeKelirBuilder.boot()
-    return new Session();
+    const specifier = "./native/kelir.node";
+    let addon: unknown;
+    try {
+      // TODO (L3): load the precompiled NAPI addon and call NativeKelirBuilder.boot().
+      addon = await import(specifier);
+    } catch {
+      throw new EConfig(
+        "kelir native NAPI addon is missing: install the precompiled @kelir/core native build (L3)",
+      );
+    }
+    void addon;
+    throw new EConfig(
+      "kelir native NAPI addon binding is not implemented (L3)",
+    );
   }
 }
 

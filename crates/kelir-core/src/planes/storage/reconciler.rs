@@ -1,7 +1,9 @@
 // see: cans/05-storage-plane.md#Workspace-commit
 // see: cans/artifacts/code/reconciler.rs
+use super::io::StorageIo;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TraversalGuard {
@@ -34,14 +36,21 @@ pub struct Reconciler {
     broker_dir: PathBuf,
     host_target: PathBuf,
     guard: TraversalGuard,
+    io: Arc<dyn StorageIo>,
 }
 
 impl Reconciler {
-    pub fn new(broker_dir: PathBuf, host_target: PathBuf, guard: TraversalGuard) -> Self {
+    pub fn new(
+        broker_dir: PathBuf,
+        host_target: PathBuf,
+        guard: TraversalGuard,
+        io: Arc<dyn StorageIo>,
+    ) -> Self {
         Self {
             broker_dir,
             host_target,
             guard,
+            io,
         }
     }
 
@@ -68,15 +77,17 @@ impl Reconciler {
         paths: &[PathBuf],
     ) -> Result<StagingGuard, kelir_interface::errors::PluginError> {
         // TODO (L3): copy entries to .tmp.<nonce> staging files owned by StagingGuard.
-        let _ = (paths, &self.broker_dir, &self.host_target, self.guard);
+        let _ = self.io.open_root(&self.host_target)?;
+        let _ = (paths, &self.broker_dir, self.guard);
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Reconciler::stage".into(),
         ))
     }
 
     pub fn commit(&self) -> Result<CommitStats, kelir_interface::errors::PluginError> {
-        // TODO (L3): per-entry temp+rename; openat2 resolution; non-blocking I/O; platform renameat2/flock FFI cannot live here (kelir-core forbids unsafe) — needs an enclave home.
-        let _ = (&self.broker_dir, &self.host_target, self.guard);
+        // TODO (L3): per-entry temp+rename via StorageIo::atomic_rename; Host Inode Broker pre-checks active host flock descriptors.
+        let _ = self.io.open_root(&self.host_target)?;
+        let _ = (&self.broker_dir, self.guard);
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Reconciler::commit".into(),
         ))
@@ -84,7 +95,8 @@ impl Reconciler {
 
     pub fn contain(&self, target: &Path) -> Result<(), kelir_interface::errors::PluginError> {
         // TODO (L3): strict root containment, EXDEV on escape.
-        let _ = (target, &self.host_target, self.guard);
+        let _ = self.io.open_root(&self.host_target)?;
+        let _ = (target, self.guard);
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Reconciler::contain".into(),
         ))
@@ -92,6 +104,7 @@ impl Reconciler {
 
     pub fn reconcile(&self) -> Result<CommitStats, kelir_interface::errors::PluginError> {
         // TODO (L3): detect -> classify -> stage -> commit -> contain; idempotent replay.
+        let _ = self.detect()?;
         let _ = (&self.broker_dir, &self.host_target, self.guard);
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Reconciler::reconcile".into(),

@@ -6,4 +6,5 @@ pub mod driver;
 pub mod errors;
 pub mod plugin;
 pub mod protocol;
+pub mod service_registry;
 pub mod telemetry;

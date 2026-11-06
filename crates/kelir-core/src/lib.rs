@@ -8,6 +8,7 @@ pub mod dispatch;
 pub mod planes;
 pub mod session;
 pub mod trap_gate;
+pub mod uart;
 pub mod vmm;
 
 pub use session::Session;

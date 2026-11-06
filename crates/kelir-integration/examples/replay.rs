@@ -1,14 +1,14 @@
 // see: cans/plugins/replay.md
 
 use kelir::{
-    KelirBuilder, Session, VmConfig,
+    KelirBuilder, Session, SnapshotDescriptor, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     plugins::replay::{ReplayConfig, ReplayPlugin},
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let session: Session = KelirBuilder::new(VmConfig {
+    let mut session: Session = KelirBuilder::new(VmConfig {
         vcpus: 2,
         memory_mb: 1024,
         page_size_kb: 4,
@@ -46,10 +46,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     .await?;
 
     for run in 0..2 {
-        let r = session.spawn("date").args(["+%s.%N"]).await?;
-        eprintln!("[kelir] run {run} -> exit={}", r.exit_code);
+        let slot = session.checkpoint.create_step(SnapshotDescriptor {
+            id: format!("replay-run-{run}"),
+            dirty_bytes: 0,
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
+        })?;
+        let node = session.checkpoint.commit_step()?;
+        eprintln!("[kelir] run {run} -> slot={slot} node={node}");
     }
-
-    session.terminate().await?;
+    // TODO (L3): spawn date +%s.%N in the guest twice and replay both runs deterministically.
+    session.stop()?;
     Ok(())
 }

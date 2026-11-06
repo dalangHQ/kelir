@@ -22,6 +22,8 @@ impl LedgerPlugin {
 }
 
 impl KelirPlugin for LedgerPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "ledger"
     }

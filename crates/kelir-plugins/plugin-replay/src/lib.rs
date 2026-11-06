@@ -26,6 +26,8 @@ impl Default for ReplayPlugin {
 }
 
 impl KelirPlugin for ReplayPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "replay"
     }

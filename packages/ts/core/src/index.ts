@@ -8,17 +8,11 @@ export * from "./schema.js";
 export * from "./verdict.js";
 export * from "./trap.js";
 export * from "./context.js";
+export * from "./errors.js";
 export * from "./session.js";
 export * from "./plugin.js";
 export * from "./builder.js";
 export * from "./plugins.js";
-
-export class EConfig extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "EConfig";
-  }
-}
 
 export interface IntentInput {
   readonly binary: string;

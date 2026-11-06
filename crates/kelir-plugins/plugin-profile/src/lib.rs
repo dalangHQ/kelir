@@ -25,6 +25,8 @@ impl Default for ProfilePlugin {
 }
 
 impl KelirPlugin for ProfilePlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "profile"
     }

@@ -29,6 +29,8 @@ impl Default for DbProxyPlugin {
 }
 
 impl KelirPlugin for DbProxyPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "db-proxy"
     }

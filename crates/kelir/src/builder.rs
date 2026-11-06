@@ -6,12 +6,13 @@ use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{AnyPlugin, MountScope, VetoEvent};
 use kelir_interface::protocol::TrapEvent;
 
+use kelir_core::Session;
+
 use crate::HandlerCtx;
 use crate::planes::storage::LockBrokerConfig;
 use crate::planes::terminal::PtyConfig;
 use crate::planes::wire::WireConfig;
 use crate::plugin::KelirPlugin;
-use crate::session::Session;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PostExecAction {
@@ -73,7 +74,9 @@ impl DriverHandle {
         _timeout: Duration,
         _action: WatchdogAction,
     ) -> Result<(), PluginError> {
-        Ok(())
+        Err(PluginError::Halt(
+            "TODO (L3): DriverHandle::set_watchdog".into(),
+        ))
     }
 }
 
@@ -90,11 +93,15 @@ impl LifecycleMut {
 }
 
 #[derive(Debug, Default)]
-pub struct KelirBuilder;
+pub struct KelirBuilder {
+    config: Option<VmConfig>,
+}
 
 impl KelirBuilder {
-    pub fn new(_config: VmConfig) -> Self {
-        Self
+    pub fn new(config: VmConfig) -> Self {
+        Self {
+            config: Some(config),
+        }
     }
 
     pub fn terminal(self, _config: PtyConfig) -> Self {
@@ -211,6 +218,11 @@ impl KelirBuilder {
     }
 
     pub async fn boot(self) -> Result<Session, PluginError> {
-        Ok(Session::default())
+        match self.config {
+            Some(config) => Session::boot(config),
+            None => Err(PluginError::Halt(
+                "KelirBuilder::boot without VmConfig".into(),
+            )),
+        }
     }
 }

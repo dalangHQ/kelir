@@ -1,11 +1,26 @@
 // see: cans/02-plugin-model.md#Static-dispatch
 // see: cans/02-plugin-model.md#Unified-interposition-pipeline
+use std::sync::Arc;
+
+use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::{
+    ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, MountScope, NetInterposer,
+    PipelineBinder, TrapInterposer,
+};
+use kelir_interface::protocol::{FilterAction, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::service_registry::ServiceRegistry;
+
+use crate::trap_gate::{GateDecision, TrapGateEvaluator};
+
 pub struct PipelineEngine {
-    trap_interceptors: Vec<Box<dyn kelir_interface::plugin::TrapInterposer + Send + Sync>>,
-    fs_interceptors: Vec<Box<dyn kelir_interface::plugin::FsInterposer + Send + Sync>>,
-    net_interceptors: Vec<Box<dyn kelir_interface::plugin::NetInterposer + Send + Sync>>,
-    console_interceptors: Vec<Box<dyn kelir_interface::plugin::ConsoleInterposer + Send + Sync>>,
-    host_interceptors: Vec<Box<dyn kelir_interface::plugin::HostInterposer + Send + Sync>>,
+    trap_interceptors: Vec<Arc<dyn TrapInterposer>>,
+    trap_scopes: Vec<MountScope>,
+    gate: TrapGateEvaluator,
+    fs_interceptors: Vec<Arc<dyn FsInterposer>>,
+    net_interceptors: Vec<Arc<dyn NetInterposer>>,
+    console_interceptors: Vec<Arc<dyn ConsoleInterposer>>,
+    host_interceptors: Vec<Arc<dyn HostInterposer>>,
+    services: ServiceRegistry,
     sealed: bool,
 }
 
@@ -15,54 +30,92 @@ impl Default for PipelineEngine {
     }
 }
 
+impl PipelineBinder for PipelineEngine {
+    fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>) {
+        self.fs_interceptors.push(stage);
+    }
+    fn bind_net(&mut self, stage: Arc<dyn NetInterposer>) {
+        self.net_interceptors.push(stage);
+    }
+    fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>) {
+        self.trap_interceptors.push(stage);
+        self.trap_scopes.push(MountScope::default());
+    }
+    fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>) {
+        self.console_interceptors.push(stage);
+    }
+    fn bind_host(&mut self, stage: Arc<dyn HostInterposer>) {
+        self.host_interceptors.push(stage);
+    }
+    fn service_registry(&mut self) -> &mut ServiceRegistry {
+        &mut self.services
+    }
+}
+
 impl PipelineEngine {
     pub fn new() -> Self {
         Self {
             trap_interceptors: Vec::new(),
+            trap_scopes: Vec::new(),
+            gate: TrapGateEvaluator::new(Vec::new()),
             fs_interceptors: Vec::new(),
             net_interceptors: Vec::new(),
             console_interceptors: Vec::new(),
             host_interceptors: Vec::new(),
+            services: ServiceRegistry::new(),
             sealed: false,
         }
     }
 
-    pub fn seal(&mut self) -> Result<(), kelir_interface::errors::PluginError> {
+    pub fn services(&self) -> &ServiceRegistry {
+        &self.services
+    }
+
+    pub fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope) {
+        self.trap_interceptors.push(stage);
+        self.trap_scopes.push(scope);
+    }
+
+    pub fn seal(&mut self) -> Result<(), PluginError> {
         if self.sealed {
-            return Err(kelir_interface::errors::PluginError::Halt(
-                "pipeline already sealed".into(),
-            ));
+            return Err(PluginError::Halt("pipeline already sealed".into()));
         }
-        // TODO: freeze all five ring chains; console/host chains have no dispatch method yet.
-        let _ = (&self.console_interceptors, &self.host_interceptors);
+        // TODO: freeze all five ring chains.
         self.sealed = true;
         Ok(())
     }
 
-    pub fn dispatch_trap(
+    pub async fn dispatch_trap(
         &self,
-        event: &kelir_interface::protocol::TrapEvent,
-        ctx: &kelir_interface::plugin::HandlerCtx,
-    ) -> Result<kelir_interface::protocol::Verdict, kelir_interface::errors::PluginError> {
-        // TODO: await on_trap per trap_interceptor once dispatch is async (L2).
-        for interceptor in &self.trap_interceptors {
-            let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                interceptor.on_trap(event, ctx)
-            }));
-            let verdict = match caught {
-                Ok(verdict) => verdict?,
-                Err(_) => {
-                    return Ok(kelir_interface::protocol::Verdict::Drop {
-                        errno: Some("EFAULT".into()),
-                        reason: "Plugin panic caught".into(),
-                    });
-                }
-            };
-            if !matches!(verdict, kelir_interface::protocol::Verdict::Pass) {
+        event: &TrapEvent,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        // TODO (L3): panic quarantine across await needs an executor-level catch_unwind; a panicking async hook unwinds to the caller.
+        for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
+            let fallback = MountScope::default();
+            let scope = self.trap_scopes.get(index).unwrap_or(&fallback);
+            match self.gate.evaluate(event, scope) {
+                GateDecision::Allow => continue,
+                GateDecision::Deny(verdict) => return Ok(verdict),
+                GateDecision::FallThrough => {}
+            }
+            let verdict = interceptor.on_trap(event, ctx).await?;
+            if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }
         }
-        Ok(kelir_interface::protocol::Verdict::Pass)
+        Ok(Verdict::Pass)
+    }
+
+    pub async fn dispatch_process_exit(
+        &self,
+        event: &ProcessExit,
+        ctx: &HandlerCtx,
+    ) -> Result<(), PluginError> {
+        for interceptor in &self.trap_interceptors {
+            interceptor.on_process_exit(event, ctx).await?;
+        }
+        Ok(())
     }
 
     pub fn dispatch_fs_write(
@@ -70,27 +123,114 @@ impl PipelineEngine {
         path: &std::path::Path,
         data: &mut [u8],
         pid: u32,
-        ctx: &kelir_interface::plugin::HandlerCtx,
-    ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::errors::PluginError> {
+        ctx: &HandlerCtx,
+    ) -> Result<FilterAction, PluginError> {
         for interceptor in &self.fs_interceptors {
             let action = interceptor.on_fs_write(path, data, pid, ctx)?;
-            if !matches!(action, kelir_interface::protocol::FilterAction::Forward) {
+            if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }
         }
-        Ok(kelir_interface::protocol::FilterAction::Forward)
+        Ok(FilterAction::Forward)
     }
 
-    pub fn dispatch_net_outbound(
-        &self,
-        frame: &mut [u8],
-    ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::errors::PluginError> {
+    pub fn dispatch_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         for interceptor in &self.net_interceptors {
             let action = interceptor.on_net_outbound(frame)?;
-            if !matches!(action, kelir_interface::protocol::FilterAction::Forward) {
+            if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }
         }
-        Ok(kelir_interface::protocol::FilterAction::Forward)
+        Ok(FilterAction::Forward)
+    }
+
+    pub fn dispatch_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+        for interceptor in &self.net_interceptors {
+            let action = interceptor.on_net_inbound(frame)?;
+            if !matches!(action, FilterAction::Forward) {
+                return Ok(action);
+            }
+        }
+        Ok(FilterAction::Forward)
+    }
+
+    pub async fn dispatch_console_input(
+        &self,
+        port: u32,
+        bytes: &mut Vec<u8>,
+    ) -> Result<(), PluginError> {
+        for interceptor in &self.console_interceptors {
+            interceptor.on_console_input(port, bytes).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn dispatch_console_output(
+        &self,
+        port: u32,
+        chunk: &mut Vec<u8>,
+    ) -> Result<(), PluginError> {
+        for interceptor in &self.console_interceptors {
+            interceptor.on_console_output(port, chunk).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn dispatch_exec_stdout(
+        &self,
+        pid: u32,
+        exec_id: u64,
+        chunk: &mut Vec<u8>,
+    ) -> Result<(), PluginError> {
+        for interceptor in &self.console_interceptors {
+            interceptor.on_exec_stdout(pid, exec_id, chunk).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn dispatch_exec_stderr(
+        &self,
+        pid: u32,
+        exec_id: u64,
+        chunk: &mut Vec<u8>,
+    ) -> Result<(), PluginError> {
+        for interceptor in &self.console_interceptors {
+            interceptor.on_exec_stderr(pid, exec_id, chunk).await?;
+        }
+        Ok(())
+    }
+
+    pub fn dispatch_host_lsm_exec(
+        &self,
+        path: &std::path::Path,
+        pid: u32,
+    ) -> Result<Verdict, PluginError> {
+        for interceptor in &self.host_interceptors {
+            let verdict = interceptor.on_host_lsm_exec(path, pid)?;
+            if !matches!(verdict, Verdict::Pass) {
+                return Ok(verdict);
+            }
+        }
+        Ok(Verdict::Pass)
+    }
+
+    pub fn dispatch_host_pressure(&self, level: u32) -> Result<Verdict, PluginError> {
+        for interceptor in &self.host_interceptors {
+            let verdict = interceptor.on_host_pressure(level)?;
+            if !matches!(verdict, Verdict::Pass) {
+                return Ok(verdict);
+            }
+        }
+        Ok(Verdict::Pass)
+    }
+
+    pub fn dispatch_host_keyring_access(&self, key: &str) -> Result<Verdict, PluginError> {
+        for interceptor in &self.host_interceptors {
+            let verdict = interceptor.on_host_keyring_access(key)?;
+            if !matches!(verdict, Verdict::Pass) {
+                return Ok(verdict);
+            }
+        }
+        Ok(Verdict::Pass)
     }
 }

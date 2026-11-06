@@ -25,7 +25,7 @@ pub use planes::storage::{FsReconcileRequest, ReconcileStats, SyntheticFile};
 pub use plugins::ledger::FinalizeRequest;
 pub use sandbox::Sandbox;
 pub use session::{
-    ClockHandle, ExecResult, FsHandle, Session, SpawnBuilder, StepStack, TerminalHandle, VmHandle,
+    ClockHandle, ExecResult, FsHandle, SpawnBuilder, StepStack, TerminalHandle, VmHandle,
     VsockChannel, VsockHandle, WireHandle,
 };
 

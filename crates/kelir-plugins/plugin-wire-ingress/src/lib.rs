@@ -29,6 +29,8 @@ impl Default for WireIngressPlugin {
 }
 
 impl KelirPlugin for WireIngressPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "wire-ingress"
     }

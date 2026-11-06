@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_supply_chain.rs per cans/artifacts/config/project-structure.txt.
+use async_trait::async_trait;
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{HandlerCtx, KelirPlugin, MountScope, TrapInterposer};
 use kelir_interface::protocol::{TrapEvent, Verdict};
@@ -29,6 +30,8 @@ impl Default for SupplyChainPlugin {
 }
 
 impl KelirPlugin for SupplyChainPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "supply-chain"
     }
@@ -37,8 +40,9 @@ impl KelirPlugin for SupplyChainPlugin {
     }
 }
 
+#[async_trait]
 impl TrapInterposer for SupplyChainPlugin {
-    fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+    async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
         // TODO: Inspect argv entropy (>5.2 bits) and block lifecycle scripts
         Ok(Verdict::Pass)
     }

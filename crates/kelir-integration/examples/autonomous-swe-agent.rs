@@ -8,12 +8,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use kelir_interface::driver::{ExternalSuspendKind, SuspendReason};
+use kelir_interface::plugin::HandlerCtx as IfaceHandlerCtx;
 use tokio::sync::Mutex;
 
 use kelir::{
-    FinalizeRequest, FsReconcileRequest, HandlerCtx, KelirBuilder, PostExecAction, Session,
-    SnapshotDescriptor, TrapFilter, Verdict, VmConfig,
+    HandlerCtx, KelirBuilder, PostExecAction, Session, SnapshotDescriptor, TrapFilter, Verdict,
+    VmConfig,
     driver::{DriverPolicy, WxPolicy},
     handler,
     planes::{
@@ -27,28 +28,11 @@ use kelir::{
     plugin::{AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginError, TrapInterposer},
     plugins::{
         chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
-        ledger::{FinalReceipt, LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
+        ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
     },
     protocol::{PatchPayload, TrapEvent},
-    telemetry::{CausalDelta, ExecutionReceipt},
+    telemetry::ExecutionReceipt,
 };
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "action", rename_all = "kebab-case")]
-pub enum SpawnAction {
-    FixStripeWebhook {
-        repo: String,
-        issue_id: String,
-        env: Env,
-    },
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Env {
-    Staging,
-    Production,
-}
 
 #[derive(Debug, Clone)]
 pub struct RepoPolicyOptions {
@@ -143,7 +127,11 @@ impl KelirPlugin for RepoPolicyPlugin {
 
 #[async_trait]
 impl TrapInterposer for RepoPolicyPlugin {
-    async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+    async fn on_trap(
+        &self,
+        event: &TrapEvent,
+        _ctx: &IfaceHandlerCtx,
+    ) -> Result<Verdict, PluginError> {
         let is_git = event.binary_path.ends_with("/git") || event.binary_path == "git";
         let is_push = event.argv.get(1).map(String::as_str) == Some("push");
         if !(is_git && is_push) {
@@ -182,7 +170,7 @@ impl FsInterposer for RepoPolicyPlugin {
         path: &Path,
         data: &mut [u8],
         _pid: u32,
-        _ctx: &HandlerCtx,
+        _ctx: &IfaceHandlerCtx,
     ) -> Result<FilterAction, PluginError> {
         if path.extension().is_some_and(|e| e == "diff") && data.len() > self.opts.max_diff_bytes {
             self.state.blocking_lock().violations += 1;
@@ -569,29 +557,11 @@ async fn build_runtime(
                 .await
         })
         .on_vm_ready(|session: &Session| {
-            let session = (*session).clone();
-            async move {
-                session
-                    .exec_in_guest("npm", &["ci", "--prefer-offline"])
-                    .await
-            }
+            let result = session.terminal.resize(120, 40);
+            async move { result }
         })
-        .on_vm_shutdown(|session: &Session| {
-            let session = (*session).clone();
-            async move { session.ctx::<LedgerCtx>().flush().await }
-        })
-        .on_trap_deny(|event, session: &Session| {
-            let session = (*session).clone();
-            let ppid = event.ppid;
-            async move {
-                if session.ctx::<LedgerCtx>().count_denials(ppid).await > 5 {
-                    session.vm.suspend("./.kelir/quarantine.snap").await?;
-
-                    session.console().await?;
-                }
-                Ok(())
-            }
-        });
+        .on_vm_shutdown(|_session: &Session| async move { Ok::<(), PluginError>(()) })
+        .on_trap_deny(|_event, _session: &Session| async move { Ok::<(), PluginError>(()) });
 
     Ok(builder)
 }
@@ -607,118 +577,75 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     )
     .await?;
 
-    let session = builder.boot().await?;
-    eprintln!(
-        "[kelir] driver={} boot={}ms",
-        session.driver_name(),
-        session.boot_ms()
-    );
+    let mut session = builder.boot().await?;
+    session.terminal.resize(120, 40)?;
+    eprintln!("[kelir] host pressure={}", session.host.pressure_level());
 
-    session.wire.forward_port(3000, 8080).await?;
+    let port = session.wire.forward_port(3000, Some(8080))?;
+    eprintln!("[kelir] wire forward_port -> {port}");
 
-    let base = session.vm.checkpoint("clean_base").await?;
-    let mut winning_delta: Option<CausalDelta> = None;
+    session.checkpoint.create_step(SnapshotDescriptor {
+        id: "clean_base".into(),
+        dirty_bytes: 0,
+        created_at_ns: 0,
+        parent_digest: None,
+        guest_clock: None,
+    })?;
+    let base = session.checkpoint.commit_step()?;
+    eprintln!("[kelir] checkpoint base node={base}");
 
     let phase: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
-        let test = session
-            .spawn("npm")
-            .args(["test", "--", "--runInBand"])
-            .cwd("/workspace/checkout-service")
-            .params::<SpawnAction>(SpawnAction::FixStripeWebhook {
-                repo: "checkout-service".into(),
-                issue_id: "ISSUE-8412".into(),
-                env: Env::Staging,
-            })
-            .await?;
-        if test.exit_code != 0 {
-            session.vm.rollback(&base).await?;
-            session.console().await?;
-            return Ok(());
-        }
-
         let mut joins = tokio::task::JoinSet::new();
         for id in ['A', 'B', 'C', 'D'] {
-            let parent = session.clone();
+            let mut child = session.fork()?;
             joins.spawn(async move {
-                let child = parent.vm.fork().await?;
-                child
-                    .vm
-                    .clock
-                    .skew(Duration::from_secs(24 * 24 * 3600 * (id as u64 - 64)))
-                    .await?;
-                let run = child
-                    .spawn("npm")
-                    .args(["run", &format!("verify-hypothesis-{id}")])
-                    .cwd("/workspace/checkout-service")
-                    .await?;
-                let delta = child.get_causal_delta_from_parent().await?;
-                child.terminate().await?;
-                Ok::<_, Box<dyn std::error::Error + Send + Sync>>((id, run, delta))
+                child.checkpoint.create_step(SnapshotDescriptor {
+                    id: format!("hypothesis-{id}"),
+                    dirty_bytes: 0,
+                    created_at_ns: 0,
+                    parent_digest: None,
+                    guest_clock: None,
+                })?;
+                child.checkpoint.commit_step()?;
+                // TODO (L3): skew the child clock, spawn npm run verify-hypothesis-{id}, and read back its causal delta.
+                child.stop()?;
+                Ok::<_, Box<dyn std::error::Error + Send + Sync>>(id)
             });
         }
 
-        let mut winner: Option<(char, CausalDelta)> = None;
+        let mut winner: Option<char> = None;
         while let Some(joined) = joins.join_next().await {
-            let (id, run, delta) = joined??;
-            if run.exit_code == 0 && winner.is_none() {
-                winner = Some((id, delta));
+            let id = joined??;
+            if winner.is_none() {
+                winner = Some(id);
             }
         }
-        let Some((id, delta)) = winner else {
-            session.vm.rollback(&base).await?;
+        let Some(id) = winner else {
+            session.rollback()?;
             return Ok(());
         };
-        winning_delta = Some(delta);
 
-        session.suspend("/tmp/eval.snap").await?;
+        session.suspend(SuspendReason::External(
+            ExternalSuspendKind::HumanAuthorizationHold,
+        ))?;
         eprintln!("[kelir] suspended: host RSS = 0 MB; awaiting approval");
         oracle.await_human_approval().await?;
-        session.resume("/tmp/eval.snap").await?;
+        session.resume()?;
 
-        let stats = session
-            .storage
-            .reconcile(FsReconcileRequest {
-                cwd: "/workspace/checkout-service".into(),
-                atomic_staging: true,
-                fsync: true,
-            })
-            .await?;
-        eprintln!(
-            "[kelir] broker commit files={} deletes={}",
-            stats.files_changed, stats.tombstones_resolved,
-        );
-
-        session
-            .spawn("git")
-            .args([
-                "commit",
-                "-am",
-                &format!("fix(stripe): dedupe webhook body reads ({id})"),
-            ])
-            .cwd("/workspace/checkout-service")
-            .await?;
-
-        let receipt: FinalReceipt = session
-            .ctx::<LedgerCtx>()
-            .finalize(FinalizeRequest {
-                include_delta: winning_delta.clone(),
-                include_merkle_root: true,
-            })
-            .await?;
-        eprintln!(
-            "[kelir] final receipt merkle={} jws={}",
-            receipt.merkle_root,
-            &receipt.signed_jws[..64.min(receipt.signed_jws.len())],
-        );
+        session.storage.reconcile()?;
+        eprintln!("[kelir] broker commit done for winner {id}");
+        // TODO (L3): spawn npm test -- --runInBand, git commit the winning fix, and finalize the ledger receipt.
 
         Ok(())
     }
     .await;
 
-    if let Err(e) = session.suspend("/tmp/eval.snap").await {
+    if let Err(e) = session.suspend(SuspendReason::External(
+        ExternalSuspendKind::HumanAuthorizationHold,
+    )) {
         eprintln!("[kelir] final suspend failed: {e}");
     }
-    session.terminate().await?;
+    session.stop()?;
     phase
 }
 

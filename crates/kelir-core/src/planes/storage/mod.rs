@@ -1,6 +1,9 @@
 // see: cans/05-storage-plane.md#Storage-architecture
 // see: cans/05-storage-plane.md#Host-CoW-broker
 // see: cans/05-storage-plane.md#Storage-quotas
+pub mod fuse;
+pub mod io;
+pub mod lock_broker;
 pub mod reconciler;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -19,6 +22,7 @@ pub struct StoragePlane {
     sparse_upper_path: PathBuf,
     tombstones: Arc<RwLock<HashSet<PathBuf>>>,
     quota: StorageQuota,
+    io: Arc<dyn io::StorageIo>,
 }
 
 impl StoragePlane {
@@ -38,7 +42,13 @@ impl StoragePlane {
                 max_bytes,
                 max_inodes,
             },
+            io: Arc::new(io::UnimplementedStorageIo),
         }
+    }
+
+    pub fn with_io(mut self, storage_io: Arc<dyn io::StorageIo>) -> Self {
+        self.io = storage_io;
+        self
     }
 
     pub fn reconciler(
@@ -46,23 +56,50 @@ impl StoragePlane {
         broker_dir: PathBuf,
         guard: reconciler::TraversalGuard,
     ) -> reconciler::Reconciler {
-        reconciler::Reconciler::new(broker_dir, self.workspace_root.clone(), guard)
+        reconciler::Reconciler::new(
+            broker_dir,
+            self.workspace_root.clone(),
+            guard,
+            self.io.clone(),
+        )
+    }
+
+    pub fn lock_broker(
+        &self,
+        interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
+    ) -> lock_broker::LockBroker {
+        let _ = self;
+        lock_broker::LockBroker::new(interposer)
+    }
+
+    pub fn fuse_worker(
+        &self,
+        receiver: std::sync::mpsc::Receiver<fuse::FuseRequest>,
+        interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
+        session_id: [u8; 16],
+    ) -> fuse::FuseWorker {
+        let _ = self;
+        fuse::FuseWorker::new(receiver, interposer, session_id)
     }
 
     pub fn reconcile(&self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: reconcile workspace_root against sparse_upper_path and tombstones.
+        // TODO (L3): reconcile workspace_root against sparse_upper_path and tombstones via Reconciler.
         let _ = (
             &self.workspace_root,
             &self.sparse_upper_path,
             &self.tombstones,
         );
-        Ok(())
+        Err(kelir_interface::errors::PluginError::Halt(
+            "TODO (L3): StoragePlane::reconcile needs the reconciler commit path".into(),
+        ))
     }
 
     pub fn discard(&self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: drop the sparse upper file and tombstones; base untouched.
+        // TODO (L3): drop the sparse upper file and tombstones; base untouched.
         let _ = (&self.sparse_upper_path, &self.tombstones);
-        Ok(())
+        Err(kelir_interface::errors::PluginError::Halt(
+            "TODO (L3): StoragePlane::discard needs the sparse upper drop".into(),
+        ))
     }
 
     pub fn record_tombstone(
@@ -111,12 +148,9 @@ impl StoragePlane {
         Ok(())
     }
 
-    pub fn punch_hole_sparse_upper(&self) -> Result<(), std::io::Error> {
-        // TODO: FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on sparse_upper_path.
-        let _ = &self.sparse_upper_path;
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            "TODO: StoragePlane::punch_hole_sparse_upper",
-        ))
+    pub fn punch_hole_sparse_upper(&self) -> Result<(), kelir_interface::errors::PluginError> {
+        // TODO (L3): FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on sparse_upper_path.
+        self.io.punch_hole(&self.sparse_upper_path, 0, u64::MAX)?;
+        self.io.advise_dontneed(&self.sparse_upper_path)
     }
 }

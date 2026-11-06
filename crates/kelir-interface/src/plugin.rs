@@ -4,6 +4,10 @@ use std::any::Any;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use async_trait::async_trait;
+
+use crate::service_registry::ServiceRegistry;
+
 use crate::driver::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
 use crate::errors::PluginError;
 use crate::protocol::{FilterAction, ProcessExit, TrapEvent, Verdict};
@@ -211,9 +215,23 @@ where
     }
 }
 
-pub trait AnyPlugin: KelirPlugin + PluginClone {}
+pub trait AnyPlugin: Send + Sync {
+    fn name(&self) -> &'static str;
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin>;
+}
 
-impl<T: KelirPlugin + PluginClone> AnyPlugin for T {}
+impl<T> AnyPlugin for T
+where
+    T: 'static + KelirPlugin + Clone,
+{
+    fn name(&self) -> &'static str {
+        KelirPlugin::name(self)
+    }
+
+    fn fork_state(&self, child_session_id: &str) -> Box<dyn AnyPlugin> {
+        KelirPlugin::fork_state(self, child_session_id)
+    }
+}
 
 pub trait PipelineBinder {
     fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>);
@@ -221,6 +239,7 @@ pub trait PipelineBinder {
     fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>);
     fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>);
     fn bind_host(&mut self, stage: Arc<dyn HostInterposer>);
+    fn service_registry(&mut self) -> &mut ServiceRegistry;
 }
 
 pub trait EventBusBinder {
@@ -231,8 +250,10 @@ pub trait CompositePlugin: Send + Sync {
     fn unpack(self: Box<Self>, parent_scope: &MountScope) -> Vec<(Box<dyn AnyPlugin>, MountScope)>;
 }
 
-// TODO (L2): async hooks + Context/register_* per cans/artifacts/code/plugin-trait.rs — sync L1 contract here.
+// see: cans/artifacts/code/plugin-trait.rs
 pub trait KelirPlugin: Send + Sync + PluginClone {
+    type Context: Send + Sync + Clone + 'static;
+    fn context(&self) -> Self::Context;
     fn name(&self) -> &'static str;
     fn default_scope(&self) -> MountScope {
         MountScope::default()
@@ -243,55 +264,64 @@ pub trait KelirPlugin: Send + Sync + PluginClone {
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
         self.clone_box()
     }
+    fn register_interceptors(&self, _pipeline: &mut dyn PipelineBinder) {}
+    fn register_subscribers(&self, _bus: &mut impl EventBusBinder) {}
 }
 
+#[async_trait]
 pub trait LifecycleParticipant: Send + Sync {
-    fn on_vm_init(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_init(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
         let _ = ctx;
         Ok(())
     }
-    fn on_vm_ready(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_ready(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
         let _ = ctx;
         Ok(())
     }
-    fn on_vm_shutdown(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_shutdown(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
         let _ = ctx;
         Ok(())
     }
-    fn on_pre_commit(&self) -> Result<(), PluginError> {
+    async fn on_pre_commit(&self) -> Result<(), PluginError> {
         Ok(())
     }
-    fn on_post_commit(&self, success: bool) -> Result<(), PluginError> {
+    async fn on_post_commit(&self, success: bool) -> Result<(), PluginError> {
         let _ = success;
         Ok(())
     }
-    fn on_host_preempt(&self) -> Result<(), PluginError> {
+    async fn on_host_preempt(&self) -> Result<(), PluginError> {
         Ok(())
     }
 }
 
 // see: cans/artifacts/code/plugin-trait.rs
+#[async_trait]
 pub trait TrapInterposer: Send + Sync {
-    fn on_trap(&self, event: &TrapEvent, ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+    async fn on_trap(&self, event: &TrapEvent, ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
         let _ = (event, ctx);
         Ok(Verdict::Pass)
     }
-    fn on_process_exit(&self, event: &ProcessExit, ctx: &HandlerCtx) -> Result<(), PluginError> {
+    async fn on_process_exit(
+        &self,
+        event: &ProcessExit,
+        ctx: &HandlerCtx,
+    ) -> Result<(), PluginError> {
         let _ = (event, ctx);
         Ok(())
     }
 }
 
+#[async_trait]
 pub trait ConsoleInterposer: Send + Sync {
-    fn on_console_input(&self, port: u32, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_input(&self, port: u32, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
         let _ = (port, bytes);
         Ok(())
     }
-    fn on_console_output(&self, port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_output(&self, port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
         let _ = (port, chunk);
         Ok(())
     }
-    fn on_exec_stdout(
+    async fn on_exec_stdout(
         &self,
         pid: u32,
         exec_id: u64,
@@ -300,7 +330,7 @@ pub trait ConsoleInterposer: Send + Sync {
         let _ = (pid, exec_id, chunk);
         Ok(())
     }
-    fn on_exec_stderr(
+    async fn on_exec_stderr(
         &self,
         pid: u32,
         exec_id: u64,
@@ -311,16 +341,21 @@ pub trait ConsoleInterposer: Send + Sync {
     }
 }
 
+#[async_trait]
 pub trait SystemTelemetryParticipant: Send + Sync {
-    fn on_memory_pressure(&self, available_mb: u32, total_mb: u32) -> Result<(), PluginError> {
+    async fn on_memory_pressure(
+        &self,
+        available_mb: u32,
+        total_mb: u32,
+    ) -> Result<(), PluginError> {
         let _ = (available_mb, total_mb);
         Ok(())
     }
-    fn on_heartbeat(&self, uptime_ms: u64) -> Result<(), PluginError> {
+    async fn on_heartbeat(&self, uptime_ms: u64) -> Result<(), PluginError> {
         let _ = uptime_ms;
         Ok(())
     }
-    fn on_watchdog(&self, event: &WatchdogEvent) -> Result<WatchdogVerdict, PluginError> {
+    async fn on_watchdog(&self, event: &WatchdogEvent) -> Result<WatchdogVerdict, PluginError> {
         let _ = event;
         Ok(WatchdogVerdict::ExecuteDefault)
     }

@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_tool_guard.rs per cans/artifacts/config/project-structure.txt.
+use async_trait::async_trait;
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{ConsoleInterposer, KelirPlugin, MountScope};
 
@@ -28,6 +29,8 @@ impl Default for ToolGuardPlugin {
 }
 
 impl KelirPlugin for ToolGuardPlugin {
+    type Context = ();
+    fn context(&self) {}
     fn name(&self) -> &'static str {
         "tool-guard"
     }
@@ -36,8 +39,9 @@ impl KelirPlugin for ToolGuardPlugin {
     }
 }
 
+#[async_trait]
 impl ConsoleInterposer for ToolGuardPlugin {
-    fn on_console_input(&self, _port: u32, _buf: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_input(&self, _port: u32, _buf: &mut Vec<u8>) -> Result<(), PluginError> {
         // TODO: Intercept tools/call JSON-RPC payload and gate mutations
         Ok(())
     }

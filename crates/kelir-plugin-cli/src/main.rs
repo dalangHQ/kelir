@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     match args[1].as_str() {
-        "doctor" => doctor::run()?,
+        "doctor" => doctor::run(&args[2..])?,
         "check" => check(&args[2..])?,
         "check-layers" => layers::check()?,
         "check-budgets" => {
@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             budgets::check(path)?;
         }
-        "parity" => parity::run()?,
+        "parity" => parity::run(&args[2..])?,
         "fixtures" => fixtures::run(&args[2..])?,
         "layers" => layers::check()?,
         "budgets" => {
@@ -69,9 +69,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "registry" => registry::run()?,
         "rings" => rings::run()?,
         "scaffold" => scaffold::run()?,
-        "setup" => setup::run()?,
-        "spec" => spec::run()?,
-        "vectors" => vectors::run()?,
+        "setup" => setup::run(&args[2..])?,
+        "spec" => spec::run(&args[2..])?,
+        "vectors" => vectors::run(&args[2..])?,
         other => return Err(format!("kelir-plugin-cli: unknown subcommand `{other}`").into()),
     }
     Ok(())
