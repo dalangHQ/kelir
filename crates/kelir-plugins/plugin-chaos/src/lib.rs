@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{FsInterposer, HandlerCtx, KelirPlugin, MountScope, NetInterposer};
 use kelir_interface::protocol::FilterAction;
 

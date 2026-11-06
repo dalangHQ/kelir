@@ -2,7 +2,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use kelir_interface::driver::{VmConfig, WatchdogAction};
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{AnyPlugin, MountScope, VetoEvent};
 use kelir_interface::protocol::TrapEvent;
 

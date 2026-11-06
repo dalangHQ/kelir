@@ -3,8 +3,8 @@
 
 // TODO (L3): tests/test_transaction.rs per cans/artifacts/config/project-structure.txt.
 use async_trait::async_trait;
-use kelir_interface::errors::PluginError;
-use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope};
+use kelir_interface::plugin::PluginError;
+use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope};
 
 pub mod service;
 
@@ -36,11 +36,16 @@ impl KelirPlugin for TransactionPlugin {
 
 #[async_trait]
 impl LifecycleParticipant for TransactionPlugin {
-    async fn on_pre_commit(&self) -> Result<(), PluginError> {
+    async fn on_pre_commit(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+        let _ = ctx;
         // TODO: Coordinate 2PC pre-commit with db-proxy
         Ok(())
     }
-    async fn on_post_commit(&self, _success: bool) -> Result<(), PluginError> {
+    async fn on_post_commit(
+        &self,
+        _ctx: &mut LifecycleCtx,
+        _committed: bool,
+    ) -> Result<(), PluginError> {
         Ok(())
     }
 }

@@ -87,7 +87,7 @@ impl CheckpointPlane {
     pub fn create_step(
         &self,
         base: kelir_interface::driver::SnapshotDescriptor,
-    ) -> Result<u64, kelir_interface::errors::PluginError> {
+    ) -> Result<u64, kelir_interface::plugin::PluginError> {
         self.create_step_on_branch("main", base)
     }
 
@@ -95,12 +95,12 @@ impl CheckpointPlane {
         &self,
         branch: &str,
         base: kelir_interface::driver::SnapshotDescriptor,
-    ) -> Result<u64, kelir_interface::errors::PluginError> {
+    ) -> Result<u64, kelir_interface::plugin::PluginError> {
         let mut steps = self.active_steps.lock().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("step slot lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("step slot lock poisoned".into())
         })?;
         if steps.contains_key(branch) {
-            return Err(kelir_interface::errors::PluginError::Halt(
+            return Err(kelir_interface::plugin::PluginError::Halt(
                 "step already active on branch".into(),
             ));
         }
@@ -116,24 +116,24 @@ impl CheckpointPlane {
         Ok(slot_id)
     }
 
-    pub fn commit_step(&self) -> Result<u64, kelir_interface::errors::PluginError> {
+    pub fn commit_step(&self) -> Result<u64, kelir_interface::plugin::PluginError> {
         self.commit_step_on_branch("main")
     }
 
     pub fn commit_step_on_branch(
         &self,
         branch: &str,
-    ) -> Result<u64, kelir_interface::errors::PluginError> {
+    ) -> Result<u64, kelir_interface::plugin::PluginError> {
         let slot = {
             let mut steps = self.active_steps.lock().map_err(|_| {
-                kelir_interface::errors::PluginError::Halt("step slot lock poisoned".into())
+                kelir_interface::plugin::PluginError::Halt("step slot lock poisoned".into())
             })?;
             steps.remove(branch)
         };
         match slot {
             Some(step) => {
                 let mut graph = self.graph.write().map_err(|_| {
-                    kelir_interface::errors::PluginError::Halt(
+                    kelir_interface::plugin::PluginError::Halt(
                         "checkpoint graph lock poisoned".into(),
                     )
                 })?;
@@ -147,7 +147,7 @@ impl CheckpointPlane {
                 graph.set_head(branch, step.slot_id);
                 Ok(step.slot_id)
             }
-            None => Err(kelir_interface::errors::PluginError::Halt(
+            None => Err(kelir_interface::plugin::PluginError::Halt(
                 "no active step slot on branch".into(),
             )),
         }
@@ -155,7 +155,7 @@ impl CheckpointPlane {
 
     pub fn rollback_step(
         &self,
-    ) -> Result<kelir_interface::driver::SnapshotDescriptor, kelir_interface::errors::PluginError>
+    ) -> Result<kelir_interface::driver::SnapshotDescriptor, kelir_interface::plugin::PluginError>
     {
         self.rollback_step_on_branch("main")
     }
@@ -163,14 +163,14 @@ impl CheckpointPlane {
     pub fn rollback_step_on_branch(
         &self,
         branch: &str,
-    ) -> Result<kelir_interface::driver::SnapshotDescriptor, kelir_interface::errors::PluginError>
+    ) -> Result<kelir_interface::driver::SnapshotDescriptor, kelir_interface::plugin::PluginError>
     {
         let mut steps = self.active_steps.lock().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("step slot lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("step slot lock poisoned".into())
         })?;
         match steps.remove(branch) {
             Some(step) => Ok(step.base_descriptor),
-            None => Err(kelir_interface::errors::PluginError::Halt(
+            None => Err(kelir_interface::plugin::PluginError::Halt(
                 "no active step slot on branch".into(),
             )),
         }
@@ -180,17 +180,17 @@ impl CheckpointPlane {
         &self,
         node_id: u64,
         branch: &str,
-    ) -> Result<(), kelir_interface::errors::PluginError> {
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
         let mut graph = self.graph.write().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("checkpoint graph lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("checkpoint graph lock poisoned".into())
         })?;
         if graph.get(node_id).is_none() {
-            return Err(kelir_interface::errors::PluginError::Halt(
+            return Err(kelir_interface::plugin::PluginError::Halt(
                 "branch source node not in manifest graph".into(),
             ));
         }
         if graph.has_branch(branch) {
-            return Err(kelir_interface::errors::PluginError::Halt(
+            return Err(kelir_interface::plugin::PluginError::Halt(
                 "branch already exists".into(),
             ));
         }
@@ -201,14 +201,14 @@ impl CheckpointPlane {
     pub fn restore(
         &self,
         node_id: u64,
-    ) -> Result<kelir_interface::driver::SnapshotDescriptor, kelir_interface::errors::PluginError>
+    ) -> Result<kelir_interface::driver::SnapshotDescriptor, kelir_interface::plugin::PluginError>
     {
         let graph = self.graph.read().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("checkpoint graph lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("checkpoint graph lock poisoned".into())
         })?;
         match graph.get(node_id) {
             Some(node) => Ok(node.descriptor.clone()),
-            None => Err(kelir_interface::errors::PluginError::Halt(
+            None => Err(kelir_interface::plugin::PluginError::Halt(
                 "checkpoint node not in manifest graph".into(),
             )),
         }
@@ -218,22 +218,22 @@ impl CheckpointPlane {
         self.graph.read().ok()?.head(branch)
     }
 
-    pub fn lineage(&self, node_id: u64) -> Result<Vec<u64>, kelir_interface::errors::PluginError> {
+    pub fn lineage(&self, node_id: u64) -> Result<Vec<u64>, kelir_interface::plugin::PluginError> {
         let graph = self.graph.read().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("checkpoint graph lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("checkpoint graph lock poisoned".into())
         })?;
         if graph.get(node_id).is_none() {
-            return Err(kelir_interface::errors::PluginError::Halt(
+            return Err(kelir_interface::plugin::PluginError::Halt(
                 "checkpoint node not in manifest graph".into(),
             ));
         }
         Ok(graph.lineage(node_id))
     }
 
-    pub fn compact(&self, branch: &str) -> Result<u64, kelir_interface::errors::PluginError> {
+    pub fn compact(&self, branch: &str) -> Result<u64, kelir_interface::plugin::PluginError> {
         // TODO (L3): flatten ancestor deltas in a single-pass block copy and write a consolidated manifest pointing at the ancestor base.
         let _ = branch;
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): CheckpointPlane::compact".into(),
         ))
     }

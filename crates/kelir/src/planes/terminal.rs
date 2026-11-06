@@ -3,7 +3,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::protocol::TrapEvent;
 
 #[derive(Debug, Clone, Default)]

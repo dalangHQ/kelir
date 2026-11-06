@@ -1,6 +1,6 @@
 // see: cans/plugins/container.md
 use async_trait::async_trait;
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use std::ops::Range;
 use std::path::Path;
 

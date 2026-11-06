@@ -216,31 +216,39 @@ dependencies = [
 name = "driver-avf"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "kelir-interface",
  "libc",
+ "tokio",
 ]
 
 [[package]]
 name = "driver-bwrap"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "kelir-interface",
  "libc",
+ "tokio",
 ]
 
 [[package]]
 name = "driver-hvf"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "kelir-interface",
  "libc",
+ "tokio",
 ]
 
 [[package]]
 name = "driver-openvmm"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "kelir-interface",
+ "tokio",
  "windows-sys 0.59.0",
 ]
 
@@ -248,17 +256,21 @@ dependencies = [
 name = "driver-proot"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "kelir-interface",
  "libc",
+ "tokio",
 ]
 
 [[package]]
 name = "driver-rustvmm"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "kelir-interface",
  "kvm-ioctls",
  "libc",
+ "tokio",
  "userfaultfd",
 ]
 
@@ -427,6 +439,7 @@ dependencies = [
  "ciborium",
  "serde",
  "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]
@@ -469,7 +482,9 @@ dependencies = [
 name = "kelir-plugin-testkit"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "kelir-interface",
+ "tokio",
 ]
 
 [[package]]

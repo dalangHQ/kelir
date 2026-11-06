@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 
 use crate::HandlerCtx;
 

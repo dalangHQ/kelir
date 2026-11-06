@@ -1,6 +1,6 @@
 // see: cans/05-storage-plane.md#Host-inode-lock-broker
-use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::FsInterposer;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::protocol::Verdict;
 use std::collections::HashMap;
 use std::path::PathBuf;

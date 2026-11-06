@@ -1,5 +1,5 @@
 // see: cans/02-plugin-model.md#Plugin-testkit
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::protocol::Verdict;
 
 pub fn assert_rewrite(input: &[u8], output: &[u8]) -> Result<(), PluginError> {

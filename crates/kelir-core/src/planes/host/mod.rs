@@ -126,20 +126,20 @@ impl HostPlane {
 
     pub fn subscribe_pressure(
         &self,
-    ) -> Result<PressureSubscription, kelir_interface::errors::PluginError> {
+    ) -> Result<PressureSubscription, kelir_interface::plugin::PluginError> {
         // TODO (L3): subscribe to the kernel pressure source (cgroup v2 memory.pressure via epoll/io_uring, DISPATCH_SOURCE_TYPE_MEMORYPRESSURE on macOS) and store the subscription in watcher.
         let _ = &self.watcher;
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): HostPlane::subscribe_pressure".into(),
         ))
     }
 
     pub fn poll_pressure_events(
         &self,
-    ) -> Result<Vec<PressureEvent>, kelir_interface::errors::PluginError> {
+    ) -> Result<Vec<PressureEvent>, kelir_interface::plugin::PluginError> {
         // TODO (L3): drain kernel pressure events into PressureEvents and update pressure_level.
         let _ = &self.watcher;
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): HostPlane::poll_pressure_events".into(),
         ))
     }
@@ -147,10 +147,10 @@ impl HostPlane {
     pub fn inflate_balloon(
         &self,
         request: BalloonRequest,
-    ) -> Result<(), kelir_interface::errors::PluginError> {
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
         // TODO (L3): inflate the virtio-balloon queue to request.target_mb so guest kswapd evicts clean page caches.
         let _ = request;
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): HostPlane::inflate_balloon".into(),
         ))
     }
@@ -158,10 +158,10 @@ impl HostPlane {
     pub fn reclaim(
         &self,
         request: ReclaimRequest,
-    ) -> Result<u64, kelir_interface::errors::PluginError> {
+    ) -> Result<u64, kelir_interface::plugin::PluginError> {
         // TODO (L3): reclaim request.bytes of host frames via madvise(MADV_DONTNEED) on Linux, hv_vm_unmap + mach_vm_deallocate on macOS.
         let _ = request;
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): HostPlane::reclaim".into(),
         ))
     }
@@ -169,10 +169,10 @@ impl HostPlane {
     pub fn arm_host_reaper(
         &self,
         parent_pid: u32,
-    ) -> Result<(), kelir_interface::errors::PluginError> {
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
         // TODO (L3): arm the platform reaper (pdeathsig / kqueue NOTE_EXIT / Job Object) on parent_pid.
         let _ = parent_pid;
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): HostPlane::arm_host_reaper".into(),
         ))
     }

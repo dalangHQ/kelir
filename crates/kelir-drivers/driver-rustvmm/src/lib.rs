@@ -3,7 +3,16 @@
 // see: cans/08-lifecycle.md#CoW-fork
 // see: cans/artifacts/diagrams/host-runtime.txt
 // TODO (L3): tests/test_cow_fork.rs + test_rollback.rs per cans/artifacts/config/project-structure.txt#kelir-drivers.
-use kelir_interface::driver::{SnapshotDescriptor, VmConfig, VmmDriver, VmmError};
+use std::path::Path;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use tokio::io::AsyncRead;
+
+use kelir_interface::driver::{
+    BalloonConvergence, SharedMemoryHandle, SnapshotDescriptor, SuspendReason, VmConfig, VmmDriver,
+    VmmError, WatchdogAction,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DriverState {
@@ -59,7 +68,7 @@ impl RustVmmDriver {
     pub fn capabilities(&self) -> DriverCapabilities {
         DriverCapabilities {
             backend: "rustvmm",
-            cold_boot_budget_ms: 40,
+            cold_boot_budget_ms: 60,
             rollback_budget_ms: 8,
             fork_budget_ms: 10,
             requires_hardware_vmm: true,
@@ -94,84 +103,133 @@ impl RustVmmDriver {
     }
 }
 
+#[async_trait]
 impl VmmDriver for RustVmmDriver {
-    fn boot(&mut self, config: &VmConfig) -> Result<(), VmmError> {
-        self.config = Some(config.clone());
+    async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError> {
+        self.config = Some(config);
         self.init_backend()
     }
 
-    fn pause(&mut self) -> Result<(), VmmError> {
-        self.ensure_booted()?;
-        // TODO (L3): pause vCPUs via KVM.
-        Err(VmmError::Unsupported(
-            "rustvmm pause: KVM vCPU pause (L3)".into(),
-        ))
-    }
-
-    fn resume(&mut self) -> Result<(), VmmError> {
-        self.ensure_booted()?;
-        // TODO (L3): resume vCPUs via KVM.
-        Err(VmmError::Unsupported(
-            "rustvmm resume: KVM vCPU resume (L3)".into(),
-        ))
-    }
-
-    fn step(&mut self) -> Result<(), VmmError> {
-        self.ensure_booted()?;
-        // TODO (L3): single-step one vCPU exit.
-        Err(VmmError::Unsupported(
-            "rustvmm step: KVM single-step (L3)".into(),
-        ))
-    }
-
-    fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
+    async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
         self.ensure_booted()?;
         // see: cans/08-lifecycle.md#CoW-fork
-        // TODO (L3): clone memory state via userfaultfd copy-on-write.
+        // TODO (L3): clone VM state via CoW fork in <15ms per cans/artifacts/code/vmm-driver-trait.rs.
         Err(VmmError::Unsupported(
             "rustvmm fork: userfaultfd CoW fork (L3)".into(),
         ))
     }
 
-    fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
+    async fn checkpoint(&mut self, _label: &str) -> Result<SnapshotDescriptor, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): capture an atomic in-memory checkpoint of guest RAM and vCPU registers.
+        Err(VmmError::Unsupported(
+            "rustvmm checkpoint: RAM + register capture (L3)".into(),
+        ))
+    }
+
+    async fn map_shared_region(
+        &mut self,
+        _tag: &str,
+        _size_bytes: usize,
+    ) -> Result<SharedMemoryHandle, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): map an anonymous zero-copy host memory segment into guest address space.
+        Err(VmmError::Unsupported(
+            "rustvmm map_shared_region: zero-copy segment map (L3)".into(),
+        ))
+    }
+
+    async fn export_snapshot(&self) -> Result<Box<dyn AsyncRead + Send + Sync + Unpin>, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): serialize registers and compressed dirty pages into a portable stream.
+        Err(VmmError::Unsupported(
+            "rustvmm export_snapshot: portable snapshot stream (L3)".into(),
+        ))
+    }
+
+    async fn import_snapshot(
+        &mut self,
+        _reader: Box<dyn AsyncRead + Send + Sync + Unpin>,
+    ) -> Result<(), VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): hydrate microVM registers and memory pages from a portable snapshot stream.
+        Err(VmmError::Unsupported(
+            "rustvmm import_snapshot: portable snapshot hydrate (L3)".into(),
+        ))
+    }
+
+    async fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
         self.ensure_booted()?;
         // see: cans/08-lifecycle.md#Rollback
-        // TODO (L3): reset vCPU registers and revert userfaultfd memory tracking in <8ms.
+        // TODO (L3): reset vCPU registers and revert memory tracking in <8ms.
         Err(VmmError::Unsupported(
             "rustvmm rollback: register reset + memory revert (L3)".into(),
         ))
     }
 
-    fn snapshot(&mut self) -> Result<SnapshotDescriptor, VmmError> {
+    async fn suspend(
+        &mut self,
+        _reason: SuspendReason,
+        _output_path: &Path,
+    ) -> Result<(), VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): capture dirty byte pages and register states.
+        // TODO (L3): flush dirty RAM pages to disk and drop host memory to 0 MB in <50ms.
         Err(VmmError::Unsupported(
-            "rustvmm snapshot: dirty-page + register capture (L3)".into(),
+            "rustvmm suspend: flush dirty pages to disk (L3)".into(),
         ))
     }
 
-    fn set_vcpus(&mut self, _count: u8) -> Result<(), VmmError> {
+    async fn resume(&mut self, _image_path: &Path) -> Result<(), VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): create or destroy vCPU fds to match count.
+        // TODO (L3): restore a suspended VM image from storage in <50ms.
         Err(VmmError::Unsupported(
-            "rustvmm set_vcpus: vCPU fd resize (L3)".into(),
+            "rustvmm resume: restore suspended image (L3)".into(),
         ))
     }
 
-    fn adjust_balloon(&mut self, _target_mb: u32) -> Result<(), VmmError> {
+    async fn skew_clock(&mut self, _offset: Duration) -> Result<(), VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): deflate/inflate virtio-balloon device descriptor.
+        // see: cans/08-lifecycle.md#Clock-skew
+        // TODO (L3): offset the virtual hardware clock.
+        Err(VmmError::Unsupported(
+            "rustvmm skew_clock: KVM_SET_CLOCK offset (L3)".into(),
+        ))
+    }
+
+    async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): adjust the guest RAM ceiling via virtio-balloon; fork, snapshot, and heavy exec require prior convergence.
+        let _ = target_mb;
         Err(VmmError::Unsupported(
             "rustvmm adjust_balloon: virtio-balloon resize (L3)".into(),
         ))
     }
 
-    fn skew_clock(&mut self, _offset_ns: i64) -> Result<(), VmmError> {
+    async fn set_watchdog(
+        &mut self,
+        _timeout: Duration,
+        _action: WatchdogAction,
+    ) -> Result<(), VmmError> {
         self.ensure_booted()?;
-        // see: cans/08-lifecycle.md#Clock-skew
-        // TODO (L3): adjust KVM_SET_CLOCK offset.
+        // TODO (L3): arm the hardware watchdog; on timeout the driver executes the action.
         Err(VmmError::Unsupported(
-            "rustvmm skew_clock: KVM_SET_CLOCK offset (L3)".into(),
+            "rustvmm set_watchdog: hardware watchdog arm (L3)".into(),
+        ))
+    }
+
+    fn transport_connect(&self, _channel_id: u32) -> Result<tokio::net::UnixStream, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): yield a raw duplex channel to the transport backend multiplexer.
+        Err(VmmError::Unsupported(
+            "rustvmm transport_connect: duplex channel (L3)".into(),
+        ))
+    }
+
+    async fn terminate(&mut self) -> Result<(), VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): terminate the hypervisor instance and release memory allocations.
+        Err(VmmError::Unsupported(
+            "rustvmm terminate: hypervisor teardown (L3)".into(),
         ))
     }
 }

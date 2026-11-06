@@ -32,6 +32,10 @@ export interface NativeVmHandle {
   };
   adjust_balloon(megabytes: number): Promise<void>;
   adjustBalloon(megabytes: number): Promise<void>;
+  set_vcpus(count: number): Promise<void>;
+  map_shared_region(tag: string, sizeBytes: number): Promise<Uint8Array>;
+  export_snapshot(): Promise<Uint8Array>;
+  import_snapshot(data: Uint8Array): Promise<void>;
 }
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
@@ -113,6 +117,14 @@ export class Session {
         vm.adjust_balloon(megabytes),
       adjustBalloon: (megabytes: number): Promise<void> =>
         vm.adjustBalloon(megabytes),
+      set_vcpus: (count: number): Promise<void> => vm.set_vcpus(count),
+      map_shared_region: (
+        tag: string,
+        sizeBytes: number,
+      ): Promise<Uint8Array> => vm.map_shared_region(tag, sizeBytes),
+      export_snapshot: (): Promise<Uint8Array> => vm.export_snapshot(),
+      import_snapshot: (data: Uint8Array): Promise<void> =>
+        vm.import_snapshot(data),
     };
   }
 

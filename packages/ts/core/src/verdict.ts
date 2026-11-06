@@ -73,6 +73,7 @@ export enum PostExecAction {
 }
 
 export enum VetoEvent {
+  Fork = "fork",
   Suspend = "suspend",
   ClockSkew = "clock-skew",
 }

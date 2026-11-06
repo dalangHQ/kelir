@@ -82,22 +82,22 @@ impl StoragePlane {
         fuse::FuseWorker::new(receiver, interposer, session_id)
     }
 
-    pub fn reconcile(&self) -> Result<(), kelir_interface::errors::PluginError> {
+    pub fn reconcile(&self) -> Result<(), kelir_interface::plugin::PluginError> {
         // TODO (L3): reconcile workspace_root against sparse_upper_path and tombstones via Reconciler.
         let _ = (
             &self.workspace_root,
             &self.sparse_upper_path,
             &self.tombstones,
         );
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): StoragePlane::reconcile needs the reconciler commit path".into(),
         ))
     }
 
-    pub fn discard(&self) -> Result<(), kelir_interface::errors::PluginError> {
+    pub fn discard(&self) -> Result<(), kelir_interface::plugin::PluginError> {
         // TODO (L3): drop the sparse upper file and tombstones; base untouched.
         let _ = (&self.sparse_upper_path, &self.tombstones);
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): StoragePlane::discard needs the sparse upper drop".into(),
         ))
     }
@@ -105,9 +105,9 @@ impl StoragePlane {
     pub fn record_tombstone(
         &self,
         path: &Path,
-    ) -> Result<(), kelir_interface::errors::PluginError> {
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
         let mut tombstones = self.tombstones.write().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("tombstone lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("tombstone lock poisoned".into())
         })?;
         tombstones.insert(path.to_path_buf());
         Ok(())
@@ -118,17 +118,17 @@ impl StoragePlane {
         &self,
         bytes_to_write: u64,
         new_inodes: u64,
-    ) -> Result<(), kelir_interface::errors::PluginError> {
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
         let bytes = self
             .quota
             .allocated_bytes
             .load(Ordering::SeqCst)
             .checked_add(bytes_to_write)
             .ok_or_else(|| {
-                kelir_interface::errors::PluginError::Halt("quota byte arithmetic overflow".into())
+                kelir_interface::plugin::PluginError::Halt("quota byte arithmetic overflow".into())
             })?;
         if bytes > self.quota.max_bytes {
-            return Err(kelir_interface::errors::PluginError::Halt(
+            return Err(kelir_interface::plugin::PluginError::Halt(
                 "storage byte quota exceeded".into(),
             ));
         }
@@ -138,17 +138,17 @@ impl StoragePlane {
             .load(Ordering::SeqCst)
             .checked_add(new_inodes)
             .ok_or_else(|| {
-                kelir_interface::errors::PluginError::Halt("quota inode arithmetic overflow".into())
+                kelir_interface::plugin::PluginError::Halt("quota inode arithmetic overflow".into())
             })?;
         if inodes > self.quota.max_inodes {
-            return Err(kelir_interface::errors::PluginError::Halt(
+            return Err(kelir_interface::plugin::PluginError::Halt(
                 "storage inode quota exceeded".into(),
             ));
         }
         Ok(())
     }
 
-    pub fn punch_hole_sparse_upper(&self) -> Result<(), kelir_interface::errors::PluginError> {
+    pub fn punch_hole_sparse_upper(&self) -> Result<(), kelir_interface::plugin::PluginError> {
         // TODO (L3): FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on sparse_upper_path.
         self.io.punch_hole(&self.sparse_upper_path, 0, u64::MAX)?;
         self.io.advise_dontneed(&self.sparse_upper_path)

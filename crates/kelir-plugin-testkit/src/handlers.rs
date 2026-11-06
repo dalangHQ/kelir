@@ -17,6 +17,6 @@ pub fn lifecycle_ctx() -> LifecycleCtx {
 
 pub fn lifecycle_ctx_with_watchdog(action: WatchdogAction) -> LifecycleCtx {
     let mut ctx = LifecycleCtx::new();
-    let _ = ctx.set_watchdog(action);
+    ctx.watchdog = Some(action);
     ctx
 }

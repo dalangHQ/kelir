@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::protocol::TrapEvent;
 use kelir_interface::telemetry::ExecutionReceipt;
 

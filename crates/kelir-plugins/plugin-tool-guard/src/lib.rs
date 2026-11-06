@@ -3,7 +3,7 @@
 
 // TODO (L3): tests/test_tool_guard.rs per cans/artifacts/config/project-structure.txt.
 use async_trait::async_trait;
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{ConsoleInterposer, KelirPlugin, MountScope};
 
 #[derive(Clone)]

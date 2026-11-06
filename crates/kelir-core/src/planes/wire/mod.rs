@@ -4,7 +4,7 @@
 use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex, RwLock};
 
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::protocol::{FilterAction, StreamKind};
 
 pub const SYNTHETIC_DNS_GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 127, 1);
@@ -161,7 +161,7 @@ impl WirePlane {
         &self,
         guest_port: u16,
         host_port: Option<u16>,
-    ) -> Result<u16, kelir_interface::errors::PluginError> {
+    ) -> Result<u16, kelir_interface::plugin::PluginError> {
         // TODO: bind a host socket and record the guest->host mapping; echo requested port until then.
         let _ = (
             &self.udp_nat_slab,
@@ -174,7 +174,7 @@ impl WirePlane {
     pub fn process_inbound_frame(
         &mut self,
         frame: &mut [u8],
-    ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::errors::PluginError> {
+    ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
         match classify_frame(frame) {
             FrameClass::TooShort
             | FrameClass::NonIp
@@ -199,7 +199,7 @@ impl WirePlane {
     pub fn process_outbound_frame(
         &mut self,
         frame: &mut [u8],
-    ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::errors::PluginError> {
+    ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
         match classify_frame(frame) {
             FrameClass::TooShort
             | FrameClass::NonIp
@@ -232,17 +232,17 @@ impl WirePlane {
     pub fn resolve_synthetic_dns(
         &self,
         query: &[u8],
-    ) -> Result<DnsResponse, kelir_interface::errors::PluginError> {
+    ) -> Result<DnsResponse, kelir_interface::plugin::PluginError> {
         // TODO (L3): parse the query, apply the domain allowlist, answer from host resolver state via the synthetic gateway, EDNS0-downgrade the response.
         let _ = (query, &self.allowed_domains, &self.synthetic_dns_ip);
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "synthetic DNS resolution pending (L3)".into(),
         ))
     }
 
-    pub fn reap_stale_udp_sockets(&self) -> Result<usize, kelir_interface::errors::PluginError> {
+    pub fn reap_stale_udp_sockets(&self) -> Result<usize, kelir_interface::plugin::PluginError> {
         let slab = self.udp_nat_slab.lock().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("udp nat slab lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("udp nat slab lock poisoned".into())
         })?;
         let reaped = 0;
         for entry in slab.iter().flatten() {

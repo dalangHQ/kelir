@@ -1,6 +1,6 @@
 // see: cans/plugins/transaction.md
 use async_trait::async_trait;
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default)]

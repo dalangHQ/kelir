@@ -54,20 +54,20 @@ impl Reconciler {
         }
     }
 
-    pub fn detect(&self) -> Result<Vec<PathBuf>, kelir_interface::errors::PluginError> {
+    pub fn detect(&self) -> Result<Vec<PathBuf>, kelir_interface::plugin::PluginError> {
         // TODO (L3): scan broker upper + tombstones for changed entries.
         let _ = (&self.broker_dir, &self.host_target, self.guard);
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO: Reconciler::detect".into(),
         ))
     }
 
     pub fn classify_tombstones(
         &self,
-    ) -> Result<Vec<PathBuf>, kelir_interface::errors::PluginError> {
+    ) -> Result<Vec<PathBuf>, kelir_interface::plugin::PluginError> {
         // TODO (L3): classify tombstone entries to unlink targets.
         let _ = (&self.broker_dir, &self.host_target, self.guard);
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO: Reconciler::classify_tombstones".into(),
         ))
     }
@@ -75,38 +75,38 @@ impl Reconciler {
     pub fn stage(
         &self,
         paths: &[PathBuf],
-    ) -> Result<StagingGuard, kelir_interface::errors::PluginError> {
+    ) -> Result<StagingGuard, kelir_interface::plugin::PluginError> {
         // TODO (L3): copy entries to .tmp.<nonce> staging files owned by StagingGuard.
         let _ = self.io.open_root(&self.host_target)?;
         let _ = (paths, &self.broker_dir, self.guard);
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO: Reconciler::stage".into(),
         ))
     }
 
-    pub fn commit(&self) -> Result<CommitStats, kelir_interface::errors::PluginError> {
+    pub fn commit(&self) -> Result<CommitStats, kelir_interface::plugin::PluginError> {
         // TODO (L3): per-entry temp+rename via StorageIo::atomic_rename; Host Inode Broker pre-checks active host flock descriptors.
         let _ = self.io.open_root(&self.host_target)?;
         let _ = (&self.broker_dir, self.guard);
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO: Reconciler::commit".into(),
         ))
     }
 
-    pub fn contain(&self, target: &Path) -> Result<(), kelir_interface::errors::PluginError> {
+    pub fn contain(&self, target: &Path) -> Result<(), kelir_interface::plugin::PluginError> {
         // TODO (L3): strict root containment, EXDEV on escape.
         let _ = self.io.open_root(&self.host_target)?;
         let _ = (target, self.guard);
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO: Reconciler::contain".into(),
         ))
     }
 
-    pub fn reconcile(&self) -> Result<CommitStats, kelir_interface::errors::PluginError> {
+    pub fn reconcile(&self) -> Result<CommitStats, kelir_interface::plugin::PluginError> {
         // TODO (L3): detect -> classify -> stage -> commit -> contain; idempotent replay.
         let _ = self.detect()?;
         let _ = (&self.broker_dir, &self.host_target, self.guard);
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO: Reconciler::reconcile".into(),
         ))
     }

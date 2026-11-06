@@ -9,8 +9,8 @@ import type {
   HeartbeatEvent,
   ProcessExitEvent,
   TrapInfo,
-  WatchdogAction,
   WatchdogEvent,
+  WatchdogVerdict,
 } from "./types.js";
 
 export interface KelirPlugin {
@@ -109,7 +109,7 @@ export class PluginContract<
   onWatchdog(
     _handler: (
       event: WatchdogEvent,
-    ) => Promise<WatchdogAction> | WatchdogAction,
+    ) => Promise<WatchdogVerdict> | WatchdogVerdict,
   ): PluginContract<Name, Ctx, Deps> {
     return this;
   }

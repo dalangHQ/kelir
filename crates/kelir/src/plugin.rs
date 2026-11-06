@@ -1,7 +1,7 @@
 // see: cans/02-plugin-model.md#KelirPlugin-trait
 // see: cans/02-plugin-model.md#Segregated-ring-traits
 pub use kelir_interface::driver::{WatchdogEvent, WatchdogVerdict};
-pub use kelir_interface::errors::PluginError;
+pub use kelir_interface::plugin::PluginError;
 pub use kelir_interface::plugin::{
     AnyPlugin, CompositePlugin, ConsoleInterposer, EventBusBinder, ExecutionTier,
     ForeignPluginBridge, FsInodeAttr, FsInterposer, HandlerCtx, HostInterposer, KelirPlugin,

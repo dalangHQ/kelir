@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_profile.rs per cans/artifacts/config/project-structure.txt.
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{KelirPlugin, MountScope};
 
 pub trait ConfigurablePlugin: Send + Sync {

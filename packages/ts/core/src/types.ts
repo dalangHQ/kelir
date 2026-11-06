@@ -73,9 +73,15 @@ export interface ProcessExitEvent {
   readonly exitCode: number;
 }
 
-export type WatchdogAction = "mitigate" | "suppress" | "execute-default";
+export type WatchdogAction = "reboot" | "terminate";
+
+export type WatchdogVerdict = "mitigate" | "suppress" | "execute-default";
 
 export interface WatchdogEvent {
+  readonly timeoutMs: number;
+  readonly action: WatchdogAction;
+  readonly firedAtNs: number;
+  readonly lastHeartbeatMs: number;
   readonly lastActivePid?: number | null;
 }
 

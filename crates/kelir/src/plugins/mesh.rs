@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 
 use crate::plugin::KelirPlugin;
 

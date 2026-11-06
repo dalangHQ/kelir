@@ -1,7 +1,7 @@
 // see: cans/05-storage-plane.md#Storage-architecture
 // see: cans/05-storage-plane.md#Write-gating
 // see: cans/05-storage-plane.md#Host-inode-lock-broker
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{FsInterposer, HandlerCtx};
 use kelir_interface::protocol::{FilterAction, Verdict};
 use std::path::PathBuf;

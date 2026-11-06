@@ -22,6 +22,10 @@ export interface VmHandle {
   };
   adjust_balloon(megabytes: number): Promise<void>;
   adjustBalloon(megabytes: number): Promise<void>;
+  set_vcpus(count: number): Promise<void>;
+  map_shared_region(tag: string, sizeBytes: number): Promise<Uint8Array>;
+  export_snapshot(): Promise<Uint8Array>;
+  import_snapshot(data: Uint8Array): Promise<void>;
 }
 
 export interface LedgerHandle {

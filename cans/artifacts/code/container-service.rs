@@ -13,7 +13,7 @@
 use async_trait::async_trait;
 use std::ops::Range;
 use std::path::Path;
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 
 /// Container lifecycle service. Implemented by the container plugin;
 /// the guest workload runs containers with plain `podman run` inside

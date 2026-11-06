@@ -3,15 +3,44 @@
 use std::any::Any;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
+use thiserror::Error;
 
 use crate::service_registry::ServiceRegistry;
 
-use crate::driver::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
-use crate::errors::PluginError;
+use crate::driver::{BalloonConvergence, WatchdogAction, WatchdogEvent, WatchdogVerdict};
+pub use crate::handlers::HandlerCtx;
 use crate::protocol::{FilterAction, ProcessExit, TrapEvent, Verdict};
-use crate::telemetry::{ExecutionReceipt, ExitKind};
+
+// see: cans/artifacts/code/plugin-trait.rs
+#[derive(Error, Debug)]
+pub enum PluginError {
+    #[error("Foreign FFI channel saturated: worker queue depth exceeded ({depth})")]
+    FfiQueueSaturated { depth: usize },
+    #[error("W^X execution violation detected: PID {pid} attempted {operation}")]
+    WxViolation { pid: u32, operation: String },
+    #[error("Ambiguous mutation detected across plugins on resource '{resource}': {conflict}")]
+    AmbiguousMutation { resource: String, conflict: String },
+    #[error("Internal I/O failure: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Plugin halted: {0}")]
+    Halt(String),
+}
+
+impl PluginError {
+    pub fn ambiguous_mutation(resource: impl Into<String>, conflict: impl Into<String>) -> Self {
+        Self::AmbiguousMutation {
+            resource: resource.into(),
+            conflict: conflict.into(),
+        }
+    }
+
+    pub fn reject(errno: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self::Halt(format!("{}: {}", errno.into(), reason.into()))
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VirtioDevice {
@@ -130,39 +159,10 @@ pub enum LifecycleEvent {
     VmShutdown,
 }
 
-#[derive(Debug, Clone)]
-pub struct HandlerCtx {
-    pub session_id: [u8; 16],
-    pub pid: u32,
-}
-
-impl HandlerCtx {
-    pub fn new(session_id: [u8; 16], pid: u32) -> Self {
-        Self { session_id, pid }
-    }
-
-    pub fn receipt(&self) -> ExecutionReceipt {
-        // TODO: wire to the live per-process receipt in Part 2.
-        ExecutionReceipt {
-            pid: self.pid,
-            binary_path: String::new(),
-            binary_blake3: String::new(),
-            exit_kind: ExitKind::Normal,
-            correlation_token: None,
-            dirty_bytes: 0,
-            syscall_count: None,
-            exit_code: 0,
-            wall_clock_ns: 0,
-            phase_timings: None,
-            egress_bytes: 0,
-            egress_dropped_bytes: 0,
-            extensions: Vec::new(),
-        }
-    }
-}
-
+// TODO (L3): borrow &mut dyn VmmDriver + &VmConfig per cans/artifacts/code/plugin-trait.rs; owned store is the L2 stand-in.
 pub struct LifecycleCtx {
     pub watchdog: Option<WatchdogAction>,
+    pub watchdog_timeout: Option<Duration>,
     pub balloon_target_mb: Option<u32>,
     pub vetoes: Vec<(VetoEvent, Box<dyn Fn() -> bool + Send + Sync>)>,
 }
@@ -171,27 +171,43 @@ impl LifecycleCtx {
     pub fn new() -> Self {
         Self {
             watchdog: None,
+            watchdog_timeout: None,
             balloon_target_mb: None,
             vetoes: Vec::new(),
         }
     }
 
-    pub fn set_watchdog(&mut self, action: WatchdogAction) -> Result<(), PluginError> {
+    pub async fn set_watchdog(
+        &mut self,
+        timeout: Duration,
+        action: WatchdogAction,
+    ) -> Result<(), PluginError> {
+        self.watchdog_timeout = Some(timeout);
         self.watchdog = Some(action);
         Ok(())
     }
 
-    pub fn adjust_balloon(&mut self, target_mb: u32) -> Result<(), PluginError> {
+    pub async fn adjust_balloon(
+        &mut self,
+        target_mb: u32,
+    ) -> Result<BalloonConvergence, PluginError> {
+        // TODO (L3): converge via driver balloon ack per cans/artifacts/code/vmm-driver-trait.rs.
         self.balloon_target_mb = Some(target_mb);
-        Ok(())
+        Ok(BalloonConvergence {
+            target_mb,
+            converged: false,
+        })
     }
 
     pub fn register_veto(
         &mut self,
         event: VetoEvent,
         callback: Box<dyn Fn() -> bool + Send + Sync>,
-    ) -> Result<(), PluginError> {
+    ) {
         self.vetoes.push((event, callback));
+    }
+
+    pub fn update_dispatch(&mut self, _new_dispatch: Arc<()>) -> Result<(), PluginError> {
         Ok(())
     }
 }
@@ -251,6 +267,7 @@ pub trait CompositePlugin: Send + Sync {
 }
 
 // see: cans/artifacts/code/plugin-trait.rs
+// TODO (L3): cans/artifacts/code/plugin-trait.rs writes &mut dyn EventBusBinder, but subscribe is generic so the trait is not object-safe; &mut impl is the compiling form.
 pub trait KelirPlugin: Send + Sync + PluginClone {
     type Context: Send + Sync + Clone + 'static;
     fn context(&self) -> Self::Context;
@@ -282,14 +299,20 @@ pub trait LifecycleParticipant: Send + Sync {
         let _ = ctx;
         Ok(())
     }
-    async fn on_pre_commit(&self) -> Result<(), PluginError> {
+    async fn on_pre_commit(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+        let _ = ctx;
         Ok(())
     }
-    async fn on_post_commit(&self, success: bool) -> Result<(), PluginError> {
-        let _ = success;
+    async fn on_post_commit(
+        &self,
+        ctx: &mut LifecycleCtx,
+        committed: bool,
+    ) -> Result<(), PluginError> {
+        let _ = (ctx, committed);
         Ok(())
     }
-    async fn on_host_preempt(&self) -> Result<(), PluginError> {
+    async fn on_host_preempt(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+        let _ = ctx;
         Ok(())
     }
 }

@@ -23,7 +23,7 @@ impl BusDispatcher {
 
     pub fn poll_ingress(
         &mut self,
-    ) -> Result<Option<(u32, u8, Vec<u8>)>, kelir_interface::errors::PluginError> {
+    ) -> Result<Option<(u32, u8, Vec<u8>)>, kelir_interface::plugin::PluginError> {
         // TODO (L3): read one mux frame (stream_id, flags, payload) from the stream mux SPSC ring.
         let _ = (
             &mut self.control_transport,
@@ -38,7 +38,7 @@ impl BusDispatcher {
         stream_id: u32,
         flags: u8,
         payload: &[u8],
-    ) -> Result<(), kelir_interface::errors::PluginError> {
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
         // TODO (L3): look up stream_id in active_streams and deliver payload to its kind handler.
         let _ = (
             &mut self.control_transport,
@@ -53,7 +53,7 @@ impl BusDispatcher {
         &mut self,
         msg_type: kelir_interface::protocol::MsgType,
         payload: &[u8],
-    ) -> Result<(), kelir_interface::errors::PluginError> {
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
         // TODO (L3): encode msg_type as the first u16 of the payload frame and write to the control SPSC ring.
         let _ = (
             &mut self.control_transport,

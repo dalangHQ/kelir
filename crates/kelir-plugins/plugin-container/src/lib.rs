@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 use async_trait::async_trait;
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope};
 
 pub mod service;

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 
 use crate::session::SpawnBuilder;
 

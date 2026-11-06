@@ -1,7 +1,7 @@
 // see: cans/plugins/vault.md
 #![forbid(unsafe_code)]
 
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope, NetInterposer};
 use kelir_interface::protocol::FilterAction;
 

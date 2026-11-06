@@ -3,7 +3,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use kelir_interface::driver::SnapshotDescriptor;
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 
 use crate::planes::storage::{FsReconcileRequest, ReconcileStats};
 
@@ -44,6 +44,32 @@ impl VmHandle {
 
     pub async fn suspend(&self, _path: &str) -> Result<(), PluginError> {
         Err(PluginError::Halt("TODO (L3): VmHandle::suspend".into()))
+    }
+
+    pub async fn resume(&self, _path: &str) -> Result<(), PluginError> {
+        Err(PluginError::Halt("TODO (L3): VmHandle::resume".into()))
+    }
+
+    pub async fn export_snapshot(&self) -> Result<Vec<u8>, PluginError> {
+        Err(PluginError::Halt(
+            "TODO (L3): VmHandle::export_snapshot".into(),
+        ))
+    }
+
+    pub async fn import_snapshot(&self, _data: &[u8]) -> Result<(), PluginError> {
+        Err(PluginError::Halt(
+            "TODO (L3): VmHandle::import_snapshot".into(),
+        ))
+    }
+
+    pub async fn adjust_balloon(&self, _target_mb: u32) -> Result<(), PluginError> {
+        Err(PluginError::Halt(
+            "TODO (L3): VmHandle::adjust_balloon".into(),
+        ))
+    }
+
+    pub async fn set_vcpus(&self, _count: u8) -> Result<(), PluginError> {
+        Err(PluginError::Halt("TODO (L3): VmHandle::set_vcpus".into()))
     }
 
     pub async fn map_shared_region(

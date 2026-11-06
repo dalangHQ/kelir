@@ -1,7 +1,16 @@
 #![forbid(unsafe_code)]
 // see: cans/01-architecture.md#Driver-backends
 // see: cans/artifacts/diagrams/host-runtime.txt
-use kelir_interface::driver::{SnapshotDescriptor, VmConfig, VmmDriver, VmmError};
+use std::path::Path;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use tokio::io::AsyncRead;
+
+use kelir_interface::driver::{
+    BalloonConvergence, SharedMemoryHandle, SnapshotDescriptor, SuspendReason, VmConfig, VmmDriver,
+    VmmError, WatchdogAction,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DriverState {
@@ -49,7 +58,7 @@ impl BwrapDriver {
     pub fn capabilities(&self) -> DriverCapabilities {
         DriverCapabilities {
             backend: "bwrap",
-            cold_boot_budget_ms: 40,
+            cold_boot_budget_ms: 60,
             rollback_budget_ms: 8,
             fork_budget_ms: 10,
             requires_hardware_vmm: false,
@@ -74,91 +83,135 @@ impl BwrapDriver {
     }
 }
 
+#[async_trait]
 impl VmmDriver for BwrapDriver {
-    fn boot(&mut self, config: &VmConfig) -> Result<(), VmmError> {
+    async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError> {
         if !self.allow_emulated_fallback {
             return Err(VmmError::Unsupported(
                 "emulated fallback not allowed".to_string(),
             ));
         }
-        self.config = Some(config.clone());
+        self.config = Some(config);
         self.spawn_namespace()
     }
 
-    fn pause(&mut self) -> Result<(), VmmError> {
+    async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): SIGSTOP the child namespace.
-        Err(VmmError::Unsupported(
-            "bwrap pause: SIGSTOP child namespace (L3)".into(),
-        ))
-    }
-
-    fn resume(&mut self) -> Result<(), VmmError> {
-        self.ensure_booted()?;
-        // TODO (L3): SIGCONT the child namespace.
-        Err(VmmError::Unsupported(
-            "bwrap resume: SIGCONT child namespace (L3)".into(),
-        ))
-    }
-
-    fn step(&mut self) -> Result<(), VmmError> {
-        self.ensure_booted()?;
-        // TODO (L3): single-step one traced syscall.
-        Err(VmmError::Unsupported(
-            "bwrap step: traced syscall single-step (L3)".into(),
-        ))
-    }
-
-    fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
-        self.ensure_booted()?;
-        // TODO (L3): fork the emulated child namespace.
+        // TODO (L3): clone VM state via CoW fork in <15ms per cans/artifacts/code/vmm-driver-trait.rs.
         Err(VmmError::Unsupported(
             "bwrap fork: emulated namespace fork (L3)".into(),
         ))
     }
 
-    fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
+    async fn checkpoint(&mut self, _label: &str) -> Result<SnapshotDescriptor, VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): reset child state and revert memory tracking in <8ms.
+        // TODO (L3): capture an atomic in-memory checkpoint of guest RAM and vCPU registers.
+        Err(VmmError::Unsupported(
+            "bwrap checkpoint: RAM + register capture (L3)".into(),
+        ))
+    }
+
+    async fn map_shared_region(
+        &mut self,
+        _tag: &str,
+        _size_bytes: usize,
+    ) -> Result<SharedMemoryHandle, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): map an anonymous zero-copy host memory segment into guest address space.
+        Err(VmmError::Unsupported(
+            "bwrap map_shared_region: zero-copy segment map (L3)".into(),
+        ))
+    }
+
+    async fn export_snapshot(&self) -> Result<Box<dyn AsyncRead + Send + Sync + Unpin>, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): serialize registers and compressed dirty pages into a portable stream.
+        Err(VmmError::Unsupported(
+            "bwrap export_snapshot: portable snapshot stream (L3)".into(),
+        ))
+    }
+
+    async fn import_snapshot(
+        &mut self,
+        _reader: Box<dyn AsyncRead + Send + Sync + Unpin>,
+    ) -> Result<(), VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): hydrate microVM registers and memory pages from a portable snapshot stream.
+        Err(VmmError::Unsupported(
+            "bwrap import_snapshot: portable snapshot hydrate (L3)".into(),
+        ))
+    }
+
+    async fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): reset vCPU registers and revert memory tracking in <8ms.
         Err(VmmError::Unsupported(
             "bwrap rollback: child state reset (L3)".into(),
         ))
     }
 
-    fn snapshot(&mut self) -> Result<SnapshotDescriptor, VmmError> {
+    async fn suspend(
+        &mut self,
+        _reason: SuspendReason,
+        _output_path: &Path,
+    ) -> Result<(), VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): capture dirty byte pages and register states.
+        // TODO (L3): flush dirty RAM pages to disk and drop host memory to 0 MB in <50ms.
         Err(VmmError::Unsupported(
-            "bwrap snapshot: dirty-page + register capture (L3)".into(),
+            "bwrap suspend: flush dirty pages to disk (L3)".into(),
         ))
     }
 
-    fn set_vcpus(&mut self, count: u8) -> Result<(), VmmError> {
-        // TODO (L3): emulated vCPU count is fixed at 1; count > 1 is unsupported.
-        if count > 1 {
-            return Err(VmmError::Unsupported(
-                "emulated vCPU count is fixed at 1".into(),
-            ));
-        }
+    async fn resume(&mut self, _image_path: &Path) -> Result<(), VmmError> {
         self.ensure_booted()?;
+        // TODO (L3): restore a suspended VM image from storage in <50ms.
         Err(VmmError::Unsupported(
-            "bwrap set_vcpus: emulated vCPU resize (L3)".into(),
+            "bwrap resume: restore suspended image (L3)".into(),
         ))
     }
 
-    fn adjust_balloon(&mut self, _target_mb: u32) -> Result<(), VmmError> {
+    async fn skew_clock(&mut self, _offset: Duration) -> Result<(), VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): adjust emulated memory ceiling.
+        // TODO (L3): offset the virtual hardware clock.
+        Err(VmmError::Unsupported(
+            "bwrap skew_clock: emulated clock offset (L3)".into(),
+        ))
+    }
+
+    async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): adjust the guest RAM ceiling via virtio-balloon; fork, snapshot, and heavy exec require prior convergence.
+        let _ = target_mb;
         Err(VmmError::Unsupported(
             "bwrap adjust_balloon: emulated memory ceiling (L3)".into(),
         ))
     }
 
-    fn skew_clock(&mut self, _offset_ns: i64) -> Result<(), VmmError> {
+    async fn set_watchdog(
+        &mut self,
+        _timeout: Duration,
+        _action: WatchdogAction,
+    ) -> Result<(), VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): adjust emulated clock offset.
+        // TODO (L3): arm the hardware watchdog; on timeout the driver executes the action.
         Err(VmmError::Unsupported(
-            "bwrap skew_clock: emulated clock offset (L3)".into(),
+            "bwrap set_watchdog: hardware watchdog arm (L3)".into(),
+        ))
+    }
+
+    fn transport_connect(&self, _channel_id: u32) -> Result<tokio::net::UnixStream, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): yield a raw duplex channel to the transport backend multiplexer.
+        Err(VmmError::Unsupported(
+            "bwrap transport_connect: duplex channel (L3)".into(),
+        ))
+    }
+
+    async fn terminate(&mut self) -> Result<(), VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): terminate the hypervisor instance and release memory allocations.
+        Err(VmmError::Unsupported(
+            "bwrap terminate: hypervisor teardown (L3)".into(),
         ))
     }
 }

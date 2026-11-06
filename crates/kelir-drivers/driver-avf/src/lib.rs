@@ -1,7 +1,16 @@
 #![forbid(unsafe_code)]
 // see: cans/01-architecture.md#Driver-backends
 // see: cans/artifacts/diagrams/host-runtime.txt
-use kelir_interface::driver::{SnapshotDescriptor, VmConfig, VmmDriver, VmmError};
+use std::path::Path;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use tokio::io::AsyncRead;
+
+use kelir_interface::driver::{
+    BalloonConvergence, SharedMemoryHandle, SnapshotDescriptor, SuspendReason, VmConfig, VmmDriver,
+    VmmError, WatchdogAction,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DriverState {
@@ -42,7 +51,7 @@ impl AvfDriver {
     pub fn capabilities(&self) -> DriverCapabilities {
         DriverCapabilities {
             backend: "avf",
-            cold_boot_budget_ms: 40,
+            cold_boot_budget_ms: 60,
             rollback_budget_ms: 8,
             fork_budget_ms: 10,
             requires_hardware_vmm: true,
@@ -65,43 +74,59 @@ impl AvfDriver {
     }
 }
 
+#[async_trait]
 impl VmmDriver for AvfDriver {
-    fn boot(&mut self, config: &VmConfig) -> Result<(), VmmError> {
-        self.config = Some(config.clone());
+    async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError> {
+        self.config = Some(config);
         self.open_node()
     }
 
-    fn pause(&mut self) -> Result<(), VmmError> {
+    async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): pause vCPUs via AVF.
-        Err(VmmError::Unsupported(
-            "avf pause: AVF vCPU pause (L3)".into(),
-        ))
-    }
-
-    fn resume(&mut self) -> Result<(), VmmError> {
-        self.ensure_booted()?;
-        // TODO (L3): resume vCPUs via AVF.
-        Err(VmmError::Unsupported(
-            "avf resume: AVF vCPU resume (L3)".into(),
-        ))
-    }
-
-    fn step(&mut self) -> Result<(), VmmError> {
-        self.ensure_booted()?;
-        // TODO (L3): single-step one vCPU exit.
-        Err(VmmError::Unsupported(
-            "avf step: AVF single-step (L3)".into(),
-        ))
-    }
-
-    fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
-        self.ensure_booted()?;
-        // TODO (L3): clone VM state via AVF.
+        // TODO (L3): clone VM state via CoW fork in <15ms per cans/artifacts/code/vmm-driver-trait.rs.
         Err(VmmError::Unsupported("avf fork: AVF VM clone (L3)".into()))
     }
 
-    fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
+    async fn checkpoint(&mut self, _label: &str) -> Result<SnapshotDescriptor, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): capture an atomic in-memory checkpoint of guest RAM and vCPU registers.
+        Err(VmmError::Unsupported(
+            "avf checkpoint: RAM + register capture (L3)".into(),
+        ))
+    }
+
+    async fn map_shared_region(
+        &mut self,
+        _tag: &str,
+        _size_bytes: usize,
+    ) -> Result<SharedMemoryHandle, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): map an anonymous zero-copy host memory segment into guest address space.
+        Err(VmmError::Unsupported(
+            "avf map_shared_region: zero-copy segment map (L3)".into(),
+        ))
+    }
+
+    async fn export_snapshot(&self) -> Result<Box<dyn AsyncRead + Send + Sync + Unpin>, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): serialize registers and compressed dirty pages into a portable stream.
+        Err(VmmError::Unsupported(
+            "avf export_snapshot: portable snapshot stream (L3)".into(),
+        ))
+    }
+
+    async fn import_snapshot(
+        &mut self,
+        _reader: Box<dyn AsyncRead + Send + Sync + Unpin>,
+    ) -> Result<(), VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): hydrate microVM registers and memory pages from a portable snapshot stream.
+        Err(VmmError::Unsupported(
+            "avf import_snapshot: portable snapshot hydrate (L3)".into(),
+        ))
+    }
+
+    async fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
         self.ensure_booted()?;
         // TODO (L3): reset vCPU registers and revert memory tracking in <8ms.
         Err(VmmError::Unsupported(
@@ -109,35 +134,68 @@ impl VmmDriver for AvfDriver {
         ))
     }
 
-    fn snapshot(&mut self) -> Result<SnapshotDescriptor, VmmError> {
+    async fn suspend(
+        &mut self,
+        _reason: SuspendReason,
+        _output_path: &Path,
+    ) -> Result<(), VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): capture dirty byte pages and register states.
+        // TODO (L3): flush dirty RAM pages to disk and drop host memory to 0 MB in <50ms.
         Err(VmmError::Unsupported(
-            "avf snapshot: dirty-page + register capture (L3)".into(),
+            "avf suspend: flush dirty pages to disk (L3)".into(),
         ))
     }
 
-    fn set_vcpus(&mut self, _count: u8) -> Result<(), VmmError> {
+    async fn resume(&mut self, _image_path: &Path) -> Result<(), VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): create or destroy vCPUs to match count.
+        // TODO (L3): restore a suspended VM image from storage in <50ms.
         Err(VmmError::Unsupported(
-            "avf set_vcpus: vCPU resize (L3)".into(),
+            "avf resume: restore suspended image (L3)".into(),
         ))
     }
 
-    fn adjust_balloon(&mut self, _target_mb: u32) -> Result<(), VmmError> {
+    async fn skew_clock(&mut self, _offset: Duration) -> Result<(), VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): deflate/inflate virtio-balloon device descriptor.
+        // TODO (L3): offset the virtual hardware clock.
+        Err(VmmError::Unsupported(
+            "avf skew_clock: pKVM clock offset (L3)".into(),
+        ))
+    }
+
+    async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): adjust the guest RAM ceiling via virtio-balloon; fork, snapshot, and heavy exec require prior convergence.
+        let _ = target_mb;
         Err(VmmError::Unsupported(
             "avf adjust_balloon: virtio-balloon resize (L3)".into(),
         ))
     }
 
-    fn skew_clock(&mut self, _offset_ns: i64) -> Result<(), VmmError> {
+    async fn set_watchdog(
+        &mut self,
+        _timeout: Duration,
+        _action: WatchdogAction,
+    ) -> Result<(), VmmError> {
         self.ensure_booted()?;
-        // TODO (L3): adjust pKVM virtual clock offset.
+        // TODO (L3): arm the hardware watchdog; on timeout the driver executes the action.
         Err(VmmError::Unsupported(
-            "avf skew_clock: pKVM clock offset (L3)".into(),
+            "avf set_watchdog: hardware watchdog arm (L3)".into(),
+        ))
+    }
+
+    fn transport_connect(&self, _channel_id: u32) -> Result<tokio::net::UnixStream, VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): yield a raw duplex channel to the transport backend multiplexer.
+        Err(VmmError::Unsupported(
+            "avf transport_connect: duplex channel (L3)".into(),
+        ))
+    }
+
+    async fn terminate(&mut self) -> Result<(), VmmError> {
+        self.ensure_booted()?;
+        // TODO (L3): terminate the hypervisor instance and release memory allocations.
+        Err(VmmError::Unsupported(
+            "avf terminate: hypervisor teardown (L3)".into(),
         ))
     }
 }

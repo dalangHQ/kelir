@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::telemetry::CausalDelta;
 
 use crate::plugin::KelirPlugin;

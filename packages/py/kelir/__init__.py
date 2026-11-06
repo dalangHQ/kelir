@@ -305,6 +305,22 @@ class VmHandle:
         # TODO (L3): suspend VM to snapshot file via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm suspend (L3)")
 
+    async def resume(self, path: str) -> None:
+        # TODO (L3): restore a suspended VM image via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm resume (L3)")
+
+    async def adjust_balloon(self, target_mb: int) -> None:
+        # TODO (L3): adjust the guest RAM ceiling via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm adjust_balloon (L3)")
+
+    async def set_vcpus(self, count: int) -> None:
+        # TODO (L3): park/unpark host vCPU threads via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm set_vcpus (L3)")
+
+    async def map_shared_region(self, tag: str, size_bytes: int) -> bytes:
+        # TODO (L3): map a zero-copy host memory segment via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm map_shared_region (L3)")
+
     async def import_snapshot(self, data: bytes) -> None:
         # TODO (L3): hydrate registers/dirty pages from snapshot bytes via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm import_snapshot (L3)")

@@ -1,8 +1,26 @@
 // see: cans/01-architecture.md#VmmDriver-trait
 // see: cans/08-lifecycle.md#Hypervisor-primitives
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-pub use crate::errors::{DriverError, VmmError};
+use async_trait::async_trait;
+use thiserror::Error;
+use tokio::io::AsyncRead;
+
+// see: cans/artifacts/code/vmm-driver-trait.rs
+#[derive(Error, Debug)]
+pub enum VmmError {
+    #[error("unsupported: {0}")]
+    Unsupported(String),
+    #[error("invalid state: {0}")]
+    InvalidState(String),
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("exhausted: {0}")]
+    ResourceExhausted(String),
+}
+
+pub type DriverError = VmmError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WxPolicy {
@@ -117,15 +135,31 @@ pub struct SharedMemoryHandle {
 }
 
 // see: cans/artifacts/code/vmm-driver-trait.rs
+#[async_trait]
 pub trait VmmDriver: Send + Sync {
-    fn boot(&mut self, config: &VmConfig) -> Result<(), DriverError>;
-    fn pause(&mut self) -> Result<(), DriverError>;
-    fn resume(&mut self) -> Result<(), DriverError>;
-    fn step(&mut self) -> Result<(), DriverError>;
-    fn fork(&self) -> Result<Box<dyn VmmDriver>, DriverError>;
-    fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), DriverError>;
-    fn snapshot(&mut self) -> Result<SnapshotDescriptor, DriverError>;
-    fn set_vcpus(&mut self, count: u8) -> Result<(), DriverError>;
-    fn adjust_balloon(&mut self, target_mb: u32) -> Result<(), DriverError>;
-    fn skew_clock(&mut self, offset_ns: i64) -> Result<(), DriverError>;
+    async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError>;
+    async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError>;
+    async fn checkpoint(&mut self, label: &str) -> Result<SnapshotDescriptor, VmmError>;
+    async fn map_shared_region(
+        &mut self,
+        tag: &str,
+        size_bytes: usize,
+    ) -> Result<SharedMemoryHandle, VmmError>;
+    async fn export_snapshot(&self) -> Result<Box<dyn AsyncRead + Send + Sync + Unpin>, VmmError>;
+    async fn import_snapshot(
+        &mut self,
+        reader: Box<dyn AsyncRead + Send + Sync + Unpin>,
+    ) -> Result<(), VmmError>;
+    async fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), VmmError>;
+    async fn suspend(&mut self, reason: SuspendReason, output_path: &Path) -> Result<(), VmmError>;
+    async fn resume(&mut self, image_path: &Path) -> Result<(), VmmError>;
+    async fn skew_clock(&mut self, offset: Duration) -> Result<(), VmmError>;
+    async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, VmmError>;
+    async fn set_watchdog(
+        &mut self,
+        timeout: Duration,
+        action: WatchdogAction,
+    ) -> Result<(), VmmError>;
+    fn transport_connect(&self, channel_id: u32) -> Result<tokio::net::UnixStream, VmmError>;
+    async fn terminate(&mut self) -> Result<(), VmmError>;
 }

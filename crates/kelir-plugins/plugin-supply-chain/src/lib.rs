@@ -3,7 +3,7 @@
 
 // TODO (L3): tests/test_supply_chain.rs per cans/artifacts/config/project-structure.txt.
 use async_trait::async_trait;
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{HandlerCtx, KelirPlugin, MountScope, TrapInterposer};
 use kelir_interface::protocol::{TrapEvent, Verdict};
 

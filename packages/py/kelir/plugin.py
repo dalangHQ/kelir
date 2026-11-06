@@ -42,12 +42,17 @@ class FsInodeAttr:
 
 
 class VetoEvent(Enum):
+    Fork = "fork"
     Suspend = "suspend"
     ClockSkew = "clock_skew"
 
 
 @dataclass
 class WatchdogEvent:
+    timeout_ms: int = 0
+    action: str = "reboot"
+    fired_at_ns: int = 0
+    last_heartbeat_ms: int = 0
     last_active_pid: Optional[int] = None
 
 

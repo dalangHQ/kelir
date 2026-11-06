@@ -67,10 +67,10 @@ impl Vt100StateMachine {
         self.cursor_col = 0;
     }
 
-    pub fn feed(&mut self, bytes: &[u8]) -> Result<(), kelir_interface::errors::PluginError> {
+    pub fn feed(&mut self, bytes: &[u8]) -> Result<(), kelir_interface::plugin::PluginError> {
         // TODO (L3): parse VT100 escape sequences in bytes and update matrix + cursor.
         let _ = bytes;
-        Err(kelir_interface::errors::PluginError::Halt(
+        Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): Vt100StateMachine::feed".into(),
         ))
     }
@@ -87,11 +87,11 @@ impl LogCursor {
         Self(0)
     }
 
-    pub fn advance(&self, len: u64) -> Result<Self, kelir_interface::errors::PluginError> {
+    pub fn advance(&self, len: u64) -> Result<Self, kelir_interface::plugin::PluginError> {
         self.0
             .checked_add(len)
             .map(Self)
-            .ok_or_else(|| kelir_interface::errors::PluginError::Halt("log cursor overflow".into()))
+            .ok_or_else(|| kelir_interface::plugin::PluginError::Halt("log cursor overflow".into()))
     }
 }
 
@@ -133,24 +133,24 @@ impl TerminalPlane {
         }
     }
 
-    pub fn resize(&self, cols: u16, rows: u16) -> Result<(), kelir_interface::errors::PluginError> {
+    pub fn resize(&self, cols: u16, rows: u16) -> Result<(), kelir_interface::plugin::PluginError> {
         let mut state = self.state.lock().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("terminal state lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("terminal state lock poisoned".into())
         })?;
         state.resize(cols, rows);
         Ok(())
     }
 
-    pub fn feed(&self, bytes: &[u8]) -> Result<(), kelir_interface::errors::PluginError> {
+    pub fn feed(&self, bytes: &[u8]) -> Result<(), kelir_interface::plugin::PluginError> {
         let mut state = self.state.lock().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("terminal state lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("terminal state lock poisoned".into())
         })?;
         state.feed(bytes)
     }
 
-    pub fn export_screen_matrix(&self) -> Result<Vec<u8>, kelir_interface::errors::PluginError> {
+    pub fn export_screen_matrix(&self) -> Result<Vec<u8>, kelir_interface::plugin::PluginError> {
         let state = self.state.lock().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("terminal state lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("terminal state lock poisoned".into())
         })?;
         Ok(apply_token_shield(
             &filter_ansi_shadow(&state.export()),
@@ -163,20 +163,20 @@ impl TerminalPlane {
         &self,
         port: u32,
         cursor: u64,
-    ) -> Result<(Vec<u8>, u64), kelir_interface::errors::PluginError> {
+    ) -> Result<(Vec<u8>, u64), kelir_interface::plugin::PluginError> {
         let segments = self.segments.lock().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("terminal log lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("terminal log lock poisoned".into())
         })?;
         let segment = segments.get(&port).ok_or_else(|| {
-            kelir_interface::errors::PluginError::Halt("no log segment for port".into())
+            kelir_interface::plugin::PluginError::Halt("no log segment for port".into())
         })?;
         if cursor > segment.head.0 {
-            return Err(kelir_interface::errors::PluginError::Halt(
+            return Err(kelir_interface::plugin::PluginError::Halt(
                 "cursor beyond log head".into(),
             ));
         }
         let offset = usize::try_from(cursor).map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("log cursor too large".into())
+            kelir_interface::plugin::PluginError::Halt("log cursor too large".into())
         })?;
         Ok((segment.bytes[offset..].to_vec(), segment.head.0))
     }
@@ -185,16 +185,16 @@ impl TerminalPlane {
         &self,
         port: u32,
         chunk: &[u8],
-    ) -> Result<u64, kelir_interface::errors::PluginError> {
+    ) -> Result<u64, kelir_interface::plugin::PluginError> {
         // TODO (L3): flush the segment to its append-only index.bin on durable storage.
         let mut segments = self.segments.lock().map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("terminal log lock poisoned".into())
+            kelir_interface::plugin::PluginError::Halt("terminal log lock poisoned".into())
         })?;
         let segment = segments
             .entry(port)
             .or_insert_with(|| LogSegment::new(port));
         let len = u64::try_from(chunk.len()).map_err(|_| {
-            kelir_interface::errors::PluginError::Halt("log chunk too large".into())
+            kelir_interface::plugin::PluginError::Halt("log chunk too large".into())
         })?;
         segment.head = segment.head.advance(len)?;
         segment.bytes.extend_from_slice(chunk);

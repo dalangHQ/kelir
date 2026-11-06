@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 // TODO (L2/L3): src/wal.rs + otel.rs + compute.rs, tests/test_merkle_wal.rs, test_causal_delta.rs, test_otel.rs per cans/artifacts/config/project-structure.txt.
-use kelir_interface::errors::PluginError;
+use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope, TrapInterposer};
 use kelir_interface::telemetry::CausalDelta;
 
