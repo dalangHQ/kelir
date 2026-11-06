@@ -1,7 +1,6 @@
 // see: cans/11-protocol.md#Wire-framing
 // see: cans/artifacts/config/project-structure.txt#kelir-shim
 // see: cans/artifacts/code/wire-protocol.rs
-// NOTE: these constants are local copies; crates/kelir-interface/src/codec.rs is the canonical home (lands at convergence).
 
 #[allow(dead_code)]
 pub const HEADER_LEN: usize = 9;
@@ -30,7 +29,6 @@ pub const FLAG_RST: u8 = 0x08;
 #[allow(dead_code)]
 pub const FLAG_WINDOW_UPDATE: u8 = 0x10;
 
-// Hostile-input rule (wire-protocol.rs): checked_* arithmetic only; wire-derived numbers validated before any slicing; oversize payloads fail immediately.
 #[allow(dead_code)]
 pub fn encode_frame(
     stream_id: u32,
@@ -73,7 +71,7 @@ pub fn decode_header(buf: &[u8]) -> Result<(u32, u8, u32), ()> {
     Ok((stream_id, flags, len))
 }
 
-// Control frames (transport 0x0000) carry at most MAX_CONTROL_PAYLOAD bytes; called by the control-channel split when it lands (L3).
+// see: cans/11-protocol.md#Control-channel
 #[allow(dead_code)]
 pub fn check_control_payload(payload: &[u8]) -> Result<(), ()> {
     if payload.len() > MAX_CONTROL_PAYLOAD {

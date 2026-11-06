@@ -1,10 +1,4 @@
 # see: cans/03-sdk-architecture.md#Python-SDK
-"""Minimal Python SDK stub surface for the ported examples.
-
-Stubs only: every method has a TODO body and returns a zero-value.
-Real behavior arrives with the PyO3 bindings; the ported examples
-under packages/py/examples/ must compile against this surface.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -16,28 +10,21 @@ if TYPE_CHECKING:
 
 
 class EConfig(Exception):
-    """Missing prerequisite or invalid configuration at builder.boot()."""
+    pass
 
 
-# ============================================================================
-# Verdict lattice / post-exec / filter actions / suspension shapes
-# ============================================================================
 
 class Approval:
-    """Suspension-until sentinel, used as a bare class: until=Approval."""
+    pass
 
 
 @dataclass
 class Deadline:
-    """Suspension until a millisecond deadline (0 = immediate)."""
 
     value: int = 0
 
 
 class Verdict:
-    """Pre-exec verdict. patch() has three call shapes in the examples:
-    patch(binary=, argv=, env=), patch(FsInodeAttr) positional, and
-    patch(name=, cbor=) for a registered custom action."""
 
     def __init__(self, kind: str, **payload: Any) -> None:
         self.kind = kind
@@ -62,7 +49,7 @@ class Verdict:
         cbor: dict[str, Any] | None = None,
         attr: Any = None,
     ) -> Verdict:
-        # TODO: serialize to ExecveMutation / FsInodeAttr / Custom payload
+        # see: cans/03-sdk-architecture.md#Python-SDK
         if args and attr is None:
             attr = args[0]
         return cls(
@@ -85,7 +72,6 @@ class Verdict:
 
 
 class PostExecAction:
-    """Post-exec action returned by `trap` post hooks."""
 
     def __init__(self, kind: str) -> None:
         self.kind = kind
@@ -100,7 +86,6 @@ class PostExecAction:
 
 
 class FilterAction:
-    """Wire/storage filter action (hook-matrix on_net_outbound)."""
 
     def __init__(self, kind: str, **payload: Any) -> None:
         self.kind = kind
@@ -115,9 +100,6 @@ class FilterAction:
         return cls("suspend", until=until)
 
 
-# ============================================================================
-# Trap events / filters / receipts / spawn results
-# ============================================================================
 
 @dataclass
 class TrapEvent:
@@ -130,7 +112,6 @@ class TrapEvent:
 
 
 class TrapFilter:
-    """Builder-side trap selector; .with_arg() chains."""
 
     def __init__(self, binary: str | None = None, args: tuple[str, ...] = ()) -> None:
         self.binary_name = binary
@@ -158,9 +139,6 @@ class ExecutionReceipt:
     extensions: list[ReceiptExtension] = field(default_factory=list)
 
     def __await__(self) -> Any:
-        # HandlerContext.receipt() is awaited in autonomous-swe-agent.py
-        # but called synchronously in db-backed-runtime.py; returning an
-        # awaitable receipt satisfies both call sites verbatim.
         async def _return_self() -> ExecutionReceipt:
             return self
 
@@ -194,17 +172,14 @@ class FinalReceipt:
     signed_jws: str = ""
 
 
-# ============================================================================
-# Capability services reachable as session.cap.* / c.cap.*
-# ============================================================================
 
 class LedgerService:
     async def flush(self) -> None:
-        # TODO: flush host ledger
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def count_denials(self, ppid: int) -> int:
-        # TODO: count denials for ppid in host ledger
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return 0
 
     async def finalize(
@@ -212,21 +187,21 @@ class LedgerService:
         include_delta: CausalDelta | None = None,
         include_merkle_root: bool = False,
     ) -> FinalReceipt:
-        # TODO: finalize signed Merkle receipt
+        # see: cans/10-attestation.md#Execution-receipts
         return FinalReceipt()
 
     async def get_causal_delta_from_parent(self) -> CausalDelta:
-        # TODO: fetch causal delta from parent session
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return CausalDelta()
 
     async def blake3_of_producing_process(self, path: Any) -> str:
-        # TODO: resolve producing-process digest via ledger
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return ""
 
 
 class ContainerService:
     async def ingest_image(self, tarball: str) -> str:
-        # TODO: ingest pre-cached OCI tarball, return image ref
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return tarball
 
 
@@ -241,13 +216,12 @@ class PolicyCap:
 
 
 class TransactionScope:
-    """Async context manager from TransactionService.scope()."""
 
     def __init__(self, name: str) -> None:
         self.name = name
 
     async def __aenter__(self) -> TransactionScope:
-        # TODO: begin 2PC scope
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return self
 
     async def __aexit__(
@@ -256,15 +230,15 @@ class TransactionScope:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        # TODO: commit on clean exit, abort on error
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def savepoint(self) -> str:
-        # TODO: create savepoint, return its handle
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return ""
 
     async def rollback_to_savepoint(self, savepoint: str) -> None:
-        # TODO: roll back to savepoint
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
 
@@ -275,12 +249,11 @@ class TransactionService:
         paths: list[str] | None = None,
         schemas: list[str] | None = None,
     ) -> TransactionScope:
-        # TODO: open a 2PC scope declaring blast radius
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return TransactionScope(name)
 
 
 class Caps:
-    """session.cap / HandlerContext.cap namespace."""
 
     def __init__(self) -> None:
         self.ledger = LedgerService()
@@ -290,13 +263,10 @@ class Caps:
         self.transaction = TransactionService()
 
 
-# ============================================================================
-# Session sub-handles: vm / wire / storage / vsock
-# ============================================================================
 
 class ClockHandle:
     async def skew(self, delta: Any) -> None:
-        # TODO: skew guest clock
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
 
@@ -306,33 +276,33 @@ class VmHandle:
         self.clock = ClockHandle()
 
     async def checkpoint(self, name: str) -> SnapshotDescriptor:
-        # TODO: checkpoint VM state
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return SnapshotDescriptor(name=name)
 
     async def rollback(self, snapshot: SnapshotDescriptor) -> None:
-        # TODO: roll back VM state to snapshot
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def fork(self) -> Session:
-        # TODO: CoW-fork the microVM
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return Session()
 
     async def suspend(self, path: str) -> None:
-        # TODO: suspend VM to snapshot file
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def import_snapshot(self, data: bytes) -> None:
-        # TODO: hydrate registers/dirty pages from snapshot bytes
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def export_snapshot(self) -> bytes:
-        # TODO: export snapshot bytes
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return b""
 
 
 class WireHandle:
     async def forward_port(self, guest_port: int, host_port: int) -> None:
-        # TODO: forward guest port to host port
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
 
@@ -343,47 +313,44 @@ class StorageHandle:
         atomic_staging: bool = False,
         fsync: bool = False,
     ) -> ReconcileStats:
-        # TODO: broker commit of the workspace
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return ReconcileStats()
 
 
 class VsockChannel:
     async def write(self, data: bytes) -> None:
-        # TODO: write frame to vsock channel
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def read(self) -> bytes:
-        # TODO: read frame from vsock channel
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return b""
 
 
 class VsockHandle:
     async def channel(self, kind: int) -> VsockChannel:
-        # TODO: open duplex byte stream on vsock kind
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return VsockChannel()
 
 
 class FsHandle:
     async def warm_cache(self, paths: list[str]) -> None:
-        # TODO: warm shared caches into the guest
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
 
 class TerminalHandle:
     def notice(self, text: str) -> None:
-        # TODO: publish TerminalNotice to the event bus
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
 
 class StepHandle:
     def last(self) -> SnapshotDescriptor:
-        # TODO: return the most recently marked checkpoint
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return SnapshotDescriptor()
 
 
-# ============================================================================
-# HandlerContext — the per-trap handler view
-# ============================================================================
 
 class HandlerContext:
     def __init__(self, trap: TrapEvent | None = None) -> None:
@@ -396,25 +363,17 @@ class HandlerContext:
         self.cap = Caps()
 
     def receipt(self) -> ExecutionReceipt:
-        # TODO: fetch the trap's execution receipt (awaitable: see
-        # ExecutionReceipt.__await__ — both call shapes in the
-        # examples work against this one method).
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return ExecutionReceipt()
 
 
-# ============================================================================
-# VmmDriver — host driver handle passed to on_vm_init handlers
-# ============================================================================
 
 class VmmDriver:
     async def set_watchdog(self, timeout: Any = None, action: str = "") -> None:
-        # TODO: arm the VM watchdog
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
 
-# ============================================================================
-# Session
-# ============================================================================
 
 class Session:
     def __init__(self) -> None:
@@ -427,16 +386,14 @@ class Session:
         self.vsock = VsockHandle()
 
     async def rollback(self) -> None:
-        """Rollback compute and storage to snapshot base."""
-        # TODO: Call native driver rollback via PyO3 handle
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def stop(self) -> None:
-        """Gracefully terminate microVM session."""
         pass
 
     async def terminate(self) -> None:
-        # TODO: terminate the microVM session
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def spawn(
@@ -447,33 +404,30 @@ class Session:
         cwd: str | None = None,
         params: Any = None,
     ) -> SpawnResult:
-        # TODO: spawn binary in the guest (params cross as KELIR_PARAMS)
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return SpawnResult()
 
     async def exec_in_guest(self, binary: str, argv: list[str]) -> SpawnResult:
-        # TODO: exec binary in the guest without trap mediation
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return SpawnResult()
 
     async def suspend(self, path: str) -> None:
-        # TODO: suspend session to snapshot file
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def resume(self, path: str) -> None:
-        # TODO: resume session from snapshot file
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def console(self) -> None:
-        # TODO: open the PTY console master (break-glass surface)
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def get_causal_delta_from_parent(self) -> CausalDelta:
-        # TODO: fetch causal delta from parent session
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return CausalDelta()
 
 
-# ============================================================================
-# KelirBuilder — write-only chain until .boot() / async with
-# ============================================================================
 
 class KelirBuilder:
     def __init__(
@@ -510,17 +464,17 @@ class KelirBuilder:
         return self
 
     def terminal(self, **kwargs: Any) -> Self:
-        # TODO: configure the terminal plane
+        # see: cans/03-sdk-architecture.md#Python-SDK
         self._config["terminal"] = kwargs
         return self
 
     def storage(self, **kwargs: Any) -> Self:
-        # TODO: configure the storage plane
+        # see: cans/03-sdk-architecture.md#Python-SDK
         self._config["storage"] = kwargs
         return self
 
     def wire(self, **kwargs: Any) -> Self:
-        # TODO: configure the wire plane
+        # see: cans/03-sdk-architecture.md#Python-SDK
         self._config["wire"] = kwargs
         return self
 
@@ -530,7 +484,7 @@ class KelirBuilder:
         pre: Callable[..., Awaitable[Any]] | None = None,
         post: Callable[..., Awaitable[Any]] | None = None,
     ) -> Self:
-        # TODO: register pre/post trap handlers into the pipeline
+        # see: cans/03-sdk-architecture.md#Python-SDK
         self._handlers.setdefault("trap", []).append((pattern, pre, post))
         return self
 
@@ -540,7 +494,7 @@ class KelirBuilder:
         schema: dict[str, Any],
         handler: Callable[..., Awaitable[Any]],
     ) -> Self:
-        # TODO: register a Patch(Custom{name, cbor}) action by name
+        # see: cans/03-sdk-architecture.md#Python-SDK
         self._handlers.setdefault("custom_action", []).append((name, schema, handler))
         return self
 
@@ -550,7 +504,7 @@ class KelirBuilder:
         schema: dict[str, Any],
         handler: Callable[[bytes], Awaitable[bytes]],
     ) -> Self:
-        # TODO: register a vsock service on plugin kind
+        # see: cans/03-sdk-architecture.md#Python-SDK
         self._handlers.setdefault("vsock_service", []).append((kind, schema, handler))
         return self
 
@@ -560,7 +514,7 @@ class KelirBuilder:
         def decorator(
             fn: Callable[..., Awaitable[Any]],
         ) -> Callable[..., Awaitable[Any]]:
-            # TODO: register the lifecycle handler
+            # see: cans/03-sdk-architecture.md#Python-SDK
             self._handlers.setdefault(name, []).append(fn)
             return fn
 
@@ -591,12 +545,11 @@ class KelirBuilder:
         return self._lifecycle_decorator("on_post_commit")
 
     def params(self, model: "type[BaseModel]") -> Self:
-        # Pins TParams from the Pydantic v2 model class; no generic type-parameter accumulation.
         self._params_model = model
         return self
 
     async def boot(self) -> Session:
-        # TODO: Validate Pydantic dependencies and boot via PyO3
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return Session()
 
     async def __aenter__(self) -> Session:

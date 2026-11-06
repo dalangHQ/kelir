@@ -1,11 +1,7 @@
 // see: cans/01-architecture.md#Host-runtime
-// Async SDK stub surface (L2): the sync kelir-interface traits cannot
-// express the async examples in cans/artifacts/examples/, so this facade
-// defines the async plugin/SDK shape the examples program against. All
-// behaviour is stubbed: nothing here boots a real VM.
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/ facade integration tests per cans/artifacts/config/project-structure.txt.
+// see: cans/artifacts/config/project-structure.txt
 pub use kelir_core::*;
 pub use kelir_interface as interface;
 

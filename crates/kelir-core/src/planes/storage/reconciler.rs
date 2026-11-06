@@ -46,7 +46,7 @@ impl Reconciler {
     }
 
     pub fn detect(&self) -> Result<Vec<PathBuf>, kelir_interface::errors::PluginError> {
-        // TODO (L3): scan broker upper + tombstones for changed entries.
+        // see: cans/05-storage-plane.md#Workspace-commit
         let _ = (&self.broker_dir, &self.host_target, self.guard);
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Reconciler::detect".into(),
@@ -56,7 +56,7 @@ impl Reconciler {
     pub fn classify_tombstones(
         &self,
     ) -> Result<Vec<PathBuf>, kelir_interface::errors::PluginError> {
-        // TODO (L3): classify tombstone entries to unlink targets.
+        // see: cans/05-storage-plane.md#Workspace-commit
         let _ = (&self.broker_dir, &self.host_target, self.guard);
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Reconciler::classify_tombstones".into(),
@@ -67,7 +67,7 @@ impl Reconciler {
         &self,
         paths: &[PathBuf],
     ) -> Result<StagingGuard, kelir_interface::errors::PluginError> {
-        // TODO (L3): copy entries to .tmp.<nonce> staging files owned by StagingGuard.
+        // see: cans/05-storage-plane.md#Workspace-commit
         let _ = (paths, &self.broker_dir, &self.host_target, self.guard);
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Reconciler::stage".into(),
@@ -75,7 +75,7 @@ impl Reconciler {
     }
 
     pub fn commit(&self) -> Result<CommitStats, kelir_interface::errors::PluginError> {
-        // TODO (L3): per-entry temp+rename; openat2 resolution; non-blocking I/O; platform renameat2/flock FFI cannot live here (kelir-core forbids unsafe) — needs an enclave home.
+        // see: cans/05-storage-plane.md#Workspace-commit
         let _ = (&self.broker_dir, &self.host_target, self.guard);
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Reconciler::commit".into(),
@@ -83,7 +83,7 @@ impl Reconciler {
     }
 
     pub fn contain(&self, target: &Path) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO (L3): strict root containment, EXDEV on escape.
+        // see: cans/05-storage-plane.md#Workspace-commit
         let _ = (target, &self.host_target, self.guard);
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Reconciler::contain".into(),
@@ -91,7 +91,7 @@ impl Reconciler {
     }
 
     pub fn reconcile(&self) -> Result<CommitStats, kelir_interface::errors::PluginError> {
-        // TODO (L3): detect -> classify -> stage -> commit -> contain; idempotent replay.
+        // see: cans/05-storage-plane.md#Workspace-commit
         let _ = (&self.broker_dir, &self.host_target, self.guard);
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Reconciler::reconcile".into(),

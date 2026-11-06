@@ -1,4 +1,3 @@
-// Mesh plugin stub.
 use std::time::Duration;
 
 use kelir_interface::errors::PluginError;
@@ -49,7 +48,6 @@ impl KelirPlugin for MeshPlugin {
     }
 }
 
-/// Typed mesh handle (`session.ctx::<MeshCtx>()`).
 #[derive(Debug, Clone, Default)]
 pub struct MeshCtx;
 

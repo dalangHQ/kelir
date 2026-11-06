@@ -1,7 +1,7 @@
 // see: cans/plugins/transaction.md
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/test_transaction.rs per cans/artifacts/config/project-structure.txt.
+// see: cans/artifacts/config/project-structure.txt
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope};
 
@@ -33,7 +33,7 @@ impl KelirPlugin for TransactionPlugin {
 
 impl LifecycleParticipant for TransactionPlugin {
     fn on_pre_commit(&self) -> Result<(), PluginError> {
-        // TODO: Coordinate 2PC pre-commit with db-proxy
+        // see: cans/plugins/transaction.md
         Ok(())
     }
     fn on_post_commit(&self, _success: bool) -> Result<(), PluginError> {

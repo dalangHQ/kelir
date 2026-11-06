@@ -50,14 +50,8 @@ pub struct GuestClock {
 #[derive(Debug, Clone)]
 pub struct SnapshotDescriptor {
     pub id: String,
-    /// Byte count; see cans/01-architecture.md#VmmDriver-trait
     pub dirty_bytes: u64,
     pub created_at_ns: u64,
-    /// Parent in the snapshot chain. Depth is unbounded and restore
-    /// accepts any digest in the chain, not only the leaf.
-    /// The catalog stores zero child arrays: each snapshot manifest
-    /// immutably records its parent_digest, and lineage is resolved by
-    /// CAS manifest graph walks.
     pub parent_digest: Option<String>,
     pub guest_clock: Option<GuestClock>,
 }
@@ -122,7 +116,7 @@ pub struct SharedMemoryHandle {
     pub memfd_raw: std::os::unix::io::RawFd,
 }
 
-// L2+: async surface per cans/artifacts/code/vmm-driver-trait.rs (checkpoint, map_shared_region, export/import_snapshot, suspend, resume(image_path), terminate, set_watchdog, transport_connect) — sync L1 only here.
+// see: cans/artifacts/code/vmm-driver-trait.rs
 pub trait VmmDriver: Send + Sync {
     fn boot(&mut self, config: &VmConfig) -> Result<(), DriverError>;
     fn pause(&mut self) -> Result<(), DriverError>;

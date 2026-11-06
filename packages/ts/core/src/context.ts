@@ -1,6 +1,4 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-// Handles exposed on Session and on the trap-handler context `c`.
-// All async methods are stubs returning zero-values.
 
 import type { Session } from "./session.js";
 import type {
@@ -22,7 +20,6 @@ export interface VmHandle {
   readonly clock: {
     skew(options: { days?: number; hours?: number; ms?: number }): Promise<void>;
   };
-  // Snake-case name is what the examples call; camelCase alias included.
   adjust_balloon(megabytes: number): Promise<void>;
   adjustBalloon(megabytes: number): Promise<void>;
 }
@@ -77,9 +74,6 @@ export interface PolicyHandle {
   recordViolation(): void;
 }
 
-// Plugin-bound context keys. Only policy/ledger are exercised by the
-// ported examples; mesh/chaos are present so the context shape is
-// complete. Stub surface: no members yet.
 export interface MeshHandle {
   readonly peers?: readonly string[];
 }

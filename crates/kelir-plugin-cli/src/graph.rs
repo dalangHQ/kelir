@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-// Paths are resolved relative to the current working directory (the repo root).
 fn manifest_name(text: &str) -> Option<String> {
     text.lines()
         .map(str::trim)

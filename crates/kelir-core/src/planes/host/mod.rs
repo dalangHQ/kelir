@@ -36,7 +36,7 @@ impl HostPlane {
             }
             #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
             {
-                // NOTE: fallback for other targets (covers Android): pdeathsig family.
+                // see: cans/08-lifecycle.md#Host-crash-reaper
                 HostReaperKind::LinuxPdeathsig
             }
         };
@@ -47,7 +47,7 @@ impl HostPlane {
     }
 
     pub fn lsm_status(&self) -> bool {
-        // TODO: query the host LSM (Linux LSM / macOS sandbox / Windows integrity) status.
+        // see: cans/01-architecture.md#Host-plane-subsystem
         let _ = &self.reaper_kind;
         false
     }
@@ -57,7 +57,7 @@ impl HostPlane {
     }
 
     pub fn poll_pressure_events(&self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: sample host memory pressure and update pressure_level.
+        // see: cans/01-architecture.md#Host-plane-subsystem
         Ok(())
     }
 
@@ -65,7 +65,7 @@ impl HostPlane {
         &self,
         parent_pid: u32,
     ) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: arm the platform reaper (pdeathsig / kqueue NOTE_EXIT / Job Object) on parent_pid.
+        // see: cans/08-lifecycle.md#Host-crash-reaper
         let _ = parent_pid;
         Ok(())
     }

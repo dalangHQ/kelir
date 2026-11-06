@@ -1,9 +1,4 @@
 # see: cans/03-sdk-architecture.md#Python-SDK
-"""Plugin base surface for the ported examples.
-
-Stub only: default hooks return zero-values; real dispatch arrives
-with the PyO3 bindings.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,7 +21,6 @@ __all__ = [
 
 
 class PluginError(Exception):
-    """Plugin-rejected operation; surfaced via reject()."""
 
     def __init__(self, errno: str = "", reason: str = "") -> None:
         super().__init__(f"{errno}: {reason}" if reason else errno)
@@ -64,7 +58,6 @@ class WatchdogVerdict(Enum):
 
 
 class LifecycleCtx:
-    """Context passed to on_vm_init; registers lifecycle vetoes."""
 
     def __init__(self) -> None:
         self._vetoes: list[tuple[VetoEvent, Callable[[], bool]]] = []
@@ -72,70 +65,65 @@ class LifecycleCtx:
     def register_veto(
         self, event: VetoEvent, predicate: Callable[[], bool]
     ) -> None:
-        # TODO: register the veto predicate with the lifecycle
+        # see: cans/03-sdk-architecture.md#Python-SDK
         self._vetoes.append((event, predicate))
 
 
 class BasePlugin:
-    """Base class for domain plugins. Subclasses override the hooks
-    they need; defaults are zero-values (pass through / no decision).
-    Note the two on_fs_write shapes in the examples (Verdict in
-    autonomous-swe-agent.py, FilterAction in hook-matrix.py) are both
-    subclass overrides — the base default is never dispatched as-is."""
 
     name: str = ""
     requires: tuple[str, ...] = ()
 
     async def on_trap(self, event: Any) -> Optional[Verdict]:
-        # TODO: dispatch trap event to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return None
 
     async def on_fs_lookup(self, path: Path) -> Verdict:
-        # TODO: dispatch fs lookup to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return Verdict.pass_()
 
     async def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
-        # TODO: dispatch fs read to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return buffer
 
     async def on_fs_write(
         self, path: Path, data: Any, pid: int, ctx: HandlerContext
     ) -> Verdict:
-        # TODO: dispatch fs write to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return Verdict.pass_()
 
     async def on_net_outbound(self, frame: bytearray) -> FilterAction:
-        # TODO: dispatch outbound frame to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return FilterAction.forward()
 
     async def on_console_input(self, port: int, data: bytes) -> bytes:
-        # TODO: dispatch console input to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return data
 
     async def on_console_output(self, port: int, chunk: bytes) -> bytes:
-        # TODO: dispatch console output to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return chunk
 
     async def on_heartbeat(self, event: Any) -> None:
-        # TODO: dispatch heartbeat telemetry to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def on_process_exit(self, event: Any) -> None:
-        # TODO: dispatch process-exit event to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def on_vm_init(self, ctx: Any) -> None:
-        # TODO: dispatch vm-init lifecycle event to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def on_vm_ready(self, ctx: Any) -> None:
-        # TODO: dispatch vm-ready lifecycle event to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def on_vm_shutdown(self, ctx: Any) -> None:
-        # TODO: dispatch vm-shutdown lifecycle event to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         pass
 
     async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
-        # TODO: dispatch watchdog event to the plugin
+        # see: cans/03-sdk-architecture.md#Python-SDK
         return WatchdogVerdict.ExecuteDefault

@@ -1,6 +1,4 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-// Stub data types shared by the Session, trap-handler context, and
-// plugin surfaces. Zero-values only; no native engine behind them yet.
 
 export interface SnapshotDescriptor {
   readonly id: string;

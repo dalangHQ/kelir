@@ -1,14 +1,6 @@
 #![allow(dead_code)]
 
-//! examples/multi-vm-swarm.rs
-//!
-//! Cooperative agent swarm: N workers share a warm base microVM over a
-//! host memfd, acquire repository locks via lock-broker, and exchange
-//! peer streams over the mesh. A session Fork veto holds until the
-//! shared fixture cache is hydrated.
-//!
-//! Mounts:     mesh, supply-chain, ledger.
-//! Primitives: map_shared_region, register_veto(Fork).
+// see: cans/08-lifecycle.md#CoW-fork
 
 use std::sync::{
     Arc,
@@ -70,15 +62,11 @@ fn swarm_builder() -> KelirBuilder {
         preemption_grace_ms: 0,
         entropy_seed: Some(0x5EED),
     })
-    // Lock-broker: FUSE_SETLK on declared globs delegates to host flock.
-    // This is the lock-broker config, not StorageConfig: the full storage
-    // plane shape is git-gate.rs / autonomous-swe-agent.rs (idmap, caches).
     .lock_broker(LockBrokerConfig {
         scope: LockScope::Globs(vec!["**/Cargo.lock".into(), "**/package-lock.json".into()]),
         default_mode: LockMode::Exclusive,
         non_blocking: true,
     })
-    // Mesh: peer vsock with mTLS + W3C traceparent propagation.
     .plugin(MeshPlugin::new(MeshConfig {
         peer_identity: PeerIdentity::Spiffe {
             trust_domain: "kelir.local".into(),
@@ -97,7 +85,6 @@ fn swarm_builder() -> KelirBuilder {
             },
         ],
     }))
-    // Supply-chain: deny lifecycle scripts inside dependency directories.
     .plugin(SupplyChainPlugin::new(SupplyChainConfig {
         managers: vec![
             PackageManager::Npm,
@@ -106,8 +93,6 @@ fn swarm_builder() -> KelirBuilder {
         ],
         policy: LifecyclePolicy::DenyInDependencyDirs,
     }))
-    // Ledger: mounted so session.ctx::<LedgerCtx>() in main() satisfies
-    // Has<LedgerCtx>; the swarm's supply-chain denials are counted there.
     .plugin(LedgerPlugin::new(LedgerConfig {
         store: ".kelir/swarm-audit.merkle.db".into(),
         merkle_chain: true,
@@ -119,10 +104,6 @@ fn swarm_builder() -> KelirBuilder {
 }
 
 async fn boot_swarm() -> Result<Session, Box<dyn std::error::Error + Send + Sync>> {
-    // Register the Fork veto before boot. Without it, a worker that calls
-    // fork() during cache hydration clones a half-warm page cache.
-    // The veto is a plain session veto: it clears once hydration below
-    // marks the shared cache ready.
     let cache_ready = Arc::new(AtomicBool::new(false));
     let veto_flag = cache_ready.clone();
     let mut builder = swarm_builder();
@@ -132,8 +113,6 @@ async fn boot_swarm() -> Result<Session, Box<dyn std::error::Error + Send + Sync
     );
     let session = builder.seal().boot().await?;
 
-    // Base VM hydrates caches. The veto blocks every child fork until
-    // this returns; there is no flag the caller can flip early.
     session
         .exec_in_guest(
             "bash",
@@ -156,17 +135,11 @@ async fn run_shard(
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     let child = parent.vm.fork().await?;
 
-    // Zero-copy coordination: same host memfd, per-child guest phys addr.
-    // Both the parent and every child observe the same bytes with no
-    // vsock hop and no FUSE round-trip.
     let mapped = child
         .vm
         .map_shared_region(SWARM_REGION, SWARM_BYTES)
         .await?;
 
-    // Lock-broker intercepts the Cargo.lock write inside the child and
-    // delegates to host flock; a conflicting writer sees EWOULDBLOCK,
-    // not a stalled vCPU.
     let run = child
         .spawn("cargo")
         .args([
@@ -185,9 +158,6 @@ async fn run_shard(
         .await?;
 
     if run.exit_code == 0 {
-        // Mesh: peer-to-peer winner announcement on port 7002. The
-        // traceparent flows from the winning shard's trap across the
-        // swarm; the host ledger reconstructs one distributed trace.
         child.ctx::<MeshCtx>().publish(&mapped, shard_id).await?;
     }
 

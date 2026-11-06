@@ -1,6 +1,4 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-// Verdict lattice, filter actions, suspend targets, lifecycle and veto
-// events. Each name is both a type and a value (interface + const).
 
 import type { PatchInput } from "./types.js";
 

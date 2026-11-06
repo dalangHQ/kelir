@@ -1,8 +1,3 @@
-// Async session stub (L2): shadows the sync `kelir_core::Session`
-// brought in by `pub use kelir_core::*` in lib.rs. Explicit items shadow
-// glob imports, so `kelir::Session` is this type. All behaviour is
-// stubbed: methods succeed with zero values (or report unimplemented
-// where no value can be produced at all).
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -13,13 +8,11 @@ use kelir_interface::telemetry::CausalDelta;
 
 use crate::planes::storage::{FsReconcileRequest, ReconcileStats};
 
-/// Guest execution outcome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExecResult {
     pub exit_code: i32,
 }
 
-/// Guest clock handle: `session.vm.clock.skew(..)`.
 #[derive(Debug, Clone, Default)]
 pub struct ClockHandle;
 
@@ -29,7 +22,6 @@ impl ClockHandle {
     }
 }
 
-/// VM handle: checkpoint / rollback / fork / suspend / shared regions.
 #[derive(Debug, Clone, Default)]
 pub struct VmHandle {
     pub clock: ClockHandle,
@@ -70,7 +62,6 @@ impl VmHandle {
     }
 }
 
-/// Wire handle: port forwarding.
 #[derive(Debug, Clone, Default)]
 pub struct WireHandle;
 
@@ -80,7 +71,6 @@ impl WireHandle {
     }
 }
 
-/// Storage handle: broker commit / reconcile.
 #[derive(Debug, Clone, Default)]
 pub struct StorageHandle;
 
@@ -93,7 +83,6 @@ impl StorageHandle {
     }
 }
 
-/// Vsock handle: binary channels to plugin services.
 #[derive(Debug, Clone, Default)]
 pub struct VsockHandle;
 
@@ -104,7 +93,6 @@ impl VsockHandle {
     }
 }
 
-/// One end of a vsock byte channel: a `tokio` async byte stream.
 pub struct VsockChannel {
     inner: tokio::io::DuplexStream,
 }
@@ -137,7 +125,6 @@ impl tokio::io::AsyncWrite for VsockChannel {
     }
 }
 
-/// Filesystem handle handed to trap handlers: `ctx.fs`.
 #[derive(Debug, Clone, Default)]
 pub struct FsHandle;
 
@@ -147,7 +134,6 @@ impl FsHandle {
     }
 }
 
-/// Terminal handle handed to trap handlers: `ctx.terminal`.
 #[derive(Debug, Clone, Default)]
 pub struct TerminalHandle;
 
@@ -155,7 +141,6 @@ impl TerminalHandle {
     pub fn notice(&self, _msg: &str) {}
 }
 
-/// Checkpoint step stack handed to trap handlers: `ctx.step`.
 #[derive(Debug, Clone, Default)]
 pub struct StepStack {
     slots: Vec<SnapshotDescriptor>,
@@ -167,8 +152,6 @@ impl StepStack {
     }
 }
 
-/// A pending guest spawn: builder chain (`.args` / `.cwd` / `.params`)
-/// that is itself a future resolving to the exit code.
 #[derive(Debug, Default)]
 pub struct SpawnBuilder {
     pub args: Vec<String>,
@@ -190,10 +173,6 @@ impl SpawnBuilder {
         self
     }
 
-    /// Spawn params cross into the guest as `KELIR_PARAMS=<json>`; the
-    /// stub accepts any value without serializing it. Deliberately
-    /// unbounded: one example's params type derives `Deserialize` only,
-    /// so a `Serialize` bound would not compile.
     pub fn params<T>(self, _params: T) -> Self {
         self
     }
@@ -207,7 +186,6 @@ impl Future for SpawnBuilder {
     }
 }
 
-/// A booted microVM session (async stub).
 #[derive(Debug, Clone, Default)]
 pub struct Session {
     pub vm: VmHandle,
@@ -257,10 +235,6 @@ impl Session {
         Ok(())
     }
 
-    /// No causal delta can be produced by a stub: `CausalDelta` is
-    /// `#[non_exhaustive]` with no constructor in kelir-interface, so
-    /// there is no safe way to fabricate one. The stub reports
-    /// unimplemented instead of inventing a value.
     pub async fn get_causal_delta_from_parent(&self) -> Result<CausalDelta, PluginError> {
         Err(PluginError::Halt(
             "stub: no causal delta from parent".into(),

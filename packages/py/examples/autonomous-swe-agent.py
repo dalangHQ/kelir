@@ -1,17 +1,3 @@
-# examples/autonomous_swe_agent.py
-"""
-Composition example: chaos + ledger + repo-policy custom plugin.
-
-Python idiom throughout: Pydantic schema, native async/await,
-decorator-registered handlers, `async with` lifecycle. Not a
-TypeScript transliteration. Subsystem demos live in hook-matrix.py
-and policy-matrix.py.
-
-Requirements:
-    kelir>=1.0          (PyO3 bindings; 5 native planes + domain plugins)
-    pydantic>=2.6
-    blake3>=0.4
-"""
 
 from __future__ import annotations
 
@@ -69,19 +55,12 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("kelir.examples.swe-agent")
 
 
-# ============================================================================
-# 1. TYPED PARAMS — the Pydantic analogue of the TypeBox object schema
-# ============================================================================
-
 class Env(str, Enum):
     STAGING = "staging"
     PRODUCTION = "production"
 
 
 class FixStripeWebhook(BaseModel, frozen=True):
-    """Validation target for every spawn in this file. If the runtime's
-    `params` dict doesn't match, spawn fails with `EINVAL` *before* any
-    hook fires — the TypeBox guarantee, enforced by pydantic."""
     action: Literal["fix-stripe-webhook"]
     repo: str
     issue_id: str = Field(alias="issueId")
@@ -89,10 +68,6 @@ class FixStripeWebhook(BaseModel, frozen=True):
 
     model_config = {"populate_by_name": True, "extra": "forbid"}
 
-
-# ============================================================================
-# 2. CUSTOM PLUGIN — BasePlugin across 3 of the 4 VirtIO rings
-# ============================================================================
 
 @dataclass
 class RepoPolicyState:
@@ -102,8 +77,6 @@ class RepoPolicyState:
 
 @dataclass(frozen=True)
 class RepoPolicyHandle:
-    """Typed handle held by host scope. Created at instantiation, while
-    the builder chain remains 100% fluid."""
     _state: RepoPolicyState
     _protected: tuple[str, ...]
 
@@ -129,10 +102,9 @@ class RepoPolicyHandle:
         self._state.current_branch = b
 
 
-# Plugin: repo-policy; rings: virtio-vsock, virtio-fs
 class RepoPolicyPlugin(BasePlugin):
     name = "repo-policy"
-    requires: tuple[str, ...] = ("ledger",)  # runtime dependency check
+    requires: tuple[str, ...] = ("ledger",)
 
     def __init__(
         self,
@@ -152,7 +124,6 @@ class RepoPolicyPlugin(BasePlugin):
             _protected=self._opts["protected_branches"],
         )
 
-    # ── Ring 2 (virtio-vsock): veto or patch `git push` ────────────────
     async def on_trap(self, event: TrapEvent) -> Optional[Verdict]:
         is_git = event.binary_path.endswith("/git") or event.binary_path == "git"
         is_push = len(event.argv) > 1 and event.argv[1] == "push"
@@ -167,16 +138,12 @@ class RepoPolicyPlugin(BasePlugin):
             )
 
         new_branch = f"agent/{uuid.uuid4().hex[:8]}"
-        # ExecveMutation (plugins/tool-guard.md) as the Patch payload.
-        # Canonical kwargs, as in warm_caches/force_strip below:
-        # binary/argv/env (unset_env was empty, so nothing to unset).
         return Verdict.patch(
             binary="/bin/git",
             argv=[*event.argv, f"HEAD:refs/heads/{new_branch}"],
             env={"KELIR_REWRITTEN": "1"},
         )
 
-    # ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
     async def on_fs_write(self, path: Path, data: bytes, pid: int, ctx: HandlerContext) -> Verdict:
         if path.suffix == ".diff" and len(data) > self._opts["max_diff_bytes"]:
             self.handle().record_violation()
@@ -185,17 +152,10 @@ class RepoPolicyPlugin(BasePlugin):
             )
         return Verdict.pass_()
 
-    # Host mutations publish TerminalNotice to the EventBus; the native
-    # terminal plane formats the notice. This helper supplies the
-    # repo-policy annotation, delivered via terminal.notice.
     async def disclosure_annotation(self) -> bytes:
         n = self.handle().violations
         return f"[repo-policy: {n} open violations]\n".encode()
 
-
-# ============================================================================
-# 3. SNOOP FACTORY — does NOT capture session; only HandlerContext (§12.4 T3)
-# ============================================================================
 
 def make_snoop(oracle: UserOracle) -> Callable[[Path, bytes, HandlerContext], Awaitable[None]]:
     async def on_write(path: Path, raw: bytes, c: HandlerContext) -> None:
@@ -210,13 +170,6 @@ def make_snoop(oracle: UserOracle) -> Callable[[Path, bytes, HandlerContext], Aw
     return on_write
 
 
-# ============================================================================
-# 4. HANDLER FACTORIES — closure-captured typed handles (compile-time-proof
-#    analogue for Python; missing handle → NameError at import time)
-# ============================================================================
-
-# `trap` pre hooks gate the syscall and return a `Verdict`; `trap` post
-# hooks run post-execution and return a `PostExecAction`.
 PreExecHandler = Callable[[HandlerContext], Awaitable[Verdict]]
 PostExecHandler = Callable[[HandlerContext], Awaitable[PostExecAction]]
 
@@ -237,9 +190,6 @@ def make_universal_step(oracle: UserOracle) -> PreExecHandler:
 def make_warm_caches(oracle: UserOracle) -> PreExecHandler:
     async def warm_caches(c: HandlerContext) -> Verdict:
         await c.fs.warm_cache(["node_modules", ".next/cache"])
-        # Env injection via Patch, not env.set + pass (09 Env-injection:
-        # env.set + pass returns EINVALIDDECISION). Same binary/argv.
-        # The SDK patch serializes to ExecveMutation.
         return Verdict.patch(
             binary=c.trap.binary_path,
             argv=list(c.trap.argv),
@@ -262,10 +212,9 @@ def make_force_strip() -> PreExecHandler:
 
 def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
     async def verify_receipt(c: HandlerContext) -> PostExecAction:
-        pre: SnapshotDescriptor = c.step.last()  # raises if no checkpoint was marked
+        pre: SnapshotDescriptor = c.step.last()
         receipt: ExecutionReceipt = await c.receipt()
 
-        # Receipt is hex of the trap's raw 32-byte digest.
         if receipt.binary_blake3 != c.trap.binary_blake3.hex():
             await c.vm.rollback(pre)
             c.terminal.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
@@ -294,8 +243,6 @@ def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
 
 def make_commit_gate() -> PreExecHandler:
     async def commit_gate(c: HandlerContext) -> Verdict:
-        # Statically projected by the PEP 695 Protocol intersection:
-        # c.cap.policy -> RepoPolicyHandle, guaranteed by pyright.
         n = c.cap.policy.violations
         if n > 0:
             return Verdict.drop("EPERM", f"EPOLICY: {n} prior violation(s).")
@@ -306,16 +253,8 @@ def make_commit_gate() -> PreExecHandler:
 def make_zero_byte_check() -> PostExecHandler:
     async def zero_byte_check(c: HandlerContext) -> PostExecAction:
         receipt = await c.receipt()
-        # dirty_bytes is always populated; zero is a real measurement
         if receipt.dirty_bytes == 0:
             raise RuntimeError("Verification anomaly: zero-byte delta commit attempted.")
-        # Workspace-scoped observation (10-attestation.md#Execution-receipts):
-        # dirty_bytes counts all hypervisor-dirtied bytes; the workspace
-        # counter now arrives as a native storage plane TelemetryExtension
-        # (namespace "fs:vfs"), whose payload is plugin-defined and
-        # opaque to core. The gate above still keys on dirty_bytes;
-        # this logs only the extension's presence and payload length,
-        # never a decoded count.
         vfs_ext = next(
             (e for e in receipt.extensions if e.namespace == "fs:vfs"),
             None,
@@ -328,10 +267,6 @@ def make_zero_byte_check() -> PostExecHandler:
         return PostExecAction.proceed()
     return zero_byte_check
 
-
-# ============================================================================
-# 5. RUNTIME BUILDER — the linear chain (write-only until `.boot()`)
-# ============================================================================
 
 async def build_runtime(
     *,
@@ -354,7 +289,6 @@ async def build_runtime(
             driver="auto",
         )
 
-        # ── TERMINAL PLANE (§7) ───────────────────────────────────────────
         .terminal(
             cols=120,
             rows=40,
@@ -376,13 +310,9 @@ async def build_runtime(
                     action=lambda _p, stream: stream.write(b"y\n"),
                 ),
             ],
-            # Non-default knob (04-terminal-plane.md#Terminal-pipeline):
-            # StatelessRegex instead of the StreamingAutomata default.
-            # The filters above are unchanged; only the match engine is.
             stream_engine="StatelessRegex",
         )
 
-        # ── STORAGE PLANE (§8) — sliding-window read replacement via MaskRule ──
         .storage(
             idmap=IdmapConfig(guest_uid=0, host_uid=os.getuid()),
             shared_caches=[
@@ -415,12 +345,11 @@ async def build_runtime(
                 SnoopRule(
                     glob="~/.claude/sessions/*.json",
                     sync=True,
-                    on_write=make_snoop(oracle),  # does NOT capture session
+                    on_write=make_snoop(oracle),
                 ),
             ],
         )
 
-        # ── WIRE PLANE (§9) ───────────────────────────────────────────────
         .wire(
             sinkhole=SinkholeConfig(
                 allowlist=[
@@ -429,11 +358,6 @@ async def build_runtime(
                 drop_all=True,
             ),
             ssh_agent_bridge=True,
-            # Broker: the workload fetches
-            # http://169.254.169.254/kelir/credentials/STRIPE_SECRET
-            # -> {token, ttl_seconds, scope, audience}, TTL default 60s /
-            # ceiling 900s, host keyring sole store, host code never
-            # sees the key.
             vaults=[
                 VaultEntry(
                     name="STRIPE_SECRET",
@@ -447,13 +371,9 @@ async def build_runtime(
                     inject_mtls=Mtls(cert_path=pg_cert, key_path=pg_key),
                 ),
             ],
-            # Non-default knob (07-wire-plane.md): AllowUdpProxied instead
-            # of the StrictTcpOnly default. The DNS policy-filter drop_all
-            # above is unchanged; only the UDP path moves to proxied.
             tap_filter="AllowUdpProxied",
         )
 
-        # ── CHAOS (§10) ───────────────────────────────────────────────────
         .plugin(ChaosPlugin(ChaosConfig(
             network=[
                 NetworkChaos(
@@ -486,11 +406,7 @@ async def build_runtime(
             ],
         )))
 
-        # ── LEDGER (§12.1–§12.3) — must precede repo-policy (requires) ──
         .plugin(LedgerPlugin(LedgerConfig(
-            # audit DB lives on the host, immune to guest rollback/fork
-            # Merkle WAL is opt-in (ledger.merkle.enabled = true);
-            # OTLP is the default sink. This example opts in explicitly.
             store="sqlite://.kelir/audit.merkle.db",
             merkle_chain=True,
             otel=OtelConfig(
@@ -504,20 +420,14 @@ async def build_runtime(
         )))
     )
 
-    # ── CUSTOM PLUGIN: fluid registration ───────────────────────────────
     builder = builder.plugin(policy_plugin)
 
-    # ── TRAP REGISTRATIONS (§4.3, §12.5) ───────────────────────────────
-    # Direct builder.trap() registrations, per §1.3: pre gates return a
-    # Verdict, post gates return a PostExecAction.
-    # Universal atomic step loop: checkpoint → oracle → resume
     builder.trap("*", pre=make_universal_step(oracle), post=make_verify_receipt(oracle))
     builder.trap(TrapFilter.binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), pre=make_warm_caches(oracle))
     builder.trap(TrapFilter.binary("git").with_arg("push"), pre=make_force_strip())
     builder.trap(TrapFilter.binary("git").with_arg("commit").with_arg("-m"), pre=make_commit_gate())
     builder.trap(TrapFilter.binary("git").with_arg("commit"), post=make_zero_byte_check())
 
-    # ── LIFECYCLE HOOKS (§11.4, §12) — every handler receives `session` ─
     @builder.on_vm_init
     async def _init(driver: kelir.VmmDriver) -> None:
         await driver.set_watchdog(timeout=timedelta(minutes=5), action="reboot")
@@ -534,24 +444,15 @@ async def build_runtime(
     async def _deny(event: TrapEvent, session: Session) -> None:
         if await session.cap.ledger.count_denials(event.ppid) > 5:
             await session.vm.suspend("./.kelir/quarantine.snap")
-            # PTY console master (Port 0) is the sole in-process
-            # break-glass surface (08-lifecycle Break-glass);
-            # programmatic commands already go via exec_in_guest,
-            # these failure paths are human inspection after
-            # suspend/rollback.
             await session.console()
 
     return builder
 
 
-# ============================================================================
-# 6. ORCHESTRATION — the seven phases
-# ============================================================================
-
 async def fork_and_verify(
     parent: Session, hypothesis_id: str,
 ) -> tuple[str, SpawnResult, CausalDelta]:
-    child = await parent.vm.fork()                                   # <15ms
+    child = await parent.vm.fork()
     await child.vm.clock.skew(
         timedelta(days=24 * (ord(hypothesis_id) - ord("A") + 1)),
     )
@@ -576,24 +477,18 @@ async def main() -> None:
         pg_key=Path("/etc/ssl/client.key"),
     )
 
-    # `async with` consumes the builder, boots the microVM, and — on any
-    # exception in the block — guarantees `session.terminate()` via
-    # `__aexit__`. Rust gets this from `Drop`; Python gets it from the CM.
     async with builder as session:
         log.info("[kelir] booted driver=%s boot_ms=%s",
                  session.driver_name, session.boot_ms)
 
-        await session.wire.forward_port(3000, 8080)                  # §11.7
+        await session.wire.forward_port(3000, 8080)
         base = await session.vm.checkpoint("clean_base")
         winning_delta: Optional[CausalDelta] = None
 
-        # ── Phase 1: hermetic test (chaos on, egress forbidden) ────────
         test = await session.spawn(
             "npm",
             ["test", "--", "--runInBand"],
             cwd="/workspace/checkout-service",
-            # params cross into the guest as the KELIR_PARAMS=<json>
-            # environment variable
             params=FixStripeWebhook(
                 action="fix-stripe-webhook",
                 repo="checkout-service",
@@ -603,10 +498,9 @@ async def main() -> None:
         )
         if test.exit_code != 0:
             await session.vm.rollback(base)
-            await session.console()                          # (08 Break-glass)
+            await session.console()
             return
 
-        # ── Phase 2: 4-way CoW fork fan-out (§11.1, §11.3) ────────────
         branches = await asyncio.gather(*(
             fork_and_verify(session, hid) for hid in "ABCD"
         ))
@@ -619,13 +513,11 @@ async def main() -> None:
             return
         winning_id, winning_delta = winner
 
-        # ── Phase 3: suspend to 0 MB RSS, await approval, resume (§11.2)
         await session.suspend("/tmp/eval.snap")
         log.info("[kelir] suspended rss_mb=0")
         await oracle.await_human_approval()
         await session.resume("/tmp/eval.snap")
 
-        # ── Phase 4: broker commit + guest git commit (§8.1) ──
         stats = await session.storage.reconcile(
             cwd="/workspace/checkout-service",
             atomic_staging=True,
@@ -640,7 +532,6 @@ async def main() -> None:
             cwd="/workspace/checkout-service",
         )
 
-        # ── Phase 5: signed Merkle receipt (§12.3) ────────────────────
         final = await session.cap.ledger.finalize(
             include_delta=winning_delta,
             include_merkle_root=True,
@@ -648,14 +539,7 @@ async def main() -> None:
         log.info("[kelir] receipt merkle=%s jws=%s",
                  final.merkle_root, final.signed_jws[:64])
 
-        # `async with` handles the final suspend+terminate on exit.
 
-
-# ============================================================================
-# 7. ORACLE — user-supplied post-condition verification engine
-# ============================================================================
-
-# Example-local evaluator, not a core trait. UserOracle is a plain class.
 @dataclass
 class IntentAnalysis:
     is_hypothesis_valid: bool
@@ -683,10 +567,6 @@ class UserOracle:
     def current_trace_id(self) -> str:
         return uuid.uuid4().hex
 
-
-# ============================================================================
-# 8. ENTRY
-# ============================================================================
 
 if __name__ == "__main__":
     asyncio.run(main())

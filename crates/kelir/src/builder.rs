@@ -1,6 +1,3 @@
-// Runtime builder (L2 stub): the write-only plugin/handler chain whose
-// `.boot()` produces a [`Session`]. Registrations are accepted and
-// discarded; nothing here boots a real VM.
 use std::future::Future;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -17,14 +14,12 @@ use crate::planes::wire::WireConfig;
 use crate::plugin::KelirPlugin;
 use crate::session::Session;
 
-/// Post-exec gate outcome: proceed, or roll back and halt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PostExecAction {
     Proceed,
     RollbackAndHalt,
 }
 
-/// FUSE-presented path with no host backing file (from rust-handle-injection.rs).
 #[derive(Debug, Clone)]
 pub struct SyntheticFile {
     pub path: PathBuf,
@@ -36,13 +31,10 @@ impl SyntheticFile {
     }
 }
 
-/// Composite plugin: unpacks into ordered (plugin, scope) pairs at assembly time.
 pub trait CompositePlugin {
     fn unpack(self: Box<Self>, parent: &MountScope) -> Vec<(Box<dyn AnyPlugin>, MountScope)>;
 }
 
-/// Trap filter: `TrapFilter::binary("git").with_arg("push")`, or `"*"`
-/// via `From<&str>`.
 #[derive(Debug, Clone, Default)]
 pub struct TrapFilter {
     pub binary: Option<String>,
@@ -76,14 +68,6 @@ impl TrapFilter {
     }
 }
 
-/// Wrap a closure as a handler. Generic over the closure's input `A`
-/// and its future's `Ok` type `O` so the same function serves
-/// `Verdict`-returning and `PostExecAction`-returning trap closures,
-/// `CborValue`-taking custom actions, and `Vec<u8>` vsock services.
-/// The error type is pinned to `Box<dyn Error + Send + Sync>`: trap
-/// closures `?` both `PluginError` results and user-oracle
-/// `Box<dyn Error>` results, and only the boxed type converts from
-/// both.
 pub fn handler<F, Fut, A, O>(f: F) -> F
 where
     F: Fn(A) -> Fut,
@@ -92,7 +76,6 @@ where
     f
 }
 
-/// Driver handle handed to `.on_vm_init` closures.
 #[derive(Debug, Clone, Default)]
 pub struct DriverHandle;
 
@@ -106,9 +89,6 @@ impl DriverHandle {
     }
 }
 
-/// Handle returned by [`KelirBuilder::lifecycle_mut`]; `register_veto`
-/// returns `()` (not `Result`) so callers can ignore the return without
-/// tripping `unused_must_use` under `-D warnings`.
 #[derive(Debug, Default)]
 pub struct LifecycleMut;
 
@@ -121,7 +101,6 @@ impl LifecycleMut {
     }
 }
 
-/// The runtime builder.
 #[derive(Debug, Default)]
 pub struct KelirBuilder;
 
@@ -220,20 +199,17 @@ impl KelirBuilder {
         LifecycleMut
     }
 
-    /// Pins the params type name; no generic type-parameter accumulation.
     pub fn params<T: 'static>(self) -> Self {
         let _ = std::any::type_name::<T>();
         self
     }
 
-    /// Typed capability accessor (`c.ctx::<T>()` shape); HList typestate (`Plugins: Has<T>`) is L3.
     pub fn ctx<T: 'static>(&self) -> Option<&T> {
         let _ = self;
-        // TODO: resolve T from the ordered registry via Plugins: Has<T> (L3).
+        // see: cans/03-sdk-architecture.md#Rust-SDK
         None
     }
 
-    /// Unpacks a composite bundle into the registry; registrations are discarded (stub).
     pub fn with_composite<C: CompositePlugin + 'static>(
         self,
         _bundle: C,

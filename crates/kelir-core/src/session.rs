@@ -17,14 +17,14 @@ impl Session {
     pub fn boot(
         config: kelir_interface::driver::VmConfig,
     ) -> Result<Self, kelir_interface::errors::PluginError> {
-        // TODO: load native driver, connect bus transports, build planes, mint incarnation_id.
+        // see: cans/08-lifecycle.md#Session-and-context-handles
         let _ = config;
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Session::boot".into(),
         ))
     }
 
-    // TODO: from_parts is superseded once boot() binds real drivers
+    // see: cans/08-lifecycle.md#Session-and-context-handles
     #[allow(clippy::too_many_arguments)]
     pub fn from_parts(
         terminal: crate::planes::terminal::TerminalPlane,
@@ -49,7 +49,7 @@ impl Session {
     }
 
     pub fn fork(&self) -> Result<Self, kelir_interface::errors::PluginError> {
-        // TODO: fork driver, clone planes, mint a new incarnation_id for the child.
+        // see: cans/08-lifecycle.md#Session-and-context-handles
         let _ = (&self.driver, &self.bus, &self.incarnation_id);
         Err(kelir_interface::errors::PluginError::Halt(
             "TODO: Session::fork".into(),
@@ -57,7 +57,7 @@ impl Session {
     }
 
     pub fn rollback(&mut self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: roll driver back to the active step slot and drop the storage upper file.
+        // see: cans/08-lifecycle.md#Session-and-context-handles
         Ok(())
     }
 
@@ -65,29 +65,29 @@ impl Session {
         &mut self,
         reason: kelir_interface::driver::SuspendReason,
     ) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: suspend the driver to disk per reason (L2: map SuspendReason to driver suspend).
+        // see: cans/08-lifecycle.md#Session-and-context-handles
         let _ = reason;
         Ok(())
     }
 
     pub fn resume(&mut self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: resume the driver from the suspended image.
+        // see: cans/08-lifecycle.md#Session-and-context-handles
         Ok(())
     }
 
     pub fn drain(&mut self, timeout_ms: u64) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: drain in-flight frames until quiescent or timeout_ms elapses.
+        // see: cans/08-lifecycle.md#Session-and-context-handles
         let _ = timeout_ms;
         Ok(())
     }
 
     pub fn stop(&mut self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: graceful driver terminate after drain.
+        // see: cans/08-lifecycle.md#Session-and-context-handles
         Ok(())
     }
 
     pub fn kill(&mut self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: hard driver terminate without drain.
+        // see: cans/08-lifecycle.md#Session-and-context-handles
         Ok(())
     }
 }

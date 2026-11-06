@@ -1,5 +1,4 @@
 # see: cans/03-sdk-architecture.md#Python-SDK
-"""Ledger plugin config + plugin class (stub)."""
 from __future__ import annotations
 
 from dataclasses import dataclass

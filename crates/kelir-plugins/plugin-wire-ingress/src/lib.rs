@@ -1,7 +1,7 @@
 // see: cans/plugins/wire-ingress.md
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/test_parking.rs per cans/artifacts/config/project-structure.txt.
+// see: cans/artifacts/config/project-structure.txt
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope, NetInterposer};
 use kelir_interface::protocol::FilterAction;
@@ -40,7 +40,7 @@ impl KelirPlugin for WireIngressPlugin {
 impl LifecycleParticipant for WireIngressPlugin {}
 impl NetInterposer for WireIngressPlugin {
     fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        // TODO: Park inbound connections during VM suspend
+        // see: cans/plugins/wire-ingress.md
         Ok(FilterAction::Forward)
     }
 }

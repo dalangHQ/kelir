@@ -1,22 +1,8 @@
-// ============================================================================
-// serverless-webhook.ts
-// ============================================================================
-//
-// Scale-to-zero webhook handler. Inbound TCP parks at the host proxy during
-// suspend; the first post-wake frame splices via mux 0x0001, stream kind
-// L4_FORWARD (0x0005). Parking holds only across suspend/resume — on
-// rollback parked connections are RST (post-handshake 503) and clients
-// reconnect; retry is client-side. While awaiting the next event, the
-// guest memory ceiling is shrunk with the standard c.vm.adjust_balloon()
-// API so host RSS drops. MCP clients attach via mux stream kind
-// MCP_CONSOLE (0x0012), not Port 0 PTY.
-//
-// Mounts:     wire-ingress, mcp, tool-guard, ledger.
-// Primitives: adjust_balloon.
+// see: cans/08-lifecycle.md#State-machine
 
 import { kelir, t, LifecycleEvent, PostExecAction,
          type ExecutionReceipt } from "@kelir/core";
-import { wireIngress, mcp, toolGuard, ledger } from "@kelir/core"; // adapted: @kelir/plugin-wire-ingress / @kelir/plugin-mcp / @kelir/plugin-tool-guard / @kelir/plugin-ledger do not exist yet; factories stubbed in @kelir/core
+import { wireIngress, mcp, toolGuard, ledger } from "@kelir/core";
 
 interface WebhookRequest {
   id: string;
@@ -39,46 +25,40 @@ const runtime = kelir({
   tscLocked: true, enableWatchdog: true,
 })
 
-  // → c.ingress
+
   .use(wireIngress({
-    // Park up to 64 KiB per inbound connection during suspend; the TCP
-    // handshake completes host-side and the frames queue without dropping.
+
+
     listen: { port: 8443, protocol: "https" },
     parking: { maxBufferedBytes: 64 * 1024, idleTimeoutMs: 30_000 },
-    // First post-wake frame splices via mux 0x0001, stream kind
-    // L4_FORWARD (0x0005). The host proxy has already parsed routing
-    // metadata with zero allocation.
+
+
     wakeOnPacket: { transportChannel: 1 },
-    // Burst absorption: queue up to 256 inbound connections across the
-    // suspend→resume window; overflow returns 503 without touching RAM.
+
+
     backlog: { maxConnections: 256, overflow: "reject-503" },
   }))
 
-  // Idle memory: the standard balloon API shrinks the ceiling while
-  // parked (see the vm:ready handler below); the trap pre-handler
-  // grows it back before the webhook handler runs. No separate
-  // compaction plugin is mounted.
 
-  // → c.mcp
   .use(mcp({
-    // JSON-RPC 2.0 over MCP_CONSOLE mux stream (0x0012), not console-port
-    // stdio. No PTY conflict: Port 0 stays the human break-glass surface.
+
+
     transport: { streamKind: "MCP_CONSOLE", framing: "json-rpc-2.0" },
     advertise: { tools: ["webhook.dispatch", "webhook.replay"] },
   }))
 
-  // → c.tool-guard (upstream of mcp on MCP_CONSOLE)
+
   .use(toolGuard({
-    // Anti-rug-pull: BLAKE3 over all tool schemas locks at on_vm_ready.
-    // Any post-boot schema mutation halts with ESecurityViolation.
+
+
     pinSchemas: true,
-    // Per-tool cadence ceiling; refuses ECYCLICREWRITE past this rate.
+
     maxInvocationsPerTrace: 50,
     approvals: {
       "webhook.replay": { action: "hold", durationMs: 500 },
     },
   }))
-  // → c.ledger
+
   .use(ledger({
     store: "sqlite://.kelir/webhook.merkle.db",
     merkleChain: true,
@@ -90,34 +70,30 @@ const runtime = kelir({
     webhookId: t.String(),
   }))
   .trap("dispatch-webhook", {
-    // First post-wake frame: raise the RAM ceiling back to 512 MB before
-    // the handler runs. The idle balloon shrink had reduced it.
+
+
     pre: async (c) => {
       await c.vm.adjust_balloon(512);
       return c.pass();
     },
     post: async (c) => {
       const receipt: ExecutionReceipt = await c.receipt();
-      // Zero dirty bytes means the handler short-circuited; the body
-      // cannot be fresh. Rollback rather than serve a stale response.
+
+
       if (receipt.dirtyBytes === 0) return PostExecAction.RollbackAndHalt;
       return PostExecAction.Proceed;
     },
   })
 
-  // Shrink the ceiling once the handler binary is loaded; the trap
-  // pre-handler grows it back on the next wake via adjust_balloon.
+
   .on(LifecycleEvent.VmReady,    async (s) => { await s.vm.adjust_balloon(384); })
   .on(LifecycleEvent.VmShutdown, async (s) => { await s.ledger.flush(); });
 
 async function main() {
   const session = await runtime.boot();
   try {
-    // Each parked connection emits one request through the mux 0x0001 /
-    // L4_FORWARD (0x0005) splice. `handleIngress` returns responses in
-    // arrival order and
-    // writes them back over the same stream; the loop body is a no-op
-    // so the example can count traffic for the log line.
+
+
     let served = 0;
     for await (const _ of session.handleIngress<WebhookRequest, WebhookResponse>({
       cwd: "/workspace/webhook",

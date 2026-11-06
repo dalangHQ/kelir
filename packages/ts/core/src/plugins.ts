@@ -1,7 +1,4 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-// Plugin factories stubbed in @kelir/core until the per-plugin TS
-// packages (packages/ts/plugins/*) exist. Each returns a
-// KelirPlugin-compatible object; the examples mount them via .use().
 
 import type { KelirPlugin } from "./plugin.js";
 

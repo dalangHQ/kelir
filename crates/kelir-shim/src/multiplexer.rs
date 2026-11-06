@@ -32,7 +32,7 @@ impl Multiplexer {
             return Err(());
         }
         if (flags & codec::FLAG_OPEN) != 0 {
-            // TODO: parse EXEC_IO_SPEC, fork+execve, setrlimit between fork and exec
+            // see: cans/11-protocol.md#Binary-exec-channel
             self.slots[idx] = Some(ExecSlot {
                 pid: -1,
                 exec_id: 0,
@@ -43,12 +43,12 @@ impl Multiplexer {
             return Ok(());
         }
         if (flags & (codec::FLAG_CLOSE | codec::FLAG_RST)) != 0 {
-            // TODO: flush stdout/stderr EOF frames, release slab chunk
+            // see: cans/11-protocol.md#Binary-exec-channel
             self.slots[idx] = None;
             return Ok(());
         }
         if (flags & codec::FLAG_WINDOW_UPDATE) != 0 {
-            // TODO: apply stream credit window update
+            // see: cans/11-protocol.md#Binary-exec-channel
             return Ok(());
         }
         if (flags & codec::FLAG_DATA) != 0 {
@@ -56,7 +56,7 @@ impl Multiplexer {
                 Some(slot) => slot,
                 None => return Err(()),
             };
-            // TODO: route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03)
+            // see: cans/11-protocol.md#Binary-exec-channel
             let _ = (
                 payload,
                 slot.pid,

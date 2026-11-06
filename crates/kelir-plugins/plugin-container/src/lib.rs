@@ -32,7 +32,7 @@ impl KelirPlugin for ContainerPlugin {
 
 impl LifecycleParticipant for ContainerPlugin {
     fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
-        // TODO: Configure rootless Podman/crun cgroup v2 hierarchy
+        // see: cans/plugins/container.md
         Ok(())
     }
 }

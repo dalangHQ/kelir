@@ -1,6 +1,4 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-// Bootable session. All async methods are stubs returning zero-values;
-// the native engine planes land behind them.
 
 import type {
   CausalDelta,
@@ -108,11 +106,11 @@ export class Session {
   async resume(_path: string): Promise<void> {}
 
   async rollback(): Promise<void> {
-    // TODO: Call native session rollback
+    // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
   }
 
   async stop(): Promise<void> {
-    // TODO: Call native session stop
+    // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
   }
 
   async terminate(): Promise<void> {}
@@ -127,7 +125,6 @@ export class Session {
     cwd?: string;
     handler: (req: Req) => Promise<Resp>;
   }): AsyncGenerator<Resp, void, unknown> {
-    // Stub: no ingress arrives without a native engine.
     return;
   }
 

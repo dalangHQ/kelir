@@ -1,17 +1,4 @@
-//! examples/replay.rs
-//!
-//! Focused example: cycle-exact instruction clock stepping.
-//! One plugin (replay), one primitive (clock), one workload.
-//!
-//! Non-default driver knobs exercised in context:
-//!   wx_enforcement PermissiveAudit (replay binary is not JIT-tight)
-//!   allow_emulated_fallback true    (replay works under bwrap)
-//!   driver bwrap                    (emulated tier; replay is host-CPU)
-//!
-//! Cargo.toml:
-//!   [dependencies]
-//!   kelir = { version = "1.0", features = ["replay"] }
-//!   tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+// see: cans/plugins/replay.md
 
 use kelir::{
     KelirBuilder, Session, VmConfig,
@@ -38,20 +25,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             ffi_worker_threads: 2,
             ffi_max_ops_per_sec: 1000,
         },
-        // Replay mode requires a deterministic clock (plugins/replay.md:
-        // cycle-exact instruction clock stepping) and network isolation
-        // (network: off, declared here as network_off: true).
+
         deterministic_clock: true,
         network_off: true,
         pinned_clocksource: Some("kvm-clock".into()),
         ns_per_instruction: Some(1),
         preemption_grace_ms: 0,
-        // Replay mode: virtio-rng is substituted with a seeded ChaCha20
-        // stream, so getrandom() payloads match across runs.
+
         entropy_seed: Some(0x5EED),
     })
     .plugin(ReplayPlugin::new(ReplayConfig {
-        // Advance guest clock strictly on retired-instruction windows.
         step_window: 1_000_000,
         kernel_params: vec![
             "clocksource=kvm-clock".into(),
@@ -62,7 +45,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     .boot()
     .await?;
 
-    // Two runs of the same workload produce identical wall_clock_ns.
     for run in 0..2 {
         let r = session.spawn("date").args(["+%s.%N"]).await?;
         eprintln!("[kelir] run {run} -> exit={}", r.exit_code);

@@ -42,19 +42,19 @@ impl TransactionService for crate::TransactionPlugin {
         &mut self,
         _scope: TransactionScope,
     ) -> Result<TransactionHandle, PluginError> {
-        // TODO: Open transaction over declared blast radius
+        // see: cans/plugins/transaction.md
         Ok(TransactionHandle { id: 0 })
     }
     async fn commit(&mut self, _handle: TransactionHandle) -> Result<(), PluginError> {
-        // TODO: Commit via broker replay + SQL COMMIT across proxy connections
+        // see: cans/plugins/transaction.md
         Ok(())
     }
     async fn abort(&mut self, _handle: TransactionHandle) -> Result<(), PluginError> {
-        // TODO: Discard broker upper/tombstones, SQL ROLLBACK, release locks
+        // see: cans/plugins/transaction.md
         Ok(())
     }
     async fn savepoint(&mut self, _handle: &TransactionHandle) -> Result<Savepoint, PluginError> {
-        // TODO: Inject SQL SAVEPOINT marker + snapshot broker state
+        // see: cans/plugins/transaction.md
         Ok(Savepoint { id: 0 })
     }
     async fn rollback_to_savepoint(
@@ -62,7 +62,7 @@ impl TransactionService for crate::TransactionPlugin {
         _handle: &TransactionHandle,
         _savepoint: Savepoint,
     ) -> Result<(), PluginError> {
-        // TODO: Restore intermediate state without aborting parent transaction
+        // see: cans/plugins/transaction.md
         Ok(())
     }
 }

@@ -1,5 +1,3 @@
-// Storage plane config (idmap, synthetic files, masking, snoops,
-// encapsulation, lock broker) plus the reconcile request / stats.
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -21,9 +19,6 @@ pub struct DynamicFile {
     pub mode: u32,
 }
 
-/// Dynamic-file generator: factored out as a named type so the
-/// `SyntheticFile::Dynamic` variant stays under clippy's
-/// type-complexity limit.
 pub type DynamicFileGenerator = Arc<
     dyn Fn(&Path) -> Pin<Box<dyn Future<Output = Result<DynamicFile, PluginError>> + Send>>
         + Send
@@ -85,11 +80,6 @@ pub struct MaskRule {
     pub patterns: Vec<(String, String)>,
 }
 
-/// Snoop write handler. The example's snoop closure `?`s a user-oracle
-/// call returning `Box<dyn Error>`; that one call site maps the error
-/// into `PluginError` (see the adapted site in
-/// autonomous-swe-agent.rs) because `Box<dyn Error>` has no `From`
-/// into `PluginError`.
 pub type SnoopHandler = Arc<
     dyn Fn(
             PathBuf,

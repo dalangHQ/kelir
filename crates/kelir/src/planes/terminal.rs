@@ -1,4 +1,3 @@
-// Terminal plane config (PTY, token shield, prompt rules).
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -7,7 +6,6 @@ use std::time::Duration;
 use kelir_interface::errors::PluginError;
 use kelir_interface::protocol::TrapEvent;
 
-/// PTY stream opened for prompt-rule actions: `stream.write(b"y\n")`.
 #[derive(Debug, Clone, Default)]
 pub struct PromptStream;
 
@@ -25,8 +23,6 @@ pub struct TokenShield {
     pub notice: String,
 }
 
-/// Prompt-rule action: factored out as a named type so the
-/// `PromptRule.action` field stays under clippy's type-complexity limit.
 pub type PromptAction = Arc<
     dyn Fn(
             &TrapEvent,

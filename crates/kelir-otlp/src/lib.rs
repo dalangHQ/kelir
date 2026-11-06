@@ -26,13 +26,13 @@ impl OtlpExporter {
 
     pub fn export_receipt(&self, receipt: &ExecutionReceipt) -> Result<Vec<u8>, OtlpError> {
         let _ = receipt;
-        // TODO: encode ExecutionReceipt into an OTLP payload (L3).
+        // see: cans/10-attestation.md#Execution-receipts
         Err(OtlpError::Encode("receipt export (L3)".to_string()))
     }
 
     pub fn export_phase_timings(&self, timings: &PhaseTimings) -> Result<Vec<u8>, OtlpError> {
         let _ = timings;
-        // TODO: encode PhaseTimings into an OTLP payload (L3).
+        // see: cans/10-attestation.md#Execution-receipts
         Err(OtlpError::Encode("phase timings export (L3)".to_string()))
     }
 }

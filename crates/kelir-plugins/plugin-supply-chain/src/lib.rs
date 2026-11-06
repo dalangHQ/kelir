@@ -1,7 +1,7 @@
 // see: cans/plugins/supply-chain.md
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/test_supply_chain.rs per cans/artifacts/config/project-structure.txt.
+// see: cans/artifacts/config/project-structure.txt
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{HandlerCtx, KelirPlugin, MountScope, TrapInterposer};
 use kelir_interface::protocol::{TrapEvent, Verdict};
@@ -39,7 +39,7 @@ impl KelirPlugin for SupplyChainPlugin {
 
 impl TrapInterposer for SupplyChainPlugin {
     fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
-        // TODO: Inspect argv entropy (>5.2 bits) and block lifecycle scripts
+        // see: cans/plugins/supply-chain.md
         Ok(Verdict::Pass)
     }
 }

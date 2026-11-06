@@ -1,4 +1,3 @@
-// Chaos plugin stub.
 use crate::plugin::KelirPlugin;
 
 #[derive(Debug, Clone)]

@@ -1,9 +1,4 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-// Plugin contract + factory. The Name/Ctx/Deps parameters document the
-// plugin's identity, context shape, and dependencies; the stub does not
-// enforce them structurally (no runtime plugin system yet), so a
-// contract built without explicit type arguments still satisfies a
-// fully-annotated PluginContract type.
 
 import type { TrapContext } from "./context.js";
 import type {

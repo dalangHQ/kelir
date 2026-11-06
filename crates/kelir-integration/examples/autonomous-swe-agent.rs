@@ -1,22 +1,7 @@
 #![allow(clippy::unwrap_used)]
 #![allow(dead_code)]
 
-//! examples/autonomous-swe-agent.rs
-//!
-//! Composition example: chaos + ledger + repo-policy custom plugin,
-//! chained across terminal / storage / wire / checkpoint / host planes.
-//! Subsystem demos live in git-gate.rs, hook-matrix.rs,
-//! policy-matrix.rs.
-//!
-//! Cargo.toml://!   [dependencies]
-//!   kelir = { version = "1.0", features = ["chaos", "ledger"] }
-//!   tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "time"] }
-//!   async-trait = "0.1"
-//!   serde = { version = "1", features = ["derive"] }
-//!   serde_json = "1"
-//!   thiserror = "2"
-//!   blake3 = "1"
-//!   libc = "0.2"
+// see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -48,15 +33,6 @@ use kelir::{
     telemetry::{CausalDelta, ExecutionReceipt},
 };
 
-// ============================================================================
-// 1. TYPED PARAMS — the serde analogue of the TypeBox object schema
-// ============================================================================
-
-/// Deserialization target for every `spawn()` call in this file. Any handler
-/// that calls `.params::<SpawnAction>(…)` forces serde to validate the
-/// inbound JSON against this shape before dispatch. If a field is missing
-/// or mistyped at runtime, the spawn fails with `EINVAL` *before* any hook
-/// fires — the TypeBox guarantee, enforced by `serde`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
 pub enum SpawnAction {
@@ -74,10 +50,6 @@ pub enum Env {
     Production,
 }
 
-// ============================================================================
-// 2. CUSTOM PLUGIN — `KelirPlugin` across 3 of the 4 VirtIO rings
-// ============================================================================
-
 #[derive(Debug, Clone)]
 pub struct RepoPolicyOptions {
     pub max_diff_bytes: usize,
@@ -90,10 +62,6 @@ struct RepoPolicyState {
     current_branch: String,
 }
 
-/// Typed handle — the compile-time proof of installation (§6's invariant,
-/// expressed in Rust). `Arc<Mutex<_>>` gives interior mutability while
-/// keeping the handle `Send + Sync + Clone`, so multiple async handler
-/// closures can share it across spawns.
 #[derive(Clone)]
 pub struct RepoPolicyHandle {
     state: Arc<Mutex<RepoPolicyState>>,
@@ -123,8 +91,6 @@ impl RepoPolicyHandle {
     }
 }
 
-/// Plugin: repo-policy
-/// Rings: virtio-vsock, virtio-fs
 #[derive(Clone)]
 pub struct RepoPolicyPlugin {
     opts: RepoPolicyOptions,
@@ -140,7 +106,6 @@ impl RepoPolicyPlugin {
     }
 }
 
-// Adapted: c.ctx::<RepoPolicyHandle>() needs T: Default.
 impl Default for RepoPolicyHandle {
     fn default() -> Self {
         Self {
@@ -178,7 +143,6 @@ impl KelirPlugin for RepoPolicyPlugin {
 
 #[async_trait]
 impl TrapInterposer for RepoPolicyPlugin {
-    // ── Ring 2 (virtio-vsock): veto or patch `git push` ────────────────
     async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
         let is_git = event.binary_path.ends_with("/git") || event.binary_path == "git";
         let is_push = event.argv.get(1).map(String::as_str) == Some("push");
@@ -198,7 +162,7 @@ impl TrapInterposer for RepoPolicyPlugin {
         let new_branch = format!("agent/{:08x}", std::process::id());
         let mut argv = event.argv.clone();
         argv.push(format!("HEAD:refs/heads/{new_branch}"));
-        // ExecveMutation (plugins/tool-guard.md) as the Patch payload.
+
         let mutation = serde_json::json!({
             "new_binary": "/bin/git",
             "new_argv": argv,
@@ -212,8 +176,7 @@ impl TrapInterposer for RepoPolicyPlugin {
 }
 
 impl FsInterposer for RepoPolicyPlugin {
-    // ── Ring 3 (virtio-fs): reject oversize diff writes at FUSE boundary ─
-    // Adapted: the artifact returns Result<Verdict> with &[u8]; the interface FsInterposer shape is (&Path, &mut [u8], pid, &HandlerCtx) -> Result<FilterAction, PluginError>.
+    // see: cans/02-plugin-model.md#Segregated-ring-traits
     fn on_fs_write(
         &self,
         path: &Path,
@@ -232,9 +195,6 @@ impl FsInterposer for RepoPolicyPlugin {
     }
 }
 
-// Host mutations publish TerminalNotice to the EventBus; the native
-// terminal plane formats the notice. RepoPolicy's annotation is
-// delivered via terminal.notice at the post-exec sites, using this helper.
 impl RepoPolicyPlugin {
     async fn disclosure_annotation(&self) -> Vec<u8> {
         format!(
@@ -245,10 +205,6 @@ impl RepoPolicyPlugin {
     }
 }
 
-// ============================================================================
-// 3. RUNTIME BUILDER — the plugin chain (write-only until `.boot()`)
-// ============================================================================
-
 async fn build_runtime(
     oracle: Arc<UserOracle>,
     pg_cert: PathBuf,
@@ -258,10 +214,7 @@ async fn build_runtime(
         max_diff_bytes: 64 * 1024,
         protected_branches: vec!["main".into(), "master".into(), "release/*".into()],
     });
-    // Snoop closure — does NOT capture `session`; uses only the `HandlerCtx`
-    // it receives, whose `ledger` field is bound by `LedgerPlugin` below.
-    // Same invariant as the TS example (08 Class 3 guest-unverified data).
-    // Adapted: the snoop closure is Fn, so it cannot move `oracle` into its async block (and moving it would steal it from the trap closures below); clone for the closure, then clone per call, as the trap closures do.
+
     let snoop_oracle = Arc::clone(&oracle);
     let snoop: SnoopHandler = Arc::new(move |path: PathBuf, raw: Vec<u8>, c: HandlerCtx| {
         let oracle = Arc::clone(&snoop_oracle);
@@ -273,7 +226,6 @@ async fn build_runtime(
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false)
             {
-                // Adapted: PluginError::reject does not exist in the interface; Halt carries the same diagnostic.
                 return Err(PluginError::Halt(
                     "EPERM: harness hallucination detected".into(),
                 ));
@@ -282,7 +234,7 @@ async fn build_runtime(
                 .ctx::<LedgerCtx>()
                 .blake3_of_producing_process(&path)
                 .await?;
-            // Adapted: the oracle returns Box<dyn Error>, which has no From into PluginError; map it to Halt.
+
             oracle
                 .ingest_harness_event(&path, &evt, &blake3)
                 .await
@@ -291,8 +243,6 @@ async fn build_runtime(
         })
     });
 
-    // Every plugin contributes exactly one typed handle slot; no two
-    // `.plugin_*()` calls touch the same downstream surface.
     let builder = KelirBuilder::new(VmConfig {
         vcpus: 4,
         memory_mb: 4096,
@@ -317,7 +267,6 @@ async fn build_runtime(
         preemption_grace_ms: 0,
         entropy_seed: None,
     })
-    // ── TERMINAL PLANE (§7) ────────────────────────────────────────
     .terminal(PtyConfig {
         cols: 120,
         rows: 40,
@@ -340,16 +289,13 @@ async fn build_runtime(
                 })
             }),
         }],
-        // Non-default knob (04-terminal-plane.md#Terminal-pipeline):
-        // StatelessRegex instead of the StreamingAutomata default.
-        // The filters above are unchanged; only the match engine is.
+
         stream_engine: "StatelessRegex".into(),
     })
-    // ── STORAGE PLANE (§8) ─────────────────────────────────────────
     .storage(StorageConfig {
         idmap: IdmapConfig {
             guest_uid: 0,
-            // Adapted: unsafe { libc::getuid() } cannot compile — workspace lints forbid unsafe_code and cargo passes that forbid on the command line, so no allow() can override it (E0453); stub uses 0, as git-gate.rs does.
+
             host_uid: 0,
         },
         shared_caches: vec![
@@ -391,7 +337,6 @@ async fn build_runtime(
         scan_engine: ReadMaskEngine::FastRegex,
         carryover_bytes: 1024,
     })
-    // ── WIRE PLANE (§9) ─────────────────────────────────────────────
     .wire(WireConfig {
         sinkhole: SinkholeConfig {
             allowlist: vec![
@@ -402,11 +347,7 @@ async fn build_runtime(
             drop_all: true,
         },
         ssh_agent_bridge: true,
-        // Broker: the workload fetches
-        // http://169.254.169.254/kelir/credentials/STRIPE_SECRET
-        // -> {token, ttl_seconds, scope, audience}, TTL default 60s /
-        // ceiling 900s, host keyring sole store, host code never
-        // sees the key.
+
         vaults: vec![VaultEntry {
             name: "STRIPE_SECRET".into(),
             placeholder: "vault://stripe_key".into(),
@@ -419,12 +360,9 @@ async fn build_runtime(
                 key_path: pg_key,
             }),
         }],
-        // Non-default knob (07-wire-plane.md): AllowUdpProxied instead
-        // of the StrictTcpOnly default. The DNS policy-filter drop_all
-        // above is unchanged; only the UDP path moves to proxied.
+
         tap_filter: TapFilter::AllowUdpProxied,
     })
-    // ── CHAOS (§10) ─────────────────────────────────────────────────
     .plugin(ChaosPlugin::new(ChaosConfig {
         network: vec![
             NetworkChaos {
@@ -434,7 +372,7 @@ async fn build_runtime(
                 drop_rate: 0.02,
                 inject_rst: false,
                 bandwidth_kbps: None,
-                // Adapted: first literal omitted direction; the field is Option<String>.
+
                 direction: None,
             },
             NetworkChaos {
@@ -444,7 +382,7 @@ async fn build_runtime(
                 drop_rate: 0.02,
                 inject_rst: false,
                 bandwidth_kbps: None,
-                // Adapted: "x".into() cannot target Option<String>; wrap in Some.
+
                 direction: Some("inbound".into()),
             },
             NetworkChaos {
@@ -454,7 +392,7 @@ async fn build_runtime(
                 drop_rate: 0.02,
                 inject_rst: false,
                 bandwidth_kbps: None,
-                // Adapted: "x".into() cannot target Option<String>; wrap in Some.
+
                 direction: Some("both".into()),
             },
         ],
@@ -464,11 +402,7 @@ async fn build_runtime(
             error_probability: 0.05,
         }],
     }))
-    // ── LEDGER (§12.1–§12.3) ────────────────────────────────────────
     .plugin(LedgerPlugin::new(LedgerConfig {
-        // The audit DB lives on the host, immune to guest rollback/fork.
-        // Merkle WAL is opt-in (ledger.merkle.enabled = true);
-        // OTLP is the default sink. This example opts in explicitly.
         store: ".kelir/audit.merkle.db".into(),
         merkle_chain: true,
         otel: Some(OtelConfig {
@@ -481,20 +415,16 @@ async fn build_runtime(
         },
     }));
 
-    // ── CUSTOM PLUGIN: fluid registration ───────────────────────────────
     let builder = builder.plugin(policy_plugin);
 
-    // ── TRAP REGISTRATIONS (§4.3, §12.5) ─────────────────────────────
-    // Direct root-level .trap() registrations: pre-exec gates return a
-    // Verdict, post-exec gates return a PostExecAction.
     let builder = builder
-        // Universal atomic step loop: checkpoint → oracle → resume
+
         .trap("*", handler({
             let oracle = Arc::clone(&oracle);
             move |c: HandlerCtx| {
                 let oracle = Arc::clone(&oracle);
                 async move {
-                    // Checkpoint is taken for the step itself; the descriptor is unused here.
+
                     let _pre = c.vm
                         .checkpoint(format!("pre:{}", c.trap.pid))
                         .await?;
@@ -514,11 +444,11 @@ async fn build_runtime(
             }
         }))
 
-        // Warm caches + stamp traceparent for hermetic test
+
         .trap(TrapFilter::binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), handler(|c: HandlerCtx| async move {
             c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
-            // Env injection via Patch, not env.set + Pass (09: EINVALIDDECISION).
-            // SDK patch serializes to ExecveMutation.
+
+
             Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&serde_json::json!({
                 "new_binary": c.trap.binary_path.clone(),
                 "new_argv": c.trap.argv.clone(),
@@ -527,10 +457,10 @@ async fn build_runtime(
             }))?)))
         }))
 
-        // `--force` strip
+
         .trap(TrapFilter::binary("git").with_arg("push"), handler(|c: HandlerCtx| async move {
             if c.trap.argv.iter().any(|a| a == "--force") {
-                // Adapted: collect() target is ambiguous (Vec<String> vs String); annotate it.
+
                 let argv: Vec<String> = c.trap.argv.iter()
                     .filter(|a| *a != "--force").cloned().collect();
                 return Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&serde_json::json!({
@@ -543,7 +473,7 @@ async fn build_runtime(
             Ok(Verdict::Pass)
         }))
 
-        // Tier-1 post-condition verification + rollback (§12.5)
+
         .trap("*", handler({
             let oracle = Arc::clone(&oracle);
             move |c: HandlerCtx| {
@@ -554,9 +484,7 @@ async fn build_runtime(
                     })?;
                     let receipt: ExecutionReceipt = c.receipt().await?;
 
-                    // Binary hash integrity — the agent cannot fake this.
-                    // Receipt is hex of the trap's raw [u8; 32] digest.
-                    // Adapted: map(format!).collect() trips clippy::format_collect; fold instead.
+
                     let trap_hex: String = c.trap.binary_blake3.iter().fold(
                         String::with_capacity(64),
                         |mut hex, b| {
@@ -571,7 +499,7 @@ async fn build_runtime(
                         );
                         return Ok(PostExecAction::RollbackAndHalt);
                     }
-                    // Hermetic runs must not egress
+
                     if c.trap.binary_path.ends_with("/npm")
                         && receipt.egress_bytes > 0
                         && c.trap.cwd.contains("/checkout-service")
@@ -583,7 +511,7 @@ async fn build_runtime(
                         ));
                         return Ok(PostExecAction::RollbackAndHalt);
                     }
-                    // Userland-evaluator post-condition (§12.5)
+
                     if !oracle.verify_physical_receipt(&receipt).await? {
                         c.vm.rollback(&pre).await?;
                         c.terminal.notice(
@@ -596,11 +524,11 @@ async fn build_runtime(
             }
         }))
 
-        // Commit gate — refuses if the policy plugin logged anything
+
         .trap(TrapFilter::binary("git").with_arg("commit").with_arg("-m"), handler({
             move |c: HandlerCtx<_, _>| async move {
-                // Static access via Plugins: Has<RepoPolicyHandle>;
-                // a missing .plugin(RepoPolicyPlugin) is a compile error.
+
+
                 let policy = c.ctx::<RepoPolicyHandle>();
                 let n = policy.violations().await;
                 if n > 0 {
@@ -613,22 +541,17 @@ async fn build_runtime(
             }
         }))
 
-        // Tier-1 sanity: a commit must have dirtied at least one byte
+
         .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: HandlerCtx| async move {
             let receipt = c.receipt().await?;
-            // dirty_bytes is always populated; zero is a real measurement
+
             if receipt.dirty_bytes == 0 {
-                // Adapted: this closure's error type is Box<dyn Error> (pinned by handler()); box the PluginError explicitly.
+
                 return Err(Box::new(PluginError::Halt("zero-byte delta commit".into()))
                     as Box<dyn std::error::Error + Send + Sync>);
             }
-            // Workspace-scoped observation (10-attestation.md#Execution-receipts):
-            // dirty_bytes counts all hypervisor-dirtied bytes; the
-            // workspace counter now arrives as a native storage plane
-            // TelemetryExtension (namespace "fs:vfs"), whose payload is
-            // plugin-defined and opaque to core. The gate above still keys
-            // on dirty_bytes; this line logs only the extension's
-            // presence and payload length, never a decoded count.
+
+
             match receipt.extensions.iter().find(|e| e.namespace == "fs:vfs") {
                 Some(ext) => eprintln!(
                     "[kelir] commit fs:vfs extension present, payload_len={}",
@@ -639,14 +562,12 @@ async fn build_runtime(
             Ok(PostExecAction::Proceed)
         }));
 
-    // ── LIFECYCLE HOOKS (§11.4, §12) ────────────────────────────────────
     let builder = builder
         .on_vm_init(|driver| async move {
             driver
                 .set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot)
                 .await
         })
-        // Adapted: an async move block captures the borrowed &Session, so its future borrows the closure argument and cannot satisfy Fn(&Session); clone the session (owned) in the sync closure body first.
         .on_vm_ready(|session: &Session| {
             let session = (*session).clone();
             async move {
@@ -665,11 +586,7 @@ async fn build_runtime(
             async move {
                 if session.ctx::<LedgerCtx>().count_denials(ppid).await > 5 {
                     session.vm.suspend("./.kelir/quarantine.snap").await?;
-                    // PTY console master (Port 0) is the sole in-process
-                    // break-glass surface (08-lifecycle Break-glass);
-                    // programmatic commands already go via exec_in_guest,
-                    // these failure paths are human inspection after
-                    // suspend/rollback.
+
                     session.console().await?;
                 }
                 Ok(())
@@ -678,10 +595,6 @@ async fn build_runtime(
 
     Ok(builder)
 }
-
-// ============================================================================
-// 4. ORCHESTRATION — the seven phases
-// ============================================================================
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -694,7 +607,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     )
     .await?;
 
-    // ── Boot: the sole point where the write-only chain becomes a session ─
     let session = builder.boot().await?;
     eprintln!(
         "[kelir] driver={} boot={}ms",
@@ -702,19 +614,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         session.boot_ms()
     );
 
-    // Port forward the dev server for human smoke testing (§11.7)
     session.wire.forward_port(3000, 8080).await?;
 
     let base = session.vm.checkpoint("clean_base").await?;
     let mut winning_delta: Option<CausalDelta> = None;
 
     let phase: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
-        // ── Phase 1: hermetic test (chaos on, egress forbidden) ──────────
         let test = session
             .spawn("npm")
             .args(["test", "--", "--runInBand"])
             .cwd("/workspace/checkout-service")
-            // params cross into the guest as the KELIR_PARAMS=<json> environment variable
             .params::<SpawnAction>(SpawnAction::FixStripeWebhook {
                 repo: "checkout-service".into(),
                 issue_id: "ISSUE-8412".into(),
@@ -723,16 +632,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .await?;
         if test.exit_code != 0 {
             session.vm.rollback(&base).await?;
-            session.console().await?; // (08 Break-glass)
+            session.console().await?;
             return Ok(());
         }
 
-        // ── Phase 2: 4-way CoW fork fan-out (§11.1, §11.3) ──────────────
         let mut joins = tokio::task::JoinSet::new();
         for id in ['A', 'B', 'C', 'D'] {
             let parent = session.clone();
             joins.spawn(async move {
-                let child = parent.vm.fork().await?; // <15ms
+                let child = parent.vm.fork().await?;
                 child
                     .vm
                     .clock
@@ -762,13 +670,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         };
         winning_delta = Some(delta);
 
-        // ── Phase 3: suspend to 0 MB RSS, await approval, resume (§11.2) ─
         session.suspend("/tmp/eval.snap").await?;
         eprintln!("[kelir] suspended: host RSS = 0 MB; awaiting approval");
         oracle.await_human_approval().await?;
         session.resume("/tmp/eval.snap").await?;
 
-        // ── Phase 4: broker commit to host, then git commit (§8.1) ─
         let stats = session
             .storage
             .reconcile(FsReconcileRequest {
@@ -782,8 +688,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             stats.files_changed, stats.tombstones_resolved,
         );
 
-        // Git runs as an ordinary guest execution — the trap chain gates it
-        // like any other binary.
         session
             .spawn("git")
             .args([
@@ -794,7 +698,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .cwd("/workspace/checkout-service")
             .await?;
 
-        // ── Phase 5: signed Merkle receipt (§12.3) ─────────────────────
         let receipt: FinalReceipt = session
             .ctx::<LedgerCtx>()
             .finalize(FinalizeRequest {
@@ -812,18 +715,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
     .await;
 
-    // ── Phase 6-7: suspend to reclaim RAM, then terminate (§11.4) ───────
     if let Err(e) = session.suspend("/tmp/eval.snap").await {
         eprintln!("[kelir] final suspend failed: {e}");
     }
     session.terminate().await?;
     phase
 }
-
-// ============================================================================
-// 5. ORACLE (user-supplied post-condition verification engine)
-// ============================================================================
-// Example-local evaluator, not a core trait. UserOracle is a plain struct.
 
 pub struct IntentAnalysis {
     pub is_hypothesis_valid: bool,
@@ -838,8 +735,6 @@ impl UserOracle {
     }
 }
 
-// Adapted: #[async_trait] only applies to trait impls, not inherent impls
-// (it rejects the block, so the methods vanish); plain async fns suffice.
 impl UserOracle {
     async fn analyze_intent(
         &self,

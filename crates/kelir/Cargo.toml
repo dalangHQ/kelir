@@ -12,7 +12,6 @@ tokio = { workspace = true }
 serde_json = { workspace = true }
 ciborium = { workspace = true }
 
-# Optional feature-gated plugins
 plugin-chaos = { path = "../kelir-plugins/plugin-chaos", optional = true }
 plugin-container = { path = "../kelir-plugins/plugin-container", optional = true }
 plugin-db-proxy = { path = "../kelir-plugins/plugin-db-proxy", optional = true }

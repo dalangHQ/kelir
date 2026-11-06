@@ -4,8 +4,7 @@
 pub fn open_pty_slave() -> Result<(i32, i32), ()> {
     let mut master: libc::c_int = -1;
     let mut slave: libc::c_int = -1;
-    // SAFETY: openpty writes valid fds into master/slave on success;
-    // null name/termios/winsize request kernel defaults.
+    // SAFETY: openpty writes valid fds into master/slave on success; null name/termios/winsize request kernel defaults.
     let rc = unsafe {
         libc::openpty(
             &mut master,

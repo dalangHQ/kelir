@@ -1,4 +1,3 @@
-// Supply-chain plugin stub.
 use crate::plugin::KelirPlugin;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,15 +1,12 @@
-// examples/autonomous-swe-agent.ts
-//
-// Composition example: chaos + ledger + repo-policy custom plugin.
-// Subsystem demos live in hook-matrix.ts and policy-matrix.ts.
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
 
 import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction,
          type Session, type SnapshotDescriptor, type ExecutionReceipt,
          type CausalDelta, type PluginContract } from "@kelir/core";
-import { chaos, ledger } from "@kelir/core"; // adapted: @kelir/plugin-chaos / @kelir/plugin-ledger do not exist yet; factories stubbed in @kelir/core
+import { chaos, ledger } from "@kelir/core";
 import crypto from "node:crypto";
 
-// Userland evaluator: post-condition verification engine (not a core trait).
+
 declare const oracle: {
   currentTraceId(): string;
   analyzeIntent(trap: { binary: string; binaryBlake3: string; argv: string[];
@@ -20,11 +17,7 @@ declare const oracle: {
   awaitHumanApproval(): Promise<void>;
 };
 
-// ── Plugin: repo policy (contributes `c.policy`) ──────────────────────────
-// Plugin: repo-policy; rings: virtio-vsock, virtio-fs
-// Its push gate lives in the runtime "git push *" trap below; its
-// maxDiffBytes ceiling lives in the vfs diff-ceiling snoop below.
-// Context shape is a static type parameter; no .decorate() runtime bag.
+
 type RepoPolicyCtx = {
   policy: {
     violations: number;
@@ -39,9 +32,6 @@ const repoPolicyPlugin = (
 ): PluginContract<"repo-policy", RepoPolicyCtx, "ledger"> =>
   createPlugin("repo-policy", { opts });
 
-// ============================================================================
-// SINGLE LINEAR CHAIN — order defines context keys; nothing mutates after boot
-// ============================================================================
 
 const runtime = kelir({
   vcpus: 4, memoryMb: 4096, driver: "auto",
@@ -50,7 +40,7 @@ const runtime = kelir({
   tscLocked: true, enableWatchdog: true,
 })
 
-  // → native terminal plane
+
   .terminal({
     cols: 120, rows: 40,
     dropOsc52: true, stripTitle: true,
@@ -60,13 +50,12 @@ const runtime = kelir({
     prompts: [{ match: /Overwrite production schema\? \[y\/N\]/i,
                 timeoutMs: 3000, verifyForeground: true,
                 action: async (_p, stream) => { stream.write("y\n"); } }],
-    // Non-default knob (04-terminal-plane.md#Terminal-pipeline):
-    // StatelessRegex instead of the StreamingAutomata default.
-    // The filters above are unchanged; only the match engine is.
+
+
     streamEngine: "StatelessRegex",
   })
 
-  // → native storage plane
+
   .storage({
     idmap: { guestUid: 0, hostUid: process.getuid!() },
     sharedCaches: ["~/.npm", "~/.cache/pip", "~/.cargo/registry"],
@@ -75,8 +64,8 @@ const runtime = kelir({
       { path: "/workspace/.env.local",
         content: "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n" },
       { path: "/workspace/identity.jwt",
-        // Lazy per-read thunk, like Py SyntheticFile.dynamic / RS
-        // SyntheticFile::dynamic — not frozen at builder time.
+
+
         content: () => `Bearer ${crypto.randomBytes(32).toString("hex")}`, mode: 0o400 },
     ],
     maskRead: [
@@ -85,10 +74,8 @@ const runtime = kelir({
       { glob: "**/secrets/**",
         pattern: /AKIA[0-9A-Z]{16}/g,       replace: "[AWS_IAM_REDACTED]" },
     ],
-    // NOTE: onWrite does not capture `runtime` or `session`. It receives
-    // the typed handler context `c`, whose `c.ledger` is bound by the
-    // `ledger()` plugin below; snoop onWrite only fires at guest write
-    // time, which is post-boot.
+
+
     snoops: [
       { path: "~/.claude/sessions/*.json", sync: true,
         onWrite: async (path, raw, c) => {
@@ -99,8 +86,8 @@ const runtime = kelir({
             path, event: evt, producerBlake3
           });
         } },
-      // Diff ceiling (repo-policy maxDiffBytes): oversize diffs are
-      // rejected at the ring with ENOSPC instead of landing on disk.
+
+
       { path: "**/*.diff", sync: true,
         onWrite: async (_path, raw) => {
           if (raw.byteLength > 64 * 1024)
@@ -109,27 +96,23 @@ const runtime = kelir({
     ],
   })
 
-  // → native wire plane
+
   .wire({
     sinkhole: { dnsExcept: ["api.stripe.com", "github.com", "*.internal.net"] },
     sshAgentBridge: true,
-    // Broker: the workload fetches
-    // http://169.254.169.254/kelir/credentials/STRIPE_SECRET
-    // -> {token, ttl_seconds, scope, audience}, TTL default 60s /
-    // ceiling 900s, host keyring sole store, host code never
-    // sees the key.
+
+
     vaults: [{ name: "STRIPE_SECRET",
                placeholder: "vault://stripe_key" }],
     l4Proxies: [{ listenPort: 5432, destination: "pg.internal.net:5432",
                   injectMtls: { certPath: "/etc/ssl/client.crt",
                                 keyPath:  "/etc/ssl/client.key" } }],
-    // Non-default knob (07-wire-plane.md): AllowUdpProxied instead of the
-    // StrictTcpOnly default. The DNS policy-filter allowlist above is unchanged;
-    // only the UDP path moves to proxied.
+
+
     tapFilter: "AllowUdpProxied",
   })
 
-  // → c.chaos
+
   .use(chaos({
     network: [{ target: "api.stripe.com",
                 latency: { baseMs: 150, jitterMs: 30 }, dropRate: 0.02 },
@@ -143,22 +126,21 @@ const runtime = kelir({
            simulateError: "ENOSPC", errorProbability: 0.05 }],
   }))
 
-  // → c.ledger
+
   .use(ledger({
-    // audit DB lives on the host, immune to guest rollback/fork
-    // Merkle WAL is opt-in (ledger.merkle.enabled = true);
-    // OTLP is the default sink. This example opts in explicitly.
+
+
     store: "sqlite://.kelir/audit.merkle.db",
     merkleChain: true,
     otel: { traceParent: true, serviceName: "kelir-swe-agent" },
     receipts: { includeDirtyBytes: true, includeBinaryBlake3: true, includeSyscallCount: true },
   }))
 
-  // → c.policy
+
   .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024,
                           protectedBranches: ["main", "master", "release/*"] }))
 
-  // → typed params + trap pipeline
+
   .params(t.Object({
     action:  t.Literal("fix-stripe-webhook"),
     repo:    t.String(),
@@ -203,14 +185,13 @@ const runtime = kelir({
   })
   .trap(TrapFilter.binary("npm").withArg("test").withArg("--").withArg("--runInBand"), async (c) => {
     await c.fs.warmCache(["node_modules", ".next/cache"]);
-    // Env injection via Patch, not env.set + pass (09 Env-injection:
-    // env.set + pass returns EINVALIDDECISION). Same binary/argv.
-    // The SDK patch object serializes to ExecveMutation.
+
+
     return c.patch({ binary: c.trap.binary_path, argv: c.trap.argv,
                      env: { OTEL_TRACE_ID: oracle.currentTraceId(), CI: "1" } });
   })
   .trap(TrapFilter.binary("git").withArg("push"), async (c) => {
-    // Merged repo-policy push gate + runtime push gate.
+
     if (c.policy.isProtected()) {
       c.policy.recordViolation();
       return c.drop("EPERM", `EPOLICY: '${c.policy.currentBranch}' protected.`);
@@ -232,16 +213,11 @@ const runtime = kelir({
         : c.pass(),
     post: async (c) => {
       const receipt = await c.receipt();
-      // dirtyBytes is always populated; zero is a real measurement
+
       if (receipt.dirtyBytes === 0)
         throw new Error("Verification anomaly: zero-byte delta commit attempted.");
-      // Workspace-scoped observation (10-attestation.md#Execution-receipts):
-      // dirtyBytes counts all hypervisor-dirtied bytes; the workspace
-      // counter now arrives as a native storage plane TelemetryExtension
-      // (namespace "fs:vfs"), whose payload is plugin-defined and
-      // opaque to core. The gate above still keys on dirtyBytes;
-      // this logs only the extension's presence and payload length,
-      // never a decoded count.
+
+
       const vfsExt = receipt.extensions?.find((e) => e.namespace === "fs:vfs");
       console.log(vfsExt
         ? `[kelir] commit fs:vfs extension present, payload_len=${vfsExt.payload.length}`
@@ -250,43 +226,33 @@ const runtime = kelir({
     },
   })
 
-  // ── LIFECYCLE: vm:init receives the driver; the rest receive `session`
-  //    typed against the full accumulated context. No handler references
-  //    a pre-boot variable. ────
+
   .on(LifecycleEvent.VmInit,     async (driver) => driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
   .on(LifecycleEvent.VmReady,    async (s) => { await s.execInGuest("npm", ["ci", "--prefer-offline"]); })
   .on(LifecycleEvent.VmShutdown, async (s) => { await s.ledger.flush(); })
   .onTrapDeny(async (e, s) => {
     if (await s.ledger.countDenials(e.ppid) > 5) {
       await s.vm.suspend("./.kelir/quarantine.snap");
-      // PTY console master (Port 0) is the sole in-process
-      // break-glass surface (08-lifecycle Break-glass);
-      // programmatic commands already go via exec_in_guest,
-      // these failure paths are human inspection after
-      // suspend/rollback.
+
+
       await s.console();
     }
   });
 
-// ============================================================================
-// BOOT — the chain terminates here. Everything after uses `session`, which
-// re-exposes the SAME typed surface (s.vm, s.policy, s.step…);
-// domain APIs arrive via session.use(extension).
-// ============================================================================
 
 async function main() {
   const session = await runtime.boot();
   console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
 
-  await session.wire.forwardPort(3000, 8080); // guest 3000 -> host 8080, arity parity with RS/PY forward_port
+  await session.wire.forwardPort(3000, 8080);
   const baseSnap = await session.vm.checkpoint("clean_base");
   let winningDelta: CausalDelta | null = null;
 
   try {
     const testRun = await session.spawn("npm", ["test", "--", "--runInBand"], {
       cwd: "/workspace/checkout-service",
-      // params are typed by .params and cross into the guest as the
-      // KELIR_PARAMS=<json> environment variable
+
+
       params: { action: "fix-stripe-webhook", repo: "checkout-service",
                 issueId: "ISSUE-8412", env: "staging" },
     });
@@ -294,7 +260,7 @@ async function main() {
 
     const branches = await Promise.all(
       ["A", "B", "C", "D"].map(async (id) => {
-        const child = await session.vm.fork();                    // <15ms
+        const child = await session.vm.fork();
         await child.vm.clock.skew({ days: 24 * (id.charCodeAt(0) - 64) });
         const run = await child.spawn("npm", ["run", `verify-hypothesis-${id}`],
                                        { cwd: "/workspace/checkout-service" });
@@ -307,11 +273,11 @@ async function main() {
     if (!winner) { await session.vm.rollback(baseSnap); return; }
     winningDelta = winner.delta;
 
-    await session.suspend("/tmp/eval.snap");                      // → 0 MB RSS
+    await session.suspend("/tmp/eval.snap");
     await oracle.awaitHumanApproval();
-    await session.resume("/tmp/eval.snap");                       // <50ms
+    await session.resume("/tmp/eval.snap");
 
-    // Broker-commit guest changes to host storage, then commit via plain guest git.
+
     const stats = await session.storage.reconcile({
       cwd: "/workspace/checkout-service",
       atomicStaging: true, fsync: true,

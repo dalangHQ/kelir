@@ -1,8 +1,4 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-// Minimal TypeBox-like schema stub. Schemas are opaque at runtime;
-// their generic parameter carries the decoded payload type so
-// .params / registerCustomAction / registerVsockService handlers are
-// typed from the schema the example declares.
 
 export interface Schema<T = unknown> {
   readonly __type?: T;

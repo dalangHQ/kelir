@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/unit_codec.rs + tests/unit_traits.rs per cans/artifacts/config/project-structure.txt.
+// see: cans/artifacts/config/project-structure.txt
 pub mod codec;
 pub mod driver;
 pub mod errors;

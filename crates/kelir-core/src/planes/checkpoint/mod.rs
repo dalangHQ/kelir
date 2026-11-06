@@ -11,7 +11,7 @@ pub struct StepSlot {
 
 pub struct CheckpointPlane {
     active_step_slot: Arc<Mutex<Option<StepSlot>>>,
-    // TODO: commit_step appends the committed step digest here (L2; SnapshotDescriptor carries no digest yet).
+    // see: cans/08-lifecycle.md#Delta-chain-compaction
     #[allow(dead_code)]
     manifest_chain: Arc<RwLock<Vec<[u8; 32]>>>,
     next_slot_id: AtomicU64,
@@ -59,8 +59,8 @@ impl CheckpointPlane {
         })?;
         match slot.take() {
             Some(step) => {
-                // TODO: append the committed step digest (slot_id + pending_delta) to manifest_chain.
-                // TODO (L2): commit produces / rollback consumes a kelir_interface::telemetry::CausalDelta for convergence.
+                // see: cans/08-lifecycle.md#Delta-chain-compaction
+                // see: cans/08-lifecycle.md#Delta-chain-compaction
                 let _ = (step.slot_id, step.pending_delta);
                 Ok(())
             }

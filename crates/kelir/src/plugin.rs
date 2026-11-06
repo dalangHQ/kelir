@@ -1,7 +1,3 @@
-// Async plugin surface (L2 stub). kelir-interface defines the same hook
-// names as SYNC traits with no Context; the examples need ASYNC traits
-// with a typed Context, so this module defines that shape. All hooks
-// have no-op defaults; nothing here executes against a real VM.
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -13,8 +9,6 @@ pub use kelir_interface::protocol::{FilterAction, ProcessExit, TrapEvent, Verdic
 
 use crate::HandlerCtx;
 
-/// Object-safe clone bridge for [`KelirPlugin`], mirroring the
-/// interface's `PluginClone`.
 pub trait PluginClone: Send + Sync {
     fn clone_box(&self) -> Box<dyn AnyPlugin>;
 }
@@ -28,11 +22,6 @@ where
     }
 }
 
-/// Object-safe plugin handle: the return type of `fork_state`.
-/// Deliberately NOT a supertrait of [`KelirPlugin`]: `KelirPlugin`
-/// carries the `Context` associated type, and a `dyn` trait object
-/// cannot leave it unspecified, so `AnyPlugin` stands alone and is
-/// implemented for every `KelirPlugin + Clone`.
 pub trait AnyPlugin: Send + Sync {
     fn name(&self) -> &'static str;
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin>;
@@ -51,8 +40,6 @@ where
     }
 }
 
-/// Async plugin trait. `context()` is `where Self: Sized` so the trait
-/// stays object-safe for `dyn AnyPlugin`.
 pub trait KelirPlugin: Send + Sync + PluginClone {
     type Context;
     fn context(&self) -> Self::Context
@@ -64,9 +51,6 @@ pub trait KelirPlugin: Send + Sync + PluginClone {
     }
 }
 
-/// Lifecycle hook context: veto registration only. `register_veto`
-/// returns `()` (not `Result`) so callers can ignore the return without
-/// tripping `unused_must_use` under `-D warnings`.
 #[derive(Default)]
 pub struct LifecycleCtx {
     vetoes: Vec<(VetoEvent, Box<dyn Fn() -> bool + Send + Sync>)>,

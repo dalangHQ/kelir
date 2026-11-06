@@ -9,7 +9,6 @@ kelir-interface = { path = "../../kelir-interface" }
 async-trait = "0.1"
 
 [dev-dependencies]
-# Layering peer, wired at L2.
 plugin-db-proxy = { path = "../plugin-db-proxy" }
 kelir-plugin-testkit = { path = "../../kelir-plugin-testkit" }
 

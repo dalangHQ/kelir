@@ -1,4 +1,3 @@
-// Wire plane config (sinkhole, vaults, L4 proxies, tap filter).
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]

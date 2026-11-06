@@ -2,7 +2,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-// Paths are resolved relative to the current working directory (the repo root).
 const RULES: &[(&str, &[&str])] = &[
     (
         "crates/kelir-core/src",

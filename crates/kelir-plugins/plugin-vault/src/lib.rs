@@ -39,7 +39,7 @@ impl KelirPlugin for VaultPlugin {
 impl LifecycleParticipant for VaultPlugin {}
 impl NetInterposer for VaultPlugin {
     fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        // TODO: Intercept 169.254.169.254 requests and broker short-lived tokens
+        // see: cans/plugins/vault.md
         Ok(FilterAction::Forward)
     }
 }

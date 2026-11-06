@@ -1,4 +1,2 @@
-# Pinned test-oracle hashes (BLAKE3/SHA-256) for test fixtures.
-# Verified by `kelir-plugin-cli fixtures --verify`.
-# TBD: no fixture hashes are pinned in spec yet; do not invent pins here.
+# see: cans/15-operations.md#Developer-CLI
 [fixtures]

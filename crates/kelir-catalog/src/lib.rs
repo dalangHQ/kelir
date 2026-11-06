@@ -11,14 +11,14 @@ pub struct CatalogDb {
 impl CatalogDb {
     pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Self, rusqlite::Error> {
         let pool = rusqlite::Connection::open(path)?;
-        // TODO: pool.execute_batch(SCHEMA_V1_SQL).
+        // see: cans/06-storage-catalog.md#Entity-model
         let _ = SCHEMA_V1_SQL;
         Ok(Self { pool })
     }
 
     pub fn register_session(&self, row: &SessionRow) -> Result<(), rusqlite::Error> {
         let _ = row;
-        // TODO: INSERT session row SQL.
+        // see: cans/06-storage-catalog.md#Entity-model
         Err(rusqlite::Error::InvalidQuery)
     }
 
@@ -28,12 +28,12 @@ impl CatalogDb {
         ttl_seconds: u32,
     ) -> Result<(), rusqlite::Error> {
         let _ = (session_id, ttl_seconds);
-        // TODO: UPDATE sessions SET expires_at_unix SQL.
+        // see: cans/06-storage-catalog.md#Entity-model
         Err(rusqlite::Error::InvalidQuery)
     }
 
     pub fn prune_cas_leases(&self) -> Result<u64, rusqlite::Error> {
-        // TODO: DELETE expired cas_leases SQL.
+        // see: cans/06-storage-catalog.md#Entity-model
         Err(rusqlite::Error::InvalidQuery)
     }
 }

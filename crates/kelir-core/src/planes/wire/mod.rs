@@ -36,7 +36,7 @@ impl WirePlane {
         guest_port: u16,
         host_port: Option<u16>,
     ) -> Result<u16, kelir_interface::errors::PluginError> {
-        // TODO: bind a host socket and record the guest->host mapping; echo requested port until then.
+        // see: cans/07-wire-plane.md#Wire-architecture
         let _ = (
             &self.udp_nat_slab,
             &self.allowed_domains,
@@ -49,7 +49,7 @@ impl WirePlane {
         &self,
         frame: &mut [u8],
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::errors::PluginError> {
-        // TODO: run the userspace stack + DNS gateway over the inbound frame.
+        // see: cans/07-wire-plane.md#Userspace-network-stack
         let _ = frame;
         Ok(kelir_interface::protocol::FilterAction::Forward)
     }
@@ -58,7 +58,7 @@ impl WirePlane {
         &self,
         frame: &mut [u8],
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::errors::PluginError> {
-        // TODO: run policy + NAT over the outbound frame.
+        // see: cans/07-wire-plane.md#Userspace-network-stack
         let _ = frame;
         Ok(kelir_interface::protocol::FilterAction::Forward)
     }
@@ -67,7 +67,7 @@ impl WirePlane {
         &self,
         query: &[u8],
     ) -> Result<Vec<u8>, kelir_interface::errors::PluginError> {
-        // TODO: answer the DNS query from allowed_domains via the synthetic gateway.
+        // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
         let _ = (query, &self.allowed_domains, &self.synthetic_dns_ip);
         Ok(Vec::new())
     }
@@ -78,7 +78,7 @@ impl WirePlane {
         })?;
         let reaped = 0;
         for entry in slab.iter().flatten() {
-            // TODO: close entries whose last_active_unix is stale; count closed here.
+            // see: cans/07-wire-plane.md#Wire-architecture
             let _ = (
                 entry.guest_source_port,
                 entry.host_socket_fd,

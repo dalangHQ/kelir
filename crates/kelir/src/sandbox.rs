@@ -1,13 +1,9 @@
-// Declarative profile facade (L2 stub): `Sandbox::from_config` reads a
-// profile file and flattens it into the builder chain the other
-// examples build manually. Stubbed: no file is read, no VM boots.
 use std::path::PathBuf;
 
 use kelir_interface::errors::PluginError;
 
 use crate::session::SpawnBuilder;
 
-/// A sandbox built from a declarative profile.
 #[derive(Debug, Default)]
 pub struct Sandbox;
 

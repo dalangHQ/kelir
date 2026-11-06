@@ -1,4 +1,3 @@
-// Ledger plugin stub.
 use std::path::Path;
 
 use kelir_interface::errors::PluginError;
@@ -55,7 +54,6 @@ impl KelirPlugin for LedgerPlugin {
     }
 }
 
-/// Typed ledger handle (`session.ctx::<LedgerCtx>()`).
 #[derive(Debug, Clone, Default)]
 pub struct LedgerCtx;
 

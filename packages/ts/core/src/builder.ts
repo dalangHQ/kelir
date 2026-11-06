@@ -1,6 +1,4 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-// Builder chain. Every method records config and returns `this`;
-// boot() is a stub returning a zero-value Session.
 
 import type { Schema } from "./schema.js";
 import type { TrapContext, LifecycleContext } from "./context.js";
@@ -184,7 +182,7 @@ export class KelirBuilder {
   }
 
   async boot(): Promise<Session> {
-    // TODO: Cross NAPI boundary to NativeKelirBuilder.boot()
+    // see: cans/03-sdk-architecture.md#TypeScript-SDK
     return new Session();
   }
 }

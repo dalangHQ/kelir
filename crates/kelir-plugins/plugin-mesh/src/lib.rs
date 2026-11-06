@@ -1,7 +1,7 @@
 // see: cans/plugins/mesh.md
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/test_mesh.rs per cans/artifacts/config/project-structure.txt.
+// see: cans/artifacts/config/project-structure.txt
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope, NetInterposer};
 use kelir_interface::protocol::FilterAction;
@@ -33,7 +33,7 @@ impl KelirPlugin for MeshPlugin {
 impl LifecycleParticipant for MeshPlugin {}
 impl NetInterposer for MeshPlugin {
     fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        // TODO: Verify mTLS framing and inject SPIFFE identity token
+        // see: cans/plugins/mesh.md
         Ok(FilterAction::Forward)
     }
     fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {

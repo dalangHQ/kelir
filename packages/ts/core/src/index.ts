@@ -53,6 +53,6 @@ export async function runStepEvaluationLoop(
 ): Promise<StepEvaluationResult> {
   void session;
   void evaluator;
-  // TODO: pre-step checkpoint, intent analysis, post-condition receipt verification, rollback on failure (L3 loop algorithm).
+  // see: cans/10-attestation.md#Step-evaluation-loop
   throw new Error("TODO: runStepEvaluationLoop (L3)");
 }

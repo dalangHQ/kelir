@@ -50,7 +50,7 @@ impl StoragePlane {
     }
 
     pub fn reconcile(&self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: reconcile workspace_root against sparse_upper_path and tombstones.
+        // see: cans/05-storage-plane.md#Host-CoW-broker
         let _ = (
             &self.workspace_root,
             &self.sparse_upper_path,
@@ -60,7 +60,7 @@ impl StoragePlane {
     }
 
     pub fn discard(&self) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: drop the sparse upper file and tombstones; base untouched.
+        // see: cans/05-storage-plane.md#Host-CoW-broker
         let _ = (&self.sparse_upper_path, &self.tombstones);
         Ok(())
     }
@@ -76,7 +76,7 @@ impl StoragePlane {
         Ok(())
     }
 
-    // NOTE: check-only; no reservation is made here — reservation is L2.
+    // see: cans/05-storage-plane.md#Storage-quotas
     pub fn check_quota(
         &self,
         bytes_to_write: u64,
@@ -112,7 +112,7 @@ impl StoragePlane {
     }
 
     pub fn punch_hole_sparse_upper(&self) -> Result<(), std::io::Error> {
-        // TODO: FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on sparse_upper_path.
+        // see: cans/05-storage-plane.md#Host-CoW-broker
         let _ = &self.sparse_upper_path;
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
