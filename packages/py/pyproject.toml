@@ -11,5 +11,11 @@ dependencies = [
     "pydantic>=2.0"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.13",
+    "pytest>=8"
+]
+
 [tool.mypy]
 strict = true

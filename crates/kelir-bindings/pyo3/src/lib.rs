@@ -1,4 +1,5 @@
 // see: cans/03-sdk-architecture.md#Python-SDK
+#![forbid(unsafe_code)]
 use pyo3::prelude::*;
 
 #[pyclass]

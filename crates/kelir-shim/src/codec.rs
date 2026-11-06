@@ -1,10 +1,26 @@
-#![forbid(unsafe_code)]
-
 // see: cans/11-protocol.md#Wire-framing
 // see: cans/artifacts/config/project-structure.txt#kelir-shim
 
 #[allow(dead_code)]
 pub const HEADER_LEN: usize = 9;
+
+#[allow(dead_code)]
+pub const MAX_FRAME_PAYLOAD: usize = 64 * 1024;
+
+#[allow(dead_code)]
+pub const FLAG_OPEN: u8 = 0x01;
+
+#[allow(dead_code)]
+pub const FLAG_DATA: u8 = 0x02;
+
+#[allow(dead_code)]
+pub const FLAG_CLOSE: u8 = 0x04;
+
+#[allow(dead_code)]
+pub const FLAG_RST: u8 = 0x08;
+
+#[allow(dead_code)]
+pub const FLAG_WINDOW_UPDATE: u8 = 0x10;
 
 #[allow(dead_code)]
 pub fn encode_frame(
@@ -13,6 +29,9 @@ pub fn encode_frame(
     payload: &[u8],
     out: &mut [u8],
 ) -> Result<usize, ()> {
+    if payload.len() > MAX_FRAME_PAYLOAD {
+        return Err(());
+    }
     let payload_len: u32 = payload.len().try_into().map_err(|_| ())?;
     let total_len = HEADER_LEN.checked_add(payload.len()).ok_or(())?;
     if out.len() < total_len {
@@ -33,5 +52,8 @@ pub fn decode_header(buf: &[u8]) -> Result<(u32, u8, u32), ()> {
     let stream_id = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
     let flags = buf[4];
     let len = u32::from_le_bytes([buf[5], buf[6], buf[7], buf[8]]);
+    if usize::try_from(len).map_err(|_| ())? > MAX_FRAME_PAYLOAD {
+        return Err(());
+    }
     Ok((stream_id, flags, len))
 }

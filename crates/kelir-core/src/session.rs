@@ -24,6 +24,30 @@ impl Session {
         ))
     }
 
+    // TODO: from_parts is superseded once boot() binds real drivers
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_parts(
+        terminal: crate::planes::terminal::TerminalPlane,
+        storage: crate::planes::storage::StoragePlane,
+        wire: crate::planes::wire::WirePlane,
+        checkpoint: crate::planes::checkpoint::CheckpointPlane,
+        host: crate::planes::host::HostPlane,
+        driver: Arc<Mutex<Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>>>,
+        bus: Arc<Mutex<crate::bus::BusDispatcher>>,
+        incarnation_id: [u8; 16],
+    ) -> Self {
+        Self {
+            terminal,
+            storage,
+            wire,
+            checkpoint,
+            host,
+            driver,
+            bus,
+            incarnation_id,
+        }
+    }
+
     pub fn fork(&self) -> Result<Self, kelir_interface::errors::PluginError> {
         // TODO: fork driver, clone planes, mint a new incarnation_id for the child.
         let _ = (&self.driver, &self.bus, &self.incarnation_id);

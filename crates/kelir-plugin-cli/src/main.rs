@@ -56,6 +56,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         "parity" => parity::run()?,
         "fixtures" => fixtures::run(&args[2..])?,
+        "layers" => layers::check()?,
+        "budgets" => {
+            let path = match args.get(2) {
+                Some(p) => p.as_str(),
+                None => "perf/budgets.toml",
+            };
+            budgets::check(path)?;
+        }
+        "logs" => logs::run()?,
+        "manifest" => manifest::run()?,
+        "registry" => registry::run()?,
+        "rings" => rings::run()?,
+        "scaffold" => scaffold::run()?,
+        "setup" => setup::run()?,
+        "spec" => spec::run()?,
+        "vectors" => vectors::run()?,
         other => return Err(format!("kelir-plugin-cli: unknown subcommand `{other}`").into()),
     }
     Ok(())
