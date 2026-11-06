@@ -1,0 +1,20 @@
+[package]
+name = "kelir-napi"
+version = "1.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+kelir-core = { path = "../../kelir-core" }
+kelir-interface = { path = "../../kelir-interface" }
+napi = { version = "2.16", default-features = false, features = ["napi4", "async"] }
+napi-derive = "2.16"
+
+[build-dependencies]
+napi-build = "2.1"
+
+[lints]
+workspace = true

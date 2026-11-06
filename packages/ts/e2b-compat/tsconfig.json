@@ -1,0 +1,1 @@
+{"compilerOptions":{"declaration":true,"module":"NodeNext","moduleResolution":"NodeNext","outDir":"./dist","paths":{"@kelir/core":["../core/src/index.ts"]},"rootDirs":["./src","../core/src"],"skipLibCheck":true,"strict":true,"target":"ES2022"},"include":["src/**/*"]}

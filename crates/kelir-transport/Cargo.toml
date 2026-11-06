@@ -1,0 +1,21 @@
+[package]
+name = "kelir-transport"
+version = "1.0.0"
+edition = "2024"
+license = "FSL-1.1-Apache-2.0"
+
+[dependencies]
+kelir-interface = { path = "../kelir-interface" }
+libc = { workspace = true }
+thiserror = { workspace = true }
+
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+todo = "deny"
+unreachable = "deny"

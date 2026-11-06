@@ -1,0 +1,8 @@
+enforce = true
+
+[latencies]
+gate_1_us = 0
+gate_2_us = 2
+gate_3_us = 150
+cold_boot_ms = 40
+rss_purge_ms = 50

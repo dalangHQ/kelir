@@ -1,0 +1,61 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/kelir",
+    "crates/kelir-adapters/kelir-pack",
+    "crates/kelir-adapters/mcp-server",
+    "crates/kelir-bindings/napi",
+    "crates/kelir-bindings/pyo3",
+    "crates/kelir-catalog",
+    "crates/kelir-core",
+    "crates/kelir-drivers/driver-avf",
+    "crates/kelir-drivers/driver-bwrap",
+    "crates/kelir-drivers/driver-hvf",
+    "crates/kelir-drivers/driver-openvmm",
+    "crates/kelir-drivers/driver-proot",
+    "crates/kelir-drivers/driver-rustvmm",
+    "crates/kelir-integration",
+    "crates/kelir-interface",
+    "crates/kelir-otlp",
+    "crates/kelir-plugin-cli",
+    "crates/kelir-plugin-testkit",
+    "crates/kelir-plugins/plugin-chaos",
+    "crates/kelir-plugins/plugin-container",
+    "crates/kelir-plugins/plugin-db-proxy",
+    "crates/kelir-plugins/plugin-ledger",
+    "crates/kelir-plugins/plugin-mcp",
+    "crates/kelir-plugins/plugin-mesh",
+    "crates/kelir-plugins/plugin-profile",
+    "crates/kelir-plugins/plugin-replay",
+    "crates/kelir-plugins/plugin-supply-chain",
+    "crates/kelir-plugins/plugin-tool-guard",
+    "crates/kelir-plugins/plugin-transaction",
+    "crates/kelir-plugins/plugin-vault",
+    "crates/kelir-plugins/plugin-wire-ingress",
+    "crates/kelir-shim",
+    "crates/kelir-transport",
+]
+
+[workspace.package]
+edition = "2024"
+license = "FSL-1.1-Apache-2.0"
+authors = ["Kelir Contributors"]
+rust-version = "1.85"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+todo = "deny"
+unreachable = "deny"
+
+[workspace.dependencies]
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+ciborium = "0.2"
+thiserror = "2.0"
+libc = "0.2"
+tracing = { version = "0.1", default-features = false }

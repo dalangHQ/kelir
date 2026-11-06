@@ -1,0 +1,36 @@
+[package]
+name = "kelir"
+version = "1.0.0"
+edition = "2024"
+license = "FSL-1.1-Apache-2.0"
+
+[dependencies]
+kelir-core = { path = "../kelir-core" }
+kelir-interface = { path = "../kelir-interface" }
+
+# Optional feature-gated plugins
+plugin-chaos = { path = "../kelir-plugins/plugin-chaos", optional = true }
+plugin-container = { path = "../kelir-plugins/plugin-container", optional = true }
+plugin-db-proxy = { path = "../kelir-plugins/plugin-db-proxy", optional = true }
+plugin-ledger = { path = "../kelir-plugins/plugin-ledger", optional = true }
+plugin-mcp = { path = "../kelir-plugins/plugin-mcp", optional = true }
+plugin-mesh = { path = "../kelir-plugins/plugin-mesh", optional = true }
+plugin-profile = { path = "../kelir-plugins/plugin-profile", optional = true }
+plugin-replay = { path = "../kelir-plugins/plugin-replay", optional = true }
+plugin-supply-chain = { path = "../kelir-plugins/plugin-supply-chain", optional = true }
+plugin-tool-guard = { path = "../kelir-plugins/plugin-tool-guard", optional = true }
+plugin-transaction = { path = "../kelir-plugins/plugin-transaction", optional = true }
+plugin-vault = { path = "../kelir-plugins/plugin-vault", optional = true }
+plugin-wire-ingress = { path = "../kelir-plugins/plugin-wire-ingress", optional = true }
+
+[features]
+default = []
+all-plugins = [
+    "plugin-chaos", "plugin-container", "plugin-db-proxy", "plugin-ledger",
+    "plugin-mcp", "plugin-mesh", "plugin-profile", "plugin-replay",
+    "plugin-supply-chain", "plugin-tool-guard", "plugin-transaction",
+    "plugin-vault", "plugin-wire-ingress"
+]
+
+[lints]
+workspace = true
