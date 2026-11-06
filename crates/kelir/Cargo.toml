@@ -7,6 +7,10 @@ license = "FSL-1.1-Apache-2.0"
 [dependencies]
 kelir-core = { path = "../kelir-core" }
 kelir-interface = { path = "../kelir-interface" }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+ciborium = { workspace = true }
 
 # Optional feature-gated plugins
 plugin-chaos = { path = "../kelir-plugins/plugin-chaos", optional = true }

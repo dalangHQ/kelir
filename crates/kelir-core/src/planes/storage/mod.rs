@@ -1,6 +1,7 @@
 // see: cans/05-storage-plane.md#Storage-architecture
 // see: cans/05-storage-plane.md#Host-CoW-broker
 // see: cans/05-storage-plane.md#Storage-quotas
+pub mod reconciler;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -38,6 +39,14 @@ impl StoragePlane {
                 max_inodes,
             },
         }
+    }
+
+    pub fn reconciler(
+        &self,
+        broker_dir: PathBuf,
+        guard: reconciler::TraversalGuard,
+    ) -> reconciler::Reconciler {
+        reconciler::Reconciler::new(broker_dir, self.workspace_root.clone(), guard)
     }
 
     pub fn reconcile(&self) -> Result<(), kelir_interface::errors::PluginError> {

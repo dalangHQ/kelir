@@ -1,6 +1,7 @@
 // see: cans/plugins/db-proxy.md
 #![forbid(unsafe_code)]
 
+// TODO (L3): tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt.
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{KelirPlugin, MountScope, NetInterposer};
 use kelir_interface::protocol::FilterAction;

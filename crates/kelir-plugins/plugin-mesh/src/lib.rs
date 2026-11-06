@@ -1,6 +1,7 @@
 // see: cans/plugins/mesh.md
 #![forbid(unsafe_code)]
 
+// TODO (L3): tests/test_mesh.rs per cans/artifacts/config/project-structure.txt.
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope, NetInterposer};
 use kelir_interface::protocol::FilterAction;

@@ -1,4 +1,6 @@
 // see: cans/01-architecture.md#Transport-engine-abstraction
+// see: cans/artifacts/diagrams/four-ring-bus.txt
+// see: cans/artifacts/diagrams/wire-plane.txt
 pub mod fallback;
 pub mod spsc_ring;
 

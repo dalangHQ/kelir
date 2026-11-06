@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 // see: cans/01-architecture.md#Driver-backends
+// see: cans/artifacts/diagrams/host-runtime.txt
 use kelir_interface::driver::{SnapshotDescriptor, VmConfig, VmmDriver, VmmError};
 
 #[allow(dead_code)]

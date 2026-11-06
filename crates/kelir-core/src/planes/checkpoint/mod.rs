@@ -60,6 +60,7 @@ impl CheckpointPlane {
         match slot.take() {
             Some(step) => {
                 // TODO: append the committed step digest (slot_id + pending_delta) to manifest_chain.
+                // TODO (L2): commit produces / rollback consumes a kelir_interface::telemetry::CausalDelta for convergence.
                 let _ = (step.slot_id, step.pending_delta);
                 Ok(())
             }

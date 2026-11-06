@@ -1,0 +1,141 @@
+# see: cans/03-sdk-architecture.md#Python-SDK
+"""Plugin base surface for the ported examples.
+
+Stub only: default hooks return zero-values; real dispatch arrives
+with the PyO3 bindings.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+from typing import Any, Callable, Optional
+
+from kelir import FilterAction, HandlerContext, Verdict
+
+__all__ = [
+    "BasePlugin",
+    "FsInodeAttr",
+    "HandlerContext",
+    "LifecycleCtx",
+    "PluginError",
+    "VetoEvent",
+    "WatchdogEvent",
+    "WatchdogVerdict",
+]
+
+
+class PluginError(Exception):
+    """Plugin-rejected operation; surfaced via reject()."""
+
+    def __init__(self, errno: str = "", reason: str = "") -> None:
+        super().__init__(f"{errno}: {reason}" if reason else errno)
+        self.errno = errno
+        self.reason = reason
+
+    @classmethod
+    def reject(cls, errno: str = "", reason: str = "") -> PluginError:
+        return cls(errno=errno, reason=reason)
+
+
+@dataclass
+class FsInodeAttr:
+    mode: int = 0o400
+    uid: int = 0
+    gid: int = 0
+    size: int = 0
+    content: bytes = b""
+
+
+class VetoEvent(Enum):
+    Suspend = "suspend"
+    ClockSkew = "clock_skew"
+
+
+@dataclass
+class WatchdogEvent:
+    last_active_pid: Optional[int] = None
+
+
+class WatchdogVerdict(Enum):
+    Mitigate = "mitigate"
+    ExecuteDefault = "execute_default"
+    Suppress = "suppress"
+
+
+class LifecycleCtx:
+    """Context passed to on_vm_init; registers lifecycle vetoes."""
+
+    def __init__(self) -> None:
+        self._vetoes: list[tuple[VetoEvent, Callable[[], bool]]] = []
+
+    def register_veto(
+        self, event: VetoEvent, predicate: Callable[[], bool]
+    ) -> None:
+        # TODO: register the veto predicate with the lifecycle
+        self._vetoes.append((event, predicate))
+
+
+class BasePlugin:
+    """Base class for domain plugins. Subclasses override the hooks
+    they need; defaults are zero-values (pass through / no decision).
+    Note the two on_fs_write shapes in the examples (Verdict in
+    autonomous-swe-agent.py, FilterAction in hook-matrix.py) are both
+    subclass overrides — the base default is never dispatched as-is."""
+
+    name: str = ""
+    requires: tuple[str, ...] = ()
+
+    async def on_trap(self, event: Any) -> Optional[Verdict]:
+        # TODO: dispatch trap event to the plugin
+        return None
+
+    async def on_fs_lookup(self, path: Path) -> Verdict:
+        # TODO: dispatch fs lookup to the plugin
+        return Verdict.pass_()
+
+    async def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
+        # TODO: dispatch fs read to the plugin
+        return buffer
+
+    async def on_fs_write(
+        self, path: Path, data: Any, pid: int, ctx: HandlerContext
+    ) -> Verdict:
+        # TODO: dispatch fs write to the plugin
+        return Verdict.pass_()
+
+    async def on_net_outbound(self, frame: bytearray) -> FilterAction:
+        # TODO: dispatch outbound frame to the plugin
+        return FilterAction.forward()
+
+    async def on_console_input(self, port: int, data: bytes) -> bytes:
+        # TODO: dispatch console input to the plugin
+        return data
+
+    async def on_console_output(self, port: int, chunk: bytes) -> bytes:
+        # TODO: dispatch console output to the plugin
+        return chunk
+
+    async def on_heartbeat(self, event: Any) -> None:
+        # TODO: dispatch heartbeat telemetry to the plugin
+        pass
+
+    async def on_process_exit(self, event: Any) -> None:
+        # TODO: dispatch process-exit event to the plugin
+        pass
+
+    async def on_vm_init(self, ctx: Any) -> None:
+        # TODO: dispatch vm-init lifecycle event to the plugin
+        pass
+
+    async def on_vm_ready(self, ctx: Any) -> None:
+        # TODO: dispatch vm-ready lifecycle event to the plugin
+        pass
+
+    async def on_vm_shutdown(self, ctx: Any) -> None:
+        # TODO: dispatch vm-shutdown lifecycle event to the plugin
+        pass
+
+    async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
+        # TODO: dispatch watchdog event to the plugin
+        return WatchdogVerdict.ExecuteDefault

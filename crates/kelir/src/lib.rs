@@ -1,8 +1,39 @@
 // see: cans/01-architecture.md#Host-runtime
+// Async SDK stub surface (L2): the sync kelir-interface traits cannot
+// express the async examples in cans/artifacts/examples/, so this facade
+// defines the async plugin/SDK shape the examples program against. All
+// behaviour is stubbed: nothing here boots a real VM.
 #![forbid(unsafe_code)]
 
+// TODO (L3): tests/ facade integration tests per cans/artifacts/config/project-structure.txt.
 pub use kelir_core::*;
 pub use kelir_interface as interface;
+
+pub mod builder;
+pub mod driver;
+pub mod handler_ctx;
+pub mod planes;
+pub mod plugin;
+pub mod plugins;
+pub mod protocol;
+pub mod sandbox;
+pub mod session;
+pub mod telemetry;
+
+pub use builder::{
+    CompositePlugin, KelirBuilder, PostExecAction, SyntheticFile, TrapFilter, handler,
+};
+pub use handler_ctx::HandlerCtx;
+pub use kelir_core::planes::checkpoint::StepSlot;
+pub use kelir_interface::driver::{SnapshotDescriptor, VmConfig, WatchdogAction};
+pub use kelir_interface::protocol::Verdict;
+pub use planes::storage::{FsReconcileRequest, ReconcileStats};
+pub use plugins::ledger::FinalizeRequest;
+pub use sandbox::Sandbox;
+pub use session::{
+    ClockHandle, ExecResult, FsHandle, Session, SpawnBuilder, StepStack, TerminalHandle, VmHandle,
+    VsockChannel, VsockHandle, WireHandle,
+};
 
 #[cfg(feature = "plugin-chaos")]
 pub use plugin_chaos::ChaosPlugin;

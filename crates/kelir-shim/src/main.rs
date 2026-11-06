@@ -1,5 +1,8 @@
 // see: cans/08-lifecycle.md#Zombie-reaping
+// see: cans/artifacts/diagrams/guest-vm.txt
+// TODO (L3): tests/test_anti_toctou.rs + test_reaper.rs per cans/artifacts/config/project-structure.txt#kelir-shim.
 
+// TODO (L3): tests/test_anti_toctou.rs + tests/test_reaper.rs per cans/artifacts/config/project-structure.txt.
 mod codec;
 mod multiplexer;
 mod pty;

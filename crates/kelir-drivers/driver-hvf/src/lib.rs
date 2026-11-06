@@ -1,5 +1,6 @@
 // see: cans/01-architecture.md#Host-memory-pressure-watcher
 // see: cans/08-lifecycle.md#CoW-fork
+// see: cans/artifacts/diagrams/host-runtime.txt
 pub mod sys;
 
 use kelir_interface::driver::{SnapshotDescriptor, VmConfig, VmmDriver, VmmError};

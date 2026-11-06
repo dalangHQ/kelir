@@ -1,33 +1,58 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-export interface KelirPlugin {
-  readonly name: string;
-}
+// see: cans/artifacts/code/typescript-accumulation.ts
+// see: cans/10-attestation.md#Step-evaluation-loop
+import type { Session } from "./session.js";
 
-export class Session {
-  // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
-  async rollback(): Promise<void> {
-    // TODO: Call native session rollback
-  }
+export * from "./types.js";
+export * from "./schema.js";
+export * from "./verdict.js";
+export * from "./trap.js";
+export * from "./context.js";
+export * from "./session.js";
+export * from "./plugin.js";
+export * from "./builder.js";
+export * from "./plugins.js";
 
-  async stop(): Promise<void> {
-    // TODO: Call native session stop
-  }
-}
-
-export class KelirBuilder {
-  private plugins: KelirPlugin[] = [];
-
-  use<P extends KelirPlugin>(plugin: P): this {
-    this.plugins.push(plugin);
-    return this;
-  }
-
-  async boot(): Promise<Session> {
-    // TODO: Cross NAPI boundary to NativeKelirBuilder.boot()
-    return new Session();
+export class EConfig extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EConfig";
   }
 }
 
-export function kelir(): KelirBuilder {
-  return new KelirBuilder();
+export interface IntentInput {
+  readonly binary: string;
+  readonly argv: readonly string[];
+  readonly lineage: number;
+}
+
+export interface VerificationIntent {
+  readonly isHypothesisValid: boolean;
+  readonly falsificationReason?: string;
+}
+
+export interface PhysicalReceipt {
+  readonly id: string;
+}
+
+export interface VerificationEvaluator {
+  analyzeIntent(input: IntentInput): Promise<VerificationIntent>;
+  verifyPhysicalReceipt(receipt: PhysicalReceipt): Promise<boolean>;
+}
+
+export type StepEvaluationOutcome = "passed" | "reverted" | "dropped";
+
+export interface StepEvaluationResult {
+  readonly outcome: StepEvaluationOutcome;
+  readonly reason?: string;
+}
+
+export async function runStepEvaluationLoop(
+  session: Session,
+  evaluator: VerificationEvaluator,
+): Promise<StepEvaluationResult> {
+  void session;
+  void evaluator;
+  // TODO: pre-step checkpoint, intent analysis, post-condition receipt verification, rollback on failure (L3 loop algorithm).
+  throw new Error("TODO: runStepEvaluationLoop (L3)");
 }

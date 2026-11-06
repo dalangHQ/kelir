@@ -9,5 +9,13 @@ kelir-core = { path = "../kelir-core" }
 kelir-interface = { path = "../kelir-interface" }
 kelir = { path = "../kelir", features = ["all-plugins"] }
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ciborium = { workspace = true }
+libc = { workspace = true }
+
 [lints]
 workspace = true

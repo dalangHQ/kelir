@@ -1,6 +1,8 @@
 // see: cans/02-plugin-model.md#KelirPlugin-trait
 // see: cans/02-plugin-model.md#Segregated-ring-traits
+use std::any::Any;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::driver::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
 use crate::errors::PluginError;
@@ -16,6 +18,50 @@ pub enum VirtioDevice {
     Shm,
     Auxiliary,
 }
+
+/// Complete inode attribute set surfaced by storage-plane lookups.
+/// Populated into FUSE LOOKUP replies with S_ISUID and S_ISGID masked
+/// (mode & !0o6000); host writes, creates, and chmods strip the setuid /
+/// setgid bits the same way, so in-guest root cannot mint setuid host
+/// binaries.
+#[derive(Debug, Clone)]
+pub struct FsInodeAttr {
+    pub mode: u32,
+    pub uid: u32,
+    pub gid: u32,
+    pub size: u64,
+    pub content: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VirtioRing {
+    Vsock,
+    Console,
+    Fs,
+    Net,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TelemetryRole {
+    Observer,
+    Gate,
+    Mutator,
+    Proxy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionTier {
+    Native,
+    Foreign,
+}
+
+/// Quarantine boundary guarantee: every interposer dispatch is executed
+/// within std::panic::catch_unwind at the supervisor engine perimeter.
+/// A panicking plugin does not unwind across the FFI or crash the microkernel;
+/// the engine converts the panic into Verdict::Drop { errno: Some("EFAULT"),
+/// reason: "Plugin panicked" } or PluginError::Halt, logs the backtrace
+/// to the host ledger, and rolls back the active StepSlot.
+pub const PANIC_QUARANTINE_ENABLED: bool = true;
 
 // NOTE: order's MountScope fields (allowed_rings/path_subtrees/cidr_allowlists/binary_paths) dropped; artifact shape (devices/binaries/paths) wins per cans/artifacts/code/plugin-trait.rs.
 #[derive(Debug, Clone, Default)]
@@ -75,6 +121,16 @@ pub enum VetoEvent {
     ClockSkew,
 }
 
+/// Observation-only lifecycle events. Published via EventBusBinder
+/// as non-blocking telemetry. Not vetoable; no return value.
+#[derive(Debug, Clone, Copy)]
+pub enum LifecycleObservation {
+    Checkpoint,
+    Rollback,
+    Resume,
+    Terminate,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LifecycleEvent {
     VmInit,
@@ -101,7 +157,7 @@ impl HandlerCtx {
             binary_path: String::new(),
             binary_blake3: String::new(),
             exit_kind: ExitKind::Normal,
-            correlation_token: [0; 16],
+            correlation_token: None,
             dirty_bytes: 0,
             syscall_count: None,
             exit_code: 0,
@@ -171,6 +227,27 @@ where
 pub trait AnyPlugin: KelirPlugin + PluginClone {}
 
 impl<T: KelirPlugin + PluginClone> AnyPlugin for T {}
+
+/// Binds inline interceptors into the linear monotonic pipeline.
+/// No service registry: peer capabilities are typed Context values
+/// accumulated into the builder's Plugins tuple (see KelirPlugin::Context).
+pub trait PipelineBinder {
+    fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>);
+    fn bind_net(&mut self, stage: Arc<dyn NetInterposer>);
+    fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>);
+    fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>);
+    fn bind_host(&mut self, stage: Arc<dyn HostInterposer>);
+}
+
+/// Binds non-blocking observers to the immutable telemetry bus.
+pub trait EventBusBinder {
+    fn subscribe<E: Any + Send + Sync + 'static>(&mut self, handler: Box<dyn Fn(&E) + Send + Sync>);
+}
+
+/// Assembly-time composite plugin tree unpacked into flat dispatch entries before boot.
+pub trait CompositePlugin: Send + Sync {
+    fn unpack(self: Box<Self>, parent_scope: &MountScope) -> Vec<(Box<dyn AnyPlugin>, MountScope)>;
+}
 
 // TODO (L2): async hooks + Context/register_* per cans/artifacts/code/plugin-trait.rs — sync L1 contract here.
 pub trait KelirPlugin: Send + Sync + PluginClone {
@@ -322,5 +399,23 @@ pub trait HostInterposer: Send + Sync {
     fn on_host_keyring_access(&self, key: &str) -> Result<Verdict, PluginError> {
         let _ = key;
         Ok(Verdict::Pass)
+    }
+}
+
+/// Trait marker for foreign runtime plugin proxies bridging V8 and Python.
+pub trait ForeignPluginBridge: KelirPlugin {
+    /// Declared declarative filter evaluated in native Rust before FFI crossing
+    fn mount_scope(&self) -> &MountScope;
+    /// Hard rate limit evaluated in host memory before foreign thread dispatch
+    fn max_dispatches_per_second(&self) -> u32 {
+        10_000
+    }
+    /// Ring-buffer capacity for decoupling foreign language execution
+    fn worker_channel_capacity(&self) -> usize {
+        4_096
+    }
+    /// Max inspected byte ceiling across FFI boundary (default 64KB)
+    fn buffer_ceiling(&self) -> usize {
+        64 * 1024
     }
 }

@@ -1,6 +1,7 @@
 // see: cans/plugins/mcp.md
 #![forbid(unsafe_code)]
 
+// TODO (L3): tests/test_mcp_mapping.rs + examples/mcp-stdio.rs per cans/artifacts/config/project-structure.txt.
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{
     ConsoleInterposer, HandlerCtx, KelirPlugin, LifecycleParticipant, MountScope, TrapInterposer,
