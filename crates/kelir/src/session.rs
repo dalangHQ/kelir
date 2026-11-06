@@ -1,11 +1,80 @@
 use std::future::Future;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use kelir_interface::driver::SnapshotDescriptor;
 use kelir_interface::plugin::PluginError;
 
+use crate::builder::Registration;
+use crate::hlist::{HList, HNil, Has, NoParams};
 use crate::planes::storage::{FsReconcileRequest, ReconcileStats};
+
+// see: cans/03-sdk-architecture.md#Rust-SDK
+pub struct Session<Plugins = HNil, Params = NoParams>
+where
+    Plugins: HList,
+{
+    core: kelir_core::Session,
+    plugins: Plugins,
+    // TODO (L3): engine dispatch consumes the mounted registration per cans/02-plugin-model.md#Static-dispatch.
+    #[allow(dead_code)]
+    registration: Registration<Plugins>,
+    _params: PhantomData<fn() -> Params>,
+}
+
+impl<Plugins: HList, Params> Session<Plugins, Params> {
+    pub(crate) fn from_parts(
+        core: kelir_core::Session,
+        plugins: Plugins,
+        registration: Registration<Plugins>,
+    ) -> Self {
+        Self {
+            core,
+            plugins,
+            registration,
+            _params: PhantomData,
+        }
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    pub fn ctx<T, Index>(&self) -> &T
+    where
+        Plugins: Has<T, Index>,
+    {
+        self.plugins.capability()
+    }
+
+    pub fn core(&self) -> &kelir_core::Session {
+        &self.core
+    }
+
+    // see: cans/03-sdk-architecture.md#Rust-SDK
+    pub fn fork(&self) -> Result<Session<Plugins, Params>, PluginError> {
+        // TODO (L3): fork the engine session, clone the capability list, and rebuild the child registration via fork_state.
+        let child = self.core.fork()?;
+        Ok(Self {
+            core: child,
+            plugins: self.plugins.clone(),
+            registration: Registration::default(),
+            _params: PhantomData,
+        })
+    }
+}
+
+impl<Plugins: HList, Params> std::ops::Deref for Session<Plugins, Params> {
+    type Target = kelir_core::Session;
+
+    fn deref(&self) -> &Self::Target {
+        &self.core
+    }
+}
+
+impl<Plugins: HList, Params> std::ops::DerefMut for Session<Plugins, Params> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.core
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExecResult {

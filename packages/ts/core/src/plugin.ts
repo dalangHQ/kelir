@@ -1,6 +1,11 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
 
 import type { TrapContext } from "./context.js";
+import {
+  RingEvent,
+  type HookDescriptor,
+} from "./fusion.js";
 import type {
   FilterAction,
   Verdict,
@@ -15,10 +20,15 @@ import type {
 
 export interface KelirPlugin {
   readonly name: string;
+  readonly enabled?: boolean;
 }
 
 export interface CreatePluginOptions {
   readonly opts?: unknown;
+}
+
+function unpack(event: unknown): readonly unknown[] {
+  return Array.isArray(event) ? (event as readonly unknown[]) : [event];
 }
 
 export class PluginContract<
@@ -27,90 +37,151 @@ export class PluginContract<
   Deps extends string = string,
 > implements KelirPlugin {
   readonly name: Name;
+  private readonly hooks: HookDescriptor[] = [];
+  private nextOrdinal = 0;
 
   constructor(name: Name, _options?: CreatePluginOptions) {
     void _options;
     this.name = name;
   }
 
+  hooksForFusion(): readonly HookDescriptor[] {
+    return this.hooks;
+  }
+
+  // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+  private addHook(
+    ring: RingEvent,
+    run: (event: unknown) => unknown,
+  ): void {
+    this.hooks.push({
+      ring,
+      stage: "single",
+      pluginName: this.name,
+      ordinal: this.nextOrdinal,
+      run,
+    });
+    this.nextOrdinal += 1;
+  }
+
   onNetOutbound(
-    _handler: (
+    handler: (
       frame: Uint8Array,
     ) => Promise<FilterAction> | FilterAction,
   ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.NetOutbound, (event) =>
+      handler(unpack(event)[0] as Uint8Array),
+    );
     return this;
   }
 
   onFsLookup(
-    _handler: (path: string) => Promise<Verdict> | Verdict,
+    handler: (path: string) => Promise<Verdict> | Verdict,
   ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.FsLookup, (event) =>
+      handler(unpack(event)[0] as string),
+    );
     return this;
   }
 
   onFsRead(
-    _handler: (
+    handler: (
       path: string,
       buffer: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
   ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.FsRead, (event) => {
+      const args = unpack(event);
+      return handler(args[0] as string, args[1] as Uint8Array);
+    });
     return this;
   }
 
   onFsWrite(
-    _handler: (
+    handler: (
       path: string,
       buffer: Uint8Array,
       pid: number,
       ctx: TrapContext,
     ) => Promise<FilterAction> | FilterAction,
   ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.FsWrite, (event) => {
+      const args = unpack(event);
+      return handler(
+        args[0] as string,
+        args[1] as Uint8Array,
+        args[2] as number,
+        args[3] as TrapContext,
+      );
+    });
     return this;
   }
 
   onConsoleInput(
-    _handler: (
+    handler: (
       port: number,
       bytes: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
   ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.ConsoleInput, (event) => {
+      const args = unpack(event);
+      return handler(args[0] as number, args[1] as Uint8Array);
+    });
     return this;
   }
 
   onConsoleOutput(
-    _handler: (
+    handler: (
       port: number,
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
   ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.ConsoleOutput, (event) => {
+      const args = unpack(event);
+      return handler(args[0] as number, args[1] as Uint8Array);
+    });
     return this;
   }
 
   onHeartbeat(
-    _handler: (event: HeartbeatEvent) => Promise<void> | void,
+    handler: (event: HeartbeatEvent) => Promise<void> | void,
   ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.Heartbeat, (event) =>
+      handler(unpack(event)[0] as HeartbeatEvent),
+    );
     return this;
   }
 
   onProcessExit(
-    _handler: (event: ProcessExitEvent) => Promise<void> | void,
+    handler: (event: ProcessExitEvent) => Promise<void> | void,
   ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.ProcessExit, (event) =>
+      handler(unpack(event)[0] as ProcessExitEvent),
+    );
     return this;
   }
 
   onTrap(
-    _handler: (
+    handler: (
       event: TrapInfo,
       c: TrapContext,
     ) => Promise<Verdict | null> | Verdict | null,
   ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.Trap, (event) => {
+      const args = unpack(event);
+      return handler(args[0] as TrapInfo, args[1] as TrapContext);
+    });
     return this;
   }
 
   onWatchdog(
-    _handler: (
+    handler: (
       event: WatchdogEvent,
     ) => Promise<WatchdogVerdict> | WatchdogVerdict,
   ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.Watchdog, (event) =>
+      handler(unpack(event)[0] as WatchdogEvent),
+    );
     return this;
   }
 }

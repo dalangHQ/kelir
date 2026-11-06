@@ -8,6 +8,9 @@ license = "MIT OR Apache-2.0"
 kelir-interface = { path = "../kelir-interface" }
 async-trait = { workspace = true }
 tokio = { workspace = true }
+ciborium = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

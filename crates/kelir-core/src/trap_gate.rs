@@ -114,19 +114,19 @@ impl TrapGateEvaluator {
     }
 
     fn gate_2_scope_match(&self, event: &TrapEvent, scope: &MountScope) -> bool {
-        if let Some(binaries) = &scope.binaries {
-            if !binaries.is_empty() && !binaries.iter().any(|binary| binary == &event.binary_path) {
-                return false;
-            }
+        if let Some(binaries) = &scope.binaries
+            && !binaries.is_empty()
+            && !binaries.iter().any(|binary| binary == &event.binary_path)
+        {
+            return false;
         }
-        if let Some(paths) = &scope.paths {
-            if !paths.is_empty()
-                && !paths
-                    .iter()
-                    .any(|path| Path::new(&event.binary_path).starts_with(path))
-            {
-                return false;
-            }
+        if let Some(paths) = &scope.paths
+            && !paths.is_empty()
+            && !paths
+                .iter()
+                .any(|path| Path::new(&event.binary_path).starts_with(path))
+        {
+            return false;
         }
         // TODO (L3): scope.devices match needs the event-to-device mapping; undecided until then.
         let _ = &scope.devices;

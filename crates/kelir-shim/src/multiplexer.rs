@@ -1,5 +1,6 @@
 // see: cans/11-protocol.md#Control-channel
 // see: cans/11-protocol.md#Binary-exec-channel
+// see: cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)
 // see: cans/08-lifecycle.md#Zombie-reaping
 
 use crate::codec;
@@ -65,11 +66,17 @@ impl ExecSlot {
 #[allow(dead_code)]
 pub struct ExecSlotSlab {
     chunks: Vec<[Option<ExecSlot>; SLAB_CHUNK]>,
+    free: Vec<usize>,
+    next_fresh: usize,
 }
 
 impl ExecSlotSlab {
     pub fn new() -> Self {
-        Self { chunks: Vec::new() }
+        Self {
+            chunks: Vec::new(),
+            free: Vec::new(),
+            next_fresh: 0,
+        }
     }
 
     pub fn get(&self, idx: usize) -> Option<ExecSlot> {
@@ -77,20 +84,40 @@ impl ExecSlotSlab {
         chunk[idx % SLAB_CHUNK]
     }
 
-    pub fn insert(&mut self, idx: usize, slot: ExecSlot) -> Result<(), ShimError> {
-        if idx >= MAX_EXEC_SLOTS {
-            return Err(ShimError::SlabSaturated);
-        }
+    // TODO (L3): size the pool by min(guest RLIMIT_NPROC, host max_exec_slots from session config).
+    pub fn allocate(&mut self, slot: ExecSlot) -> Result<usize, ShimError> {
+        let idx = match self.free.pop() {
+            Some(recycled) => recycled,
+            None => {
+                if self.next_fresh >= MAX_EXEC_SLOTS {
+                    return Err(ShimError::SlabSaturated);
+                }
+                let fresh = self.next_fresh;
+                self.next_fresh = fresh.saturating_add(1);
+                fresh
+            }
+        };
         while self.chunks.len() <= idx / SLAB_CHUNK {
             self.chunks.push([None; SLAB_CHUNK]);
         }
         self.chunks[idx / SLAB_CHUNK][idx % SLAB_CHUNK] = Some(slot);
-        Ok(())
+        Ok(idx)
     }
 
-    pub fn remove(&mut self, idx: usize) {
-        if let Some(chunk) = self.chunks.get_mut(idx / SLAB_CHUNK) {
-            chunk[idx % SLAB_CHUNK] = None;
+    pub fn release(&mut self, idx: usize) {
+        let Some(chunk) = self.chunks.get_mut(idx / SLAB_CHUNK) else {
+            return;
+        };
+        if chunk[idx % SLAB_CHUNK].take().is_none() {
+            return;
+        }
+        self.free.push(idx);
+        while self
+            .chunks
+            .last()
+            .is_some_and(|c| c.iter().all(|s| s.is_none()))
+        {
+            self.chunks.pop();
         }
     }
 }
@@ -101,9 +128,58 @@ impl Default for ExecSlotSlab {
     }
 }
 
+// see: cans/11-protocol.md#Stream-mux-framing
+struct StreamMapEntry {
+    stream_id: u32,
+    slot: usize,
+}
+
+#[allow(dead_code)]
+pub struct StreamSlotTable {
+    entries: Vec<StreamMapEntry>,
+}
+
+impl StreamSlotTable {
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+
+    pub fn bind(&mut self, stream_id: u32, slot: usize) -> Result<(), ShimError> {
+        match self
+            .entries
+            .binary_search_by_key(&stream_id, |e| e.stream_id)
+        {
+            Ok(_) => Err(ShimError::StreamIdInUse { stream_id }),
+            Err(pos) => {
+                self.entries.insert(pos, StreamMapEntry { stream_id, slot });
+                Ok(())
+            }
+        }
+    }
+
+    pub fn resolve(&self, stream_id: u32) -> Option<usize> {
+        let pos = self
+            .entries
+            .binary_search_by_key(&stream_id, |e| e.stream_id)
+            .ok()?;
+        Some(self.entries[pos].slot)
+    }
+
+    pub fn unbind(&mut self, stream_id: u32) -> Option<usize> {
+        let pos = self
+            .entries
+            .binary_search_by_key(&stream_id, |e| e.stream_id)
+            .ok()?;
+        Some(self.entries.remove(pos).slot)
+    }
+}
+
 #[allow(dead_code)]
 pub struct Multiplexer {
     pub slots: ExecSlotSlab,
+    table: StreamSlotTable,
     pub next_exec_id: u64,
 }
 
@@ -111,39 +187,42 @@ impl Multiplexer {
     pub fn new() -> Self {
         Self {
             slots: ExecSlotSlab::new(),
+            table: StreamSlotTable::new(),
             next_exec_id: 1,
         }
     }
 
-    #[allow(dead_code)]
     pub fn dispatch_frame(
         &mut self,
         stream_id: u32,
         flags: u8,
         payload: &[u8],
     ) -> Result<(), ShimError> {
-        let idx = usize::try_from(stream_id).map_err(|_| ShimError::InvalidStreamId)?;
-        if idx >= MAX_EXEC_SLOTS {
-            return Err(ShimError::SlabSaturated);
+        if stream_id > codec::MAX_STREAM_ID {
+            return Err(ShimError::InvalidStreamId { stream_id });
         }
         if (flags & codec::FLAG_OPEN) != 0 {
-            let spec = ExecSpec::parse(payload)?;
-            let slot = self.spawn_exec(&spec)?;
-            self.slots.insert(idx, slot)?;
-            return Ok(());
+            return self.open_stream(stream_id, payload);
         }
         if (flags & (codec::FLAG_CLOSE | codec::FLAG_RST)) != 0 {
-            // TODO (L3): flush stdout/stderr EOF frames, release slab chunk
-            self.slots.remove(idx);
+            // TODO (L3): flush stdout/stderr EOF frames before release; exit frames defer until EOF flush.
+            self.close_stream(stream_id);
             return Ok(());
         }
+        let idx = self
+            .table
+            .resolve(stream_id)
+            .ok_or(ShimError::SlotEmpty { stream_id })?;
         if (flags & codec::FLAG_WINDOW_UPDATE) != 0 {
-            // TODO: apply stream credit window update
+            // TODO (L3): apply per-stream credit window update to the resolved slot.
             return Ok(());
         }
         if (flags & codec::FLAG_DATA) != 0 {
-            let slot = self.slots.get(idx).ok_or(ShimError::SlotEmpty)?;
-            // TODO: route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03)
+            let slot = self
+                .slots
+                .get(idx)
+                .ok_or(ShimError::SlotEmpty { stream_id })?;
+            // TODO (L3): route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03).
             let _ = (
                 payload,
                 slot.pid,
@@ -154,7 +233,27 @@ impl Multiplexer {
             );
             return Ok(());
         }
-        Err(ShimError::UnknownFlags)
+        Err(ShimError::UnknownFlags { flags })
+    }
+
+    fn open_stream(&mut self, stream_id: u32, payload: &[u8]) -> Result<(), ShimError> {
+        if self.table.resolve(stream_id).is_some() {
+            return Err(ShimError::StreamIdInUse { stream_id });
+        }
+        let spec = ExecSpec::parse(payload)?;
+        let slot = self.spawn_exec(&spec)?;
+        let idx = self.slots.allocate(slot)?;
+        if let Err(err) = self.table.bind(stream_id, idx) {
+            self.slots.release(idx);
+            return Err(err);
+        }
+        Ok(())
+    }
+
+    fn close_stream(&mut self, stream_id: u32) {
+        if let Some(idx) = self.table.unbind(stream_id) {
+            self.slots.release(idx);
+        }
     }
 
     fn spawn_exec(&mut self, spec: &ExecSpec) -> Result<ExecSlot, ShimError> {

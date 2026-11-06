@@ -42,6 +42,14 @@ impl StreamKind {
     }
 }
 
+// see: cans/11-protocol.md#Control-channel
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StreamDirection {
+    GuestToHost,
+    HostToGuest,
+}
+
+// see: cans/11-protocol.md#Wire-framing
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u16)]
 pub enum MsgType {
@@ -126,6 +134,27 @@ pub enum FilterAction {
     Suspend {
         until: SuspendUntil,
     },
+    Abort {
+        reason: String,
+    },
+}
+
+// see: cans/plugins/supply-chain.md
+pub const PROT_NONE: u32 = 0;
+pub const PROT_READ: u32 = 1;
+pub const PROT_WRITE: u32 = 2;
+pub const PROT_EXEC: u32 = 4;
+
+// see: cans/plugins/supply-chain.md
+pub const MFD_CLOEXEC: u32 = 0x0001;
+pub const MFD_ALLOW_SEALING: u32 = 0x0002;
+
+// see: cans/plugins/supply-chain.md
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrappedSyscall {
+    pub nr: i64,
+    pub mprotect_prot: Option<u32>,
+    pub memfd_create_flags: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,6 +170,8 @@ pub struct TrapEvent {
     pub argv: Vec<String>,
     pub envp: HashMap<String, String>,
     pub cwd: String,
+    #[serde(default)]
+    pub syscall: Option<TrappedSyscall>,
 }
 
 // see: cans/01-architecture.md#Early-boot-diagnostics

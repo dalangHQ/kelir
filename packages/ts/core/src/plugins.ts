@@ -2,7 +2,11 @@
 
 import type { KelirPlugin } from "./plugin.js";
 
-export interface ChaosConfig {
+export interface PluginEnablement {
+  readonly enabled?: boolean;
+}
+
+export interface ChaosConfig extends PluginEnablement {
   readonly network?: readonly {
     readonly target: string;
     readonly latency: { readonly baseMs: number; readonly jitterMs: number };
@@ -16,11 +20,11 @@ export interface ChaosConfig {
   }[];
 }
 
-export function chaos(_config: ChaosConfig): KelirPlugin {
-  return { name: "chaos" };
+export function chaos(config: ChaosConfig): KelirPlugin {
+  return { name: "chaos", enabled: config.enabled };
 }
 
-export interface LedgerConfig {
+export interface LedgerConfig extends PluginEnablement {
   readonly store?: string;
   readonly merkleChain?: boolean;
   readonly otel?: { readonly traceParent: boolean; readonly serviceName: string };
@@ -31,11 +35,11 @@ export interface LedgerConfig {
   };
 }
 
-export function ledger(_config: LedgerConfig): KelirPlugin {
-  return { name: "ledger" };
+export function ledger(config: LedgerConfig): KelirPlugin {
+  return { name: "ledger", enabled: config.enabled };
 }
 
-export interface McpConfig {
+export interface McpConfig extends PluginEnablement {
   readonly transport: {
     readonly streamKind: string;
     readonly framing: string;
@@ -43,27 +47,27 @@ export interface McpConfig {
   readonly advertise: { readonly tools: readonly string[] };
 }
 
-export function mcp(_config: McpConfig): KelirPlugin {
-  return { name: "mcp" };
+export function mcp(config: McpConfig): KelirPlugin {
+  return { name: "mcp", enabled: config.enabled };
 }
 
-export interface ToolGuardConfig {
+export interface ToolGuardConfig extends PluginEnablement {
   readonly pinSchemas: boolean;
   readonly maxInvocationsPerTrace: number;
   readonly approvals: Record<string, { readonly action: string; readonly durationMs: number }>;
 }
 
-export function toolGuard(_config: ToolGuardConfig): KelirPlugin {
-  return { name: "tool-guard" };
+export function toolGuard(config: ToolGuardConfig): KelirPlugin {
+  return { name: "tool-guard", enabled: config.enabled };
 }
 
-export interface WireIngressConfig {
+export interface WireIngressConfig extends PluginEnablement {
   readonly listen: { readonly port: number; readonly protocol: string };
   readonly parking: { readonly maxBufferedBytes: number; readonly idleTimeoutMs: number };
   readonly wakeOnPacket: { readonly transportChannel: number };
   readonly backlog: { readonly maxConnections: number; readonly overflow: string };
 }
 
-export function wireIngress(_config: WireIngressConfig): KelirPlugin {
-  return { name: "wire-ingress" };
+export function wireIngress(config: WireIngressConfig): KelirPlugin {
+  return { name: "wire-ingress", enabled: config.enabled };
 }

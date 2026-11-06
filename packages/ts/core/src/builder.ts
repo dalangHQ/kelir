@@ -1,14 +1,23 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
+// see: cans/artifacts/code/typescript-accumulation.ts
 
 import type { Schema } from "./schema.js";
 import type { TrapContext, LifecycleContext } from "./context.js";
 import type { KelirPlugin } from "./plugin.js";
-import type { PostExecAction, LifecycleEvent } from "./verdict.js";
-import type { Verdict } from "./verdict.js";
+import type { PostExecAction, LifecycleEvent, Verdict } from "./verdict.js";
 import type { TrapDenyEvent } from "./types.js";
-import type { Session } from "./session.js";
+import { Session } from "./session.js";
 import { EConfig } from "./errors.js";
 import { TrapFilter } from "./trap.js";
+import {
+  FusedTrampoline,
+  RingEvent,
+  lifecycleTagFor,
+  type FusedTrampolineDescriptor,
+  type HookDescriptor,
+  type NativeAddonBinding,
+} from "./fusion.js";
 
 export interface KelirConfig {
   readonly vcpus?: number;
@@ -109,10 +118,21 @@ export interface TrapHandlers {
   ) => Promise<PostExecAction> | PostExecAction;
 }
 
-export class KelirBuilder {
-  private plugins: KelirPlugin[] = [];
+interface PluginRegistration {
+  readonly name: string;
+  readonly enabled: boolean;
+}
 
-  constructor(_config: KelirConfig = {}) {}
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
+export class KelirBuilder {
+  private readonly config: KelirConfig;
+  private readonly pluginRegistrations: PluginRegistration[] = [];
+  private readonly hooks: HookDescriptor[] = [];
+  private nextOrdinal = 0;
+
+  constructor(config: KelirConfig = {}) {
+    this.config = config;
+  }
 
   terminal(_config: TerminalConfig): this {
     return this;
@@ -126,8 +146,18 @@ export class KelirBuilder {
     return this;
   }
 
+  // see: cans/artifacts/code/typescript-accumulation.ts
   use<P extends KelirPlugin>(plugin: P): this {
-    this.plugins.push(plugin);
+    const enabled = (plugin as { readonly enabled?: boolean }).enabled !== false;
+    this.pluginRegistrations.push({ name: plugin.name, enabled });
+    const contract = plugin as unknown as {
+      hooksForFusion?: () => readonly HookDescriptor[];
+    };
+    if (typeof contract.hooksForFusion === "function" && enabled) {
+      for (const hook of contract.hooksForFusion()) {
+        this.hooks.push(hook);
+      }
+    }
     return this;
   }
 
@@ -135,9 +165,44 @@ export class KelirBuilder {
     return this;
   }
 
+  // see: cans/02-plugin-model.md#Foreign-plugin-proxy
   trap(filter: string | TrapFilter, handler: TrapHandler | TrapHandlers): this {
-    void filter;
-    void handler;
+    const filterSnapshot =
+      typeof filter === "string" ? TrapFilter.pattern(filter).snapshot() : filter.snapshot();
+    if (typeof handler === "function") {
+      this.hooks.push({
+        ring: RingEvent.Trap,
+        stage: "single",
+        ordinal: this.nextOrdinal,
+        filter: filterSnapshot,
+        run: (event: unknown): unknown =>
+          (handler as TrapHandler)(event as TrapContext),
+      });
+      this.nextOrdinal += 1;
+      return this;
+    }
+    if (handler.pre !== undefined) {
+      const pre = handler.pre;
+      this.hooks.push({
+        ring: RingEvent.Trap,
+        stage: "pre",
+        ordinal: this.nextOrdinal,
+        filter: filterSnapshot,
+        run: (event: unknown): unknown => pre(event as TrapContext),
+      });
+      this.nextOrdinal += 1;
+    }
+    if (handler.post !== undefined) {
+      const post = handler.post;
+      this.hooks.push({
+        ring: RingEvent.Trap,
+        stage: "post",
+        ordinal: this.nextOrdinal,
+        filter: filterSnapshot,
+        run: (event: unknown): unknown => post(event as TrapContext),
+      });
+      this.nextOrdinal += 1;
+    }
     return this;
   }
 
@@ -155,48 +220,117 @@ export class KelirBuilder {
       | ((ctx: LifecycleContext) => Promise<void> | void)
       | ((session: Session) => Promise<void> | void),
   ): this {
-    void event;
-    void handler;
+    this.hooks.push({
+      ring: RingEvent.Lifecycle,
+      stage: "single",
+      ordinal: this.nextOrdinal,
+      lifecycleTag: lifecycleTagFor(event),
+      run: (payload: unknown): unknown =>
+        (handler as (arg: unknown) => Promise<void> | void)(payload),
+    });
+    this.nextOrdinal += 1;
     return this;
   }
 
   onTrapDeny(
-    _handler: (event: TrapDenyEvent, session: Session) => Promise<void> | void,
+    handler: (event: TrapDenyEvent, session: Session) => Promise<void> | void,
   ): this {
+    this.hooks.push({
+      ring: RingEvent.Lifecycle,
+      stage: "single",
+      ordinal: this.nextOrdinal,
+      lifecycleTag: "trap-deny",
+      run: (payload: unknown): unknown => {
+        const args = Array.isArray(payload)
+          ? (payload as readonly unknown[])
+          : [payload, undefined];
+        return (handler as (a: unknown, b: unknown) => Promise<void> | void)(
+          args[0],
+          args[1],
+        );
+      },
+    });
+    this.nextOrdinal += 1;
     return this;
   }
 
   registerCustomAction<P>(
-    _name: string,
+    name: string,
     _schema: Schema<P>,
-    _handler: (payload: P) => Promise<void> | void,
+    handler: (payload: P) => Promise<void> | void,
   ): this {
+    this.hooks.push({
+      ring: RingEvent.CustomAction,
+      stage: "single",
+      ordinal: this.nextOrdinal,
+      customActionName: name,
+      run: (payload: unknown): unknown =>
+        (handler as (arg: unknown) => Promise<void> | void)(payload),
+    });
+    this.nextOrdinal += 1;
     return this;
   }
 
   registerVsockService<Req>(
-    _kind: number,
+    kind: number,
     _schema: Schema<Req>,
-    _handler: (request: Req) => Promise<Req> | Req,
+    handler: (request: Req) => Promise<Req> | Req,
   ): this {
+    this.hooks.push({
+      ring: RingEvent.VsockService,
+      stage: "single",
+      ordinal: this.nextOrdinal,
+      vsockKind: kind,
+      run: (payload: unknown): unknown =>
+        (handler as (arg: unknown) => unknown)(payload),
+    });
+    this.nextOrdinal += 1;
     return this;
   }
 
-  async boot(): Promise<Session> {
+  // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+  fuse(): FusedTrampoline {
+    return FusedTrampoline.fuse(this.hooks);
+  }
+
+  private fusedDescriptor(): FusedTrampolineDescriptor {
+    return this.fuse().describe();
+  }
+
+  private async loadNativeAddon(): Promise<NativeAddonBinding> {
     const specifier = "./native/kelir.node";
-    let addon: unknown;
     try {
-      // TODO (L3): load the precompiled NAPI addon and call NativeKelirBuilder.boot().
-      addon = await import(specifier);
+      // TODO (L3): ship the precompiled NAPI addon next to the dist bundle and verify its ABI version.
+      return (await import(specifier)) as NativeAddonBinding;
     } catch {
       throw new EConfig(
         "kelir native NAPI addon is missing: install the precompiled @kelir/core native build (L3)",
       );
     }
-    void addon;
-    throw new EConfig(
-      "kelir native NAPI addon binding is not implemented (L3)",
+  }
+
+  async boot(): Promise<Session> {
+    const descriptor = this.fusedDescriptor();
+    const addon = await this.loadNativeAddon();
+    const nativeBuilder = new addon.NativeKelirBuilder(
+      this.config.vcpus,
+      this.config.memoryMb,
+      this.config.kernel,
+      this.config.rootfsErofs,
+      this.config.tscLocked,
+      this.config.enableWatchdog,
     );
+    for (const registration of this.pluginRegistrations) {
+      nativeBuilder.addPlugin(registration.name, registration.enabled);
+    }
+    nativeBuilder.fuseHooks(descriptor.rings);
+    if (nativeBuilder.trampolineEntryCount() !== descriptor.rings.length) {
+      throw new EConfig(
+        "kelir native NAPI trampoline table is not one entry per ring event",
+      );
+    }
+    // TODO (L3): bind each fused ring chain to its single trampoline entry as one threadsafe closure.
+    return new Session(await nativeBuilder.boot());
   }
 }
 

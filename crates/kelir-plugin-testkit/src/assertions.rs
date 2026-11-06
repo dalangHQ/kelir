@@ -1,27 +1,97 @@
+// see: cans/02-plugin-model.md#Unified-verdict
 // see: cans/02-plugin-model.md#Plugin-testkit
 use kelir_interface::plugin::PluginError;
 use kelir_interface::protocol::Verdict;
 
-pub fn assert_rewrite(input: &[u8], output: &[u8]) -> Result<(), PluginError> {
-    let _ = (input, output);
-    // TODO: compare output against the expected rewrite of input.
-    Err(PluginError::Halt("TODO: assert_rewrite".into()))
+// see: cans/02-plugin-model.md#Unified-verdict
+pub fn assert_pass(verdict: &Verdict) -> Result<(), PluginError> {
+    if matches!(verdict, Verdict::Pass) {
+        Ok(())
+    } else {
+        Err(PluginError::Halt(format!(
+            "assert_pass: verdict is not Pass: {verdict:?}"
+        )))
+    }
 }
 
+// see: cans/02-plugin-model.md#Unified-verdict
 pub fn assert_deny(verdict: &Verdict) -> Result<(), PluginError> {
-    let _ = verdict;
-    // TODO: require the verdict to deny the operation.
-    Err(PluginError::Halt("TODO: assert_deny".into()))
+    if matches!(verdict, Verdict::Drop { .. }) {
+        Ok(())
+    } else {
+        Err(PluginError::Halt(format!(
+            "assert_deny: verdict is not Drop: {verdict:?}"
+        )))
+    }
+}
+
+// see: cans/02-plugin-model.md#Unified-verdict
+pub fn assert_patch(verdict: &Verdict) -> Result<(), PluginError> {
+    if matches!(verdict, Verdict::Patch(_)) {
+        Ok(())
+    } else {
+        Err(PluginError::Halt(format!(
+            "assert_patch: verdict is not Patch: {verdict:?}"
+        )))
+    }
+}
+
+// see: cans/02-plugin-model.md#Unified-verdict
+pub fn assert_suspend(verdict: &Verdict) -> Result<(), PluginError> {
+    if matches!(verdict, Verdict::Suspend { .. }) {
+        Ok(())
+    } else {
+        Err(PluginError::Halt(format!(
+            "assert_suspend: verdict is not Suspend: {verdict:?}"
+        )))
+    }
+}
+
+// see: cans/02-plugin-model.md#Unified-verdict
+pub fn assert_abort(verdict: &Verdict) -> Result<(), PluginError> {
+    if matches!(verdict, Verdict::Abort { .. }) {
+        Ok(())
+    } else {
+        Err(PluginError::Halt(format!(
+            "assert_abort: verdict is not Abort: {verdict:?}"
+        )))
+    }
+}
+
+// see: cans/02-plugin-model.md#Hook-return-semantics
+pub fn assert_rewrite(input: &[u8], output: &[u8]) -> Result<(), PluginError> {
+    if output != input {
+        Ok(())
+    } else {
+        Err(PluginError::Halt(
+            "assert_rewrite: output is byte-identical to input; no rewrite occurred".into(),
+        ))
+    }
 }
 
 pub fn assert_env_injected(env: &[(String, String)], key: &str) -> Result<(), PluginError> {
-    let _ = (env, key);
-    // TODO: require key to be present in the injected environment.
-    Err(PluginError::Halt("TODO: assert_env_injected".into()))
+    if env.iter().any(|(k, _)| k == key) {
+        Ok(())
+    } else {
+        Err(PluginError::Halt(format!(
+            "assert_env_injected: key `{key}` is absent from the injected environment"
+        )))
+    }
 }
 
+// see: cans/plugins/vault.md
 pub fn assert_disclosure(output: &[u8], secret: &[u8]) -> Result<(), PluginError> {
-    let _ = (output, secret);
-    // TODO: require secret to be absent from output.
-    Err(PluginError::Halt("TODO: assert_disclosure".into()))
+    if secret.is_empty() {
+        return Err(PluginError::Halt(
+            "assert_disclosure: the secret is empty; nothing to assert".into(),
+        ));
+    }
+    let leaked = output.windows(secret.len()).any(|window| window == secret);
+    if leaked {
+        Err(PluginError::Halt(
+            "assert_disclosure: the secret appears verbatim in the output".into(),
+        ))
+    } else {
+        Ok(())
+    }
 }

@@ -125,13 +125,52 @@ pub struct WatchdogDiagnostic {
     pub last_active_pid: Option<u32>,
 }
 
+// see: cans/01-architecture.md#Shared-memory-channel
 #[derive(Debug)]
 pub struct SharedMemoryHandle {
     pub tag: String,
     pub size_bytes: usize,
     pub guest_phys_addr: u64,
     pub host_ptr: *mut u8,
+    #[cfg(unix)]
     pub memfd_raw: std::os::unix::io::RawFd,
+    #[cfg(windows)]
+    pub section_handle: std::os::windows::io::RawHandle,
+}
+
+// see: cans/01-architecture.md#Transport-engine-abstraction
+pub trait Stream: Send + Sync {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error>;
+    fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error>;
+    fn flush(&mut self) -> Result<(), std::io::Error>;
+}
+
+// see: cans/plugins/replay.md
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntropyBackend {
+    VirtioRng,
+    SeededChaCha20 { seed: u64 },
+}
+
+// see: cans/plugins/replay.md
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntropyStreamPosition {
+    pub offset_bytes: u64,
+}
+
+// see: cans/plugins/replay.md
+#[async_trait]
+pub trait ClockStepControl: Send + Sync {
+    async fn step_clock(&self, offset: Duration) -> Result<(), VmmError>;
+    async fn clock_offset(&self) -> Result<Duration, VmmError>;
+}
+
+// see: cans/plugins/replay.md
+#[async_trait]
+pub trait EntropyBackendControl: Send + Sync {
+    async fn set_backend(&self, backend: EntropyBackend) -> Result<(), VmmError>;
+    async fn position(&self) -> Result<EntropyStreamPosition, VmmError>;
+    async fn restore_position(&self, position: EntropyStreamPosition) -> Result<(), VmmError>;
 }
 
 // see: cans/artifacts/code/vmm-driver-trait.rs
@@ -160,6 +199,6 @@ pub trait VmmDriver: Send + Sync {
         timeout: Duration,
         action: WatchdogAction,
     ) -> Result<(), VmmError>;
-    fn transport_connect(&self, channel_id: u32) -> Result<tokio::net::UnixStream, VmmError>;
+    fn transport_connect(&self, channel_id: u32) -> Result<Box<dyn Stream>, VmmError>;
     async fn terminate(&mut self) -> Result<(), VmmError>;
 }

@@ -13,9 +13,11 @@ pub enum ShimError {
     SpawnPending,
     ExecSpecParsePending,
     SlabSaturated,
-    SlotEmpty,
-    InvalidStreamId,
-    UnknownFlags,
+    SlotEmpty { stream_id: u32 },
+    InvalidStreamId { stream_id: u32 },
+    StreamIdInUse { stream_id: u32 },
+    UnknownFlags { flags: u8 },
+    PtyOpen { errno: libc::c_int },
 }
 
 impl fmt::Display for ShimError {
@@ -37,19 +39,27 @@ impl fmt::Display for ShimError {
                 write!(f, "EXEC_IO_SPEC parse pending (L3)")
             }
             Self::SlabSaturated => write!(f, "exec slot slab saturated"),
-            Self::SlotEmpty => write!(f, "no exec slot for stream id"),
-            Self::InvalidStreamId => write!(f, "stream id does not fit usize"),
-            Self::UnknownFlags => write!(f, "frame flags match no lane"),
+            Self::SlotEmpty { stream_id } => {
+                write!(f, "no exec slot mapped for stream id {stream_id}")
+            }
+            Self::InvalidStreamId { stream_id } => {
+                write!(f, "stream id {stream_id} exceeds MAX_STREAM_ID")
+            }
+            Self::StreamIdInUse { stream_id } => {
+                write!(
+                    f,
+                    "stream id {stream_id} already bound to an active exec slot"
+                )
+            }
+            Self::UnknownFlags { flags } => {
+                write!(f, "frame flags {flags:#04x} match no lane")
+            }
+            Self::PtyOpen { errno } => write!(f, "openpty failed with errno {errno}"),
         }
     }
 }
 
 impl std::error::Error for ShimError {}
-
-// TODO (L3): main.rs collapses ShimError to () at the binary boundary; give main a real error type then.
-impl From<ShimError> for () {
-    fn from(_: ShimError) -> Self {}
-}
 
 #[allow(dead_code)]
 pub struct SeccompFilter {

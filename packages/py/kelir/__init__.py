@@ -1,17 +1,24 @@
 # see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/02-plugin-model.md#Foreign-plugin-proxy
 from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Self
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
+
+from kelir.errors import EConfig as EConfig
+from kelir.fusion import (
+    FusedTrampoline,
+    HookDescriptor,
+    HookStage,
+    PluginRegistration,
+    RingEvent,
+    TrapFilterSnapshot,
+)
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
-
-
-class EConfig(Exception):
-    pass
 
 
 def _load_native_bridge() -> Any:
@@ -137,6 +144,10 @@ class TrapFilter:
 
     def with_arg(self, arg: str) -> TrapFilter:
         return TrapFilter(self.binary_name, (*self.args, arg))
+
+    def snapshot(self) -> TrapFilterSnapshot:
+        # see: cans/02-plugin-model.md#Filter-before-FFI-gate
+        return TrapFilterSnapshot(binary=self.binary_name, args=self.args)
 
 
 @dataclass
@@ -473,6 +484,9 @@ class KelirBuilder:
         driver: str | None = None,
     ) -> None:
         self._plugins: list[object] = []
+        self._plugin_registrations: list[PluginRegistration] = []
+        self._hooks: list[HookDescriptor] = []
+        self._next_ordinal: int = 0
         self._session: Session | None = None
         self._config: dict[str, Any] = {
             "vcpus": vcpus,
@@ -483,16 +497,24 @@ class KelirBuilder:
             "enable_watchdog": enable_watchdog,
             "driver": driver,
         }
-        self._handlers: dict[str, list[Any]] = {}
         self._params_model: type | None = None
 
     def use(self, plugin: object) -> Self:
+        # TODO (L2): validate prerequisites at boot
+        from kelir.plugin import hook_descriptors
+
         self._plugins.append(plugin)
+        name = getattr(plugin, "name", None) or type(plugin).__name__
+        enabled = bool(getattr(plugin, "enabled", True))
+        self._plugin_registrations.append(
+            PluginRegistration(name=str(name), enabled=enabled)
+        )
+        if enabled:
+            self._hooks.extend(hook_descriptors(plugin))
         return self
 
     def plugin(self, plugin: object) -> Self:
-        self._plugins.append(plugin)
-        return self
+        return self.use(plugin)
 
     def terminal(self, **kwargs: Any) -> Self:
         # TODO: configure the terminal plane
@@ -515,8 +537,34 @@ class KelirBuilder:
         pre: Callable[..., Awaitable[Any]] | None = None,
         post: Callable[..., Awaitable[Any]] | None = None,
     ) -> Self:
-        # TODO: register pre/post trap handlers into the pipeline
-        self._handlers.setdefault("trap", []).append((pattern, pre, post))
+        # see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        snapshot = (
+            pattern.snapshot()
+            if isinstance(pattern, TrapFilter)
+            else TrapFilterSnapshot(pattern=pattern)
+        )
+        if pre is not None:
+            self._hooks.append(
+                HookDescriptor(
+                    ring=RingEvent.TRAP,
+                    stage=HookStage.PRE,
+                    ordinal=self._next_ordinal,
+                    filter=snapshot,
+                    run=pre,
+                )
+            )
+            self._next_ordinal += 1
+        if post is not None:
+            self._hooks.append(
+                HookDescriptor(
+                    ring=RingEvent.TRAP,
+                    stage=HookStage.POST,
+                    ordinal=self._next_ordinal,
+                    filter=snapshot,
+                    run=post,
+                )
+            )
+            self._next_ordinal += 1
         return self
 
     def register_custom_action(
@@ -525,8 +573,17 @@ class KelirBuilder:
         schema: dict[str, Any],
         handler: Callable[..., Awaitable[Any]],
     ) -> Self:
-        # TODO: register a Patch(Custom{name, cbor}) action by name
-        self._handlers.setdefault("custom_action", []).append((name, schema, handler))
+        # see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        self._hooks.append(
+            HookDescriptor(
+                ring=RingEvent.CUSTOM_ACTION,
+                stage=HookStage.SINGLE,
+                ordinal=self._next_ordinal,
+                custom_action_name=name,
+                run=handler,
+            )
+        )
+        self._next_ordinal += 1
         return self
 
     def register_vsock_service(
@@ -535,18 +592,48 @@ class KelirBuilder:
         schema: dict[str, Any],
         handler: Callable[[bytes], Awaitable[bytes]],
     ) -> Self:
-        # TODO: register a vsock service on plugin kind
-        self._handlers.setdefault("vsock_service", []).append((kind, schema, handler))
+        # see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        self._hooks.append(
+            HookDescriptor(
+                ring=RingEvent.VSOCK_SERVICE,
+                stage=HookStage.SINGLE,
+                ordinal=self._next_ordinal,
+                vsock_kind=kind,
+                run=handler,
+            )
+        )
+        self._next_ordinal += 1
         return self
+
+    _LIFECYCLE_TAGS: dict[str, Literal["vm-init", "vm-ready", "vm-shutdown", "trap-deny", "pre-commit", "post-commit"]] = {
+        "on_vm_init": "vm-init",
+        "on_vm_ready": "vm-ready",
+        "on_vm_shutdown": "vm-shutdown",
+        "on_trap_deny": "trap-deny",
+        "on_pre_commit": "pre-commit",
+        "on_post_commit": "post-commit",
+    }
 
     def _lifecycle_decorator(
         self, name: str
     ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+        tag = self._LIFECYCLE_TAGS.get(name)
+        if tag is None:
+            raise EConfig(f"unknown lifecycle hook {name}")
+
         def decorator(
             fn: Callable[..., Awaitable[Any]],
         ) -> Callable[..., Awaitable[Any]]:
-            # TODO: register the lifecycle handler
-            self._handlers.setdefault(name, []).append(fn)
+            self._hooks.append(
+                HookDescriptor(
+                    ring=RingEvent.LIFECYCLE,
+                    stage=HookStage.SINGLE,
+                    ordinal=self._next_ordinal,
+                    lifecycle_tag=tag,
+                    run=fn,
+                )
+            )
+            self._next_ordinal += 1
             return fn
 
         return decorator
@@ -579,9 +666,25 @@ class KelirBuilder:
         self._params_model = model
         return self
 
+    # see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    def fuse(self) -> FusedTrampoline:
+        return FusedTrampoline.fuse(self._hooks)
+
     async def boot(self) -> Session:
-        # TODO (L3): validate Pydantic dependencies and boot via the PyO3 _kelir bridge.
-        _load_native_bridge()
+        descriptor = self.fuse().describe()
+        bridge = _load_native_bridge()
+        native = bridge.PyKelirBuilder(
+            vcpus=self._config["vcpus"],
+            memory_mb=self._config["memory_mb"],
+            kernel=self._config["kernel"],
+            rootfs_erofs=self._config["rootfs_erofs"],
+            tsc_locked=self._config["tsc_locked"],
+            enable_watchdog=self._config["enable_watchdog"],
+        )
+        for registration in self._plugin_registrations:
+            native.use_plugin(registration.name, registration.enabled)
+        native.fuse_hooks(descriptor)
+        # TODO (L3): await the native boot coroutine and wrap the PyO3 session handle into kelir.Session.
         raise EConfig("kelir native PyO3 boot binding is not implemented (L3)")
 
     async def __aenter__(self) -> Session:

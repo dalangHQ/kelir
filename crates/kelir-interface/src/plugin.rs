@@ -9,10 +9,14 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::service_registry::ServiceRegistry;
+use crate::vsock::{VsockServiceHandler, VsockServiceSpec};
 
-use crate::driver::{BalloonConvergence, WatchdogAction, WatchdogEvent, WatchdogVerdict};
-pub use crate::handlers::HandlerCtx;
-use crate::protocol::{FilterAction, ProcessExit, TrapEvent, Verdict};
+use crate::driver::{
+    BalloonConvergence, ClockStepControl, EntropyBackendControl, WatchdogAction, WatchdogEvent,
+    WatchdogVerdict,
+};
+pub use crate::handlers::{HandlerCtx, Has};
+use crate::protocol::{FilterAction, ProcessExit, StreamDirection, StreamKind, TrapEvent, Verdict};
 
 // see: cans/artifacts/code/plugin-trait.rs
 #[derive(Error, Debug)]
@@ -159,12 +163,37 @@ pub enum LifecycleEvent {
     VmShutdown,
 }
 
+// see: cans/plugins/transaction.md
+#[async_trait]
+pub trait VcpuFreezeControl: Send + Sync {
+    async fn freeze(&self) -> Result<(), PluginError>;
+    async fn unfreeze(&self) -> Result<(), PluginError>;
+}
+
+// see: cans/plugins/transaction.md
+#[async_trait]
+pub trait FuseDrainControl: Send + Sync {
+    async fn drain_in_flight(&self, timeout: Duration) -> Result<(), PluginError>;
+}
+
+// see: cans/plugins/transaction.md
+#[async_trait]
+pub trait CowBrokerControl: Send + Sync {
+    async fn commit_upper(&self) -> Result<(), PluginError>;
+    async fn discard_upper(&self) -> Result<(), PluginError>;
+}
+
 // TODO (L3): borrow &mut dyn VmmDriver + &VmConfig per cans/artifacts/code/plugin-trait.rs; owned store is the L2 stand-in.
 pub struct LifecycleCtx {
     pub watchdog: Option<WatchdogAction>,
     pub watchdog_timeout: Option<Duration>,
     pub balloon_target_mb: Option<u32>,
     pub vetoes: Vec<(VetoEvent, Box<dyn Fn() -> bool + Send + Sync>)>,
+    pub vcpu_freeze: Option<Arc<dyn VcpuFreezeControl>>,
+    pub fuse_drain: Option<Arc<dyn FuseDrainControl>>,
+    pub cow_broker: Option<Arc<dyn CowBrokerControl>>,
+    pub clock_step: Option<Arc<dyn ClockStepControl>>,
+    pub entropy: Option<Arc<dyn EntropyBackendControl>>,
 }
 
 impl LifecycleCtx {
@@ -174,6 +203,11 @@ impl LifecycleCtx {
             watchdog_timeout: None,
             balloon_target_mb: None,
             vetoes: Vec::new(),
+            vcpu_freeze: None,
+            fuse_drain: None,
+            cow_broker: None,
+            clock_step: None,
+            entropy: None,
         }
     }
 
@@ -205,6 +239,59 @@ impl LifecycleCtx {
         callback: Box<dyn Fn() -> bool + Send + Sync>,
     ) {
         self.vetoes.push((event, callback));
+    }
+
+    pub async fn freeze_vcpus(&self) -> Result<(), PluginError> {
+        match &self.vcpu_freeze {
+            Some(control) => control.freeze().await,
+            None => Err(PluginError::Halt("vCPU freeze capability not wired".into())),
+        }
+    }
+
+    pub async fn unfreeze_vcpus(&self) -> Result<(), PluginError> {
+        match &self.vcpu_freeze {
+            Some(control) => control.unfreeze().await,
+            None => Err(PluginError::Halt("vCPU freeze capability not wired".into())),
+        }
+    }
+
+    pub async fn drain_fuse(&self, timeout: Duration) -> Result<(), PluginError> {
+        match &self.fuse_drain {
+            Some(control) => control.drain_in_flight(timeout).await,
+            None => Err(PluginError::Halt("FUSE drain capability not wired".into())),
+        }
+    }
+
+    pub async fn commit_broker_upper(&self) -> Result<(), PluginError> {
+        match &self.cow_broker {
+            Some(control) => control.commit_upper().await,
+            None => Err(PluginError::Halt("CoW broker capability not wired".into())),
+        }
+    }
+
+    pub async fn discard_broker_upper(&self) -> Result<(), PluginError> {
+        match &self.cow_broker {
+            Some(control) => control.discard_upper().await,
+            None => Err(PluginError::Halt("CoW broker capability not wired".into())),
+        }
+    }
+
+    pub fn clock_step_control(&self) -> Result<Arc<dyn ClockStepControl>, PluginError> {
+        match &self.clock_step {
+            Some(control) => Ok(Arc::clone(control)),
+            None => Err(PluginError::Halt(
+                "clock stepping capability not wired".into(),
+            )),
+        }
+    }
+
+    pub fn entropy_control(&self) -> Result<Arc<dyn EntropyBackendControl>, PluginError> {
+        match &self.entropy {
+            Some(control) => Ok(Arc::clone(control)),
+            None => Err(PluginError::Halt(
+                "entropy backend capability not wired".into(),
+            )),
+        }
     }
 
     pub fn update_dispatch(&mut self, _new_dispatch: Arc<()>) -> Result<(), PluginError> {
@@ -249,12 +336,16 @@ where
     }
 }
 
+// see: cans/11-protocol.md#Control-channel
+// see: cans/plugins/db-proxy.md
 pub trait PipelineBinder {
     fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>);
     fn bind_net(&mut self, stage: Arc<dyn NetInterposer>);
     fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>);
     fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>);
     fn bind_host(&mut self, stage: Arc<dyn HostInterposer>);
+    fn bind_stream(&mut self, kind: StreamKind, stage: Arc<dyn StreamInterposer>);
+    fn bind_vsock_service(&mut self, spec: VsockServiceSpec, service: Arc<dyn VsockServiceHandler>);
     fn service_registry(&mut self) -> &mut ServiceRegistry;
 }
 
@@ -438,6 +529,35 @@ pub trait HostInterposer: Send + Sync {
     fn on_host_keyring_access(&self, key: &str) -> Result<Verdict, PluginError> {
         let _ = key;
         Ok(Verdict::Pass)
+    }
+}
+
+// see: cans/11-protocol.md#Control-channel
+// see: cans/plugins/tool-guard.md
+#[async_trait]
+pub trait StreamInterposer: Send + Sync {
+    async fn on_stream_open(
+        &self,
+        stream_id: u32,
+        tags: &mut Vec<u8>,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        let _ = (stream_id, tags, ctx);
+        Ok(Verdict::Pass)
+    }
+    async fn on_stream_data(
+        &self,
+        direction: StreamDirection,
+        stream_id: u32,
+        payload: &mut Vec<u8>,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        let _ = (direction, stream_id, payload, ctx);
+        Ok(Verdict::Pass)
+    }
+    async fn on_stream_close(&self, stream_id: u32, ctx: &HandlerCtx) -> Result<(), PluginError> {
+        let _ = (stream_id, ctx);
+        Ok(())
     }
 }
 

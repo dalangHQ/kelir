@@ -1,9 +1,11 @@
 // see: cans/05-storage-plane.md#Storage-architecture
 // see: cans/05-storage-plane.md#Write-gating
 // see: cans/05-storage-plane.md#Host-inode-lock-broker
+// see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
+// see: cans/02-plugin-model.md#Hook-return-semantics
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{FsInterposer, HandlerCtx};
-use kelir_interface::protocol::{FilterAction, Verdict};
+use kelir_interface::plugin::{FsInodeAttr, FsInterposer, HandlerCtx};
+use kelir_interface::protocol::{FilterAction, PatchPayload, Verdict};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -42,10 +44,21 @@ pub struct FuseRequest {
     pub blocking: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+// see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
+#[derive(Debug, Clone)]
+pub enum FuseReply {
+    // see: cans/05-storage-plane.md#Interception-pipeline
+    Payload(Vec<u8>),
+    // see: cans/02-plugin-model.md#FsInodeAttr-carries-full-mode-uid-gid-size-content
+    Inode(FsInodeAttr),
+    // see: cans/05-storage-plane.md#Write-gating
+    Errno(i32),
+}
+
+#[derive(Debug, Clone)]
 pub struct FuseResponse {
     pub guest_inode: u64,
-    pub payload: Vec<u8>,
+    pub reply: FuseReply,
 }
 
 pub struct FuseDispatcher {
@@ -67,14 +80,32 @@ impl FuseDispatcher {
                 Verdict::Pass => Ok(FuseResponse {
                     guest_inode: request.guest_inode,
                     // TODO (L3): fill lookup payload from broker getattr.
-                    payload: Vec::new(),
+                    reply: FuseReply::Payload(Vec::new()),
                 }),
+                // see: cans/02-plugin-model.md#Unified-verdict
+                Verdict::Patch(PatchPayload::FsInode {
+                    mode,
+                    uid,
+                    gid,
+                    size,
+                    content,
+                }) => Ok(FuseResponse {
+                    guest_inode: request.guest_inode,
+                    // TODO (L3): driver mints the fuse_entry_out ino for the synthetic inode.
+                    reply: FuseReply::Inode(FsInodeAttr {
+                        mode: mode & !0o6000,
+                        uid,
+                        gid,
+                        size,
+                        content,
+                    }),
+                }),
+                Verdict::Patch(_) => Err(PluginError::Halt(
+                    "FUSE LOOKUP Patch payload is not an FsInode".into(),
+                )),
                 Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(
                     "FUSE LOOKUP denied: {reason} ({errno:?})"
                 ))),
-                Verdict::Patch(_) => Err(PluginError::Halt(
-                    "FUSE LOOKUP interposer returned Patch, unsupported for lookup".into(),
-                )),
                 Verdict::Suspend { .. } => Err(PluginError::Halt(
                     "FUSE LOOKUP interposer returned Suspend, unsupported for lookup".into(),
                 )),
@@ -91,7 +122,7 @@ impl FuseDispatcher {
                 Ok(FuseResponse {
                     guest_inode: request.guest_inode,
                     // TODO (L3): fill read payload from broker read at offset.
-                    payload: Vec::new(),
+                    reply: FuseReply::Payload(Vec::new()),
                 })
             }
             FuseOpcode::Write => match self.interposer.on_fs_write(
@@ -103,11 +134,24 @@ impl FuseDispatcher {
                 FilterAction::Forward => Ok(FuseResponse {
                     guest_inode: request.guest_inode,
                     // TODO (L3): fill write payload with bytes committed to upper.
-                    payload: Vec::new(),
+                    reply: FuseReply::Payload(Vec::new()),
                 }),
-                FilterAction::Drop { errno, reason } => Err(PluginError::Halt(format!(
-                    "FUSE WRITE denied: {reason} ({errno:?})"
-                ))),
+                // see: cans/02-plugin-model.md#Unified-verdict
+                FilterAction::Drop { errno: None, .. } => Ok(FuseResponse {
+                    guest_inode: request.guest_inode,
+                    // TODO (L3): reply the requested chunk size so the blackholed write stays silent.
+                    reply: FuseReply::Payload(Vec::new()),
+                }),
+                // see: cans/05-storage-plane.md#Write-gating
+                FilterAction::Drop {
+                    errno: Some(errno), ..
+                } => {
+                    let errno = drop_errno(&errno)?;
+                    Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        reply: FuseReply::Errno(-errno),
+                    })
+                }
                 FilterAction::Suspend { .. } => Err(PluginError::Halt(
                     "FUSE WRITE interposer returned Suspend, unsupported for write".into(),
                 )),
@@ -129,7 +173,7 @@ impl FuseDispatcher {
                     Verdict::Pass => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
                         // TODO (L3): fill lock payload from host flock grant.
-                        payload: Vec::new(),
+                        reply: FuseReply::Payload(Vec::new()),
                     }),
                     Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(
                         "FUSE SETLK denied: {reason} ({errno:?})"
@@ -149,6 +193,26 @@ impl FuseDispatcher {
                 }
             }
         }
+    }
+}
+
+// see: cans/05-storage-plane.md#Write-gating
+// see: cans/plugins/chaos.md#Error-and-return-semantics
+fn drop_errno(errno: &str) -> Result<i32, PluginError> {
+    match errno {
+        "EPERM" => Ok(1),
+        "ENXIO" => Ok(6),
+        "EWOULDBLOCK" => Ok(11),
+        "EACCES" => Ok(13),
+        "EFAULT" => Ok(14),
+        "EBUSY" => Ok(16),
+        "EXDEV" => Ok(18),
+        "ENOSPC" => Ok(28),
+        "EROFS" => Ok(30),
+        "ECONNREFUSED" => Ok(111),
+        _ => Err(PluginError::Halt(format!(
+            "FUSE errno {errno} has no POSIX mapping on the storage plane"
+        ))),
     }
 }
 

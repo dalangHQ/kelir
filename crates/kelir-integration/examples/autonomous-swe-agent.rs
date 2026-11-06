@@ -13,8 +13,8 @@ use kelir_interface::plugin::HandlerCtx as IfaceHandlerCtx;
 use tokio::sync::Mutex;
 
 use kelir::{
-    HandlerCtx, KelirBuilder, PostExecAction, Session, SnapshotDescriptor, TrapFilter, Verdict,
-    VmConfig,
+    HCons, HNil, KelirBuilder, NoParams, PidLineage, PostExecAction, SnapshotDescriptor, TrapCtx,
+    TrapFilter, Unsealed, Verdict, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     handler,
     planes::{
@@ -27,8 +27,11 @@ use kelir::{
     },
     plugin::{AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginError, TrapInterposer},
     plugins::{
-        chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
-        ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
+        chaos::{
+            ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, NetworkFaultRule,
+            StorageFaultRule,
+        },
+        ledger::LedgerPlugin,
     },
     protocol::{PatchPayload, TrapEvent},
     telemetry::ExecutionReceipt,
@@ -197,38 +200,40 @@ async fn build_runtime(
     oracle: Arc<UserOracle>,
     pg_cert: PathBuf,
     pg_key: PathBuf,
-) -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<
+    KelirBuilder<
+        Unsealed,
+        HCons<RepoPolicyHandle, HCons<(), HCons<Arc<dyn FaultInjectionService>, HNil>>>,
+        NoParams,
+    >,
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     let policy_plugin = RepoPolicyPlugin::new(RepoPolicyOptions {
         max_diff_bytes: 64 * 1024,
         protected_branches: vec!["main".into(), "master".into(), "release/*".into()],
     });
 
+    // see: cans/02-plugin-model.md#Shape-of-the-surface
     let snoop_oracle = Arc::clone(&oracle);
-    let snoop: SnoopHandler = Arc::new(move |path: PathBuf, raw: Vec<u8>, c: HandlerCtx| {
-        let oracle = Arc::clone(&snoop_oracle);
-        Box::pin(async move {
-            let evt: serde_json::Value = serde_json::from_slice(&raw)
-                .map_err(|e| PluginError::Halt(format!("session is not JSON: {e}")))?;
-            if evt
-                .get("falsifiedResult")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
-                return Err(PluginError::Halt(
-                    "EPERM: harness hallucination detected".into(),
-                ));
-            }
-            let blake3 = c
-                .ctx::<LedgerCtx>()
-                .blake3_of_producing_process(&path)
-                .await?;
+    let snoop: SnoopHandler = Arc::new(move |path: PathBuf, raw: Vec<u8>, _c: TrapCtx<_, _>| {
+        let evt: serde_json::Value = serde_json::from_slice(&raw)
+            .map_err(|e| PluginError::Halt(format!("session is not JSON: {e}")))?;
+        if evt
+            .get("falsifiedResult")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            return Err(PluginError::Halt(
+                "EPERM: harness hallucination detected".into(),
+            ));
+        }
+        // TODO (L3): attribute the producing binary via c.ctx::<LedgerCtx>() once plugin-ledger contributes its context handle per cans/plugins/ledger.md.
+        let blake3 = String::new();
 
-            oracle
-                .ingest_harness_event(&path, &evt, &blake3)
-                .await
-                .map_err(|e| PluginError::Halt(e.to_string()))?;
-            Ok(())
-        })
+        snoop_oracle
+            .ingest_harness_event(&path, &evt, &blake3)
+            .map_err(|e| PluginError::Halt(e.to_string()))?;
+        Ok(())
     });
 
     let builder = KelirBuilder::new(VmConfig {
@@ -298,11 +303,9 @@ async fn build_runtime(
                 "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n",
             ),
             SyntheticFile::dynamic("/workspace/identity.jwt", |_| {
-                Box::pin(async move {
-                    Ok(DynamicFile {
-                        content: format!("Bearer {:032x}", std::process::id()),
-                        mode: 0o400,
-                    })
+                Ok(DynamicFile {
+                    content: format!("Bearer {:032x}", std::process::id()),
+                    mode: 0o400,
                 })
             }),
         ],
@@ -353,55 +356,42 @@ async fn build_runtime(
     })
     .plugin(ChaosPlugin::new(ChaosConfig {
         network: vec![
-            NetworkChaos {
+            NetworkFaultRule {
                 target: "api.stripe.com".into(),
+                direction: FaultDirection::Outbound,
                 base_ms: 150,
                 jitter_ms: 30,
                 drop_rate: 0.02,
                 inject_rst: false,
                 bandwidth_kbps: None,
-
-                direction: None,
             },
-            NetworkChaos {
+            NetworkFaultRule {
                 target: "api.stripe.com".into(),
+                direction: FaultDirection::Inbound,
                 base_ms: 150,
                 jitter_ms: 30,
                 drop_rate: 0.02,
                 inject_rst: false,
                 bandwidth_kbps: None,
-
-                direction: Some("inbound".into()),
             },
-            NetworkChaos {
+            NetworkFaultRule {
                 target: "api.stripe.com".into(),
+                direction: FaultDirection::Both,
                 base_ms: 150,
                 jitter_ms: 30,
                 drop_rate: 0.02,
                 inject_rst: false,
                 bandwidth_kbps: None,
-
-                direction: Some("both".into()),
             },
         ],
-        fs: vec![FsChaos {
+        fs: vec![StorageFaultRule {
             target_path: "/workspace/build/cache/*".into(),
             simulate_error: "ENOSPC".into(),
             error_probability: 0.05,
         }],
     }))
-    .plugin(LedgerPlugin::new(LedgerConfig {
-        store: ".kelir/audit.merkle.db".into(),
-        merkle_chain: true,
-        otel: Some(OtelConfig {
-            endpoint: "http://localhost:4318/v1/traces".into(),
-            service_name: "kelir-swe-agent".into(),
-            propagate_traceparent: true,
-        }),
-        receipts: ReceiptConfig {
-            include_syscall_count: true,
-        },
-    }));
+    // TODO (L3): mount the ledger config per cans/artifacts/examples/autonomous-swe-agent.rs once plugin-ledger owns LedgerConfig per cans/plugins/ledger.md.
+    .plugin(LedgerPlugin::new(true));
 
     let builder = builder.plugin(policy_plugin);
 
@@ -409,7 +399,7 @@ async fn build_runtime(
 
         .trap("*", handler({
             let oracle = Arc::clone(&oracle);
-            move |c: HandlerCtx| {
+            move |c: TrapCtx<_, _>| {
                 let oracle = Arc::clone(&oracle);
                 async move {
 
@@ -433,7 +423,7 @@ async fn build_runtime(
         }))
 
 
-        .trap(TrapFilter::binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), handler(|c: HandlerCtx| async move {
+        .trap(TrapFilter::binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), handler(|c: TrapCtx<_, _>| async move {
             c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
 
 
@@ -446,7 +436,7 @@ async fn build_runtime(
         }))
 
 
-        .trap(TrapFilter::binary("git").with_arg("push"), handler(|c: HandlerCtx| async move {
+        .trap(TrapFilter::binary("git").with_arg("push"), handler(|c: TrapCtx<_, _>| async move {
             if c.trap.argv.iter().any(|a| a == "--force") {
 
                 let argv: Vec<String> = c.trap.argv.iter()
@@ -464,7 +454,7 @@ async fn build_runtime(
 
         .trap("*", handler({
             let oracle = Arc::clone(&oracle);
-            move |c: HandlerCtx| {
+            move |c: TrapCtx<_, _>| {
                 let oracle = Arc::clone(&oracle);
                 async move {
                     let pre: SnapshotDescriptor = c.step.last().ok_or_else(|| {
@@ -514,10 +504,10 @@ async fn build_runtime(
 
 
         .trap(TrapFilter::binary("git").with_arg("commit").with_arg("-m"), handler({
-            move |c: HandlerCtx<_, _>| async move {
+            move |c: TrapCtx<_, _>| async move {
 
 
-                let policy = c.ctx::<RepoPolicyHandle>();
+                let policy = c.ctx::<RepoPolicyHandle, _>();
                 let n = policy.violations().await;
                 if n > 0 {
                     return Ok(Verdict::Drop {
@@ -530,7 +520,7 @@ async fn build_runtime(
         }))
 
 
-        .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: HandlerCtx| async move {
+        .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: TrapCtx<_, _>| async move {
             let receipt = c.receipt().await?;
 
             if receipt.dirty_bytes == 0 {
@@ -556,12 +546,12 @@ async fn build_runtime(
                 .set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot)
                 .await
         })
-        .on_vm_ready(|session: &Session| {
+        .on_vm_ready(|session| {
             let result = session.terminal.resize(120, 40);
             async move { result }
         })
-        .on_vm_shutdown(|_session: &Session| async move { Ok::<(), PluginError>(()) })
-        .on_trap_deny(|_event, _session: &Session| async move { Ok::<(), PluginError>(()) });
+        .on_vm_shutdown(|_session| async move { Ok::<(), PluginError>(()) })
+        .on_trap_deny(|_event, _session| async move { Ok::<(), PluginError>(()) });
 
     Ok(builder)
 }
@@ -584,14 +574,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let port = session.wire.forward_port(3000, Some(8080))?;
     eprintln!("[kelir] wire forward_port -> {port}");
 
-    session.checkpoint.create_step(SnapshotDescriptor {
-        id: "clean_base".into(),
-        dirty_bytes: 0,
-        created_at_ns: 0,
-        parent_digest: None,
-        guest_clock: None,
-    })?;
-    let base = session.checkpoint.commit_step()?;
+    session.checkpoint.create_step(
+        PidLineage::new(1),
+        SnapshotDescriptor {
+            id: "clean_base".into(),
+            dirty_bytes: 0,
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
+        },
+    )?;
+    let base = session.checkpoint.commit_step(PidLineage::new(1))?;
     eprintln!("[kelir] checkpoint base node={base}");
 
     let phase: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
@@ -599,14 +592,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         for id in ['A', 'B', 'C', 'D'] {
             let mut child = session.fork()?;
             joins.spawn(async move {
-                child.checkpoint.create_step(SnapshotDescriptor {
-                    id: format!("hypothesis-{id}"),
-                    dirty_bytes: 0,
-                    created_at_ns: 0,
-                    parent_digest: None,
-                    guest_clock: None,
-                })?;
-                child.checkpoint.commit_step()?;
+                child.checkpoint.create_step(
+                    PidLineage::new(1),
+                    SnapshotDescriptor {
+                        id: format!("hypothesis-{id}"),
+                        dirty_bytes: 0,
+                        created_at_ns: 0,
+                        parent_digest: None,
+                        guest_clock: None,
+                    },
+                )?;
+                child.checkpoint.commit_step(PidLineage::new(1))?;
                 // TODO (L3): skew the child clock, spawn npm run verify-hypothesis-{id}, and read back its causal delta.
                 child.stop()?;
                 Ok::<_, Box<dyn std::error::Error + Send + Sync>>(id)
@@ -679,7 +675,8 @@ impl UserOracle {
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         Ok(true)
     }
-    async fn ingest_harness_event(
+    // see: cans/02-plugin-model.md#Shape-of-the-surface
+    fn ingest_harness_event(
         &self,
         _p: &Path,
         _e: &serde_json::Value,

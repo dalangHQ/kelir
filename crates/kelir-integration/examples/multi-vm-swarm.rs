@@ -10,18 +10,26 @@ use std::sync::{
 use tokio::task::JoinSet;
 
 use kelir::{
-    KelirBuilder, Session, SnapshotDescriptor, VmConfig,
+    HCons, HNil, KelirBuilder, NoParams, PidLineage, Session, SnapshotDescriptor, Unsealed,
+    VmConfig,
     driver::{DriverPolicy, WxPolicy},
     planes::storage::{LockBrokerConfig, LockMode, LockScope},
     plugin::VetoEvent,
     plugins::{
-        ledger::{LedgerConfig, LedgerPlugin, ReceiptConfig},
-        mesh::{MeshConfig, MeshPlugin, PeerIdentity, TraceParentPropagation},
-        supply_chain::{LifecyclePolicy, PackageManager, SupplyChainConfig, SupplyChainPlugin},
+        ledger::LedgerPlugin,
+        mesh::{
+            MeshConfig, MeshCtx, MeshPlugin, PeerIdentity, PeerListener, TraceParentPropagation,
+        },
+        supply_chain::{
+            JitValidationService, PackageGuardConfig, SupplyChainConfig, SupplyChainPlugin,
+            WxJitConfig,
+        },
     },
 };
 
-fn swarm_builder() -> KelirBuilder {
+type SwarmPlugins = HCons<(), HCons<Arc<dyn JitValidationService>, HCons<MeshCtx, HNil>>>;
+
+fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
     KelirBuilder::new(VmConfig {
         vcpus: 4,
         memory_mb: 8192,
@@ -51,6 +59,7 @@ fn swarm_builder() -> KelirBuilder {
         default_mode: LockMode::Exclusive,
         non_blocking: true,
     })
+    // see: cans/artifacts/examples/multi-vm-swarm.rs
     .plugin(MeshPlugin::new(MeshConfig {
         peer_identity: PeerIdentity::Spiffe {
             trust_domain: "kelir.local".into(),
@@ -59,35 +68,30 @@ fn swarm_builder() -> KelirBuilder {
         mtls: true,
         traceparent: TraceParentPropagation::InjectAndValidate,
         listeners: vec![
-            kelir::plugins::mesh::PeerListener {
+            PeerListener {
                 port: 7001,
                 service: "shard-exchange".into(),
             },
-            kelir::plugins::mesh::PeerListener {
+            PeerListener {
                 port: 7002,
                 service: "winner-announce".into(),
             },
         ],
     }))
+    // see: cans/artifacts/examples/multi-vm-swarm.rs
     .plugin(SupplyChainPlugin::new(SupplyChainConfig {
-        managers: vec![
-            PackageManager::Npm,
-            PackageManager::Pip,
-            PackageManager::Cargo,
-        ],
-        policy: LifecyclePolicy::DenyInDependencyDirs,
-    }))
-    .plugin(LedgerPlugin::new(LedgerConfig {
-        store: ".kelir/swarm-audit.merkle.db".into(),
-        merkle_chain: true,
-        otel: None,
-        receipts: ReceiptConfig {
-            include_syscall_count: false,
+        wx_jit: WxJitConfig::default(),
+        package_guard: PackageGuardConfig {
+            managers: vec!["npm".into(), "pip".into(), "cargo".into()],
+            ..PackageGuardConfig::default()
         },
     }))
+    // TODO (L3): mount the ledger receipts config per cans/artifacts/examples/multi-vm-swarm.rs once plugin-ledger owns LedgerConfig per cans/plugins/ledger.md.
+    .plugin(LedgerPlugin::new(true))
 }
 
-async fn boot_swarm() -> Result<Session, Box<dyn std::error::Error + Send + Sync>> {
+async fn boot_swarm()
+-> Result<Session<SwarmPlugins, NoParams>, Box<dyn std::error::Error + Send + Sync>> {
     let cache_ready = Arc::new(AtomicBool::new(false));
     let veto_flag = cache_ready.clone();
     let mut builder = swarm_builder();
@@ -98,32 +102,38 @@ async fn boot_swarm() -> Result<Session, Box<dyn std::error::Error + Send + Sync
     let session = builder.seal().boot().await?;
 
     session.terminal.resize(120, 40)?;
-    session.checkpoint.create_step(SnapshotDescriptor {
-        id: "swarm-cache-ready".into(),
-        dirty_bytes: 0,
-        created_at_ns: 0,
-        parent_digest: None,
-        guest_clock: None,
-    })?;
-    session.checkpoint.commit_step()?;
+    session.checkpoint.create_step(
+        PidLineage::new(1),
+        SnapshotDescriptor {
+            id: "swarm-cache-ready".into(),
+            dirty_bytes: 0,
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
+        },
+    )?;
+    session.checkpoint.commit_step(PidLineage::new(1))?;
     cache_ready.store(true, Ordering::SeqCst);
 
     Ok(session)
 }
 
 async fn run_shard(
-    mut child: Session,
+    mut child: Session<SwarmPlugins, NoParams>,
     shard_id: u32,
     total: u32,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-    child.checkpoint.create_step(SnapshotDescriptor {
-        id: format!("swarm-shard-{shard_id}/{total}"),
-        dirty_bytes: 0,
-        created_at_ns: 0,
-        parent_digest: None,
-        guest_clock: None,
-    })?;
-    child.checkpoint.commit_step()?;
+    child.checkpoint.create_step(
+        PidLineage::new(1),
+        SnapshotDescriptor {
+            id: format!("swarm-shard-{shard_id}/{total}"),
+            dirty_bytes: 0,
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
+        },
+    )?;
+    child.checkpoint.commit_step(PidLineage::new(1))?;
     // TODO (L3): map the shard-exchange shared region, spawn cargo test --shard, and publish the result via MeshCtx.
     child.stop()?;
     Ok(true)
