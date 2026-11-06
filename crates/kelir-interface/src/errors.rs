@@ -5,8 +5,12 @@ use thiserror::Error;
 pub enum PluginError {
     #[error("Configuration error: {0}")]
     EConfig(String),
-    #[error("Ambiguous mutation scope: {0}")]
-    EAmbiguousMutation(String),
+    #[error("Foreign FFI channel saturated: worker queue depth exceeded ({depth})")]
+    FfiQueueSaturated { depth: usize },
+    #[error("W^X execution violation detected: PID {pid} attempted {operation}")]
+    WxViolation { pid: u32, operation: String },
+    #[error("Ambiguous mutation detected across plugins on resource '{resource}': {conflict}")]
+    AmbiguousMutation { resource: String, conflict: String },
     #[error("Session veto triggered: {0}")]
     ESessionVeto(String),
     #[error("Security policy violation: {0}")]
@@ -17,6 +21,15 @@ pub enum PluginError {
     Halt(String),
     #[error("System IO error: {0}")]
     Io(#[from] std::io::Error),
+}
+
+impl PluginError {
+    pub fn ambiguous_mutation(resource: impl Into<String>, conflict: impl Into<String>) -> Self {
+        Self::AmbiguousMutation {
+            resource: resource.into(),
+            conflict: conflict.into(),
+        }
+    }
 }
 
 #[derive(Error, Debug)]

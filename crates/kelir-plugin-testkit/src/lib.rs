@@ -1,6 +1,11 @@
 // see: cans/02-plugin-model.md#Plugin-testkit
 #![forbid(unsafe_code)]
 
+pub mod assertions;
+pub mod fixtures;
+pub mod handlers;
+pub mod mock_bus;
+
 use kelir_interface::driver::{SnapshotDescriptor, VmConfig, VmmDriver};
 use kelir_interface::errors::DriverError;
 

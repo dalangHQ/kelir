@@ -29,12 +29,11 @@ pub enum LeaseKind {
 
 #[derive(Debug, Clone)]
 pub struct SessionRow {
-    pub session_id: String,
-    pub status: String,
-    pub incarnation_id: String,
-    pub boot_id: String,
-    pub start_time_ns: u64,
-    pub pid: u32,
+    pub session_id: [u8; 16],
+    pub incarnation_id: [u8; 16],
     pub lease_kind: LeaseKind,
-    pub expires_at_unix: Option<u64>,
+    pub expires_at_unix: Option<i64>,
+    pub runner_pid: i64,
+    pub boot_id: String,
+    pub start_time_ns: i64,
 }

@@ -10,6 +10,7 @@ pub struct ProotDriver {
 
 impl ProotDriver {
     pub fn new(allow_emulated_fallback: bool) -> Result<Self, VmmError> {
+        // NOTE: the work-order names DriverError::ENOHARDWAREVMM here, but the artifact has no such variant; VmmError::Unsupported is the equivalent.
         if !allow_emulated_fallback {
             return Err(VmmError::Unsupported(
                 "emulated fallback not allowed".to_string(),
@@ -69,8 +70,13 @@ impl VmmDriver for ProotDriver {
         })
     }
 
-    fn set_vcpus(&mut self, _count: u8) -> Result<(), VmmError> {
+    fn set_vcpus(&mut self, count: u8) -> Result<(), VmmError> {
         // TODO: Emulated vCPU count is fixed at 1; count > 1 is unsupported
+        if count > 1 {
+            return Err(VmmError::Unsupported(
+                "emulated vCPU count is fixed at 1".into(),
+            ));
+        }
         Ok(())
     }
 

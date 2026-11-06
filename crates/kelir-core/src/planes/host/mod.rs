@@ -36,6 +36,7 @@ impl HostPlane {
             }
             #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
             {
+                // NOTE: fallback for other targets (covers Android): pdeathsig family.
                 HostReaperKind::LinuxPdeathsig
             }
         };

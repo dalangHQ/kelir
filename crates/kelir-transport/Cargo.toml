@@ -9,6 +9,7 @@ kelir-interface = { path = "../kelir-interface" }
 libc = { workspace = true }
 thiserror = { workspace = true }
 
+# NOTE: lints spelled out (not [lints] workspace = true); cargo 1.85 forbids overriding an inherited workspace lint.
 [lints.rust]
 unsafe_code = "allow"
 

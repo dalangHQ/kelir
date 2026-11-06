@@ -37,8 +37,11 @@ impl Session {
         Ok(())
     }
 
-    pub fn suspend(&mut self, reason: u32) -> Result<(), kelir_interface::errors::PluginError> {
-        // TODO: map reason to SuspendReason and suspend the driver to disk.
+    pub fn suspend(
+        &mut self,
+        reason: kelir_interface::driver::SuspendReason,
+    ) -> Result<(), kelir_interface::errors::PluginError> {
+        // TODO: suspend the driver to disk per reason (L2: map SuspendReason to driver suspend).
         let _ = reason;
         Ok(())
     }

@@ -14,7 +14,7 @@ napi = { version = "2.16", default-features = false, features = ["napi4", "async
 napi-derive = "2.16"
 
 [build-dependencies]
-napi-build = "2.1"
+napi-build = "=2.1.0"
 
 [lints]
 workspace = true

@@ -17,7 +17,7 @@
 
 use async_trait::async_trait;
 use std::path::PathBuf;
-use kelir_interface::plugin::PluginError;
+use kelir_interface::errors::PluginError;
 
 /// Declared blast radius of one transaction. A mutation outside the
 /// declared scope fails closed: filesystem writes outside `paths`

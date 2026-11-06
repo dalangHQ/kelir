@@ -67,6 +67,7 @@ impl StoragePlane {
         Ok(())
     }
 
+    // NOTE: check-only; no reservation is made here — reservation is L2.
     pub fn check_quota(
         &self,
         bytes_to_write: u64,

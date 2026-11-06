@@ -3,8 +3,10 @@
 // see: cans/11-protocol.md#Wire-framing
 // see: cans/artifacts/config/project-structure.txt#kelir-shim
 
+#[allow(dead_code)]
 pub const HEADER_LEN: usize = 9;
 
+#[allow(dead_code)]
 pub fn encode_frame(
     stream_id: u32,
     flags: u8,
@@ -23,6 +25,7 @@ pub fn encode_frame(
     Ok(total_len)
 }
 
+#[allow(dead_code)]
 pub fn decode_header(buf: &[u8]) -> Result<(u32, u8, u32), ()> {
     if buf.len() < HEADER_LEN {
         return Err(());

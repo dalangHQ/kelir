@@ -3,6 +3,7 @@
 // see: cans/11-protocol.md#Control-channel
 // see: cans/11-protocol.md#Binary-exec-channel
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct ExecSlot {
     pub pid: libc::pid_t,
@@ -12,6 +13,7 @@ pub struct ExecSlot {
     pub stderr_fd: i32,
 }
 
+#[allow(dead_code)]
 pub struct Multiplexer {
     pub slots: [Option<ExecSlot>; 4096],
 }
@@ -23,6 +25,7 @@ impl Multiplexer {
         }
     }
 
+    #[allow(dead_code)]
     pub fn dispatch_frame(&mut self, stream_id: u32, flags: u8, payload: &[u8]) -> Result<(), ()> {
         let _ = (stream_id, flags, payload);
         // TODO: route frame to ExecSlot by stream_id (L3).

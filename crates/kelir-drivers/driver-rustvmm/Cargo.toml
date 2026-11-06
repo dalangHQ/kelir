@@ -6,11 +6,11 @@ license = "FSL-1.1-Apache-2.0"
 
 [dependencies]
 kelir-interface = { path = "../../kelir-interface" }
-kvm-ioctls = "0.19"
-kvm-bindings = "0.10"
-userfaultfd = "0.8"
 libc = { workspace = true }
-thiserror = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+kvm-ioctls = "0.19"
+userfaultfd = "0.8"
 
 [lints]
 workspace = true

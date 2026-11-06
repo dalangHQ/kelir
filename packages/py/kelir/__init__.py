@@ -17,6 +17,7 @@ class Session:
 class KelirBuilder:
     def __init__(self) -> None:
         self._plugins: list[object] = []
+        self._session: Session | None = None
 
     def use(self, plugin: object) -> Self:
         self._plugins.append(plugin)
@@ -27,7 +28,8 @@ class KelirBuilder:
         return Session()
 
     async def __aenter__(self) -> Session:
-        return await self.boot()
+        self._session = await self.boot()
+        return self._session
 
     async def __aexit__(
         self,
@@ -35,7 +37,9 @@ class KelirBuilder:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        pass
+        if self._session is not None:
+            await self._session.stop()
+            self._session = None
 
 
 def kelir() -> KelirBuilder:

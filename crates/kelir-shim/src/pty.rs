@@ -1,5 +1,6 @@
 // see: cans/04-terminal-plane.md#PTY-line-discipline-initialization-(kelir-shim)
 
+#[allow(dead_code)]
 pub fn open_pty_slave() -> Result<(i32, i32), ()> {
     let mut master: libc::c_int = -1;
     let mut slave: libc::c_int = -1;

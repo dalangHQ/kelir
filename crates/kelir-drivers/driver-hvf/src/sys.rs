@@ -5,6 +5,9 @@ pub type hv_vcpu_t = u64;
 
 pub const HV_SUCCESS: hv_return_t = 0;
 
+// SAFETY: declarations only — Hypervisor.framework entry points per Apple docs; no call is made from safe code yet, and each call site must validate its vcpu handle before invoking.
+// NOTE: crate-wide unsafe allow is forced by edition 2024 (`unsafe extern "C"` requires it); the only unsafe item in this crate is this extern block.
+#[cfg_attr(target_os = "macos", link(name = "Hypervisor", kind = "framework"))]
 unsafe extern "C" {
     pub fn hv_vm_create(flags: u64) -> hv_return_t;
     pub fn hv_vm_destroy() -> hv_return_t;

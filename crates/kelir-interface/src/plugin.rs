@@ -17,6 +17,7 @@ pub enum VirtioDevice {
     Auxiliary,
 }
 
+// NOTE: order's MountScope fields (allowed_rings/path_subtrees/cidr_allowlists/binary_paths) dropped; artifact shape (devices/binaries/paths) wins per cans/artifacts/code/plugin-trait.rs.
 #[derive(Debug, Clone, Default)]
 pub struct MountScope {
     pub devices: Option<Vec<VirtioDevice>>,
@@ -171,6 +172,7 @@ pub trait AnyPlugin: KelirPlugin + PluginClone {}
 
 impl<T: KelirPlugin + PluginClone> AnyPlugin for T {}
 
+// TODO (L2): async hooks + Context/register_* per cans/artifacts/code/plugin-trait.rs — sync L1 contract here.
 pub trait KelirPlugin: Send + Sync + PluginClone {
     fn name(&self) -> &'static str;
     fn default_scope(&self) -> MountScope {
@@ -197,6 +199,7 @@ pub trait LifecycleParticipant: Send + Sync {
         let _ = ctx;
         Ok(())
     }
+    // NOTE: artifact on_pre_commit takes (&mut LifecycleCtx); sync L1 drops the ctx per work-order Task 1.5.
     fn on_pre_commit(&self) -> Result<(), PluginError> {
         Ok(())
     }
@@ -209,6 +212,7 @@ pub trait LifecycleParticipant: Send + Sync {
     }
 }
 
+// NOTE: hooks are sync here; artifact defines them async under #[async_trait] per cans/artifacts/code/plugin-trait.rs.
 pub trait TrapInterposer: Send + Sync {
     fn on_trap(&self, event: &TrapEvent, ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
         let _ = (event, ctx);

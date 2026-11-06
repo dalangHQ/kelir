@@ -5,15 +5,24 @@ use kelir_interface::driver::{SnapshotDescriptor, VmConfig, VmmDriver, VmmError}
 
 #[allow(dead_code)]
 pub struct RustVmmDriver {
+    #[cfg(target_os = "linux")]
     kvm_fd: Option<kvm_ioctls::Kvm>,
+    #[cfg(target_os = "linux")]
     vm_fd: Option<kvm_ioctls::VmFd>,
+    #[cfg(target_os = "linux")]
     vcpu_fds: Vec<kvm_ioctls::VcpuFd>,
+    #[cfg(target_os = "linux")]
     uffd: Option<userfaultfd::Uffd>,
     config: Option<VmConfig>,
 }
 
 impl RustVmmDriver {
     pub fn new() -> Result<Self, VmmError> {
+        #[cfg(not(target_os = "linux"))]
+        return Err(VmmError::Unsupported(
+            "driver-rustvmm requires Linux".into(),
+        ));
+        #[cfg(target_os = "linux")]
         Ok(Self {
             kvm_fd: None,
             vm_fd: None,
@@ -23,6 +32,7 @@ impl RustVmmDriver {
         })
     }
 
+    #[cfg(target_os = "linux")]
     #[allow(dead_code)]
     fn filter_synthetic_cpuid(&self, _vcpu: &kvm_ioctls::VcpuFd) -> Result<(), VmmError> {
         // see: cans/01-architecture.md#Driver-backends

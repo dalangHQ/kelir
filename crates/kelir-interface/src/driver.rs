@@ -84,6 +84,23 @@ pub struct WatchdogEvent {
     pub last_active_pid: Option<u32>,
 }
 
+// see: cans/artifacts/code/vmm-driver-trait.rs
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExternalSuspendKind {
+    HumanAuthorizationHold = 0x0001,
+    WireConnectionParking = 0x0002,
+    StepEvaluationYield = 0x0003,
+    HostPowerEventSnapshot = 0x0004,
+}
+
+// see: cans/artifacts/code/vmm-driver-trait.rs
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SuspendReason {
+    External(ExternalSuspendKind),
+    ResourcePressure,
+}
+
+// L2+: async surface per cans/artifacts/code/vmm-driver-trait.rs (checkpoint, map_shared_region, export/import_snapshot, suspend, terminate, set_watchdog, transport_connect) — sync L1 only here.
 pub trait VmmDriver: Send + Sync {
     fn boot(&mut self, config: &VmConfig) -> Result<(), DriverError>;
     fn pause(&mut self) -> Result<(), DriverError>;

@@ -13,9 +13,7 @@ pub struct SpscRingTransport {
     pub buffer: *mut u8,
 }
 
-// SAFETY: single-producer/single-consumer ring; the header and buffer are
-// mapped once and owned exclusively by the transport pair. The L3 fence
-// protocol guarantees no aliased mutation across the Send boundary.
+// SAFETY: single-producer/single-consumer ring; header and buffer are mapped once and owned exclusively by the transport pair.
 unsafe impl Send for SpscRingTransport {}
 
 impl SpscRingTransport {

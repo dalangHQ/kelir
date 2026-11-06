@@ -7,6 +7,7 @@ license = "FSL-1.1-Apache-2.0"
 [dependencies]
 libc = { workspace = true }
 
+# NOTE: cargo ignores profiles in non-root manifests; this release profile has no effect until a root-profile decision at L2.
 [profile.release]
 opt-level = "z"
 lto = "fat"
@@ -14,6 +15,7 @@ panic = "abort"
 codegen-units = 1
 strip = true
 
+# NOTE: lints spelled out (not [lints] workspace = true); cargo 1.85 forbids overriding an inherited workspace lint.
 [lints.rust]
 unsafe_code = "allow"
 

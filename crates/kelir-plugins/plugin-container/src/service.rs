@@ -1,9 +1,10 @@
 // see: cans/plugins/container.md
+use async_trait::async_trait;
 use kelir_interface::errors::PluginError;
 use std::ops::Range;
 use std::path::Path;
 
-#[allow(async_fn_in_trait)]
+#[async_trait]
 pub trait ContainerService: Send + Sync {
     async fn configure_runtime(&mut self) -> Result<(), PluginError>;
     async fn mount_scratch(&mut self, scratch: &Path) -> Result<(), PluginError>;
@@ -16,7 +17,8 @@ pub trait ContainerService: Send + Sync {
     ) -> Result<(), PluginError>;
 }
 
-impl ContainerService for crate::ContainerService {
+#[async_trait]
+impl ContainerService for crate::ContainerPlugin {
     async fn configure_runtime(&mut self) -> Result<(), PluginError> {
         // TODO: Configure rootless Podman/crun runtime environments
         Ok(())

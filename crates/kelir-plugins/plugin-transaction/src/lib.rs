@@ -7,18 +7,11 @@ use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope};
 pub mod service;
 
 #[derive(Clone)]
-pub struct TransactionService;
-
-#[derive(Clone)]
-pub struct TransactionPlugin {
-    pub service: TransactionService,
-}
+pub struct TransactionPlugin;
 
 impl TransactionPlugin {
     pub fn new() -> Self {
-        Self {
-            service: TransactionService,
-        }
+        Self
     }
 }
 

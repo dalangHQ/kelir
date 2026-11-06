@@ -16,6 +16,7 @@ impl Default for TerminalPlane {
 
 impl TerminalPlane {
     pub fn new() -> Self {
+        // NOTE: 0x0 default grid; no size is specified in cans/04-terminal-plane.md.
         Self {
             current_cols: AtomicU16::new(0),
             current_rows: AtomicU16::new(0),

@@ -24,3 +24,9 @@ impl NativeKelirBuilder {
         Ok(NativeSessionHandle {})
     }
 }
+
+impl Default for NativeKelirBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -7,18 +7,11 @@ use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant, M
 pub mod service;
 
 #[derive(Clone)]
-pub struct ContainerService;
-
-#[derive(Clone)]
-pub struct ContainerPlugin {
-    pub service: ContainerService,
-}
+pub struct ContainerPlugin;
 
 impl ContainerPlugin {
     pub fn new() -> Self {
-        Self {
-            service: ContainerService,
-        }
+        Self
     }
 }
 

@@ -25,6 +25,7 @@ pub const EXEC_STREAM_STDERR: u8 = 0x02;
 pub const EXEC_STREAM_CONTROL: u8 = 0x03;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(C, packed)]
 pub struct MuxFrameHeader {
     pub stream_id: u32,
     pub flags: u8,
@@ -45,6 +46,23 @@ pub enum StreamKind {
     McpConsole = 0x0012,
 }
 
+impl StreamKind {
+    pub fn from_u16(v: u16) -> Option<Self> {
+        match v {
+            0x0001 => Some(Self::Exec),
+            0x0002 => Some(Self::PtyControl),
+            0x0003 => Some(Self::Vfs),
+            0x0004 => Some(Self::Bulk),
+            0x0005 => Some(Self::L4Forward),
+            0x0006 => Some(Self::TerminalConsole),
+            0x0010 => Some(Self::ProfileSync),
+            0x0011 => Some(Self::DbSqlite),
+            0x0012 => Some(Self::McpConsole),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u16)]
 pub enum MsgType {
@@ -52,6 +70,18 @@ pub enum MsgType {
     ChannelPayload = 0x0002,
     VmLifecycleControl = 0x0003,
     SystemTelemetry = 0x0004,
+}
+
+impl MsgType {
+    pub fn from_u16(v: u16) -> Option<Self> {
+        match v {
+            0x0001 => Some(Self::Trap),
+            0x0002 => Some(Self::ChannelPayload),
+            0x0003 => Some(Self::VmLifecycleControl),
+            0x0004 => Some(Self::SystemTelemetry),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -139,6 +169,48 @@ pub struct ProcessExit {
     pub pid: u32,
     pub exit_code: i32,
     pub wall_clock_ns: u64,
+}
+
+// see: cans/artifacts/code/messages.rs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryPressureWarning {
+    pub available_mb: u32,
+    pub total_mb: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortBound {
+    pub guest_port: u16,
+    pub protocol: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Heartbeat {
+    pub uptime_ms: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum GuestToHost {
+    TrapEvent(TrapEvent),
+    ProcessExit(ProcessExit),
+    MemoryPressureWarning(MemoryPressureWarning),
+    PortBound(PortBound),
+    Heartbeat(Heartbeat),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Handshake {
+    pub version: u16,
+    pub capabilities: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum HostToGuest {
+    TrapDecision { seq: u64, action: Verdict },
+    AdjustBalloon { target_mb: u32 },
+    ChannelData { seq: u64, payload: Vec<u8> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,4 +1,5 @@
 // see: cans/plugins/transaction.md
+use async_trait::async_trait;
 use kelir_interface::errors::PluginError;
 use std::path::PathBuf;
 
@@ -19,7 +20,7 @@ pub struct Savepoint {
     pub id: u64,
 }
 
-#[allow(async_fn_in_trait)]
+#[async_trait]
 pub trait TransactionService: Send + Sync {
     async fn begin_scope(
         &mut self,
@@ -35,7 +36,8 @@ pub trait TransactionService: Send + Sync {
     ) -> Result<(), PluginError>;
 }
 
-impl TransactionService for crate::TransactionService {
+#[async_trait]
+impl TransactionService for crate::TransactionPlugin {
     async fn begin_scope(
         &mut self,
         _scope: TransactionScope,

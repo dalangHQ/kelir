@@ -7,7 +7,6 @@ license = "FSL-1.1-Apache-2.0"
 [dependencies]
 kelir-interface = { path = "../../kelir-interface" }
 libc = { workspace = true }
-thiserror = { workspace = true }
 
 [lints.rust]
 unsafe_code = "allow"

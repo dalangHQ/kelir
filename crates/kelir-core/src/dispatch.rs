@@ -44,28 +44,40 @@ impl PipelineEngine {
         event: &kelir_interface::protocol::TrapEvent,
         ctx: &kelir_interface::plugin::HandlerCtx,
     ) -> Result<kelir_interface::protocol::Verdict, kelir_interface::errors::PluginError> {
-        // TODO: await on_trap per trap_interceptor once dispatch is async; fail-closed on unwind.
-        let _ = (event, ctx, &self.trap_interceptors);
-        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            kelir_interface::protocol::Verdict::Pass
-        }));
-        match caught {
-            Ok(verdict) => Ok(verdict),
-            Err(_) => Ok(kelir_interface::protocol::Verdict::Drop {
-                errno: Some("EFAULT".into()),
-                reason: "Plugin panic caught".into(),
-            }),
+        // TODO: await on_trap per trap_interceptor once dispatch is async (L2).
+        for interceptor in &self.trap_interceptors {
+            let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                interceptor.on_trap(event, ctx)
+            }));
+            let verdict = match caught {
+                Ok(verdict) => verdict?,
+                Err(_) => {
+                    return Ok(kelir_interface::protocol::Verdict::Drop {
+                        errno: Some("EFAULT".into()),
+                        reason: "Plugin panic caught".into(),
+                    });
+                }
+            };
+            if !matches!(verdict, kelir_interface::protocol::Verdict::Pass) {
+                return Ok(verdict);
+            }
         }
+        Ok(kelir_interface::protocol::Verdict::Pass)
     }
 
     pub fn dispatch_fs_write(
         &self,
-        path: &str,
-        offset: u64,
-        buf: &mut [u8],
+        path: &std::path::Path,
+        data: &mut [u8],
+        pid: u32,
+        ctx: &kelir_interface::plugin::HandlerCtx,
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::errors::PluginError> {
-        // TODO: run fs_interceptors on_fs_write in order; offset maps to the write position.
-        let _ = (&self.fs_interceptors, path, offset, buf);
+        for interceptor in &self.fs_interceptors {
+            let action = interceptor.on_fs_write(path, data, pid, ctx)?;
+            if !matches!(action, kelir_interface::protocol::FilterAction::Forward) {
+                return Ok(action);
+            }
+        }
         Ok(kelir_interface::protocol::FilterAction::Forward)
     }
 
@@ -73,8 +85,12 @@ impl PipelineEngine {
         &self,
         frame: &mut [u8],
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::errors::PluginError> {
-        // TODO: run net_interceptors on_net_outbound in order.
-        let _ = (&self.net_interceptors, frame);
+        for interceptor in &self.net_interceptors {
+            let action = interceptor.on_net_outbound(frame)?;
+            if !matches!(action, kelir_interface::protocol::FilterAction::Forward) {
+                return Ok(action);
+            }
+        }
         Ok(kelir_interface::protocol::FilterAction::Forward)
     }
 }

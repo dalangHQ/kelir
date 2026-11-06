@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+# NOTE: explicit 33-entry member list; globs + exclude broke lint inheritance for path deps.
 members = [
     "crates/kelir",
     "crates/kelir-adapters/kelir-pack",

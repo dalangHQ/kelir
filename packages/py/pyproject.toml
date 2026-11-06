@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "kelir"
 version = "1.0.0"
 description = "Kelir MicroVM Hypervisor Python SDK"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.0"
 ]
