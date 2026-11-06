@@ -1,0 +1,12 @@
+[package]
+name = "mcp-server"
+version = "1.0.0"
+edition = "2024"
+license = "FSL-1.1-Apache-2.0"
+
+[dependencies]
+kelir-interface = { path = "../../kelir-interface" }
+plugin-mcp = { path = "../../kelir-plugins/plugin-mcp" }
+
+[lints]
+workspace = true

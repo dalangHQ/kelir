@@ -1,0 +1,18 @@
+[package]
+name = "driver-rustvmm"
+version = "1.0.0"
+edition = "2024"
+license = "FSL-1.1-Apache-2.0"
+
+[dependencies]
+kelir-interface = { path = "../../kelir-interface" }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+libc = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+kvm-ioctls = "0.19"
+userfaultfd = "0.8"
+
+[lints]
+workspace = true

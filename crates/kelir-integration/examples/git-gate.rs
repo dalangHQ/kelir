@@ -1,0 +1,120 @@
+// see: cans/02-plugin-model.md#Unified-interposition-pipeline
+
+use async_trait::async_trait;
+use kelir::{
+    KelirBuilder, Session, SnapshotDescriptor, VmConfig,
+    driver::{DriverPolicy, WxPolicy},
+    planes::storage::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
+    plugin::{KelirPlugin, PluginError, TrapInterposer, Verdict},
+    protocol::TrapEvent,
+};
+use kelir_interface::plugin::HandlerCtx;
+
+const PROTECTED: &[&str] = &["main", "master"];
+
+#[derive(Clone)]
+pub struct GitGatePlugin;
+
+impl KelirPlugin for GitGatePlugin {
+    type Context = ();
+    fn context(&self) -> Self::Context {}
+    fn name(&self) -> &'static str {
+        "git-gate"
+    }
+}
+
+#[async_trait]
+impl TrapInterposer for GitGatePlugin {
+    async fn on_trap(&self, event: &TrapEvent, _c: &HandlerCtx) -> Result<Verdict, PluginError> {
+        let binary = event.binary_path.rsplit('/').next().unwrap_or("");
+        if binary != "git" {
+            return Ok(Verdict::Pass);
+        }
+        match event.argv.get(1).map(String::as_str) {
+            Some("push") => {
+                if event.argv.iter().any(|a| a == "--force") {
+                    return Ok(Verdict::Drop {
+                        errno: Some("EPOLICY".into()),
+                        reason: "EPOLICY: --force rejected".into(),
+                    });
+                }
+                Ok(Verdict::Pass)
+            }
+            Some("commit") => {
+                let msg = event
+                    .argv
+                    .iter()
+                    .skip_while(|a| *a != "-m")
+                    .nth(1)
+                    .map(String::as_str)
+                    .unwrap_or("");
+                if PROTECTED.iter().any(|p| msg.contains(p)) {
+                    return Ok(Verdict::Abort {
+                        reason: "EPOLICY: commit references protected branch".into(),
+                    });
+                }
+                Ok(Verdict::Pass)
+            }
+            _ => Ok(Verdict::Pass),
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut session: Session = KelirBuilder::new(VmConfig {
+        vcpus: 2,
+        memory_mb: 1024,
+        kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
+        rootfs_erofs_path: "./fixtures/rootfs-git.erofs".into(),
+        tsc_locked: true,
+        enable_watchdog: true,
+        enable_gpu_passthrough: false,
+        driver_policy: DriverPolicy {
+            require_hardware_vmm: false,
+            allow_emulated_fallback: true,
+            verify_hw_lockfile: false,
+            wx_enforcement: WxPolicy::PermissiveAudit,
+            ffi_worker_threads: 2,
+            ffi_max_ops_per_sec: 1000,
+        },
+        page_size_kb: 4,
+        deterministic_clock: false,
+        network_off: false,
+        pinned_clocksource: None,
+        ns_per_instruction: None,
+        preemption_grace_ms: 0,
+        entropy_seed: None,
+    })
+    .storage(StorageConfig {
+        idmap: IdmapConfig {
+            guest_uid: 0,
+            host_uid: 0,
+        },
+        shared_caches: vec![],
+        lock_broker: false,
+        synthetic_files: vec![],
+        mask_read: vec![],
+        snoops: vec![],
+        encapsulation: WorkspaceEncapsulation::Passthrough,
+        scan_engine: ReadMaskEngine::FastRegex,
+        carryover_bytes: 1024,
+    })
+    .plugin(GitGatePlugin)
+    .boot()
+    .await?;
+
+    session.terminal.resize(120, 40)?;
+    let slot = session.checkpoint.create_step(SnapshotDescriptor {
+        id: "git-gate-base".into(),
+        dirty_bytes: 0,
+        created_at_ns: 0,
+        parent_digest: None,
+        guest_clock: None,
+    })?;
+    let node = session.checkpoint.commit_step()?;
+    eprintln!("[kelir] checkpoint slot={slot} node={node}");
+    // TODO (L3): spawn git push --force origin main in the guest and gate it via GitGatePlugin.
+    session.stop()?;
+    Ok(())
+}

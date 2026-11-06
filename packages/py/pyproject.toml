@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kelir"
+version = "1.0.0"
+description = "Kelir MicroVM Hypervisor Python SDK"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.13",
+    "pytest>=8"
+]
+
+[tool.mypy]
+strict = true

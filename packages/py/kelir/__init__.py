@@ -1,0 +1,648 @@
+# see: cans/03-sdk-architecture.md#Python-SDK
+from __future__ import annotations
+
+import importlib
+from dataclasses import dataclass, field
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Self
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
+
+class EConfig(Exception):
+    pass
+
+
+def _load_native_bridge() -> Any:
+    # TODO (L3): bind the precompiled PyO3 _kelir extension once its boot entry point lands.
+    try:
+        return importlib.import_module("_kelir")
+    except ImportError as exc:
+        raise EConfig(
+            "kelir native PyO3 extension (_kelir) is missing: install the precompiled wheel (L3)"
+        ) from exc
+
+
+class Approval:
+    pass
+
+
+@dataclass
+class Deadline:
+
+    value: int = 0
+
+
+class Verdict:
+
+    def __init__(self, kind: str, **payload: Any) -> None:
+        self.kind = kind
+        self.payload = payload
+
+    @classmethod
+    def pass_(cls) -> Verdict:
+        return cls("pass")
+
+    @classmethod
+    def drop(cls, errno: str = "", reason: str = "") -> Verdict:
+        return cls("drop", errno=errno, reason=reason)
+
+    @classmethod
+    def patch(
+        cls,
+        *args: Any,
+        binary: str | None = None,
+        argv: list[str] | None = None,
+        env: dict[str, str] | None = None,
+        name: str | None = None,
+        cbor: dict[str, Any] | None = None,
+        attr: Any = None,
+    ) -> Verdict:
+        # TODO: serialize to ExecveMutation / FsInodeAttr / Custom payload
+        if args and attr is None:
+            attr = args[0]
+        return cls(
+            "patch",
+            binary=binary,
+            argv=argv,
+            env=env,
+            name=name,
+            cbor=cbor,
+            attr=attr,
+        )
+
+    @classmethod
+    def suspend(cls, until: Any = None) -> Verdict:
+        return cls("suspend", until=until)
+
+    @classmethod
+    def abort(cls, reason: str = "") -> Verdict:
+        return cls("abort", reason=reason)
+
+
+class PostExecAction:
+
+    def __init__(self, kind: str) -> None:
+        self.kind = kind
+
+    @classmethod
+    def proceed(cls) -> PostExecAction:
+        return cls("proceed")
+
+    @classmethod
+    def rollback_and_halt(cls) -> PostExecAction:
+        return cls("rollback_and_halt")
+
+
+class FilterAction:
+
+    def __init__(self, kind: str, **payload: Any) -> None:
+        self.kind = kind
+        self.payload = payload
+
+    @classmethod
+    def forward(cls) -> FilterAction:
+        return cls("forward")
+
+    @classmethod
+    def drop(cls, errno: str = "", reason: str = "") -> FilterAction:
+        return cls("drop", errno=errno, reason=reason)
+
+    @classmethod
+    def suspend(cls, until: Any = None) -> FilterAction:
+        return cls("suspend", until=until)
+
+
+
+@dataclass
+class TrapEvent:
+    binary_path: str = ""
+    argv: list[str] = field(default_factory=list)
+    pid: int = 0
+    ppid: int = 0
+    cwd: str = ""
+    binary_blake3: bytes = b""
+
+
+class TrapFilter:
+
+    def __init__(self, binary: str | None = None, args: tuple[str, ...] = ()) -> None:
+        self.binary_name = binary
+        self.args = args
+
+    @classmethod
+    def binary(cls, name: str) -> TrapFilter:
+        return cls(binary=name)
+
+    def with_arg(self, arg: str) -> TrapFilter:
+        return TrapFilter(self.binary_name, (*self.args, arg))
+
+
+@dataclass
+class ReceiptExtension:
+    namespace: str = ""
+    payload: bytes = b""
+
+
+@dataclass
+class ExecutionReceipt:
+    binary_blake3: str = ""
+    egress_bytes: int = 0
+    dirty_bytes: int = 0
+    extensions: list[ReceiptExtension] = field(default_factory=list)
+
+    def __await__(self) -> Any:
+        async def _return_self() -> ExecutionReceipt:
+            return self
+
+        return _return_self().__await__()
+
+
+@dataclass
+class SnapshotDescriptor:
+    name: str = ""
+
+
+@dataclass
+class SpawnResult:
+    exit_code: int = 0
+
+
+@dataclass
+class CausalDelta:
+    pass
+
+
+@dataclass
+class ReconcileStats:
+    files_changed: int = 0
+    tombstones_resolved: int = 0
+
+
+@dataclass
+class FinalReceipt:
+    merkle_root: str = ""
+    signed_jws: str = ""
+
+
+
+class LedgerService:
+    async def flush(self) -> None:
+        # TODO (L3): flush host ledger via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger flush (L3)")
+
+    async def count_denials(self, ppid: int) -> int:
+        # TODO (L3): count denials for ppid in host ledger via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger count_denials (L3)")
+
+    async def finalize(
+        self,
+        include_delta: CausalDelta | None = None,
+        include_merkle_root: bool = False,
+    ) -> FinalReceipt:
+        # TODO (L3): finalize signed Merkle receipt via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger finalize (L3)")
+
+    async def get_causal_delta_from_parent(self) -> CausalDelta:
+        # TODO (L3): fetch causal delta from parent session via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger get_causal_delta_from_parent (L3)")
+
+    async def blake3_of_producing_process(self, path: Any) -> str:
+        # TODO (L3): resolve producing-process digest via ledger and the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger blake3_of_producing_process (L3)")
+
+
+class ContainerService:
+    async def ingest_image(self, tarball: str) -> str:
+        # TODO (L3): ingest pre-cached OCI tarball via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: container ingest_image (L3)")
+
+
+class DbService:
+    def __init__(self) -> None:
+        self.rewrite_target: str = "migrate_schema."
+
+
+class PolicyCap:
+    def __init__(self) -> None:
+        self.violations: int = 0
+
+
+class TransactionScope:
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    async def __aenter__(self) -> TransactionScope:
+        # TODO (L3): begin 2PC scope via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction scope begin (L3)")
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        # TODO: commit on clean exit, abort on error
+        pass
+
+    async def savepoint(self) -> str:
+        # TODO (L3): create savepoint via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction savepoint (L3)")
+
+    async def rollback_to_savepoint(self, savepoint: str) -> None:
+        # TODO (L3): roll back to savepoint via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction rollback_to_savepoint (L3)")
+
+
+class TransactionService:
+    def scope(
+        self,
+        name: str,
+        paths: list[str] | None = None,
+        schemas: list[str] | None = None,
+    ) -> TransactionScope:
+        # TODO: open a 2PC scope declaring blast radius
+        return TransactionScope(name)
+
+
+class Caps:
+
+    def __init__(self) -> None:
+        self.ledger = LedgerService()
+        self.container = ContainerService()
+        self.db = DbService()
+        self.policy = PolicyCap()
+        self.transaction = TransactionService()
+
+
+
+class ClockHandle:
+    async def skew(self, delta: Any) -> None:
+        # TODO (L3): skew guest clock via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm clock skew (L3)")
+
+
+class VmHandle:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self.clock = ClockHandle()
+
+    async def checkpoint(self, name: str) -> SnapshotDescriptor:
+        # TODO (L3): checkpoint VM state via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm checkpoint (L3)")
+
+    async def rollback(self, snapshot: SnapshotDescriptor) -> None:
+        # TODO (L3): roll back VM state to snapshot via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm rollback (L3)")
+
+    async def fork(self) -> Session:
+        # TODO (L3): CoW-fork the microVM via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm fork (L3)")
+
+    async def suspend(self, path: str) -> None:
+        # TODO (L3): suspend VM to snapshot file via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm suspend (L3)")
+
+    async def resume(self, path: str) -> None:
+        # TODO (L3): restore a suspended VM image via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm resume (L3)")
+
+    async def adjust_balloon(self, target_mb: int) -> None:
+        # TODO (L3): adjust the guest RAM ceiling via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm adjust_balloon (L3)")
+
+    async def set_vcpus(self, count: int) -> None:
+        # TODO (L3): park/unpark host vCPU threads via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm set_vcpus (L3)")
+
+    async def map_shared_region(self, tag: str, size_bytes: int) -> bytes:
+        # TODO (L3): map a zero-copy host memory segment via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm map_shared_region (L3)")
+
+    async def import_snapshot(self, data: bytes) -> None:
+        # TODO (L3): hydrate registers/dirty pages from snapshot bytes via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm import_snapshot (L3)")
+
+    async def export_snapshot(self) -> bytes:
+        # TODO (L3): export snapshot bytes via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm export_snapshot (L3)")
+
+
+class WireHandle:
+    async def forward_port(self, guest_port: int, host_port: int) -> None:
+        # TODO (L3): forward guest port to host port via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: wire forward_port (L3)")
+
+
+class StorageHandle:
+    async def reconcile(
+        self,
+        cwd: str | None = None,
+        atomic_staging: bool = False,
+        fsync: bool = False,
+    ) -> ReconcileStats:
+        # TODO (L3): broker commit of the workspace via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: storage reconcile (L3)")
+
+
+class VsockChannel:
+    async def write(self, data: bytes) -> None:
+        # TODO (L3): write frame to vsock channel via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vsock write (L3)")
+
+    async def read(self) -> bytes:
+        # TODO (L3): read frame from vsock channel via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vsock read (L3)")
+
+
+class VsockHandle:
+    async def channel(self, kind: int) -> VsockChannel:
+        # TODO (L3): open duplex byte stream on vsock kind via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vsock channel (L3)")
+
+
+class FsHandle:
+    async def warm_cache(self, paths: list[str]) -> None:
+        # TODO (L3): warm shared caches into the guest via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: fs warm_cache (L3)")
+
+
+class TerminalHandle:
+    def notice(self, text: str) -> None:
+        # TODO (L3): publish TerminalNotice to the event bus via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: terminal notice (L3)")
+
+
+class StepHandle:
+    def last(self) -> SnapshotDescriptor:
+        # TODO (L3): return the most recently marked checkpoint via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: step last (L3)")
+
+
+
+class HandlerContext:
+    def __init__(self, trap: TrapEvent | None = None) -> None:
+        self.trap: TrapEvent = trap if trap is not None else TrapEvent()
+        self.vm = VmHandle(Session())
+        self.fs = FsHandle()
+        self.terminal = TerminalHandle()
+        self.ctx: Any = None
+        self.step = StepHandle()
+        self.cap = Caps()
+
+    def receipt(self) -> ExecutionReceipt:
+        # TODO (L3): fetch the trap's execution receipt via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: trap receipt (L3)")
+
+
+
+class VmmDriver:
+    async def set_watchdog(self, timeout: Any = None, action: str = "") -> None:
+        # TODO: arm the VM watchdog
+        pass
+
+
+
+class Session:
+    def __init__(self) -> None:
+        self.driver_name: str = ""
+        self.boot_ms: int = 0
+        self.cap = Caps()
+        self.vm = VmHandle(self)
+        self.wire = WireHandle()
+        self.storage = StorageHandle()
+        self.vsock = VsockHandle()
+
+    async def rollback(self) -> None:
+        # TODO (L3): call native driver rollback via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session rollback (L3)")
+
+    async def stop(self) -> None:
+        # TODO (L3): stop the microVM session via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session stop (L3)")
+
+    async def terminate(self) -> None:
+        # TODO (L3): terminate the microVM session via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session terminate (L3)")
+
+    async def spawn(
+        self,
+        binary: str,
+        argv: list[str] | None = None,
+        *,
+        cwd: str | None = None,
+        params: Any = None,
+    ) -> SpawnResult:
+        # TODO (L3): spawn binary in the guest via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session spawn (L3)")
+
+    async def exec_in_guest(self, binary: str, argv: list[str]) -> SpawnResult:
+        # TODO (L3): exec binary in the guest via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session exec_in_guest (L3)")
+
+    async def suspend(self, path: str) -> None:
+        # TODO (L3): suspend session to snapshot file via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session suspend (L3)")
+
+    async def resume(self, path: str) -> None:
+        # TODO (L3): resume session from snapshot file via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session resume (L3)")
+
+    async def console(self) -> None:
+        # TODO (L3): open the PTY console master via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session console (L3)")
+
+    async def get_causal_delta_from_parent(self) -> CausalDelta:
+        # TODO (L3): fetch causal delta from parent session via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session get_causal_delta_from_parent (L3)")
+
+
+
+class KelirBuilder:
+    def __init__(
+        self,
+        *,
+        vcpus: int | None = None,
+        memory_mb: int | None = None,
+        kernel: str | None = None,
+        rootfs_erofs: str | None = None,
+        tsc_locked: bool | None = None,
+        enable_watchdog: bool | None = None,
+        driver: str | None = None,
+    ) -> None:
+        self._plugins: list[object] = []
+        self._session: Session | None = None
+        self._config: dict[str, Any] = {
+            "vcpus": vcpus,
+            "memory_mb": memory_mb,
+            "kernel": kernel,
+            "rootfs_erofs": rootfs_erofs,
+            "tsc_locked": tsc_locked,
+            "enable_watchdog": enable_watchdog,
+            "driver": driver,
+        }
+        self._handlers: dict[str, list[Any]] = {}
+        self._params_model: type | None = None
+
+    def use(self, plugin: object) -> Self:
+        self._plugins.append(plugin)
+        return self
+
+    def plugin(self, plugin: object) -> Self:
+        self._plugins.append(plugin)
+        return self
+
+    def terminal(self, **kwargs: Any) -> Self:
+        # TODO: configure the terminal plane
+        self._config["terminal"] = kwargs
+        return self
+
+    def storage(self, **kwargs: Any) -> Self:
+        # TODO: configure the storage plane
+        self._config["storage"] = kwargs
+        return self
+
+    def wire(self, **kwargs: Any) -> Self:
+        # TODO: configure the wire plane
+        self._config["wire"] = kwargs
+        return self
+
+    def trap(
+        self,
+        pattern: str | TrapFilter,
+        pre: Callable[..., Awaitable[Any]] | None = None,
+        post: Callable[..., Awaitable[Any]] | None = None,
+    ) -> Self:
+        # TODO: register pre/post trap handlers into the pipeline
+        self._handlers.setdefault("trap", []).append((pattern, pre, post))
+        return self
+
+    def register_custom_action(
+        self,
+        name: str,
+        schema: dict[str, Any],
+        handler: Callable[..., Awaitable[Any]],
+    ) -> Self:
+        # TODO: register a Patch(Custom{name, cbor}) action by name
+        self._handlers.setdefault("custom_action", []).append((name, schema, handler))
+        return self
+
+    def register_vsock_service(
+        self,
+        kind: int,
+        schema: dict[str, Any],
+        handler: Callable[[bytes], Awaitable[bytes]],
+    ) -> Self:
+        # TODO: register a vsock service on plugin kind
+        self._handlers.setdefault("vsock_service", []).append((kind, schema, handler))
+        return self
+
+    def _lifecycle_decorator(
+        self, name: str
+    ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+        def decorator(
+            fn: Callable[..., Awaitable[Any]],
+        ) -> Callable[..., Awaitable[Any]]:
+            # TODO: register the lifecycle handler
+            self._handlers.setdefault(name, []).append(fn)
+            return fn
+
+        return decorator
+
+    @property
+    def on_vm_init(self) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+        return self._lifecycle_decorator("on_vm_init")
+
+    @property
+    def on_vm_ready(self) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+        return self._lifecycle_decorator("on_vm_ready")
+
+    @property
+    def on_vm_shutdown(self) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+        return self._lifecycle_decorator("on_vm_shutdown")
+
+    @property
+    def on_trap_deny(self) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+        return self._lifecycle_decorator("on_trap_deny")
+
+    @property
+    def on_pre_commit(self) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+        return self._lifecycle_decorator("on_pre_commit")
+
+    @property
+    def on_post_commit(self) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+        return self._lifecycle_decorator("on_post_commit")
+
+    def params(self, model: "type[BaseModel]") -> Self:
+        self._params_model = model
+        return self
+
+    async def boot(self) -> Session:
+        # TODO (L3): validate Pydantic dependencies and boot via the PyO3 _kelir bridge.
+        _load_native_bridge()
+        raise EConfig("kelir native PyO3 boot binding is not implemented (L3)")
+
+    async def __aenter__(self) -> Session:
+        self._session = await self.boot()
+        return self._session
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        if self._session is not None:
+            await self._session.stop()
+            self._session = None
+
+
+def kelir() -> KelirBuilder:
+    return KelirBuilder()
+
+
+def builder(
+    *,
+    vcpus: int | None = None,
+    memory_mb: int | None = None,
+    kernel: str | None = None,
+    rootfs_erofs: str | None = None,
+    tsc_locked: bool | None = None,
+    enable_watchdog: bool | None = None,
+    driver: str | None = None,
+) -> KelirBuilder:
+    return KelirBuilder(
+        vcpus=vcpus,
+        memory_mb=memory_mb,
+        kernel=kernel,
+        rootfs_erofs=rootfs_erofs,
+        tsc_locked=tsc_locked,
+        enable_watchdog=enable_watchdog,
+        driver=driver,
+    )
+
+
+__all__ = [
+    "Approval",
+    "CausalDelta",
+    "Deadline",
+    "ExecutionReceipt",
+    "FilterAction",
+    "HandlerContext",
+    "KelirBuilder",
+    "PostExecAction",
+    "ReceiptExtension",
+    "ReconcileStats",
+    "FinalReceipt",
+    "Session",
+    "SnapshotDescriptor",
+    "SpawnResult",
+    "TrapEvent",
+    "TrapFilter",
+    "Verdict",
+    "VmmDriver",
+    "builder",
+    "kelir",
+]

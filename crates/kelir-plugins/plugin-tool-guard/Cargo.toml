@@ -1,0 +1,16 @@
+[package]
+name = "plugin-tool-guard"
+version = "1.0.0"
+edition = "2024"
+license = "FSL-1.1-Apache-2.0"
+
+[dependencies]
+kelir-interface = { path = "../../kelir-interface" }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+plugin-mcp = { path = "../plugin-mcp" }
+kelir-plugin-testkit = { path = "../../kelir-plugin-testkit" }
+
+[lints]
+workspace = true

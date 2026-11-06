@@ -1,0 +1,16 @@
+[package]
+name = "kelir-pyo3"
+version = "1.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+kelir-core = { path = "../../kelir-core" }
+kelir-interface = { path = "../../kelir-interface" }
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310"] }
+
+[lints]
+workspace = true

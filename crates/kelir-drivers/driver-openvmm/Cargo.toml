@@ -1,0 +1,20 @@
+[package]
+name = "driver-openvmm"
+version = "1.0.0"
+edition = "2024"
+license = "FSL-1.1-Apache-2.0"
+
+[dependencies]
+kelir-interface = { path = "../../kelir-interface" }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.59"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Hypervisor",
+]
+
+[lints]
+workspace = true

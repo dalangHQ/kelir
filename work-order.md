@@ -210,7 +210,7 @@ workspace = true
 - Struct `VmConfig`:
   - `vcpus: u8`, `memory_mb: u32`, `kernel_path: String`, `rootfs_path: String`, `kernel_params: String`
 - Struct `SnapshotDescriptor`:
-  - `snapshot_id: [u8; 16]`, `dirty_bytes: u64`, `manifest_digest: [u8; 32]`
+  - `id: String`, `dirty_bytes: u64`, `created_at_ns: u64`, `parent_digest: Option<String>`, `guest_clock: Option<GuestClock>`
 - Enum `WatchdogAction`:
   - `Reboot`, `Terminate`
 - Enum `WatchdogVerdict`:
@@ -222,6 +222,7 @@ workspace = true
   - `fn pause(&mut self) -> Result<(), DriverError>;`
   - `fn resume(&mut self) -> Result<(), DriverError>;`
   - `fn step(&mut self) -> Result<(), DriverError>;`
+  - `fn fork(&self) -> Result<Box<dyn VmmDriver>, DriverError>;`
   - `fn fork(&self) -> Result<Box<dyn VmmDriver>, DriverError>;`
   - `fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), DriverError>;`
   - `fn snapshot(&mut self) -> Result<SnapshotDescriptor, DriverError>;`
@@ -275,29 +276,36 @@ workspace = true
   - `fn is_enabled(&self) -> bool { true }`
   - `fn fork_state(&self) -> Option<Box<dyn KelirPlugin>> { None }`
 - Trait `LifecycleParticipant`:
-  - `fn on_vm_init(&mut self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }`
-  - `fn on_vm_ready(&mut self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }`
-  - `fn on_pre_commit(&mut self) -> Result<(), PluginError> { Ok(()) }`
-  - `fn on_post_commit(&mut self, success: bool) -> Result<(), PluginError> { Ok(()) }`
-  - `fn on_host_preempt(&mut self) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_vm_init(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_vm_ready(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_vm_shutdown(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_pre_commit(&self) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_post_commit(&self, success: bool) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_host_preempt(&self) -> Result<(), PluginError> { Ok(()) }`
 - Trait `TrapInterposer`:
-  - `fn on_trap(&mut self, event: &TrapEvent, ctx: &HandlerCtx) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }`
-  - `fn on_process_exit(&mut self, pid: u32, exit_code: i32, ctx: &HandlerCtx) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_trap(&self, event: &TrapEvent, ctx: &HandlerCtx) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }`
+  - `fn on_process_exit(&self, event: &ProcessExit, ctx: &HandlerCtx) -> Result<(), PluginError> { Ok(()) }`
 - Trait `ConsoleInterposer`:
-  - `fn on_console_input(&mut self, port: u32, buf: &mut [u8]) -> Result<(), PluginError> { Ok(()) }`
-  - `fn on_console_output(&mut self, port: u32, buf: &mut [u8]) -> Result<(), PluginError> { Ok(()) }`
-  - `fn on_exec_stdout(&mut self, pid: u32, exec_id: u64, buf: &[u8]) -> Result<(), PluginError> { Ok(()) }`
-  - `fn on_exec_stderr(&mut self, pid: u32, exec_id: u64, buf: &[u8]) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_console_input(&self, port: u32, bytes: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_console_output(&self, port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_exec_stdout(&self, pid: u32, exec_id: u64, chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_exec_stderr(&self, pid: u32, exec_id: u64, chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }`
 - Trait `FsInterposer`:
-  - `fn on_fs_lookup(&mut self, path: &str) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }`
-  - `fn on_fs_read(&mut self, path: &str, offset: u64, buf: &mut [u8]) -> Result<(), PluginError> { Ok(()) }`
-  - `fn on_fs_write(&mut self, path: &str, offset: u64, buf: &mut [u8]) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }`
+  - `fn on_fs_lookup(&self, path: &Path) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }`
+  - `fn on_fs_read(&self, path: &Path, buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_fs_write(&self, path: &Path, data: &mut [u8], pid: u32, ctx: &HandlerCtx) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }`
+  - `fn on_fs_lock(&self, path: &Path, flock_cmd: i32, flock_type: i16, pid: u32) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }`
 - Trait `NetInterposer`:
-  - `fn on_net_outbound(&mut self, frame: &mut [u8]) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }`
-  - `fn on_net_inbound(&mut self, frame: &mut [u8]) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }`
+  - `fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }`
+  - `fn on_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }`
 - Trait `HostInterposer`:
-  - `fn on_host_lsm_exec(&mut self, binary: &str, pid: u32) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }`
-  - `fn on_host_pressure(&mut self, pressure_level: u8) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_host_lsm_exec(&self, path: &Path, pid: u32) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }`
+  - `fn on_host_pressure(&self, level: u32) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_host_keyring_access(&self, key: &str) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }`
+- Trait `SystemTelemetryParticipant`:
+  - `fn on_memory_pressure(&self, available_mb: u32, total_mb: u32) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_heartbeat(&self, uptime_ms: u64) -> Result<(), PluginError> { Ok(()) }`
+  - `fn on_watchdog(&self, event: &WatchdogEvent) -> Result<WatchdogVerdict, PluginError> { Ok(()) }`
 
 ### Task 1.6: Errors & Crate Re-exports
 **File: `crates/kelir-interface/src/errors.rs`**
@@ -693,7 +701,7 @@ Assigned to: **Agent-06**
   - `pub fn new() -> Self;`
   - `pub fn seal(&mut self) -> Result<(), kelir_interface::errors::PluginError>;`
   - `pub fn dispatch_trap(&self, event: &kelir_interface::protocol::TrapEvent, ctx: &kelir_interface::plugin::HandlerCtx) -> Result<kelir_interface::protocol::Verdict, kelir_interface::errors::PluginError>;`
-  - `pub fn dispatch_fs_write(&self, path: &str, offset: u64, buf: &mut [u8]) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::errors::PluginError>;`
+  - `pub fn dispatch_fs_write(&self, path: &std::path::Path, data: &mut [u8], pid: u32, ctx: &kelir_interface::plugin::HandlerCtx) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::errors::PluginError>;`
   - `pub fn dispatch_net_outbound(&self, frame: &mut [u8]) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::errors::PluginError>;`
   - In `dispatch_trap`, wire panic quarantine boundary using `std::panic::catch_unwind`. If unwound, return `Verdict::Drop { errno: Some(14 /* EFAULT */), reason: Some("Plugin panic caught".into()) }`.
 
@@ -1032,9 +1040,11 @@ impl VmmDriver for RustVmmDriver {
     fn snapshot(&mut self) -> Result<SnapshotDescriptor, DriverError> {
         // TODO: Capture dirty byte pages and register states
         Ok(SnapshotDescriptor {
-            snapshot_id: [0u8; 16],
+            id: String::new(),
             dirty_bytes: 0,
-            manifest_digest: [0u8; 32],
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
         })
     }
 
@@ -1165,9 +1175,11 @@ impl VmmDriver for HvfDriver {
 
     fn snapshot(&mut self) -> Result<SnapshotDescriptor, DriverError> {
         Ok(SnapshotDescriptor {
-            snapshot_id: [0u8; 16],
+            id: String::new(),
             dirty_bytes: 0,
-            manifest_digest: [0u8; 32],
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
         })
     }
 
@@ -1267,9 +1279,11 @@ impl VmmDriver for OpenVmmDriver {
 
     fn snapshot(&mut self) -> Result<SnapshotDescriptor, DriverError> {
         Ok(SnapshotDescriptor {
-            snapshot_id: [0u8; 16],
+            id: String::new(),
             dirty_bytes: 0,
-            manifest_digest: [0u8; 32],
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
         })
     }
 
@@ -1359,9 +1373,11 @@ impl VmmDriver for AvfDriver {
 
     fn snapshot(&mut self) -> Result<SnapshotDescriptor, DriverError> {
         Ok(SnapshotDescriptor {
-            snapshot_id: [0u8; 16],
+            id: String::new(),
             dirty_bytes: 0,
-            manifest_digest: [0u8; 32],
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
         })
     }
 
@@ -1461,9 +1477,11 @@ impl VmmDriver for BwrapDriver {
 
     fn snapshot(&mut self) -> Result<SnapshotDescriptor, DriverError> {
         Ok(SnapshotDescriptor {
-            snapshot_id: [0u8; 16],
+            id: String::new(),
             dirty_bytes: 0,
-            manifest_digest: [0u8; 32],
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
         })
     }
 
@@ -1559,9 +1577,11 @@ impl VmmDriver for ProotDriver {
 
     fn snapshot(&mut self) -> Result<SnapshotDescriptor, DriverError> {
         Ok(SnapshotDescriptor {
-            snapshot_id: [0u8; 16],
+            id: String::new(),
             dirty_bytes: 0,
-            manifest_digest: [0u8; 32],
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
         })
     }
 
@@ -1690,7 +1710,7 @@ impl VmmDriver for MockVmmDriver {
     fn fork(&self) -> Result<Box<dyn VmmDriver>, DriverError> { Ok(Box::new(MockVmmDriver)) }
     fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), DriverError> { Ok(()) }
     fn snapshot(&mut self) -> Result<SnapshotDescriptor, DriverError> {
-        Ok(SnapshotDescriptor { snapshot_id: [0u8; 16], dirty_bytes: 0, manifest_digest: [0u8; 32] })
+        Ok(SnapshotDescriptor { id: String::new(), dirty_bytes: 0, created_at_ns: 0, parent_digest: None, guest_clock: None })
     }
     fn set_vcpus(&mut self, _count: u8) -> Result<(), DriverError> { Ok(()) }
     fn adjust_balloon(&mut self, _target_mb: u32) -> Result<(), DriverError> { Ok(()) }
@@ -1754,13 +1774,13 @@ impl KelirPlugin for McpPlugin {
 
 impl LifecycleParticipant for McpPlugin {}
 impl ConsoleInterposer for McpPlugin {
-    fn on_console_output(&mut self, _port: u32, _buf: &mut [u8]) -> Result<(), PluginError> {
+    fn on_console_output(&self, _port: u32, _chunk: &mut Vec<u8>) -> Result<(), PluginError> {
         // TODO: Bridge raw stdio frames to MCP JSON-RPC
         Ok(())
     }
 }
 impl TrapInterposer for McpPlugin {
-    fn on_trap(&mut self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+    fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
         Ok(Verdict::Pass)
     }
 }
@@ -1809,11 +1829,11 @@ impl KelirPlugin for MeshPlugin {
 
 impl LifecycleParticipant for MeshPlugin {}
 impl NetInterposer for MeshPlugin {
-    fn on_net_outbound(&mut self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+    fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // TODO: Verify mTLS framing and inject SPIFFE identity token
         Ok(FilterAction::Forward)
     }
-    fn on_net_inbound(&mut self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+    fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         Ok(FilterAction::Forward)
     }
 }
@@ -1873,7 +1893,7 @@ impl KelirPlugin for ToolGuardPlugin {
 }
 
 impl ConsoleInterposer for ToolGuardPlugin {
-    fn on_console_input(&mut self, _port: u32, _buf: &mut [u8]) -> Result<(), PluginError> {
+    fn on_console_input(&self, _port: u32, _bytes: &mut Vec<u8>) -> Result<(), PluginError> {
         // TODO: Intercept tools/call JSON-RPC payload and gate mutations
         Ok(())
     }
@@ -1928,7 +1948,7 @@ impl KelirPlugin for VaultPlugin {
 
 impl LifecycleParticipant for VaultPlugin {}
 impl NetInterposer for VaultPlugin {
-    fn on_net_outbound(&mut self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+    fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // TODO: Intercept 169.254.169.254 requests and broker short-lived tokens
         Ok(FilterAction::Forward)
     }
@@ -1982,7 +2002,7 @@ impl KelirPlugin for SupplyChainPlugin {
 }
 
 impl TrapInterposer for SupplyChainPlugin {
-    fn on_trap(&mut self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+    fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
         // TODO: Inspect argv entropy (>5.2 bits) and block lifecycle scripts
         Ok(Verdict::Pass)
     }
@@ -2042,7 +2062,7 @@ impl KelirPlugin for WireIngressPlugin {
 
 impl LifecycleParticipant for WireIngressPlugin {}
 impl NetInterposer for WireIngressPlugin {
-    fn on_net_inbound(&mut self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+    fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // TODO: Park inbound connections during VM suspend
         Ok(FilterAction::Forward)
     }
@@ -2095,7 +2115,7 @@ impl KelirPlugin for ContainerPlugin {
 }
 
 impl LifecycleParticipant for ContainerPlugin {
-    fn on_vm_ready(&mut self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
         // TODO: Configure rootless Podman/crun cgroup v2 hierarchy
         Ok(())
     }
@@ -2197,7 +2217,7 @@ impl KelirPlugin for DbProxyPlugin {
 }
 
 impl NetInterposer for DbProxyPlugin {
-    fn on_net_outbound(&mut self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+    fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // TODO: Intercept pgwire (port 5432) and forward over DB_SQLITE (0x0011)
         Ok(FilterAction::Forward)
     }
@@ -2359,14 +2379,20 @@ impl KelirPlugin for ChaosPlugin {
 }
 
 impl NetInterposer for ChaosPlugin {
-    fn on_net_outbound(&mut self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+    fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // TODO: Inject synthetic network latency or drop frames
         Ok(FilterAction::Forward)
     }
 }
 
 impl FsInterposer for ChaosPlugin {
-    fn on_fs_write(&mut self, _path: &str, _offset: u64, _buf: &mut [u8]) -> Result<FilterAction, PluginError> {
+    fn on_fs_write(
+        &self,
+        _path: &Path,
+        _data: &mut [u8],
+        _pid: u32,
+        _ctx: &HandlerCtx,
+    ) -> Result<FilterAction, PluginError> {
         // TODO: Inject synthetic ENOSPC failures
         Ok(FilterAction::Forward)
     }
@@ -2420,11 +2446,11 @@ impl KelirPlugin for TransactionPlugin {
 }
 
 impl LifecycleParticipant for TransactionPlugin {
-    fn on_pre_commit(&mut self) -> Result<(), PluginError> {
+    fn on_pre_commit(&self) -> Result<(), PluginError> {
         // TODO: Coordinate 2PC pre-commit with db-proxy
         Ok(())
     }
-    fn on_post_commit(&mut self, _success: bool) -> Result<(), PluginError> {
+    fn on_post_commit(&self, _success: bool) -> Result<(), PluginError> {
         Ok(())
     }
 }
