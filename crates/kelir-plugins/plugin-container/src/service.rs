@@ -20,19 +20,19 @@ pub trait ContainerService: Send + Sync {
 #[async_trait]
 impl ContainerService for crate::ContainerPlugin {
     async fn configure_runtime(&mut self) -> Result<(), PluginError> {
-        // see: cans/plugins/container.md
+        // TODO: Configure rootless Podman/crun runtime environments
         Ok(())
     }
     async fn mount_scratch(&mut self, _scratch: &Path) -> Result<(), PluginError> {
-        // see: cans/plugins/container.md
+        // TODO: Mount ephemeral scratch device at /var/lib/containers
         Ok(())
     }
     async fn build_cgroup_delegation(&mut self) -> Result<(), PluginError> {
-        // see: cans/plugins/container.md
+        // TODO: Construct synthetic cgroup v2 delegation hierarchy
         Ok(())
     }
     async fn ingest_image(&mut self, _tarball: &Path) -> Result<String, PluginError> {
-        // see: cans/plugins/container.md
+        // TODO: Ingest pre-cached OCI image tarball, return image reference
         Ok(String::new())
     }
     async fn pin_id_map(
@@ -40,7 +40,7 @@ impl ContainerService for crate::ContainerPlugin {
         _subuid: Range<u32>,
         _subgid: Range<u32>,
     ) -> Result<(), PluginError> {
-        // see: cans/plugins/container.md
+        // TODO: Pin subuid/subgid ranges to unprivileged guest ranges
         Ok(())
     }
 }

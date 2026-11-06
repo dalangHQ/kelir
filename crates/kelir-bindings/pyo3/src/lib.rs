@@ -16,7 +16,7 @@ impl PyKelirBuilder {
     }
 
     fn boot(&self) -> PyResult<PySessionHandle> {
-        // see: cans/03-sdk-architecture.md#Python-SDK
+        // TODO: Seal and boot microVM
         Ok(PySessionHandle {})
     }
 }

@@ -25,7 +25,7 @@ impl SpscRingTransport {
 impl StreamTransport for SpscRingTransport {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // see: cans/11-protocol.md#Wire-framing
+        // TODO: memory-fence synchronization + ring drain (L3).
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "spsc ring read (L3)",
@@ -34,7 +34,7 @@ impl StreamTransport for SpscRingTransport {
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // see: cans/11-protocol.md#Wire-framing
+        // TODO: memory-fence synchronization + ring enqueue (L3).
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "spsc ring write (L3)",
@@ -42,7 +42,7 @@ impl StreamTransport for SpscRingTransport {
     }
 
     fn flush(&mut self) -> Result<(), std::io::Error> {
-        // see: cans/11-protocol.md#Wire-framing
+        // TODO: ring flush (L3).
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "spsc ring flush (L3)",

@@ -106,11 +106,11 @@ export class Session {
   async resume(_path: string): Promise<void> {}
 
   async rollback(): Promise<void> {
-    // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
+    // TODO: Call native session rollback
   }
 
   async stop(): Promise<void> {
-    // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
+    // TODO: Call native session stop
   }
 
   async terminate(): Promise<void> {}

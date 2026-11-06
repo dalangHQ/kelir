@@ -65,7 +65,7 @@ class LifecycleCtx:
     def register_veto(
         self, event: VetoEvent, predicate: Callable[[], bool]
     ) -> None:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: register the veto predicate with the lifecycle
         self._vetoes.append((event, predicate))
 
 
@@ -75,55 +75,55 @@ class BasePlugin:
     requires: tuple[str, ...] = ()
 
     async def on_trap(self, event: Any) -> Optional[Verdict]:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch trap event to the plugin
         return None
 
     async def on_fs_lookup(self, path: Path) -> Verdict:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch fs lookup to the plugin
         return Verdict.pass_()
 
     async def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch fs read to the plugin
         return buffer
 
     async def on_fs_write(
         self, path: Path, data: Any, pid: int, ctx: HandlerContext
     ) -> Verdict:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch fs write to the plugin
         return Verdict.pass_()
 
     async def on_net_outbound(self, frame: bytearray) -> FilterAction:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch outbound frame to the plugin
         return FilterAction.forward()
 
     async def on_console_input(self, port: int, data: bytes) -> bytes:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch console input to the plugin
         return data
 
     async def on_console_output(self, port: int, chunk: bytes) -> bytes:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch console output to the plugin
         return chunk
 
     async def on_heartbeat(self, event: Any) -> None:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch heartbeat telemetry to the plugin
         pass
 
     async def on_process_exit(self, event: Any) -> None:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch process-exit event to the plugin
         pass
 
     async def on_vm_init(self, ctx: Any) -> None:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch vm-init lifecycle event to the plugin
         pass
 
     async def on_vm_ready(self, ctx: Any) -> None:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch vm-ready lifecycle event to the plugin
         pass
 
     async def on_vm_shutdown(self, ctx: Any) -> None:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch vm-shutdown lifecycle event to the plugin
         pass
 
     async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
-        # see: cans/03-sdk-architecture.md#Python-SDK
+        # TODO: dispatch watchdog event to the plugin
         return WatchdogVerdict.ExecuteDefault

@@ -182,7 +182,7 @@ export class KelirBuilder {
   }
 
   async boot(): Promise<Session> {
-    // see: cans/03-sdk-architecture.md#TypeScript-SDK
+    // TODO: Cross NAPI boundary to NativeKelirBuilder.boot()
     return new Session();
   }
 }

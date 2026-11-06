@@ -138,6 +138,7 @@ impl HandlerCtx {
     }
 
     pub fn receipt(&self) -> ExecutionReceipt {
+        // TODO: wire to the live per-process receipt in Part 2.
         ExecutionReceipt {
             pid: self.pid,
             binary_path: String::new(),
@@ -230,7 +231,7 @@ pub trait CompositePlugin: Send + Sync {
     fn unpack(self: Box<Self>, parent_scope: &MountScope) -> Vec<(Box<dyn AnyPlugin>, MountScope)>;
 }
 
-// see: cans/artifacts/code/plugin-trait.rs
+// TODO (L2): async hooks + Context/register_* per cans/artifacts/code/plugin-trait.rs — sync L1 contract here.
 pub trait KelirPlugin: Send + Sync + PluginClone {
     fn name(&self) -> &'static str;
     fn default_scope(&self) -> MountScope {

@@ -31,7 +31,7 @@ impl TerminalPlane {
     }
 
     pub fn export_screen_matrix(&self) -> Result<Vec<u8>, kelir_interface::errors::PluginError> {
-        // see: cans/04-terminal-plane.md#Terminal-pipeline
+        // TODO: render the PTY grid to bytes; pipeline shape only until the grid store lands.
         Ok(apply_token_shield(
             &filter_ansi_shadow(&[]),
             usize::MAX,
@@ -44,7 +44,7 @@ impl TerminalPlane {
         port: u32,
         cursor: u64,
     ) -> Result<(Vec<u8>, u64), kelir_interface::errors::PluginError> {
-        // see: cans/04-terminal-plane.md#Stream-replay
+        // TODO: replay log bytes for port from cursor.
         let _ = port;
         Ok((Vec::new(), cursor))
     }
@@ -54,7 +54,7 @@ impl TerminalPlane {
         port: u32,
         chunk: &[u8],
     ) -> Result<u64, kelir_interface::errors::PluginError> {
-        // see: cans/04-terminal-plane.md#Stream-replay
+        // TODO: persist chunk to the port log; cursor advance only until the log store lands.
         let _ = port;
         let len = u64::try_from(chunk.len()).map_err(|_| {
             kelir_interface::errors::PluginError::Halt("log chunk too large".into())
@@ -69,13 +69,13 @@ impl TerminalPlane {
 }
 
 fn filter_ansi_shadow(buf: &[u8]) -> Vec<u8> {
-    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    // TODO: strip ANSI shadow sequences from buf.
     let _ = buf;
     Vec::new()
 }
 
 fn apply_token_shield(grid: &[u8], max_lines: usize, max_bytes: usize) -> Vec<u8> {
-    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    // TODO: truncate grid to max_lines/max_bytes with saturating math and redact token spans.
     let _ = (grid, max_lines, max_bytes);
     Vec::new()
 }

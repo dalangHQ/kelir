@@ -1,7 +1,7 @@
 // see: cans/plugins/profile.md
 #![forbid(unsafe_code)]
 
-// see: cans/artifacts/config/project-structure.txt
+// TODO (L3): tests/test_profile.rs per cans/artifacts/config/project-structure.txt.
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{KelirPlugin, MountScope};
 

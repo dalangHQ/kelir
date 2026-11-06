@@ -2,6 +2,7 @@
 // see: cans/01-architecture.md#Driver-backends
 // see: cans/08-lifecycle.md#CoW-fork
 // see: cans/artifacts/diagrams/host-runtime.txt
+// TODO (L3): tests/test_cow_fork.rs + test_rollback.rs per cans/artifacts/config/project-structure.txt#kelir-drivers.
 use kelir_interface::driver::{SnapshotDescriptor, VmConfig, VmmDriver, VmmError};
 
 #[allow(dead_code)]
@@ -37,6 +38,7 @@ impl RustVmmDriver {
     #[allow(dead_code)]
     fn filter_synthetic_cpuid(&self, _vcpu: &kvm_ioctls::VcpuFd) -> Result<(), VmmError> {
         // see: cans/01-architecture.md#Driver-backends
+        // TODO: Enforce invariant TSC and Leaf 0x1 TSC-deadline
         Ok(())
     }
 }
@@ -44,37 +46,39 @@ impl RustVmmDriver {
 impl VmmDriver for RustVmmDriver {
     fn boot(&mut self, config: &VmConfig) -> Result<(), VmmError> {
         self.config = Some(config.clone());
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Initialize KVM, VM, memory slots, and vCPUs
         Ok(())
     }
 
     fn pause(&mut self) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Pause vCPUs via KVM
         Ok(())
     }
 
     fn resume(&mut self) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Resume vCPUs via KVM
         Ok(())
     }
 
     fn step(&mut self) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Single-step one vCPU exit
         Ok(())
     }
 
     fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
         // see: cans/08-lifecycle.md#CoW-fork
+        // TODO: Clone memory state via userfaultfd copy-on-write
         Ok(Box::new(Self::new()?))
     }
 
     fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
         // see: cans/08-lifecycle.md#Rollback
+        // TODO: Reset vCPU registers and revert userfaultfd memory tracking in <8ms
         Ok(())
     }
 
     fn snapshot(&mut self) -> Result<SnapshotDescriptor, VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Capture dirty byte pages and register states
         Ok(SnapshotDescriptor {
             id: String::new(),
             dirty_bytes: 0,
@@ -85,17 +89,18 @@ impl VmmDriver for RustVmmDriver {
     }
 
     fn set_vcpus(&mut self, _count: u8) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Create or destroy vCPU fds to match count
         Ok(())
     }
 
     fn adjust_balloon(&mut self, _target_mb: u32) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Deflate/inflate virtio-balloon device descriptor
         Ok(())
     }
 
     fn skew_clock(&mut self, _offset_ns: i64) -> Result<(), VmmError> {
         // see: cans/08-lifecycle.md#Clock-skew
+        // TODO: Adjust KVM_SET_CLOCK offset
         Ok(())
     }
 }

@@ -31,22 +31,22 @@ impl VmmDriver for ProotDriver {
             ));
         }
         self.config = Some(config.clone());
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Initialize proot ptrace tracing harness
         Ok(())
     }
 
     fn pause(&mut self) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: SIGSTOP the traced child
         Ok(())
     }
 
     fn resume(&mut self) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: SIGCONT the traced child
         Ok(())
     }
 
     fn step(&mut self) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Single-step one traced syscall
         Ok(())
     }
 
@@ -55,12 +55,12 @@ impl VmmDriver for ProotDriver {
     }
 
     fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Reset child state and revert memory tracking in <8ms
         Ok(())
     }
 
     fn snapshot(&mut self) -> Result<SnapshotDescriptor, VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Capture dirty byte pages and register states
         Ok(SnapshotDescriptor {
             id: String::new(),
             dirty_bytes: 0,
@@ -71,6 +71,7 @@ impl VmmDriver for ProotDriver {
     }
 
     fn set_vcpus(&mut self, count: u8) -> Result<(), VmmError> {
+        // TODO: Emulated vCPU count is fixed at 1; count > 1 is unsupported
         if count > 1 {
             return Err(VmmError::Unsupported(
                 "emulated vCPU count is fixed at 1".into(),
@@ -80,12 +81,12 @@ impl VmmDriver for ProotDriver {
     }
 
     fn adjust_balloon(&mut self, _target_mb: u32) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Adjust emulated memory ceiling
         Ok(())
     }
 
     fn skew_clock(&mut self, _offset_ns: i64) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Adjust emulated clock offset
         Ok(())
     }
 }

@@ -24,7 +24,7 @@ impl BusDispatcher {
     pub fn poll_ingress(
         &mut self,
     ) -> Result<Option<(u32, u8, Vec<u8>)>, kelir_interface::errors::PluginError> {
-        // see: cans/01-architecture.md#VirtIO-Device-Complex
+        // TODO: read one mux frame (stream_id, flags, payload) from stream_mux_transport.
         let _ = (
             &self.control_transport,
             &self.stream_mux_transport,
@@ -39,7 +39,7 @@ impl BusDispatcher {
         flags: u8,
         payload: &[u8],
     ) -> Result<(), kelir_interface::errors::PluginError> {
-        // see: cans/01-architecture.md#VirtIO-Device-Complex
+        // TODO: look up stream_id in active_streams and deliver payload to its kind handler.
         let _ = (
             &self.control_transport,
             &self.stream_mux_transport,
@@ -54,7 +54,7 @@ impl BusDispatcher {
         msg_type: kelir_interface::protocol::MsgType,
         payload: &[u8],
     ) -> Result<(), kelir_interface::errors::PluginError> {
-        // see: cans/11-protocol.md#Control-channel
+        // TODO: encode msg_type as the first u16 of the payload frame and write to control_transport.
         let _ = (
             &self.control_transport,
             &self.stream_mux_transport,

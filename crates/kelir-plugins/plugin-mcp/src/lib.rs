@@ -1,7 +1,7 @@
 // see: cans/plugins/mcp.md
 #![forbid(unsafe_code)]
 
-// see: cans/artifacts/config/project-structure.txt
+// TODO (L3): tests/test_mcp_mapping.rs + examples/mcp-stdio.rs per cans/artifacts/config/project-structure.txt.
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{
     ConsoleInterposer, HandlerCtx, KelirPlugin, LifecycleParticipant, MountScope, TrapInterposer,
@@ -42,7 +42,7 @@ impl KelirPlugin for McpPlugin {
 impl LifecycleParticipant for McpPlugin {}
 impl ConsoleInterposer for McpPlugin {
     fn on_console_output(&self, _port: u32, _buf: &mut Vec<u8>) -> Result<(), PluginError> {
-        // see: cans/plugins/mcp.md
+        // TODO: Bridge raw stdio frames to MCP JSON-RPC
         Ok(())
     }
 }

@@ -1,7 +1,7 @@
 // see: cans/plugins/tool-guard.md
 #![forbid(unsafe_code)]
 
-// see: cans/artifacts/config/project-structure.txt
+// TODO (L3): tests/test_tool_guard.rs per cans/artifacts/config/project-structure.txt.
 use kelir_interface::errors::PluginError;
 use kelir_interface::plugin::{ConsoleInterposer, KelirPlugin, MountScope};
 
@@ -38,7 +38,7 @@ impl KelirPlugin for ToolGuardPlugin {
 
 impl ConsoleInterposer for ToolGuardPlugin {
     fn on_console_input(&self, _port: u32, _buf: &mut Vec<u8>) -> Result<(), PluginError> {
-        // see: cans/plugins/tool-guard.md
+        // TODO: Intercept tools/call JSON-RPC payload and gate mutations
         Ok(())
     }
 }

@@ -33,7 +33,7 @@ impl PipelineEngine {
                 "pipeline already sealed".into(),
             ));
         }
-        // see: cans/02-plugin-model.md#Unified-interposition-pipeline
+        // TODO: freeze all five ring chains; console/host chains have no dispatch method yet.
         let _ = (&self.console_interceptors, &self.host_interceptors);
         self.sealed = true;
         Ok(())
@@ -44,7 +44,7 @@ impl PipelineEngine {
         event: &kelir_interface::protocol::TrapEvent,
         ctx: &kelir_interface::plugin::HandlerCtx,
     ) -> Result<kelir_interface::protocol::Verdict, kelir_interface::errors::PluginError> {
-        // see: cans/02-plugin-model.md#Static-dispatch
+        // TODO: await on_trap per trap_interceptor once dispatch is async (L2).
         for interceptor in &self.trap_interceptors {
             let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 interceptor.on_trap(event, ctx)

@@ -14,7 +14,7 @@ impl DriverRouter {
         Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>,
         kelir_interface::errors::VmmError,
     > {
-        // see: cans/01-architecture.md#Driver-backends
+        // TODO: probe host backend (KVM/HVF/AVF, then emulated fallback if allowed) and load it.
         let _ = (policy_wx, allow_emulated);
         Err(kelir_interface::errors::VmmError::Unsupported(
             "TODO: DriverRouter::load_native_driver".into(),

@@ -47,7 +47,7 @@ impl HostPlane {
     }
 
     pub fn lsm_status(&self) -> bool {
-        // see: cans/01-architecture.md#Host-plane-subsystem
+        // TODO: query the host LSM (Linux LSM / macOS sandbox / Windows integrity) status.
         let _ = &self.reaper_kind;
         false
     }
@@ -57,7 +57,7 @@ impl HostPlane {
     }
 
     pub fn poll_pressure_events(&self) -> Result<(), kelir_interface::errors::PluginError> {
-        // see: cans/01-architecture.md#Host-plane-subsystem
+        // TODO: sample host memory pressure and update pressure_level.
         Ok(())
     }
 
@@ -65,7 +65,7 @@ impl HostPlane {
         &self,
         parent_pid: u32,
     ) -> Result<(), kelir_interface::errors::PluginError> {
-        // see: cans/08-lifecycle.md#Host-crash-reaper
+        // TODO: arm the platform reaper (pdeathsig / kqueue NOTE_EXIT / Job Object) on parent_pid.
         let _ = parent_pid;
         Ok(())
     }

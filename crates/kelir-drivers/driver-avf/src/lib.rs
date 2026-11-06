@@ -21,37 +21,37 @@ impl AvfDriver {
 impl VmmDriver for AvfDriver {
     fn boot(&mut self, config: &VmConfig) -> Result<(), VmmError> {
         self.config = Some(config.clone());
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Connect /dev/avf or pKVM node
         Ok(())
     }
 
     fn pause(&mut self) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Pause vCPUs via AVF
         Ok(())
     }
 
     fn resume(&mut self) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Resume vCPUs via AVF
         Ok(())
     }
 
     fn step(&mut self) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Single-step one vCPU exit
         Ok(())
     }
 
     fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Clone VM state via AVF
         Ok(Box::new(Self::new()?))
     }
 
     fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Reset vCPU registers and revert memory tracking in <8ms
         Ok(())
     }
 
     fn snapshot(&mut self) -> Result<SnapshotDescriptor, VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Capture dirty byte pages and register states
         Ok(SnapshotDescriptor {
             id: String::new(),
             dirty_bytes: 0,
@@ -62,17 +62,17 @@ impl VmmDriver for AvfDriver {
     }
 
     fn set_vcpus(&mut self, _count: u8) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Create or destroy vCPUs to match count
         Ok(())
     }
 
     fn adjust_balloon(&mut self, _target_mb: u32) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Deflate/inflate virtio-balloon device descriptor
         Ok(())
     }
 
     fn skew_clock(&mut self, _offset_ns: i64) -> Result<(), VmmError> {
-        // see: cans/01-architecture.md#VmmDriver-trait
+        // TODO: Adjust pKVM virtual clock offset
         Ok(())
     }
 }

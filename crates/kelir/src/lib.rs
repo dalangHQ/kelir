@@ -1,7 +1,7 @@
 // see: cans/01-architecture.md#Host-runtime
 #![forbid(unsafe_code)]
 
-// see: cans/artifacts/config/project-structure.txt
+// TODO (L3): tests/ facade integration tests per cans/artifacts/config/project-structure.txt.
 pub use kelir_core::*;
 pub use kelir_interface as interface;
 

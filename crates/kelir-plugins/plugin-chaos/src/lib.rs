@@ -40,7 +40,7 @@ impl KelirPlugin for ChaosPlugin {
 
 impl NetInterposer for ChaosPlugin {
     fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        // see: cans/plugins/chaos.md
+        // TODO: Inject synthetic network latency or drop frames
         Ok(FilterAction::Forward)
     }
 }
@@ -53,7 +53,7 @@ impl FsInterposer for ChaosPlugin {
         _pid: u32,
         _ctx: &HandlerCtx,
     ) -> Result<FilterAction, PluginError> {
-        // see: cans/plugins/chaos.md
+        // TODO: Inject synthetic ENOSPC failures
         Ok(FilterAction::Forward)
     }
 }

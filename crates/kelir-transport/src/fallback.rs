@@ -15,7 +15,7 @@ impl VsockFallbackTransport {
 impl StreamTransport for VsockFallbackTransport {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // see: cans/01-architecture.md#Transport-engine-abstraction
+        // TODO: AF_VSOCK read (L3).
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "vsock fallback read (L3)",
@@ -24,7 +24,7 @@ impl StreamTransport for VsockFallbackTransport {
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // see: cans/01-architecture.md#Transport-engine-abstraction
+        // TODO: AF_VSOCK write (L3).
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "vsock fallback write (L3)",
@@ -32,7 +32,7 @@ impl StreamTransport for VsockFallbackTransport {
     }
 
     fn flush(&mut self) -> Result<(), std::io::Error> {
-        // see: cans/01-architecture.md#Transport-engine-abstraction
+        // TODO: AF_VSOCK flush (L3).
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "vsock fallback flush (L3)",
@@ -53,7 +53,7 @@ impl NamedPipeFallbackTransport {
 impl StreamTransport for NamedPipeFallbackTransport {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // see: cans/01-architecture.md#Transport-engine-abstraction
+        // TODO: named-pipe read (L3).
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "named-pipe fallback read (L3)",
@@ -62,7 +62,7 @@ impl StreamTransport for NamedPipeFallbackTransport {
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // see: cans/01-architecture.md#Transport-engine-abstraction
+        // TODO: named-pipe write (L3).
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "named-pipe fallback write (L3)",
@@ -70,7 +70,7 @@ impl StreamTransport for NamedPipeFallbackTransport {
     }
 
     fn flush(&mut self) -> Result<(), std::io::Error> {
-        // see: cans/01-architecture.md#Transport-engine-abstraction
+        // TODO: named-pipe flush (L3).
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "named-pipe fallback flush (L3)",

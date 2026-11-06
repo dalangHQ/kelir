@@ -206,7 +206,7 @@ impl KelirBuilder {
 
     pub fn ctx<T: 'static>(&self) -> Option<&T> {
         let _ = self;
-        // see: cans/03-sdk-architecture.md#Rust-SDK
+        // TODO: resolve T from the ordered registry via Plugins: Has<T> (L3).
         None
     }
 

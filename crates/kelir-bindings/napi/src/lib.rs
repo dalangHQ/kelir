@@ -3,12 +3,12 @@ use napi_derive::napi;
 
 #[napi]
 pub struct NativeSessionHandle {
-    // see: cans/03-sdk-architecture.md#TypeScript-SDK
+    // TODO: Internal pointer to Arc<Session>
 }
 
 #[napi]
 pub struct NativeKelirBuilder {
-    // see: cans/03-sdk-architecture.md#TypeScript-SDK
+    // TODO: Accumulate plugin pointers
 }
 
 #[napi]
@@ -20,7 +20,7 @@ impl NativeKelirBuilder {
 
     #[napi]
     pub fn boot(&self) -> Result<NativeSessionHandle, napi::Error> {
-        // see: cans/03-sdk-architecture.md#TypeScript-SDK
+        // TODO: Seal and boot microVM
         Ok(NativeSessionHandle {})
     }
 }
