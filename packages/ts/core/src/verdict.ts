@@ -32,15 +32,21 @@ export const Verdict: {
 };
 
 export interface FilterAction {
-  readonly kind: "forward" | "suspend";
+  readonly kind: "forward" | "drop" | "suspend";
+  readonly errno?: string;
+  readonly reason?: string;
   readonly until?: SuspendUntil;
 }
 
 export const FilterAction: {
   readonly Forward: FilterAction;
+  Drop(errno?: string, reason?: string): FilterAction;
   Suspend(until: SuspendUntil): FilterAction;
 } = {
   Forward: { kind: "forward" },
+  Drop(errno?: string, reason?: string): FilterAction {
+    return { kind: "drop", errno, reason };
+  },
   Suspend(until: SuspendUntil): FilterAction {
     return { kind: "suspend", until };
   },

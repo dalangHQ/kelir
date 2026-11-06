@@ -5,7 +5,7 @@ import asyncio
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import kelir
 from kelir import Deadline, FilterAction, Verdict
@@ -105,14 +105,14 @@ class HookMatrixPlugin(BasePlugin):
     async def on_console_output(self, port: int, chunk: bytes) -> bytes:
         return mask_tokens(chunk)
 
-    async def on_heartbeat(self, event) -> None:
+    async def on_heartbeat(self, event: Any) -> None:
         if (self._state.last_uptime_ms == event.uptime_ms
                 and self._state.heartbeats > 0):
             self._state.stalls += 1
         self._state.last_uptime_ms = event.uptime_ms
         self._state.heartbeats += 1
 
-    async def on_process_exit(self, event) -> None:
+    async def on_process_exit(self, event: Any) -> None:
         self._state.exits += 1
         if event.exit_code != 0:
             self._state.failures += 1

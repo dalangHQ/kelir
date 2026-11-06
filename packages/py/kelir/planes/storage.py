@@ -17,7 +17,7 @@ class DynamicFile:
 class SyntheticFile:
     path: str = ""
     content: str = ""
-    dynamic: Callable[..., Any] | None = None
+    dynamic_fn: Callable[..., Any] | None = None
 
     @classmethod
     def static(cls, path: str, content: str) -> SyntheticFile:
@@ -25,7 +25,7 @@ class SyntheticFile:
 
     @classmethod
     def dynamic(cls, path: str, fn: Callable[..., Any]) -> SyntheticFile:
-        return cls(path=path, dynamic=fn)
+        return cls(path=path, dynamic_fn=fn)
 
 
 @dataclass

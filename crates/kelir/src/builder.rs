@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use kelir_interface::driver::{VmConfig, WatchdogAction};
@@ -18,17 +17,6 @@ use crate::session::Session;
 pub enum PostExecAction {
     Proceed,
     RollbackAndHalt,
-}
-
-#[derive(Debug, Clone)]
-pub struct SyntheticFile {
-    pub path: PathBuf,
-}
-
-impl SyntheticFile {
-    pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into() }
-    }
 }
 
 pub trait CompositePlugin {

@@ -96,6 +96,10 @@ class FilterAction:
         return cls("forward")
 
     @classmethod
+    def drop(cls, errno: str = "", reason: str = "") -> FilterAction:
+        return cls("drop", errno=errno, reason=reason)
+
+    @classmethod
     def suspend(cls, until: Any = None) -> FilterAction:
         return cls("suspend", until=until)
 

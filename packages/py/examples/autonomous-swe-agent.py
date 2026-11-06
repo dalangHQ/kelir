@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Awaitable, Callable, Literal, Optional, Self
+from typing import Any, Awaitable, Callable, Literal, Optional, Self
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,7 @@ import kelir
 from kelir import (
     CausalDelta,
     ExecutionReceipt,
+    FilterAction,
     HandlerContext,
     KelirBuilder,
     PostExecAction,
@@ -112,7 +113,7 @@ class RepoPolicyPlugin(BasePlugin):
         max_diff_bytes: int,
         protected_branches: list[str],
     ) -> None:
-        self._opts = {
+        self._opts: dict[str, Any] = {
             "max_diff_bytes": max_diff_bytes,
             "protected_branches": tuple(protected_branches),
         }
@@ -144,13 +145,13 @@ class RepoPolicyPlugin(BasePlugin):
             env={"KELIR_REWRITTEN": "1"},
         )
 
-    async def on_fs_write(self, path: Path, data: bytes, pid: int, ctx: HandlerContext) -> Verdict:
+    async def on_fs_write(self, path: Path, data: bytes, pid: int, ctx: HandlerContext) -> FilterAction:
         if path.suffix == ".diff" and len(data) > self._opts["max_diff_bytes"]:
             self.handle().record_violation()
-            return Verdict.drop(
+            return FilterAction.drop(
                 errno="ENOSPC", reason="diff exceeds policy ceiling"
             )
-        return Verdict.pass_()
+        return FilterAction.forward()
 
     async def disclosure_annotation(self) -> bytes:
         n = self.handle().violations
@@ -548,7 +549,7 @@ class IntentAnalysis:
 
 
 class UserOracle:
-    async def analyze_intent(self, _trap: TrapEvent):
+    async def analyze_intent(self, _trap: TrapEvent) -> IntentAnalysis:
         return IntentAnalysis(
             is_hypothesis_valid=True,
             falsification_reason=None,
@@ -558,7 +559,7 @@ class UserOracle:
     async def verify_physical_receipt(self, _r: ExecutionReceipt) -> bool:
         return True
 
-    async def ingest_harness_event(self, _p: Path, _e: dict, _b: str) -> None:
+    async def ingest_harness_event(self, _p: Path, _e: dict[str, Any], _b: str) -> None:
         return None
 
     async def await_human_approval(self) -> None:

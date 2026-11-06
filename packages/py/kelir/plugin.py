@@ -88,9 +88,9 @@ class BasePlugin:
 
     async def on_fs_write(
         self, path: Path, data: Any, pid: int, ctx: HandlerContext
-    ) -> Verdict:
+    ) -> FilterAction:
         # TODO: dispatch fs write to the plugin
-        return Verdict.pass_()
+        return FilterAction.forward()
 
     async def on_net_outbound(self, frame: bytearray) -> FilterAction:
         # TODO: dispatch outbound frame to the plugin

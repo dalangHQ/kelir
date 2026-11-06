@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 pub use kelir_interface::driver::{WatchdogEvent, WatchdogVerdict};
 pub use kelir_interface::errors::PluginError;
-pub use kelir_interface::plugin::VetoEvent;
+pub use kelir_interface::plugin::{HostInterposer, NetInterposer, VetoEvent};
 pub use kelir_interface::protocol::{FilterAction, ProcessExit, TrapEvent, Verdict};
 
 use crate::HandlerCtx;
@@ -172,27 +172,6 @@ pub trait FsInterposer: Send + Sync {
         _flock_type: i16,
         _pid: u32,
     ) -> Result<Verdict, PluginError> {
-        Ok(Verdict::Pass)
-    }
-}
-
-pub trait NetInterposer: Send + Sync {
-    fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        Ok(FilterAction::Forward)
-    }
-    fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        Ok(FilterAction::Forward)
-    }
-}
-
-pub trait HostInterposer: Send + Sync {
-    fn on_host_lsm_exec(&self, _path: &Path, _pid: u32) -> Result<Verdict, PluginError> {
-        Ok(Verdict::Pass)
-    }
-    fn on_host_pressure(&self, _level: u32) -> Result<Verdict, PluginError> {
-        Ok(Verdict::Pass)
-    }
-    fn on_host_keyring_access(&self, _key: &str) -> Result<Verdict, PluginError> {
         Ok(Verdict::Pass)
     }
 }

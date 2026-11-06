@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import platform
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 import kelir
 from kelir import Approval, Deadline, HandlerContext, KelirBuilder, TrapFilter, Verdict
@@ -31,11 +31,11 @@ POLICY_STATE = PolicyState()
 class PolicyMatrixPlugin(BasePlugin):
     name = "policy-matrix"
 
-    async def on_vm_init(self, ctx) -> None:
+    async def on_vm_init(self, ctx: Any) -> None:
         ctx.register_veto(VetoEvent.Suspend, lambda: POLICY_STATE.ready)
         ctx.register_veto(VetoEvent.ClockSkew, lambda: POLICY_STATE.ready)
 
-    async def on_vm_ready(self, _ctx) -> None:
+    async def on_vm_ready(self, _ctx: Any) -> None:
         POLICY_STATE.ready = True
 
     async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
@@ -109,7 +109,7 @@ def build_runtime() -> KelirBuilder:
     builder = builder.plugin(PolicyMatrixPlugin())
     builder = builder.plugin(WatchdogSilencerPlugin())
 
-    async def quarantine(payload: dict) -> None:
+    async def quarantine(payload: dict[str, Any]) -> None:
         POLICY_STATE.quarantined_pids.append(payload["pid"])
 
     builder.register_custom_action(

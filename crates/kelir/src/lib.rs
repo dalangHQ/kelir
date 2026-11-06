@@ -16,14 +16,12 @@ pub mod sandbox;
 pub mod session;
 pub mod telemetry;
 
-pub use builder::{
-    CompositePlugin, KelirBuilder, PostExecAction, SyntheticFile, TrapFilter, handler,
-};
+pub use builder::{CompositePlugin, KelirBuilder, PostExecAction, TrapFilter, handler};
 pub use handler_ctx::HandlerCtx;
 pub use kelir_core::planes::checkpoint::StepSlot;
 pub use kelir_interface::driver::{SnapshotDescriptor, VmConfig, WatchdogAction};
 pub use kelir_interface::protocol::Verdict;
-pub use planes::storage::{FsReconcileRequest, ReconcileStats};
+pub use planes::storage::{FsReconcileRequest, ReconcileStats, SyntheticFile};
 pub use plugins::ledger::FinalizeRequest;
 pub use sandbox::Sandbox;
 pub use session::{

@@ -75,7 +75,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         )))
     )
 
-    def pre_migrate(c: HandlerContext) -> Verdict:
+    async def pre_migrate(c: HandlerContext) -> Verdict:
         if c.cap.db.rewrite_target != "migrate_schema.":
             return Verdict.drop(
                 "EdbProxySchema",
@@ -83,7 +83,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             )
         return Verdict.pass_()
 
-    def post_migrate(c: HandlerContext) -> PostExecAction:
+    async def post_migrate(c: HandlerContext) -> PostExecAction:
         if not any(e.namespace == "net:l7:sql" for e in c.receipt().extensions):
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
