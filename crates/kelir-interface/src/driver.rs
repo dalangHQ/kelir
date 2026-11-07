@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use thiserror::Error;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::AsyncRead;
 
 // see: cans/artifacts/code/vmm-driver-trait.rs
 #[derive(Error, Debug)]
@@ -125,6 +125,7 @@ pub struct WatchdogDiagnostic {
     pub last_active_pid: Option<u32>,
 }
 
+// see: cans/01-architecture.md#Shared-memory-channel
 #[derive(Debug)]
 pub struct SharedMemoryHandle {
     pub tag: String,
@@ -134,13 +135,45 @@ pub struct SharedMemoryHandle {
     #[cfg(unix)]
     pub memfd_raw: std::os::unix::io::RawFd,
     #[cfg(windows)]
-    pub handle_raw: std::os::windows::io::RawHandle,
+    pub section_handle: std::os::windows::io::RawHandle,
 }
 
 // see: cans/01-architecture.md#Transport-engine-abstraction
-pub trait DuplexChannel: AsyncRead + AsyncWrite + Send + Sync + Unpin {}
-impl<T: AsyncRead + AsyncWrite + Send + Sync + Unpin> DuplexChannel for T {}
+pub trait Stream: Send + Sync {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error>;
+    fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error>;
+    fn flush(&mut self) -> Result<(), std::io::Error>;
+}
 
+// see: cans/plugins/replay.md
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntropyBackend {
+    VirtioRng,
+    SeededChaCha20 { seed: u64 },
+}
+
+// see: cans/plugins/replay.md
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntropyStreamPosition {
+    pub offset_bytes: u64,
+}
+
+// see: cans/plugins/replay.md
+#[async_trait]
+pub trait ClockStepControl: Send + Sync {
+    async fn step_clock(&self, offset: Duration) -> Result<(), VmmError>;
+    async fn clock_offset(&self) -> Result<Duration, VmmError>;
+}
+
+// see: cans/plugins/replay.md
+#[async_trait]
+pub trait EntropyBackendControl: Send + Sync {
+    async fn set_backend(&self, backend: EntropyBackend) -> Result<(), VmmError>;
+    async fn position(&self) -> Result<EntropyStreamPosition, VmmError>;
+    async fn restore_position(&self, position: EntropyStreamPosition) -> Result<(), VmmError>;
+}
+
+// see: cans/artifacts/code/vmm-driver-trait.rs
 #[async_trait]
 pub trait VmmDriver: Send + Sync {
     async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError>;
@@ -166,7 +199,6 @@ pub trait VmmDriver: Send + Sync {
         timeout: Duration,
         action: WatchdogAction,
     ) -> Result<(), VmmError>;
-    // see: cans/01-architecture.md#Transport-engine-abstraction
-    fn transport_connect(&self, channel_id: u32) -> Result<Box<dyn DuplexChannel>, VmmError>;
+    fn transport_connect(&self, channel_id: u32) -> Result<Box<dyn Stream>, VmmError>;
     async fn terminate(&mut self) -> Result<(), VmmError>;
 }

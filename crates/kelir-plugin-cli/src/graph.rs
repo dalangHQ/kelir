@@ -3,14 +3,14 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-fn manifest_name(text: &str) -> Option<String> {
+pub(crate) fn manifest_name(text: &str) -> Option<String> {
     text.lines()
         .map(str::trim)
         .find_map(|line| line.strip_prefix("name = "))
         .map(|value| value.trim().trim_matches('"').to_string())
 }
 
-fn path_deps(text: &str) -> Vec<String> {
+pub(crate) fn path_deps(text: &str) -> Vec<String> {
     text.lines()
         .map(str::trim)
         .filter_map(|line| {
@@ -25,7 +25,24 @@ fn path_deps(text: &str) -> Vec<String> {
         .collect()
 }
 
-fn visit(
+pub fn plugin_graph() -> Result<HashMap<String, Vec<String>>, Box<dyn std::error::Error>> {
+    let mut graph: HashMap<String, Vec<String>> = HashMap::new();
+    for entry in fs::read_dir(Path::new("crates/kelir-plugins"))? {
+        let dir = entry?.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        let manifest = dir.join("Cargo.toml");
+        let text = fs::read_to_string(&manifest)?;
+        let Some(name) = manifest_name(&text) else {
+            continue;
+        };
+        graph.insert(name, path_deps(&text));
+    }
+    Ok(graph)
+}
+
+pub(crate) fn visit(
     node: &str,
     graph: &HashMap<String, Vec<String>>,
     visiting: &mut HashSet<String>,
@@ -54,20 +71,20 @@ fn visit(
     Ok(())
 }
 
-pub fn check() -> Result<(), Box<dyn std::error::Error>> {
-    let mut graph: HashMap<String, Vec<String>> = HashMap::new();
-    for entry in fs::read_dir(Path::new("crates/kelir-plugins"))? {
-        let dir = entry?.path();
-        if !dir.is_dir() {
-            continue;
-        }
-        let manifest = dir.join("Cargo.toml");
-        let text = fs::read_to_string(&manifest)?;
-        let Some(name) = manifest_name(&text) else {
-            continue;
-        };
-        graph.insert(name, path_deps(&text));
+pub(crate) fn assert_acyclic(
+    graph: &HashMap<String, Vec<String>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut visiting = HashSet::new();
+    let mut done = HashSet::new();
+    let mut stack = Vec::new();
+    for name in graph.keys() {
+        visit(name, graph, &mut visiting, &mut done, &mut stack)?;
     }
+    Ok(())
+}
+
+pub fn check() -> Result<(), Box<dyn std::error::Error>> {
+    let graph = plugin_graph()?;
     for (name, deps) in &graph {
         for dep in deps {
             if dep == "kelir-core" || dep == "kelir-drivers" {
@@ -77,11 +94,5 @@ pub fn check() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    let mut visiting = HashSet::new();
-    let mut done = HashSet::new();
-    let mut stack = Vec::new();
-    for name in graph.keys() {
-        visit(name, &graph, &mut visiting, &mut done, &mut stack)?;
-    }
-    Ok(())
+    assert_acyclic(&graph)
 }

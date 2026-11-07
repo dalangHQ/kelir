@@ -5,10 +5,11 @@ use std::sync::Arc;
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
     ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, MountScope, NetInterposer,
-    PipelineBinder, TrapInterposer,
+    PipelineBinder, StreamInterposer, TrapInterposer,
 };
-use kelir_interface::protocol::{FilterAction, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::protocol::{FilterAction, ProcessExit, StreamKind, TrapEvent, Verdict};
 use kelir_interface::service_registry::ServiceRegistry;
+use kelir_interface::vsock::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::trap_gate::{GateDecision, TrapGateEvaluator};
 
@@ -20,6 +21,8 @@ pub struct PipelineEngine {
     net_interceptors: Vec<Arc<dyn NetInterposer>>,
     console_interceptors: Vec<Arc<dyn ConsoleInterposer>>,
     host_interceptors: Vec<Arc<dyn HostInterposer>>,
+    stream_interposers: Vec<(StreamKind, Arc<dyn StreamInterposer>)>,
+    vsock_services: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>)>,
     services: ServiceRegistry,
     sealed: bool,
 }
@@ -47,6 +50,16 @@ impl PipelineBinder for PipelineEngine {
     fn bind_host(&mut self, stage: Arc<dyn HostInterposer>) {
         self.host_interceptors.push(stage);
     }
+    fn bind_stream(&mut self, kind: StreamKind, stage: Arc<dyn StreamInterposer>) {
+        self.stream_interposers.push((kind, stage));
+    }
+    fn bind_vsock_service(
+        &mut self,
+        spec: VsockServiceSpec,
+        service: Arc<dyn VsockServiceHandler>,
+    ) {
+        self.vsock_services.push((spec, service));
+    }
     fn service_registry(&mut self) -> &mut ServiceRegistry {
         &mut self.services
     }
@@ -62,6 +75,8 @@ impl PipelineEngine {
             net_interceptors: Vec::new(),
             console_interceptors: Vec::new(),
             host_interceptors: Vec::new(),
+            stream_interposers: Vec::new(),
+            vsock_services: Vec::new(),
             services: ServiceRegistry::new(),
             sealed: false,
         }
@@ -80,6 +95,28 @@ impl PipelineEngine {
         if self.sealed {
             return Err(PluginError::Halt("pipeline already sealed".into()));
         }
+        // TODO (L3): conflicts surface the structured EKindConflict/EPortConflict envelope from the artifacts.
+        for (index, (kind, _)) in self.stream_interposers.iter().enumerate() {
+            if self.stream_interposers[..index]
+                .iter()
+                .any(|(bound, _)| bound == kind)
+            {
+                return Err(PluginError::Halt(format!(
+                    "stream kind already bound: {kind:?}"
+                )));
+            }
+        }
+        for (index, (spec, _)) in self.vsock_services.iter().enumerate() {
+            if self.vsock_services[..index]
+                .iter()
+                .any(|(bound, _)| bound.port == spec.port)
+            {
+                return Err(PluginError::Halt(format!(
+                    "vsock port already bound: {}",
+                    spec.port
+                )));
+            }
+        }
         // TODO: freeze all five ring chains.
         self.sealed = true;
         Ok(())
@@ -88,7 +125,7 @@ impl PipelineEngine {
     pub async fn dispatch_trap(
         &self,
         event: &TrapEvent,
-        ctx: &HandlerCtx,
+        ctx: &HandlerCtx<'_>,
     ) -> Result<Verdict, PluginError> {
         // TODO (L3): panic quarantine across await needs an executor-level catch_unwind; a panicking async hook unwinds to the caller.
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
@@ -110,7 +147,7 @@ impl PipelineEngine {
     pub async fn dispatch_process_exit(
         &self,
         event: &ProcessExit,
-        ctx: &HandlerCtx,
+        ctx: &HandlerCtx<'_>,
     ) -> Result<(), PluginError> {
         for interceptor in &self.trap_interceptors {
             interceptor.on_process_exit(event, ctx).await?;

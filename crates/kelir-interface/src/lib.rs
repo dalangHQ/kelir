@@ -8,3 +8,4 @@ pub mod plugin;
 pub mod protocol;
 pub mod service_registry;
 pub mod telemetry;
+pub mod vsock;

@@ -2,81 +2,113 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt.
-use std::path::PathBuf;
+pub mod pgwire;
+pub mod service;
+pub use service::SqlProxyService;
+
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
 
+use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{KelirPlugin, MountScope, PipelineBinder, VirtioDevice};
-use kelir_interface::protocol::StreamKind;
+use kelir_interface::plugin::{
+    HandlerCtx, KelirPlugin, MountScope, NetInterposer, PipelineBinder, StreamInterposer,
+    VirtioDevice,
+};
+use kelir_interface::protocol::{FilterAction, StreamDirection, StreamKind, Verdict};
 
-pub const PGWIRE_PORT: u16 = 5432;
-pub const MAX_REWRITE_ABORTS: u32 = 3;
+use crate::pgwire::PgFrameDescriptor;
+use crate::service::{SqlDialect, SqlProxy};
 
-#[derive(Debug)]
-pub struct SqlProxyService {
-    pub host_path: PathBuf,
-    pub guest_socket: PathBuf,
-    aborts: AtomicU32,
+// see: cans/artifacts/examples/db-backed-runtime.py
+#[derive(Clone, Debug)]
+pub struct PgWireRewrite {
+    pub listen_port: u16,
+    pub upstream: String,
+    pub rewrite_rules: Vec<(String, String)>,
+    pub max_rewrites_per_conn: u32,
 }
 
-impl SqlProxyService {
-    pub fn new(host_path: PathBuf) -> Self {
-        Self {
-            host_path,
-            guest_socket: PathBuf::from("/run/kelir/db.sock"),
-            aborts: AtomicU32::new(0),
-        }
-    }
-
-    pub fn stream_kind() -> StreamKind {
-        StreamKind::DbSqlite
-    }
-
-    pub fn handle_db_sqlite(&self, _frame: &[u8]) -> Result<Vec<u8>, PluginError> {
-        // TODO (L3): decode pgwire Q/P frames and rewrite SQL in place; the pgwire parser and TCP reassembly are L3.
-        Err(PluginError::Halt(
-            "db-proxy: pgwire Q/P decode needs the L3 parser (DB_SQLITE 0x0011)".into(),
-        ))
-    }
-
-    pub fn record_abort(&self) -> Result<(), PluginError> {
-        let aborts = self.aborts.fetch_add(1, Ordering::SeqCst) + 1;
-        if aborts > MAX_REWRITE_ABORTS {
-            return Err(PluginError::Halt(
-                "db-proxy: rewrite aborts exceeded 3 (ECYCLICREWRITE)".into(),
-            ));
-        }
-        Ok(())
-    }
-}
-
-impl Clone for SqlProxyService {
-    fn clone(&self) -> Self {
-        Self {
-            host_path: self.host_path.clone(),
-            guest_socket: self.guest_socket.clone(),
-            aborts: AtomicU32::new(self.aborts.load(Ordering::SeqCst)),
-        }
-    }
-}
-
-impl Default for SqlProxyService {
+impl Default for PgWireRewrite {
     fn default() -> Self {
-        Self::new(PathBuf::from("/var/lib/app/data.sqlite"))
+        Self {
+            listen_port: 5432,
+            upstream: String::new(),
+            rewrite_rules: Vec::new(),
+            max_rewrites_per_conn: 3,
+        }
     }
 }
 
+// see: cans/plugins/db-proxy.md
+#[derive(Clone, Debug)]
+pub struct SqliteOverVsock {
+    pub guest_socket: String,
+    pub host_path: String,
+}
+
+impl Default for SqliteOverVsock {
+    fn default() -> Self {
+        Self {
+            guest_socket: "/run/kelir/db.sock".into(),
+            host_path: String::new(),
+        }
+    }
+}
+
+// see: cans/plugins/db-proxy.md
+#[derive(Clone, Debug)]
+pub struct EphemeralCredentials {
+    pub placeholder: String,
+    pub ttl_seconds: u32,
+}
+
+// TODO (L3): resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md.
+
+// see: cans/artifacts/examples/db-backed-runtime.py
+#[derive(Clone, Debug, Default)]
+pub struct DbProxyConfig {
+    pub postgres: PgWireRewrite,
+    pub sqlite: SqliteOverVsock,
+    pub credentials: Option<EphemeralCredentials>,
+}
+
+// see: cans/plugins/db-proxy.md
 #[derive(Clone)]
 pub struct DbProxyPlugin {
-    pub service: SqlProxyService,
+    pub config: DbProxyConfig,
+    pub proxy: Arc<SqlProxy>,
 }
 
 impl DbProxyPlugin {
     pub fn new() -> Self {
         Self {
-            service: SqlProxyService::default(),
+            config: DbProxyConfig::default(),
+            proxy: Arc::new(SqlProxy::new(SqlDialect::Postgres)),
         }
+    }
+
+    pub fn with_config(mut self, config: DbProxyConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    async fn guard_sqlite_client_bytes(
+        &self,
+        stream_id: u32,
+        payload: &mut [u8],
+    ) -> Result<Verdict, PluginError> {
+        let _ = (stream_id, payload);
+        // TODO (L3): decode the SQLite client protocol on the DB_SQLITE channel and mediate statements through SqlProxyService (Patch rewrite, Drop deny) per cans/plugins/db-proxy.md.
+        Ok(Verdict::Pass)
+    }
+
+    fn handle_pgwire_frame(
+        &self,
+        descriptor: PgFrameDescriptor,
+    ) -> Result<FilterAction, PluginError> {
+        let _ = descriptor;
+        // TODO (L3): in-place Q/P SQL rewrite against rewrite_rules, per-connection rewrite tally above max_rewrites_per_conn aborting ECYCLICREWRITE, and pgwire ErrorResponse synthesis (EPERM→42501, ENOENT→42P01, unmapped→XX000) per cans/plugins/db-proxy.md.
+        Ok(FilterAction::Forward)
     }
 }
 
@@ -93,11 +125,63 @@ impl KelirPlugin for DbProxyPlugin {
         "db-proxy"
     }
     fn default_scope(&self) -> MountScope {
-        MountScope::default().with_devices([VirtioDevice::Vsock])
+        // see: cans/plugins/db-proxy.md
+        MountScope::default().with_devices([VirtioDevice::Vsock, VirtioDevice::Net])
     }
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
-        pipeline
-            .service_registry()
-            .register(Arc::new(self.service.clone()));
+        let sqlite_stage: Arc<dyn StreamInterposer> = Arc::new(self.clone());
+        pipeline.bind_stream(StreamKind::DbSqlite, sqlite_stage);
+        let net_stage: Arc<dyn NetInterposer> = Arc::new(self.clone());
+        pipeline.bind_net(net_stage);
+        let service: Arc<dyn SqlProxyService> = self.proxy.clone();
+        pipeline.service_registry().register(service);
+    }
+}
+
+// see: cans/plugins/db-proxy.md
+#[async_trait]
+impl StreamInterposer for DbProxyPlugin {
+    async fn on_stream_open(
+        &self,
+        stream_id: u32,
+        tags: &mut Vec<u8>,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        let _ = (tags, ctx);
+        self.proxy.track_connection(stream_id)?;
+        // TODO (L3): proxy the stream to the host SQLite file at sqlite.host_path per cans/plugins/db-proxy.md.
+        Ok(Verdict::Pass)
+    }
+
+    async fn on_stream_data(
+        &self,
+        direction: StreamDirection,
+        stream_id: u32,
+        payload: &mut Vec<u8>,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        let _ = ctx;
+        match direction {
+            StreamDirection::GuestToHost => {
+                self.guard_sqlite_client_bytes(stream_id, payload).await
+            }
+            StreamDirection::HostToGuest => Ok(Verdict::Pass),
+        }
+    }
+
+    async fn on_stream_close(&self, stream_id: u32, ctx: &HandlerCtx) -> Result<(), PluginError> {
+        let _ = ctx;
+        self.proxy.release_connection(stream_id);
+        Ok(())
+    }
+}
+
+// see: cans/plugins/db-proxy.md
+impl NetInterposer for DbProxyPlugin {
+    fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+        match PgFrameDescriptor::decode(frame)? {
+            Some(descriptor) => self.handle_pgwire_frame(descriptor),
+            None => Ok(FilterAction::Forward),
+        }
     }
 }

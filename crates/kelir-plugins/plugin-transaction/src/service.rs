@@ -1,7 +1,9 @@
 // see: cans/plugins/transaction.md
+// see: cans/artifacts/code/transaction-service.rs
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
-use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default)]
 pub struct TransactionScope {
@@ -20,6 +22,7 @@ pub struct Savepoint {
     pub id: u64,
 }
 
+// see: cans/plugins/transaction.md#Service-exports-(transaction)
 #[async_trait]
 pub trait TransactionService: Send + Sync {
     async fn begin_scope(
@@ -36,25 +39,32 @@ pub trait TransactionService: Send + Sync {
     ) -> Result<(), PluginError>;
 }
 
+// see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+#[async_trait]
+pub trait LockBrokerCoordination: Send + Sync {
+    async fn release_transaction_locks(&self) -> Result<(), PluginError>;
+}
+
 #[async_trait]
 impl TransactionService for crate::TransactionPlugin {
     async fn begin_scope(
         &mut self,
-        _scope: TransactionScope,
+        scope: TransactionScope,
     ) -> Result<TransactionHandle, PluginError> {
-        // TODO: Open transaction over declared blast radius
+        // TODO (L3): open the scope over the declared blast radius; out-of-scope mutations reject with EACCES or EAmbiguousMutation.
+        let _ = scope;
         Ok(TransactionHandle { id: 0 })
     }
     async fn commit(&mut self, _handle: TransactionHandle) -> Result<(), PluginError> {
-        // TODO: Commit via broker replay + SQL COMMIT across proxy connections
+        // TODO (L3): broker commit (replay upper + tombstones) then SQL COMMIT across active proxy connections.
         Ok(())
     }
     async fn abort(&mut self, _handle: TransactionHandle) -> Result<(), PluginError> {
-        // TODO: Discard broker upper/tombstones, SQL ROLLBACK, release locks
+        // TODO (L3): discard broker upper and tombstones, issue SQL ROLLBACK, release advisory locks; deadline expiry aborts with ETIMEDOUT.
         Ok(())
     }
     async fn savepoint(&mut self, _handle: &TransactionHandle) -> Result<Savepoint, PluginError> {
-        // TODO: Inject SQL SAVEPOINT marker + snapshot broker state
+        // TODO (L3): inject SQL SAVEPOINT markers into active pgwire connections and snapshot broker upper and tombstone state.
         Ok(Savepoint { id: 0 })
     }
     async fn rollback_to_savepoint(
@@ -62,7 +72,7 @@ impl TransactionService for crate::TransactionPlugin {
         _handle: &TransactionHandle,
         _savepoint: Savepoint,
     ) -> Result<(), PluginError> {
-        // TODO: Restore intermediate state without aborting parent transaction
+        // TODO (L3): restore intermediate savepoint state without aborting the parent transaction.
         Ok(())
     }
 }

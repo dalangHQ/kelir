@@ -14,7 +14,7 @@ use kelir_interface::driver::SuspendReason;
 use kelir_interface::plugin::HandlerCtx;
 
 use kelir::{
-    KelirBuilder, Session, SnapshotDescriptor, VmConfig,
+    HCons, HNil, KelirBuilder, NoParams, PidLineage, SnapshotDescriptor, Unsealed, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     handler,
     plugin::{
@@ -263,7 +263,11 @@ impl SystemTelemetryParticipant for WatchdogSilencerPlugin {
     }
 }
 
-fn build_runtime() -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sync>> {
+type PolicyPlugins = HCons<(), HCons<(), HNil>>;
+
+type PolicyBuilder = KelirBuilder<Unsealed, PolicyPlugins, NoParams>;
+
+fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + Sync>> {
     let policy = PolicyMatrixPlugin::new();
     let shared = Arc::clone(&policy.state);
 
@@ -335,7 +339,7 @@ fn build_runtime() -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sy
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut session: Session = build_runtime()?.boot().await?;
+    let mut session = build_runtime()?.boot().await?;
     session.terminal.resize(120, 40)?;
     eprintln!("[kelir] host pressure={}", session.host.pressure_level());
     let port = session.wire.forward_port(8080, Some(8080))?;
@@ -350,14 +354,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "policy-approval",
         "policy-custom",
     ] {
-        let slot = session.checkpoint.create_step(SnapshotDescriptor {
-            id: format!("policy-matrix-{binary}"),
-            dirty_bytes: 0,
-            created_at_ns: 0,
-            parent_digest: None,
-            guest_clock: None,
-        })?;
-        let node = session.checkpoint.commit_step()?;
+        let slot = session.checkpoint.create_step(
+            PidLineage::new(1),
+            SnapshotDescriptor {
+                id: format!("policy-matrix-{binary}"),
+                dirty_bytes: 0,
+                created_at_ns: 0,
+                parent_digest: None,
+                guest_clock: None,
+            },
+        )?;
+        let node = session.checkpoint.commit_step(PidLineage::new(1))?;
         eprintln!("[kelir] {binary} -> slot={slot} node={node}");
     }
     // TODO (L3): spawn each policy binary in the guest and drive the policy matrix over it.

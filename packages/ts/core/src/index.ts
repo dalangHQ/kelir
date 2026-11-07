@@ -13,6 +13,7 @@ export * from "./session.js";
 export * from "./plugin.js";
 export * from "./builder.js";
 export * from "./plugins.js";
+export * from "./fusion.js";
 
 export interface IntentInput {
   readonly binary: string;

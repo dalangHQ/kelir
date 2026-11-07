@@ -1,4 +1,5 @@
 // see: cans/04-terminal-plane.md#PTY-line-discipline-initialization-(kelir-shim)
+
 use crate::trap::ShimError;
 
 #[allow(dead_code)]
@@ -18,6 +19,8 @@ pub fn open_pty_slave() -> Result<(i32, i32), ShimError> {
     if rc == 0 {
         Ok((master, slave))
     } else {
-        Err(ShimError::PtyOpenFailed)
+        Err(ShimError::PtyOpen {
+            errno: std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
+        })
     }
 }

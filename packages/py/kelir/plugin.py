@@ -1,4 +1,5 @@
 # see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/02-plugin-model.md#Foreign-plugin-proxy
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from kelir import FilterAction, HandlerContext, Verdict
+from kelir.fusion import HookDescriptor, HookStage, LifecycleTag, RingEvent
 
 __all__ = [
     "BasePlugin",
@@ -72,6 +74,49 @@ class LifecycleCtx:
     ) -> None:
         # TODO: register the veto predicate with the lifecycle
         self._vetoes.append((event, predicate))
+
+
+HOOK_RINGS: dict[str, tuple[RingEvent, LifecycleTag | None]] = {
+    "on_trap": (RingEvent.TRAP, None),
+    "on_fs_lookup": (RingEvent.FS_LOOKUP, None),
+    "on_fs_read": (RingEvent.FS_READ, None),
+    "on_fs_write": (RingEvent.FS_WRITE, None),
+    "on_net_outbound": (RingEvent.NET_OUTBOUND, None),
+    "on_console_input": (RingEvent.CONSOLE_INPUT, None),
+    "on_console_output": (RingEvent.CONSOLE_OUTPUT, None),
+    "on_heartbeat": (RingEvent.HEARTBEAT, None),
+    "on_process_exit": (RingEvent.PROCESS_EXIT, None),
+    "on_vm_init": (RingEvent.LIFECYCLE, "vm-init"),
+    "on_vm_ready": (RingEvent.LIFECYCLE, "vm-ready"),
+    "on_vm_shutdown": (RingEvent.LIFECYCLE, "vm-shutdown"),
+    "on_watchdog": (RingEvent.WATCHDOG, None),
+}
+
+
+# see: cans/02-plugin-model.md#Foreign-plugin-proxy
+def hook_descriptors(plugin: object) -> list[HookDescriptor]:
+    descriptors: list[HookDescriptor] = []
+    if not isinstance(plugin, BasePlugin):
+        return descriptors
+    name = getattr(plugin, "name", "") or type(plugin).__name__
+    ordinal = 0
+    for method_name, (ring, lifecycle_tag) in HOOK_RINGS.items():
+        overridden = getattr(type(plugin), method_name, None)
+        base = getattr(BasePlugin, method_name, None)
+        if overridden is None or overridden is base:
+            continue
+        descriptors.append(
+            HookDescriptor(
+                ring=ring,
+                stage=HookStage.SINGLE,
+                ordinal=ordinal,
+                plugin_name=name,
+                lifecycle_tag=lifecycle_tag,
+                run=getattr(plugin, method_name),
+            )
+        )
+        ordinal += 1
+    return descriptors
 
 
 class BasePlugin:

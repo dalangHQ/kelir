@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use tokio::io::AsyncRead;
 
 use kelir_interface::driver::{
-    BalloonConvergence, DuplexChannel, SharedMemoryHandle, SnapshotDescriptor, SuspendReason,
-    VmConfig, VmmDriver, VmmError, WatchdogAction,
+    BalloonConvergence, SharedMemoryHandle, SnapshotDescriptor, Stream, SuspendReason, VmConfig,
+    VmmDriver, VmmError, WatchdogAction,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -197,7 +197,7 @@ impl VmmDriver for ProotDriver {
         ))
     }
 
-    fn transport_connect(&self, _channel_id: u32) -> Result<Box<dyn DuplexChannel>, VmmError> {
+    fn transport_connect(&self, _channel_id: u32) -> Result<Box<dyn Stream>, VmmError> {
         self.ensure_booted()?;
         // TODO (L3): yield a raw duplex channel to the transport backend multiplexer.
         Err(VmmError::Unsupported(

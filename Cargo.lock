@@ -388,6 +388,7 @@ dependencies = [
  "plugin-transaction",
  "plugin-vault",
  "plugin-wire-ingress",
+ "serde",
  "serde_json",
  "tokio",
 ]
@@ -484,7 +485,10 @@ name = "kelir-plugin-testkit"
 version = "1.0.0"
 dependencies = [
  "async-trait",
+ "ciborium",
  "kelir-interface",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -743,6 +747,7 @@ dependencies = [
 name = "plugin-db-proxy"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "kelir-interface",
  "kelir-plugin-testkit",
 ]
@@ -823,6 +828,7 @@ dependencies = [
 name = "plugin-vault"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "kelir-interface",
  "kelir-plugin-testkit",
 ]

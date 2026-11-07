@@ -1,8 +1,11 @@
 // see: cans/02-plugin-model.md#Plugin-tiering
-// see: cans/artifacts/code/rust-handle-injection.rs
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+struct ServiceRef<S: ?Sized + Send + Sync + 'static> {
+    inner: Arc<S>,
+}
 
 pub struct ServiceRegistry {
     services: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
@@ -21,17 +24,22 @@ impl ServiceRegistry {
         }
     }
 
-    pub fn register<S: Send + Sync + 'static>(&mut self, service: Arc<S>) {
-        self.services.insert(TypeId::of::<S>(), service);
+    pub fn register<S: ?Sized + Send + Sync + 'static>(&mut self, service: Arc<S>) {
+        self.services.insert(
+            TypeId::of::<ServiceRef<S>>(),
+            Arc::new(ServiceRef { inner: service }),
+        );
     }
 
-    pub fn lookup<S: Send + Sync + 'static>(&self) -> Option<Arc<S>> {
-        self.services
-            .get(&TypeId::of::<S>())?
-            .clone()
-            .downcast::<S>()
-            .ok()
+    pub fn lookup<S: ?Sized + Send + Sync + 'static>(&self) -> Option<Arc<S>> {
+        match self.services.get(&TypeId::of::<ServiceRef<S>>()).cloned() {
+            Some(erased) => erased
+                .downcast::<ServiceRef<S>>()
+                .ok()
+                .map(|wrapped| Arc::clone(&wrapped.inner)),
+            None => None,
+        }
     }
 }
 
-// TODO (L3): dyn-trait lookup has no spec-defined mechanism; cans/02 names the registry only and artifacts deny c.service::<dyn Trait>().
+// TODO (L3): core boot wires each plugin's register_interceptors exports into the session-scoped registry.

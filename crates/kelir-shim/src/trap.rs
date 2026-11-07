@@ -12,11 +12,12 @@ pub enum ShimError {
     SeccompNotifyPending,
     SpawnPending,
     ExecSpecParsePending,
-    PtyOpenFailed,
     SlabSaturated,
-    SlotEmpty,
-    InvalidStreamId,
-    UnknownFlags,
+    SlotEmpty { stream_id: u32 },
+    InvalidStreamId { stream_id: u32 },
+    StreamIdInUse { stream_id: u32 },
+    UnknownFlags { flags: u8 },
+    PtyOpen { errno: libc::c_int },
 }
 
 impl fmt::Display for ShimError {
@@ -37,11 +38,23 @@ impl fmt::Display for ShimError {
             Self::ExecSpecParsePending => {
                 write!(f, "EXEC_IO_SPEC parse pending (L3)")
             }
-            Self::PtyOpenFailed => write!(f, "pty open failed"),
             Self::SlabSaturated => write!(f, "exec slot slab saturated"),
-            Self::SlotEmpty => write!(f, "no exec slot for stream id"),
-            Self::InvalidStreamId => write!(f, "stream id exceeds MAX_STREAM_ID"),
-            Self::UnknownFlags => write!(f, "frame flags match no lane"),
+            Self::SlotEmpty { stream_id } => {
+                write!(f, "no exec slot mapped for stream id {stream_id}")
+            }
+            Self::InvalidStreamId { stream_id } => {
+                write!(f, "stream id {stream_id} exceeds MAX_STREAM_ID")
+            }
+            Self::StreamIdInUse { stream_id } => {
+                write!(
+                    f,
+                    "stream id {stream_id} already bound to an active exec slot"
+                )
+            }
+            Self::UnknownFlags { flags } => {
+                write!(f, "frame flags {flags:#04x} match no lane")
+            }
+            Self::PtyOpen { errno } => write!(f, "openpty failed with errno {errno}"),
         }
     }
 }

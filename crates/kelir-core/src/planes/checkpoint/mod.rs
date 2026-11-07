@@ -4,26 +4,47 @@
 // see: cans/10-attestation.md#Step-evaluation-loop
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+use kelir_interface::driver::SnapshotDescriptor;
+use kelir_interface::plugin::PluginError;
+use kelir_interface::telemetry::CausalDelta;
+
+// see: cans/10-attestation.md#Step-evaluation-loop
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct PidLineage {
+    root_pid: u32,
+}
+
+impl PidLineage {
+    pub const fn new(root_pid: u32) -> Self {
+        Self { root_pid }
+    }
+    // TODO (L3): resolve guest pid to its lineage root by walking the trap-stream ppid chain.
+
+    pub const fn root_pid(self) -> u32 {
+        self.root_pid
+    }
+}
 
 pub struct CheckpointNode {
     pub node_id: u64,
     pub parent: Option<u64>,
-    pub descriptor: kelir_interface::driver::SnapshotDescriptor,
-    pub delta: Option<kelir_interface::telemetry::CausalDelta>,
+    pub descriptor: SnapshotDescriptor,
+    pub delta: Option<CausalDelta>,
 }
 
 #[derive(Default)]
 pub struct ManifestGraph {
     nodes: HashMap<u64, CheckpointNode>,
-    head: Option<u64>,
+    heads: HashMap<PidLineage, u64>,
 }
 
 impl ManifestGraph {
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
-            head: None,
+            heads: HashMap::new(),
         }
     }
 
@@ -35,12 +56,16 @@ impl ManifestGraph {
         self.nodes.get(&node_id)
     }
 
-    pub fn head(&self) -> Option<u64> {
-        self.head
+    pub fn head(&self, lineage: PidLineage) -> Option<u64> {
+        self.heads.get(&lineage).copied()
     }
 
-    pub fn set_head(&mut self, node_id: u64) {
-        self.head = Some(node_id);
+    pub fn set_head(&mut self, lineage: PidLineage, node_id: u64) {
+        self.heads.insert(lineage, node_id);
+    }
+
+    pub fn has_lineage(&self, lineage: PidLineage) -> bool {
+        self.heads.contains_key(&lineage)
     }
 
     pub fn lineage(&self, node_id: u64) -> Vec<u64> {
@@ -54,14 +79,15 @@ impl ManifestGraph {
     }
 }
 
+// see: cans/08-lifecycle.md#Delta-chain-compaction
 pub struct StepSlot {
     slot_id: u64,
-    base_descriptor: kelir_interface::driver::SnapshotDescriptor,
-    pending_delta: Option<kelir_interface::telemetry::CausalDelta>,
+    base_descriptor: SnapshotDescriptor,
+    pending_delta: Option<CausalDelta>,
 }
 
 pub struct CheckpointPlane {
-    active_step: Mutex<Option<StepSlot>>,
+    active_steps: Mutex<HashMap<PidLineage, StepSlot>>,
     graph: RwLock<ManifestGraph>,
     next_slot_id: AtomicU64,
 }
@@ -75,126 +101,138 @@ impl Default for CheckpointPlane {
 impl CheckpointPlane {
     pub fn new() -> Self {
         Self {
-            active_step: Mutex::new(None),
+            active_steps: Mutex::new(HashMap::new()),
             graph: RwLock::new(ManifestGraph::new()),
             next_slot_id: AtomicU64::new(0),
         }
     }
 
+    fn lock_steps(&self) -> Result<MutexGuard<'_, HashMap<PidLineage, StepSlot>>, PluginError> {
+        self.active_steps
+            .lock()
+            .map_err(|_| PluginError::Halt("step slot lock poisoned".into()))
+    }
+
+    fn lock_graph(&self) -> Result<RwLockWriteGuard<'_, ManifestGraph>, PluginError> {
+        self.graph
+            .write()
+            .map_err(|_| PluginError::Halt("checkpoint graph lock poisoned".into()))
+    }
+
+    fn read_graph(&self) -> Result<RwLockReadGuard<'_, ManifestGraph>, PluginError> {
+        self.graph
+            .read()
+            .map_err(|_| PluginError::Halt("checkpoint graph lock poisoned".into()))
+    }
+
+    // see: cans/10-attestation.md#Step-evaluation-loop
     pub fn create_step(
         &self,
-        base: kelir_interface::driver::SnapshotDescriptor,
-    ) -> Result<u64, kelir_interface::plugin::PluginError> {
-        let mut step = self.active_step.lock().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("step slot lock poisoned".into())
-        })?;
-        if step.is_some() {
-            return Err(kelir_interface::plugin::PluginError::Halt(
-                "step slot already active for lineage".into(),
+        lineage: PidLineage,
+        base: SnapshotDescriptor,
+    ) -> Result<u64, PluginError> {
+        let mut steps = self.lock_steps()?;
+        if steps.contains_key(&lineage) {
+            return Err(PluginError::Halt(
+                "step slot already active for PID lineage".into(),
             ));
         }
         let slot_id = self.next_slot_id.fetch_add(1, Ordering::SeqCst);
-        *step = Some(StepSlot {
-            slot_id,
-            base_descriptor: base,
-            pending_delta: None,
-        });
+        steps.insert(
+            lineage,
+            StepSlot {
+                slot_id,
+                base_descriptor: base,
+                pending_delta: None,
+            },
+        );
         Ok(slot_id)
     }
 
-    pub fn commit_step(&self) -> Result<u64, kelir_interface::plugin::PluginError> {
+    // see: cans/08-lifecycle.md#Delta-chain-compaction
+    pub fn commit_step(&self, lineage: PidLineage) -> Result<u64, PluginError> {
         let slot = {
-            let mut step = self.active_step.lock().map_err(|_| {
-                kelir_interface::plugin::PluginError::Halt("step slot lock poisoned".into())
-            })?;
-            step.take()
+            let mut steps = self.lock_steps()?;
+            steps.remove(&lineage)
         };
-        match slot {
+        let Some(step) = slot else {
+            return Err(PluginError::Halt(
+                "no active step slot for PID lineage".into(),
+            ));
+        };
+        let mut graph = self.lock_graph()?;
+        let parent = graph.head(lineage);
+        graph.insert(CheckpointNode {
+            node_id: step.slot_id,
+            parent,
+            descriptor: step.base_descriptor,
+            delta: step.pending_delta,
+        });
+        graph.set_head(lineage, step.slot_id);
+        // TODO (L3): flush the staging delta into the Base sparse extents on the checkpoint slot.
+        Ok(step.slot_id)
+    }
+
+    // see: cans/08-lifecycle.md#Delta-chain-compaction
+    pub fn rollback_step(&self, lineage: PidLineage) -> Result<SnapshotDescriptor, PluginError> {
+        let mut steps = self.lock_steps()?;
+        match steps.remove(&lineage) {
             Some(step) => {
-                let mut graph = self.graph.write().map_err(|_| {
-                    kelir_interface::plugin::PluginError::Halt(
-                        "checkpoint graph lock poisoned".into(),
-                    )
-                })?;
-                let parent = graph.head();
-                graph.insert(CheckpointNode {
-                    node_id: step.slot_id,
-                    parent,
-                    descriptor: step.base_descriptor,
-                    delta: step.pending_delta,
-                });
-                graph.set_head(step.slot_id);
-                Ok(step.slot_id)
+                // TODO (L3): discard the working delta from the checkpoint slot in <8ms.
+                Ok(step.base_descriptor)
             }
-            None => Err(kelir_interface::plugin::PluginError::Halt(
-                "no active step slot".into(),
+            None => Err(PluginError::Halt(
+                "no active step slot for PID lineage".into(),
             )),
         }
     }
 
-    pub fn rollback_step(
-        &self,
-    ) -> Result<kelir_interface::driver::SnapshotDescriptor, kelir_interface::plugin::PluginError>
-    {
-        let mut step = self.active_step.lock().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("step slot lock poisoned".into())
-        })?;
-        match step.take() {
-            Some(step) => Ok(step.base_descriptor),
-            None => Err(kelir_interface::plugin::PluginError::Halt(
-                "no active step slot".into(),
-            )),
-        }
-    }
-
-    pub fn branch_from(&self, node_id: u64) -> Result<(), kelir_interface::plugin::PluginError> {
-        let mut graph = self.graph.write().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("checkpoint graph lock poisoned".into())
-        })?;
+    // see: cans/08-lifecycle.md#Delta-chain-compaction
+    pub fn branch_from(&self, node_id: u64, lineage: PidLineage) -> Result<(), PluginError> {
+        let mut graph = self.lock_graph()?;
         if graph.get(node_id).is_none() {
-            return Err(kelir_interface::plugin::PluginError::Halt(
+            return Err(PluginError::Halt(
                 "branch source node not in manifest graph".into(),
             ));
         }
-        graph.set_head(node_id);
+        if graph.has_lineage(lineage) {
+            return Err(PluginError::Halt(
+                "PID lineage already has a chain head".into(),
+            ));
+        }
+        graph.set_head(lineage, node_id);
         Ok(())
     }
 
-    pub fn restore(
-        &self,
-        node_id: u64,
-    ) -> Result<kelir_interface::driver::SnapshotDescriptor, kelir_interface::plugin::PluginError>
-    {
-        let graph = self.graph.read().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("checkpoint graph lock poisoned".into())
-        })?;
+    pub fn restore(&self, node_id: u64) -> Result<SnapshotDescriptor, PluginError> {
+        let graph = self.read_graph()?;
         match graph.get(node_id) {
             Some(node) => Ok(node.descriptor.clone()),
-            None => Err(kelir_interface::plugin::PluginError::Halt(
+            None => Err(PluginError::Halt(
                 "checkpoint node not in manifest graph".into(),
             )),
         }
     }
 
-    pub fn head(&self) -> Option<u64> {
-        self.graph.read().ok()?.head()
+    pub fn head(&self, lineage: PidLineage) -> Option<u64> {
+        self.read_graph().ok()?.head(lineage)
     }
 
-    pub fn lineage(&self, node_id: u64) -> Result<Vec<u64>, kelir_interface::plugin::PluginError> {
-        let graph = self.graph.read().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("checkpoint graph lock poisoned".into())
-        })?;
+    pub fn lineage(&self, node_id: u64) -> Result<Vec<u64>, PluginError> {
+        let graph = self.read_graph()?;
         if graph.get(node_id).is_none() {
-            return Err(kelir_interface::plugin::PluginError::Halt(
+            return Err(PluginError::Halt(
                 "checkpoint node not in manifest graph".into(),
             ));
         }
         Ok(graph.lineage(node_id))
     }
 
-    pub fn compact(&self) -> Result<u64, kelir_interface::plugin::PluginError> {
+    // see: cans/08-lifecycle.md#Delta-chain-compaction
+    pub fn compact(&self, lineage: PidLineage) -> Result<u64, PluginError> {
         // TODO (L3): flatten ancestor deltas in a single-pass block copy and write a consolidated manifest pointing at the ancestor base.
-        Err(kelir_interface::plugin::PluginError::Halt(
+        let _ = lineage;
+        Err(PluginError::Halt(
             "TODO (L3): CheckpointPlane::compact".into(),
         ))
     }

@@ -1,16 +1,17 @@
+// see: cans/01-architecture.md#Axiomatic-foundations
 // see: cans/08-lifecycle.md#Zombie-reaping
 // see: cans/artifacts/diagrams/guest-vm.txt
-// TODO (L3): tests/test_anti_toctou.rs + test_reaper.rs per cans/artifacts/config/project-structure.txt#kelir-shim.
+// TODO (L3): tests/test_anti_toctou.rs + tests/test_reaper.rs per cans/artifacts/config/project-structure.txt#kelir-shim.
 
-// TODO (L3): tests/test_anti_toctou.rs + tests/test_reaper.rs per cans/artifacts/config/project-structure.txt.
 mod codec;
 mod multiplexer;
 mod pty;
 mod trap;
 
+// TODO (L3): surface the exit reason to the host supervisor for attestation receipts (in-band Channel 0x0000 or early-boot UART scrape).
 fn main() -> Result<(), trap::ShimError> {
     let mut mux = multiplexer::Multiplexer::new();
-    // TODO: attach virtio-vsock port 5252 rings; split channels 0x0000/0x0001
+    // TODO (L3): attach virtio-vsock port 5252 rings; split channels 0x0000/0x0001.
     let _unotify_fd = trap::init_seccomp_unotify()?;
     let (_pty_master, _pty_slave) = pty::open_pty_slave()?;
     let rx_header = [0u8; codec::HEADER_LEN];
@@ -24,19 +25,19 @@ fn main() -> Result<(), trap::ShimError> {
                 break;
             }
         }
-        // TODO: poll transport ring; copy next 9 header bytes into rx_header
+        // TODO (L3): poll transport ring; copy next 9 header bytes into rx_header.
         match codec::decode_header(&rx_header) {
             Ok((stream_id, flags, _len)) => {
-                // TODO: slice _len payload bytes from ring into the dispatch payload
+                // TODO (L3): slice _len payload bytes from ring into the dispatch payload.
                 if codec::encode_frame(stream_id, flags, &[], &mut tx_frame).is_err() {
-                    // TODO: tx ring overflow accounting
+                    // TODO (L3): tx ring overflow accounting.
                 }
-                if mux.dispatch_frame(stream_id, flags, &[]).is_err() {
-                    // TODO: emit MSG_EXEC_REJECT{ENOMEM} in-band on slab saturation
+                if let Err(_reason) = mux.dispatch_frame(stream_id, flags, &[]) {
+                    // TODO (L3): emit in-band reject from the structured reason (SlabSaturated => MSG_EXEC_REJECT{ENOMEM}).
                 }
             }
             Err(()) => {
-                // TODO: framing resync after corrupt header
+                // TODO (L3): framing resync after corrupt header.
             }
         }
     }
