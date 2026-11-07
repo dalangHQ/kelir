@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Self
@@ -123,6 +124,9 @@ class TrapEvent:
     ppid: int = 0
     cwd: str = ""
     binary_blake3: bytes = b""
+    syscall_nr: int | None = None
+    prot_flags: int | None = None
+    memfd_flags: int | None = None
 
 
 class TrapFilter:
@@ -484,6 +488,7 @@ class KelirBuilder:
             "driver": driver,
         }
         self._handlers: dict[str, list[Any]] = {}
+        self._fused_handlers: list[Callable[..., Any]] = []
         self._params_model: type | None = None
 
     def use(self, plugin: object) -> Self:
@@ -515,9 +520,14 @@ class KelirBuilder:
         pre: Callable[..., Awaitable[Any]] | None = None,
         post: Callable[..., Awaitable[Any]] | None = None,
     ) -> Self:
-        # TODO: register pre/post trap handlers into the pipeline
+        if pre is not None:
+            self._fused_handlers.append(pre)
         self._handlers.setdefault("trap", []).append((pattern, pre, post))
         return self
+
+    def fuse_hooks(self) -> FusedClosure:
+        # TODO (L3): hand the fused closure to the PyO3 _kelir bridge as the single FFI trampoline; codegen of the flat native closure lives in the bridge.
+        return FusedClosure(self._fused_handlers)
 
     def register_custom_action(
         self,
@@ -581,6 +591,7 @@ class KelirBuilder:
 
     async def boot(self) -> Session:
         # TODO (L3): validate Pydantic dependencies and boot via the PyO3 _kelir bridge.
+        self.fuse_hooks()
         _load_native_bridge()
         raise EConfig("kelir native PyO3 boot binding is not implemented (L3)")
 
@@ -601,6 +612,27 @@ class KelirBuilder:
 
 def kelir() -> KelirBuilder:
     return KelirBuilder()
+
+
+# see: cans/02-plugin-model.md#Foreign-plugin-proxy
+class FusedClosure:
+    trampoline_crossings = 1
+
+    def __init__(self, handlers: list[Callable[..., Any]]) -> None:
+        self._handlers = list(handlers)
+
+    @property
+    def handler_count(self) -> int:
+        return len(self._handlers)
+
+    async def __call__(self, ctx: HandlerContext) -> Any:
+        for handler in self._handlers:
+            result = handler(ctx)
+            if inspect.isawaitable(result):
+                result = await result
+            if result is not None:
+                return result
+        return None
 
 
 def builder(
@@ -630,6 +662,7 @@ __all__ = [
     "Deadline",
     "ExecutionReceipt",
     "FilterAction",
+    "FusedClosure",
     "HandlerContext",
     "KelirBuilder",
     "PostExecAction",

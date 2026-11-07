@@ -8,7 +8,7 @@ mod multiplexer;
 mod pty;
 mod trap;
 
-fn main() -> Result<(), ()> {
+fn main() -> Result<(), trap::ShimError> {
     let mut mux = multiplexer::Multiplexer::new();
     // TODO: attach virtio-vsock port 5252 rings; split channels 0x0000/0x0001
     let _unotify_fd = trap::init_seccomp_unotify()?;

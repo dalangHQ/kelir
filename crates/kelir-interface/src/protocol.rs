@@ -128,6 +128,17 @@ pub enum FilterAction {
     },
 }
 
+// see: cans/plugins/supply-chain.md
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyscallTrap {
+    pub syscall_nr: u64,
+    pub prot_flags: Option<u32>,
+    pub memfd_flags: Option<u32>,
+}
+
+// TODO (L3): carry SyscallTrap on TrapEvent once the TrapEvent literal in crates/kelir/src/handler_ctx.rs gains the field; that file is outside fix2-part5 scope.
+pub const PROT_EXEC: u32 = 0x4;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrapEvent {
     pub seq: u64,

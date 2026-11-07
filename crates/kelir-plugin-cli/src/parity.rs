@@ -258,6 +258,10 @@ pub fn assert_vectors(vectors: &[ParityVector]) -> Result<usize, String> {
 }
 
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let args: &[String] = match args.first().map(String::as_str) {
+        Some("run") => &args[1..],
+        _ => args,
+    };
     let path = args.first().map(String::as_str).unwrap_or("vectors.json");
     let text = fs::read_to_string(path).map_err(|e| {
         format!(

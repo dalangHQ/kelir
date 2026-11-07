@@ -1,6 +1,5 @@
-use std::future::Future;
+// see: cans/02-plugin-model.md#Shape-of-the-surface
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::sync::Arc;
 
 use kelir_interface::plugin::PluginError;
@@ -19,11 +18,8 @@ pub struct DynamicFile {
     pub mode: u32,
 }
 
-pub type DynamicFileGenerator = Arc<
-    dyn Fn(&Path) -> Pin<Box<dyn Future<Output = Result<DynamicFile, PluginError>> + Send>>
-        + Send
-        + Sync,
->;
+pub type DynamicFileGenerator =
+    Arc<dyn Fn(&Path) -> Result<DynamicFile, PluginError> + Send + Sync>;
 
 #[derive(Clone)]
 pub enum SyntheticFile {
@@ -47,10 +43,7 @@ impl SyntheticFile {
 
     pub fn dynamic<F>(path: &str, f: F) -> Self
     where
-        F: Fn(&Path) -> Pin<Box<dyn Future<Output = Result<DynamicFile, PluginError>> + Send>>
-            + Send
-            + Sync
-            + 'static,
+        F: Fn(&Path) -> Result<DynamicFile, PluginError> + Send + Sync + 'static,
     {
         Self::Dynamic {
             path: path.to_string(),
@@ -80,15 +73,8 @@ pub struct MaskRule {
     pub patterns: Vec<(String, String)>,
 }
 
-pub type SnoopHandler = Arc<
-    dyn Fn(
-            PathBuf,
-            Vec<u8>,
-            HandlerCtx,
-        ) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send>>
-        + Send
-        + Sync,
->;
+pub type SnoopHandler =
+    Arc<dyn Fn(PathBuf, Vec<u8>, HandlerCtx) -> Result<(), PluginError> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct SnoopRule {

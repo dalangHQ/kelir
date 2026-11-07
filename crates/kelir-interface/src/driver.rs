@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use thiserror::Error;
-use tokio::io::AsyncRead;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 // see: cans/artifacts/code/vmm-driver-trait.rs
 #[derive(Error, Debug)]
@@ -131,10 +131,16 @@ pub struct SharedMemoryHandle {
     pub size_bytes: usize,
     pub guest_phys_addr: u64,
     pub host_ptr: *mut u8,
+    #[cfg(unix)]
     pub memfd_raw: std::os::unix::io::RawFd,
+    #[cfg(windows)]
+    pub handle_raw: std::os::windows::io::RawHandle,
 }
 
-// see: cans/artifacts/code/vmm-driver-trait.rs
+// see: cans/01-architecture.md#Transport-engine-abstraction
+pub trait DuplexChannel: AsyncRead + AsyncWrite + Send + Sync + Unpin {}
+impl<T: AsyncRead + AsyncWrite + Send + Sync + Unpin> DuplexChannel for T {}
+
 #[async_trait]
 pub trait VmmDriver: Send + Sync {
     async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError>;
@@ -160,6 +166,7 @@ pub trait VmmDriver: Send + Sync {
         timeout: Duration,
         action: WatchdogAction,
     ) -> Result<(), VmmError>;
-    fn transport_connect(&self, channel_id: u32) -> Result<tokio::net::UnixStream, VmmError>;
+    // see: cans/01-architecture.md#Transport-engine-abstraction
+    fn transport_connect(&self, channel_id: u32) -> Result<Box<dyn DuplexChannel>, VmmError>;
     async fn terminate(&mut self) -> Result<(), VmmError>;
 }

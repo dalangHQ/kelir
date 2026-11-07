@@ -1,4 +1,6 @@
+// see: cans/03-sdk-architecture.md#Rust-SDK
 use std::future::Future;
+use std::marker::PhantomData;
 use std::time::Duration;
 
 use kelir_interface::driver::{VmConfig, WatchdogAction};
@@ -65,6 +67,12 @@ where
     f
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unsealed;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Sealed;
+
 #[derive(Debug, Clone, Default)]
 pub struct DriverHandle;
 
@@ -93,17 +101,21 @@ impl LifecycleMut {
 }
 
 #[derive(Debug, Default)]
-pub struct KelirBuilder {
+pub struct KelirBuilder<State = Unsealed, Plugins = (), Params = ()> {
     config: Option<VmConfig>,
+    _state: PhantomData<(State, Plugins, Params)>,
 }
 
-impl KelirBuilder {
+impl KelirBuilder<Unsealed, (), ()> {
     pub fn new(config: VmConfig) -> Self {
         Self {
             config: Some(config),
+            _state: PhantomData,
         }
     }
+}
 
+impl<State, Plugins, Params> KelirBuilder<State, Plugins, Params> {
     pub fn terminal(self, _config: PtyConfig) -> Self {
         self
     }
@@ -121,6 +133,7 @@ impl KelirBuilder {
     }
 
     pub fn plugin<P: KelirPlugin>(self, _plugin: P) -> Self {
+        // TODO (L3): accumulate P::Context into the Plugins HList; .plugin() returns KelirBuilder<State, HCons<P::Context, Plugins>, Params>.
         self
     }
 
@@ -194,9 +207,11 @@ impl KelirBuilder {
         LifecycleMut
     }
 
-    pub fn params<T: 'static>(self) -> Self {
-        let _ = std::any::type_name::<T>();
-        self
+    pub fn params<T: 'static>(self) -> KelirBuilder<State, Plugins, T> {
+        KelirBuilder {
+            config: self.config,
+            _state: PhantomData,
+        }
     }
 
     pub fn ctx<T: 'static>(&self) -> Option<&T> {
@@ -213,11 +228,15 @@ impl KelirBuilder {
         self
     }
 
-    pub fn seal(self) -> Self {
-        self
+    pub fn seal(self) -> KelirBuilder<Sealed, Plugins, Params> {
+        KelirBuilder {
+            config: self.config,
+            _state: PhantomData,
+        }
     }
 
     pub async fn boot(self) -> Result<Session, PluginError> {
+        // TODO (L3): restrict boot() to KelirBuilder<Sealed, Plugins, Params> and return Session<Plugins, Params> once callers use .seal().boot() and kelir-core Session is parameterized.
         match self.config {
             Some(config) => Session::boot(config),
             None => Err(PluginError::Halt(

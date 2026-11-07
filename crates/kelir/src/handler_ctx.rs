@@ -1,3 +1,4 @@
+// see: cans/03-sdk-architecture.md#Rust-SDK
 use std::marker::PhantomData;
 
 use kelir_interface::plugin::PluginError;
@@ -6,17 +7,21 @@ use kelir_interface::telemetry::ExecutionReceipt;
 
 use crate::session::{FsHandle, StepStack, TerminalHandle, VmHandle};
 
+pub trait Has<T> {
+    fn get(&self) -> &T;
+}
+
 #[derive(Debug, Clone)]
-pub struct HandlerCtx<P = (), C = ()> {
+pub struct HandlerCtx<Plugins = (), Params = ()> {
     pub trap: TrapEvent,
     pub vm: VmHandle,
     pub fs: FsHandle,
     pub step: StepStack,
     pub terminal: TerminalHandle,
-    _phantom: PhantomData<(P, C)>,
+    _phantom: PhantomData<(Plugins, Params)>,
 }
 
-impl<P, C> Default for HandlerCtx<P, C> {
+impl<Plugins, Params> Default for HandlerCtx<Plugins, Params> {
     fn default() -> Self {
         Self {
             trap: TrapEvent {
@@ -41,8 +46,9 @@ impl<P, C> Default for HandlerCtx<P, C> {
     }
 }
 
-impl<P, C> HandlerCtx<P, C> {
+impl<Plugins, Params> HandlerCtx<Plugins, Params> {
     pub fn ctx<T: Default>(&self) -> T {
+        // TODO (L3): resolve T infallibly via Plugins: Has<T>; T::default() is a placeholder until the Plugins HList lands.
         T::default()
     }
 

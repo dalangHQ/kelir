@@ -109,8 +109,33 @@ export interface TrapHandlers {
   ) => Promise<PostExecAction> | PostExecAction;
 }
 
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
+export class FusedClosure {
+  readonly trampolineCrossings = 1;
+  private readonly handlers: readonly TrapHandler[];
+
+  constructor(handlers: readonly TrapHandler[]) {
+    this.handlers = handlers;
+  }
+
+  get handlerCount(): number {
+    return this.handlers.length;
+  }
+
+  async invoke(c: TrapContext): Promise<TrapHandlerResult> {
+    for (const handler of this.handlers) {
+      const result = await handler(c);
+      if (result !== null && result !== undefined) {
+        return result;
+      }
+    }
+    return null;
+  }
+}
+
 export class KelirBuilder {
   private plugins: KelirPlugin[] = [];
+  private fusedHandlers: TrapHandler[] = [];
 
   constructor(_config: KelirConfig = {}) {}
 
@@ -137,8 +162,17 @@ export class KelirBuilder {
 
   trap(filter: string | TrapFilter, handler: TrapHandler | TrapHandlers): this {
     void filter;
-    void handler;
+    if (typeof handler === "function") {
+      this.fusedHandlers.push(handler);
+    } else if (handler.pre !== undefined) {
+      this.fusedHandlers.push(handler.pre);
+    }
     return this;
+  }
+
+  fuseHooks(): FusedClosure {
+    // TODO (L3): hand the fused closure to the NAPI addon as the single FFI trampoline; codegen of the flat native closure lives in the addon.
+    return new FusedClosure(this.fusedHandlers);
   }
 
   on(
@@ -183,6 +217,8 @@ export class KelirBuilder {
   }
 
   async boot(): Promise<Session> {
+    const fused = this.fuseHooks();
+    void fused;
     const specifier = "./native/kelir.node";
     let addon: unknown;
     try {

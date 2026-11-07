@@ -41,6 +41,9 @@ export interface TrapInfo {
   readonly binary_blake3: string;
   readonly argv: string[];
   readonly cwd: string;
+  readonly syscall_nr?: number;
+  readonly prot_flags?: number;
+  readonly memfd_flags?: number;
 }
 
 export interface FsInodeAttr {

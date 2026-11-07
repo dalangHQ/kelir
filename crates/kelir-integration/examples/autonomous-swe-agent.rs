@@ -28,7 +28,7 @@ use kelir::{
     plugin::{AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginError, TrapInterposer},
     plugins::{
         chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
-        ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
+        ledger::{LedgerConfig, LedgerPlugin, OtelConfig, ReceiptConfig},
     },
     protocol::{PatchPayload, TrapEvent},
     telemetry::ExecutionReceipt,
@@ -203,32 +203,20 @@ async fn build_runtime(
         protected_branches: vec!["main".into(), "master".into(), "release/*".into()],
     });
 
-    let snoop_oracle = Arc::clone(&oracle);
-    let snoop: SnoopHandler = Arc::new(move |path: PathBuf, raw: Vec<u8>, c: HandlerCtx| {
-        let oracle = Arc::clone(&snoop_oracle);
-        Box::pin(async move {
-            let evt: serde_json::Value = serde_json::from_slice(&raw)
-                .map_err(|e| PluginError::Halt(format!("session is not JSON: {e}")))?;
-            if evt
-                .get("falsifiedResult")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
-                return Err(PluginError::Halt(
-                    "EPERM: harness hallucination detected".into(),
-                ));
-            }
-            let blake3 = c
-                .ctx::<LedgerCtx>()
-                .blake3_of_producing_process(&path)
-                .await?;
-
-            oracle
-                .ingest_harness_event(&path, &evt, &blake3)
-                .await
-                .map_err(|e| PluginError::Halt(e.to_string()))?;
-            Ok(())
-        })
+    let snoop: SnoopHandler = Arc::new(move |_path: PathBuf, raw: Vec<u8>, _c: HandlerCtx| {
+        let evt: serde_json::Value = serde_json::from_slice(&raw)
+            .map_err(|e| PluginError::Halt(format!("session is not JSON: {e}")))?;
+        if evt
+            .get("falsifiedResult")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            return Err(PluginError::Halt(
+                "EPERM: harness hallucination detected".into(),
+            ));
+        }
+        // TODO (L3): re-wire ledger blake3 + oracle ingest once sync equivalents land.
+        Ok(())
     });
 
     let builder = KelirBuilder::new(VmConfig {
@@ -298,11 +286,9 @@ async fn build_runtime(
                 "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n",
             ),
             SyntheticFile::dynamic("/workspace/identity.jwt", |_| {
-                Box::pin(async move {
-                    Ok(DynamicFile {
-                        content: format!("Bearer {:032x}", std::process::id()),
-                        mode: 0o400,
-                    })
+                Ok(DynamicFile {
+                    content: format!("Bearer {:032x}", std::process::id()),
+                    mode: 0o400,
                 })
             }),
         ],

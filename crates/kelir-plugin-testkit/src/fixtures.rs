@@ -66,3 +66,14 @@ pub fn synthetic_vm_config() -> VmConfig {
         network_off: true,
     }
 }
+
+// see: cans/15-operations.md#Multi-language-parity-gate
+pub fn canonical_vector_names() -> Vec<&'static str> {
+    // TODO (L3): serialize the synthetic fixtures themselves (TrapEvent JSON, raw frames, Decision expectations) instead of names only; the vectors.json wire format beyond {"vectors":[{"name"}]} is not pinned in cans/artifacts.
+    vec![
+        "synthetic_pty_stream",
+        "synthetic_broker_upper",
+        "synthetic_config",
+        "synthetic_vm_config",
+    ]
+}

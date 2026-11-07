@@ -13,8 +13,8 @@ use async_trait::async_trait;
 use tokio::io::AsyncRead;
 
 use kelir_interface::driver::{
-    BalloonConvergence, DriverError, SharedMemoryHandle, SnapshotDescriptor, SuspendReason,
-    VmConfig, VmmDriver, WatchdogAction,
+    BalloonConvergence, DriverError, DuplexChannel, SharedMemoryHandle, SnapshotDescriptor,
+    SuspendReason, VmConfig, VmmDriver, WatchdogAction,
 };
 
 pub struct MockVmmDriver;
@@ -46,7 +46,10 @@ impl VmmDriver for MockVmmDriver {
             size_bytes,
             guest_phys_addr: 0,
             host_ptr: std::ptr::null_mut(),
+            #[cfg(unix)]
             memfd_raw: -1,
+            #[cfg(windows)]
+            handle_raw: std::ptr::null_mut(),
         })
     }
     async fn export_snapshot(
@@ -89,7 +92,7 @@ impl VmmDriver for MockVmmDriver {
     ) -> Result<(), DriverError> {
         Ok(())
     }
-    fn transport_connect(&self, _channel_id: u32) -> Result<tokio::net::UnixStream, DriverError> {
+    fn transport_connect(&self, _channel_id: u32) -> Result<Box<dyn DuplexChannel>, DriverError> {
         Err(DriverError::Unsupported(
             "mock transport_connect (L3)".into(),
         ))

@@ -475,6 +475,7 @@ version = "1.0.0"
 dependencies = [
  "kelir-catalog",
  "kelir-interface",
+ "kelir-plugin-testkit",
  "thiserror 2.0.21",
 ]
 
@@ -767,6 +768,7 @@ dependencies = [
 name = "plugin-mesh"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "kelir-interface",
  "kelir-plugin-testkit",
 ]
@@ -783,6 +785,7 @@ dependencies = [
 name = "plugin-replay"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "kelir-interface",
  "kelir-plugin-testkit",
 ]

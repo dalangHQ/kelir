@@ -104,6 +104,7 @@ impl Default for ExecSlotSlab {
 #[allow(dead_code)]
 pub struct Multiplexer {
     pub slots: ExecSlotSlab,
+    pub stream_ids: [Option<u32>; MAX_EXEC_SLOTS],
     pub next_exec_id: u64,
 }
 
@@ -111,7 +112,33 @@ impl Multiplexer {
     pub fn new() -> Self {
         Self {
             slots: ExecSlotSlab::new(),
+            stream_ids: [None; MAX_EXEC_SLOTS],
             next_exec_id: 1,
+        }
+    }
+
+    fn slot_index(&self, stream_id: u32) -> Option<usize> {
+        self.stream_ids.iter().position(|id| *id == Some(stream_id))
+    }
+
+    fn alloc_slot(&mut self, stream_id: u32) -> Result<usize, ShimError> {
+        if let Some(idx) = self.slot_index(stream_id) {
+            return Ok(idx);
+        }
+        // TODO (L3): eviction policy for a full slab; a new OPEN fails SlabSaturated until a slot is closed.
+        let idx = self
+            .stream_ids
+            .iter()
+            .position(|id| id.is_none())
+            .ok_or(ShimError::SlabSaturated)?;
+        self.stream_ids[idx] = Some(stream_id);
+        Ok(idx)
+    }
+
+    fn release_slot(&mut self, stream_id: u32) {
+        if let Some(idx) = self.slot_index(stream_id) {
+            self.slots.remove(idx);
+            self.stream_ids[idx] = None;
         }
     }
 
@@ -122,19 +149,26 @@ impl Multiplexer {
         flags: u8,
         payload: &[u8],
     ) -> Result<(), ShimError> {
-        let idx = usize::try_from(stream_id).map_err(|_| ShimError::InvalidStreamId)?;
-        if idx >= MAX_EXEC_SLOTS {
-            return Err(ShimError::SlabSaturated);
+        if stream_id > codec::MAX_STREAM_ID {
+            return Err(ShimError::InvalidStreamId);
         }
         if (flags & codec::FLAG_OPEN) != 0 {
             let spec = ExecSpec::parse(payload)?;
-            let slot = self.spawn_exec(&spec)?;
-            self.slots.insert(idx, slot)?;
-            return Ok(());
+            let idx = self.alloc_slot(stream_id)?;
+            match self.spawn_exec(&spec) {
+                Ok(slot) => {
+                    self.slots.insert(idx, slot)?;
+                    return Ok(());
+                }
+                Err(err) => {
+                    self.stream_ids[idx] = None;
+                    return Err(err);
+                }
+            }
         }
         if (flags & (codec::FLAG_CLOSE | codec::FLAG_RST)) != 0 {
             // TODO (L3): flush stdout/stderr EOF frames, release slab chunk
-            self.slots.remove(idx);
+            self.release_slot(stream_id);
             return Ok(());
         }
         if (flags & codec::FLAG_WINDOW_UPDATE) != 0 {
@@ -142,6 +176,7 @@ impl Multiplexer {
             return Ok(());
         }
         if (flags & codec::FLAG_DATA) != 0 {
+            let idx = self.slot_index(stream_id).ok_or(ShimError::SlotEmpty)?;
             let slot = self.slots.get(idx).ok_or(ShimError::SlotEmpty)?;
             // TODO: route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03)
             let _ = (

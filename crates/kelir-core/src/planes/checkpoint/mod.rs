@@ -1,6 +1,7 @@
 // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-core::checkpoint)
 // see: cans/08-lifecycle.md#Delta-chain-compaction
 // see: cans/09-snapshots.md#Groups-and-lineage
+// see: cans/10-attestation.md#Step-evaluation-loop
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, RwLock};
@@ -15,14 +16,14 @@ pub struct CheckpointNode {
 #[derive(Default)]
 pub struct ManifestGraph {
     nodes: HashMap<u64, CheckpointNode>,
-    heads: HashMap<String, u64>,
+    head: Option<u64>,
 }
 
 impl ManifestGraph {
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
-            heads: HashMap::new(),
+            head: None,
         }
     }
 
@@ -34,16 +35,12 @@ impl ManifestGraph {
         self.nodes.get(&node_id)
     }
 
-    pub fn head(&self, branch: &str) -> Option<u64> {
-        self.heads.get(branch).copied()
+    pub fn head(&self) -> Option<u64> {
+        self.head
     }
 
-    pub fn set_head(&mut self, branch: &str, node_id: u64) {
-        self.heads.insert(branch.to_string(), node_id);
-    }
-
-    pub fn has_branch(&self, branch: &str) -> bool {
-        self.heads.contains_key(branch)
+    pub fn set_head(&mut self, node_id: u64) {
+        self.head = Some(node_id);
     }
 
     pub fn lineage(&self, node_id: u64) -> Vec<u64> {
@@ -64,7 +61,7 @@ pub struct StepSlot {
 }
 
 pub struct CheckpointPlane {
-    active_steps: Mutex<HashMap<String, StepSlot>>,
+    active_step: Mutex<Option<StepSlot>>,
     graph: RwLock<ManifestGraph>,
     next_slot_id: AtomicU64,
 }
@@ -78,7 +75,7 @@ impl Default for CheckpointPlane {
 impl CheckpointPlane {
     pub fn new() -> Self {
         Self {
-            active_steps: Mutex::new(HashMap::new()),
+            active_step: Mutex::new(None),
             graph: RwLock::new(ManifestGraph::new()),
             next_slot_id: AtomicU64::new(0),
         }
@@ -88,47 +85,29 @@ impl CheckpointPlane {
         &self,
         base: kelir_interface::driver::SnapshotDescriptor,
     ) -> Result<u64, kelir_interface::plugin::PluginError> {
-        self.create_step_on_branch("main", base)
-    }
-
-    pub fn create_step_on_branch(
-        &self,
-        branch: &str,
-        base: kelir_interface::driver::SnapshotDescriptor,
-    ) -> Result<u64, kelir_interface::plugin::PluginError> {
-        let mut steps = self.active_steps.lock().map_err(|_| {
+        let mut step = self.active_step.lock().map_err(|_| {
             kelir_interface::plugin::PluginError::Halt("step slot lock poisoned".into())
         })?;
-        if steps.contains_key(branch) {
+        if step.is_some() {
             return Err(kelir_interface::plugin::PluginError::Halt(
-                "step already active on branch".into(),
+                "step slot already active for lineage".into(),
             ));
         }
         let slot_id = self.next_slot_id.fetch_add(1, Ordering::SeqCst);
-        steps.insert(
-            branch.to_string(),
-            StepSlot {
-                slot_id,
-                base_descriptor: base,
-                pending_delta: None,
-            },
-        );
+        *step = Some(StepSlot {
+            slot_id,
+            base_descriptor: base,
+            pending_delta: None,
+        });
         Ok(slot_id)
     }
 
     pub fn commit_step(&self) -> Result<u64, kelir_interface::plugin::PluginError> {
-        self.commit_step_on_branch("main")
-    }
-
-    pub fn commit_step_on_branch(
-        &self,
-        branch: &str,
-    ) -> Result<u64, kelir_interface::plugin::PluginError> {
         let slot = {
-            let mut steps = self.active_steps.lock().map_err(|_| {
+            let mut step = self.active_step.lock().map_err(|_| {
                 kelir_interface::plugin::PluginError::Halt("step slot lock poisoned".into())
             })?;
-            steps.remove(branch)
+            step.take()
         };
         match slot {
             Some(step) => {
@@ -137,18 +116,18 @@ impl CheckpointPlane {
                         "checkpoint graph lock poisoned".into(),
                     )
                 })?;
-                let parent = graph.head(branch);
+                let parent = graph.head();
                 graph.insert(CheckpointNode {
                     node_id: step.slot_id,
                     parent,
                     descriptor: step.base_descriptor,
                     delta: step.pending_delta,
                 });
-                graph.set_head(branch, step.slot_id);
+                graph.set_head(step.slot_id);
                 Ok(step.slot_id)
             }
             None => Err(kelir_interface::plugin::PluginError::Halt(
-                "no active step slot on branch".into(),
+                "no active step slot".into(),
             )),
         }
     }
@@ -157,30 +136,18 @@ impl CheckpointPlane {
         &self,
     ) -> Result<kelir_interface::driver::SnapshotDescriptor, kelir_interface::plugin::PluginError>
     {
-        self.rollback_step_on_branch("main")
-    }
-
-    pub fn rollback_step_on_branch(
-        &self,
-        branch: &str,
-    ) -> Result<kelir_interface::driver::SnapshotDescriptor, kelir_interface::plugin::PluginError>
-    {
-        let mut steps = self.active_steps.lock().map_err(|_| {
+        let mut step = self.active_step.lock().map_err(|_| {
             kelir_interface::plugin::PluginError::Halt("step slot lock poisoned".into())
         })?;
-        match steps.remove(branch) {
+        match step.take() {
             Some(step) => Ok(step.base_descriptor),
             None => Err(kelir_interface::plugin::PluginError::Halt(
-                "no active step slot on branch".into(),
+                "no active step slot".into(),
             )),
         }
     }
 
-    pub fn branch_from(
-        &self,
-        node_id: u64,
-        branch: &str,
-    ) -> Result<(), kelir_interface::plugin::PluginError> {
+    pub fn branch_from(&self, node_id: u64) -> Result<(), kelir_interface::plugin::PluginError> {
         let mut graph = self.graph.write().map_err(|_| {
             kelir_interface::plugin::PluginError::Halt("checkpoint graph lock poisoned".into())
         })?;
@@ -189,12 +156,7 @@ impl CheckpointPlane {
                 "branch source node not in manifest graph".into(),
             ));
         }
-        if graph.has_branch(branch) {
-            return Err(kelir_interface::plugin::PluginError::Halt(
-                "branch already exists".into(),
-            ));
-        }
-        graph.set_head(branch, node_id);
+        graph.set_head(node_id);
         Ok(())
     }
 
@@ -214,8 +176,8 @@ impl CheckpointPlane {
         }
     }
 
-    pub fn head(&self, branch: &str) -> Option<u64> {
-        self.graph.read().ok()?.head(branch)
+    pub fn head(&self) -> Option<u64> {
+        self.graph.read().ok()?.head()
     }
 
     pub fn lineage(&self, node_id: u64) -> Result<Vec<u64>, kelir_interface::plugin::PluginError> {
@@ -230,9 +192,8 @@ impl CheckpointPlane {
         Ok(graph.lineage(node_id))
     }
 
-    pub fn compact(&self, branch: &str) -> Result<u64, kelir_interface::plugin::PluginError> {
+    pub fn compact(&self) -> Result<u64, kelir_interface::plugin::PluginError> {
         // TODO (L3): flatten ancestor deltas in a single-pass block copy and write a consolidated manifest pointing at the ancestor base.
-        let _ = branch;
         Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): CheckpointPlane::compact".into(),
         ))

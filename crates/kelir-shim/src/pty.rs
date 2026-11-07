@@ -1,7 +1,8 @@
 // see: cans/04-terminal-plane.md#PTY-line-discipline-initialization-(kelir-shim)
+use crate::trap::ShimError;
 
 #[allow(dead_code)]
-pub fn open_pty_slave() -> Result<(i32, i32), ()> {
+pub fn open_pty_slave() -> Result<(i32, i32), ShimError> {
     let mut master: libc::c_int = -1;
     let mut slave: libc::c_int = -1;
     // SAFETY: openpty writes valid fds into master/slave on success; null name/termios/winsize request kernel defaults.
@@ -17,6 +18,6 @@ pub fn open_pty_slave() -> Result<(i32, i32), ()> {
     if rc == 0 {
         Ok((master, slave))
     } else {
-        Err(())
+        Err(ShimError::PtyOpenFailed)
     }
 }

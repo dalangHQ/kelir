@@ -16,8 +16,10 @@ pub mod sandbox;
 pub mod session;
 pub mod telemetry;
 
-pub use builder::{CompositePlugin, KelirBuilder, PostExecAction, TrapFilter, handler};
-pub use handler_ctx::HandlerCtx;
+pub use builder::{
+    CompositePlugin, KelirBuilder, PostExecAction, Sealed, TrapFilter, Unsealed, handler,
+};
+pub use handler_ctx::{HandlerCtx, Has};
 pub use kelir_core::planes::checkpoint::StepSlot;
 pub use kelir_interface::driver::{SnapshotDescriptor, VmConfig, WatchdogAction};
 pub use kelir_interface::protocol::Verdict;

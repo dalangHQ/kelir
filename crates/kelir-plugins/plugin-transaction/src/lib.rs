@@ -38,7 +38,7 @@ impl KelirPlugin for TransactionPlugin {
 impl LifecycleParticipant for TransactionPlugin {
     async fn on_pre_commit(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
         let _ = ctx;
-        // TODO: Coordinate 2PC pre-commit with db-proxy
+        // TODO (L3): vCPU freeze, FUSE drain, and broker handles are unreachable here; LifecycleCtx exposes watchdog, balloon, vetoes only per cans/02#Hook-context-restriction.
         Ok(())
     }
     async fn on_post_commit(
@@ -46,6 +46,7 @@ impl LifecycleParticipant for TransactionPlugin {
         _ctx: &mut LifecycleCtx,
         _committed: bool,
     ) -> Result<(), PluginError> {
+        // TODO (L3): on true commit broker upper plus SQL COMMIT, on false discard upper plus SQL ROLLBACK; both need broker and proxy handles LifecycleCtx cannot supply.
         Ok(())
     }
 }

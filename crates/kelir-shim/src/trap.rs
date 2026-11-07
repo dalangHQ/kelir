@@ -12,6 +12,7 @@ pub enum ShimError {
     SeccompNotifyPending,
     SpawnPending,
     ExecSpecParsePending,
+    PtyOpenFailed,
     SlabSaturated,
     SlotEmpty,
     InvalidStreamId,
@@ -36,20 +37,16 @@ impl fmt::Display for ShimError {
             Self::ExecSpecParsePending => {
                 write!(f, "EXEC_IO_SPEC parse pending (L3)")
             }
+            Self::PtyOpenFailed => write!(f, "pty open failed"),
             Self::SlabSaturated => write!(f, "exec slot slab saturated"),
             Self::SlotEmpty => write!(f, "no exec slot for stream id"),
-            Self::InvalidStreamId => write!(f, "stream id does not fit usize"),
+            Self::InvalidStreamId => write!(f, "stream id exceeds MAX_STREAM_ID"),
             Self::UnknownFlags => write!(f, "frame flags match no lane"),
         }
     }
 }
 
 impl std::error::Error for ShimError {}
-
-// TODO (L3): main.rs collapses ShimError to () at the binary boundary; give main a real error type then.
-impl From<ShimError> for () {
-    fn from(_: ShimError) -> Self {}
-}
 
 #[allow(dead_code)]
 pub struct SeccompFilter {

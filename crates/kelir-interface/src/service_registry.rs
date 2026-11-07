@@ -1,4 +1,5 @@
 // see: cans/02-plugin-model.md#Plugin-tiering
+// see: cans/artifacts/code/rust-handle-injection.rs
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -33,4 +34,4 @@ impl ServiceRegistry {
     }
 }
 
-// TODO (L3): resolve services by trait object (dyn TransactionService) and invoke across plugins; concrete-type lookup only at L2.
+// TODO (L3): dyn-trait lookup has no spec-defined mechanism; cans/02 names the registry only and artifacts deny c.service::<dyn Trait>().
