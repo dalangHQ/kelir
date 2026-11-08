@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_06_udp_socket_reaper_slab_limit"
+title: "UDP NAT slab caps at 1024 entries; idle sockets past 30 seconds are reclaimed without descriptor leak"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#UDP-socket-reaper"
+  statement: "Guest source ports map into an indexed slab with 1,024-entry hard cap; idle 30s closes socket."
+  blast_radius_if_breached: "UDP churn or DNS scanning exhausts host file descriptors (EMFILE)."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent allows slab to grow past 1024 entries without eviction."
+  anti_slop_mitigation: "AS-08 asserts active host UDP socket descriptors <= 1024 after 2000 unique source ports."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.reaper"
+    agent_id: "agt_wp_06"
+    trust: "reviewed"
+  initial_state:
+    slab_capacity: 1024
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest transmits UDP frames from 2000 unique source ports; advance virtual clock 31 seconds"
+  input_params:
+    burst_ports: 2000
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "wire.reaper"
+    culprit: "none — slab capped at 1024 and idle sockets reaped"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 2000
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.udp_reaped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-08"
+    verification: "assert!(udp_slab.active_entries() <= 1024); assert_eq!(udp_slab.idle_reaped_count() > 0, true);"

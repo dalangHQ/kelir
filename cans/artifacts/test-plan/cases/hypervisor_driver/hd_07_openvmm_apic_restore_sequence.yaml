@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_07_openvmm_apic_restore_sequence"
+title: "Windows WHP backend commits Local APIC state before restoring TSC deadline MSRs"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Driver-backends"
+  statement: "Setting TSC deadlines before APIC initialization is prohibited; Local APIC state commits before TSC."
+  blast_radius_if_breached: "vCPU registers fail to initialize on Windows WHP, wedging the guest kernel at restore."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts restore completed without asserting APIC/TSC MSR write ordering."
+  anti_slop_mitigation: "AS-03 requires verifying the MSR restore sequence audit log."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_07"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "driver-openvmm"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "driver.restore_vcpu_registers(&snapshot)"
+  input_params:
+    verify_msr_ordering: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.openvmm"
+    culprit: "none — APIC committed prior to TSC deadline MSR write"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.vcpu_restored"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert!(driver.verify_apic_committed_before_tsc());"

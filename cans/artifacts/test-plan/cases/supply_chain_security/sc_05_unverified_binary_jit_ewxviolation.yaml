@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_05_unverified_binary_jit_ewxviolation"
+title: "Unverified binary attempting PROT_EXEC memory allocation halts immediately with EWXVIOLATION"
+domain: "supply_chain_security"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
+  statement: "Unverified binaries attempting PROT_EXEC or memfd memory allocation halt with EWXVIOLATION."
+  blast_radius_if_breached: "Malware compiles and executes polymorphic shellcode payloads in memory."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent returns generic permission error without halting the violating process."
+  anti_slop_mitigation: "AS-03 asserts exact EWXVIOLATION error and SIGKILL signal delivery."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_sc_05"
+    trust: "reviewed"
+  initial_state:
+    unverified_binary: "/tmp/custom_c_binary"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "/tmp/custom_c_binary calls mprotect(PROT_EXEC) without catalog match"
+  input_params:
+    binary_blake3: "unverified_random_hash"
+
+expected_observations:
+  exit_code: 137
+  state_modified: false
+  diagnostic:
+    domain: "supply_chain.jit"
+    culprit: "Unverified binary attempted PROT_EXEC allocation"
+    remedy: "Register binary in JIT engine catalog or compile ahead of time"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "supply_chain.wx_violation_killed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EWXVIOLATION"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(receipt.fault_reason, Some(reason) if reason == 'EWXVIOLATION'); assert_eq!(receipt.exit_code, 137);"

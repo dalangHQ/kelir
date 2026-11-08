@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_05_stream_kind_conflict_ekindconflict"
+title: "Two plugins registering the same stream kind ID abort microVM bootstrap with EKindConflict"
+domain: "protocol_mux"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Control-channel"
+  statement: "0x0013-0x7FFF: plugin-registered; collision aborts EKindConflict."
+  blast_radius_if_breached: "Conflicting plugins overwrite stream routers, causing silent data corruption."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows second plugin to overwrite first without error."
+  anti_slop_mitigation: "AS-03 asserts boot() fails with EKindConflict."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "builder.seal"
+    agent_id: "agt_pm_05"
+    trust: "reviewed"
+  initial_state:
+    first_plugin_registered_kind: 25 # 0x0019
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "builder.register_stream_kind(0x0019, h1); builder.register_stream_kind(0x0019, h2)"
+  input_params:
+    colliding_kind: 25
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "protocol.registry"
+    culprit: "Stream kind 0x0019 collision between registered plugins"
+    remedy: "Assign distinct stream kind IDs to each plugin"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "protocol.kind_conflict"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EKindConflict"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(second_reg, Err(KelirError::KindConflict(25)));"

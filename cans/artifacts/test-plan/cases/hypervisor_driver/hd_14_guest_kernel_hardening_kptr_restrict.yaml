@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_14_guest_kernel_hardening_kptr_restrict"
+title: "Guest kernel boot params kptr_restrict=2 and hidepid=2 suppress pointer leaks to unprivileged code"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Guest-kernel-hardening"
+  statement: "kptr_restrict=2 and hidepid=2 suppress /proc/kallsyms and process inspection leaks."
+  blast_radius_if_breached: "Untrusted agent scripts read kernel symbols to construct local root privilege escalation exploits."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts file was read without verifying all returned pointer addresses are 0x00000000."
+  anti_slop_mitigation: "AS-02 proves zero real kernel memory addresses leak in read buffer."
+
+setup:
+  env: "dev"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_14"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.exec('/bin/cat', ['/proc/kallsyms'])"
+  input_params:
+    target_file: "/proc/kallsyms"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "driver.hardening"
+    culprit: "none — kernel pointers suppressed"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.security_read"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert!(stdout.lines().all(|l| l.starts_with('0000000000000000')));"

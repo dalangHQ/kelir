@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_16_port_forward_so_linger_zero_release"
+title: "Port forward teardown sets SO_LINGER=0, forcing immediate TCP RST and releasing host port from TIME_WAIT"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Port-forwarding"
+  statement: "Immediate teardown release: SO_LINGER zero forces instant TCP RST, eliminating TIME_WAIT socket exhaustion."
+  blast_radius_if_breached: "Rapidly cycling test sessions exhaust available host ephemeral ports due to 60-second TIME_WAIT states."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent closes socket normally, leaving it in TIME_WAIT state."
+  anti_slop_mitigation: "AS-08 asserts host port is immediately re-bindable without EADDRINUSE."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.forward"
+    agent_id: "agt_wp_16"
+    trust: "reviewed"
+  initial_state:
+    allocated_port: 12345
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Close active port forward on 12345; immediately bind 12345 on host"
+  input_params:
+    rebind_test: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "wire.forward"
+    culprit: "none — socket released instantly via SO_LINGER=0"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.port_released"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-08"
+    verification: "assert_eq!(std::net::TcpListener::bind('127.0.0.1:12345').is_ok(), true);"

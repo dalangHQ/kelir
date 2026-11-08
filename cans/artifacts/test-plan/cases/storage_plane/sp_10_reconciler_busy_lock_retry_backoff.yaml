@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_10_reconciler_busy_lock_retry_backoff"
+title: "Storage reconciler retries leaf commit with exponential backoff up to 2000ms upon host EBUSY"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Workspace-commit"
+  statement: "Fallback on EBUSY or EPERM: in-place write with 2000ms backoff."
+  blast_radius_if_breached: "Transient host locks (antivirus, indexers) cause commit failures and dropped work."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent fails immediately on EBUSY without executing retry loop."
+  anti_slop_mitigation: "AS-03 asserts reconciler retried at least once and succeeded after lock release."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.reconciler"
+    agent_id: "agt_sp_10"
+    trust: "reviewed"
+  initial_state:
+    host_file_locked_duration_ms: 100
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.storage.reconcile() on file locked by external host process for 100ms"
+  input_params:
+    backoff_limit_ms: 2000
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "storage.reconciler"
+    culprit: "none — retry backoff resolved EBUSY"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.reconcile_retry_success"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(reconciler_retry_attempts() > 0, true); assert_eq!(reconcile_result.is_ok(), true);"

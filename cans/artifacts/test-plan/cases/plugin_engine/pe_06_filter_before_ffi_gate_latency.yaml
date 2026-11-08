@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_06_filter_before_ffi_gate_latency"
+title: "Non-matching MountScope events evaluate in native Rust memory in <2µs, skipping foreign FFI trampolines"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Filter-before-FFI-gate"
+  statement: "Host core checks MountScope in native memory before crossing FFI; Gate 2 evaluates in <2µs; foreign runtimes skip FFI."
+  blast_radius_if_breached: "Every unmonitored syscall crosses NAPI/PyO3 runtime trampolines, slowing VM performance by 100x."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent dispatches across FFI for every event and checks scope inside Python/JavaScript."
+  anti_slop_mitigation: "AS-06 asserts FFI crossing counter == 0 for out-of-scope ring events; latency < 2µs."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "pipeline.gate"
+    agent_id: "agt_pe_06"
+    trust: "reviewed"
+  initial_state:
+    mount_scope_filter: "net_only"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Dispatch FUSE LOOKUP event through pipeline registered with foreign JS network plugin"
+  input_params:
+    event_type: "FsLookup"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "pipeline.gate2"
+    culprit: "none — FFI skipped in native memory"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "pipeline.ffi_skipped"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(napi_trampoline_crossing_count(), 0); assert!(gate2_duration < Duration::from_nanos(2000));"

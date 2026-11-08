@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_05_storage_inode_quota_enospc"
+title: "Guest file creation exceeding max_inodes budget fails synchronously with ENOSPC"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Storage-quotas"
+  statement: "Exceeding max_inodes fails synchronously with ENOSPC."
+  blast_radius_if_breached: "Inode exhaustion attacks exhaust host filesystem metadata structures."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts file creation stopped without verifying ENOSPC errno."
+  anti_slop_mitigation: "AS-03 asserts exact ENOSPC on mknod / create."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_sp_05"
+    trust: "reviewed"
+  initial_state:
+    quota_max_inodes: 10
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest attempts to create 11 empty files"
+  input_params:
+    file_count: 11
+
+expected_observations:
+  exit_code: 1
+  state_modified: true
+  diagnostic:
+    domain: "storage.quota"
+    culprit: "Storage quota exceeded max_inodes limit"
+    remedy: "Increase storage.quotas.max_inodes in profile"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.inode_quota_exceeded"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "ENOSPC"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(eleventh_create_err.raw_os_error(), Some(libc::ENOSPC)); assert_eq!(broker.allocated_inodes(), 10);"

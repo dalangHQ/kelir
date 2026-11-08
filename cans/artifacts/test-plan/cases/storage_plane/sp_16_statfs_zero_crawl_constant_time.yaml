@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_16_statfs_zero_crawl_constant_time"
+title: "Guest statfs query computes remaining broker quota from atomics in O(1) time without crawling base disk"
+domain: "storage_plane"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Storage-quotas"
+  statement: "statfs reporting returns remaining broker quota in O(1) time; base workspace incurs zero statfs traversal."
+  blast_radius_if_breached: "statfs calls during build steps crawl deep base workspace directories, causing I/O stalls."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent calls host statfs or walks directory tree to calculate free space."
+  anti_slop_mitigation: "AS-06 asserts statfs execution duration < 50µs regardless of 500k base inode count."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.broker"
+    agent_id: "agt_sp_16"
+    trust: "reviewed"
+  initial_state:
+    base_inodes_count: 500000
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "fuse_op"
+  command: "Guest executes statvfs('/workspace')"
+  input_params:
+    query: "statvfs"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "storage.statfs"
+    culprit: "none — O(1) atomic read"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.statfs_queried"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert!(statfs_duration < Duration::from_micros(50)); assert_eq!(host_vfs_crawl_count, 0);"

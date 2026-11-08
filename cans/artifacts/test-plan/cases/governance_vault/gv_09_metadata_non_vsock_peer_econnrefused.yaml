@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gv_09_metadata_non_vsock_peer_econnrefused"
+title: "Metadata service request originating from outside session vsock peer rejects with ECONNREFUSED"
+domain: "governance_vault"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/vault.md#Error-and-return-semantics-(vault)"
+  statement: "Metadata service request from non-session vsock peer -> ECONNREFUSED."
+  blast_radius_if_breached: "External network attackers query local metadata proxy to steal agent credentials."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent binds metadata HTTP server to 0.0.0.0 on host network."
+  anti_slop_mitigation: "AS-01 asserts metadata endpoint rejects connections from host loopback interface."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "external.intruder"
+    agent_id: "agt_gv_09"
+    trust: "reviewed"
+  initial_state:
+    vault_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "External host process dials 169.254.169.254:80"
+  input_params:
+    external_dial: true
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "vault.security"
+    culprit: "Metadata dial rejected from non-vsock peer"
+    remedy: "Metadata service accessible only from microVM vsock"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "vault.external_access_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "ECONNREFUSED"
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(external_connect_res.unwrap_err().kind(), std::io::ErrorKind::ConnectionRefused);"

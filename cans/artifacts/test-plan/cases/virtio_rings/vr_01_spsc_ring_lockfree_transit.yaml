@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_01_spsc_ring_lockfree_transit"
+title: "Lock-free SPSC shared-memory ring sustains duplex transit with zero atomic lock contention"
+domain: "virtio_rings"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Shared-memory-channel"
+  statement: "Ring header uses AtomicU32 head and tail with single-producer single-consumer lock-free semantics."
+  blast_radius_if_breached: "Ring contention stalls vCPU workers, destroying I/O throughput across channels."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent wraps ring operations in a standard Mutex to pass test, violating lock-free invariant."
+  anti_slop_mitigation: "AS-01 statically verifies absence of Mutex/RwLock in SPSC ring hot path."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transport.ring"
+    agent_id: "agt_vr_01"
+    trust: "reviewed"
+  initial_state:
+    ring_capacity: 4096
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Push and pop 100,000 frames concurrently across producer and consumer threads"
+  input_params:
+    frame_count: 100000
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "ring.spsc"
+    culprit: "none — sustained 100,000 frames lock-free"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "ring.benchmark_complete"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(ring.is_lock_free(), true); assert_eq!(ring.dropped_frames(), 0);"

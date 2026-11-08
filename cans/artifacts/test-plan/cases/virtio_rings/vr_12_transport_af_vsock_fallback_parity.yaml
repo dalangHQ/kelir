@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_12_transport_af_vsock_fallback_parity"
+title: "AF_VSOCK transport fallback produces byte-for-byte identical framing to in-memory SPSC rings"
+domain: "virtio_rings"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Transport-engine-abstraction"
+  statement: "Fallbacks carry identical framing; only the byte carrier differs."
+  blast_radius_if_breached: "Debug and testing workflows using AF_VSOCK diverge from production shared-memory behavior."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent alters wire framing headers for the socket fallback."
+  anti_slop_mitigation: "AS-06 asserts bitwise identical framing bytes between SPSC and AF_VSOCK streams."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transport.router"
+    agent_id: "agt_vr_12"
+    trust: "reviewed"
+  initial_state:
+    test_payload: "hello_vsock_parity"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Encode and dispatch frame over AF_VSOCK backend and SPSC backend"
+  input_params:
+    stream_id: 1
+    flags: 2
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "ring.transport"
+    culprit: "none — wire framing identical"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "transport.parity_verified"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(spsc_encoded_bytes, af_vsock_encoded_bytes);"

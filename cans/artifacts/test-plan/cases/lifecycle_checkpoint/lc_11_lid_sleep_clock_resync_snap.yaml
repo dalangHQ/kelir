@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_11_lid_sleep_clock_resync_snap"
+title: "Host lid wake event dispatches paravirtual clock resync frame over Channel 0x0000, snapping time forward"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Lid-sleep/wake-clock-snapping"
+  statement: "Dispatch clock resync frame over Control 0x0000; guest time snaps to host wall-clock; prevents TLS cert expiration failures."
+  blast_radius_if_breached: "Laptops waking from sleep fail all outbound TLS connections due to CERT_NOT_YET_VALID / CERT_HAS_EXPIRED."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts wake succeeded without verifying guest clock jumped forward."
+  anti_slop_mitigation: "AS-04 asserts guest gettimeofday reflects multi-hour host jump in 0ms."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.power"
+    agent_id: "agt_lc_11"
+    trust: "reviewed"
+  initial_state:
+    simulated_sleep_hours: 4
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Simulate host wake power event after 4 hours sleep; dispatch Control 0x0000 resync"
+  input_params:
+    time_jump_seconds: 14400
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "lifecycle.clock"
+    culprit: "none — clock snapped forward"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.clock_snapped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04"
+    verification: "assert!(guest_clock_gettime(CLOCK_REALTIME) >= host_wall_clock());"

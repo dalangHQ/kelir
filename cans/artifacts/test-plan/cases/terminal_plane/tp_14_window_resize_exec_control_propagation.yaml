@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "tp_14_window_resize_exec_control_propagation"
+title: "Terminal window resize payload rides EXEC control sub-lane 0x03, updating in-guest winsize instantly"
+domain: "terminal_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/04-terminal-plane.md#Window-geometry-and-signals"
+  statement: "Window resize rides EXEC control sub-lane 0x03, dispatching TIOCSWINSZ ioctl to guest slave PTY."
+  blast_radius_if_breached: "TUI apps render corrupted layouts due to stale 80x24 window geometry."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts resize returned Ok without checking guest ioctl(TIOCGWINSZ) result."
+  anti_slop_mitigation: "AS-03 asserts guest command 'stty size' outputs '40 120'."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "terminal.pty"
+    agent_id: "agt_tp_14"
+    trust: "reviewed"
+  initial_state:
+    cols: 80
+    rows: 24
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.terminal.resize(120, 40)"
+  input_params:
+    cols: 120
+    rows: 40
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "terminal.resize"
+    culprit: "none — winsize updated via sub-lane 0x03"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "terminal.resized"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(session.exec('stty size').stdout.trim(), '40 120');"

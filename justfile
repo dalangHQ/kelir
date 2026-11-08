@@ -169,8 +169,27 @@ parity: build-ts
 # build-shim is not in this chain: shim has its own CI gate and its
 # own time budget. check-plugin-all is not here: parity already runs
 # the same per-plugin audit. Lint is a target, not an inline body.
-pre-flight: check-canon check-hygiene check-spec check-codebase-refs check-plugin-coverage check-layers check-graph check-tiered check-budgets lint typecheck parity
+# Test-plan gates (work-order.md Part 10): manifest parity, anti-slop
+# lint, scorecard byte-for-byte verification.
+pre-flight: check-canon check-hygiene check-spec check-codebase-refs check-plugin-coverage check-layers check-graph check-tiered check-budgets check-manifest check-tests check-scorecard lint typecheck parity
 
 check-canon:
     ./scripts/check-canon.sh
     just test-all
+
+# ── Test plan gates (work-order.md Part 10: Scorecard & Linter Harness) ──
+# Generate cans/artifacts/scorecard.md from manifest and live telemetry
+scorecard:
+    cargo run -p kelir-testkit --bin scorecard -- generate
+
+# CI Gate: Verify scorecard is byte-for-byte identical to physical evidence
+check-scorecard:
+    cargo run -p kelir-testkit --bin scorecard -- check
+
+# Validate parity between manifest.yaml and cases/**/*.yaml files
+check-manifest:
+    cargo run -p kelir-testkit --bin check-manifest
+
+# Run static AST linter enforcing Anti-Slop Laws AS-01 to AS-08
+check-tests:
+    cargo run -p kelir-testkit --bin check-tests

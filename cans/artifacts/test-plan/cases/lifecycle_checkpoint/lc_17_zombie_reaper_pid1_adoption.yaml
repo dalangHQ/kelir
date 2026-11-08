@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_17_zombie_reaper_pid1_adoption"
+title: "kelir-shim PID 1 reaps adopted orphan processes via non-blocking waitpid loop, preventing PID exhaustion"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Zombie-reaping"
+  statement: "Shim runs as guest PID 1; waitpid(-1, WNOHANG) loop adopts and reaps foreground shell exits."
+  blast_radius_if_breached: "Long-running microVMs exhaust Linux PID table with `<defunct>` zombie processes."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts background task finished without inspecting in-guest process table."
+  anti_slop_mitigation: "AS-02 asserts `ps -ef` contains 0 processes with state 'Z' after orphan exits."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_lc_17"
+    trust: "reviewed"
+  initial_state:
+    session_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest spawns double-forked daemon `(sleep 0.1 &) &`; wait 0.5 seconds"
+  input_params:
+    spawn_orphan: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "shim.reaper"
+    culprit: "none — orphan process reaped"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "shim.orphan_reaped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(session.exec('sh', ['-c', 'ps -A -o stat | grep Z | wc -l']).stdout.trim(), '0');"

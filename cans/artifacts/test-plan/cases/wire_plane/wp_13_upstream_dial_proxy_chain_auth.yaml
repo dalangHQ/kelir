@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_13_upstream_dial_proxy_chain_auth"
+title: "Upstream dial transport routes TCP connections through authenticated corporate proxy chains"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Upstream-dial-transport"
+  statement: "Corporate egress works without guest cooperation; host netstack performs upstream handshake and splices bytes."
+  blast_radius_if_breached: "Corporate proxies block agent workloads due to missing credentials, or credentials leak to guest env."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent injects HTTP_PROXY credentials directly into guest environment variables."
+  anti_slop_mitigation: "AS-02 asserts guest environment contains 0 proxy credentials; upstream proxy receives Basic auth."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.dial"
+    agent_id: "agt_wp_13"
+    trust: "reviewed"
+  initial_state:
+    proxy_auth: "user:corp_password"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest dials api.corp.com via host netstack configured with authenticated HTTP CONNECT proxy"
+  input_params:
+    target: "api.corp.com:443"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "wire.dial"
+    culprit: "none — authenticated upstream handshake succeeded"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.proxy_dial_authenticated"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(guest_env_has('HTTP_PROXY'), false); assert_eq!(upstream_connect_header('Proxy-Authorization').is_some(), true);"

@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_07_tool_guard_mcp_console_upstream"
+title: "plugin-tool-guard executes strictly upstream of plugin-mcp on the MCP_CONSOLE mux stream"
+domain: "governance_tools"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/tool-guard.md#Crate-dependencies-(tool-guard)"
+  statement: "tool-guard sits upstream on MCP_CONSOLE; no tool invocation reaches guest without passing tool-guard."
+  blast_radius_if_breached: "MCP plugin processes and forwards tool commands before governance filters evaluate."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent registers MCP plugin ahead of tool-guard in dispatch array."
+  anti_slop_mitigation: "AS-01 asserts dispatch index of tool-guard < dispatch index of mcp on MCP_CONSOLE."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "pipeline.builder"
+    agent_id: "agt_gt_07"
+    trust: "reviewed"
+  initial_state:
+    plugins_mounted: ["plugin-mcp", "plugin-tool-guard"]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "builder.boot(); inspect stream kind MCP_CONSOLE dispatch ordering"
+  input_params:
+    stream_kind: 18 # 0x0012 MCP_CONSOLE
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "pipeline.ordering"
+    culprit: "none — tool-guard is upstream of mcp"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "pipeline.order_validated"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert!(tool_guard_idx < mcp_idx, 'tool-guard must precede mcp in dispatch order');"

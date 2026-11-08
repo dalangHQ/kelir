@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_07_nested_script_ancestor_trap"
+title: "Nested execution chain (npm -> sh -> node) traps at the sh ancestor process before payload runs"
+domain: "supply_chain_security"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Error-and-return-semantics-(supply-chain)"
+  statement: "Nested npm->sh->node traps at the sh ancestor; prevents child payload execution."
+  blast_radius_if_breached: "Attacker evades package guard by wrapping exploit scripts in shell subprocesses."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows intermediate shell process to spawn, catching only the leaf node."
+  anti_slop_mitigation: "AS-01 asserts `sh` process was intercepted and halted before `node` execve occurred."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "package.guard"
+    agent_id: "agt_sc_07"
+    trust: "reviewed"
+  initial_state:
+    nested_chain: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "npm spawns /bin/sh to execute postinstall; sh attempts to exec node payload.js"
+  input_params:
+    ancestor: "npm"
+
+expected_observations:
+  exit_code: 126
+  state_modified: false
+  diagnostic:
+    domain: "supply_chain.ancestor"
+    culprit: "Lifecycle script trapped at /bin/sh ancestor"
+    remedy: "none required — execution prevented"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "supply_chain.ancestor_trapped"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "AncestorScriptBlocked"
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(leaf_node_executed(), false); assert_eq!(sh_ancestor_trapped(), true);"

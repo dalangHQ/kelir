@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "gv_08_external_egress_sidecar_tls_relay"
+title: "Opt-in external sidecar daemon terminates TLS and injects bearer tokens without exposing plaintext to supervisor"
+domain: "governance_vault"
+target_tier: "e2e"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/vault.md#Optional-external-egress-rewriting"
+  statement: "Sidecar process owns TLS termination and secret substitution; runs outside supervisor; supervisor memory never sees plaintext."
+  blast_radius_if_breached: "Supervisor process memory dump exposes raw enterprise API tokens."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent terminates TLS inside supervisor memory space."
+  anti_slop_mitigation: "AS-01 asserts supervisor heap contains zero bytes of plaintext secret during sidecar egress."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "vault.sidecar"
+    agent_id: "agt_gv_08"
+    trust: "reviewed"
+  initial_state:
+    sidecar_active: true
+    raw_secret: "super_secret_token_123"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest sends plain HTTP request to external sidecar proxy for upstream injection"
+  input_params:
+    sidecar_mode: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "vault.sidecar"
+    culprit: "none — sidecar injected token out-of-process"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "vault.sidecar_relayed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(supervisor_memory_contains('super_secret_token_123'), false);"

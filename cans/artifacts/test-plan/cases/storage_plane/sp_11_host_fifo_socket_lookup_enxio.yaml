@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_11_host_fifo_socket_lookup_enxio"
+title: "Guest VFS lookup targeting host FIFO (S_IFIFO) or host socket (S_IFSOCK) fails with ENXIO"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Host-I/O-invariants"
+  statement: "Host FIFO and socket rejection: S_IFIFO and S_IFSOCK fail lookup with ENXIO."
+  blast_radius_if_breached: "Guest hangs host ring threads by opening blocking host FIFOs or Unix domain sockets."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts open failed without verifying ENXIO."
+  anti_slop_mitigation: "AS-03 asserts lookup error raw OS error == libc::ENXIO."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_sp_11"
+    trust: "reviewed"
+  initial_state:
+    host_fifo: "named_pipe.fifo"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "fuse_op"
+  command: "Guest attempts open('named_pipe.fifo', O_RDONLY)"
+  input_params:
+    target_fifo: "named_pipe.fifo"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "storage.broker"
+    culprit: "Host FIFO/socket lookup rejected"
+    remedy: "IPC channels must route via vsock"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.fifo_lookup_denied"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "ENXIO"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(lookup_err.raw_os_error(), Some(libc::ENXIO));"

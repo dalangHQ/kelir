@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_08_avf_pkvm_boundary_enforcement"
+title: "Android /dev/avf backend rejects non-donated memory access via protected KVM boundary"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Driver-backends"
+  statement: "driver-avf executes through Android Virtualization Framework via /dev/avf and pKVM memory donation."
+  blast_radius_if_breached: "Protected microVM accesses non-donated host pages, breaching Android pKVM isolation."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts AVF executed without checking that un-donated host memory traps as an access fault."
+  anti_slop_mitigation: "AS-01 asserts physical /dev/avf ioctl boundary."
+
+setup:
+  env: "dev"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_08"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "driver-avf"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "driver.map_guest_memory(non_donated_host_addr, 4096)"
+  input_params:
+    donated_to_pkvm: false
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "driver.avf"
+    culprit: "Memory range not donated to pKVM enclave"
+    remedy: "Donate host memory range via AVF API prior to mapping"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.avf_access_denied"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_PKVM_NON_DONATED_MEMORY"
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_matches!(res, Err(DriverError::PkvmDonationViolation));"

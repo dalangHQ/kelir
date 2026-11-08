@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_13_transport_named_pipe_windows_parity"
+title: "Windows named-pipe transport fallback enforces identical credit-based park semantics"
+domain: "virtio_rings"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Transport-engine-abstraction"
+  statement: "Named-pipe fallback (Windows) uses OS pipe buffer backpressure with identical framing."
+  blast_radius_if_breached: "Windows execution deadlocks or silently drops frames under high backpressure."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent ignores backpressure on Windows and drops excess frames."
+  anti_slop_mitigation: "AS-03 asserts backpressure park state triggered when buffer fills."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transport.router"
+    agent_id: "agt_vr_13"
+    trust: "reviewed"
+  initial_state:
+    pipe_buffer_size: 65536
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Send 128KB payload through 64KB named pipe without active reader"
+  input_params:
+    burst_bytes: 131072
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "ring.windows"
+    culprit: "none — sender parked cleanly on backpressure"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "transport.backpressure_park"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(sender_state.is_parked(), true); assert_eq!(dropped_frames_count, 0);"

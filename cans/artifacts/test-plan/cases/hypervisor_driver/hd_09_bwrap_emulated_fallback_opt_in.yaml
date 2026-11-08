@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_09_bwrap_emulated_fallback_opt_in"
+title: "driver-bwrap boots successfully only when allow_emulated_fallback is explicitly set to true"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Fallback-policy"
+  statement: "Emulation tiers require explicit granular opt-in in DriverPolicy."
+  blast_radius_if_breached: "Production systems accidentally deploy without hardware virtualization security boundaries."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts bwrap booted without verifying allow_emulated_fallback was true."
+  anti_slop_mitigation: "AS-07 requires explicit test tier annotation #[test_tier(emulated)]."
+
+setup:
+  env: "dev"
+  platform_tier: "tier_2"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_09"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "driver-bwrap"
+      allow_emulated_fallback: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "DriverRouter::boot() with driver-bwrap and allow_emulated_fallback=true"
+  input_params:
+    backend: "driver-bwrap"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.bwrap"
+    culprit: "none — emulated fallback explicitly allowed"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.emulated_boot"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-07"
+    verification: "assert!(driver.is_emulated()); assert!(policy.allow_emulated_fallback);"

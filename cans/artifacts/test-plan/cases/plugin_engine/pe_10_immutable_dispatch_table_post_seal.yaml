@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_10_immutable_dispatch_table_post_seal"
+title: "Dispatch tables become completely immutable after builder seal; zero atomic loads occur during ring transit"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Static-dispatch"
+  statement: "Dispatch tables are immutable after seal; zero atomic loads on ring path; ArcSwap is not used post-boot."
+  blast_radius_if_breached: "Dynamic lock contention or atomic load overhead degrades high-frequency VirtIO ring processing."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent uses ArcSwap or RwLock in the hot path to allow runtime hook additions."
+  anti_slop_mitigation: "AS-01 statically verifies absence of ArcSwap/RwLock/Mutex in dispatch path."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "builder.seal"
+    agent_id: "agt_pe_10"
+    trust: "reviewed"
+  initial_state:
+    builder_sealed: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "builder.boot(); attempt to dynamically register new hook on sealed session"
+  input_params:
+    action: "mutate_dispatch_table"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "builder.seal"
+    culprit: "Attempted to mutate dispatch table on sealed session"
+    remedy: "Plugins and hooks must be registered prior to builder.boot()"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "builder.mutation_after_seal_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "ESealedSession"
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_matches!(register_err, Err(KelirError::SessionSealed)); assert_eq!(dispatch_table.is_immutable(), true);"

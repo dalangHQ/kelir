@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_02_wx_mmu_prot_exec_trap"
+title: "Guest anonymous mmap with PROT_EXEC or memfd_create traps at Stage-2 MMU and halts with E_WX_VIOLATION"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Strict-hardware/kernel-abstraction-layer"
+  statement: "Strict W^X enforced at MMU boundary: anonymous PROT_EXEC allocations and memfd_create abort immediately."
+  blast_radius_if_breached: "Untrusted code executes dynamically synthesized shellcode in memory, defeating binary attestation."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts generic exit failure without verifying the Stage-2 MMU execution fault."
+  anti_slop_mitigation: "AS-01 forbids mocking the MMU. AS-03 requires matching E_WX_VIOLATION."
+
+setup:
+  env: "dev"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_02"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      wx_enforcement: "Strict"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.exec('/bin/exploit_jit', ProcessLimits::default())"
+  input_params:
+    syscall: "mmap"
+    flags: "MAP_ANONYMOUS | MAP_PRIVATE"
+    prot: "PROT_READ | PROT_WRITE | PROT_EXEC"
+
+expected_observations:
+  exit_code: 137
+  state_modified: false
+  diagnostic:
+    domain: "driver.mmu"
+    culprit: "Stage-2 MMU execution fault: anonymous PROT_EXEC page allocation"
+    remedy: "Ensure W^X compliance; allocate PROT_READ|PROT_WRITE or request verified JIT token"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.wx_violation"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_WX_VIOLATION"
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert!(driver.has_hardware_mmu_hooks()); no mock VmmDriver in compilation graph."
+  - rule: "AS-03"
+    verification: "assert_eq!(receipt.fault_reason, 'E_WX_VIOLATION'); assert_eq!(receipt.exit_code, 137);"

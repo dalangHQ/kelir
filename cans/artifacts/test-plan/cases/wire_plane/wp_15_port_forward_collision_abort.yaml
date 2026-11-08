@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_15_port_forward_collision_abort"
+title: "Binding an occupied host port returns Err(WireError::PortOccupied) without falling back to ephemeral port"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Port-forwarding"
+  statement: "Explicit host_port bind failure returns Err(WireError::PortOccupied); no silent fallback to ephemeral port."
+  blast_radius_if_breached: "Services bind unexpected ports silently, breaking external orchestrators expecting explicit bindings."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent silently catches bind error and allocates an ephemeral port."
+  anti_slop_mitigation: "AS-03 asserts exact WireError::PortOccupied error match."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.forward"
+    agent_id: "agt_wp_15"
+    trust: "reviewed"
+  initial_state:
+    occupied_port: 9999
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Bind port 9999 with host process; call session.wire.forward_port(8080, 9999)"
+  input_params:
+    host_port: 9999
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "wire.forward"
+    culprit: "Explicit host port 9999 is already occupied"
+    remedy: "Specify an unoccupied host port or use host_port=0 for ephemeral binding"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.port_bind_failed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "PortOccupied"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(forward_result, Err(WireError::PortOccupied));"

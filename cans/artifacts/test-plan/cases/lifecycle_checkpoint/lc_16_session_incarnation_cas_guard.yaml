@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_16_session_incarnation_cas_guard"
+title: "Destructive verb specifying mismatched UUIDv7 incarnation_id aborts with E_STALE_INCARNATION"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Session-incarnation"
+  statement: "Destructive lifecycle verbs accept expected incarnation_id; CAS mismatch aborts E_STALE_INCARNATION."
+  blast_radius_if_breached: "Stale agent workers destroy newly spawned successor microVMs sharing same session ID."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent deletes session row without checking incarnation_id compare-and-swap."
+  anti_slop_mitigation: "AS-03 requires exact error match E_STALE_INCARNATION."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.worker"
+    agent_id: "agt_lc_16"
+    trust: "reviewed"
+  initial_state:
+    session_id: "ses_shared_01"
+    active_incarnation: "018f3a2b-1111-7000-8000-000000000001"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.remove(expected_incarnation: '018f3a2b-0000-7000-8000-000000000000')"
+  input_params:
+    stale_incarnation: true
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "catalog.cas"
+    culprit: "Incarnation ID mismatch; target session has been reincarnated"
+    remedy: "Refresh session handle from catalog before issuing destructive verb"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "catalog.stale_incarnation_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_STALE_INCARNATION"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(remove_err, KelirError::StaleIncarnation); assert!(catalog_session_exists('ses_shared_01'));"

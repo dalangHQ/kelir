@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_02_stream_mux_open_data_close_flags"
+title: "Stream mux frames enforce correct protocol flags (OPEN, DATA, CLOSE, RST, WINDOW_UPDATE)"
+domain: "protocol_mux"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Stream-mux-framing"
+  statement: "Flags: 0x01 OPEN, 0x02 DATA, 0x04 CLOSE, 0x08 RST, 0x10 WINDOW_UPDATE."
+  blast_radius_if_breached: "Malformed mux frames desynchronize stream state machines, leaking memory handles."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent accepts invalid flag bit combination (e.g. OPEN + CLOSE simultaneously)."
+  anti_slop_mitigation: "AS-06 asserts parser rejects mutually exclusive flag masks with EProtocol."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transport.mux"
+    agent_id: "agt_pm_02"
+    trust: "reviewed"
+  initial_state:
+    raw_frame_header: [0x00, 0x00, 0x00, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00] # OPEN (0x01) | CLOSE (0x04)
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "StreamMuxParser::decode_frame_header(raw_frame_header)"
+  input_params:
+    flags: 5
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "protocol.mux"
+    culprit: "Invalid mutually exclusive stream flags (OPEN | CLOSE)"
+    remedy: "Ensure frame encoder sets valid flag bits"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "protocol.invalid_flags_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EProtocol('Mutually exclusive flags')"
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_matches!(decode_res, Err(ProtocolError::InvalidFlags(5)));"

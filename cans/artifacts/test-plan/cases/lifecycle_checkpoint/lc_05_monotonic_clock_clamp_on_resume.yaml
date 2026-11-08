@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_05_monotonic_clock_clamp_on_resume"
+title: "Resumed microVM clamps CLOCK_MONOTONIC to max(current, snapshot), guaranteeing monotonic forward progress"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Clock-invariants"
+  statement: "CLOCK_MONOTONIC never regresses across restore; clamps to max(current_monotonic, snapshot_monotonic)."
+  blast_radius_if_breached: "Tokio, Go, and libuv event loops hang or crash due to negative timer deltas."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts resume succeeded without comparing guest monotonic timestamps before and after."
+  anti_slop_mitigation: "AS-04 asserts monotonic_after >= monotonic_before strictly."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.clock"
+    agent_id: "agt_lc_05"
+    trust: "reviewed"
+  initial_state:
+    snapshot_monotonic_ns: 5000000000
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Restore snapshot where host monotonic clock is behind snapshot timestamp"
+  input_params:
+    force_backwards_clock: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "lifecycle.clock"
+    culprit: "none — monotonic clamp enforced"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.clock_clamped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04"
+    verification: "assert!(guest_clock_gettime(CLOCK_MONOTONIC) >= 5000000000);"

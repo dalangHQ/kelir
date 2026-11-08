@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_05_virtio_blk_erofs_readonly_mount"
+title: "virtio-blk exposes immutable EROFS rootfs block device, cold-mounted by guest in under 2ms"
+domain: "virtio_rings"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#EROFS-rootfs"
+  statement: "Stripped base system pre-baked into read-only EROFS; cold-mounted as virtio-blk in <2ms."
+  blast_radius_if_breached: "Rootfs mount stalls cold-boot budget or permits rootfs writes."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent mounts ext4 read-write image instead of strictly immutable EROFS."
+  anti_slop_mitigation: "AS-02 asserts guest write attempt to / returns EROFS (Read-only file system)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_vr_05"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Mount EROFS rootfs via virtio-blk and issue write() to /usr/bin/test"
+  input_params:
+    target_path: "/usr/bin/test"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "ring.blk"
+    culprit: "Write attempted on read-only EROFS virtio-blk device"
+    remedy: "Writes must target VirtIO-FS workspace broker"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.erofs_write_denied"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(write_err.raw_os_error(), Some(libc::EROFS)); assert!(mount_time < Duration::from_millis(2));"

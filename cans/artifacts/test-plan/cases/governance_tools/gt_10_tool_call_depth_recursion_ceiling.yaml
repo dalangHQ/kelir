@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_10_tool_call_depth_recursion_ceiling"
+title: "Recursive tool call chain exceeding max_invocations_per_trace (50) aborts with ECYCLICREWRITE"
+domain: "governance_tools"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/tool-guard.md#Call-quota"
+  statement: "Call depth ceiling: max_invocations_per_trace (default: 50); infinite recursion rejects with ECYCLICREWRITE."
+  blast_radius_if_breached: "Infinite agent tool recursion loops consume infinite compute time and memory."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows 51st tool call in same trace."
+  anti_slop_mitigation: "AS-03 asserts 51st call returns Err(ECYCLICREWRITE)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_gt_10"
+    trust: "reviewed"
+  initial_state:
+    trace_invocation_count: 50
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Model issues 51st tool call within single trace context"
+  input_params:
+    call_index: 51
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "tool_guard.depth"
+    culprit: "Tool call recursion ceiling exceeded (max: 50)"
+    remedy: "Terminate loop or break trace into discrete steps"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "tool_guard.depth_exceeded"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "ECYCLICREWRITE"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(call_res, Err(ToolGuardError::RecursionCeilingExceeded));"

@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_01_jsonrpc_tool_call_interposition"
+title: "JSON-RPC 2.0 tools/call frames on MCP_CONSOLE are intercepted and parsed in native memory before exec"
+domain: "governance_tools"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/tool-guard.md#Total-tool-call-interposition"
+  statement: "Intercepts JSON-RPC 2.0 frames on MCP_CONSOLE matching 'tools/call'; deserializes tool name and arguments in native memory."
+  blast_radius_if_breached: "Unverified model tool calls execute directly against in-guest execution shims without policy checks."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts tool executed without verifying interception occurred before guest execution."
+  anti_slop_mitigation: "AS-01 asserts tool-guard hook fired and inspected arguments before guest process launch."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.model"
+    agent_id: "agt_gt_01"
+    trust: "reviewed"
+  initial_state:
+    tool_registered: "execute_command"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Model dispatches JSON-RPC tools/call for 'execute_command' over stream kind MCP_CONSOLE"
+  input_params:
+    method: "tools/call"
+    params: { name: "execute_command", arguments: { command: "whoami" } }
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "tool_guard.interposition"
+    culprit: "none — tool call intercepted"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "tool_guard.tool_call_intercepted"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(tool_guard_interception_count(), 1); assert_eq!(interception_payload_tool_name(), 'execute_command');"

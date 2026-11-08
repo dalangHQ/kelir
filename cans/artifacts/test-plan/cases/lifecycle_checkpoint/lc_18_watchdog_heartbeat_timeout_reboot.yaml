@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_18_watchdog_heartbeat_timeout_reboot"
+title: "Watchdog fires WatchdogAction::Reboot when guest fails to emit GuestToHost::Heartbeat within timeout"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Watchdog"
+  statement: "Driver fires on_watchdog when heartbeat expires; ExecuteDefault triggers configured WatchdogAction."
+  blast_radius_if_breached: "Deadlocked guest OS kernels freeze and never restart, stranding cloud workers."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts reboot without checking that vCPU registers were reset to instruction 0."
+  anti_slop_mitigation: "AS-03 asserts VM transitions through Reboot state and restarts cold boot."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.watchdog"
+    agent_id: "agt_lc_18"
+    trust: "reviewed"
+  initial_state:
+    watchdog_action: "Reboot"
+    timeout_seconds: 2
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Simulate kernel panic in guest; suppress Heartbeat frames for 3 seconds"
+  input_params:
+    suppress_heartbeat: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "lifecycle.watchdog"
+    culprit: "Heartbeat expired; executed WatchdogAction::Reboot"
+    remedy: "none required — VM rebooted"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.watchdog_rebooted"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "WatchdogReboot"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(watchdog_reboot_count(), 1); assert_eq!(session.is_alive(), true);"

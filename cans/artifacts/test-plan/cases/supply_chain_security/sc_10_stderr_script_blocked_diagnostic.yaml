@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_10_stderr_script_blocked_diagnostic"
+title: "Trapped package lifecycle script emits structured diagnostic naming package manager and blocked path to stderr"
+domain: "supply_chain_security"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Error-and-return-semantics-(supply-chain)"
+  statement: "stderr_message names manager and blocked script; surfaces actionable diagnosis to developer."
+  blast_radius_if_breached: "Developers see silent build failures without knowing why their package install failed."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent prints generic error without naming the exact offending package manager."
+  anti_slop_mitigation: "AS-03 asserts guest stderr contains 'blocked npm lifecycle script at node_modules/bad/install.js'."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "package.guard"
+    agent_id: "agt_sc_10"
+    trust: "reviewed"
+  initial_state:
+    blocked_script: "node_modules/bad/install.js"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Trap npm executing node_modules/bad/install.js; emit diagnostic to stderr"
+  input_params:
+    manager: "npm"
+    script: "node_modules/bad/install.js"
+
+expected_observations:
+  exit_code: 126
+  state_modified: false
+  diagnostic:
+    domain: "supply_chain.diagnostic"
+    culprit: "npm lifecycle script blocked at node_modules/bad/install.js"
+    remedy: "Check package dependencies"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "supply_chain.diagnostic_emitted"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "LifecycleScriptBlocked"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert!(stderr_output.contains('blocked npm lifecycle script at node_modules/bad/install.js'));"

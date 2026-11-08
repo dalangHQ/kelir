@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_04_binary_blake3_cache_invalidation"
+title: "Modifying binary file st_mtime_ns invalidates cached BLAKE3 hash, forcing re-hash at next exec trap"
+domain: "attestation_receipts"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/10-attestation.md#binary_blake3-identity"
+  statement: "Cache key (st_dev, st_ino, st_size, st_mtime_ns); invalidated on any key component change."
+  blast_radius_if_breached: "Replacing an executable file in-place executes unverified code under a stale trusted receipt hash."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts hash cached without checking that touch/truncate forces cache invalidation."
+  anti_slop_mitigation: "AS-02 asserts new hash is computed and recorded when file mtime changes."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_ar_04"
+    trust: "reviewed"
+  initial_state:
+    script_path: "script.sh"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Exec script.sh; mutate script.sh content and mtime; re-exec script.sh"
+  input_params:
+    action: "exec_modify_exec"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "attestation.cache"
+    culprit: "none — cache invalidated on mtime change"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 50
+    tombstones_created: 0
+    host_blocks_allocated: 1
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.hash_cache_invalidated"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_ne!(first_receipt.binary_blake3, second_receipt.binary_blake3);"

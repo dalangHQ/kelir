@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_03_dirty_bytes_exact_byte_accounting"
+title: "SnapshotDescriptor.dirty_bytes records exact written byte counts, remaining identical across 4K and 16K hosts"
+domain: "attestation_receipts"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/10-attestation.md#Field-semantics"
+  statement: "dirty_bytes is byte count, not page count; yields identical receipts across 4KB Linux and 16KB Apple hosts."
+  blast_radius_if_breached: "Identical agent runs produce diverging Merkle roots and receipts when executing on different OS hosts."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent multiplies dirty page count by host page size (returning 16384 on Mac and 4096 on Linux)."
+  anti_slop_mitigation: "AS-06 asserts dirty_bytes == 100 on both x86_64 and aarch64."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_ar_03"
+    trust: "reviewed"
+  initial_state:
+    workspace_file: "test.dat"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest writes exactly 100 bytes to test.dat; harvest ExecutionReceipt"
+  input_params:
+    bytes: 100
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "attestation.receipt"
+    culprit: "none — exact byte accounting verified"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 100
+    tombstones_created: 0
+    host_blocks_allocated: 1
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.receipt_emitted"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(receipt.dirty_bytes, Some(100)); assert_ne!(receipt.dirty_bytes, Some(4096));"

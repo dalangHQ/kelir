@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_07_exec_signal_cancellation_by_exec_id"
+title: "Process cancellation signals on Channel 0x0000 carry exec_id, preventing PID reuse signal misdirection"
+domain: "protocol_mux"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Binary-exec-channel"
+  statement: "Channel 0x0000 signals carry exec_id, never raw guest pid; unknown/exited exec_id drops silently."
+  blast_radius_if_breached: "Sending SIGKILL to recycled guest PID kills innocent successor task."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent passes raw PID integer over vsock wire instead of exec_id."
+  anti_slop_mitigation: "AS-01 asserts wire payload carries 64-bit exec_id."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_pm_07"
+    trust: "reviewed"
+  initial_state:
+    task_exited_and_pid_reused: true
+    stale_exec_id: 100
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Send MSG_SIGNAL(SIGTERM, exec_id: 100) after task 100 has already exited and its PID was reassigned"
+  input_params:
+    exec_id: 100
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "shim.signal"
+    culprit: "none — signal dropped silently for dead exec_id"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "shim.stale_signal_ignored"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(successor_task_running_with_reused_pid.is_alive(), true);"

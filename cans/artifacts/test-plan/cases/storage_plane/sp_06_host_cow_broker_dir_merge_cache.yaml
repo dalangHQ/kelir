@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_06_host_cow_broker_dir_merge_cache"
+title: "Directory readdir merge cache reuses merged view of base+upper+tombstones until subtree invalidation"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Host-CoW-broker"
+  statement: "Per-directory merge result cached; invalidated on broker mutation of that subtree."
+  blast_radius_if_breached: "Repeated readdir during heavy build storms causes severe host CPU exhaustion."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts readdir returned files without verifying cache hit counter."
+  anti_slop_mitigation: "AS-02 asserts second readdir performs 0 host filesystem stat calls."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.broker"
+    agent_id: "agt_sp_06"
+    trust: "reviewed"
+  initial_state:
+    dir_entries: 100
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "fuse_op"
+  command: "Execute readdir on /workspace; repeat readdir on /workspace without intermediate mutation"
+  input_params:
+    target_dir: "/workspace"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "storage.cache"
+    culprit: "none — readdir merge cache hit"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.cache_hit"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(broker.dir_merge_cache_hits(), 1); assert_eq!(second_readdir_stat_calls, 0);"

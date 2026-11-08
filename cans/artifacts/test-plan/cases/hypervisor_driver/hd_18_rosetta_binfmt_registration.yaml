@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_18_rosetta_binfmt_registration"
+title: "macOS Rosetta runtime directory mounted via VirtIO-FS registers into guest binfmt_misc for x86_64 exec"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Multi-architecture-execution"
+  statement: "Rosetta directory mounted at /run/rosetta via read-only VirtIO-FS registers into binfmt_misc for x86_64 execution."
+  blast_radius_if_breached: "x86_64 containers fail to run on Apple Silicon with ENOEXEC errors."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts x86_64 binary ran without verifying Rosetta translation handler in binfmt_misc."
+  anti_slop_mitigation: "AS-03 matches ExitKind::Normal on x86_64 ELF execution on Apple Silicon."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_18"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "driver-hvf"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.exec('/bin/x86_64_static_elf', ProcessLimits::default()) on macOS arm64"
+  input_params:
+    binary_arch: "x86_64"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.rosetta"
+    culprit: "none — executed via /run/rosetta/rosetta"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.rosetta_exec"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(receipt.exit_code, 0); assert!(fs::exists_in_guest('/proc/sys/fs/binfmt_misc/rosetta'));"

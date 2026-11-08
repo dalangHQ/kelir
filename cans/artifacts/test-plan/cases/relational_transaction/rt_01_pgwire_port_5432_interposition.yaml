@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "rt_01_pgwire_port_5432_interposition"
+title: "plugin-db-proxy intercepts port 5432 traffic, decoding PostgreSQL Query/Parse frames via pgwire parser"
+domain: "relational_transaction"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/db-proxy.md#Invariants-and-policy-(db-proxy)"
+  statement: "PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser; mediates relational protocol traffic."
+  blast_radius_if_breached: "Unverified SQL queries execute directly against enterprise databases without policy checks."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts TCP connection succeeded without inspecting pgwire decoded AST."
+  anti_slop_mitigation: "AS-01 asserts pgwire parser extracted SQL query string before upstream relay."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "db.proxy"
+    agent_id: "agt_rt_01"
+    trust: "reviewed"
+  initial_state:
+    postgres_upstream_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest transmits pgwire Query frame: 'SELECT * FROM users'"
+  input_params:
+    port: 5432
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "db_proxy.pgwire"
+    culprit: "none — Q frame decoded"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "db_proxy.query_decoded"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(intercepted_sql_query(), 'SELECT * FROM users'); assert_eq!(pgwire_frames_decoded(), 1);"

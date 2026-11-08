@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_13_host_reaper_kqueue_proc_exit"
+title: "macOS kqueue EVFILT_PROC watcher on host PID terminates hypervisor instance immediately upon host exit"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Host-crash-reaper"
+  statement: "macOS: kqueue(EVFILT_PROC, NOTE_EXIT) watcher on host PID terminates hypervisor."
+  blast_radius_if_breached: "Orphaned hypervisor instances on macOS consume host battery and thermal budget."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent tests on Linux and claims macOS kqueue reaper works."
+  anti_slop_mitigation: "AS-07 enforces macOS platform execution and asserts kevent NOTE_EXIT trigger."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "host.reaper"
+    agent_id: "agt_lc_13"
+    trust: "reviewed"
+  initial_state:
+    macos_kqueue_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Spawn supervisor thread watching parent PID via kqueue; terminate parent"
+  input_params:
+    filter: "EVFILT_PROC"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "host.reaper"
+    culprit: "Parent process exited; kqueue NOTE_EXIT received"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "host.kqueue_reaped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-07"
+    verification: "assert_eq!(kevent_note_exit_received, true); assert_eq!(hypervisor_stopped, true);"

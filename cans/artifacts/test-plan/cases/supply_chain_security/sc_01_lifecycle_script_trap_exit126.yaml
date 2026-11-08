@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_01_lifecycle_script_trap_exit126"
+title: "Package manager executing postinstall lifecycle script in node_modules is trapped and exits 126"
+domain: "supply_chain_security"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
+  statement: "Blocks execution of lifecycle scripts in dependency directories; lifecycle-script deny -> exit 126 (permission denied)."
+  blast_radius_if_breached: "Compromised npm/pip packages execute arbitrary host shellcode during dependency installation."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent catches script execution in guest userspace rather than via hypervisor trap."
+  anti_slop_mitigation: "AS-03 asserts exact exit code 126 and TrapEvent records blocked package manager."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "package.guard"
+    agent_id: "agt_sc_01"
+    trust: "reviewed"
+  initial_state:
+    postinstall_script: "node_modules/malicious-pkg/postinstall.sh"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.exec('sh', ['node_modules/malicious-pkg/postinstall.sh'])"
+  input_params:
+    script_path: "node_modules/malicious-pkg/postinstall.sh"
+
+expected_observations:
+  exit_code: 126
+  state_modified: false
+  diagnostic:
+    domain: "supply_chain.package_guard"
+    culprit: "Lifecycle script execution blocked in dependency directory"
+    remedy: "Execute dependency scripts via explicit sandboxed task"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "supply_chain.lifecycle_script_blocked"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "LifecycleScriptBlocked"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(receipt.exit_code, 126); assert!(stderr_output.contains('Lifecycle script blocked'));"

@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "tp_06_placeholder_mask_carryover_window"
+title: "In-place console masking maintains MAX_PLACEHOLDER_LEN - 1 carryover window across chunk boundaries"
+domain: "terminal_plane"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/04-terminal-plane.md#Host-filter-pipeline-execution-order"
+  statement: "Maintains MAX_PLACEHOLDER_LEN - 1 carryover window across chunk boundaries for masking."
+  blast_radius_if_breached: "Secret patterns split across 64KB chunk boundaries leak unredacted to model context."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent tests secrets that fit entirely in one chunk, ignoring the boundary carryover logic."
+  anti_slop_mitigation: "AS-06 asserts secret split as 'sk-an' (chunk 1) and 't-12345' (chunk 2) is redacted to '[REDACTED]'."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "terminal.interposer"
+    agent_id: "agt_tp_06"
+    trust: "reviewed"
+  initial_state:
+    secret: "sk-ant-12345"
+    chunk_1: "API key is sk-an"
+    chunk_2: "t-12345 confirmed"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "masking_engine.process_chunk(chunk_1); masking_engine.process_chunk(chunk_2)"
+  input_params:
+    carryover_window: 16
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "terminal.mask"
+    culprit: "none — split secret redacted across chunks"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "terminal.secret_redacted"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(output_1 + &output_2, 'API key is [REDACTED] confirmed');"

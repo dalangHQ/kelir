@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "tp_07_vt100_wireframe_matrix_determinism"
+title: "Headless VT100 wireframe grid export yields deterministic character matrix hash for identical runs"
+domain: "terminal_plane"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/04-terminal-plane.md#Headless-VT100-wireframe-grid"
+  statement: "session.terminal.export_screen_matrix() yields deterministic terminal wireframe receipts."
+  blast_radius_if_breached: "TUI-based agent evaluations cannot verify visual terminal states deterministically."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts matrix contains non-empty lines without asserting bitwise hash equivalence."
+  anti_slop_mitigation: "AS-06 matches hardcoded BLAKE3 hash of standard 80x24 wireframe screen matrix."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "terminal.vt100"
+    agent_id: "agt_tp_07"
+    trust: "reviewed"
+  initial_state:
+    cols: 80
+    rows: 24
+    tui_script: "clear && echo -n 'Kelir Screen Verified'"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.terminal.export_screen_matrix()"
+  input_params:
+    format: "blake3"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "terminal.grid"
+    culprit: "none — screen matrix hash matched"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "terminal.matrix_exported"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(matrix_hash, 'c59c40212f466479f666f8e7b30c57659424d9c49a37e96a7509cf694709f3e4');"

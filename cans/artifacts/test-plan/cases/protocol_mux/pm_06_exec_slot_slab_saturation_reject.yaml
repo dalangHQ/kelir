@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_06_exec_slot_slab_saturation_reject"
+title: "Saturating ExecSlot slab allocator causes shim to return MSG_EXEC_REJECT{ENOMEM} without PID 1 crash"
+domain: "protocol_mux"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)"
+  statement: "Slab saturation: shim returns MSG_EXEC_REJECT{ENOMEM} in-band; no queue growth; no PID 1 termination."
+  blast_radius_if_breached: "Process spawn bursts exhaust guest PID 1 memory, kernel panicking the microVM."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows unbounded heap allocation inside shim until OOM killer fires."
+  anti_slop_mitigation: "AS-03 asserts in-band rejection with ENOMEM while microVM stays healthy."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_pm_06"
+    trust: "reviewed"
+  initial_state:
+    max_exec_slots: 4
+    active_running_tasks: 4
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Send 5th MSG_EXEC_REQUEST to shim when max_exec_slots is 4"
+  input_params:
+    request_exec_id: 5
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "shim.slab"
+    culprit: "ExecSlot pool exhausted (max 4)"
+    remedy: "Wait for active tasks to complete or increase session.shim.max_exec_slots"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "shim.exec_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "ENOMEM"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(resp, ShimResponse::ExecReject { reason: libc::ENOMEM }); assert!(session.is_alive());"

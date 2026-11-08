@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_02_class1_hardware_provenance_immutability"
+title: "Attestation verifier rejects Class 3 guest stdout data masquerading as Class 1 hardware facts"
+domain: "attestation_receipts"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/10-attestation.md#Attestation-provenance-classification"
+  statement: "Class 1 (Hardware-Anchored) never falls back to Class 3 (Guest Unverified Data); missing Tier 1 evidence is denial."
+  blast_radius_if_breached: "Untrusted agent processes forge hardware execution receipts by writing JSON strings to stdout."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent parses guest stdout string as an ExecutionReceipt when hypervisor trap receipt is missing."
+  anti_slop_mitigation: "AS-03 forbids fallback to unverified guest payload buffers."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "attestation.verifier"
+    agent_id: "agt_ar_02"
+    trust: "reviewed"
+  initial_state:
+    forged_stdout: "{\"exit_code\": 0, \"binary_blake3\": \"af1349...\"}"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "AttestationVerifier::verify_claim(FactSource::GuestStdout(forged_stdout))"
+  input_params:
+    claim_type: "Class1ExecutionProof"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "attestation.provenance"
+    culprit: "Class 1 hardware claim attempted from Class 3 unverified source"
+    remedy: "Claims must anchor in hypervisor trap facts or hardware tokens"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.forged_claim_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_PROVENANCE_DOWNGRADE_DENIED"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(verify_res, Err(AttestationError::ProvenanceViolation));"

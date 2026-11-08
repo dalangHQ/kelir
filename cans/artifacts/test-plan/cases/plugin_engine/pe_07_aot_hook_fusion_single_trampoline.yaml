@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_07_aot_hook_fusion_single_trampoline"
+title: "AOT hook fusion collapses multiple TypeScript/Python handlers into exactly 1 FFI trampoline crossing"
+domain: "plugin_engine"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Foreign-plugin-proxy"
+  statement: "AOT hook fusion compiles chained host hooks into single flat closure; exactly one FFI trampoline crossing per event."
+  blast_radius_if_breached: "Composing 5 TypeScript hooks causes 5 consecutive FFI context switches per syscall."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts all 5 hooks ran without measuring FFI trampoline boundary crossings."
+  anti_slop_mitigation: "AS-01 asserts foreign_trampoline_crossings == 1 when 5 hooks execute."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "foreign.proxy"
+    agent_id: "agt_pe_07"
+    trust: "reviewed"
+  initial_state:
+    registered_foreign_hooks: 5
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Dispatch TrapEvent matching all 5 registered TypeScript pre-exec handlers"
+  input_params:
+    hook_count: 5
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "foreign.proxy"
+    culprit: "none — fused into 1 trampoline"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "foreign.fused_hook_executed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(foreign_trampoline_crossings(), 1); assert_eq!(executed_hook_count(), 5);"

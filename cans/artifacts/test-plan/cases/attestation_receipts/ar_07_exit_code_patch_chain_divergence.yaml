@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_07_exit_code_patch_chain_divergence"
+title: "ExecutionReceipt records final binary BLAKE3 and exit code while TrapEvent records original binary"
+domain: "attestation_receipts"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/10-attestation.md#Receipt-accounting"
+  statement: "TrapEvent records original_binary_blake3; ExecutionReceipt records final_binary_blake3 and exit_code."
+  blast_radius_if_breached: "Auditors cannot detect when tool-guard or security plugins rewrite untrusted binaries."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts original binary hash in ExecutionReceipt, concealing the rewrite."
+  anti_slop_mitigation: "AS-03 asserts receipt.binary_blake3 matches final rewritten binary, not original."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "plugin.tool_guard"
+    agent_id: "agt_ar_07"
+    trust: "reviewed"
+  initial_state:
+    rewrite_target: "/bin/safe_wrapper"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Exec '/bin/risky_tool'; tool-guard returns Verdict::Patch(new_binary: '/bin/safe_wrapper')"
+  input_params:
+    action: "patch"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "attestation.rewrite"
+    culprit: "none — rewrite chain recorded"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.binary_rewritten"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_ne!(trap_event.original_binary_blake3, receipt.binary_blake3); assert_eq!(receipt.binary_blake3, hash_of('/bin/safe_wrapper'));"

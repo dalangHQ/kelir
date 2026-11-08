@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "rt_10_pgwire_frame_rewrite_in_place"
+title: "FilterAction::Forward rewrites pgwire SQL query frames in-place before upstream transmission"
+domain: "relational_transaction"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/db-proxy.md#Error-and-return-semantics-(db-proxy)"
+  statement: "FilterAction::Forward after in-place Q/P frame rewrite; server sees rewritten frame as if client sent it."
+  blast_radius_if_breached: "Tenant prefixing fails, allowing cross-tenant data access in multi-tenant shared databases."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts frame forwarded without asserting the byte content of the rewritten SQL frame."
+  anti_slop_mitigation: "AS-06 asserts rewritten SQL string matches 'SELECT * FROM tenant_123_users'."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "db_proxy.rewriter"
+    agent_id: "agt_rt_10"
+    trust: "reviewed"
+  initial_state:
+    tenant_prefix: "tenant_123_"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "db_proxy.on_pgwire_query(&mut frame, 'SELECT * FROM users')"
+  input_params:
+    action: "rewrite_tenant"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "db_proxy.rewrite"
+    culprit: "none — query rewritten in place"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "db_proxy.query_rewritten"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(extract_pgwire_sql(&rewritten_frame), 'SELECT * FROM tenant_123_users');"

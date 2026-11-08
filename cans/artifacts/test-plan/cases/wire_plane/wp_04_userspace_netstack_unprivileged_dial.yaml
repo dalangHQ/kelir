@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_04_userspace_netstack_unprivileged_dial"
+title: "Outbound guest TCP connections translate to unprivileged host socket dials without CAP_NET_ADMIN"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Userspace-network-stack"
+  statement: "Outbound connections translated to plain unprivileged host sockets; zero host interface creation; zero CAP_NET_ADMIN."
+  blast_radius_if_breached: "Host supervisor requires elevated Linux capabilities (root), increasing exploit surface."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent uses iptables/nftables or elevated network namespace rules."
+  anti_slop_mitigation: "AS-01 verifies process effective capabilities: cap_net_admin is false."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.smoltcp"
+    agent_id: "agt_wp_04"
+    trust: "reviewed"
+  initial_state:
+    unprivileged_user: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest connects to declared upstream HTTP server via TCP"
+  input_params:
+    target: "1.1.1.1:80"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "wire.dial"
+    culprit: "none — unprivileged socket dial succeeded"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.unprivileged_dial"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(caps::has_cap(None, caps::CapSet::Effective, caps::Capability::CAP_NET_ADMIN).unwrap(), false);"

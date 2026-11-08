@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_12_declarative_error_mapping_posix_errno"
+title: "Builder error registry maps unhandled foreign exceptions directly to canonical POSIX errnos"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Declarative-error-mapping"
+  statement: "Host exceptions map directly to POSIX errnos via builder error registry; preserves guest POSIX semantics."
+  blast_radius_if_breached: "Foreign runtime exceptions crash the supervisor or surface as unparseable strings to guest."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent maps all foreign exceptions to generic EIO (errno 5)."
+  anti_slop_mitigation: "AS-03 asserts specific JavaScript CustomPermissionError maps to libc::EACCES (errno 13)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "builder.errors"
+    agent_id: "agt_pe_12"
+    trust: "reviewed"
+  initial_state:
+    error_registry_mapped: { "CustomPermissionError": 13 } # EACCES
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Foreign hook throws CustomPermissionError('denied')"
+  input_params:
+    exception_name: "CustomPermissionError"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "plugin.errors"
+    culprit: "CustomPermissionError mapped to EACCES"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "plugin.error_mapped"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "EACCES"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(verdict, Verdict::Drop { errno: Some(libc::EACCES), .. });"

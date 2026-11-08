@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ta_01_merkle_wal_rf_6962_blake3_chain"
+title: "Merkle WAL appends records using RFC 6962 rules and BLAKE3 hashing, persisted to LMDB with fsync"
+domain: "telemetry_audit"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/ledger.md#Merkle-WAL-specification"
+  statement: "RFC 6962 rules using BLAKE3: Leaf: BLAKE3(0x00 || bytes); Node: BLAKE3(0x01 || left || right); LMDB immediate fsync."
+  blast_radius_if_breached: "Audit trail tampered or lost on power cut, failing compliance guarantees."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent uses plain SHA-256 or omits the RFC 6962 0x00/0x01 domain separation prefixes."
+  anti_slop_mitigation: "AS-05 asserts leaf hash prefix starts with 0x00 byte before BLAKE3 hashing."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "ledger.merkle"
+    agent_id: "agt_ta_01"
+    trust: "reviewed"
+  initial_state:
+    wal_enabled: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "ledger.append_record(ExecutionReceipt { .. }); read LMDB leaf bytes"
+  input_params:
+    action: "append_wal"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "ledger.merkle"
+    culprit: "none — RFC 6962 BLAKE3 leaf appended"
+    remedy: "none required"
+  database:
+    row_count_delta: 1
+    tables_mutated: ["merkle_wal"]
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "ledger.leaf_appended"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-05"
+    verification: "assert_eq!(leaf_hash, blake3::hash(&[0x00, record_bytes].concat())); assert_eq!(wal_fsynced_to_disk(), true);"

@@ -1,0 +1,67 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_03_hardware_rollback_timing_bound"
+title: "Driver rollback resets physical RAM and vCPU registers strictly within the 8ms bound"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Hypervisor-hardware-boundary"
+  statement: "Driver rollback resets physical RAM and vCPU registers only (<8ms)."
+  blast_radius_if_breached: "Agent recovery stalls, breaking autonomous step gating deadlines and blowing latency budgets."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts rollback completed without measuring host-side execution duration."
+  anti_slop_mitigation: "AS-06 enforces hardcoded timing assertion: elapsed_ns < 8_000_000."
+
+setup:
+  env: "dev"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_03"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "driver.rollback(&snapshot)"
+  input_params:
+    dirtied_pages: 512
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.rollback"
+    culprit: "none — hardware state successfully reset"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.rollback"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert!(rollback_result.is_ok());"
+  - rule: "AS-06"
+    verification: "assert!(stopwatch.elapsed() < Duration::from_millis(8));"

@@ -1,0 +1,66 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_12_arm64_stage2_4k_on_16k_host"
+title: "ARM64 Stage-2 tables map 4KB guest MMU leaves cleanly over 16KB host RAM pages without alignment faults"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Page-size-dynamic-boot-selection"
+  statement: "ARM64 Stage-2 tables configure 4KB leaf pages on 16KB host RAM, eliminating binary alignment faults."
+  blast_radius_if_breached: "Standard x86/ARM64 4KB-aligned ELF packages crash on Apple Silicon with SIGBUS."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts binary executed without checking that host page granularity is 16KB."
+  anti_slop_mitigation: "AS-01 enforces real Stage-2 MMU translation probe on macOS ARM64."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_12"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "driver-hvf"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.exec('/bin/4kb_aligned_elf', ProcessLimits::default()) on 16KB host page kernel"
+  input_params:
+    guest_page_size: 4096
+    host_page_size: 16384
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.mmu"
+    culprit: "none — Stage-2 translation table aligned 4K over 16K host pages"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.mmu_configured"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(driver.guest_page_size(), 4096); assert_eq!(driver.host_page_size(), 16384);"

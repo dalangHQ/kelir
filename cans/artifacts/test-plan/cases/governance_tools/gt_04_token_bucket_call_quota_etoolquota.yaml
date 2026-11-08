@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_04_token_bucket_call_quota_etoolquota"
+title: "Tool invocations exceeding token-bucket rate limits or max call depth reject with ETOOLQUOTA"
+domain: "governance_tools"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/tool-guard.md#Call-quota"
+  statement: "Each tool gets token-bucket governor; retries exceeding quota reject immediately with ETOOLQUOTA."
+  blast_radius_if_breached: "Infinite loops in model tool calls exhaust API credits or freeze the runner."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows calls past bucket capacity without rejection."
+  anti_slop_mitigation: "AS-03 asserts exact ETOOLQUOTA rejection upon bucket exhaustion."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "tool_guard.governor"
+    agent_id: "agt_gt_04"
+    trust: "reviewed"
+  initial_state:
+    bucket_capacity: 5
+    refill_rate_per_sec: 1
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Invoke tool 6 times within 100 milliseconds"
+  input_params:
+    burst_count: 6
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "tool_guard.quota"
+    culprit: "Token-bucket governor exhausted (capacity: 5)"
+    remedy: "Throttle tool call frequency or wait for token refill"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "tool_guard.quota_exceeded"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "ETOOLQUOTA"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(sixth_call_verdict, Verdict::Drop { errno: Some(libc::EDQUOT), .. });"

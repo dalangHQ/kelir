@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_08_exec_flow_control_input_stall"
+title: "Host consumer buffer backpressure triggers POSIX input_stall on guest producer fd without frame loss"
+domain: "protocol_mux"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Binary-exec-channel"
+  statement: "Guest shim applies POSIX input_stall to guest process fd before socket buffers overflow; no frame loss."
+  blast_radius_if_breached: "Fast command generating 1GB output overruns host buffer, dropping stdout bytes."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent drops frames when buffer is full."
+  anti_slop_mitigation: "AS-02 asserts 0 bytes dropped; guest write() blocks until host drains buffer."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transport.flow"
+    agent_id: "agt_pm_08"
+    trust: "reviewed"
+  initial_state:
+    host_read_paused: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest writes 10MB stdout while host pauses reading; host resumes reading after 100ms"
+  input_params:
+    pause_ms: 100
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "protocol.flow"
+    culprit: "none — flow control stalled and resumed without loss"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "protocol.flow_controlled"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(total_received_bytes, 10485760); assert_eq!(dropped_frame_count, 0);"

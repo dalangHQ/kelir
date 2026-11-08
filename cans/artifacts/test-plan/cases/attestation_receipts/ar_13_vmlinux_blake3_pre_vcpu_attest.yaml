@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_13_vmlinux_blake3_pre_vcpu_attest"
+title: "Host measures guest vmlinux BLAKE3 digest prior to vCPU launch and binds hash to attestation token"
+domain: "attestation_receipts"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Guest-VM-anatomy"
+  statement: "vmlinux BLAKE3 measured host-side pre-vCPU; recorded in session attestation token; forged kernel fails."
+  blast_radius_if_breached: "Host launches tampered guest kernel with backdoor instrumentation without detection."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts kernel booted without checking that token contains exact pre-computed kernel digest."
+  anti_slop_mitigation: "AS-06 asserts token.vmlinux_blake3 matches expected hardcoded hash literal."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_ar_13"
+    trust: "reviewed"
+  initial_state:
+    vmlinux_path: "kernel/vmlinux"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "DriverRouter::prepare_kernel_measurement('kernel/vmlinux')"
+  input_params:
+    measure_only: false
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "attestation.kernel"
+    culprit: "none — kernel hash bound to token"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.kernel_measured"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(token.vmlinux_blake3, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');"

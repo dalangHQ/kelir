@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_03_step_evaluation_taint_rollback"
+title: "StepEvaluator flags unapproved write in tainted state; triggers rollback and reverts RAM in <8ms"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Autonomous-step-verification-loop"
+  statement: "StepEvaluator validates causal deltas; unapproved writes under tainted state force rollback in ≤8ms."
+  blast_radius_if_breached: "Tainted agent instructions persist poisoned memory or corrupted files to disk."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts step failed without asserting physical RAM and broker upper revert."
+  anti_slop_mitigation: "AS-02 asserts upper backing file is punched to 0 bytes and RAM matches pre-step snapshot."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.orchestrator"
+    agent_id: "agt_lc_03"
+    trust: "reviewed"
+  initial_state:
+    taint_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Workload issues unapproved write('src/payload.bin'); StepEvaluator returns StepVerdict::Rollback"
+  input_params:
+    action: "step_eval"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "lifecycle.step"
+    culprit: "Unapproved file write in tainted state"
+    remedy: "Request explicit approval before mutating filesystem"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.step_rolled_back"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "StepRollback"
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(broker.allocated_bytes(), 0); assert_eq!(fs::exists_in_guest('src/payload.bin'), false);"
+  - rule: "AS-06"
+    verification: "assert!(rollback_time < Duration::from_millis(8));"

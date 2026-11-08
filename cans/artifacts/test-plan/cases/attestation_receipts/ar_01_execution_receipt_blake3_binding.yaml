@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_01_execution_receipt_blake3_binding"
+title: "Every reaped process emits ExecutionReceipt matching raw binary BLAKE3 hash and true exit code"
+domain: "attestation_receipts"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/10-attestation.md#Execution-receipts"
+  statement: "Deterministic logical-trace attribution emitted per executed process at trap/exit boundary; raw BLAKE3 of binary_path."
+  blast_radius_if_breached: "Agent self-reports false execution outcomes, masking failed tool runs or binary substitution."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent computes expected hash from the reaped file in tests (tautology) or ignores binary_blake3 field."
+  anti_slop_mitigation: "AS-06 requires asserting a hardcoded literal BLAKE3 string."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "attestation.engine"
+    agent_id: "agt_ar_01"
+    trust: "reviewed"
+  initial_state:
+    target_binary: "/bin/true"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.exec('/bin/true', ProcessLimits::default())"
+  input_params:
+    binary: "/bin/true"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "attestation.receipt"
+    culprit: "none — receipt generated with true binary BLAKE3"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.receipt_emitted"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(receipt.exit_code, 0); assert_matches!(receipt.exit_kind, ExitKind::Normal);"
+  - rule: "AS-06"
+    verification: "assert_eq!(receipt.binary_blake3, 'af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262');"

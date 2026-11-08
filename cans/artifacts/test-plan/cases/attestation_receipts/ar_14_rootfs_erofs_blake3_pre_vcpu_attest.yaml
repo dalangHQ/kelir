@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_14_rootfs_erofs_blake3_pre_vcpu_attest"
+title: "Host measures EROFS rootfs BLAKE3 digest prior to vCPU launch and binds hash to attestation token"
+domain: "attestation_receipts"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Guest-VM-anatomy"
+  statement: "EROFS BLAKE3 measured host-side pre-vCPU; recorded in session attestation token; forged rootfs fails."
+  blast_radius_if_breached: "Malicious base rootfs images execute without attestation failure."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent boots untracked ext4 image instead of verifying EROFS hash binding."
+  anti_slop_mitigation: "AS-06 asserts token.rootfs_blake3 matches expected rootfs image hash."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_ar_14"
+    trust: "reviewed"
+  initial_state:
+    rootfs_image: "rootfs.erofs"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "DriverRouter::prepare_rootfs_measurement('rootfs.erofs')"
+  input_params:
+    image: "rootfs.erofs"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "attestation.rootfs"
+    culprit: "none — rootfs hash bound to token"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.rootfs_measured"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(token.rootfs_blake3, 'c4298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855e3b00');"

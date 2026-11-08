@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_01_default_deny_ingress_drop"
+title: "Non-TCP frames (ICMP, raw sockets, unencapsulated UDP) dropped at virtio-net ingress ring"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Default-deny-admission"
+  statement: "All non-TCP L2/L3 frames dropped at ingress ring; ICMP, raw sockets, unencapsulated UDP dropped."
+  blast_radius_if_breached: "Unauthorized network protocols bypass userspace firewall and establish unmonitored L2/L3 tunnels."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts frames dropped without verifying guest observed ICMP Port Unreachable or silent drop."
+  anti_slop_mitigation: "AS-02 asserts zero raw/ICMP bytes transmitted across the host physical interface."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.firewall"
+    agent_id: "agt_wp_01"
+    trust: "reviewed"
+  initial_state:
+    wire_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest transmits raw ICMP Echo Request frame"
+  input_params:
+    ethertype: 0x0800
+    protocol: 1
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "wire.admission"
+    culprit: "Non-TCP frame dropped at ingress ring"
+    remedy: "Workloads must use TCP egress or configure explicit UDP proxy"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.frame_dropped"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(host_pcap_capture_count(), 0); assert_eq!(wire_dropped_frame_count(), 1);"

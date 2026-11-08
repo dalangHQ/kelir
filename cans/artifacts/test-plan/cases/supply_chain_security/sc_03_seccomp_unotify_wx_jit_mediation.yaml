@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_03_seccomp_unotify_wx_jit_mediation"
+title: "In-guest seccomp-unotify traps mprotect(PROT_EXEC) calls and forwards them to supervisor over vsock"
+domain: "supply_chain_security"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
+  statement: "Dynamic W^X JIT mediation: traps in-guest seccomp-unotify events for mprotect(PROT_EXEC) and memfd_create."
+  blast_radius_if_breached: "Guest processes alter memory page permissions to PROT_EXEC without hypervisor knowledge."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts mprotect succeeded without checking seccomp-unotify file descriptor notifications."
+  anti_slop_mitigation: "AS-01 asserts seccomp_unotify event was received and processed on host."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "security.jit"
+    agent_id: "agt_sc_03"
+    trust: "reviewed"
+  initial_state:
+    seccomp_unotify_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Guest calls mprotect(addr, 4096, PROT_READ | PROT_EXEC)"
+  input_params:
+    syscall: "mprotect"
+    prot: 5 # READ | EXEC
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "supply_chain.jit"
+    culprit: "none — seccomp-unotify forwarded to supervisor"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "supply_chain.unotify_trapped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(seccomp_unotify_events_received(), 1);"

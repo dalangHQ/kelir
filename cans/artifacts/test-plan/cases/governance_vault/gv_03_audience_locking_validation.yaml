@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gv_03_audience_locking_validation"
+title: "Token issued for specific audience pattern (api.openai.com) rejects execution when targeted to anthropic.com"
+domain: "governance_vault"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/vault.md#Scope-confinement-and-audience-locking"
+  statement: "Audience is destination host pattern; destination host patterns checked against network policy before issue."
+  blast_radius_if_breached: "Stolen token replayed against malicious third-party webhook endpoint."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent issues wildcard audience token."
+  anti_slop_mitigation: "AS-03 asserts audience mismatch results in EACCES."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.workload"
+    agent_id: "agt_gv_03"
+    trust: "reviewed"
+  initial_state:
+    credential_audience: "api.openai.com"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Request token specifying audience 'api.anthropic.com' for credential restricted to 'api.openai.com'"
+  input_params:
+    requested_audience: "api.anthropic.com"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "vault.audience"
+    culprit: "Audience mismatch for credential"
+    remedy: "Target request to declared audience endpoint"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "vault.audience_mismatch"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "EACCES"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(token_error_code, libc::EACCES);"

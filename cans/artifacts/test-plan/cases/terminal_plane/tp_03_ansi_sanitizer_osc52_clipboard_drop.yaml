@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "tp_03_ansi_sanitizer_osc52_clipboard_drop"
+title: "ANSI sanitizer drops OSC 52 clipboard hijacking escape sequences from terminal character stream"
+domain: "terminal_plane"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/04-terminal-plane.md#Host-filter-pipeline-execution-order"
+  statement: "ANSI strip drops OSC 52 (clipboard hijack) sequences before forwarding chunks to host terminal."
+  blast_radius_if_breached: "Malicious workload output overwrites the host operator's desktop clipboard."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts sanitizer ran without checking that OSC 52 payload bytes were completely purged."
+  anti_slop_mitigation: "AS-06 asserts processed buffer contains zero occurrences of '\x1b]52;'."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "terminal.sanitizer"
+    agent_id: "agt_tp_03"
+    trust: "reviewed"
+  initial_state:
+    malicious_stream: "echo '\x1b]52;c;ZXhwbG9pdA==\x07Normal Text'"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "terminal_sanitizer.sanitize_output(malicious_stream)"
+  input_params:
+    drop_osc52: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "terminal.sanitizer"
+    culprit: "OSC 52 clipboard payload stripped"
+    remedy: "none required — threat mitigated"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "terminal.osc52_dropped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(sanitized_output, 'Normal Text'); assert!(!sanitized_output.contains('\x1b]52'));"

@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_12_l4_diversion_passthrough_tls"
+title: "Transparent L4 stream diversion proxies duplex TCP payload to host socket without terminating TLS"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Transparent-L4-stream-diversion"
+  statement: "Carrier is L4-only by default; TLS between guest and peer passes through byte-for-byte; no supervisor TLS MITM."
+  blast_radius_if_breached: "Host supervisor intercepts and decrypts guest TLS traffic, creating a massive credential security vulnerability."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent terminates TLS with a custom CA cert in the supervisor process."
+  anti_slop_mitigation: "AS-01 asserts supervisor memory contains zero plaintext HTTP strings from the TLS session."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.diversion"
+    agent_id: "agt_wp_12"
+    trust: "reviewed"
+  initial_state:
+    tls_payload: "GET /secret HTTP/1.1"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest performs TLS handshake with external server via L4 diversion"
+  input_params:
+    l4_proxy: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "wire.l4"
+    culprit: "none — byte-for-byte TLS passthrough"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.l4_diverted"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(supervisor_contains_plaintext('GET /secret'), false); assert_eq!(guest_verified_peer_tls(), true);"

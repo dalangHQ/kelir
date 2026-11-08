@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_05_filter_action_in_place_mutation"
+title: "FilterAction::Forward delivers in-place modified byte buffer directly to destination ring or socket"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Unified-verdict"
+  statement: "FilterAction mutates payload in place, then forwards or gates; no Patch variant: transformed buffer IS payload."
+  blast_radius_if_breached: "Buffer transformations reallocate or copy memory chunks, ruining zero-copy I/O throughput."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent creates a new heap Vec<u8> instead of mutating the provided &mut [u8] slice."
+  anti_slop_mitigation: "AS-01 asserts pointer address of buffer is identical before and after filter evaluation."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "plugin.filter"
+    agent_id: "agt_pe_05"
+    trust: "reviewed"
+  initial_state:
+    buffer: "SELECT 1"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "filter.on_net_outbound(&mut buf) mutates 'SELECT 1' to 'SELECT 2'; returns FilterAction::Forward"
+  input_params:
+    action: "mutate_in_place"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "plugin.filter"
+    culprit: "none — in-place mutation delivered"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "plugin.frame_mutated_in_place"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(buf_ptr_after, buf_ptr_before); assert_eq!(buf, b'SELECT 2');"

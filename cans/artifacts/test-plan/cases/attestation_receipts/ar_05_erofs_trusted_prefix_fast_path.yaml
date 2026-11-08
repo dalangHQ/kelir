@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_05_erofs_trusted_prefix_fast_path"
+title: "Executables rooted in EROFS trusted prefixes (/usr/bin) resolve pre-computed BLAKE3 in host RAM in O(1)"
+domain: "attestation_receipts"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/10-attestation.md#binary_blake3-identity"
+  statement: "EROFS trusted prefixes execute Gate 3 skip; resolves pre-computed BLAKE3 table in host RAM via O(1) index."
+  blast_radius_if_breached: "Compilers and build scripts fork-storming /usr/bin/gcc stall host supervisor with disk hashing."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent reads raw file bytes from EROFS block device on every invocation."
+  anti_slop_mitigation: "AS-06 asserts disk I/O byte count == 0 during /usr/bin trusted binary resolution."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_ar_05"
+    trust: "reviewed"
+  initial_state:
+    erofs_mounted: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.exec('/usr/bin/env', ProcessLimits::default())"
+  input_params:
+    path: "/usr/bin/env"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "attestation.fast_path"
+    culprit: "none — resolved from in-RAM trusted table"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.fast_path_resolved"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(disk_read_bytes_during_resolution(), 0); assert!(resolution_duration < Duration::from_micros(2));"

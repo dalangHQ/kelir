@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_11_wire_framing_checked_math_validation"
+title: "Hostile wire frame with oversized payload length triggers framing drop via checked_add without panic"
+domain: "protocol_mux"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Wire-framing"
+  statement: "Frame-derived lengths evaluate via checked_* math; unchecked slice indexing is forbidden; clamp to MAX_FRAME_PAYLOAD."
+  blast_radius_if_breached: "Adversarial guest frame triggers integer overflow or buffer panics in host supervisor."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent panics or attempts allocation of u32::MAX bytes."
+  anti_slop_mitigation: "AS-03 asserts error returned without thread panic."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transport.framing"
+    agent_id: "agt_pm_11"
+    trust: "reviewed"
+  initial_state:
+    hostile_frame: [0x00, 0x00, 0x00, 0x01, 0x02, 0xFF, 0xFF, 0xFF, 0xFF] # len = u32::MAX
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "WireFrameParser::parse(hostile_frame)"
+  input_params:
+    len: 4294967295
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "protocol.framing"
+    culprit: "Frame length exceeds MAX_FRAME_PAYLOAD"
+    remedy: "Frame length must be <= 65536 bytes"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "protocol.oversized_frame_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EFramingOversize"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(parse_res, Err(FramingError::PayloadTooLarge)); assert_eq!(panic_caught, false);"

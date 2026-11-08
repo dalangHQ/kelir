@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_05_kvm_userfaultfd_cow_tracking"
+title: "Linux KVM backend resolves guest physical write faults via userfaultfd CoW cloning"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Driver-backends"
+  statement: "driver-rustvmm uses Linux bare-metal KVM + userfaultfd CoW for dirty page tracking."
+  blast_radius_if_breached: "Dirty pages leak untracked across fork branches, causing silent cross-session memory corruption."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts pages were written without verifying uffd page-fault resolution."
+  anti_slop_mitigation: "AS-02 requires querying physical userfaultfd fault counters."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_05"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "driver-rustvmm"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest writes 1MB dirty bytes to unshared page range"
+  input_params:
+    write_size_bytes: 1048576
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.uffd"
+    culprit: "none — uffd handled page write fault"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.page_fault_resolved"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(driver.uffd_fault_count(), 256); assert_eq!(snapshot.dirty_bytes, 1048576);"

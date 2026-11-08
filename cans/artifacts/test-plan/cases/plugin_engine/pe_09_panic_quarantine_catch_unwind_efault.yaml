@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_09_panic_quarantine_catch_unwind_efault"
+title: "Panicking foreign plugin hook is caught at engine perimeter and converted to Verdict::Drop with EFAULT"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Static-dispatch"
+  statement: "Interposer dispatches wrap in catch_unwind; escaped hook panics convert to Verdict::Drop with EFAULT."
+  blast_radius_if_breached: "A buggy third-party plugin hook crashes the entire supervisor process, dropping all active sessions."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows panic to unwind through FFI boundary, causing undefined behavior or process abort."
+  anti_slop_mitigation: "AS-03 asserts supervisor stays alive and caller receives Verdict::Drop { errno: EFAULT }."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "pipeline.quarantine"
+    agent_id: "agt_pe_09"
+    trust: "reviewed"
+  initial_state:
+    panicking_hook: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Dispatch ring event to plugin whose hook explicitly panics: panic('crash')"
+  input_params:
+    force_panic: true
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "pipeline.quarantine"
+    culprit: "Plugin panicked during hook execution: crash"
+    remedy: "Inspect plugin code; hook panics converted to EFAULT"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "pipeline.panic_quarantined"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "EFAULT"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(verdict, Verdict::Drop { errno: Some(libc::EFAULT), .. }); assert_eq!(supervisor_is_alive(), true);"

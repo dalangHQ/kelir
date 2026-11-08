@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_04_interceptor_pipeline_monotonic_verdict"
+title: "Downstream interceptor stages cannot loosen or overturn an upstream Verdict::Drop or FilterAction::Drop"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Dual-plane-execution-architecture"
+  statement: "First Drop, Suspend, or Abort halts pipeline; Pass/Patch continue; downstream stages cannot widen upstream denial."
+  blast_radius_if_breached: "A permissive plugin downstream allows an execution that a security gate upstream explicitly dropped."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent iterates all plugins and lets the final plugin's Verdict::Pass overwrite an earlier Verdict::Drop."
+  anti_slop_mitigation: "AS-03 asserts pipeline short-circuits immediately on first Verdict::Drop."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "pipeline.engine"
+    agent_id: "agt_pe_04"
+    trust: "reviewed"
+  initial_state:
+    stage_1_verdict: "Verdict::Drop { errno: EPERM, reason: 'Denied by Gate 1' }"
+    stage_2_verdict: "Verdict::Pass"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "PipelineEngine::evaluate_trap(&event)"
+  input_params:
+    action: "evaluate_pipeline"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "plugin.verdict"
+    culprit: "Stage 1 returned Verdict::Drop; pipeline halted"
+    remedy: "none — monotonic denial preserved"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "pipeline.verdict_dropped"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "EPERM"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(final_verdict, Verdict::Drop { errno: Some(libc::EPERM), .. }); assert_eq!(stage_2_evaluated, false);"

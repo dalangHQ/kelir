@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_02_argv_high_entropy_obfuscation_kill"
+title: "Command execution with argv entropy >5.2 bits/char is flagged as obfuscated payload and rejected"
+domain: "supply_chain_security"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
+  statement: "Computes Shannon entropy of argv[1:]; flags values above 5.2 bits/char as encrypted or base64-obfuscated."
+  blast_radius_if_breached: "Heavily obfuscated shellcode or payload payloads bypass static keyword inspection."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows high-entropy base64 blob to execute."
+  anti_slop_mitigation: "AS-06 asserts Shannon entropy calculation on payload string yields > 5.2 and returns Verdict::Drop."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "security.entropy"
+    agent_id: "agt_sc_02"
+    trust: "reviewed"
+  initial_state:
+    obfuscated_argv: "a8fF#k9!zL2@mQ4$xP7^vB1&nC3*jD5("
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "supply_chain.evaluate_trap(&TrapEvent { argv: vec!['sh', '-c', obfuscated_argv] })"
+  input_params:
+    action: "entropy_check"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "supply_chain.entropy"
+    culprit: "Shannon entropy of argv exceeds 5.2 bits/character"
+    remedy: "Provide plaintext or de-obfuscated command arguments"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "supply_chain.high_entropy_blocked"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "HighEntropyObfuscation"
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert!(calculated_entropy > 5.2); assert_matches!(verdict, Verdict::Drop { errno: Some(libc::EPERM), .. });"

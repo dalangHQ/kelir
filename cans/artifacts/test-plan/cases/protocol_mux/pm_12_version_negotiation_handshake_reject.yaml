@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_12_version_negotiation_handshake_reject"
+title: "Handshake with mismatched protocol version terminates session with E_INCOMPATIBLE_SHIM_VERSION"
+domain: "protocol_mux"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Wire-framing"
+  statement: "Handshake validates version == 0x01; mismatches reject with E_INCOMPATIBLE_SHIM_VERSION; session aborts."
+  blast_radius_if_breached: "Outdated or incompatible guest shims execute with undefined wire parsing behavior."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent ignores version field and attempts communication anyway."
+  anti_slop_mitigation: "AS-03 asserts exact E_INCOMPATIBLE_SHIM_VERSION failure."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transport.handshake"
+    agent_id: "agt_pm_12"
+    trust: "reviewed"
+  initial_state:
+    guest_version: 2 # Host expects version 1
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Guest transmits HandshakeFrame { version: 0x02, capabilities: 0 }"
+  input_params:
+    version: 2
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "protocol.handshake"
+    culprit: "Incompatible shim protocol version (guest: 2, host: 1)"
+    remedy: "Update kelir-shim in guest rootfs"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "protocol.handshake_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_INCOMPATIBLE_SHIM_VERSION"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(handshake_res, Err(KelirError::IncompatibleShimVersion(2))); assert_eq!(session.is_alive(), false);"

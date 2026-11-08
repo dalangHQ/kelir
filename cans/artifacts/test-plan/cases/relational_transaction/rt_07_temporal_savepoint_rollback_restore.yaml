@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "rt_07_temporal_savepoint_rollback_restore"
+title: "Rollback to intermediate savepoint restores broker upper diffs without aborting the parent transaction"
+domain: "relational_transaction"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/transaction.md#Temporal-savepoints"
+  statement: "Injects transparent SQL SAVEPOINT; snapshots broker upper diffs; restores intermediate state without aborting parent."
+  blast_radius_if_breached: "Sub-step failure aborts the entire parent transaction, discarding all previous agent progress."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent issues full SQL ROLLBACK instead of rolling back to named savepoint."
+  anti_slop_mitigation: "AS-02 asserts parent transaction remains open while savepoint mutations are reverted."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transaction.savepoint"
+    agent_id: "agt_rt_07"
+    trust: "reviewed"
+  initial_state:
+    parent_tx_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Create savepoint 'sp1'; insert record; rollback to 'sp1'"
+  input_params:
+    savepoint_name: "sp1"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "transaction.savepoint"
+    culprit: "none — rolled back to savepoint 'sp1'"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "transaction.savepoint_reverted"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(upstream_sql_transaction_state(), 'IN_TRANSACTION'); assert_eq!(broker.allocated_bytes(), 0);"

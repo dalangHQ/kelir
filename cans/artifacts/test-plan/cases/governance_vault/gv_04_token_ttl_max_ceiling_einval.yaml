@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gv_04_token_ttl_max_ceiling_einval"
+title: "Credential token request specifying TTL exceeding 900-second maximum ceiling fails with EINVAL"
+domain: "governance_vault"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/vault.md#Out-of-band-credential-brokerage"
+  statement: "Token TTL default 60s; configurable to 900s ceiling; TTL request above ceiling -> EINVAL."
+  blast_radius_if_breached: "Guest requests 30-day token, defeating short-lived credential rotation guarantees."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent clamps TTL silently instead of returning error."
+  anti_slop_mitigation: "AS-03 asserts error code is EINVAL when requested TTL is 1000s."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.workload"
+    agent_id: "agt_gv_04"
+    trust: "reviewed"
+  initial_state:
+    vault_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "CredentialBrokerService::issue_token('key', ttl_seconds: 1000)"
+  input_params:
+    ttl_seconds: 1000
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "vault.ttl"
+    culprit: "Requested TTL 1000s exceeds maximum ceiling of 900s"
+    remedy: "Request TTL <= 900 seconds"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "vault.invalid_ttl_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EINVAL"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(issue_err, Err(VaultError::TtlExceededCeiling(1000)));"

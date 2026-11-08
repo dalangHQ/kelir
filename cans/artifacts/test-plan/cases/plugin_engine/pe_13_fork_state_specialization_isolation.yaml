@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_13_fork_state_specialization_isolation"
+title: "fork_state() specializes child plugin state independently without altering parent session memory"
+domain: "plugin_engine"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#KelirPlugin-trait"
+  statement: "fork_state() specializes child state; defaults to clone_box(); isolates plugin state per branch."
+  blast_radius_if_breached: "Child microVM forks mutate parent plugin counters or caches, corrupting parent state."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent shares an `Arc<Mutex>` between parent and child plugins without deep cloning."
+  anti_slop_mitigation: "AS-02 asserts modifying child plugin state leaves parent plugin state completely unchanged."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.fork"
+    agent_id: "agt_pe_13"
+    trust: "reviewed"
+  initial_state:
+    parent_counter: 10
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.vm.fork(); child_plugin.increment_counter()"
+  input_params:
+    action: "fork_and_mutate_plugin"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "plugin.fork"
+    culprit: "none — plugin state isolated"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "plugin.state_forked"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(parent_plugin.counter(), 10); assert_eq!(child_plugin.counter(), 11);"

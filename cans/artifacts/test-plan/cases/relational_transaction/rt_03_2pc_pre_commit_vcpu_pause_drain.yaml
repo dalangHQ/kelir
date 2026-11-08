@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "rt_03_2pc_pre_commit_vcpu_pause_drain"
+title: "on_pre_commit hook pauses guest vCPUs and drains in-flight FUSE operations before evaluating commit"
+domain: "relational_transaction"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/transaction.md#Multi-resource-2PC-coordination"
+  statement: "on_pre_commit pauses guest vCPUs and drains FUSE in-flight ops; coordinates with hypervisor lifecycle."
+  blast_radius_if_breached: "Writes arriving during 2PC evaluation cause split-brain between database and filesystem."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent issues commit while vCPUs continue executing instructions."
+  anti_slop_mitigation: "AS-08 asserts vCPU execution state is Paused and in-flight FUSE queue length is 0."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transaction.coordinator"
+    agent_id: "agt_rt_03"
+    trust: "reviewed"
+  initial_state:
+    transaction_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "transaction_service.pre_commit()"
+  input_params:
+    action: "pre_commit"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "transaction.2pc"
+    culprit: "none — vCPUs paused and FUSE drained"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "transaction.pre_commit_settled"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-08"
+    verification: "assert_eq!(vcpu_state(), VcpuState::Paused); assert_eq!(broker.in_flight_fuse_ops(), 0);"

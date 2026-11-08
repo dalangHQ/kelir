@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_03_rollback_socket_termination_econnreset"
+title: "session.rollback() tears down all host sockets; guest TCP stack observes ECONNRESET"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Rollback-interaction"
+  statement: "session.rollback() closes every host-side socket for the session; guest TCP stack observes RST/FIN; sends fail ECONNRESET."
+  blast_radius_if_breached: "Lingering external TCP connections allow cross-talk across rollback cycles."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts rollback completed without verifying TCP socket state transitions."
+  anti_slop_mitigation: "AS-02 asserts all host session sockets are closed; guest send() yields ECONNRESET."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_wp_03"
+    trust: "reviewed"
+  initial_state:
+    active_tcp_connection: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Establish outbound TCP stream; invoke session.rollback(); attempt send() on guest socket"
+  input_params:
+    action: "rollback"
+
+expected_observations:
+  exit_code: 1
+  state_modified: true
+  diagnostic:
+    domain: "wire.rollback"
+    culprit: "Host socket closed during rollback"
+    remedy: "Re-establish TCP connection after rollback"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.sockets_torn_down"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(guest_send_err.raw_os_error(), Some(libc::ECONNRESET)); assert_eq!(host_active_session_sockets(), 0);"

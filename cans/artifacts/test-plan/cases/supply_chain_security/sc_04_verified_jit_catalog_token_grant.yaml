@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_04_verified_jit_catalog_token_grant"
+title: "Calling binary matching verified JIT engine catalog (Node, Bun, V8) receives dynamic one-time MMU token"
+domain: "supply_chain_security"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
+  statement: "Verified calling binary BLAKE3 against catalog receives dynamic one-time MMU allocation token over vsock."
+  blast_radius_if_breached: "Legitimate JavaScript/Python JIT compilers crash under strict W^X enforcement."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent grants token to any binary requesting it without checking catalog BLAKE3."
+  anti_slop_mitigation: "AS-06 asserts token granted only when binary_blake3 matches catalog entry."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "security.jit"
+    agent_id: "agt_sc_04"
+    trust: "reviewed"
+  initial_state:
+    jit_catalog:
+      - name: "node"
+        blake3: "9a01f782c9e4210a56b...node_official"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Verified Node binary requests JIT allocation token over vsock"
+  input_params:
+    binary_blake3: "9a01f782c9e4210a56b...node_official"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "supply_chain.jit"
+    culprit: "none — one-time JIT token granted"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "supply_chain.jit_token_granted"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(token_res.is_some(), true); assert_eq!(mprotect_result_with_token, 0);"

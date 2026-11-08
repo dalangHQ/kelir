@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "tp_04_ansi_sanitizer_title_spoof_strip"
+title: "ANSI sanitizer strips OSC 0, 1, and 2 window title spoofing escape sequences from terminal stream"
+domain: "terminal_plane"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/04-terminal-plane.md#Host-filter-pipeline-execution-order"
+  statement: "ANSI strip strips OSC 0/1/2 (title spoof) from terminal output streams."
+  blast_radius_if_breached: "Workload changes host terminal title to mimic trusted admin prompts (sudo / root)."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent tests with incomplete escape sequences, missing BEL (\x07) and ST (\x1b\\) terminators."
+  anti_slop_mitigation: "AS-06 asserts both BEL and ST terminated title escape sequences are stripped."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "terminal.sanitizer"
+    agent_id: "agt_tp_04"
+    trust: "reviewed"
+  initial_state:
+    input_chunk: "\x1b]0;root@host:~\x07Payload\x1b]2;fake_title\x1b\\Done"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "terminal_sanitizer.sanitize_output(input_chunk)"
+  input_params:
+    strip_title: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "terminal.sanitizer"
+    culprit: "OSC title sequences stripped"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "terminal.title_stripped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(sanitized_output, 'PayloadDone');"

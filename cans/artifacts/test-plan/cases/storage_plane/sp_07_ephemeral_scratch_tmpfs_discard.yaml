@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_07_ephemeral_scratch_tmpfs_discard"
+title: "Ephemeral scratch block disk mounted at /tmp and /var/cache is completely discarded on teardown"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Ephemeral-scratch-device"
+  statement: "Dedicated virtio-blk scratch disk automatically discarded on session teardown without reconciliation."
+  blast_radius_if_breached: "Temporary build artifacts pollute host workspace git tree or leak disk across sessions."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts teardown completed without verifying scratch backing file is unlinked on host."
+  anti_slop_mitigation: "AS-08 asserts host scratch file path does not exist post-teardown."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.scratch"
+    agent_id: "agt_sp_07"
+    trust: "reviewed"
+  initial_state:
+    scratch_mounted: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest writes 50MB to /tmp/build.o; session.terminate() called"
+  input_params:
+    scratch_path: "/tmp/build.o"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "storage.scratch"
+    culprit: "none — scratch storage purged"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.scratch_purged"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-08"
+    verification: "assert_eq!(fs::exists(scratch_backing_path), false); assert_eq!(base_workspace_has('tmp/build.o'), false);"

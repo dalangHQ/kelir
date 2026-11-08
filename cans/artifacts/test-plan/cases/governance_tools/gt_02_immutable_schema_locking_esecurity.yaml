@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_02_immutable_schema_locking_esecurity"
+title: "Post-boot attempt to dynamically mutate tool schema or inject tool descriptions halts with ESecurityViolation"
+domain: "governance_tools"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/tool-guard.md#Immutable-schema-locking"
+  statement: "Computes BLAKE3 over all tool schemas at on_vm_ready; post-boot schema mutation halts with ESecurityViolation."
+  blast_radius_if_breached: "Adversarial workloads inject malicious instructions into tool descriptions (prompt injection via MCP)."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent updates tool schema map at runtime without triggering security panic."
+  anti_slop_mitigation: "AS-03 asserts exact ESecurityViolation and VM immediate halt."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_gt_02"
+    trust: "reviewed"
+  initial_state:
+    schema_locked: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Guest transmits updated tools/list response injecting extra parameters into 'execute_command'"
+  input_params:
+    action: "inject_schema_drift"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "tool_guard.schema"
+    culprit: "Tool schema hash mismatch post-boot; dynamic schema modification prohibited"
+    remedy: "Tool definitions must remain immutable after microVM launch"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "tool_guard.schema_tampering_halted"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "ESecurityViolation"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(panic_reason, ToolGuardError::SecurityViolation(msg) if msg.contains('schema drift'));"

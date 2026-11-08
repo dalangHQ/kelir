@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_07_virtio_shm_unmap_on_teardown"
+title: "Shared memory segments mapped via virtio-shm unmap completely upon session termination"
+domain: "virtio_rings"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Shared-memory-channel"
+  statement: "Region mappings unmap automatically on VM instance teardown."
+  blast_radius_if_breached: "Dangling host memfd allocations exhaust virtual memory address space."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent kills VM without asserting munmap on host backing file descriptors."
+  anti_slop_mitigation: "AS-08 checks /proc/self/maps to prove shared region is unmapped."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_vr_07"
+    trust: "reviewed"
+  initial_state:
+    active_shm_regions: 2
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.terminate() called with 2 active virtio-shm allocations"
+  input_params:
+    session_teardown: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "ring.shm"
+    culprit: "none — shared regions unmapped"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "ring.shm_unmapped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-08"
+    verification: "assert_eq!(process::is_address_mapped(shm_addr_1), false); assert_eq!(process::is_address_mapped(shm_addr_2), false);"

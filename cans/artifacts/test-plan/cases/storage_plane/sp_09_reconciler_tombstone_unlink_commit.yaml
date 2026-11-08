@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_09_reconciler_tombstone_unlink_commit"
+title: "Storage reconciler replays recorded tombstones to unlink deleted files from host base workspace"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Workspace-commit"
+  statement: "Deletes unlink in place; new dirs create in place during reconcile."
+  blast_radius_if_breached: "Files unlinked in guest remain on host disk after commit."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts commit completed without verifying file was physically unlinked on host."
+  anti_slop_mitigation: "AS-02 asserts fs::exists(host_file) == false."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.reconciler"
+    agent_id: "agt_sp_09"
+    trust: "reviewed"
+  initial_state:
+    workspace_file: "obsolete.rs"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest executes unlink('obsolete.rs'); session.storage.reconcile() called"
+  input_params:
+    action: "reconcile"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "storage.reconciler"
+    culprit: "none — tombstone unlinked host file"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.tombstone_committed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(fs::exists('obsolete.rs'), false); assert_eq!(broker.tombstone_count(), 0);"

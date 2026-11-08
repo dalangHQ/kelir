@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "tp_13_exec_log_file_per_exec_isolation"
+title: "Programmatic exec output persists to isolated sessions/<id>/logs/ with append-only index.bin"
+domain: "terminal_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/04-terminal-plane.md#Stream-replay"
+  statement: "Flat chunk files under sessions/<id>/logs/ with append-only index.bin; global SQLite catalog bypassed."
+  blast_radius_if_breached: "High-throughput terminal logging induces SQLite WAL write lock contention across sessions."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent writes stdout to SQLite database instead of flat log files."
+  anti_slop_mitigation: "AS-02 asserts zero new rows in catalog.db during 10MB terminal log burst."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "terminal.logger"
+    agent_id: "agt_tp_13"
+    trust: "reviewed"
+  initial_state:
+    session_id: "ses_tp_13"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Burst 10MB logs through stream kind EXEC"
+  input_params:
+    burst_bytes: 10485760
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "terminal.log"
+    culprit: "none — written to flat files"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "terminal.burst_persisted"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(catalog_db_row_delta(), 0); assert!(fs::exists('sessions/ses_tp_13/logs/index.bin'));"

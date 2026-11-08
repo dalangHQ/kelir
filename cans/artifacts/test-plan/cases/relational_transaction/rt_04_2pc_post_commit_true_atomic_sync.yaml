@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "rt_04_2pc_post_commit_true_atomic_sync"
+title: "on_post_commit(true) replays broker upper + tombstones to disk and issues SQL COMMIT across proxy connections"
+domain: "relational_transaction"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/transaction.md#Multi-resource-2PC-coordination"
+  statement: "on_post_commit(true) invokes broker commit: replay upper + tombstones and issues SQL COMMIT across connections."
+  blast_radius_if_breached: "Filesystem changes commit to disk but database transaction aborts, leaving system desynchronized."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts success without checking that SQL COMMIT frame reached the upstream database."
+  anti_slop_mitigation: "AS-02 asserts both host files reconciled and SQL transaction committed."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transaction.coordinator"
+    agent_id: "agt_rt_04"
+    trust: "reviewed"
+  initial_state:
+    uncommitted_fs_write: true
+    uncommitted_sql_insert: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "transaction_service.post_commit(true)"
+  input_params:
+    commit_success: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "transaction.2pc"
+    culprit: "none — multi-resource 2PC committed"
+    remedy: "none required"
+  database:
+    row_count_delta: 1
+    tables_mutated: ["records"]
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "transaction.2pc_committed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(fs::exists('workspace/output.txt'), true); assert_eq!(upstream_sql_transaction_state(), 'COMMITTED');"

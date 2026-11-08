@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_02_cyclic_dependency_graph_abort"
+title: "Cyclic crate dependencies in plugin registration graph abort microVM compilation with EConfig"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Plugin-tiering"
+  statement: "Direct Cargo dependencies are acyclic; cyclic crate dependencies abort compilation with EConfig."
+  blast_radius_if_breached: "Infinite initialization loops lock up hypervisor microkernel bootstrap."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent ignores graph cycle and enters recursion or deadlock."
+  anti_slop_mitigation: "AS-03 asserts builder.boot() returns Err(EConfig) upon cycle detection."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "builder.registry"
+    agent_id: "agt_pe_02"
+    trust: "reviewed"
+  initial_state:
+    cyclic_plugins: ["plugin_a -> plugin_b", "plugin_b -> plugin_a"]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "PipelineEngine::compile_plugins(&[plugin_a, plugin_b])"
+  input_params:
+    detect_cycles: true
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "plugin.graph"
+    culprit: "Cyclic dependency detected: plugin_a -> plugin_b -> plugin_a"
+    remedy: "Break cycle by decoupling shared types into kelir-interface"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "plugin.cyclic_dependency_aborted"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EConfig('Cyclic dependency')"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(compile_res, Err(KelirError::Config(msg)) if msg.contains('Cyclic dependency'));"

@@ -1,0 +1,66 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_02_synthetic_dns_nxdomain_enforcement"
+title: "DNS query targeting unlisted external host returns synthetic NXDOMAIN before wire transmission"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Synthetic-DNS-gateway"
+  statement: "DNS queries for undeclared external targets return synthetic NXDOMAIN before upstream forward."
+  blast_radius_if_breached: "Covert data exfiltration via DNS tunneling (subdomain query label encoding)."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts NXDOMAIN was returned by upstream DNS rather than synthesized locally."
+  anti_slop_mitigation: "AS-01 asserts 0 UDP packets reached host resolver; response latency < 1ms."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_wp_02"
+    trust: "reviewed"
+  initial_state:
+    network_policy:
+      dns_allowlist: ["api.github.com"]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest sends DNS query for 'tunnel.evil.com' to 192.168.127.1:53"
+  input_params:
+    query_host: "tunnel.evil.com"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "wire.dns"
+    culprit: "Undeclared target domain not in allowlist"
+    remedy: "Add domain to profile dns.allowlist"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.dns_synthetic_nxdomain"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(upstream_dns_packets_sent(), 0); assert_eq!(dns_response_rcode(), 3);"
+  - rule: "AS-06"
+    verification: "assert!(dns_latency < Duration::from_millis(1));"

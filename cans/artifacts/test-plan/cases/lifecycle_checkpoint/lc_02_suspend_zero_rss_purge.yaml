@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_02_suspend_zero_rss_purge"
+title: "session.suspend() flushes compressed memory pages to disk; host RSS drops to 0MB in <50ms"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Suspend-and-resume"
+  statement: "Freezes vCPU; flushes compressed pages to local NVMe; host RSS drops to 0 MB in <50ms."
+  blast_radius_if_breached: "Idle agent sessions consume gigabytes of resident host RAM, breaking density targets."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent pauses vCPU without unmapping physical RAM pages."
+  anti_slop_mitigation: "AS-08 asserts host process RSS drops to base supervisor floor (<15MB)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.manager"
+    agent_id: "agt_lc_02"
+    trust: "reviewed"
+  initial_state:
+    guest_allocated_mb: 256
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.suspend(SuspendReason::External(1))"
+  input_params:
+    target_rss_mb: 0
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "lifecycle.suspend"
+    culprit: "none — pages dumped and host RSS purged"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.vm_suspended"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-08"
+    verification: "assert!(host_process_rss_mb() < 15); assert!(suspend_duration < Duration::from_millis(50));"

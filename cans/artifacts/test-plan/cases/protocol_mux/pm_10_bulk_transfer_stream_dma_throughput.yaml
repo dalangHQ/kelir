@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_10_bulk_transfer_stream_dma_throughput"
+title: "Stream kind BULK transfers high-bandwidth multi-MB payloads directly bypassing CBOR and FUSE overhead"
+domain: "protocol_mux"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Bulk-transfer-stream"
+  statement: "Raw chunked byte streams; zero CBOR wrapping; no per-chunk FUSE context switches; bounded by transport MTU."
+  blast_radius_if_breached: "Model weights or cache ingestion runs through FUSE VFS, dropping ingestion throughput by 10x."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent wraps bulk chunks in CBOR envelope."
+  anti_slop_mitigation: "AS-01 asserts stream kind == 0x0004 BULK and payload is raw un-encoded bytes."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "bulk.transfer"
+    agent_id: "agt_pm_10"
+    trust: "reviewed"
+  initial_state:
+    payload_size_mb: 64
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Stream 64MB model weight buffer over stream kind BULK"
+  input_params:
+    stream_kind: 4
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "protocol.bulk"
+    culprit: "none — raw bulk transfer succeeded"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 67108864
+    tombstones_created: 0
+    host_blocks_allocated: 16384
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "protocol.bulk_transferred"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(cbor_decode_invocations(), 0); assert_eq!(received_bulk_bytes, 67108864);"

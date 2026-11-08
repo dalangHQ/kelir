@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_10_virtio_fs_fuse_req_channel"
+title: "virtio-fs routing channel dispatches in-guest FUSE VFS requests directly to host broker"
+domain: "virtio_rings"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Storage-architecture"
+  statement: "VirtIO-FS only; FUSE bridge directly links guest VFS to host broker with non-blocking host I/O."
+  blast_radius_if_breached: "VFS requests block host ring workers, causing deadlock across all guest vCPUs."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent issues blocking syscalls inside FUSE request handlers."
+  anti_slop_mitigation: "AS-01 asserts host file descriptors opened with O_NONBLOCK."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_vr_10"
+    trust: "reviewed"
+  initial_state:
+    workspace_mounted: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "fuse_op"
+  command: "Guest VFS issues FUSE_LOOKUP for path 'src/lib.rs'"
+  input_params:
+    path: "src/lib.rs"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "ring.fs"
+    culprit: "none — FUSE request handled non-blocking"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.lookup_complete"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(broker_fd_flags() & libc::O_NONBLOCK != 0, true);"

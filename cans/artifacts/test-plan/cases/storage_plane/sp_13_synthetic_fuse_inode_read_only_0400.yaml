@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_13_synthetic_fuse_inode_read_only_0400"
+title: "Synthetic FUSE inodes for configuration files (.env) are served from RAM with mode 0o400 strictly"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Synthetic-FUSE-inodes"
+  statement: "Synthetic inodes served directly from supervisor memory; physically absent on host; mode 0o400 strictly."
+  blast_radius_if_breached: "Secret configuration files (.env) write out to host SSD or allow guest write tampering."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent writes synthetic file to disk or allows chmod/write on synthetic inode."
+  anti_slop_mitigation: "AS-02 asserts file does not exist on host SSD; guest write returns EACCES."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.synthetic"
+    agent_id: "agt_sp_13"
+    trust: "reviewed"
+  initial_state:
+    synthetic_files:
+      - path: ".env"
+        content: "API_KEY=synthetic_secret"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "fuse_op"
+  command: "Guest reads .env, then attempts open('.env', O_WRONLY)"
+  input_params:
+    target: ".env"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "storage.synthetic"
+    culprit: "none — synthetic file served from memory"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.synthetic_served"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(fs::exists('workspace/.env'), false); assert_eq!(write_err.raw_os_error(), Some(libc::EACCES));"

@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_14_detached_session_lease_heartbeat"
+title: "Detached runner child updates SQLite catalog expires_at lease timestamp every 30 seconds"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Detached-lifecycle"
+  statement: "Runner updates expires_at every 30s; detached rows use lease_kind='lease'; expired lease triggers cleanup."
+  blast_radius_if_breached: "Crashed detached runners leave stale sessions locked indefinitely in catalog.db."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts detached session created without verifying lease heartbeat progression."
+  anti_slop_mitigation: "AS-02 asserts catalog.db expires_at advances forward after 30 seconds."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.detached"
+    agent_id: "agt_lc_14"
+    trust: "reviewed"
+  initial_state:
+    session_id: "ses_lc_14"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Spawn detached session; wait 31 seconds; read expires_at from catalog"
+  input_params:
+    detached: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "lifecycle.detached"
+    culprit: "none — lease heartbeat updated"
+    remedy: "none required"
+  database:
+    row_count_delta: 1
+    tables_mutated: ["sessions"]
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "catalog.lease_renewed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert!(read_catalog_expires_at('ses_lc_14') > initial_expires_at);"

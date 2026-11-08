@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_08_segregated_ring_traits_zero_vtable"
+title: "Plugins implementing only specific ring traits incur zero vtable lookup overhead for untouched rings"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Segregated-ring-traits"
+  statement: "Dispatch taxonomy rings register into ring-specific contiguous arrays; unused rings cost zero vtable lookups."
+  blast_radius_if_breached: "Every VirtIO ring event dispatches empty virtual calls to every mounted plugin, wasting CPU."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent registers all plugins in a single monolithic vector and checks `if let Some` at runtime."
+  anti_slop_mitigation: "AS-06 asserts NetInterposer array length is 0 when only FsInterposer plugins are mounted."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "pipeline.dispatch"
+    agent_id: "agt_pe_08"
+    trust: "reviewed"
+  initial_state:
+    mounted_plugins: ["fs_only_plugin"]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "PipelineEngine::compile_tables(&[fs_only_plugin])"
+  input_params:
+    action: "inspect_dispatch_tables"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "pipeline.dispatch"
+    culprit: "none — unused ring dispatch array is empty"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "pipeline.tables_compiled"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(dispatch_tables.net_interposers.len(), 0); assert_eq!(dispatch_tables.fs_interposers.len(), 1);"

@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ta_02_merkle_wal_host_isolation_cwd"
+title: "Merkle WAL path resolves strictly relative to host consumer CWD; guest paths reject at plugin construction"
+domain: "telemetry_audit"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/ledger.md#Host-isolated-by-construction"
+  statement: "Store path resolved relative to consumer CWD; guest paths rejected at plugin construction; default: .kelir/audit.merkle.db."
+  blast_radius_if_breached: "Guest code writes to or overwrites the host audit ledger file."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows WAL path to be set to a guest VFS mount path."
+  anti_slop_mitigation: "AS-02 asserts plugin initialization fails when store_path resolves inside guest rootfs."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "builder.ledger"
+    agent_id: "agt_ta_02"
+    trust: "reviewed"
+  initial_state:
+    invalid_path: "/workspace/audit.merkle.db"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "plugin_ledger.set_store_path('/workspace/audit.merkle.db')"
+  input_params:
+    path: "/workspace/audit.merkle.db"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "ledger.path"
+    culprit: "WAL path resolves inside guest workspace"
+    remedy: "WAL path must reside strictly in host consumer CWD"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "ledger.invalid_path_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EGuestPathRejected"
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_matches!(init_res, Err(LedgerError::GuestPathRejected));"

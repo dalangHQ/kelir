@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_06_exit_kind_kernel_panic_uart_scrape"
+title: "Host parses kernel panic signature from UART ring buffer into ExecutionReceipt ExitKind::KernelPanic"
+domain: "attestation_receipts"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/10-attestation.md#Field-semantics"
+  statement: "KernelPanic payload scraped from 64KB early-boot UART buffer; recorded in ExecutionReceipt."
+  blast_radius_if_breached: "Crashing microVMs report uninformative ExitKind::Normal or generic errors."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts kernel panic without checking that the panic string is embedded in ExitKind."
+  anti_slop_mitigation: "AS-03 matches ExitKind::KernelPanic(payload) containing 'Kernel panic - not syncing'."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_ar_06"
+    trust: "reviewed"
+  initial_state:
+    trigger_oops: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Trigger guest kernel sysrq-trigger panic"
+  input_params:
+    action: "c"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "attestation.uart"
+    culprit: "Guest kernel panic scraped from UART ring"
+    remedy: "Inspect kernel boot parameters and drivers"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.kernel_panic_captured"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "KernelPanic"
+    fault_reason: "Kernel panic - not syncing: Fatal exception"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(receipt.exit_kind, ExitKind::KernelPanic(msg) if msg.contains('Kernel panic'));"

@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_08_imds_cloud_metadata_quarantine"
+title: "Cloud provider metadata service requests (AWS/GCP/Azure) dropped at L3 ingress without wire transit"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Pre-policy-drop-zones"
+  statement: "Cloud metadata IMDS endpoints except 169.254.169.254 dropped at L3 ingress."
+  blast_radius_if_breached: "Workload accesses host cloud provider IAM role credentials (SSRF / instance metadata theft)."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts request failed without verifying that packet was intercepted before leaving host."
+  anti_slop_mitigation: "AS-01 asserts physical interface never transmits frame to Azure 168.63.129.16 or GCP metadata."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.quarantine"
+    agent_id: "agt_wp_08"
+    trust: "reviewed"
+  initial_state:
+    wire_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest transmits HTTP GET to Azure wire server 168.63.129.16:80"
+  input_params:
+    target_ip: "168.63.129.16"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "wire.quarantine"
+    culprit: "Cloud metadata IMDS IP dropped"
+    remedy: "Cloud instance metadata access blocked; inject credentials via vault"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.imds_blocked"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(host_transmitted_bytes(), 0); assert_eq!(ingress_filter_denial_count(), 1);"

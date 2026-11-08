@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_15_detached_session_reconnect_relay"
+title: "CLI client reconnects to detached microVM via ~/.kelir/sessions/<id>/relay.sock idempotently"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Detached-lifecycle"
+  statement: "CLI reads catalog, verifies lease is live, and connects to ~/.kelir/sessions/<id>/relay.sock."
+  blast_radius_if_breached: "Detached microVMs become unreachable zombies if the parent CLI exits."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts connection without verifying round-trip ping through relay.sock."
+  anti_slop_mitigation: "AS-03 asserts ping/pong frame round-trip over relay.sock."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "cli.client"
+    agent_id: "agt_lc_15"
+    trust: "reviewed"
+  initial_state:
+    session_id: "ses_lc_15"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Session::attach('ses_lc_15'); session.exec('echo attached', ProcessLimits::default())"
+  input_params:
+    target_session: "ses_lc_15"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "lifecycle.attach"
+    culprit: "none — attached to relay.sock"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.client_attached"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(exec_res.stdout.trim(), 'attached');"

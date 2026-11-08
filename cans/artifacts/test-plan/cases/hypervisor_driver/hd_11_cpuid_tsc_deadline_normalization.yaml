@@ -1,0 +1,66 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_11_cpuid_tsc_deadline_normalization"
+title: "CPUID synthetic filter normalizes AMD and Hygon vendor masks to canonical KVM profile with TSC-deadline"
+domain: "hypervisor_driver"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Driver-backends"
+  statement: "CPUID synthetic filter: force standard invariant TSC and Leaf 0x1; TSC-deadline advertised unconditionally."
+  blast_radius_if_breached: "Vendor-specific CPUID quirks cause guest kernel timer drift across mixed AMD/Intel clusters."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts CPUID returns data without verifying bit 24 of ECX (TSC-deadline) is set on AMD."
+  anti_slop_mitigation: "AS-06 requires hardcoded bitmask constant assertion (1 << 24)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_hd_11"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "driver-rustvmm"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "driver.filter_cpuid_leaf(0x1, 'AuthenticAMD')"
+  input_params:
+    leaf: 1
+    subleaf: 0
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "driver.cpuid"
+    culprit: "none — synthetic CPUID normalized"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.cpuid_normalized"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_ne!(cpuid_result.ecx & (1 << 24), 0, 'TSC-deadline must be advertised');"

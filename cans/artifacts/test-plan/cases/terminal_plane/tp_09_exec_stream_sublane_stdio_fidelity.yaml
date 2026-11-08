@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "tp_09_exec_stream_sublane_stdio_fidelity"
+title: "Stream kind EXEC preserves bitwise raw stdout and stderr bytes without ANSI escape injection"
+domain: "terminal_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/04-terminal-plane.md#Binary-exec-channel-(terminal-plane)"
+  statement: "stdout and stderr retain bitwise fidelity; zero terminal escape pollution; programmatic commands bypass PTY."
+  blast_radius_if_breached: "Downstream parsers fail on raw binary output due to ANSI color codes or CRLF line transformations."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts string equality on text outputs, missing \r\n vs \n byte transformations."
+  anti_slop_mitigation: "AS-06 asserts bitwise equality on raw binary byte buffers emitted by guest."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_tp_09"
+    trust: "reviewed"
+  initial_state:
+    binary_bytes: [0x00, 0xFF, 0x0A, 0x1B, 0x5B, 0x30, 0x6D]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.exec('/bin/emit_raw_bytes', ProcessLimits::default())"
+  input_params:
+    route: "EXEC_STREAM"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "terminal.exec"
+    culprit: "none — raw binary fidelity preserved"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "terminal.exec_completed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(exec_stdout_bytes, vec![0x00, 0xFF, 0x0A, 0x1B, 0x5B, 0x30, 0x6D]);"

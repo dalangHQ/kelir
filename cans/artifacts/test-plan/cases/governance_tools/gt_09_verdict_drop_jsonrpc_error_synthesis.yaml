@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_09_verdict_drop_jsonrpc_error_synthesis"
+title: "Verdict::Drop synthesizes standard JSON-RPC error response with code -32001 and mapped POSIX reason"
+domain: "governance_tools"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/tool-guard.md#Error-and-return-semantics-(tool-guard)"
+  statement: "Verdict::Drop returns JSON-RPC error object: code = -32000 - errno_number (EPERM -> -32001)."
+  blast_radius_if_breached: "Rejected tool calls close vsock connection abruptly, crashing model client transport."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent terminates socket connection rather than sending framed error response."
+  anti_slop_mitigation: "AS-03 asserts connection remains open and error code is exactly -32001."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.model"
+    agent_id: "agt_gt_09"
+    trust: "reviewed"
+  initial_state:
+    tool_blocked: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Model calls blocked tool; tool-guard returns Verdict::Drop { errno: Some(libc::EPERM), reason: 'Policy denied' }"
+  input_params:
+    action: "drop"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "tool_guard.rpc"
+    culprit: "Policy violation: tool execution rejected"
+    remedy: "Request policy exemption"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "tool_guard.tool_dropped"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "EPERM"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(jsonrpc_response.error.code, -32001); assert!(jsonrpc_response.error.message.contains('Policy denied'));"

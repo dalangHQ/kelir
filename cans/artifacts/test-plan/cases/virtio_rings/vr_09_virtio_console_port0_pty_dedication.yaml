@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_09_virtio_console_port0_pty_dedication"
+title: "virtio-console Port 0 is reserved exclusively for interactive human break-glass PTY character stream"
+domain: "virtio_rings"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/04-terminal-plane.md#Terminal-plane-attributes"
+  statement: "Port 0 allocated to standard console IO; programmatic tooling uses stream kind EXEC exclusively."
+  blast_radius_if_breached: "Automated agent commands interleave with interactive human break-glass session."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent routes programmatic commands over Port 0 instead of stream kind EXEC."
+  anti_slop_mitigation: "AS-01 asserts session.exec() packets carry stream_kind == 0x0001, never Port 0."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_vr_09"
+    trust: "reviewed"
+  initial_state:
+    session_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.exec('ls', ProcessLimits::default())"
+  input_params:
+    route: "programmatic"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "ring.console"
+    culprit: "none — routed via stream kind EXEC"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "terminal.exec_dispatched"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(console_port0_bytes_observed(), 0); assert_eq!(stream_mux_exec_bytes() > 0, true);"

@@ -1,0 +1,99 @@
+$schema: "kelir-test-plan/matrix/v1"
+discipline_doc: "cans/artifacts/test-plan/test-plan-structure.md"
+
+confusion_matrix:
+  purpose: >-
+    Categorizes every test assertion relative to Host OS and Hypervisor Physical Reality
+    so AI-generated slop—mocked vCPUs, fake VirtIO rings, unasserted CoW drops,
+    and inverted errnos—is structurally rejected at CI compile time.
+  axes:
+    rows: "test_result (pass|fail)"
+    cols: "actual_hypervisor_reality (invariant_upheld|invariant_breached)"
+  quadrants:
+    true_positive:
+      engine_state: "MicroVM commits valid mutation within declared MountScope and resource limits."
+      test_assertion: "Test asserts Verdict::Pass/Forward, physical page dirtied, ExecutionReceipt BLAKE3 link, and host workspace atomic commit."
+      classification: "Valid Success Assertion"
+      remediation: "Must verify physical filesystem/memory state on host and inspect receipt hashes."
+    false_positive:
+      engine_state: "Engine leaked host credentials, mutated out-of-scope inodes, or bypassed W^X MMU protections."
+      test_assertion: "Test passes because the agent asserted .is_ok(), caught a generic error, or mocked VmmDriver/HostInterposer."
+      classification: "AI SLOP (CRITICAL SECURITY ESCAPE)"
+      remediation: "STRICTLY PROHIBITED. Blocked by Anti-Slop Linter Laws."
+    false_negative:
+      engine_state: "Engine behaves correctly, but test fails due to host clock drift, unpinned cores, or unseeded RNG."
+      test_assertion: "Test fails because it compared microarchitectural PMU counters or asserted real wall-clock timestamps."
+      classification: "FLAKY TEST (BRITTLE HARNESS)"
+      remediation: "STRICTLY PROHIBITED. Enforce pinned clocksource, ChaCha20 seeded RNG, and virtual ticks."
+    true_negative:
+      engine_state: "Engine intercepts illegal action (e.g. anonymous PROT_EXEC mmap, undeclared net dial, symlink traversal)."
+      test_assertion: "Test asserts typed Verdict::Drop / FilterAction::Drop, exact POSIX errno (EPERM, EXDEV, ECONNREFUSED), and proves zero host mutation."
+      classification: "Valid Denial Assertion"
+      remediation: "Must assert zero dirty bytes, host CoW upper unmodified, and socket RST emission."
+
+tier_taxonomy:
+  tier_1_unit:
+    scope: "Pure functions in native memory: AST/schema parser, MountScope intersection, frame encoders/decoders, CBOR decoders, radix layer compiler; zero FFI, zero hypervisor calls."
+    location: "crates/kelir-core/tests/unit/, crates/kelir-interface/tests/"
+    hardware_required: false
+  tier_2_integration:
+    scope: "In-process engine tests using real drivers: driver-rustvmm (KVM) or driver-hvf (HVF); real SPSC shared-memory rings, real VirtIO-FS/FUSE broker mounts, smoltcp packet handling, local Unix sockets."
+    location: "crates/kelir-core/tests/integration/, crates/kelir-plugins/*/tests/"
+    hardware_required: true
+  tier_3_e2e:
+    scope: "Black-box SDK driver verification across languages (Rust, TS/NAPI, Python/PyO3), external binary adapters (kelir-pack, mcp-server), and full agent loop replays against pre-compiled EROFS images."
+    location: "crates/kelir-integration/tests/, packages/ts/tests/, packages/py/tests/"
+    hardware_required: true
+
+anti_slop_laws:
+  AS-01:
+    name: "Banned Hypervisor Mocking Law"
+    rule: "Tests verifying security boundaries (W^X MMU policy, seccomp trap dispatch, VirtIO-FS containment, smoltcp egress allowlists, vault credential isolation) must never mock the hypervisor backend or ring interposers."
+    slop_vector: "Agent mocks VmmDriver to bypass hardware virtualization checks or stubs NetInterposer to always return FilterAction::Forward."
+    enforcement: "Static analysis bans mockall, manual mock structs, or trait substitutes on VmmDriver, BusDispatcher, or HostInterposer in integration tests."
+  AS-02:
+    name: "Physical Mutation & Rollback Proof Law"
+    rule: "Every test asserting a denial, abort, or rollback (Verdict::Drop, FilterAction::Drop, session.rollback()) must physically probe host memory and the host CoW broker to prove upperdir extents were punched/discarded and 0 bytes leaked."
+    slop_vector: "Agent asserts Verdict::Drop on an illegal file write, but 64KB landed in the host upper file before the trap fired."
+    enforcement: "Test must verify st_blocks == 0 on the broker upper file and assert zero tombstones created."
+  AS-03:
+    name: "Typed Verdict & ExecutionReceipt Law"
+    rule: "Prohibit asserting .is_ok(), .is_err(), or generic boolean flags without matching the explicit Verdict / FilterAction enum variant, the POSIX errno, and validating ExecutionReceipt fields."
+    slop_vector: "Agent writes assert!(session.exec(...).is_err()). The command failed due to binary missing (ENOENT), but the test intended to verify an execution policy denial (EPERM)."
+    enforcement: "Assertions must match Verdict::Drop { errno, reason } exactly and parse ExecutionReceipt for binary_blake3, exit_code, and syscall_count."
+  AS-04:
+    name: "Deterministic Clock & Entropy Law"
+    rule: "Real wall-clock dependencies, host TSC polling, and unseeded entropy are banned in replay or deterministic execution tests. Virtual clocks must be locked via pvclock/CNTVOFF_EL2 and RNG seeded via ChaCha20."
+    slop_vector: "Agent inserts sleep(100ms) to await a guest timeout, inducing CI race conditions and non-deterministic receipt hashes."
+    enforcement: "Tests must inject explicit instruction step counts or use MockClock paravirtual stepping."
+  AS-05:
+    name: "Causal DAG & Merkle WAL Linkage Law"
+    rule: "Every test asserting a committed step or session stop must verify CausalDelta integrity and BLAKE3 Merkle WAL chaining (RFC 6962 leaf/node rules) if ledger.merkle.enabled is true."
+    slop_vector: "Agent verifies guest files changed, but the event bus dropped the mutation event and the Merkle WAL was never appended."
+    enforcement: "Test must assert CausalDelta.dirty_bytes matches physical memory tracking and verify Merkle root progression."
+  AS-06:
+    name: "Tautology Prohibition Law"
+    rule: "Assertions deriving expected values from the output of the function under test are banned."
+    slop_vector: "let r = get_receipt(); assert_eq!(r.binary_blake3, compute_hash(r.binary_path));"
+    enforcement: "Expected hashes, errnos, and receipt signatures must be hardcoded literals."
+  AS-07:
+    name: "Hardware Platform Tier Law"
+    rule: "Tests asserting hardware isolation must run on real KVM/HVF/WHP. Emulated fallback (driver-bwrap / driver-proot) must assert E_NOHARDWAREVMM unless allow_emulated_fallback: true is explicitly configured."
+    slop_vector: "Agent runs test in a nested Docker container without /dev/kvm; driver silently falls back to bwrap, and agent asserts hardware isolation passed."
+    enforcement: "Probe host capabilities via kelir doctor; reject emulated runs unless tagged with #[test_tier(emulated)]."
+  AS-08:
+    name: "Zero-Dangling Host Resources Law"
+    rule: "Tests terminating, rolling back, or suspending a session must physically assert that all host file descriptors, sockets, tmpfs scratch spaces, and POSIX advisory locks are released."
+    slop_vector: "MicroVM is killed, but sparse backing files remain on disk, UDP NAT slab entries leak, and flock locks remain held."
+    enforcement: "Tear-down verification queries /proc/self/fd (or macOS lsof) and confirms scratch directory UUID is wiped."
+
+ci_gates:
+  - id: "gate_check_manifest"
+    command: "cargo run -p kelir-testkit --bin check-manifest"
+    description: "Asserts 100% parity between manifest.yaml and test case files."
+  - id: "gate_check_linter_laws"
+    command: "cargo run -p kelir-testkit --bin check-tests"
+    description: "AST analysis asserting AS-01 through AS-08 across tests/ directory."
+  - id: "gate_check_scorecard"
+    command: "just check-scorecard"
+    description: "Byte-for-byte verification between physical evidence and scorecard.md."

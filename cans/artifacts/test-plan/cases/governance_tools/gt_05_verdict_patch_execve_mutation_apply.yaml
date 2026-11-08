@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_05_verdict_patch_execve_mutation_apply"
+title: "Verdict::Patch(ExecveMutation) atomically rewrites binary path, argv, and env before trapped execve releases"
+domain: "governance_tools"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/tool-guard.md#Unified-verdict-surface-(tool-guard)"
+  statement: "Verdict::Patch serializes ExecveMutation; shim applies new_binary, new_argv, and env atomically before execve releases."
+  blast_radius_if_breached: "Process spawns with partially applied or unsanitized command arguments."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts Patch returned without checking actual executed argv inside guest kernel."
+  anti_slop_mitigation: "AS-02 asserts guest /proc/$PID/cmdline matches new_argv exactly."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "tool_guard.interposer"
+    agent_id: "agt_gt_05"
+    trust: "reviewed"
+  initial_state:
+    target_cmd: "curl http://unsafe.url"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Trap execve('curl'); return Verdict::Patch(new_argv: ['curl', 'http://safe.url'])"
+  input_params:
+    action: "patch_argv"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "tool_guard.patch"
+    culprit: "none — execve mutated atomically"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "tool_guard.execve_patched"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(executed_task_argv(), vec!['curl', 'http://safe.url']);"

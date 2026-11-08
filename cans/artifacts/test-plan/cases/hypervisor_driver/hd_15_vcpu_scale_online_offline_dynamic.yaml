@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_15_vcpu_scale_online_offline_dynamic"
+title: "Dynamic vCPU scaling parks/unparks host threads and updates /sys/devices/system/cpu online without reboot"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Elastic-compute"
+  statement: "Scale up unparks host threads; shim writes /sys/devices/system/cpu/cpuX/online with no reboot."
+  blast_radius_if_breached: "Scaling compute requires full microVM reboots, blowing warm caches and dropping sessions."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts set_vcpus returned Ok without verifying thread parking on host."
+  anti_slop_mitigation: "AS-08 asserts host thread state transitions between parked and unparked."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_15"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.vm.set_vcpus(4) on microVM booted with 2 vCPUs"
+  input_params:
+    target_vcpus: 4
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.compute"
+    culprit: "none — vCPUs scaled online dynamically"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.vcpu_scaled"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-08"
+    verification: "assert_eq!(driver.active_vcpu_threads(), 4); assert_eq!(session.exec('nproc').stdout, '4');"

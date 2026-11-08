@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ta_07_wal_disk_full_resource_pressure"
+title: "Disk-full condition on WAL partition triggers hypervisor LifecycleRequest::Suspend(ResourcePressure)"
+domain: "telemetry_audit"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/ledger.md#Error-and-return-semantics-(ledger)"
+  statement: "Pure observer: never blocks inline execution; disk-full on WAL partition triggers Suspend(ResourcePressure)."
+  blast_radius_if_breached: "MicroVM continues mutating state while audit ledger fails silently to write records."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent drops audit records silently when disk is full."
+  anti_slop_mitigation: "AS-03 asserts hypervisor state transitions to Suspended(ResourcePressure)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "ledger.sink"
+    agent_id: "agt_ta_07"
+    trust: "reviewed"
+  initial_state:
+    simulate_enospc: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Inject ENOSPC into LMDB WAL append operation"
+  input_params:
+    action: "simulate_disk_full"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "ledger.disk"
+    culprit: "ENOSPC on WAL partition; microVM suspended"
+    remedy: "Free host disk space and resume session"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.suspended_resource_pressure"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "ResourcePressure"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(session.state(), SessionState::Suspended(SuspendReason::ResourcePressure));"

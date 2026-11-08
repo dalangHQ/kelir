@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_17_secondary_image_graft_readonly"
+title: "Secondary read-only EROFS/SquashFS package image grafts into guest VFS namespace without PCI hot-plug"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Secondary-image-mounts"
+  statement: "Grafts host-opened squashfs/EROFS images into guest VFS namespace with zero PCI hot-plug overhead."
+  blast_radius_if_breached: "Attaching package bundles requires slow ACPI/PCI device hot-plugging, blowing latency budgets."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent adds a new virtio-blk PCI device to simulate secondary image attachment."
+  anti_slop_mitigation: "AS-01 asserts PCI device count remains strictly constant before and after graft."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.graft"
+    agent_id: "agt_sp_17"
+    trust: "reviewed"
+  initial_state:
+    image_path: "node_modules.erofs"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.storage.graft_image('/opt/node_modules', 'node_modules.erofs')"
+  input_params:
+    graft_point: "/opt/node_modules"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "storage.graft"
+    culprit: "none — secondary image grafted via FUSE"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.image_grafted"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(pci_device_count_after, pci_device_count_before); assert!(fs::exists_in_guest('/opt/node_modules/package.json'));"

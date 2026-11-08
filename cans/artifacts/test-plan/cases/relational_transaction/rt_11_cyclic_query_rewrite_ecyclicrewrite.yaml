@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "rt_11_cyclic_query_rewrite_ecyclicrewrite"
+title: "Query rewrite chain exceeding 3 iterations per connection aborts with ECYCLICREWRITE"
+domain: "relational_transaction"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/db-proxy.md#Error-and-return-semantics-(db-proxy)"
+  statement: "Each connection's rewrites tallied; >3 aborts ECYCLICREWRITE."
+  blast_radius_if_breached: "Cyclic regex or schema rewrite rules loop infinitely, exhausting CPU."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows 4th rewrite to execute without error."
+  anti_slop_mitigation: "AS-03 asserts 4th rewrite returns Err(ECYCLICREWRITE)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "db_proxy.rewriter"
+    agent_id: "agt_rt_11"
+    trust: "reviewed"
+  initial_state:
+    rewrite_iteration_count: 3
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Attempt 4th query rewrite on same pgwire connection"
+  input_params:
+    iteration: 4
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "db_proxy.rewrite"
+    culprit: "Query rewrite depth exceeded 3 iterations"
+    remedy: "Eliminate cyclic rewrite rules"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "db_proxy.cyclic_rewrite_aborted"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "ECYCLICREWRITE"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(rewrite_res, Err(DbProxyError::CyclicRewrite));"

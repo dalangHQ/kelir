@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_14_host_interposer_latency_budget"
+title: "HostInterposer synchronous security evaluations complete strictly within the 2µs budget"
+domain: "virtio_rings"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Host-plane-subsystem"
+  statement: "HostInterposer evaluation bounded to <2µs in native memory."
+  blast_radius_if_breached: "Synchronous host security checks cause latency degradation on every I/O event."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent benchmarks evaluation including memory allocation overhead."
+  anti_slop_mitigation: "AS-06 enforces stopwatch assertion: elapsed_ns < 2000."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "host.interposer"
+    agent_id: "agt_vr_14"
+    trust: "reviewed"
+  initial_state:
+    interposer_rules: 16
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "host_interposer.evaluate_host_exec('/usr/bin/git')"
+  input_params:
+    target_binary: "/usr/bin/git"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "host.interposer"
+    culprit: "none — latency under 2µs"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "host.interposer_evaluated"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert!(stopwatch.elapsed() < Duration::from_nanos(2000));"

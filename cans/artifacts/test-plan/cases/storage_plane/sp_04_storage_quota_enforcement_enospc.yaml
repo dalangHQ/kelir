@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_04_storage_quota_enforcement_enospc"
+title: "Guest write exceeding allocated_bytes budget fails synchronously with ENOSPC; zero host disk leak"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Storage-quotas"
+  statement: "Exceeding max_bytes fails synchronously with ENOSPC; zero disk writes occur on quota rejection."
+  blast_radius_if_breached: "Runaway guest workload fills host physical disk, disrupting other sessions."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts write failed without verifying that physical allocated bytes stopped at ceiling."
+  anti_slop_mitigation: "AS-02 asserts upper backing file size <= quota ceiling exactly."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_sp_04"
+    trust: "reviewed"
+  initial_state:
+    quota_max_bytes: 10485760 # 10MB
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest attempts to write 15MB file to workspace"
+  input_params:
+    write_size: 15728640
+
+expected_observations:
+  exit_code: 1
+  state_modified: true
+  diagnostic:
+    domain: "storage.quota"
+    culprit: "Storage quota exceeded allocated_bytes limit"
+    remedy: "Increase storage.quotas.max_bytes in profile"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 10485760
+    tombstones_created: 0
+    host_blocks_allocated: 2048
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.quota_exceeded"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "ENOSPC"
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(write_err.raw_os_error(), Some(libc::ENOSPC)); assert!(broker.allocated_bytes() <= 10485760);"

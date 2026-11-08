@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ta_10_pmu_counters_gauge_only_export"
+title: "PMU sample metrics emit exclusively as OTel gauges and never enter ExecutionReceipt identity"
+domain: "telemetry_audit"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/14-observability.md#PMU-counters-are-gauges-only"
+  statement: "PMU counters are gauges only; never enter receipts, CausalDelta, or Merkle leaves; never compared across hosts."
+  blast_radius_if_breached: "Deterministic receipts broken across machines due to CPU branch predictor or cache differences."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent serializes PMU cycle counts into ExecutionReceipt struct."
+  anti_slop_mitigation: "AS-04 asserts PMU counter struct fields are absent from ExecutionReceipt serialization."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "telemetry.pmu"
+    agent_id: "agt_ta_10"
+    trust: "reviewed"
+  initial_state:
+    pmu_samples: { cycles: 1200000, cache_misses: 450 }
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "ReceiptExporter::export_receipt(&receipt, &pmu_samples)"
+  input_params:
+    action: "export"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "telemetry.pmu"
+    culprit: "none — PMU isolated to gauges"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "telemetry.pmu_gauge_dispatched"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04"
+    verification: "assert_eq!(serde_json::to_string(&receipt).unwrap().contains('cache_misses'), false); assert!(otel_gauge_exists('cache_misses'));"

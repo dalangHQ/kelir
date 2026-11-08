@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_11_virtio_net_smoltcp_frame_sink"
+title: "virtio-net L2 Ethernet frames terminate inside host-side smoltcp userspace network stack"
+domain: "virtio_rings"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Userspace-network-stack"
+  statement: "Guest virtio-net Ethernet frames terminate directly in host process memory; zero host TAP/TUN interface."
+  blast_radius_if_breached: "Host network configuration or root CAP_NET_ADMIN privileges required to run microVM."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent creates a physical host TAP interface to pass networking tests."
+  anti_slop_mitigation: "AS-01 asserts no TAP/TUN interfaces created in host network namespace."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_vr_11"
+    trust: "reviewed"
+  initial_state:
+    wire_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest transmits TCP SYN frame over virtio-net"
+  input_params:
+    target_ip: "93.184.216.34"
+    target_port: 80
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "ring.net"
+    culprit: "none — frame terminated in userspace smoltcp"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.syn_received"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(host_tap_interfaces_count(), 0); assert_eq!(smoltcp_active_sockets(), 1);"

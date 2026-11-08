@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_15_host_inode_lock_broker_flock_bridge"
+title: "Guest FUSE SETLK advisory lock request delegates directly to host OS advisory flock descriptor"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Host-inode-lock-broker"
+  statement: "Maps virtual guest inode to physical host inode; delegates acquisition directly to host flock."
+  blast_radius_if_breached: "Concurrent microVMs run git or cargo builds on shared workspaces without synchronization, corrupting indices."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent implements in-memory lock table without acquiring physical host flock."
+  anti_slop_mitigation: "AS-01 asserts host OS returns EWOULDBLOCK when a second external host process tries flock(LOCK_EX)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.lock_broker"
+    agent_id: "agt_sp_15"
+    trust: "reviewed"
+  initial_state:
+    target_path: ".git/index.lock"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "fuse_op"
+  command: "Guest acquires exclusive lock via fcntl(F_SETLK, F_WRLCK)"
+  input_params:
+    lock_type: "F_WRLCK"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "storage.lock"
+    culprit: "none — host flock acquired"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.flock_acquired"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(external_host_flock_acquire(), Err(libc::EWOULDBLOCK));"

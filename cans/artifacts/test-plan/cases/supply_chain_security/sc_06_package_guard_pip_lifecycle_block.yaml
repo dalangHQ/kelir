@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_06_package_guard_pip_lifecycle_block"
+title: "pip install executing arbitrary setup.py or build hook in dependency tree is trapped and halted"
+domain: "supply_chain_security"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
+  statement: "Monitors package manager process trees; blocks execution of lifecycle scripts in dependency directories."
+  blast_radius_if_breached: "Malicious Python wheels execute code on developer machine during `pip install`."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows setup.py to execute if pip was invoked by a trusted user."
+  anti_slop_mitigation: "AS-02 asserts setup.py child process of pip install is trapped and terminates with exit 126."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "package.guard"
+    agent_id: "agt_sc_06"
+    trust: "reviewed"
+  initial_state:
+    package_guard_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.exec('pip', ['install', 'malicious-wheel.whl']) which spawns setup.py build"
+  input_params:
+    manager: "pip"
+
+expected_observations:
+  exit_code: 126
+  state_modified: false
+  diagnostic:
+    domain: "supply_chain.pip"
+    culprit: "setup.py lifecycle execution blocked during pip install"
+    remedy: "Use pre-built binary wheels (.whl) without build scripts"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "supply_chain.pip_build_blocked"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "LifecycleScriptBlocked"
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(pip_child_exit_code(), 126); assert_eq!(broker.allocated_bytes(), 0);"

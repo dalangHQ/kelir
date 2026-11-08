@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_12_host_reaper_pdeathsig_enforcement"
+title: "Linux host process death delivers SIGKILL to hypervisor child via PR_SET_PDEATHSIG without orphaned vCPUs"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Host-crash-reaper"
+  statement: "Linux: prctl(PR_SET_PDEATHSIG, SIGKILL); hypervisor children must not survive as orphaned CPU spinners."
+  blast_radius_if_breached: "Node/Python crashes leave runaway microVMs spinning 100% host CPU forever."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts child died via waitpid without testing abrupt host parent kill -9."
+  anti_slop_mitigation: "AS-08 asserts child hypervisor PID is dead after parent killed with SIGKILL."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "host.reaper"
+    agent_id: "agt_lc_12"
+    trust: "reviewed"
+  initial_state:
+    spawn_isolated_parent_process: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Spawn parent process that launches hypervisor child; kill -9 parent process"
+  input_params:
+    signal: 9
+
+expected_observations:
+  exit_code: 137
+  state_modified: true
+  diagnostic:
+    domain: "host.reaper"
+    culprit: "Parent process died; PDEATHSIG delivered"
+    remedy: "none required — child reaped cleanly"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "host.pdeathsig_reaped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "HardKilled"
+    fault_reason: "PDEATHSIG"
+
+anti_slop_assertions:
+  - rule: "AS-08"
+    verification: "assert_eq!(process::is_pid_alive(child_pid), false);"

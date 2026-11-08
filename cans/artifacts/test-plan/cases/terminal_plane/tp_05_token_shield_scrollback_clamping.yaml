@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "tp_05_token_shield_scrollback_clamping"
+title: "TokenShield clamps terminal scrollback grid to maxLines/maxBytes without slicing multibyte UTF-8 chars"
+domain: "terminal_plane"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/04-terminal-plane.md#Host-filter-pipeline-execution-order"
+  statement: "Token Shield clamps scrollback grid to maxLines/maxBytes without mid-stream slicing."
+  blast_radius_if_breached: "Excessive terminal output floods LLM context window or panics UTF-8 parser."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent slices byte slice directly, generating invalid UTF-8 surrogate halves."
+  anti_slop_mitigation: "AS-06 asserts std::str::from_utf8 succeeds on clamped boundaries."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "terminal.shield"
+    agent_id: "agt_tp_05"
+    trust: "reviewed"
+  initial_state:
+    max_bytes: 100
+    multibyte_stream: '"🦀".repeat(50)'
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "token_shield.clamp_stream(multibyte_stream, 100)"
+  input_params:
+    max_bytes: 100
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "terminal.shield"
+    culprit: "none — clamped at clean char boundary"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "terminal.clamped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert!(clamped.len() <= 100); assert!(std::str::from_utf8(clamped.as_bytes()).is_ok());"

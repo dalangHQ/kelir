@@ -1,0 +1,67 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_01_nohardware_vmm_fatal_abort"
+title: "Booting on host without hardware virtualization halts immediately with E_NOHARDWAREVMM when emulated fallback is false"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Fallback-policy"
+  statement: "Silent driver downgrade is an uncatchable fatal error: E_NOHARDWAREVMM; unprivileged emulation tiers require explicit granular opt-in."
+  blast_radius_if_breached: "Microkernel silently falls back to unconfined userspace namespaces, defeating hardware virtualization boundaries."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent catches generic driver error without asserting the specific E_NOHARDWAREVMM exit code."
+  anti_slop_mitigation: "AS-03 mandates exact diagnostic code matching. AS-07 asserts zero emulated sandbox instantiation."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_hd_01"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "DriverRouter::boot() invoked on hardware lacking VT-x/AMD-V/EL2 (/dev/kvm unmapped)"
+  input_params:
+    force_hardware_missing: true
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "driver.router"
+    culprit: "Hardware virtualization missing and allow_emulated_fallback is false"
+    remedy: "Enable VT-x/AMD-V or explicitly set allow_emulated_fallback: true for development"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.boot_aborted"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_NOHARDWAREVMM"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(err, DriverError::NoHardwareVmm); assert_eq!(receipt.fault_reason, 'E_NOHARDWAREVMM');"
+  - rule: "AS-07"
+    verification: "assert_eq!(driver.is_emulated(), false); assert_eq!(process::has_bwrap_child(), false);"

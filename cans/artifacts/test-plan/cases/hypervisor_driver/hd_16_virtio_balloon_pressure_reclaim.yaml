@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_16_virtio_balloon_pressure_reclaim"
+title: "cgroup v2 memory.pressure event inflates virtio-balloon and invokes host madvise(MADV_DONTNEED)"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Host-memory-pressure-watcher"
+  statement: "Pressure signal inflates balloon; host madvise(MADV_DONTNEED) reclaims physical frames immediately."
+  blast_radius_if_breached: "Host process runs out of memory under memory pressure, triggering host OS OOM killer."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts balloon inflated without checking host process RSS reduction."
+  anti_slop_mitigation: "AS-08 asserts host RSS decreases by at least balloon target size."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_hd_16"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "driver-rustvmm"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Simulate cgroup v2 memory.pressure spike; trigger virtio-balloon inflation to 256MB"
+  input_params:
+    reclaim_target_mb: 256
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.balloon"
+    culprit: "none — host frames released via madvise"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.balloon_reclaimed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-08"
+    verification: "assert!(host_rss_after <= host_rss_before - (250 * 1024 * 1024));"

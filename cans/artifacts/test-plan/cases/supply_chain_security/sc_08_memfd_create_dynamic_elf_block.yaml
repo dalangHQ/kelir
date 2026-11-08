@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_08_memfd_create_dynamic_elf_block"
+title: "In-memory ELF loading through memfd_create traps at supervisor boundary and aborts execution"
+domain: "supply_chain_security"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
+  statement: "In-memory elf loading through memfd_create aborts with E_WX_VIOLATION."
+  blast_radius_if_breached: "Fileless malware downloads ELF binaries into anonymous memory and executes them without disk trace."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts memfd_create succeeded without checking fexecve execution trap."
+  anti_slop_mitigation: "AS-03 asserts fexecve on memfd file descriptor halts with E_WX_VIOLATION."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_sc_08"
+    trust: "reviewed"
+  initial_state:
+    wx_enforcement: "Strict"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Guest calls memfd_create('elf'), writes binary, and invokes fexecve(fd)"
+  input_params:
+    target_syscall: "fexecve"
+
+expected_observations:
+  exit_code: 137
+  state_modified: false
+  diagnostic:
+    domain: "supply_chain.memfd"
+    culprit: "fexecve on anonymous memfd descriptor"
+    remedy: "Executables must reside on verified read-only EROFS rootfs or approved paths"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "supply_chain.memfd_elf_blocked"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_WX_VIOLATION"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(receipt.fault_reason, Some(msg) if msg == 'E_WX_VIOLATION'); assert_eq!(receipt.exit_code, 137);"

@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_01_control_channel_0_lifecycle_priority"
+title: "Channel 0x0000 delivers lifecycle and signal frames without blocking behind saturated stream mux rings"
+domain: "protocol_mux"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Control-channel"
+  statement: "Exactly two transport channels: 0x0000 Control, 0x0001 Stream Mux; programmatic signals route over 0x0000."
+  blast_radius_if_breached: "Saturated stdout/stderr data streams stall high-priority cancellation signals (SIGTERM)."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent multiplexes signals onto Stream Mux 0x0001 behind pending data buffers."
+  anti_slop_mitigation: "AS-01 asserts SIGTERM frame arrives on Channel 0 within 1ms while Stream Mux buffer is 100% full."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transport.control"
+    agent_id: "agt_pm_01"
+    trust: "reviewed"
+  initial_state:
+    stream_mux_saturated: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Dispatch MSG_SIGNAL(SIGTERM) on Channel 0x0000 while 0x0001 has 64KB pending backlog"
+  input_params:
+    channel: 0
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "protocol.control"
+    culprit: "none — signal delivered immediately"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "protocol.signal_delivered"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert!(signal_delivery_latency < Duration::from_millis(1)); assert_eq!(stream_mux_backlog_bytes(), 65536);"

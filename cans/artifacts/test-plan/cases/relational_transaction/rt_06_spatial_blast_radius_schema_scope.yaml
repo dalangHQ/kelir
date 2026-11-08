@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "rt_06_spatial_blast_radius_schema_scope"
+title: "SQL queries referencing tables outside declared MountScope schema reject with SQLSTATE 42501"
+domain: "relational_transaction"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/transaction.md#Spatial-blast-radius-scoping"
+  statement: "Enforces query boundaries to declared schemas via pgwire frame filter; out-of-scope queries reject with EPERM (42501)."
+  blast_radius_if_breached: "Agent queries private tables (e.g. auth_users) on a shared database."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent forwards query to upstream database and relies on database user permissions."
+  anti_slop_mitigation: "AS-01 asserts query was blocked in-process by db-proxy without reaching upstream server."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.workload"
+    agent_id: "agt_rt_06"
+    trust: "reviewed"
+  initial_state:
+    declared_allowed_tables: ["public.tasks"]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest executes 'SELECT * FROM private.passwords' over pgwire connection"
+  input_params:
+    sql: "SELECT * FROM private.passwords"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "db_proxy.scope"
+    culprit: "Query references undeclared schema 'private'"
+    remedy: "Declare schema in profile db_proxy.postgres.allowed_schemas"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "db_proxy.table_scope_denied"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "EPERM"
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(upstream_queries_received(), 0); assert_eq!(pgwire_response_sqlstate(), '42501');"

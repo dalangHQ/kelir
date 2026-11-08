@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_04_draining_state_rejection_ebusy"
+title: "MicroVM in Draining state rejects new command execution requests synchronously with EBUSY"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#State-machine"
+  statement: "In Draining: new exec and tool calls are refused with EBUSY; in-flight commands run to completion."
+  blast_radius_if_breached: "New workloads spawn during shutdown flush, causing partial work truncation or data loss."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent terminates in-flight commands immediately instead of rejecting only new ones."
+  anti_slop_mitigation: "AS-03 asserts in-flight command completes exit 0 while new exec fails EBUSY."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.manager"
+    agent_id: "agt_lc_04"
+    trust: "reviewed"
+  initial_state:
+    in_flight_task: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.drain(5000); session.exec('echo new_task', ProcessLimits::default())"
+  input_params:
+    action: "drain"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "lifecycle.drain"
+    culprit: "MicroVM is in Draining state"
+    remedy: "Cannot execute new commands during graceful shutdown"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.exec_rejected_draining"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EBUSY"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(new_exec_err, KelirError::Draining(libc::EBUSY)); assert_eq!(in_flight_task.await.unwrap().exit_code, 0);"

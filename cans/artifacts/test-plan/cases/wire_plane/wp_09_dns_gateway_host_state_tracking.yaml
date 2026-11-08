@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_09_dns_gateway_host_state_tracking"
+title: "Synthetic DNS gateway (192.168.127.1:53) tracks host /etc/resolv.conf inotify changes transparently"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Synthetic-DNS-gateway"
+  statement: "Linux: /etc/resolv.conf watched via inotify; nameservers reloaded on change without VM restart."
+  blast_radius_if_breached: "VPN connect/disconnect on host wedges guest DNS resolution until microVM reboot."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts DNS works without asserting upstream nameserver IP updated dynamically."
+  anti_slop_mitigation: "AS-02 asserts active upstream resolver matches newly rewritten resolv.conf nameserver."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.dns"
+    agent_id: "agt_wp_09"
+    trust: "reviewed"
+  initial_state:
+    initial_nameserver: "10.0.0.1"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Update mock host /etc/resolv.conf with 'nameserver 10.0.0.2'; trigger inotify event"
+  input_params:
+    new_nameserver: "10.0.0.2"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "wire.dns"
+    culprit: "none — nameservers reloaded dynamically"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.dns_nameserver_reloaded"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(dns_gateway.active_upstreams(), vec![IpAddr::from([10, 0, 0, 2])]);"

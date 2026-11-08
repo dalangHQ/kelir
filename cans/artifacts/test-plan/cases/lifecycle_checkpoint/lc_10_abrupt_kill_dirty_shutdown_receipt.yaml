@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_10_abrupt_kill_dirty_shutdown_receipt"
+title: "session.kill() issues SIGKILL to hypervisor loops and records ExitKind::HardKilled in ExecutionReceipt"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Pre-teardown-flush"
+  statement: "session.kill() skips flush and issues SIGKILL; records ExitKind::HardKilled in ExecutionReceipt."
+  blast_radius_if_breached: "Abrupt termination failures mask uncommitted state or misreport as clean exits."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts kill succeeded with exit code 0 and ExitKind::Normal."
+  anti_slop_mitigation: "AS-03 requires exact ExitKind::HardKilled receipt match."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_lc_10"
+    trust: "reviewed"
+  initial_state:
+    workload_running: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.kill()"
+  input_params:
+    action: "kill"
+
+expected_observations:
+  exit_code: 137
+  state_modified: true
+  diagnostic:
+    domain: "lifecycle.kill"
+    culprit: "MicroVM abruptly killed via SIGKILL"
+    remedy: "Use session.stop() for graceful state flush"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.hard_killed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "HardKilled"
+    fault_reason: "AbruptKill"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(receipt.exit_kind, ExitKind::HardKilled); assert_eq!(receipt.exit_code, 137);"

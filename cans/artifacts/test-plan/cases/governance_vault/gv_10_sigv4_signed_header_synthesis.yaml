@@ -1,0 +1,67 @@
+$schema: "test-plan/case/v1"
+case_id: "gv_10_sigv4_signed_header_synthesis"
+title: "Credential broker synthesizes AWS SigV4 signed authorization headers for declared S3/DynamoDB endpoints"
+domain: "governance_vault"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/vault.md#Credential-types"
+  statement: "Signed request V4 (AWS SigV4, GCP SA JWT); broker synthesizes signed headers out-of-band."
+  blast_radius_if_breached: "Workload requires long-lived AWS_SECRET_ACCESS_KEY in memory to sign requests."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent passes raw AWS secret key to guest instead of synthesizing signature."
+  anti_slop_mitigation: "AS-03 asserts returned JSON contains Authorization header with AWS4-HMAC-SHA256 signature."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.workload"
+    agent_id: "agt_gv_10"
+    trust: "reviewed"
+  initial_state:
+    aws_credential:
+      access_key: "AKIA_TEST"
+      secret_key: "SECRET_TEST"
+      service: "s3"
+      region: "us-east-1"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "CredentialBrokerService::sign_request('s3_cred', 'GET', 'https://bucket.s3.amazonaws.com/data.json')"
+  input_params:
+    cred_type: "SigV4"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "vault.sigv4"
+    culprit: "none — SigV4 headers synthesized"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "vault.sigv4_signed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert!(signed_headers['Authorization'].starts_with('AWS4-HMAC-SHA256 Credential=AKIA_TEST'));"

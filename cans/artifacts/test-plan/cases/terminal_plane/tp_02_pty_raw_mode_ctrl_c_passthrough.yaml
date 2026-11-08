@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "tp_02_pty_raw_mode_ctrl_c_passthrough"
+title: "Host terminal in raw mode forwards Ctrl+C byte (0x03) across virtio-console to guest foreground pgid"
+domain: "terminal_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/04-terminal-plane.md#HostTerminalGuard-(RAII)"
+  statement: "SIGINT masked on host thread; Ctrl+C (0x03) traverses virtio-console to guest foreground pgid."
+  blast_radius_if_breached: "Typing Ctrl+C kills the host supervisor binary instead of stopping in-guest long-running tasks."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent sends SIGINT to host process group instead of asserting virtio-console byte transit."
+  anti_slop_mitigation: "AS-01 asserts host PID remains running while guest foreground process exits with SIGINT (130)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "terminal.pty"
+    agent_id: "agt_tp_02"
+    trust: "reviewed"
+  initial_state:
+    guest_foreground_running: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Inject byte 0x03 into host terminal stdin stream"
+  input_params:
+    byte: 3
+
+expected_observations:
+  exit_code: 130
+  state_modified: true
+  diagnostic:
+    domain: "terminal.pty"
+    culprit: "none — Ctrl+C delivered to guest foreground task"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "terminal.sigint_delivered"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Signal"
+    fault_reason: "SIGINT"
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert!(supervisor_process.is_alive()); assert_eq!(guest_task_receipt.exit_code, 130);"

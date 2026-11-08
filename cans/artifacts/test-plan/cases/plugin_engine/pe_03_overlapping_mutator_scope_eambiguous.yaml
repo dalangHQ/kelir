@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_03_overlapping_mutator_scope_eambiguous"
+title: "Multiple registered plugins declaring overlapping mutating paths fail validation with EAmbiguousMutation"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Invariants-and-purity"
+  statement: "Overlapping mutators on identical operation targets fail validation at boot with EAmbiguousMutation."
+  blast_radius_if_breached: "Race conditions determine which plugin rewrites file or network buffers, yielding non-deterministic mutations."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent executes both mutators sequentially without detecting the scope conflict."
+  anti_slop_mitigation: "AS-03 asserts validation error EAmbiguousMutation on duplicate path mutator registration."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "builder.registry"
+    agent_id: "agt_pe_03"
+    trust: "reviewed"
+  initial_state:
+    plugin_1_mutation_scope: "src/**/*.rs"
+    plugin_2_mutation_scope: "src/main.rs"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "builder.mount(plugin_1).mount(plugin_2).boot()"
+  input_params:
+    action: "validate_scopes"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "plugin.scope"
+    culprit: "Conflicting mutation scopes on 'src/main.rs'"
+    remedy: "Ensure only one plugin declares write mutation rights on target paths"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "plugin.ambiguous_mutation_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EAmbiguousMutation"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(boot_res, Err(KelirError::AmbiguousMutation { .. }));"

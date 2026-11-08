@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_08_reconciler_atomic_leaf_commit"
+title: "Storage reconciler commits modified files to host workspace via atomic renameat2 leaf replacement"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Workspace-commit"
+  statement: "Per-entry atomic commit at leaf level: temp file + platform rename (renameat2 / renameatx_np)."
+  blast_radius_if_breached: "Crashing mid-commit corrupts host files with partial or torn writes."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent writes directly to target file in-place instead of using atomic temp+rename."
+  anti_slop_mitigation: "AS-02 asserts inode number of committed host file changes (proving atomic swap)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.reconciler"
+    agent_id: "agt_sp_08"
+    trust: "reviewed"
+  initial_state:
+    workspace_file: "src/main.rs"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest edits src/main.rs; session.storage.reconcile() called"
+  input_params:
+    commit_mode: "atomic_leaf"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "storage.reconciler"
+    culprit: "none — atomic leaf commit succeeded"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.leaf_committed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_ne!(host_stat('src/main.rs').st_ino, original_ino); assert_eq!(broker.upper_stat().st_blocks, 0);"

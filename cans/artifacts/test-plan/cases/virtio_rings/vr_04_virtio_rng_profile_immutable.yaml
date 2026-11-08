@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_04_virtio_rng_profile_immutable"
+title: "Configuration profile attempting to remove or disable virtio-rng device fails validation with EConfig"
+domain: "virtio_rings"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#VirtIO-Device-Complex"
+  statement: "virtio-rng is unconfigurable; profile cannot remove the device."
+  blast_radius_if_breached: "Malicious profile removes entropy device, causing guest cryptographic failures."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent accepts profile with disabled RNG without validating mandatory device invariant."
+  anti_slop_mitigation: "AS-03 requires exact EConfig('virtio-rng cannot be disabled') matching."
+
+setup:
+  env: "dev"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_vr_04"
+    trust: "reviewed"
+  initial_state:
+    invalid_profile: "session.devices.virtio_rng.enabled = false"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "KelirBuilder::from_spec(spec_with_disabled_rng)"
+  input_params:
+    disable_rng: true
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "profile.validator"
+    culprit: "Profile attempted to disable mandatory virtio-rng device"
+    remedy: "Remove virtio_rng.enabled=false; virtio-rng is mandatory"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "profile.validation_failed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EConfig('virtio-rng is mandatory')"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(res, Err(KelirError::Config(msg)) if msg.contains('virtio-rng'));"

@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_01_cow_fork_warm_memory_sharing"
+title: "Forked child session shares parent warm pages; host memory dirtied only on child write"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#CoW-fork"
+  statement: "Children share warm parent memory; host RAM dirtied only on child write; fork time stays <10ms."
+  blast_radius_if_breached: "Fork copies all physical RAM eagerly, causing massive host OOM during agent fan-out."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent clones memory buffer with memcpy instead of establishing CoW page tables."
+  anti_slop_mitigation: "AS-02 asserts host dirty page delta == 0 immediately after fork()."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.manager"
+    agent_id: "agt_lc_01"
+    trust: "reviewed"
+  initial_state:
+    parent_memory_mb: 512
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.vm.fork() invoked on parent holding 512MB loaded model"
+  input_params:
+    action: "fork"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "lifecycle.fork"
+    culprit: "none — CoW memory shared"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.vm_forked"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert!(fork_duration < Duration::from_millis(10)); assert_eq!(child_session.dirty_bytes(), 0);"

@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_03_virtio_rng_mandatory_entropy"
+title: "virtio-rng passes host entropy to guest kernel, unblocking getrandom() before shim PID 1 executes"
+domain: "virtio_rings"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#VirtIO-Device-Complex"
+  statement: "virtio-rng is mandatory default device; seeds guest CSPRNG during early probe before shim PID 1."
+  blast_radius_if_breached: "Guest boot hangs indefinitely awaiting kernel entropy pool initialization."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts entropy was read without verifying getrandom() was non-blocking at early boot."
+  anti_slop_mitigation: "AS-04 asserts zero latency delay on guest getrandom(GRND_NONBLOCK)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_vr_03"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Shim executes getrandom(&mut buf, 32, GRND_NONBLOCK) at instruction zero"
+  input_params:
+    bytes_requested: 32
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "ring.rng"
+    culprit: "none — CSPRNG non-blocking initialization verified"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "ring.rng_seeded"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04"
+    verification: "assert_eq!(shim_entropy_init_result, Ok(32)); assert_eq!(entropy_pool_ready, true);"

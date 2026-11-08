@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_10_dns_edns0_downgrade_bit_strip"
+title: "EDNS0 downgrade strips DO bit from upstream query and clears AD bit in synthesized response"
+domain: "wire_plane"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#EDNS0-downgrade"
+  statement: "Incoming query with DO=1: interceptor strips DO; synthesized response clears AD bit."
+  blast_radius_if_breached: "Guest DNS stubs fail with SERVFAIL on split-horizon corporate networks."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent leaves DO bit set on upstream query."
+  anti_slop_mitigation: "AS-06 asserts DO bit == 0 in outbound UDP frame and AD bit == 0 in returned frame."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.dns"
+    agent_id: "agt_wp_10"
+    trust: "reviewed"
+  initial_state:
+    dns_query_with_edns: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Process DNS query carrying OPT RR with DO (DNSSEC OK) = 1"
+  input_params:
+    do_bit: 1
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "wire.dns"
+    culprit: "none — EDNS0 downgraded cleanly"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.dns_edns_downgraded"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(upstream_query_do_bit(), 0); assert_eq!(guest_response_ad_bit(), 0);"

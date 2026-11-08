@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_09_control_vfs_paginated_cursor_streaming"
+title: "Stream kind VFS streams directory listing via paginated cursor tokens with constant host memory"
+domain: "protocol_mux"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Control-plane-VFS-stream"
+  statement: "Pagination is mandatory; list returns cursor; large directories stream without oversized reply; O(1) memory."
+  blast_radius_if_breached: "Listing node_modules with 200,000 files generates a 50MB single CBOR frame, triggering OOM."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent returns entire directory in one unpaginated response."
+  anti_slop_mitigation: "AS-06 asserts max CBOR frame payload <= 64KB across all directory pages."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "vfs.client"
+    agent_id: "agt_pm_09"
+    trust: "reviewed"
+  initial_state:
+    directory_file_count: 50000
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Request VFS list on directory holding 50,000 files over stream kind VFS (0x0003)"
+  input_params:
+    path: "/workspace/node_modules"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "protocol.vfs"
+    culprit: "none — paginated streaming verified"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "vfs.paginated_list_completed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert!(max_observed_frame_size <= 65536); assert!(page_count > 10);"

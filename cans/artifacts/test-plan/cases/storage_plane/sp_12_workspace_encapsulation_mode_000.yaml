@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_12_workspace_encapsulation_mode_000"
+title: "Locked workspace encapsulation enforces mode 000 on host workspace root; external tools observe EACCES"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Encapsulation-invariant"
+  statement: "Host workspace is locked to mode 000 on host; native toolchains outside Kelir observe EACCES."
+  blast_radius_if_breached: "External host processes accidentally mutate workspace files concurrently during session execution."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent tests inside microVM instead of testing external host process access."
+  anti_slop_mitigation: "AS-02 asserts external host process open() returns libc::EACCES."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.encapsulation"
+    agent_id: "agt_sp_12"
+    trust: "reviewed"
+  initial_state:
+    workspace_encapsulation: "Locked"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "External host thread attempts fs::read_to_string('workspace/src/lib.rs')"
+  input_params:
+    external_access: true
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "storage.encapsulation"
+    culprit: "Host root locked to mode 000"
+    remedy: "Access workspace through Kelir session APIs"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.external_access_denied"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "EACCES"
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(external_read_err.raw_os_error(), Some(libc::EACCES)); assert_eq!(host_stat('workspace').st_mode & 0o777, 0);"

@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gv_11_mtls_client_cert_bundle_issuance"
+title: "Credential broker returns ephemeral short-lived PEM client certificate and key bundle for mTLS endpoints"
+domain: "governance_vault"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/vault.md#Credential-types"
+  statement: "mTLS client cert (short-lived cert + key pair, PEM bundle); each type has declared issuer backend."
+  blast_radius_if_breached: "Production private keys persist indefinitely in guest filesystem."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent issues certificate valid for 10 years."
+  anti_slop_mitigation: "AS-03 asserts certificate validity period <= 900 seconds."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.workload"
+    agent_id: "agt_gv_11"
+    trust: "reviewed"
+  initial_state:
+    mtls_issuer_configured: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Guest HTTP GET http://169.254.169.254/kelir/credentials/mtls_corp_cert"
+  input_params:
+    credential_type: "mtls"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "vault.mtls"
+    culprit: "none — ephemeral mTLS bundle issued"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "vault.mtls_issued"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert!(cert_bundle.cert_pem.contains('BEGIN CERTIFICATE')); assert!(cert_bundle.validity_seconds <= 900);"

@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_09_causal_delta_aggregation_merkle"
+title: "CausalDelta aggregates net filesystem diffs, dirty bytes, and process tree edges between checkpoints"
+domain: "attestation_receipts"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/10-attestation.md#Causal-delta"
+  statement: "CausalDelta aggregates net logical diffs: filesystem upper + tombstones, dirty bytes, and process tree edges."
+  blast_radius_if_breached: "Audit ledger records unverified file diffs, desynchronizing physical disk from attestation log."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts delta generated without checking that broker tombstone map matches delta.tombstones."
+  anti_slop_mitigation: "AS-05 asserts delta.tombstones exactly equals broker physical tombstone count."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "attestation.causal"
+    agent_id: "agt_ar_09"
+    trust: "reviewed"
+  initial_state:
+    initial_checkpoint: "chk_0"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Create file 'a', unlink file 'b', fork process; compute CausalDelta between chk_0 and chk_1"
+  input_params:
+    action: "compute_delta"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "attestation.delta"
+    culprit: "none — causal delta aggregated"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 1024
+    tombstones_created: 1
+    host_blocks_allocated: 1
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.causal_delta_computed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-05"
+    verification: "assert_eq!(delta.added_files.len(), 1); assert_eq!(delta.tombstones.len(), 1); assert_eq!(delta.dirty_bytes, 1024);"

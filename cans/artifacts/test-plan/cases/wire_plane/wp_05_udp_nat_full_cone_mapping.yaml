@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_05_udp_nat_full_cone_mapping"
+title: "Permitted UDP egress maintains full-cone NAT mapping, serving multiple remote peers from one host socket"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#UDP-NAT-semantics"
+  statement: "Permitted UDP egress uses endpoint-independent mapping (Full Cone NAT); single host socket serves multiple peers."
+  blast_radius_if_breached: "WebRTC, STUN, and Wireguard/Tailscale fail due to symmetric NAT port randomization."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent allocates new host sockets for every unique remote peer IP."
+  anti_slop_mitigation: "AS-02 asserts exactly 1 host UDP socket opened when guest sends to peer A and peer B from same port."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.nat"
+    agent_id: "agt_wp_05"
+    trust: "reviewed"
+  initial_state:
+    guest_port: 51820
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest sends UDP packet to 8.8.8.8:53, then 1.1.1.1:53 from local port 51820"
+  input_params:
+    src_port: 51820
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "wire.nat"
+    culprit: "none — full-cone mapping preserved"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 2
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.nat_mapped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(host_udp_sockets_for_guest_port(51820), 1);"

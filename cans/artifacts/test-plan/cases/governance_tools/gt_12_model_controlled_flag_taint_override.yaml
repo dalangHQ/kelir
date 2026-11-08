@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_12_model_controlled_flag_taint_override"
+title: "In-guest instructions and model parameters cannot clear host-tracked taint flags"
+domain: "governance_tools"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating"
+  statement: "Model-controlled flags cannot bypass approval gates; in-guest instructions cannot clear host-tracked taint flags."
+  blast_radius_if_breached: "Prompt injection payloads trick model into setting `force=true` or `untaint=true` to bypass gates."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent accepts argument `override_taint: true` from model parameters."
+  anti_slop_mitigation: "AS-03 asserts taint status remains true and operation is suspended regardless of parameters."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.model"
+    agent_id: "agt_gt_12"
+    trust: "reviewed"
+  initial_state:
+    session_tainted: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Model calls 'write_file' passing arguments: { path: 'a.txt', override_taint: true, trusted: true }"
+  input_params:
+    arguments: { path: "a.txt", override_taint: true, trusted: true }
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "tool_guard.taint"
+    culprit: "Host taint flag immutable from guest arguments"
+    remedy: "Taint state can only be cleared by host supervisor"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "tool_guard.taint_override_ignored"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "SuspendedForApproval"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(verdict, Verdict::Suspend { .. }); assert_eq!(tool_guard.is_tainted(), true);"

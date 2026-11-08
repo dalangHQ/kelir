@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ta_09_otlp_export_failure_non_blocking"
+title: "OTLP network export timeouts or server failures buffer in bounded memory and never block vCPU execution"
+domain: "telemetry_audit"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/ledger.md#Failure-handling"
+  statement: "Export failure never blocks the pipeline; export buffer bounded; excess samples dropped with a metric."
+  blast_radius_if_breached: "Downed OTel Collector stalls microVM execution and freezes agent loops."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent blocks thread waiting for OTLP export response."
+  anti_slop_mitigation: "AS-06 asserts guest command completes in <5ms while OTLP endpoint is blackholed."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "ledger.otel"
+    agent_id: "agt_ta_09"
+    trust: "reviewed"
+  initial_state:
+    otel_endpoint: "http://192.0.2.1:4317" # Blackhole IP (TEST-NET-1)
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.exec('/bin/true', ProcessLimits::default()) while OTLP exporter times out"
+  input_params:
+    blackhole: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "ledger.otel"
+    culprit: "none — non-blocking failure handled"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "ledger.otlp_dropped_sample"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert!(exec_duration < Duration::from_millis(5)); assert_eq!(receipt.exit_code, 0);"

@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_07_link_local_quarantine_drop"
+title: "Link-local addresses (169.254.0.0/16, fe80::/10) dropped before policy, except metadata 169.254.169.254"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Pre-policy-drop-zones"
+  statement: "169.254.0.0/16 and fe80::/10 dropped before policy; exception: 169.254.169.254 intercepted for vault."
+  blast_radius_if_breached: "Workload accesses host link-local services or peer VMs on adjacent virtual bridges."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows 169.254.1.1 or blocks 169.254.169.254."
+  anti_slop_mitigation: "AS-02 asserts 169.254.1.1 drops with zero packets transmitted."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.quarantine"
+    agent_id: "agt_wp_07"
+    trust: "reviewed"
+  initial_state:
+    wire_active: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest transmits TCP SYN to 169.254.1.1:80"
+  input_params:
+    target_ip: "169.254.1.1"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "wire.quarantine"
+    culprit: "Link-local destination dropped pre-policy"
+    remedy: "Link-local routing prohibited; use metadata service for credentials"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.link_local_dropped"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(wire_dropped_frame_count(), 1); assert_eq!(host_sockets_dialed(), 0);"

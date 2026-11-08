@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "rt_09_transaction_timeout_abort_etimedout"
+title: "Uncommitted transactions exceeding configured timeout_ms abort automatically with ETIMEDOUT"
+domain: "relational_transaction"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/transaction.md#Strict-deadline"
+  statement: "Uncommitted transactions exceeding timeout_ms abort automatically; deadlock or timeout aborts with ETIMEDOUT."
+  blast_radius_if_breached: "Dangling transactions hold database locks indefinitely, stalling production backends."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent allows transaction to remain open indefinitely."
+  anti_slop_mitigation: "AS-03 asserts transaction terminates with ETIMEDOUT when timer expires."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transaction.timer"
+    agent_id: "agt_rt_09"
+    trust: "reviewed"
+  initial_state:
+    timeout_ms: 1000
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Open transaction; sleep 1100ms without commit"
+  input_params:
+    sleep_duration_ms: 1100
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "transaction.timeout"
+    culprit: "Transaction exceeded deadline of 1000ms"
+    remedy: "Commit transactions within configured timeout budget"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "transaction.timed_out"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "ETIMEDOUT"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(tx_result, Err(TransactionError::TimedOut)); assert_eq!(upstream_sql_transaction_state(), 'ROLLED_BACK');"

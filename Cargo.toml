@@ -33,6 +33,7 @@ members = [
     "crates/kelir-plugins/plugin-vault",
     "crates/kelir-plugins/plugin-wire-ingress",
     "crates/kelir-shim",
+    "crates/kelir-testkit",
     "crates/kelir-transport",
 ]
 

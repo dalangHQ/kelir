@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_11_socks5h_synthetic_pool_allocation"
+title: "SOCKS5h upstream proxy maps destination domains to synthetic IPs in 198.18.0.0/15 pool"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#Synthetic-DNS-gateway"
+  statement: "SOCKS5h synthetic pool: remote proxy DNS maps domains to 198.18.0.0/15; original target preserved in CONNECT."
+  blast_radius_if_breached: "Local host leaks destination domain queries to external DNS before SOCKS proxy connection."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent resolves domain locally via getaddrinfo before connecting to SOCKS proxy."
+  anti_slop_mitigation: "AS-01 asserts 0 external DNS queries; destination IP matches 198.18.x.x CIDR."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.proxy"
+    agent_id: "agt_wp_11"
+    trust: "reviewed"
+  initial_state:
+    proxy_mode: "socks5h"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest connects to internal-service.corp via SOCKS5h proxy configuration"
+  input_params:
+    target_host: "internal-service.corp"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "wire.socks5h"
+    culprit: "none — mapped to synthetic IP"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "wire.socks5h_mapped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert!(synthetic_ip.starts_with('198.18.')); assert_eq!(socks5_connect_frame_host(), 'internal-service.corp');"

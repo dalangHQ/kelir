@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_13_uart_early_boot_panic_scrape"
+title: "Early guest kernel panic signature scraped from 64KB UART ring buffer into ExitReason::KernelPanic"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Early-boot-diagnostics"
+  statement: "Fixed 64KB circular ring buffer in host memory mapped to UART scrapes KernelPanic signatures into receipt."
+  blast_radius_if_breached: "Early boot crashes hang indefinitely or emit opaque exit code without diagnostic breadcrumbs."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts kernel crashed without verifying panic message was scraped from the UART buffer."
+  anti_slop_mitigation: "AS-03 matches ExitKind::KernelPanic(payload) containing exact panic string."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_hd_13"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Boot microVM with corrupted kernel parameter causing early panic: panic('test_early_boot_oops')"
+  input_params:
+    force_panic: true
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "driver.uart"
+    culprit: "Kernel panic: test_early_boot_oops"
+    remedy: "Inspect guest kernel boot arguments"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.kernel_panic"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "KernelPanic"
+    fault_reason: "Kernel panic: test_early_boot_oops"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(receipt.exit_kind, ExitKind::KernelPanic(msg) if msg.contains('test_early_boot_oops'));"

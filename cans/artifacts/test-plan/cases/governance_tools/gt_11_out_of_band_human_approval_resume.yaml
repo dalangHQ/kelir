@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_11_out_of_band_human_approval_resume"
+title: "Verdict::Suspend awaiting human approval holds vCPU state and resumes cycle-exact upon approval frame"
+domain: "governance_tools"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/tool-guard.md#Unified-verdict-surface-(tool-guard)"
+  statement: "Verdict::Suspend { until: Approval }; host waits for out-of-band authorization via Channel 0; cycle-exact resume."
+  blast_radius_if_breached: "MicroVM consumes 100% host CPU polling for human approval."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent spins thread while awaiting approval."
+  anti_slop_mitigation: "AS-08 asserts hypervisor vCPU thread is parked in suspended state."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_gt_11"
+    trust: "reviewed"
+  initial_state:
+    approval_pending: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Tool suspends on Approval; external operator delivers MSG_APPROVAL on Channel 0x0000"
+  input_params:
+    approval_granted: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "tool_guard.approval"
+    culprit: "none — approval delivered and resumed"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "tool_guard.approved_and_resumed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-08"
+    verification: "assert_eq!(vcpu_state_was_parked(), true); assert_eq!(tool_execution_res.is_ok(), true);"

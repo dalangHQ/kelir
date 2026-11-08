@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ta_05_w3c_traceparent_span_propagation"
+title: "W3C traceparent context propagates across guest-originated outbound requests for end-to-end tracing"
+domain: "telemetry_audit"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/14-observability.md#Metrics-pipeline"
+  statement: "Trace continuity across guest-originated requests via W3C traceparent; correlation ids stitch spans."
+  blast_radius_if_breached: "Distributed tracing breaks at the microVM hypervisor boundary, blinding telemetry pipelines."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent generates a new root trace ID on every request, severing distributed trace links."
+  anti_slop_mitigation: "AS-03 asserts outbound HTTP request trace_id matches session root trace_id."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "telemetry.tracer"
+    agent_id: "agt_ta_05"
+    trust: "reviewed"
+  initial_state:
+    root_traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "net_frame"
+  command: "Guest transmits HTTP GET through wire plane; inspect outbound headers"
+  input_params:
+    action: "propagate_trace"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "telemetry.trace"
+    culprit: "none — traceparent propagated"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 1
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "telemetry.traceparent_injected"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert!(outbound_http_header('traceparent').contains('4bf92f3577b34da6a3ce929d0e0e4736'));"

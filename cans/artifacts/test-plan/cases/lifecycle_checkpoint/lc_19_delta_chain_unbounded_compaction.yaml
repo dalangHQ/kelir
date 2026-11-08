@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_19_delta_chain_unbounded_compaction"
+title: "Compaction flattens N stacked WorkingDeltas into a consolidated single Base image in a single pass"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Delta-chain-compaction"
+  statement: "Compaction flattens ancestor deltas in a single-pass block copy on export; depth is unbounded."
+  blast_radius_if_breached: "Deep checkpoint lineage trees (20+ steps) exhaust host memory or degrade read IOPS."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts compaction finished without verifying delta depth reduced to 1."
+  anti_slop_mitigation: "AS-02 asserts snapshot manifest parent_digest is updated to ancestor base."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.compactor"
+    agent_id: "agt_lc_19"
+    trust: "reviewed"
+  initial_state:
+    chain_depth: 20
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Execute checkpoint_service.compact_chain(session_id)"
+  input_params:
+    target_depth: 1
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "lifecycle.compaction"
+    culprit: "none — flattened 20 deltas into base"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.chain_compacted"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(session.checkpoint_depth(), 1); assert_eq!(broker.delta_layers_count(), 1);"

@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_08_virtio_wdt_ping_cadence"
+title: "virtio-wdt watchdog hardware fires WatchdogDiagnostic when guest fails heartbeat cadence"
+domain: "virtio_rings"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Watchdog"
+  statement: "Driver fires on_watchdog when heartbeat expires, synthesizing WatchdogDiagnostic host-side."
+  blast_radius_if_breached: "Stalled or deadlocked guest kernels hang indefinitely without recovery."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts watchdog fired without verifying fired_at_ns and last active PID."
+  anti_slop_mitigation: "AS-03 matches typed WatchdogDiagnostic struct fields."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_vr_08"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Freeze guest vCPU; advance virtual clock past heartbeat_timeout_seconds"
+  input_params:
+    timeout_seconds: 5
+
+expected_observations:
+  exit_code: 1
+  state_modified: true
+  diagnostic:
+    domain: "ring.watchdog"
+    culprit: "Guest heartbeat lost past 5-second deadline"
+    remedy: "WatchdogAction::Terminate executed; host diagnostic emitted"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.watchdog_timeout"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "WatchdogTimeout"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(diag.last_active_pid > 0, true); assert!(diag.last_heartbeat_ms >= 5000);"

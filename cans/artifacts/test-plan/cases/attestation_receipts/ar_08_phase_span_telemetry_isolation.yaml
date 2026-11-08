@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_08_phase_span_telemetry_isolation"
+title: "Execution phase spans (trap_ingress, policy, ffi_hop) emit strictly to OTel and are excluded from Merkle roots"
+domain: "attestation_receipts"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/10-attestation.md#Receipt-accounting"
+  statement: "Diagnostic only: spans emit to OTel; excluded from Merkle roots; no PMU samples appear in any leaf."
+  blast_radius_if_breached: "Host scheduling jitter breaks deterministic Merkle WAL hashes across identical replay runs."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent includes phase timing timestamps in Merkle tree leaf hashing."
+  anti_slop_mitigation: "AS-05 asserts Merkle root is identical across runs with different phase_span nanosecond timings."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "attestation.ledger"
+    agent_id: "agt_ar_08"
+    trust: "reviewed"
+  initial_state:
+    run_1_timings: { ffi_hop_ns: 50000, policy_ns: 2000 }
+    run_2_timings: { ffi_hop_ns: 90000, policy_ns: 4000 }
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Calculate Merkle leaf for run 1 and run 2 with identical command, exit code, and causal deltas"
+  input_params:
+    compare_leaves: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "attestation.merkle"
+    culprit: "none — timing jitter excluded from Merkle leaf"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.merkle_leaf_computed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-05"
+    verification: "assert_eq!(leaf_hash_1, leaf_hash_2); assert_ne!(run_1_timings.ffi_hop_ns, run_2_timings.ffi_hop_ns);"

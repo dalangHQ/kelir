@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gv_12_vault_placeholder_profile_resolution"
+title: "Profiles referencing vault:// placeholders resolve to valid metadata paths at microVM boot"
+domain: "governance_vault"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/vault.md#Guest-integration"
+  statement: "vault:// placeholder in profiles resolves to a metadata path at boot; real credentials never enter profile files."
+  blast_radius_if_breached: "Plaintext secrets committed to repository config files."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent resolves vault:// placeholder directly to plaintext secret in the profile AST."
+  anti_slop_mitigation: "AS-01 asserts profile AST contains URL pointer 'http://169.254.169.254/...', never raw secret."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "profile.hydrator"
+    agent_id: "agt_gv_12"
+    trust: "reviewed"
+  initial_state:
+    raw_profile: "env = { DB_PASS = 'vault://db_password' }"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "ProfileHydrator::hydrate(raw_profile)"
+  input_params:
+    action: "resolve_placeholders"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "vault.profile"
+    culprit: "none — placeholder resolved to metadata URL"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "vault.placeholder_resolved"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(hydrated_env['DB_PASS'], 'http://169.254.169.254/kelir/credentials/db_password');"

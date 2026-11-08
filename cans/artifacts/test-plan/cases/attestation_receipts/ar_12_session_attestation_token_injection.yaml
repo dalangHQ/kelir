@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_12_session_attestation_token_injection"
+title: "Hypervisor injects signed session attestation token via paravirtual configuration device before vCPU start"
+domain: "attestation_receipts"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Guest-VM-anatomy"
+  statement: "Session attestation token injected over paravirtual config device; workload verifies over vsock Channel 0."
+  blast_radius_if_breached: "Scripts run accidentally on bare-metal host instead of inside isolated microVM."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts token present without verifying cryptographic signature from host session key."
+  anti_slop_mitigation: "AS-01 verifies token signature against host public key."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_ar_12"
+    trust: "reviewed"
+  initial_state:
+    session_key: "ed25519_host_key"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest reads token from /dev/kelir_cfg; verifies Ed25519 signature"
+  input_params:
+    device: "/dev/kelir_cfg"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "attestation.token"
+    culprit: "none — hardware token valid"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.token_verified"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(token.verify_sig(&host_pub_key), true); assert_eq!(token.session_id, active_session_id);"

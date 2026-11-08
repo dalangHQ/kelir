@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_07_cow_fork_uncloned_descriptor_veto"
+title: "Plugin holding non-clonable host descriptor vetoes fork with VetoEvent::Fork, returning ESessionVeto"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#CoW-fork"
+  statement: "Plugins holding un-clonable host descriptors veto via VetoEvent::Fork; callback false -> ESessionVeto; no child VM."
+  blast_radius_if_breached: "Child microVM inherits unshareable host hardware state, leading to cross-session descriptor races."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent ignores veto callback and spawns child microVM anyway."
+  anti_slop_mitigation: "AS-03 asserts fork() returns Err(ESessionVeto) and child process count is 0."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_lc_07"
+    trust: "reviewed"
+  initial_state:
+    unclonable_plugin_registered: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.vm.fork() called while plugin registered veto callback returning false"
+  input_params:
+    action: "fork"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "lifecycle.veto"
+    culprit: "Fork vetoed by registered lifecycle participant"
+    remedy: "Release un-clonable host descriptors or unregister veto"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.fork_vetoed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "ESessionVeto"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(fork_res, Err(KelirError::SessionVeto)); assert_eq!(active_microvm_count(), 1);"

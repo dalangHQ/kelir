@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_02_symlink_traversal_escape_exdev"
+title: "Guest symlink hopping outside host workspace root fails at openat2 with EXDEV"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Containment"
+  statement: "Strict containment: symlink traversals escaping root fail with EXDEV at host VFS layer."
+  blast_radius_if_breached: "Malicious symlink reads or overwrites sensitive host filesystem paths (/etc/passwd)."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts file open failed without matching exact EXDEV errno."
+  anti_slop_mitigation: "AS-03 asserts errno == libc::EXDEV on openat2 resolution."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_sp_02"
+    trust: "reviewed"
+  initial_state:
+    workspace_clean: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest creates symlink 'link -> ../../../etc/shadow' and calls open('link')"
+  input_params:
+    symlink_target: "../../../etc/shadow"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "storage.containment"
+    culprit: "Symlink traversal escaped host workspace boundary"
+    remedy: "Confine file references within workspace root"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.escape_denied"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "EXDEV"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(open_err.raw_os_error(), Some(libc::EXDEV));"

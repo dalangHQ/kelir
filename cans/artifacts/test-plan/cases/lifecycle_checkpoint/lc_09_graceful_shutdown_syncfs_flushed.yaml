@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_09_graceful_shutdown_syncfs_flushed"
+title: "Graceful stop issues MSG_SHUTDOWN_REQUEST, triggering guest syncfs(2) and SIGTERM child process reap"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Pre-teardown-flush"
+  statement: "Host issues MSG_SHUTDOWN_REQUEST; shim issues syncfs(2), sends SIGTERM, reaps children, replies MSG_SHUTDOWN_ACK."
+  blast_radius_if_breached: "Host kills microVM abruptly, corrupting half-written SQLite WAL or git index files in workspace."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent issues SIGKILL immediately instead of awaiting MSG_SHUTDOWN_ACK."
+  anti_slop_mitigation: "AS-03 asserts receipt exit_kind == Normal rather than DirtyShutdown or HardKilled."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_lc_09"
+    trust: "reviewed"
+  initial_state:
+    guest_writing_database: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "session.stop_with_timeout(Duration::from_secs(5))"
+  input_params:
+    timeout_ms: 5000
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "lifecycle.shutdown"
+    culprit: "none — graceful syncfs acknowledged"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.shutdown_clean"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(receipt.exit_kind, ExitKind::Normal); assert_eq!(shutdown_ack_received, true);"

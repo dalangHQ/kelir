@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_03_setuid_bit_strip_invariant"
+title: "Guest chmod 4755 strips S_ISUID and S_ISGID unconditionally; host file receives mode & !0o6000"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Containment"
+  statement: "S_ISUID and S_ISGID stripped on every write, create, chmod (mode & !0o6000)."
+  blast_radius_if_breached: "In-guest root user mints setuid root binaries on host disk, leading to host privilege escalation."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts chmod returned 0 without inspecting host file mode bits via libc::stat."
+  anti_slop_mitigation: "AS-02 asserts host st_mode & 0o6000 == 0 on committed file."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_sp_03"
+    trust: "reviewed"
+  initial_state:
+    target_file: "exploit_bin"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest executes chmod 4755 exploit_bin"
+  input_params:
+    requested_mode: 0o4755
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "storage.containment"
+    culprit: "none — setuid bits stripped"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.setuid_stripped"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(host_stat('exploit_bin').st_mode & 0o6000, 0);"

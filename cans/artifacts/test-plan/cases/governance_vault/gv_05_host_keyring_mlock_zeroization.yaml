@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "gv_05_host_keyring_mlock_zeroization"
+title: "Host keyring memory is pinned via mlock(2) to prevent swap leaks, and issued buffers zeroize on drop"
+domain: "governance_vault"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/vault.md#Memory-isolation-and-zeroization"
+  statement: "Host keyring memory pinned with mlock(2); issued token buffers zeroized on drop; zero plaintext lingers."
+  blast_radius_if_breached: "Host kernel swaps secret keys to unencrypted swap partition on disk."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent allocates standard Rust String without zeroize::ZeroizeOnDrop."
+  anti_slop_mitigation: "AS-01 asserts memory slice is overwritten with 0x00 after buffer drop."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "vault.keyring"
+    agent_id: "agt_gv_05"
+    trust: "reviewed"
+  initial_state:
+    secret_bytes: [0x41, 0x42, 0x43, 0x44]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Allocate SecretBuffer(secret_bytes); drop(secret_buffer); inspect memory"
+  input_params:
+    action: "test_zeroize"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "vault.memory"
+    culprit: "none — buffer zeroized on drop"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "vault.buffer_zeroized"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(raw_memory_slice(), &[0, 0, 0, 0]); assert_eq!(keyring_is_mlocked(), true);"

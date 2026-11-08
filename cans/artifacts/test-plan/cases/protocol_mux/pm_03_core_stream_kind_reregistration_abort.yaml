@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_03_core_stream_kind_reregistration_abort"
+title: "Attempting to re-register frozen core stream kind (0x0001 EXEC) aborts with EKindReserved"
+domain: "protocol_mux"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Kind-registration"
+  statement: "Core kinds abort re-registration with EKindReserved; core kinds frozen (0x0001-0x000F)."
+  blast_radius_if_breached: "Third-party plugin hijacks core execution stream kind, subverting process IO routing."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent overwrites handler in hashmap without checking reserved range."
+  anti_slop_mitigation: "AS-03 asserts builder.register_stream_kind(0x0001, handler) returns Err(EKindReserved)."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "plugin.malicious"
+    agent_id: "agt_pm_03"
+    trust: "reviewed"
+  initial_state:
+    target_kind: 1 # EXEC
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "builder.register_stream_kind(0x0001, Box::new(MockHandler))"
+  input_params:
+    stream_kind: 1
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "protocol.registry"
+    culprit: "Stream kind 0x0001 is core-reserved"
+    remedy: "Plugins must register stream kinds in range 0x0010..=0x7FFF"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "protocol.reserved_kind_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EKindReserved"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(register_err, Err(KelirError::KindReserved(1)));"

@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "ar_11_pmu_counters_excluded_from_receipt"
+title: "Hardware PMU counter samples emit exclusively as OTel gauges and never enter ExecutionReceipt identity"
+domain: "attestation_receipts"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/10-attestation.md#Field-semantics"
+  statement: "retired_instructions: diagnostic metric; emitted to OTel as gauge; excluded from receipts and Merkle roots."
+  blast_radius_if_breached: "Microarchitectural variance causes identical code to fail receipt validation across different CPU steppings."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts retired_instructions equals a fixed number."
+  anti_slop_mitigation: "AS-04 asserts ExecutionReceipt comparison ignores retired instruction counts."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "attestation.pmu"
+    agent_id: "agt_ar_11"
+    trust: "reviewed"
+  initial_state:
+    pmu_sample_1: 15420
+    pmu_sample_2: 15480
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Assert equality between receipt_1 and receipt_2 holding different PMU sample readings"
+  input_params:
+    compare_receipts: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "attestation.receipt"
+    culprit: "none — receipts compare equal"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "attestation.pmu_gauge_exported"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04"
+    verification: "assert_eq!(receipt_1, receipt_2); assert_eq!(otel_gauge('retired_instructions').is_some(), true);"

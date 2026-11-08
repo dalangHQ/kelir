@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_09_whitelisted_interpreter_entropy_bypass"
+title: "Configured toolchain binaries (python, node) bypass Shannon entropy gating for inline script arguments"
+domain: "supply_chain_security"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
+  statement: "Default bypass runners: node, python, language toolchains; bypass paths are plugin-private config."
+  blast_radius_if_breached: "Standard base64 decoding tools or inline python one-liners fail entropy checks in developer builds."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent blocks legitimate python -c 'import base64; ...' commands."
+  anti_slop_mitigation: "AS-06 asserts whitelisted binary path /usr/bin/python3 bypasses entropy rejection."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "security.entropy"
+    agent_id: "agt_sc_09"
+    trust: "reviewed"
+  initial_state:
+    high_entropy_script: "import base64; base64.b64decode('a8fF#k9!zL2@mQ4$')"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "supply_chain.evaluate_trap(&TrapEvent { binary: '/usr/bin/python3', argv: vec!['python3', '-c', high_entropy_script] })"
+  input_params:
+    binary: "/usr/bin/python3"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "supply_chain.entropy"
+    culprit: "none — whitelisted runner bypassed entropy check"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "supply_chain.entropy_bypassed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_matches!(verdict, Verdict::Pass); assert_eq!(entropy_check_skipped, true);"

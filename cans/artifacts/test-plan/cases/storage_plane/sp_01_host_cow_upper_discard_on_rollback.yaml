@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_01_host_cow_upper_discard_on_rollback"
+title: "session.rollback() drops upper sparse file and tombstones via punch-hole; base workspace untouched"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Host-CoW-broker"
+  statement: "Rollback: broker drops upper file and tombstones; FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED)."
+  blast_radius_if_breached: "State modifications leak across agent retry attempts, corrupting base workspace trees."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts rollback Ok without checking host file st_blocks."
+  anti_slop_mitigation: "AS-02 asserts upper file st_blocks == 0 and tombstone count == 0 on host disk."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.broker"
+    agent_id: "agt_sp_01"
+    trust: "reviewed"
+  initial_state:
+    workspace_file: "README.md"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Guest writes 10MB to README.md; session.rollback() invoked"
+  input_params:
+    bytes_dirtied: 10485760
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "storage.rollback"
+    culprit: "none — upper file punched and tombstones cleared"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "storage.rollback_complete"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(broker.upper_stat().st_blocks, 0); assert_eq!(broker.tombstone_count(), 0);"

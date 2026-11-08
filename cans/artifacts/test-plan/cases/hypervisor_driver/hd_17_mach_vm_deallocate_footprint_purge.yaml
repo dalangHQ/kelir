@@ -1,0 +1,65 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_17_mach_vm_deallocate_footprint_purge"
+title: "macOS balloon reclaim unmaps Stage-2 pages and calls mach_vm_deallocate to reduce physical wired RSS"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Host-memory-pressure-watcher"
+  statement: "macOS madvise-alone is banned; mach_vm_deallocate purges host wired footprints."
+  blast_radius_if_breached: "macOS host wired memory stays pinned indefinitely, starving host applications."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent uses libc::madvise on macOS and claims memory was freed."
+  anti_slop_mitigation: "AS-01 forbids madvise-alone on macOS; asserts mach_vm_deallocate syscall."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_hd_17"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "driver-hvf"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Trigger macOS memory pressure handler on 128MB guest allocated pages"
+  input_params:
+    reclaim_bytes: 134217728
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.hvf"
+    culprit: "none — mach_vm_deallocate executed"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "driver.mach_deallocate"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert!(driver.mach_deallocate_called()); assert!(host_wired_rss_dropped());"

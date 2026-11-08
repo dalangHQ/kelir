@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "tp_01_host_terminal_guard_raii_restore"
+title: "HostTerminalGuard restores host termios attributes via tcsetattr(TCSAFLUSH) on drop or panic"
+domain: "terminal_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/04-terminal-plane.md#HostTerminalGuard-(RAII)"
+  statement: "On drop/panic: tcsetattr(TCSAFLUSH) restores saved termios unconditionally; host shell state never corrupted."
+  blast_radius_if_breached: "A crashed or aborted agent leaves host terminal stuck in raw un-echoed mode, breaking operator shells."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts guard dropped without inspecting physical termios c_lflag bits on host stdout fd."
+  anti_slop_mitigation: "AS-08 requires querying libc::tcgetattr on fd 0 before and after unwinding panic."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "terminal.guard"
+    agent_id: "agt_tp_01"
+    trust: "reviewed"
+  initial_state:
+    termios_saved: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Acquire HostTerminalGuard(raw_mode); trigger caught panic inside closure"
+  input_params:
+    simulate_panic: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "terminal.guard"
+    culprit: "none — termios restored on unwind"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "terminal.guard_restored"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-08"
+    verification: "assert_eq!(current_termios.c_lflag & libc::ECHO, original_termios.c_lflag & libc::ECHO);"

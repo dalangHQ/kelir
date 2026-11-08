@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "ta_06_merkle_wal_opt_in_suppression"
+title: "When ledger.merkle.enabled is false, zero local on-disk WAL records are written; telemetry flows to OTLP only"
+domain: "telemetry_audit"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/ledger.md#Merkle-WAL"
+  statement: "WAL is opt-in (ledger.merkle.enabled = true); default off; when off, receipts flow to OTLP alone."
+  blast_radius_if_breached: "Unwanted local database files created on ephemeral CI runners, exhausting disk quota."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent initializes local LMDB database by default."
+  anti_slop_mitigation: "AS-02 asserts .kelir/audit.merkle.db does not exist on disk."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "builder.ledger"
+    agent_id: "agt_ta_06"
+    trust: "reviewed"
+  initial_state:
+    merkle_enabled: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "builder.mount(plugin_ledger({ merkle_enabled: false })).boot()"
+  input_params:
+    merkle_enabled: false
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "ledger.merkle"
+    culprit: "none — local store suppressed"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "ledger.store_suppressed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(fs::exists('.kelir/audit.merkle.db'), false); assert_eq!(ledger.has_local_sink(), false);"

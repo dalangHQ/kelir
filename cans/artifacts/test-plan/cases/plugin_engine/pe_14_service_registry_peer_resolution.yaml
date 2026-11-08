@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_14_service_registry_peer_resolution"
+title: "Tier 2 and Tier 3 plugins resolve peer services via ServiceRegistry without cyclic Cargo dependencies"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Plugin-tiering"
+  statement: "Plugins depend on kelir-interface and resolve peer capabilities via ServiceRegistry."
+  blast_radius_if_breached: "Plugins tightly couple to peer concrete struct types, breaking modular distribution."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent accesses peer plugin via unsafe static global variables."
+  anti_slop_mitigation: "AS-01 asserts resolution routes strictly through typed ServiceRegistry."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "plugin.registry"
+    agent_id: "agt_pe_14"
+    trust: "reviewed"
+  initial_state:
+    service_registered: "CredentialBrokerService"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "service_registry.resolve::<dyn CredentialBrokerService>()"
+  input_params:
+    service: "CredentialBrokerService"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "plugin.registry"
+    culprit: "none — service resolved via registry"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "plugin.service_resolved"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert!(service_registry.resolve::<dyn CredentialBrokerService>().is_some());"

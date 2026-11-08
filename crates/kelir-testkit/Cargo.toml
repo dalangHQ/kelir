@@ -1,0 +1,16 @@
+[package]
+name = "kelir-testkit"
+version = "0.1.0"
+edition = "2024"
+license = "FSL-1.1-Apache-2.0"
+authors = ["Kelir Contributors"]
+rust-version = "1.85"
+description = "Test plan verification harness: manifest parity checker, anti-slop linter, scorecard generator."
+
+[dependencies]
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+walkdir = "2"
+
+[lints]
+workspace = true

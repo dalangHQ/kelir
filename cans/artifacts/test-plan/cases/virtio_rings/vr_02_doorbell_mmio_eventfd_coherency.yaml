@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_02_doorbell_mmio_eventfd_coherency"
+title: "Guest MMIO doorbell write triggers host eventfd notification without CPU spin-polling"
+domain: "virtio_rings"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Shared-memory-channel"
+  statement: "Guest doorbell: MMIO/PCI write triggers host eventfd read; no CPU spin-polling on flags."
+  blast_radius_if_breached: "Host supervisor spins at 100% CPU utilization while awaiting guest I/O notifications."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent polls memory in a tight loop instead of asserting eventfd wake-up."
+  anti_slop_mitigation: "AS-02 asserts host thread blocked on eventfd epoll until guest MMIO write executes."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "transport.doorbell"
+    agent_id: "agt_vr_02"
+    trust: "reviewed"
+  initial_state:
+    doorbell_armed: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Guest writes 0x1 to MMIO doorbell register address"
+  input_params:
+    doorbell_val: 1
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "ring.doorbell"
+    culprit: "none — eventfd signaled without spin-poll"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "ring.doorbell_fired"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(host_eventfd.read().unwrap(), 1); assert_eq!(poll_iterations, 1);"

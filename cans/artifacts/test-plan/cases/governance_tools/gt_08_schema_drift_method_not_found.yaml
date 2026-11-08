@@ -1,0 +1,64 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_08_schema_drift_method_not_found"
+title: "Tool call matching an unpinned or drifted schema returns JSON-RPC -32601 (Method not found) panic"
+domain: "governance_tools"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+
+invariant:
+  law_reference: "cans/plugins/tool-guard.md#Error-and-return-semantics-(tool-guard)"
+  statement: "Schema drift or unpinned tool tampering returns -32601 (Method not found) + VM Security Panic."
+  blast_radius_if_breached: "Adversarial prompts invoke undeclared or unpinned model tool functions."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent returns generic 500 error instead of standard JSON-RPC -32601."
+  anti_slop_mitigation: "AS-03 asserts JSON-RPC response error.code == -32601."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.model"
+    agent_id: "agt_gt_08"
+    trust: "reviewed"
+  initial_state:
+    pinned_tools: ["read_file"]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "Model attempts to call 'unregistered_tool'"
+  input_params:
+    method: "tools/call"
+    name: "unregistered_tool"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "tool_guard.rpc"
+    culprit: "Method not found: unregistered_tool"
+    remedy: "Pin tool schema at microVM launch"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "tool_guard.unknown_tool_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "MethodNotFound"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(jsonrpc_response.error.code, -32601);"

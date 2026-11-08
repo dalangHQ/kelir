@@ -1,0 +1,63 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_08_rollback_trap_held_precondition"
+title: "session.rollback() releases any active in-flight trap with Verdict::Drop before executing reset"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Rollback"
+  statement: "Pre-condition invariant: Rollback requires zero unreleased traps; held trap released (Verdict::Drop{EFAULT}) before rollback."
+  blast_radius_if_breached: "Rolling back hypervisor memory while a vCPU thread waits on a seccomp trap deadlocks the engine."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent issues rollback directly without draining active seccomp/trap queue."
+  anti_slop_mitigation: "AS-02 asserts held trap unblocks with EFAULT before memory registers reset."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.orchestrator"
+    agent_id: "agt_lc_08"
+    trust: "reviewed"
+  initial_state:
+    trap_held: true
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Hold syscall trap in on_trap; concurrently call session.rollback()"
+  input_params:
+    action: "rollback_with_held_trap"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "lifecycle.rollback"
+    culprit: "none — held trap released before reset"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    packets_transmitted: 0
+    syscall_42_trapped: false
+  audit:
+    event_emitted: "lifecycle.trap_released_for_rollback"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(trapped_task_result, Err(libc::EFAULT)); assert_eq!(active_held_traps_count(), 0);"
