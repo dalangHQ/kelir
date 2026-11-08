@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import importlib
+import json
+import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from kelir.errors import EConfig as EConfig
 
@@ -11,59 +13,67 @@ if TYPE_CHECKING:
     from kelir import CommitStats, KelirBuilder, Session, SpawnResult
 
 
-def _toml_scalar(value: Any) -> str:
-    if isinstance(value, bool):
+class ProfileField(NamedTuple):
+    path: tuple[str, ...]
+    kind: str
+    kwarg: str | None
+
+
+# see: cans/plugins/profile.md#Session-compute-schema-(profile)
+# see: cans/plugins/profile.md#Invariants-and-policy-(profile)
+PROFILE_FIELDS: tuple[ProfileField, ...] = (
+    ProfileField(("session", "id"), "string", None),
+    ProfileField(("session", "compute", "vcpus"), "integer", "vcpus"),
+    ProfileField(("session", "compute", "memory_mb"), "integer", "memory_mb"),
+    ProfileField(("session", "artifacts", "kernel_path"), "string", "kernel"),
+    ProfileField(
+        ("session", "artifacts", "rootfs_erofs_path"), "string", "rootfs_erofs"
+    ),
+    ProfileField(("session", "clock", "tsc_locked"), "boolean", "tsc_locked"),
+    ProfileField(("session", "watchdog", "enabled"), "boolean", "enable_watchdog"),
+)
+
+
+def _dig(profile: dict[str, Any], path: tuple[str, ...]) -> Any:
+    node: Any = profile
+    for key in path:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(key)
+    return node
+
+
+def _matches(value: Any, kind: str) -> bool:
+    if kind == "boolean":
+        return isinstance(value, bool)
+    if kind == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    return isinstance(value, str)
+
+
+def _render_toml_value(kind: str, value: Any) -> str:
+    if kind == "boolean":
         return "true" if value else "false"
-    if isinstance(value, int):
+    if kind == "integer":
         return str(value)
-    if isinstance(value, float):
-        return repr(value)
-    if isinstance(value, str):
-        if "\n" in value:
-            escaped = value.replace("\\", "\\\\").replace('"""', '\\"""')
-            if value.startswith("\n"):
-                escaped = "\\n" + escaped[1:]
-            return '"""' + escaped + '"""'
-        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
-    if isinstance(value, list):
-        return "[" + ", ".join(_toml_scalar(item) for item in value) + "]"
-    raise EConfig(f"Sandbox.export_spec: unsupported TOML value {type(value).__name__}")
+    return json.dumps(value)
 
 
-def _dump_toml_section(
-    table: dict[str, Any], prefix: str, lines: list[str], array: bool = False
-) -> None:
-    scalars = {
-        k: v
-        for k, v in table.items()
-        if not isinstance(v, dict)
-        and not (isinstance(v, list) and v and isinstance(v[0], dict))
-    }
-    tables = {k: v for k, v in table.items() if isinstance(v, dict)}
-    array_tables = {
-        k: v
-        for k, v in table.items()
-        if isinstance(v, list) and v and isinstance(v[0], dict)
-    }
-    if prefix:
-        lines.append(f"[[{prefix}]]" if array else f"[{prefix}]")
-    for key, value in scalars.items():
-        lines.append(f"{key} = {_toml_scalar(value)}")
-    for key, value in tables.items():
-        lines.append("")
-        _dump_toml_section(value, f"{prefix}.{key}" if prefix else key, lines)
-    for key, rows in array_tables.items():
-        for row in rows:
-            lines.append("")
-            _dump_toml_section(
-                row, f"{prefix}.{key}" if prefix else key, lines, array=True
-            )
-
-
-def _dump_toml(profile: dict[str, Any]) -> str:
+def _render_toml(profile: dict[str, Any]) -> str:
     lines: list[str] = []
-    _dump_toml_section(profile, "", lines)
-    return "\n".join(lines) + "\n"
+    section: str | None = None
+    for field in PROFILE_FIELDS:
+        value = _dig(profile, field.path)
+        if not _matches(value, field.kind):
+            continue
+        head = ".".join(field.path[:-1])
+        if head != section:
+            if lines:
+                lines.append("")
+            lines.append(f"[{head}]")
+            section = head
+        lines.append(f"{field.path[-1]} = {_render_toml_value(field.kind, value)}")
+    return "\n".join(lines) + ("\n" if lines else "")
 
 
 class Sandbox:
@@ -82,38 +92,27 @@ class Sandbox:
     async def from_config(cls, path: str) -> Sandbox:
         text = Path(path).read_text(encoding="utf-8")
         if path.endswith(".toml"):
-            import tomllib
-
-            loaded = tomllib.loads(text)
-            profile: dict[str, Any] = loaded if isinstance(loaded, dict) else {}
+            loaded: Any = tomllib.loads(text)
         elif path.endswith((".yaml", ".yml")):
             yaml = importlib.import_module("yaml")
             loaded = yaml.safe_load(text)
-            profile = loaded if isinstance(loaded, dict) else {}
         else:
             raise EConfig(
                 f"Sandbox.from_config: unsupported profile extension for `{path}` (expected .toml, .yaml, or .yml)"
             )
+        profile = loaded if isinstance(loaded, dict) else {}
         return cls.from_profile(profile, path)
 
     @classmethod
     def from_profile(cls, profile: dict[str, Any], source_path: str) -> Sandbox:
-        session = profile.get("session") or {}
-        compute = session.get("compute") or {}
-        artifacts = session.get("artifacts") or {}
-        clock = session.get("clock") or {}
-        watchdog = session.get("watchdog") or {}
         from kelir import KelirBuilder
 
-        builder = KelirBuilder(
-            vcpus=compute.get("vcpus"),
-            memory_mb=compute.get("memory_mb"),
-            kernel=artifacts.get("kernel_path"),
-            rootfs_erofs=artifacts.get("rootfs_erofs_path"),
-            tsc_locked=clock.get("tsc_locked"),
-            enable_watchdog=watchdog.get("enabled"),
-        )
-        return cls(builder, profile, source_path)
+        kwargs: dict[str, Any] = {}
+        for field in PROFILE_FIELDS:
+            value = _dig(profile, field.path)
+            if field.kwarg is not None and _matches(value, field.kind):
+                kwargs[field.kwarg] = value
+        return cls(KelirBuilder(**kwargs), profile, source_path)
 
     @classmethod
     async def create(
@@ -154,8 +153,7 @@ class Sandbox:
         return self._session
 
     def session_id(self) -> str | None:
-        session = self._profile.get("session") or {}
-        value = session.get("id")
+        value = _dig(self._profile, ("session", "id"))
         return value if isinstance(value, str) else None
 
     def is_detached(self) -> bool:
@@ -200,7 +198,8 @@ class Sandbox:
         )
 
     async def export_spec(self, path: str) -> None:
-        Path(path).write_text(_dump_toml(self._profile), encoding="utf-8")
+        # TODO (L3): full-fidelity round-trip of arbitrary profile sections via a declared TOML writer.
+        Path(path).write_text(_render_toml(self._profile), encoding="utf-8")
 
     async def stop(self) -> None:
         if self._session is None:

@@ -415,7 +415,7 @@ async def build_runtime(
             otel=OtelConfig(
                 endpoint="http://localhost:4318/v1/traces",
                 service_name="kelir-swe-agent",
-                propagate_traceparent=True,
+                propagate_w3c_traceparent=True,
             ),
             receipts=ReceiptConfig(
                 include_syscall_count=True,

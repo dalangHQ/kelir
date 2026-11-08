@@ -6,126 +6,121 @@ import { EConfig } from "./errors.js";
 import type { SpawnResult } from "./types.js";
 
 import { readFile, writeFile } from "node:fs/promises";
+import { parse as parseToml } from "@ltd/j-toml";
+import { parse as parseYaml } from "yaml";
 
-export type ProfileRecord = Record<string, string | number | boolean>;
+export type ProfileValue =
+  | string
+  | number
+  | boolean
+  | ProfileValue[]
+  | ProfileRecord;
 
-function parseScalar(raw: string): string | number | boolean | undefined {
-  const text = raw.trim();
-  if (text === "true") {
-    return true;
-  }
-  if (text === "false") {
-    return false;
-  }
-  if (/^-?\d+$/.test(text)) {
-    return Number(text);
-  }
-  if (text.startsWith('"') && text.endsWith('"')) {
-    return text.slice(1, -1);
-  }
-  if (text.startsWith("'") && text.endsWith("'")) {
-    return text.slice(1, -1);
-  }
-  return undefined;
+export type ProfileRecord = { readonly [key: string]: ProfileValue };
+
+export type ProfileFormat = "toml" | "yaml";
+
+// see: cans/plugins/profile.md#Session-compute-schema-(profile)
+interface ProfileField {
+  readonly path: readonly string[];
+  readonly kind: "boolean" | "integer" | "string";
+  readonly configKey?: keyof KelirConfig;
 }
 
-function stripTomlComment(line: string): string {
-  const hash = line.indexOf("#");
-  if (hash === -1) {
-    return line;
+// see: cans/plugins/profile.md#Invariants-and-policy-(profile)
+const PROFILE_FIELDS: readonly ProfileField[] = [
+  { path: ["session", "id"], kind: "string" },
+  { path: ["session", "compute", "vcpus"], kind: "integer", configKey: "vcpus" },
+  { path: ["session", "compute", "memory_mb"], kind: "integer", configKey: "memoryMb" },
+  { path: ["session", "artifacts", "kernel_path"], kind: "string", configKey: "kernel" },
+  {
+    path: ["session", "artifacts", "rootfs_erofs_path"],
+    kind: "string",
+    configKey: "rootfsErofs",
+  },
+  { path: ["session", "clock", "tsc_locked"], kind: "boolean", configKey: "tscLocked" },
+  { path: ["session", "watchdog", "enabled"], kind: "boolean", configKey: "enableWatchdog" },
+];
+
+export function parseProfile(text: string, format: ProfileFormat): ProfileRecord {
+  const loaded: unknown =
+    format === "toml" ? parseToml(text, { bigint: false }) : parseYaml(text);
+  if (typeof loaded === "object" && loaded !== null && !Array.isArray(loaded)) {
+    return loaded as ProfileRecord;
   }
-  const quote = line.indexOf('"');
-  if (quote !== -1 && quote < hash) {
-    return line;
-  }
-  return line.slice(0, hash);
+  return {};
 }
 
-// TODO (L3): full TOML/YAML grammar; this subset reads only the scalar session-compute keys the profile fixtures declare.
-export function parseTomlProfile(text: string): ProfileRecord {
-  const record: ProfileRecord = {};
-  let section = "";
-  for (const rawLine of text.split("\n")) {
-    const line = stripTomlComment(rawLine).trim();
-    if (line === "") {
-      continue;
+function profileValueAt(
+  profile: ProfileRecord,
+  path: readonly string[],
+): ProfileValue | undefined {
+  let node: ProfileValue | undefined = profile;
+  for (const key of path) {
+    if (node === undefined || typeof node !== "object" || Array.isArray(node)) {
+      return undefined;
     }
-    const sectionMatch = /^\[([^\]]+)\]$/.exec(line);
-    if (sectionMatch !== null) {
-      section = sectionMatch[1].trim();
-      continue;
-    }
-    const kvMatch = /^([A-Za-z0-9_-]+)\s*=\s*(.+)$/.exec(line);
-    if (kvMatch === null) {
-      continue;
-    }
-    const value = parseScalar(kvMatch[2]);
-    if (value === undefined) {
-      continue;
-    }
-    record[section === "" ? kvMatch[1] : `${section}.${kvMatch[1]}`] = value;
+    node = node[key];
   }
-  return record;
+  return node;
 }
 
-// TODO (L3): full TOML/YAML grammar; this subset reads only the scalar session-compute keys the profile fixtures declare.
-export function parseYamlProfile(text: string): ProfileRecord {
-  const record: ProfileRecord = {};
-  const stack: { indent: number; name: string }[] = [];
-  for (const rawLine of text.split("\n")) {
-    const trimmed = rawLine.trim();
-    if (trimmed === "" || trimmed.startsWith("#") || trimmed.startsWith("-")) {
-      continue;
-    }
-    const indent = rawLine.length - rawLine.trimStart().length;
-    const kvMatch = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(trimmed);
-    if (kvMatch === null) {
-      continue;
-    }
-    const key = kvMatch[1];
-    const rest = kvMatch[2].trim();
-    while (stack.length > 0 && indent <= stack[stack.length - 1].indent) {
-      stack.pop();
-    }
-    if (rest === "") {
-      stack.push({ indent, name: key });
-      continue;
-    }
-    const comment = rest.indexOf(" #");
-    const bare = (comment === -1 ? rest : rest.slice(0, comment)).trim();
-    const value = parseScalar(bare);
-    if (value === undefined) {
-      continue;
-    }
-    const path = [...stack.map((entry) => entry.name), key].join(".");
-    record[path] = value;
+function matchesField(
+  value: ProfileValue | undefined,
+  kind: ProfileField["kind"],
+): boolean {
+  if (kind === "boolean") {
+    return typeof value === "boolean";
   }
-  return record;
+  if (kind === "integer") {
+    return typeof value === "number" && Number.isInteger(value);
+  }
+  return typeof value === "string";
 }
 
-export function profileToToml(record: ProfileRecord): string {
-  const sections = new Map<string, [string, string | number | boolean][]>();
-  for (const [key, value] of Object.entries(record)) {
-    const dot = key.lastIndexOf(".");
-    const section = dot === -1 ? "" : key.slice(0, dot);
-    const leaf = dot === -1 ? key : key.slice(dot + 1);
-    const entries = sections.get(section) ?? [];
-    entries.push([leaf, value]);
-    sections.set(section, entries);
+// TODO (L3): schema-validate every profile section and reject ill-typed values with structured EConfig.
+function configFromProfile(profile: ProfileRecord): KelirConfig {
+  const config: KelirConfig = {};
+  for (const field of PROFILE_FIELDS) {
+    const value = profileValueAt(profile, field.path);
+    if (field.configKey !== undefined && matchesField(value, field.kind)) {
+      (config as Record<string, unknown>)[field.configKey] = value;
+    }
   }
+  return config;
+}
+
+function renderTomlValue(kind: ProfileField["kind"], value: ProfileValue): string {
+  if (kind === "boolean") {
+    return value ? "true" : "false";
+  }
+  if (kind === "integer") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+function renderToml(profile: ProfileRecord): string {
   const lines: string[] = [];
-  for (const [section, entries] of sections) {
-    if (section !== "") {
-      lines.push(`[${section}]`);
+  let section: string | undefined;
+  for (const field of PROFILE_FIELDS) {
+    const value = profileValueAt(profile, field.path);
+    if (value === undefined || !matchesField(value, field.kind)) {
+      continue;
     }
-    for (const [leaf, value] of entries) {
-      const rendered =
-        typeof value === "string" ? `"${value}"` : String(value);
-      lines.push(`${leaf} = ${rendered}`);
+    const head = field.path.slice(0, -1).join(".");
+    if (head !== section) {
+      if (lines.length > 0) {
+        lines.push("");
+      }
+      lines.push(`[${head}]`);
+      section = head;
     }
-    lines.push("");
+    lines.push(
+      `${field.path[field.path.length - 1]} = ${renderTomlValue(field.kind, value)}`,
+    );
   }
-  return lines.join("\n");
+  return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
 }
 
 export interface SandboxOptions {
@@ -155,17 +150,17 @@ export class Sandbox {
 
   static async fromConfig(path: string): Promise<Sandbox> {
     const text = await readFile(path, "utf8");
-    let profile: ProfileRecord;
+    let format: ProfileFormat;
     if (path.endsWith(".toml")) {
-      profile = parseTomlProfile(text);
+      format = "toml";
     } else if (path.endsWith(".yaml") || path.endsWith(".yml")) {
-      profile = parseYamlProfile(text);
+      format = "yaml";
     } else {
       throw new EConfig(
         `Sandbox.fromConfig: unsupported profile extension for \`${path}\` (expected .toml, .yaml, or .yml)`,
       );
     }
-    return Sandbox.fromProfile(profile, path);
+    return Sandbox.fromProfile(parseProfile(text, format), path);
   }
 
   static async create(opts: SandboxOptions = {}): Promise<Sandbox> {
@@ -180,33 +175,7 @@ export class Sandbox {
     profile: ProfileRecord,
     path: string,
   ): Sandbox {
-    const config: KelirConfig = {
-      vcpus:
-        typeof profile["session.compute.vcpus"] === "number"
-          ? profile["session.compute.vcpus"]
-          : undefined,
-      memoryMb:
-        typeof profile["session.compute.memory_mb"] === "number"
-          ? profile["session.compute.memory_mb"]
-          : undefined,
-      kernel:
-        typeof profile["session.artifacts.kernel_path"] === "string"
-          ? profile["session.artifacts.kernel_path"]
-          : undefined,
-      rootfsErofs:
-        typeof profile["session.artifacts.rootfs_erofs_path"] === "string"
-          ? profile["session.artifacts.rootfs_erofs_path"]
-          : undefined,
-      tscLocked:
-        typeof profile["session.clock.tsc_locked"] === "boolean"
-          ? profile["session.clock.tsc_locked"]
-          : undefined,
-      enableWatchdog:
-        typeof profile["session.watchdog.enabled"] === "boolean"
-          ? profile["session.watchdog.enabled"]
-          : undefined,
-    };
-    const builder = new KelirBuilder(config);
+    const builder = new KelirBuilder(configFromProfile(profile));
     return new Sandbox(builder, profile, path);
   }
 
@@ -219,7 +188,7 @@ export class Sandbox {
   }
 
   sessionId(): string | undefined {
-    const id = this.profile["session.id"];
+    const id = profileValueAt(this.profile, ["session", "id"]);
     return typeof id === "string" ? id : undefined;
   }
 
@@ -274,7 +243,8 @@ export class Sandbox {
   }
 
   async exportSpec(path: string): Promise<void> {
-    await writeFile(path, profileToToml(this.profile));
+    // TODO (L3): full-fidelity round-trip of arbitrary profile sections via a declared TOML writer.
+    await writeFile(path, renderToml(this.profile));
   }
 
   async stop(): Promise<void> {

@@ -1,18 +1,24 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/plugins/ledger.md#Plugin-ledger
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from kelir.plugin import BasePlugin
 
-__all__ = ["LedgerConfig", "LedgerPlugin", "OtelConfig", "ReceiptConfig"]
+__all__ = [
+    "LedgerConfig",
+    "LedgerPlugin",
+    "OtelConfig",
+    "ReceiptConfig",
+]
 
 
 @dataclass
 class OtelConfig:
     endpoint: str = ""
     service_name: str = ""
-    propagate_traceparent: bool = False
+    propagate_w3c_traceparent: bool = False
+    export_diagnostic_pmu_gauges: bool = False
 
 
 @dataclass
@@ -20,6 +26,8 @@ class ReceiptConfig:
     include_dirty_bytes: bool = False
     include_binary_blake3: bool = False
     include_syscall_count: bool = False
+    include_wall_clock_ns: bool = False
+    include_phase_timings: bool = False
 
 
 @dataclass
@@ -27,7 +35,7 @@ class LedgerConfig:
     store: str = ""
     merkle_chain: bool = False
     otel: OtelConfig | None = None
-    receipts: ReceiptConfig | None = None
+    receipts: ReceiptConfig = field(default_factory=lambda: ReceiptConfig())
 
 
 class LedgerPlugin(BasePlugin):

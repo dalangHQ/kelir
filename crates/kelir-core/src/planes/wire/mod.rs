@@ -8,6 +8,8 @@ use kelir_interface::plugin::PluginError;
 use kelir_interface::protocol::{FilterAction, StreamKind};
 use kelir_interface::vsock::{VAULT_METADATA_VSOCK_PORT, VsockServiceHandler};
 
+mod layout;
+
 pub const SYNTHETIC_DNS_GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 127, 1);
 pub const SYNTHETIC_DNS_PORT: u16 = 53;
 
@@ -141,25 +143,18 @@ pub fn link_local_route(frame: &[u8], direction: FrameDirection) -> Option<LinkL
 
 // see: cans/07-wire-plane.md#Pre-policy-drop-zones
 fn frame_remote_ip(frame: &[u8], direction: FrameDirection) -> Option<Ipv4Addr> {
-    if frame.len() < 14 {
+    if frame.len() < layout::ETH_HEADER_BYTES {
         return None;
     }
-    if u16::from_be_bytes([frame[12], frame[13]]) != 0x0800 {
+    if layout::EthView::new_unchecked(frame).etype() != layout::ETHERTYPE_IPV4 {
         return None;
     }
-    let offset = match direction {
-        FrameDirection::Inbound => 14 + 12,
-        FrameDirection::Outbound => 14 + 16,
-    };
-    if frame.len() < offset + 4 {
-        return None;
-    }
-    Some(Ipv4Addr::new(
-        frame[offset],
-        frame[offset + 1],
-        frame[offset + 2],
-        frame[offset + 3],
-    ))
+    let ip = layout::Ipv4View::new_unchecked(&frame[layout::ETH_HEADER_BYTES..]);
+    let octets = match direction {
+        FrameDirection::Inbound => ip.src_checked(),
+        FrameDirection::Outbound => ip.dst_checked(),
+    }?;
+    Some(Ipv4Addr::from(octets))
 }
 
 pub fn classify_frame(frame: &[u8]) -> FrameClass {
@@ -167,29 +162,30 @@ pub fn classify_frame(frame: &[u8]) -> FrameClass {
 }
 
 pub fn classify_frame_directional(frame: &[u8], direction: FrameDirection) -> FrameClass {
-    if frame.len() < 14 {
+    if frame.len() < layout::ETH_HEADER_BYTES {
         return FrameClass::TooShort;
     }
-    if u16::from_be_bytes([frame[12], frame[13]]) != 0x0800 {
+    if layout::EthView::new_unchecked(frame).etype() != layout::ETHERTYPE_IPV4 {
         return FrameClass::NonIp;
     }
-    if frame.len() < 15 {
+    let ip = layout::Ipv4View::new_unchecked(&frame[layout::ETH_HEADER_BYTES..]);
+    let Some(ihl) = ip.ihl_bytes_checked() else {
+        return FrameClass::TooShort;
+    };
+    if ihl < layout::IPV4_MIN_HEADER_BYTES
+        || frame.len() < layout::ETH_HEADER_BYTES + ihl + layout::L4_PORT_PAIR_BYTES
+    {
         return FrameClass::TooShort;
     }
-    let ihl = usize::from(frame[14] & 0x0f) * 4;
-    if ihl < 20 || frame.len() < 14 + ihl + 4 {
-        return FrameClass::TooShort;
-    }
-    let protocol = frame[14 + 9];
-    match protocol {
-        6 => {
+    match ip.proto() {
+        layout::IP_PROTO_TCP => {
             if is_synthetic_dns(frame, direction) {
                 FrameClass::TcpDns
             } else {
                 FrameClass::Tcp
             }
         }
-        17 => {
+        layout::IP_PROTO_UDP => {
             if is_synthetic_dns(frame, direction) {
                 FrameClass::UdpDns
             } else {
@@ -202,33 +198,39 @@ pub fn classify_frame_directional(frame: &[u8], direction: FrameDirection) -> Fr
 
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
 pub fn is_synthetic_dns(frame: &[u8], direction: FrameDirection) -> bool {
-    if frame.len() < 14 {
+    if frame.len() < layout::ETH_HEADER_BYTES {
         return false;
     }
-    if u16::from_be_bytes([frame[12], frame[13]]) != 0x0800 {
+    if layout::EthView::new_unchecked(frame).etype() != layout::ETHERTYPE_IPV4 {
         return false;
     }
-    let ihl = usize::from(frame[14] & 0x0f) * 4;
-    if ihl < 20 || frame.len() < 14 + ihl + 4 {
+    let ip = layout::Ipv4View::new_unchecked(&frame[layout::ETH_HEADER_BYTES..]);
+    let Some(ihl) = ip.ihl_bytes_checked() else {
+        return false;
+    };
+    if ihl < layout::IPV4_MIN_HEADER_BYTES
+        || frame.len() < layout::ETH_HEADER_BYTES + ihl + layout::L4_PORT_PAIR_BYTES
+    {
         return false;
     }
     let gateway_octets = SYNTHETIC_DNS_GATEWAY_IP.octets();
     let gateway_ip = match direction {
-        FrameDirection::Inbound => &frame[14 + 12..14 + 16],
-        FrameDirection::Outbound => &frame[14 + 16..14 + 20],
+        FrameDirection::Inbound => ip.src(),
+        FrameDirection::Outbound => ip.dst(),
     };
     if gateway_ip != gateway_octets {
         return false;
     }
-    let protocol = frame[14 + 9];
-    if protocol != 6 && protocol != 17 {
+    let protocol = ip.proto();
+    if protocol != layout::IP_PROTO_TCP && protocol != layout::IP_PROTO_UDP {
         return false;
     }
-    let port_offset = match direction {
-        FrameDirection::Inbound => 14 + ihl,
-        FrameDirection::Outbound => 14 + ihl + 2,
+    let l4_start = layout::ETH_HEADER_BYTES + ihl;
+    let tcp = layout::TcpView::new_unchecked(&frame[l4_start..]);
+    let port = match direction {
+        FrameDirection::Inbound => tcp.src_port(),
+        FrameDirection::Outbound => tcp.dst_port(),
     };
-    let port = u16::from_be_bytes([frame[port_offset], frame[port_offset + 1]]);
     port == SYNTHETIC_DNS_PORT
 }
 
@@ -237,29 +239,26 @@ pub fn dns_payload(frame: &[u8], direction: FrameDirection) -> Option<&[u8]> {
     if !is_synthetic_dns(frame, direction) {
         return None;
     }
-    let ihl = usize::from(frame[14] & 0x0f) * 4;
-    let l4_start = 14 + ihl;
-    let protocol = frame[14 + 9];
-    let payload_start = match protocol {
-        17 => {
-            if frame.len() < l4_start + 8 {
+    let ip = layout::Ipv4View::new_unchecked(&frame[layout::ETH_HEADER_BYTES..]);
+    let l4_start = layout::ETH_HEADER_BYTES + ip.ihl_bytes_checked()?;
+    match ip.proto() {
+        layout::IP_PROTO_UDP => {
+            if frame.len() < l4_start + layout::UDP_HEADER_BYTES {
                 return None;
             }
-            l4_start + 8
+            Some(&frame[l4_start + layout::UDP_HEADER_BYTES..])
         }
-        6 => {
-            if frame.len() < l4_start + 13 {
+        layout::IP_PROTO_TCP => {
+            let tcp = layout::TcpView::new_unchecked(&frame[l4_start..]);
+            let header_bytes = tcp.header_bytes_checked()?;
+            if header_bytes < layout::TCP_MIN_HEADER_BYTES || frame.len() < l4_start + header_bytes
+            {
                 return None;
             }
-            let tcp_hlen = usize::from(frame[l4_start + 12] >> 4) * 4;
-            if tcp_hlen < 20 || frame.len() < l4_start + tcp_hlen {
-                return None;
-            }
-            l4_start + tcp_hlen
+            Some(&frame[l4_start + header_bytes..])
         }
-        _ => return None,
-    };
-    Some(&frame[payload_start..])
+        _ => None,
+    }
 }
 
 pub struct UdpNatEntry {

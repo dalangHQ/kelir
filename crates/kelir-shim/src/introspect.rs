@@ -10,11 +10,11 @@ use kelir_interface::protocol::{MsgType, TrapEvent, TrappedSyscall};
 
 use crate::trap::{SeccompTrap, ShimError};
 
-pub const AT_NULL: u64 = 0;
-pub const AT_EXECFN: u64 = 31;
+mod uapi;
+
+pub use self::uapi::{AT_EXECFN, AT_NULL};
 
 const ELF_HEAD_LEN: u64 = 256 * 1024;
-const PT_INTERP: u32 = 3;
 
 // see: cans/11-protocol.md#Frozen-inspection-mechanics
 const CGROUP_V2_ROOT: &str = "/sys/fs/cgroup";
@@ -265,24 +265,27 @@ fn read_u64_ne(bytes: &[u8]) -> Option<u64> {
 }
 
 fn parse_interp(head: &[u8]) -> Result<Option<String>, ()> {
-    if head.len() < 64 || &head[0..4] != b"\x7fELF" {
+    if head.len() < uapi::EHDR64_SIZE {
         return Err(());
     }
-    if head[5] != 1 {
+    if head[uapi::EI_MAG0..uapi::EI_MAG0 + uapi::SELFMAG] != uapi::ELFMAG {
         return Err(());
     }
-    match head[4] {
-        2 => parse_interp_64(head),
-        1 => parse_interp_32(head),
+    if head[uapi::EI_DATA] != uapi::ELFDATA2LSB {
+        return Err(());
+    }
+    match head[uapi::EI_CLASS] {
+        uapi::ELFCLASS64 => parse_interp_64(head),
+        uapi::ELFCLASS32 => parse_interp_32(head),
         _ => Err(()),
     }
 }
 
 fn parse_interp_64(head: &[u8]) -> Result<Option<String>, ()> {
-    let phoff = u64_le(head.get(0x20..0x28).ok_or(())?).ok_or(())? as usize;
-    let phentsize = u16_le(head.get(0x36..0x38).ok_or(())?).ok_or(())? as usize;
-    let phnum = u16_le(head.get(0x38..0x3a).ok_or(())?).ok_or(())? as usize;
-    if phentsize < 56 {
+    let phoff = u64_le_at(head, uapi::EHDR64_E_PHOFF).ok_or(())? as usize;
+    let phentsize = u16_le_at(head, uapi::EHDR64_E_PHENTSIZE).ok_or(())? as usize;
+    let phnum = u16_le_at(head, uapi::EHDR64_E_PHNUM).ok_or(())? as usize;
+    if phentsize < uapi::PHDR64_SIZE {
         return Err(());
     }
     for index in 0..phnum {
@@ -290,13 +293,13 @@ fn parse_interp_64(head: &[u8]) -> Result<Option<String>, ()> {
             .checked_add(index.checked_mul(phentsize).ok_or(())?)
             .ok_or(())?;
         let phdr = head
-            .get(start..start.checked_add(56).ok_or(())?)
+            .get(start..start.checked_add(uapi::PHDR64_SIZE).ok_or(())?)
             .ok_or(())?;
-        if u32_le(phdr.get(0..4).ok_or(())?).ok_or(())? != PT_INTERP {
+        if u32_le_at(phdr, uapi::PHDR64_P_TYPE).ok_or(())? != uapi::PT_INTERP {
             continue;
         }
-        let offset = u64_le(phdr.get(8..16).ok_or(())?).ok_or(())? as usize;
-        let filesz = u64_le(phdr.get(32..40).ok_or(())?).ok_or(())? as usize;
+        let offset = u64_le_at(phdr, uapi::PHDR64_P_OFFSET).ok_or(())? as usize;
+        let filesz = u64_le_at(phdr, uapi::PHDR64_P_FILESZ).ok_or(())? as usize;
         let end = offset.checked_add(filesz).ok_or(())?;
         let raw = head.get(offset..end).ok_or(())?;
         let nul = raw.iter().position(|byte| *byte == 0).ok_or(())?;
@@ -306,10 +309,10 @@ fn parse_interp_64(head: &[u8]) -> Result<Option<String>, ()> {
 }
 
 fn parse_interp_32(head: &[u8]) -> Result<Option<String>, ()> {
-    let phoff = u32_le(head.get(0x1c..0x20).ok_or(())?).ok_or(())? as usize;
-    let phentsize = u16_le(head.get(0x2a..0x2c).ok_or(())?).ok_or(())? as usize;
-    let phnum = u16_le(head.get(0x2c..0x2e).ok_or(())?).ok_or(())? as usize;
-    if phentsize < 32 {
+    let phoff = u32_le_at(head, uapi::EHDR32_E_PHOFF).ok_or(())? as usize;
+    let phentsize = u16_le_at(head, uapi::EHDR32_E_PHENTSIZE).ok_or(())? as usize;
+    let phnum = u16_le_at(head, uapi::EHDR32_E_PHNUM).ok_or(())? as usize;
+    if phentsize < uapi::PHDR32_SIZE {
         return Err(());
     }
     for index in 0..phnum {
@@ -317,13 +320,13 @@ fn parse_interp_32(head: &[u8]) -> Result<Option<String>, ()> {
             .checked_add(index.checked_mul(phentsize).ok_or(())?)
             .ok_or(())?;
         let phdr = head
-            .get(start..start.checked_add(32).ok_or(())?)
+            .get(start..start.checked_add(uapi::PHDR32_SIZE).ok_or(())?)
             .ok_or(())?;
-        if u32_le(phdr.get(0..4).ok_or(())?).ok_or(())? != PT_INTERP {
+        if u32_le_at(phdr, uapi::PHDR32_P_TYPE).ok_or(())? != uapi::PT_INTERP {
             continue;
         }
-        let offset = u32_le(phdr.get(4..8).ok_or(())?).ok_or(())? as usize;
-        let filesz = u32_le(phdr.get(16..20).ok_or(())?).ok_or(())? as usize;
+        let offset = u32_le_at(phdr, uapi::PHDR32_P_OFFSET).ok_or(())? as usize;
+        let filesz = u32_le_at(phdr, uapi::PHDR32_P_FILESZ).ok_or(())? as usize;
         let end = offset.checked_add(filesz).ok_or(())?;
         let raw = head.get(offset..end).ok_or(())?;
         let nul = raw.iter().position(|byte| *byte == 0).ok_or(())?;
@@ -332,17 +335,20 @@ fn parse_interp_32(head: &[u8]) -> Result<Option<String>, ()> {
     Ok(None)
 }
 
-fn u16_le(bytes: &[u8]) -> Option<u16> {
-    let fixed: [u8; 2] = bytes.try_into().ok()?;
+fn u16_le_at(buf: &[u8], offset: usize) -> Option<u16> {
+    let end = offset.checked_add(2)?;
+    let fixed: [u8; 2] = buf.get(offset..end)?.try_into().ok()?;
     Some(u16::from_le_bytes(fixed))
 }
 
-fn u32_le(bytes: &[u8]) -> Option<u32> {
-    let fixed: [u8; 4] = bytes.try_into().ok()?;
+fn u32_le_at(buf: &[u8], offset: usize) -> Option<u32> {
+    let end = offset.checked_add(4)?;
+    let fixed: [u8; 4] = buf.get(offset..end)?.try_into().ok()?;
     Some(u32::from_le_bytes(fixed))
 }
 
-fn u64_le(bytes: &[u8]) -> Option<u64> {
-    let fixed: [u8; 8] = bytes.try_into().ok()?;
+fn u64_le_at(buf: &[u8], offset: usize) -> Option<u64> {
+    let end = offset.checked_add(8)?;
+    let fixed: [u8; 8] = buf.get(offset..end)?.try_into().ok()?;
     Some(u64::from_le_bytes(fixed))
 }

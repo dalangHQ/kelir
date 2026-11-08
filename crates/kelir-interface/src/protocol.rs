@@ -6,14 +6,46 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-pub const EXEC_STREAM_STDIN: u8 = 0x00;
-pub const EXEC_STREAM_STDOUT: u8 = 0x01;
-pub const EXEC_STREAM_STDERR: u8 = 0x02;
-pub const EXEC_STREAM_CONTROL: u8 = 0x03;
+// see: cans/11-protocol.md#Binary-exec-channel
+macro_rules! wire_consts {
+    ($group:ident, $repr:ty, { $($name:ident = $value:literal),+ $(,)? }) => {
+        $( pub const $name: $repr = $value; )+
+        pub const $group: &[(&str, $repr)] = &[ $( (stringify!($name), $value) ),+ ];
+    };
+}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u16)]
-pub enum StreamKind {
+// see: cans/11-protocol.md#Control-channel
+macro_rules! wire_enum {
+    ($name:ident, $table:ident, { $($variant:ident = $value:literal),+ $(,)? }) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+        #[repr(u16)]
+        pub enum $name {
+            $( $variant = $value, )+
+        }
+
+        impl $name {
+            pub fn from_u16(value: u16) -> Option<Self> {
+                match value {
+                    $( $value => Some(Self::$variant), )+
+                    _ => None,
+                }
+            }
+        }
+
+        pub const $table: &[(&str, u16)] = &[ $( (stringify!($variant), $value) ),+ ];
+    };
+}
+
+// see: cans/11-protocol.md#Binary-exec-channel
+wire_consts! { EXEC_STREAMS, u8, {
+    EXEC_STREAM_STDIN = 0x00,
+    EXEC_STREAM_STDOUT = 0x01,
+    EXEC_STREAM_STDERR = 0x02,
+    EXEC_STREAM_CONTROL = 0x03,
+}}
+
+// see: cans/11-protocol.md#Control-channel
+wire_enum! { StreamKind, STREAM_KINDS, {
     Exec = 0x0001,
     PtyControl = 0x0002,
     Vfs = 0x0003,
@@ -23,7 +55,7 @@ pub enum StreamKind {
     ProfileSync = 0x0010,
     DbSqlite = 0x0011,
     McpConsole = 0x0012,
-}
+}}
 
 impl Default for StreamKind {
     fn default() -> Self {
@@ -31,64 +63,20 @@ impl Default for StreamKind {
     }
 }
 
-impl StreamKind {
-    pub fn from_u16(v: u16) -> Option<Self> {
-        match v {
-            0x0001 => Some(Self::Exec),
-            0x0002 => Some(Self::PtyControl),
-            0x0003 => Some(Self::Vfs),
-            0x0004 => Some(Self::Bulk),
-            0x0005 => Some(Self::L4Forward),
-            0x0006 => Some(Self::TerminalConsole),
-            0x0010 => Some(Self::ProfileSync),
-            0x0011 => Some(Self::DbSqlite),
-            0x0012 => Some(Self::McpConsole),
-            _ => None,
-        }
-    }
-}
-
 // see: cans/11-protocol.md#Control-channel
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u16)]
-pub enum Channel {
+wire_enum! { Channel, CHANNELS, {
     Control = 0x0000,
     StreamMux = 0x0001,
-}
-
-impl Channel {
-    pub fn from_u16(v: u16) -> Option<Self> {
-        match v {
-            0x0000 => Some(Self::Control),
-            0x0001 => Some(Self::StreamMux),
-            _ => None,
-        }
-    }
-}
+}}
 
 // see: cans/11-protocol.md#Wire-framing
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u16)]
-pub enum MsgType {
+wire_enum! { MsgType, MSG_TYPES, {
     Trap = 0x0001,
     ChannelPayload = 0x0002,
     VmLifecycleControl = 0x0003,
     SystemTelemetry = 0x0004,
     Signal = 0x0005,
-}
-
-impl MsgType {
-    pub fn from_u16(v: u16) -> Option<Self> {
-        match v {
-            0x0001 => Some(Self::Trap),
-            0x0002 => Some(Self::ChannelPayload),
-            0x0003 => Some(Self::VmLifecycleControl),
-            0x0004 => Some(Self::SystemTelemetry),
-            0x0005 => Some(Self::Signal),
-            _ => None,
-        }
-    }
-}
+}}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecveMutation {

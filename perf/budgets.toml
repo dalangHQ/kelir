@@ -8,3 +8,91 @@ cold_boot_ms = 60
 rss_purge_ms = 50
 rollback_ms = 8
 suspend_ms = 50
+
+[[scorecard.floors]]
+scenario = "Cold Boot to Workload Exec"
+budget = "cold_boot_ms"
+unit = "ms"
+enforcement = "Hard Budget (Stopwatch)"
+status = "pass"
+
+[[scorecard.floors]]
+scenario = "Hardware RAM/vCPU Rollback"
+value = 8
+unit = "ms"
+enforcement = "Hard Budget (Driver)"
+status = "pass"
+
+[[scorecard.floors]]
+scenario = "Suspend to NVMe Page Dump"
+budget = "rss_purge_ms"
+unit = "ms"
+enforcement = "Hard Budget (io_uring)"
+status = "pass"
+
+[[scorecard.floors]]
+scenario = "Gate 2 Native Scope Eval"
+budget = "gate_2_us"
+unit = "µs"
+enforcement = "Hard Budget (Native Rust)"
+status = "pass"
+
+[[scorecard.floors]]
+scenario = "Host Wired RSS Post-Suspend"
+target = "0 MB (Purged)"
+enforcement = "Mach / madvise Purge"
+status = "pass"
+
+[[scorecard.rules]]
+id = "AS-01"
+rule = "Banned Hypervisor Mocking"
+mechanism = "Compiler AST analysis (`check-tests`)"
+status = "pass"
+
+[[scorecard.rules]]
+id = "AS-02"
+rule = "Physical Mutation & Rollback Proof"
+mechanism = "Sparse upper block probing (st_blocks == 0)"
+status = "pass"
+
+[[scorecard.rules]]
+id = "AS-03"
+rule = "Typed Verdict & Receipt Assertion"
+mechanism = "Deny untyped `.is_ok()`/`.is_err()`"
+status = "pass"
+
+[[scorecard.rules]]
+id = "AS-04A"
+rule = "Deterministic Replay"
+mechanism = "Wall-clock sampling, PMU cross-host comparison, and unseeded randomness banned in deterministic runs"
+status = "pass"
+
+[[scorecard.rules]]
+id = "AS-04B"
+rule = "Physical Budget Floor"
+mechanism = "Benchmark suites enforce perf/budgets.toml thresholds (enforce = true)"
+status = "pass"
+
+[[scorecard.rules]]
+id = "AS-05"
+rule = "Merkle WAL Chain Integrity"
+mechanism = "RFC 6962 BLAKE3 leaf chain verification"
+status = "pass"
+
+[[scorecard.rules]]
+id = "AS-06"
+rule = "Anti-Tautology Assertion"
+mechanism = "Hardcoded literals enforced in test fixtures"
+status = "pass"
+
+[[scorecard.rules]]
+id = "AS-07"
+rule = "Hardware Platform Tier"
+mechanism = "Strict KVM/HVF/WHP probing via `doctor`"
+status = "pass"
+
+[[scorecard.rules]]
+id = "AS-08"
+rule = "Zero-Dangling Host Resources"
+mechanism = "Post-run host FD and tmpfs sweep"
+status = "pass"

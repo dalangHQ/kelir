@@ -1,4 +1,5 @@
 // see: cans/15-operations.md#Developer-CLI
+use driver_rustvmm::host_probe;
 use std::path::PathBuf;
 
 use kelir_interface::driver::{HW_LOCKFILE_PATH, verify_hw_lockfile};
@@ -114,8 +115,9 @@ impl DoctorReport {
     }
 }
 
+// see: cans/15-operations.md#Developer-CLI
 fn probe_kvm() -> ProbeOutcome {
-    if std::path::Path::new("/dev/kvm").exists() {
+    if host_probe::device_present("kvm") {
         ProbeOutcome::Pass("/dev/kvm is present".to_string())
     } else {
         ProbeOutcome::Fail("/dev/kvm is absent".to_string())
@@ -137,8 +139,9 @@ fn probe_hvf() -> ProbeOutcome {
     ProbeOutcome::NotImplemented("HVF entitlement probe (L3)".to_string())
 }
 
+// see: cans/15-operations.md#Developer-CLI
 fn probe_avf() -> ProbeOutcome {
-    if std::path::Path::new("/dev/avf").exists() {
+    if host_probe::device_present("avf") {
         ProbeOutcome::Pass("/dev/avf is present".to_string())
     } else {
         ProbeOutcome::Fail("/dev/avf is absent".to_string())
@@ -150,20 +153,31 @@ fn probe_whp() -> ProbeOutcome {
     ProbeOutcome::NotImplemented("WHP partition probe (L3)".to_string())
 }
 
+// see: cans/15-operations.md#Developer-CLI
+fn hypervisor_probe(hypervisor: &str) -> Option<(HostProbe, ProbeOutcome)> {
+    match hypervisor {
+        "kvm" => Some((HostProbe::Kvm, probe_kvm())),
+        "hvf" => Some((HostProbe::Hvf, probe_hvf())),
+        "avf" => Some((HostProbe::Avf, probe_avf())),
+        "whp" => Some((HostProbe::Whp, probe_whp())),
+        _ => None,
+    }
+}
+
+// see: cans/01-architecture.md#Driver-backends
 pub fn probe_host() -> DoctorReport {
     let mut probes = Vec::new();
+    for hypervisor in host_probe::os_hypervisors(std::env::consts::OS) {
+        if let Some(probe) = hypervisor_probe(hypervisor) {
+            probes.push(probe);
+        }
+    }
     if cfg!(target_os = "linux") {
-        probes.push((HostProbe::Kvm, probe_kvm()));
         probes.push((HostProbe::PageSize, probe_page_size()));
         probes.push((HostProbe::Pidfd, probe_pidfd()));
     } else if cfg!(target_os = "macos") {
-        probes.push((HostProbe::Hvf, probe_hvf()));
         probes.push((HostProbe::PageSize, probe_page_size()));
-    } else if cfg!(target_os = "windows") {
-        probes.push((HostProbe::Whp, probe_whp()));
-    } else if cfg!(target_os = "android") {
-        probes.push((HostProbe::Avf, probe_avf()));
-    } else {
+    } else if probes.is_empty() {
         probes.push((
             HostProbe::Kvm,
             ProbeOutcome::NotApplicable("no host probe for this OS".to_string()),

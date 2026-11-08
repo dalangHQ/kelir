@@ -5,29 +5,19 @@
 import { EConfig } from "./errors.js";
 import { LifecycleEvent } from "./verdict.js";
 import type { NativeSessionHandle } from "./session.js";
+import {
+  LIFECYCLE_TAGS,
+  RingEvent,
+  type HookStage,
+  type LifecycleTag,
+} from "./generated/fusion-tables.js";
 
-// see: cans/02-plugin-model.md#Segregated-ring-traits
-export enum RingEvent {
-  Trap = "trap",
-  TrapDeny = "trap-deny",
-  ProcessExit = "process-exit",
-  FsLookup = "fs-lookup",
-  FsRead = "fs-read",
-  FsWrite = "fs-write",
-  NetOutbound = "net-outbound",
-  NetInbound = "net-inbound",
-  ConsoleInput = "console-input",
-  ConsoleOutput = "console-output",
-  ExecStdout = "exec-stdout",
-  ExecStderr = "exec-stderr",
-  Heartbeat = "heartbeat",
-  Lifecycle = "lifecycle",
-  Watchdog = "watchdog",
-  CustomAction = "custom-action",
-  VsockService = "vsock-service",
-}
-
-export type HookStage = "pre" | "post" | "single";
+export {
+  LIFECYCLE_TAGS,
+  RingEvent,
+  type HookStage,
+  type LifecycleTag,
+} from "./generated/fusion-tables.js";
 
 export interface TrapFilterSnapshot {
   readonly binary?: string;
@@ -46,14 +36,6 @@ export interface HookDescriptor {
   readonly vsockKind?: number;
   run(event: unknown): unknown;
 }
-
-export type LifecycleTag =
-  | "vm-init"
-  | "vm-ready"
-  | "vm-shutdown"
-  | "trap-deny"
-  | "pre-commit"
-  | "post-commit";
 
 export function lifecycleTagFor(event: LifecycleEvent): LifecycleTag {
   switch (event) {
@@ -152,9 +134,10 @@ function validateHook(hook: HookDescriptor): void {
       );
     }
   }
-  if (hook.ring === RingEvent.Lifecycle && !hook.lifecycleTag) {
+  if (hook.ring === RingEvent.Lifecycle &&
+    (hook.lifecycleTag === undefined || !LIFECYCLE_TAGS.includes(hook.lifecycleTag))) {
     throw new EConfig(
-      `lifecycle hook on ordinal ${hook.ordinal} declares no lifecycle tag`,
+      `lifecycle hook on ordinal ${hook.ordinal} declares unknown lifecycle tag ${String(hook.lifecycleTag)}`,
     );
   }
 }

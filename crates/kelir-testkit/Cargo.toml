@@ -13,6 +13,10 @@ name = "check-manifest"
 path = "src/bin/check_manifest.rs"
 
 [[bin]]
+name = "anchors"
+path = "src/bin/anchors.rs"
+
+[[bin]]
 name = "check-tests"
 path = "src/bin/check_tests.rs"
 
@@ -22,9 +26,11 @@ path = "src/bin/scorecard.rs"
 
 [dependencies]
 serde = { workspace = true }
+serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 toml = { workspace = true }
 walkdir = "2"
+driver-rustvmm = { path = "../kelir-drivers/driver-rustvmm" }
 
 [lints]
 workspace = true

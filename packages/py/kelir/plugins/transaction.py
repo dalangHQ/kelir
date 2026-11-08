@@ -1,18 +1,21 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/plugins/transaction.md#Plugin-transaction
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from kelir.plugin import BasePlugin
 
-__all__ = ["TransactionConfig", "TransactionPlugin"]
+__all__ = [
+    "TransactionConfig",
+    "TransactionPlugin",
+]
 
 
 @dataclass
 class TransactionConfig:
-    timeout_ms: int = 0
-    auto_rollback_on_taint: bool = False
-    flush_fuse_before_commit: bool = False
+    timeout_ms: int = 30_000
+    auto_rollback_on_taint: bool = True
+    flush_fuse_before_commit: bool = True
 
 
 class TransactionPlugin(BasePlugin):

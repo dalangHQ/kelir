@@ -11,6 +11,11 @@ ciborium = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
+syn = { version = "2", features = ["full"] }
+
+[[bin]]
+name = "codegen"
+path = "src/bin/codegen/main.rs"
 
 [lints]
 workspace = true

@@ -1,18 +1,19 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/plugins/mcp.md#Plugin-mcp
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from kelir.plugin import BasePlugin
 
-__all__ = ["McpConfig", "McpPlugin"]
+__all__ = [
+    "McpConfig",
+    "McpPlugin",
+]
 
 
 @dataclass
 class McpConfig:
-    transport_stream_kind: str = ""
-    framing: str = ""
-    advertise_tools: list[str] = field(default_factory=list)
+    pass
 
 
 class McpPlugin(BasePlugin):
