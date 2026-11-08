@@ -35,6 +35,8 @@ jobs:
       # The flag string lives only in the justfile.
       - name: Spec gate (refs-only + full)
         run: just check-spec
+      - name: "Codebase refs (see: pointers in code)"
+        run: just check-codebase-refs
       - name: Plugin coverage (--plugin-coverage)
         run: just check-plugin-coverage
       - name: Touched files within write budget

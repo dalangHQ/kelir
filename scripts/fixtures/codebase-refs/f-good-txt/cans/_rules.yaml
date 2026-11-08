@@ -1,0 +1,12 @@
+codebase:
+  enabled: true
+  roots:
+    - crates
+  include:
+    - "**/*.rs"
+  exclude:
+    - "**/target/**"
+    - "**/node_modules/**"
+    - "**/.venv/**"
+    - "**/.git/**"
+  severity: error

@@ -42,6 +42,12 @@ check-spec-touched:
 check-plugin-coverage:
     ./scripts/check-plugin-coverage.sh
 
+# Codebase inbound refs (RFC #66, local checker): every embedded see:
+# pointer in code resolves; the self-test proves each failure mode.
+check-codebase-refs:
+    python3 scripts/check-codebase-refs.py check
+    ./scripts/check-codebase-refs-selftest.sh
+
 # Compile-only gate for drivers with no CI test runner (Android AVF,
 # Termux proot); test execution needs hardware CI does not have.
 check-drivers:
@@ -163,7 +169,7 @@ parity: build-ts
 # build-shim is not in this chain: shim has its own CI gate and its
 # own time budget. check-plugin-all is not here: parity already runs
 # the same per-plugin audit. Lint is a target, not an inline body.
-pre-flight: check-canon check-hygiene check-spec check-plugin-coverage check-layers check-graph check-tiered check-budgets lint typecheck parity
+pre-flight: check-canon check-hygiene check-spec check-codebase-refs check-plugin-coverage check-layers check-graph check-tiered check-budgets lint typecheck parity
 
 check-canon:
     ./scripts/check-canon.sh

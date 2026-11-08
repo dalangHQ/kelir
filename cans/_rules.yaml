@@ -92,3 +92,39 @@ token_budget:
   default_limit: 4096
   estimate_chars_per_token: 3.5
   warn_threshold: 0.8
+
+# Codebase inbound references (RFC #66). Upstream cans 0.15.0 SHIPS #66:
+# `cans check --codebase` and `cans refs <node> --codebase` work, but v1
+# scope is .md targets only and there is no exceptions concept. This block
+# configures the LOCAL checker (scripts/check-codebase-refs.py), which
+# extends upstream to .yaml/.txt/code targets plus AnchorMissing. `enabled`
+# stays false on purpose: true would run the upstream phase inside every
+# plain `cans check`, and upstream v1 FAILS the real tree as-is (135
+# AnchorNotFound): its extractor regex cannot capture `:` or `/` inside
+# slugs, so SEE-LEAF's canonical trailing-colon slugs
+# (e.g. #Connection-parking-on-suspend:) and slash slugs (e.g.
+# #UID/GID-mapping-isolation) truncate and mismatch, and its exact matcher
+# rejects SEE-LEAF's name-presence anchors. That is an upstream-v1 gap to
+# file, not 135 pointers to rewrite here. The upstream phase stays
+# available one-run via `cans check --codebase`. The two known anchor-less
+# gaps live NOT here but in scripts/codebase-refs-exceptions.yaml — the
+# upstream strict validator accepts only the five keys below.
+# Checked by `just check-codebase-refs`.
+codebase:
+  enabled: false
+  roots:
+    - crates
+    - packages/ts
+    - packages/py
+    - AGENTS.md
+  include:
+    - "**/*.rs"
+    - "**/*.ts"
+    - "**/*.py"
+    - AGENTS.md
+  exclude:
+    - "**/target/**"
+    - "**/node_modules/**"
+    - "**/.venv/**"
+    - "**/.git/**"
+  severity: error

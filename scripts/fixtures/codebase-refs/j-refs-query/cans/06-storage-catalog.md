@@ -1,0 +1,3 @@
+- Storage catalog schema
+  - Entity model
+    - Minimal 3-table ledger: sessions, cas_leases, schema_version
