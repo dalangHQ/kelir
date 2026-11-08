@@ -28,13 +28,31 @@ pub struct FsReconcileRequest {
 pub struct StagingGuard {
     pub staged: Vec<PathBuf>,
     pub disarmed: bool,
+    pub io: Option<Arc<dyn StorageIo>>,
+}
+
+impl StagingGuard {
+    pub fn new(io: Arc<dyn StorageIo>) -> Self {
+        Self {
+            staged: Vec::new(),
+            disarmed: false,
+            io: Some(io),
+        }
+    }
 }
 
 impl Drop for StagingGuard {
     fn drop(&mut self) {
         if !self.disarmed {
             for path in &self.staged {
-                let _ = fs::remove_file(path);
+                match &self.io {
+                    Some(io) => {
+                        let _ = io.remove_file(path);
+                    }
+                    None => {
+                        let _ = fs::remove_file(path);
+                    }
+                }
             }
         }
     }
@@ -63,6 +81,10 @@ impl Reconciler {
             io,
             tombstones,
         }
+    }
+
+    pub fn staging_guard(&self) -> StagingGuard {
+        StagingGuard::new(Arc::clone(&self.io))
     }
 
     pub fn detect(&self) -> Result<Vec<PathBuf>, kelir_interface::plugin::PluginError> {

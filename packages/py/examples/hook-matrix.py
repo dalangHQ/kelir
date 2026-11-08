@@ -46,9 +46,68 @@ def mask_tokens(window: bytes) -> bytes:
     return _TOKEN_RE.sub(lambda m: b"*" * len(m.group(0)), window)
 
 
+# see: cans/04-terminal-plane.md#Terminal-pipeline
+def safe_console_emit_len(window: bytes) -> int:
+    emit = max(0, len(window) - CARRYOVER)
+    return _back_off_incomplete_ansi(
+        window, _back_off_incomplete_utf8(window, emit)
+    )
+
+
+def _back_off_incomplete_utf8(window: bytes, emit: int) -> int:
+    if emit == 0 or emit >= len(window):
+        return emit
+    start = emit
+    continuations = 0
+    while start > 0 and continuations < 3 and 0x80 <= window[start - 1] < 0xC0:
+        start -= 1
+        continuations += 1
+    if start == 0:
+        return emit
+    lead = window[start - 1]
+    if 0xC2 <= lead < 0xE0:
+        needed = 2
+    elif 0xE0 <= lead < 0xF0:
+        needed = 3
+    elif 0xF0 <= lead < 0xF5:
+        needed = 4
+    else:
+        return emit
+    return start - 1 if start - 1 + needed > emit else emit
+
+
+def _back_off_incomplete_ansi(window: bytes, emit: int) -> int:
+    if emit == 0:
+        return emit
+    escape = -1
+    for index in range(emit):
+        if window[index] == 0x1B:
+            escape = index
+    if escape == -1:
+        return emit
+    if escape + 1 >= emit:
+        return escape
+    if window[escape + 1] == 0x5B:
+        for byte in window[escape + 2:emit]:
+            if 0x40 <= byte < 0x7F:
+                return emit
+        return escape
+    if window[escape + 1] == 0x5D:
+        index = escape + 2
+        while index < emit:
+            if window[index] == 0x07:
+                return emit
+            if window[index] == 0x1B and window[index + 1:index + 2] == b"\\":
+                return emit
+            index += 1
+        return escape
+    return emit
+
+
 @dataclass
 class HookState:
     tail: bytes = b""
+    console_tail: bytes = b""
     heartbeats: int = 0
     last_uptime_ms: Optional[int] = None
     stalls: int = 0
@@ -66,12 +125,12 @@ class HookMatrixPlugin(BasePlugin):
     def state(self) -> HookState:
         return self._state
 
-    async def on_net_outbound(self, frame: bytearray) -> FilterAction:
+    def on_net_outbound(self, frame: bytearray) -> FilterAction:
         if DENY_MARKER in frame:
             return FilterAction.suspend(until=Deadline(0))
         return FilterAction.forward()
 
-    async def on_fs_lookup(self, path: Path) -> Verdict:
+    def on_fs_lookup(self, path: Path) -> Verdict:
         if escapes_workspace(str(path)):
             raise PluginError.reject(
                 errno="E_PATH_TRAVERSAL",
@@ -87,14 +146,14 @@ class HookMatrixPlugin(BasePlugin):
             content=IDENTITY_CONTENT,
         ))
 
-    async def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
+    def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
         window = self._state.tail + buffer
         masked = mask_tokens(window)
         chunk = masked[len(masked) - len(buffer):] if buffer else b""
         self._state.tail = masked[-CARRYOVER:] if masked else b""
         return chunk
 
-    async def on_fs_write(
+    def on_fs_write(
         self, path: Path, data: bytearray, pid: int, ctx: HandlerContext,
     ) -> FilterAction:
         return FilterAction.forward()
@@ -103,7 +162,11 @@ class HookMatrixPlugin(BasePlugin):
         return _OSC52_RE.sub(b"", data)
 
     async def on_console_output(self, port: int, chunk: bytes) -> bytes:
-        return mask_tokens(chunk)
+        window = self._state.console_tail + chunk
+        masked = mask_tokens(window)
+        emit = safe_console_emit_len(masked)
+        self._state.console_tail = masked[emit:]
+        return masked[:emit]
 
     async def on_heartbeat(self, event: Any) -> None:
         if (self._state.last_uptime_ms == event.uptime_ms

@@ -63,6 +63,15 @@ impl TrapFilter {
         self.args.push(arg.to_string());
         self
     }
+
+    pub(crate) fn matches(&self, event: &TrapEvent) -> bool {
+        if let Some(binary) = &self.binary {
+            if binary != &event.binary_path {
+                return false;
+            }
+        }
+        self.args.iter().all(|arg| event.argv.contains(arg))
+    }
 }
 
 pub fn handler<F, Fut, A, O>(f: F) -> F

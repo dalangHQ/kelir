@@ -14,8 +14,8 @@ use kelir_interface::plugin::HandlerCtx as IfaceHandlerCtx;
 use tokio::sync::Mutex;
 
 use kelir::{
-    FsReconcileRequest, HCons, HNil, HandlerCtx, KelirBuilder, NoParams, PidLineage,
-    PostExecAction, SnapshotDescriptor, TrapFilter, Unsealed, Verdict, VmConfig,
+    FsReconcileRequest, HCons, HNil, HandlerCtx, KelirBuilder, NoParams, PostExecAction,
+    SnapshotDescriptor, TrapFilter, Unsealed, Verdict, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     handler,
     planes::{
@@ -32,7 +32,7 @@ use kelir::{
             ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, NetworkFaultRule,
             StorageFaultRule,
         },
-        ledger::LedgerPlugin,
+        ledger::{LedgerCtx, LedgerPlugin},
     },
     protocol::{PatchPayload, TrapEvent},
     telemetry::ExecutionReceipt,
@@ -206,7 +206,7 @@ async fn build_runtime(
 ) -> Result<
     KelirBuilder<
         Unsealed,
-        HCons<RepoPolicyHandle, HCons<(), HCons<Arc<dyn FaultInjectionService>, HNil>>>,
+        HCons<RepoPolicyHandle, HCons<LedgerCtx, HCons<Arc<dyn FaultInjectionService>, HNil>>>,
         NoParams,
     >,
     Box<dyn std::error::Error + Send + Sync>,
@@ -570,7 +570,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("[kelir] wire forward_port -> {port}");
 
     session.checkpoint.create_step(
-        PidLineage::new(1),
+        session.lineage(1),
         SnapshotDescriptor {
             id: "clean_base".into(),
             dirty_bytes: 0,
@@ -579,7 +579,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             guest_clock: None,
         },
     )?;
-    let base = session.checkpoint.commit_step(PidLineage::new(1))?;
+    let base = session.checkpoint.commit_step(session.lineage(1))?;
     eprintln!("[kelir] checkpoint base node={base}");
 
     let phase: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
@@ -588,7 +588,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let mut child = session.fork()?;
             joins.spawn(async move {
                 child.checkpoint.create_step(
-                    PidLineage::new(1),
+                    child.lineage(1),
                     SnapshotDescriptor {
                         id: format!("hypothesis-{id}"),
                         dirty_bytes: 0,
@@ -597,7 +597,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         guest_clock: None,
                     },
                 )?;
-                child.checkpoint.commit_step(PidLineage::new(1))?;
+                child.checkpoint.commit_step(child.lineage(1))?;
                 // TODO (L3): skew the child clock, spawn npm run verify-hypothesis-{id}, and read back its causal delta.
                 child.stop()?;
                 Ok::<_, Box<dyn std::error::Error + Send + Sync>>(id)
@@ -612,7 +612,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
         let Some(id) = winner else {
-            session.rollback(PidLineage::new(1)).await?;
+            let lineage = session.lineage(1);
+            session.rollback(lineage).await?;
             return Ok(());
         };
 

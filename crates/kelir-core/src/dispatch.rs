@@ -1,17 +1,88 @@
 // see: cans/02-plugin-model.md#Static-dispatch
 // see: cans/02-plugin-model.md#Unified-interposition-pipeline
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
-    ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, LockBrokerCoordination,
-    MountScope, NetInterposer, PipelineBinder, StreamInterposer, TrapInterposer, VirtioDevice,
+    ConsoleInterposer, FfiDispatchQueue, FsInterposer, HandlerCtx, HostInterposer,
+    LockBrokerCoordination, MountScope, NetInterposer, PipelineBinder, StreamInterposer,
+    TrapInterposer, VirtioDevice,
 };
 use kelir_interface::protocol::{FilterAction, ProcessExit, StreamKind, TrapEvent, Verdict};
 use kelir_interface::service_registry::ServiceRegistry;
 use kelir_interface::vsock::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::trap_gate::{GateDecision, TrapGateEvaluator};
+
+// see: cans/artifacts/code/plugin-trait.rs
+struct Quarantined<F> {
+    inner: Option<Pin<Box<F>>>,
+}
+
+impl<F: Future> Quarantined<F> {
+    fn new(future: F) -> Self {
+        Self {
+            inner: Some(Box::pin(future)),
+        }
+    }
+}
+
+impl<F: Future> Future for Quarantined<F> {
+    type Output = Result<F::Output, PluginError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        let Some(inner) = this.inner.as_mut() else {
+            return Poll::Ready(Err(PluginError::Halt(
+                "quarantined future polled after completion".into(),
+            )));
+        };
+        // TODO (L3): log the panic payload and backtrace to the host ledger and roll back the active StepSlot.
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            Future::poll(inner.as_mut(), cx)
+        })) {
+            Ok(Poll::Ready(output)) => {
+                this.inner = None;
+                Poll::Ready(Ok(output))
+            }
+            Ok(Poll::Pending) => Poll::Pending,
+            Err(_) => {
+                this.inner = None;
+                Poll::Ready(Err(PluginError::Halt("plugin panicked".into())))
+            }
+        }
+    }
+}
+
+async fn quarantine_verdict<F>(future: F) -> Result<Verdict, PluginError>
+where
+    F: Future<Output = Result<Verdict, PluginError>>,
+{
+    match Quarantined::new(future).await {
+        Ok(output) => output,
+        Err(_) => Ok(Verdict::Drop {
+            errno: Some("EFAULT".into()),
+            reason: "Plugin panicked".into(),
+        }),
+    }
+}
+
+async fn quarantine_unit<F>(future: F) -> Result<(), PluginError>
+where
+    F: Future<Output = Result<(), PluginError>>,
+{
+    Quarantined::new(future).await?
+}
+
+fn quarantine_sync<T>(run: impl FnOnce() -> T, on_panic: impl FnOnce() -> T) -> T {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
+        Ok(output) => output,
+        Err(_) => on_panic(),
+    }
+}
 
 pub struct PipelineEngine {
     trap_interceptors: Vec<Arc<dyn TrapInterposer>>,
@@ -29,6 +100,7 @@ pub struct PipelineEngine {
     vsock_services: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>, MountScope)>,
     services: ServiceRegistry,
     metrics: Arc<kelir_otlp::registry::MetricRegistry>,
+    foreign_queue: FfiDispatchQueue,
     active_scope: Option<MountScope>,
     sealed: bool,
 }
@@ -136,9 +208,23 @@ impl PipelineEngine {
             vsock_services: Vec::new(),
             services: ServiceRegistry::new(),
             metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
+            foreign_queue: FfiDispatchQueue::default(),
             active_scope: None,
             sealed: false,
         }
+    }
+
+    pub fn foreign_queue(&self) -> &FfiDispatchQueue {
+        &self.foreign_queue
+    }
+
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    pub fn try_foreign_submit(&self) -> Result<(), PluginError> {
+        self.foreign_queue.try_submit()
+    }
+
+    pub fn foreign_submit_complete(&self) {
+        self.foreign_queue.complete();
     }
 
     pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry::MetricRegistry>) -> Self {
@@ -152,6 +238,13 @@ impl PipelineEngine {
 
     pub fn services(&self) -> &ServiceRegistry {
         &self.services
+    }
+
+    pub fn vsock_service(&self, port: u32) -> Option<Arc<dyn VsockServiceHandler>> {
+        self.vsock_services
+            .iter()
+            .find(|(spec, _, _)| spec.port == port)
+            .map(|(_, handler, _)| Arc::clone(handler))
     }
 
     // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
@@ -224,12 +317,39 @@ impl PipelineEngine {
         Ok(())
     }
 
+    // see: cans/02-plugin-model.md#Static-dispatch
+    pub async fn dispatch_trap_typed<Plugins, Params>(
+        &self,
+        event: &TrapEvent,
+        ctx: &HandlerCtx<Plugins, Params>,
+    ) -> Result<Verdict, PluginError> {
+        self.dispatch_trap(event, &ctx.erased()).await
+    }
+
+    // see: cans/02-plugin-model.md#Static-dispatch
+    pub async fn dispatch_process_exit_typed<Plugins, Params>(
+        &self,
+        event: &ProcessExit,
+        ctx: &HandlerCtx<Plugins, Params>,
+    ) -> Result<(), PluginError> {
+        self.dispatch_process_exit(event, &ctx.erased()).await
+    }
+
+    // see: cans/02-plugin-model.md#Static-dispatch
+    pub fn dispatch_fs_write_typed<Plugins, Params>(
+        &self,
+        data: &mut [u8],
+        ctx: &HandlerCtx<Plugins, Params>,
+    ) -> Result<FilterAction, PluginError> {
+        self.dispatch_fs_write(data, &ctx.erased())
+    }
+
+    // see: cans/artifacts/code/plugin-trait.rs
     pub async fn dispatch_trap(
         &self,
         event: &TrapEvent,
         ctx: &HandlerCtx,
     ) -> Result<Verdict, PluginError> {
-        // TODO (L3): panic quarantine across await needs an executor-level catch_unwind; a panicking async hook unwinds to the caller.
         if event.syscall.is_some() {
             self.metrics.record_syscall();
         }
@@ -241,7 +361,7 @@ impl PipelineEngine {
                 GateDecision::Deny(verdict) => return Ok(verdict),
                 GateDecision::FallThrough => {}
             }
-            let verdict = interceptor.on_trap(event, ctx).await?;
+            let verdict = quarantine_verdict(interceptor.on_trap(event, ctx)).await?;
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }
@@ -265,7 +385,7 @@ impl PipelineEngine {
             ) {
                 continue;
             }
-            interceptor.on_process_exit(event, ctx).await?;
+            quarantine_unit(interceptor.on_process_exit(event, ctx)).await?;
         }
         Ok(())
     }
@@ -280,7 +400,14 @@ impl PipelineEngine {
             if !Self::fs_scope_allows(&scope, ctx) {
                 continue;
             }
-            let action = interceptor.on_fs_write(data, ctx)?;
+            let action = quarantine_sync(
+                || interceptor.on_fs_write(data, ctx),
+                || {
+                    Ok(FilterAction::Abort {
+                        reason: "Plugin panicked".into(),
+                    })
+                },
+            )?;
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }
@@ -295,7 +422,14 @@ impl PipelineEngine {
             if !scope.allows_device(VirtioDevice::Net) {
                 continue;
             }
-            let action = interceptor.on_net_outbound(frame)?;
+            let action = quarantine_sync(
+                || interceptor.on_net_outbound(frame),
+                || {
+                    Ok(FilterAction::Abort {
+                        reason: "Plugin panicked".into(),
+                    })
+                },
+            )?;
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }
@@ -309,7 +443,14 @@ impl PipelineEngine {
             if !scope.allows_device(VirtioDevice::Net) {
                 continue;
             }
-            let action = interceptor.on_net_inbound(frame)?;
+            let action = quarantine_sync(
+                || interceptor.on_net_inbound(frame),
+                || {
+                    Ok(FilterAction::Abort {
+                        reason: "Plugin panicked".into(),
+                    })
+                },
+            )?;
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }
@@ -327,7 +468,7 @@ impl PipelineEngine {
             if !scope.allows_device(VirtioDevice::Console) {
                 continue;
             }
-            interceptor.on_console_input(port, bytes).await?;
+            quarantine_unit(interceptor.on_console_input(port, bytes)).await?;
         }
         Ok(())
     }
@@ -342,7 +483,7 @@ impl PipelineEngine {
             if !scope.allows_device(VirtioDevice::Console) {
                 continue;
             }
-            interceptor.on_console_output(port, chunk).await?;
+            quarantine_unit(interceptor.on_console_output(port, chunk)).await?;
         }
         Ok(())
     }
@@ -358,7 +499,7 @@ impl PipelineEngine {
             if !scope.allows_device(VirtioDevice::Console) {
                 continue;
             }
-            interceptor.on_exec_stdout(pid, exec_id, chunk).await?;
+            quarantine_unit(interceptor.on_exec_stdout(pid, exec_id, chunk)).await?;
         }
         Ok(())
     }
@@ -374,7 +515,7 @@ impl PipelineEngine {
             if !scope.allows_device(VirtioDevice::Console) {
                 continue;
             }
-            interceptor.on_exec_stderr(pid, exec_id, chunk).await?;
+            quarantine_unit(interceptor.on_exec_stderr(pid, exec_id, chunk)).await?;
         }
         Ok(())
     }
@@ -390,7 +531,15 @@ impl PipelineEngine {
             if !scope.allows_path(path) {
                 continue;
             }
-            let verdict = interceptor.on_host_lsm_exec(path, pid)?;
+            let verdict = quarantine_sync(
+                || interceptor.on_host_lsm_exec(path, pid),
+                || {
+                    Ok(Verdict::Drop {
+                        errno: Some("EFAULT".into()),
+                        reason: "Plugin panicked".into(),
+                    })
+                },
+            )?;
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }
@@ -401,7 +550,15 @@ impl PipelineEngine {
     // TODO (L3): pressure/keyring dispatch carries no path or device input, so no scope filter can evaluate here yet.
     pub fn dispatch_host_pressure(&self, level: u32) -> Result<Verdict, PluginError> {
         for interceptor in &self.host_interceptors {
-            let verdict = interceptor.on_host_pressure(level)?;
+            let verdict = quarantine_sync(
+                || interceptor.on_host_pressure(level),
+                || {
+                    Ok(Verdict::Drop {
+                        errno: Some("EFAULT".into()),
+                        reason: "Plugin panicked".into(),
+                    })
+                },
+            )?;
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }
@@ -411,7 +568,15 @@ impl PipelineEngine {
 
     pub fn dispatch_host_keyring_access(&self, key: &str) -> Result<Verdict, PluginError> {
         for interceptor in &self.host_interceptors {
-            let verdict = interceptor.on_host_keyring_access(key)?;
+            let verdict = quarantine_sync(
+                || interceptor.on_host_keyring_access(key),
+                || {
+                    Ok(Verdict::Drop {
+                        errno: Some("EFAULT".into()),
+                        reason: "Plugin panicked".into(),
+                    })
+                },
+            )?;
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }

@@ -208,8 +208,11 @@ impl Sandbox {
         Ok(self)
     }
 
-    pub fn exec(&mut self, _binary: &str) -> SpawnBuilder {
-        SpawnBuilder::default()
+    pub fn exec(&mut self, binary: &str) -> SpawnBuilder {
+        match &self.session {
+            Some(session) => session.spawn(binary),
+            None => SpawnBuilder::default().args([binary]),
+        }
     }
 
     pub async fn rollback(&mut self, lineage: crate::PidLineage) -> Result<(), PluginError> {

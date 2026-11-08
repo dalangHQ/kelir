@@ -28,6 +28,7 @@ function escapesWorkspace(path: string): boolean {
 
 const hookState = {
   tail: "" as string,
+  consoleTail: "" as string,
   heartbeats: 0,
   lastUptimeMs: null as number | null,
   stalls: 0,
@@ -49,10 +50,58 @@ function maskTokens(window: string): string {
   return chars.join("");
 }
 
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+function safeConsoleEmitLen(window: Uint8Array): number {
+  const emit = Math.max(0, window.length - CARRYOVER);
+  return backOffIncompleteAnsi(window, backOffIncompleteUtf8(window, emit));
+}
+
+function backOffIncompleteUtf8(window: Uint8Array, emit: number): number {
+  if (emit === 0 || emit >= window.length) return emit;
+  let start = emit;
+  let continuations = 0;
+  while (start > 0 && continuations < 3 && window[start - 1] >= 0x80 && window[start - 1] < 0xC0) {
+    start -= 1;
+    continuations += 1;
+  }
+  if (start === 0) return emit;
+  const lead = window[start - 1];
+  let needed = 0;
+  if (lead >= 0xC2 && lead < 0xE0) needed = 2;
+  else if (lead >= 0xE0 && lead < 0xF0) needed = 3;
+  else if (lead >= 0xF0 && lead < 0xF5) needed = 4;
+  else return emit;
+  return start - 1 + needed > emit ? start - 1 : emit;
+}
+
+function backOffIncompleteAnsi(window: Uint8Array, emit: number): number {
+  if (emit === 0) return emit;
+  let escape = -1;
+  for (let i = 0; i < emit; i++) {
+    if (window[i] === 0x1b) escape = i;
+  }
+  if (escape === -1) return emit;
+  if (escape + 1 >= emit) return escape;
+  if (window[escape + 1] === 0x5b) {
+    for (let i = escape + 2; i < emit; i++) {
+      if (window[i] >= 0x40 && window[i] < 0x7f) return emit;
+    }
+    return escape;
+  }
+  if (window[escape + 1] === 0x5d) {
+    for (let i = escape + 2; i < emit; i++) {
+      if (window[i] === 0x07) return emit;
+      if (window[i] === 0x1b && window[i + 1] === 0x5c) return emit;
+    }
+    return escape;
+  }
+  return emit;
+}
+
 const hookMatrixPlugin = createPlugin("hook-matrix")
 
 
-  .onNetOutbound(async (frame) => {
+  .onNetOutbound((frame) => {
     const text = Buffer.from(frame).toString("latin1");
     if (text.includes(DENY_MARKER)) {
 
@@ -62,7 +111,7 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
   })
 
 
-  .onFsLookup(async (path) => {
+  .onFsLookup((path) => {
 
 
     if (escapesWorkspace(path)) {
@@ -79,14 +128,14 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
   })
 
 
-  .onFsRead(async (_path, buffer) => {
+  .onFsRead((_path, buffer) => {
     const window = hookState.tail + Buffer.from(buffer).toString("latin1");
     const masked = maskTokens(window);
     const chunk = masked.slice(masked.length - buffer.length);
     hookState.tail = masked.slice(-CARRYOVER);
     return Buffer.from(chunk, "latin1");
   })
-  .onFsWrite(async (_path, buffer, _pid, _ctx) => {
+  .onFsWrite((_path, buffer, _pid, _ctx) => {
     return FilterAction.Forward;
   })
 
@@ -99,8 +148,14 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
 
 
   .onConsoleOutput(async (_port, chunk) => {
-    const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
-    return Buffer.from(masked, "latin1");
+    const window = Buffer.concat([
+      Buffer.from(hookState.consoleTail, "latin1"),
+      Buffer.from(chunk),
+    ]);
+    const masked = Buffer.from(maskTokens(window.toString("latin1")), "latin1");
+    const emit = safeConsoleEmitLen(masked);
+    hookState.consoleTail = masked.subarray(emit).toString("latin1");
+    return Buffer.from(masked.subarray(0, emit));
   })
 
 

@@ -26,6 +26,7 @@ pub struct StoragePlane {
     io: Arc<dyn io::StorageIo>,
     reconciler: OnceLock<reconciler::Reconciler>,
     lock_broker: OnceLock<Arc<lock_broker::LockBroker>>,
+    lock_namespace: [u8; 16],
     fuse_worker: OnceLock<Mutex<fuse::FuseWorker>>,
     metrics: Arc<kelir_otlp::registry::MetricRegistry>,
     synthetic_files: Vec<synthetic::SyntheticFile>,
@@ -51,6 +52,7 @@ impl StoragePlane {
             io: Arc::new(io::UnimplementedStorageIo),
             reconciler: OnceLock::new(),
             lock_broker: OnceLock::new(),
+            lock_namespace: [0; 16],
             fuse_worker: OnceLock::new(),
             metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
             synthetic_files: Vec::new(),
@@ -97,6 +99,11 @@ impl StoragePlane {
         })
     }
 
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    pub fn set_lock_namespace(&mut self, namespace: [u8; 16]) {
+        self.lock_namespace = namespace;
+    }
+
     pub fn lock_broker(
         &self,
         interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
@@ -117,8 +124,9 @@ impl StoragePlane {
         &self,
         interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
     ) -> &Arc<lock_broker::LockBroker> {
-        self.lock_broker
-            .get_or_init(|| Arc::new(lock_broker::LockBroker::new(interposer)))
+        self.lock_broker.get_or_init(|| {
+            Arc::new(lock_broker::LockBroker::new(interposer).with_namespace(self.lock_namespace))
+        })
     }
 
     pub fn fuse_worker(

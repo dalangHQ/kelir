@@ -3,6 +3,7 @@
 use std::any::Any;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -19,7 +20,9 @@ use crate::driver::{
 pub use crate::handlers::{
     ConsoleContext, ExecContext, FsContext, HandlerCtx, Has, HostContext, NetContext,
 };
-use crate::protocol::{FilterAction, ProcessExit, StreamDirection, StreamKind, TrapEvent, Verdict};
+use crate::protocol::{
+    FilterAction, ProcessExit, StreamDirection, StreamKind, SuspendUntil, TrapEvent, Verdict,
+};
 
 // see: cans/artifacts/code/plugin-trait.rs
 #[derive(Error, Debug)]
@@ -216,6 +219,16 @@ pub trait BalloonControl: Send + Sync {
 #[async_trait]
 pub trait LockBrokerCoordination: Send + Sync {
     async fn release_transaction_locks(&self) -> Result<(), PluginError>;
+    async fn release_transaction_locks_for(&self, namespace: [u8; 16]) -> Result<(), PluginError> {
+        // TODO (L3): namespace-scoped release needs the aborting transaction identity at the call site; the unscoped release is the L2 fallback.
+        let _ = namespace;
+        self.release_transaction_locks().await
+    }
+}
+
+// see: cans/plugins/wire-ingress.md
+pub trait ParkedConnectionReset: Send + Sync {
+    fn reset_parked_connections(&self) -> Result<Vec<u64>, PluginError>;
 }
 
 // TODO (L3): borrow &mut dyn VmmDriver + &VmConfig per cans/artifacts/code/plugin-trait.rs; owned store is the L2 stand-in.
@@ -569,6 +582,8 @@ pub trait SystemTelemetryParticipant: Send + Sync {
     }
 }
 
+// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/02-plugin-model.md#Shape-of-the-surface
 pub trait FsInterposer: Send + Sync {
     fn on_fs_lookup(&self, path: &Path) -> Result<Verdict, PluginError> {
         let _ = path;
@@ -594,6 +609,8 @@ pub trait FsInterposer: Send + Sync {
     }
 }
 
+// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/02-plugin-model.md#Shape-of-the-surface
 pub trait NetInterposer: Send + Sync {
     fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         let _ = frame;
@@ -605,6 +622,8 @@ pub trait NetInterposer: Send + Sync {
     }
 }
 
+// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/02-plugin-model.md#Shape-of-the-surface
 pub trait HostInterposer: Send + Sync {
     fn on_host_lsm_exec(&self, path: &Path, pid: u32) -> Result<Verdict, PluginError> {
         let _ = (path, pid);
@@ -659,5 +678,67 @@ pub trait ForeignPluginBridge: KelirPlugin {
     }
     fn buffer_ceiling(&self) -> usize {
         64 * 1024
+    }
+}
+
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
+pub const FFI_DISPATCH_QUEUE_CAPACITY: usize = 4_096;
+
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
+pub struct FfiDispatchQueue {
+    capacity: usize,
+    depth: AtomicUsize,
+}
+
+impl FfiDispatchQueue {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            depth: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn try_submit(&self) -> Result<(), PluginError> {
+        match self
+            .depth
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |depth| {
+                if depth >= self.capacity {
+                    None
+                } else {
+                    Some(depth + 1)
+                }
+            }) {
+            Ok(_) => Ok(()),
+            Err(depth) => Err(PluginError::FfiQueueSaturated { depth }),
+        }
+    }
+
+    pub fn complete(&self) {
+        let _ = self
+            .depth
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |depth| {
+                if depth == 0 { None } else { Some(depth - 1) }
+            });
+    }
+
+    pub fn depth(&self) -> usize {
+        self.depth.load(Ordering::Acquire)
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+}
+
+impl Default for FfiDispatchQueue {
+    fn default() -> Self {
+        Self::new(FFI_DISPATCH_QUEUE_CAPACITY)
+    }
+}
+
+// see: cans/artifacts/code/plugin-trait.rs
+pub fn foreign_suspend_action() -> FilterAction {
+    FilterAction::Suspend {
+        until: SuspendUntil::Approval,
     }
 }

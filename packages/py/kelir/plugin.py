@@ -133,21 +133,21 @@ class BasePlugin:
         # TODO: dispatch trap event to the plugin
         return None
 
-    async def on_fs_lookup(self, path: Path) -> Verdict:
+    def on_fs_lookup(self, path: Path) -> Verdict:
         # TODO: dispatch fs lookup to the plugin
         return Verdict.pass_()
 
-    async def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
+    def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
         # TODO: dispatch fs read to the plugin
         return buffer
 
-    async def on_fs_write(
+    def on_fs_write(
         self, path: Path, data: Any, pid: int, ctx: HandlerContext
     ) -> FilterAction:
         # TODO: dispatch fs write to the plugin
         return FilterAction.forward()
 
-    async def on_net_outbound(self, frame: bytearray) -> FilterAction:
+    def on_net_outbound(self, frame: bytearray) -> FilterAction:
         # TODO: dispatch outbound frame to the plugin
         return FilterAction.forward()
 

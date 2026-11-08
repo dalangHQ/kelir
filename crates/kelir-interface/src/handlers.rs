@@ -105,6 +105,11 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         self
     }
 
+    pub fn with_vm(mut self, vm: VmHandle) -> Self {
+        self.vm = vm;
+        self
+    }
+
     pub fn with_fs_ctx(mut self, ctx: FsContext) -> Self {
         self.fs_ctx = Some(ctx);
         self
@@ -178,6 +183,28 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         Plugins: Has<T, Index>,
     {
         self.plugins.get()
+    }
+
+    // see: cans/02-plugin-model.md#Static-dispatch
+    pub fn erased(&self) -> HandlerCtx<(), ()> {
+        let mut erased = HandlerCtx::new(self.session_id, self.pid, (), self.params_buffer.clone())
+            .with_trap(self.trap.clone());
+        if let Some(fs_ctx) = &self.fs_ctx {
+            erased = erased.with_fs_ctx(fs_ctx.clone());
+        }
+        if let Some(net_ctx) = &self.net_ctx {
+            erased = erased.with_net_ctx(net_ctx.clone());
+        }
+        if let Some(host_ctx) = &self.host_ctx {
+            erased = erased.with_host_ctx(host_ctx.clone());
+        }
+        if let Some(console_ctx) = &self.console_ctx {
+            erased = erased.with_console_ctx(console_ctx.clone());
+        }
+        if let Some(exec_ctx) = &self.exec_ctx {
+            erased = erased.with_exec_ctx(exec_ctx.clone());
+        }
+        erased
     }
 
     pub fn plugins(&self) -> &Plugins {

@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use kelir_interface::plugin::PluginError;
 use kelir_interface::protocol::{FilterAction, StreamKind};
-use kelir_interface::vsock::VAULT_METADATA_VSOCK_PORT;
+use kelir_interface::vsock::{VAULT_METADATA_VSOCK_PORT, VsockServiceHandler};
 
 pub const SYNTHETIC_DNS_GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 127, 1);
 pub const SYNTHETIC_DNS_PORT: u16 = 53;
@@ -258,6 +258,7 @@ pub struct WirePlane {
     udp_nat_slab: Arc<Mutex<Vec<Option<UdpNatEntry>>>>,
     allowed_domains: Arc<RwLock<Vec<String>>>,
     stack: SmoltcpStack,
+    imds_sink: Arc<RwLock<Option<Arc<dyn VsockServiceHandler>>>>,
     metrics: Arc<kelir_otlp::registry::MetricRegistry>,
 }
 
@@ -274,6 +275,7 @@ impl WirePlane {
             udp_nat_slab: Arc::new(Mutex::new(Vec::new())),
             allowed_domains: Arc::new(RwLock::new(Vec::new())),
             stack: SmoltcpStack::new(),
+            imds_sink: Arc::new(RwLock::new(None)),
             metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
         }
     }
@@ -285,6 +287,28 @@ impl WirePlane {
 
     pub fn metrics(&self) -> &Arc<kelir_otlp::registry::MetricRegistry> {
         &self.metrics
+    }
+
+    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
+    pub fn bind_imds_sink(&self, handler: Arc<dyn VsockServiceHandler>) -> Result<(), PluginError> {
+        match self.imds_sink.write() {
+            Ok(mut guard) => {
+                *guard = Some(handler);
+                Ok(())
+            }
+            Err(_) => Err(PluginError::Halt("imds sink slot poisoned".into())),
+        }
+    }
+
+    pub fn imds_sink_bound(&self) -> bool {
+        matches!(self.imds_sink.read(), Ok(guard) if guard.is_some())
+    }
+
+    pub fn imds_sink(&self) -> Result<Option<Arc<dyn VsockServiceHandler>>, PluginError> {
+        match self.imds_sink.read() {
+            Ok(guard) => Ok(guard.clone()),
+            Err(_) => Err(PluginError::Halt("imds sink slot poisoned".into())),
+        }
     }
 
     fn record_drop(&self, action: &kelir_interface::protocol::FilterAction) {
@@ -400,9 +424,14 @@ impl WirePlane {
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
         match link_local_route(frame, FrameDirection::Outbound) {
             Some(LinkLocalRoute::VaultImds { vsock_port }) => {
-                // TODO (L3): parse the HTTP metadata request and translate it to the vault vsock service.
+                if self.imds_sink_bound() {
+                    // TODO (L3): parse the HTTP metadata request and translate it to the bound vault vsock service.
+                    return Err(PluginError::Halt(format!(
+                        "IMDS 169.254.169.254:{vsock_port} to vault vsock translation pending (L3)"
+                    )));
+                }
                 Err(PluginError::Halt(format!(
-                    "IMDS 169.254.169.254:{vsock_port} to vault vsock translation pending (L3)"
+                    "IMDS 169.254.169.254:{vsock_port} has no vault vsock sink bound; mount plugin-vault and bind it"
                 )))
             }
             _ => Err(PluginError::Halt(

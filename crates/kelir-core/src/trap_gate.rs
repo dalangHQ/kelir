@@ -71,28 +71,34 @@ impl TrapGateEvaluator {
         Ok(())
     }
 
+    // see: cans/plugins/supply-chain.md#Entropy-analysis
     pub fn evaluate(&self, event: &TrapEvent, scope: &MountScope) -> GateDecision {
-        if let Some(hook) = &self.entropy_hook {
-            if let Ok(entropy) = self.compute_shannon_entropy(&event.argv) {
-                let trusted = self
-                    .trusted_prefixes
-                    .iter()
-                    .any(|prefix| event.binary_path.starts_with(prefix.as_str()));
-                if let Some(decision) = hook(entropy, trusted) {
-                    return decision;
-                }
-            }
-        }
         if let Some(program) = &self.bpf_program {
             // TODO (L3): gate-1 BPF match decides Allow here; no program is loaded until L3.
             if matches!(program.matches(event), Ok(true)) {
                 return GateDecision::Allow;
             }
         }
+        let trusted = self.is_trusted(event);
+        if !trusted {
+            if let Some(hook) = &self.entropy_hook {
+                if let Ok(entropy) = self.compute_shannon_entropy(&event.argv) {
+                    if let Some(decision) = hook(entropy, trusted) {
+                        return decision;
+                    }
+                }
+            }
+        }
         if self.gate_2_scope_match(event, scope) {
             return GateDecision::FallThrough;
         }
         GateDecision::Allow
+    }
+
+    fn is_trusted(&self, event: &TrapEvent) -> bool {
+        self.trusted_prefixes
+            .iter()
+            .any(|prefix| event.binary_path.starts_with(prefix.as_str()))
     }
 
     pub fn eval_gate_1_bpf(&self, event: &TrapEvent) -> bool {

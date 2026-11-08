@@ -10,13 +10,12 @@ use std::sync::{
 use tokio::task::JoinSet;
 
 use kelir::{
-    HCons, HNil, KelirBuilder, NoParams, PidLineage, Session, SnapshotDescriptor, Unsealed,
-    VmConfig,
+    HCons, HNil, KelirBuilder, NoParams, Session, SnapshotDescriptor, Unsealed, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     planes::storage::{LockBrokerConfig, LockMode, LockScope},
     plugin::VetoEvent,
     plugins::{
-        ledger::LedgerPlugin,
+        ledger::{LedgerCtx, LedgerPlugin},
         mesh::{
             MeshConfig, MeshCtx, MeshPlugin, PeerIdentity, PeerListener, TraceParentPropagation,
         },
@@ -27,7 +26,7 @@ use kelir::{
     },
 };
 
-type SwarmPlugins = HCons<(), HCons<Arc<dyn JitValidationService>, HCons<MeshCtx, HNil>>>;
+type SwarmPlugins = HCons<LedgerCtx, HCons<Arc<dyn JitValidationService>, HCons<MeshCtx, HNil>>>;
 
 fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
     KelirBuilder::new(VmConfig {
@@ -103,7 +102,7 @@ async fn boot_swarm()
 
     session.terminal.resize(120, 40)?;
     session.checkpoint.create_step(
-        PidLineage::new(1),
+        session.lineage(1),
         SnapshotDescriptor {
             id: "swarm-cache-ready".into(),
             dirty_bytes: 0,
@@ -112,7 +111,7 @@ async fn boot_swarm()
             guest_clock: None,
         },
     )?;
-    session.checkpoint.commit_step(PidLineage::new(1))?;
+    session.checkpoint.commit_step(session.lineage(1))?;
     cache_ready.store(true, Ordering::SeqCst);
 
     Ok(session)
@@ -124,7 +123,7 @@ async fn run_shard(
     total: u32,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     child.checkpoint.create_step(
-        PidLineage::new(1),
+        child.lineage(1),
         SnapshotDescriptor {
             id: format!("swarm-shard-{shard_id}/{total}"),
             dirty_bytes: 0,
@@ -133,7 +132,7 @@ async fn run_shard(
             guest_clock: None,
         },
     )?;
-    child.checkpoint.commit_step(PidLineage::new(1))?;
+    child.checkpoint.commit_step(child.lineage(1))?;
     // TODO (L3): map the shard-exchange shared region, spawn cargo test --shard, and publish the result via MeshCtx.
     child.stop()?;
     Ok(true)

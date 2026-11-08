@@ -32,6 +32,7 @@ const CARRYOVER: usize = TOKEN_LEN - 1;
 #[derive(Default)]
 struct HookState {
     tail: Vec<u8>,
+    console_tail: Vec<u8>,
     heartbeats: usize,
     last_uptime_ms: Option<u64>,
     stalls: usize,
@@ -83,6 +84,84 @@ fn mask_tokens(window: &mut [u8]) {
         } else {
             i += 1;
         }
+    }
+}
+
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+fn safe_console_emit_len(window: &[u8]) -> usize {
+    let emit = window.len().saturating_sub(CARRYOVER);
+    back_off_incomplete_ansi(window, back_off_incomplete_utf8(window, emit))
+}
+
+fn back_off_incomplete_utf8(window: &[u8], emit: usize) -> usize {
+    if emit == 0 || emit >= window.len() {
+        return emit;
+    }
+    let mut start = emit;
+    let mut continuations = 0;
+    while start > 0 && continuations < 3 && (0x80..0xC0).contains(&window[start - 1]) {
+        start -= 1;
+        continuations += 1;
+    }
+    if start == 0 {
+        return emit;
+    }
+    let lead = window[start - 1];
+    let needed = if (0xC2..0xE0).contains(&lead) {
+        2
+    } else if (0xE0..0xF0).contains(&lead) {
+        3
+    } else if (0xF0..0xF5).contains(&lead) {
+        4
+    } else {
+        return emit;
+    };
+    if start - 1 + needed > emit {
+        start - 1
+    } else {
+        emit
+    }
+}
+
+fn back_off_incomplete_ansi(window: &[u8], emit: usize) -> usize {
+    if emit == 0 {
+        return emit;
+    }
+    let mut escape = None;
+    for (index, byte) in window.iter().enumerate().take(emit) {
+        if *byte == 0x1b {
+            escape = Some(index);
+        }
+    }
+    let Some(escape) = escape else {
+        return emit;
+    };
+    if escape + 1 >= emit {
+        return escape;
+    }
+    match window[escape + 1] {
+        b'[' => {
+            for byte in &window[escape + 2..emit] {
+                if (0x40..0x7F).contains(byte) {
+                    return emit;
+                }
+            }
+            escape
+        }
+        b']' => {
+            let mut index = escape + 2;
+            while index < emit {
+                if window[index] == 0x07 {
+                    return emit;
+                }
+                if window[index] == 0x1b && window.get(index + 1) == Some(&b'\\') {
+                    return emit;
+                }
+                index += 1;
+            }
+            escape
+        }
+        _ => emit,
     }
 }
 
@@ -234,7 +313,13 @@ impl ConsoleInterposer for HookMatrixPlugin {
     }
 
     async fn on_console_output(&self, _port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
-        mask_tokens(chunk);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut window = state.console_tail.clone();
+        window.extend_from_slice(chunk);
+        mask_tokens(&mut window);
+        let emit = safe_console_emit_len(&window);
+        *chunk = window[..emit].to_vec();
+        state.console_tail = window[emit..].to_vec();
         Ok(())
     }
 }

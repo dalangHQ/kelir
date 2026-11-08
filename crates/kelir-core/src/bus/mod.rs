@@ -30,6 +30,21 @@ impl OwnedBusDispatcher {
         }
     }
 
+    // see: cans/01-architecture.md#Shared-memory-channel
+    pub fn from_shared_regions(
+        control: &kelir_interface::driver::SharedMemoryHandle,
+        mux: &kelir_interface::driver::SharedMemoryHandle,
+    ) -> Option<Self> {
+        let mut control_ring = OwnedSpscRing::from_shared_region(control)?;
+        let mut mux_ring = OwnedSpscRing::from_shared_region(mux)?;
+        let dispatcher = BusDispatcher::new(control_ring.transport(), mux_ring.transport());
+        Some(Self {
+            control_ring,
+            mux_ring,
+            dispatcher,
+        })
+    }
+
     pub fn control_capacity(&self) -> u32 {
         self.control_ring.capacity()
     }

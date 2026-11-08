@@ -521,6 +521,7 @@ dependencies = [
  "serde",
  "smoltcp",
  "thiserror 2.0.21",
+ "tokio",
  "tracing",
 ]
 
@@ -544,6 +545,7 @@ name = "kelir-interface"
 version = "1.0.0"
 dependencies = [
  "async-trait",
+ "blake3",
  "ciborium",
  "serde",
  "thiserror 2.0.21",

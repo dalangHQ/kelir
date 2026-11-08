@@ -41,22 +41,88 @@ impl SpscRingTransport {
 }
 
 // see: cans/01-architecture.md#Transport-engine-abstraction
+// see: cans/01-architecture.md#Shared-memory-channel
+use kelir_interface::driver::SharedMemoryHandle;
+
+enum RingBacking {
+    Owned {
+        header: Box<RingHeader>,
+        buffer: Box<[u8]>,
+    },
+    Mapped {
+        header: *mut RingHeader,
+        buffer: *mut u8,
+        guest_phys_addr: u64,
+    },
+}
+
+// SAFETY: a mapped backing is mapped once by the driver and owned exclusively by the transport pair, same as the owned heap backing.
+unsafe impl Send for OwnedSpscRing {}
+
 pub struct OwnedSpscRing {
-    header: Box<RingHeader>,
-    buffer: Box<[u8]>,
+    backing: RingBacking,
     capacity: u32,
 }
 
 impl OwnedSpscRing {
     pub fn new(capacity: u32) -> Self {
         Self {
-            header: Box::new(RingHeader {
-                head: AtomicU32::new(0),
-                tail: AtomicU32::new(0),
-                capacity,
-            }),
-            buffer: vec![0u8; capacity as usize].into_boxed_slice(),
+            backing: RingBacking::Owned {
+                header: Box::new(RingHeader {
+                    head: AtomicU32::new(0),
+                    tail: AtomicU32::new(0),
+                    capacity,
+                }),
+                buffer: vec![0u8; capacity as usize].into_boxed_slice(),
+            },
             capacity,
+        }
+    }
+
+    // see: cans/01-architecture.md#Shared-memory-channel
+    pub fn from_shared_region(handle: &SharedMemoryHandle) -> Option<Self> {
+        let header_size = std::mem::size_of::<RingHeader>();
+        if handle.host_ptr.is_null() || handle.size_bytes <= header_size {
+            return None;
+        }
+        let capacity = handle.size_bytes.saturating_sub(header_size) as u32;
+        if capacity == 0 {
+            return None;
+        }
+        let header = handle.host_ptr as *mut RingHeader;
+        // SAFETY: the driver mapped size_bytes at host_ptr; the header occupies the first header_size bytes and the buffer follows it.
+        let buffer = unsafe { handle.host_ptr.add(header_size) };
+        // SAFETY: from_shared_region claims a freshly mapped region; no producer or consumer reads the header before this write.
+        unsafe {
+            std::ptr::write(
+                header,
+                RingHeader {
+                    head: AtomicU32::new(0),
+                    tail: AtomicU32::new(0),
+                    capacity,
+                },
+            );
+        }
+        Some(Self {
+            backing: RingBacking::Mapped {
+                header,
+                buffer,
+                guest_phys_addr: handle.guest_phys_addr,
+            },
+            capacity,
+        })
+    }
+
+    pub fn is_shared_backed(&self) -> bool {
+        matches!(self.backing, RingBacking::Mapped { .. })
+    }
+
+    pub fn guest_phys_addr(&self) -> Option<u64> {
+        match &self.backing {
+            RingBacking::Mapped {
+                guest_phys_addr, ..
+            } => Some(*guest_phys_addr),
+            RingBacking::Owned { .. } => None,
         }
     }
 
@@ -65,10 +131,12 @@ impl OwnedSpscRing {
     }
 
     pub fn transport(&mut self) -> SpscRingTransport {
-        SpscRingTransport::new(
-            self.header.as_mut() as *mut RingHeader,
-            self.buffer.as_mut_ptr(),
-        )
+        match &mut self.backing {
+            RingBacking::Owned { header, buffer } => {
+                SpscRingTransport::new(header.as_mut() as *mut RingHeader, buffer.as_mut_ptr())
+            }
+            RingBacking::Mapped { header, buffer, .. } => SpscRingTransport::new(*header, *buffer),
+        }
     }
 }
 

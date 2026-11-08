@@ -139,6 +139,21 @@ impl FuseDispatcher {
                 }
             }
             FuseOpcode::Read => {
+                for file in &self.synthetic_files {
+                    if let Some(attr) = file.lookup_attr(&request.path)? {
+                        let content = attr.content;
+                        let start = (request.offset as usize).min(content.len());
+                        let end = if request.data.is_empty() {
+                            content.len()
+                        } else {
+                            content.len().min(start.saturating_add(request.data.len()))
+                        };
+                        return Ok(FuseResponse {
+                            guest_inode: request.guest_inode,
+                            reply: FuseReply::Payload(content[start..end].to_vec()),
+                        });
+                    }
+                }
                 self.interposer
                     .on_fs_read(&request.path, &mut request.data)?;
                 Ok(FuseResponse {

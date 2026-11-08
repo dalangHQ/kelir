@@ -11,6 +11,7 @@ use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
     KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
 };
+use kelir_interface::service_registry::ServiceRegistry;
 use plugin_db_proxy::SqlProxyService;
 
 pub mod service;
@@ -38,6 +39,7 @@ impl Default for TransactionConfig {
 struct PeerCoordination {
     // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
     lock_broker: RwLock<Option<Arc<dyn LockBrokerCoordination>>>,
+    lock_namespace: RwLock<Option<[u8; 16]>>,
     sql_proxy: RwLock<Option<Arc<dyn SqlProxyService>>>,
 }
 
@@ -66,6 +68,23 @@ impl PeerCoordination {
 
     fn lock_broker(&self) -> Result<Option<Arc<dyn LockBrokerCoordination>>, PluginError> {
         Self::read_slot(&self.lock_broker)
+    }
+
+    fn lock_namespace(&self) -> Result<Option<[u8; 16]>, PluginError> {
+        match self.lock_namespace.read() {
+            Ok(guard) => Ok(*guard),
+            Err(_) => Err(PluginError::Halt("peer coordination slot poisoned".into())),
+        }
+    }
+
+    fn set_lock_namespace(&self, namespace: [u8; 16]) -> Result<(), PluginError> {
+        match self.lock_namespace.write() {
+            Ok(mut guard) => {
+                *guard = Some(namespace);
+                Ok(())
+            }
+            Err(_) => Err(PluginError::Halt("peer coordination slot poisoned".into())),
+        }
     }
 
     fn sql_proxy(&self) -> Result<Option<Arc<dyn SqlProxyService>>, PluginError> {
@@ -111,6 +130,27 @@ impl TransactionPlugin {
         self.coordination.set_lock_broker(service)
     }
 
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub fn bind_sql_proxy(&self, service: Arc<dyn SqlProxyService>) -> Result<(), PluginError> {
+        self.coordination.set_sql_proxy(service)
+    }
+
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub fn resolve_peers(&self, registry: &ServiceRegistry) -> Result<(), PluginError> {
+        if let Some(sql) = registry.lookup::<dyn SqlProxyService>() {
+            self.coordination.set_sql_proxy(sql)?;
+        }
+        if let Some(locks) = registry.lookup::<dyn LockBrokerCoordination>() {
+            self.coordination.set_lock_broker(locks)?;
+        }
+        Ok(())
+    }
+
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    pub fn set_lock_namespace(&self, namespace: [u8; 16]) -> Result<(), PluginError> {
+        self.coordination.set_lock_namespace(namespace)
+    }
+
     async fn prepare_participants(&self) -> Result<(), PluginError> {
         // TODO (L3): issue SQL pre-commit on the coordinated SqlProxyService connections; participant failure here triggers global rollback with EPOLICY.
         let _ = self.peer_sql_proxy()?;
@@ -121,7 +161,10 @@ impl TransactionPlugin {
 
     async fn release_participant_locks(&self) -> Result<(), PluginError> {
         match self.peer_lock_broker()? {
-            Some(locks) => locks.release_transaction_locks().await,
+            Some(locks) => match self.coordination.lock_namespace()? {
+                Some(namespace) => locks.release_transaction_locks_for(namespace).await,
+                None => locks.release_transaction_locks().await,
+            },
             None => Ok(()),
         }
     }
@@ -143,12 +186,8 @@ impl KelirPlugin for TransactionPlugin {
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
         let registry = pipeline.service_registry();
         registry.register::<dyn TransactionService>(Arc::new(self.clone()));
-        if let Some(sql) = registry.lookup::<dyn SqlProxyService>() {
-            let _ = self.coordination.set_sql_proxy(sql);
-        }
-        if let Some(locks) = registry.lookup::<dyn LockBrokerCoordination>() {
-            let _ = self.coordination.set_lock_broker(locks);
-        }
+        // TODO (L3): Session::boot calls resolve_peers after every plugin is mounted so a peer mounted after this plugin is re-resolved.
+        let _ = self.resolve_peers(registry);
     }
 }
 

@@ -3,7 +3,10 @@
 // see: cans/14-observability.md#Metrics-pipeline
 use std::sync::Arc;
 
+use kelir_interface::handles::{DriverVmControl, VmHandle};
+use kelir_interface::plugin::ParkedConnectionReset;
 use kelir_interface::plugin::PipelineBinder;
+use kelir_interface::vsock::VAULT_METADATA_VSOCK_PORT;
 pub struct Session {
     pub terminal: crate::planes::terminal::TerminalPlane,
     pub storage: crate::planes::storage::StoragePlane,
@@ -12,7 +15,7 @@ pub struct Session {
     pub host: crate::planes::host::HostPlane,
     metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
     uart: crate::uart::UartRingBuffer,
-    driver: Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>,
+    driver: Arc<tokio::sync::Mutex<Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>>>,
     owned_bus: crate::bus::OwnedBusDispatcher,
     engine: crate::dispatch::PipelineEngine,
     incarnation_id: [u8; 16],
@@ -53,6 +56,10 @@ impl Session {
 
     pub fn is_detached(&self) -> bool {
         self.detached
+    }
+
+    pub fn session_id(&self) -> [u8; 16] {
+        self.incarnation_id
     }
 
     pub fn set_detached(&mut self, detached: bool) {
@@ -101,6 +108,7 @@ impl Session {
     ) -> Result<Self, kelir_interface::plugin::PluginError> {
         let _ = crate::plugin_registry::resolve_plugin_registrations(plugins)?;
         // TODO (L3): load native driver, connect the control and mux SPSC rings, build planes, mint incarnation_id.
+        // TODO (L3): Session::boot binds the driver VmControl into HandlerCtx vm handles and the vault vsock handler into the wire plane.
         metrics.set_active_vcpus(u32::from(config.vcpus));
         let _ = config;
         let _ = engine;
@@ -123,7 +131,7 @@ impl Session {
         wire: crate::planes::wire::WirePlane,
         checkpoint: crate::planes::checkpoint::CheckpointPlane,
         host: crate::planes::host::HostPlane,
-        driver: Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>,
+        driver: Arc<tokio::sync::Mutex<Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>>>,
         owned_bus: crate::bus::OwnedBusDispatcher,
         engine: crate::dispatch::PipelineEngine,
         incarnation_id: [u8; 16],
@@ -159,6 +167,22 @@ impl Session {
         &mut self.engine
     }
 
+    // see: cans/02-plugin-model.md#Core-context-keys
+    pub fn vm_handle(&self) -> VmHandle {
+        VmHandle::new(DriverVmControl::shared(&self.driver))
+    }
+
+    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
+    pub fn bind_wire_imds_vault(&mut self) -> Result<bool, kelir_interface::plugin::PluginError> {
+        match self.engine.vsock_service(VAULT_METADATA_VSOCK_PORT) {
+            Some(handler) => {
+                self.wire.bind_imds_sink(handler)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn bind_plugin(
         &mut self,
         plugin: &dyn kelir_interface::plugin::AnyPlugin,
@@ -188,6 +212,8 @@ impl Session {
                 "pipeline already sealed".into(),
             ));
         }
+        // see: cans/05-storage-plane.md#Host-inode-lock-broker
+        self.storage.set_lock_namespace(self.incarnation_id);
         let coordination = self.storage.lock_broker_coordination(interposer);
         self.engine.register_lock_broker(coordination);
         Ok(())
@@ -220,6 +246,15 @@ impl Session {
         self.uart.decode_exit_kind()
     }
 
+    pub const fn incarnation_id(&self) -> [u8; 16] {
+        self.incarnation_id
+    }
+
+    // see: cans/08-lifecycle.md#CoW-fork
+    pub fn lineage(&self, root_pid: u32) -> crate::planes::checkpoint::PidLineage {
+        crate::planes::checkpoint::PidLineage::new_in_session(root_pid, self.incarnation_id)
+    }
+
     pub fn fork(&self) -> Result<Self, kelir_interface::plugin::PluginError> {
         // TODO (L3): fork driver, clone planes, mint a new incarnation_id for the child.
         let _ = (&self.driver, &self.owned_bus, &self.incarnation_id);
@@ -246,11 +281,21 @@ impl Session {
         snapshot: &kelir_interface::driver::SnapshotDescriptor,
     ) -> Result<(), kelir_interface::plugin::PluginError> {
         self.wire.quiesce()?;
+        if let Some(ingress) = self.engine.services().lookup::<dyn ParkedConnectionReset>() {
+            let reset = ingress.reset_parked_connections()?;
+            // TODO (L3): emit TCP RST for each reset connection id once the host proxy owns the parked sockets per cans/plugins/wire-ingress.md.
+            let _ = reset;
+        }
         self.storage.discard()?;
         // TODO (L3): reset session-local RNG position and virtual clock position to the snapshot.
-        self.driver.rollback(snapshot).await.map_err(|error| {
-            kelir_interface::plugin::PluginError::Halt(format!("driver rollback: {error}"))
-        })?;
+        self.driver
+            .lock()
+            .await
+            .rollback(snapshot)
+            .await
+            .map_err(|error| {
+                kelir_interface::plugin::PluginError::Halt(format!("driver rollback: {error}"))
+            })?;
         Ok(())
     }
 

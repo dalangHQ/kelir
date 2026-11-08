@@ -132,6 +132,7 @@ struct ParkedConnection {
 struct IngressState {
     parked: Mutex<HashMap<u64, ParkedConnection>>,
     streams: Mutex<HashMap<u32, u64>>,
+    pending_wake: Mutex<bool>,
 }
 
 impl IngressState {
@@ -174,6 +175,11 @@ impl IngressState {
                             buffered: initial.to_vec(),
                         },
                     );
+                    let mut pending_wake = self
+                        .pending_wake
+                        .lock()
+                        .map_err(|_| PluginError::Halt("wire-ingress wake flag poisoned".into()))?;
+                    *pending_wake = true;
                 }
             }
         }
@@ -202,6 +208,34 @@ impl IngressState {
         }
         Ok(())
     }
+
+    // see: cans/plugins/wire-ingress.md
+    fn reset(&self) -> Result<Vec<u64>, PluginError> {
+        let mut parked = self
+            .parked
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress parked table poisoned".into()))?;
+        let connection_ids: Vec<u64> = parked.keys().copied().collect();
+        parked.clear();
+        drop(parked);
+        let mut streams = self
+            .streams
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress stream table poisoned".into()))?;
+        streams.clear();
+        Ok(connection_ids)
+    }
+
+    // see: cans/plugins/wire-ingress.md
+    fn take_pending_wake(&self) -> Result<bool, PluginError> {
+        let mut pending_wake = self
+            .pending_wake
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress wake flag poisoned".into()))?;
+        let requested = *pending_wake;
+        *pending_wake = false;
+        Ok(requested)
+    }
 }
 
 // see: cans/plugins/wire-ingress.md
@@ -223,6 +257,22 @@ impl IngressRoutingService {
 
     pub fn release_connection(&self, stream_id: u32) -> Result<(), PluginError> {
         self.state.release(stream_id)
+    }
+
+    pub fn reset_parked_connections(&self) -> Result<Vec<u64>, PluginError> {
+        self.state.reset()
+    }
+
+    // see: cans/plugins/wire-ingress.md
+    // TODO (L3): host loop polls take_pending_wake and resumes via SessionWakeHandle::resume; no such handle exists in-tree and VmHandle::resume is still a stub.
+    pub fn take_pending_wake(&self) -> Result<bool, PluginError> {
+        self.state.take_pending_wake()
+    }
+}
+
+impl kelir_interface::plugin::ParkedConnectionReset for IngressRoutingService {
+    fn reset_parked_connections(&self) -> Result<Vec<u64>, PluginError> {
+        self.state.reset()
     }
 }
 
@@ -253,6 +303,15 @@ impl WireIngressPlugin {
     pub fn wake_channel(&self) -> Option<Channel> {
         Channel::from_u16(self.config.wake_on_packet.transport_channel)
     }
+
+    pub fn reset_parked_connections(&self) -> Result<Vec<u64>, PluginError> {
+        self.router.reset_parked_connections()
+    }
+
+    // see: cans/plugins/wire-ingress.md
+    pub fn take_pending_wake(&self) -> Result<bool, PluginError> {
+        self.router.take_pending_wake()
+    }
 }
 
 impl Default for WireIngressPlugin {
@@ -276,6 +335,10 @@ impl KelirPlugin for WireIngressPlugin {
         pipeline
             .service_registry()
             .register(Arc::new(self.router.clone()));
+        pipeline
+            .service_registry()
+            .register(Arc::new(self.router.clone())
+                as Arc<dyn kelir_interface::plugin::ParkedConnectionReset>);
     }
 }
 

@@ -14,16 +14,32 @@ use kelir_interface::telemetry::CausalDelta;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PidLineage {
     root_pid: u32,
+    incarnation_id: [u8; 16],
 }
 
 impl PidLineage {
     pub const fn new(root_pid: u32) -> Self {
-        Self { root_pid }
+        Self {
+            root_pid,
+            incarnation_id: [0; 16],
+        }
+    }
+
+    // see: cans/08-lifecycle.md#CoW-fork
+    pub const fn new_in_session(root_pid: u32, incarnation_id: [u8; 16]) -> Self {
+        Self {
+            root_pid,
+            incarnation_id,
+        }
     }
     // TODO (L3): resolve guest pid to its lineage root by walking the trap-stream ppid chain.
 
     pub const fn root_pid(self) -> u32 {
         self.root_pid
+    }
+
+    pub const fn incarnation_id(self) -> [u8; 16] {
+        self.incarnation_id
     }
 }
 

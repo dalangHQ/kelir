@@ -15,6 +15,7 @@ pub trait ContainerService: Send + Sync {
     async fn configure_runtime(&mut self) -> Result<(), PluginError>;
     async fn mount_scratch(&mut self, scratch: &Path) -> Result<(), PluginError>;
     async fn build_cgroup_delegation(&mut self) -> Result<(), PluginError>;
+    async fn ingest_image(&mut self, tarball: &Path) -> Result<String, PluginError>;
     async fn pin_id_map(
         &mut self,
         subuid: Range<u32>,
@@ -60,6 +61,14 @@ impl SharedContainerService {
         Ok(())
     }
 
+    // see: cans/artifacts/code/container-service.rs
+    pub(crate) async fn ingest_cached_image(&self, _tarball: &Path) -> Result<String, PluginError> {
+        // TODO (L3): delegate ingestion to the external kelir-pack binary; in-process OCI parsing is forbidden.
+        Err(PluginError::Halt(
+            "TODO (L3): container ingest_image delegates to kelir-pack".into(),
+        ))
+    }
+
     // see: cans/plugins/container.md#Non-nested-OCI-container-execution
     pub(crate) async fn build_cgroup_delegation_hierarchy(&self) -> Result<(), PluginError> {
         // TODO (L3): construct the synthetic cgroup v2 delegation hierarchy.
@@ -101,6 +110,10 @@ impl ContainerService for SharedContainerService {
 
     async fn build_cgroup_delegation(&mut self) -> Result<(), PluginError> {
         SharedContainerService::build_cgroup_delegation_hierarchy(self).await
+    }
+
+    async fn ingest_image(&mut self, tarball: &Path) -> Result<String, PluginError> {
+        SharedContainerService::ingest_cached_image(self, tarball).await
     }
 
     async fn pin_id_map(

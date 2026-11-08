@@ -96,6 +96,19 @@ pub fn check_hw_lockfile(
     verify_hw_lockfile()
 }
 
+// see: cans/plugins/replay.md#Invariants-and-policy-(replay)
+pub fn reject_emulated_deterministic_clock(
+    backend: &str,
+    deterministic_clock: bool,
+) -> Result<(), VmmError> {
+    if !deterministic_clock {
+        return Ok(());
+    }
+    Err(VmmError::Unsupported(format!(
+        "{backend} deterministic_clock: a user-namespace sandbox cannot intercept VDSO clock reads; deterministic replay needs a hardware-vmm driver"
+    )))
+}
+
 #[derive(Debug, Clone)]
 pub struct VmConfig {
     pub vcpus: u8,

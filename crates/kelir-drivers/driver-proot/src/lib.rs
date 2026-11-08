@@ -10,6 +10,7 @@ use tokio::io::AsyncRead;
 use kelir_interface::driver::{
     BalloonConvergence, DriverCapabilities, DriverState, SharedMemoryHandle, SnapshotDescriptor,
     Stream, SuspendReason, VmConfig, VmmDriver, VmmError, WatchdogAction, check_hw_lockfile,
+    reject_emulated_deterministic_clock,
 };
 
 #[allow(dead_code)]
@@ -62,6 +63,8 @@ impl VmmDriver for ProotDriver {
                 "emulated fallback not allowed".to_string(),
             ));
         }
+        // TODO (L3): deterministic replay needs hypervisor clock control (kvm-clock/KVM_SET_CLOCK); a ptrace tracer cannot intercept VDSO clock reads.
+        reject_emulated_deterministic_clock("proot", config.deterministic_clock)?;
         self.config = Some(config);
         self.init_tracer()
     }

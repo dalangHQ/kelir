@@ -28,6 +28,7 @@ fn main() -> Result<(), trap::ShimError> {
                 break;
             }
         }
+        // TODO (L3): cgroup v2 freeze (cans/11) must cover only the trapped thread and lift before /proc mem patch injection or the microVM deadlocks.
         // TODO (L3): poll control ring; copy next 9 header bytes into rx_control_header.
         match unotify.dispatch_pending(trap_seq) {
             Ok(Some(inspection)) => {

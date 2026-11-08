@@ -8,10 +8,12 @@ use kelir_interface::plugin::PluginError;
 
 use kelir_interface::handlers::Has;
 
-use crate::builder::Registration;
+use crate::builder::{Registration, TrapOutcome};
 use crate::hlist::{HList, HNil, NoParams};
 use crate::planes::storage::FsReconcileRequest;
 use kelir_core::planes::storage::reconciler::CommitStats;
+use kelir_interface::plugin::HandlerCtx;
+use kelir_interface::protocol::{StreamKind, TrapEvent, Verdict};
 
 // see: cans/03-sdk-architecture.md#Rust-SDK
 pub struct Session<Plugins = HNil, Params = NoParams>
@@ -20,8 +22,6 @@ where
 {
     core: kelir_core::Session,
     plugins: Plugins,
-    // TODO (L3): engine dispatch consumes the mounted registration per cans/02-plugin-model.md#Static-dispatch.
-    #[allow(dead_code)]
     registration: Registration<Plugins>,
     _params: PhantomData<fn() -> Params>,
 }
@@ -50,6 +50,40 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
 
     pub fn core(&self) -> &kelir_core::Session {
         &self.core
+    }
+
+    // see: cans/02-plugin-model.md#Static-dispatch
+    pub fn spawn(&self, binary: &str) -> SpawnBuilder {
+        SpawnBuilder::default()
+            .args([binary])
+            .bind(self.core.session_id(), StreamKind::Exec)
+    }
+
+    // see: cans/02-plugin-model.md#Static-dispatch
+    pub async fn dispatch_trap<Params2>(
+        &self,
+        event: &TrapEvent,
+        ctx: &HandlerCtx<Plugins, Params2>,
+    ) -> Result<TrapOutcome, PluginError>
+    where
+        Plugins: Clone,
+        Params2: Clone,
+    {
+        for entry in &self.registration.traps {
+            if !entry.filter.matches(event) {
+                continue;
+            }
+            let outcome = (entry.handler)(ctx.clone().retag::<NoParams>())
+                .await
+                .map_err(|e| PluginError::Halt(format!("trap handler failed: {e}")))?;
+            match outcome {
+                TrapOutcome::Verdict(Verdict::Pass) => continue,
+                TrapOutcome::PostExec(crate::builder::PostExecAction::Proceed) => continue,
+                outcome => return Ok(outcome),
+            }
+        }
+        let verdict = self.core.pipeline().dispatch_trap_typed(event, ctx).await?;
+        Ok(TrapOutcome::Verdict(verdict))
     }
 
     // see: cans/03-sdk-architecture.md#Rust-SDK
@@ -155,10 +189,13 @@ impl tokio::io::AsyncWrite for VsockChannel {
     }
 }
 
+// see: cans/11-protocol.md#Binary-exec-channel
 #[derive(Debug, Default)]
 pub struct SpawnBuilder {
     pub args: Vec<String>,
     pub cwd: Option<String>,
+    pub session_id: Option<[u8; 16]>,
+    pub stream_kind: StreamKind,
 }
 
 impl SpawnBuilder {
@@ -176,6 +213,17 @@ impl SpawnBuilder {
         self
     }
 
+    // see: cans/11-protocol.md#Binary-exec-channel
+    pub fn bind(mut self, session_id: [u8; 16], stream_kind: StreamKind) -> Self {
+        self.session_id = Some(session_id);
+        self.stream_kind = stream_kind;
+        self
+    }
+
+    pub fn is_bound(&self) -> bool {
+        self.session_id.is_some()
+    }
+
     pub fn params<T>(self, _params: T) -> Self {
         self
     }
@@ -185,6 +233,12 @@ impl Future for SpawnBuilder {
     type Output = Result<ExecResult, PluginError>;
 
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.session_id.is_none() {
+            return Poll::Ready(Err(PluginError::Halt(
+                "SpawnBuilder is unbound: spawn requires a booted session".into(),
+            )));
+        }
+        // TODO (L3): encode the EXEC frame on the bound stream kind and dispatch it over the session transport.
         Poll::Ready(Err(PluginError::Halt("TODO (L3): guest exec".into())))
     }
 }

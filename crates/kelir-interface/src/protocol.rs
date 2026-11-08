@@ -25,6 +25,12 @@ pub enum StreamKind {
     McpConsole = 0x0012,
 }
 
+impl Default for StreamKind {
+    fn default() -> Self {
+        Self::Exec
+    }
+}
+
 impl StreamKind {
     pub fn from_u16(v: u16) -> Option<Self> {
         match v {

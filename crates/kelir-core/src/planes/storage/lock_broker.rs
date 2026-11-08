@@ -13,8 +13,16 @@ pub enum LockKind {
     Exclusive,
 }
 
+// see: cans/05-storage-plane.md#Host-inode-lock-broker
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LockKey {
+    pub namespace: [u8; 16],
+    pub guest_inode: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LockRequest {
+    pub namespace: [u8; 16],
     pub guest_inode: u64,
     pub host_path: PathBuf,
     pub kind: LockKind,
@@ -45,27 +53,28 @@ pub struct HostFdEntry {
 
 #[derive(Default)]
 pub struct HostFdCache {
-    entries: HashMap<u64, HostFdEntry>,
+    entries: HashMap<LockKey, HostFdEntry>,
 }
 
 impl HostFdCache {
-    pub fn insert(&mut self, guest_inode: u64, entry: HostFdEntry) {
-        self.entries.insert(guest_inode, entry);
+    pub fn insert(&mut self, key: LockKey, entry: HostFdEntry) {
+        self.entries.insert(key, entry);
     }
 
-    pub fn lookup(&self, guest_inode: u64) -> Option<&HostFdEntry> {
-        self.entries.get(&guest_inode)
+    pub fn lookup(&self, key: LockKey) -> Option<&HostFdEntry> {
+        self.entries.get(&key)
     }
 
-    pub fn remove(&mut self, guest_inode: u64) -> Option<HostFdEntry> {
-        self.entries.remove(&guest_inode)
+    pub fn remove(&mut self, key: LockKey) -> Option<HostFdEntry> {
+        self.entries.remove(&key)
     }
 }
 
 pub struct LockBroker {
     interposer: Arc<dyn FsInterposer>,
     cache: RwLock<HostFdCache>,
-    states: RwLock<HashMap<u64, LockState>>,
+    states: RwLock<HashMap<LockKey, LockState>>,
+    namespace: [u8; 16],
 }
 
 impl LockBroker {
@@ -74,7 +83,13 @@ impl LockBroker {
             interposer,
             cache: RwLock::new(HostFdCache::default()),
             states: RwLock::new(HashMap::new()),
+            namespace: [0; 16],
         }
+    }
+
+    pub fn with_namespace(mut self, namespace: [u8; 16]) -> Self {
+        self.namespace = namespace;
+        self
     }
 
     pub fn acquire(&self, request: &LockRequest) -> Result<LockGrant, PluginError> {
@@ -121,26 +136,30 @@ impl LockBroker {
             }
         }
         // TODO (L3): host fd cache lookup, flock delegation, EWOULDBLOCK on conflict.
-        let _ = (&self.cache, &self.states, request);
+        let key = LockKey {
+            namespace: request.namespace,
+            guest_inode: request.guest_inode,
+        };
+        let _ = (&self.cache, &self.states, key);
         Err(PluginError::Halt(
             "TODO (L3): LockBroker::acquire needs flock delegation in kelir-drivers/kelir-transport enclave".into(),
         ))
     }
 
-    pub fn release(&self, guest_inode: u64) -> Result<(), PluginError> {
+    pub fn release(&self, key: LockKey) -> Result<(), PluginError> {
         // TODO (L3): flock LOCK_UN plus host fd cache release in the enclave.
-        let _ = guest_inode;
+        let _ = key;
         Err(PluginError::Halt(
             "TODO (L3): LockBroker::release needs flock delegation in kelir-drivers/kelir-transport enclave".into(),
         ))
     }
 
-    pub fn state(&self, guest_inode: u64) -> Result<LockState, PluginError> {
+    pub fn state(&self, key: LockKey) -> Result<LockState, PluginError> {
         let states = self
             .states
             .read()
             .map_err(|_| PluginError::Halt("lock broker state lock poisoned".into()))?;
-        Ok(states.get(&guest_inode).copied().unwrap_or(LockState::Free))
+        Ok(states.get(&key).copied().unwrap_or(LockState::Free))
     }
 }
 
@@ -148,12 +167,22 @@ impl LockBroker {
 #[async_trait]
 impl LockBrokerCoordination for LockBroker {
     async fn release_transaction_locks(&self) -> Result<(), PluginError> {
-        // TODO (L3): release the host fds in the enclave flock delegation; the in-memory states clear here.
+        // TODO (L3): release the host fds in the enclave flock delegation; the in-memory states retain every other namespace here.
         let mut states = self
             .states
             .write()
             .map_err(|_| PluginError::Halt("lock broker state lock poisoned".into()))?;
-        states.clear();
+        states.retain(|key, _| key.namespace != self.namespace);
+        Ok(())
+    }
+
+    async fn release_transaction_locks_for(&self, namespace: [u8; 16]) -> Result<(), PluginError> {
+        // TODO (L3): release the host fds in the enclave flock delegation; the in-memory states retain every other namespace here.
+        let mut states = self
+            .states
+            .write()
+            .map_err(|_| PluginError::Halt("lock broker state lock poisoned".into()))?;
+        states.retain(|key, _| key.namespace != namespace);
         Ok(())
     }
 }

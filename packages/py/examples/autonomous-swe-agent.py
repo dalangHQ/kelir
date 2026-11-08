@@ -145,7 +145,7 @@ class RepoPolicyPlugin(BasePlugin):
             env={"KELIR_REWRITTEN": "1"},
         )
 
-    async def on_fs_write(self, path: Path, data: bytes, pid: int, ctx: HandlerContext) -> FilterAction:
+    def on_fs_write(self, path: Path, data: bytes, pid: int, ctx: HandlerContext) -> FilterAction:
         if path.suffix == ".diff" and len(data) > self._opts["max_diff_bytes"]:
             self.handle().record_violation()
             return FilterAction.drop(

@@ -66,9 +66,7 @@ export class PluginContract<
   }
 
   onNetOutbound(
-    handler: (
-      frame: Uint8Array,
-    ) => Promise<FilterAction> | FilterAction,
+    handler: (frame: Uint8Array) => FilterAction,
   ): PluginContract<Name, Ctx, Deps> {
     this.addHook(RingEvent.NetOutbound, (event) =>
       handler(unpack(event)[0] as Uint8Array),
@@ -77,7 +75,7 @@ export class PluginContract<
   }
 
   onFsLookup(
-    handler: (path: string) => Promise<Verdict> | Verdict,
+    handler: (path: string) => Verdict,
   ): PluginContract<Name, Ctx, Deps> {
     this.addHook(RingEvent.FsLookup, (event) =>
       handler(unpack(event)[0] as string),
@@ -86,10 +84,7 @@ export class PluginContract<
   }
 
   onFsRead(
-    handler: (
-      path: string,
-      buffer: Uint8Array,
-    ) => Promise<Uint8Array> | Uint8Array,
+    handler: (path: string, buffer: Uint8Array) => Uint8Array,
   ): PluginContract<Name, Ctx, Deps> {
     this.addHook(RingEvent.FsRead, (event) => {
       const args = unpack(event);
@@ -104,7 +99,7 @@ export class PluginContract<
       buffer: Uint8Array,
       pid: number,
       ctx: TrapContext,
-    ) => Promise<FilterAction> | FilterAction,
+    ) => FilterAction,
   ): PluginContract<Name, Ctx, Deps> {
     this.addHook(RingEvent.FsWrite, (event) => {
       const args = unpack(event);

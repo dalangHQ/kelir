@@ -97,10 +97,11 @@ impl CatalogDb {
         ttl_seconds: u32,
     ) -> Result<bool, CatalogError> {
         // TODO (L3): no pending/owned lock-state column exists in SCHEMA_V1_SQL or cans/06; claim is runner_pid plus lease refresh until the schema gains one.
-        let expires = now_unix().saturating_add(i64::from(ttl_seconds));
+        let now = now_unix();
+        let expires = now.saturating_add(i64::from(ttl_seconds));
         let claimed = self.pool.execute(
-            "UPDATE sessions SET runner_pid = ?2, expires_at_unix = ?3 WHERE session_id = ?1",
-            params![&session_id[..], runner_pid, expires],
+            "UPDATE sessions SET runner_pid = ?2, expires_at_unix = ?3 WHERE session_id = ?1 AND (expires_at_unix <= ?4 OR runner_pid = ?2)",
+            params![&session_id[..], runner_pid, expires, now],
         )?;
         Ok(claimed == 1)
     }
@@ -108,14 +109,15 @@ impl CatalogDb {
     pub fn heartbeat_lease(
         &self,
         session_id: &[u8; 16],
+        runner_pid: i64,
         ttl_seconds: u32,
-    ) -> Result<(), CatalogError> {
+    ) -> Result<bool, CatalogError> {
         let expires = now_unix().saturating_add(i64::from(ttl_seconds));
-        self.pool.execute(
-            "UPDATE sessions SET expires_at_unix = ?2 WHERE session_id = ?1",
-            params![&session_id[..], expires],
+        let refreshed = self.pool.execute(
+            "UPDATE sessions SET expires_at_unix = ?2 WHERE session_id = ?1 AND runner_pid = ?3",
+            params![&session_id[..], expires, runner_pid],
         )?;
-        Ok(())
+        Ok(refreshed == 1)
     }
 
     pub fn prune_cas_leases(&self) -> Result<u64, CatalogError> {

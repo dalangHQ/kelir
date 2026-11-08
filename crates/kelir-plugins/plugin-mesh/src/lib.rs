@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use kelir_interface::codec::MAX_CONTROL_PAYLOAD;
+use kelir_interface::codec::MAX_FRAME_PAYLOAD;
 use kelir_interface::driver::{SharedMemoryHandle, Stream};
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
@@ -252,15 +252,49 @@ impl VsockServiceHandler for MeshPlugin {
         _ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
         // see: cans/11-protocol.md#Control-channel
-        let mut scratch = [0u8; MAX_CONTROL_PAYLOAD];
-        let n = stream
-            .read(&mut scratch)
-            .map_err(|e| PluginError::Halt(format!("mesh handshake read failed: {e}")))?;
-        let handshake = decode_peer_handshake(&scratch[..n])?;
+        let frame = read_handshake_frame(&mut stream)?;
+        let handshake = decode_peer_handshake(&frame)?;
         self.assert_peer_identity(peer, &handshake)?;
-        self.validate_mtls_framing(&handshake, &scratch[..n])?;
+        self.validate_mtls_framing(&handshake, &frame)?;
         self.record_peer(peer, &handshake)
     }
+}
+
+// see: cans/11-protocol.md#Wire-framing
+fn read_exact(stream: &mut Box<dyn Stream>, buf: &mut [u8]) -> Result<(), PluginError> {
+    let mut filled = 0;
+    while filled < buf.len() {
+        match stream.read(&mut buf[filled..]) {
+            Ok(0) => {
+                return Err(PluginError::Halt(
+                    "mesh handshake stream closed before the frame completed".into(),
+                ));
+            }
+            Ok(n) => filled += n,
+            Err(e) => {
+                return Err(PluginError::Halt(format!(
+                    "mesh handshake read failed: {e}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+// see: cans/11-protocol.md#Wire-framing
+fn read_handshake_frame(stream: &mut Box<dyn Stream>) -> Result<Vec<u8>, PluginError> {
+    // TODO (L3): the peer handshake encoder must emit the u32 LE length prefix this reader expects.
+    let mut prefix = [0u8; 4];
+    read_exact(stream, &mut prefix)?;
+    let len = u32::from_le_bytes(prefix) as usize;
+    if len == 0 || len > MAX_FRAME_PAYLOAD {
+        return Err(PluginError::Halt(format!(
+            "mesh handshake frame {len} bytes is outside the 1..={MAX_FRAME_PAYLOAD} frame range"
+        )));
+    }
+    let mut frame = vec![0u8; len];
+    read_exact(stream, &mut frame)?;
+    Ok(frame)
 }
 
 // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)

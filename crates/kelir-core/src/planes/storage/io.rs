@@ -29,6 +29,7 @@ pub trait StorageIo: Send + Sync {
         len: u64,
     ) -> Result<(), kelir_interface::plugin::PluginError>;
     fn advise_dontneed(&self, path: &Path) -> Result<(), kelir_interface::plugin::PluginError>;
+    fn remove_file(&self, path: &Path) -> Result<(), kelir_interface::plugin::PluginError>;
 }
 
 pub struct UnimplementedStorageIo;
@@ -83,6 +84,14 @@ impl StorageIo for UnimplementedStorageIo {
         let _ = path;
         Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): StorageIo::advise_dontneed needs the driver/transport enclave".into(),
+        ))
+    }
+
+    fn remove_file(&self, path: &Path) -> Result<(), kelir_interface::plugin::PluginError> {
+        // TODO (L3): unlink via the open root handle in kelir-drivers/kelir-transport enclave.
+        let _ = path;
+        Err(kelir_interface::plugin::PluginError::Halt(
+            "TODO (L3): StorageIo::remove_file needs the driver/transport enclave".into(),
         ))
     }
 }

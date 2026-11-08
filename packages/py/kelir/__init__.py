@@ -274,12 +274,27 @@ class PolicyCap:
 
 class TransactionScope:
 
-    def __init__(self, name: str) -> None:
+    def __init__(
+        self,
+        name: str,
+        service: TransactionService | None = None,
+        paths: list[str] | None = None,
+        schemas: list[str] | None = None,
+    ) -> None:
         self.name = name
+        self._service = service
+        self.paths: list[str] = list(paths) if paths is not None else []
+        self.schemas: list[str] = list(schemas) if schemas is not None else []
+        self._handle: str | None = None
 
     async def __aenter__(self) -> TransactionScope:
-        # TODO (L3): begin 2PC scope via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction scope begin (L3)")
+        if self._service is None:
+            # TODO (L3): begin 2PC scope via the PyO3 _kelir bridge.
+            raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction scope begin (L3)")
+        self._handle = await self._service.begin_scope(
+            self.name, self.paths, self.schemas
+        )
+        return self
 
     async def __aexit__(
         self,
@@ -287,27 +302,65 @@ class TransactionScope:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        # TODO: commit on clean exit, abort on error
-        pass
+        if self._handle is None:
+            return None
+        if self._service is None:
+            # TODO (L3): abort the begun 2PC scope via the PyO3 _kelir bridge.
+            raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction scope abort (L3)")
+        handle = self._handle
+        self._handle = None
+        if exc_type is None:
+            await self._service.commit(handle)
+        else:
+            await self._service.abort(handle)
+        return None
 
     async def savepoint(self) -> str:
-        # TODO (L3): create savepoint via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction savepoint (L3)")
+        if self._handle is None or self._service is None:
+            # TODO (L3): create savepoint via the PyO3 _kelir bridge.
+            raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction savepoint (L3)")
+        return await self._service.savepoint(self._handle)
 
     async def rollback_to_savepoint(self, savepoint: str) -> None:
-        # TODO (L3): roll back to savepoint via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction rollback_to_savepoint (L3)")
+        if self._handle is None or self._service is None:
+            # TODO (L3): roll back to savepoint via the PyO3 _kelir bridge.
+            raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction rollback_to_savepoint (L3)")
+        await self._service.rollback_to_savepoint(self._handle, savepoint)
 
 
 class TransactionService:
+    async def begin_scope(
+        self,
+        name: str,
+        paths: list[str] | None = None,
+        schemas: list[str] | None = None,
+    ) -> str:
+        # TODO (L3): open a 2PC scope declaring the blast radius via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction begin_scope (L3)")
+
+    async def commit(self, handle: str) -> None:
+        # TODO (L3): run _pre_commit (FUSE drain) then broker + SQL commit via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction commit (L3)")
+
+    async def abort(self, handle: str) -> None:
+        # TODO (L3): run _post_commit(False) (unlink staging, drop broker upper) then SQL rollback via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction abort (L3)")
+
+    async def savepoint(self, handle: str) -> str:
+        # TODO (L3): create savepoint via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction savepoint (L3)")
+
+    async def rollback_to_savepoint(self, handle: str, savepoint: str) -> None:
+        # TODO (L3): roll back to savepoint via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction rollback_to_savepoint (L3)")
+
     def scope(
         self,
         name: str,
         paths: list[str] | None = None,
         schemas: list[str] | None = None,
     ) -> TransactionScope:
-        # TODO: open a 2PC scope declaring blast radius
-        return TransactionScope(name)
+        return TransactionScope(name, self, paths, schemas)
 
 
 class Caps:
