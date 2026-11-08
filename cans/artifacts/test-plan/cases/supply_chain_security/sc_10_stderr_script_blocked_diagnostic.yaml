@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/supply-chain.md#Error-and-return-semantics-(supply-chain)"
-  statement: "stderr_message names manager and blocked script; surfaces actionable diagnosis to developer."
+  statement: "stderr_message names manager and blocked script; surfaces actionable diagnosis to developer. Gap: no stderr diagnostic emission exists in the live tree (the deny path returns Verdict::Drop with errno EACCES only); the stderr_message is spec text (cans/plugins/supply-chain.md) with no producer."
   blast_radius_if_breached: "Developers see silent build failures without knowing why their package install failed."
 
 confusion_matrix:

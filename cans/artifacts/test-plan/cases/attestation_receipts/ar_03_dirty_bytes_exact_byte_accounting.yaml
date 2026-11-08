@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-06"
-    verification: "assert_eq!(receipt.dirty_bytes, Some(100)); assert_ne!(receipt.dirty_bytes, Some(4096));"
+    verification: "assert_eq!(receipt.dirty_bytes, 100); assert_ne!(receipt.dirty_bytes, 4096);"

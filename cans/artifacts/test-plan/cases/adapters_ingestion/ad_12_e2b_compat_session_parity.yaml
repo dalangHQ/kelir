@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/12-adapters.md#E2B-compatibility"
-  statement: "The e2b-compat thin client SDK wrapper replicates the Sandbox interface with local hardware boots and no in-guest shims or daemons; Sandbox.create maps to Session boot and close maps to Session stop. Grounded in the real wrappers packages/ts/e2b-compat and packages/py/kelir/compat/e2b.py (Python twin named here; target_crate names the TypeScript wrapper)."
+  statement: "The e2b-compat thin client SDK wrapper replicates the Sandbox interface with local hardware boots and no in-guest shims or daemons; Sandbox.create maps to Session boot and close maps to Session stop. Grounded in the real wrappers packages/ts/e2b-compat and packages/py/kelir/compat/e2b.py (Python twin named here; target_crate names the TypeScript wrapper). Gap: Session::stop is an L3 TODO returning Err and no Terminated session state exists, so close-completion (not a Terminated state read) is the asserted surface."
   blast_radius_if_breached: "A compat wrapper that diverges from Session lifecycle lets an agent harness leak a running microVM after close."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-04A"
-    verification: "assert_eq!(ts_session.state(), SessionState::Terminated); assert_eq!(py_session.state(), SessionState::Terminated);"
+    verification: "assert_eq!(ts_sandbox.close().await.is_ok(), true); assert_eq!(py_sandbox.close().await.is_ok(), true);"

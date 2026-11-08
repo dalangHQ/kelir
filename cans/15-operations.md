@@ -37,15 +37,15 @@
       - Public repos: free Linux minutes
     - Strategy
       - 90% of checks on Linux x86
-      - macOS Apple Silicon jobs run driver-hvf unit tests
+      - macOS Apple Silicon jobs run nextest -p driver-hvf (no tests at base)
       - Do not waste runner minutes on full matrix
-      - Windows CI cells run transport conformance plus driver-openvmm unit tests
+      - Windows CI cells run nextest over transport + driver-openvmm (no tests at base)
         - Shared-memory SPSC ring path
         - Named-pipe fallback path
         - No AF_VSOCK assumptions may leak into shared code; a compile
           - lint enforces the abstraction; see: 01-architecture.md#Transport-engine-abstraction
         - Full workflow runs on self-hosted Windows WHP runners
-        - GitHub-hosted cells run transport and driver-openvmm unit tests only
+        - GitHub-hosted cells run nextest over transport and driver-openvmm only
     - Enforced invariants: CI matrix
       - Rootfs EROFS image cold-boot budget: see: [2]
       - Concurrency cancelled per ref (cancel-in-progress)
@@ -106,7 +106,7 @@
       - Lifecycle asserts: see: 08-lifecycle.md#Hypervisor-primitives
       - State machine assert: verifies all SuspendReason variants execute through
         - centralized lifecycle
-      - CI test-core runs the kelir-core lifecycle suite
+      - CI test-core runs nextest over kelir-core (no kelir-core tests at base)
     - --panic-hunt-coverage
       - Fuzzes every stream kind and registered hook with adversarial frames
       - Asserts zero unhandled panics across malformed CBOR, VFS, and FUSE ops
@@ -134,9 +134,8 @@
       - Watchdog home: see: 08-lifecycle.md#Watchdog
       - The parity job must observe both Suppress and Mitigate in vectors.json chains
     - --channel-coverage
-      - Asserts every core stream kind in 11-protocol.md#Control-channel has a
-        - live round-trip integration test
-      - Asserts VFS and BULK stream kinds have live round-trip tests
+      - Asserts every core stream kind in 11-protocol.md#Control-channel has a case
+      - Asserts VFS and BULK stream kinds have protocol_mux cases
       - Asserts at least one plugin-registered stream kind is exercised
       - A core stream kind with no test fails the gate
       - Enforcement: CI test-integration job, KVM-gated, continue-on-error on hosted
@@ -154,7 +153,7 @@
     - --snapshot-depth-coverage
       - Asserts chain restores at depths 1, 2, 5, and 20 succeed
       - Asserts branch-from-interior leaves ancestors intact
-      - Chain restores at depth are asserted by kelir-core snapshot tests in CI
+      - Chain restores at depth are asserted by lifecycle_checkpoint cases, not tests
     - --clock-continuity-coverage
       - Asserts guest_clock manifest survives restore across multi-day offsets
       - Asserts monotonic clock does not regress across restore
@@ -180,7 +179,7 @@
       - Each cell: cargo nextest run -p plugin-<name>
       - fail-fast: false — a failure in one plugin does not mask others
       - Upstream dependencies: see: [5]
-      - Core planes (terminal, storage, wire, checkpoint, host) execute under test-core
+      - Core planes (terminal, storage, wire, checkpoint, host): cases, not tests
     - Matrix job: plugin-audit
       - Each cell runs `kelir-plugin-cli check -p plugin-<name>`
       - Same contract audit `just check-plugin` runs locally
@@ -226,7 +225,7 @@
     - Testkit ground truth
       - kelir-plugin-testkit serializes canonical ring events and verdicts
       - Emits raw binary frames, TrapEvent JSON, and Decision expectations
-      - TS and Python suites consume vectors.json; divergent verdicts block CI
+      - TS and Python parity vectors live in vectors.json; divergent verdicts block CI
     - AST surface manifest diff
       - Automated AST scraper extracts public exported API signatures
       - Asserts 1:1 match across Rust, TypeScript, and Python SDK surfaces

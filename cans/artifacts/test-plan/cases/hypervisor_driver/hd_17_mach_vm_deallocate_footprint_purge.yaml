@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Host-memory-pressure-watcher"
-  statement: "macOS madvise-alone is banned; mach_vm_deallocate purges host wired footprints."
+  statement: "macOS madvise-alone is banned; mach_vm_deallocate purges host wired footprints. GAP: no mach_deallocate_called probe exists on any driver; mach_vm_deallocate is named only in spec (cans/01-architecture.md) and the host-plane reclaim TODO (crates/kelir-core/src/planes/host/mod.rs), so the purge is asserted via the host wired-RSS drop only."
   blast_radius_if_breached: "macOS host wired memory stays pinned indefinitely, starving host applications."
 
 confusion_matrix:
@@ -68,4 +68,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert!(driver.mach_deallocate_called()); assert!(host_wired_rss_dropped());"
+    verification: "assert!(mach_deallocate_called()); assert!(host_wired_rss_dropped());"

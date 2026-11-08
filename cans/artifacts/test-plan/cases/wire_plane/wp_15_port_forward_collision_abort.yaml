@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Port-forwarding"
-  statement: "Explicit host_port bind failure returns Err(WireError::PortOccupied); no silent fallback to ephemeral port."
+  statement: "Explicit host_port bind failure returns Err(WireError::PortOccupied); no silent fallback to ephemeral port. GAP: no WireError type exists in code — it is spec-only (cans/07-wire-plane.md:144,149) and forward_port returns Result<u16, PluginError> — and the live stub echoes the requested port instead of binding, so collision detection is unimplemented (L3) and the PortOccupied error is asserted as the spec-required behavior."
   blast_radius_if_breached: "Services bind unexpected ports silently, breaking external orchestrators expecting explicit bindings."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "Bind port 9999 with host process; call session.wire.forward_port(8080, 9999)"
+  command: "Bind port 9999 with host process; call session.wire.forward_port(8080, Some(9999))"
   input_params:
     host_port: 9999
 

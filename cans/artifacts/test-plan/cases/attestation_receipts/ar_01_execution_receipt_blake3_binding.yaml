@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/10-attestation.md#Execution-receipts"
-  statement: "Deterministic logical-trace attribution emitted per executed process at trap/exit boundary; raw BLAKE3 of binary_path."
+  statement: "Deterministic logical-trace attribution emitted per executed process at trap/exit boundary; raw BLAKE3 of binary_path. Gap: the hardcoded literal previously pinned in this case was the BLAKE3 digest of the empty input, not of /bin/true; the true fixture digest must be pinned from the guest rootfs image at test-authoring time."
   blast_radius_if_breached: "Agent self-reports false execution outcomes, masking failed tool runs or binary substitution."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.exec('/bin/true', ProcessLimits::default())"
+  command: "session.spawn('/bin/true').await"
   input_params:
     binary: "/bin/true"
 
@@ -68,4 +68,4 @@ anti_slop_assertions:
   - rule: "AS-03"
     verification: "assert_eq!(receipt.exit_code, 0); assert_matches!(receipt.exit_kind, ExitKind::Normal);"
   - rule: "AS-06"
-    verification: "assert_eq!(receipt.binary_blake3, 'af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262');"
+    verification: "assert_eq!(receipt.binary_blake3.len(), 64); assert_ne!(receipt.binary_blake3, 'af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262');"

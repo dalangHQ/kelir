@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/transaction.md#Spatial-blast-radius-scoping"
-  statement: "Enforces query boundaries to declared schemas via pgwire frame filter; out-of-scope queries reject with EPERM (42501)."
+  statement: "Enforces query boundaries to declared schemas via pgwire frame filter; out-of-scope queries reject with EPERM (42501). Gap: DbProxyPlugin::handle_pgwire_frame is an L3 TODO returning FilterAction::Forward unconditionally, so no pgwire scope enforcement runs today."
   blast_radius_if_breached: "Agent queries private tables (e.g. auth_users) on a shared database."
 
 confusion_matrix:
@@ -43,7 +43,7 @@ expected_observations:
   diagnostic:
     domain: "db_proxy.scope"
     culprit: "Query references undeclared schema 'private'"
-    remedy: "Declare schema in profile db_proxy.postgres.allowed_schemas"
+    remedy: "Declare the schema in the transaction scope (TransactionScope.schemas via TransactionService::begin_scope)"
   database:
     row_count_delta: 0
     tables_mutated: []

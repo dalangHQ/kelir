@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "ta_11_otlp_exporter_encodes_execution_receipt"
+title: "OtlpExporter export_receipt encodes an ExecutionReceipt into OTLP bytes without touching local disk"
+domain: "telemetry_audit"
+target_tier: "unit"
+target_crate: "crates/kelir-otlp"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/ledger.md#OpenTelemetry"
+  statement: "OtlpExporter::export_receipt(receipt) returns Ok(bytes) with a non-empty OTLP encoding of the receipt, and writes zero bytes to local disk."
+  blast_radius_if_breached: "Receipt export silently drops fields or spills to disk, so audit trails lose provenance or fill the host filesystem."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts export returns Ok without checking the bytes are non-empty and receipt-shaped."
+  anti_slop_mitigation: "AS-02 asserts the encoded length is greater than zero and disk file count is unchanged; AS-06 forbids deriving expectations from the exporter output."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "ledger.otel"
+    agent_id: "agt_ta_11"
+    trust: "reviewed"
+  initial_state:
+    otel_endpoint: "http://127.0.0.1:4317"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "OtlpExporter::new(endpoint).export_receipt(ExecutionReceipt) via OtlpReceiptRecord::from_receipt"
+  input_params:
+    endpoint: "http://127.0.0.1:4317"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "ledger.otel"
+    culprit: "none — receipt encoded"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "ledger.otlp_exported"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "let bytes = exporter.export_receipt(&receipt)?; assert!(!bytes.is_empty()); assert_eq!(disk_file_count_after(), disk_file_count_before());"

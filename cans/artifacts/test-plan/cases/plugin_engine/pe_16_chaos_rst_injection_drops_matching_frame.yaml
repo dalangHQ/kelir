@@ -1,0 +1,72 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_16_chaos_rst_injection_drops_matching_frame"
+title: "ChaosPlugin with an RST rule drops a matching outbound frame with FilterAction Drop errno ECONNREFUSED"
+domain: "plugin_engine"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins/plugin-chaos"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/chaos.md#Network-chaos"
+  statement: "A ChaosPlugin configured with a NetworkFaultRule (inject_rst, target host) returns FilterAction::Drop { errno: Some(ECONNREFUSED) } from on_net_outbound for a matching frame; non-matching frames Forward. Gap: frame matching is an L3 TODO (frame_matches returns false), so the verdict fires only once matching lands."
+  blast_radius_if_breached: "Chaos faults never fire, so fault-injection drills pass vacuously and real network partitions go untested."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts a Drop without a matching frame, or accepts Forward for a matching frame."
+  anti_slop_mitigation: "AS-03 mandates exact matching on FilterAction::Drop with errno ECONNREFUSED; AS-02 asserts a non-matching frame still Forwards."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "plugin.chaos"
+    agent_id: "agt_pe_16"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "ChaosPlugin::new(config with RST rule for target host); on_net_outbound(matching frame); on_net_outbound(non-matching frame)"
+  input_params:
+    target: "example.invalid"
+    inject_rst: true
+    drop_rate: 0.0
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "plugin.chaos"
+    culprit: "Synthetic TCP RST injected for the matching target"
+    remedy: "Remove the chaos rule or retarget it to a non-production host"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "chaos.rst_injected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(plugin.on_net_outbound(&mut matching_frame)?, FilterAction::Drop { errno: Some(e), .. } if e == \"ECONNREFUSED\");"
+  - rule: "AS-02"
+    verification: "assert_matches!(plugin.on_net_outbound(&mut other_frame)?, FilterAction::Forward);"

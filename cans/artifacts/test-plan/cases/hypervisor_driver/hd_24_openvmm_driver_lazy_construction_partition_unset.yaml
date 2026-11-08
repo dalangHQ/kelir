@@ -1,0 +1,72 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_24_openvmm_driver_lazy_construction_partition_unset"
+title: "OpenVmmDriver construction on Windows succeeds with the partition handle unset (0); WHP is touched only at boot"
+domain: "hypervisor_driver"
+target_tier: "unit"
+target_crate: "crates/kelir-drivers/driver-openvmm"
+platform_target:
+  os: "windows"
+  arch: "x86_64"
+  hypervisor: "whp"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Driver-backends"
+  statement: "OpenVmmDriver::new() is lazy: it returns an Unbooted driver with partition_handle 0, so constructing a driver never creates a WHP partition."
+  blast_radius_if_breached: "Driver construction creates a WHP partition eagerly, failing on Windows hosts where virtualization is enabled only at boot time."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts new() succeeds without checking the partition handle stays unset until boot."
+  anti_slop_mitigation: "AS-02 asserts the constructed driver holds partition handle 0; AS-08 asserts zero leaked host handles."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_hd_24"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "openvmm"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "OpenVmmDriver::new() on a Windows host with WHP"
+  input_params: {}
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "driver.openvmm"
+    culprit: "none — lazy construction"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "driver.constructed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert!(OpenVmmDriver::new().is_ok()); assert_eq!(driver_state(), DriverState::Unbooted);"
+  - rule: "AS-08"
+    verification: "assert_eq!(open_fd_count_after(), open_fd_count_before());"

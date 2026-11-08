@@ -32,7 +32,7 @@ setup:
     vault_secrets: []
 
 execution:
-  trigger: "rust_api"
+  trigger: "sdk"
   command: "FusedTrampoline.fuse() over 5 chained Python Trap pre-exec handlers"
   input_params:
     hook_count: 5

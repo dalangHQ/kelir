@@ -1,0 +1,72 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_23_replay_deterministic_seed_reproduces_step_windows"
+title: "ReplayPlugin with a fixed deterministic RNG seed reproduces identical step windows across replays"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins/plugin-replay"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/replay.md#Invariants-and-policy-(replay)"
+  statement: "Two ReplayPlugin runs with the same ReplayConfig (step_window, deterministic_rng_seed) step the same retired-instruction windows in the same order: replay is a pure function of seed plus instruction stream."
+  blast_radius_if_breached: "Replays diverge run to run, so a recorded execution cannot be reproduced for audit or debugging."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent runs one replay and asserts it completes without comparing a second seeded run."
+  anti_slop_mitigation: "AS-04A pins the deterministic seed and forbids unseeded randomness; AS-02 asserts window-for-window equality across both runs."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "plugin.replay"
+    agent_id: "agt_lc_23"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "ReplayPlugin::new(ReplayConfig { step_window: 1000000, deterministic_rng_seed: 0x5EED, network_isolation: true }); replay the same instruction stream twice"
+  input_params:
+    step_window: 1000000
+    deterministic_rng_seed: 24301
+    network_isolation: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "plugin.replay"
+    culprit: "none — seeded replays agree"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "replay.completed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "assert_eq!(ctx_a.retired_instructions(), ctx_b.retired_instructions()); assert_eq!(ctx_a.pending_step_windows()?, ctx_b.pending_step_windows()?);"
+  - rule: "AS-02"
+    verification: "assert_eq!(config_a.deterministic_rng_seed, config_b.deterministic_rng_seed); assert_eq!(config_a.step_window, config_b.step_window);"

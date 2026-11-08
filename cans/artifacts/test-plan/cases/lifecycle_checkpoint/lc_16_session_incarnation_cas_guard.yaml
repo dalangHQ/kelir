@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/08-lifecycle.md#Session-incarnation"
-  statement: "Destructive lifecycle verbs accept expected incarnation_id; CAS mismatch aborts E_STALE_INCARNATION."
+  statement: "Destructive lifecycle verbs accept expected incarnation_id; CAS mismatch aborts E_STALE_INCARNATION. Gap: no lifecycle verb accepts an expected incarnation_id and no session.remove exists in-tree; the CAS guard is specified against cans/08-lifecycle.md#Session-incarnation, not a live verb."
   blast_radius_if_breached: "Stale agent workers destroy newly spawned successor microVMs sharing same session ID."
 
 confusion_matrix:
@@ -67,4 +67,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(remove_err, KelirError::StaleIncarnation); assert!(catalog_session_exists('ses_shared_01'));"
+    verification: "assert_matches!(remove_err, Err(PluginError::Halt(msg)) if msg.contains(\"E_STALE_INCARNATION\")); assert!(catalog_session_exists('ses_shared_01'));"

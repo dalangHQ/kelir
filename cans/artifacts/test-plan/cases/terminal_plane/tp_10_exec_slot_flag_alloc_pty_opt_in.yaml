@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Per-exec-PTY-opt-in"
-  statement: "FLAG_ALLOC_PTY allocates private slave PTY per ExecSlot; concurrent interactive execs run without Port 0 serialization."
+  statement: "FLAG_ALLOC_PTY allocates private slave PTY per ExecSlot; concurrent interactive execs run without Port 0 serialization. GAP: no exec_pty method and no alloc_pty surface exist on SpawnBuilder (crates/kelir/src/session.rs) — FLAG_ALLOC_PTY (0x04) lives only in spec (cans/11-protocol.md:58) and shim EXEC_IO_SPEC parsing is a TODO (L3) — so the opt-in is asserted as the spec-required behavior."
   blast_radius_if_breached: "REPLs and tools requiring isatty(3) fail or conflict by sharing a single global Port 0 master."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.exec_pty('python3', ['-c', 'import sys; print(sys.stdout.isatty())'])"
+  command: "session.exec('python3', ['-c', 'import sys; print(sys.stdout.isatty())']) with FLAG_ALLOC_PTY set on EXEC_IO_SPEC"
   input_params:
     flag_alloc_pty: true
 

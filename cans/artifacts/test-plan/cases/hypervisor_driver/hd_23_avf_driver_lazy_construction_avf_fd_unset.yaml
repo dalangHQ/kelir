@@ -1,0 +1,72 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_23_avf_driver_lazy_construction_avf_fd_unset"
+title: "AvfDriver construction on Android succeeds with the AVF device fd unset (-1); /dev/avf is opened only at boot"
+domain: "hypervisor_driver"
+target_tier: "unit"
+target_crate: "crates/kelir-drivers/driver-avf"
+platform_target:
+  os: "android"
+  arch: "aarch64"
+  hypervisor: "avf"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Driver-backends"
+  statement: "AvfDriver::new() is lazy: it returns an Unbooted driver with avf_fd -1, so constructing a driver never opens /dev/avf."
+  blast_radius_if_breached: "Driver construction opens /dev/avf eagerly, failing on Android hosts where pKVM access is granted only at boot time."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts new() succeeds without checking the AVF fd stays unset until boot."
+  anti_slop_mitigation: "AS-02 asserts the constructed driver holds fd -1; AS-08 asserts zero leaked host FDs."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_hd_23"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "avf"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "AvfDriver::new() on an Android host with pKVM"
+  input_params: {}
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "driver.avf"
+    culprit: "none — lazy construction"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "driver.constructed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert!(AvfDriver::new().is_ok()); assert_eq!(driver_state(), DriverState::Unbooted); assert!(!fd_table_contains(\"/dev/avf\"));"
+  - rule: "AS-08"
+    verification: "assert_eq!(open_fd_count_after(), open_fd_count_before());"

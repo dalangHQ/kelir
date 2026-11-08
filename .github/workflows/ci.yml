@@ -23,13 +23,14 @@ env:
 # Corrections to the work-order, verified against the live tree:
 # - SDK parity vectors live at ./vectors.json (repo root); the
 #   work-order's tests/vectors/vectors.json does not exist.
-# - The invariant total is 218, not 208 (196 + 12 adapters_ingestion
-#   + 4 concurrency/fault-injection + 6 bindings); the aggregator
-#   asserts 218 against manifest truth.
-# - platform_target exists on all 218 cases, but no nextest tag maps
+# - The invariant total is 240, not 208 (196 + 12 adapters_ingestion
+#   + 4 concurrency/fault-injection + 6 bindings + 22 coverage-gap
+#   cases); the aggregator asserts 240 against manifest truth.
+# - platform_target exists on all 240 cases, but no nextest tag maps
 #   cases to Rust tests, so the tier jobs run each platform's
-#   executable test subset (see the per-job comments). Strict
-#   platform_target tag filtering is future work, not wired here.
+#   nextest invocation over crates with no test targets at base
+#   (see the per-job comments). Strict platform_target tag
+#   filtering is future work, not wired here.
 
 jobs:
   # ─── STAGE 1. FAST GATE (Linux x86) ─────────────────────────
@@ -129,8 +130,9 @@ jobs:
 
   # ─── STAGE 2. LINUX KVM TIER (Linux x86) ────────────────────
   # Cases with platform_target.hypervisor: kvm, via cargo nextest.
-  # At base no platform_target field exists yet, so this runs the
-  # executable KVM subset: kelir-integration, gated on /dev/kvm.
+  # No nextest tag maps cases to Rust tests, so this runs the
+  # KVM subset: kelir-integration (no integration tests at base),
+  # gated on /dev/kvm.
   # continue-on-error is deliberately NOT set: a real KVM failure
   # must fail the job. No KVM on the runner is an explicit skip
   # (notice + skipped-no-kvm tier result), never a fake pass.
@@ -152,7 +154,7 @@ jobs:
             echo "available=false" >> "$GITHUB_OUTPUT"
             echo "::notice::No KVM; skipping kelir-integration"
           fi
-      - name: Integration suite
+      - name: Integration tier (no kelir-integration tests at base)
         if: steps.kvm.outputs.available == 'true'
         run: cargo nextest run -p kelir-integration
       - name: Record tier result
@@ -179,9 +181,9 @@ jobs:
 
   # ─── STAGE 3. MACOS HVF TIER (macOS ARM64) ──────────────────
   # Cases with platform_target.hypervisor: hvf, filtered strictly
-  # via tag. At base no platform_target field or tag exists yet, so
-  # this runs the executable HVF subset: the native driver-hvf unit
-  # tests (real-hardware paths stay excluded via test_hw_*).
+  # via tag. No nextest tag maps cases to Rust tests yet, so
+  # this runs nextest over driver-hvf (no driver-hvf tests at base;
+  # real-hardware paths stay excluded via test_hw_*).
   # Strict tag filtering lands with the platform_target schema work.
   macos-hvf-tier:
     needs: [lint-and-types]
@@ -190,9 +192,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: mozilla-actions/sccache-action@v0.0.5
-      # Unit tests for the native Apple Silicon HVF driver (macOS runners
-      # have hypervisor entitlements; real-hardware paths stay excluded)
-      - name: Test native HVF driver
+      # Nextest over the native Apple Silicon HVF driver (macOS runners
+      # have hypervisor entitlements; no driver-hvf tests at base)
+      - name: Test native HVF driver (no tests at base)
         run: cargo nextest run -p driver-hvf -E 'not test(test_hw_)'
       - name: Record tier result
         if: always()
@@ -216,10 +218,10 @@ jobs:
   # OPEN: no self-hosted Windows runner is configured in-repo — the
   # only runner variable that exists is vars.KELIR_RUNNER (Linux).
   # Until a Windows self-hosted label (e.g. vars.KELIR_RUNNER_WINDOWS)
-  # is configured, this job runs the executable Windows subset on
-  # windows-latest: transport conformance + driver-openvmm unit tests
-  # (real-hardware paths excluded). The WHP hardware tier is NOT run
-  # here and NOT faked as passing.
+  # is configured, this job runs nextest over kelir-transport and
+  # driver-openvmm on windows-latest (no tests in either crate at
+  # base; real-hardware paths excluded). The WHP hardware tier is NOT
+  # run here and NOT faked as passing.
   windows-whp-tier:
     needs: [lint-and-types]
     runs-on: windows-latest
@@ -227,12 +229,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: mozilla-actions/sccache-action@v0.0.5
-      # GitHub-hosted cells run transport unit tests only: SPSC ring path
-      # and named-pipe fallback path. No AF_VSOCK assumptions may leak into
-      # shared code. Full workflow runs on self-hosted Windows WHP runners.
-      - name: Transport conformance (SPSC rings + named pipes only)
+      # GitHub-hosted cells run nextest over kelir-transport only: SPSC ring
+      # path and named-pipe fallback path (no transport tests at base).
+      # No AF_VSOCK assumptions may leak into shared code. Full workflow
+      # runs on self-hosted Windows WHP runners.
+      - name: Transport conformance (SPSC rings + named pipes only; no tests at base)
         run: cargo nextest run -p kelir-transport
-      - name: Windows driver unit tests (excludes real-hardware paths)
+      - name: Windows driver tests (no driver-openvmm tests at base; excludes real-hardware paths)
         run: cargo nextest run -p driver-openvmm -E 'not test(test_hw_)'
       - name: Record tier result
         if: always()
@@ -253,8 +256,8 @@ jobs:
           path: test-results/
 
   # ─── STAGE 5. SDK PARITY GATE ───────────────────────────────
-  # Merge-blocking. Executes TS and Python test suites (ForeignPluginProxy,
-  # memory pinning, unhandled freeze recovery), testkit vectors, and AST diff.
+  # Merge-blocking. Executes the TS and Python parity steps (no TS test
+  # script and no Python test files exist at base), testkit vectors, and AST diff.
   # Parity vectors live at ./vectors.json (repo root); the work-order's
   # tests/vectors/vectors.json does not exist (verified in-tree).
   sdk-parity-gate:
@@ -279,9 +282,9 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm -r build
           uv venv && uv pip install -e "packages/py[dev]"
-      - name: Execute TypeScript SDK tests
+      - name: Execute TypeScript SDK tests (none at base)
         run: pnpm -r test
-      - name: Execute Python SDK tests
+      - name: Execute Python SDK tests (none at base)
         run: uv run pytest packages/py
       - name: Parity
         run: cargo run -p kelir-plugin-cli -- parity run
@@ -299,11 +302,12 @@ jobs:
 
   # ─── STAGE 6. SCORECARD AGGREGATOR ─────────────────────────
   # Runs ONLY after the platform jobs complete (needs:). Collects
-  # the per-tier JUnit/JSON results and verifies all 218 invariant
-  # cases passed on their respective native targets before writing
-  # scorecard.md. A tier that skipped for lack of hardware reports
-  # skipped-no-kvm explicitly; a failed tier fails this job.
-  # NOTE: the 218 assertion matches manifest truth (total_cases: 218);
+  # the per-tier JUnit/JSON results and verifies every tier reported
+  # before writing scorecard.md; the 240 total is asserted against
+  # manifest truth, not against executed tests (no nextest tag maps
+  # cases to Rust tests). A tier that skipped for lack of hardware
+  # reports skipped-no-kvm explicitly; a failed tier fails this job.
+  # NOTE: the 240 assertion matches manifest truth (total_cases: 240);
   # check-scorecard likewise gates on the committed scorecard.md
   # matching manifest truth.
   scorecard-aggregator:
@@ -320,7 +324,7 @@ jobs:
           pattern: test-results-*
           path: test-results
           merge-multiple: true
-      - name: Verify every tier reported (218 invariants)
+      - name: Verify every tier reported (240 invariants)
         run: |
           python3 - <<'EOF'
           import glob, json, sys
@@ -344,9 +348,9 @@ jobs:
                   print(f"::notice::Tier {t} skipped: no KVM on this runner; hardware cases not executed.")
           print("All collected tier results are success (or explicitly skipped-no-kvm).")
           EOF
-      - name: Assert invariant total is 218
+      - name: Assert invariant total is 240
         run: |
-          grep -q 'total_cases: 218' cans/artifacts/test-plan/manifest.yaml
+          grep -q 'total_cases: 240' cans/artifacts/test-plan/manifest.yaml
       - name: Verify scorecard matches manifest truth
         run: just check-scorecard
       - name: Write scorecard.md
@@ -358,8 +362,9 @@ jobs:
 
   # ─── KEPT NAMED JOBS (existing coverage, not a test-plan stage) ───
   # Mapping: build-guest-shim (shim cross-compile), test-core /
-  # test-plugins / test-shim / test-drivers (pure-memory unit suites
-  # that `just test-unit` runs locally), panic-hunt (adversarial),
+  # test-plugins / test-shim / test-drivers (nextest invocations over
+  # crates with no test targets at base; `just test-unit` runs them
+  # locally), panic-hunt (adversarial),
   # package-check (zero-toolchain packaging), plugin-graph /
   # layer-check / plugin-audit / verify-tiered-compilation (static
   # plugin audits), perf-budgets (hardware budget enforcement).
@@ -389,7 +394,7 @@ jobs:
           name: kelir-shim-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/kelir-shim
 
-  # ─── CORE KERNEL + PLUGIN TESTKIT ───────────────────────
+  # ─── CORE KERNEL + PLUGIN TESTKIT (NO TESTS AT BASE) ──
   test-core:
     needs: [lint-and-types]
     runs-on: ubuntu-latest
@@ -401,7 +406,7 @@ jobs:
       - name: Core + testkit
         run: cargo nextest run -p kelir-core -p kelir-plugin-testkit
 
-  # ─── ADVERSARIAL INTEGRATION HARNESS (PANIC HUNT) ──────
+  # ─── ADVERSARIAL INTEGRATION HARNESS (PANIC HUNT; NO panic_hunt TARGET AT BASE) ──────
   panic-hunt:
     needs: [lint-and-types]
     runs-on: ubuntu-latest
@@ -410,7 +415,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@nextest
       - uses: mozilla-actions/sccache-action@v0.0.5
-      - name: Adversarial Frame Fuzzing
+      - name: Adversarial Frame Fuzzing (no panic_hunt test target at base)
         run: cargo nextest run -p kelir-core --test panic_hunt
 
   # ─── ZERO-TOOLCHAIN PACKAGING CHECK ────────────────────
@@ -433,7 +438,8 @@ jobs:
         run: uv build --package kelir
 
   # ─── PER-PLUGIN TEST MATRIX ─────────────────────────────
-  # Each plugin's tests run against its explicit upstream dependencies.
+  # Each plugin cell runs nextest over its crate (no plugin tests at
+  # base) against its explicit upstream dependencies.
   # A failure in one cell does not mask others (fail-fast: false).
   test-plugins:
     needs: [lint-and-types, test-core]
@@ -447,7 +453,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@nextest
       - uses: mozilla-actions/sccache-action@v0.0.5
-      - name: Test plugin-${{ matrix.plugin }}
+      - name: Nextest plugin-${{ matrix.plugin }} (no tests at base)
         run: cargo nextest run -p plugin-${{ matrix.plugin }}
 
   # ─── PLUGIN DEPENDENCY DAG CHECK ──────────────────────
@@ -505,7 +511,7 @@ jobs:
       - name: Verify Tiered Plugin Compilation
         run: cargo check --workspace --all-targets
 
-  # ─── SHIM + DRIVER TESTS ────────────────────────────────
+  # ─── SHIM + DRIVER TESTS (NO TEST TARGETS AT BASE) ────────
   test-shim:
     needs: [lint-and-types]
     runs-on: ubuntu-latest
@@ -526,7 +532,7 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.5
       - name: Verify Pinned Test Oracles
         run: cargo run -p kelir-plugin-cli -- fixtures --verify
-      - name: Driver unit tests (excludes real-hardware paths)
+      - name: Driver tests (no driver-rustvmm/driver-bwrap tests at base; excludes real-hardware paths)
         run: cargo nextest run -p driver-rustvmm -p driver-bwrap -E 'not test(test_hw_)'
       # Compile-only: driver-avf (Android) and driver-proot (Termux) have
       # no CI test runner; same as just check-drivers.

@@ -35,7 +35,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "Freeze guest vCPU; advance virtual clock past heartbeat_timeout_seconds"
+  command: "driver.set_watchdog(Duration::from_secs(5), WatchdogAction::Terminate { emit_diagnostic: true }); freeze guest vCPU; advance virtual clock past the 5-second timeout"
   input_params:
     timeout_seconds: 5
 
@@ -68,4 +68,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_eq!(diag.last_active_pid > 0, true); assert!(diag.last_heartbeat_ms >= 5000);"
+    verification: "assert!(diag.last_active_pid.is_some_and(|pid| pid > 0)); assert!(diag.last_heartbeat_ms >= 5000);"

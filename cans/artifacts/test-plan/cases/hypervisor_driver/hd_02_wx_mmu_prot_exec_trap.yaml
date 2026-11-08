@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Strict-hardware/kernel-abstraction-layer"
-  statement: "Strict W^X enforced at MMU boundary: anonymous PROT_EXEC allocations and memfd_create abort immediately."
+  statement: "Strict W^X enforced at MMU boundary: anonymous PROT_EXEC allocations and memfd_create abort immediately. GAP: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes session.spawn (crates/kelir/src/session.rs:56) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll, so this case asserts the spec-required behavior and fails against the live tree until exec is wired."
   blast_radius_if_breached: "Untrusted code executes dynamically synthesized shellcode in memory, defeating binary attestation."
 
 confusion_matrix:
@@ -71,6 +71,6 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert!(driver.has_hardware_mmu_hooks()); no mock VmmDriver in compilation graph."
+    verification: "assert!(driver.capabilities().requires_hardware_vmm); no mock VmmDriver in compilation graph."
   - rule: "AS-03"
     verification: "assert_eq!(receipt.fault_reason, 'E_WX_VIOLATION'); assert_eq!(receipt.exit_code, 137);"

@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_14_cli_fixtures_digest_mismatch_fails_closed"
+title: "kelir-plugin-cli fixtures compare_digest returns DigestMismatch on a hash mismatch and never silently passes"
+domain: "governance_tools"
+target_tier: "unit"
+target_crate: "crates/kelir-plugin-cli"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/15-operations.md#Test-fixtures"
+  statement: "compare_digest(name, expected, actual) returns Ok(()) only on exact equality and Err(DigestMismatch { name, expected, actual }) otherwise: a corrupted test oracle can never verify."
+  blast_radius_if_breached: "A tampered fixture verifies, so tests run against attacker-controlled oracles and pass vacuously."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts an error is returned without checking it carries the expected and actual digests."
+  anti_slop_mitigation: "AS-03 mandates exact matching on DigestMismatch with all three fields; AS-02 asserts the matching-digest path still returns Ok."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "operator.cli"
+    agent_id: "agt_gt_14"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "compare_digest(\"kernel\", expected_blake3, actual_blake3) with mismatched digests; then with equal digests"
+  input_params:
+    name: "kernel"
+    digests_match: false
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "cli.fixtures"
+    culprit: "Fixture digest mismatch for kernel"
+    remedy: "Re-fetch the fixture from the pinned source and re-verify against fixtures.toml"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "cli.fixture_mismatch"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(compare_digest(\"kernel\", expected, actual), Err(DigestMismatch { name, expected: e, actual: a }) if name == \"kernel\" && e == expected && a == actual);"
+  - rule: "AS-02"
+    verification: "assert_eq!(compare_digest(\"kernel\", expected, expected).is_ok(), true);"

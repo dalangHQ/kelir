@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Host-CoW-broker"
-  statement: "Per-directory merge result cached; invalidated on broker mutation of that subtree."
+  statement: "Per-directory merge result cached; invalidated on broker mutation of that subtree. Gap: no merge-cache implementation exists in-tree (zero readdir hits in crates/); this case is specified against cans/05-storage-plane.md#Host-CoW-broker, not a live cache."
   blast_radius_if_breached: "Repeated readdir during heavy build storms causes severe host CPU exhaustion."
 
 confusion_matrix:

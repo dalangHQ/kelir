@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_14_mesh_rejects_foreign_trust_domain_peer"
+title: "MeshPlugin rejects a peer handshake from a foreign SPIFFE trust domain with ECONNREFUSED and records the rejection"
+domain: "protocol_mux"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins/plugin-mesh"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/mesh.md#SPIFFE-identity-(mesh)"
+  statement: "A peer presenting an SVID whose trust domain differs from the MeshConfig peer_identity is rejected with PluginError ECONNREFUSED, and the rejection is recorded in peer_rejections()."
+  blast_radius_if_breached: "A foreign-domain peer joins the CoW swarm mesh, so untrusted workloads exchange frames with trusted sessions."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts rejection without checking the rejection is recorded for audit."
+  anti_slop_mitigation: "AS-03 mandates exact error matching on ECONNREFUSED; AS-02 asserts peer_rejections() contains the rejected peer."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "plugin.mesh"
+    agent_id: "agt_pm_14"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "MeshPlugin::new(SPIFFE config trust_domain example.test); peer handshake presents SVID from foreign.test"
+  input_params:
+    trust_domain: "example.test"
+    peer_trust_domain: "foreign.test"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "plugin.mesh"
+    culprit: "Peer presented trust domain foreign.test, expected example.test"
+    remedy: "Issue the peer an SVID from trust domain example.test"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 1
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "mesh.peer_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_eq!(ctx.peer_rejections()?.len(), 1); assert!(ctx.peer_rejections()?[0].reason.contains(\"foreign.test\"));"
+  - rule: "AS-02"
+    verification: "assert_eq!(ctx.peer_rejections()?[0].cid, peer_cid); assert_eq!(ctx.peer_rejections()?[0].port, peer_port);"

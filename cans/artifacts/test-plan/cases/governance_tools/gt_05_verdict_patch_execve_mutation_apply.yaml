@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/tool-guard.md#Unified-verdict-surface-(tool-guard)"
-  statement: "Verdict::Patch serializes ExecveMutation; shim applies new_binary, new_argv, and env atomically before execve releases."
+  statement: "Verdict::Patch serializes ExecveMutation; shim applies new_binary, new_argv, and env atomically before execve releases. Gap: ExecveMutation serialization is an L3 TODO in ToolGuardPlugin::evaluate_tool_call; PatchPayload::ExecveMutation(Vec<u8>) exists in kelir-interface but no tool-guard path produces it today."
   blast_radius_if_breached: "Process spawns with partially applied or unsanitized command arguments."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "vsock_frame"
-  command: "Trap execve('curl'); return Verdict::Patch(new_argv: ['curl', 'http://safe.url'])"
+  command: "Trap execve('curl'); return Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&ExecveMutation { new_binary: None, new_argv: Some(vec![\"curl\".into(), \"http://safe.url\".into()]), set_env: vec![], unset_env: vec![] })))"
   input_params:
     action: "patch_argv"
 

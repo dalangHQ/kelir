@@ -32,7 +32,7 @@ setup:
     vault_secrets: []
 
 execution:
-  trigger: "rust_api"
+  trigger: "sdk"
   command: "FusedTrampoline.fuse() over 5 chained TypeScript Trap pre-exec handlers, then builder.boot() trampoline table check"
   input_params:
     hook_count: 5

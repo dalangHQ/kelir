@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/08-lifecycle.md#Delta-chain-compaction"
-  statement: "Compaction flattens ancestor deltas in a single-pass block copy on export; depth is unbounded."
+  statement: "Compaction flattens ancestor deltas in a single-pass block copy on export; depth is unbounded. Gap: CheckpointService and compact_chain exist only in cans/08-lifecycle.md (zero hits in crates/); the live API is CheckpointPlane::compact, a TODO (L3) in crates/kelir-core/src/planes/checkpoint/mod.rs."
   blast_radius_if_breached: "Deep checkpoint lineage trees (20+ steps) exhaust host memory or degrade read IOPS."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "Execute checkpoint_service.compact_chain(session_id)"
+  command: "Execute session.checkpoint.compact(lineage) on a 20-deep chain"
   input_params:
     target_depth: 1
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-02"
-    verification: "assert_eq!(session.checkpoint_depth(), 1); assert_eq!(broker.delta_layers_count(), 1);"
+    verification: "assert!(session.checkpoint.compact(lineage).is_ok()); assert_eq!(session.checkpoint.restore(head).map(|s| s.parent_digest), Ok(Some(ancestor_base_digest)));"

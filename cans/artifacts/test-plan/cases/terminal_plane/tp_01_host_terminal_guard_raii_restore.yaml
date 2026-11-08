@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#HostTerminalGuard-(RAII)"
-  statement: "On drop/panic: tcsetattr(TCSAFLUSH) restores saved termios unconditionally; host shell state never corrupted."
+  statement: "On drop/panic: tcsetattr(TCSAFLUSH) restores saved termios unconditionally; host shell state never corrupted. GAP: no HostTerminalGuard type exists in code — it is spec-only (cans/04-terminal-plane.md) — so the guard behavior is asserted as the spec-required behavior, not via a callable surface."
   blast_radius_if_breached: "A crashed or aborted agent leaves host terminal stuck in raw un-echoed mode, breaking operator shells."
 
 confusion_matrix:

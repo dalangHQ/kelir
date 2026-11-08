@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "host_interposer.evaluate_host_exec('/usr/bin/git')"
+  command: "host_interposer.on_host_lsm_exec(Path::new('/usr/bin/git'), pid)"
   input_params:
     target_binary: "/usr/bin/git"
 

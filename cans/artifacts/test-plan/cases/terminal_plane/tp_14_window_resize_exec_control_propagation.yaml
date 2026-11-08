@@ -68,4 +68,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_eq!(session.exec('stty size').stdout.trim(), '40 120');"
+    verification: "assert_eq!(guest_stty_size(), '40 120');"

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/tool-guard.md#Unified-verdict-surface-(tool-guard)"
-  statement: "Verdict::Suspend { until: Approval }; host waits for out-of-band authorization via Channel 0; cycle-exact resume."
+  statement: "Verdict::Suspend { until: Approval }; host waits for out-of-band authorization via Channel 0; cycle-exact resume. Gap: no MSG_APPROVAL message type exists (MsgType covers 0x0001-0x0005 only); the approval suspend is an L3 TODO in ConsoleInterposer::on_console_input, which returns Err(PluginError::Halt(\"tool-guard approval suspend pending (L3)\")), and Session::resume is an L3 TODO."
   blast_radius_if_breached: "MicroVM consumes 100% host CPU polling for human approval."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "Tool suspends on Approval; external operator delivers MSG_APPROVAL on Channel 0x0000"
+  command: "Tool suspends on Approval; external operator delivers approval via Channel 0x0000 Hypervisor Control"
   input_params:
     approval_granted: true
 

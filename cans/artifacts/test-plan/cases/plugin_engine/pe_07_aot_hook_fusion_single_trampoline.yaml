@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/02-plugin-model.md#Foreign-plugin-proxy"
-  statement: "AOT hook fusion compiles chained host hooks into single flat closure; exactly one FFI trampoline crossing per event."
+  statement: "AOT hook fusion compiles chained host hooks into single flat closure; exactly one FFI trampoline crossing per event. Gap: the compiled flat closure is not yet real; the single-crossing property is asserted at the descriptor and trampoline-table level (FusedTrampolineDescriptor + TrampolineTable), not by executing a compiled closure, per the matching TODO (L3) in crates/kelir-bindings/napi/src/lib.rs."
   blast_radius_if_breached: "Composing 5 TypeScript hooks causes 5 consecutive FFI context switches per syscall."
 
 confusion_matrix:

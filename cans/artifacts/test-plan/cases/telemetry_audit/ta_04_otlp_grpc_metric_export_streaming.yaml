@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/ledger.md#OpenTelemetry"
-  statement: "Default ledger sink is OTLP: metrics and traces flow to host's existing OTel Collector without local disk overhead."
+  statement: "Default ledger sink is OTLP: metrics and traces flow to host's existing OTel Collector without local disk overhead. Gap: the OTLP path is encoder-only in the live tree (OtlpExporter::export_* return encoded Vec<u8>); no gRPC/HTTP send exists, and OtlpLedgerSink::emit_delta carries a TODO to retry export failures without blocking the pipeline."
   blast_radius_if_breached: "MicroVM writes gigabytes of metrics to local disk in environments with existing OTel infrastructure."
 
 confusion_matrix:

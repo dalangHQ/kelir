@@ -129,7 +129,8 @@ test-plugins:
 test-plugin plugin:
     cargo nextest run -p plugin-{{plugin}}
 
-# Runs anti-TOCTOU, cgroup.freeze, and zombie reaper tests in isolated container/namespaces
+# No shim tests at base; when added, anti-TOCTOU, cgroup.freeze, and zombie
+# reaper tests run in isolated container/namespaces
 test-shim:
     cargo nextest run -p kelir-shim
 
@@ -138,15 +139,15 @@ test-shim:
 test-drivers:
     cargo nextest run -p driver-rustvmm -p driver-bwrap -E 'not test(test_hw_)'
 
-# Windows driver unit tests; run on Windows only (driver-openvmm is WHP).
+# Windows driver suite placeholder (no driver-openvmm tests at base); run on Windows only (driver-openvmm is WHP).
 test-drivers-windows:
     cargo nextest run -p driver-openvmm -E 'not test(test_hw_)'
 
-# macOS driver unit tests; run on Apple Silicon only (driver-hvf is HVF).
+# macOS driver suite placeholder (no driver-hvf tests at base); run on Apple Silicon only (driver-hvf is HVF).
 test-drivers-macos:
     cargo nextest run -p driver-hvf -E 'not test(test_hw_)'
 
-# Dynamic SDK test suites: ForeignPluginProxy, memory pinning, unhandled freeze recovery
+# No SDK test suites at base (no pnpm test script, no pytest files): ForeignPluginProxy, memory pinning, unhandled freeze recovery
 test-sdks: build-ts
     pnpm -r test
     uv run pytest packages/py

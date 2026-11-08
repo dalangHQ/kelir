@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#HostTerminalGuard-(RAII)"
-  statement: "SIGINT masked on host thread; Ctrl+C (0x03) traverses virtio-console to guest foreground pgid."
+  statement: "SIGINT masked on host thread; Ctrl+C (0x03) traverses virtio-console to guest foreground pgid. GAP: no HostTerminalGuard type exists in code — it is spec-only (cans/04-terminal-plane.md) — so the guard behavior is asserted as the spec-required behavior, not via a callable surface."
   blast_radius_if_breached: "Typing Ctrl+C kills the host supervisor binary instead of stopping in-guest long-running tasks."
 
 confusion_matrix:

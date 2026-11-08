@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "tp_15_shim_openpty_returns_distinct_master_slave"
+title: "kelir-shim open_pty_slave returns a distinct master/slave fd pair with bytes flowing master to slave"
+domain: "terminal_plane"
+target_tier: "unit"
+target_crate: "crates/kelir-shim"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)"
+  statement: "pty::open_pty_slave() returns Ok((master, slave)) with two distinct valid fds, and bytes written to master are readable from slave: the shim line-discipline broker has a live channel."
+  blast_radius_if_breached: "The shim PTY pair is broken or aliased, so guest console output never reaches the host terminal ring."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts open succeeds without checking the fds are distinct and the channel carries bytes."
+  anti_slop_mitigation: "AS-02 asserts master != slave, both >= 0, and a byte round-trips; AS-08 asserts both fds are closed at the end."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "guest.shim"
+    agent_id: "agt_tp_15"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "pty::open_pty_slave(); write one byte to master; read one byte from slave"
+  input_params: {}
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "shim.pty"
+    culprit: "none — PTY pair live"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "shim.pty_opened"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "let (master, slave) = pty::open_pty_slave()?; assert!(master >= 0 && slave >= 0 && master != slave); assert_eq!(write(master, b\"x\"), 1); assert_eq!(read(slave), b\"x\");"
+  - rule: "AS-08"
+    verification: "assert_eq!(open_fd_count_after_close(), open_fd_count_before());"

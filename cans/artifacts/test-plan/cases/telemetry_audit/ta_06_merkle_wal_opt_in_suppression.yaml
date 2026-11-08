@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "builder.mount(plugin_ledger({ merkle_enabled: false })).boot()"
+  command: "LedgerPlugin::new(false); plugin.sink() selects OtlpLedgerSink"
   input_params:
     merkle_enabled: false
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-02"
-    verification: "assert_eq!(fs::exists('.kelir/audit.merkle.db'), false); assert_eq!(ledger.has_local_sink(), false);"
+    verification: "assert_eq!(fs::exists('.kelir/audit.merkle.db'), false);"

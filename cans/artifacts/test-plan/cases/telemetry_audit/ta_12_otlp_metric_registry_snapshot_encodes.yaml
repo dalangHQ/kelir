@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "ta_12_otlp_metric_registry_snapshot_encodes"
+title: "MetricRegistry counters snapshot exactly and OtlpEncoder encode_metrics emits non-empty OTLP bytes"
+domain: "telemetry_audit"
+target_tier: "unit"
+target_crate: "crates/kelir-otlp"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/14-observability.md#Metrics-pipeline"
+  statement: "MetricRegistry record_exec/record_drop increments are visible exactly in snapshot(), and OtlpEncoder::encode_metrics(snapshot) returns non-empty bytes; counters never decrement."
+  blast_radius_if_breached: "Metric counters drift or reset, so dashboards report fewer execs than ran and budget enforcement misses overload."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts encode returns Ok without checking the snapshot counts match the recorded events."
+  anti_slop_mitigation: "AS-02 asserts exact counter values after a known number of recordings; AS-06 forbids deriving expected counts from the snapshot itself."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "ledger.otel"
+    agent_id: "agt_ta_12"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "MetricRegistry::new(); record_exec x3; record_drop x1; snapshot(); OtlpEncoder::new().encode_metrics(snapshot)"
+  input_params:
+    exec_count: 3
+    drop_count: 1
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "ledger.otel"
+    culprit: "none — counters exact"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "ledger.metrics_encoded"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "let snap = registry.snapshot(); assert_eq!(snap.exec_count, 3); assert_eq!(snap.dropped_frames, 1); assert!(!OtlpEncoder::new().encode_metrics(&snap)?.is_empty());"
+  - rule: "AS-06"
+    verification: "assert_eq!(registry.snapshot().exec_count, 3);"

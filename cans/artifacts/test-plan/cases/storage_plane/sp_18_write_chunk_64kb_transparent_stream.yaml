@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_eq!(on_fs_write_invocation_count, 4); assert_eq!(broker.upper_stat().st_size, 262144);"
+    verification: "assert_eq!(on_fs_write_invocation_count, 4); assert_eq!(broker.sparse_upper_len(), 262144);"

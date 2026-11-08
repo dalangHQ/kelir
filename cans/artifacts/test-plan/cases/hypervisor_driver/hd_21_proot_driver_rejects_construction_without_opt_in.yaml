@@ -1,0 +1,73 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_21_proot_driver_rejects_construction_without_opt_in"
+title: "ProotDriver construction fails with E_UNSUPPORTED when allow_emulated_fallback is false"
+domain: "hypervisor_driver"
+target_tier: "unit"
+target_crate: "crates/kelir-drivers/driver-proot"
+platform_target:
+  os: "linux"
+  arch: "aarch64"
+  hypervisor: "emulated"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Fallback-policy"
+  statement: "ProotDriver::new(false) returns Err(VmmError::Unsupported): Termux ptrace emulation requires explicit granular opt-in, never silent construction."
+  blast_radius_if_breached: "An emulated proot driver constructs by default, silently downgrading hardware virtualization to ptrace emulation on Termux hosts."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent catches a generic error without asserting the Unsupported variant and exact message."
+  anti_slop_mitigation: "AS-03 mandates exact enum matching on VmmError::Unsupported; AS-07 asserts zero proot child process spawned."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_hd_21"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "proot"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "ProotDriver::new(false) with emulated fallback not opted in"
+  input_params:
+    allow_emulated_fallback: false
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "driver.proot"
+    culprit: "Emulated fallback not allowed by DriverPolicy"
+    remedy: "Set allow_emulated_fallback: true explicitly for development, or use a hardware driver"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "driver.construction_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_UNSUPPORTED"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(ProotDriver::new(false), Err(VmmError::Unsupported(msg)) if msg.contains(\"emulated fallback not allowed\"));"
+  - rule: "AS-07"
+    verification: "assert_eq!(process::has_proot_child(), false);"

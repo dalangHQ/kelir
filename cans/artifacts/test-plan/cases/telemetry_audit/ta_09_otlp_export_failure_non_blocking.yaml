@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/ledger.md#Failure-handling"
-  statement: "Export failure never blocks the pipeline; export buffer bounded; excess samples dropped with a metric."
+  statement: "Export failure never blocks the pipeline; export buffer bounded; excess samples dropped with a metric. Gap: no bounded buffer or drop-with-metric surface exists in the live tree; OtlpLedgerSink::emit_delta propagates the export error (Err(PluginError::Halt)) and carries a TODO to retry failures without blocking, and no Session::exec surface exists."
   blast_radius_if_breached: "Downed OTel Collector stalls microVM execution and freezes agent loops."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.exec('/bin/true', ProcessLimits::default()) while OTLP exporter times out"
+  command: "OtlpLedgerSink::emit_delta(&delta) while the OTLP endpoint blackholes"
   input_params:
     blackhole: true
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-06"
-    verification: "assert!(exec_duration < Duration::from_millis(5)); assert_eq!(receipt.exit_code, 0);"
+    verification: "assert!(emit_duration < Duration::from_millis(5));"

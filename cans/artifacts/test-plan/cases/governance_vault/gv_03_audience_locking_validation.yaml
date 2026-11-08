@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/vault.md#Scope-confinement-and-audience-locking"
-  statement: "Audience is destination host pattern; destination host patterns checked against network policy before issue."
+  statement: "Audience is destination host pattern; destination host patterns checked against network policy before issue. Gap: audience locking is an L3 TODO in CredentialBroker::issue (crates/kelir-plugins/plugin-vault/src/service.rs); the issued token copies the descriptor audience unchecked."
   blast_radius_if_breached: "Stolen token replayed against malicious third-party webhook endpoint."
 
 confusion_matrix:

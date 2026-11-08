@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#VirtIO-Device-Complex"
-  statement: "virtio-rng is mandatory default device; seeds guest CSPRNG during early probe before shim PID 1."
+  statement: "virtio-rng is mandatory default device; seeds guest CSPRNG during early probe before shim PID 1. GAP: guest entropy seeding via VmmDriver::set_entropy_backend is a TODO (L3) stub returning Err in every driver, and no shim-side getrandom hook exists in crates/kelir-shim, so non-blocking guest getrandom is asserted as the spec-required behavior."
   blast_radius_if_breached: "Guest boot hangs indefinitely awaiting kernel entropy pool initialization."
 
 confusion_matrix:

@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "builder.register_stream_kind(0x0010, handler); dispatch frame for kind 0x0010"
+  command: "builder.register_stream_kind(0x0010, serde_json::json!({}), handler); dispatch frame for kind 0x0010"
   input_params:
     stream_kind: 16
 

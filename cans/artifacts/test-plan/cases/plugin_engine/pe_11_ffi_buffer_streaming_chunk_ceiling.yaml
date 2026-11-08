@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/02-plugin-model.md#FFI-buffer-lifecycle"
-  statement: "Pinned memory slices exposed via streaming chunked iterators; 64KB is the per-chunk ceiling."
+  statement: "Pinned memory slices exposed via streaming chunked iterators; 64KB is the per-chunk ceiling. Gap: no 64 KiB chunk constant or chunked-iterator surface exists in the live tree; the ceiling is spec text (cans/02-plugin-model.md) only."
   blast_radius_if_breached: "Large guest writes pass multi-megabyte raw pointers to host runtimes, causing GC invalidation."
 
 confusion_matrix:

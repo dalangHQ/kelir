@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Stream-replay"
-  statement: "Flat chunk files under sessions/<id>/logs/ with append-only index.bin; global SQLite catalog bypassed."
+  statement: "Flat chunk files under sessions/<id>/logs/ with append-only index.bin; global SQLite catalog bypassed. GAP: the live log path is ~/.kelir/sessions/<32-hex-id>/logs/index.bin (crates/kelir-core/src/planes/terminal/mod.rs session_log_path), and TerminalPlane::append_log_chunk writes chunk bytes into index.bin itself — there are no separate chunk files."
   blast_radius_if_breached: "High-throughput terminal logging induces SQLite WAL write lock contention across sessions."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-02"
-    verification: "assert_eq!(catalog_db_row_delta(), 0); assert!(fs::exists('sessions/ses_tp_13/logs/index.bin'));"
+    verification: "assert_eq!(catalog_db_row_delta(), 0); assert!(session_log_index_exists());"

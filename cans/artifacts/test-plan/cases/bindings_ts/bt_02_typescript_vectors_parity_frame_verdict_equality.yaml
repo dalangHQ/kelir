@@ -33,7 +33,7 @@ setup:
     vault_secrets: []
 
 execution:
-  trigger: "rust_api"
+  trigger: "sdk"
   command: "kelir-plugin-cli parity run ./vectors.json over the TypeScript SDK vector consumer"
   input_params:
     vectors_file: "./vectors.json"

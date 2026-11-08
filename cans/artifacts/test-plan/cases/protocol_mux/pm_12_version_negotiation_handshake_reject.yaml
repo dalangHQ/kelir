@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/11-protocol.md#Wire-framing"
-  statement: "Handshake validates version == 0x01; mismatches reject with E_INCOMPATIBLE_SHIM_VERSION; session aborts."
+  statement: "Handshake validates version == 0x01; mismatches reject with E_INCOMPATIBLE_SHIM_VERSION; session aborts. Gap: no handshake validation exists in-tree (only the Handshake struct in crates/kelir-interface/src/protocol.rs); the rejection is specified against cans/11-protocol.md#Wire-framing, not a live check."
   blast_radius_if_breached: "Outdated or incompatible guest shims execute with undefined wire parsing behavior."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "vsock_frame"
-  command: "Guest transmits HandshakeFrame { version: 0x02, capabilities: 0 }"
+  command: "Guest transmits Handshake { version: 0x02, capabilities: 0 }"
   input_params:
     version: 2
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(handshake_res, Err(KelirError::IncompatibleShimVersion(2))); assert_eq!(session.is_alive(), false);"
+    verification: "assert_matches!(handshake_res, Err(PluginError::Halt(msg)) if msg.contains(\"E_INCOMPATIBLE_SHIM_VERSION\"));"

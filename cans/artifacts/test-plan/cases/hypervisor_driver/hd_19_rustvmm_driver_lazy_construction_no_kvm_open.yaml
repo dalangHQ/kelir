@@ -1,0 +1,72 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_19_rustvmm_driver_lazy_construction_no_kvm_open"
+title: "RustVmmDriver construction on Linux succeeds without opening /dev/kvm; the KVM handle is acquired only at boot"
+domain: "hypervisor_driver"
+target_tier: "unit"
+target_crate: "crates/kelir-drivers/driver-rustvmm"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "kvm"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Driver-backends"
+  statement: "RustVmmDriver::new() is lazy: it returns an Unbooted driver on Linux without touching /dev/kvm, so constructing a driver never acquires hardware."
+  blast_radius_if_breached: "Driver construction opens the KVM device eagerly, leaking a hardware handle for every constructed-but-never-booted driver."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts new() succeeds without checking that no KVM file descriptor was opened."
+  anti_slop_mitigation: "AS-02 asserts the process fd table holds no /dev/kvm fd after construction; AS-08 asserts zero leaked host FDs."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_hd_19"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "rustvmm"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "RustVmmDriver::new() on a Linux host with /dev/kvm present"
+  input_params: {}
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "driver.rustvmm"
+    culprit: "none — lazy construction"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "driver.constructed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert!(RustVmmDriver::new().is_ok()); assert!(!fd_table_contains(\"/dev/kvm\"));"
+  - rule: "AS-08"
+    verification: "assert_eq!(open_fd_count_after(), open_fd_count_before());"

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/db-proxy.md#Error-and-return-semantics-(db-proxy)"
-  statement: "FilterAction::Forward after in-place Q/P frame rewrite; server sees rewritten frame as if client sent it."
+  statement: "FilterAction::Forward after in-place Q/P frame rewrite; server sees rewritten frame as if client sent it. Gap: the in-place Q/P rewrite is an L3 TODO in DbProxyPlugin::handle_pgwire_frame, which returns FilterAction::Forward without rewriting."
   blast_radius_if_breached: "Tenant prefixing fails, allowing cross-tenant data access in multi-tenant shared databases."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "db_proxy.on_pgwire_query(&mut frame, 'SELECT * FROM users')"
+  command: "db_proxy.intercept_ethernet_frame(NetDirection::GuestToUpstream, &mut frame) carrying pgwire Query 'SELECT * FROM users'"
   input_params:
     action: "rewrite_tenant"
 

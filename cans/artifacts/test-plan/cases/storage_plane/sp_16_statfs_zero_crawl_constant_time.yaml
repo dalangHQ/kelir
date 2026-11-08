@@ -17,7 +17,7 @@ invariant:
 confusion_matrix:
   quadrant: "true_positive"
   slop_risk: "Agent calls host statfs or walks directory tree to calculate free space."
-  anti_slop_mitigation: "AS-06 asserts statfs execution duration < 50µs regardless of 500k base inode count."
+  anti_slop_mitigation: "AS-06 asserts statfs performs zero host VFS traversal regardless of base inode count (O(1) atomic read, duration independent of base size)."
 
 setup:
   env: "ci"
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-06"
-    verification: "assert!(statfs_duration < Duration::from_micros(50)); assert_eq!(host_vfs_crawl_count, 0);"
+    verification: "assert_eq!(host_vfs_crawl_count, 0); assert!(statfs_duration_500k <= statfs_duration_1k * 2);"

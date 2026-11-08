@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_13_cli_doctor_reports_missing_kvm"
+title: "kelir-plugin-cli doctor probe_host reports the KVM probe failed and the host not ready without /dev/kvm"
+domain: "governance_tools"
+target_tier: "unit"
+target_crate: "crates/kelir-plugin-cli"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/15-operations.md#Subcommands"
+  statement: "probe_host() on a Linux host without /dev/kvm yields a DoctorReport whose pending() contains \"kvm: /dev/kvm is absent\" and whose is_ready() is false: doctor never reports a host ready when virtualization is missing."
+  blast_radius_if_breached: "doctor reports a KVM-less host ready, so a boot is attempted and fails late with an opaque hypervisor error instead of a clear pre-flight failure."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts is_ready() is false without checking the pending list names the KVM probe."
+  anti_slop_mitigation: "AS-02 asserts the exact pending string \"kvm: /dev/kvm is absent\"; AS-03 forbids treating any single passing probe as readiness."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "operator.cli"
+    agent_id: "agt_gt_13"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "probe_host() on a Linux host with /dev/kvm absent"
+  input_params:
+    kvm_present: false
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "cli.doctor"
+    culprit: "/dev/kvm is absent"
+    remedy: "Enable VT-x/AMD-V in firmware and load the kvm module"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "cli.doctor_probe"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "let report = probe_host(); assert_eq!(report.is_ready(), false); assert!(report.pending().iter().any(|p| p == \"kvm: /dev/kvm is absent\"));"
+  - rule: "AS-03"
+    verification: "assert!(report.to_json().contains(\"\\\"probe\\\":\\\"kvm\\\",\\\"status\\\":\\\"fail\\\"\"));"

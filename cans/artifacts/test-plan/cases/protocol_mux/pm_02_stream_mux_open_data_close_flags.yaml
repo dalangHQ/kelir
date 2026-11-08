@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/11-protocol.md#Stream-mux-framing"
-  statement: "Flags: 0x01 OPEN, 0x02 DATA, 0x04 CLOSE, 0x08 RST, 0x10 WINDOW_UPDATE."
+  statement: "Flags: 0x01 OPEN, 0x02 DATA, 0x04 CLOSE, 0x08 RST, 0x10 WINDOW_UPDATE. Gap: StreamMuxParser and ProtocolError do not exist in-tree; mux flag decoding lives in the kelir-shim multiplexer (crates/kelir-shim/src/multiplexer.rs, ShimError::UnknownFlags), so the OPEN|CLOSE rejection is specified against cans/11-protocol.md#Stream-mux-framing, not a live parser."
   blast_radius_if_breached: "Malformed mux frames desynchronize stream state machines, leaking memory handles."
 
 confusion_matrix:

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Userspace-network-stack"
-  statement: "Guest virtio-net Ethernet frames terminate directly in host process memory; zero host TAP/TUN interface."
+  statement: "Guest virtio-net Ethernet frames terminate directly in host process memory; zero host TAP/TUN interface. GAP: terminating the TCP stream in the embedded smoltcp stack is a TODO (L3) in WirePlane (crates/kelir-core/src/planes/wire/mod.rs); the smoltcp Interface field exists but no frame is sunk yet."
   blast_radius_if_breached: "Host network configuration or root CAP_NET_ADMIN privileges required to run microVM."
 
 confusion_matrix:

@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "bp_04_pyo3_descriptor_without_rings_fails_closed"
+title: "PyO3 convert_descriptor rejects a fused trampoline descriptor with no rings list"
+domain: "bindings_py"
+target_tier: "unit"
+target_crate: "crates/kelir-bindings/pyo3"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/03-sdk-architecture.md#Python-SDK"
+  statement: "convert_descriptor(descriptor) with no `rings` key raises PyValueError (\"fused trampoline declares no `rings` list\"); an unknown ring tag raises PyValueError too: the PyO3 bridge never builds a descriptor from a malformed dict."
+  blast_radius_if_breached: "A malformed Python descriptor builds a partial trampoline table, so Py hooks silently never fire and traps pass unfiltered."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts an error is raised without checking the message names the missing rings list."
+  anti_slop_mitigation: "AS-03 mandates exact matching on the PyValueError message; AS-02 asserts no descriptor is produced."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "sdk.python"
+    agent_id: "agt_bp_04"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "convert_descriptor({}) with no rings key; convert_descriptor({\"rings\": [{\"ring\": \"bogus\"}]}) with an unknown ring tag"
+  input_params:
+    rings_present: false
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "sdk.pyo3"
+    culprit: "Fused trampoline descriptor declares no rings list"
+    remedy: "Pass a descriptor dict with a rings list of known ring tags"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "sdk.descriptor_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(convert_descriptor(&empty), Err(e) if format!(\"{e}\").contains(\"declares no `rings` list\")); assert_matches!(convert_descriptor(&bogus), Err(e) if format!(\"{e}\").contains(\"unknown ring\"));"
+  - rule: "AS-02"
+    verification: "assert!(convert_descriptor(&empty).is_err()); assert!(convert_descriptor(&bogus).is_err());"

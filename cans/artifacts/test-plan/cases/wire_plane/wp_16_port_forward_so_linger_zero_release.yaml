@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Port-forwarding"
-  statement: "Immediate teardown release: SO_LINGER zero forces instant TCP RST, eliminating TIME_WAIT socket exhaustion."
+  statement: "Immediate teardown release: SO_LINGER zero forces instant TCP RST, eliminating TIME_WAIT socket exhaustion. GAP: no SO_LINGER handling exists anywhere in WirePlane — teardown is WirePlane::quiesce clearing the UDP slab with a TODO (L3) to close live L4 sockets and emit RST — so the instant rebind is asserted as the spec-required behavior."
   blast_radius_if_breached: "Rapidly cycling test sessions exhaust available host ephemeral ports due to 60-second TIME_WAIT states."
 
 confusion_matrix:

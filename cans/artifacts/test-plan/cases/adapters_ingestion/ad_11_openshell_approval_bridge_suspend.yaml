@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-04A"
-    verification: "assert_eq!(session.state(), SessionState::Suspended); assert!(profile_patch_applied_before_resume());"
+    verification: "assert_matches!(session.suspend(SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold)), Ok(())); assert!(profile_patch_applied_before_resume());"

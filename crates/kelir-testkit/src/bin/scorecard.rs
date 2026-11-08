@@ -42,6 +42,10 @@ struct Budgets {
 struct BudgetLatencies {
     gate_2_us: u64,
     cold_boot_ms: u64,
+    // see: cans/01-architecture.md#Driver-rollback-resets-physical-RAM-and-vCPU-registers-only-(<8ms)
+    rollback_ms: u64,
+    // see: cans/08-lifecycle.md#Host-RSS-drops-to-0-MB-in-<50ms;
+    suspend_ms: u64,
 }
 
 #[derive(serde::Deserialize)]
@@ -193,8 +197,14 @@ fn render_scorecard(manifest: &Manifest, budgets: &Budgets, subset: &PlatformSub
         "| Cold Boot to Workload Exec | ≤ {} ms p95 | Hard Budget (Stopwatch) | pass |\n",
         budgets.latencies.cold_boot_ms
     ));
-    out.push_str("| Hardware RAM/vCPU Rollback | ≤ 8 ms p95 | Hard Budget (Driver) | pass |\n");
-    out.push_str("| Suspend to NVMe Page Dump | ≤ 50 ms p95 | Hard Budget (io_uring) | pass |\n");
+    out.push_str(&format!(
+        "| Hardware RAM/vCPU Rollback | ≤ {} ms p95 | Hard Budget (Driver) | pass |\n",
+        budgets.latencies.rollback_ms
+    ));
+    out.push_str(&format!(
+        "| Suspend to NVMe Page Dump | ≤ {} ms p95 | Hard Budget (io_uring) | pass |\n",
+        budgets.latencies.suspend_ms
+    ));
     out.push_str(&format!(
         "| Gate 2 Native Scope Eval | ≤ {} µs p95 | Hard Budget (Native Rust) | pass |\n",
         budgets.latencies.gate_2_us

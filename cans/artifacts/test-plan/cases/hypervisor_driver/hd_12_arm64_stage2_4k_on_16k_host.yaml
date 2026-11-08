@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Page-size-dynamic-boot-selection"
-  statement: "ARM64 Stage-2 tables configure 4KB leaf pages on 16KB host RAM, eliminating binary alignment faults."
+  statement: "ARM64 Stage-2 tables configure 4KB leaf pages on 16KB host RAM, eliminating binary alignment faults. GAP: no guest_page_size/host_page_size probe exists on any driver; the guest 4KB page size is observable only as VmConfig.page_size_kb, and 16KB host handling is driver-internal (L3). GAP: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes session.spawn (crates/kelir/src/session.rs:56) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll, so this case asserts the spec-required behavior and fails against the live tree until exec is wired."
   blast_radius_if_breached: "Standard x86/ARM64 4KB-aligned ELF packages crash on Apple Silicon with SIGBUS."
 
 confusion_matrix:
@@ -69,4 +69,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert_eq!(driver.guest_page_size(), 4096); assert_eq!(driver.host_page_size(), 16384);"
+    verification: "assert_eq!(vm_config.page_size_kb, 4);"

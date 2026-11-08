@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Workspace-commit"
-  statement: "Per-entry atomic commit at leaf level: temp file + platform rename (renameat2 / renameatx_np)."
+  statement: "Per-entry atomic commit at leaf level: temp file + platform rename (renameat2 / renameatx_np). Gap: Reconciler::commit is a TODO (L3) in crates/kelir-core/src/planes/storage/reconciler.rs and StorageIo::atomic_rename needs the driver/transport enclave; the atomic leaf commit is specified against cans/05-storage-plane.md#Workspace-commit, not a live commit path."
   blast_radius_if_breached: "Crashing mid-commit corrupts host files with partial or torn writes."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "Guest edits src/main.rs; session.storage.reconcile() called"
+  command: "Guest edits src/main.rs; session.storage.reconcile(FsReconcileRequest { cwd: \"/workspace\".to_string(), atomic_staging: true, fsync: true }) called"
   input_params:
     commit_mode: "atomic_leaf"
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-02"
-    verification: "assert_ne!(host_stat('src/main.rs').st_ino, original_ino); assert_eq!(broker.upper_stat().st_blocks, 0);"
+    verification: "assert_ne!(host_stat('src/main.rs').st_ino, original_ino); assert_eq!(broker.sparse_upper_blocks(), 0);"

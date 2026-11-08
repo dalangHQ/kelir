@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Ephemeral-scratch-device"
-  statement: "Dedicated virtio-blk scratch disk automatically discarded on session teardown without reconciliation."
+  statement: "Dedicated virtio-blk scratch disk automatically discarded on session teardown without reconciliation. Gap: no scratch-discard path exists in-tree (Session::stop is a TODO (L3)); the discard is specified against cans/05-storage-plane.md#Ephemeral-scratch-device, not a live teardown path."
   blast_radius_if_breached: "Temporary build artifacts pollute host workspace git tree or leak disk across sessions."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "Guest writes 50MB to /tmp/build.o; session.terminate() called"
+  command: "Guest writes 50MB to /tmp/build.o; session.stop() called"
   input_params:
     scratch_path: "/tmp/build.o"
 

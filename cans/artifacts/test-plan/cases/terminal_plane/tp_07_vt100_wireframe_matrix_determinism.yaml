@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Headless-VT100-wireframe-grid"
-  statement: "session.terminal.export_screen_matrix() yields deterministic terminal wireframe receipts."
+  statement: "session.terminal.export_screen_matrix() yields deterministic terminal wireframe receipts. GAP: no 80x24 fixture exists and Vt100StateMachine::feed is a TODO (L3) stub returning Err, so no canonical matrix hash exists — the c59c40... hash previously asserted here was unverifiable and is replaced by a run-to-run determinism comparison."
   blast_radius_if_breached: "TUI-based agent evaluations cannot verify visual terminal states deterministically."
 
 confusion_matrix:
@@ -68,4 +68,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-06"
-    verification: "assert_eq!(matrix_hash, 'c59c40212f466479f666f8e7b30c57659424d9c49a37e96a7509cf694709f3e4');"
+    verification: "assert_eq!(matrix_hash_run_1, matrix_hash_run_2);"

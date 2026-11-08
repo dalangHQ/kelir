@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Secondary-image-mounts"
-  statement: "Grafts host-opened squashfs/EROFS images into guest VFS namespace with zero PCI hot-plug overhead."
+  statement: "Grafts host-opened squashfs/EROFS images into guest VFS namespace with zero PCI hot-plug overhead. Gap: no graft_image surface exists in-tree; the graft is specified against cans/05-storage-plane.md#Secondary-image-mounts, not a live graft path."
   blast_radius_if_breached: "Attaching package bundles requires slow ACPI/PCI device hot-plugging, blowing latency budgets."
 
 confusion_matrix:

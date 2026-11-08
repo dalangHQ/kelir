@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-08"
-    verification: "assert_eq!(process::is_address_mapped(shm_addr_1), false); assert_eq!(process::is_address_mapped(shm_addr_2), false);"
+    verification: "assert_eq!(maps_contain(shm_addr_1), false); assert_eq!(maps_contain(shm_addr_2), false);"

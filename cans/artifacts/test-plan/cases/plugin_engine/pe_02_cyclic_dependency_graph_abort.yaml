@@ -11,13 +11,13 @@ platform_target:
 
 invariant:
   law_reference: "cans/02-plugin-model.md#Plugin-tiering"
-  statement: "Direct Cargo dependencies are acyclic; cyclic crate dependencies abort compilation with EConfig."
+  statement: "Direct Cargo dependencies are acyclic; cyclic crate dependencies abort compilation with EConfig. Gap: no registration-graph cycle detection exists in the live tree; resolve_plugin_registrations() only validates shape and dedupes, and Session::boot_with_engine returns Err(PluginError::Halt(\"TODO (L3): Session::boot\")) before any graph check."
   blast_radius_if_breached: "Infinite initialization loops lock up hypervisor microkernel bootstrap."
 
 confusion_matrix:
   quadrant: "true_negative"
   slop_risk: "Agent ignores graph cycle and enters recursion or deadlock."
-  anti_slop_mitigation: "AS-03 asserts builder.boot() returns Err(EConfig) upon cycle detection."
+  anti_slop_mitigation: "AS-03 asserts Session::boot_with_plugins returns Err(PluginError::Halt) mentioning the cycle upon cycle detection."
 
 setup:
   env: "ci"
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "PipelineEngine::compile_plugins(&[plugin_a, plugin_b])"
+  command: "Session::boot_with_plugins(config, &[plugin_a, plugin_b])"
   input_params:
     detect_cycles: true
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(compile_res, Err(KelirError::Config(msg)) if msg.contains('Cyclic dependency'));"
+    verification: "assert_matches!(boot_res, Err(PluginError::Halt(msg)) if msg.contains('Cyclic dependency'));"

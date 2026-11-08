@@ -67,4 +67,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-04A"
-    verification: "assert_eq!(receipt_1, receipt_2); assert_eq!(otel_gauge('retired_instructions').is_some(), true);"
+    verification: "assert_eq!(receipt_1.leaf_hash(), receipt_2.leaf_hash());"

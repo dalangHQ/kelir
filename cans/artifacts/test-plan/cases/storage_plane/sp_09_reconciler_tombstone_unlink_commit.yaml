@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Workspace-commit"
-  statement: "Deletes unlink in place; new dirs create in place during reconcile."
+  statement: "Deletes unlink in place; new dirs create in place during reconcile. Gap: Reconciler::commit is a TODO (L3) in crates/kelir-core/src/planes/storage/reconciler.rs; the tombstone commit is specified against cans/05-storage-plane.md#Workspace-commit, not a live commit path."
   blast_radius_if_breached: "Files unlinked in guest remain on host disk after commit."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "Guest executes unlink('obsolete.rs'); session.storage.reconcile() called"
+  command: "Guest executes unlink('obsolete.rs'); session.storage.reconcile(FsReconcileRequest { cwd: \"/workspace\".to_string(), atomic_staging: true, fsync: true }) called"
   input_params:
     action: "reconcile"
 

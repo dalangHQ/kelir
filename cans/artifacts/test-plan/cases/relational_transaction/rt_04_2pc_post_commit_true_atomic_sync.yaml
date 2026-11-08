@@ -34,7 +34,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "transaction_service.post_commit(true)"
+  command: "plugin.on_post_commit(&mut ctx, true)"
   input_params:
     commit_success: true
 

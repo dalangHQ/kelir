@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_17_wire_ingress_park_connection_suspends_session"
+title: "IngressRoutingService park_connection parks an L4 forward frame and reports Parked while the session suspends"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins/plugin-wire-ingress"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/wire-ingress.md#Connection-parking-on-suspend"
+  statement: "park_connection(L4ForwardFrame, initial bytes) returns ParkOutcome::Parked and the session suspends for parking; the parked bytes are replayed on resume, never dropped or delivered twice."
+  blast_radius_if_breached: "A parked connection is dropped instead of held, so the client observes a reset for a session that was only suspended."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts park returns without checking the Parked variant and the suspended state."
+  anti_slop_mitigation: "AS-03 mandates exact matching on ParkOutcome::Parked; AS-02 asserts is_suspended() is true after parking."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "wire.ingress"
+    agent_id: "agt_wp_17"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "IngressRoutingService::park_connection(decoded L4ForwardFrame, initial payload) on a suspended session"
+  input_params:
+    stream_kind: "L4_FORWARD"
+    mux: "0x0001"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "wire.ingress"
+    culprit: "none — connection parked for suspend"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 1
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "wire.connection_parked"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(service.park_connection(frame, initial)?, ParkOutcome::Parked); assert_eq!(service.is_suspended()?, true);"
+  - rule: "AS-02"
+    verification: "assert_eq!(service.reset_parked_connections()?.len(), 1);"

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/10-attestation.md#Attestation-provenance-classification"
-  statement: "Class 1 (Hardware-Anchored) never falls back to Class 3 (Guest Unverified Data); missing Tier 1 evidence is denial."
+  statement: "Class 1 (Hardware-Anchored) never falls back to Class 3 (Guest Unverified Data); missing Tier 1 evidence is denial. Gap: AttestationVerifier, FactSource, and AttestationError do not exist in-tree (zero hits in crates/); the provenance classification is specified against cans/10-attestation.md#Attestation-provenance-classification, not a live verifier."
   blast_radius_if_breached: "Untrusted agent processes forge hardware execution receipts by writing JSON strings to stdout."
 
 confusion_matrix:

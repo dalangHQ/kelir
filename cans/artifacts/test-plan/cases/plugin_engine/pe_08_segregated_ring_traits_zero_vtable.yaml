@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "PipelineEngine::compile_tables(&[fs_only_plugin])"
+  command: "let mut engine = PipelineEngine::new(); engine.bind_fs(fs_only_plugin)"
   input_params:
     action: "inspect_dispatch_tables"
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-06"
-    verification: "assert_eq!(dispatch_tables.net_interposers.len(), 0); assert_eq!(dispatch_tables.fs_interposers.len(), 1);"
+    verification: "assert_eq!(engine.net_interceptors.len(), 0); assert_eq!(engine.fs_interceptors.len(), 1);"

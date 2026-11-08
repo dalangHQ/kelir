@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "bt_04_napi_boot_before_fuse_hooks_fails_closed"
+title: "NativeKelirBuilder boot without fuse_hooks fails closed instead of booting with an unfused trampoline table"
+domain: "bindings_ts"
+target_tier: "unit"
+target_crate: "crates/kelir-bindings/napi"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/03-sdk-architecture.md#TypeScript-SDK"
+  statement: "NativeKelirBuilder::boot() with no fused descriptor returns Err(\"boot: fuse_hooks must run before boot\"): the NAPI bridge never boots a session whose hook table was never fused."
+  blast_radius_if_breached: "A session boots with an unfused trampoline table, so TS hooks never fire and traps pass unfiltered into the guest."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts boot fails without checking the exact reason names fuse_hooks."
+  anti_slop_mitigation: "AS-03 mandates exact matching on the fuse_hooks reason; AS-02 asserts no NativeSessionHandle is produced."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "sdk.typescript"
+    agent_id: "agt_bt_04"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "NativeKelirBuilder::new(None, None, None, None, None, None).boot() with fuse_hooks never called"
+  input_params:
+    fuse_hooks_called: false
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "sdk.napi"
+    culprit: "boot called before fuse_hooks fused the trampoline table"
+    remedy: "Call fuse_hooks with the ring descriptors before boot"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "sdk.boot_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(builder.boot(), Err(e) if format!(\"{e}\").contains(\"fuse_hooks must run before boot\"));"
+  - rule: "AS-02"
+    verification: "assert_eq!(builder.trampoline_entry_count(), 0);"

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/transaction.md#Strict-deadline"
-  statement: "Uncommitted transactions exceeding timeout_ms abort automatically; deadlock or timeout aborts with ETIMEDOUT."
+  statement: "Uncommitted transactions exceeding timeout_ms abort automatically; deadlock or timeout aborts with ETIMEDOUT. Gap: no timeout timer exists and no TransactionError type exists in the live tree; timeout_ms is config only (TransactionConfig, default 30_000) with no enforcement."
   blast_radius_if_breached: "Dangling transactions hold database locks indefinitely, stalling production backends."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(tx_result, Err(TransactionError::TimedOut)); assert_eq!(upstream_sql_transaction_state(), 'ROLLED_BACK');"
+    verification: "assert_eq!(upstream_sql_transaction_state(), 'ROLLED_BACK');"

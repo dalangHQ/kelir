@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/vault.md#Guest-integration"
-  statement: "vault:// placeholder in profiles resolves to a metadata path at boot; real credentials never enter profile files."
+  statement: "vault:// placeholder in profiles resolves to a metadata path at boot; real credentials never enter profile files. Gap: no ProfileHydrator type and no vault:// placeholder resolution exists in the live tree (zero hits in crates/), so resolution is specified against cans/plugins/vault.md#Guest-integration, not a live surface."
   blast_radius_if_breached: "Plaintext secrets committed to repository config files."
 
 confusion_matrix:

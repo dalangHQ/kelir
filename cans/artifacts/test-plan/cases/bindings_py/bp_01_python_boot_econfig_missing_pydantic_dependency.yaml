@@ -32,7 +32,7 @@ setup:
     vault_secrets: []
 
 execution:
-  trigger: "rust_api"
+  trigger: "sdk"
   command: "KelirBuilder boot with the pydantic specifier unresolvable"
   input_params:
     missing_dependency: "pydantic"

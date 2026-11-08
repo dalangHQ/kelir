@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/08-lifecycle.md#Rollback"
-  statement: "Pre-condition invariant: Rollback requires zero unreleased traps; held trap released (Verdict::Drop{EFAULT}) before rollback."
+  statement: "Pre-condition invariant: Rollback requires zero unreleased traps; held trap released (Verdict::Drop{EFAULT}) before rollback. Gap: Session::rollback_to performs no held-trap release step (crates/kelir-core/src/session.rs); the release is specified against cans/08-lifecycle.md#Rollback, not a live path."
   blast_radius_if_breached: "Rolling back hypervisor memory while a vCPU thread waits on a seccomp trap deadlocks the engine."
 
 confusion_matrix:

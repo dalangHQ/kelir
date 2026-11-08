@@ -2,8 +2,7 @@ kelir/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                     # Unified fast CI (Lint, Typecheck, Cross-Shim, Parity, Audit-slop, KVM test)
-│       ├── plugin-ci-reusable.yml     # workflow_call: audit, vectors, matrix, attest
-│       └── release.yml                # Automated binary stripping, NPM & PyPI publishing
+│       └── plugin-ci-reusable.yml     # workflow_call: audit, vectors, matrix, attest
 │
 ├── justfile                           # Zero-friction local development commands
 ├── Cargo.toml                         # Root Cargo workspace manifest (Rust 2024 / MSRV 1.85+)
@@ -25,65 +24,109 @@ kelir/
 │       ├── diagrams/                  # ASCII architecture diagrams
 │       ├── examples/                  # Demonstrating examples (Rust/TS/Python)
 │       ├── config/                    # ci.yml, justfile, plugin-ci-reusable.yml, project-structure.txt
+│       ├── test-plan/                 # Canonical test plan: manifest.yaml, matrix.yaml, structure doc, cases/
 │       ├── README.md                  # SSOT contract for artifacts
+│       ├── scorecard.md               # Generated scorecard (just scorecard / check-scorecard)
 │       └── taxonomy.html              # Capability taxonomy
 │
 ├── crates/                            # ── RUST SYSTEMS LAYER ──
 │   │
 │   ├── kelir/                         # Facade crate: single Cargo dependency re-exporting kelir-core + feature-gated kelir-plugins/*
 │   │   ├── Cargo.toml
-│   │   ├── src/
-│   │   │   └── lib.rs                 # Re-export surface: kelir-core API (5 native planes) + optional feature-gated plugins
-│   │   └── tests/                     # Facade integration tests only (zero tests in src/)
+│   │   └── src/
+│   │       ├── lib.rs                 # Re-export surface: kelir-core API (5 native planes) + optional feature-gated plugins
+│   │       ├── builder.rs             # KelirBuilder typestate (Unsealed/Sealed), plugin/terminal/storage/wire registration
+│   │       ├── driver.rs              # Driver routing over kelir-interface VmmDriver
+│   │       ├── hlist.rs               # Heterogeneous plugin-context list
+│   │       ├── plugin.rs              # Facade plugin re-exports
+│   │       ├── protocol.rs            # Facade protocol re-exports
+│   │       ├── sandbox.rs             # Sandbox entrypoint
+│   │       ├── session.rs             # Session assembly from builder parts
+│   │       ├── telemetry.rs           # Facade telemetry re-exports
+│   │       ├── planes/
+│   │       │   ├── mod.rs
+│   │       │   ├── terminal.rs        # Terminal plane facade
+│   │       │   ├── storage.rs         # Storage plane facade
+│   │       │   └── wire.rs            # Wire plane facade
+│   │       └── plugins/
+│   │           ├── mod.rs
+│   │           ├── chaos.rs           # plugin-chaos facade
+│   │           ├── ledger.rs          # plugin-ledger facade
+│   │           ├── mesh.rs            # plugin-mesh facade
+│   │           ├── replay.rs          # plugin-replay facade
+│   │           └── supply_chain.rs    # plugin-supply-chain facade
+│   │   # No tests/ dir: zero Rust test files in this crate
 │   │
-│   ├── kelir-interface/               # Centralized leaf traits, wire framing, and context types (zero engine dependencies)
-│   │   ├── Cargo.toml                 # Dependencies: serde, ciborium, thiserror only
+│   ├── kelir-interface/               # Centralized leaf traits, wire framing, and context types
+│   │   ├── Cargo.toml                 # Dependencies: serde, blake3, ciborium, thiserror, async-trait, tokio
 │   │   └── src/
 │   │       ├── lib.rs                 # Re-exports all core contracts
 │   │       ├── plugin.rs              # KelirPlugin, MountScope, LifecycleCtx, PluginError
 │   │       ├── driver.rs              # VmmDriver, VmConfig, SnapshotDescriptor, WatchdogAction
 │   │       ├── protocol.rs            # MuxFrameHeader (stream_id, flags, len), TrapEvent, Verdict, GuestToHost, HostToGuest
-│   │       ├── telemetry.rs           # ExecutionReceipt, CausalDelta
-│   │   └── tests/
-│   │       ├── unit_codec.rs          # Isolated frame codec tests
-│   │       └── unit_traits.rs         # Trait contract verification
+│   │       ├── codec.rs               # Frame codec
+│   │       ├── credential.rs          # Credential descriptors
+│   │       ├── fusion.rs              # AOT hook-fusion descriptors
+│   │       ├── handlers.rs            # HandlerCtx constructors
+│   │       ├── handles.rs             # Session/VM handle types
+│   │       ├── vsock.rs               # Vsock addressing
+│   │       └── telemetry/
+│   │           ├── mod.rs
+│   │           ├── delta.rs           # CausalDelta
+│   │           └── receipt.rs         # ExecutionReceipt
+│   │   # No tests/ dir: zero Rust test files in this crate
 │   │
 │   ├── kelir-core/                    # In-process stripped microkernel
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs                 # Core initialization exports
 │   │       ├── planes/                # Core Foundation Planes (Merged Engine Subsystems)
-│   │       │   ├── terminal/          # Terminal Plane: virtio-console, VT100 grid, ANSI sanitizer, PTY discipline
-│   │       │   ├── storage/           # Storage Plane: virtio-fs, host CoW broker, reconciler, tombstones, synthetic inodes, flock broker
-│   │       │   ├── wire/              # Wire Plane: virtio-net, userspace smoltcp ingress ring, DNS policy filter + synthetic gateway, connection parking
-│   │       │   ├── host/              # Host Plane: eBPF/LSM hooks, cgroup v2 pressure, host keyring mediation
-│   │       │   └── checkpoint/        # Checkpoint Plane: Step verification loop, CoW diffs, hardware rollback
-│   │       ├── bus/                   # VirtIO Device Multiplexer (vsock, console, fs, net) over kelir-transport
-│   │       ├── dispatch.rs            # Static dispatch array & ArcSwap pipeline runner
-│   │       ├── vmm/                   # Driver orchestration
 │   │       │   ├── mod.rs
-│   │       │   └── router.rs          # Dynamic backend loader (rustvmm vs hvf)
-│   │       └── trap_gate.rs           # Filter-before-FFI trampoline & entropy analyzer
-│   │   └── tests/
-│   │       ├── unit_bus.rs            # Pure bus multiplexing tests
-│   │       ├── unit_dispatch.rs       # Static dispatch table tests
-│   │       └── unit_planes.rs         # Subsystem plane unit tests
+│   │       │   ├── terminal/mod.rs    # Terminal Plane: virtio-console, VT100 grid, ANSI sanitizer, PTY discipline
+│   │       │   ├── storage/           # Storage Plane: virtio-fs, host CoW broker, reconciler, tombstones, synthetic inodes, flock broker
+│   │       │   │   ├── mod.rs
+│   │       │   │   ├── fuse.rs
+│   │       │   │   ├── io.rs
+│   │       │   │   ├── lock_broker.rs
+│   │       │   │   ├── reconciler.rs
+│   │       │   │   └── synthetic.rs
+│   │       │   ├── wire/mod.rs        # Wire Plane: virtio-net, userspace smoltcp ingress ring, DNS policy filter + synthetic gateway, connection parking
+│   │       │   ├── host/mod.rs        # Host Plane: eBPF/LSM hooks, cgroup v2 pressure, host keyring mediation
+│   │       │   └── checkpoint/mod.rs  # Checkpoint Plane: Step verification loop, CoW diffs, hardware rollback
+│   │       ├── bus/mod.rs             # VirtIO Device Multiplexer (vsock, console, fs, net) over kelir-transport
+│   │       ├── dispatch.rs            # Static dispatch array & ArcSwap pipeline runner
+│   │       ├── plugin_registry.rs     # Plugin registration and ordering
+│   │       ├── session.rs             # Session lifecycle assembly
+│   │       ├── trap_gate.rs           # Filter-before-FFI trampoline & entropy analyzer
+│   │       ├── uart.rs                # Early-boot UART scrape
+│   │       └── vmm/mod.rs             # Driver orchestration
+│   │   # No tests/ dir: zero Rust test files in this crate
 │   │
 │   ├── kelir-transport/               # Supporting crate: Stream trait + SPSC ring, AF_VSOCK, named-pipe backends
+│   │   └── src/
+│   │       ├── lib.rs                 # Transport trait (read/write/flush)
+│   │       ├── spsc_ring.rs           # SpscRingTransport + OwnedSpscRing
+│   │       └── fallback.rs            # VsockFallbackTransport + NamedPipeFallbackTransport
 │   ├── kelir-catalog/                 # Supporting crate: SQLite schema, pool, migration helpers (used by core)
+│   │   └── src/
+│   │       ├── lib.rs                 # CatalogDb: open, register_session, lookup_session, disk_lock_handoff, heartbeat_lease
+│   │       └── schema.rs              # SessionRow, CasLease, IncarnationId
 │   ├── kelir-otlp/                    # Supporting crate: zero-allocation metric registry and OTLP exporter
+│   │   └── src/
+│   │       ├── lib.rs                 # OtlpExporter, OtlpEncoder, OtlpEndpoint, OtlpSpan
+│   │       └── registry.rs            # MetricRegistry + MetricSnapshot
 │   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
-│   │   ├── Cargo.toml                 # Depends on kelir-interface only
+│   │   ├── Cargo.toml                 # Depends on kelir-interface, async-trait, tokio, ciborium, serde, serde_json
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── mock_driver.rs         # MockVmmDriver: checkpoint, fork, rollback without RAM
 │   │       ├── mock_bus.rs            # MockBusDispatcher: records ring messages per plane
 │   │       ├── handlers.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
 │   │       ├── fixtures.rs            # Synthetic PTY streams, broker upper files, synthetic configs
-│   │       └── assertions.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
+│   │       ├── assertions.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
+│   │       └── vectors.rs             # vectors.json fixture loading
 │   │
 │   ├── kelir-testkit/                 # Test plan verification harness; manifest, anti-slop, scorecard
-│   │   ├── Cargo.toml                 # Depends on serde, serde_yaml, walkdir only
+│   │   ├── Cargo.toml                 # Depends on serde, serde_yaml, toml, walkdir
 │   │   └── src/
 │   │       └── bin/
 │   │           ├── check_manifest.rs  # Manifest-disk parity, law_reference and platform_target checks
@@ -91,92 +134,95 @@ kelir/
 │   │           └── scorecard.rs       # Scorecard generator and verification gate
 │   │
 │   ├── kelir-shim/                    # Guest Paravirtual Micro-Init (<50KB musl PID 1)
-│   │   ├── Cargo.toml                 # Zero third-party crates: libc only, lto = "fat", panic = "abort"
-│   │   ├── src/
-│   │   │   ├── codec.rs               # Raw slice bit-shift frame codec (zero serde/ciborium)
-│   │   │   ├── main.rs                # Guest PID 1 reaper & loop
-│   │   │   ├── multiplexer.rs         # Raw VirtIO stream multiplexer (Control 0x0000, stream mux 0x0001, transport port 5252 & virtio-ports; Transport backend)
-│   │   │   ├── pty.rs                 # openpty() line discipline broker for console ring
-│   │   │   └── trap.rs                # seccomp-unotify trap forwarder
-│   │   └── tests/
-│   │       ├── test_anti_toctou.rs    # Concurrent thread execution race
-│   │       └── test_reaper.rs         # Zombie reclamation under load
+│   │   ├── Cargo.toml                 # Dependencies: blake3, ciborium, kelir-interface, libc; release lto = "fat"
+│   │   └── src/
+│   │       ├── codec.rs               # Raw slice bit-shift frame codec (zero serde/ciborium)
+│   │       ├── introspect.rs          # Trap inspection for the seccomp notifier
+│   │       ├── main.rs                # Guest PID 1 reaper & loop
+│   │       ├── multiplexer.rs         # Raw VirtIO stream multiplexer (Control 0x0000, stream mux 0x0001, transport port 5252 & virtio-ports; Transport backend)
+│   │       ├── pty.rs                 # openpty() line discipline broker for console ring
+│   │       └── trap.rs                # seccomp-unotify trap forwarder
+│   │   # No tests/ dir: zero Rust test files in this crate
 │   │
 │   ├── kelir-drivers/                 # Pluggable Virtualization Implementations
 │   │   ├── driver-rustvmm/            # Bare-metal Linux KVM via kvm-ioctls (bans vmm-sys-util)
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # kvm-ioctls & userfaultfd CoW memory implementation
-│   │   │   └── tests/
-│   │   │       ├── test_cow_fork.rs   # KVM userfaultfd CoW fork in <15ms
-│   │   │       └── test_rollback.rs   # KVM rollback test
+│   │   │   └── src/lib.rs             # kvm-ioctls & userfaultfd CoW memory implementation
 │   │   ├── driver-hvf/                # Native macOS Apple Silicon HVF via raw Hypervisor.framework FFI
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/
+│   │   │       ├── lib.rs
+│   │   │       └── sys.rs             # Raw Hypervisor.framework bindings
 │   │   ├── driver-openvmm/            # Windows WHP + ConPTY (scoped strictly to windows-sys)
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/lib.rs             # Microsoft WHP & MSHV hypervisor implementation
 │   │   ├── driver-avf/                # Android Virtualization Framework via /dev/avf and pKVM
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/lib.rs
 │   │   ├── driver-bwrap/              # Unprivileged Linux user namespaces via libc (bans nix crate)
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/lib.rs             # Bubblewrap/user-namespace driver implementation
 │   │   └── driver-proot/              # Termux ptrace emulation; requires allow_emulated_fallback=true
+│   │       ├── Cargo.toml
+│   │       └── src/lib.rs
+│   │   # No tests/ dir in any driver: zero Rust test files in these crates
 │   │
 │   ├── kelir-plugins/                 # 13 Optional Domain Extensions (Zero Core Dependency Bleed)
 │   │   ├── plugin-chaos/              # Fault Injection Engine
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # Network jitter/drop & VFS ENOSPC simulation
-│   │   │   └── tests/test_chaos.rs
+│   │   │   └── src/lib.rs             # Network jitter/drop & VFS ENOSPC simulation
 │   │   ├── plugin-ledger/             # Compliance & Audit Trail
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/
-│   │   │   │   ├── lib.rs
-│   │   │   │   ├── wal.rs             # LedgerSink trait: OTLP default; LocalMerkleDbSink opt-in (ledger.merkle.enabled = true) + external delegation
-│   │   │   │   ├── otel.rs            # W3C traceparent context propagator
-│   │   │   │   └── compute.rs         # compute_causal_delta() — CausalDelta computation (struct lives in kelir-interface)
-│   │   │   └── tests/
-│   │   │       ├── test_merkle_wal.rs
-│   │   │       ├── test_causal_delta.rs
-│   │   │       └── test_otel.rs
+│   │   │   └── src/
+│   │   │       ├── lib.rs
+│   │   │       ├── wal.rs             # LedgerSink trait: OTLP default; LocalMerkleDbSink opt-in (ledger.merkle.enabled = true) + external delegation
+│   │   │       ├── otel.rs            # W3C traceparent context propagator
+│   │   │       └── compute.rs         # compute_causal_delta() — CausalDelta computation (struct lives in kelir-interface)
 │   │   ├── plugin-mcp/                # MCP stdio JSON-RPC ↔ VirtIO rings
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # Hooks: on_vm_ready, on_console_*, on_fs_*, on_trap, on_process_exit
-│   │   │   ├── tests/test_mcp_mapping.rs
-│   │   │   └── examples/mcp-stdio.rs
+│   │   │   └── src/lib.rs             # Hooks: on_vm_ready, on_console_*, on_fs_*, on_trap, on_process_exit
 │   │   ├── plugin-db-proxy/           # Agnostic DB mediation: pgwire (port 5432) & /run/kelir/db.sock vsock proxy
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # Verdict engine (Pass | Patch(PgFrame) | Drop | Suspend | Abort)
-│   │   │   └── tests/test_db_proxy.rs
+│   │   │   └── src/
+│   │   │       ├── lib.rs             # Verdict engine (Pass | Patch(PgFrame) | Drop | Suspend | Abort)
+│   │   │       └── pgwire.rs          # L7 pgwire parsing
 │   │   ├── plugin-mesh/               # Sovereign federation transport: peer vsock stream with mTLS framing
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # Cross-hypervisor traceparent & hop-count propagation
-│   │   │   └── tests/test_mesh.rs
+│   │   │   └── src/lib.rs             # Cross-hypervisor traceparent & hop-count propagation
 │   │   ├── plugin-supply-chain/       # Package guard: blocks dynamic lifecycle scripts in package manager trees
 │   │   │   ├── Cargo.toml
-│   │   │   │   ├── src/lib.rs             # Trap hook rejecting postinstall/setup.py via ancestor chain
-│   │   │   │   └── tests/test_supply_chain.rs
+│   │   │   └── src/lib.rs             # Trap hook rejecting postinstall/setup.py via ancestor chain
 │   │   ├── plugin-wire-ingress/       # Connection parking and wake-on-traffic L4/L7 proxy
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # socket2 buffer clamping, L4 stream forwarding (mux 0x0001, kind L4_FORWARD 0x0005), copy_bidirectional
-│   │   │   └── tests/test_parking.rs
+│   │   │   └── src/lib.rs             # socket2 buffer clamping, L4 stream forwarding (mux 0x0001, kind L4_FORWARD 0x0005), copy_bidirectional
 │   │   ├── plugin-profile/            # Declarative kelir.toml/kelir.yaml ingestion, inheritance, schema export
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # CompositePlugin flattening of profile declarations into child plugins
-│   │   │   └── tests/test_profile.rs
+│   │   │   └── src/lib.rs             # CompositePlugin flattening of profile declarations into child plugins
 │   │   ├── plugin-tool-guard/         # MCP tool-call interposition, schema pinning, veto rules on MCP port
 │   │   │   ├── Cargo.toml
-│   │   │   ├── src/lib.rs             # ToolInterposer: on_tool_list, on_tool_call, on_tool_result
-│   │   │   └── tests/test_tool_guard.rs
+│   │   │   └── src/
+│   │   │       ├── lib.rs             # ToolInterposer: on_tool_list, on_tool_call, on_tool_result
+│   │   │       ├── jsonrpc.rs         # JSON-RPC 2.0 parsing
+│   │   │       └── service.rs         # Tool-call interposition service
 │   │   ├── plugin-vault/              # Out-of-band credential broker, host keyring sole secret store, mlock zeroization on drop
 │   │   │   ├── Cargo.toml
-│   │   │   └── src/lib.rs
+│   │   │   └── src/
+│   │   │       ├── lib.rs
+│   │   │       └── service.rs         # Vault broker service
 │   │   ├── plugin-container/          # Rootless OCI container runner & cgroup v2 setup
 │   │   │   ├── Cargo.toml
-│   │   │   └── src/lib.rs
+│   │   │   └── src/
+│   │   │       ├── lib.rs
+│   │   │       └── service.rs         # Container runner service
 │   │   ├── plugin-replay/             # PMU instruction-stepped deterministic clock replay
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/lib.rs
 │   │   └── plugin-transaction/        # Multi-resource 2PC coordination aggregator
 │   │       ├── Cargo.toml
-│   │       ├── src/lib.rs             # TransactionService: scoped 2PC, savepoints, taint rollback
-│   │       └── tests/test_transaction.rs
+│   │       └── src/
+│   │           ├── lib.rs             # TransactionService: scoped 2PC, savepoints, taint rollback
+│   │           └── service.rs         # 2PC coordination service
+│   │   # No tests/ dir in any plugin: zero Rust test files in these crates
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
 │   │   ├── mcp-server/                # Model Context Protocol stdio terminal server
@@ -186,16 +232,24 @@ kelir/
 │   │       ├── Cargo.toml
 │   │       └── src/main.rs            # External CLI binary only
 │   │
-│   ├── kelir-integration/             # Cross-plugin integration tests (real hypervisor required)
-│   │   ├── Cargo.toml                 # Dev-depends on all plugins + one driver
-│   │   └── tests/
-│   │       ├── test_full_pipeline.rs
-│   │       └── test_fork_fanout.rs
+│   ├── kelir-integration/             # Cross-plugin integration surface (real hypervisor required)
+│   │   ├── Cargo.toml                 # Depends on kelir-core, kelir-interface, kelir (all-plugins)
+│   │   ├── src/lib.rs                 # Near-empty stub: see: pointer + L3 TODO only
+│   │   └── examples/
+│   │       ├── autonomous-swe-agent.rs
+│   │       ├── git-gate.rs
+│   │       ├── hook-matrix.rs
+│   │       ├── multi-vm-swarm.rs
+│   │       ├── policy-matrix.rs
+│   │       ├── profile.rs
+│   │       └── replay.rs
+│   │   # No tests/ dir: zero Rust test files in this crate
 │   │
 │   ├── kelir-plugin-cli/              # Plugin tooling: scaffold, check, vectors, parity diff
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── main.rs                # Subcommand dispatch
+│   │       ├── attach.rs              # Session attach
 │   │       ├── doctor.rs              # Consumer probes: KVM/HVF, kernel, EROFS
 │   │       ├── audit.rs               # Same audit as CI
 │   │       ├── vectors.rs             # Regenerate vectors.json from testkit fixtures
@@ -208,15 +262,22 @@ kelir/
 │   │       ├── scaffold.rs            # plugin new: scaffold crate, trait stubs, empty vectors
 │   │       ├── manifest.rs            # plugin manifest: auto-generated manifest from AST
 │   │       ├── rings.rs               # plugin rings --show: ring inventory and masks
+│   │       ├── graph.rs               # plugin graph: dependency DAG validation
+│   │       ├── parity.rs              # Parity runner: vectors + AST surface diff
 │   │       └── logs.rs                # kelir logs: tail session output with cursor replay
 │   │
 │   └── kelir-bindings/                # FFI Translation Layers
 │       ├── napi/                      # Rust -> Node.js NAPI-RS bridge
 │       │   ├── Cargo.toml
-│       │   └── src/lib.rs
+│       │   ├── build.rs
+│       │   └── src/
+│       │       ├── lib.rs
+│       │       └── fusion.rs          # Fused trampoline descriptor conversion
 │       └── pyo3/                      # Rust -> Python PyO3 bridge
 │           ├── Cargo.toml
-│           └── src/lib.rs
+│           └── src/
+│               ├── lib.rs
+│               └── fusion.rs          # Fused trampoline descriptor conversion
 │
 ├── packages/                          # ── LANGUAGE SDK DISTRIBUTION ──
 │   │
@@ -224,61 +285,74 @@ kelir/
 │   │   ├── core/                      # @kelir/core
 │   │   │   ├── package.json
 │   │   │   ├── tsconfig.json
-│   │   │   └── src/
-│   │   │       ├── index.ts           # kelir() builder entrypoint
-│   │   │       ├── context.ts         # Generic accumulation context engine
-│   │   │       ├── schema.ts          # TypeBox command validation wrappers
-│   │   │       └── binding.ts         # Auto-generated NAPI loader
-│   │   ├── plugins/                   # @kelir/plugin-* (1:1 with Rust crates)
-│   │   │   ├── wire-ingress/          # TS bindings for connection parking
-│   │   │   ├── chaos/                 # TS bindings for fault injection
-│   │   │   ├── ledger/                # TS bindings for OTLP + opt-in Merkle WAL audit ledger
-│   │   │   ├── mcp/                   # TS bindings for MCP stdio JSON-RPC console
-│   │   │   ├── db-proxy/              # TS bindings for pgwire + vsock DB mediation
-│   │   │   ├── mesh/                  # TS bindings for vsock federation transport
-│   │   │   ├── supply-chain/          # TS bindings for package lifecycle guard
-│   │   │   ├── profile/               # TS bindings for declarative profile ingestion
-│   │   │   ├── tool-guard/            # TS bindings for MCP tool-call interposition
-│   │   │   ├── vault/                 # TS bindings for out-of-band credential broker
-│   │   │   ├── container/             # TS bindings for rootless OCI container runner
-│   │   │   ├── replay/                # TS bindings for deterministic clock replay
-│   │   │   └── transaction/           # TS bindings for multi-resource 2PC coordination
+│   │   │   ├── src/
+│   │   │   │   ├── index.ts           # kelir() builder entrypoint
+│   │   │   │   ├── builder.ts         # KelirBuilder
+│   │   │   │   ├── context.ts         # Generic accumulation context engine
+│   │   │   │   ├── schema.ts          # TypeBox command validation wrappers
+│   │   │   │   ├── errors.ts          # SDK error types
+│   │   │   │   ├── fusion.ts          # AOT hook-fusion client
+│   │   │   │   ├── plugin.ts          # Plugin registration surface
+│   │   │   │   ├── plugins.ts         # Plugin bindings index (no per-plugin dirs)
+│   │   │   │   ├── sandbox.ts         # Sandbox entrypoint
+│   │   │   │   ├── session.ts         # Session handle
+│   │   │   │   ├── trap.ts            # Trap registration
+│   │   │   │   ├── types.ts           # Shared SDK types
+│   │   │   │   └── verdict.ts         # Verdict mapping
+│   │   │   └── examples/
+│   │   │       ├── autonomous-swe-agent.ts
+│   │   │       ├── hook-matrix.ts
+│   │   │       ├── policy-matrix.ts
+│   │   │       ├── serverless-webhook.ts
+│   │   │       └── node-shims.d.ts
 │   │   └── e2b-compat/                # @kelir/e2b-compat
+│   │       ├── package.json
+│   │       ├── tsconfig.json
 │   │       └── src/index.ts           # Drop-in replacement for @e2b/code-interpreter
+│   │   # No packages/ts/plugins/ dir: TS plugin bindings live in core/src/plugins.ts
+│   │   # No test files: zero *.test.ts in packages/ts
 │   │
 │   └── py/                            # Python Distribution (PyPI: kelir)
 │       ├── pyproject.toml
-│       └── kelir/
-│           ├── __init__.py            # Async builder interface
-│           ├── core.py                # PyO3 native binding wrapper
-│           ├── context.py             # Type-hinted context chain
-│           ├── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
-│           │   ├── wire_ingress.py    # Python bindings for connection parking
-│           │   ├── chaos.py           # Python bindings for the chaos plugin
-│           │   ├── ledger.py          # Python bindings for the ledger plugin (OTLP default, Merkle WAL opt-in)
-│           │   ├── mcp.py             # Python bindings for MCP stdio JSON-RPC console
-│           │   ├── db_proxy.py        # Python bindings for pgwire + vsock DB mediation
-│           │   ├── mesh.py            # Python bindings for vsock federation transport
-│           │   ├── supply_chain.py    # Python bindings for package lifecycle guard
-│           │   ├── profile.py         # Python bindings for declarative profile ingestion
-│           │   ├── tool_guard.py      # Python bindings for MCP tool-call interposition
-│           │   ├── vault.py           # Python bindings for out-of-band credential broker
-│           │   ├── container.py       # Python bindings for rootless OCI container runner
-│           │   ├── replay.py          # Python bindings for deterministic clock replay
-│           │   └── transaction.py     # Python bindings for multi-resource 2PC coordination
-│           └── compat/
-│               └── e2b.py             # Drop-in E2B Sandbox replacement class
-│
-├── tests/                             # ── VERIFICATION SUITES ──
-│   ├── fixtures/
-│   │   ├── kernel/                    # Per-arch vmlinux binaries (arm64 16K, x86_64 4K) — selected dynamically at boot
-│   │   ├── rootfs/                    # Build scripts generating minimal EROFS base images
-│   │   │   └── build-erofs.sh
-│   │   └── payloads/                  # Binaries with Shannon entropy >5.2 (shared: core trap tests)
-│   └── e2e/
-│       └── test_claude_code.ts        # End-to-end Claude Code session under PTY controls
+│       ├── kelir/
+│       │   ├── __init__.py            # Async builder interface
+│       │   ├── errors.py              # SDK error types
+│       │   ├── fusion.py              # AOT hook-fusion client
+│       │   ├── plugin.py              # Plugin registration surface
+│       │   ├── sandbox.py             # Sandbox entrypoint
+│       │   ├── planes/
+│       │   │   ├── __init__.py
+│       │   │   ├── storage.py
+│       │   │   ├── terminal.py
+│       │   │   └── wire.py
+│       │   ├── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
+│       │   │   ├── wire_ingress.py    # Python bindings for connection parking
+│       │   │   ├── chaos.py           # Python bindings for fault injection
+│       │   │   ├── ledger.py          # Python bindings for OTLP + opt-in Merkle WAL audit ledger
+│       │   │   ├── mcp.py             # Python bindings for MCP stdio JSON-RPC console
+│       │   │   ├── db_proxy.py        # Python bindings for pgwire + vsock DB mediation
+│       │   │   ├── mesh.py            # Python bindings for vsock federation transport
+│       │   │   ├── supply_chain.py    # Python bindings for package lifecycle guard
+│       │   │   ├── profile.py         # Python bindings for declarative profile ingestion
+│       │   │   ├── tool_guard.py      # Python bindings for MCP tool-call interposition
+│       │   │   ├── vault.py           # Python bindings for out-of-band credential broker
+│       │   │   ├── container.py       # Python bindings for rootless OCI container runner
+│       │   │   ├── replay.py          # Python bindings for deterministic clock replay
+│       │   │   └── transaction.py     # Python bindings for multi-resource 2PC coordination
+│       │   └── compat/
+│       │       ├── __init__.py
+│       │       └── e2b.py             # Drop-in E2B Sandbox replacement class
+│       ├── examples/
+│       │   ├── autonomous-swe-agent.py
+│       │   ├── container.py
+│       │   ├── db-backed-runtime.py
+│       │   ├── hook-matrix.py
+│       │   └── policy-matrix.py
+│       # No test files: zero test_*.py in packages/py
 │
 └── README.md                          # Quickstart, Invariants & Architecture Summary
+# No tests/ dir at repo root: zero Rust test files, zero test_hw_* files,
+# zero *.test.ts, zero test_*.py anywhere in the tree.
 
 ── KELIR-CLOUD (PRIVATE REPO) ──
 crates/kelir-ee-plugins/ (hyper-density, cas-snapshot, oci-translator, openshell-coordinator)

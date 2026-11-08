@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Hypervisor-hardware-boundary"
-  statement: "Driver rollback resets physical RAM and vCPU registers only (<8ms)."
+  statement: "Driver rollback resets physical RAM and vCPU registers only (<8ms). GAP: every driver rollback body is a TODO (L3) stub returning Err(VmmError::Unsupported) (e.g. crates/kelir-drivers/driver-rustvmm/src/lib.rs rollback), so the <8ms reset is asserted against the VmmDriver::rollback trait surface, not a working reset."
   blast_radius_if_breached: "Agent recovery stalls, breaking autonomous step gating deadlines and blowing latency budgets."
 
 confusion_matrix:
@@ -68,6 +68,6 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert!(rollback_result.is_ok());"
+    verification: "match rollback_result { Ok(()) => {}, Err(VmmError::Unsupported(msg)) => panic!(\"rollback unsupported by driver: {msg}\"), Err(e) => panic!(\"rollback failed: {e:?}\"), }"
   - rule: "AS-06"
     verification: "assert!(stopwatch.elapsed() < Duration::from_millis(8));"

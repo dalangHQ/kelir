@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Guest-VM-anatomy"
-  statement: "Session attestation token injected over paravirtual config device; workload verifies over vsock Channel 0."
+  statement: "Session attestation token injected over paravirtual config device; workload verifies over vsock Channel 0. Gap: no signature-verification method exists in-tree; AttestationToken carries session_token, vmlinux_blake3, and erofs_blake3 only (crates/kelir-interface/src/telemetry/receipt.rs), so verification is specified against cans/01-architecture.md#Guest-VM-anatomy, not a live method."
   blast_radius_if_breached: "Scripts run accidentally on bare-metal host instead of inside isolated microVM."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert_eq!(token.verify_sig(&host_pub_key), true); assert_eq!(token.session_id, active_session_id);"
+    verification: "assert_eq!(token.verify_sig(&host_pub_key), true); assert_eq!(token.session_token, active_session_id);"

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/transaction.md#Temporal-savepoints"
-  statement: "Injects transparent SQL SAVEPOINT; snapshots broker upper diffs; restores intermediate state without aborting parent."
+  statement: "Injects transparent SQL SAVEPOINT; snapshots broker upper diffs; restores intermediate state without aborting parent. Gap: the broker-upper snapshot and the ROLLBACK TO savepoint restore are L3 TODOs in TransactionService::rollback_to_savepoint, which returns Ok(()) without acting; only the SQL SAVEPOINT injection (inject_sql_savepoint) is live."
   blast_radius_if_breached: "Sub-step failure aborts the entire parent transaction, discarding all previous agent progress."
 
 confusion_matrix:

@@ -219,4 +219,41 @@ impl StoragePlane {
         self.io.punch_hole(&self.sparse_upper_path, 0, u64::MAX)?;
         self.io.advise_dontneed(&self.sparse_upper_path)
     }
+
+    // see: cans/05-storage-plane.md#Storage-quotas
+    pub fn allocated_bytes(&self) -> u64 {
+        self.quota.allocated_bytes.load(Ordering::SeqCst)
+    }
+
+    // see: cans/05-storage-plane.md#Storage-quotas
+    pub fn allocated_inodes(&self) -> u64 {
+        self.quota.allocated_inodes.load(Ordering::SeqCst)
+    }
+
+    // see: cans/05-storage-plane.md#Host-CoW-broker
+    pub fn tombstone_count(&self) -> usize {
+        self.tombstones.read().map(|guard| guard.len()).unwrap_or(0)
+    }
+
+    // see: cans/05-storage-plane.md#Host-CoW-broker
+    #[cfg(unix)]
+    pub fn sparse_upper_blocks(&self) -> u64 {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata(&self.sparse_upper_path)
+            .map(|metadata| metadata.blocks())
+            .unwrap_or(0)
+    }
+
+    // see: cans/05-storage-plane.md#Host-CoW-broker
+    #[cfg(not(unix))]
+    pub fn sparse_upper_blocks(&self) -> u64 {
+        0
+    }
+
+    // see: cans/05-storage-plane.md#Host-CoW-broker
+    pub fn sparse_upper_len(&self) -> u64 {
+        std::fs::metadata(&self.sparse_upper_path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0)
+    }
 }

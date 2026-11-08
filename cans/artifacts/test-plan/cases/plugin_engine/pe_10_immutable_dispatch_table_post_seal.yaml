@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "builder.boot(); attempt to dynamically register new hook on sealed session"
+  command: "session.seal_pipeline(); session.bind_plugin(&late_plugin)"
   input_params:
     action: "mutate_dispatch_table"
 
@@ -62,8 +62,8 @@ expected_observations:
     state_modified_field: false
   receipt:
     exit_kind: "HypervisorFault"
-    fault_reason: "ESealedSession"
+    fault_reason: "pipeline already sealed"
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert_matches!(register_err, Err(KelirError::SessionSealed)); assert_eq!(dispatch_table.is_immutable(), true);"
+    verification: "assert_matches!(register_err, Err(PluginError::Halt(msg)) if msg == \"pipeline already sealed\"); assert_eq!(session.pipeline().is_sealed(), true);"

@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.suspend(SuspendReason::External(1))"
+  command: "session.suspend(SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold))"
   input_params:
     target_rss_mb: 0
 

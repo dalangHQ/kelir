@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/12-adapters.md#Ingestion-matrix"
-  statement: "Single layer uncompressed extraction budget is capped at 8 GiB strictly (MAX_LAYER_BYTES: u64 = 8 * 1024 * 1024 * 1024 in crates/kelir-adapters/kelir-pack/src/main.rs); a layer past the ceiling aborts compilation with E_LAYER_OVERSIZE."
+  statement: "Single layer uncompressed extraction budget is capped at 8 GiB strictly (MAX_LAYER_BYTES: u64 = 8 * 1024 * 1024 * 1024 in crates/kelir-adapters/kelir-pack/src/main.rs); a layer past the ceiling aborts compilation with E_LAYER_OVERSIZE. Gap: the ceiling is never enforced; fetch_manifest and phase1_scan_headers are L3 TODOs returning Err(PackError::FetchPending / Phase1Pending), and no code path returns PackError::LayerOversize."
   blast_radius_if_breached: "One oversized layer fills the host disk and starves every other session's image pull."
 
 confusion_matrix:
@@ -68,4 +68,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-04B"
-    verification: "assert_matches!(run_pack(&args), Err(PackError::LayerOversize(_))); assert_eq!(output_exists('rootfs.erofs'), false);"
+    verification: "assert_matches!(run(args), Err(PackError::LayerOversize(_))); assert_eq!(output_exists('rootfs.erofs'), false);"

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)"
-  statement: "Slab saturation: shim returns MSG_EXEC_REJECT{ENOMEM} in-band; no queue growth; no PID 1 termination."
+  statement: "Slab saturation: shim returns MSG_EXEC_REJECT{ENOMEM} in-band; no queue growth; no PID 1 termination. Gap: the in-band MSG_EXEC_REJECT is a TODO (L3) in crates/kelir-shim/src/main.rs; the live saturation signal is ShimError::SlabSaturated from ExecSlotSlab::allocate."
   blast_radius_if_breached: "Process spawn bursts exhaust guest PID 1 memory, kernel panicking the microVM."
 
 confusion_matrix:
@@ -67,4 +67,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(resp, ShimResponse::ExecReject { reason: libc::ENOMEM }); assert!(session.is_alive());"
+    verification: "assert_matches!(exec_res, Err(ShimError::SlabSaturated));"

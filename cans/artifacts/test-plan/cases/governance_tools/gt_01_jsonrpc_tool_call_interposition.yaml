@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/tool-guard.md#Total-tool-call-interposition"
-  statement: "Intercepts JSON-RPC 2.0 frames on MCP_CONSOLE matching 'tools/call'; deserializes tool name and arguments in native memory."
+  statement: "Intercepts JSON-RPC 2.0 frames on MCP_CONSOLE matching 'tools/call'; deserializes tool name and arguments in native memory. Gap: McpFrame::decode is an L3 TODO stub returning the default frame (method Other, no tool name), so tools/call classification has no live surface; the guard_tool_call interposition path exists but cannot classify a frame yet."
   blast_radius_if_breached: "Unverified model tool calls execute directly against in-guest execution shims without policy checks."
 
 confusion_matrix:

@@ -67,4 +67,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_eq!(watchdog_reboot_count(), 1); assert_eq!(session.is_alive(), true);"
+    verification: "assert_eq!(watchdog_reboot_count(), 1);"

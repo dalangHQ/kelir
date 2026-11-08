@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "vr_15_owned_spsc_ring_capacity_accounting"
+title: "OwnedSpscRing construction reports exact capacity with zero used and full free on an empty ring"
+domain: "virtio_rings"
+target_tier: "unit"
+target_crate: "crates/kelir-transport"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Shared-memory-channel"
+  statement: "OwnedSpscRing::new(capacity) reports capacity() == capacity, transport().used() == 0 and transport().free() == capacity, and is_shared_backed() == false: an owned ring starts empty and host-private."
+  blast_radius_if_breached: "Ring accounting starts wrong, so a producer overwrites unread frames or a consumer reads uninitialized shared memory."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts capacity only and never checks used/free on the transport view."
+  anti_slop_mitigation: "AS-02 asserts capacity, used, and free together on the same ring; AS-06 forbids deriving expected counts from the ring itself."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_vr_15"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "OwnedSpscRing::new(4096); read capacity, transport used/free, and shared-backed flag"
+  input_params:
+    capacity: 4096
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "transport.ring"
+    culprit: "none — empty ring accounting"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "ring.created"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "let ring = OwnedSpscRing::new(4096); assert_eq!(ring.capacity(), 4096); assert_eq!(ring.transport().used(), 0); assert_eq!(ring.transport().free(), 4096); assert_eq!(ring.is_shared_backed(), false);"
+  - rule: "AS-06"
+    verification: "assert_eq!(ring.transport().used() + ring.transport().free(), 4096);"

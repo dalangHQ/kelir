@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Driver-backends"
-  statement: "CPUID synthetic filter: force standard invariant TSC and Leaf 0x1; TSC-deadline advertised unconditionally."
+  statement: "CPUID synthetic filter: force standard invariant TSC and Leaf 0x1; TSC-deadline advertised unconditionally. GAP: no filter_cpuid_leaf method exists — the real filter is the private RustVmmDriver::filter_synthetic_cpuid(vcpu_fd) (crates/kelir-drivers/driver-rustvmm/src/lib.rs), which takes a VcpuFd, not a leaf/vendor pair, so the leaf/vendor-arg call form is not a callable surface and the case asserts the observable guest CPUID result."
   blast_radius_if_breached: "Vendor-specific CPUID quirks cause guest kernel timer drift across mixed AMD/Intel clusters."
 
 confusion_matrix:
@@ -35,7 +35,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "driver.filter_cpuid_leaf(0x1, 'AuthenticAMD')"
+  command: "driver-rustvmm filter_synthetic_cpuid(vcpu_fd) normalizes CPUID leaf 0x1 for vendor AuthenticAMD"
   input_params:
     leaf: 1
     subleaf: 0

@@ -5,13 +5,13 @@ domain: "hypervisor_driver"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
 platform_target:
-  os: "any"
+  os: "linux"
   arch: "any"
   hypervisor: "none"
 
 invariant:
   law_reference: "cans/01-architecture.md#Host-memory-pressure-watcher"
-  statement: "Pressure signal inflates balloon; host madvise(MADV_DONTNEED) reclaims physical frames immediately."
+  statement: "Pressure signal inflates balloon; host madvise(MADV_DONTNEED) reclaims physical frames immediately. GAP: host-frame reclaim via madvise(MADV_DONTNEED) is a TODO (L3) in the host plane (crates/kelir-core/src/planes/host/mod.rs); the driver trait exposes adjust_balloon but no reclaim path runs yet."
   blast_radius_if_breached: "Host process runs out of memory under memory pressure, triggering host OS OOM killer."
 
 confusion_matrix:

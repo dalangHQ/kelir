@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/vault.md#Credential-types"
-  statement: "Signed request V4 (AWS SigV4, GCP SA JWT); broker synthesizes signed headers out-of-band."
+  statement: "Signed request V4 (AWS SigV4, GCP SA JWT); broker synthesizes signed headers out-of-band. Gap: no sign_request surface exists in the live tree; only the CredentialKind::SigV4 enum variant names the kind, so header synthesis is specified, not live."
   blast_radius_if_breached: "Workload requires long-lived AWS_SECRET_ACCESS_KEY in memory to sign requests."
 
 confusion_matrix:

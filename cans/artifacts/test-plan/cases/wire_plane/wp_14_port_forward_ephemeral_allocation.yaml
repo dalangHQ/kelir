@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Port-forwarding"
-  statement: "host_port = 0 binds ephemeral port 0; bound port returned immediately; zero collision probability."
+  statement: "host_port = 0 binds ephemeral port 0; bound port returned immediately; zero collision probability. GAP: WirePlane::forward_port (crates/kelir-core/src/planes/wire/mod.rs) is a stub that echoes the requested port (Ok(host_port.unwrap_or(guest_port))) with a TODO to bind a host socket, so no real ephemeral allocation happens yet and the >1024 assertion fails against the live tree."
   blast_radius_if_breached: "Parallel test suites conflict on hardcoded host listening ports."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.wire.forward_port(8080, 0)"
+  command: "session.wire.forward_port(8080, Some(0))"
   input_params:
     host_port: 0
 

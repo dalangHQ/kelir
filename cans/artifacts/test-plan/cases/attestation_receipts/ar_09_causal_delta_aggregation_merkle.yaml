@@ -16,8 +16,8 @@ invariant:
 
 confusion_matrix:
   quadrant: "true_positive"
-  slop_risk: "Agent asserts delta generated without checking that broker tombstone map matches delta.tombstones."
-  anti_slop_mitigation: "AS-05 asserts delta.tombstones exactly equals broker physical tombstone count."
+  slop_risk: "Agent asserts delta generated without checking that broker tombstone paths appear in delta.modified_inodes."
+  anti_slop_mitigation: "AS-05 asserts delta.modified_inodes covers the created and unlinked files, delta.spawned_pids holds the forked process, and delta.receipt_leaf_hash plus delta.storage_delta_root are non-zero, proving the delta carries chain identity."
 
 setup:
   env: "ci"
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-05"
-    verification: "assert_eq!(delta.added_files.len(), 1); assert_eq!(delta.tombstones.len(), 1); assert_eq!(delta.dirty_bytes, 1024);"
+    verification: "assert_eq!(delta.modified_inodes.len(), 2); assert_eq!(delta.spawned_pids.len(), 1); assert_ne!(delta.receipt_leaf_hash, [0u8; 32]); assert_ne!(delta.storage_delta_root, [0u8; 32]);"

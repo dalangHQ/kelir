@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Workspace-commit"
-  statement: "Fallback on EBUSY or EPERM: in-place write with 2000ms backoff."
+  statement: "Fallback on EBUSY or EPERM: in-place write with 2000ms backoff. Gap: Reconciler::reconcile orchestration and the retry loop are TODO (L3) in crates/kelir-core/src/planes/storage/reconciler.rs; the backoff is specified against cans/05-storage-plane.md#Workspace-commit, not a live retry path."
   blast_radius_if_breached: "Transient host locks (antivirus, indexers) cause commit failures and dropped work."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.storage.reconcile() on file locked by external host process for 100ms"
+  command: "session.storage.reconcile(FsReconcileRequest { cwd: \"/workspace\".to_string(), atomic_staging: true, fsync: true }) on file locked by external host process for 100ms"
   input_params:
     backoff_limit_ms: 2000
 

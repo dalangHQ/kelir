@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Fallback-policy"
-  statement: "Emulation tiers require explicit granular opt-in in DriverPolicy."
+  statement: "Emulation tiers require explicit granular opt-in in DriverPolicy. GAP: DriverRouter::load_native_driver is a TODO (L2) stub and no is_emulated() probe exists on any driver, so the emulated-boot path is asserted via the policy field only."
   blast_radius_if_breached: "Production systems accidentally deploy without hardware virtualization security boundaries."
 
 confusion_matrix:
@@ -35,7 +35,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "DriverRouter::boot() with driver-bwrap and allow_emulated_fallback=true"
+  command: "DriverRouter::load_native_driver(true, true) selects driver-bwrap with allow_emulated_fallback=true"
   input_params:
     backend: "driver-bwrap"
 
@@ -68,4 +68,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-07"
-    verification: "assert!(driver.is_emulated()); assert!(policy.allow_emulated_fallback);"
+    verification: "assert!(policy.allow_emulated_fallback);"

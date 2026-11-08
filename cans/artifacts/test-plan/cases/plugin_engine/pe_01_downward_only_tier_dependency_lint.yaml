@@ -11,13 +11,13 @@ platform_target:
 
 invariant:
   law_reference: "cans/02-plugin-model.md#Plugin-tiering"
-  statement: "Downward-only dependencies: higher tiers import lower-tier crates, never the reverse; Tier 1 direct core imports rejected."
+  statement: "Downward-only dependencies: higher tiers import lower-tier crates, never the reverse; Tier 1 direct core imports rejected. Gap: the live lint is kelir-plugin-cli layers::check() (kelir-plugin-cli check --layers), which scans source for forbidden crate prefixes (kelir_core:: / kelir_drivers::) only; no per-tier plugin-to-plugin rule exists, so a Tier 1 crate importing a Tier 3 plugin crate is not mechanically caught today."
   blast_radius_if_breached: "Architectural layering collapses, creating cyclic compilation dependencies and monolithic coupling."
 
 confusion_matrix:
   quadrant: "true_negative"
   slop_risk: "Agent disables cargo layer check lint to allow upward dependency to pass."
-  anti_slop_mitigation: "AS-01 enforces static Cargo.toml AST analysis banning higher-tier crate dependencies."
+  anti_slop_mitigation: "AS-01 runs layers::check() over the tree and asserts the Tier 1 to Tier 3 import is rejected."
 
 setup:
   env: "ci"
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "kelir_plugin_cli::check_layering('crates/kelir-plugins/plugin-mcp') with upstream dep on plugin-ledger (Tier 3)"
+  command: "kelir-plugin-cli check --layers with plugin-mcp (Tier 1) importing plugin-ledger (Tier 3)"
   input_params:
     target_tier: 1
     illegal_dep: "plugin-ledger"
@@ -63,8 +63,8 @@ expected_observations:
     state_modified_field: false
   receipt:
     exit_kind: "HypervisorFault"
-    fault_reason: "ELayeringViolation"
+    fault_reason: "layer violation"
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert_matches!(lint_res, Err(LintError::UpwardDependency { from_tier: 1, to_tier: 3 }));"
+    verification: "assert!(layers::check().unwrap_err().to_string().contains(\"layer violation\"));"

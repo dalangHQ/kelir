@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
-  statement: "Computes Shannon entropy of argv[1:]; flags values above 5.2 bits/char as encrypted or base64-obfuscated."
+  statement: "Computes Shannon entropy of argv[1:]; flags values above 5.2 bits/char as encrypted or base64-obfuscated. Gap: entropy evaluation is an L3 TODO in SupplyChainPlugin::flags_obfuscated_argv, which returns Ok(false), and the flag-to-verdict policy in on_trap is a further TODO; the 5.2 threshold exists only as the PackageGuardConfig default."
   blast_radius_if_breached: "Heavily obfuscated shellcode or payload payloads bypass static keyword inspection."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "supply_chain.evaluate_trap(&TrapEvent { argv: vec!['sh', '-c', obfuscated_argv] })"
+  command: "supply_chain.on_trap(&TrapEvent { argv: vec![\"sh\".into(), \"-c\".into(), obfuscated_argv], .. }, &ctx)"
   input_params:
     action: "entropy_check"
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-06"
-    verification: "assert!(calculated_entropy > 5.2); assert_matches!(verdict, Verdict::Drop { errno: Some(libc::EPERM), .. });"
+    verification: "assert!(calculated_entropy > 5.2); assert_matches!(verdict, Verdict::Drop { errno: Some(\"EPERM\".into()), .. });"

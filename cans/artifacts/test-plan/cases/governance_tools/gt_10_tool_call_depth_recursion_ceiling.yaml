@@ -1,6 +1,6 @@
 $schema: "test-plan/case/v1"
 case_id: "gt_10_tool_call_depth_recursion_ceiling"
-title: "Recursive tool call chain exceeding max_invocations_per_trace (50) aborts with ECYCLICREWRITE"
+title: "Recursive tool call chain exceeding max_invocations_per_trace (50) aborts with ETOOLQUOTA"
 domain: "governance_tools"
 target_tier: "unit"
 target_crate: "crates/kelir-plugins"
@@ -11,13 +11,13 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/tool-guard.md#Call-quota"
-  statement: "Call depth ceiling: max_invocations_per_trace (default: 50); infinite recursion rejects with ECYCLICREWRITE."
+  statement: "Call depth ceiling: max_invocations_per_trace (default: 50); the 51st invocation in a trace rejects with ETOOLQUOTA via charge_quota. ECYCLICREWRITE is reserved for cyclic-rewrite rejection, an L3 TODO in ToolGuardPlugin::evaluate_tool_call, not for the invocation-count ceiling."
   blast_radius_if_breached: "Infinite agent tool recursion loops consume infinite compute time and memory."
 
 confusion_matrix:
   quadrant: "true_negative"
   slop_risk: "Agent allows 51st tool call in same trace."
-  anti_slop_mitigation: "AS-03 asserts 51st call returns Err(ECYCLICREWRITE)."
+  anti_slop_mitigation: "AS-03 asserts 51st call returns Verdict::Drop with errno ETOOLQUOTA."
 
 setup:
   env: "ci"
@@ -62,8 +62,8 @@ expected_observations:
     state_modified_field: false
   receipt:
     exit_kind: "HypervisorFault"
-    fault_reason: "ECYCLICREWRITE"
+    fault_reason: "ETOOLQUOTA"
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(call_res, Err(ToolGuardError::RecursionCeilingExceeded));"
+    verification: "assert_matches!(call_verdict, Verdict::Drop { errno: Some(\"ETOOLQUOTA\".into()), .. });"

@@ -11,13 +11,13 @@ platform_target:
 
 invariant:
   law_reference: "cans/02-plugin-model.md#Plugin-tiering"
-  statement: "Plugins depend on kelir-interface and resolve peer capabilities via ServiceRegistry."
+  statement: "Plugins depend on kelir-interface and resolve peer capabilities via ServiceRegistry. Gap: no ServiceRegistry type exists in the live tree; peer capabilities resolve through the typed handler context (HandlerCtx::ctx::<T, _>(), e.g. ctx::<CredentialBrokerCtx, _>().broker()), as used by crates/kelir-integration/examples/autonomous-swe-agent.rs."
   blast_radius_if_breached: "Plugins tightly couple to peer concrete struct types, breaking modular distribution."
 
 confusion_matrix:
   quadrant: "true_positive"
   slop_risk: "Agent accesses peer plugin via unsafe static global variables."
-  anti_slop_mitigation: "AS-01 asserts resolution routes strictly through typed ServiceRegistry."
+  anti_slop_mitigation: "AS-01 asserts resolution routes strictly through the typed HandlerCtx (ctx::<T, _>()), never a global or concrete peer type."
 
 setup:
   env: "ci"
@@ -27,15 +27,15 @@ setup:
     agent_id: "agt_pe_14"
     trust: "reviewed"
   initial_state:
-    service_registered: "CredentialBrokerService"
+    service_registered: "CredentialBrokerCtx"
     tables: []
     vault_secrets: []
 
 execution:
   trigger: "rust_api"
-  command: "service_registry.resolve::<dyn CredentialBrokerService>()"
+  command: "ctx.ctx::<CredentialBrokerCtx, _>().broker()"
   input_params:
-    service: "CredentialBrokerService"
+    service: "CredentialBrokerCtx"
 
 expected_observations:
   exit_code: 0
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert!(service_registry.resolve::<dyn CredentialBrokerService>().is_some());"
+    verification: "assert!(ctx.ctx::<CredentialBrokerCtx, _>().broker().issue(&TokenRequest { name: \"openai_key\".into(), ttl_seconds: 60 }).await.is_ok());"

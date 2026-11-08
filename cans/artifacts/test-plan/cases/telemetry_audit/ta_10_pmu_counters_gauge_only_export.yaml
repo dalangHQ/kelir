@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/14-observability.md#PMU-counters-are-gauges-only"
-  statement: "PMU counters are gauges only; never enter receipts, CausalDelta, or Merkle leaves; never compared across hosts."
+  statement: "PMU counters are gauges only; never enter receipts, CausalDelta, or Merkle leaves; never compared across hosts. Gap: no PMU gauge export surface exists in kelir-otlp (zero gauge hits); the OtelConfig export_diagnostic_pmu_gauges flag is never consumed, so the gauge half is specified, not live. The receipt half is live: ExecutionReceipt carries no PMU fields."
   blast_radius_if_breached: "Deterministic receipts broken across machines due to CPU branch predictor or cache differences."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "ReceiptExporter::export_receipt(&receipt, &pmu_samples)"
+  command: "OtlpExporter::export_receipt(&receipt)"
   input_params:
     action: "export"
 

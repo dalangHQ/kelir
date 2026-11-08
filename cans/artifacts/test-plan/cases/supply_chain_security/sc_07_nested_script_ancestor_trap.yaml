@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/supply-chain.md#Error-and-return-semantics-(supply-chain)"
-  statement: "Nested npm->sh->node traps at the sh ancestor; prevents child payload execution."
+  statement: "Nested npm->sh->node traps at the sh ancestor; prevents child payload execution. Gap: ancestor trapping is an L3 TODO in SupplyChainPlugin::blocks_lifecycle_script (package-manager process-tree monitoring and nested npm->sh->node traps at the sh ancestor), which returns Ok(false) today."
   blast_radius_if_breached: "Attacker evades package guard by wrapping exploit scripts in shell subprocesses."
 
 confusion_matrix:

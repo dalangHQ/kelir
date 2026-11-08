@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "pm_13_vsock_fallback_connect_fails_closed"
+title: "VsockFallbackTransport connect to an unreachable CID fails closed with an io error and no leaked fd"
+domain: "protocol_mux"
+target_tier: "unit"
+target_crate: "crates/kelir-transport"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Transport-engine-abstraction"
+  statement: "VsockFallbackTransport::connect(VsockConfig) to an unreachable vsock address returns Err and holds no file descriptor: a failed fallback never leaves a half-open transport."
+  blast_radius_if_breached: "A failed vsock connect leaks its fd, so repeated reconnects exhaust host FDs and the mux silently reuses a dead socket."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts connect fails without checking that no fd was retained."
+  anti_slop_mitigation: "AS-02 asserts the error is an io error and the fd count is unchanged; AS-08 asserts zero leaked host FDs."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_pm_13"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "VsockFallbackTransport::connect(VsockConfig { address: VsockAddress { cid: 0xFFFFFFFF, port: 5252 } })"
+  input_params:
+    cid: 4294967295
+    port: 5252
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "transport.vsock"
+    culprit: "Vsock CID unreachable; no vsock device present"
+    remedy: "Use the shared-memory SPSC ring transport, or provision a vsock CID"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "transport.connect_failed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_CONNREFUSED"
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert!(VsockFallbackTransport::connect(config).is_err()); assert_eq!(open_fd_count_after(), open_fd_count_before());"
+  - rule: "AS-08"
+    verification: "assert_eq!(open_fd_count_after(), open_fd_count_before());"

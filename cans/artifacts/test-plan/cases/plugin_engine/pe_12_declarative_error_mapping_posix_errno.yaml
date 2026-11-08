@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/02-plugin-model.md#Declarative-error-mapping"
-  statement: "Host exceptions map directly to POSIX errnos via builder error registry; preserves guest POSIX semantics."
+  statement: "Host exceptions map directly to POSIX errnos via builder error registry; preserves guest POSIX semantics. Gap: no declarative error registry exists in the live tree and CustomPermissionError is named nowhere outside this case; the mapping is spec text only."
   blast_radius_if_breached: "Foreign runtime exceptions crash the supervisor or surface as unparseable strings to guest."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(verdict, Verdict::Drop { errno: Some(libc::EACCES), .. });"
+    verification: "assert_matches!(verdict, Verdict::Drop { errno: Some(\"EACCES\".into()), .. });"

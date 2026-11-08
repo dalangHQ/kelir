@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/02-plugin-model.md#Invariants-and-purity"
-  statement: "Overlapping mutators on identical operation targets fail validation at boot with EAmbiguousMutation."
+  statement: "Overlapping mutators on identical operation targets fail validation at boot with EAmbiguousMutation. Gap: no boot-time scope-conflict validation exists in the live tree; PluginError::AmbiguousMutation is defined in kelir-interface but no boot path constructs it."
   blast_radius_if_breached: "Race conditions determine which plugin rewrites file or network buffers, yielding non-deterministic mutations."
 
 confusion_matrix:
@@ -34,7 +34,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "builder.mount(plugin_1).mount(plugin_2).boot()"
+  command: "Session::boot_with_plugins(config, &[plugin_1, plugin_2])"
   input_params:
     action: "validate_scopes"
 
@@ -67,4 +67,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(boot_res, Err(KelirError::AmbiguousMutation { .. }));"
+    verification: "assert_matches!(boot_res, Err(PluginError::AmbiguousMutation { .. }));"

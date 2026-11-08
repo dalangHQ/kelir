@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/ledger.md#Host-isolated-by-construction"
-  statement: "Store path resolved relative to consumer CWD; guest paths rejected at plugin construction; default: .kelir/audit.merkle.db."
+  statement: "Store path resolved relative to consumer CWD; guest paths rejected at plugin construction; default: .kelir/audit.merkle.db. Gap: no guest-path validation exists in the live tree; LocalMerkleDbSink::new accepts any path and no LedgerError / GuestPathRejected type exists."
   blast_radius_if_breached: "Guest code writes to or overwrites the host audit ledger file."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "plugin_ledger.set_store_path('/workspace/audit.merkle.db')"
+  command: "LocalMerkleDbSink::new('/workspace/audit.merkle.db')"
   input_params:
     path: "/workspace/audit.merkle.db"
 

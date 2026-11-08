@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Multi-architecture-execution"
-  statement: "Rosetta directory mounted at /run/rosetta via read-only VirtIO-FS registers into binfmt_misc for x86_64 execution."
+  statement: "Rosetta directory mounted at /run/rosetta via read-only VirtIO-FS registers into binfmt_misc for x86_64 execution. GAP: no exists_in_guest helper exists in code, and shim-side binfmt_misc registration is unimplemented; the case asserts Rosetta translation via the x86_64 guest exec succeeding. GAP: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes session.spawn (crates/kelir/src/session.rs:56) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll, so this case asserts the spec-required behavior and fails against the live tree until exec is wired."
   blast_radius_if_breached: "x86_64 containers fail to run on Apple Silicon with ENOEXEC errors."
 
 confusion_matrix:
@@ -68,4 +68,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_eq!(receipt.exit_code, 0); assert!(fs::exists_in_guest('/proc/sys/fs/binfmt_misc/rosetta'));"
+    verification: "assert_eq!(receipt.exit_code, 0); assert!(guest_binfmt_has_rosetta());"

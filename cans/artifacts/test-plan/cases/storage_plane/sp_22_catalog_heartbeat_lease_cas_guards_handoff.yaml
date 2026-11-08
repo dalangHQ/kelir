@@ -1,0 +1,72 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_22_catalog_heartbeat_lease_cas_guards_handoff"
+title: "CatalogDb heartbeat_lease renews only the holder lease and disk_lock_handoff returns false on CAS mismatch"
+domain: "storage_plane"
+target_tier: "unit"
+target_crate: "crates/kelir-catalog"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/06-storage-catalog.md#Entity-model"
+  statement: "heartbeat_lease(session, holder, ttl) returns true only for the holding runner_pid, and disk_lock_handoff(session, stale_pid, ttl) returns false without moving the lock: the CAS-guarded WHERE clause never transfers a live lease."
+  blast_radius_if_breached: "A stale holder renews or steals a live lease, so two runtimes write the same disk image and corrupt the catalog."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts handoff succeeds without testing the stale-holder CAS mismatch path."
+  anti_slop_mitigation: "AS-02 asserts the stale handoff returns false and lookup_session still reports the original runner_pid; AS-03 forbids treating Ok(false) as success."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "catalog.writer"
+    agent_id: "agt_sp_22"
+    trust: "reviewed"
+  initial_state:
+    tables: ["sessions"]
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "CatalogDb::open(temp path); register_session(holder A); heartbeat_lease(A) true; disk_lock_handoff(stale B) false; lookup_session still reports A"
+  input_params:
+    holder_pid: 1001
+    stale_holder_pid: 1002
+    ttl_seconds: 30
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "catalog.cas_leases"
+    culprit: "CAS predicate mismatch: lock still held by the original holder"
+    remedy: "Retry handoff after the current holder releases or its 30s TTL expires"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "catalog.cas_mismatch"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(db.heartbeat_lease(&id, holder_a, 30)?, true); assert_eq!(db.disk_lock_handoff(&id, stale_b, 30)?, false); assert_eq!(db.lookup_session(&id)?.unwrap().runner_pid, holder_a);"
+  - rule: "AS-03"
+    verification: "assert_matches!(db.disk_lock_handoff(&id, stale_b, 30), Ok(false));"

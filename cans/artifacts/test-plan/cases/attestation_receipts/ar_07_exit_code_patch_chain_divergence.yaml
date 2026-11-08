@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/10-attestation.md#Receipt-accounting"
-  statement: "TrapEvent records original_binary_blake3; ExecutionReceipt records final_binary_blake3 and exit_code."
+  statement: "TrapEvent records original_binary_blake3; ExecutionReceipt records final_binary_blake3 and exit_code. Gap: the original_/final_ split is spec-only; live TrapEvent carries a single binary_blake3 field (crates/kelir-interface/src/protocol.rs) and ExecutionReceipt carries binary_blake3 (crates/kelir-interface/src/telemetry/receipt.rs)."
   blast_radius_if_breached: "Auditors cannot detect when tool-guard or security plugins rewrite untrusted binaries."
 
 confusion_matrix:

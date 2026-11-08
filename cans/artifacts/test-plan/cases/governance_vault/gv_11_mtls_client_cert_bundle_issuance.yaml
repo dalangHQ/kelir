@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/vault.md#Credential-types"
-  statement: "mTLS client cert (short-lived cert + key pair, PEM bundle); each type has declared issuer backend."
+  statement: "mTLS client cert (short-lived cert + key pair, PEM bundle); each type has declared issuer backend. Gap: no PEM bundle issuance surface exists in the live tree; only the CredentialKind::MtlsBundle enum variant names the kind, so issuance is specified, not live."
   blast_radius_if_breached: "Production private keys persist indefinitely in guest filesystem."
 
 confusion_matrix:

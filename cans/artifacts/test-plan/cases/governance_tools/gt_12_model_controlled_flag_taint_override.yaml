@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating"
-  statement: "Model-controlled flags cannot bypass approval gates; in-guest instructions cannot clear host-tracked taint flags."
+  statement: "Model-controlled flags cannot bypass approval gates; in-guest instructions cannot clear host-tracked taint flags. Gap: taint gating is an L3 TODO in ToolGuardPlugin::evaluate_tool_call, which returns Verdict::Pass without consulting taint; taint state tracking (ToolRegistry::mark_tainted/taint, ToolTaint::Tainted) exists, the gate does not."
   blast_radius_if_breached: "Prompt injection payloads trick model into setting `force=true` or `untaint=true` to bypass gates."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(verdict, Verdict::Suspend { .. }); assert_eq!(tool_guard.is_tainted(), true);"
+    verification: "assert_matches!(verdict, Verdict::Suspend { .. }); assert_matches!(registry.taint(\"write_file\"), Ok(ToolTaint::Tainted));"

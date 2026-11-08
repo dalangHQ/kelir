@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/ledger.md#Error-and-return-semantics-(ledger)"
-  statement: "Pure observer: never blocks inline execution; disk-full on WAL partition triggers Suspend(ResourcePressure)."
+  statement: "Pure observer: never blocks inline execution; disk-full on WAL partition triggers Session::suspend(SuspendReason::ResourcePressure). Gap: no ENOSPC-to-suspend wiring exists in the live tree and no LifecycleRequest type exists; LocalMerkleDbSink::emit_delta returns Err(PluginError::Halt) on append failure and Session::suspend is an L3 TODO returning Err."
   blast_radius_if_breached: "MicroVM continues mutating state while audit ledger fails silently to write records."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(session.state(), SessionState::Suspended(SuspendReason::ResourcePressure));"
+    verification: "assert_matches!(session.suspend(SuspendReason::ResourcePressure), Ok(()));"

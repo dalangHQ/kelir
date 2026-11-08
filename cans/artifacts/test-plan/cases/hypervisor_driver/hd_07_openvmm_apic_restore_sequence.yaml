@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Driver-backends"
-  statement: "Setting TSC deadlines before APIC initialization is prohibited; Local APIC state commits before TSC."
+  statement: "Setting TSC deadlines before APIC initialization is prohibited; Local APIC state commits before TSC. GAP: no restore_vcpu_registers or APIC/TSC-ordering verify method exists — the ordering lives only as a TODO (L3) comment in OpenVmmDriver::boot (crates/kelir-drivers/driver-openvmm/src/lib.rs), so the sequence is asserted as the spec-required behavior, not via a callable surface."
   blast_radius_if_breached: "vCPU registers fail to initialize on Windows WHP, wedging the guest kernel at restore."
 
 confusion_matrix:
@@ -35,7 +35,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "driver.restore_vcpu_registers(&snapshot)"
+  command: "driver.rollback(&snapshot) restores vCPU registers with Local APIC state committed before TSC deadline MSRs"
   input_params:
     verify_msr_ordering: true
 
@@ -68,4 +68,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert!(driver.verify_apic_committed_before_tsc());"
+    verification: "assert!(apic_committed_before_tsc());"

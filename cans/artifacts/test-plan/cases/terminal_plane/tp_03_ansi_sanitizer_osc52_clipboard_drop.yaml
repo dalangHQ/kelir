@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Host-filter-pipeline-execution-order"
-  statement: "ANSI strip drops OSC 52 (clipboard hijack) sequences before forwarding chunks to host terminal."
+  statement: "ANSI strip drops OSC 52 (clipboard hijack) sequences before forwarding chunks to host terminal. GAP: no sanitize_output surface exists — the real function is the private filter_ansi_shadow in crates/kelir-core/src/planes/terminal/mod.rs, currently an identity stub with a TODO (L3) — so the strip is asserted as the spec-required behavior."
   blast_radius_if_breached: "Malicious workload output overwrites the host operator's desktop clipboard."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "terminal_sanitizer.sanitize_output(malicious_stream)"
+  command: "filter_ansi_shadow(malicious_stream)"
   input_params:
     drop_osc52: true
 

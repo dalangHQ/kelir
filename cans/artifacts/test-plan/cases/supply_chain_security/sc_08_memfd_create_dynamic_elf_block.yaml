@@ -11,13 +11,13 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
-  statement: "In-memory elf loading through memfd_create aborts with E_WX_VIOLATION."
+  statement: "In-memory elf loading through memfd_create aborts with EWXVIOLATION."
   blast_radius_if_breached: "Fileless malware downloads ELF binaries into anonymous memory and executes them without disk trace."
 
 confusion_matrix:
   quadrant: "true_negative"
   slop_risk: "Agent asserts memfd_create succeeded without checking fexecve execution trap."
-  anti_slop_mitigation: "AS-03 asserts fexecve on memfd file descriptor halts with E_WX_VIOLATION."
+  anti_slop_mitigation: "AS-03 asserts fexecve on memfd file descriptor halts with EWXVIOLATION."
 
 setup:
   env: "ci"
@@ -62,8 +62,8 @@ expected_observations:
     state_modified_field: false
   receipt:
     exit_kind: "HypervisorFault"
-    fault_reason: "E_WX_VIOLATION"
+    fault_reason: "EWXVIOLATION"
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(receipt.fault_reason, Some(msg) if msg == 'E_WX_VIOLATION'); assert_eq!(receipt.exit_code, 137);"
+    verification: "assert_matches!(receipt.fault_reason, Some(msg) if msg == 'EWXVIOLATION'); assert_eq!(receipt.exit_code, 137);"

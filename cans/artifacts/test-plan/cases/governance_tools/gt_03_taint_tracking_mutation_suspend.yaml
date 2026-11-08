@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating"
-  statement: "Mutating tools under tainted state require Verdict::Suspend for approval; host approval binds to canonical payload hash."
+  statement: "Mutating tools under tainted state require Verdict::Suspend for approval; host approval binds to canonical payload hash. Gap: taint-gated approval is an L3 TODO in ToolGuardPlugin::evaluate_tool_call, which returns Verdict::Pass unconditionally today; taint state tracking (ToolRegistry::mark_tainted/taint) exists, the Suspend decision does not."
   blast_radius_if_breached: "Untrusted web payloads trick agent into mutating production files without human approval."
 
 confusion_matrix:

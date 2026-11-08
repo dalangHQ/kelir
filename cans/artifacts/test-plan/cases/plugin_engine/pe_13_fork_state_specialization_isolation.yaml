@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/02-plugin-model.md#KelirPlugin-trait"
-  statement: "fork_state() specializes child state; defaults to clone_box(); isolates plugin state per branch."
+  statement: "fork_state() specializes child state; defaults to clone_box(); isolates plugin state per branch. Gap: KelirPlugin::fork_state defaulting to clone_box() is live, but Session::fork is an L3 TODO returning Err(PluginError::Halt(\"TODO (L3): Session::fork\")), so the end-to-end fork path is specified, not live."
   blast_radius_if_breached: "Child microVM forks mutate parent plugin counters or caches, corrupting parent state."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.vm.fork(); child_plugin.increment_counter()"
+  command: "session.fork(); child_plugin.increment_counter()"
   input_params:
     action: "fork_and_mutate_plugin"
 

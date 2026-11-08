@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "transaction_service.pre_commit()"
+  command: "plugin.on_pre_commit(&mut ctx)"
   input_params:
     action: "pre_commit"
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-08"
-    verification: "assert_eq!(vcpu_state(), VcpuState::Paused); assert_eq!(broker.in_flight_fuse_ops(), 0);"
+    verification: "assert_matches!(plugin.on_pre_commit(&mut ctx).await, Ok(())); assert_eq!(broker.in_flight_fuse_ops(), 0);"

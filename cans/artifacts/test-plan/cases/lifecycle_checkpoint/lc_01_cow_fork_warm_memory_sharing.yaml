@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.vm.fork() invoked on parent holding 512MB loaded model"
+  command: "session.fork() invoked on parent holding 512MB loaded model"
   input_params:
     action: "fork"
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-02"
-    verification: "assert!(fork_duration < Duration::from_millis(10)); assert_eq!(child_session.dirty_bytes(), 0);"
+    verification: "assert!(fork_duration < Duration::from_millis(10)); assert_eq!(child_session.metrics().snapshot().dirty_pages, 0);"

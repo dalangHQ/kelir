@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Binary-exec-channel-(terminal-plane)"
-  statement: "stdout and stderr retain bitwise fidelity; zero terminal escape pollution; programmatic commands bypass PTY."
+  statement: "stdout and stderr retain bitwise fidelity; zero terminal escape pollution; programmatic commands bypass PTY. GAP: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes session.spawn (crates/kelir/src/session.rs:56) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll, so this case asserts the spec-required behavior and fails against the live tree until exec is wired."
   blast_radius_if_breached: "Downstream parsers fail on raw binary output due to ANSI color codes or CRLF line transformations."
 
 confusion_matrix:

@@ -5,7 +5,7 @@ plan:
   name: "kelir canonical test plan"
   structure_doc: "cans/artifacts/test-plan/test-plan-structure.md"
   matrix_doc: "cans/artifacts/test-plan/matrix.yaml"
-  total_cases: 218
+  total_cases: 240
   domains: 17
   crate_tier_convention:
     unit: "crates/kelir-core"
@@ -16,27 +16,27 @@ plan:
 domains:
   hypervisor_driver:
     prefix: "hd"
-    case_count: 18
+    case_count: 24
     description: "VmmDriver abstraction, KVM/HVF/WHP/AVF hardware virtualization, register/MMU rollback, CPUID synthetic filters, cold-boot budgets (<50ms)."
   virtio_rings:
     prefix: "vr"
-    case_count: 14
+    case_count: 15
     description: "Paravirtual VirtIO complex: SPSC shared memory rings, virtio-vsock, virtio-console, virtio-fs, virtio-net, virtio-rng, virtio-balloon."
   terminal_plane:
     prefix: "tp"
-    case_count: 14
+    case_count: 15
     description: "VirtIO-console Port 0 PTY, line discipline, token shield, ANSI sanitizer (OSC 52/title drops), EXEC stream mux, append-only cursor stream replay."
   storage_plane:
     prefix: "sp"
-    case_count: 20
+    case_count: 22
     description: "VirtIO-FS host CoW broker, sparse upper file, tombstone tracking, atomic leaf commit, containment engine (openat2), synthetic FUSE inodes, quotas."
   wire_plane:
     prefix: "wp"
-    case_count: 16
+    case_count: 17
     description: "Embedded smoltcp netstack, default-deny ingress, L4 diversion, DNS policy filter, synthetic gateway (192.168.127.1:53), UDP NAT slab reaper."
   lifecycle_checkpoint:
     prefix: "lc"
-    case_count: 22
+    case_count: 23
     description: "Hypervisor state machine, CoW fork (userfaultfd / Mach vm_copy), instant rollback (<8ms), suspend to NVMe (0MB RSS, <50ms), step evaluation loops."
   attestation_receipts:
     prefix: "ar"
@@ -44,11 +44,11 @@ domains:
     description: "Hardware attestation tokens, vmlinux/EROFS BLAKE3 hashing, ExecutionReceipt generation, CausalDelta diff aggregation, Class 1-3 provenance."
   protocol_mux:
     prefix: "pm"
-    case_count: 12
+    case_count: 14
     description: "Vsock port 5252, Control channel (0x0000), Stream Mux (0x0001), sub-lanes (EXEC, VFS, BULK), framing limits, window-update flow control."
   plugin_engine:
     prefix: "pe"
-    case_count: 14
+    case_count: 16
     description: "KelirPlugin trait, segregated ring traits, unified Verdict / FilterAction evaluation, static dispatch tables, filter-before-FFI gate (<2µs)."
   governance_vault:
     prefix: "gv"
@@ -56,7 +56,7 @@ domains:
     description: "plugin-vault, metadata service (169.254.169.254), host keyring mlock, scoped short-lived token issuance, audience locking, zeroization on drop."
   governance_tools:
     prefix: "gt"
-    case_count: 12
+    case_count: 14
     description: "plugin-tool-guard, plugin-mcp, JSON-RPC 2.0 tool-call interposition, taint tracking, immutable schema locking, call quota token buckets."
   supply_chain_security:
     prefix: "sc"
@@ -68,7 +68,7 @@ domains:
     description: "plugin-db-proxy, plugin-transaction, L7 pgwire parsing, SQLite UDS bridge, multi-resource 2PC commit/abort coordination."
   telemetry_audit:
     prefix: "ta"
-    case_count: 10
+    case_count: 12
     description: "plugin-ledger, Merkle WAL, RFC 6962 BLAKE3 leaf/node hashing, OTLP gRPC/HTTP streaming, W3C traceparent propagation."
   adapters_ingestion:
     prefix: "ad"
@@ -76,15 +76,15 @@ domains:
     description: "kelir-pack OCI to EROFS ingestion, containerd shim v2, MCP stdio bridge, OpenShell gRPC driver, E2B compat SDK wrapper."
   bindings_ts:
     prefix: "bt"
-    case_count: 3
+    case_count: 4
     description: "TypeScript SDK bindings parity: boot-time EConfig on missing TypeBox dependency, ./vectors.json frame/verdict equality, AOT hook fusion single FFI trampoline."
   bindings_py:
     prefix: "bp"
-    case_count: 3
+    case_count: 4
     description: "Python SDK bindings parity: boot-time EConfig on missing Pydantic v2 dependency, ./vectors.json frame/verdict equality, AOT hook fusion single FFI trampoline."
 
 cases:
-  # ── Domain 1: hypervisor_driver (hd) [18 cases] ───────────────
+  # ── Domain 1: hypervisor_driver (hd) [24 cases] ───────────────
   - case_id: "hd_01_nohardware_vmm_fatal_abort"
     file: "cases/hypervisor_driver/hd_01_nohardware_vmm_fatal_abort.yaml"
     domain: "hypervisor_driver"
@@ -211,8 +211,50 @@ cases:
     target_crate: "crates/kelir-core"
     quadrant: "true_positive"
     title: "macOS Rosetta runtime directory mounted via VirtIO-FS registers into guest binfmt_misc for x86_64 exec"
+  - case_id: "hd_19_rustvmm_driver_lazy_construction_no_kvm_open"
+    file: "cases/hypervisor_driver/hd_19_rustvmm_driver_lazy_construction_no_kvm_open.yaml"
+    domain: "hypervisor_driver"
+    target_tier: "unit"
+    target_crate: "crates/kelir-drivers/driver-rustvmm"
+    quadrant: "true_positive"
+    title: "RustVmmDriver construction on Linux succeeds without opening /dev/kvm; the KVM handle is acquired only at boot"
+  - case_id: "hd_20_bwrap_driver_rejects_construction_without_opt_in"
+    file: "cases/hypervisor_driver/hd_20_bwrap_driver_rejects_construction_without_opt_in.yaml"
+    domain: "hypervisor_driver"
+    target_tier: "unit"
+    target_crate: "crates/kelir-drivers/driver-bwrap"
+    quadrant: "true_negative"
+    title: "BwrapDriver construction fails with E_UNSUPPORTED when allow_emulated_fallback is false"
+  - case_id: "hd_21_proot_driver_rejects_construction_without_opt_in"
+    file: "cases/hypervisor_driver/hd_21_proot_driver_rejects_construction_without_opt_in.yaml"
+    domain: "hypervisor_driver"
+    target_tier: "unit"
+    target_crate: "crates/kelir-drivers/driver-proot"
+    quadrant: "true_negative"
+    title: "ProotDriver construction fails with E_UNSUPPORTED when allow_emulated_fallback is false"
+  - case_id: "hd_22_hvf_driver_lazy_construction_no_entitlement_touch"
+    file: "cases/hypervisor_driver/hd_22_hvf_driver_lazy_construction_no_entitlement_touch.yaml"
+    domain: "hypervisor_driver"
+    target_tier: "unit"
+    target_crate: "crates/kelir-drivers/driver-hvf"
+    quadrant: "true_positive"
+    title: "HvfDriver construction on macOS succeeds without touching Hypervisor.framework entitlements; vCPU slots start empty"
+  - case_id: "hd_23_avf_driver_lazy_construction_avf_fd_unset"
+    file: "cases/hypervisor_driver/hd_23_avf_driver_lazy_construction_avf_fd_unset.yaml"
+    domain: "hypervisor_driver"
+    target_tier: "unit"
+    target_crate: "crates/kelir-drivers/driver-avf"
+    quadrant: "true_positive"
+    title: "AvfDriver construction on Android succeeds with the AVF device fd unset (-1); /dev/avf is opened only at boot"
+  - case_id: "hd_24_openvmm_driver_lazy_construction_partition_unset"
+    file: "cases/hypervisor_driver/hd_24_openvmm_driver_lazy_construction_partition_unset.yaml"
+    domain: "hypervisor_driver"
+    target_tier: "unit"
+    target_crate: "crates/kelir-drivers/driver-openvmm"
+    quadrant: "true_positive"
+    title: "OpenVmmDriver construction on Windows succeeds with the partition handle unset (0); WHP is touched only at boot"
 
-  # ── Domain 2: virtio_rings (vr) [14 cases] ────────────────────
+  # ── Domain 2: virtio_rings (vr) [15 cases] ────────────────────
   - case_id: "vr_01_spsc_ring_lockfree_transit"
     file: "cases/virtio_rings/vr_01_spsc_ring_lockfree_transit.yaml"
     domain: "virtio_rings"
@@ -311,8 +353,15 @@ cases:
     target_crate: "crates/kelir-core"
     quadrant: "true_positive"
     title: "HostInterposer synchronous security evaluations complete strictly within the 2µs budget"
+  - case_id: "vr_15_owned_spsc_ring_capacity_accounting"
+    file: "cases/virtio_rings/vr_15_owned_spsc_ring_capacity_accounting.yaml"
+    domain: "virtio_rings"
+    target_tier: "unit"
+    target_crate: "crates/kelir-transport"
+    quadrant: "true_positive"
+    title: "OwnedSpscRing construction reports exact capacity with zero used and full free on an empty ring"
 
-  # ── Domain 3: terminal_plane (tp) [14 cases] ──────────────────
+  # ── Domain 3: terminal_plane (tp) [15 cases] ──────────────────
   - case_id: "tp_01_host_terminal_guard_raii_restore"
     file: "cases/terminal_plane/tp_01_host_terminal_guard_raii_restore.yaml"
     domain: "terminal_plane"
@@ -411,8 +460,15 @@ cases:
     target_crate: "crates/kelir-core"
     quadrant: "true_positive"
     title: "Terminal window resize payload rides EXEC control sub-lane 0x03, updating in-guest winsize instantly"
+  - case_id: "tp_15_shim_openpty_returns_distinct_master_slave"
+    file: "cases/terminal_plane/tp_15_shim_openpty_returns_distinct_master_slave.yaml"
+    domain: "terminal_plane"
+    target_tier: "unit"
+    target_crate: "crates/kelir-shim"
+    quadrant: "true_positive"
+    title: "kelir-shim open_pty_slave returns a distinct master/slave fd pair with bytes flowing master to slave"
 
-  # ── Domain 4: storage_plane (sp) [18 cases] ───────────────────
+  # ── Domain 4: storage_plane (sp) [22 cases] ───────────────────
   - case_id: "sp_01_host_cow_upper_discard_on_rollback"
     file: "cases/storage_plane/sp_01_host_cow_upper_discard_on_rollback.yaml"
     domain: "storage_plane"
@@ -553,8 +609,22 @@ cases:
     target_crate: "crates/kelir-core"
     quadrant: "true_positive"
     title: "A broker mutation invalidates the cached per-directory readdir merge so a build storm never reads stale entries"
+  - case_id: "sp_21_catalog_session_register_lookup_roundtrip"
+    file: "cases/storage_plane/sp_21_catalog_session_register_lookup_roundtrip.yaml"
+    domain: "storage_plane"
+    target_tier: "unit"
+    target_crate: "crates/kelir-catalog"
+    quadrant: "true_positive"
+    title: "CatalogDb register_session then lookup_session returns the identical session row; unknown id returns None"
+  - case_id: "sp_22_catalog_heartbeat_lease_cas_guards_handoff"
+    file: "cases/storage_plane/sp_22_catalog_heartbeat_lease_cas_guards_handoff.yaml"
+    domain: "storage_plane"
+    target_tier: "unit"
+    target_crate: "crates/kelir-catalog"
+    quadrant: "true_negative"
+    title: "CatalogDb heartbeat_lease renews only the holder lease and disk_lock_handoff returns false on CAS mismatch"
 
-  # ── Domain 5: wire_plane (wp) [16 cases] ──────────────────────
+  # ── Domain 5: wire_plane (wp) [17 cases] ──────────────────────
   - case_id: "wp_01_default_deny_ingress_drop"
     file: "cases/wire_plane/wp_01_default_deny_ingress_drop.yaml"
     domain: "wire_plane"
@@ -667,8 +737,15 @@ cases:
     target_crate: "crates/kelir-core"
     quadrant: "true_positive"
     title: "Port forward teardown sets SO_LINGER=0, forcing immediate TCP RST and releasing host port from TIME_WAIT"
+  - case_id: "wp_17_wire_ingress_park_connection_suspends_session"
+    file: "cases/wire_plane/wp_17_wire_ingress_park_connection_suspends_session.yaml"
+    domain: "wire_plane"
+    target_tier: "integration"
+    target_crate: "crates/kelir-plugins/plugin-wire-ingress"
+    quadrant: "true_positive"
+    title: "IngressRoutingService park_connection parks an L4 forward frame and reports Parked while the session suspends"
 
-  # ── Domain 6: lifecycle_checkpoint (lc) [20 cases] ────────────
+  # ── Domain 6: lifecycle_checkpoint (lc) [23 cases] ────────────
   - case_id: "lc_01_cow_fork_warm_memory_sharing"
     file: "cases/lifecycle_checkpoint/lc_01_cow_fork_warm_memory_sharing.yaml"
     domain: "lifecycle_checkpoint"
@@ -823,6 +900,13 @@ cases:
     target_crate: "crates/kelir-core"
     quadrant: "true_positive"
     title: "A concurrent catalog writer blocked on a SQLite WAL lock recovers within the 5000 ms busy timeout instead of surfacing SQLITE_BUSY"
+  - case_id: "lc_23_replay_deterministic_seed_reproduces_step_windows"
+    file: "cases/lifecycle_checkpoint/lc_23_replay_deterministic_seed_reproduces_step_windows.yaml"
+    domain: "lifecycle_checkpoint"
+    target_tier: "integration"
+    target_crate: "crates/kelir-plugins/plugin-replay"
+    quadrant: "true_positive"
+    title: "ReplayPlugin with a fixed deterministic RNG seed reproduces identical step windows across replays"
 
   # ── Domain 7: attestation_receipts (ar) [14 cases] ────────────
   - case_id: "ar_01_execution_receipt_blake3_binding"
@@ -924,7 +1008,7 @@ cases:
     quadrant: "true_positive"
     title: "Host measures EROFS rootfs BLAKE3 digest prior to vCPU launch and binds hash to attestation token"
 
-  # ── Domain 8: protocol_mux (pm) [12 cases] ────────────────────
+  # ── Domain 8: protocol_mux (pm) [14 cases] ────────────────────
   - case_id: "pm_01_control_channel_0_lifecycle_priority"
     file: "cases/protocol_mux/pm_01_control_channel_0_lifecycle_priority.yaml"
     domain: "protocol_mux"
@@ -1009,8 +1093,22 @@ cases:
     target_crate: "crates/kelir-core"
     quadrant: "true_negative"
     title: "Handshake with mismatched protocol version terminates session with E_INCOMPATIBLE_SHIM_VERSION"
+  - case_id: "pm_13_vsock_fallback_connect_fails_closed"
+    file: "cases/protocol_mux/pm_13_vsock_fallback_connect_fails_closed.yaml"
+    domain: "protocol_mux"
+    target_tier: "unit"
+    target_crate: "crates/kelir-transport"
+    quadrant: "true_negative"
+    title: "VsockFallbackTransport connect to an unreachable CID fails closed with an io error and no leaked fd"
+  - case_id: "pm_14_mesh_rejects_foreign_trust_domain_peer"
+    file: "cases/protocol_mux/pm_14_mesh_rejects_foreign_trust_domain_peer.yaml"
+    domain: "protocol_mux"
+    target_tier: "integration"
+    target_crate: "crates/kelir-plugins/plugin-mesh"
+    quadrant: "true_negative"
+    title: "MeshPlugin rejects a peer handshake from a foreign SPIFFE trust domain with ECONNREFUSED and records the rejection"
 
-  # ── Domain 9: plugin_engine (pe) [14 cases] ───────────────────
+  # ── Domain 9: plugin_engine (pe) [16 cases] ───────────────────
   - case_id: "pe_01_downward_only_tier_dependency_lint"
     file: "cases/plugin_engine/pe_01_downward_only_tier_dependency_lint.yaml"
     domain: "plugin_engine"
@@ -1109,6 +1207,20 @@ cases:
     target_crate: "crates/kelir-core"
     quadrant: "true_positive"
     title: "Tier 2 and Tier 3 plugins resolve peer services via ServiceRegistry without cyclic Cargo dependencies"
+  - case_id: "pe_15_interface_rejects_emulated_deterministic_clock"
+    file: "cases/plugin_engine/pe_15_interface_rejects_emulated_deterministic_clock.yaml"
+    domain: "plugin_engine"
+    target_tier: "unit"
+    target_crate: "crates/kelir-interface"
+    quadrant: "true_negative"
+    title: "reject_emulated_deterministic_clock refuses a deterministic clock on an emulated backend and allows it otherwise"
+  - case_id: "pe_16_chaos_rst_injection_drops_matching_frame"
+    file: "cases/plugin_engine/pe_16_chaos_rst_injection_drops_matching_frame.yaml"
+    domain: "plugin_engine"
+    target_tier: "integration"
+    target_crate: "crates/kelir-plugins/plugin-chaos"
+    quadrant: "true_negative"
+    title: "ChaosPlugin with an RST rule drops a matching outbound frame with FilterAction Drop errno ECONNREFUSED"
 
   # ── Domain 10: governance_vault (gv) [12 cases] ───────────────
   - case_id: "gv_01_metadata_service_scoped_token"
@@ -1196,7 +1308,7 @@ cases:
     quadrant: "true_positive"
     title: "Profiles referencing vault:// placeholders resolve to valid metadata paths at microVM boot"
 
-  # ── Domain 11: governance_tools (gt) [12 cases] ───────────────
+  # ── Domain 11: governance_tools (gt) [14 cases] ───────────────
   - case_id: "gt_01_jsonrpc_tool_call_interposition"
     file: "cases/governance_tools/gt_01_jsonrpc_tool_call_interposition.yaml"
     domain: "governance_tools"
@@ -1281,6 +1393,20 @@ cases:
     target_crate: "crates/kelir-plugins"
     quadrant: "true_negative"
     title: "In-guest instructions and model parameters cannot clear host-tracked taint flags"
+  - case_id: "gt_13_cli_doctor_reports_missing_kvm"
+    file: "cases/governance_tools/gt_13_cli_doctor_reports_missing_kvm.yaml"
+    domain: "governance_tools"
+    target_tier: "unit"
+    target_crate: "crates/kelir-plugin-cli"
+    quadrant: "true_negative"
+    title: "kelir-plugin-cli doctor probe_host reports the KVM probe failed and the host not ready without /dev/kvm"
+  - case_id: "gt_14_cli_fixtures_digest_mismatch_fails_closed"
+    file: "cases/governance_tools/gt_14_cli_fixtures_digest_mismatch_fails_closed.yaml"
+    domain: "governance_tools"
+    target_tier: "unit"
+    target_crate: "crates/kelir-plugin-cli"
+    quadrant: "true_negative"
+    title: "kelir-plugin-cli fixtures compare_digest returns DigestMismatch on a hash mismatch and never silently passes"
 
   # ── Domain 12: supply_chain_security (sc) [10 cases] ──────────
   - case_id: "sc_01_lifecycle_script_trap_exit126"
@@ -1440,7 +1566,7 @@ cases:
     quadrant: "true_positive"
     title: "Host SqlProxyService injects ephemeral database credentials at host boundary without guest exposure"
 
-  # ── Domain 14: telemetry_audit (ta) [10 cases] ────────────────
+  # ── Domain 14: telemetry_audit (ta) [12 cases] ────────────────
   - case_id: "ta_01_merkle_wal_rf_6962_blake3_chain"
     file: "cases/telemetry_audit/ta_01_merkle_wal_rf_6962_blake3_chain.yaml"
     domain: "telemetry_audit"
@@ -1511,6 +1637,20 @@ cases:
     target_crate: "crates/kelir-core"
     quadrant: "true_positive"
     title: "Hardware PMU counter samples emit exclusively as OTel gauges and never enter ExecutionReceipt identity"
+  - case_id: "ta_11_otlp_exporter_encodes_execution_receipt"
+    file: "cases/telemetry_audit/ta_11_otlp_exporter_encodes_execution_receipt.yaml"
+    domain: "telemetry_audit"
+    target_tier: "unit"
+    target_crate: "crates/kelir-otlp"
+    quadrant: "true_positive"
+    title: "OtlpExporter export_receipt encodes an ExecutionReceipt into OTLP bytes without touching local disk"
+  - case_id: "ta_12_otlp_metric_registry_snapshot_encodes"
+    file: "cases/telemetry_audit/ta_12_otlp_metric_registry_snapshot_encodes.yaml"
+    domain: "telemetry_audit"
+    target_tier: "unit"
+    target_crate: "crates/kelir-otlp"
+    quadrant: "true_positive"
+    title: "MetricRegistry counters snapshot exactly and OtlpEncoder encode_metrics emits non-empty OTLP bytes"
 
   # ── Domain 15: adapters_ingestion (ad) [12 cases] ───────────────
   - case_id: "ad_01_radix_layer_unpack_whiteout_merge"
@@ -1598,7 +1738,7 @@ cases:
     quadrant: "true_positive"
     title: "e2b-compat Sandbox create and close map to Kelir Session boot and stop with identical lifecycle semantics in TS and Python"
 
-  # ── Domain 16: bindings_ts (bt) [3 cases] ───────────────
+  # ── Domain 16: bindings_ts (bt) [4 cases] ───────────────
   - case_id: "bt_01_typescript_boot_econfig_missing_typebox_dependency"
     file: "cases/bindings_ts/bt_01_typescript_boot_econfig_missing_typebox_dependency.yaml"
     domain: "bindings_ts"
@@ -1620,8 +1760,15 @@ cases:
     target_crate: "packages/ts"
     quadrant: "true_positive"
     title: "AOT hook fusion collapses five chained TypeScript hooks into exactly 1 FFI trampoline crossing"
+  - case_id: "bt_04_napi_boot_before_fuse_hooks_fails_closed"
+    file: "cases/bindings_ts/bt_04_napi_boot_before_fuse_hooks_fails_closed.yaml"
+    domain: "bindings_ts"
+    target_tier: "unit"
+    target_crate: "crates/kelir-bindings/napi"
+    quadrant: "true_negative"
+    title: "NativeKelirBuilder boot without fuse_hooks fails closed instead of booting with an unfused trampoline table"
 
-  # ── Domain 17: bindings_py (bp) [3 cases] ───────────────
+  # ── Domain 17: bindings_py (bp) [4 cases] ───────────────
   - case_id: "bp_01_python_boot_econfig_missing_pydantic_dependency"
     file: "cases/bindings_py/bp_01_python_boot_econfig_missing_pydantic_dependency.yaml"
     domain: "bindings_py"
@@ -1643,3 +1790,10 @@ cases:
     target_crate: "packages/py"
     quadrant: "true_positive"
     title: "AOT hook fusion collapses five chained Python hooks into exactly 1 FFI trampoline crossing"
+  - case_id: "bp_04_pyo3_descriptor_without_rings_fails_closed"
+    file: "cases/bindings_py/bp_04_pyo3_descriptor_without_rings_fails_closed.yaml"
+    domain: "bindings_py"
+    target_tier: "unit"
+    target_crate: "crates/kelir-bindings/pyo3"
+    quadrant: "true_negative"
+    title: "PyO3 convert_descriptor rejects a fused trampoline descriptor with no rings list"

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Host-I/O-invariants"
-  statement: "Host FIFO and socket rejection: S_IFIFO and S_IFSOCK fail lookup with ENXIO."
+  statement: "Host FIFO and socket rejection: S_IFIFO and S_IFSOCK fail lookup with ENXIO. Gap: no S_IFIFO/S_IFSOCK lookup check exists in-tree (only the ENXIO string mapping in crates/kelir-core/src/planes/storage/fuse.rs); the rejection is specified against cans/05-storage-plane.md#Host-I/O-invariants, not a live lookup path."
   blast_radius_if_breached: "Guest hangs host ring threads by opening blocking host FIFOs or Unix domain sockets."
 
 confusion_matrix:

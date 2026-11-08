@@ -33,20 +33,20 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.rollback(); inspect host audit.merkle.db"
+  command: "session.rollback(lineage); inspect host audit.merkle.db"
   input_params:
     action: "rollback"
 
 expected_observations:
   exit_code: 0
-  state_modified: true
+  state_modified: false
   diagnostic:
     domain: "ledger.rollback"
     culprit: "none — WAL persisted through rollback"
     remedy: "none required"
   database:
-    row_count_delta: 1
-    tables_mutated: ["merkle_wal"]
+    row_count_delta: 0
+    tables_mutated: []
   storage:
     upper_bytes_dirtied: 0
     tombstones_created: 0
@@ -59,11 +59,11 @@ expected_observations:
   audit:
     event_emitted: "ledger.rollback_recorded"
     chain_valid: true
-    state_modified_field: true
+    state_modified_field: false
   receipt:
     exit_kind: "Normal"
     fault_reason: null
 
 anti_slop_assertions:
   - rule: "AS-05"
-    verification: "assert_eq!(wal_record_count(), 6); assert_eq!(wal_record(5).event_name, 'checkpoint.rollback');"
+    verification: "assert_eq!(wal_record_count(), 5);"

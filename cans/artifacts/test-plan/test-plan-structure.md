@@ -83,7 +83,7 @@ setup:
     vault_secrets: []
 
 execution:
-  trigger: "rust_api" | "vsock_frame" | "fuse_op" | "net_frame"
+  trigger: "rust_api" | "vsock_frame" | "fuse_op" | "net_frame" | "sdk"
   command: "<Action executed against microVM>"
   input_params: {}
 

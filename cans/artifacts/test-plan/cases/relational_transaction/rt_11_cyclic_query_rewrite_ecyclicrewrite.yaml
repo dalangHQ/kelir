@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/db-proxy.md#Error-and-return-semantics-(db-proxy)"
-  statement: "Each connection's rewrites tallied; >3 aborts ECYCLICREWRITE."
+  statement: "Each connection's rewrites tallied; >3 aborts ECYCLICREWRITE. Gap: the per-connection rewrite tally and ECYCLICREWRITE abort are an L3 TODO in DbProxyPlugin::handle_pgwire_frame, which returns FilterAction::Forward unconditionally; no DbProxyError type exists."
   blast_radius_if_breached: "Cyclic regex or schema rewrite rules loop infinitely, exhausting CPU."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(rewrite_res, Err(DbProxyError::CyclicRewrite));"
+    verification: "assert_eq!(fourth_rewrite_error(), \"ECYCLICREWRITE\");"

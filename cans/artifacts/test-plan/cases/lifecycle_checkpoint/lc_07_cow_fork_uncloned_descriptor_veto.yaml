@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/08-lifecycle.md#CoW-fork"
-  statement: "Plugins holding un-clonable host descriptors veto via VetoEvent::Fork; callback false -> ESessionVeto; no child VM."
+  statement: "Plugins holding un-clonable host descriptors veto via VetoEvent::Fork; callback false -> ESessionVeto; no child VM. Gap: Session::fork is a TODO (L3) in crates/kelir-core/src/session.rs and performs no veto check yet; the veto is specified against cans/08-lifecycle.md#CoW-fork, not a live fork path."
   blast_radius_if_breached: "Child microVM inherits unshareable host hardware state, leading to cross-session descriptor races."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.vm.fork() called while plugin registered veto callback returning false"
+  command: "session.fork() called while plugin registered veto callback returning false"
   input_params:
     action: "fork"
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(fork_res, Err(KelirError::SessionVeto)); assert_eq!(active_microvm_count(), 1);"
+    verification: "assert_matches!(fork_res, Err(PluginError::Halt(msg)) if msg.contains(\"ESessionVeto\")); assert_eq!(active_microvm_count(), 1);"

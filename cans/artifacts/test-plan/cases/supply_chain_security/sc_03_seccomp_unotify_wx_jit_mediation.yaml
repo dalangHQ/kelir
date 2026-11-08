@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
-  statement: "Dynamic W^X JIT mediation: traps in-guest seccomp-unotify events for mprotect(PROT_EXEC) and memfd_create."
+  statement: "Dynamic W^X JIT mediation: traps in-guest seccomp-unotify events for mprotect(PROT_EXEC) and memfd_create. Gap: the seccomp-unotify mask is an L3 TODO in SupplyChainPlugin::mediate_memory_syscall; the live surface is TrappedSyscall (mprotect_prot / memfd_create_flags) delivered via TrapInterposer::on_trap, with the JIT token channel on vsock port 5253."
   blast_radius_if_breached: "Guest processes alter memory page permissions to PROT_EXEC without hypervisor knowledge."
 
 confusion_matrix:

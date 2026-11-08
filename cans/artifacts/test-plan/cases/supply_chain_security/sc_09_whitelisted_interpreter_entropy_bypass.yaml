@@ -17,7 +17,7 @@ invariant:
 confusion_matrix:
   quadrant: "true_positive"
   slop_risk: "Agent blocks legitimate python -c 'import base64; ...' commands."
-  anti_slop_mitigation: "AS-06 asserts whitelisted binary path /usr/bin/python3 bypasses entropy rejection."
+  anti_slop_mitigation: "AS-06 asserts whitelisted binary path /usr/bin/python bypasses entropy rejection."
 
 setup:
   env: "ci"
@@ -33,9 +33,9 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "supply_chain.evaluate_trap(&TrapEvent { binary: '/usr/bin/python3', argv: vec!['python3', '-c', high_entropy_script] })"
+  command: "supply_chain.on_trap(&TrapEvent { binary_path: \"/usr/bin/python\", argv: vec![\"python\".into(), \"-c\".into(), high_entropy_script], .. }, &ctx)"
   input_params:
-    binary: "/usr/bin/python3"
+    binary: "/usr/bin/python"
 
 expected_observations:
   exit_code: 0

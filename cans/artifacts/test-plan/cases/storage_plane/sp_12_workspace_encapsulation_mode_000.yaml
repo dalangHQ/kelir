@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Encapsulation-invariant"
-  statement: "Host workspace is locked to mode 000 on host; native toolchains outside Kelir observe EACCES."
+  statement: "Host workspace is locked to mode 000 on host; native toolchains outside Kelir observe EACCES. Gap: no workspace_encapsulation enforcement exists in-tree (zero hits in crates/); the mode-000 lock is specified against cans/05-storage-plane.md#Encapsulation-invariant, not a live enforcement path."
   blast_radius_if_breached: "External host processes accidentally mutate workspace files concurrently during session execution."
 
 confusion_matrix:

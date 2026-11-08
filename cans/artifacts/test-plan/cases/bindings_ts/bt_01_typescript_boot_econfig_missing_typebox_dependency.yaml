@@ -32,7 +32,7 @@ setup:
     vault_secrets: []
 
 execution:
-  trigger: "rust_api"
+  trigger: "sdk"
   command: "kelir() builder.boot() with the TypeBox validator specifier unresolvable"
   input_params:
     missing_dependency: "typebox"

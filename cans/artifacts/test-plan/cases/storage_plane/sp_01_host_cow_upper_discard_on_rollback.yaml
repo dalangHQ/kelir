@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Host-CoW-broker"
-  statement: "Rollback: broker drops upper file and tombstones; FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED)."
+  statement: "Rollback: broker drops upper file and tombstones; FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED). Gap: StoragePlane::discard is a TODO (L3) in crates/kelir-core/src/planes/storage/mod.rs, so the drop is specified against cans/05-storage-plane.md#Host-CoW-broker, not a live discard path."
   blast_radius_if_breached: "State modifications leak across agent retry attempts, corrupting base workspace trees."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "Guest writes 10MB to README.md; session.rollback() invoked"
+  command: "Guest writes 10MB to README.md; session.rollback(lineage).await invoked"
   input_params:
     bytes_dirtied: 10485760
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-02"
-    verification: "assert_eq!(broker.upper_stat().st_blocks, 0); assert_eq!(broker.tombstone_count(), 0);"
+    verification: "assert_eq!(broker.sparse_upper_blocks(), 0); assert_eq!(broker.tombstone_count(), 0);"

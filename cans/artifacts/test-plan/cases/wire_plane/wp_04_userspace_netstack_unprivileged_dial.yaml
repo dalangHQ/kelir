@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert_eq!(caps::has_cap(None, caps::CapSet::Effective, caps::Capability::CAP_NET_ADMIN).unwrap(), false);"
+    verification: "assert_eq!(cap_net_admin_effective(), false);"

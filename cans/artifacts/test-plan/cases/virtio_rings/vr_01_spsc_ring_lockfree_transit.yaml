@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Shared-memory-channel"
-  statement: "Ring header uses AtomicU32 head and tail with single-producer single-consumer lock-free semantics."
+  statement: "Ring header uses AtomicU32 head and tail with single-producer single-consumer lock-free semantics. GAP: no push/pop and no is_lock_free/dropped_frames methods exist — SpscRingTransport::read/write are TODO (L3) stubs returning Err (crates/kelir-transport/src/spsc_ring.rs) — so frame transit is asserted via fresh-ring invariants (used/free/capacity) only."
   blast_radius_if_breached: "Ring contention stalls vCPU workers, destroying I/O throughput across channels."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert_eq!(ring.is_lock_free(), true); assert_eq!(ring.dropped_frames(), 0);"
+    verification: "assert_eq!(ring.used(), 0); assert_eq!(ring.free(), 4096);"

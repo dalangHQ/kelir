@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/14-observability.md#Metrics-pipeline"
-  statement: "Trace continuity across guest-originated requests via W3C traceparent; correlation ids stitch spans."
+  statement: "Trace continuity across guest-originated requests via W3C traceparent; correlation ids stitch spans. Gap: the propagate_w3c_traceparent flag exists on OtelConfig but is never consumed by any propagation code; TraceParent::parse_header / to_header exist, the injection into outbound requests does not."
   blast_radius_if_breached: "Distributed tracing breaks at the microVM hypervisor boundary, blinding telemetry pipelines."
 
 confusion_matrix:

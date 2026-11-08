@@ -331,10 +331,35 @@ impl Session {
         ))
     }
 
+    // see: cans/08-lifecycle.md#Pre-teardown-flush
+    pub fn stop_with_timeout(
+        &mut self,
+        timeout: std::time::Duration,
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
+        // TODO (L3): graceful driver terminate after MSG_SHUTDOWN_ACK or timeout expiry.
+        let _ = timeout;
+        Err(kelir_interface::plugin::PluginError::Halt(
+            "TODO (L3): Session::stop_with_timeout".into(),
+        ))
+    }
+
     pub fn kill(&mut self) -> Result<(), kelir_interface::plugin::PluginError> {
         // TODO (L3): hard driver terminate without drain.
         Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): Session::kill".into(),
+        ))
+    }
+
+    // see: cans/09-snapshots.md#Archives-and-portability
+    pub fn export_snapshot(
+        &mut self,
+    ) -> Result<
+        Box<dyn tokio::io::AsyncRead + Send + Sync + Unpin>,
+        kelir_interface::plugin::PluginError,
+    > {
+        // TODO (L3): stream the .kelir-snap archive from the driver.
+        Err(kelir_interface::plugin::PluginError::Halt(
+            "TODO (L3): Session::export_snapshot".into(),
         ))
     }
 }

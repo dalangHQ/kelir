@@ -10,8 +10,8 @@ platform_target:
   hypervisor: "none"
 
 invariant:
-  law_reference: "cans/07-wire-plane.md#Upstream-dial-transport"
-  statement: "Corporate egress works without guest cooperation; host netstack performs upstream handshake and splices bytes."
+  law_reference: "cans/07-wire-plane.md#Upstream-dial-transport-Dial-policy"
+  statement: "Corporate egress works without guest cooperation; host netstack performs upstream handshake and splices bytes. GAP: no upstream proxy-chain dial exists in WirePlane — zero proxy/CONNECT hits in crates/kelir-core/src/planes/wire/mod.rs — so the authenticated CONNECT handshake is asserted as the spec-required behavior (cans/07-wire-plane.md)."
   blast_radius_if_breached: "Corporate proxies block agent workloads due to missing credentials, or credentials leak to guest env."
 
 confusion_matrix:

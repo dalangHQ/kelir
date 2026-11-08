@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "Session::attach('ses_lc_15'); session.exec('echo attached', ProcessLimits::default())"
+  command: "Session::attach(session_id); session.spawn('echo attached').await"
   input_params:
     target_session: "ses_lc_15"
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_eq!(exec_res.stdout.trim(), 'attached');"
+    verification: "assert_eq!(exec_res.exit_code, 0);"

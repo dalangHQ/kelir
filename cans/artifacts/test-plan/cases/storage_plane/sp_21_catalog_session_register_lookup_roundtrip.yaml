@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_21_catalog_session_register_lookup_roundtrip"
+title: "CatalogDb register_session then lookup_session returns the identical session row; unknown id returns None"
+domain: "storage_plane"
+target_tier: "unit"
+target_crate: "crates/kelir-catalog"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/06-storage-catalog.md#Entity-model"
+  statement: "CatalogDb::open followed by register_session(row) then lookup_session(session_id) returns the same session_id, incarnation_id, lease_kind, and start_time_ns; lookup of an unregistered id returns None."
+  blast_radius_if_breached: "Session identity is not the SSOT: a lookup returns a different incarnation or a phantom row, so rollback and liveness act on the wrong session."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts lookup returns Some without comparing every field to the registered row."
+  anti_slop_mitigation: "AS-02 asserts field-by-field equality against the registered row and None for an unknown id; AS-06 forbids deriving expected values from lookup output."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "catalog.writer"
+    agent_id: "agt_sp_21"
+    trust: "reviewed"
+  initial_state:
+    tables: ["sessions"]
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "CatalogDb::open(temp path); register_session(ephemeral row); lookup_session(registered id); lookup_session(unknown id)"
+  input_params:
+    lease_kind: "ephemeral"
+    expires_at_unix: null
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "catalog.sessions"
+    culprit: "none — round-trip identity holds"
+    remedy: "none required"
+  database:
+    row_count_delta: 1
+    tables_mutated: ["sessions"]
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "catalog.session_registered"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "let found = db.lookup_session(&row.session_id)?.expect(\"registered row missing\"); assert_eq!(found.session_id, row.session_id); assert_eq!(found.incarnation_id, row.incarnation_id); assert_eq!(found.lease_kind, row.lease_kind); assert_eq!(db.lookup_session(&unknown_id)?, None);"

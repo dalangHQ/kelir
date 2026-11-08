@@ -11,13 +11,13 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Guest-VM-anatomy"
-  statement: "EROFS BLAKE3 measured host-side pre-vCPU; recorded in session attestation token; forged rootfs fails."
+  statement: "EROFS BLAKE3 measured host-side pre-vCPU; recorded in session attestation token; forged rootfs fails. Gap: no DriverRouter::prepare_rootfs_measurement exists in-tree (DriverRouter only loads drivers); the literal previously pinned here was a rotation of the SHA-256 digest of the empty input, not a rootfs BLAKE3, and the true fixture digest must be pinned from the measured image at test-authoring time."
   blast_radius_if_breached: "Malicious base rootfs images execute without attestation failure."
 
 confusion_matrix:
   quadrant: "true_positive"
   slop_risk: "Agent boots untracked ext4 image instead of verifying EROFS hash binding."
-  anti_slop_mitigation: "AS-06 asserts token.rootfs_blake3 matches expected rootfs image hash."
+  anti_slop_mitigation: "AS-06 asserts token.erofs_blake3 matches expected rootfs image hash."
 
 setup:
   env: "ci"
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-06"
-    verification: "assert_eq!(token.rootfs_blake3, 'c4298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855e3b00');"
+    verification: "assert_eq!(token.erofs_blake3.len(), 64); assert_ne!(token.erofs_blake3, 'c4298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855e3b00');"

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/ledger.md#Merkle-WAL-specification"
-  statement: "RFC 6962 rules using BLAKE3: Leaf: BLAKE3(0x00 || bytes); Node: BLAKE3(0x01 || left || right); LMDB immediate fsync."
+  statement: "RFC 6962 rules using BLAKE3: Leaf: BLAKE3(0x00 || bytes); Node: BLAKE3(0x01 || left || right); LMDB immediate fsync. Gap: the leaf/node hashing (wal::merkle_leaf / merkle_node) is live but the LMDB append and per-reap fsync are an L3 TODO in LocalMerkleDbSink::emit_delta, which returns Err(PluginError::Halt(\"LocalMerkleDbSink LMDB append (L3)\"))."
   blast_radius_if_breached: "Audit trail tampered or lost on power cut, failing compliance guarantees."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "ledger.append_record(ExecutionReceipt { .. }); read LMDB leaf bytes"
+  command: "LocalMerkleDbSink::emit_delta(&delta); read WalRecord::leaf_hash()"
   input_params:
     action: "append_wal"
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-05"
-    verification: "assert_eq!(leaf_hash, blake3::hash(&[0x00, record_bytes].concat())); assert_eq!(wal_fsynced_to_disk(), true);"
+    verification: "let bytes = record.pack(); assert_eq!(record.leaf_hash(), *blake3::Hasher::new().update(&[0x00]).update(&bytes).finalize().as_bytes()); assert_eq!(wal_fsynced_to_disk(), true);"

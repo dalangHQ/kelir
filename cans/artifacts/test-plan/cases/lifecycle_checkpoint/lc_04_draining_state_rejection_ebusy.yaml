@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/08-lifecycle.md#State-machine"
-  statement: "In Draining: new exec and tool calls are refused with EBUSY; in-flight commands run to completion."
+  statement: "In Draining: new exec and tool calls are refused with EBUSY; in-flight commands run to completion. Gap: Session::drain is a TODO (L3) in crates/kelir-core/src/session.rs; the EBUSY refusal is specified against cans/08-lifecycle.md#State-machine, not a live drain path."
   blast_radius_if_breached: "New workloads spawn during shutdown flush, causing partial work truncation or data loss."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.drain(5000); session.exec('echo new_task', ProcessLimits::default())"
+  command: "session.drain(5000); session.spawn('echo new_task').await"
   input_params:
     action: "drain"
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(new_exec_err, KelirError::Draining(libc::EBUSY)); assert_eq!(in_flight_task.await.unwrap().exit_code, 0);"
+    verification: "assert_matches!(new_exec_err, Err(PluginError::Halt(msg)) if msg.contains(\"EBUSY\")); assert_eq!(in_flight_task.await.unwrap().exit_code, 0);"

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Driver-backends"
-  statement: "driver-avf executes through Android Virtualization Framework via /dev/avf and pKVM memory donation."
+  statement: "driver-avf executes through Android Virtualization Framework via /dev/avf and pKVM memory donation. GAP: no typed PkvmDonationViolation variant exists — VmmError has only Unsupported, InvalidState, Io, ResourceExhausted; AvfDriver::boot is a TODO (L3) stub returning Unsupported and no map_guest_memory entry point exists (the trait method is map_shared_region), so the donation check is asserted via the receipt fault_reason only."
   blast_radius_if_breached: "Protected microVM accesses non-donated host pages, breaching Android pKVM isolation."
 
 confusion_matrix:
@@ -35,7 +35,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "driver.map_guest_memory(non_donated_host_addr, 4096)"
+  command: "driver.map_shared_region(\"guest-ram\", 4096) with a host range not donated to pKVM"
   input_params:
     donated_to_pkvm: false
 
@@ -68,4 +68,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert_matches!(res, Err(DriverError::PkvmDonationViolation));"
+    verification: "assert!(map_result.is_err()); assert_eq!(receipt.fault_reason, 'E_PKVM_NON_DONATED_MEMORY');"

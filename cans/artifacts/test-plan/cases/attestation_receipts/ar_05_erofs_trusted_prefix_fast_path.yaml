@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.exec('/usr/bin/env', ProcessLimits::default())"
+  command: "session.spawn('/usr/bin/env').await"
   input_params:
     path: "/usr/bin/env"
 

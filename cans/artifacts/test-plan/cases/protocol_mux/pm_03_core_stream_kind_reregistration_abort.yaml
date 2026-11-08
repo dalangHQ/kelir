@@ -11,13 +11,13 @@ platform_target:
 
 invariant:
   law_reference: "cans/11-protocol.md#Kind-registration"
-  statement: "Core kinds abort re-registration with EKindReserved; core kinds frozen (0x0001-0x000F)."
+  statement: "Core kinds abort re-registration with EKindReserved; core kinds frozen (0x0001-0x000F). Gap: register_stream_kind returns Self infallibly and the abort is a TODO (L3) in crates/kelir/src/builder.rs; the abort is specified against cans/11-protocol.md#Kind-registration, not a live check."
   blast_radius_if_breached: "Third-party plugin hijacks core execution stream kind, subverting process IO routing."
 
 confusion_matrix:
   quadrant: "true_negative"
   slop_risk: "Agent overwrites handler in hashmap without checking reserved range."
-  anti_slop_mitigation: "AS-03 asserts builder.register_stream_kind(0x0001, handler) returns Err(EKindReserved)."
+  anti_slop_mitigation: "AS-03 asserts re-registering core kind 0x0001 aborts with EKindReserved."
 
 setup:
   env: "ci"
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "builder.register_stream_kind(0x0001, Box::new(MockHandler))"
+  command: "builder.register_stream_kind(0x0001, serde_json::json!({}), handler)"
   input_params:
     stream_kind: 1
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(register_err, Err(KelirError::KindReserved(1)));"
+    verification: "assert_matches!(register_err, Err(PluginError::Halt(msg)) if msg.contains(\"EKindReserved\"));"

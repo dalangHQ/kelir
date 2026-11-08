@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/12-adapters.md#Ingestion-matrix"
-  statement: "Layer entry count is bounded to a ceiling of 500,000 inodes (MAX_INODES: u32 = 500_000 in crates/kelir-adapters/kelir-pack/src/main.rs); phase 1 RAM stays bounded and a layer past the ceiling aborts compilation with E_LAYER_OVERSIZE."
+  statement: "Layer entry count is bounded to a ceiling of 500,000 inodes (MAX_INODES: u32 = 500_000 in crates/kelir-adapters/kelir-pack/src/main.rs); phase 1 RAM stays bounded and a layer past the ceiling aborts compilation with E_LAYER_OVERSIZE. Gap: the ceiling is never enforced; fetch_manifest and phase1_scan_headers are L3 TODOs returning Err(PackError::FetchPending / Phase1Pending), and no code path returns PackError::LayerOversize."
   blast_radius_if_breached: "An inode-flood layer exhausts host RAM in the phase 1 radix tree and kills the supervisor."
 
 confusion_matrix:
@@ -68,4 +68,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-04B"
-    verification: "assert_matches!(run_pack(&args), Err(PackError::LayerOversize(_))); assert_eq!(output_exists('rootfs.erofs'), false);"
+    verification: "assert_matches!(run(args), Err(PackError::LayerOversize(_))); assert_eq!(output_exists('rootfs.erofs'), false);"

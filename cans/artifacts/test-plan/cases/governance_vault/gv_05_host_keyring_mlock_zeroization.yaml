@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/vault.md#Memory-isolation-and-zeroization"
-  statement: "Host keyring memory pinned with mlock(2); issued token buffers zeroized on drop; zero plaintext lingers."
+  statement: "Host keyring memory pinned with mlock(2); issued token buffers zeroized on drop; zero plaintext lingers. Gap: no SecretBuffer type, mlock call, or zeroize-on-drop surface exists in the live tree; keyring minting with zeroize-on-drop is an L3 TODO in CredentialBroker::issue, and issue() currently mints an empty token string."
   blast_radius_if_breached: "Host kernel swaps secret keys to unencrypted swap partition on disk."
 
 confusion_matrix:

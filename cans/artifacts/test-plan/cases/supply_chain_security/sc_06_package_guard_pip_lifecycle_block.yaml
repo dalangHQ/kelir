@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
-  statement: "Monitors package manager process trees; blocks execution of lifecycle scripts in dependency directories."
+  statement: "Monitors package manager process trees; blocks execution of lifecycle scripts in dependency directories. Gap: lifecycle-script detection is an L3 TODO in SupplyChainPlugin::blocks_lifecycle_script, which returns Ok(false); no Session::exec surface exists, the live entry is TrapInterposer::on_trap."
   blast_radius_if_breached: "Malicious Python wheels execute code on developer machine during `pip install`."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.exec('pip', ['install', 'malicious-wheel.whl']) which spawns setup.py build"
+  command: "SupplyChainPlugin::on_trap(&TrapEvent { binary_path: \"pip\", argv: vec![\"pip\".into(), \"install\".into(), \"malicious-wheel.whl\".into()], .. }, &ctx) which spawns setup.py build"
   input_params:
     manager: "pip"
 

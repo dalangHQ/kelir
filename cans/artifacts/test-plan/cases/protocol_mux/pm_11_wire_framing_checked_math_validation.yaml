@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/11-protocol.md#Wire-framing"
-  statement: "Frame-derived lengths evaluate via checked_* math; unchecked slice indexing is forbidden; clamp to MAX_FRAME_PAYLOAD."
+  statement: "Frame-derived lengths evaluate via checked_* math; unchecked slice indexing is forbidden; clamp to MAX_FRAME_PAYLOAD. Gap: WireFrameParser and FramingError do not exist in-tree; framing rules live in kelir-interface codec consts (crates/kelir-interface/src/codec.rs) and cans/artifacts/code/wire-protocol.rs, so the parser rejection is specified against cans/11-protocol.md#Wire-framing, not a live parser."
   blast_radius_if_breached: "Adversarial guest frame triggers integer overflow or buffer panics in host supervisor."
 
 confusion_matrix:

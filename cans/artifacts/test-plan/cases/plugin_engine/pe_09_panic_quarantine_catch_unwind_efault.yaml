@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(verdict, Verdict::Drop { errno: Some(libc::EFAULT), .. }); assert_eq!(supervisor_is_alive(), true);"
+    verification: "assert_matches!(verdict, Verdict::Drop { errno: Some(\"EFAULT\".into()), .. }); assert_eq!(supervisor_is_alive(), true);"

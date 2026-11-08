@@ -67,4 +67,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert_eq!(successor_task_running_with_reused_pid.is_alive(), true);"
+    verification: "assert_eq!(successor_task_running_with_reused_pid, true);"

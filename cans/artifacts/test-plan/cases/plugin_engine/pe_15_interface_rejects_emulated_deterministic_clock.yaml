@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_15_interface_rejects_emulated_deterministic_clock"
+title: "reject_emulated_deterministic_clock refuses a deterministic clock on an emulated backend and allows it otherwise"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-interface"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/replay.md#Invariants-and-policy-(replay)"
+  statement: "reject_emulated_deterministic_clock(backend, true) returns Err(VmmError::Unsupported) for an emulated backend, and Ok(()) when deterministic_clock is false: a user-namespace sandbox cannot intercept VDSO clock reads."
+  blast_radius_if_breached: "Deterministic replay is promised on an emulated backend, so replays diverge silently because guest clock reads were never intercepted."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts the call errors without checking the false-input path still returns Ok."
+  anti_slop_mitigation: "AS-03 mandates exact enum matching on VmmError::Unsupported; AS-02 asserts both input polarities."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_pe_15"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "reject_emulated_deterministic_clock(\"bwrap\", true) then reject_emulated_deterministic_clock(\"bwrap\", false)"
+  input_params:
+    backend: "bwrap"
+    deterministic_clock: true
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "interface.driver"
+    culprit: "Emulated backend cannot intercept VDSO clock reads for deterministic replay"
+    remedy: "Use a hardware-vmm driver for deterministic replay, or disable the deterministic clock"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "driver.deterministic_clock_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_UNSUPPORTED"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(reject_emulated_deterministic_clock(\"bwrap\", true), Err(VmmError::Unsupported(_))); assert_eq!(reject_emulated_deterministic_clock(\"bwrap\", false).is_ok(), true);"
+  - rule: "AS-02"
+    verification: "assert!(reject_emulated_deterministic_clock(\"bwrap\", true).is_err()); assert!(reject_emulated_deterministic_clock(\"bwrap\", false).is_ok());"

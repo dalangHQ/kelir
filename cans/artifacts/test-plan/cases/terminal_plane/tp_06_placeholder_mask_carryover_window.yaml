@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Host-filter-pipeline-execution-order"
-  statement: "Maintains MAX_PLACEHOLDER_LEN - 1 carryover window across chunk boundaries for masking."
+  statement: "Maintains MAX_PLACEHOLDER_LEN - 1 carryover window across chunk boundaries for masking. GAP: no masking_engine/process_chunk surface exists — the real hook is ConsoleInterposer::on_console_output(port, chunk) (crates/kelir-interface/src/plugin.rs:515) — and MAX_PLACEHOLDER_LEN has no numeric value anywhere in spec or artifacts, so the 16-byte window is the test's chosen value, not a spec value, and the carryover logic is unimplemented."
   blast_radius_if_breached: "Secret patterns split across 64KB chunk boundaries leak unredacted to model context."
 
 confusion_matrix:
@@ -35,7 +35,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "masking_engine.process_chunk(chunk_1); masking_engine.process_chunk(chunk_2)"
+  command: "interposer.on_console_output(port, chunk_1); interposer.on_console_output(port, chunk_2)"
   input_params:
     carryover_window: 16
 

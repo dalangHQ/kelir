@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/vault.md#Optional-external-egress-rewriting"
-  statement: "Sidecar process owns TLS termination and secret substitution; runs outside supervisor; supervisor memory never sees plaintext."
+  statement: "Sidecar process owns TLS termination and secret substitution; runs outside supervisor; supervisor memory never sees plaintext. Gap: no sidecar code exists in this tree; the external egress sidecar is an optional out-of-tree daemon per cans/plugins/vault.md, so this case is specified against the spec text, not a live surface."
   blast_radius_if_breached: "Supervisor process memory dump exposes raw enterprise API tokens."
 
 confusion_matrix:

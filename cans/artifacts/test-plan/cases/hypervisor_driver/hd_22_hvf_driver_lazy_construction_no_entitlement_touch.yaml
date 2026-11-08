@@ -1,0 +1,72 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_22_hvf_driver_lazy_construction_no_entitlement_touch"
+title: "HvfDriver construction on macOS succeeds without touching Hypervisor.framework entitlements; vCPU slots start empty"
+domain: "hypervisor_driver"
+target_tier: "unit"
+target_crate: "crates/kelir-drivers/driver-hvf"
+platform_target:
+  os: "macos"
+  arch: "aarch64"
+  hypervisor: "hvf"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Driver-backends"
+  statement: "HvfDriver::new() is lazy: it returns an Unbooted driver with an empty vCPU list and zero memory mapped, acquiring no Hypervisor.framework entitlement at construction."
+  blast_radius_if_breached: "Driver construction acquires hypervisor entitlements eagerly, failing on hosts where entitlements are granted only at boot time."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts new() succeeds without checking the driver starts with zero vCPUs and zero mapped bytes."
+  anti_slop_mitigation: "AS-02 asserts the constructed driver reports zero vCPUs and zero memory mapped; AS-08 asserts zero leaked host handles."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "kernel.supervisor"
+    agent_id: "agt_hd_22"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "hvf"
+      allow_emulated_fallback: false
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "HvfDriver::new() on a macOS Apple Silicon host"
+  input_params: {}
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "driver.hvf"
+    culprit: "none — lazy construction"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "driver.constructed"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert!(HvfDriver::new().is_ok()); assert_eq!(driver_state(), DriverState::Unbooted);"
+  - rule: "AS-08"
+    verification: "assert_eq!(open_fd_count_after(), open_fd_count_before());"

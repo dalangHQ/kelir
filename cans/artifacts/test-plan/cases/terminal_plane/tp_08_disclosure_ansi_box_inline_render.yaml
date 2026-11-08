@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Disclosure"
-  statement: "Injects formatted ANSI box into Port 0 stream; renders inline without corrupting cursor state."
+  statement: "Injects formatted ANSI box into Port 0 stream; renders inline without corrupting cursor state. GAP: no TerminalNotice type and no publish_notice method exist in code — EventBusBinder (crates/kelir-interface/src/plugin.rs:438) exposes no publish surface — so the disclosure is asserted as the spec-required behavior, not via a callable surface."
   blast_radius_if_breached: "Host notices overwrite active command input line or corrupt curses-based terminal state."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "terminal_plane.publish_notice('Host policy altered network egress')"
+  command: "Host policy mutation publishes a disclosure notice into the Port 0 stream"
   input_params:
     box_style: "single_line"
 

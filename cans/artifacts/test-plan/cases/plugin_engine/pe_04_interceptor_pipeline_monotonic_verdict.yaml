@@ -34,7 +34,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "PipelineEngine::evaluate_trap(&event)"
+  command: "engine.dispatch_host_lsm_exec(&path, pid)"
   input_params:
     action: "evaluate_pipeline"
 
@@ -67,4 +67,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(final_verdict, Verdict::Drop { errno: Some(libc::EPERM), .. }); assert_eq!(stage_2_evaluated, false);"
+    verification: "assert_matches!(final_verdict, Verdict::Drop { errno: Some(\"EPERM\".into()), .. }); assert_eq!(stage_2_evaluated, false);"

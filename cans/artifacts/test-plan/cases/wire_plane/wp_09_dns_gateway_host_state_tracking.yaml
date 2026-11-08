@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Synthetic-DNS-gateway"
-  statement: "Linux: /etc/resolv.conf watched via inotify; nameservers reloaded on change without VM restart."
+  statement: "Linux: /etc/resolv.conf watched via inotify; nameservers reloaded on change without VM restart. GAP: no inotify/resolv.conf watcher and no active_upstreams method exist in code — WirePlane exposes only resolve_synthetic_dns, itself a TODO (L3) stub — so dynamic nameserver reload is asserted as the spec-required behavior."
   blast_radius_if_breached: "VPN connect/disconnect on host wedges guest DNS resolution until microVM reboot."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-02"
-    verification: "assert_eq!(dns_gateway.active_upstreams(), vec![IpAddr::from([10, 0, 0, 2])]);"
+    verification: "assert_eq!(active_upstreams(), vec![IpAddr::from([10, 0, 0, 2])]);"

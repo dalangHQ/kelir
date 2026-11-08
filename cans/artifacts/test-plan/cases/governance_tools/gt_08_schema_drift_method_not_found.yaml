@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/tool-guard.md#Error-and-return-semantics-(tool-guard)"
-  statement: "Schema drift or unpinned tool tampering returns -32601 (Method not found) + VM Security Panic."
+  statement: "Schema drift or unpinned tool tampering returns -32601 (Method not found) + VM Security Panic. Gap: JSON-RPC error synthesis is an L3 TODO; the live guard returns Verdict::Drop with errno EPERM for a tool not pinned in the locked catalog, and no -32601 error object is synthesized."
   blast_radius_if_breached: "Adversarial prompts invoke undeclared or unpinned model tool functions."
 
 confusion_matrix:

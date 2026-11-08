@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/transaction.md#Side-effect-quarantine"
-  statement: "Un-rollbackable L7 egress during active transaction aborts with E_TRANSACTION_TAINT."
+  statement: "Un-rollbackable L7 egress during active transaction aborts with E_TRANSACTION_TAINT. Gap: no TransactionState type exists and E_TRANSACTION_TAINT appears only in a TODO comment in TransactionService::abort; the taint abort is unimplemented."
   blast_radius_if_breached: "External webhooks execute during uncommitted transactions, causing irreversible remote side-effects."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert_eq!(wire_dropped_frame_count(), 1); assert_matches!(tx_state, TransactionState::Tainted);"
+    verification: "assert_eq!(wire_dropped_frame_count(), 1);"

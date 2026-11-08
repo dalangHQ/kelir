@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/tool-guard.md#Call-quota"
-  statement: "Each tool gets token-bucket governor; retries exceeding quota reject immediately with ETOOLQUOTA."
+  statement: "Each tool gets token-bucket governor; retries exceeding quota reject immediately with ETOOLQUOTA. Gap: the token-bucket cadence clamp is an L3 TODO in ToolGuardPlugin::charge_quota; the live rejection is the per-trace invocation-count quota (max_invocations_per_trace, default 50) returning Verdict::Drop with errno ETOOLQUOTA."
   blast_radius_if_breached: "Infinite loops in model tool calls exhaust API credits or freeze the runner."
 
 confusion_matrix:
@@ -67,4 +67,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(sixth_call_verdict, Verdict::Drop { errno: Some(libc::EDQUOT), .. });"
+    verification: "assert_matches!(sixth_call_verdict, Verdict::Drop { errno: Some(\"ETOOLQUOTA\".into()), .. });"

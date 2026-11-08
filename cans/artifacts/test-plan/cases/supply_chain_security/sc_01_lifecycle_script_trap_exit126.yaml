@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)"
-  statement: "Blocks execution of lifecycle scripts in dependency directories; lifecycle-script deny -> exit 126 (permission denied)."
+  statement: "Blocks execution of lifecycle scripts in dependency directories; lifecycle-script deny -> exit 126 (permission denied). Gap: lifecycle-script detection is an L3 TODO in SupplyChainPlugin::blocks_lifecycle_script, which returns Ok(false); no Session::exec surface exists, the live entry is TrapInterposer::on_trap."
   blast_radius_if_breached: "Compromised npm/pip packages execute arbitrary host shellcode during dependency installation."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "session.exec('sh', ['node_modules/malicious-pkg/postinstall.sh'])"
+  command: "SupplyChainPlugin::on_trap(&TrapEvent { binary_path: \"node_modules/malicious-pkg/postinstall.sh\", argv: vec![\"sh\".into(), \"node_modules/malicious-pkg/postinstall.sh\".into()], .. }, &ctx)"
   input_params:
     script_path: "node_modules/malicious-pkg/postinstall.sh"
 

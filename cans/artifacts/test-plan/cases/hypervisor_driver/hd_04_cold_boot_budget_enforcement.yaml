@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Boot-budget"
-  statement: "Cold boot reaches first workload exec in <50ms without ACPI and PCI probing."
+  statement: "Cold boot reaches first workload exec in <50ms without ACPI and PCI probing. GAP: the <50ms bound comes from cans/15-operations.md:57, but the Boot-budget node defers to the driver-trait artifact whose boot doc allows <60ms (cans/artifacts/code/vmm-driver-trait.rs boot); a 50-60ms boot passes the artifact and fails this case, so the two numbers need a spec-owner decision."
   blast_radius_if_breached: "MicroVM startup behaves like a slow legacy VM, ruining serverless agent concurrency."
 
 confusion_matrix:

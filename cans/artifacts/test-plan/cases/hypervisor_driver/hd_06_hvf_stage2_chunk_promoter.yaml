@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Driver-backends"
-  statement: "driver-hvf uses macOS HVF + 2MB Stage-2 chunked page promoter CoW via Mach vm_copy."
+  statement: "driver-hvf uses macOS HVF + 2MB Stage-2 chunked page promoter CoW via Mach vm_copy. GAP: no public probe for the promoted chunk size exists — the implementation is the private TODO (L3) method HvfDriver::promote_chunked_stage2_pages (crates/kelir-drivers/driver-hvf/src/lib.rs), so the 2MB chunk is asserted as the spec-required behavior, not via a callable surface."
   blast_radius_if_breached: "Single 4KB page write triggers vCPU exit storms during high-churn memory operations."
 
 confusion_matrix:
@@ -68,4 +68,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-01"
-    verification: "assert_eq!(driver.promoted_chunk_size_bytes(), 2 * 1024 * 1024);"
+    verification: "assert_eq!(promoted_chunk_size_bytes(), 2 * 1024 * 1024);"

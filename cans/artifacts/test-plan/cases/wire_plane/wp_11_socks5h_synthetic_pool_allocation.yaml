@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Synthetic-DNS-gateway"
-  statement: "SOCKS5h synthetic pool: remote proxy DNS maps domains to 198.18.0.0/15; original target preserved in CONNECT."
+  statement: "SOCKS5h synthetic pool: remote proxy DNS maps domains to 198.18.0.0/15; original target preserved in CONNECT. GAP: no SOCKS5h synthetic-pool mapping exists in WirePlane — zero SOCKS/proxy hits in crates/kelir-core/src/planes/wire/mod.rs — so the mapping is asserted as the spec-required behavior (cans/07-wire-plane.md)."
   blast_radius_if_breached: "Local host leaks destination domain queries to external DNS before SOCKS proxy connection."
 
 confusion_matrix:

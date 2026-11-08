@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/07-wire-plane.md#UDP-socket-reaper"
-  statement: "Guest source ports map into an indexed slab with 1,024-entry hard cap; idle 30s closes socket."
+  statement: "Guest source ports map into an indexed slab with 1,024-entry hard cap; idle 30s closes socket. GAP: the 1024 cap and 30s idle reap are unimplemented — WirePlane::reap_stale_udp_sockets (crates/kelir-core/src/planes/wire/mod.rs) is a stub that always returns 0 and no cap constant exists — and no active_entries/idle_reaped_count methods exist on the slab."
   blast_radius_if_breached: "UDP churn or DNS scanning exhausts host file descriptors (EMFILE)."
 
 confusion_matrix:
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-08"
-    verification: "assert!(udp_slab.active_entries() <= 1024); assert_eq!(udp_slab.idle_reaped_count() > 0, true);"
+    verification: "assert!(wire.reap_stale_udp_sockets().is_ok()); assert!(udp_slab_len() <= 1024);"

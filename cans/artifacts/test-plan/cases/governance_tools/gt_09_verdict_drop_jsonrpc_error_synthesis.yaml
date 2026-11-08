@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/plugins/tool-guard.md#Error-and-return-semantics-(tool-guard)"
-  statement: "Verdict::Drop returns JSON-RPC error object: code = -32000 - errno_number (EPERM -> -32001)."
+  statement: "Verdict::Drop returns JSON-RPC error object: code = -32000 - errno_number (EPERM -> -32001). Gap: JSON-RPC error synthesis is an L3 TODO in ConsoleInterposer::on_console_input; a Drop maps to PluginError::reject(errno, reason) and no framed -32001 error object is produced."
   blast_radius_if_breached: "Rejected tool calls close vsock connection abruptly, crashing model client transport."
 
 confusion_matrix:
@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "vsock_frame"
-  command: "Model calls blocked tool; tool-guard returns Verdict::Drop { errno: Some(libc::EPERM), reason: 'Policy denied' }"
+  command: "Model calls blocked tool; tool-guard returns Verdict::Drop { errno: Some(\"EPERM\".into()), reason: 'Policy denied' }"
   input_params:
     action: "drop"
 

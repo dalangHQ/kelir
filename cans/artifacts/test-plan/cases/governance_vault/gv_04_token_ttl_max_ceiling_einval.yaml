@@ -33,7 +33,7 @@ setup:
 
 execution:
   trigger: "rust_api"
-  command: "CredentialBrokerService::issue_token('key', ttl_seconds: 1000)"
+  command: "broker.issue(&TokenRequest { name: \"key\".into(), ttl_seconds: 1000 })"
   input_params:
     ttl_seconds: 1000
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(issue_err, Err(VaultError::TtlExceededCeiling(1000)));"
+    verification: "assert_matches!(issue_err, Err(VaultError::Einval(_)));"
