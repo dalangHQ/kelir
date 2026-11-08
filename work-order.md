@@ -109,7 +109,7 @@
      - `ad_10_openshell_grpc_sandbox_bootstrap`
      - `ad_11_openshell_approval_bridge_suspend`
      - `ad_12_e2b_compat_session_parity`
-  3. Total canonical cases updated from 196 to 208.
+  3. Total canonical cases updated from 196 to 218 (196 + 12 adapters + 4 concurrency + 6 bindings).
 
 ### Task 4.2: Add Missing Concurrency & Fault-Injection Cases
 - **Action:**
@@ -153,17 +153,17 @@
   3. **Job: macOS HVF Tier (macOS ARM64):** Executes cases with `platform_target.hypervisor: hvf` (filtered strictly via tag).
   4. **Job: Windows WHP Tier (Self-hosted Windows):** Executes cases with `platform_target.hypervisor: whp`.
   5. **Job: SDK Parity Gate:** Runs `packages/ts` and `packages/py` parity suites against `tests/vectors/vectors.json`.
-  6. **Job: Scorecard Aggregator:** Runs only after platform jobs complete, collecting JUnit/JSON test results to verify all 208 invariant cases passed on their respective native targets before writing `scorecard.md`.
+  6. **Job: Scorecard Aggregator:** Runs only after platform jobs complete, collecting JUnit/JSON test results to verify all 218 invariant cases passed on their respective native targets before writing `scorecard.md`.
 
 ---
 
 ## Execution Checklist
 
-- [ ] `crates/kelir-testkit` created with `check-manifest` and `check-tests` binaries.
-- [ ] `cans/15-operations.md` updated with 4 inbound pointers and invariant bullets.
-- [ ] `test-plan-structure.md` cleaned of dummy fields; `platform_target` added to schema.
-- [ ] `matrix.yaml` updated: AS-04 split into AS-04A and AS-04B; 13 ops coverage gates mapped.
-- [ ] Domain 15 (`adapters_ingestion`, 12 cases) added to `manifest.yaml` (Total: 208 cases).
-- [ ] `cases/**/*.yaml` updated to include valid `law_reference` anchors and `platform_target`.
-- [ ] Multi-language parity test cases added to `manifest.yaml`.
-- [ ] `.github/workflows/ci.yml` refactored to partition hardware jobs and aggregate the final scorecard.
+- [x] `crates/kelir-testkit` created with `check-manifest` and `check-tests` binaries.
+- [x] `cans/15-operations.md` updated with 4 inbound pointers and invariant bullets.
+- [x] `test-plan-structure.md` cleaned of dummy fields; `platform_target` added to schema.
+- [x] `matrix.yaml` updated: AS-04 split into AS-04A and AS-04B; 13 ops coverage gates mapped.
+- [x] Domain 15 (`adapters_ingestion`, 12 cases) added to `manifest.yaml` (Total: 218 cases).
+- [x] `cases/**/*.yaml` updated to include valid `law_reference` anchors and `platform_target`.
+- [x] Multi-language parity test cases added to `manifest.yaml`.
+- [x] `.github/workflows/ci.yml` refactored to partition hardware jobs and aggregate the final scorecard.
