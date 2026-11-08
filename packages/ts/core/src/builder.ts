@@ -123,11 +123,21 @@ interface PluginRegistration {
   readonly enabled: boolean;
 }
 
+// see: cans/11-protocol.md#Control-channel
+export interface VsockServiceEntry {
+  readonly port: number;
+  readonly service: string;
+  readonly schema: Schema<unknown>;
+  readonly handler: (request: unknown) => Promise<unknown> | unknown;
+}
+
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 export class KelirBuilder {
   private readonly config: KelirConfig;
   private readonly pluginRegistrations: PluginRegistration[] = [];
   private readonly hooks: HookDescriptor[] = [];
+  // TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
+  readonly vsockServices: VsockServiceEntry[] = [];
   private nextOrdinal = 0;
 
   constructor(config: KelirConfig = {}) {
@@ -271,7 +281,27 @@ export class KelirBuilder {
     return this;
   }
 
+  // see: cans/11-protocol.md#Control-channel
   registerVsockService<Req>(
+    port: number,
+    service: string,
+    _schema: Schema<Req>,
+    handler: (request: Req) => Promise<Req> | Req,
+  ): this {
+    if (!Number.isInteger(port) || port < 0 || port > 0xffffffff) {
+      throw new EConfig(`vsock service port ${String(port)} outside u32`);
+    }
+    this.vsockServices.push({
+      port,
+      service,
+      schema: _schema as Schema<unknown>,
+      handler: handler as (request: unknown) => Promise<unknown> | unknown,
+    });
+    return this;
+  }
+
+  // see: cans/11-protocol.md#Control-channel
+  registerStreamKind<Req>(
     kind: number,
     _schema: Schema<Req>,
     handler: (request: Req) => Promise<Req> | Req,

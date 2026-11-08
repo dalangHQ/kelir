@@ -221,7 +221,7 @@ class CausalDelta:
 
 
 @dataclass
-class ReconcileStats:
+class CommitStats:
     files_changed: int = 0
     tombstones_resolved: int = 0
 
@@ -388,7 +388,7 @@ class StorageHandle:
         cwd: str | None = None,
         atomic_staging: bool = False,
         fsync: bool = False,
-    ) -> ReconcileStats:
+    ) -> CommitStats:
         # TODO (L3): broker commit of the workspace via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: storage reconcile (L3)")
 
@@ -541,6 +541,14 @@ class Session:
 
 
 
+@dataclass
+class VsockServiceEntry:
+    port: int
+    service: str
+    schema: dict[str, Any]
+    handler: Callable[[bytes], Awaitable[bytes]]
+
+
 class KelirBuilder:
     def __init__(
         self,
@@ -556,6 +564,8 @@ class KelirBuilder:
         self._plugins: list[object] = []
         self._plugin_registrations: list[PluginRegistration] = []
         self._hooks: list[HookDescriptor] = []
+        # TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
+        self._vsock_services: list[VsockServiceEntry] = []
         self._next_ordinal: int = 0
         self._session: Session | None = None
         self._config: dict[str, Any] = {
@@ -656,7 +666,23 @@ class KelirBuilder:
         self._next_ordinal += 1
         return self
 
+    # see: cans/11-protocol.md#Control-channel
     def register_vsock_service(
+        self,
+        port: int,
+        service: str,
+        schema: dict[str, Any],
+        handler: Callable[[bytes], Awaitable[bytes]],
+    ) -> Self:
+        if not isinstance(port, int) or isinstance(port, bool) or port < 0 or port > 0xFFFFFFFF:
+            raise EConfig(f"vsock service port {port} outside u32")
+        self._vsock_services.append(
+            VsockServiceEntry(port=port, service=service, schema=schema, handler=handler)
+        )
+        return self
+
+    # see: cans/11-protocol.md#Control-channel
+    def register_stream_kind(
         self,
         kind: int,
         schema: dict[str, Any],
@@ -736,6 +762,10 @@ class KelirBuilder:
         self._params_model = model
         return self
 
+    @property
+    def vsock_services(self) -> list[VsockServiceEntry]:
+        return self._vsock_services
+
     # see: cans/02-plugin-model.md#Foreign-plugin-proxy
     def fuse(self) -> FusedTrampoline:
         return FusedTrampoline.fuse(self._hooks)
@@ -812,7 +842,7 @@ __all__ = [
     "PhaseTimings",
     "PostExecAction",
     "ReceiptExtension",
-    "ReconcileStats",
+    "CommitStats",
     "FinalReceipt",
     "Session",
     "SnapshotDescriptor",

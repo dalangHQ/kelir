@@ -124,7 +124,7 @@ def build_runtime() -> KelirBuilder:
     async def echo(request: bytes) -> bytes:
         return request
 
-    builder.register_vsock_service(0x0013, {"type": "object", "properties": {}}, echo)
+    builder.register_stream_kind(0x0013, {"type": "object", "properties": {}}, echo)
 
     builder.trap(TrapFilter.binary("policy-allow"), pre=row_allow)
     builder.trap(TrapFilter.binary("policy-deny"), pre=row_deny)

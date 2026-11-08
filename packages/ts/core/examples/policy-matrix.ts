@@ -83,7 +83,7 @@ const runtime = kelir({
     })
 
 
-  .registerVsockService(0x0013, t.Object({}),
+  .registerStreamKind(0x0013, t.Object({}),
     async (request) => request)
 
 
