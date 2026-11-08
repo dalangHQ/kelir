@@ -82,6 +82,14 @@ kelir/
 │   │       ├── fixtures.rs            # Synthetic PTY streams, broker upper files, synthetic configs
 │   │       └── assertions.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
 │   │
+│   ├── kelir-testkit/                 # Test plan verification harness; manifest, anti-slop, scorecard
+│   │   ├── Cargo.toml                 # Depends on serde, serde_yaml, walkdir only
+│   │   └── src/
+│   │       └── bin/
+│   │           ├── check_manifest.rs  # Manifest-disk parity, law_reference and platform_target checks
+│   │           ├── check_tests.rs     # Anti-slop AST linter for AS-01 through AS-08
+│   │           └── scorecard.rs       # Scorecard generator and verification gate
+│   │
 │   ├── kelir-shim/                    # Guest Paravirtual Micro-Init (<50KB musl PID 1)
 │   │   ├── Cargo.toml                 # Zero third-party crates: libc only, lto = "fat", panic = "abort"
 │   │   ├── src/

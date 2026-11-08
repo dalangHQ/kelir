@@ -4,6 +4,10 @@ title: "Tool invocations exceeding token-bucket rate limits or max call depth re
 domain: "governance_tools"
 target_tier: "unit"
 target_crate: "crates/kelir-plugins"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/plugins/tool-guard.md#Call-quota"
@@ -49,8 +53,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "tool_guard.quota_exceeded"
     chain_valid: true

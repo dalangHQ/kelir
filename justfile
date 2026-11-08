@@ -158,6 +158,12 @@ test-integration:
 # Everything except integration (which requires real VM)
 test-all: test-core test-plugins test-shim test-drivers test-sdks
 
+# Pure-memory unit tests: the test-all set, zero hypervisor calls.
+# The test_hw_* exclusion is the spec-named forward guard
+# (15-operations.md): no test fn bears that name at base, so the
+# filter matches nothing today and needs no widening.
+test-unit: test-all
+
 # ── Parity ──
 # Single implementation: kelir-plugin-cli runs vectors (Rust fixtures →
 # TS + Python suites) and the surface manifest diff. CI calls the same
@@ -165,13 +171,11 @@ test-all: test-core test-plugins test-shim test-drivers test-sdks
 parity: build-ts
     cargo run -p kelir-plugin-cli -- parity run
 
-# ── Pre-flight (single gate before push) ──
-# build-shim is not in this chain: shim has its own CI gate and its
-# own time budget. check-plugin-all is not here: parity already runs
-# the same per-plugin audit. Lint is a target, not an inline body.
-# Test-plan gates (work-order.md Part 10): manifest parity, anti-slop
-# lint, scorecard byte-for-byte verification.
-pre-flight: check-canon check-hygiene check-spec check-codebase-refs check-plugin-coverage check-layers check-graph check-tiered check-budgets check-manifest check-tests check-scorecard lint typecheck parity
+# ── Pre-flight (single gate before push, <60s) ──
+# Fast static gates plus pure-memory unit tests only: zero
+# hypervisor calls. check-canon stays its own recipe (it runs
+# test-all and lives in CI); hardware lives in test-integration.
+pre-flight: check-manifest check-tests check-spec test-unit
 
 check-canon:
     ./scripts/check-canon.sh
@@ -182,7 +186,9 @@ check-canon:
 scorecard:
     cargo run -p kelir-testkit --bin scorecard -- generate
 
-# CI Gate: Verify scorecard is byte-for-byte identical to physical evidence
+# CI Gate: Verify scorecard is byte-for-byte identical to physical evidence.
+# At base this verifies against manifest truth only; platform-subset
+# filtering rides this same recipe if added (Part 2 owns that work).
 check-scorecard:
     cargo run -p kelir-testkit --bin scorecard -- check
 

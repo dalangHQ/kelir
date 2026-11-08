@@ -4,6 +4,10 @@ title: "SnapshotDescriptor.dirty_bytes records exact written byte counts, remain
 domain: "attestation_receipts"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/10-attestation.md#Field-semantics"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 1
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "attestation.receipt_emitted"
     chain_valid: true

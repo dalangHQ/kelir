@@ -4,6 +4,10 @@ title: "PMU sample metrics emit exclusively as OTel gauges and never enter Execu
 domain: "telemetry_audit"
 target_tier: "unit"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/14-observability.md#PMU-counters-are-gauges-only"
@@ -13,7 +17,7 @@ invariant:
 confusion_matrix:
   quadrant: "true_positive"
   slop_risk: "Agent serializes PMU cycle counts into ExecutionReceipt struct."
-  anti_slop_mitigation: "AS-04 asserts PMU counter struct fields are absent from ExecutionReceipt serialization."
+  anti_slop_mitigation: "AS-04A asserts PMU counter struct fields are absent from ExecutionReceipt serialization."
 
 setup:
   env: "ci"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "telemetry.pmu_gauge_dispatched"
     chain_valid: true
@@ -59,5 +65,5 @@ expected_observations:
     fault_reason: null
 
 anti_slop_assertions:
-  - rule: "AS-04"
+  - rule: "AS-04A"
     verification: "assert_eq!(serde_json::to_string(&receipt).unwrap().contains('cache_misses'), false); assert!(otel_gauge_exists('cache_misses'));"

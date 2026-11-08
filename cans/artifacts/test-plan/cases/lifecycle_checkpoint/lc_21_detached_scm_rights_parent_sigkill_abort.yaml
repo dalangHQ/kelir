@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_21_detached_scm_rights_parent_sigkill_abort"
+title: "A parent SIGKILL before the SCM_RIGHTS handoff ack aborts the detached child with no orphan session and no leaked descriptor"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Child-handoff-scope"
+  statement: "Host-side handles (files, sockets, PTY masters) are not inherited across a session boundary, and the shared-memory descriptor passes via SCM_RIGHTS with the parent end closed after the handoff ack. Gap: the handoff is a TODO in crates/kelir-core/src/session.rs (pass the descriptor via SCM_RIGHTS and close the parent end after the handoff ack); no live ack protocol exists, so this case is specified against the spec text, not a live surface."
+  blast_radius_if_breached: "A parent killed mid-handoff leaves an orphan child holding a live descriptor to a dead session's memory."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts the child exits without checking the descriptor was closed and no orphan session row remains in the catalog."
+  anti_slop_mitigation: "AS-04A asserts the child aborts, the descriptor is closed, and the catalog holds no orphan row; AS-08 forbids dangling descriptors."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.detached"
+    agent_id: "agt_lc_21"
+    trust: "reviewed"
+  initial_state:
+    session_id: "ses_lc_21"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Spawn detached child; SIGKILL the parent before the handoff ack; observe the child"
+  input_params:
+    parent_signal: "SIGKILL"
+    handoff_ack: false
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "lifecycle.detached"
+    culprit: "parent killed before handoff ack; child aborted"
+    remedy: "reap child; verify no orphan row"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "lifecycle.handoff_aborted"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Signal"
+    fault_reason: "SIGKILL"
+
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "assert_eq!(child_aborted(), true); assert_eq!(descriptor_leaked(), false); assert_eq!(orphan_session_rows('ses_lc_21'), 0);"

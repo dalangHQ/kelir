@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_20_readdir_cache_invalidation_build_storm"
+title: "A broker mutation invalidates the cached per-directory readdir merge so a build storm never reads stale entries"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Host-CoW-broker"
+  statement: "The per-directory merge result (base plus upper plus tombstones) is cached and invalidated on broker mutation of that subtree, bounding repeated readdir cost during inode-heavy build storms. Gap: zero readdir hits exist in crates/, so no merge-cache implementation is in the tree; this case is specified against cans/05-storage-plane.md, not a live surface."
+  blast_radius_if_breached: "A stale cached readdir hides a newly written file from the build, producing a binary that silently omits fresh sources."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts readdir returns entries without checking the cache was invalidated after a broker mutation in the same subtree."
+  anti_slop_mitigation: "AS-04A asserts the post-mutation readdir lists the new entry and the pre-mutation cached result is never reused."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.broker"
+    agent_id: "agt_sp_20"
+    trust: "reviewed"
+  initial_state:
+    target_dir: "/src"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "fuse_op"
+  command: "Guest readdir /src twice across a broker write of /src/new.rs into the same subtree"
+  input_params:
+    readdir_calls: 2
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "storage.readdir"
+    culprit: "none — cache invalidated on broker mutation"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "storage.readdir_cache_invalidated"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "assert!(post_mutation_entries().contains('/src/new.rs')); assert_eq!(stale_cache_hits(), 0);"

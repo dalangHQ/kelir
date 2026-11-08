@@ -4,6 +4,10 @@ title: "Ephemeral scratch block disk mounted at /tmp and /var/cache is completel
 domain: "storage_plane"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Ephemeral-scratch-device"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "storage.scratch_purged"
     chain_valid: true

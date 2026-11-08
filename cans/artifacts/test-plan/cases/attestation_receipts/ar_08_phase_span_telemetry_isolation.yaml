@@ -4,6 +4,10 @@ title: "Execution phase spans (trap_ingress, policy, ffi_hop) emit strictly to O
 domain: "attestation_receipts"
 target_tier: "unit"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/10-attestation.md#Receipt-accounting"
@@ -49,8 +53,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "attestation.merkle_leaf_computed"
     chain_valid: true

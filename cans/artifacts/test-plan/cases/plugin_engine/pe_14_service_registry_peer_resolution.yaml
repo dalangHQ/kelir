@@ -4,6 +4,10 @@ title: "Tier 2 and Tier 3 plugins resolve peer services via ServiceRegistry with
 domain: "plugin_engine"
 target_tier: "unit"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/02-plugin-model.md#Plugin-tiering"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "plugin.service_resolved"
     chain_valid: true

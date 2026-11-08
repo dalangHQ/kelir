@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "ad_07_containerd_rootless_pod_isolation"
+title: "containerd shim v2 executes each Kubernetes pod spec as an isolated native microVM with no shared host namespace"
+domain: "adapters_ingestion"
+target_tier: "e2e"
+target_crate: "crates/kelir-adapters"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/12-adapters.md#Containerd-shim-v2"
+  statement: "Kubernetes workload isolation executes K8s pod specs as native microVMs, so two pods share no mount, network, or user namespace. Gap: no shim crate and no ContainerdOrchestrationPolicy Rust surface exist in this tree (commercial impls are out-of-tree per the spec); the in-tree plugin-container is in-guest rootless Podman, not the shim policy, so this case is specified against the spec text, not a live surface."
+  blast_radius_if_breached: "Two pods sharing a host namespace let one workload read another pod's secrets and filesystem."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts two pods boot without checking their sessions have disjoint namespaces and disjoint rootfs digests."
+  anti_slop_mitigation: "AS-04A asserts the two sessions hold distinct session ids and no shared mount namespace entry."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "adapters.containerd"
+    agent_id: "agt_ad_07"
+    trust: "reviewed"
+  initial_state:
+    pod_spec_a: "pod-ad07-a.yaml"
+    pod_spec_b: "pod-ad07-b.yaml"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "shim create two tasks from two pod specs; boot both Sessions"
+  input_params:
+    pods: 2
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "adapters.containerd"
+    culprit: "none — pods isolated as native microVMs"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "adapters.shim_task_created"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "assert_ne!(session_a.id(), session_b.id()); assert_eq!(shared_namespaces(&session_a, &session_b), 0);"

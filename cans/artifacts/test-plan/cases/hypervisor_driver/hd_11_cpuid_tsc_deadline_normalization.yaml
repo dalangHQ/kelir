@@ -4,6 +4,10 @@ title: "CPUID synthetic filter normalizes AMD and Hygon vendor masks to canonica
 domain: "hypervisor_driver"
 target_tier: "unit"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "kvm"
 
 invariant:
   law_reference: "cans/01-architecture.md#Driver-backends"
@@ -51,8 +55,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "driver.cpuid_normalized"
     chain_valid: true

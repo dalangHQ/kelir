@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "bp_01_python_boot_econfig_missing_pydantic_dependency"
+title: "Python builder.boot() throws EConfig when the Pydantic v2 model dependency is missing"
+domain: "bindings_py"
+target_tier: "unit"
+target_crate: "packages/py"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/03-sdk-architecture.md#Python-SDK"
+  statement: "Prerequisite validation runs at builder.boot(): unfulfilled requirements raise EConfig with structured details before vCPU start. GAP: Pydantic v2 is the spec-named model validator (cans/03-sdk-architecture.md Type-safety invariants) and packages/py/pyproject.toml declares pydantic>=2.0, but packages/py/kelir/__init__.py imports BaseModel under TYPE_CHECKING only and no runtime Pydantic validation runs at boot, so a missing Pydantic install raises no EConfig (the import succeeds); this case asserts the spec-required behavior and fails against the live tree until runtime Pydantic validation is wired. The real EConfig surface today is the missing _kelir native bridge in packages/py/kelir/__init__.py _load_native_bridge()."
+  blast_radius_if_breached: "A Python plugin boots with unvalidated params, so a malformed trap payload crosses the FFI boundary unchecked and corrupts guest execution state."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts EConfig is thrown without actually removing the Pydantic dependency from the module graph."
+  anti_slop_mitigation: "AS-01 requires the boot to run with the pydantic specifier unresolvable and asserts the thrown error name is exactly EConfig."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "sdk.python"
+    agent_id: "agt_bp_01"
+    trust: "reviewed"
+  initial_state:
+    missing_dependency: "pydantic"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "KelirBuilder boot with the pydantic specifier unresolvable"
+  input_params:
+    missing_dependency: "pydantic"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "sdk.python"
+    culprit: "Pydantic v2 model dependency missing at builder.boot()"
+    remedy: "Install the Pydantic v2 runtime validator before boot"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "sdk.python.boot_econfig"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EConfig"
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(thrown_error_name(), \"EConfig\"); assert!(vcpus_launched() == 0);"

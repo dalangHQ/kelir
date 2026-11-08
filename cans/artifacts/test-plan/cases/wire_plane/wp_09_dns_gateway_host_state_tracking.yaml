@@ -4,6 +4,10 @@ title: "Synthetic DNS gateway (192.168.127.1:53) tracks host /etc/resolv.conf in
 domain: "wire_plane"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Synthetic-DNS-gateway"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "wire.dns_nameserver_reloaded"
     chain_valid: true

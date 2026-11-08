@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "ad_11_openshell_approval_bridge_suspend"
+title: "OpenShell denial triggers external suspension and a gateway approval resumes the session cycle-exact via RFC 6902 patch"
+domain: "adapters_ingestion"
+target_tier: "e2e"
+target_crate: "crates/kelir-adapters"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Suspend-and-resume"
+  statement: "Denial triggers external suspension (SuspendReason::External) awaiting out-of-band release, and gateway admin approvals push RFC 6902 patches to plugin-profile before cycle-exact resume. Gap: no openshell-driver crate, no OpenShellCoordinationPolicy trait, and no SupervisorService approval-hook Rust surface exist in this tree, so this case is specified against cans/12-adapters.md and cans/08-lifecycle.md, not a live surface."
+  blast_radius_if_breached: "A denied action that keeps running executes unapproved work; a resume that skips the policy patch runs under stale policy."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts the session suspends without checking host RSS dropped and the RFC 6902 patch landed before resume."
+  anti_slop_mitigation: "AS-04A asserts the session is Suspended with zero host CPU cost and the profile patch is applied before resume."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "adapters.openshell"
+    agent_id: "agt_ad_11"
+    trust: "reviewed"
+  initial_state:
+    session_id: "ses_ad_11"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "SupervisorService denies an action; Session suspends; gateway approval patches plugin-profile; Session resumes"
+  input_params:
+    suspend_reason: "External"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "adapters.openshell"
+    culprit: "none — suspended on denial, resumed after approval patch"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "adapters.openshell_approval_resumed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "assert_eq!(session.state(), SessionState::Suspended); assert!(profile_patch_applied_before_resume());"

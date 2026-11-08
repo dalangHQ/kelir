@@ -90,6 +90,7 @@
     - Ecosystem and ops
       - Ecosystem ingestion: see: 12-adapters.md#Ingestion-matrix
       - Build, CI, layout: see: 15-operations.md#Execution-philosophy
+      - Test plan case discipline: see: artifacts/test-plan/test-plan-structure.md
 
 - [1]: 04-terminal-plane.md
 - [2]: 05-storage-plane.md

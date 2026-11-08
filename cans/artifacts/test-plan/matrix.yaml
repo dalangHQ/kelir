@@ -61,11 +61,16 @@ anti_slop_laws:
     rule: "Prohibit asserting .is_ok(), .is_err(), or generic boolean flags without matching the explicit Verdict / FilterAction enum variant, the POSIX errno, and validating ExecutionReceipt fields."
     slop_vector: "Agent writes assert!(session.exec(...).is_err()). The command failed due to binary missing (ENOENT), but the test intended to verify an execution policy denial (EPERM)."
     enforcement: "Assertions must match Verdict::Drop { errno, reason } exactly and parse ExecutionReceipt for binary_blake3, exit_code, and syscall_count."
-  AS-04:
-    name: "Deterministic Clock & Entropy Law"
-    rule: "Real wall-clock dependencies, host TSC polling, and unseeded entropy are banned in replay or deterministic execution tests. Virtual clocks must be locked via pvclock/CNTVOFF_EL2 and RNG seeded via ChaCha20."
+  AS-04A:
+    name: "Deterministic Replay Law"
+    rule: "Wall-clock sampling, PMU cross-host comparisons, and unseeded randomness are strictly denied in unit and deterministic integration runs. Virtual clocks must be locked via pvclock/CNTVOFF_EL2 and RNG seeded via ChaCha20."
     slop_vector: "Agent inserts sleep(100ms) to await a guest timeout, inducing CI race conditions and non-deterministic receipt hashes."
     enforcement: "Tests must inject explicit instruction step counts or use MockClock paravirtual stepping."
+  AS-04B:
+    name: "Physical Budget Floor Law"
+    rule: "Hardware benchmark suites measure host wall-clock and vCPU cycles via host stopwatch/perf hooks and must enforce the thresholds declared in perf/budgets.toml with enforce = true."
+    slop_vector: "Agent asserts a physical latency bound from a hardcoded literal instead of the declared budget, or measures it under a virtual clock."
+    enforcement: "Benchmarks reference perf/budgets.toml thresholds; scorecard renders budgets from that file."
   AS-05:
     name: "Causal DAG & Merkle WAL Linkage Law"
     rule: "Every test asserting a committed step or session stop must verify CausalDelta integrity and BLAKE3 Merkle WAL chaining (RFC 6962 leaf/node rules) if ledger.merkle.enabled is true."
@@ -93,7 +98,7 @@ ci_gates:
     description: "Asserts 100% parity between manifest.yaml and test case files."
   - id: "gate_check_linter_laws"
     command: "cargo run -p kelir-testkit --bin check-tests"
-    description: "AST analysis asserting AS-01 through AS-08 across tests/ directory."
+    description: "AST analysis asserting AS-01 through AS-08 (AS-04 split into AS-04A/AS-04B) across tests/ and benches/ directories."
   - id: "gate_check_scorecard"
     command: "just check-scorecard"
     description: "Byte-for-byte verification between physical evidence and scorecard.md."

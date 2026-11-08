@@ -4,6 +4,10 @@ title: "Linux host process death delivers SIGKILL to hypervisor child via PR_SET
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/08-lifecycle.md#Host-crash-reaper"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "host.pdeathsig_reaped"
     chain_valid: true

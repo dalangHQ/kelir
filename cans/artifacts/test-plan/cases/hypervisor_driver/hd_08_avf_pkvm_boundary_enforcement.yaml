@@ -4,6 +4,10 @@ title: "Android /dev/avf backend rejects non-donated memory access via protected
 domain: "hypervisor_driver"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "android"
+  arch: "aarch64"
+  hypervisor: "avf"
 
 invariant:
   law_reference: "cans/01-architecture.md#Driver-backends"
@@ -50,8 +54,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "driver.avf_access_denied"
     chain_valid: true

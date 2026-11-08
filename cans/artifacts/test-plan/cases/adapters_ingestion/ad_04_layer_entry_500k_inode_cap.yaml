@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "ad_04_layer_entry_500k_inode_cap"
+title: "kelir-pack aborts compilation with E_LAYER_OVERSIZE when layer entries exceed the 500000 inode ceiling"
+domain: "adapters_ingestion"
+target_tier: "e2e"
+target_crate: "crates/kelir-adapters/kelir-pack"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/12-adapters.md#Ingestion-matrix"
+  statement: "Layer entry count is bounded to a ceiling of 500,000 inodes (MAX_INODES: u32 = 500_000 in crates/kelir-adapters/kelir-pack/src/main.rs); phase 1 RAM stays bounded and a layer past the ceiling aborts compilation with E_LAYER_OVERSIZE."
+  blast_radius_if_breached: "An inode-flood layer exhausts host RAM in the phase 1 radix tree and kills the supervisor."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts the build fails without checking the abort is keyed to inode count rather than byte size."
+  anti_slop_mitigation: "AS-04B asserts the abort fires at the physical 500000 inode ceiling."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "adapters.ingest"
+    agent_id: "agt_ad_04"
+    trust: "reviewed"
+  initial_state:
+    layer_digest: "sha256:ad04inodes"
+    inode_count: 500001
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "kelir-pack build oci-manifest.json rootfs.erofs with a layer carrying 500001 entries"
+  input_params:
+    inode_count: 500001
+    max_inodes: 500000
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "adapters.pack"
+    culprit: "layer entry count 500001 exceeds 500000 inode ceiling"
+    remedy: "reject layer; emit no image"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "adapters.layer_oversize_abort"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_LAYER_OVERSIZE"
+
+anti_slop_assertions:
+  - rule: "AS-04B"
+    verification: "assert_matches!(run_pack(&args), Err(PackError::LayerOversize(_))); assert_eq!(output_exists('rootfs.erofs'), false);"

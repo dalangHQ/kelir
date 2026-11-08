@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "bt_03_typescript_fused_trampoline_single_crossing_chained_hooks"
+title: "AOT hook fusion collapses five chained TypeScript hooks into exactly 1 FFI trampoline crossing"
+domain: "bindings_ts"
+target_tier: "unit"
+target_crate: "packages/ts"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Foreign-plugin-proxy"
+  statement: "AOT hook fusion compiles chained host hooks into a single flat closure; exactly one FFI trampoline crossing per ring event regardless of hook count. GAP: the compiled flat closure is not yet real — packages/ts/core/src/fusion.ts FusedTrampoline.describe() returns a descriptor and carries TODO (L3) to compile each fused chain into the single flat closure, and crates/kelir-bindings/napi/src/lib.rs carries the matching TODO (L3) to bind each fused ring chain to its single trampoline entry; the single-crossing property is therefore asserted at the descriptor and trampoline-table level (crossingsPerRingEvent() == 1, trampolineEntryCount() == rings.length), not by executing a compiled closure."
+  blast_radius_if_breached: "Composing 5 TypeScript hooks causes 5 consecutive FFI context switches per trap event."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts all 5 hooks ran without measuring FFI trampoline boundary crossings."
+  anti_slop_mitigation: "AS-01 asserts crossingsPerRingEvent(Trap) == 1 when 5 hooks execute, and builder.boot() asserts trampolineEntryCount() equals the fused descriptor ring count."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "sdk.typescript"
+    agent_id: "agt_bt_03"
+    trust: "reviewed"
+  initial_state:
+    registered_hooks: 5
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "FusedTrampoline.fuse() over 5 chained TypeScript Trap pre-exec handlers, then builder.boot() trampoline table check"
+  input_params:
+    hook_count: 5
+    ring: "trap"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "sdk.typescript"
+    culprit: "none — fused into 1 trampoline"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "sdk.typescript.fused_hook_executed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(FusedTrampoline.fuse(hooks).crossingsPerRingEvent(RingEvent.Trap), 1); assert_eq!(FusedTrampoline.fuse(hooks).hookCount(RingEvent.Trap), 5);"

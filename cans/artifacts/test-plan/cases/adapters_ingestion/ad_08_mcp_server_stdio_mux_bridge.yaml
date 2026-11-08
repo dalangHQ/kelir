@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "ad_08_mcp_server_stdio_mux_bridge"
+title: "mcp-server bridges stdio JSON-RPC frames to plugin-mcp over mux stream kind MCP_CONSOLE 0x0012"
+domain: "adapters_ingestion"
+target_tier: "e2e"
+target_crate: "crates/kelir-adapters/mcp-server"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/12-adapters.md#MCP-adapter"
+  statement: "The mcp-server binary owns the stdio wire and plugin-mcp owns JSON-RPC translation, bound to mux stream kind MCP_CONSOLE (0x0012), not Port 0 PTY. Gap: mcp-server main is a stub (TODO: direct stdio wire frames to plugin-mcp) and the plugin-mcp bridge is L3 TODOs in crates/kelir-plugins/plugin-mcp/src/lib.rs, so this case is specified against the spec text, not a live surface."
+  blast_radius_if_breached: "MCP traffic routed through the human PTY lets a tool call inject terminal escape sequences into the break-glass console."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts a tool call succeeds without checking it travelled MCP_CONSOLE and never touched Port 0 PTY."
+  anti_slop_mitigation: "AS-04A asserts the frame arrives on stream kind 0x0012 and Port 0 PTY byte count stays zero."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "adapters.mcp"
+    agent_id: "agt_ad_08"
+    trust: "reviewed"
+  initial_state:
+    stream_kind: 18
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "vsock_frame"
+  command: "mcp-server forwards one JSON-RPC tools/call frame from stdio onto MCP_CONSOLE"
+  input_params:
+    stream_kind: 18
+    pty_bytes: 0
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "adapters.mcp"
+    culprit: "none — frame bridged on MCP_CONSOLE"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "adapters.mcp_frame_bridged"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "assert_eq!(frame.stream_kind, 0x0012); assert_eq!(pty_port0_bytes(), 0);"

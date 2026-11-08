@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_22_sqlite_wal_busy_timeout_recovery"
+title: "A concurrent catalog writer blocked on a SQLite WAL lock recovers within the 5000 ms busy timeout instead of surfacing SQLITE_BUSY"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/06-storage-catalog.md#Entity-model"
+  statement: "The catalog opens SQLite with PRAGMA journal_mode=WAL and PRAGMA busy_timeout=5000 (crates/kelir-catalog/src/lib.rs), so a second writer contending for the sessions table waits and commits instead of failing with SQLITE_BUSY."
+  blast_radius_if_breached: "A SQLITE_BUSY escape from the catalog loses a session lease update and strands the session as unreapable."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts both writes commit without checking the second writer actually contended and waited rather than writing to a different database."
+  anti_slop_mitigation: "AS-04B asserts the second writer commits within the physical 5000 ms busy timeout and no SQLITE_BUSY escapes."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.catalog"
+    agent_id: "agt_lc_22"
+    trust: "reviewed"
+  initial_state:
+    session_id: "ses_lc_22"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Two concurrent writers update the sessions row for ses_lc_22; second writer contends on the WAL lock"
+  input_params:
+    writers: 2
+    busy_timeout_ms: 5000
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "catalog.write"
+    culprit: "none — second writer waited and committed inside busy timeout"
+    remedy: "none required"
+  database:
+    row_count_delta: 1
+    tables_mutated: ["sessions"]
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "catalog.write_committed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04B"
+    verification: "assert_eq!(both_writes_committed(), true); assert_eq!(sqlite_busy_errors(), 0);"

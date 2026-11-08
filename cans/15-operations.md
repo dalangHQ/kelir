@@ -79,6 +79,16 @@
     - Coverage gates are gate names, distinct from cans check flags
       - cans check has no --*-coverage flags; each gate names its enforcement below
       - Veto and watchdog have no per-item enumeration gate; they ride parity vectors
+    - Test plan domains
+      - Domain plugin_engine: --plugin, --hook, --action, --panic-hunt-coverage
+      - Domain lifecycle_checkpoint: --lifecycle, --drain, --veto, --watchdog-coverage
+      - Domain lifecycle_checkpoint: --snapshot-depth, --clock-continuity-coverage
+      - Domain protocol_mux: --channel, --panic-hunt-coverage
+      - Domain virtio_rings: --transport-coverage
+      - Domain none: --layering-coverage is a cross-cutting crate-graph gate
+      - Clock-continuity replay runs in the plugin-replay cell
+    - Invariant test manifest: see: artifacts/test-plan/manifest.yaml
+    - Execution matrix and anti-slop rules: see: artifacts/test-plan/matrix.yaml
     - --plugin-coverage
       - Plugin asserts: see: [4]
       - Each plugin appears in at least one example (any example)
@@ -151,6 +161,11 @@
       - CI calls `just check-spec`, not raw flags
       - Flag string lives only in the justfile
       - A flag change is a one-line justfile edit
+  - Test plan
+    - Manifest invariant
+      - Every physical case file references exactly one normative spec anchor
+      - Untracked test cases or unanchored assertions fail check-manifest
+
   - Per-plugin CI
     - Per-plugin specs
       - One spec file per plugin in each plugin folder

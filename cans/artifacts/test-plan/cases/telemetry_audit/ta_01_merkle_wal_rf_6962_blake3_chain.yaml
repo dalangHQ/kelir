@@ -4,6 +4,10 @@ title: "Merkle WAL appends records using RFC 6962 rules and BLAKE3 hashing, pers
 domain: "telemetry_audit"
 target_tier: "integration"
 target_crate: "crates/kelir-plugins"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/plugins/ledger.md#Merkle-WAL-specification"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "ledger.leaf_appended"
     chain_valid: true

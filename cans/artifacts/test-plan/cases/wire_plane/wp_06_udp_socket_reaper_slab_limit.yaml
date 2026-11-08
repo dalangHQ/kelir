@@ -4,6 +4,10 @@ title: "UDP NAT slab caps at 1024 entries; idle sockets past 30 seconds are recl
 domain: "wire_plane"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/07-wire-plane.md#UDP-socket-reaper"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 2000
-    syscall_42_trapped: false
+    frames_outbound: 2000
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "wire.udp_reaped"
     chain_valid: true

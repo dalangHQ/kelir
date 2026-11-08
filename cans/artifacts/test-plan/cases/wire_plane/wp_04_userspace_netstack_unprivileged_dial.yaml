@@ -4,6 +4,10 @@ title: "Outbound guest TCP connections translate to unprivileged host socket dia
 domain: "wire_plane"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Userspace-network-stack"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 1
-    syscall_42_trapped: false
+    frames_outbound: 1
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "wire.unprivileged_dial"
     chain_valid: true

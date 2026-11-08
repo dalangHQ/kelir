@@ -4,6 +4,10 @@ title: "virtio-blk exposes immutable EROFS rootfs block device, cold-mounted by 
 domain: "virtio_rings"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/05-storage-plane.md#EROFS-rootfs"
@@ -50,8 +54,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "storage.erofs_write_denied"
     chain_valid: true

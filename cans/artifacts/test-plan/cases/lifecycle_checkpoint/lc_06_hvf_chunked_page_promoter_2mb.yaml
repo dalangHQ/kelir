@@ -4,6 +4,10 @@ title: "macOS HVF Stage-2 write fault triggers 2MB chunk promotion via Mach vm_c
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "macos"
+  arch: "aarch64"
+  hypervisor: "hvf"
 
 invariant:
   law_reference: "cans/08-lifecycle.md#CoW-fork"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "lifecycle.hvf_chunk_promoted"
     chain_valid: true

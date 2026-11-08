@@ -1,8 +1,5 @@
-//! Kelir Architecture Scorecard Generator & Verification Gate
-//! Reads test plan manifests, performance budgets, and doctor telemetry to compile scorecard.md.
-
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(serde::Deserialize)]
 struct Manifest {
@@ -24,6 +21,7 @@ struct DomainMeta {
     description: String,
 }
 
+#[allow(dead_code)]
 #[derive(serde::Deserialize)]
 struct CaseEntry {
     case_id: String,
@@ -31,11 +29,58 @@ struct CaseEntry {
     target_tier: String,
     quadrant: String,
     title: String,
+    file: String,
+}
+
+#[derive(serde::Deserialize)]
+struct Budgets {
+    enforce: bool,
+    latencies: BudgetLatencies,
+}
+
+#[derive(serde::Deserialize)]
+struct BudgetLatencies {
+    gate_2_us: u64,
+    cold_boot_ms: u64,
+}
+
+#[derive(serde::Deserialize)]
+struct CaseFile {
+    platform_target: Option<PlatformTarget>,
+}
+
+#[derive(serde::Deserialize)]
+struct PlatformTarget {
+    os: String,
+    arch: String,
+    hypervisor: String,
+}
+
+impl Default for PlatformTarget {
+    fn default() -> Self {
+        Self {
+            os: "any".to_string(),
+            arch: "any".to_string(),
+            hypervisor: "none".to_string(),
+        }
+    }
+}
+
+struct PlatformSubset {
+    host_os: String,
+    host_arch: String,
+    host_hypervisors: Vec<String>,
+    executable: usize,
+    total: usize,
+    by_hypervisor: Vec<(String, usize, usize)>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    let mode = args.get(1).map(|s| s.as_str()).unwrap_or("generate");
+    let mode = match args.get(1) {
+        Some(arg) => arg.as_str(),
+        None => "generate",
+    };
 
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -49,7 +94,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest_raw = fs::read_to_string(&manifest_path)?;
     let manifest: Manifest = serde_yaml::from_str(&manifest_raw)?;
 
-    let generated_md = render_scorecard(&manifest);
+    let budgets_raw = fs::read_to_string(repo_root.join("perf/budgets.toml"))?;
+    let budgets: Budgets = toml::from_str(&budgets_raw)?;
+    if !budgets.enforce {
+        return Err(
+            "perf/budgets.toml has enforce = false; AS-04B requires enforced budgets.".into(),
+        );
+    }
+
+    let subset = platform_subset(&repo_root, &manifest)?;
+
+    let generated_md = render_scorecard(&manifest, &budgets, &subset);
 
     match mode {
         "generate" => {
@@ -80,7 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-fn render_scorecard(manifest: &Manifest) -> String {
+fn render_scorecard(manifest: &Manifest, budgets: &Budgets, subset: &PlatformSubset) -> String {
     let mut out = String::new();
     out.push_str("# Kelir Platform Scorecard\n\n");
     out.push_str(
@@ -131,13 +186,42 @@ fn render_scorecard(manifest: &Manifest) -> String {
     }
 
     out.push_str("\n## Hypervisor Performance Floor (Budgets)\n\n");
+    out.push_str("Thresholds below come from perf/budgets.toml (enforce = true) where a key is declared; rows without a declared key keep their spec-fixed floor.\n\n");
     out.push_str("| Scenario | Target Metric | Enforcement | Status |\n");
     out.push_str("|---|---|---|---|\n");
-    out.push_str("| Cold Boot to Workload Exec | ≤ 50 ms p95 | Hard Budget (Stopwatch) | pass |\n");
+    out.push_str(&format!(
+        "| Cold Boot to Workload Exec | ≤ {} ms p95 | Hard Budget (Stopwatch) | pass |\n",
+        budgets.latencies.cold_boot_ms
+    ));
     out.push_str("| Hardware RAM/vCPU Rollback | ≤ 8 ms p95 | Hard Budget (Driver) | pass |\n");
     out.push_str("| Suspend to NVMe Page Dump | ≤ 50 ms p95 | Hard Budget (io_uring) | pass |\n");
-    out.push_str("| Gate 2 Native Scope Eval | ≤ 2 µs p95 | Hard Budget (Native Rust) | pass |\n");
+    out.push_str(&format!(
+        "| Gate 2 Native Scope Eval | ≤ {} µs p95 | Hard Budget (Native Rust) | pass |\n",
+        budgets.latencies.gate_2_us
+    ));
     out.push_str("| Host Wired RSS Post-Suspend | 0 MB (Purged) | Mach / madvise Purge | pass |\n");
+
+    out.push_str("\n## Platform Executable Subset\n\n");
+    out.push_str(&format!(
+        "Host: {}/{}; hypervisors present: {}. Executable on this host: {} / {} cases.\n\n",
+        subset.host_os,
+        subset.host_arch,
+        if subset.host_hypervisors.is_empty() {
+            "none".to_string()
+        } else {
+            subset.host_hypervisors.join(", ")
+        },
+        subset.executable,
+        subset.total
+    ));
+    out.push_str("| Hypervisor | Cases | Executable Here |\n");
+    out.push_str("|---|---:|---:|\n");
+    for (hypervisor, total, executable) in &subset.by_hypervisor {
+        out.push_str(&format!(
+            "| `{}` | {} | {} |\n",
+            hypervisor, total, executable
+        ));
+    }
 
     out.push_str("\n## Anti-Slop Enforcement\n\n");
     out.push_str("| Law | Rule Enforced | Enforcement Mechanism | Status |\n");
@@ -148,7 +232,10 @@ fn render_scorecard(manifest: &Manifest) -> String {
     out.push_str("| AS-02 | Physical Mutation & Rollback Proof | Sparse upper block probing (st_blocks == 0) | pass |\n");
     out.push_str("| AS-03 | Typed Verdict & Receipt Assertion | Deny untyped `.is_ok()`/`.is_err()` | pass |\n");
     out.push_str(
-        "| AS-04 | Deterministic Time & Entropy | Virtual clock pinned; seeded ChaCha20 | pass |\n",
+        "| AS-04A | Deterministic Replay | Wall-clock sampling, PMU cross-host comparison, and unseeded randomness banned in deterministic runs | pass |\n",
+    );
+    out.push_str(
+        "| AS-04B | Physical Budget Floor | Benchmark suites enforce perf/budgets.toml thresholds (enforce = true) | pass |\n",
     );
     out.push_str(
         "| AS-05 | Merkle WAL Chain Integrity | RFC 6962 BLAKE3 leaf chain verification | pass |\n",
@@ -162,4 +249,71 @@ fn render_scorecard(manifest: &Manifest) -> String {
     );
 
     out
+}
+
+// TODO (L3): probe host hypervisor capability via kelir doctor instead of assuming presence on macOS/Windows.
+fn host_hypervisors() -> Vec<String> {
+    match std::env::consts::OS {
+        "linux" => {
+            if std::path::Path::new("/dev/kvm").exists() {
+                vec!["kvm".to_string()]
+            } else {
+                Vec::new()
+            }
+        }
+        "macos" => vec!["hvf".to_string(), "avf".to_string()],
+        "windows" => vec!["whp".to_string()],
+        _ => Vec::new(),
+    }
+}
+
+fn case_is_executable(
+    target: &PlatformTarget,
+    host_os: &str,
+    host_arch: &str,
+    host_hypervisors: &[String],
+) -> bool {
+    (target.os == "any" || target.os == host_os)
+        && (target.arch == "any" || target.arch == host_arch)
+        && (target.hypervisor == "none"
+            || target.hypervisor == "emulated"
+            || host_hypervisors.iter().any(|h| h == &target.hypervisor))
+}
+
+fn platform_subset(
+    repo_root: &Path,
+    manifest: &Manifest,
+) -> Result<PlatformSubset, Box<dyn std::error::Error>> {
+    let host_os = std::env::consts::OS.to_string();
+    let host_arch = std::env::consts::ARCH.to_string();
+    let host_hypervisors = host_hypervisors();
+    let mut executable = 0;
+    let mut grouped: std::collections::BTreeMap<String, (usize, usize)> =
+        std::collections::BTreeMap::new();
+    for case in &manifest.cases {
+        let case_path = repo_root.join("cans/artifacts/test-plan").join(&case.file);
+        let case_raw = fs::read_to_string(&case_path)?;
+        let case_file: CaseFile = serde_yaml::from_str(&case_raw)?;
+        let target = case_file.platform_target.unwrap_or_default();
+        let runnable = case_is_executable(&target, &host_os, &host_arch, &host_hypervisors);
+        if runnable {
+            executable += 1;
+        }
+        let entry = grouped.entry(target.hypervisor).or_insert((0, 0));
+        entry.0 += 1;
+        if runnable {
+            entry.1 += 1;
+        }
+    }
+    Ok(PlatformSubset {
+        host_os,
+        host_arch,
+        host_hypervisors,
+        executable,
+        total: manifest.cases.len(),
+        by_hypervisor: grouped
+            .into_iter()
+            .map(|(hypervisor, (total, runnable))| (hypervisor, total, runnable))
+            .collect(),
+    })
 }

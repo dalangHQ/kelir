@@ -6,10 +6,24 @@ license = "FSL-1.1-Apache-2.0"
 authors = ["Kelir Contributors"]
 rust-version = "1.85"
 description = "Test plan verification harness: manifest parity checker, anti-slop linter, scorecard generator."
+autobins = false
+
+[[bin]]
+name = "check-manifest"
+path = "src/bin/check_manifest.rs"
+
+[[bin]]
+name = "check-tests"
+path = "src/bin/check_tests.rs"
+
+[[bin]]
+name = "scorecard"
+path = "src/bin/scorecard.rs"
 
 [dependencies]
 serde = { workspace = true }
 serde_yaml = { workspace = true }
+toml = { workspace = true }
 walkdir = "2"
 
 [lints]

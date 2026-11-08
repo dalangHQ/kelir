@@ -4,6 +4,10 @@ title: "W3C traceparent context propagates across guest-originated outbound requ
 domain: "telemetry_audit"
 target_tier: "integration"
 target_crate: "crates/kelir-plugins"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/14-observability.md#Metrics-pipeline"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 1
-    syscall_42_trapped: false
+    frames_outbound: 1
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "telemetry.traceparent_injected"
     chain_valid: true

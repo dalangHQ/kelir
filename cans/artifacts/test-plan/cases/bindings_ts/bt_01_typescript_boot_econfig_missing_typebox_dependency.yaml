@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "bt_01_typescript_boot_econfig_missing_typebox_dependency"
+title: "TypeScript builder.boot() throws EConfig when the TypeBox schema validator dependency is missing"
+domain: "bindings_ts"
+target_tier: "unit"
+target_crate: "packages/ts"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/03-sdk-architecture.md#TypeScript-SDK"
+  statement: "Prerequisite validation happens at builder.boot(): a missing dependency throws EConfig with an error envelope identifying the missing requirement before vCPU launch. GAP: TypeBox is the spec-named runtime validator (cans/03-sdk-architecture.md Type-safety invariants), but packages/ts/core/package.json declares no TypeBox dependency and packages/ts/core/src/schema.ts ships a local stub t object with no runtime validation, so no boot-time EConfig on missing TypeBox exists in the live tree; this case asserts the spec-required behavior and fails against the live tree until TypeBox is wired. The real EConfig surface today is the missing NAPI addon in packages/ts/core/src/builder.ts loadNativeAddon()."
+  blast_radius_if_breached: "A TypeScript plugin boots with unvalidated params, so a malformed trap payload crosses the FFI boundary unchecked and corrupts guest execution state."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts EConfig is thrown without actually removing the TypeBox dependency from the module graph."
+  anti_slop_mitigation: "AS-01 requires the boot to run with the TypeBox specifier unresolvable and asserts the thrown error name is exactly EConfig."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "sdk.typescript"
+    agent_id: "agt_bt_01"
+    trust: "reviewed"
+  initial_state:
+    missing_dependency: "typebox"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "kelir() builder.boot() with the TypeBox validator specifier unresolvable"
+  input_params:
+    missing_dependency: "typebox"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "sdk.typescript"
+    culprit: "TypeBox schema validator dependency missing at builder.boot()"
+    remedy: "Install the TypeBox runtime validator before boot"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "sdk.typescript.boot_econfig"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EConfig"
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(thrown_error_name(), \"EConfig\"); assert!(vcpus_launched() == 0);"

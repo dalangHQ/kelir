@@ -4,6 +4,10 @@ title: "Host lid wake event dispatches paravirtual clock resync frame over Chann
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/08-lifecycle.md#Lid-sleep/wake-clock-snapping"
@@ -13,7 +17,7 @@ invariant:
 confusion_matrix:
   quadrant: "true_positive"
   slop_risk: "Agent asserts wake succeeded without verifying guest clock jumped forward."
-  anti_slop_mitigation: "AS-04 asserts guest gettimeofday reflects multi-hour host jump in 0ms."
+  anti_slop_mitigation: "AS-04A asserts guest gettimeofday reflects multi-hour host jump in 0ms."
 
 setup:
   env: "ci"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "lifecycle.clock_snapped"
     chain_valid: true
@@ -59,5 +65,5 @@ expected_observations:
     fault_reason: null
 
 anti_slop_assertions:
-  - rule: "AS-04"
+  - rule: "AS-04A"
     verification: "assert!(guest_clock_gettime(CLOCK_REALTIME) >= host_wall_clock());"

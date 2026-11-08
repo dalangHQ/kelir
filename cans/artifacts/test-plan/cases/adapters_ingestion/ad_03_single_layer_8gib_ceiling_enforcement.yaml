@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "ad_03_single_layer_8gib_ceiling_enforcement"
+title: "kelir-pack aborts compilation with E_LAYER_OVERSIZE when one layer exceeds the 8 GiB uncompressed ceiling"
+domain: "adapters_ingestion"
+target_tier: "e2e"
+target_crate: "crates/kelir-adapters/kelir-pack"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/12-adapters.md#Ingestion-matrix"
+  statement: "Single layer uncompressed extraction budget is capped at 8 GiB strictly (MAX_LAYER_BYTES: u64 = 8 * 1024 * 1024 * 1024 in crates/kelir-adapters/kelir-pack/src/main.rs); a layer past the ceiling aborts compilation with E_LAYER_OVERSIZE."
+  blast_radius_if_breached: "One oversized layer fills the host disk and starves every other session's image pull."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts the build fails without checking the ceiling is enforced per layer rather than per whole image."
+  anti_slop_mitigation: "AS-04B asserts the abort fires at the physical 8 GiB per-layer budget boundary."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "adapters.ingest"
+    agent_id: "agt_ad_03"
+    trust: "reviewed"
+  initial_state:
+    layer_digest: "sha256:ad03oversize"
+    layer_bytes: 8589934593
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "kelir-pack build oci-manifest.json rootfs.erofs with a single 8 GiB plus 1 byte layer"
+  input_params:
+    layer_bytes: 8589934593
+    max_layer_bytes: 8589934592
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "adapters.pack"
+    culprit: "single layer 8589934593 bytes exceeds 8 GiB ceiling"
+    remedy: "reject layer; emit no image"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "adapters.layer_oversize_abort"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "E_LAYER_OVERSIZE"
+
+anti_slop_assertions:
+  - rule: "AS-04B"
+    verification: "assert_matches!(run_pack(&args), Err(PackError::LayerOversize(_))); assert_eq!(output_exists('rootfs.erofs'), false);"

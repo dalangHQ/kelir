@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "ad_06_containerd_shim_v2_mount_lifecycle"
+title: "containerd shim v2 maps a container lifecycle to Session execution with flat kelir-pack plus policy config"
+domain: "adapters_ingestion"
+target_tier: "e2e"
+target_crate: "crates/kelir-adapters"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/12-adapters.md#Containerd-shim-v2"
+  statement: "The shim maps to Session execution with flat kelir-pack plus policy config, and ContainerdOrchestrationPolicy is registered via PipelineBinder. Gap: no shim crate and no ContainerdOrchestrationPolicy Rust surface exist in this tree (commercial impls are out-of-tree per the spec); this case is specified against cans/12-adapters.md and the ingestion-adapters diagram, not a live surface."
+  blast_radius_if_breached: "A shim that invents its own image translation path bypasses kelir-pack budgets and boots unmeasured rootfs images."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts a session boots without checking the shim used flat kelir-pack output and registered policy, not a nested translation."
+  anti_slop_mitigation: "AS-04A asserts the booted rootfs digest equals the kelir-pack emitted digest for the same OCI manifest."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "adapters.containerd"
+    agent_id: "agt_ad_06"
+    trust: "reviewed"
+  initial_state:
+    pod_spec: "pod-ad06.yaml"
+    policy_config: "containerd-policy.yaml"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "shim create task from pod spec; boot Session on kelir-pack EROFS output"
+  input_params:
+    image: "oci://registry/ns/app:v1"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "adapters.containerd"
+    culprit: "none — shim mapped to Session with kelir-pack image"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "adapters.shim_task_created"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "assert_eq!(session.rootfs_digest(), kelir_pack_digest('oci://registry/ns/app:v1')); assert!(policy_registered('ContainerdOrchestrationPolicy'));"

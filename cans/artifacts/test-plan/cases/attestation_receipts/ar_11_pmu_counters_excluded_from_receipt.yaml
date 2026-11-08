@@ -4,6 +4,10 @@ title: "Hardware PMU counter samples emit exclusively as OTel gauges and never e
 domain: "attestation_receipts"
 target_tier: "unit"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/10-attestation.md#Field-semantics"
@@ -13,7 +17,7 @@ invariant:
 confusion_matrix:
   quadrant: "true_positive"
   slop_risk: "Agent asserts retired_instructions equals a fixed number."
-  anti_slop_mitigation: "AS-04 asserts ExecutionReceipt comparison ignores retired instruction counts."
+  anti_slop_mitigation: "AS-04A asserts ExecutionReceipt comparison ignores retired instruction counts."
 
 setup:
   env: "ci"
@@ -49,8 +53,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "attestation.pmu_gauge_exported"
     chain_valid: true
@@ -60,5 +66,5 @@ expected_observations:
     fault_reason: null
 
 anti_slop_assertions:
-  - rule: "AS-04"
+  - rule: "AS-04A"
     verification: "assert_eq!(receipt_1, receipt_2); assert_eq!(otel_gauge('retired_instructions').is_some(), true);"

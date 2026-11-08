@@ -4,6 +4,10 @@ title: "driver-bwrap boots successfully only when allow_emulated_fallback is exp
 domain: "hypervisor_driver"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "emulated"
 
 invariant:
   law_reference: "cans/01-architecture.md#Fallback-policy"
@@ -50,8 +54,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "driver.emulated_boot"
     chain_valid: true

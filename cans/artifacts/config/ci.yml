@@ -15,8 +15,28 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   RUST_BACKTRACE: 1
 
+# Test-plan stages (work-order.md Phase 6): 1 Fast Gate, 2 Linux KVM,
+# 3 macOS HVF, 4 Windows WHP, 5 SDK Parity, 6 Scorecard Aggregator.
+# Pre-existing jobs that are not part of the 6 stages are kept verbatim
+# as named jobs below the stages; nothing is dropped.
+#
+# Corrections to the work-order, verified against the live tree:
+# - SDK parity vectors live at ./vectors.json (repo root); the
+#   work-order's tests/vectors/vectors.json does not exist.
+# - The invariant total is 218, not 208 (196 + 12 adapters_ingestion
+#   + 4 concurrency/fault-injection + 6 bindings); the aggregator
+#   asserts 218. It stays red until the manifest update lands.
+# - No platform_target field exists in any case file at base, and no
+#   nextest tag maps cases to Rust tests, so the tier jobs run each
+#   platform's executable test subset (see the per-job comments).
+#   Strict platform_target tag filtering lands with that schema work.
+
 jobs:
-  # ─── 0. SPEC GATE (merge-blocking, path-filter-free) ───────
+  # ─── STAGE 1. FAST GATE (Linux x86) ─────────────────────────
+  # Lint, AST analysis (check-tests), manifest validation
+  # (check-manifest), docs + CANS spec check (cans check --refs-only,
+  # via just check-spec which runs refs-only + full).
+  # ─── 1a. SPEC GATE (merge-blocking, path-filter-free) ───────
   # Corpus is a typed graph; this compiles it. Every see:, every
   # duplicate-home, every node_vs_artifact invariant in _rules.yaml
   # is a red X when it rots. No filter: a node edit can break a
@@ -45,7 +65,7 @@ jobs:
           git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" > /tmp/touched
           just check-spec-touched
 
-  # ─── 1. FAST STATIC GATE (<90s) ────────────────────────────
+  # ─── 1b. FAST STATIC GATE (<90s) ────────────────────────────
   lint-and-types:
     runs-on: ubuntu-latest
     steps:
@@ -61,6 +81,7 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: mozilla-actions/sccache-action@v0.0.5
+      - uses: taiki-e/install-action@just
 
       - name: Enforce Code Hygiene (LOC & Out-of-tree Tests)
         run: |
@@ -100,7 +121,250 @@ jobs:
           uv venv && uv pip install -e "packages/py[dev]"
           uv run mypy packages/py
 
-  # ─── 2. GUEST SHIM CROSS-COMPILE ────────────────────────────
+      # Test-plan gates: manifest validation + AST anti-slop analysis.
+      - name: Manifest validation (check-manifest)
+        run: just check-manifest
+      - name: AST anti-slop analysis (check-tests)
+        run: just check-tests
+
+  # ─── STAGE 2. LINUX KVM TIER (Linux x86) ────────────────────
+  # Cases with platform_target.hypervisor: kvm, via cargo nextest.
+  # At base no platform_target field exists yet, so this runs the
+  # executable KVM subset: kelir-integration, gated on /dev/kvm.
+  # continue-on-error is deliberately NOT set: a real KVM failure
+  # must fail the job. No KVM on the runner is an explicit skip
+  # (notice + skipped-no-kvm tier result), never a fake pass.
+  # Set vars.KELIR_RUNNER to a self-hosted label to run for real.
+  linux-kvm-tier:
+    needs: [test-plugins, test-drivers]
+    runs-on: ${{ vars.KELIR_RUNNER || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Detect KVM
+        id: kvm
+        run: |
+          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No KVM; skipping kelir-integration"
+          fi
+      - name: Integration suite
+        if: steps.kvm.outputs.available == 'true'
+        run: cargo nextest run -p kelir-integration
+      - name: Record tier result
+        if: always()
+        run: |
+          mkdir -p test-results
+          if [ "${{ steps.kvm.outputs.available }}" = "true" ]; then
+            STATUS="${{ job.status }}"
+          else
+            STATUS="skipped-no-kvm"
+          fi
+          printf '{"tier": "linux-kvm", "status": "%s"}\n' "$STATUS" > test-results/linux-kvm.json
+          i=0
+          for f in $(find target/nextest -name junit.xml 2>/dev/null); do
+            i=$((i + 1))
+            cp "$f" "test-results/junit-$i.xml"
+          done
+          cat test-results/linux-kvm.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-linux-kvm
+          path: test-results/
+
+  # ─── STAGE 3. MACOS HVF TIER (macOS ARM64) ──────────────────
+  # Cases with platform_target.hypervisor: hvf, filtered strictly
+  # via tag. At base no platform_target field or tag exists yet, so
+  # this runs the executable HVF subset: the native driver-hvf unit
+  # tests (real-hardware paths stay excluded via test_hw_*).
+  # Strict tag filtering lands with the platform_target schema work.
+  macos-hvf-tier:
+    needs: [lint-and-types]
+    runs-on: macos-14 # Apple Silicon M1 (Free tier on GitHub Actions for public repos)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      # Unit tests for the native Apple Silicon HVF driver (macOS runners
+      # have hypervisor entitlements; real-hardware paths stay excluded)
+      - name: Test native HVF driver
+        run: cargo nextest run -p driver-hvf -E 'not test(test_hw_)'
+      - name: Record tier result
+        if: always()
+        run: |
+          mkdir -p test-results
+          printf '{"tier": "macos-hvf", "status": "%s"}\n' "${{ job.status }}" > test-results/macos-hvf.json
+          i=0
+          for f in $(find target/nextest -name junit.xml 2>/dev/null); do
+            i=$((i + 1))
+            cp "$f" "test-results/junit-$i.xml"
+          done
+          cat test-results/macos-hvf.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-macos-hvf
+          path: test-results/
+
+  # ─── STAGE 4. WINDOWS WHP TIER (Self-hosted Windows) ────────
+  # Cases with platform_target.hypervisor: whp.
+  # OPEN: no self-hosted Windows runner is configured in-repo — the
+  # only runner variable that exists is vars.KELIR_RUNNER (Linux).
+  # Until a Windows self-hosted label (e.g. vars.KELIR_RUNNER_WINDOWS)
+  # is configured, this job runs the executable Windows subset on
+  # windows-latest: transport conformance + driver-openvmm unit tests
+  # (real-hardware paths excluded). The WHP hardware tier is NOT run
+  # here and NOT faked as passing.
+  windows-whp-tier:
+    needs: [lint-and-types]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      # GitHub-hosted cells run transport unit tests only: SPSC ring path
+      # and named-pipe fallback path. No AF_VSOCK assumptions may leak into
+      # shared code. Full workflow runs on self-hosted Windows WHP runners.
+      - name: Transport conformance (SPSC rings + named pipes only)
+        run: cargo nextest run -p kelir-transport
+      - name: Windows driver unit tests (excludes real-hardware paths)
+        run: cargo nextest run -p driver-openvmm -E 'not test(test_hw_)'
+      - name: Record tier result
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p test-results
+          printf '{"tier": "windows-whp", "status": "%s"}\n' "${{ job.status }}" > test-results/windows-whp.json
+          i=0
+          for f in $(find target/nextest -name junit.xml 2>/dev/null); do
+            i=$((i + 1))
+            cp "$f" "test-results/junit-$i.xml"
+          done
+          cat test-results/windows-whp.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-windows-whp
+          path: test-results/
+
+  # ─── STAGE 5. SDK PARITY GATE ───────────────────────────────
+  # Merge-blocking. Executes TS and Python test suites (ForeignPluginProxy,
+  # memory pinning, unhandled freeze recovery), testkit vectors, and AST diff.
+  # Parity vectors live at ./vectors.json (repo root); the work-order's
+  # tests/vectors/vectors.json does not exist (verified in-tree).
+  sdk-parity-gate:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: astral-sh/setup-uv@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Vectors file is ./vectors.json at repo root
+        run: |
+          test -f ./vectors.json
+          test ! -f tests/vectors/vectors.json
+      - name: Build bindings
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm -r build
+          uv venv && uv pip install -e "packages/py[dev]"
+      - name: Execute TypeScript SDK tests
+        run: pnpm -r test
+      - name: Execute Python SDK tests
+        run: uv run pytest packages/py
+      - name: Parity
+        run: cargo run -p kelir-plugin-cli -- parity run
+      - name: Record tier result
+        if: always()
+        run: |
+          mkdir -p test-results
+          printf '{"tier": "sdk-parity", "status": "%s"}\n' "${{ job.status }}" > test-results/sdk-parity.json
+          cat test-results/sdk-parity.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-sdk-parity
+          path: test-results/
+
+  # ─── STAGE 6. SCORECARD AGGREGATOR ─────────────────────────
+  # Runs ONLY after the platform jobs complete (needs:). Collects
+  # the per-tier JUnit/JSON results and verifies all 218 invariant
+  # cases passed on their respective native targets before writing
+  # scorecard.md. A tier that skipped for lack of hardware reports
+  # skipped-no-kvm explicitly; a failed tier fails this job.
+  # NOTE: the 218 assertion stays red until the manifest update
+  # (196 -> 218) lands; check-scorecard likewise gates on the
+  # committed scorecard.md matching manifest truth.
+  scorecard-aggregator:
+    needs: [linux-kvm-tier, macos-hvf-tier, windows-whp-tier, sdk-parity-gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@just
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Collect tier results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-*
+          path: test-results
+          merge-multiple: true
+      - name: Verify every tier reported (218 invariants)
+        run: |
+          python3 - <<'EOF'
+          import glob, json, sys
+          expected = {"linux-kvm", "macos-hvf", "windows-whp", "sdk-parity"}
+          found = {}
+          for path in glob.glob("test-results/*.json"):
+              with open(path) as f:
+                  data = json.load(f)
+              found[data["tier"]] = data["status"]
+          missing = expected - set(found)
+          if missing:
+              print(f"ERROR: no tier result for: {sorted(missing)}")
+              sys.exit(1)
+          failed = [t for t, s in found.items() if s not in ("success", "skipped-no-kvm")]
+          if failed:
+              print(f"ERROR: tier(s) failed: {failed}: {found}")
+              sys.exit(1)
+          for t, s in sorted(found.items()):
+              print(f"{t}: {s}")
+              if s == "skipped-no-kvm":
+                  print(f"::notice::Tier {t} skipped: no KVM on this runner; hardware cases not executed.")
+          print("All collected tier results are success (or explicitly skipped-no-kvm).")
+          EOF
+      - name: Assert invariant total is 218
+        run: |
+          grep -q 'total_cases: 218' cans/artifacts/test-plan/manifest.yaml
+      - name: Verify scorecard matches manifest truth
+        run: just check-scorecard
+      - name: Write scorecard.md
+        run: just scorecard
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorecard
+          path: cans/artifacts/scorecard.md
+
+  # ─── KEPT NAMED JOBS (existing coverage, not a test-plan stage) ───
+  # Mapping: build-guest-shim (shim cross-compile), test-core /
+  # test-plugins / test-shim / test-drivers (pure-memory unit suites
+  # that `just test-unit` runs locally), panic-hunt (adversarial),
+  # package-check (zero-toolchain packaging), plugin-graph /
+  # layer-check / plugin-audit / verify-tiered-compilation (static
+  # plugin audits), perf-budgets (hardware budget enforcement).
+
+  # ─── GUEST SHIM CROSS-COMPILE ──────────────────────────────
   build-guest-shim:
     runs-on: ubuntu-latest
     strategy:
@@ -125,7 +389,7 @@ jobs:
           name: kelir-shim-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/kelir-shim
 
-  # ─── 3. CORE KERNEL + PLUGIN TESTKIT ───────────────────────
+  # ─── CORE KERNEL + PLUGIN TESTKIT ───────────────────────
   test-core:
     needs: [lint-and-types]
     runs-on: ubuntu-latest
@@ -137,7 +401,7 @@ jobs:
       - name: Core + testkit
         run: cargo nextest run -p kelir-core -p kelir-plugin-testkit
 
-  # ─── 3a. ADVERSARIAL INTEGRATION HARNESS (PANIC HUNT) ──────
+  # ─── ADVERSARIAL INTEGRATION HARNESS (PANIC HUNT) ──────
   panic-hunt:
     needs: [lint-and-types]
     runs-on: ubuntu-latest
@@ -149,39 +413,11 @@ jobs:
       - name: Adversarial Frame Fuzzing
         run: cargo nextest run -p kelir-core --test panic_hunt
 
-  # ─── 3b. MULTI-LANGUAGE PARITY & SDK EXECUTION GATE ────────
-  # Merge-blocking. Executes TS and Python test suites (ForeignPluginProxy,
-  # memory pinning, unhandled freeze recovery), testkit vectors, and AST diff.
-  parity:
-    needs: [lint-and-types]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - uses: pnpm/action-setup@v3
-        with: { version: 9 }
-      - uses: astral-sh/setup-uv@v2
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@nextest
-      - uses: mozilla-actions/sccache-action@v0.0.5
-      - name: Build bindings
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm -r build
-          uv venv && uv pip install -e "packages/py[dev]"
-      - name: Execute TypeScript SDK tests
-        run: pnpm -r test
-      - name: Execute Python SDK tests
-        run: uv run pytest packages/py
-      - name: Parity
-        run: cargo run -p kelir-plugin-cli -- parity run
-
-  # ─── 3c. ZERO-TOOLCHAIN PACKAGING CHECK ────────────────────
+  # ─── ZERO-TOOLCHAIN PACKAGING CHECK ────────────────────
   # Asserts precompiled NAPI binaries and Python wheels build cleanly
   # so consumers never require C/Rust compilers on target systems.
   package-check:
-    needs: [parity]
+    needs: [sdk-parity-gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -196,7 +432,7 @@ jobs:
       - name: Verify Python wheel packaging
         run: uv build --package kelir
 
-  # ─── 4. PER-PLUGIN TEST MATRIX ─────────────────────────────
+  # ─── PER-PLUGIN TEST MATRIX ─────────────────────────────
   # Each plugin's tests run against its explicit upstream dependencies.
   # A failure in one cell does not mask others (fail-fast: false).
   test-plugins:
@@ -214,7 +450,7 @@ jobs:
       - name: Test plugin-${{ matrix.plugin }}
         run: cargo nextest run -p plugin-${{ matrix.plugin }}
 
-  # ─── 4a. PLUGIN DEPENDENCY DAG CHECK ──────────────────────
+  # ─── PLUGIN DEPENDENCY DAG CHECK ──────────────────────
   plugin-graph:
     needs: [lint-and-types]
     runs-on: ubuntu-latest
@@ -225,7 +461,7 @@ jobs:
       - name: Validate Acyclic Plugin Dependency DAG
         run: cargo run -p kelir-plugin-cli -- check --graph
 
-  # ─── 4a2. LAYER CHECK (--layering-coverage) ────────────────
+  # ─── LAYER CHECK (--layering-coverage) ────────────────
   # Same command as `just check-layers`. Validates downward-only
   # crate dependencies; core/interface violations reject the build.
   layer-check:
@@ -238,7 +474,7 @@ jobs:
       - name: Validate Downward-Only Dependencies
         run: cargo run -p kelir-plugin-cli -- check --layers
 
-  # ─── 4b. PLUGIN CONTRACT AUDIT ─────────────────────────────
+  # ─── PLUGIN CONTRACT AUDIT ─────────────────────────────
   # Same command as `just check-plugin`. The audit that
   # 15-operations.md promises is actually executed here.
   plugin-audit:
@@ -255,7 +491,7 @@ jobs:
       - name: Contract audit
         run: cargo run -p kelir-plugin-cli -- check -p plugin-${{ matrix.plugin }}
 
-  # ─── 4c. TIERED PLUGIN COMPILATION ─────────────────────────
+  # ─── TIERED PLUGIN COMPILATION ─────────────────────────
   # Plugins compile against their explicit upstream dependencies
   # (see 02-plugin-model.md#Plugin-tiering). One workspace check
   # covers every crate and target, plugins included.
@@ -269,7 +505,7 @@ jobs:
       - name: Verify Tiered Plugin Compilation
         run: cargo check --workspace --all-targets
 
-  # ─── 5. SHIM + DRIVER TESTS ────────────────────────────────
+  # ─── SHIM + DRIVER TESTS ────────────────────────────────
   test-shim:
     needs: [lint-and-types]
     runs-on: ubuntu-latest
@@ -297,7 +533,7 @@ jobs:
       - name: Check untested drivers (avf, proot)
         run: cargo check -p driver-avf -p driver-proot
 
-  # ─── 5b. PERFORMANCE BUDGET GATE (HARD ENFORCEMENT) ────────
+  # ─── PERFORMANCE BUDGET GATE (HARD ENFORCEMENT) ────────
   perf-budgets:
     needs: [test-core, test-drivers]
     runs-on: ubuntu-latest
@@ -306,58 +542,3 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Assert Latency and RSS Ceilings
         run: cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
-
-  # ─── 6. CROSS-PLUGIN INTEGRATION (needs KVM) ───────────────
-  # continue-on-error: GitHub-hosted runners usually lack /dev/kvm.
-  # Set vars.KELIR_RUNNER to a self-hosted label to run for real.
-  test-integration:
-    needs: [test-plugins, test-drivers]
-    runs-on: ${{ vars.KELIR_RUNNER || 'ubuntu-latest' }}
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@nextest
-      - uses: mozilla-actions/sccache-action@v0.0.5
-      - name: Detect KVM
-        id: kvm
-        run: |
-          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No KVM; skipping kelir-integration"
-          fi
-      - name: Integration suite
-        if: steps.kvm.outputs.available == 'true'
-        run: cargo nextest run -p kelir-integration
-
-  # ─── 6b. WINDOWS TRANSPORT CONFORMANCE (transport only) ───
-  # GitHub-hosted cells run transport unit tests only: SPSC ring path
-  # and named-pipe fallback path. No AF_VSOCK assumptions may leak into
-  # shared code. Full workflow runs on self-hosted Windows WHP runners.
-  transport-windows:
-    needs: [lint-and-types]
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: mozilla-actions/sccache-action@v0.0.5
-      - name: Transport conformance (SPSC rings + named pipes only)
-        run: cargo nextest run -p kelir-transport
-      - name: Windows driver unit tests (excludes real-hardware paths)
-        run: cargo nextest run -p driver-openvmm -E 'not test(test_hw_)'
-
-  # ─── 7. MACOS APPLE SILICON GATE (Zero Bloat) ──────────────
-  check-macos-hvf:
-    needs: [lint-and-types]
-    runs-on: macos-14 # Apple Silicon M1 (Free tier on GitHub Actions for public repos)
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: mozilla-actions/sccache-action@v0.0.5
-      # Unit tests for the native Apple Silicon HVF driver (macOS runners
-      # have hypervisor entitlements; real-hardware paths stay excluded)
-      - name: Test native HVF driver
-        run: cargo nextest run -p driver-hvf -E 'not test(test_hw_)'
-

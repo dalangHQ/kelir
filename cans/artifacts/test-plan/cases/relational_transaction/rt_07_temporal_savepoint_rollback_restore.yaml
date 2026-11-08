@@ -4,6 +4,10 @@ title: "Rollback to intermediate savepoint restores broker upper diffs without a
 domain: "relational_transaction"
 target_tier: "integration"
 target_crate: "crates/kelir-plugins"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/plugins/transaction.md#Temporal-savepoints"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 1
-    syscall_42_trapped: false
+    frames_outbound: 1
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "transaction.savepoint_reverted"
     chain_valid: true

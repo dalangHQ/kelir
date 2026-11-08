@@ -4,6 +4,10 @@ title: "Metadata service request originating from outside session vsock peer rej
 domain: "governance_vault"
 target_tier: "integration"
 target_crate: "crates/kelir-plugins"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/plugins/vault.md#Error-and-return-semantics-(vault)"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "vault.external_access_rejected"
     chain_valid: true

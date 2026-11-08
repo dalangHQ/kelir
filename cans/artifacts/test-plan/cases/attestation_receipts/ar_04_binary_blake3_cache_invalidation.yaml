@@ -4,6 +4,10 @@ title: "Modifying binary file st_mtime_ns invalidates cached BLAKE3 hash, forcin
 domain: "attestation_receipts"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/10-attestation.md#binary_blake3-identity"
@@ -48,8 +52,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 1
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "attestation.hash_cache_invalidated"
     chain_valid: true

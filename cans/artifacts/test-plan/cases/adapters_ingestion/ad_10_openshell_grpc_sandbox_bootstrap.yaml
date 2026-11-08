@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "ad_10_openshell_grpc_sandbox_bootstrap"
+title: "OpenShell gRPC SandboxService maps directly to KelirBuilder boot and lifecycle primitives with no in-guest supervisor"
+domain: "adapters_ingestion"
+target_tier: "e2e"
+target_crate: "crates/kelir-adapters"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/12-adapters.md#OpenShell-gRPC-driver"
+  statement: "SandboxService maps to KelirBuilder boot and lifecycle primitives and the in-guest OpenShell supervisor process is eliminated entirely, with policy enforced out-of-band via virtio-vsock Channel 0 and FUSE gates. Gap: no openshell-driver crate and no OpenShellCoordinationPolicy Rust surface exist in this tree (commercial impls are out-of-tree per the spec), so this case is specified against the spec text, not a live surface."
+  blast_radius_if_breached: "An in-guest supervisor reintroduces a privileged agent inside the sandbox that policy cannot see or veto."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts a sandbox boots without checking no supervisor process exists inside the guest."
+  anti_slop_mitigation: "AS-04A asserts the guest process table contains zero supervisor entries after boot."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "adapters.openshell"
+    agent_id: "agt_ad_10"
+    trust: "reviewed"
+  initial_state:
+    sandbox_spec: "sandbox-ad10.yaml"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "openshell-driver SandboxService.Create maps to KelirBuilder boot"
+  input_params:
+    supervisor_processes: 0
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "adapters.openshell"
+    culprit: "none — sandbox booted with no in-guest supervisor"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "adapters.openshell_sandbox_booted"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "assert_eq!(guest_supervisor_processes(), 0); assert_eq!(session.state(), SessionState::Running);"

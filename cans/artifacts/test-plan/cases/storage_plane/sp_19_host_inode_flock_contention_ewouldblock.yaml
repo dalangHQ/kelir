@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_19_host_inode_flock_contention_ewouldblock"
+title: "A second host process contending for a guest-held inode lock receives EWOULDBLOCK from the host flock"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Host-inode-lock-broker"
+  statement: "Guest FUSE SETLK delegates directly to host flock; when a second external host process tries flock(LOCK_EX | LOCK_NB) on the same host inode it receives EWOULDBLOCK. Grounded in crates/kelir-core/src/planes/storage/fuse.rs (EWOULDBLOCK errno mapping) and lock_broker.rs HostFdCache; flock delegation itself is an L3 TODO in lock_broker.rs, so the contention outcome is specified against the spec text and the errno mapping, not a live delegation path."
+  blast_radius_if_breached: "Two microVMs running git or cargo on a shared workspace corrupt indices when lock contention silently succeeds."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent implements an in-memory lock table without acquiring the physical host flock, so the external contender succeeds."
+  anti_slop_mitigation: "AS-04A asserts the external host flock attempt returns EWOULDBLOCK under a pinned deterministic clock; AS-01 forbids mocking the host flock."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.lock_broker"
+    agent_id: "agt_sp_19"
+    trust: "reviewed"
+  initial_state:
+    target_path: ".git/index.lock"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "fuse_op"
+  command: "Guest acquires exclusive lock via fcntl(F_SETLK, F_WRLCK); external host process tries flock(LOCK_EX | LOCK_NB) on the same inode"
+  input_params:
+    lock_type: "F_WRLCK"
+    contender_flags: "LOCK_EX | LOCK_NB"
+
+expected_observations:
+  exit_code: 1
+  state_modified: true
+  diagnostic:
+    domain: "storage.lock"
+    culprit: "second host contender denied with EWOULDBLOCK"
+    remedy: "release guest lock, then retry contender"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "storage.flock_contention_ewouldblock"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "EWOULDBLOCK"
+
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "assert_eq!(external_host_flock_acquire(), Err(libc::EWOULDBLOCK));"

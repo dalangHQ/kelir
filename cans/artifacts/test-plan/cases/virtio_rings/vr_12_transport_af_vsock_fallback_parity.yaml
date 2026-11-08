@@ -4,6 +4,10 @@ title: "AF_VSOCK transport fallback produces byte-for-byte identical framing to 
 domain: "virtio_rings"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/01-architecture.md#Transport-engine-abstraction"
@@ -49,8 +53,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "transport.parity_verified"
     chain_valid: true

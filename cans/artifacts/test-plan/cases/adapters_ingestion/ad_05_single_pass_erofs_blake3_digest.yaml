@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "ad_05_single_pass_erofs_blake3_digest"
+title: "kelir-pack computes the canonical rootfs BLAKE3 digest during the single-pass build with no second read of the image"
+domain: "adapters_ingestion"
+target_tier: "e2e"
+target_crate: "crates/kelir-adapters/kelir-pack"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/12-adapters.md#Ingestion-matrix"
+  statement: "The canonical rootfs BLAKE3 digest is computed during the single-pass build and the image is emitted as cas/blobs/blake3_<hash> consumed by the boot path. Gap: chunk feeding into the digest is a phase2_emit_erofs L3 TODO in crates/kelir-adapters/kelir-pack/src/main.rs; the blake3::Hasher exists in the phase 2 signature but no payload chunk is fed yet, so this case is specified against the spec text, not a live surface."
+  blast_radius_if_breached: "A digest computed by re-reading the image can disagree with the bytes actually booted, breaking attestation identity."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts a digest string exists without checking it matches the emitted CAS blob name or is stable across runs."
+  anti_slop_mitigation: "AS-04A asserts the digest is identical across two deterministic runs and equals the CAS blob name suffix."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "adapters.ingest"
+    agent_id: "agt_ad_05"
+    trust: "reviewed"
+  initial_state:
+    layer_digest: "sha256:ad05digest"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "kelir-pack build oci-manifest.json rootfs.erofs twice and compare rootfs digests"
+  input_params:
+    runs: 2
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "adapters.pack"
+    culprit: "none — digest stable across deterministic runs"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "adapters.layer_compiled"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "assert_eq!(run1.rootfs_digest, run2.rootfs_digest); assert!(cas_blob_path.ends_with(&run1.rootfs_digest));"

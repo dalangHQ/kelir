@@ -12,7 +12,10 @@ Every test case in this test plan asserts host-level physical reality. A test th
 
 Every test case defined in `cases/**/*.yaml` and implemented across `crates/**/tests/` must strictly satisfy these eight rules:
 
-* **CDR-01: Single Invariant Scope**: Each test case exercises exactly one physical invariant. Bundling multiple distinct security boundaries or failure modes into one test case is forbidden.
+- **CDR-01: Single Invariant Scope**
+  - Each test case exercises exactly one physical invariant.
+  - Bundling distinct security boundaries into one test case is forbidden.
+  - Bundling distinct failure modes into one test case is forbidden.
 * **CDR-02: Deterministic Clock and PRNG**: Wall-clock sleeps (`std::thread::sleep`) and unseeded entropy are banned. Deterministic tests must execute under pinned virtual clock parameters (`tsc=reliable clocksource=kvm-clock` or `CNTVOFF_EL2`) and seeded ChaCha20 streams.
 * **CDR-03: Hardcoded Expected Literals**: Expected values (BLAKE3 binary hashes, dirty byte totals, POSIX errnos, exit kinds) must be literal constants. Computing expected values by running the subject code through a helper inside the test is banned (Anti-Tautology).
 * **CDR-04: Explicit Physical Boundaries**: Tests asserting hardware virtualization must run on real KVM/HVF/WHP hardware. Emulated execution tiers (`driver-bwrap`, `driver-proot`) must fail closed with `E_NOHARDWAREVMM` unless `allow_emulated_fallback: true` is explicitly configured.
@@ -30,7 +33,8 @@ The workspace enforces eight compile-time and static-analysis linter laws via `k
 | **AS-01** | Banned VMM Mocking | Prohibits mocking `VmmDriver`, Stage-2 MMU, or VirtIO rings in integration/e2e tiers. |
 | **AS-02** | Physical Mutation Proof | Prohibits asserting successful drop/revert without asserting host disk bytes == 0 and socket count == 0. |
 | **AS-03** | Typed Verdict Law | Prohibits untyped `.is_ok()` / `.is_err()`. Requires explicit enum matching and receipt verification. |
-| **AS-04** | Pinned Time & Entropy | Prohibits host wall-clock drift and unseeded randomness in deterministic executions. |
+| **AS-04A** | Deterministic Replay | Prohibits host wall-clock sampling, PMU cross-host comparison, and unseeded randomness in unit and deterministic integration runs; clock pinned via pvclock/CNTVOFF_EL2. |
+| **AS-04B** | Physical Budget Floor | Requires host wall-clock and vCPU-cycle measurement in hardware benchmark suites; enforces thresholds declared in perf/budgets.toml with enforce = true. |
 | **AS-05** | Merkle WAL Chain Integrity | Prohibits claiming committed mutations without proving BLAKE3 RFC 6962 tree updates when ledger is active. |
 | **AS-06** | Anti-Tautology Law | Prohibits deriving expected assertion values from subject function outputs. |
 | **AS-07** | Hardware Platform Law | Prohibits claiming virtualization coverage while running under user-namespace emulation. |
@@ -47,6 +51,10 @@ title: "<Narrative description of physical invariant>"
 domain: "<domain_name>"
 target_tier: "unit" | "integration" | "e2e"
 target_crate: "<crates/path_to_crate>"
+platform_target:
+  os: "linux" | "macos" | "windows" | "android" | "any"
+  arch: "x86_64" | "aarch64" | "any"
+  hypervisor: "kvm" | "hvf" | "whp" | "avf" | "emulated" | "none"
 
 invariant:
   law_reference: "<cans_file.md#anchor>"
@@ -94,8 +102,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "<event_name>"
     chain_valid: true | false

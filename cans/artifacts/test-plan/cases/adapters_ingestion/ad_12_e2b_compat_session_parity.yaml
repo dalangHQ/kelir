@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "ad_12_e2b_compat_session_parity"
+title: "e2b-compat Sandbox create and close map to Kelir Session boot and stop with identical lifecycle semantics in TS and Python"
+domain: "adapters_ingestion"
+target_tier: "e2e"
+target_crate: "packages/ts/e2b-compat"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/12-adapters.md#E2B-compatibility"
+  statement: "The e2b-compat thin client SDK wrapper replicates the Sandbox interface with local hardware boots and no in-guest shims or daemons; Sandbox.create maps to Session boot and close maps to Session stop. Grounded in the real wrappers packages/ts/e2b-compat and packages/py/kelir/compat/e2b.py (Python twin named here; target_crate names the TypeScript wrapper)."
+  blast_radius_if_breached: "A compat wrapper that diverges from Session lifecycle lets an agent harness leak a running microVM after close."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts create and close succeed without checking the underlying Session reached Running then Terminated in both SDKs."
+  anti_slop_mitigation: "AS-04A asserts the TS and Python wrappers drive the same Session state transitions in the same order."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "adapters.e2b"
+    agent_id: "agt_ad_12"
+    trust: "reviewed"
+  initial_state:
+    sdk: "ts+py"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Sandbox.create() boots a Session; Sandbox.close() stops it, in TS and in Python"
+  input_params:
+    sdks: 2
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "adapters.e2b"
+    culprit: "none — create booted, close stopped, both SDKs"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "adapters.e2b_session_parity"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "assert_eq!(ts_session.state(), SessionState::Terminated); assert_eq!(py_session.state(), SessionState::Terminated);"

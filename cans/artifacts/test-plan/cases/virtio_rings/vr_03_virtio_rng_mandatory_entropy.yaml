@@ -4,6 +4,10 @@ title: "virtio-rng passes host entropy to guest kernel, unblocking getrandom() b
 domain: "virtio_rings"
 target_tier: "integration"
 target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
 
 invariant:
   law_reference: "cans/01-architecture.md#VirtIO-Device-Complex"
@@ -13,7 +17,7 @@ invariant:
 confusion_matrix:
   quadrant: "true_positive"
   slop_risk: "Agent asserts entropy was read without verifying getrandom() was non-blocking at early boot."
-  anti_slop_mitigation: "AS-04 asserts zero latency delay on guest getrandom(GRND_NONBLOCK)."
+  anti_slop_mitigation: "AS-04A asserts zero latency delay on guest getrandom(GRND_NONBLOCK)."
 
 setup:
   env: "ci"
@@ -50,8 +54,10 @@ expected_observations:
     tombstones_created: 0
     host_blocks_allocated: 0
   wire:
-    packets_transmitted: 0
-    syscall_42_trapped: false
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
   audit:
     event_emitted: "ring.rng_seeded"
     chain_valid: true
@@ -61,5 +67,5 @@ expected_observations:
     fault_reason: null
 
 anti_slop_assertions:
-  - rule: "AS-04"
+  - rule: "AS-04A"
     verification: "assert_eq!(shim_entropy_init_result, Ok(32)); assert_eq!(entropy_pool_ready, true);"
