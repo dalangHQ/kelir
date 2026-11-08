@@ -22,7 +22,7 @@ pub const SCRIPT_DENY_ERRNO: &str = "EACCES";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuthorizedJitEngine {
     pub binary_path: String,
-    pub binary_blake3: [u8; 32],
+    pub binary_blake3: String,
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.supply_chain.wx_jit
@@ -61,7 +61,7 @@ pub struct SupplyChainConfig {
 
 // see: cans/plugins/supply-chain.md#Crate-dependencies-(supply-chain)
 pub trait JitValidationService: Send + Sync {
-    fn is_authorized(&self, binary_blake3: &[u8; 32]) -> bool;
+    fn is_authorized(&self, binary_blake3: &str) -> bool;
 }
 
 #[derive(Clone, Debug)]
@@ -159,13 +159,13 @@ impl SupplyChainPlugin {
 
 // see: cans/plugins/supply-chain.md#Crate-dependencies-(supply-chain)
 impl JitValidationService for SupplyChainPlugin {
-    fn is_authorized(&self, binary_blake3: &[u8; 32]) -> bool {
+    fn is_authorized(&self, binary_blake3: &str) -> bool {
         // TODO (L3): catalog storage internals; resolve allowed_jit_binaries disk paths to BLAKE3 digests for the verified JIT engine catalog (Node, Bun, V8).
         self.config
             .wx_jit
             .allowed_jit_binaries
             .iter()
-            .any(|engine| engine.binary_blake3 == *binary_blake3)
+            .any(|engine| engine.binary_blake3 == binary_blake3)
     }
 }
 

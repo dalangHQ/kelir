@@ -6,8 +6,10 @@ use std::task::{Context, Poll};
 pub use kelir_interface::handles::{ClockHandle, FsHandle, StepStack, TerminalHandle, VmHandle};
 use kelir_interface::plugin::PluginError;
 
+use kelir_interface::handlers::Has;
+
 use crate::builder::Registration;
-use crate::hlist::{HList, HNil, Has, NoParams};
+use crate::hlist::{HList, HNil, NoParams};
 use crate::planes::storage::FsReconcileRequest;
 use kelir_core::planes::storage::reconciler::CommitStats;
 
@@ -43,7 +45,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     where
         Plugins: Has<T, Index>,
     {
-        self.plugins.capability()
+        self.plugins.get()
     }
 
     pub fn core(&self) -> &kelir_core::Session {

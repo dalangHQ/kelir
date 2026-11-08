@@ -6,7 +6,6 @@ license = "FSL-1.1-Apache-2.0"
 
 [dependencies]
 kelir-interface = { path = "../kelir-interface" }
-kelir-catalog = { path = "../kelir-catalog" }
 kelir-plugin-testkit = { path = "../kelir-plugin-testkit" }
 blake3 = { workspace = true }
 sha2 = { workspace = true }

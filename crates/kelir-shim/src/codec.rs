@@ -29,6 +29,22 @@ pub const FLAG_RST: u8 = 0x08;
 #[allow(dead_code)]
 pub const FLAG_WINDOW_UPDATE: u8 = 0x10;
 
+// see: cans/11-protocol.md#Wire-framing
+#[allow(dead_code)]
+pub const MSG_TRAP: u16 = 0x0001;
+
+// see: cans/11-protocol.md#Wire-framing
+#[allow(dead_code)]
+pub const MSG_CHANNEL_PAYLOAD: u16 = 0x0002;
+
+// see: cans/11-protocol.md#Wire-framing
+#[allow(dead_code)]
+pub const MSG_VM_LIFECYCLE_CONTROL: u16 = 0x0003;
+
+// see: cans/11-protocol.md#Wire-framing
+#[allow(dead_code)]
+pub const MSG_SYSTEM_TELEMETRY: u16 = 0x0004;
+
 #[allow(dead_code)]
 pub fn encode_frame(
     stream_id: u32,
@@ -69,6 +85,16 @@ pub fn decode_header(buf: &[u8]) -> Result<(u32, u8, u32), ()> {
         return Err(());
     }
     Ok((stream_id, flags, len))
+}
+
+// see: cans/11-protocol.md#Wire-framing
+#[allow(dead_code)]
+pub fn decode_msg_type(payload: &[u8]) -> Result<(u16, &[u8]), ()> {
+    if payload.len() < 2 {
+        return Err(());
+    }
+    let msg_type = u16::from_le_bytes([payload[0], payload[1]]);
+    Ok((msg_type, &payload[2..]))
 }
 
 // see: cans/11-protocol.md#Control-channel

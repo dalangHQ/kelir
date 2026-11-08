@@ -12,5 +12,5 @@ pub mod trap_gate;
 pub mod uart;
 pub mod vmm;
 
-pub use plugin_registry::{KNOWN_CATALOG_PLUGINS, PluginRegistration};
+pub use plugin_registry::PluginRegistration;
 pub use session::Session;

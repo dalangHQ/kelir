@@ -20,6 +20,7 @@ class PgWireRewrite:
     listen_port: int = 0
     upstream: str = ""
     rewrite_rules: list[tuple[str, str]] = field(default_factory=list)
+    max_rewrites_per_conn: int = 0
 
 
 @dataclass

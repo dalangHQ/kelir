@@ -92,16 +92,17 @@ impl StoragePlane {
             .get_or_init(|| Mutex::new(fuse::FuseWorker::new(receiver, interposer, session_id)))
     }
 
-    pub fn reconcile(&self) -> Result<(), kelir_interface::plugin::PluginError> {
-        // TODO (L3): reconcile workspace_root against sparse_upper_path and tombstones via Reconciler.
-        let _ = (
-            &self.workspace_root,
-            &self.sparse_upper_path,
-            &self.tombstones,
-        );
-        Err(kelir_interface::plugin::PluginError::Halt(
-            "TODO (L3): StoragePlane::reconcile needs the reconciler commit path".into(),
-        ))
+    pub fn reconcile(
+        &self,
+        req: reconciler::FsReconcileRequest,
+    ) -> Result<reconciler::CommitStats, kelir_interface::plugin::PluginError> {
+        match self.reconciler.get() {
+            Some(reconciler) => reconciler.reconcile(req),
+            None => Err(kelir_interface::plugin::PluginError::Halt(
+                "StoragePlane::reconcile needs the anchored reconciler; call reconciler() first"
+                    .into(),
+            )),
+        }
     }
 
     pub fn discard(&self) -> Result<(), kelir_interface::plugin::PluginError> {

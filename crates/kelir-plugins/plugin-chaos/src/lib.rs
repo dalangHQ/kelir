@@ -217,13 +217,10 @@ impl NetInterposer for ChaosPlugin {
 
 // see: cans/05-storage-plane.md#Write-gating
 impl FsInterposer for ChaosPlugin {
-    fn on_fs_write(
-        &self,
-        path: &Path,
-        _data: &mut [u8],
-        _pid: u32,
-        _ctx: &HandlerCtx,
-    ) -> Result<FilterAction, PluginError> {
-        self.apply_storage_rules(path)
+    fn on_fs_write(&self, _data: &mut [u8], ctx: &HandlerCtx) -> Result<FilterAction, PluginError> {
+        match &ctx.fs_ctx {
+            Some(fs_ctx) => self.apply_storage_rules(&fs_ctx.path),
+            None => Ok(FilterAction::Forward),
+        }
     }
 }

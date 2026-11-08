@@ -31,7 +31,7 @@ from kelir import (
     TrapFilter,
     Verdict,
 )
-from kelir.plugin import BasePlugin, PluginError
+from kelir.plugin import BasePlugin, LifecycleCtx, PluginError
 from kelir.planes.terminal import PromptRule, TokenShield
 from kelir.planes.storage import (
     DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopRule
@@ -166,7 +166,7 @@ def make_snoop(oracle: UserOracle) -> Callable[[Path, bytes, HandlerContext], Aw
                 errno="EPERM",
                 reason=f"harness hallucination at {path}",
             )
-        producer_blake3 = await c.cap.ledger.blake3_of_producing_process(path)
+        producer_blake3 = await c.cap.extension("ledger").blake3_of_producing_process(path)
         await oracle.ingest_harness_event(path, evt, producer_blake3)
     return on_write
 
@@ -216,7 +216,7 @@ def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
         pre: SnapshotDescriptor = c.step.last()
         receipt: ExecutionReceipt = await c.receipt()
 
-        if receipt.binary_blake3 != c.trap.binary_blake3.hex():
+        if receipt.binary_blake3 != c.trap.binary_blake3:
             await c.vm.rollback(pre)
             c.terminal.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n")
             return PostExecAction.rollback_and_halt()
@@ -244,7 +244,7 @@ def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
 
 def make_commit_gate() -> PreExecHandler:
     async def commit_gate(c: HandlerContext) -> Verdict:
-        n = c.cap.policy.violations
+        n = c.cap.extension("policy").violations
         if n > 0:
             return Verdict.drop("EPERM", f"EPOLICY: {n} prior violation(s).")
         return Verdict.pass_()
@@ -430,20 +430,12 @@ async def build_runtime(
     builder.trap(TrapFilter.binary("git").with_arg("commit"), post=make_zero_byte_check())
 
     @builder.on_vm_init
-    async def _init(driver: kelir.VmmDriver) -> None:
-        await driver.set_watchdog(timeout=timedelta(minutes=5), action="reboot")
-
-    @builder.on_vm_ready
-    async def _ready(session: Session) -> None:
-        await session.exec_in_guest("npm", ["ci", "--prefer-offline"])
-
-    @builder.on_vm_shutdown
-    async def _shutdown(session: Session) -> None:
-        await session.cap.ledger.flush()
+    async def _init(ctx: LifecycleCtx) -> None:
+        ctx.set_watchdog(timeout=timedelta(minutes=5), action="reboot")
 
     @builder.on_trap_deny
     async def _deny(event: TrapEvent, session: Session) -> None:
-        if await session.cap.ledger.count_denials(event.ppid) > 5:
+        if await session.cap.extension("ledger").count_denials(event.ppid) > 5:
             await session.vm.suspend("./.kelir/quarantine.snap")
             await session.console()
 
@@ -533,7 +525,7 @@ async def main() -> None:
             cwd="/workspace/checkout-service",
         )
 
-        final = await session.cap.ledger.finalize(
+        final = await session.cap.extension("ledger").finalize(
             include_delta=winning_delta,
             include_merkle_root=True,
         )

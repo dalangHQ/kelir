@@ -129,7 +129,7 @@ class TrapEvent:
     pid: int = 0
     ppid: int = 0
     cwd: str = ""
-    binary_blake3: bytes = b""
+    binary_blake3: str = ""
 
 
 class TrapFilter:
@@ -216,8 +216,8 @@ class CausalDelta:
     modified_inodes: list[str] = field(default_factory=list)
     spawned_pids: list[int] = field(default_factory=list)
     egress_bytes: int = 0
-    storage_delta_root: bytes = b""
-    receipt_leaf_hash: bytes = b""
+    storage_delta_root: str = ""
+    receipt_leaf_hash: str = ""
 
 
 @dataclass
@@ -316,11 +316,31 @@ class TransactionService:
 class Caps:
 
     def __init__(self) -> None:
-        self.ledger = LedgerService()
-        self.container = ContainerService()
-        self.db = DbService()
-        self.policy = PolicyCap()
-        self.transaction = TransactionService()
+        self._extensions: dict[str, Any] = {}
+
+    def register(self, name: str, service: Any) -> None:
+        self._extensions[name] = service
+
+    def extension(self, name: str) -> Any:
+        service = self._extensions.get(name)
+        if service is None:
+            factory = _EXTENSION_FACTORIES.get(name)
+            if factory is None:
+                raise EConfig(
+                    f"caps: extension `{name}` is not mounted: enable it with .use(...) (L3)"
+                )
+            service = factory()
+            self._extensions[name] = service
+        return service
+
+
+_EXTENSION_FACTORIES: dict[str, Callable[[], Any]] = {
+    "ledger": LedgerService,
+    "container": ContainerService,
+    "db": DbService,
+    "policy": PolicyCap,
+    "transaction": TransactionService,
+}
 
 
 
@@ -473,13 +493,6 @@ class HandlerContext:
     async def receipt(self) -> ExecutionReceipt:
         # TODO (L3): fetch the trap's execution receipt via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: trap receipt (L3)")
-
-
-
-class VmmDriver:
-    async def set_watchdog(self, timeout: Any = None, action: str = "") -> None:
-        # TODO: arm the VM watchdog
-        pass
 
 
 
@@ -850,7 +863,6 @@ __all__ = [
     "TrapEvent",
     "TrapFilter",
     "Verdict",
-    "VmmDriver",
     "builder",
     "kelir",
 ]

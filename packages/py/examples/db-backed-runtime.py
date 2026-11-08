@@ -76,10 +76,10 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
     )
 
     async def pre_migrate(c: HandlerContext) -> Verdict:
-        if c.cap.db.rewrite_target != "migrate_schema.":
+        if c.cap.extension("db").rewrite_target != "migrate_schema.":
             return Verdict.drop(
                 "EdbProxySchema",
-                f"EdbProxySchema: got {c.cap.db.rewrite_target!r}",
+                f"EdbProxySchema: got {c.cap.extension("db").rewrite_target!r}",
             )
         return Verdict.pass_()
 
@@ -93,7 +93,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
 
     @builder.on_pre_commit
     async def _pre_commit(session: Session) -> None:
-        await session.cap.ledger.flush()
+        await session.cap.extension("ledger").flush()
 
     @builder.on_post_commit
     async def _post_commit(session: Session, committed: bool) -> None:
@@ -115,7 +115,7 @@ async def main() -> None:
         with open(LOCAL_SNAPSHOT, "rb") as f:
             await session.vm.import_snapshot(f.read())
 
-        async with session.cap.transaction.scope(
+        async with session.cap.extension("transaction").scope(
             "migrate-42",
             paths=["/workspace/migrations"],
             schemas=["migrate_schema"],
@@ -137,7 +137,7 @@ async def main() -> None:
             with open(LOCAL_SNAPSHOT, "wb") as f:
                 f.write(out)
 
-        ledger = session.cap.ledger
+        ledger = session.cap.extension("ledger")
         final = await ledger.finalize(
             include_merkle_root=True,
             include_delta=await ledger.get_causal_delta_from_parent(),

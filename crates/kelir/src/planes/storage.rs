@@ -4,6 +4,8 @@ use std::sync::Arc;
 use kelir_interface::plugin::HandlerCtx;
 use kelir_interface::plugin::PluginError;
 
+pub use kelir_core::planes::storage::reconciler::FsReconcileRequest;
+
 use crate::hlist::{HCons, HList, HNil, NoParams};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -210,13 +212,6 @@ where
             carryover_bytes: self.carryover_bytes,
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct FsReconcileRequest {
-    pub cwd: String,
-    pub atomic_staging: bool,
-    pub fsync: bool,
 }
 
 #[derive(Debug, Clone)]

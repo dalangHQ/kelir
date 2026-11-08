@@ -6,11 +6,12 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
-use kelir_interface::codec::{FLAG_DATA, MAX_FRAME_PAYLOAD, MAX_STREAM_ID, TRANSPORT_CONTROL};
+use kelir_interface::codec::{FLAG_DATA, MAX_FRAME_PAYLOAD, MAX_STREAM_ID};
 use kelir_interface::driver::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
 use kelir_interface::plugin::VetoEvent;
 use kelir_interface::protocol::{
-    ExecveMutation, GuestToHost, Heartbeat, MsgType, PatchPayload, SuspendUntil, TrapEvent, Verdict,
+    Channel, ExecveMutation, GuestToHost, Heartbeat, MsgType, PatchPayload, SuspendUntil,
+    TrapEvent, Verdict,
 };
 
 // see: cans/11-protocol.md#Wire-framing
@@ -43,7 +44,7 @@ impl Error for VectorError {}
 // see: cans/11-protocol.md#Wire-framing
 #[derive(Debug, Clone)]
 pub struct WireFrame {
-    pub transport: u16,
+    pub transport: Channel,
     pub stream_id: u32,
     pub flags: u8,
     pub msg_type: MsgType,
@@ -112,7 +113,7 @@ impl VectorCase {
         let mut value = serde_json::json!({
             "name": self.name,
             "frame": {
-                "transport": self.frame.transport,
+                "transport": self.frame.transport as u16,
                 "stream_id": self.frame.stream_id,
                 "flags": self.frame.flags,
                 "msg_type": self.frame.msg_type as u16,
@@ -299,7 +300,7 @@ fn trap_event(
         binary_path: binary_path.to_string(),
         binary_dev: 2049,
         binary_ino: 400_000 + seq * 7,
-        binary_blake3: [0x42; 32],
+        binary_blake3: "42".repeat(32),
         argv,
         envp,
         cwd: "/workspace".to_string(),
@@ -316,7 +317,7 @@ fn trap_case(
     Ok(VectorCase {
         name: name.to_string(),
         frame: WireFrame {
-            transport: TRANSPORT_CONTROL,
+            transport: Channel::Control,
             stream_id: 0,
             flags: FLAG_DATA,
             msg_type: MsgType::Trap,
@@ -337,7 +338,7 @@ fn watchdog_case(
     Ok(VectorCase {
         name: name.to_string(),
         frame: WireFrame {
-            transport: TRANSPORT_CONTROL,
+            transport: Channel::Control,
             stream_id: 0,
             flags: FLAG_DATA,
             msg_type: MsgType::SystemTelemetry,
@@ -359,7 +360,7 @@ fn veto_case(name: &str, event: VetoEvent) -> Result<VectorCase, VectorError> {
     Ok(VectorCase {
         name: name.to_string(),
         frame: WireFrame {
-            transport: TRANSPORT_CONTROL,
+            transport: Channel::Control,
             stream_id: 0,
             flags: FLAG_DATA,
             msg_type: MsgType::VmLifecycleControl,
@@ -395,7 +396,7 @@ fn exec_rewrite_case() -> Result<VectorCase, VectorError> {
     Ok(VectorCase {
         name: "trap-pipe-install-rewrite-execve-mutation".to_string(),
         frame: WireFrame {
-            transport: TRANSPORT_CONTROL,
+            transport: Channel::Control,
             stream_id: 0,
             flags: FLAG_DATA,
             msg_type: MsgType::Trap,
@@ -413,7 +414,7 @@ fn heartbeat_case() -> Result<VectorCase, VectorError> {
     Ok(VectorCase {
         name: "heartbeat-telemetry-observer-pass".to_string(),
         frame: WireFrame {
-            transport: TRANSPORT_CONTROL,
+            transport: Channel::Control,
             stream_id: 0,
             flags: FLAG_DATA,
             msg_type: MsgType::SystemTelemetry,

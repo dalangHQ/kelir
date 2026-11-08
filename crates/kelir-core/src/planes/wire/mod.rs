@@ -118,23 +118,16 @@ pub fn classify_frame_directional(frame: &[u8], direction: FrameDirection) -> Fr
         return FrameClass::TooShort;
     }
     let protocol = frame[14 + 9];
-    let src_port = u16::from_be_bytes([frame[14 + ihl], frame[14 + ihl + 1]]);
-    let dst_port = u16::from_be_bytes([frame[14 + ihl + 2], frame[14 + ihl + 3]]);
-    // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-    let dns_port = match direction {
-        FrameDirection::Inbound => src_port,
-        FrameDirection::Outbound => dst_port,
-    };
     match protocol {
         6 => {
-            if dns_port == SYNTHETIC_DNS_PORT {
+            if is_synthetic_dns(frame, direction) {
                 FrameClass::TcpDns
             } else {
                 FrameClass::Tcp
             }
         }
         17 => {
-            if dns_port == SYNTHETIC_DNS_PORT {
+            if is_synthetic_dns(frame, direction) {
                 FrameClass::UdpDns
             } else {
                 FrameClass::UdpOther
@@ -142,6 +135,68 @@ pub fn classify_frame_directional(frame: &[u8], direction: FrameDirection) -> Fr
         }
         _ => FrameClass::NonTcpUdp,
     }
+}
+
+// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+pub fn is_synthetic_dns(frame: &[u8], direction: FrameDirection) -> bool {
+    if frame.len() < 14 {
+        return false;
+    }
+    if u16::from_be_bytes([frame[12], frame[13]]) != 0x0800 {
+        return false;
+    }
+    let ihl = usize::from(frame[14] & 0x0f) * 4;
+    if ihl < 20 || frame.len() < 14 + ihl + 4 {
+        return false;
+    }
+    let gateway_octets = SYNTHETIC_DNS_GATEWAY_IP.octets();
+    let gateway_ip = match direction {
+        FrameDirection::Inbound => &frame[14 + 12..14 + 16],
+        FrameDirection::Outbound => &frame[14 + 16..14 + 20],
+    };
+    if gateway_ip != gateway_octets {
+        return false;
+    }
+    let protocol = frame[14 + 9];
+    if protocol != 6 && protocol != 17 {
+        return false;
+    }
+    let port_offset = match direction {
+        FrameDirection::Inbound => 14 + ihl,
+        FrameDirection::Outbound => 14 + ihl + 2,
+    };
+    let port = u16::from_be_bytes([frame[port_offset], frame[port_offset + 1]]);
+    port == SYNTHETIC_DNS_PORT
+}
+
+// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+pub fn dns_payload(frame: &[u8], direction: FrameDirection) -> Option<&[u8]> {
+    if !is_synthetic_dns(frame, direction) {
+        return None;
+    }
+    let ihl = usize::from(frame[14] & 0x0f) * 4;
+    let l4_start = 14 + ihl;
+    let protocol = frame[14 + 9];
+    let payload_start = match protocol {
+        17 => {
+            if frame.len() < l4_start + 8 {
+                return None;
+            }
+            l4_start + 8
+        }
+        6 => {
+            if frame.len() < l4_start + 13 {
+                return None;
+            }
+            let tcp_hlen = usize::from(frame[l4_start + 12] >> 4) * 4;
+            if tcp_hlen < 20 || frame.len() < l4_start + tcp_hlen {
+                return None;
+            }
+            l4_start + tcp_hlen
+        }
+        _ => return None,
+    };
+    Some(&frame[payload_start..])
 }
 
 pub struct UdpNatEntry {
@@ -221,9 +276,17 @@ impl WirePlane {
                 reason: "non-TCP/UDP frame dropped at egress ring".into(),
             }),
             FrameClass::TcpDns | FrameClass::UdpDns => {
-                // TODO (L3): intercept port 53 here and answer via resolve_synthetic_dns; the resolver is pending.
-                let _ = self.resolve_synthetic_dns(frame)?;
-                Ok(FilterAction::Forward)
+                match dns_payload(frame, FrameDirection::Outbound) {
+                    Some(payload) => {
+                        // TODO (L3): answer via resolve_synthetic_dns once the DNS wire parser lands.
+                        let _ = self.resolve_synthetic_dns(payload)?;
+                        Ok(FilterAction::Forward)
+                    }
+                    None => Ok(FilterAction::Drop {
+                        errno: None,
+                        reason: "DNS frame without a gateway payload dropped at egress ring".into(),
+                    }),
+                }
             }
             FrameClass::Tcp => {
                 // TODO (L3): run policy + NAT over the outbound TCP stream via the smoltcp stack.
@@ -243,10 +306,10 @@ impl WirePlane {
 
     pub fn resolve_synthetic_dns(
         &self,
-        query: &[u8],
+        payload: &[u8],
     ) -> Result<DnsResponse, kelir_interface::plugin::PluginError> {
         // TODO (L3): parse the query, apply the domain allowlist, answer from host resolver state via the synthetic gateway, EDNS0-downgrade the response.
-        let _ = (query, &self.allowed_domains, &self.synthetic_dns_ip);
+        let _ = (payload, &self.allowed_domains, &self.synthetic_dns_ip);
         Ok(DnsResponse {
             wire_bytes: Vec::new(),
             rcode: DnsRcode::ServFail,

@@ -222,13 +222,11 @@ export class KelirBuilder {
   ): this;
   on(
     event: LifecycleEvent.VmReady | LifecycleEvent.VmShutdown,
-    handler: (session: Session) => Promise<void> | void,
+    handler: (ctx: LifecycleContext) => Promise<void> | void,
   ): this;
   on(
     event: LifecycleEvent,
-    handler:
-      | ((ctx: LifecycleContext) => Promise<void> | void)
-      | ((session: Session) => Promise<void> | void),
+    handler: (ctx: LifecycleContext) => Promise<void> | void,
   ): this {
     this.hooks.push({
       ring: RingEvent.Lifecycle,

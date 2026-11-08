@@ -2,10 +2,10 @@
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::time::Duration;
 
-use kelir_interface::driver::{VmConfig, WatchdogAction};
+use kelir_interface::driver::VmConfig;
 use kelir_interface::plugin::HandlerCtx;
+use kelir_interface::plugin::LifecycleCtx;
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{AnyPlugin, CompositePlugin, MountScope, VetoEvent};
 use kelir_interface::protocol::{TrapEvent, Verdict};
@@ -73,21 +73,6 @@ where
     f
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct DriverHandle;
-
-impl DriverHandle {
-    pub async fn set_watchdog(
-        &self,
-        _timeout: Duration,
-        _action: WatchdogAction,
-    ) -> Result<(), PluginError> {
-        Err(PluginError::Halt(
-            "TODO (L3): DriverHandle::set_watchdog".into(),
-        ))
-    }
-}
-
 pub struct LifecycleMut<'a> {
     vetoes: &'a mut VetoList,
 }
@@ -153,11 +138,15 @@ impl<Plugins: HList> TrapEntry<Plugins> {
 
 type BoxFutureResult = Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send>>;
 
-type BoxedDriverCallback = Box<dyn Fn(DriverHandle) -> BoxFutureResult + Send + Sync>;
+type BoxedLifecycleCallback = Box<
+    dyn for<'a> Fn(
+            &'a mut LifecycleCtx,
+        ) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
+        + Send
+        + Sync,
+>;
 
 // see: cans/03-sdk-architecture.md#Builder-consumption-model-across-languages
-type BoxedCoreCallback = Box<dyn Fn(&kelir_core::Session) -> BoxFutureResult + Send + Sync>;
-
 type BoxedTrapDenyCallback =
     Box<dyn Fn(&TrapEvent, &kelir_core::Session) -> BoxFutureResult + Send + Sync>;
 
@@ -203,9 +192,9 @@ pub(crate) struct Registration<Plugins: HList> {
     pub(crate) storage_cfg: Option<StorageConfig<Plugins, NoParams>>,
     pub(crate) wire_cfg: Option<WireConfig>,
     pub(crate) lock_broker_cfg: Option<LockBrokerConfig>,
-    pub(crate) on_vm_init: Option<BoxedDriverCallback>,
-    pub(crate) on_vm_ready: Option<BoxedCoreCallback>,
-    pub(crate) on_vm_shutdown: Option<BoxedCoreCallback>,
+    pub(crate) on_vm_init: Option<BoxedLifecycleCallback>,
+    pub(crate) on_vm_ready: Option<BoxedLifecycleCallback>,
+    pub(crate) on_vm_shutdown: Option<BoxedLifecycleCallback>,
     pub(crate) on_trap_deny: Option<BoxedTrapDenyCallback>,
     pub(crate) custom_actions: Vec<CustomActionEntry>,
     pub(crate) vsock_services: Vec<VsockServiceEntry>,
@@ -357,39 +346,48 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
         self
     }
 
-    pub fn on_vm_init<F, Fut>(mut self, f: F) -> Self
+    pub fn on_vm_init<F>(mut self, f: F) -> Self
     where
-        F: Fn(DriverHandle) -> Fut + Clone + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'a> Fn(
+                &'a mut LifecycleCtx,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
     {
-        self.registration.on_vm_init = Some(Box::new(move |driver: DriverHandle| {
-            let fut = f.clone()(driver);
-            Box::pin(fut)
-        }));
+        self.registration.on_vm_init = Some(Box::new(f));
         self
     }
 
-    pub fn on_vm_ready<F, Fut, T>(mut self, f: F) -> Self
+    pub fn on_vm_ready<F>(mut self, f: F) -> Self
     where
-        F: Fn(&kelir_core::Session) -> Fut + Clone + Send + Sync + 'static,
-        Fut: Future<Output = Result<T, PluginError>> + Send + 'static,
+        F: for<'a> Fn(
+                &'a mut LifecycleCtx,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
     {
-        self.registration.on_vm_ready = Some(Box::new(move |session: &kelir_core::Session| {
-            let fut = f.clone()(session);
-            Box::pin(async move { fut.await.map(drop) })
-        }));
+        self.registration.on_vm_ready = Some(Box::new(f));
         self
     }
 
-    pub fn on_vm_shutdown<F, Fut, T>(mut self, f: F) -> Self
+    pub fn on_vm_shutdown<F>(mut self, f: F) -> Self
     where
-        F: Fn(&kelir_core::Session) -> Fut + Clone + Send + Sync + 'static,
-        Fut: Future<Output = Result<T, PluginError>> + Send + 'static,
+        F: for<'a> Fn(
+                &'a mut LifecycleCtx,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
     {
-        self.registration.on_vm_shutdown = Some(Box::new(move |session: &kelir_core::Session| {
-            let fut = f.clone()(session);
-            Box::pin(async move { fut.await.map(drop) })
-        }));
+        self.registration.on_vm_shutdown = Some(Box::new(f));
         self
     }
 
@@ -506,7 +504,12 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
             .iter()
             .map(|plugin| kelir_core::PluginRegistration::new(plugin.name(), true))
             .collect();
-        let core = kelir_core::Session::boot_with_plugins(self.config, &plugins)?;
+        let mut engine = kelir_core::dispatch::PipelineEngine::new();
+        for instance in &self.registration.instances {
+            instance.register_interceptors(&mut engine);
+        }
+        engine.seal()?;
+        let core = kelir_core::Session::boot_with_engine(self.config, &plugins, engine)?;
         Ok(Session::from_parts(core, self.plugins, self.registration))
     }
 }

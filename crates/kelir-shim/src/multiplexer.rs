@@ -201,8 +201,18 @@ impl Multiplexer {
         if stream_id > codec::MAX_STREAM_ID {
             return Err(ShimError::InvalidStreamId { stream_id });
         }
+        let (msg_type, body) =
+            codec::decode_msg_type(payload).map_err(|()| ShimError::TruncatedFrame)?;
+        match msg_type {
+            codec::MSG_TRAP | codec::MSG_VM_LIFECYCLE_CONTROL => {
+                // TODO (L3): route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes.
+                return Err(ShimError::ControlPending { msg_type });
+            }
+            codec::MSG_CHANNEL_PAYLOAD | codec::MSG_SYSTEM_TELEMETRY => {}
+            _ => return Err(ShimError::UnknownMsgType { msg_type }),
+        }
         if (flags & codec::FLAG_OPEN) != 0 {
-            return self.open_stream(stream_id, payload);
+            return self.open_stream(stream_id, body);
         }
         if (flags & (codec::FLAG_CLOSE | codec::FLAG_RST)) != 0 {
             // TODO (L3): flush stdout/stderr EOF frames before release; exit frames defer until EOF flush.
@@ -224,7 +234,7 @@ impl Multiplexer {
                 .ok_or(ShimError::SlotEmpty { stream_id })?;
             // TODO (L3): route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03).
             let _ = (
-                payload,
+                body,
                 slot.pid,
                 slot.exec_id,
                 slot.stdin_fd,

@@ -18,6 +18,13 @@ pub struct CommitStats {
     pub tombstones_resolved: u64,
 }
 
+#[derive(Debug, Clone)]
+pub struct FsReconcileRequest {
+    pub cwd: String,
+    pub atomic_staging: bool,
+    pub fsync: bool,
+}
+
 pub struct StagingGuard {
     pub staged: Vec<PathBuf>,
     pub disarmed: bool,
@@ -116,10 +123,20 @@ impl Reconciler {
         ))
     }
 
-    pub fn reconcile(&self) -> Result<CommitStats, kelir_interface::plugin::PluginError> {
+    pub fn reconcile(
+        &self,
+        req: FsReconcileRequest,
+    ) -> Result<CommitStats, kelir_interface::plugin::PluginError> {
         // TODO (L3): detect -> classify -> stage -> commit -> contain; idempotent replay.
         let _ = self.detect()?;
-        let _ = (&self.broker_dir, &self.host_target, self.guard);
+        let _ = (
+            &self.broker_dir,
+            &self.host_target,
+            self.guard,
+            req.cwd,
+            req.atomic_staging,
+            req.fsync,
+        );
         Err(kelir_interface::plugin::PluginError::Halt(
             "TODO: Reconciler::reconcile".into(),
         ))

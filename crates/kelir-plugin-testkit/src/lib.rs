@@ -7,6 +7,7 @@ pub mod handlers;
 pub mod mock_bus;
 pub mod vectors;
 
+use std::collections::VecDeque;
 use std::path::Path;
 use std::time::Duration;
 
@@ -14,14 +15,62 @@ use async_trait::async_trait;
 use tokio::io::AsyncRead;
 
 use kelir_interface::driver::{
-    BalloonConvergence, DriverError, SharedMemoryHandle, SnapshotDescriptor, Stream, SuspendReason,
-    VmConfig, VmmDriver, WatchdogAction,
+    BalloonConvergence, DriverCapabilities, DriverError, SharedMemoryHandle, SnapshotDescriptor,
+    Stream, SuspendReason, VmConfig, VmmDriver, WatchdogAction,
 };
+
+// see: cans/01-architecture.md#Transport-engine-abstraction
+#[derive(Debug)]
+pub struct LoopbackStream {
+    channel_id: u32,
+    buffer: VecDeque<u8>,
+}
+
+impl LoopbackStream {
+    pub fn new(channel_id: u32) -> Self {
+        Self {
+            channel_id,
+            buffer: VecDeque::new(),
+        }
+    }
+
+    pub fn channel_id(&self) -> u32 {
+        self.channel_id
+    }
+}
+
+impl Stream for LoopbackStream {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+        let n = buf.len().min(self.buffer.len());
+        let bytes: Vec<u8> = self.buffer.drain(..n).collect();
+        buf[..n].copy_from_slice(&bytes);
+        Ok(n)
+    }
+
+    fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
+        self.buffer.extend(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+}
 
 pub struct MockVmmDriver;
 
 #[async_trait]
 impl VmmDriver for MockVmmDriver {
+    fn capabilities(&self) -> DriverCapabilities {
+        DriverCapabilities {
+            backend: "mock",
+            cold_boot_budget_ms: 60,
+            rollback_budget_ms: 8,
+            fork_budget_ms: 10,
+            requires_hardware_vmm: false,
+            supports_cow_fork: false,
+        }
+    }
     async fn boot(&mut self, _config: VmConfig) -> Result<(), DriverError> {
         Ok(())
     }
@@ -93,10 +142,8 @@ impl VmmDriver for MockVmmDriver {
     ) -> Result<(), DriverError> {
         Ok(())
     }
-    fn transport_connect(&self, _channel_id: u32) -> Result<Box<dyn Stream>, DriverError> {
-        Err(DriverError::Unsupported(
-            "mock transport_connect (L3)".into(),
-        ))
+    fn transport_connect(&self, channel_id: u32) -> Result<Box<dyn Stream>, DriverError> {
+        Ok(Box::new(LoopbackStream::new(channel_id)))
     }
     async fn terminate(&mut self) -> Result<(), DriverError> {
         Ok(())

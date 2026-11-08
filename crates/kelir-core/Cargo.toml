@@ -7,7 +7,6 @@ license = "FSL-1.1-Apache-2.0"
 [dependencies]
 kelir-interface = { path = "../kelir-interface" }
 kelir-transport = { path = "../kelir-transport" }
-kelir-catalog = { path = "../kelir-catalog" }
 kelir-otlp = { path = "../kelir-otlp" }
 serde = { workspace = true }
 ciborium = { workspace = true }

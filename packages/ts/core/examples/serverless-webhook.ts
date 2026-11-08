@@ -1,6 +1,6 @@
 // see: cans/08-lifecycle.md#State-machine
 
-import { kelir, t, LifecycleEvent, PostExecAction,
+import { kelir, t, PostExecAction,
          type ExecutionReceipt } from "@kelir/core";
 import { wireIngress, mcp, toolGuard, ledger } from "@kelir/core";
 
@@ -83,11 +83,7 @@ const runtime = kelir({
       if (receipt.dirtyBytes === 0) return PostExecAction.RollbackAndHalt;
       return PostExecAction.Proceed;
     },
-  })
-
-
-  .on(LifecycleEvent.VmReady,    async (s) => { await s.vm.adjustBalloon(384); })
-  .on(LifecycleEvent.VmShutdown, async (s) => { await s.ledger.flush(); });
+  });
 
 async function main() {
   const session = await runtime.boot();

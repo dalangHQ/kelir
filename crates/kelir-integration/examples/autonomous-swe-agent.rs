@@ -13,8 +13,8 @@ use kelir_interface::plugin::HandlerCtx as IfaceHandlerCtx;
 use tokio::sync::Mutex;
 
 use kelir::{
-    HCons, HNil, HandlerCtx, HandlerCtxExt, KelirBuilder, NoParams, PidLineage, PostExecAction,
-    SnapshotDescriptor, TrapFilter, Unsealed, Verdict, VmConfig,
+    FsReconcileRequest, HCons, HNil, HandlerCtx, KelirBuilder, NoParams, PidLineage,
+    PostExecAction, SnapshotDescriptor, TrapFilter, Unsealed, Verdict, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     handler,
     planes::{
@@ -170,17 +170,19 @@ impl FsInterposer for RepoPolicyPlugin {
     // see: cans/02-plugin-model.md#Segregated-ring-traits
     fn on_fs_write(
         &self,
-        path: &Path,
         data: &mut [u8],
-        _pid: u32,
-        _ctx: &IfaceHandlerCtx,
+        ctx: &IfaceHandlerCtx,
     ) -> Result<FilterAction, PluginError> {
-        if path.extension().is_some_and(|e| e == "diff") && data.len() > self.opts.max_diff_bytes {
-            self.state.blocking_lock().violations += 1;
-            return Ok(FilterAction::Drop {
-                errno: Some("ENOSPC".into()),
-                reason: "diff exceeds policy ceiling".into(),
-            });
+        if let Some(fs_ctx) = &ctx.fs_ctx {
+            if fs_ctx.path.extension().is_some_and(|e| e == "diff")
+                && data.len() > self.opts.max_diff_bytes
+            {
+                self.state.blocking_lock().violations += 1;
+                return Ok(FilterAction::Drop {
+                    errno: Some("ENOSPC".into()),
+                    reason: "diff exceeds policy ceiling".into(),
+                });
+            }
         }
         Ok(FilterAction::Forward)
     }
@@ -463,14 +465,7 @@ async fn build_runtime(
                     let receipt: ExecutionReceipt = c.receipt().await?;
 
 
-                    let trap_hex: String = c.trap.binary_blake3.iter().fold(
-                        String::with_capacity(64),
-                        |mut hex, b| {
-                            hex.push_str(&format!("{:02x}", b));
-                            hex
-                        },
-                    );
-                    if receipt.binary_blake3 != trap_hex {
+                    if receipt.binary_blake3 != c.trap.binary_blake3 {
                         c.vm.rollback(&pre).await?;
                         c.terminal.notice(
                             "⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n",
@@ -507,7 +502,7 @@ async fn build_runtime(
             move |c: HandlerCtx<_, _>| async move {
 
 
-                let policy = HandlerCtxExt::ctx::<RepoPolicyHandle, _>(&c);
+                let policy = c.ctx::<RepoPolicyHandle, _>();
                 let n = policy.violations().await;
                 if n > 0 {
                     return Ok(Verdict::Drop {
@@ -541,16 +536,13 @@ async fn build_runtime(
         }));
 
     let builder = builder
-        .on_vm_init(|driver| async move {
-            driver
-                .set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot)
-                .await
+        .on_vm_init(|ctx| {
+            Box::pin(async move {
+                ctx.set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot)
+                    .await
+            })
         })
-        .on_vm_ready(|session| {
-            let result = session.terminal.resize(120, 40);
-            async move { result }
-        })
-        .on_vm_shutdown(|_session| async move { Ok::<(), PluginError>(()) })
+        .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
         .on_trap_deny(|_event, _session| async move { Ok::<(), PluginError>(()) });
 
     Ok(builder)
@@ -628,7 +620,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         oracle.await_human_approval().await?;
         session.resume()?;
 
-        session.storage.reconcile()?;
+        session.storage.reconcile(FsReconcileRequest {
+            cwd: "/workspace".into(),
+            atomic_staging: true,
+            fsync: true,
+        })?;
         eprintln!("[kelir] broker commit done for winner {id}");
         // TODO (L3): spawn npm test -- --runInBand, git commit the winning fix, and finalize the ledger receipt.
 

@@ -50,14 +50,6 @@ impl IncarnationId {
     }
 }
 
-// see: cans/01-architecture.md#Host-state-root
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LivenessProof {
-    LinuxPidfd { pid: u32 },
-    MacosKqueue { pid: u32 },
-    WindowsJobObject { pid: u32 },
-}
-
 // see: cans/06-storage-catalog.md#Entity-model
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CasLease {

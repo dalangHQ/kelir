@@ -3,6 +3,7 @@
 pub mod schema;
 
 use crate::schema::{SCHEMA_V1_SQL, SessionRow};
+use rusqlite::params;
 use thiserror::Error;
 
 // see: cans/06-storage-catalog.md#Entity-model
@@ -10,8 +11,16 @@ use thiserror::Error;
 pub enum CatalogError {
     #[error("catalog sqlite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
-    #[error("catalog operation not implemented (L3): {0}")]
-    NotImplemented(String),
+}
+
+fn now_unix() -> i64 {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    match i64::try_from(secs) {
+        Ok(v) => v,
+        Err(_) => i64::MAX,
+    }
 }
 
 pub struct CatalogDb {
@@ -28,14 +37,19 @@ impl CatalogDb {
     }
 
     pub fn register_session(&self, row: &SessionRow) -> Result<(), CatalogError> {
-        let _statement = self.pool.prepare(
+        self.pool.execute(
             "INSERT INTO sessions (session_id, incarnation_id, lease_kind, expires_at_unix, runner_pid, boot_id, start_time_ns) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                &row.session_id[..],
+                &row.incarnation_id.0[..],
+                row.lease_kind.as_str(),
+                row.expires_at_unix,
+                row.runner_pid,
+                &row.boot_id,
+                row.start_time_ns,
+            ],
         )?;
-        let _ = row;
-        // TODO (L3): bind the session row and execute the insert.
-        Err(CatalogError::NotImplemented(
-            "register_session execute (L3)".to_string(),
-        ))
+        Ok(())
     }
 
     pub fn heartbeat_lease(
@@ -43,23 +57,19 @@ impl CatalogDb {
         session_id: &[u8; 16],
         ttl_seconds: u32,
     ) -> Result<(), CatalogError> {
-        let _statement = self
-            .pool
-            .prepare("UPDATE sessions SET expires_at_unix = ?2 WHERE session_id = ?1")?;
-        let _ = (session_id, ttl_seconds);
-        // TODO (L3): bind the lease expiry and execute the update.
-        Err(CatalogError::NotImplemented(
-            "heartbeat_lease execute (L3)".to_string(),
-        ))
+        let expires = now_unix().saturating_add(i64::from(ttl_seconds));
+        self.pool.execute(
+            "UPDATE sessions SET expires_at_unix = ?2 WHERE session_id = ?1",
+            params![&session_id[..], expires],
+        )?;
+        Ok(())
     }
 
     pub fn prune_cas_leases(&self) -> Result<u64, CatalogError> {
-        let _statement = self
-            .pool
-            .prepare("DELETE FROM cas_leases WHERE expires_at_unix <= ?1")?;
-        // TODO (L3): bind now_unix and execute the delete, returning the pruned count.
-        Err(CatalogError::NotImplemented(
-            "prune_cas_leases execute (L3)".to_string(),
-        ))
+        let pruned = self.pool.execute(
+            "DELETE FROM cas_leases WHERE expires_at_unix <= ?1",
+            params![now_unix()],
+        )?;
+        Ok(pruned as u64)
     }
 }

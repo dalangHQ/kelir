@@ -8,7 +8,7 @@ use kelir_interface::plugin::PluginError;
 #[derive(Debug, Clone)]
 pub struct ToolSchema {
     pub name: String,
-    pub blake3: [u8; 32],
+    pub blake3: String,
 }
 
 // see: cans/plugins/tool-guard.md
@@ -16,7 +16,7 @@ pub struct ToolSchema {
 pub struct ApprovalRequest {
     pub tool: String,
     pub canonical_arguments: Vec<u8>,
-    pub payload_hash: [u8; 32],
+    pub payload_hash: String,
 }
 
 // see: cans/plugins/tool-guard.md
@@ -29,7 +29,7 @@ pub trait ToolRegistryService: Send + Sync {
 // see: cans/plugins/tool-guard.md
 #[derive(Debug, Default)]
 pub struct ToolRegistry {
-    locked_digest: Mutex<Option<[u8; 32]>>,
+    locked_digest: Mutex<Option<String>>,
     approvals: Mutex<Vec<ApprovalRequest>>,
 }
 
@@ -44,7 +44,7 @@ impl ToolRegistry {
             .lock()
             .map_err(|_| PluginError::Halt("tool catalog lock poisoned".into()))?;
         // TODO (L3): compute BLAKE3 over all advertised tool schemas, signatures, and descriptions per cans/plugins/tool-guard.md.
-        *locked = Some([0; 32]);
+        *locked = Some(String::new());
         Ok(())
     }
 }
@@ -70,7 +70,7 @@ impl ToolRegistryService for ToolRegistry {
         approvals.push(ApprovalRequest {
             tool: request.tool.clone(),
             canonical_arguments: request.canonical_arguments.clone(),
-            payload_hash: request.payload_hash,
+            payload_hash: request.payload_hash.clone(),
         });
         Ok(())
     }

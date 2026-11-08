@@ -86,6 +86,10 @@ impl PipelineEngine {
         &self.services
     }
 
+    pub fn is_sealed(&self) -> bool {
+        self.sealed
+    }
+
     pub fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope) {
         self.trap_interceptors.push(stage);
         self.trap_scopes.push(scope);
@@ -157,13 +161,11 @@ impl PipelineEngine {
 
     pub fn dispatch_fs_write(
         &self,
-        path: &std::path::Path,
         data: &mut [u8],
-        pid: u32,
         ctx: &HandlerCtx,
     ) -> Result<FilterAction, PluginError> {
         for interceptor in &self.fs_interceptors {
-            let action = interceptor.on_fs_write(path, data, pid, ctx)?;
+            let action = interceptor.on_fs_write(data, ctx)?;
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }

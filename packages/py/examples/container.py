@@ -31,7 +31,7 @@ def build_runtime() -> KelirBuilder:
 
 async def main() -> None:
     async with build_runtime() as session:
-        image = await session.cap.container.ingest_image(OCI_TARBALL)
+        image = await session.cap.extension("container").ingest_image(OCI_TARBALL)
 
         run = await session.spawn(
             "podman", ["run", "--rm", "--rootless", image,

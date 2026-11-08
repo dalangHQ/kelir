@@ -2,7 +2,6 @@
 // see: cans/01-architecture.md#Foreign-runtime-embedding
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 #![forbid(unsafe_code)]
-use std::path::PathBuf;
 use std::sync::Mutex;
 
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -13,47 +12,11 @@ pub mod fusion;
 
 use fusion::{FusedTrampolineDescriptor, TrampolineTable, convert_descriptor};
 use kelir_core::Session;
-use kelir_interface::driver::{DriverPolicy, VmConfig, WxPolicy};
+use kelir_interface::driver::{VmConfig, default_vm_config};
 
 pub struct PluginRegistration {
     pub name: String,
     pub enabled: bool,
-}
-
-// see: cans/01-architecture.md#Embedded-profile
-fn default_vm_config(
-    vcpus: Option<u8>,
-    memory_mb: Option<u32>,
-    kernel: Option<String>,
-    rootfs_erofs: Option<String>,
-    tsc_locked: Option<bool>,
-    enable_watchdog: Option<bool>,
-) -> VmConfig {
-    VmConfig {
-        vcpus: vcpus.unwrap_or(1),
-        memory_mb: memory_mb.unwrap_or(256),
-        kernel_path: PathBuf::from(kernel.unwrap_or_default()),
-        rootfs_erofs_path: PathBuf::from(rootfs_erofs.unwrap_or_default()),
-        page_size_kb: 4,
-        tsc_locked: tsc_locked.unwrap_or(true),
-        entropy_seed: None,
-        driver_policy: DriverPolicy {
-            require_hardware_vmm: true,
-            allow_emulated_fallback: false,
-            verify_hw_lockfile: false,
-            wx_enforcement: WxPolicy::Strict,
-            // see: cans/01-architecture.md#Foreign-runtime-embedding
-            ffi_worker_threads: 1,
-            ffi_max_ops_per_sec: 0,
-        },
-        enable_gpu_passthrough: false,
-        enable_watchdog: enable_watchdog.unwrap_or(false),
-        deterministic_clock: true,
-        pinned_clocksource: None,
-        ns_per_instruction: None,
-        preemption_grace_ms: 0,
-        network_off: true,
-    }
 }
 
 #[pyclass]
@@ -168,15 +131,8 @@ impl PyKelirBuilder {
                 }
             }
         }
-        if self.config.kernel_path.as_os_str().is_empty() {
-            return Err(PyValueError::new_err(
-                "boot: kernel path is required (EINVAL)",
-            ));
-        }
-        if self.config.rootfs_erofs_path.as_os_str().is_empty() {
-            return Err(PyValueError::new_err(
-                "boot: rootfs erofs path is required (EINVAL)",
-            ));
+        if let Some(reason) = self.config.missing_boot_path() {
+            return Err(PyValueError::new_err(reason));
         }
         // TODO (L3): bind each fused ring chain to its single trampoline entry as one closure and dispatch through the kelir-core pipeline.
         let plugins: Vec<kelir_core::PluginRegistration> = self

@@ -17,6 +17,9 @@ pub enum ShimError {
     InvalidStreamId { stream_id: u32 },
     StreamIdInUse { stream_id: u32 },
     UnknownFlags { flags: u8 },
+    UnknownMsgType { msg_type: u16 },
+    TruncatedFrame,
+    ControlPending { msg_type: u16 },
     PtyOpen { errno: libc::c_int },
 }
 
@@ -53,6 +56,15 @@ impl fmt::Display for ShimError {
             }
             Self::UnknownFlags { flags } => {
                 write!(f, "frame flags {flags:#04x} match no lane")
+            }
+            Self::UnknownMsgType { msg_type } => {
+                write!(f, "frame msg_type {msg_type:#06x} is unknown")
+            }
+            Self::TruncatedFrame => {
+                write!(f, "frame payload shorter than the 2-byte msg_type prefix")
+            }
+            Self::ControlPending { msg_type } => {
+                write!(f, "control msg_type {msg_type:#06x} handling pending (L3)")
             }
             Self::PtyOpen { errno } => write!(f, "openpty failed with errno {errno}"),
         }

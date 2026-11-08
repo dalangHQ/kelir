@@ -330,6 +330,7 @@ where
 pub trait AnyPlugin: Send + Sync {
     fn name(&self) -> &'static str;
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin>;
+    fn register_interceptors(&self, _pipeline: &mut dyn PipelineBinder) {}
 }
 
 impl<T> AnyPlugin for T
@@ -342,6 +343,10 @@ where
 
     fn fork_state(&self, child_session_id: &str) -> Box<dyn AnyPlugin> {
         KelirPlugin::fork_state(self, child_session_id)
+    }
+
+    fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
+        KelirPlugin::register_interceptors(self, pipeline)
     }
 }
 
@@ -493,14 +498,8 @@ pub trait FsInterposer: Send + Sync {
         let _ = (path, buffer);
         Ok(())
     }
-    fn on_fs_write(
-        &self,
-        path: &Path,
-        data: &mut [u8],
-        pid: u32,
-        ctx: &HandlerCtx,
-    ) -> Result<FilterAction, PluginError> {
-        let _ = (path, data, pid, ctx);
+    fn on_fs_write(&self, data: &mut [u8], ctx: &HandlerCtx) -> Result<FilterAction, PluginError> {
+        let _ = (data, ctx);
         Ok(FilterAction::Forward)
     }
     fn on_fs_lock(

@@ -13,8 +13,8 @@ use crate::protocol::{ProcessLimits, TrapEvent};
 use crate::telemetry::{ExecutionReceipt, ExitKind};
 
 // see: cans/03-sdk-architecture.md#Rust-SDK
-pub trait Has<T> {
-    fn get(&self) -> T;
+pub trait Has<T, Index> {
+    fn get(&self) -> &T;
 }
 
 // see: cans/02-plugin-model.md#Core-context-keys
@@ -173,9 +173,9 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         }
     }
 
-    pub fn ctx<T>(&self) -> T
+    pub fn ctx<T, Index>(&self) -> &T
     where
-        Plugins: Has<T>,
+        Plugins: Has<T, Index>,
     {
         self.plugins.get()
     }

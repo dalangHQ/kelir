@@ -43,10 +43,22 @@ impl StreamKind {
 }
 
 // see: cans/11-protocol.md#Control-channel
-pub const CHANNEL_CONTROL: u16 = 0x0000;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u16)]
+pub enum Channel {
+    Control = 0x0000,
+    StreamMux = 0x0001,
+}
 
-// see: cans/11-protocol.md#Control-channel
-pub const CHANNEL_STREAM_MUX: u16 = 0x0001;
+impl Channel {
+    pub fn from_u16(v: u16) -> Option<Self> {
+        match v {
+            0x0000 => Some(Self::Control),
+            0x0001 => Some(Self::StreamMux),
+            _ => None,
+        }
+    }
+}
 
 // see: cans/11-protocol.md#Control-channel
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,16 +175,6 @@ pub struct TrappedSyscall {
     pub memfd_create_flags: Option<u32>,
 }
 
-// see: cans/plugins/supply-chain.md
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SyscallTrap {
-    pub syscall_nr: u64,
-    pub prot_flags: Option<u32>,
-    pub memfd_flags: Option<u32>,
-}
-
-// TODO (L3): wire SyscallTrap into TrapEvent; TrapEvent currently carries TrappedSyscall instead.
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TrapEvent {
     pub seq: u64,
@@ -182,7 +184,7 @@ pub struct TrapEvent {
     pub binary_path: String,
     pub binary_dev: u64,
     pub binary_ino: u64,
-    pub binary_blake3: [u8; 32],
+    pub binary_blake3: String,
     pub argv: Vec<String>,
     pub envp: HashMap<String, String>,
     pub cwd: String,

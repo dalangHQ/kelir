@@ -17,10 +17,11 @@ pub mod session;
 pub mod telemetry;
 
 pub use builder::{KelirBuilder, PostExecAction, Sealed, TrapFilter, Unsealed, handler};
-pub use hlist::{HCons, HList, HNil, HandlerCtxExt, Has, NoParams};
+pub use hlist::{HCons, HList, HNil, NoParams};
 pub use kelir_core::planes::checkpoint::{PidLineage, StepSlot};
 pub use kelir_core::planes::storage::reconciler::CommitStats;
 pub use kelir_interface::driver::{SnapshotDescriptor, VmConfig, WatchdogAction};
+pub use kelir_interface::handlers::Has;
 pub use kelir_interface::plugin::HandlerCtx;
 pub use kelir_interface::protocol::Verdict;
 pub use planes::storage::{FsReconcileRequest, SyntheticFile};

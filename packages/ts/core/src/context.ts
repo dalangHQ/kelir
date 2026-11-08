@@ -112,10 +112,7 @@ export interface TrapContext {
   readonly fs: FsHandle;
   readonly step: StepHandle;
   readonly terminal: TerminalHandle;
-  readonly policy: PolicyHandle;
-  readonly ledger: LedgerHandle;
-  readonly mesh: MeshHandle;
-  readonly chaos: ChaosHandle;
+  extension<T>(name: string): T;
   receipt(): Promise<ExecutionReceipt>;
   pass(): Verdict;
   drop(errno: string, reason?: string): Verdict;

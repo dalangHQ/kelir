@@ -4,7 +4,7 @@
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
 // see: cans/02-plugin-model.md#Hook-return-semantics
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{FsInodeAttr, FsInterposer, HandlerCtx};
+use kelir_interface::plugin::{FsContext, FsInodeAttr, FsInterposer, HandlerCtx};
 use kelir_interface::protocol::{FilterAction, PatchPayload, Verdict};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -126,10 +126,12 @@ impl FuseDispatcher {
                 })
             }
             FuseOpcode::Write => match self.interposer.on_fs_write(
-                &request.path,
                 &mut request.data,
-                request.pid,
-                ctx,
+                &ctx.clone().with_fs_ctx(FsContext {
+                    inode: request.guest_inode,
+                    path: request.path.clone(),
+                    journal: 0,
+                }),
             )? {
                 FilterAction::Forward => Ok(FuseResponse {
                     guest_inode: request.guest_inode,

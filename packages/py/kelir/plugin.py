@@ -68,6 +68,11 @@ class LifecycleCtx:
 
     def __init__(self) -> None:
         self._vetoes: list[tuple[VetoEvent, Callable[[], bool]]] = []
+        self._watchdog: tuple[Any, str] | None = None
+
+    def set_watchdog(self, timeout: Any, action: str) -> None:
+        # TODO (L3): arm the VM watchdog via the PyO3 _kelir bridge.
+        self._watchdog = (timeout, action)
 
     def register_veto(
         self, event: VetoEvent, predicate: Callable[[], bool]

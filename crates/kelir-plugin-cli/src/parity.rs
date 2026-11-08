@@ -1,6 +1,8 @@
 // see: cans/15-operations.md#Multi-language-parity-gate
 use std::fs;
 
+use kelir_interface::protocol::Channel;
+
 // see: cans/15-operations.md#Multi-language-parity-gate
 #[derive(Debug, Clone, PartialEq)]
 pub enum JsonValue {
@@ -417,9 +419,7 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
 
 // see: cans/artifacts/code/wire-protocol.rs
 fn assert_frame_shape(vector: &ParityVector) -> Result<(), String> {
-    if vector.transport != kelir_interface::codec::TRANSPORT_CONTROL
-        && vector.transport != kelir_interface::codec::TRANSPORT_STREAM_MUX
-    {
+    if Channel::from_u16(vector.transport).is_none() {
         return Err(format!(
             "parity: vector `{}` transport {} is not a registered transport",
             vector.name, vector.transport

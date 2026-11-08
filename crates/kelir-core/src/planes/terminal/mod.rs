@@ -1,6 +1,8 @@
 // see: cans/04-terminal-plane.md#Terminal-pipeline
 // see: cans/04-terminal-plane.md#Stream-replay
 use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -103,31 +105,51 @@ pub struct LogSegment {
 }
 
 impl LogSegment {
-    pub fn new(port: u32) -> Self {
-        Self {
+    pub fn new(
+        session_id: [u8; 16],
+        port: u32,
+    ) -> Result<Self, kelir_interface::plugin::PluginError> {
+        Ok(Self {
             port,
             head: LogCursor::start(),
             bytes: Vec::new(),
-            index_path: PathBuf::from(format!("sessions/log-{port}/index.bin")),
-        }
+            index_path: session_log_path(&session_id)?,
+        })
     }
 }
 
+// see: cans/01-architecture.md#Host-state-root
+fn session_log_path(
+    session_id: &[u8; 16],
+) -> Result<PathBuf, kelir_interface::plugin::PluginError> {
+    let home = std::env::var("HOME").map_err(|_| {
+        kelir_interface::plugin::PluginError::Halt(
+            "HOME is not set; cannot locate ~/.kelir session logs".into(),
+        )
+    })?;
+    let mut hex = String::with_capacity(32);
+    for byte in session_id {
+        hex.push_str(&format!("{byte:02x}"));
+    }
+    Ok(PathBuf::from(home)
+        .join(".kelir")
+        .join("sessions")
+        .join(hex)
+        .join("logs")
+        .join("index.bin"))
+}
+
 pub struct TerminalPlane {
+    session_id: [u8; 16],
     state: Mutex<Vt100StateMachine>,
     segments: Mutex<HashMap<u32, LogSegment>>,
 }
 
-impl Default for TerminalPlane {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl TerminalPlane {
-    pub fn new() -> Self {
+    pub fn new(session_id: [u8; 16]) -> Self {
         // see: cans/04-terminal-plane.md#Terminal-pipeline
         Self {
+            session_id,
             state: Mutex::new(Vt100StateMachine::new()),
             segments: Mutex::new(HashMap::new()),
         }
@@ -186,17 +208,35 @@ impl TerminalPlane {
         port: u32,
         chunk: &[u8],
     ) -> Result<u64, kelir_interface::plugin::PluginError> {
-        // TODO (L3): flush the segment to its append-only index.bin on durable storage.
         let mut segments = self.segments.lock().map_err(|_| {
             kelir_interface::plugin::PluginError::Halt("terminal log lock poisoned".into())
         })?;
-        let segment = segments
-            .entry(port)
-            .or_insert_with(|| LogSegment::new(port));
+        if let std::collections::hash_map::Entry::Vacant(e) = segments.entry(port) {
+            e.insert(LogSegment::new(self.session_id, port)?);
+        }
+        let segment = segments.get_mut(&port).ok_or_else(|| {
+            kelir_interface::plugin::PluginError::Halt("log segment missing after insert".into())
+        })?;
         let len = u64::try_from(chunk.len()).map_err(|_| {
             kelir_interface::plugin::PluginError::Halt("log chunk too large".into())
         })?;
-        segment.head = segment.head.advance(len)?;
+        let new_head = segment.head.advance(len)?;
+        if let Some(parent) = segment.index_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                kelir_interface::plugin::PluginError::Halt(format!("create session log dir: {e}"))
+            })?;
+        }
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&segment.index_path)
+            .map_err(|e| {
+                kelir_interface::plugin::PluginError::Halt(format!("open log index: {e}"))
+            })?;
+        file.write_all(chunk).map_err(|e| {
+            kelir_interface::plugin::PluginError::Halt(format!("append log index: {e}"))
+        })?;
+        segment.head = new_head;
         segment.bytes.extend_from_slice(chunk);
         Ok(segment.head.0)
     }

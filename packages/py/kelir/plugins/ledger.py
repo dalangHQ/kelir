@@ -17,6 +17,8 @@ class OtelConfig:
 
 @dataclass
 class ReceiptConfig:
+    include_dirty_bytes: bool = False
+    include_binary_blake3: bool = False
     include_syscall_count: bool = False
 
 

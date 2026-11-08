@@ -18,27 +18,6 @@ impl PluginRegistration {
 }
 
 // see: cans/02-plugin-model.md#Catalog-tiering
-pub const KNOWN_CATALOG_PLUGINS: &[&str] = &[
-    "chaos",
-    "container",
-    "db-proxy",
-    "ledger",
-    "mcp",
-    "mesh",
-    "profile",
-    "replay",
-    "supply-chain",
-    "tool-guard",
-    "transaction",
-    "vault",
-    "wire-ingress",
-];
-
-pub fn is_known_catalog_plugin(name: &str) -> bool {
-    KNOWN_CATALOG_PLUGINS.contains(&name)
-}
-
-// see: cans/02-plugin-model.md#Catalog-tiering
 pub fn resolve_plugin_registrations(
     registrations: &[PluginRegistration],
 ) -> Result<Vec<PluginRegistration>, PluginError> {
@@ -52,12 +31,7 @@ pub fn resolve_plugin_registrations(
         if !registration.enabled {
             continue;
         }
-        if !is_known_catalog_plugin(&registration.name) {
-            return Err(PluginError::Halt(format!(
-                "boot: unknown plugin `{}`: not in the kelir catalog, refusing to boot without it",
-                registration.name
-            )));
-        }
+        // TODO (L3): dynamic discovery resolves a registered name to its plugin entry point; the registry only validates shape and dedupes.
         if resolved.iter().any(|item| item.name == registration.name) {
             continue;
         }

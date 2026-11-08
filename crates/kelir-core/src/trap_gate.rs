@@ -2,12 +2,10 @@
 // see: cans/02-plugin-model.md#Latency-ceiling
 // see: cans/02-plugin-model.md#Filter-before-FFI-gate
 use std::path::Path;
+use std::sync::Arc;
 
 use kelir_interface::plugin::MountScope;
 use kelir_interface::protocol::{TrapEvent, Verdict};
-
-const ENTROPY_SKIP_THRESHOLD_BITS: f64 = 4.0;
-const ENTROPY_DENY_THRESHOLD_BITS: f64 = 7.0;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum GateError {
@@ -44,14 +42,23 @@ pub enum GateDecision {
 pub struct TrapGateEvaluator {
     trusted_prefixes: Vec<String>,
     bpf_program: Option<BpfProgram>,
+    entropy_hook: Option<EntropyHook>,
 }
+
+type EntropyHook = Arc<dyn Fn(f64, bool) -> Option<GateDecision> + Send + Sync>;
 
 impl TrapGateEvaluator {
     pub fn new(trusted_prefixes: Vec<String>) -> Self {
         Self {
             trusted_prefixes,
             bpf_program: None,
+            entropy_hook: None,
         }
+    }
+
+    pub fn with_entropy_hook(mut self, hook: EntropyHook) -> Self {
+        self.entropy_hook = Some(hook);
+        self
     }
 
     pub fn with_bpf_program(mut self, program: BpfProgram) -> Self {
@@ -65,14 +72,16 @@ impl TrapGateEvaluator {
     }
 
     pub fn evaluate(&self, event: &TrapEvent, scope: &MountScope) -> GateDecision {
-        if self.should_skip_gate_3(&event.binary_path, &event.argv) {
-            return GateDecision::Allow;
-        }
-        if self.should_deny_gate_3(&event.binary_path, &event.argv) {
-            return GateDecision::Deny(Verdict::Drop {
-                errno: None,
-                reason: "high-entropy argv from untrusted binary".into(),
-            });
+        if let Some(hook) = &self.entropy_hook {
+            if let Ok(entropy) = self.compute_shannon_entropy(&event.argv) {
+                let trusted = self
+                    .trusted_prefixes
+                    .iter()
+                    .any(|prefix| event.binary_path.starts_with(prefix.as_str()));
+                if let Some(decision) = hook(entropy, trusted) {
+                    return decision;
+                }
+            }
         }
         if let Some(program) = &self.bpf_program {
             // TODO (L3): gate-1 BPF match decides Allow here; no program is loaded until L3.
@@ -95,36 +104,6 @@ impl TrapGateEvaluator {
 
     pub fn eval_gate_2_native(&self, event: &TrapEvent, scope: &MountScope) -> bool {
         matches!(self.evaluate(event, scope), GateDecision::FallThrough)
-    }
-
-    pub fn should_skip_gate_3(&self, binary_path: &str, argv: &[String]) -> bool {
-        if !self
-            .trusted_prefixes
-            .iter()
-            .any(|prefix| binary_path.starts_with(prefix.as_str()))
-        {
-            return false;
-        }
-        // TODO (L3): entropy skip threshold is policy; confirm against cans/02#Latency-ceiling.
-        matches!(
-            self.compute_shannon_entropy(argv),
-            Ok(entropy) if entropy < ENTROPY_SKIP_THRESHOLD_BITS
-        )
-    }
-
-    pub fn should_deny_gate_3(&self, binary_path: &str, argv: &[String]) -> bool {
-        if self
-            .trusted_prefixes
-            .iter()
-            .any(|prefix| binary_path.starts_with(prefix.as_str()))
-        {
-            return false;
-        }
-        // TODO (L3): deny threshold is policy; confirm against cans/02#Latency-ceiling.
-        matches!(
-            self.compute_shannon_entropy(argv),
-            Ok(entropy) if entropy >= ENTROPY_DENY_THRESHOLD_BITS
-        )
     }
 
     pub fn compute_shannon_entropy(&self, argv: &[String]) -> Result<f64, GateError> {

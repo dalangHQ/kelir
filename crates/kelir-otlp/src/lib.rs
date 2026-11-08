@@ -133,8 +133,8 @@ pub struct OtlpCausalDeltaRecord {
     pub modified_inodes: Vec<String>,
     pub spawned_pids: Vec<u32>,
     pub egress_bytes: u64,
-    pub storage_delta_root: [u8; 32],
-    pub receipt_leaf_hash: [u8; 32],
+    pub storage_delta_root: String,
+    pub receipt_leaf_hash: String,
 }
 
 impl OtlpCausalDeltaRecord {
@@ -148,8 +148,8 @@ impl OtlpCausalDeltaRecord {
                 .collect(),
             spawned_pids: delta.spawned_pids.clone(),
             egress_bytes: delta.egress_bytes,
-            storage_delta_root: delta.storage_delta_root,
-            receipt_leaf_hash: delta.receipt_leaf_hash,
+            storage_delta_root: delta.storage_delta_root.clone(),
+            receipt_leaf_hash: delta.receipt_leaf_hash.clone(),
         }
     }
 }

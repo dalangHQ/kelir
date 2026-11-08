@@ -15,8 +15,6 @@ import {
 import type {
   CheckpointHandle,
   HostHandle,
-  LedgerHandle,
-  PolicyHandle,
   StepHandle,
   StorageHandle,
   TerminalHandle,
@@ -79,10 +77,9 @@ export interface NativeSessionHandle {
   readonly wire: WireHandle;
   readonly checkpoint?: NativeCheckpointHandle;
   readonly host?: NativeHostHandle;
-  readonly ledger: LedgerHandle;
   readonly vsock: VsockHandle;
   readonly step: StepHandle;
-  readonly policy: PolicyHandle;
+  extension<T>(name: string): T;
   spawn(
     binary: string,
     argv: string[],
@@ -153,10 +150,8 @@ export class Session {
   readonly wire: WireHandle;
   readonly checkpoint: CheckpointHandle;
   readonly host: HostHandle;
-  readonly ledger: LedgerHandle;
   readonly vsock: VsockHandle;
   readonly step: StepHandle;
-  readonly policy: PolicyHandle;
   private readonly native: NativeSessionHandle;
 
   constructor(native: NativeSessionHandle) {
@@ -177,10 +172,8 @@ export class Session {
         }
       : fallbackCheckpoint();
     this.host = native.host ?? fallbackHost();
-    this.ledger = native.ledger;
     this.vsock = native.vsock;
     this.step = native.step;
-    this.policy = native.policy;
     const vm = native.vm;
     this.vm = {
       checkpoint: async (name: string): Promise<SnapshotDescriptor> =>
@@ -216,6 +209,10 @@ export class Session {
     options?: SpawnOptions,
   ): Promise<SpawnResult> {
     return this.native.spawn(binary, argv, options);
+  }
+
+  extension<T>(name: string): T {
+    return this.native.extension<T>(name);
   }
 
   async execInGuest(

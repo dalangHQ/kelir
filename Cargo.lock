@@ -490,7 +490,6 @@ version = "1.0.0"
 dependencies = [
  "async-trait",
  "ciborium",
- "kelir-catalog",
  "kelir-interface",
  "kelir-otlp",
  "kelir-transport",
@@ -558,7 +557,6 @@ name = "kelir-plugin-cli"
 version = "1.0.0"
 dependencies = [
  "blake3",
- "kelir-catalog",
  "kelir-interface",
  "kelir-plugin-testkit",
  "sha2",
