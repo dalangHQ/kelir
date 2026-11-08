@@ -80,10 +80,13 @@
       - cans check has no --*-coverage flags; each gate names its enforcement below
       - Veto and watchdog have no per-item enumeration gate; they ride parity vectors
     - Test plan domains
-      - Domain plugin_engine: --plugin, --hook, --action, --panic-hunt-coverage
-      - Domain lifecycle_checkpoint: --lifecycle, --drain, --veto, --watchdog-coverage
-      - Domain lifecycle_checkpoint: --snapshot-depth, --clock-continuity-coverage
-      - Domain protocol_mux: --channel, --panic-hunt-coverage
+      - Domain plugin_engine: --plugin-coverage, --hook-coverage
+      - Domain plugin_engine: --action-coverage, --panic-hunt-coverage
+      - Domain lifecycle_checkpoint: --lifecycle-coverage, --drain-coverage
+      - Domain lifecycle_checkpoint: --veto-coverage, --watchdog-coverage
+      - Domain lifecycle_checkpoint: --snapshot-depth-coverage
+      - Domain lifecycle_checkpoint: --clock-continuity-coverage
+      - Domain protocol_mux: --channel-coverage, --panic-hunt-coverage
       - Domain virtio_rings: --transport-coverage
       - Domain none: --layering-coverage is a cross-cutting crate-graph gate
       - Clock-continuity replay runs in the plugin-replay cell

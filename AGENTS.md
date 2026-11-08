@@ -97,7 +97,8 @@ Numbered as supplied, renumbered where the source duplicated 3. On conflict, the
   uv run mypy packages/py           # or python3 -m compileall packages/py
   just check-hygiene
   just check-spec                   # when cans/ changed: cans check refs-only + full
-  just check-codebase-refs          # codebase see: pointers resolve (local RFC #66 checker; upstream cans 0.15.0 --codebase covers .md targets only)
+  just check-manifest check-tests check-scorecard  # test-plan gates: manifest parity, anti-slop lint, scorecard
+  just check-codebase-refs          # codebase see: pointers resolve (local RFC #66 checker; upstream cans 0.16.0 --codebase covers .md targets only)
   ```
   If `just` is not installed locally, run the underlying commands and let CI run the justfile path. Rust MSRV is 1.85.
 

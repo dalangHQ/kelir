@@ -181,14 +181,14 @@ check-canon:
     ./scripts/check-canon.sh
     just test-all
 
-# ── Test plan gates (work-order.md Part 10: Scorecard & Linter Harness) ──
+# ── Test plan gates (work-order.md Phase 6: Scorecard & Linter Harness) ──
 # Generate cans/artifacts/scorecard.md from manifest and live telemetry
 scorecard:
     cargo run -p kelir-testkit --bin scorecard -- generate
 
 # CI Gate: Verify scorecard is byte-for-byte identical to physical evidence.
 # At base this verifies against manifest truth only; platform-subset
-# filtering rides this same recipe if added (Part 2 owns that work).
+# filtering rides this same recipe if added (no case-to-test map yet).
 check-scorecard:
     cargo run -p kelir-testkit --bin scorecard -- check
 

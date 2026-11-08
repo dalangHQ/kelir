@@ -25,11 +25,11 @@ env:
 #   work-order's tests/vectors/vectors.json does not exist.
 # - The invariant total is 218, not 208 (196 + 12 adapters_ingestion
 #   + 4 concurrency/fault-injection + 6 bindings); the aggregator
-#   asserts 218. It stays red until the manifest update lands.
-# - No platform_target field exists in any case file at base, and no
-#   nextest tag maps cases to Rust tests, so the tier jobs run each
-#   platform's executable test subset (see the per-job comments).
-#   Strict platform_target tag filtering lands with that schema work.
+#   asserts 218 against manifest truth.
+# - platform_target exists on all 218 cases, but no nextest tag maps
+#   cases to Rust tests, so the tier jobs run each platform's
+#   executable test subset (see the per-job comments). Strict
+#   platform_target tag filtering is future work, not wired here.
 
 jobs:
   # ─── STAGE 1. FAST GATE (Linux x86) ─────────────────────────
@@ -303,9 +303,9 @@ jobs:
   # cases passed on their respective native targets before writing
   # scorecard.md. A tier that skipped for lack of hardware reports
   # skipped-no-kvm explicitly; a failed tier fails this job.
-  # NOTE: the 218 assertion stays red until the manifest update
-  # (196 -> 218) lands; check-scorecard likewise gates on the
-  # committed scorecard.md matching manifest truth.
+  # NOTE: the 218 assertion matches manifest truth (total_cases: 218);
+  # check-scorecard likewise gates on the committed scorecard.md
+  # matching manifest truth.
   scorecard-aggregator:
     needs: [linux-kvm-tier, macos-hvf-tier, windows-whp-tier, sdk-parity-gate]
     runs-on: ubuntu-latest
