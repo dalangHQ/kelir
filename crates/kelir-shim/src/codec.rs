@@ -29,42 +29,6 @@ pub const FLAG_RST: u8 = 0x08;
 #[allow(dead_code)]
 pub const FLAG_WINDOW_UPDATE: u8 = 0x10;
 
-// see: cans/11-protocol.md#Wire-framing
-#[allow(dead_code)]
-pub const MSG_TRAP: u16 = 0x0001;
-
-// see: cans/11-protocol.md#Wire-framing
-#[allow(dead_code)]
-pub const MSG_CHANNEL_PAYLOAD: u16 = 0x0002;
-
-// see: cans/11-protocol.md#Wire-framing
-#[allow(dead_code)]
-pub const MSG_VM_LIFECYCLE_CONTROL: u16 = 0x0003;
-
-// see: cans/11-protocol.md#Wire-framing
-#[allow(dead_code)]
-pub const MSG_SYSTEM_TELEMETRY: u16 = 0x0004;
-
-// see: cans/11-protocol.md#Wire-framing
-#[allow(dead_code)]
-pub const MSG_SIGNAL: u16 = 0x0005;
-
-// see: cans/11-protocol.md#Binary-exec-channel
-#[allow(dead_code)]
-pub const EXEC_STREAM_STDIN: u8 = 0x00;
-
-// see: cans/11-protocol.md#Binary-exec-channel
-#[allow(dead_code)]
-pub const EXEC_STREAM_STDOUT: u8 = 0x01;
-
-// see: cans/11-protocol.md#Binary-exec-channel
-#[allow(dead_code)]
-pub const EXEC_STREAM_STDERR: u8 = 0x02;
-
-// see: cans/11-protocol.md#Binary-exec-channel
-#[allow(dead_code)]
-pub const EXEC_STREAM_CONTROL: u8 = 0x03;
-
 #[allow(dead_code)]
 pub fn encode_frame(
     stream_id: u32,

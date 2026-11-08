@@ -3,6 +3,8 @@
 // see: cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)
 // see: cans/08-lifecycle.md#Zombie-reaping
 
+use kelir_interface::protocol::{EXEC_STREAM_CONTROL, EXEC_STREAM_STDIN, MsgType};
+
 use crate::codec;
 use crate::trap::ShimError;
 
@@ -229,19 +231,26 @@ impl Multiplexer {
     pub fn dispatch_control(&mut self, payload: &[u8]) -> Result<(), ShimError> {
         codec::check_control_payload(payload)
             .map_err(|()| ShimError::ControlOversize { len: payload.len() })?;
-        let (msg_type, body) =
+        let (raw_msg_type, body) =
             codec::decode_msg_type(payload).map_err(|()| ShimError::TruncatedFrame)?;
+        let msg_type = MsgType::from_u16(raw_msg_type).ok_or(ShimError::UnknownMsgType {
+            msg_type: raw_msg_type,
+        })?;
         match msg_type {
-            codec::MSG_TRAP | codec::MSG_VM_LIFECYCLE_CONTROL => {
+            MsgType::Trap | MsgType::VmLifecycleControl => {
                 // TODO (L3): route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes.
-                Err(ShimError::ControlPending { msg_type })
+                Err(ShimError::ControlPending {
+                    msg_type: msg_type as u16,
+                })
             }
-            codec::MSG_SIGNAL => {
+            MsgType::Signal => {
                 let (signal, exec_id) =
                     codec::decode_signal(body).map_err(|()| ShimError::TruncatedFrame)?;
                 self.signal_exec(exec_id, signal)
             }
-            _ => Err(ShimError::UnknownMsgType { msg_type }),
+            _ => Err(ShimError::UnknownMsgType {
+                msg_type: msg_type as u16,
+            }),
         }
     }
 
@@ -261,15 +270,24 @@ impl Multiplexer {
         if stream_id > codec::MAX_STREAM_ID {
             return Err(ShimError::InvalidStreamId { stream_id });
         }
-        let (msg_type, body) =
+        let (raw_msg_type, body) =
             codec::decode_msg_type(payload).map_err(|()| ShimError::TruncatedFrame)?;
+        let msg_type = MsgType::from_u16(raw_msg_type).ok_or(ShimError::UnknownMsgType {
+            msg_type: raw_msg_type,
+        })?;
         match msg_type {
-            codec::MSG_TRAP | codec::MSG_VM_LIFECYCLE_CONTROL => {
+            MsgType::Trap | MsgType::VmLifecycleControl => {
                 // TODO (L3): route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes.
-                return Err(ShimError::ControlPending { msg_type });
+                return Err(ShimError::ControlPending {
+                    msg_type: msg_type as u16,
+                });
             }
-            codec::MSG_CHANNEL_PAYLOAD | codec::MSG_SYSTEM_TELEMETRY => {}
-            _ => return Err(ShimError::UnknownMsgType { msg_type }),
+            MsgType::ChannelPayload | MsgType::SystemTelemetry => {}
+            _ => {
+                return Err(ShimError::UnknownMsgType {
+                    msg_type: msg_type as u16,
+                });
+            }
         }
         if (flags & codec::FLAG_OPEN) != 0 {
             return self.open_stream(stream_id, body);
@@ -295,7 +313,7 @@ impl Multiplexer {
             let (lane, data) =
                 codec::decode_exec_sub_lane(body).map_err(|()| ShimError::TruncatedFrame)?;
             match lane {
-                codec::EXEC_STREAM_STDIN => {
+                EXEC_STREAM_STDIN => {
                     // TODO (L3): route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03).
                     let _ = (
                         data,
@@ -307,7 +325,7 @@ impl Multiplexer {
                     );
                     return Ok(());
                 }
-                codec::EXEC_STREAM_CONTROL => {
+                EXEC_STREAM_CONTROL => {
                     return Err(ShimError::ExecControlPending);
                 }
                 _ => return Err(ShimError::UnknownExecSubLane { lane }),

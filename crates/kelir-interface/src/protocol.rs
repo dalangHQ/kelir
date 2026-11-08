@@ -75,6 +75,7 @@ pub enum MsgType {
     ChannelPayload = 0x0002,
     VmLifecycleControl = 0x0003,
     SystemTelemetry = 0x0004,
+    Signal = 0x0005,
 }
 
 impl MsgType {
@@ -84,6 +85,7 @@ impl MsgType {
             0x0002 => Some(Self::ChannelPayload),
             0x0003 => Some(Self::VmLifecycleControl),
             0x0004 => Some(Self::SystemTelemetry),
+            0x0005 => Some(Self::Signal),
             _ => None,
         }
     }

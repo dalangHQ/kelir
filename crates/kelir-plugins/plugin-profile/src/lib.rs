@@ -2,7 +2,6 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_profile.rs per cans/artifacts/config/project-structure.txt.
-// TODO (L3): TOML/YAML profile parsers (no toml/serde_yaml in the workspace); JSON is the canonical interchange form.
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -172,10 +171,28 @@ impl ProfilePlugin {
         let value: Value = serde_json::from_str(document).map_err(|err| {
             PluginError::reject("EConfig", format!("profile JSON parse failed: {err}"))
         })?;
+        self.ingest_value(value)
+    }
+
+    pub fn ingest_toml(&self, document: &str) -> Result<Vec<String>, PluginError> {
+        let value: Value = toml::from_str(document).map_err(|err| {
+            PluginError::reject("EConfig", format!("profile TOML parse failed: {err}"))
+        })?;
+        self.ingest_value(value)
+    }
+
+    pub fn ingest_yaml(&self, document: &str) -> Result<Vec<String>, PluginError> {
+        let value: Value = serde_yaml::from_str(document).map_err(|err| {
+            PluginError::reject("EConfig", format!("profile YAML parse failed: {err}"))
+        })?;
+        self.ingest_value(value)
+    }
+
+    fn ingest_value(&self, value: Value) -> Result<Vec<String>, PluginError> {
         let Some(document) = value.as_object() else {
             return Err(PluginError::reject(
                 "EConfig",
-                "profile document must be a JSON object keyed by namespace",
+                "profile document must be an object keyed by namespace",
             ));
         };
         let mut routed = Vec::new();

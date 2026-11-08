@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::os::unix::fs::MetadataExt;
 
-use kelir_interface::protocol::{TrapEvent, TrappedSyscall};
+use kelir_interface::protocol::{MsgType, TrapEvent, TrappedSyscall};
 
 use crate::trap::{SeccompTrap, ShimError};
 
@@ -165,7 +165,7 @@ pub fn digest_exe(exe_path: &str) -> Result<String, ShimError> {
 
 // see: cans/11-protocol.md#Wire-framing
 pub fn encode_trap_frame(event: &TrapEvent) -> Result<Vec<u8>, ShimError> {
-    let mut payload = crate::codec::MSG_TRAP.to_le_bytes().to_vec();
+    let mut payload = (MsgType::Trap as u16).to_le_bytes().to_vec();
     ciborium::ser::into_writer(event, &mut payload).map_err(|_| ShimError::TrapEncode)?;
     let total = crate::codec::HEADER_LEN
         .checked_add(payload.len())

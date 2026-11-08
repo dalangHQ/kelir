@@ -902,6 +902,8 @@ dependencies = [
  "kelir-plugin-testkit",
  "serde",
  "serde_json",
+ "serde_yaml",
+ "toml",
 ]
 
 [[package]]
