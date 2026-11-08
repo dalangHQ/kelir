@@ -27,6 +27,7 @@ export interface KelirConfig {
   readonly rootfsErofs?: string;
   readonly tscLocked?: boolean;
   readonly enableWatchdog?: boolean;
+  readonly detached?: boolean;
 }
 
 export interface TerminalStream {
@@ -92,6 +93,8 @@ export interface WireConfig {
   readonly sshAgentBridge?: boolean;
   readonly vaults?: readonly {
     readonly name: string;
+    readonly kind: "bearer_token" | "sigv4" | "mtls_bundle";
+    readonly audience: string;
     readonly placeholder: string;
   }[];
   readonly l4Proxies?: readonly {
@@ -139,9 +142,21 @@ export class KelirBuilder {
   // TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
   readonly vsockServices: VsockServiceEntry[] = [];
   private nextOrdinal = 0;
+  private detachedFlag: boolean;
 
   constructor(config: KelirConfig = {}) {
     this.config = config;
+    this.detachedFlag = config.detached ?? false;
+  }
+
+  // see: cans/08-lifecycle.md#Detached-lifecycle
+  detached(detached: boolean): this {
+    this.detachedFlag = detached;
+    return this;
+  }
+
+  isDetached(): boolean {
+    return this.detachedFlag;
   }
 
   terminal(_config: TerminalConfig): this {

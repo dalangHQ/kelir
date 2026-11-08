@@ -1,15 +1,11 @@
 use std::path::PathBuf;
 
+use kelir_interface::credential::CredentialDescriptor;
+
 #[derive(Debug, Clone)]
 pub struct SinkholeConfig {
     pub allowlist: Vec<String>,
     pub drop_all: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct VaultEntry {
-    pub name: String,
-    pub placeholder: String,
 }
 
 #[derive(Debug, Clone)]
@@ -34,7 +30,7 @@ pub enum TapFilter {
 pub struct WireConfig {
     pub sinkhole: SinkholeConfig,
     pub ssh_agent_bridge: bool,
-    pub vaults: Vec<VaultEntry>,
+    pub vaults: Vec<CredentialDescriptor>,
     pub l4_proxies: Vec<L4Proxy>,
     pub tap_filter: TapFilter,
 }

@@ -6,9 +6,13 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use kelir_interface::plugin::PluginError;
 use kelir_interface::protocol::{FilterAction, StreamKind};
+use kelir_interface::vsock::VAULT_METADATA_VSOCK_PORT;
 
 pub const SYNTHETIC_DNS_GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 127, 1);
 pub const SYNTHETIC_DNS_PORT: u16 = 53;
+
+// see: cans/07-wire-plane.md#Pre-policy-drop-zones
+pub const LINK_LOCAL_IMDS_IP: Ipv4Addr = Ipv4Addr::new(169, 254, 169, 254);
 
 pub struct SmoltcpStack {
     interface: Option<smoltcp::iface::Interface>,
@@ -97,6 +101,50 @@ pub enum FrameClass {
 pub enum FrameDirection {
     Inbound,
     Outbound,
+}
+
+// see: cans/07-wire-plane.md#Pre-policy-drop-zones
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkLocalRoute {
+    Drop,
+    VaultImds { vsock_port: u32 },
+}
+
+// see: cans/07-wire-plane.md#Pre-policy-drop-zones
+pub fn link_local_route(frame: &[u8], direction: FrameDirection) -> Option<LinkLocalRoute> {
+    let remote = frame_remote_ip(frame, direction)?;
+    if !remote.is_link_local() {
+        return None;
+    }
+    if direction == FrameDirection::Outbound && remote == LINK_LOCAL_IMDS_IP {
+        return Some(LinkLocalRoute::VaultImds {
+            vsock_port: VAULT_METADATA_VSOCK_PORT,
+        });
+    }
+    Some(LinkLocalRoute::Drop)
+}
+
+// see: cans/07-wire-plane.md#Pre-policy-drop-zones
+fn frame_remote_ip(frame: &[u8], direction: FrameDirection) -> Option<Ipv4Addr> {
+    if frame.len() < 14 {
+        return None;
+    }
+    if u16::from_be_bytes([frame[12], frame[13]]) != 0x0800 {
+        return None;
+    }
+    let offset = match direction {
+        FrameDirection::Inbound => 14 + 12,
+        FrameDirection::Outbound => 14 + 16,
+    };
+    if frame.len() < offset + 4 {
+        return None;
+    }
+    Some(Ipv4Addr::new(
+        frame[offset],
+        frame[offset + 1],
+        frame[offset + 2],
+        frame[offset + 3],
+    ))
 }
 
 pub fn classify_frame(frame: &[u8]) -> FrameClass {
@@ -263,6 +311,14 @@ impl WirePlane {
         &mut self,
         frame: &mut [u8],
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
+        if let Some(LinkLocalRoute::Drop) = link_local_route(frame, FrameDirection::Inbound) {
+            let action = FilterAction::Drop {
+                errno: None,
+                reason: "link-local 169.254.0.0/16 quarantined pre-policy".into(),
+            };
+            self.record_drop(&action);
+            return Ok(action);
+        }
         let action: Result<
             kelir_interface::protocol::FilterAction,
             kelir_interface::plugin::PluginError,
@@ -290,6 +346,18 @@ impl WirePlane {
         &mut self,
         frame: &mut [u8],
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
+        match link_local_route(frame, FrameDirection::Outbound) {
+            Some(LinkLocalRoute::Drop) => {
+                let action = FilterAction::Drop {
+                    errno: None,
+                    reason: "link-local 169.254.0.0/16 quarantined pre-policy".into(),
+                };
+                self.record_drop(&action);
+                return Ok(action);
+            }
+            Some(LinkLocalRoute::VaultImds { .. }) => return self.route_imds_to_vault(frame),
+            None => {}
+        }
         let action: Result<
             kelir_interface::protocol::FilterAction,
             kelir_interface::plugin::PluginError,
@@ -323,6 +391,24 @@ impl WirePlane {
         let action = action?;
         self.record_drop(&action);
         Ok(action)
+    }
+
+    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
+    pub fn route_imds_to_vault(
+        &self,
+        frame: &[u8],
+    ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
+        match link_local_route(frame, FrameDirection::Outbound) {
+            Some(LinkLocalRoute::VaultImds { vsock_port }) => {
+                // TODO (L3): parse the HTTP metadata request and translate it to the vault vsock service.
+                Err(PluginError::Halt(format!(
+                    "IMDS 169.254.169.254:{vsock_port} to vault vsock translation pending (L3)"
+                )))
+            }
+            _ => Err(PluginError::Halt(
+                "route_imds_to_vault called on a non-IMDS frame".into(),
+            )),
+        }
     }
 
     pub fn divert_l4(&self, guest_port: u16, host_target: String) -> Result<L4Stream, PluginError> {
@@ -360,5 +446,16 @@ impl WirePlane {
             );
         }
         Ok(reaped)
+    }
+
+    // see: cans/08-lifecycle.md#Rollback
+    pub fn quiesce(&self) -> Result<(), PluginError> {
+        // TODO (L3): close live host-side L4 sockets, emit RST to peers, drain wire-plane splicing buffers.
+        let mut slab = self
+            .udp_nat_slab
+            .lock()
+            .map_err(|_| PluginError::Halt("udp nat slab lock poisoned".into()))?;
+        slab.clear();
+        Ok(())
     }
 }

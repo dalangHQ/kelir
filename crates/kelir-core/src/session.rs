@@ -17,6 +17,59 @@ pub struct Session {
     engine: crate::dispatch::PipelineEngine,
     incarnation_id: [u8; 16],
     plugins: Vec<crate::plugin_registry::PluginRegistration>,
+    detached: bool,
+}
+
+impl Session {
+    // see: cans/08-lifecycle.md#Detached-lifecycle
+    pub fn relay_socket_path(
+        session_id: &[u8; 16],
+    ) -> Result<std::path::PathBuf, kelir_interface::plugin::PluginError> {
+        let home = std::env::var("HOME").map_err(|_| {
+            kelir_interface::plugin::PluginError::Halt(
+                "HOME is not set; cannot locate ~/.kelir relay socket".into(),
+            )
+        })?;
+        let mut hex = String::with_capacity(32);
+        for byte in session_id {
+            hex.push_str(&format!("{byte:02x}"));
+        }
+        Ok(std::path::PathBuf::from(home)
+            .join(".kelir")
+            .join("sessions")
+            .join(hex)
+            .join("relay.sock"))
+    }
+
+    // see: cans/08-lifecycle.md#Detached-lifecycle
+    pub fn attach(session_id: &[u8; 16]) -> Result<Self, kelir_interface::plugin::PluginError> {
+        let relay = Self::relay_socket_path(session_id)?;
+        // TODO (L3): connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.
+        let _ = relay;
+        Err(kelir_interface::plugin::PluginError::Halt(
+            "TODO (L3): Session::attach".into(),
+        ))
+    }
+
+    pub fn is_detached(&self) -> bool {
+        self.detached
+    }
+
+    pub fn set_detached(&mut self, detached: bool) {
+        self.detached = detached;
+    }
+
+    // see: cans/08-lifecycle.md#Detached-lifecycle
+    pub fn memory_handoff(
+        &self,
+        handoff: kelir_transport::MemoryHandoff,
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
+        // TODO (L3): pass the shared-memory descriptor via SCM_RIGHTS and close the parent end after the handoff ack.
+        let _ = handoff;
+        Err(kelir_interface::plugin::PluginError::Halt(
+            "TODO (L3): Session::memory_handoff".into(),
+        ))
+    }
 }
 
 impl Session {
@@ -90,6 +143,7 @@ impl Session {
             engine: engine.with_metrics(metrics),
             incarnation_id,
             plugins,
+            detached: false,
         }
     }
 
@@ -174,11 +228,30 @@ impl Session {
         ))
     }
 
-    pub fn rollback(&mut self) -> Result<(), kelir_interface::plugin::PluginError> {
-        // TODO (L3): roll driver back to the active checkpoint branch head and drop the storage upper file.
-        Err(kelir_interface::plugin::PluginError::Halt(
-            "TODO (L3): Session::rollback".into(),
-        ))
+    // see: cans/08-lifecycle.md#Rollback
+    pub async fn rollback(
+        &mut self,
+        lineage: crate::planes::checkpoint::PidLineage,
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
+        let node_id = self.checkpoint.head(lineage).ok_or_else(|| {
+            kelir_interface::plugin::PluginError::Halt("no checkpoint head for PID lineage".into())
+        })?;
+        let snapshot = self.checkpoint.restore(node_id)?;
+        self.rollback_to(&snapshot).await
+    }
+
+    // see: cans/08-lifecycle.md#Rollback
+    pub async fn rollback_to(
+        &mut self,
+        snapshot: &kelir_interface::driver::SnapshotDescriptor,
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
+        self.wire.quiesce()?;
+        self.storage.discard()?;
+        // TODO (L3): reset session-local RNG position and virtual clock position to the snapshot.
+        self.driver.rollback(snapshot).await.map_err(|error| {
+            kelir_interface::plugin::PluginError::Halt(format!("driver rollback: {error}"))
+        })?;
+        Ok(())
     }
 
     pub fn suspend(

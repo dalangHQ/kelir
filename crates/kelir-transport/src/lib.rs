@@ -12,6 +12,31 @@ pub trait Transport {
 
 pub use Transport as StreamTransport;
 
+// see: cans/08-lifecycle.md#Detached-lifecycle
+#[derive(Debug)]
+pub struct MemoryHandoff {
+    fd: std::os::unix::io::OwnedFd,
+    len: u64,
+}
+
+impl MemoryHandoff {
+    pub fn new(fd: std::os::unix::io::OwnedFd, len: u64) -> Self {
+        Self { fd, len }
+    }
+
+    pub fn fd(&self) -> &std::os::unix::io::OwnedFd {
+        &self.fd
+    }
+
+    pub fn len(&self) -> u64 {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
 pub(crate) fn unsupported(op: &str) -> std::io::Error {
     std::io::Error::new(
         std::io::ErrorKind::Unsupported,

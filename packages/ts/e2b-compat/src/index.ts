@@ -1,15 +1,15 @@
 // see: cans/12-adapters.md#E2B-compatibility
-import { kelir, Session } from "@kelir/core";
+import { Sandbox as CoreSandbox } from "@kelir/core";
 
 export class Sandbox {
-  private constructor(private readonly session: Session) {}
+  private constructor(private readonly inner: CoreSandbox) {}
 
   static async create(): Promise<Sandbox> {
-    const session = await kelir().boot();
-    return new Sandbox(session);
+    const inner = await (await CoreSandbox.create()).boot();
+    return new Sandbox(inner);
   }
 
   async close(): Promise<void> {
-    await this.session.stop();
+    await this.inner.stop();
   }
 }

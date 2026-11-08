@@ -11,7 +11,7 @@ use tokio::io::AsyncRead;
 
 use kelir_interface::driver::{
     BalloonConvergence, DriverCapabilities, DriverState, SharedMemoryHandle, SnapshotDescriptor,
-    Stream, SuspendReason, VmConfig, VmmDriver, VmmError, WatchdogAction,
+    Stream, SuspendReason, VmConfig, VmmDriver, VmmError, WatchdogAction, check_hw_lockfile,
 };
 
 #[allow(dead_code)]
@@ -77,6 +77,8 @@ impl VmmDriver for RustVmmDriver {
     }
 
     async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError> {
+        // see: cans/15-operations.md#Developer-CLI
+        check_hw_lockfile(&config.driver_policy, &self.capabilities())?;
         self.config = Some(config);
         self.init_backend()
     }

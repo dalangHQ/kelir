@@ -2,7 +2,7 @@
 
 pub mod schema;
 
-use crate::schema::{SCHEMA_V1_SQL, SessionRow};
+use crate::schema::{IncarnationId, LeaseKind, SCHEMA_V1_SQL, SessionRow};
 use rusqlite::params;
 use thiserror::Error;
 
@@ -50,6 +50,59 @@ impl CatalogDb {
             ],
         )?;
         Ok(())
+    }
+
+    pub fn lookup_session(
+        &self,
+        session_id: &[u8; 16],
+    ) -> Result<Option<SessionRow>, CatalogError> {
+        let mut stmt = self.pool.prepare(
+            "SELECT session_id, incarnation_id, lease_kind, expires_at_unix, runner_pid, boot_id, start_time_ns FROM sessions WHERE session_id = ?1",
+        )?;
+        let mut rows = stmt.query(params![&session_id[..]])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        let session_bytes: Vec<u8> = row.get(0)?;
+        let incarnation_bytes: Vec<u8> = row.get(1)?;
+        let lease_kind_raw: String = row.get(2)?;
+        let Some(lease_kind) = lease_kind_raw.parse::<LeaseKind>().ok() else {
+            return Ok(None);
+        };
+        let Some(session_id) = <[u8; 16]>::try_from(session_bytes).ok() else {
+            return Ok(None);
+        };
+        let Some(incarnation_id) = <[u8; 16]>::try_from(incarnation_bytes)
+            .ok()
+            .map(IncarnationId)
+        else {
+            return Ok(None);
+        };
+        Ok(Some(SessionRow {
+            session_id,
+            incarnation_id,
+            lease_kind,
+            expires_at_unix: row.get(3)?,
+            runner_pid: row.get(4)?,
+            boot_id: row.get(5)?,
+            start_time_ns: row.get(6)?,
+        }))
+    }
+
+    // see: cans/08-lifecycle.md#Detached-lifecycle
+    pub fn disk_lock_handoff(
+        &self,
+        session_id: &[u8; 16],
+        runner_pid: i64,
+        ttl_seconds: u32,
+    ) -> Result<bool, CatalogError> {
+        // TODO (L3): no pending/owned lock-state column exists in SCHEMA_V1_SQL or cans/06; claim is runner_pid plus lease refresh until the schema gains one.
+        let expires = now_unix().saturating_add(i64::from(ttl_seconds));
+        let claimed = self.pool.execute(
+            "UPDATE sessions SET runner_pid = ?2, expires_at_unix = ?3 WHERE session_id = ?1",
+            params![&session_id[..], runner_pid, expires],
+        )?;
+        Ok(claimed == 1)
     }
 
     pub fn heartbeat_lease(

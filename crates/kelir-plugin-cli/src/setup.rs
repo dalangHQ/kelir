@@ -2,6 +2,8 @@
 use std::error::Error;
 use std::fmt;
 
+use crate::doctor::{HwLockPath, probe_host, write_hw_lockfile};
+
 // see: cans/15-operations.md#Developer-CLI
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetupStep {
@@ -36,12 +38,15 @@ impl SetupStep {
 pub enum SetupError {
     NotImplemented(String),
     UnknownFlag(String),
+    Io(String),
 }
 
 impl fmt::Display for SetupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SetupError::NotImplemented(message) | SetupError::UnknownFlag(message) => {
+            SetupError::NotImplemented(message)
+            | SetupError::UnknownFlag(message)
+            | SetupError::Io(message) => {
                 write!(f, "{message}")
             }
         }
@@ -51,11 +56,25 @@ impl fmt::Display for SetupError {
 impl Error for SetupError {}
 
 pub fn run_step(step: SetupStep) -> Result<(), SetupError> {
-    // TODO (L3): execute the host-hardening step against bare-metal runs.
-    Err(SetupError::NotImplemented(format!(
-        "setup step {} (L3)",
-        step.name()
-    )))
+    match step {
+        SetupStep::EnforceHwLock => {
+            let report = probe_host();
+            if !report.is_ready() {
+                return Err(SetupError::NotImplemented(format!(
+                    "setup step hw-lock: host probes incomplete (L3): {}",
+                    report.pending().join("; ")
+                )));
+            }
+            write_hw_lockfile(&HwLockPath::default_path(), &report)
+                .map_err(|err| SetupError::Io(format!("hw-lock: cannot write hw.lock: {err}")))?;
+            // TODO (L3): enforce 0660 perms on /dev/kvm (group kelir) once privileged hardening lands.
+            Ok(())
+        }
+        _ => Err(SetupError::NotImplemented(format!(
+            "setup step {} (L3)",
+            step.name()
+        ))),
+    }
 }
 
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {

@@ -200,6 +200,7 @@ pub(crate) struct Registration<Plugins: HList> {
     pub(crate) vsock_services: Vec<VsockServiceEntry>,
     pub(crate) stream_kind_services: Vec<StreamKindServiceEntry>,
     pub(crate) vetoes: VetoList,
+    pub(crate) detached: bool,
 }
 
 impl<Plugins: HList> Default for Registration<Plugins> {
@@ -219,6 +220,7 @@ impl<Plugins: HList> Default for Registration<Plugins> {
             vsock_services: Vec::new(),
             stream_kind_services: Vec::new(),
             vetoes: Vec::new(),
+            detached: false,
         }
     }
 }
@@ -243,6 +245,7 @@ impl<Plugins: HList> Registration<Plugins> {
             vsock_services: self.vsock_services,
             stream_kind_services: self.stream_kind_services,
             vetoes: self.vetoes,
+            detached: self.detached,
         }
     }
 }
@@ -318,6 +321,16 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
     pub fn lock_broker(mut self, config: LockBrokerConfig) -> Self {
         self.registration.lock_broker_cfg = Some(config);
         self
+    }
+
+    // see: cans/08-lifecycle.md#Detached-lifecycle
+    pub fn detached(mut self, detached: bool) -> Self {
+        self.registration.detached = detached;
+        self
+    }
+
+    pub fn is_detached(&self) -> bool {
+        self.registration.detached
     }
 
     pub fn params<T>(self) -> KelirBuilder<SealState, Plugins, T> {
@@ -532,6 +545,8 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
             metrics,
             synthetic_files,
         )?;
+        let mut core = core;
+        core.set_detached(self.registration.detached);
         Ok(Session::from_parts(core, self.plugins, self.registration))
     }
 }

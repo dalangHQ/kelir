@@ -41,6 +41,9 @@ pub struct VsockPeer {
 // see: cans/11-protocol.md#Control-channel
 pub const VSOCK_CONTROL_PORT: u32 = 5252;
 
+// see: cans/plugins/vault.md
+pub const VAULT_METADATA_VSOCK_PORT: u32 = 80;
+
 // see: cans/plugins/mesh.md
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VsockServiceSpec {

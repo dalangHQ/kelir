@@ -1,6 +1,7 @@
 // see: cans/15-operations.md#Developer-CLI
 #![forbid(unsafe_code)]
 
+pub mod attach;
 pub mod audit;
 pub mod budgets;
 pub mod doctor;
@@ -45,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     match args[1].as_str() {
         "doctor" => doctor::run(&args[2..])?,
+        "attach" => attach::run(&args[2..])?,
         "check" => check(&args[2..])?,
         "check-layers" => layers::check()?,
         "check-budgets" => {

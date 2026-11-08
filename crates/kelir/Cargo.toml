@@ -13,6 +13,8 @@ tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 ciborium = { workspace = true }
+toml = { workspace = true }
+serde_yaml = { workspace = true }
 
 plugin-chaos = { path = "../kelir-plugins/plugin-chaos", optional = true }
 plugin-container = { path = "../kelir-plugins/plugin-container", optional = true }
@@ -20,7 +22,7 @@ plugin-db-proxy = { path = "../kelir-plugins/plugin-db-proxy", optional = true }
 plugin-ledger = { path = "../kelir-plugins/plugin-ledger", optional = true }
 plugin-mcp = { path = "../kelir-plugins/plugin-mcp", optional = true }
 plugin-mesh = { path = "../kelir-plugins/plugin-mesh", optional = true }
-plugin-profile = { path = "../kelir-plugins/plugin-profile", optional = true }
+plugin-profile = { path = "../kelir-plugins/plugin-profile" }
 plugin-replay = { path = "../kelir-plugins/plugin-replay", optional = true }
 plugin-supply-chain = { path = "../kelir-plugins/plugin-supply-chain", optional = true }
 plugin-tool-guard = { path = "../kelir-plugins/plugin-tool-guard", optional = true }
@@ -32,7 +34,7 @@ plugin-wire-ingress = { path = "../kelir-plugins/plugin-wire-ingress", optional 
 default = []
 all-plugins = [
     "plugin-chaos", "plugin-container", "plugin-db-proxy", "plugin-ledger",
-    "plugin-mcp", "plugin-mesh", "plugin-profile", "plugin-replay",
+    "plugin-mcp", "plugin-mesh", "plugin-replay",
     "plugin-supply-chain", "plugin-tool-guard", "plugin-transaction",
     "plugin-vault", "plugin-wire-ingress"
 ]

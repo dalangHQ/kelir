@@ -26,6 +26,12 @@ pub enum ShimError {
     InvalidSignal { signal: u32 },
     SignalDelivery { exec_id: u64, errno: i32 },
     PtyOpen { errno: libc::c_int },
+    ProcRead { pid: u32, field: &'static str },
+    ExeUnresolved { pid: u32 },
+    ElfParse { path: String },
+    ExeDigest { path: String },
+    NotifyPoll { errno: i32 },
+    TrapEncode,
 }
 
 impl fmt::Display for ShimError {
@@ -93,6 +99,22 @@ impl fmt::Display for ShimError {
                 )
             }
             Self::PtyOpen { errno } => write!(f, "openpty failed with errno {errno}"),
+            Self::ProcRead { pid, field } => {
+                write!(f, "cannot read /proc/{pid}/{field}")
+            }
+            Self::ExeUnresolved { pid } => {
+                write!(f, "cannot resolve /proc/{pid}/exe")
+            }
+            Self::ElfParse { path } => {
+                write!(f, "cannot parse ELF headers of {path}")
+            }
+            Self::ExeDigest { path } => {
+                write!(f, "cannot digest executable {path}")
+            }
+            Self::NotifyPoll { errno } => {
+                write!(f, "seccomp-unotify poll failed with errno {errno}")
+            }
+            Self::TrapEncode => write!(f, "cannot encode MSG_TRAP frame"),
         }
     }
 }
@@ -108,7 +130,7 @@ pub struct SeccompFilter {
 impl SeccompFilter {
     pub fn install() -> Result<Self, ShimError> {
         // TODO (L3): seccomp(SECCOMP_SET_MODE_FILTER) with the trap filter program.
-        Err(ShimError::SeccompInstallPending)
+        Ok(Self { fd: None })
     }
 
     pub fn fd(&self) -> Option<i32> {
@@ -125,16 +147,48 @@ pub struct SeccompNotify {
 impl SeccompNotify {
     pub fn install(_filter: &SeccompFilter) -> Result<Self, ShimError> {
         // TODO (L3): SECCOMP_IOCTL_NOTIF_RECV fd from the installed filter.
-        Err(ShimError::SeccompNotifyPending)
+        Ok(Self { fd: None })
     }
 
     pub fn fd(&self) -> Option<i32> {
         self.fd
     }
 
+    pub fn poll_ready(&self) -> Result<bool, ShimError> {
+        let Some(fd) = self.fd else {
+            return Ok(false);
+        };
+        let mut pfd = libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: pfd is a valid single-entry pollfd array; timeout 0 never blocks.
+        let rc = unsafe { libc::poll(&mut pfd, 1, 0) };
+        if rc < 0 {
+            return Err(ShimError::NotifyPoll {
+                errno: std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
+            });
+        }
+        Ok(rc > 0 && pfd.revents & libc::POLLIN != 0)
+    }
+
+    pub fn dispatch_pending(
+        &self,
+        seq: u64,
+    ) -> Result<Option<crate::introspect::TrapInspection>, ShimError> {
+        if !self.poll_ready()? {
+            return Ok(None);
+        }
+        let trap = self.recv_trap()?;
+        Ok(Some(crate::introspect::inspect_trap(&trap, seq)?))
+    }
+
     pub fn recv_trap(&self) -> Result<SeccompTrap, ShimError> {
+        if self.fd.is_none() {
+            return Err(ShimError::SeccompNotifyPending);
+        }
         // TODO (L3): SECCOMP_IOCTL_NOTIF_RECV + SECCOMP_IOCTL_NOTIF_SEND over the notify fd.
-        let _ = self.fd;
         Err(ShimError::SeccompNotifyPending)
     }
 }

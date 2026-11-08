@@ -65,6 +65,14 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     }
 }
 
+impl Session<HNil, NoParams> {
+    // see: cans/03-sdk-architecture.md#Rust-SDK
+    pub fn attach(session_id: &[u8; 16]) -> Result<Self, PluginError> {
+        let core = kelir_core::Session::attach(session_id)?;
+        Ok(Self::from_parts(core, HNil, Registration::default()))
+    }
+}
+
 impl<Plugins: HList, Params> std::ops::Deref for Session<Plugins, Params> {
     type Target = kelir_core::Session;
 

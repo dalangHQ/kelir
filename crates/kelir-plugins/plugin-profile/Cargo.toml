@@ -6,6 +6,9 @@ license = "FSL-1.1-Apache-2.0"
 
 [dependencies]
 kelir-interface = { path = "../../kelir-interface" }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 kelir-plugin-testkit = { path = "../../kelir-plugin-testkit" }

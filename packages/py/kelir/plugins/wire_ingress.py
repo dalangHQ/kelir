@@ -23,7 +23,7 @@ class ListenConfig:
 
 @dataclass
 class ParkingConfig:
-    max_buffered_bytes: int = 0
+    max_buffered_bytes: int = 65536
     idle_timeout_ms: int = 0
 
 

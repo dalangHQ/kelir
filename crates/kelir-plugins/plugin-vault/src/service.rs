@@ -5,26 +5,12 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 
+pub use kelir_interface::credential::{CredentialDescriptor, CredentialKind};
+
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service.token_ttl_seconds
 pub const DEFAULT_TOKEN_TTL_SECONDS: u32 = 60;
 // see: cans/plugins/vault.md
 pub const MAX_TOKEN_TTL_SECONDS: u32 = 900;
-
-// see: cans/plugins/vault.md
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CredentialKind {
-    BearerToken,
-    SigV4,
-    MtlsBundle,
-}
-
-// see: cans/plugins/vault.md
-#[derive(Debug, Clone)]
-pub struct CredentialDescriptor {
-    pub name: String,
-    pub kind: CredentialKind,
-    pub audience: String,
-}
 
 // see: cans/plugins/vault.md
 #[derive(Debug, Clone)]

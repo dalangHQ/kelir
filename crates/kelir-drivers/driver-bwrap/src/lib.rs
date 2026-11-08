@@ -9,7 +9,7 @@ use tokio::io::AsyncRead;
 
 use kelir_interface::driver::{
     BalloonConvergence, DriverCapabilities, DriverState, SharedMemoryHandle, SnapshotDescriptor,
-    Stream, SuspendReason, VmConfig, VmmDriver, VmmError, WatchdogAction,
+    Stream, SuspendReason, VmConfig, VmmDriver, VmmError, WatchdogAction, check_hw_lockfile,
 };
 
 #[allow(dead_code)]
@@ -57,6 +57,8 @@ impl VmmDriver for BwrapDriver {
     }
 
     async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError> {
+        // see: cans/15-operations.md#Developer-CLI
+        check_hw_lockfile(&config.driver_policy, &self.capabilities())?;
         if !self.allow_emulated_fallback {
             return Err(VmmError::Unsupported(
                 "emulated fallback not allowed".to_string(),

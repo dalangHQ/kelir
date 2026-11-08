@@ -207,6 +207,11 @@ pub trait CowBrokerControl: Send + Sync {
     async fn discard_upper(&self) -> Result<(), PluginError>;
 }
 
+// see: cans/artifacts/code/vmm-driver-trait.rs
+pub trait BalloonControl: Send + Sync {
+    fn adjust_balloon(&self, target_mb: u32) -> Result<BalloonConvergence, PluginError>;
+}
+
 // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
 #[async_trait]
 pub trait LockBrokerCoordination: Send + Sync {

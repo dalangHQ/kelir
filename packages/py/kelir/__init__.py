@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import importlib
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
 
 from kelir.errors import EConfig as EConfig
+from kelir.sandbox import Sandbox as Sandbox
 from kelir.fusion import (
     FusedTrampoline,
     HookDescriptor,
@@ -489,6 +492,20 @@ class HandlerContext:
 
 
 
+# see: cans/08-lifecycle.md#Detached-lifecycle
+def relay_socket_path(session_id: str) -> str:
+    if len(session_id) != 32 or any(
+        c not in "0123456789abcdefABCDEF" for c in session_id
+    ):
+        raise EConfig(f"attach: session id `{session_id}` is not 32 hex chars")
+    home = os.path.expanduser("~")
+    if not home:
+        raise EConfig("HOME is not set; cannot locate ~/.kelir relay socket")
+    return str(
+        Path(home) / ".kelir" / "sessions" / session_id.lower() / "relay.sock"
+    )
+
+
 class Session:
     def __init__(self) -> None:
         self.driver_name: str = ""
@@ -502,7 +519,10 @@ class Session:
         self.host = HostHandle()
         self.vsock = VsockHandle()
 
-    async def rollback(self) -> None:
+    async def rollback(self, snapshot: SnapshotDescriptor | None = None) -> None:
+        if snapshot is not None:
+            await self.vm.rollback(snapshot)
+            return
         # TODO (L3): call native driver rollback via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session rollback (L3)")
 
@@ -541,6 +561,14 @@ class Session:
         # TODO (L3): open the PTY console master via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session console (L3)")
 
+    # see: cans/08-lifecycle.md#Detached-lifecycle
+    @classmethod
+    async def attach(cls, session_id: str) -> Session:
+        relay = relay_socket_path(session_id)
+        _ = relay
+        # TODO (L3): connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.
+        raise EConfig("TODO: Session.attach (L3)")
+
     async def get_causal_delta_from_parent(self) -> CausalDelta:
         # TODO (L3): fetch causal delta from parent session via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session get_causal_delta_from_parent (L3)")
@@ -566,6 +594,7 @@ class KelirBuilder:
         tsc_locked: bool | None = None,
         enable_watchdog: bool | None = None,
         driver: str | None = None,
+        detached: bool | None = None,
     ) -> None:
         self._plugins: list[object] = []
         self._plugin_registrations: list[PluginRegistration] = []
@@ -582,8 +611,17 @@ class KelirBuilder:
             "tsc_locked": tsc_locked,
             "enable_watchdog": enable_watchdog,
             "driver": driver,
+            "detached": detached,
         }
         self._params_model: type | None = None
+
+    # see: cans/08-lifecycle.md#Detached-lifecycle
+    def detached(self, detached: bool) -> Self:
+        self._config["detached"] = detached
+        return self
+
+    def is_detached(self) -> bool:
+        return bool(self._config.get("detached", False))
 
     def use(self, plugin: object) -> Self:
         # TODO (L2): validate prerequisites at boot
@@ -821,6 +859,7 @@ def builder(
     tsc_locked: bool | None = None,
     enable_watchdog: bool | None = None,
     driver: str | None = None,
+    detached: bool | None = None,
 ) -> KelirBuilder:
     return KelirBuilder(
         vcpus=vcpus,
@@ -830,6 +869,7 @@ def builder(
         tsc_locked=tsc_locked,
         enable_watchdog=enable_watchdog,
         driver=driver,
+        detached=detached,
     )
 
 
@@ -850,6 +890,7 @@ __all__ = [
     "ReceiptExtension",
     "CommitStats",
     "FinalReceipt",
+    "Sandbox",
     "Session",
     "SnapshotDescriptor",
     "SpawnResult",
@@ -858,4 +899,5 @@ __all__ = [
     "Verdict",
     "builder",
     "kelir",
+    "relay_socket_path",
 ]

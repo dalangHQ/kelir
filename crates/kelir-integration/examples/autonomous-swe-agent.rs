@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use kelir_interface::credential::{CredentialDescriptor, CredentialKind};
 use kelir_interface::driver::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::plugin::HandlerCtx as IfaceHandlerCtx;
 use tokio::sync::Mutex;
@@ -23,7 +24,7 @@ use kelir::{
             StorageConfig, SyntheticFile, WorkspaceEncapsulation,
         },
         terminal::{PromptRule, PtyConfig, TokenShield},
-        wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig},
+        wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, WireConfig},
     },
     plugin::{AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginError, TrapInterposer},
     plugins::{
@@ -341,8 +342,10 @@ async fn build_runtime(
         },
         ssh_agent_bridge: true,
 
-        vaults: vec![VaultEntry {
+        vaults: vec![CredentialDescriptor {
             name: "STRIPE_SECRET".into(),
+            kind: CredentialKind::BearerToken,
+            audience: "api.stripe.com".into(),
             placeholder: "vault://stripe_key".into(),
         }],
         l4_proxies: vec![L4Proxy {
@@ -609,7 +612,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
         let Some(id) = winner else {
-            session.rollback()?;
+            session.rollback(PidLineage::new(1)).await?;
             return Ok(());
         };
 

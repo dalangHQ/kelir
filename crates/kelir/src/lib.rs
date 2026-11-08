@@ -25,7 +25,7 @@ pub use kelir_interface::handlers::Has;
 pub use kelir_interface::plugin::HandlerCtx;
 pub use kelir_interface::protocol::Verdict;
 pub use planes::storage::{FsReconcileRequest, SyntheticFile};
-pub use sandbox::Sandbox;
+pub use sandbox::{Sandbox, SandboxOptions, SandboxProfile};
 pub use session::{
     ClockHandle, ExecResult, FsHandle, Session, SpawnBuilder, StepStack, TerminalHandle, VmHandle,
     VsockChannel, VsockHandle, WireHandle,
@@ -43,7 +43,6 @@ pub use plugin_ledger::LedgerPlugin;
 pub use plugin_mcp::McpPlugin;
 #[cfg(feature = "plugin-mesh")]
 pub use plugin_mesh::MeshPlugin;
-#[cfg(feature = "plugin-profile")]
 pub use plugin_profile::ProfilePlugin;
 #[cfg(feature = "plugin-replay")]
 pub use plugin_replay::ReplayPlugin;

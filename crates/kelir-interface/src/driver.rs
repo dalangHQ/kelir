@@ -70,6 +70,32 @@ pub struct DriverPolicy {
     pub ffi_max_ops_per_sec: u32,
 }
 
+// see: cans/15-operations.md#Developer-CLI
+pub const HW_LOCKFILE_PATH: &str = "/etc/kelir/hw.lock";
+
+// see: cans/15-operations.md#Developer-CLI
+pub fn verify_hw_lockfile() -> Result<(), VmmError> {
+    // TODO (L3): attest the lockfile contents against the live host hardware probe set.
+    match std::fs::read(HW_LOCKFILE_PATH) {
+        Ok(_) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Err(VmmError::InvalidState(
+            format!("hardware lockfile missing: {HW_LOCKFILE_PATH}"),
+        )),
+        Err(err) => Err(VmmError::Io(err)),
+    }
+}
+
+// see: cans/15-operations.md#Developer-CLI
+pub fn check_hw_lockfile(
+    policy: &DriverPolicy,
+    capabilities: &DriverCapabilities,
+) -> Result<(), VmmError> {
+    if !policy.verify_hw_lockfile || !capabilities.requires_hardware_vmm {
+        return Ok(());
+    }
+    verify_hw_lockfile()
+}
+
 #[derive(Debug, Clone)]
 pub struct VmConfig {
     pub vcpus: u8,

@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-__all__ = ["L4Proxy", "Mtls", "SinkholeConfig", "VaultEntry"]
+__all__ = ["CredentialDescriptor", "CredentialKind", "L4Proxy", "Mtls", "SinkholeConfig"]
+
+CredentialKind = Literal["bearer_token", "sigv4", "mtls_bundle"]
 
 
 @dataclass
@@ -15,8 +17,10 @@ class SinkholeConfig:
 
 
 @dataclass
-class VaultEntry:
+class CredentialDescriptor:
     name: str = ""
+    kind: CredentialKind = "bearer_token"
+    audience: str = ""
     placeholder: str = ""
 
 

@@ -36,6 +36,18 @@ impl LeaseKind {
     }
 }
 
+impl std::str::FromStr for LeaseKind {
+    type Err = &'static str;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "ephemeral" => Ok(LeaseKind::Ephemeral),
+            "lease" => Ok(LeaseKind::Lease),
+            _ => Err("unknown lease_kind"),
+        }
+    }
+}
+
 // see: cans/06-storage-catalog.md#Entity-model
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IncarnationId(pub [u8; 16]);

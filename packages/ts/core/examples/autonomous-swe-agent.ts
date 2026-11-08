@@ -103,8 +103,8 @@ const runtime = kelir({
     sshAgentBridge: true,
 
 
-    vaults: [{ name: "STRIPE_SECRET",
-               placeholder: "vault://stripe_key" }],
+    vaults: [{ name: "STRIPE_SECRET", kind: "bearer_token",
+               audience: "api.stripe.com", placeholder: "vault://stripe_key" }],
     l4Proxies: [{ listenPort: 5432, destination: "pg.internal.net:5432",
                   injectMtls: { certPath: "/etc/ssl/client.crt",
                                 keyPath:  "/etc/ssl/client.key" } }],

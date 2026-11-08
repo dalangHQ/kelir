@@ -16,7 +16,7 @@ use tokio::io::AsyncRead;
 
 use kelir_interface::driver::{
     BalloonConvergence, DriverCapabilities, DriverError, SharedMemoryHandle, SnapshotDescriptor,
-    Stream, SuspendReason, VmConfig, VmmDriver, WatchdogAction,
+    Stream, SuspendReason, VmConfig, VmmDriver, WatchdogAction, check_hw_lockfile,
 };
 
 // see: cans/01-architecture.md#Transport-engine-abstraction
@@ -71,7 +71,9 @@ impl VmmDriver for MockVmmDriver {
             supports_cow_fork: false,
         }
     }
-    async fn boot(&mut self, _config: VmConfig) -> Result<(), DriverError> {
+    async fn boot(&mut self, config: VmConfig) -> Result<(), DriverError> {
+        // see: cans/15-operations.md#Developer-CLI
+        check_hw_lockfile(&config.driver_policy, &self.capabilities())?;
         Ok(())
     }
     async fn fork(&self) -> Result<Box<dyn VmmDriver>, DriverError> {

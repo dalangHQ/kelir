@@ -62,7 +62,7 @@ pub struct PressureSubscription {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BalloonRequest {
-    pub target_mb: u64,
+    pub target_mb: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +74,7 @@ pub struct HostPlane {
     reaper_kind: HostReaperKind,
     pressure_level: AtomicU8,
     watcher: Mutex<Option<PressureSubscription>>,
+    balloon: Option<std::sync::Arc<dyn kelir_interface::plugin::BalloonControl>>,
     metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
 }
 
@@ -108,8 +109,17 @@ impl HostPlane {
             reaper_kind,
             pressure_level: AtomicU8::new(0),
             watcher: Mutex::new(None),
+            balloon: None,
             metrics: std::sync::Arc::new(kelir_otlp::registry::MetricRegistry::new()),
         }
+    }
+
+    pub fn with_balloon_control(
+        mut self,
+        balloon: std::sync::Arc<dyn kelir_interface::plugin::BalloonControl>,
+    ) -> Self {
+        self.balloon = Some(balloon);
+        self
     }
 
     pub fn with_metrics(
@@ -184,11 +194,19 @@ impl HostPlane {
         &self,
         request: BalloonRequest,
     ) -> Result<(), kelir_interface::plugin::PluginError> {
-        // TODO (L3): inflate the virtio-balloon queue to request.target_mb so guest kswapd evicts clean page caches.
-        let _ = request;
-        Err(kelir_interface::plugin::PluginError::Halt(
-            "TODO (L3): HostPlane::inflate_balloon".into(),
-        ))
+        let Some(balloon) = &self.balloon else {
+            return Err(kelir_interface::plugin::PluginError::Halt(
+                "balloon control not wired".into(),
+            ));
+        };
+        let convergence = balloon.adjust_balloon(request.target_mb)?;
+        if convergence.converged {
+            Ok(())
+        } else {
+            Err(kelir_interface::plugin::PluginError::Halt(
+                "balloon did not converge".into(),
+            ))
+        }
     }
 
     pub fn reclaim(

@@ -10,7 +10,7 @@ __all__ = ["VaultConfig", "VaultPlugin"]
 
 @dataclass
 class VaultConfig:
-    metadata_vsock_port: int = 0
+    metadata_vsock_port: int = 80
     token_ttl_seconds: int = 0
 
 

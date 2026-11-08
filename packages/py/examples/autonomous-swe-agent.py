@@ -37,7 +37,7 @@ from kelir.planes.storage import (
     DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopRule
 )
 from kelir.planes.wire import (
-    L4Proxy, Mtls, SinkholeConfig, VaultEntry
+    L4Proxy, Mtls, SinkholeConfig, CredentialDescriptor
 )
 from kelir.plugins.chaos import (
     ChaosConfig,
@@ -360,8 +360,10 @@ async def build_runtime(
             ),
             ssh_agent_bridge=True,
             vaults=[
-                VaultEntry(
+                CredentialDescriptor(
                     name="STRIPE_SECRET",
+                    kind="bearer_token",
+                    audience="api.stripe.com",
                     placeholder="vault://stripe_key",
                 ),
             ],

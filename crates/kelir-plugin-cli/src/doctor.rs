@@ -170,6 +170,28 @@ pub fn probe_host() -> DoctorReport {
     DoctorReport { probes }
 }
 
+// see: cans/15-operations.md#Developer-CLI
+pub fn write_hw_lockfile(
+    path: &HwLockPath,
+    report: &DoctorReport,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = path.as_path().parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut contents = String::new();
+    for (probe, outcome) in &report.probes {
+        contents.push_str(&format!(
+            "{}: {}: {}\n",
+            probe.name(),
+            outcome.status(),
+            outcome.detail()
+        ));
+    }
+    std::fs::write(path.as_path(), contents)?;
+    // TODO (L3): set the immutable flag (chattr +i) and attest the lockfile contents against live hardware.
+    Ok(())
+}
+
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let mut enforce = false;
     let mut json = false;
@@ -186,13 +208,19 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     if enforce {
+        let report = probe_host();
+        if !report.is_ready() {
+            return Err(format!(
+                "doctor --enforce: host probes incomplete, refusing to write {}: {}",
+                HwLockPath::default_path().as_path().display(),
+                report.pending().join("; ")
+            )
+            .into());
+        }
         let lock = HwLockPath::default_path();
-        // TODO (L3): write the immutable hw.lock once every host probe passes.
-        return Err(format!(
-            "doctor --enforce: writing {} requires passing host probes (L3)",
-            lock.as_path().display()
-        )
-        .into());
+        write_hw_lockfile(&lock, &report)?;
+        println!("kelir doctor --enforce: wrote {}", lock.as_path().display());
+        return Ok(());
     }
     let report = probe_host();
     if json {

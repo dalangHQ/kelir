@@ -5,6 +5,9 @@ edition = "2024"
 license = "FSL-1.1-Apache-2.0"
 
 [dependencies]
+blake3 = { workspace = true }
+ciborium = { workspace = true }
+kelir-interface = { path = "../kelir-interface" }
 libc = { workspace = true }
 
 [profile.release]

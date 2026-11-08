@@ -24,6 +24,24 @@ import type {
 } from "./context.js";
 import { EConfig } from "./errors.js";
 
+declare const process: {
+  readonly env: Readonly<Record<string, string | undefined>>;
+};
+
+// see: cans/08-lifecycle.md#Detached-lifecycle
+export function relaySocketPath(sessionId: string): string {
+  if (!/^[0-9a-fA-F]{32}$/.test(sessionId)) {
+    throw new EConfig(
+      `attach: session id \`${sessionId}\` is not 32 hex chars`,
+    );
+  }
+  const home = process.env.HOME;
+  if (home === undefined || home === "") {
+    throw new EConfig("HOME is not set; cannot locate ~/.kelir relay socket");
+  }
+  return `${home}/.kelir/sessions/${sessionId.toLowerCase()}/relay.sock`;
+}
+
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 export interface NativeTerminalHandle {
   notice(message: string): void;
@@ -231,7 +249,10 @@ export class Session {
     return this.native.resume(path);
   }
 
-  async rollback(): Promise<void> {
+  async rollback(snapshot?: SnapshotDescriptor): Promise<void> {
+    if (snapshot !== undefined) {
+      return this.vm.rollback(snapshot);
+    }
     return this.native.rollback();
   }
 
@@ -245,6 +266,14 @@ export class Session {
 
   async console(): Promise<void> {
     return this.native.console();
+  }
+
+  // see: cans/08-lifecycle.md#Detached-lifecycle
+  static async attach(sessionId: string): Promise<Session> {
+    const relay = relaySocketPath(sessionId);
+    void relay;
+    // TODO (L3): connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.
+    throw new EConfig("TODO: Session.attach (L3)");
   }
 
   async getCausalDeltaFromParent(): Promise<CausalDelta> {

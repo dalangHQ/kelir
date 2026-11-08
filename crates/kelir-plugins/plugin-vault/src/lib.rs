@@ -6,17 +6,18 @@ pub mod service;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use kelir_interface::credential::CredentialDescriptor;
 use kelir_interface::driver::Stream;
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
     HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
     VirtioDevice,
 };
+use kelir_interface::vsock::VAULT_METADATA_VSOCK_PORT;
 use kelir_interface::vsock::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 use crate::service::{
-    CredentialBroker, CredentialBrokerService, CredentialDescriptor, DEFAULT_TOKEN_TTL_SECONDS,
-    IssuedToken, TokenRequest,
+    CredentialBroker, CredentialBrokerService, DEFAULT_TOKEN_TTL_SECONDS, IssuedToken, TokenRequest,
 };
 
 // see: cans/plugins/vault.md
@@ -34,7 +35,7 @@ pub struct VaultConfig {
 impl Default for VaultConfig {
     fn default() -> Self {
         Self {
-            metadata_vsock_port: 80,
+            metadata_vsock_port: VAULT_METADATA_VSOCK_PORT,
             token_ttl_seconds: DEFAULT_TOKEN_TTL_SECONDS,
         }
     }
