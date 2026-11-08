@@ -4,44 +4,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 
 from kelir.errors import EConfig
-
-
-class RingEvent(str, Enum):
-    TRAP = "trap"
-    TRAP_DENY = "trap-deny"
-    PROCESS_EXIT = "process-exit"
-    FS_LOOKUP = "fs-lookup"
-    FS_READ = "fs-read"
-    FS_WRITE = "fs-write"
-    NET_OUTBOUND = "net-outbound"
-    NET_INBOUND = "net-inbound"
-    CONSOLE_INPUT = "console-input"
-    CONSOLE_OUTPUT = "console-output"
-    HEARTBEAT = "heartbeat"
-    LIFECYCLE = "lifecycle"
-    WATCHDOG = "watchdog"
-    CUSTOM_ACTION = "custom-action"
-    VSOCK_SERVICE = "vsock-service"
-
-
-class HookStage(str, Enum):
-    SINGLE = "single"
-    PRE = "pre"
-    POST = "post"
-
-
-LifecycleTag = Literal[
-    "vm-init",
-    "vm-ready",
-    "vm-shutdown",
-    "trap-deny",
-    "pre-commit",
-    "post-commit",
-]
+from kelir.generated.fusion_tables import (
+    HookStage as HookStage,
+    LIFECYCLE_TAGS as LIFECYCLE_TAGS,
+    LifecycleTag as LifecycleTag,
+    RingEvent as RingEvent,
+)
 
 
 @dataclass(frozen=True)
@@ -91,9 +62,10 @@ def _validate_hook(hook: HookDescriptor) -> None:
                 f"vsock service hook on ordinal {hook.ordinal} declares kind "
                 f"{hook.vsock_kind} outside u16"
             )
-    if hook.ring is RingEvent.LIFECYCLE and not hook.lifecycle_tag:
+    if hook.ring is RingEvent.LIFECYCLE and hook.lifecycle_tag not in LIFECYCLE_TAGS:
         raise EConfig(
-            f"lifecycle hook on ordinal {hook.ordinal} declares no lifecycle tag"
+            f"lifecycle hook on ordinal {hook.ordinal} declares unknown lifecycle "
+            f"tag {hook.lifecycle_tag!r}"
         )
 
 
