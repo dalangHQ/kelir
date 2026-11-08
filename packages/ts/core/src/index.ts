@@ -1,5 +1,5 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-// see: cans/artifacts/code/typescript-accumulation.ts
+// see: cans/artifacts/code/typescript-accumulation.ts#runtime
 // see: cans/10-attestation.md#Step-evaluation-loop
 import type { Session } from "./session.js";
 

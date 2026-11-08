@@ -1,4 +1,4 @@
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Plugin-db-proxy
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt.
@@ -19,7 +19,7 @@ use kelir_interface::protocol::{FilterAction, StreamDirection, StreamKind, Verdi
 use crate::pgwire::PgFrameDescriptor;
 use crate::service::{SqlDialect, SqlProxy};
 
-// see: cans/artifacts/examples/db-backed-runtime.py
+// see: cans/artifacts/examples/db-backed-runtime.py#PgWireRewrite
 #[derive(Clone, Debug)]
 pub struct PgWireRewrite {
     pub listen_port: u16,
@@ -39,7 +39,7 @@ impl Default for PgWireRewrite {
     }
 }
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#SQLite-UDS-bridge-mechanics:
 #[derive(Clone, Debug)]
 pub struct SqliteOverVsock {
     pub guest_socket: String,
@@ -55,7 +55,7 @@ impl Default for SqliteOverVsock {
     }
 }
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Ephemeral-credentials-injected-at-host-connection-boundary
 #[derive(Clone, Debug)]
 pub struct EphemeralCredentials {
     pub placeholder: String,
@@ -64,7 +64,7 @@ pub struct EphemeralCredentials {
 
 // TODO (L3): resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md.
 
-// see: cans/artifacts/examples/db-backed-runtime.py
+// see: cans/artifacts/examples/db-backed-runtime.py#DbProxyConfig
 #[derive(Clone, Debug, Default)]
 pub struct DbProxyConfig {
     pub postgres: PgWireRewrite,
@@ -72,7 +72,7 @@ pub struct DbProxyConfig {
     pub credentials: Option<EphemeralCredentials>,
 }
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Plugin-db-proxy
 #[derive(Clone)]
 pub struct DbProxyPlugin {
     pub config: DbProxyConfig,
@@ -125,7 +125,7 @@ impl KelirPlugin for DbProxyPlugin {
         "db-proxy"
     }
     fn default_scope(&self) -> MountScope {
-        // see: cans/plugins/db-proxy.md
+        // see: cans/plugins/db-proxy.md#Crate-dependencies-(db-proxy)
         MountScope::default().with_devices([VirtioDevice::Vsock, VirtioDevice::Net])
     }
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
@@ -138,7 +138,7 @@ impl KelirPlugin for DbProxyPlugin {
     }
 }
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#SQLite-UDS-bridge-mechanics:
 #[async_trait]
 impl StreamInterposer for DbProxyPlugin {
     async fn on_stream_open(
@@ -176,7 +176,7 @@ impl StreamInterposer for DbProxyPlugin {
     }
 }
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
 impl NetInterposer for DbProxyPlugin {
     fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         match PgFrameDescriptor::decode(frame)? {

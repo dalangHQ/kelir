@@ -58,7 +58,7 @@ fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
         default_mode: LockMode::Exclusive,
         non_blocking: true,
     })
-    // see: cans/artifacts/examples/multi-vm-swarm.rs
+    // see: cans/artifacts/examples/multi-vm-swarm.rs#MeshPlugin
     .plugin(MeshPlugin::new(MeshConfig {
         peer_identity: PeerIdentity::Spiffe {
             trust_domain: "kelir.local".into(),
@@ -77,7 +77,7 @@ fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
             },
         ],
     }))
-    // see: cans/artifacts/examples/multi-vm-swarm.rs
+    // see: cans/artifacts/examples/multi-vm-swarm.rs#SupplyChainPlugin
     .plugin(SupplyChainPlugin::new(SupplyChainConfig {
         wx_jit: WxJitConfig::default(),
         package_guard: PackageGuardConfig {

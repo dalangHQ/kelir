@@ -1,7 +1,7 @@
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Invariants-and-policy-(vault)
 use serde::{Deserialize, Serialize};
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Credential-types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CredentialKind {
@@ -10,7 +10,7 @@ pub enum CredentialKind {
     MtlsBundle,
 }
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Credential-descriptors-(vault)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CredentialDescriptor {
     pub name: String,

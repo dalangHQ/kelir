@@ -1,4 +1,4 @@
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#Plugin-profile
 
 use kelir::Sandbox;
 

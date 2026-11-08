@@ -1,5 +1,5 @@
 // see: cans/05-storage-plane.md#Workspace-commit
-// see: cans/artifacts/code/reconciler.rs
+// see: cans/artifacts/code/reconciler.rs#reconcile_upperdir
 use super::io::StorageIo;
 use std::collections::HashSet;
 use std::fs;

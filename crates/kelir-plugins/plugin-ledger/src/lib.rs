@@ -1,4 +1,4 @@
-// see: cans/plugins/ledger.md
+// see: cans/plugins/ledger.md#Plugin-ledger
 #![forbid(unsafe_code)]
 
 // TODO (L2/L3): src/wal.rs + otel.rs + compute.rs, tests/test_merkle_wal.rs, test_causal_delta.rs, test_otel.rs per cans/artifacts/config/project-structure.txt.
@@ -72,14 +72,14 @@ impl LedgerConfig {
     }
 }
 
-// see: cans/artifacts/examples/autonomous-swe-agent.rs
+// see: cans/artifacts/examples/autonomous-swe-agent.rs#FinalizeRequest
 #[derive(Debug, Clone)]
 pub struct FinalizeRequest {
     pub include_delta: CausalDelta,
     pub include_merkle_root: bool,
 }
 
-// see: cans/artifacts/examples/autonomous-swe-agent.rs
+// see: cans/artifacts/examples/autonomous-swe-agent.rs#FinalReceipt
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FinalReceipt {
     pub merkle_root: String,

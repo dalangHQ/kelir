@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 // see: cans/01-architecture.md#Driver-backends
 // see: cans/08-lifecycle.md#CoW-fork
-// see: cans/artifacts/diagrams/host-runtime.txt
+// see: cans/artifacts/diagrams/host-runtime.txt#driver-rustvmm
 // TODO (L3): tests/test_cow_fork.rs + test_rollback.rs per cans/artifacts/config/project-structure.txt#kelir-drivers.
 use std::path::Path;
 use std::time::Duration;

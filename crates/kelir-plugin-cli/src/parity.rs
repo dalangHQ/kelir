@@ -417,7 +417,7 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
     Ok(out)
 }
 
-// see: cans/artifacts/code/wire-protocol.rs
+// see: cans/artifacts/code/wire-protocol.rs#MuxFrameHeader
 fn assert_frame_shape(vector: &ParityVector) -> Result<(), String> {
     if Channel::from_u16(vector.transport).is_none() {
         return Err(format!(

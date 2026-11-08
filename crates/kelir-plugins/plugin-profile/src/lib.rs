@@ -1,4 +1,4 @@
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#Plugin-profile
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_profile.rs per cans/artifacts/config/project-structure.txt.
@@ -18,7 +18,7 @@ pub trait ConfigurablePlugin: Send + Sync {
     fn configure(&mut self, fragment: &[u8]) -> Result<(), PluginError>;
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#Inversion-of-Control-configuration-router:
 pub struct NamespaceRouter {
     namespaces: HashMap<String, Box<dyn ConfigurablePlugin>>,
 }
@@ -55,7 +55,7 @@ impl Default for NamespaceRouter {
     }
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PatchOp {
@@ -67,7 +67,7 @@ pub enum PatchOp {
     Test,
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsonPatch {
     pub op: PatchOp,
@@ -120,18 +120,18 @@ impl JsonPatch {
     }
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching
 fn pointer_namespace(pointer: &str) -> Option<&str> {
     let path = pointer.strip_prefix('/')?;
     path.split('/').next()
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching
 fn unescape_pointer_segment(segment: &str) -> String {
     segment.replace("~1", "/").replace("~0", "~")
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching
 fn resolve_pointer<'a>(value: &'a Value, pointer: &str) -> Option<&'a Value> {
     if pointer.is_empty() {
         return Some(value);
@@ -153,7 +153,7 @@ fn resolve_pointer<'a>(value: &'a Value, pointer: &str) -> Option<&'a Value> {
     Some(current)
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#Monotonic-limits
 fn contains_number(value: &Value) -> bool {
     match value {
         Value::Number(_) => true,
@@ -163,7 +163,7 @@ fn contains_number(value: &Value) -> bool {
     }
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#Monotonic-limits
 fn check_value_against_base(
     base: Option<&Value>,
     value: &Value,
@@ -220,7 +220,7 @@ fn check_value_against_base(
     }
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching
 fn set_pointer(base: &mut Value, pointer: &str, value: Value) -> bool {
     if pointer.is_empty() {
         *base = value;
@@ -286,7 +286,7 @@ fn set_pointer(base: &mut Value, pointer: &str, value: Value) -> bool {
     }
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching
 fn remove_pointer(base: &mut Value, pointer: &str) -> bool {
     if pointer.is_empty() {
         *base = Value::Null;
@@ -337,14 +337,14 @@ fn remove_pointer(base: &mut Value, pointer: &str) -> bool {
     }
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#Container-Device-Interface-(CDI)-device-mapping
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CdiConfig {
     pub enabled: bool,
     pub spec_dir: String,
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#Plugin-profile
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProfileConfig {
     pub rfc6902_dynamic_patching: bool,
@@ -352,7 +352,7 @@ pub struct ProfileConfig {
     pub cdi: Option<CdiConfig>,
 }
 
-// see: cans/plugins/profile.md
+// see: cans/plugins/profile.md#Plugin-profile
 #[derive(Clone)]
 pub struct ProfilePlugin {
     config: ProfileConfig,
@@ -469,7 +469,7 @@ impl ProfilePlugin {
         Ok(routed)
     }
 
-    // see: cans/plugins/profile.md
+    // see: cans/plugins/profile.md#Monotonic-limits
     fn check_monotonic(&self, patch: &JsonPatch) -> Result<(), PluginError> {
         let Some(namespace) = patch.namespace() else {
             return Ok(());
@@ -560,7 +560,7 @@ impl ProfilePlugin {
         }
     }
 
-    // see: cans/plugins/profile.md
+    // see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching
     fn apply_patch_to_base(&self, patch: &JsonPatch) {
         let Some(namespace) = patch.namespace() else {
             return;

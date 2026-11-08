@@ -1,4 +1,4 @@
-// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/artifacts/code/plugin-trait.rs#KelirPlugin
 // see: cans/03-sdk-architecture.md#Rust-SDK
 // see: cans/02-plugin-model.md#Core-context-keys
 use std::fmt;

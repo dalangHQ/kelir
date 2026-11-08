@@ -34,7 +34,7 @@ Codebase comments are one-liners only, of exactly three kinds. Nothing else.
 
 | Kind | Form | Use |
 |---|---|---|
-| `see:` | `// see: cans/06-storage-catalog.md#Entity-model` | Point at the spec node that owns this code. Target is a `#Leaf` anchor, or an artifact path: `// see: cans/artifacts/code/vmm-driver-trait.rs` |
+| `see:` | `// see: cans/06-storage-catalog.md#Entity-model` | Point at the spec node that owns this code. Target is a `#Leaf` anchor, or an anchored artifact path: `// see: cans/artifacts/code/vmm-driver-trait.rs#VmmDriver` |
 | `TODO:` | `// TODO: wire to the live per-process receipt.` | L2 deferral. Tag the level where known: `// TODO (L2): ...` / `// TODO (L3): ...` |
 | `SAFETY:` | `// SAFETY: status is a valid out-pointer; WNOHANG never blocks.` | Unsafe blocks only. The single exception: `cans/01` mandates SAFETY invariants on unsafe code. |
 

@@ -1,6 +1,6 @@
 // see: cans/01-architecture.md#Axiomatic-foundations
 // see: cans/08-lifecycle.md#Zombie-reaping
-// see: cans/artifacts/diagrams/guest-vm.txt
+// see: cans/artifacts/diagrams/guest-vm.txt#kelir-shim
 // TODO (L3): tests/test_anti_toctou.rs + tests/test_reaper.rs per cans/artifacts/config/project-structure.txt#kelir-shim.
 
 mod codec;

@@ -1,4 +1,4 @@
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_parking.rs per cans/artifacts/config/project-structure.txt.
@@ -12,46 +12,46 @@ use kelir_interface::plugin::{
 };
 use kelir_interface::protocol::{Channel, StreamDirection, StreamKind, Verdict};
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Host-proxy-terminates-TCP-handshake-and-buffers-up-to-64KB-initial-request-data
 pub const MAX_PARKED_BYTES: usize = 64 * 1024;
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
 pub const L4_FORWARD_HEADER_LEN: usize = 14;
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Invariants-and-policy-(wire-ingress)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListenConfig {
     pub port: u16,
     pub protocol: String,
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParkingConfig {
     pub max_buffered_bytes: usize,
     pub idle_timeout_ms: u64,
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Wakes-target-microVM-via-SessionWakeHandle::resume
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WakeOnPacketConfig {
     pub transport_channel: u16,
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Return-errno-and-rejection-behavior-(wire-ingress)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BacklogOverflow {
     Reject503,
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Return-errno-and-rejection-behavior-(wire-ingress)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BacklogConfig {
     pub max_connections: usize,
     pub overflow: BacklogOverflow,
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Invariants-and-policy-(wire-ingress)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WireIngressConfig {
     pub listen: ListenConfig,
@@ -82,7 +82,7 @@ impl Default for WireIngressConfig {
     }
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct L4ForwardFrame {
     pub target_port: u16,
@@ -112,21 +112,21 @@ impl L4ForwardFrame {
     }
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParkOutcome {
     Parked,
     Overflow,
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParkedConnection {
     target_port: u16,
     buffered: Vec<u8>,
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
 // TODO (L3): idle-timeout eviction, suspend trigger, and TCP RST on rollback need the driver suspend hook and a timer source.
 #[derive(Debug, Default)]
 struct IngressState {
@@ -209,7 +209,7 @@ impl IngressState {
         Ok(())
     }
 
-    // see: cans/plugins/wire-ingress.md
+    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
     fn reset(&self) -> Result<Vec<u64>, PluginError> {
         let mut parked = self
             .parked
@@ -226,7 +226,7 @@ impl IngressState {
         Ok(connection_ids)
     }
 
-    // see: cans/plugins/wire-ingress.md
+    // see: cans/plugins/wire-ingress.md#Wakes-target-microVM-via-SessionWakeHandle::resume
     fn take_pending_wake(&self) -> Result<bool, PluginError> {
         let mut pending_wake = self
             .pending_wake
@@ -238,7 +238,7 @@ impl IngressState {
     }
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Service-exports-(wire-ingress)
 #[derive(Clone)]
 pub struct IngressRoutingService {
     state: Arc<IngressState>,
@@ -263,7 +263,7 @@ impl IngressRoutingService {
         self.state.reset()
     }
 
-    // see: cans/plugins/wire-ingress.md
+    // see: cans/plugins/wire-ingress.md#Wakes-target-microVM-via-SessionWakeHandle::resume
     // TODO (L3): host loop polls take_pending_wake and resumes via SessionWakeHandle::resume; no such handle exists in-tree and VmHandle::resume is still a stub.
     pub fn take_pending_wake(&self) -> Result<bool, PluginError> {
         self.state.take_pending_wake()
@@ -276,7 +276,7 @@ impl kelir_interface::plugin::ParkedConnectionReset for IngressRoutingService {
     }
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
 // TODO (L3): host TCP accept/termination and suspend parking I/O per cans/plugins/wire-ingress.md.
 #[derive(Clone)]
 pub struct WireIngressPlugin {
@@ -308,7 +308,7 @@ impl WireIngressPlugin {
         self.router.reset_parked_connections()
     }
 
-    // see: cans/plugins/wire-ingress.md
+    // see: cans/plugins/wire-ingress.md#Wakes-target-microVM-via-SessionWakeHandle::resume
     pub fn take_pending_wake(&self) -> Result<bool, PluginError> {
         self.router.take_pending_wake()
     }

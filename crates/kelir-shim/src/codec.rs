@@ -1,6 +1,6 @@
 // see: cans/11-protocol.md#Wire-framing
 // see: cans/artifacts/config/project-structure.txt#kelir-shim
-// see: cans/artifacts/code/wire-protocol.rs
+// see: cans/artifacts/code/wire-protocol.rs#MuxFrameHeader
 
 #[allow(dead_code)]
 pub const HEADER_LEN: usize = 9;

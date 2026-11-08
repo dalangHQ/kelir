@@ -79,7 +79,7 @@ pub fn assert_env_injected(env: &[(String, String)], key: &str) -> Result<(), Pl
     }
 }
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Plugin-vault
 pub fn assert_disclosure(output: &[u8], secret: &[u8]) -> Result<(), PluginError> {
     if secret.is_empty() {
         return Err(PluginError::Halt(

@@ -1,4 +1,4 @@
-// see: cans/plugins/supply-chain.md
+// see: cans/plugins/supply-chain.md#Plugin-supply-chain
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_supply_chain.rs per cans/artifacts/config/project-structure.txt.

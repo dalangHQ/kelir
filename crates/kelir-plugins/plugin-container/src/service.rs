@@ -1,5 +1,5 @@
-// see: cans/plugins/container.md
-// see: cans/artifacts/code/container-service.rs
+// see: cans/plugins/container.md#Plugin-container
+// see: cans/artifacts/code/container-service.rs#ContainerService
 use std::ops::Range;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
@@ -9,7 +9,7 @@ use kelir_interface::plugin::PluginError;
 
 use crate::IdMapKind;
 
-// see: cans/artifacts/code/container-service.rs
+// see: cans/artifacts/code/container-service.rs#ContainerService
 #[async_trait]
 pub trait ContainerService: Send + Sync {
     async fn configure_runtime(&mut self) -> Result<(), PluginError>;
@@ -49,19 +49,19 @@ impl SharedContainerService {
         Self::default()
     }
 
-    // see: cans/artifacts/code/container-service.rs
+    // see: cans/artifacts/code/container-service.rs#configure_runtime
     pub(crate) async fn configure_rootless_runtime(&self) -> Result<(), PluginError> {
         // TODO (L3): configure the rootless Podman and crun runtime environments inside the microVM.
         Ok(())
     }
 
-    // see: cans/artifacts/code/container-service.rs
+    // see: cans/artifacts/code/container-service.rs#mount_scratch
     pub(crate) async fn mount_scratch_device(&self, _scratch: &Path) -> Result<(), PluginError> {
         // TODO (L3): mount the ephemeral scratch device at /var/lib/containers.
         Ok(())
     }
 
-    // see: cans/artifacts/code/container-service.rs
+    // see: cans/artifacts/code/container-service.rs#ingest_image
     pub(crate) async fn ingest_cached_image(&self, _tarball: &Path) -> Result<String, PluginError> {
         // TODO (L3): delegate ingestion to the external kelir-pack binary; in-process OCI parsing is forbidden.
         Err(PluginError::Halt(

@@ -1,4 +1,4 @@
-// see: cans/plugins/tool-guard.md
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_tool_guard.rs per cans/artifacts/config/project-structure.txt.
@@ -19,7 +19,7 @@ use kelir_interface::protocol::{StreamDirection, StreamKind, Verdict};
 use crate::jsonrpc::{McpFrame, McpMethod};
 use crate::service::{ToolRegistry, ToolRegistryService, ToolSchema};
 
-// see: cans/plugins/tool-guard.md
+// see: cans/plugins/tool-guard.md#Call-quota
 #[derive(Clone, Debug)]
 pub struct ToolGuardConfig {
     pub max_invocations_per_trace: u32,
@@ -33,17 +33,17 @@ impl Default for ToolGuardConfig {
     }
 }
 
-// see: cans/plugins/tool-guard.md
+// see: cans/plugins/tool-guard.md#Call-quota
 struct TraceQuota {
     invocations: u32,
 }
 
-// see: cans/plugins/tool-guard.md
+// see: cans/plugins/tool-guard.md#Call-quota
 struct ToolGuardState {
     traces: Mutex<HashMap<u32, TraceQuota>>,
 }
 
-// see: cans/plugins/tool-guard.md
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
 #[derive(Clone)]
 pub struct ToolGuardPlugin {
     config: ToolGuardConfig,
@@ -172,7 +172,7 @@ impl KelirPlugin for ToolGuardPlugin {
 #[async_trait]
 impl LifecycleParticipant for ToolGuardPlugin {
     async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
-        // see: cans/plugins/tool-guard.md
+        // see: cans/plugins/tool-guard.md#Immutable-schema-locking
         self.registry.lock_catalog().await
     }
 }

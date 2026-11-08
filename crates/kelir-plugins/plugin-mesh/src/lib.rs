@@ -1,4 +1,4 @@
-// see: cans/plugins/mesh.md
+// see: cans/plugins/mesh.md#Plugin-mesh
 #![forbid(unsafe_code)]
 
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -41,7 +41,7 @@ pub struct PeerListener {
     pub service: String,
 }
 
-// see: cans/artifacts/examples/multi-vm-swarm.rs
+// see: cans/artifacts/examples/multi-vm-swarm.rs#MeshConfig
 #[derive(Debug, Clone)]
 pub struct MeshConfig {
     pub peer_identity: PeerIdentity,
@@ -93,7 +93,7 @@ impl MeshState {
     }
 }
 
-// see: cans/plugins/mesh.md
+// see: cans/plugins/mesh.md#Plugin-mesh
 #[derive(Clone)]
 pub struct MeshPlugin {
     config: MeshConfig,
@@ -193,7 +193,7 @@ impl MeshPlugin {
     }
 }
 
-// see: cans/plugins/mesh.md
+// see: cans/plugins/mesh.md#Plugin-mesh
 impl KelirPlugin for MeshPlugin {
     type Context = MeshCtx;
     fn context(&self) -> Self::Context {
@@ -313,7 +313,7 @@ pub struct MeshCtx {
 }
 
 impl MeshCtx {
-    // see: cans/artifacts/examples/multi-vm-swarm.rs
+    // see: cans/artifacts/examples/multi-vm-swarm.rs#publish
     pub async fn publish(
         &self,
         _region: &SharedMemoryHandle,
@@ -339,7 +339,7 @@ impl MeshCtx {
         )))
     }
 
-    // see: cans/artifacts/examples/multi-vm-swarm.rs
+    // see: cans/artifacts/examples/multi-vm-swarm.rs#await_winner
     pub async fn await_winner(&self, _timeout: Duration) -> Result<u32, PluginError> {
         // TODO (L3): await the winning shard announcement on the mesh listener streams.
         let peers = self.state.lock_peers()?;

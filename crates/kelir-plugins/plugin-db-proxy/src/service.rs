@@ -1,25 +1,25 @@
-// see: cans/plugins/db-proxy.md
-// see: cans/plugins/transaction.md
+// see: cans/plugins/db-proxy.md#Plugin-db-proxy
+// see: cans/plugins/transaction.md#Crate-dependencies-(transaction)
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqlDialect {
     Postgres,
     Sqlite,
 }
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StatementHandle {
     pub id: u64,
 }
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
 #[async_trait]
 pub trait SqlProxyService: Send + Sync {
     async fn dialect(&self) -> Result<SqlDialect, PluginError>;
@@ -30,13 +30,13 @@ pub trait SqlProxyService: Send + Sync {
     async fn inject_savepoint(&self, marker: &str) -> Result<(), PluginError>;
 }
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
 struct StatementTable {
     next_id: u64,
     statements: HashMap<u64, String>,
 }
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
 pub struct SqlProxy {
     dialect: SqlDialect,
     statements: Mutex<StatementTable>,

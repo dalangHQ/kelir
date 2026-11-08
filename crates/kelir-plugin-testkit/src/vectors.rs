@@ -1,7 +1,7 @@
 // see: cans/02-plugin-model.md#Plugin-testkit
 // see: cans/15-operations.md#Multi-language-parity-gate
-// see: cans/artifacts/code/wire-protocol.rs
-// see: cans/artifacts/code/messages.rs
+// see: cans/artifacts/code/wire-protocol.rs#MuxFrameHeader
+// see: cans/artifacts/code/messages.rs#GuestToHost
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -52,7 +52,7 @@ pub struct WireFrame {
 }
 
 impl WireFrame {
-    // see: cans/artifacts/code/wire-protocol.rs
+    // see: cans/artifacts/code/wire-protocol.rs#MuxFrameHeader
     pub fn encode(&self) -> Result<Vec<u8>, VectorError> {
         if self.stream_id > MAX_STREAM_ID {
             return Err(VectorError::StreamIdOutOfRange {

@@ -1,6 +1,6 @@
 // see: cans/01-architecture.md#Host-memory-pressure-watcher
 // see: cans/08-lifecycle.md#CoW-fork
-// see: cans/artifacts/diagrams/host-runtime.txt
+// see: cans/artifacts/diagrams/host-runtime.txt#driver-hvf
 pub mod sys;
 
 use std::path::Path;

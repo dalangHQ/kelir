@@ -24,7 +24,7 @@ use crate::protocol::{
     FilterAction, ProcessExit, StreamDirection, StreamKind, SuspendUntil, TrapEvent, Verdict,
 };
 
-// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/artifacts/code/plugin-trait.rs#PluginError
 #[derive(Error, Debug)]
 pub enum PluginError {
     #[error("Foreign FFI channel saturated: worker queue depth exceeded ({depth})")]
@@ -95,7 +95,7 @@ pub enum ExecutionTier {
 
 pub const PANIC_QUARANTINE_ENABLED: bool = true;
 
-// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/artifacts/code/plugin-trait.rs#MountScope
 #[derive(Debug, Clone, Default)]
 pub struct MountScope {
     pub devices: Option<Vec<VirtioDevice>>,
@@ -190,20 +190,20 @@ pub enum LifecycleEvent {
     VmShutdown,
 }
 
-// see: cans/plugins/transaction.md
+// see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
 #[async_trait]
 pub trait VcpuFreezeControl: Send + Sync {
     async fn freeze(&self) -> Result<(), PluginError>;
     async fn unfreeze(&self) -> Result<(), PluginError>;
 }
 
-// see: cans/plugins/transaction.md
+// see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
 #[async_trait]
 pub trait FuseDrainControl: Send + Sync {
     async fn drain_in_flight(&self, timeout: Duration) -> Result<(), PluginError>;
 }
 
-// see: cans/plugins/transaction.md
+// see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
 #[async_trait]
 pub trait CowBrokerControl: Send + Sync {
     async fn commit_upper(&self) -> Result<(), PluginError>;
@@ -226,7 +226,7 @@ pub trait LockBrokerCoordination: Send + Sync {
     }
 }
 
-// see: cans/plugins/wire-ingress.md
+// see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
 pub trait ParkedConnectionReset: Send + Sync {
     fn reset_parked_connections(&self) -> Result<Vec<u64>, PluginError>;
 }
@@ -404,7 +404,7 @@ where
 }
 
 // see: cans/11-protocol.md#Control-channel
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
 pub trait PipelineBinder {
     fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>);
     fn bind_fs_scoped(&mut self, stage: Arc<dyn FsInterposer>, scope: MountScope) {
@@ -464,7 +464,7 @@ pub trait CompositePlugin: Send + Sync {
     fn unpack(self: Box<Self>, parent_scope: &MountScope) -> Vec<(Box<dyn AnyPlugin>, MountScope)>;
 }
 
-// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/artifacts/code/plugin-trait.rs#KelirPlugin
 // TODO (L3): cans/artifacts/code/plugin-trait.rs writes &mut dyn EventBusBinder, but subscribe is generic so the trait is not object-safe; &mut impl is the compiling form.
 pub trait KelirPlugin: Send + Sync + PluginClone {
     type Context: Send + Sync + Clone + 'static;
@@ -515,7 +515,7 @@ pub trait LifecycleParticipant: Send + Sync {
     }
 }
 
-// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/artifacts/code/plugin-trait.rs#TrapInterposer
 #[async_trait]
 pub trait TrapInterposer: Send + Sync {
     async fn on_trap(&self, event: &TrapEvent, ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
@@ -582,7 +582,7 @@ pub trait SystemTelemetryParticipant: Send + Sync {
     }
 }
 
-// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/artifacts/code/plugin-trait.rs#FsInterposer
 // see: cans/02-plugin-model.md#Shape-of-the-surface
 pub trait FsInterposer: Send + Sync {
     fn on_fs_lookup(&self, path: &Path) -> Result<Verdict, PluginError> {
@@ -609,7 +609,7 @@ pub trait FsInterposer: Send + Sync {
     }
 }
 
-// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/artifacts/code/plugin-trait.rs#NetInterposer
 // see: cans/02-plugin-model.md#Shape-of-the-surface
 pub trait NetInterposer: Send + Sync {
     fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
@@ -622,7 +622,7 @@ pub trait NetInterposer: Send + Sync {
     }
 }
 
-// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/artifacts/code/plugin-trait.rs#HostInterposer
 // see: cans/02-plugin-model.md#Shape-of-the-surface
 pub trait HostInterposer: Send + Sync {
     fn on_host_lsm_exec(&self, path: &Path, pid: u32) -> Result<Verdict, PluginError> {
@@ -640,7 +640,7 @@ pub trait HostInterposer: Send + Sync {
 }
 
 // see: cans/11-protocol.md#Control-channel
-// see: cans/plugins/tool-guard.md
+// see: cans/plugins/tool-guard.md#Total-tool-call-interposition
 #[async_trait]
 pub trait StreamInterposer: Send + Sync {
     async fn on_stream_open(

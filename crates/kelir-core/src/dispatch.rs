@@ -17,7 +17,7 @@ use kelir_interface::vsock::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::trap_gate::{GateDecision, TrapGateEvaluator};
 
-// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/artifacts/code/plugin-trait.rs#PANIC_QUARANTINE_ENABLED
 struct Quarantined<F> {
     inner: Option<Pin<Box<F>>>,
 }
@@ -344,7 +344,7 @@ impl PipelineEngine {
         self.dispatch_fs_write(data, &ctx.erased())
     }
 
-    // see: cans/artifacts/code/plugin-trait.rs
+    // see: cans/artifacts/code/plugin-trait.rs#TrapInterposer
     pub async fn dispatch_trap(
         &self,
         event: &TrapEvent,

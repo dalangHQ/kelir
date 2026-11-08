@@ -1,4 +1,4 @@
-// see: cans/plugins/transaction.md
+// see: cans/plugins/transaction.md#Plugin-transaction
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_transaction.rs per cans/artifacts/config/project-structure.txt.

@@ -1,5 +1,5 @@
-// see: cans/plugins/transaction.md
-// see: cans/artifacts/code/transaction-service.rs
+// see: cans/plugins/transaction.md#Plugin-transaction
+// see: cans/artifacts/code/transaction-service.rs#TransactionService
 use std::path::PathBuf;
 
 use async_trait::async_trait;

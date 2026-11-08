@@ -1,17 +1,17 @@
-// see: cans/plugins/tool-guard.md
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
 use std::sync::Mutex;
 
 use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
 
-// see: cans/plugins/tool-guard.md
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
 #[derive(Debug, Clone)]
 pub struct ToolSchema {
     pub name: String,
     pub blake3: String,
 }
 
-// see: cans/plugins/tool-guard.md
+// see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
 #[derive(Debug, Clone)]
 pub struct ApprovalRequest {
     pub tool: String,
@@ -19,14 +19,14 @@ pub struct ApprovalRequest {
     pub payload_hash: String,
 }
 
-// see: cans/plugins/tool-guard.md
+// see: cans/plugins/tool-guard.md#Service-exports-(tool-guard)
 #[async_trait]
 pub trait ToolRegistryService: Send + Sync {
     async fn lookup_schema(&self, tool: &str) -> Result<Option<ToolSchema>, PluginError>;
     async fn bind_approval(&self, request: &ApprovalRequest) -> Result<(), PluginError>;
 }
 
-// see: cans/plugins/tool-guard.md
+// see: cans/plugins/tool-guard.md#Service-exports-(tool-guard)
 #[derive(Debug, Default)]
 pub struct ToolRegistry {
     locked_digest: Mutex<Option<String>>,

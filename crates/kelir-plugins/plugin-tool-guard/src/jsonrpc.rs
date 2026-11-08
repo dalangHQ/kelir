@@ -1,8 +1,8 @@
-// see: cans/plugins/tool-guard.md
-// see: cans/plugins/mcp.md
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+// see: cans/plugins/mcp.md#MCP-contract
 use kelir_interface::plugin::PluginError;
 
-// see: cans/plugins/mcp.md
+// see: cans/plugins/mcp.md#MCP-contract
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum McpMethod {
     ToolsList,

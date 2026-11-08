@@ -165,17 +165,17 @@ pub enum FilterAction {
     },
 }
 
-// see: cans/plugins/supply-chain.md
+// see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
 pub const PROT_NONE: u32 = 0;
 pub const PROT_READ: u32 = 1;
 pub const PROT_WRITE: u32 = 2;
 pub const PROT_EXEC: u32 = 4;
 
-// see: cans/plugins/supply-chain.md
+// see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
 pub const MFD_CLOEXEC: u32 = 0x0001;
 pub const MFD_ALLOW_SEALING: u32 = 0x0002;
 
-// see: cans/plugins/supply-chain.md
+// see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrappedSyscall {
     pub nr: i64,
@@ -207,7 +207,7 @@ pub struct ProcessExit {
     pub wall_clock_ns: u64,
 }
 
-// see: cans/artifacts/code/messages.rs
+// see: cans/artifacts/code/messages.rs#MemoryPressureWarning
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryPressureWarning {
     pub available_mb: u32,

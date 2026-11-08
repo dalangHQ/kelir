@@ -1,4 +1,4 @@
-// see: cans/plugins/replay.md
+// see: cans/plugins/replay.md#Plugin-replay
 
 use kelir::{
     KelirBuilder, PidLineage, SnapshotDescriptor, VmConfig,

@@ -1,4 +1,4 @@
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Plugin-vault
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -9,17 +9,17 @@ pub use kelir_interface::credential::{CredentialDescriptor, CredentialKind};
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service.token_ttl_seconds
 pub const DEFAULT_TOKEN_TTL_SECONDS: u32 = 60;
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Out-of-band-credential-brokerage
 pub const MAX_TOKEN_TTL_SECONDS: u32 = 900;
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Out-of-band-credential-brokerage
 #[derive(Debug, Clone)]
 pub struct TokenRequest {
     pub name: String,
     pub ttl_seconds: u32,
 }
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Out-of-band-credential-brokerage
 #[derive(Debug, Clone)]
 pub struct IssuedToken {
     pub token: String,
@@ -28,7 +28,7 @@ pub struct IssuedToken {
     pub audience: String,
 }
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Return-errno-and-rejection-behavior-(vault)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VaultError {
     Enodata(String),
@@ -57,13 +57,13 @@ impl VaultError {
     }
 }
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Service-exports-(vault)
 #[async_trait]
 pub trait CredentialBrokerService: Send + Sync {
     async fn issue(&self, request: &TokenRequest) -> Result<IssuedToken, VaultError>;
 }
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Service-exports-(vault)
 pub struct CredentialBroker {
     descriptors: Vec<CredentialDescriptor>,
     outstanding: Mutex<HashMap<String, IssuedToken>>,

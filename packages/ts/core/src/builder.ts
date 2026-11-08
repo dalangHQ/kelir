@@ -1,6 +1,6 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-// see: cans/artifacts/code/typescript-accumulation.ts
+// see: cans/artifacts/code/typescript-accumulation.ts#runtime
 
 import type { Schema } from "./schema.js";
 import type { TrapContext, LifecycleContext } from "./context.js";
@@ -171,7 +171,7 @@ export class KelirBuilder {
     return this;
   }
 
-  // see: cans/artifacts/code/typescript-accumulation.ts
+  // see: cans/artifacts/code/typescript-accumulation.ts#runtime
   use<P extends KelirPlugin>(plugin: P): this {
     const enabled = (plugin as { readonly enabled?: boolean }).enabled !== false;
     this.pluginRegistrations.push({ name: plugin.name, enabled });

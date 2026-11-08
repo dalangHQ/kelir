@@ -1,6 +1,6 @@
 // see: cans/01-architecture.md#Transport-engine-abstraction
-// see: cans/artifacts/diagrams/four-ring-bus.txt
-// see: cans/artifacts/diagrams/wire-plane.txt
+// see: cans/artifacts/diagrams/four-ring-bus.txt#virtio-shm
+// see: cans/artifacts/diagrams/wire-plane.txt#USERSPACE-SMOLTCP-INGRESS-RING
 pub mod fallback;
 pub mod spsc_ring;
 

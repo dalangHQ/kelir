@@ -1,5 +1,5 @@
 // see: cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)
-// see: cans/artifacts/diagrams/trap-flow.txt
+// see: cans/artifacts/diagrams/trap-flow.txt#Kernel-seccomp-unotify-triggers
 use std::fmt;
 
 #[allow(dead_code)]

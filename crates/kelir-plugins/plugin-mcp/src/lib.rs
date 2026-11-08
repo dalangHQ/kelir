@@ -1,4 +1,4 @@
-// see: cans/plugins/mcp.md
+// see: cans/plugins/mcp.md#Plugin-mcp
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_mcp_mapping.rs + examples/mcp-stdio.rs per cans/artifacts/config/project-structure.txt.
@@ -11,7 +11,7 @@ use kelir_interface::plugin::{
 };
 use kelir_interface::protocol::{StreamDirection, StreamKind, Verdict};
 
-// see: cans/plugins/mcp.md
+// see: cans/plugins/mcp.md#Crate-dependencies-(mcp)
 pub const MCP_SOCKET_PATH: &str = "/run/kelir/mcp.sock";
 
 #[derive(Clone)]

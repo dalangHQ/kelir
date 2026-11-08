@@ -1,4 +1,4 @@
-// see: cans/plugins/container.md
+// see: cans/plugins/container.md#Plugin-container
 #![forbid(unsafe_code)]
 
 use std::ops::Range;
@@ -65,7 +65,7 @@ impl Default for ContainerConfig {
     }
 }
 
-// see: cans/plugins/container.md
+// see: cans/plugins/container.md#Plugin-container
 #[derive(Clone)]
 pub struct ContainerPlugin {
     config: ContainerConfig,
@@ -142,7 +142,7 @@ impl Default for ContainerPlugin {
     }
 }
 
-// see: cans/plugins/container.md
+// see: cans/plugins/container.md#Plugin-container
 impl KelirPlugin for ContainerPlugin {
     type Context = ();
     fn context(&self) {}

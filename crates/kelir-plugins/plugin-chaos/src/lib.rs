@@ -1,4 +1,4 @@
-// see: cans/plugins/chaos.md
+// see: cans/plugins/chaos.md#Plugin-chaos
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_chaos.rs per cans/artifacts/config/project-structure.txt.

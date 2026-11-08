@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::AsyncRead;
 
-// see: cans/artifacts/code/vmm-driver-trait.rs
+// see: cans/artifacts/code/vmm-driver-trait.rs#VmmError
 #[derive(Error, Debug)]
 pub enum VmmError {
     #[error("unsupported: {0}")]
@@ -222,7 +222,7 @@ pub struct WatchdogEvent {
     pub last_active_pid: Option<u32>,
 }
 
-// see: cans/artifacts/code/vmm-driver-trait.rs
+// see: cans/artifacts/code/vmm-driver-trait.rs#ExternalSuspendKind
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExternalSuspendKind {
     HumanAuthorizationHold = 0x0001,
@@ -231,7 +231,7 @@ pub enum ExternalSuspendKind {
     HostPowerEventSnapshot = 0x0004,
 }
 
-// see: cans/artifacts/code/vmm-driver-trait.rs
+// see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SuspendReason {
     External(ExternalSuspendKind),
@@ -265,27 +265,27 @@ pub trait Stream: Send + Sync {
     fn flush(&mut self) -> Result<(), std::io::Error>;
 }
 
-// see: cans/plugins/replay.md
+// see: cans/plugins/replay.md#Deterministic-RNG
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntropyBackend {
     VirtioRng,
     SeededChaCha20 { seed: u64 },
 }
 
-// see: cans/plugins/replay.md
+// see: cans/plugins/replay.md#Deterministic-RNG
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EntropyStreamPosition {
     pub offset_bytes: u64,
 }
 
-// see: cans/plugins/replay.md
+// see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
 #[async_trait]
 pub trait ClockStepControl: Send + Sync {
     async fn step_clock(&self, offset: Duration) -> Result<(), VmmError>;
     async fn clock_offset(&self) -> Result<Duration, VmmError>;
 }
 
-// see: cans/plugins/replay.md
+// see: cans/plugins/replay.md#Deterministic-RNG
 #[async_trait]
 pub trait EntropyBackendControl: Send + Sync {
     async fn set_backend(&self, backend: EntropyBackend) -> Result<(), VmmError>;
@@ -293,7 +293,7 @@ pub trait EntropyBackendControl: Send + Sync {
     async fn restore_position(&self, position: EntropyStreamPosition) -> Result<(), VmmError>;
 }
 
-// see: cans/artifacts/code/vmm-driver-trait.rs
+// see: cans/artifacts/code/vmm-driver-trait.rs#VmmDriver
 #[async_trait]
 pub trait VmmDriver: Send + Sync {
     fn capabilities(&self) -> DriverCapabilities;

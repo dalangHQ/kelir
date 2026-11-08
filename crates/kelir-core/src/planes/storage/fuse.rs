@@ -51,7 +51,7 @@ pub struct FuseRequest {
 pub enum FuseReply {
     // see: cans/05-storage-plane.md#Interception-pipeline
     Payload(Vec<u8>),
-    // see: cans/02-plugin-model.md#FsInodeAttr-carries-full-mode-uid-gid-size-content
+    // see: cans/02-plugin-model.md#FsInodeAttr-carries-full-mode,-uid,-gid,-size,-content
     Inode(FsInodeAttr),
     // see: cans/05-storage-plane.md#Write-gating
     Errno(i32),
@@ -239,7 +239,7 @@ impl FuseDispatcher {
 }
 
 // see: cans/05-storage-plane.md#Write-gating
-// see: cans/plugins/chaos.md#Error-and-return-semantics
+// see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
 fn drop_errno(errno: &str) -> Result<i32, PluginError> {
     match errno {
         "EPERM" => Ok(1),

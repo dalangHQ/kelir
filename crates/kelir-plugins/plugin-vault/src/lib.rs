@@ -1,4 +1,4 @@
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Plugin-vault
 #![forbid(unsafe_code)]
 
 pub mod service;
@@ -20,7 +20,7 @@ use crate::service::{
     CredentialBroker, CredentialBrokerService, DEFAULT_TOKEN_TTL_SECONDS, IssuedToken, TokenRequest,
 };
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Metadata-service-(vault)
 pub const METADATA_CREDENTIALS_PREFIX: &str = "/kelir/credentials/";
 // see: cans/11-protocol.md#Wire-framing
 const METADATA_MAX_REQUEST_BYTES: usize = 64 * 1024;
@@ -41,7 +41,7 @@ impl Default for VaultConfig {
     }
 }
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Metadata-service-(vault)
 #[derive(Clone)]
 pub struct VaultPlugin {
     config: VaultConfig,
@@ -123,7 +123,7 @@ impl KelirPlugin for VaultPlugin {
         "vault"
     }
     fn default_scope(&self) -> MountScope {
-        // see: cans/plugins/vault.md
+        // see: cans/plugins/vault.md#Crate-dependencies-(vault)
         MountScope::default().with_devices([VirtioDevice::Vsock])
     }
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
@@ -141,7 +141,7 @@ impl KelirPlugin for VaultPlugin {
     }
 }
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Revocation
 #[async_trait]
 impl LifecycleParticipant for VaultPlugin {
     async fn on_vm_shutdown(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
@@ -150,7 +150,7 @@ impl LifecycleParticipant for VaultPlugin {
     }
 }
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Metadata-service-(vault)
 #[async_trait]
 impl VsockServiceHandler for VaultPlugin {
     async fn on_connect(
@@ -172,7 +172,7 @@ impl VsockServiceHandler for VaultPlugin {
     }
 }
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Metadata-service-(vault)
 fn read_metadata_request(stream: &mut dyn Stream) -> Result<Vec<u8>, PluginError> {
     let mut request = Vec::new();
     let mut chunk = [0u8; 1024];
@@ -195,7 +195,7 @@ fn read_metadata_request(stream: &mut dyn Stream) -> Result<Vec<u8>, PluginError
     Ok(request)
 }
 
-// see: cans/plugins/vault.md
+// see: cans/plugins/vault.md#Metadata-service-(vault)
 fn find_header_end(request: &[u8]) -> Option<usize> {
     request.windows(4).position(|window| window == b"\r\n\r\n")
 }

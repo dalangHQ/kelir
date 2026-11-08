@@ -1,4 +1,4 @@
-// see: cans/plugins/replay.md
+// see: cans/plugins/replay.md#Plugin-replay
 #![forbid(unsafe_code)]
 
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -14,7 +14,7 @@ use kelir_interface::plugin::{
 // see: cans/plugins/replay.md#Error-and-return-semantics-(replay)
 const ECLOCKREGRESS: &str = "EClockRegress";
 
-// see: cans/artifacts/examples/replay.rs
+// see: cans/artifacts/examples/replay.rs#ReplayConfig
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.replay
 #[derive(Debug, Clone)]
 pub struct ReplayConfig {
@@ -120,7 +120,7 @@ impl ReplayState {
     }
 }
 
-// see: cans/plugins/replay.md
+// see: cans/plugins/replay.md#Plugin-replay
 #[derive(Clone)]
 pub struct ReplayPlugin {
     config: ReplayConfig,
@@ -142,7 +142,7 @@ impl Default for ReplayPlugin {
     }
 }
 
-// see: cans/plugins/replay.md
+// see: cans/plugins/replay.md#Plugin-replay
 impl KelirPlugin for ReplayPlugin {
     type Context = ();
     fn context(&self) {}

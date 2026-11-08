@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 // see: cans/01-architecture.md#Driver-backends
-// see: cans/artifacts/diagrams/host-runtime.txt
+// see: cans/artifacts/diagrams/host-runtime.txt#driver-proot
 use std::path::Path;
 use std::time::Duration;
 

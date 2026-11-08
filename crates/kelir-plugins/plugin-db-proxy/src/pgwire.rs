@@ -1,7 +1,7 @@
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Plugin-db-proxy
 use kelir_interface::plugin::PluginError;
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Invariants-and-policy-(db-proxy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PgFrameKind {
     Query,
@@ -9,7 +9,7 @@ pub enum PgFrameKind {
     Other,
 }
 
-// see: cans/plugins/db-proxy.md
+// see: cans/plugins/db-proxy.md#Invariants-and-policy-(db-proxy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PgFrameDescriptor {
     pub kind: PgFrameKind,
