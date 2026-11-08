@@ -13,7 +13,6 @@ pub const RING_TRAITS: &[&str] = &[
     "FsInterposer",
     "NetInterposer",
     "HostInterposer",
-    "StreamInterposer",
     "VsockServiceHandler",
     "SystemTelemetryParticipant",
 ];

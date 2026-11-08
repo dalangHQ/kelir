@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used)]
 #![allow(dead_code)]
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
@@ -32,7 +31,7 @@ use kelir::{
             ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, NetworkFaultRule,
             StorageFaultRule,
         },
-        ledger::{LedgerCtx, LedgerPlugin},
+        ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
     },
     protocol::{PatchPayload, TrapEvent},
     telemetry::ExecutionReceipt,
@@ -171,19 +170,17 @@ impl FsInterposer for RepoPolicyPlugin {
     // see: cans/02-plugin-model.md#Segregated-ring-traits
     fn on_fs_write(
         &self,
+        path: &Path,
         data: &mut [u8],
-        ctx: &IfaceHandlerCtx,
+        _pid: u32,
+        _ctx: &IfaceHandlerCtx,
     ) -> Result<FilterAction, PluginError> {
-        if let Some(fs_ctx) = &ctx.fs_ctx {
-            if fs_ctx.path.extension().is_some_and(|e| e == "diff")
-                && data.len() > self.opts.max_diff_bytes
-            {
-                self.state.blocking_lock().violations += 1;
-                return Ok(FilterAction::Drop {
-                    errno: Some("ENOSPC".into()),
-                    reason: "diff exceeds policy ceiling".into(),
-                });
-            }
+        if path.extension().is_some_and(|e| e == "diff") && data.len() > self.opts.max_diff_bytes {
+            self.state.blocking_lock().violations += 1;
+            return Ok(FilterAction::Drop {
+                errno: Some("ENOSPC".into()),
+                reason: "diff exceeds policy ceiling".into(),
+            });
         }
         Ok(FilterAction::Forward)
     }
@@ -230,7 +227,7 @@ async fn build_runtime(
                 "EPERM: harness hallucination detected".into(),
             ));
         }
-        // TODO (L3): attribute the producing binary via c.ctx::<LedgerCtx>() once plugin-ledger contributes its context handle per cans/plugins/ledger.md.
+        // TODO (L3): attribute via c.ctx::<LedgerCtx>().blake3_of_producing_process(&path).await once SnoopHandler carries the artifact async form.
         let blake3 = String::new();
 
         snoop_oracle
@@ -395,8 +392,24 @@ async fn build_runtime(
             error_probability: 0.05,
         }],
     }))
-    // TODO (L3): mount the ledger config per cans/artifacts/examples/autonomous-swe-agent.rs once plugin-ledger owns LedgerConfig per cans/plugins/ledger.md.
-    .plugin(LedgerPlugin::new(true));
+    // see: cans/artifacts/examples/autonomous-swe-agent.rs#LedgerPlugin
+    .plugin(LedgerPlugin::new(true).with_config(LedgerConfig {
+        store: ".kelir/audit.merkle.db".into(),
+        merkle_chain: true,
+        otel: Some(OtelConfig {
+            endpoint: "http://localhost:4318/v1/traces".into(),
+            service_name: "kelir-swe-agent".into(),
+            propagate_w3c_traceparent: true,
+            export_diagnostic_pmu_gauges: false,
+        }),
+        receipts: ReceiptConfig {
+            include_dirty_bytes: true,
+            include_binary_blake3: true,
+            include_syscall_count: true,
+            include_wall_clock_ns: true,
+            include_phase_timings: false,
+        },
+    }));
 
     let builder = builder.plugin(policy_plugin);
 
@@ -414,6 +427,8 @@ async fn build_runtime(
 
                     let intent: IntentAnalysis = oracle.analyze_intent(&c.trap).await?;
                     if !intent.is_hypothesis_valid {
+                        // see: cans/artifacts/examples/autonomous-swe-agent.rs#LedgerCtx
+                        c.ctx::<LedgerCtx, _>().record_denial(c.trap.ppid);
                         return Ok(Verdict::Drop {
                             errno: Some("EPERM".into()),
                             reason: format!(
@@ -468,7 +483,9 @@ async fn build_runtime(
                     let receipt: ExecutionReceipt = c.receipt().await?;
 
 
-                    if receipt.binary_blake3 != c.trap.binary_blake3 {
+                    // see: cans/artifacts/examples/autonomous-swe-agent.rs#binary_blake3
+                    let trap_hex = hex_lower(&c.trap.binary_blake3);
+                    if receipt.binary_blake3 != trap_hex {
                         c.vm.rollback(&pre).await?;
                         c.terminal.notice(
                             "⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n",
@@ -545,7 +562,9 @@ async fn build_runtime(
                     .await
             })
         })
+        // TODO (L3): flush via session.ctx::<LedgerCtx>() once lifecycle hooks receive the typed session per cans/artifacts/examples/autonomous-swe-agent.rs.
         .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+        // TODO (L3): count denials via session.ctx::<LedgerCtx>().count_denials(event.ppid) once the deny hook receives the typed session.
         .on_trap_deny(|_event, _session| async move { Ok::<(), PluginError>(()) });
 
     Ok(builder)
@@ -649,6 +668,17 @@ pub struct IntentAnalysis {
     pub is_hypothesis_valid: bool,
     pub falsification_reason: Option<String>,
     pub allow_high_entropy: bool,
+}
+
+// see: cans/artifacts/code/execution-receipt.rs#ExecutionReceipt
+fn hex_lower(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[usize::from(*byte >> 4)] as char);
+        out.push(HEX[usize::from(*byte & 0x0f)] as char);
+    }
+    out
 }
 
 struct UserOracle;

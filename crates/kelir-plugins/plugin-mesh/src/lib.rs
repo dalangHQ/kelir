@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -19,6 +20,12 @@ use kelir_interface::vsock::{
 // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
 const ECONNREFUSED: &str = "ECONNREFUSED";
 
+// see: cans/02-plugin-model.md#Latency-ceiling
+const MAX_CONCURRENT_HANDSHAKES: usize = 64;
+
+// see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
+const MAX_PEER_REJECTIONS: usize = 256;
+
 // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PeerIdentity {
@@ -32,6 +39,14 @@ pub enum PeerIdentity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TraceParentPropagation {
     InjectAndValidate,
+}
+
+// see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerRejection {
+    pub cid: u32,
+    pub port: u32,
+    pub reason: String,
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.mesh.listeners
@@ -64,6 +79,8 @@ struct PeerRecord {
 struct MeshState {
     svid: Mutex<Option<SpiffeSvid>>,
     peers: Mutex<Vec<PeerRecord>>,
+    handshakes: Mutex<Vec<JoinHandle<()>>>,
+    rejections: Mutex<Vec<PeerRejection>>,
 }
 
 impl MeshState {
@@ -71,6 +88,8 @@ impl MeshState {
         Self {
             svid: Mutex::new(None),
             peers: Mutex::new(Vec::new()),
+            handshakes: Mutex::new(Vec::new()),
+            rejections: Mutex::new(Vec::new()),
         }
     }
 
@@ -84,6 +103,42 @@ impl MeshState {
         self.peers
             .lock()
             .map_err(|_| PluginError::Halt("mesh peer table lock poisoned".into()))
+    }
+
+    fn lock_rejections(&self) -> Result<MutexGuard<'_, Vec<PeerRejection>>, PluginError> {
+        self.rejections
+            .lock()
+            .map_err(|_| PluginError::Halt("mesh rejection table lock poisoned".into()))
+    }
+
+    fn lock_handshakes(&self) -> Result<MutexGuard<'_, Vec<JoinHandle<()>>>, PluginError> {
+        self.handshakes
+            .lock()
+            .map_err(|_| PluginError::Halt("mesh handshake table lock poisoned".into()))
+    }
+
+    // see: cans/02-plugin-model.md#Latency-ceiling
+    fn track_handshake(&self, handle: JoinHandle<()>) -> Result<(), PluginError> {
+        let mut handshakes = self.lock_handshakes()?;
+        handshakes.retain(|handle| !handle.is_finished());
+        if handshakes.len() >= MAX_CONCURRENT_HANDSHAKES {
+            return Err(PluginError::reject(
+                ECONNREFUSED,
+                "mesh peer handshake capacity exceeded",
+            ));
+        }
+        handshakes.push(handle);
+        Ok(())
+    }
+
+    // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
+    fn record_rejection(&self, rejection: PeerRejection) {
+        if let Ok(mut rejections) = self.rejections.lock() {
+            if rejections.len() >= MAX_PEER_REJECTIONS {
+                rejections.remove(0);
+            }
+            rejections.push(rejection);
+        }
     }
 
     // see: cans/plugins/mesh.md#Peer-identity
@@ -191,6 +246,25 @@ impl MeshPlugin {
         });
         Ok(())
     }
+
+    // see: cans/02-plugin-model.md#Latency-ceiling
+    // TODO (L3): replace the tracked blocking thread with pollable stream reads once the transport exposes readiness.
+    fn spawn_peer_handshake(
+        &self,
+        peer: &VsockPeer,
+        stream: Box<dyn Stream>,
+    ) -> Result<(), PluginError> {
+        let mut driver = HandshakeDriver {
+            plugin: self.clone(),
+            peer: peer.clone(),
+            stream,
+        };
+        let handle = std::thread::Builder::new()
+            .name("mesh-peer-handshake".into())
+            .spawn(move || driver.run())
+            .map_err(PluginError::Io)?;
+        self.state.track_handshake(handle)
+    }
 }
 
 // see: cans/plugins/mesh.md#Plugin-mesh
@@ -236,7 +310,7 @@ impl KelirPlugin for MeshPlugin {
 // see: cans/plugins/mesh.md#Peer-identity
 #[async_trait]
 impl LifecycleParticipant for MeshPlugin {
-    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         let svid = self.issue_session_svid()?;
         self.state.set_svid(svid)
     }
@@ -248,53 +322,79 @@ impl VsockServiceHandler for MeshPlugin {
     async fn on_connect(
         &self,
         peer: &VsockPeer,
-        mut stream: Box<dyn Stream>,
+        stream: Box<dyn Stream>,
         _ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
-        // see: cans/11-protocol.md#Control-channel
-        let frame = read_handshake_frame(&mut stream)?;
-        let handshake = decode_peer_handshake(&frame)?;
-        self.assert_peer_identity(peer, &handshake)?;
-        self.validate_mtls_framing(&handshake, &frame)?;
-        self.record_peer(peer, &handshake)
+        // see: cans/02-plugin-model.md#Latency-ceiling
+        self.spawn_peer_handshake(peer, stream)
     }
 }
 
-// see: cans/11-protocol.md#Wire-framing
-fn read_exact(stream: &mut Box<dyn Stream>, buf: &mut [u8]) -> Result<(), PluginError> {
-    let mut filled = 0;
-    while filled < buf.len() {
-        match stream.read(&mut buf[filled..]) {
-            Ok(0) => {
-                return Err(PluginError::Halt(
-                    "mesh handshake stream closed before the frame completed".into(),
-                ));
-            }
-            Ok(n) => filled += n,
-            Err(e) => {
-                return Err(PluginError::Halt(format!(
-                    "mesh handshake read failed: {e}"
-                )));
-            }
+// see: cans/02-plugin-model.md#Latency-ceiling
+struct HandshakeDriver {
+    plugin: MeshPlugin,
+    peer: VsockPeer,
+    stream: Box<dyn Stream>,
+}
+
+impl HandshakeDriver {
+    // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
+    fn run(&mut self) {
+        if let Err(error) = self.handshake() {
+            // TODO (L3): forward the peer fingerprint to plugin-ledger on mTLS rejection per cans/plugins/mesh.md.
+            self.plugin.state.record_rejection(PeerRejection {
+                cid: self.peer.cid,
+                port: self.peer.port,
+                reason: error.to_string(),
+            });
         }
     }
-    Ok(())
-}
 
-// see: cans/11-protocol.md#Wire-framing
-fn read_handshake_frame(stream: &mut Box<dyn Stream>) -> Result<Vec<u8>, PluginError> {
-    // TODO (L3): the peer handshake encoder must emit the u32 LE length prefix this reader expects.
-    let mut prefix = [0u8; 4];
-    read_exact(stream, &mut prefix)?;
-    let len = u32::from_le_bytes(prefix) as usize;
-    if len == 0 || len > MAX_FRAME_PAYLOAD {
-        return Err(PluginError::Halt(format!(
-            "mesh handshake frame {len} bytes is outside the 1..={MAX_FRAME_PAYLOAD} frame range"
-        )));
+    // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
+    fn handshake(&mut self) -> Result<(), PluginError> {
+        let frame = self.read_handshake_frame()?;
+        let handshake = decode_peer_handshake(&frame)?;
+        self.plugin.assert_peer_identity(&self.peer, &handshake)?;
+        self.plugin.validate_mtls_framing(&handshake, &frame)?;
+        self.plugin.record_peer(&self.peer, &handshake)
     }
-    let mut frame = vec![0u8; len];
-    read_exact(stream, &mut frame)?;
-    Ok(frame)
+
+    // see: cans/11-protocol.md#Wire-framing
+    // TODO (L3): the peer handshake encoder must emit the u32 LE length prefix this reader expects.
+    fn read_handshake_frame(&mut self) -> Result<Vec<u8>, PluginError> {
+        let mut prefix = [0u8; 4];
+        self.read_exact(&mut prefix)?;
+        let len = u32::from_le_bytes(prefix) as usize;
+        if len == 0 || len > MAX_FRAME_PAYLOAD {
+            return Err(PluginError::Halt(format!(
+                "mesh handshake frame {len} bytes is outside the 1..={MAX_FRAME_PAYLOAD} frame range"
+            )));
+        }
+        let mut frame = vec![0u8; len];
+        self.read_exact(&mut frame)?;
+        Ok(frame)
+    }
+
+    // see: cans/11-protocol.md#Wire-framing
+    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), PluginError> {
+        let mut filled = 0;
+        while filled < buf.len() {
+            match self.stream.read(&mut buf[filled..]) {
+                Ok(0) => {
+                    return Err(PluginError::Halt(
+                        "mesh handshake stream closed before the frame completed".into(),
+                    ));
+                }
+                Ok(n) => filled += n,
+                Err(e) => {
+                    return Err(PluginError::Halt(format!(
+                        "mesh handshake read failed: {e}"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
@@ -313,6 +413,11 @@ pub struct MeshCtx {
 }
 
 impl MeshCtx {
+    // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
+    pub fn peer_rejections(&self) -> Result<Vec<PeerRejection>, PluginError> {
+        Ok(self.state.lock_rejections()?.clone())
+    }
+
     // see: cans/artifacts/examples/multi-vm-swarm.rs#publish
     pub async fn publish(
         &self,

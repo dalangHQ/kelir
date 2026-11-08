@@ -872,6 +872,7 @@ dependencies = [
 name = "plugin-ledger"
 version = "1.0.0"
 dependencies = [
+ "blake3",
  "kelir-interface",
  "kelir-otlp",
  "kelir-plugin-testkit",

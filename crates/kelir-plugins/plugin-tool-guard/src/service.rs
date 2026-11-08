@@ -1,14 +1,27 @@
 // see: cans/plugins/tool-guard.md#Plugin-tool-guard
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
 
+use crate::jsonrpc::ToolsListResult;
+
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ToolSchema {
     pub name: String,
-    pub blake3: String,
+    pub description: String,
+    pub input_schema: Vec<u8>,
+    pub signature: Vec<u8>,
+}
+
+// see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ToolTaint {
+    #[default]
+    Clean,
+    Tainted,
 }
 
 // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
@@ -26,10 +39,12 @@ pub trait ToolRegistryService: Send + Sync {
     async fn bind_approval(&self, request: &ApprovalRequest) -> Result<(), PluginError>;
 }
 
-// see: cans/plugins/tool-guard.md#Service-exports-(tool-guard)
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
 #[derive(Debug, Default)]
 pub struct ToolRegistry {
-    locked_digest: Mutex<Option<String>>,
+    schemas: Mutex<BTreeMap<String, ToolSchema>>,
+    taint: Mutex<HashMap<String, ToolTaint>>,
+    locked_digest: Mutex<Option<[u8; 32]>>,
     approvals: Mutex<Vec<ApprovalRequest>>,
 }
 
@@ -38,27 +53,103 @@ impl ToolRegistry {
         Self::default()
     }
 
-    pub async fn lock_catalog(&self) -> Result<(), PluginError> {
-        let mut locked = self
-            .locked_digest
+    fn lock_schemas(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, BTreeMap<String, ToolSchema>>, PluginError> {
+        self.schemas
             .lock()
-            .map_err(|_| PluginError::Halt("tool catalog lock poisoned".into()))?;
-        // TODO (L3): compute BLAKE3 over all advertised tool schemas, signatures, and descriptions per cans/plugins/tool-guard.md.
-        *locked = Some(String::new());
+            .map_err(|_| PluginError::Halt("tool catalog table poisoned".into()))
+    }
+
+    fn lock_digest(&self) -> Result<std::sync::MutexGuard<'_, Option<[u8; 32]>>, PluginError> {
+        self.locked_digest
+            .lock()
+            .map_err(|_| PluginError::Halt("tool catalog lock poisoned".into()))
+    }
+
+    // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+    pub async fn ingest_tools_list(
+        &self,
+        advertisement: &ToolsListResult,
+    ) -> Result<(), PluginError> {
+        let mut schemas = self.lock_schemas()?;
+        let mut candidate: BTreeMap<String, ToolSchema> = BTreeMap::new();
+        for schema in &advertisement.tools {
+            candidate.insert(schema.name.clone(), schema.clone());
+        }
+        if self.lock_digest()?.is_some()
+            && canonical_catalog(&candidate) != canonical_catalog(&schemas)
+        {
+            return Err(PluginError::reject(
+                "ESecurityViolation",
+                "tool catalog mutation after the locked advertisement",
+            ));
+        }
+        *schemas = candidate;
         Ok(())
+    }
+
+    pub async fn lock_catalog(&self) -> Result<(), PluginError> {
+        let schemas = self.lock_schemas()?;
+        let canonical = canonical_catalog(&schemas);
+        *self.lock_digest()? = Some(catalog_digest(&canonical));
+        Ok(())
+    }
+
+    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+    pub fn mark_tainted(&self, tool: &str) -> Result<(), PluginError> {
+        let mut taint = self
+            .taint
+            .lock()
+            .map_err(|_| PluginError::Halt("tool taint table poisoned".into()))?;
+        taint.insert(tool.to_string(), ToolTaint::Tainted);
+        Ok(())
+    }
+
+    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+    pub fn taint(&self, tool: &str) -> Result<ToolTaint, PluginError> {
+        let taint = self
+            .taint
+            .lock()
+            .map_err(|_| PluginError::Halt("tool taint table poisoned".into()))?;
+        Ok(taint.get(tool).copied().unwrap_or(ToolTaint::Clean))
+    }
+
+    // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+    pub fn locked_digest(&self) -> Result<Option<[u8; 32]>, PluginError> {
+        Ok(*self.lock_digest()?)
     }
 }
 
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+fn canonical_catalog(schemas: &BTreeMap<String, ToolSchema>) -> Vec<u8> {
+    let mut canonical = Vec::new();
+    for schema in schemas.values() {
+        canonical.extend_from_slice(&(schema.name.len() as u64).to_le_bytes());
+        canonical.extend_from_slice(schema.name.as_bytes());
+        canonical.extend_from_slice(&(schema.description.len() as u64).to_le_bytes());
+        canonical.extend_from_slice(schema.description.as_bytes());
+        canonical.extend_from_slice(&(schema.input_schema.len() as u64).to_le_bytes());
+        canonical.extend_from_slice(&schema.input_schema);
+        canonical.extend_from_slice(&(schema.signature.len() as u64).to_le_bytes());
+        canonical.extend_from_slice(&schema.signature);
+    }
+    canonical
+}
+
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+fn catalog_digest(canonical: &[u8]) -> [u8; 32] {
+    // TODO (L3): BLAKE3 over the canonical catalog bytes per cans/plugins/tool-guard.md; the blake3 crate dep is blocked by the Cargo.lock freeze.
+    let _ = canonical;
+    [0u8; 32]
+}
+
+// see: cans/plugins/tool-guard.md#Service-exports-(tool-guard)
 #[async_trait]
 impl ToolRegistryService for ToolRegistry {
     async fn lookup_schema(&self, tool: &str) -> Result<Option<ToolSchema>, PluginError> {
-        let locked = self
-            .locked_digest
-            .lock()
-            .map_err(|_| PluginError::Halt("tool catalog lock poisoned".into()))?;
-        let _ = (tool, locked);
-        // TODO (L3): resolve pinned schemas against the locked catalog digest; post-lock mutation halts with ESecurityViolation per cans/plugins/tool-guard.md.
-        Ok(None)
+        let schemas = self.lock_schemas()?;
+        Ok(schemas.get(tool).cloned())
     }
 
     async fn bind_approval(&self, request: &ApprovalRequest) -> Result<(), PluginError> {

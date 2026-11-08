@@ -8,11 +8,10 @@ use std::task::{Context, Poll};
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
     ConsoleInterposer, FfiDispatchQueue, FsInterposer, HandlerCtx, HostInterposer,
-    LockBrokerCoordination, MountScope, NetInterposer, PipelineBinder, StreamInterposer,
+    LockBrokerCoordination, MountScope, NetInterposer, ParkedConnectionReset, PipelineBinder,
     TrapInterposer, VirtioDevice,
 };
-use kelir_interface::protocol::{FilterAction, ProcessExit, StreamKind, TrapEvent, Verdict};
-use kelir_interface::service_registry::ServiceRegistry;
+use kelir_interface::protocol::{FilterAction, ProcessExit, TrapEvent, Verdict};
 use kelir_interface::vsock::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::trap_gate::{GateDecision, TrapGateEvaluator};
@@ -96,9 +95,9 @@ pub struct PipelineEngine {
     console_scopes: Vec<MountScope>,
     host_interceptors: Vec<Arc<dyn HostInterposer>>,
     host_scopes: Vec<MountScope>,
-    stream_interposers: Vec<(StreamKind, Arc<dyn StreamInterposer>, MountScope)>,
     vsock_services: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>, MountScope)>,
-    services: ServiceRegistry,
+    lock_broker: Option<Arc<dyn LockBrokerCoordination>>,
+    parked_reset: Option<Arc<dyn ParkedConnectionReset>>,
     metrics: Arc<kelir_otlp::registry::MetricRegistry>,
     foreign_queue: FfiDispatchQueue,
     active_scope: Option<MountScope>,
@@ -152,19 +151,6 @@ impl PipelineBinder for PipelineEngine {
         self.host_interceptors.push(stage);
         self.host_scopes.push(scope);
     }
-    fn bind_stream(&mut self, kind: StreamKind, stage: Arc<dyn StreamInterposer>) {
-        self.bind_stream_scoped(kind, stage, MountScope::default());
-    }
-    fn bind_stream_scoped(
-        &mut self,
-        kind: StreamKind,
-        stage: Arc<dyn StreamInterposer>,
-        scope: MountScope,
-    ) {
-        // TODO (L3): scope is stored; dispatch-time enforcement lands with stream dispatch.
-        let scope = self.effective_scope(scope);
-        self.stream_interposers.push((kind, stage, scope));
-    }
     fn bind_vsock_service(
         &mut self,
         spec: VsockServiceSpec,
@@ -182,11 +168,11 @@ impl PipelineBinder for PipelineEngine {
         let scope = self.effective_scope(scope);
         self.vsock_services.push((spec, service, scope));
     }
+    fn bind_parked_connection_reset(&mut self, reset: Arc<dyn ParkedConnectionReset>) {
+        self.parked_reset = Some(reset);
+    }
     fn set_active_scope(&mut self, scope: MountScope) {
         self.active_scope = Some(scope);
-    }
-    fn service_registry(&mut self) -> &mut ServiceRegistry {
-        &mut self.services
     }
 }
 
@@ -204,9 +190,9 @@ impl PipelineEngine {
             console_scopes: Vec::new(),
             host_interceptors: Vec::new(),
             host_scopes: Vec::new(),
-            stream_interposers: Vec::new(),
             vsock_services: Vec::new(),
-            services: ServiceRegistry::new(),
+            lock_broker: None,
+            parked_reset: None,
             metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
             foreign_queue: FfiDispatchQueue::default(),
             active_scope: None,
@@ -236,10 +222,6 @@ impl PipelineEngine {
         &self.metrics
     }
 
-    pub fn services(&self) -> &ServiceRegistry {
-        &self.services
-    }
-
     pub fn vsock_service(&self, port: u32) -> Option<Arc<dyn VsockServiceHandler>> {
         self.vsock_services
             .iter()
@@ -249,7 +231,16 @@ impl PipelineEngine {
 
     // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
     pub fn register_lock_broker(&mut self, coordination: Arc<dyn LockBrokerCoordination>) {
-        self.services.register(coordination);
+        self.lock_broker = Some(coordination);
+    }
+
+    pub fn lock_broker(&self) -> Option<Arc<dyn LockBrokerCoordination>> {
+        self.lock_broker.as_ref().map(Arc::clone)
+    }
+
+    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    pub fn parked_connection_reset(&self) -> Option<Arc<dyn ParkedConnectionReset>> {
+        self.parked_reset.as_ref().map(Arc::clone)
     }
 
     pub fn is_sealed(&self) -> bool {
@@ -271,17 +262,15 @@ impl PipelineEngine {
         }
     }
 
-    fn fs_scope_allows(scope: &MountScope, ctx: &HandlerCtx) -> bool {
+    fn fs_scope_allows(scope: &MountScope, path: &std::path::Path, ctx: &HandlerCtx) -> bool {
         if !scope.allows_device(VirtioDevice::Fs) {
             return false;
         }
         if !ctx.trap.binary_path.is_empty() && !scope.allows_binary(&ctx.trap.binary_path) {
             return false;
         }
-        if let Some(fs_ctx) = &ctx.fs_ctx {
-            if !fs_ctx.path.as_os_str().is_empty() && !scope.allows_path(&fs_ctx.path) {
-                return false;
-            }
+        if !path.as_os_str().is_empty() && !scope.allows_path(path) {
+            return false;
         }
         true
     }
@@ -291,16 +280,6 @@ impl PipelineEngine {
             return Err(PluginError::Halt("pipeline already sealed".into()));
         }
         // TODO (L3): conflicts surface the structured EKindConflict/EPortConflict envelope from the artifacts.
-        for (index, (kind, _, _)) in self.stream_interposers.iter().enumerate() {
-            if self.stream_interposers[..index]
-                .iter()
-                .any(|(bound, _, _)| bound == kind)
-            {
-                return Err(PluginError::Halt(format!(
-                    "stream kind already bound: {kind:?}"
-                )));
-            }
-        }
         for (index, (spec, _, _)) in self.vsock_services.iter().enumerate() {
             if self.vsock_services[..index]
                 .iter()
@@ -338,10 +317,12 @@ impl PipelineEngine {
     // see: cans/02-plugin-model.md#Static-dispatch
     pub fn dispatch_fs_write_typed<Plugins, Params>(
         &self,
+        path: &std::path::Path,
         data: &mut [u8],
+        pid: u32,
         ctx: &HandlerCtx<Plugins, Params>,
     ) -> Result<FilterAction, PluginError> {
-        self.dispatch_fs_write(data, &ctx.erased())
+        self.dispatch_fs_write(path, data, pid, &ctx.erased())
     }
 
     // see: cans/artifacts/code/plugin-trait.rs#TrapInterposer
@@ -392,16 +373,18 @@ impl PipelineEngine {
 
     pub fn dispatch_fs_write(
         &self,
+        path: &std::path::Path,
         data: &mut [u8],
+        pid: u32,
         ctx: &HandlerCtx,
     ) -> Result<FilterAction, PluginError> {
         for (index, interceptor) in self.fs_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.fs_scopes, index);
-            if !Self::fs_scope_allows(&scope, ctx) {
+            if !Self::fs_scope_allows(&scope, path, ctx) {
                 continue;
             }
             let action = quarantine_sync(
-                || interceptor.on_fs_write(data, ctx),
+                || interceptor.on_fs_write(path, data, pid, ctx),
                 || {
                     Ok(FilterAction::Abort {
                         reason: "Plugin panicked".into(),

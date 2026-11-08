@@ -5,12 +5,14 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
+use kelir_interface::driver::{ExternalSuspendKind, SuspendReason};
+use kelir_interface::handles::VmHandle;
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
-    HandlerCtx, KelirPlugin, LifecycleParticipant, MountScope, PipelineBinder, StreamInterposer,
+    KelirPlugin, LifecycleParticipant, MountScope, NetInterposer, ParkedConnectionReset,
+    PipelineBinder, VirtioDevice,
 };
-use kelir_interface::protocol::{Channel, StreamDirection, StreamKind, Verdict};
+use kelir_interface::protocol::{Channel, FilterAction, SuspendUntil};
 
 // see: cans/plugins/wire-ingress.md#Host-proxy-terminates-TCP-handshake-and-buffers-up-to-64KB-initial-request-data
 pub const MAX_PARKED_BYTES: usize = 64 * 1024;
@@ -126,19 +128,26 @@ struct ParkedConnection {
     buffered: Vec<u8>,
 }
 
+// see: cans/plugins/wire-ingress.md#Wakes-target-microVM-via-SessionWakeHandle::resume
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParkedDrain {
+    pub connection_id: u64,
+    pub target_port: u16,
+    pub buffered: Vec<u8>,
+}
+
 // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
-// TODO (L3): idle-timeout eviction, suspend trigger, and TCP RST on rollback need the driver suspend hook and a timer source.
 #[derive(Debug, Default)]
 struct IngressState {
     parked: Mutex<HashMap<u64, ParkedConnection>>,
-    streams: Mutex<HashMap<u32, u64>>,
     pending_wake: Mutex<bool>,
+    suspended: Mutex<bool>,
+    suspend_path: Mutex<Option<String>>,
 }
 
 impl IngressState {
     fn park(
         &self,
-        stream_id: u32,
         frame: L4ForwardFrame,
         initial: &[u8],
         config: &WireIngressConfig,
@@ -175,37 +184,90 @@ impl IngressState {
                             buffered: initial.to_vec(),
                         },
                     );
-                    let mut pending_wake = self
-                        .pending_wake
-                        .lock()
-                        .map_err(|_| PluginError::Halt("wire-ingress wake flag poisoned".into()))?;
-                    *pending_wake = true;
                 }
             }
         }
-        let mut streams = self
-            .streams
+        if *self
+            .suspended
             .lock()
-            .map_err(|_| PluginError::Halt("wire-ingress stream table poisoned".into()))?;
-        streams.insert(stream_id, frame.connection_id);
+            .map_err(|_| PluginError::Halt("wire-ingress suspend flag poisoned".into()))?
+        {
+            let mut pending_wake = self
+                .pending_wake
+                .lock()
+                .map_err(|_| PluginError::Halt("wire-ingress wake flag poisoned".into()))?;
+            *pending_wake = true;
+        }
         Ok(ParkOutcome::Parked)
     }
 
-    fn release(&self, stream_id: u32) -> Result<(), PluginError> {
-        let connection_id = {
-            let mut streams = self
-                .streams
-                .lock()
-                .map_err(|_| PluginError::Halt("wire-ingress stream table poisoned".into()))?;
-            streams.remove(&stream_id)
-        };
-        if let Some(connection_id) = connection_id {
-            let mut parked = self
-                .parked
-                .lock()
-                .map_err(|_| PluginError::Halt("wire-ingress parked table poisoned".into()))?;
-            parked.remove(&connection_id);
-        }
+    fn is_suspended(&self) -> Result<bool, PluginError> {
+        self.suspended
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress suspend flag poisoned".into()))
+            .map(|flag| *flag)
+    }
+
+    fn begin_parking(&self, path: &str) -> Result<(), PluginError> {
+        *self
+            .suspended
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress suspend flag poisoned".into()))? = true;
+        *self
+            .suspend_path
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress suspend path poisoned".into()))? =
+            Some(path.to_string());
+        Ok(())
+    }
+
+    fn take_pending_wake(&self) -> Result<bool, PluginError> {
+        let mut pending_wake = self
+            .pending_wake
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress wake flag poisoned".into()))?;
+        let requested = *pending_wake;
+        *pending_wake = false;
+        Ok(requested)
+    }
+
+    fn take_suspend_path(&self) -> Result<String, PluginError> {
+        self.suspend_path
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress suspend path poisoned".into()))
+            .and_then(|mut path| {
+                path.take().ok_or_else(|| {
+                    PluginError::Halt("wire-ingress wake without a parking suspend".into())
+                })
+            })
+    }
+
+    fn drain_parked(&self) -> Result<Vec<ParkedDrain>, PluginError> {
+        let mut parked = self
+            .parked
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress parked table poisoned".into()))?;
+        let drained = parked
+            .drain()
+            .map(|(connection_id, connection)| ParkedDrain {
+                connection_id,
+                target_port: connection.target_port,
+                buffered: connection.buffered,
+            })
+            .collect();
+        *self
+            .suspended
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress suspend flag poisoned".into()))? = false;
+        Ok(drained)
+    }
+
+    fn release(&self, connection_id: u64) -> Result<(), PluginError> {
+        let mut parked = self
+            .parked
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress parked table poisoned".into()))?;
+        parked.remove(&connection_id);
         Ok(())
     }
 
@@ -217,24 +279,7 @@ impl IngressState {
             .map_err(|_| PluginError::Halt("wire-ingress parked table poisoned".into()))?;
         let connection_ids: Vec<u64> = parked.keys().copied().collect();
         parked.clear();
-        drop(parked);
-        let mut streams = self
-            .streams
-            .lock()
-            .map_err(|_| PluginError::Halt("wire-ingress stream table poisoned".into()))?;
-        streams.clear();
         Ok(connection_ids)
-    }
-
-    // see: cans/plugins/wire-ingress.md#Wakes-target-microVM-via-SessionWakeHandle::resume
-    fn take_pending_wake(&self) -> Result<bool, PluginError> {
-        let mut pending_wake = self
-            .pending_wake
-            .lock()
-            .map_err(|_| PluginError::Halt("wire-ingress wake flag poisoned".into()))?;
-        let requested = *pending_wake;
-        *pending_wake = false;
-        Ok(requested)
     }
 }
 
@@ -248,36 +293,52 @@ pub struct IngressRoutingService {
 impl IngressRoutingService {
     pub fn park_connection(
         &self,
-        stream_id: u32,
         frame: L4ForwardFrame,
         initial: &[u8],
     ) -> Result<ParkOutcome, PluginError> {
-        self.state.park(stream_id, frame, initial, &self.config)
+        self.state.park(frame, initial, &self.config)
     }
 
-    pub fn release_connection(&self, stream_id: u32) -> Result<(), PluginError> {
-        self.state.release(stream_id)
+    pub fn release_connection(&self, connection_id: u64) -> Result<(), PluginError> {
+        self.state.release(connection_id)
     }
 
     pub fn reset_parked_connections(&self) -> Result<Vec<u64>, PluginError> {
         self.state.reset()
     }
 
+    pub fn is_suspended(&self) -> Result<bool, PluginError> {
+        self.state.is_suspended()
+    }
+
+    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    pub async fn suspend_for_parking(&self, vm: &VmHandle, path: &str) -> Result<(), PluginError> {
+        vm.suspend(
+            SuspendReason::External(ExternalSuspendKind::WireConnectionParking),
+            path,
+        )
+        .await?;
+        self.state.begin_parking(path)
+    }
+
     // see: cans/plugins/wire-ingress.md#Wakes-target-microVM-via-SessionWakeHandle::resume
-    // TODO (L3): host loop polls take_pending_wake and resumes via SessionWakeHandle::resume; no such handle exists in-tree and VmHandle::resume is still a stub.
-    pub fn take_pending_wake(&self) -> Result<bool, PluginError> {
-        self.state.take_pending_wake()
+    pub async fn resume_parked(&self, vm: &VmHandle) -> Result<Vec<ParkedDrain>, PluginError> {
+        if !self.state.take_pending_wake()? {
+            return Ok(Vec::new());
+        }
+        let path = self.state.take_suspend_path()?;
+        vm.resume(&path).await?;
+        self.state.drain_parked()
     }
 }
 
-impl kelir_interface::plugin::ParkedConnectionReset for IngressRoutingService {
+impl ParkedConnectionReset for IngressRoutingService {
     fn reset_parked_connections(&self) -> Result<Vec<u64>, PluginError> {
         self.state.reset()
     }
 }
 
 // see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
-// TODO (L3): host TCP accept/termination and suspend parking I/O per cans/plugins/wire-ingress.md.
 #[derive(Clone)]
 pub struct WireIngressPlugin {
     pub router: IngressRoutingService,
@@ -309,8 +370,13 @@ impl WireIngressPlugin {
     }
 
     // see: cans/plugins/wire-ingress.md#Wakes-target-microVM-via-SessionWakeHandle::resume
-    pub fn take_pending_wake(&self) -> Result<bool, PluginError> {
-        self.router.take_pending_wake()
+    pub async fn suspend_for_parking(&self, vm: &VmHandle, path: &str) -> Result<(), PluginError> {
+        self.router.suspend_for_parking(vm, path).await
+    }
+
+    // see: cans/plugins/wire-ingress.md#Wakes-target-microVM-via-SessionWakeHandle::resume
+    pub async fn resume_parked(&self, vm: &VmHandle) -> Result<Vec<ParkedDrain>, PluginError> {
+        self.router.resume_parked(vm).await
     }
 }
 
@@ -321,77 +387,46 @@ impl Default for WireIngressPlugin {
 }
 
 impl KelirPlugin for WireIngressPlugin {
-    type Context = ();
-    fn context(&self) {}
+    type Context = IngressRoutingService;
+    fn context(&self) -> IngressRoutingService {
+        self.router.clone()
+    }
     fn name(&self) -> &'static str {
         "wire-ingress"
     }
     fn default_scope(&self) -> MountScope {
-        MountScope::default()
+        // see: cans/11-protocol.md#Control-channel
+        MountScope::default().with_devices([VirtioDevice::Net, VirtioDevice::Vsock])
     }
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
-        let stage: Arc<dyn StreamInterposer> = Arc::new(self.clone());
-        pipeline.bind_stream_scoped(StreamKind::L4Forward, stage, self.default_scope());
-        pipeline
-            .service_registry()
-            .register(Arc::new(self.router.clone()));
-        pipeline
-            .service_registry()
-            .register(Arc::new(self.router.clone())
-                as Arc<dyn kelir_interface::plugin::ParkedConnectionReset>);
+        // see: cans/07-wire-plane.md#Raw-packet-interception-points
+        let net_stage: Arc<dyn NetInterposer> = Arc::new(self.clone());
+        pipeline.bind_net_scoped(net_stage, self.default_scope());
+        // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+        pipeline.bind_parked_connection_reset(Arc::new(self.router.clone()));
     }
 }
 
 impl LifecycleParticipant for WireIngressPlugin {}
 
-#[async_trait]
-impl StreamInterposer for WireIngressPlugin {
-    async fn on_stream_open(
-        &self,
-        stream_id: u32,
-        tags: &mut Vec<u8>,
-        ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        let _ = (stream_id, tags, ctx);
-        // TODO (L3): validate L4_FORWARD open tags per cans/11-protocol.md#Stream-mux-framing.
-        Ok(Verdict::Pass)
-    }
-
-    async fn on_stream_data(
-        &self,
-        direction: StreamDirection,
-        stream_id: u32,
-        payload: &mut Vec<u8>,
-        ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        let _ = ctx;
-        match direction {
-            StreamDirection::GuestToHost => {
-                let Some((frame, initial)) = L4ForwardFrame::decode(payload) else {
-                    return Ok(Verdict::Drop {
-                        errno: None,
-                        reason: "L4_FORWARD frame header malformed or payload_len mismatched"
-                            .into(),
-                    });
-                };
-                match self.router.park_connection(stream_id, frame, initial)? {
-                    ParkOutcome::Parked => Ok(Verdict::Pass),
-                    ParkOutcome::Overflow => Ok(Verdict::Drop {
-                        errno: None,
-                        reason: "wire-ingress backlog overflow: 503 + Retry-After: 1".into(),
-                    }),
-                }
-            }
-            StreamDirection::HostToGuest => {
-                // TODO (L3): splice parked bytes to 127.0.0.1:target_port via the guest shim ingress forwarder per cans/plugins/wire-ingress.md.
-                let _ = payload;
-                Ok(Verdict::Pass)
-            }
+// see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
+impl NetInterposer for WireIngressPlugin {
+    fn on_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+        // TODO (L3): L2/L4 reassembly per cans/07-wire-plane.md before L4_FORWARD payloads reach this ring.
+        if !self.router.is_suspended()? {
+            return Ok(FilterAction::Forward);
         }
-    }
-
-    async fn on_stream_close(&self, stream_id: u32, ctx: &HandlerCtx) -> Result<(), PluginError> {
-        let _ = ctx;
-        self.router.release_connection(stream_id)
+        let Some((l4, initial)) = L4ForwardFrame::decode(frame) else {
+            return Ok(FilterAction::Forward);
+        };
+        match self.router.park_connection(l4, initial)? {
+            ParkOutcome::Parked => Ok(FilterAction::Suspend {
+                until: SuspendUntil::Deadline(self.config.parking.idle_timeout_ms),
+            }),
+            ParkOutcome::Overflow => Ok(FilterAction::Drop {
+                errno: None,
+                reason: "wire-ingress backlog overflow: 503 + Retry-After: 1".into(),
+            }),
+        }
     }
 }

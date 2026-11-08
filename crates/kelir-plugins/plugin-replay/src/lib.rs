@@ -1,15 +1,13 @@
 // see: cans/plugins/replay.md#Plugin-replay
 #![forbid(unsafe_code)]
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
 
 use async_trait::async_trait;
-use kelir_interface::driver::{ClockStepControl, EntropyBackend, EntropyStreamPosition};
+use kelir_interface::driver::{EntropyBackend, EntropyStreamPosition, PmuSample, PmuSampler};
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
-    KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
-};
+use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope};
 
 // see: cans/plugins/replay.md#Error-and-return-semantics-(replay)
 const ECLOCKREGRESS: &str = "EClockRegress";
@@ -40,83 +38,154 @@ impl Default for ReplayConfig {
     }
 }
 
-// see: cans/plugins/replay.md#Service-exports-(replay)
-#[async_trait]
-pub trait ReplayService: Send + Sync {
-    async fn step_clock_window(&self, retired_instructions: u64) -> Result<(), PluginError>;
-}
-
 // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
 struct ReplayState {
-    clock: Mutex<Option<Arc<dyn ClockStepControl>>>,
-    rng_position: Mutex<Option<EntropyStreamPosition>>,
-    monotonic_floor_ns: Mutex<Option<u64>>,
     step_window: u64,
+    retired_total: AtomicU64,
+    windows_stepped: AtomicU64,
+    pending_windows: Mutex<Vec<u64>>,
+    sample_floor_ns: Mutex<u64>,
+    sample_regress: Mutex<Option<String>>,
+    rng_position: Mutex<Option<EntropyStreamPosition>>,
 }
 
 impl ReplayState {
     fn new(step_window: u64) -> Self {
         Self {
-            clock: Mutex::new(None),
-            rng_position: Mutex::new(None),
-            monotonic_floor_ns: Mutex::new(None),
             step_window,
+            retired_total: AtomicU64::new(0),
+            windows_stepped: AtomicU64::new(0),
+            pending_windows: Mutex::new(Vec::new()),
+            sample_floor_ns: Mutex::new(0),
+            sample_regress: Mutex::new(None),
+            rng_position: Mutex::new(None),
         }
     }
 
-    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
-    fn clock_handle(&self) -> Result<Arc<dyn ClockStepControl>, PluginError> {
-        let guard = lock_slot(&self.clock)?;
-        guard
-            .clone()
-            .ok_or_else(|| PluginError::Halt("replay clock capability not armed".into()))
+    fn lock_slot<T>(slot: &Mutex<T>) -> Result<MutexGuard<'_, T>, PluginError> {
+        slot.lock()
+            .map_err(|_| PluginError::Halt("replay capability slot lock poisoned".into()))
     }
 
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
-    fn arm(
-        &self,
-        clock: Arc<dyn ClockStepControl>,
-        initial_offset: Duration,
-    ) -> Result<(), PluginError> {
-        *lock_slot(&self.clock)? = Some(clock);
-        *lock_slot(&self.monotonic_floor_ns)? = Some(duration_ns(initial_offset)?);
+    fn record_pmu_sample(&self, sample: &PmuSample) {
+        self.retired_total
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |total| {
+                Some(total.saturating_add(sample.retired_instructions))
+            })
+            .ok();
+        if self.enforce_sample_floor(sample.sampled_at_ns).is_err() {
+            return;
+        }
+        let _ = self.accrue_step_windows();
+    }
+
+    // see: cans/plugins/replay.md#Error-and-return-semantics-(replay)
+    fn enforce_sample_floor(&self, sampled_at_ns: u64) -> Result<(), PluginError> {
+        let mut floor = Self::lock_slot(&self.sample_floor_ns)?;
+        if sampled_at_ns < *floor {
+            let mut regress = Self::lock_slot(&self.sample_regress)?;
+            *regress = Some(format!(
+                "PMU sample timestamp regressed: {sampled_at_ns}ns behind floor {floor}ns"
+            ));
+            return Err(PluginError::reject(
+                ECLOCKREGRESS,
+                "PMU sample timestamp regressed behind the monotonic floor",
+            ));
+        }
+        *floor = sampled_at_ns;
         Ok(())
+    }
+
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    fn accrue_step_windows(&self) -> Result<usize, PluginError> {
+        let mut pending = Self::lock_slot(&self.pending_windows)?;
+        let mut accrued = 0;
+        loop {
+            let stepped = self.windows_stepped.load(Ordering::Acquire);
+            let boundary = stepped
+                .checked_add(1)
+                .and_then(|next| next.checked_mul(self.step_window));
+            match boundary {
+                Some(boundary) if self.retired_total.load(Ordering::Acquire) >= boundary => {
+                    self.windows_stepped.store(stepped + 1, Ordering::Release);
+                    // TODO (L3): substitute the exact PMU retired-instruction delta per window instead of the fixed window size.
+                    pending.push(self.step_window);
+                    accrued += 1;
+                }
+                _ => break,
+            }
+        }
+        Ok(accrued)
+    }
+
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    fn take_due_windows(&self) -> Result<Vec<u64>, PluginError> {
+        if let Some(regress) = Self::lock_slot(&self.sample_regress)?.take() {
+            return Err(PluginError::Halt(regress));
+        }
+        let mut pending = Self::lock_slot(&self.pending_windows)?;
+        let due = pending.clone();
+        pending.clear();
+        Ok(due)
     }
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     fn save_rng_position(&self, position: EntropyStreamPosition) -> Result<(), PluginError> {
-        *lock_slot(&self.rng_position)? = Some(position);
+        *Self::lock_slot(&self.rng_position)? = Some(position);
         Ok(())
     }
 
     // see: cans/08-lifecycle.md#Rollback
     fn take_rng_position(&self) -> Result<Option<EntropyStreamPosition>, PluginError> {
-        Ok(lock_slot(&self.rng_position)?.take())
+        Ok(Self::lock_slot(&self.rng_position)?.take())
     }
+}
 
-    // see: cans/plugins/replay.md#Error-and-return-semantics-(replay)
-    fn enforce_monotonic_step(&self, before: Duration, after: Duration) -> Result<(), PluginError> {
-        let before_ns = duration_ns(before)?;
-        let after_ns = duration_ns(after)?;
-        let mut floor = lock_slot(&self.monotonic_floor_ns)?;
-        let floor_ns = floor.get_or_insert(before_ns);
-        if after_ns < *floor_ns {
-            return Err(PluginError::reject(
-                ECLOCKREGRESS,
-                format!("guest clock regressed: {after_ns}ns behind floor {floor_ns}ns"),
-            ));
-        }
-        *floor_ns = after_ns;
-        Ok(())
+// see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+struct ReplayPmuSampler {
+    state: Arc<ReplayState>,
+}
+
+impl ReplayPmuSampler {
+    fn new(state: Arc<ReplayState>) -> Self {
+        Self { state }
+    }
+}
+
+// see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+impl PmuSampler for ReplayPmuSampler {
+    fn on_pmu_sample(&self, sample: &PmuSample) {
+        self.state.record_pmu_sample(sample);
+    }
+}
+
+// see: cans/plugins/replay.md#Plugin-replay
+#[derive(Clone)]
+pub struct ReplayCtx {
+    state: Arc<ReplayState>,
+}
+
+impl ReplayCtx {
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    pub fn retired_instructions(&self) -> u64 {
+        self.state.retired_total.load(Ordering::Acquire)
     }
 
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
-    fn elapsed_for_window(&self, retired_instructions: u64) -> Result<Duration, PluginError> {
-        // TODO (L3): PMU instruction-count substitution converts the retired-instruction window to guest clock nanoseconds.
-        Err(PluginError::Halt(format!(
-            "PMU instruction-count substitution pending (L3): {retired_instructions} retired instructions in a {} instruction window",
-            self.step_window
-        )))
+    pub fn pending_step_windows(&self) -> Result<usize, PluginError> {
+        Ok(ReplayState::lock_slot(&self.state.pending_windows)?.len())
+    }
+
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    pub async fn step_due_windows(&self, ctx: &mut LifecycleCtx<'_>) -> Result<u64, PluginError> {
+        let due = self.state.take_due_windows()?;
+        let mut stepped = 0;
+        for retired_instructions in due {
+            ctx.step_clock_window(retired_instructions).await?;
+            stepped += 1;
+        }
+        Ok(stepped)
     }
 }
 
@@ -134,6 +203,13 @@ impl ReplayPlugin {
             config,
         }
     }
+
+    // see: cans/plugins/replay.md#Service-exports-(replay)
+    pub fn ctx(&self) -> ReplayCtx {
+        ReplayCtx {
+            state: Arc::clone(&self.state),
+        }
+    }
 }
 
 impl Default for ReplayPlugin {
@@ -144,8 +220,10 @@ impl Default for ReplayPlugin {
 
 // see: cans/plugins/replay.md#Plugin-replay
 impl KelirPlugin for ReplayPlugin {
-    type Context = ();
-    fn context(&self) {}
+    type Context = ReplayCtx;
+    fn context(&self) -> Self::Context {
+        self.ctx()
+    }
     fn name(&self) -> &'static str {
         "replay"
     }
@@ -154,31 +232,9 @@ impl KelirPlugin for ReplayPlugin {
     }
 
     // see: cans/plugins/replay.md#Service-exports-(replay)
-    fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
-        let service: Arc<dyn ReplayService> = self.state.clone();
-        pipeline.service_registry().register(service);
-    }
-}
-
-// see: cans/plugins/replay.md#Service-exports-(replay)
-#[async_trait]
-impl ReplayService for ReplayState {
-    async fn step_clock_window(&self, retired_instructions: u64) -> Result<(), PluginError> {
-        let delta = self.elapsed_for_window(retired_instructions)?;
-        let clock = self.clock_handle()?;
-        let before = clock
-            .clock_offset()
-            .await
-            .map_err(|e| PluginError::Halt(format!("guest clock offset read failed: {e}")))?;
-        clock
-            .step_clock(delta)
-            .await
-            .map_err(|e| PluginError::Halt(format!("deterministic clock step failed: {e}")))?;
-        let after = clock
-            .clock_offset()
-            .await
-            .map_err(|e| PluginError::Halt(format!("guest clock offset read failed: {e}")))?;
-        self.enforce_monotonic_step(before, after)
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn kelir_interface::plugin::AnyPlugin> {
+        // see: cans/08-lifecycle.md#CoW-fork
+        Box::new(Self::new(self.config.clone()))
     }
 }
 
@@ -186,7 +242,7 @@ impl ReplayService for ReplayState {
 #[async_trait]
 impl LifecycleParticipant for ReplayPlugin {
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
-    async fn on_vm_init(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         // see: cans/plugins/replay.md#Kernel-clocksource-lockdown
         assert_lockdown_params(&self.config.kernel_params)?;
         // see: cans/plugins/replay.md#Invariants-and-policy-(replay)
@@ -195,47 +251,40 @@ impl LifecycleParticipant for ReplayPlugin {
                 "replay mode requires network isolation (network: off)".into(),
             ));
         }
-        let clock = ctx.clock_step_control()?;
-        let entropy = ctx.entropy_control()?;
-        entropy
-            .set_backend(EntropyBackend::SeededChaCha20 {
-                seed: self.config.deterministic_rng_seed,
-            })
-            .await
-            .map_err(|e| {
-                PluginError::Halt(format!("seeded entropy backend substitution failed: {e}"))
-            })?;
-        let initial = clock
-            .clock_offset()
-            .await
-            .map_err(|e| PluginError::Halt(format!("guest clock offset read failed: {e}")))?;
-        self.state.arm(clock, initial)?;
+        // see: cans/plugins/replay.md#Deterministic-RNG
+        ctx.set_entropy_backend(EntropyBackend::SeededChaCha20 {
+            seed: self.config.deterministic_rng_seed,
+        })
+        .await?;
+        // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+        ctx.register_pmu_sampler(Arc::new(ReplayPmuSampler::new(Arc::clone(&self.state))))?;
         // TODO (L3): capture the deterministic RNG seed in the snapshot manifest at replay start.
         Ok(())
     }
 
     // see: cans/plugins/replay.md#Deterministic-RNG
-    async fn on_vm_ready(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
-        let position =
-            ctx.entropy_control()?.position().await.map_err(|e| {
-                PluginError::Halt(format!("entropy stream position read failed: {e}"))
-            })?;
+    async fn on_vm_ready(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
+        let position = ctx.entropy_position().await?;
         self.state.save_rng_position(position)
     }
 
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    async fn on_host_preempt(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
+        self.ctx().step_due_windows(ctx).await?;
+        Ok(())
+    }
+
     // see: cans/08-lifecycle.md#Rollback
-    async fn on_pre_commit(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
-        let position =
-            ctx.entropy_control()?.position().await.map_err(|e| {
-                PluginError::Halt(format!("entropy stream position read failed: {e}"))
-            })?;
+    async fn on_pre_commit(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
+        self.ctx().step_due_windows(ctx).await?;
+        let position = ctx.entropy_position().await?;
         self.state.save_rng_position(position)
     }
 
     // see: cans/08-lifecycle.md#Rollback
     async fn on_post_commit(
         &self,
-        ctx: &mut LifecycleCtx,
+        ctx: &mut LifecycleCtx<'_>,
         committed: bool,
     ) -> Result<(), PluginError> {
         let saved = self.state.take_rng_position()?;
@@ -243,20 +292,10 @@ impl LifecycleParticipant for ReplayPlugin {
             return Ok(());
         }
         if let Some(position) = saved {
-            ctx.entropy_control()?
-                .restore_position(position)
-                .await
-                .map_err(|e| {
-                    PluginError::Halt(format!("entropy stream position restore failed: {e}"))
-                })?;
+            ctx.restore_entropy_position(position).await?;
         }
         Ok(())
     }
-}
-
-fn lock_slot<T>(slot: &Mutex<Option<T>>) -> Result<MutexGuard<'_, Option<T>>, PluginError> {
-    slot.lock()
-        .map_err(|_| PluginError::Halt("replay capability slot lock poisoned".into()))
 }
 
 // see: cans/plugins/replay.md#Kernel-clocksource-lockdown
@@ -274,10 +313,4 @@ fn assert_lockdown_params(params: &[String]) -> Result<(), PluginError> {
         }
     }
     Ok(())
-}
-
-// see: cans/plugins/replay.md#Error-and-return-semantics-(replay)
-fn duration_ns(duration: Duration) -> Result<u64, PluginError> {
-    u64::try_from(duration.as_nanos())
-        .map_err(|_| PluginError::Halt("guest clock offset exceeds 64-bit nanoseconds".into()))
 }

@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use kelir_interface::handles::{DriverVmControl, VmHandle};
-use kelir_interface::plugin::ParkedConnectionReset;
 use kelir_interface::plugin::PipelineBinder;
 use kelir_interface::vsock::VAULT_METADATA_VSOCK_PORT;
 pub struct Session {
@@ -281,7 +280,7 @@ impl Session {
         snapshot: &kelir_interface::driver::SnapshotDescriptor,
     ) -> Result<(), kelir_interface::plugin::PluginError> {
         self.wire.quiesce()?;
-        if let Some(ingress) = self.engine.services().lookup::<dyn ParkedConnectionReset>() {
+        if let Some(ingress) = self.engine.parked_connection_reset() {
             let reset = ingress.reset_parked_connections()?;
             // TODO (L3): emit TCP RST for each reset connection id once the host proxy owns the parked sockets per cans/plugins/wire-ingress.md.
             let _ = reset;

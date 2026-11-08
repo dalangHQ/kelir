@@ -3,21 +3,25 @@
 
 // TODO (L3): tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt.
 pub mod pgwire;
+pub mod reassembler;
 pub mod service;
+pub mod sqlite;
 pub use service::SqlProxyService;
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
-    HandlerCtx, KelirPlugin, MountScope, NetInterposer, PipelineBinder, StreamInterposer,
-    VirtioDevice,
+    KelirPlugin, MountScope, NetInterposer, PipelineBinder, VirtioDevice,
 };
-use kelir_interface::protocol::{FilterAction, StreamDirection, StreamKind, Verdict};
+use kelir_interface::protocol::FilterAction;
 
 use crate::pgwire::PgFrameDescriptor;
-use crate::service::{SqlDialect, SqlProxy};
+use crate::reassembler::{
+    FlowKey, NetDirection, NetPlaneState, SegmentOutcome, TCP_FLAG_RST, parse_tcp_segment,
+};
+use crate::service::{SqlDialect, SqlProxy, StatementHandle};
+use crate::sqlite::SqliteBridge;
 
 // see: cans/artifacts/examples/db-backed-runtime.py#PgWireRewrite
 #[derive(Clone, Debug)]
@@ -77,6 +81,7 @@ pub struct DbProxyConfig {
 pub struct DbProxyPlugin {
     pub config: DbProxyConfig,
     pub proxy: Arc<SqlProxy>,
+    pub net: Arc<NetPlaneState>,
 }
 
 impl DbProxyPlugin {
@@ -84,6 +89,7 @@ impl DbProxyPlugin {
         Self {
             config: DbProxyConfig::default(),
             proxy: Arc::new(SqlProxy::new(SqlDialect::Postgres)),
+            net: Arc::new(NetPlaneState::new()),
         }
     }
 
@@ -92,14 +98,9 @@ impl DbProxyPlugin {
         self
     }
 
-    async fn guard_sqlite_client_bytes(
-        &self,
-        stream_id: u32,
-        payload: &mut [u8],
-    ) -> Result<Verdict, PluginError> {
-        let _ = (stream_id, payload);
-        // TODO (L3): decode the SQLite client protocol on the DB_SQLITE channel and mediate statements through SqlProxyService (Patch rewrite, Drop deny) per cans/plugins/db-proxy.md.
-        Ok(Verdict::Pass)
+    // see: cans/plugins/db-proxy.md#SQLite-UDS-bridge-mechanics:
+    pub fn sqlite_bridge(&self) -> SqliteBridge {
+        SqliteBridge::new(Arc::clone(&self.proxy))
     }
 
     fn handle_pgwire_frame(
@@ -110,6 +111,65 @@ impl DbProxyPlugin {
         // TODO (L3): in-place Q/P SQL rewrite against rewrite_rules, per-connection rewrite tally above max_rewrites_per_conn aborting ECYCLICREWRITE, and pgwire ErrorResponse synthesis (EPERM→42501, ENOENT→42P01, unmapped→XX000) per cans/plugins/db-proxy.md.
         Ok(FilterAction::Forward)
     }
+
+    // see: cans/07-wire-plane.md#Wire-architecture
+    fn intercept_ethernet_frame(
+        &self,
+        direction: NetDirection,
+        frame: &mut [u8],
+    ) -> Result<FilterAction, PluginError> {
+        let Some(segment) = parse_tcp_segment(frame) else {
+            return Ok(FilterAction::Forward);
+        };
+        // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+        let (client, server, diverted) = match direction {
+            NetDirection::GuestToUpstream => (
+                segment.src,
+                segment.dst,
+                segment.dst.port() == self.config.postgres.listen_port,
+            ),
+            NetDirection::UpstreamToGuest => (
+                segment.dst,
+                segment.src,
+                segment.src.port() == self.config.postgres.listen_port,
+            ),
+        };
+        if !diverted {
+            return Ok(FilterAction::Forward);
+        }
+        let key = FlowKey { client, server };
+        let mut flows = self.net.lock_flows()?;
+        if segment.flags & TCP_FLAG_RST != 0 {
+            // see: cans/07-wire-plane.md#Frame-drop-and-forward-semantics
+            flows.remove(&key);
+            return Ok(FilterAction::Forward);
+        }
+        // TODO (L3): FIN half-close state machine per RFC 793.
+        let state = flows.entry(key).or_default();
+        match state.reassembly.push_segment(&segment)? {
+            SegmentOutcome::Dropped => Ok(FilterAction::Drop {
+                errno: None,
+                reason:
+                    "db-proxy: reassembly carryover saturated; silent discard awaits retransmit"
+                        .into(),
+            }),
+            SegmentOutcome::Forwarded => Ok(FilterAction::Forward),
+            SegmentOutcome::Stream(bytes) => match direction {
+                NetDirection::GuestToUpstream => {
+                    let mut action = FilterAction::Forward;
+                    for descriptor in state.decoder.push(&bytes)? {
+                        action = self.handle_pgwire_frame(descriptor)?;
+                        if action != FilterAction::Forward {
+                            break;
+                        }
+                    }
+                    Ok(action)
+                }
+                // TODO (L3): row-data and ErrorResponse mediation on the server-to-client stream.
+                NetDirection::UpstreamToGuest => Ok(FilterAction::Forward),
+            },
+        }
+    }
 }
 
 impl Default for DbProxyPlugin {
@@ -118,9 +178,53 @@ impl Default for DbProxyPlugin {
     }
 }
 
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+#[derive(Clone)]
+pub struct SqlProxyCtx {
+    proxy: Arc<SqlProxy>,
+}
+
+impl SqlProxyCtx {
+    pub fn proxy(&self) -> &Arc<SqlProxy> {
+        &self.proxy
+    }
+}
+
+// see: cans/plugins/transaction.md#Crate-dependencies-(transaction)
+#[async_trait::async_trait]
+impl SqlProxyService for SqlProxyCtx {
+    async fn dialect(&self) -> Result<SqlDialect, PluginError> {
+        self.proxy.dialect().await
+    }
+
+    async fn register_statement(&self, sql: &str) -> Result<StatementHandle, PluginError> {
+        self.proxy.register_statement(sql).await
+    }
+
+    async fn lookup_statement(&self, handle: StatementHandle) -> Result<String, PluginError> {
+        self.proxy.lookup_statement(handle).await
+    }
+
+    async fn issue_commit(&self) -> Result<(), PluginError> {
+        self.proxy.issue_commit().await
+    }
+
+    async fn issue_rollback(&self) -> Result<(), PluginError> {
+        self.proxy.issue_rollback().await
+    }
+
+    async fn inject_savepoint(&self, marker: &str) -> Result<(), PluginError> {
+        self.proxy.inject_savepoint(marker).await
+    }
+}
+
 impl KelirPlugin for DbProxyPlugin {
-    type Context = ();
-    fn context(&self) {}
+    type Context = SqlProxyCtx;
+    fn context(&self) -> Self::Context {
+        SqlProxyCtx {
+            proxy: Arc::clone(&self.proxy),
+        }
+    }
     fn name(&self) -> &'static str {
         "db-proxy"
     }
@@ -128,60 +232,20 @@ impl KelirPlugin for DbProxyPlugin {
         // see: cans/plugins/db-proxy.md#Crate-dependencies-(db-proxy)
         MountScope::default().with_devices([VirtioDevice::Vsock, VirtioDevice::Net])
     }
+    // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
-        let sqlite_stage: Arc<dyn StreamInterposer> = Arc::new(self.clone());
-        pipeline.bind_stream_scoped(StreamKind::DbSqlite, sqlite_stage, self.default_scope());
         let net_stage: Arc<dyn NetInterposer> = Arc::new(self.clone());
         pipeline.bind_net_scoped(net_stage, self.default_scope());
-        let service: Arc<dyn SqlProxyService> = self.proxy.clone();
-        pipeline.service_registry().register(service);
-    }
-}
-
-// see: cans/plugins/db-proxy.md#SQLite-UDS-bridge-mechanics:
-#[async_trait]
-impl StreamInterposer for DbProxyPlugin {
-    async fn on_stream_open(
-        &self,
-        stream_id: u32,
-        tags: &mut Vec<u8>,
-        ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        let _ = (tags, ctx);
-        self.proxy.track_connection(stream_id)?;
-        // TODO (L3): proxy the stream to the host SQLite file at sqlite.host_path per cans/plugins/db-proxy.md.
-        Ok(Verdict::Pass)
-    }
-
-    async fn on_stream_data(
-        &self,
-        direction: StreamDirection,
-        stream_id: u32,
-        payload: &mut Vec<u8>,
-        ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        let _ = ctx;
-        match direction {
-            StreamDirection::GuestToHost => {
-                self.guard_sqlite_client_bytes(stream_id, payload).await
-            }
-            StreamDirection::HostToGuest => Ok(Verdict::Pass),
-        }
-    }
-
-    async fn on_stream_close(&self, stream_id: u32, ctx: &HandlerCtx) -> Result<(), PluginError> {
-        let _ = ctx;
-        self.proxy.release_connection(stream_id);
-        Ok(())
     }
 }
 
 // see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
 impl NetInterposer for DbProxyPlugin {
     fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        match PgFrameDescriptor::decode(frame)? {
-            Some(descriptor) => self.handle_pgwire_frame(descriptor),
-            None => Ok(FilterAction::Forward),
-        }
+        self.intercept_ethernet_frame(NetDirection::GuestToUpstream, frame)
+    }
+
+    fn on_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+        self.intercept_ethernet_frame(NetDirection::UpstreamToGuest, frame)
     }
 }

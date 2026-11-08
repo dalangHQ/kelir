@@ -1,7 +1,7 @@
 // see: cans/plugins/ledger.md#Plugin-ledger
 #![forbid(unsafe_code)]
 
-// TODO (L2/L3): src/wal.rs + otel.rs + compute.rs, tests/test_merkle_wal.rs, test_causal_delta.rs, test_otel.rs per cans/artifacts/config/project-structure.txt.
+// TODO (L3): tests/test_merkle_wal.rs, test_causal_delta.rs, test_otel.rs per cans/artifacts/config/project-structure.txt.
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -12,9 +12,12 @@ use kelir_interface::telemetry::CausalDelta;
 use kelir_otlp::registry::{MetricRegistry, MetricSnapshot};
 use kelir_otlp::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfig};
 
-pub trait LedgerSink: Send + Sync {
-    fn emit_delta(&self, delta: &CausalDelta) -> Result<(), PluginError>;
-}
+pub mod compute;
+pub mod otel;
+pub mod wal;
+
+pub use otel::TraceParent;
+pub use wal::{LedgerSink, LocalMerkleDbSink, OtlpLedgerSink, WalRecord};
 
 // see: cans/plugins/ledger.md#OpenTelemetry
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -139,7 +142,7 @@ impl LedgerCtx {
     }
 
     pub async fn finalize(&self, _request: FinalizeRequest) -> Result<FinalReceipt, PluginError> {
-        // TODO (L3): append the Merkle leaf, sign the receipt, and return the finalized root.
+        // TODO (L3): append the leaf via wal::WalRecord + wal::merkle_root, sign the receipt, and return the finalized root.
         Err(PluginError::Halt(
             "ledger finalize needs the Merkle WAL sink".into(),
         ))
@@ -168,6 +171,7 @@ impl LedgerPlugin {
 
     pub fn with_config(mut self, config: LedgerConfig) -> Self {
         self.merkle_enabled = config.merkle_chain;
+        self.otel = config.otel.clone().unwrap_or_default();
         self.config = config;
         self
     }
@@ -188,6 +192,15 @@ impl LedgerPlugin {
 
     pub fn snapshot_metrics(&self) -> Option<MetricSnapshot> {
         self.metrics.as_ref().map(|registry| registry.snapshot())
+    }
+
+    // see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
+    pub fn sink(&self) -> Arc<dyn LedgerSink> {
+        if self.config.merkle_chain {
+            Arc::new(LocalMerkleDbSink::new(self.config.store.clone()))
+        } else {
+            Arc::new(OtlpLedgerSink::new(self.otel.clone()))
+        }
     }
 
     pub fn export_metrics(&self) -> Result<Vec<u8>, OtlpError> {

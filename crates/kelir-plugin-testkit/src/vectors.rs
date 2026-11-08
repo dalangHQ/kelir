@@ -300,7 +300,7 @@ fn trap_event(
         binary_path: binary_path.to_string(),
         binary_dev: 2049,
         binary_ino: 400_000 + seq * 7,
-        binary_blake3: "42".repeat(32),
+        binary_blake3: [0x42; 32],
         argv,
         envp,
         cwd: "/workspace".to_string(),

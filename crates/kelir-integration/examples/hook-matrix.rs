@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
 // see: cans/02-plugin-model.md#Segregated-ring-traits
 
 use std::path::Path;
@@ -265,7 +263,9 @@ impl FsInterposer for HookMatrixPlugin {
 
     fn on_fs_write(
         &self,
+        _path: &Path,
         _data: &mut [u8],
+        _pid: u32,
         _ctx: &HandlerCtx,
     ) -> Result<FilterAction, PluginError> {
         Ok(FilterAction::Forward)

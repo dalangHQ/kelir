@@ -163,7 +163,9 @@ impl FuseDispatcher {
                 })
             }
             FuseOpcode::Write => match self.interposer.on_fs_write(
+                request.path.as_path(),
                 &mut request.data,
+                request.pid,
                 &ctx.clone().with_fs_ctx(FsContext {
                     inode: request.guest_inode,
                     path: request.path.clone(),

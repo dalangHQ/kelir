@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used)]
 #![allow(dead_code)]
 
 // see: cans/02-plugin-model.md#Unified-verdict
@@ -132,7 +131,7 @@ impl KelirPlugin for PolicyMatrixPlugin {
 
 #[async_trait]
 impl LifecycleParticipant for PolicyMatrixPlugin {
-    async fn on_vm_init(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         let ready = Arc::clone(&self.state);
         let _ = ctx.register_veto(
             VetoEvent::Suspend,
@@ -146,7 +145,7 @@ impl LifecycleParticipant for PolicyMatrixPlugin {
         Ok(())
     }
 
-    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         self.state.ready.store(true, Ordering::SeqCst);
         Ok(())
     }

@@ -10,7 +10,7 @@ use crate::hlist::{HCons, HNil, NoParams};
 use crate::planes::storage::FsReconcileRequest;
 use crate::session::{Session, SpawnBuilder};
 use kelir_core::planes::storage::reconciler::CommitStats;
-use plugin_profile::ProfilePlugin;
+use plugin_profile::{ProfileCtx, ProfilePlugin};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SandboxProfile {
@@ -122,8 +122,8 @@ impl SandboxOptions {
 }
 
 pub struct Sandbox {
-    builder: Option<KelirBuilder<Unsealed, HCons<(), HNil>, NoParams>>,
-    session: Option<Session<HCons<(), HNil>, NoParams>>,
+    builder: Option<KelirBuilder<Unsealed, HCons<ProfileCtx, HNil>, NoParams>>,
+    session: Option<Session<HCons<ProfileCtx, HNil>, NoParams>>,
     profile: SandboxProfile,
     source_path: PathBuf,
 }
@@ -185,7 +185,7 @@ impl Sandbox {
         &self.source_path
     }
 
-    pub fn session(&self) -> Option<&Session<HCons<(), HNil>, NoParams>> {
+    pub fn session(&self) -> Option<&Session<HCons<ProfileCtx, HNil>, NoParams>> {
         self.session.as_ref()
     }
 

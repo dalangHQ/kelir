@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TelemetryExtension {
     pub namespace: String,
     pub payload: Vec<u8>,
@@ -115,7 +115,17 @@ fn hash_exit_kind(hasher: &mut blake3::Hasher, value: &ExitKind) {
 
 impl ExecutionReceipt {
     // see: cans/10-attestation.md#Execution-receipts
-    pub fn leaf_hash(&self) -> String {
+    fn hash_extensions(hasher: &mut blake3::Hasher, extensions: &[TelemetryExtension]) {
+        hash_u64(hasher, extensions.len() as u64);
+        for extension in extensions {
+            hash_str(hasher, &extension.namespace);
+            hash_u64(hasher, extension.payload.len() as u64);
+            hasher.update(&extension.payload);
+        }
+    }
+
+    // see: cans/10-attestation.md#Execution-receipts
+    pub fn leaf_hash(&self) -> [u8; 32] {
         let Self {
             pid,
             binary_path,
@@ -129,7 +139,7 @@ impl ExecutionReceipt {
             phase_timings: _,
             egress_bytes,
             egress_dropped_bytes,
-            extensions: _,
+            extensions,
         } = self;
         let mut hasher = blake3::Hasher::new();
         hash_str(&mut hasher, "kelir-receipt-leaf-v1");
@@ -143,7 +153,8 @@ impl ExecutionReceipt {
         hasher.update(&exit_code.to_le_bytes());
         hash_u64(&mut hasher, *egress_bytes);
         hash_u64(&mut hasher, *egress_dropped_bytes);
-        hasher.finalize().to_hex().to_string()
+        Self::hash_extensions(&mut hasher, extensions);
+        *hasher.finalize().as_bytes()
     }
 
     // see: cans/10-attestation.md#Execution-receipts
@@ -161,7 +172,7 @@ impl ExecutionReceipt {
             phase_timings: _,
             egress_bytes,
             egress_dropped_bytes,
-            extensions: _,
+            extensions,
         } = self;
         let Self {
             pid: other_pid,
@@ -176,7 +187,7 @@ impl ExecutionReceipt {
             phase_timings: _,
             egress_bytes: other_egress_bytes,
             egress_dropped_bytes: other_egressed_bytes,
-            extensions: _,
+            extensions: other_extensions,
         } = other;
         pid == other_pid
             && binary_path == other_binary_path
@@ -188,5 +199,6 @@ impl ExecutionReceipt {
             && exit_code == other_exit_code
             && egress_bytes == other_egress_bytes
             && egress_dropped_bytes == other_egressed_bytes
+            && extensions == other_extensions
     }
 }

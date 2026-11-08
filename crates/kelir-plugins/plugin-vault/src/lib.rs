@@ -3,7 +3,10 @@
 
 pub mod service;
 
-use std::sync::Arc;
+use std::future::Future;
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::task::{Context, Poll, Wake, Waker};
+use std::thread::JoinHandle;
 
 use async_trait::async_trait;
 use kelir_interface::credential::CredentialDescriptor;
@@ -24,6 +27,12 @@ use crate::service::{
 pub const METADATA_CREDENTIALS_PREFIX: &str = "/kelir/credentials/";
 // see: cans/11-protocol.md#Wire-framing
 const METADATA_MAX_REQUEST_BYTES: usize = 64 * 1024;
+// see: cans/02-plugin-model.md#Latency-ceiling
+const MAX_CONCURRENT_METADATA_SESSIONS: usize = 64;
+
+// see: cans/07-wire-plane.md#Pre-policy-drop-zones
+// TODO (L3): pin this constant against the kelir-core vsock transport host-bridge identity.
+pub const WIRE_PLANE_BRIDGE_CID: u32 = 2;
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service
 #[derive(Clone, Debug)]
@@ -42,43 +51,49 @@ impl Default for VaultConfig {
 }
 
 // see: cans/plugins/vault.md#Metadata-service-(vault)
-#[derive(Clone)]
-pub struct VaultPlugin {
+pub struct MetadataEndpoint {
     config: VaultConfig,
     broker: Arc<CredentialBroker>,
-    session_guest_cid: Option<u32>,
+    serving: Mutex<Vec<JoinHandle<()>>>,
 }
 
-impl VaultPlugin {
-    pub fn new() -> Self {
+impl MetadataEndpoint {
+    pub fn new(config: VaultConfig, broker: Arc<CredentialBroker>) -> Self {
         Self {
-            config: VaultConfig::default(),
-            broker: Arc::new(CredentialBroker::new(Vec::new())),
-            session_guest_cid: None,
+            config,
+            broker,
+            serving: Mutex::new(Vec::new()),
         }
     }
 
-    pub fn with_config(mut self, config: VaultConfig) -> Self {
-        self.config = config;
-        self
+    // see: cans/plugins/vault.md#Service-exports-(vault)
+    pub fn broker(&self) -> &Arc<CredentialBroker> {
+        &self.broker
     }
 
-    pub fn with_session_guest_cid(mut self, cid: u32) -> Self {
-        self.session_guest_cid = Some(cid);
-        self
+    // see: cans/02-plugin-model.md#Latency-ceiling
+    fn lock_serving(&self) -> Result<MutexGuard<'_, Vec<JoinHandle<()>>>, PluginError> {
+        self.serving
+            .lock()
+            .map_err(|_| PluginError::Halt("metadata serving table lock poisoned".into()))
     }
 
-    pub fn with_credentials(mut self, descriptors: Vec<CredentialDescriptor>) -> Self {
-        self.broker = Arc::new(CredentialBroker::new(descriptors));
-        self
+    // see: cans/02-plugin-model.md#Latency-ceiling
+    fn track_serving(&self, handle: JoinHandle<()>) -> Result<(), PluginError> {
+        let mut serving = self.lock_serving()?;
+        serving.retain(|handle| !handle.is_finished());
+        if serving.len() >= MAX_CONCURRENT_METADATA_SESSIONS {
+            return Err(PluginError::reject(
+                "ECONNREFUSED",
+                "metadata service: serving capacity exceeded",
+            ));
+        }
+        serving.push(handle);
+        Ok(())
     }
 
-    fn is_session_peer(&self, peer: &VsockPeer) -> bool {
-        // TODO (L3): core binds the session guest CID at boot; fail closed until that wire-up lands per cans/plugins/vault.md.
-        self.session_guest_cid.is_some_and(|cid| cid == peer.cid)
-    }
-
-    async fn serve_metadata_request(&self, request: &[u8]) -> Vec<u8> {
+    // see: cans/plugins/vault.md#Metadata-service-(vault)
+    pub async fn serve(&self, request: &[u8]) -> Vec<u8> {
         let Some(line) = request_line(request) else {
             return error_response("EACCES", "malformed metadata request");
         };
@@ -110,6 +125,74 @@ impl VaultPlugin {
     }
 }
 
+// see: cans/plugins/vault.md#Metadata-service-(vault)
+#[derive(Clone)]
+pub struct VaultPlugin {
+    config: VaultConfig,
+    endpoint: Arc<MetadataEndpoint>,
+    session_guest_cid: Option<u32>,
+}
+
+impl VaultPlugin {
+    pub fn new() -> Self {
+        Self {
+            config: VaultConfig::default(),
+            endpoint: Arc::new(MetadataEndpoint::new(
+                VaultConfig::default(),
+                Arc::new(CredentialBroker::new(Vec::new())),
+            )),
+            session_guest_cid: None,
+        }
+    }
+
+    pub fn with_config(mut self, config: VaultConfig) -> Self {
+        self.config = config.clone();
+        self.endpoint = Arc::new(MetadataEndpoint::new(
+            config,
+            self.endpoint.broker().clone(),
+        ));
+        self
+    }
+
+    pub fn with_session_guest_cid(mut self, cid: u32) -> Self {
+        self.session_guest_cid = Some(cid);
+        self
+    }
+
+    pub fn with_credentials(mut self, descriptors: Vec<CredentialDescriptor>) -> Self {
+        self.endpoint = Arc::new(MetadataEndpoint::new(
+            self.config.clone(),
+            Arc::new(CredentialBroker::new(descriptors)),
+        ));
+        self
+    }
+
+    // see: cans/plugins/vault.md#Metadata-service-(vault)
+    fn is_session_peer(&self, peer: &VsockPeer) -> bool {
+        // TODO (L3): core binds the session guest CID at boot; fail closed until that wire-up lands per cans/plugins/vault.md.
+        self.session_guest_cid.is_some_and(|cid| cid == peer.cid)
+    }
+
+    // see: cans/02-plugin-model.md#Latency-ceiling
+    // TODO (L3): replace the tracked blocking thread with pollable stream reads once the transport exposes readiness.
+    fn serve_peer_off_worker(
+        &self,
+        peer: &VsockPeer,
+        stream: Box<dyn Stream>,
+    ) -> Result<(), PluginError> {
+        let endpoint = Arc::clone(&self.endpoint);
+        let peer = peer.clone();
+        let handle = std::thread::Builder::new()
+            .name("vault-metadata-session".into())
+            .spawn(move || {
+                // see: cans/plugins/vault.md#Metadata-service-(vault)
+                let _ = serve_metadata_session(&endpoint, &peer, stream);
+            })
+            .map_err(PluginError::Io)?;
+        self.endpoint.track_serving(handle)
+    }
+}
+
 impl Default for VaultPlugin {
     fn default() -> Self {
         Self::new()
@@ -117,8 +200,12 @@ impl Default for VaultPlugin {
 }
 
 impl KelirPlugin for VaultPlugin {
-    type Context = ();
-    fn context(&self) {}
+    type Context = CredentialBrokerCtx;
+    fn context(&self) -> Self::Context {
+        CredentialBrokerCtx {
+            broker: self.endpoint.broker().clone(),
+        }
+    }
     fn name(&self) -> &'static str {
         "vault"
     }
@@ -136,39 +223,86 @@ impl KelirPlugin for VaultPlugin {
             handler,
             self.default_scope(),
         );
-        let broker: Arc<dyn CredentialBrokerService> = self.broker.clone();
-        pipeline.service_registry().register(broker);
+    }
+}
+
+// see: cans/plugins/vault.md#Service-exports-(vault)
+#[derive(Clone)]
+pub struct CredentialBrokerCtx {
+    broker: Arc<CredentialBroker>,
+}
+
+impl CredentialBrokerCtx {
+    pub fn broker(&self) -> &Arc<CredentialBroker> {
+        &self.broker
     }
 }
 
 // see: cans/plugins/vault.md#Revocation
 #[async_trait]
 impl LifecycleParticipant for VaultPlugin {
-    async fn on_vm_shutdown(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
-        self.broker.revoke_session_tokens();
+    async fn on_vm_shutdown(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
+        self.endpoint.broker().revoke_session_tokens();
         Ok(())
     }
 }
 
-// see: cans/plugins/vault.md#Metadata-service-(vault)
+// see: cans/07-wire-plane.md#Pre-policy-drop-zones
 #[async_trait]
 impl VsockServiceHandler for VaultPlugin {
     async fn on_connect(
         &self,
         peer: &VsockPeer,
-        mut stream: Box<dyn Stream>,
+        stream: Box<dyn Stream>,
         ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
         let _ = ctx;
-        if !self.is_session_peer(peer) {
+        // see: cans/plugins/vault.md#Error-and-return-semantics-(vault)
+        if !self.is_session_peer(peer) && peer.cid != WIRE_PLANE_BRIDGE_CID {
             return Err(PluginError::reject(
                 "ECONNREFUSED",
                 "metadata service: non-session vsock peer",
             ));
         }
-        let request = read_metadata_request(stream.as_mut())?;
-        let response = self.serve_metadata_request(&request).await;
-        write_metadata_response(stream.as_mut(), &response)
+        self.serve_peer_off_worker(peer, stream)
+    }
+}
+
+// see: cans/plugins/vault.md#Metadata-service-(vault)
+fn serve_metadata_session(
+    endpoint: &MetadataEndpoint,
+    _peer: &VsockPeer,
+    mut stream: Box<dyn Stream>,
+) -> Result<(), PluginError> {
+    let request = read_metadata_request(stream.as_mut())?;
+    let response = block_on(endpoint.serve(&request));
+    write_metadata_response(stream.as_mut(), &response)
+}
+
+// see: cans/02-plugin-model.md#Latency-ceiling
+struct ThreadWaker(std::thread::Thread);
+
+impl Wake for ThreadWaker {
+    fn wake(self: Arc<Self>) {
+        self.0.unpark();
+    }
+
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.0.unpark();
+    }
+}
+
+// see: cans/02-plugin-model.md#Latency-ceiling
+// TODO (L3): drive the broker issue on the async runtime once the transport exposes a runtime handle.
+fn block_on<F: Future>(future: F) -> F::Output {
+    let mut future = Box::pin(future);
+    let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
+    let mut cx = Context::from_waker(&waker);
+    loop {
+        match future.as_mut().poll(&mut cx) {
+            Poll::Ready(output) => return output,
+            Poll::Pending => std::thread::park(),
+        }
     }
 }
 
@@ -205,6 +339,7 @@ fn request_line(request: &[u8]) -> Option<&str> {
     std::str::from_utf8(&request[..end]).ok()
 }
 
+// see: cans/plugins/vault.md#Metadata-service-(vault)
 fn write_metadata_response(stream: &mut dyn Stream, response: &[u8]) -> Result<(), PluginError> {
     let mut written = 0;
     while written < response.len() {
@@ -220,6 +355,7 @@ fn write_metadata_response(stream: &mut dyn Stream, response: &[u8]) -> Result<(
     Ok(stream.flush()?)
 }
 
+// see: cans/plugins/vault.md#Out-of-band-credential-brokerage
 fn ok_response(token: &IssuedToken) -> Vec<u8> {
     let body = format!(
         "{{\"token\":\"{}\",\"ttl_seconds\":{},\"scope\":\"{}\",\"audience\":\"{}\"}}",
@@ -231,6 +367,7 @@ fn ok_response(token: &IssuedToken) -> Vec<u8> {
     http_response("200 OK", &body)
 }
 
+// see: cans/plugins/vault.md#Error-and-return-semantics-(vault)
 fn error_response(errno: &str, reason: &str) -> Vec<u8> {
     let body = format!(
         "{{\"errno\":\"{}\",\"reason\":\"{}\"}}",
@@ -245,6 +382,7 @@ fn error_response(errno: &str, reason: &str) -> Vec<u8> {
     http_response(status, &body)
 }
 
+// see: cans/plugins/vault.md#Guest-integration
 fn http_response(status: &str, body: &str) -> Vec<u8> {
     format!(
         "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",

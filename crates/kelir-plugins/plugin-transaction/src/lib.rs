@@ -2,17 +2,15 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_transaction.rs per cans/artifacts/config/project-structure.txt.
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use kelir_interface::plugin::LockBrokerCoordination;
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
-    KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
-};
-use kelir_interface::service_registry::ServiceRegistry;
-use plugin_db_proxy::SqlProxyService;
+use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope};
+use plugin_db_proxy::{SqlProxyCtx, SqlProxyService};
 
 pub mod service;
 pub use service::{Savepoint, TransactionHandle, TransactionScope, TransactionService};
@@ -35,71 +33,244 @@ impl Default for TransactionConfig {
     }
 }
 
+// see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+#[derive(Clone, Debug)]
+struct ActiveTransaction {
+    handle: TransactionHandle,
+    namespace: [u8; 16],
+    scope: TransactionScope,
+}
+
+// see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
 #[derive(Default)]
-struct PeerCoordination {
+pub(crate) struct PeerCoordination {
     // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    sql_proxy: RwLock<Option<SqlProxyCtx>>,
     lock_broker: RwLock<Option<Arc<dyn LockBrokerCoordination>>>,
-    lock_namespace: RwLock<Option<[u8; 16]>>,
-    sql_proxy: RwLock<Option<Arc<dyn SqlProxyService>>>,
+    active: RwLock<Option<ActiveTransaction>>,
+    next_handle: AtomicU64,
+    next_savepoint: AtomicU64,
+    next_nonce: AtomicU64,
 }
 
 impl PeerCoordination {
-    fn read_slot<T: ?Sized + Send + Sync + 'static>(
-        slot: &RwLock<Option<Arc<T>>>,
-    ) -> Result<Option<Arc<T>>, PluginError> {
+    fn read_slot<T: Send + Sync + 'static + Clone>(
+        slot: &RwLock<Option<T>>,
+    ) -> Result<Option<T>, PluginError> {
         match slot.read() {
             Ok(guard) => Ok(guard.clone()),
             Err(_) => Err(PluginError::Halt("peer coordination slot poisoned".into())),
         }
     }
 
-    fn store_slot<T: ?Sized + Send + Sync + 'static>(
-        slot: &RwLock<Option<Arc<T>>>,
-        service: Arc<T>,
+    fn store_slot<T: Send + Sync + 'static>(
+        slot: &RwLock<Option<T>>,
+        value: T,
     ) -> Result<(), PluginError> {
         match slot.write() {
             Ok(mut guard) => {
-                *guard = Some(service);
+                *guard = Some(value);
                 Ok(())
             }
             Err(_) => Err(PluginError::Halt("peer coordination slot poisoned".into())),
         }
+    }
+
+    fn sql_peer(&self) -> Result<Option<SqlProxyCtx>, PluginError> {
+        Self::read_slot(&self.sql_proxy)
     }
 
     fn lock_broker(&self) -> Result<Option<Arc<dyn LockBrokerCoordination>>, PluginError> {
         Self::read_slot(&self.lock_broker)
     }
 
-    fn lock_namespace(&self) -> Result<Option<[u8; 16]>, PluginError> {
-        match self.lock_namespace.read() {
-            Ok(guard) => Ok(*guard),
-            Err(_) => Err(PluginError::Halt("peer coordination slot poisoned".into())),
-        }
+    fn active(&self) -> Result<Option<ActiveTransaction>, PluginError> {
+        Self::read_slot(&self.active)
     }
 
-    fn set_lock_namespace(&self, namespace: [u8; 16]) -> Result<(), PluginError> {
-        match self.lock_namespace.write() {
+    fn clear_active(&self) -> Result<(), PluginError> {
+        match self.active.write() {
             Ok(mut guard) => {
-                *guard = Some(namespace);
+                *guard = None;
                 Ok(())
             }
             Err(_) => Err(PluginError::Halt("peer coordination slot poisoned".into())),
         }
     }
 
-    fn sql_proxy(&self) -> Result<Option<Arc<dyn SqlProxyService>>, PluginError> {
-        Self::read_slot(&self.sql_proxy)
+    pub(crate) fn require_active(
+        &self,
+        handle: &TransactionHandle,
+    ) -> Result<ActiveTransaction, PluginError> {
+        let active = self.active()?.ok_or_else(|| {
+            PluginError::reject(
+                "EINVAL",
+                "no transaction scope is active on the coordinator",
+            )
+        })?;
+        if active.handle.id != handle.id {
+            return Err(PluginError::reject(
+                "EINVAL",
+                format!(
+                    "handle {} does not match the active transaction {}",
+                    handle.id, active.handle.id
+                ),
+            ));
+        }
+        Ok(active)
     }
 
-    fn set_lock_broker(&self, service: Arc<dyn LockBrokerCoordination>) -> Result<(), PluginError> {
-        Self::store_slot(&self.lock_broker, service)
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    fn require_sql_peer(&self) -> Result<Option<SqlProxyCtx>, PluginError> {
+        let peer = self.sql_peer()?;
+        if peer.is_none()
+            && self
+                .active()?
+                .is_some_and(|active| !active.scope.schemas.is_empty())
+        {
+            return Err(PluginError::reject(
+                "EPOLICY",
+                "transaction declares SQL schemas but no SqlProxyCtx peer is bound",
+            ));
+        }
+        Ok(peer)
     }
 
-    fn set_sql_proxy(&self, service: Arc<dyn SqlProxyService>) -> Result<(), PluginError> {
-        Self::store_slot(&self.sql_proxy, service)
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub(crate) fn begin_scope(
+        &self,
+        scope: TransactionScope,
+    ) -> Result<TransactionHandle, PluginError> {
+        if let Some(active) = self.active()? {
+            return Err(PluginError::reject(
+                "EINVAL",
+                format!(
+                    "transaction {} is still active; commit or abort it before opening a new scope",
+                    active.handle.id
+                ),
+            ));
+        }
+        let handle = TransactionHandle {
+            id: self.next_handle.fetch_add(1, Ordering::AcqRel),
+        };
+        // TODO (L3): mint the transaction UUID namespace from the session's seeded entropy source.
+        let namespace = u128::from(self.next_nonce.fetch_add(1, Ordering::AcqRel)).to_le_bytes();
+        Self::store_slot(
+            &self.active,
+            ActiveTransaction {
+                handle,
+                namespace,
+                scope,
+            },
+        )?;
+        // TODO (L3): open the scope over the declared blast radius; out-of-scope mutations reject with EACCES or EAmbiguousMutation.
+        Ok(handle)
+    }
+
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    async fn prepare_participants(&self) -> Result<(), PluginError> {
+        if self.active()?.is_none() {
+            return Ok(());
+        }
+        // TODO (L3): issue SQL pre-commit on the coordinated SqlProxy connections; participant failure here triggers global rollback with EPOLICY.
+        let _ = self.require_sql_peer()?;
+        // TODO (L3): pin advisory-lock acquisition to the declared physical host inodes via the coordinated lock broker.
+        let _ = self.lock_broker()?;
+        Ok(())
+    }
+
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    async fn issue_sql_commit(&self) -> Result<(), PluginError> {
+        if self.active()?.is_none() {
+            return Ok(());
+        }
+        match self.require_sql_peer()? {
+            Some(peer) => peer.issue_commit().await,
+            None => Ok(()),
+        }
+    }
+
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    async fn issue_sql_rollback(&self) -> Result<(), PluginError> {
+        if self.active()?.is_none() {
+            return Ok(());
+        }
+        match self.require_sql_peer()? {
+            Some(peer) => peer.issue_rollback().await,
+            None => Ok(()),
+        }
+    }
+
+    // see: cans/plugins/transaction.md#Temporal-savepoints
+    pub(crate) fn next_savepoint_id(&self) -> u64 {
+        self.next_savepoint.fetch_add(1, Ordering::AcqRel)
+    }
+
+    // see: cans/plugins/transaction.md#Temporal-savepoints
+    pub(crate) async fn inject_sql_savepoint(&self, marker: &str) -> Result<(), PluginError> {
+        let active = self.active()?;
+        if active.is_none() {
+            return Ok(());
+        }
+        match self.require_sql_peer()? {
+            Some(peer) => peer.inject_savepoint(marker).await,
+            None => Ok(()),
+        }
+    }
+
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    async fn release_transaction_locks_scoped(&self) -> Result<(), PluginError> {
+        // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+        let active = self.active()?;
+        let broker = self.lock_broker()?;
+        match (active, broker) {
+            (Some(active), Some(broker)) => {
+                broker.release_transaction_locks_for(active.namespace).await
+            }
+            _ => Ok(()),
+        }
+    }
+
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    pub(crate) async fn abort_active(&self) -> Result<(), PluginError> {
+        // TODO (L3): discard the broker upper file and tombstones through the driver-side session path.
+        self.issue_sql_rollback().await?;
+        self.release_transaction_locks_scoped().await?;
+        self.clear_active()
     }
 }
 
+// see: cans/plugins/transaction.md#Service-exports-(transaction)
+#[derive(Clone)]
+pub struct TransactionCtx {
+    coordination: Arc<PeerCoordination>,
+}
+
+impl TransactionCtx {
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub fn bind_sql_proxy(&self, peer: SqlProxyCtx) -> Result<(), PluginError> {
+        PeerCoordination::store_slot(&self.coordination.sql_proxy, peer)
+    }
+
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub fn bind_lock_broker(
+        &self,
+        broker: Arc<dyn LockBrokerCoordination>,
+    ) -> Result<(), PluginError> {
+        PeerCoordination::store_slot(&self.coordination.lock_broker, broker)
+    }
+
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    pub fn active_namespace(&self) -> Result<Option<[u8; 16]>, PluginError> {
+        Ok(self.coordination.active()?.map(|active| active.namespace))
+    }
+
+    pub(crate) fn coordination(&self) -> &PeerCoordination {
+        &self.coordination
+    }
+}
+
+// see: cans/plugins/transaction.md#Plugin-transaction
 #[derive(Clone, Default)]
 pub struct TransactionPlugin {
     config: TransactionConfig,
@@ -114,67 +285,33 @@ impl TransactionPlugin {
         }
     }
 
-    fn peer_lock_broker(&self) -> Result<Option<Arc<dyn LockBrokerCoordination>>, PluginError> {
-        self.coordination.lock_broker()
+    // see: cans/plugins/transaction.md#Service-exports-(transaction)
+    pub fn ctx(&self) -> TransactionCtx {
+        TransactionCtx {
+            coordination: Arc::clone(&self.coordination),
+        }
     }
 
-    fn peer_sql_proxy(&self) -> Result<Option<Arc<dyn SqlProxyService>>, PluginError> {
-        self.coordination.sql_proxy()
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub fn bind_sql_proxy(&self, peer: SqlProxyCtx) -> Result<(), PluginError> {
+        self.ctx().bind_sql_proxy(peer)
     }
 
     // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
     pub fn bind_lock_broker(
         &self,
-        service: Arc<dyn LockBrokerCoordination>,
+        broker: Arc<dyn LockBrokerCoordination>,
     ) -> Result<(), PluginError> {
-        self.coordination.set_lock_broker(service)
-    }
-
-    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
-    pub fn bind_sql_proxy(&self, service: Arc<dyn SqlProxyService>) -> Result<(), PluginError> {
-        self.coordination.set_sql_proxy(service)
-    }
-
-    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
-    pub fn resolve_peers(&self, registry: &ServiceRegistry) -> Result<(), PluginError> {
-        if let Some(sql) = registry.lookup::<dyn SqlProxyService>() {
-            self.coordination.set_sql_proxy(sql)?;
-        }
-        if let Some(locks) = registry.lookup::<dyn LockBrokerCoordination>() {
-            self.coordination.set_lock_broker(locks)?;
-        }
-        Ok(())
-    }
-
-    // see: cans/05-storage-plane.md#Host-inode-lock-broker
-    pub fn set_lock_namespace(&self, namespace: [u8; 16]) -> Result<(), PluginError> {
-        self.coordination.set_lock_namespace(namespace)
-    }
-
-    async fn prepare_participants(&self) -> Result<(), PluginError> {
-        // TODO (L3): issue SQL pre-commit on the coordinated SqlProxyService connections; participant failure here triggers global rollback with EPOLICY.
-        let _ = self.peer_sql_proxy()?;
-        // TODO (L3): pin advisory-lock acquisition to the declared physical host inodes via the coordinated lock broker.
-        let _ = self.peer_lock_broker()?;
-        Ok(())
-    }
-
-    async fn release_participant_locks(&self) -> Result<(), PluginError> {
-        match self.peer_lock_broker()? {
-            Some(locks) => match self.coordination.lock_namespace()? {
-                Some(namespace) => locks.release_transaction_locks_for(namespace).await,
-                None => locks.release_transaction_locks().await,
-            },
-            None => Ok(()),
-        }
+        self.ctx().bind_lock_broker(broker)
     }
 }
 
+// see: cans/plugins/transaction.md#Plugin-transaction
 impl KelirPlugin for TransactionPlugin {
     // see: cans/plugins/transaction.md#Service-exports-(transaction)
-    type Context = Arc<dyn TransactionService>;
+    type Context = TransactionCtx;
     fn context(&self) -> Self::Context {
-        Arc::new(self.clone())
+        self.ctx()
     }
     fn name(&self) -> &'static str {
         "transaction"
@@ -182,44 +319,42 @@ impl KelirPlugin for TransactionPlugin {
     fn default_scope(&self) -> MountScope {
         MountScope::default()
     }
-    // see: cans/plugins/transaction.md#Service-exports-(transaction)
-    fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
-        let registry = pipeline.service_registry();
-        registry.register::<dyn TransactionService>(Arc::new(self.clone()));
-        // TODO (L3): Session::boot calls resolve_peers after every plugin is mounted so a peer mounted after this plugin is re-resolved.
-        let _ = self.resolve_peers(registry);
+
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn kelir_interface::plugin::AnyPlugin> {
+        // see: cans/08-lifecycle.md#CoW-fork
+        Box::new(Self::new(self.config.clone()))
     }
 }
 
+// see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
 #[async_trait]
 impl LifecycleParticipant for TransactionPlugin {
-    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
-    async fn on_pre_commit(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    async fn on_pre_commit(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         if self.config.flush_fuse_before_commit {
             // see: cans/08-lifecycle.md#Hypervisor-primitives
             ctx.freeze_vcpus().await?;
             ctx.drain_fuse(Duration::from_millis(self.config.timeout_ms))
                 .await?;
         }
-        self.prepare_participants().await?;
+        self.coordination.prepare_participants().await?;
         Ok(())
     }
 
-    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
     async fn on_post_commit(
         &self,
-        ctx: &mut LifecycleCtx,
+        ctx: &mut LifecycleCtx<'_>,
         committed: bool,
     ) -> Result<(), PluginError> {
         if committed {
             ctx.commit_broker_upper().await?;
-            // TODO (L3): issue SQL COMMIT across active SqlProxyService proxy connections.
-            let _ = self.peer_sql_proxy()?;
+            self.coordination.issue_sql_commit().await?;
+            self.coordination.clear_active()?;
         } else {
             ctx.discard_broker_upper().await?;
-            // TODO (L3): issue SQL ROLLBACK across active SqlProxyService proxy connections.
-            let _ = self.peer_sql_proxy()?;
-            self.release_participant_locks().await?;
+            self.coordination.abort_active().await?;
         }
         if self.config.flush_fuse_before_commit {
             ctx.unfreeze_vcpus().await?;

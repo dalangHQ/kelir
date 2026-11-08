@@ -1,6 +1,4 @@
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
-use kelir_interface::plugin::PluginError;
-
 // see: cans/plugins/db-proxy.md#Invariants-and-policy-(db-proxy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PgFrameKind {
@@ -17,9 +15,13 @@ pub struct PgFrameDescriptor {
 }
 
 impl PgFrameDescriptor {
-    pub fn decode(buffer: &[u8]) -> Result<Option<Self>, PluginError> {
-        let _ = buffer;
-        // TODO (L3): TCP reassembly per cans/07-wire-plane.md#Transparent-L4-stream-diversion, then classify 'Q'/'P' frames per cans/plugins/db-proxy.md.
-        Ok(None)
+    // see: cans/plugins/db-proxy.md#Invariants-and-policy-(db-proxy)
+    pub fn classify(tag: u8, length: u32) -> Self {
+        let kind = match tag {
+            b'Q' => PgFrameKind::Query,
+            b'P' => PgFrameKind::Parse,
+            _ => PgFrameKind::Other,
+        };
+        Self { kind, length }
     }
 }
