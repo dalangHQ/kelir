@@ -7,6 +7,8 @@ use std::error::Error;
 use std::fmt;
 
 use kelir_interface::codec::{FLAG_DATA, MAX_FRAME_PAYLOAD, MAX_STREAM_ID, TRANSPORT_CONTROL};
+use kelir_interface::driver::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
+use kelir_interface::plugin::VetoEvent;
 use kelir_interface::protocol::{
     ExecveMutation, GuestToHost, Heartbeat, MsgType, PatchPayload, SuspendUntil, TrapEvent, Verdict,
 };
@@ -81,18 +83,33 @@ impl WireFrame {
 }
 
 // see: cans/15-operations.md#Multi-language-parity-gate
+#[derive(Debug, Clone)]
+pub struct WatchdogCase {
+    pub event: WatchdogEvent,
+    pub expected_verdict: WatchdogVerdict,
+}
+
+// see: cans/15-operations.md#Multi-language-parity-gate
+#[derive(Debug, Clone)]
+pub struct VetoCase {
+    pub event: VetoEvent,
+}
+
+// see: cans/15-operations.md#Multi-language-parity-gate
 #[derive(Debug)]
 pub struct VectorCase {
     pub name: String,
     pub frame: WireFrame,
     pub event: GuestToHost,
     pub expected_verdict: Verdict,
+    pub watchdog: Option<WatchdogCase>,
+    pub veto: Option<VetoCase>,
 }
 
 impl VectorCase {
     pub fn to_json(&self) -> Result<serde_json::Value, VectorError> {
         let frame = self.frame.encode()?;
-        Ok(serde_json::json!({
+        let mut value = serde_json::json!({
             "name": self.name,
             "frame": {
                 "transport": self.frame.transport,
@@ -104,7 +121,25 @@ impl VectorCase {
             },
             "event": serde_json::to_value(&self.event).map_err(|e| VectorError::Encode(e.to_string()))?,
             "expected_verdict": serde_json::to_value(&self.expected_verdict).map_err(|e| VectorError::Encode(e.to_string()))?,
-        }))
+        });
+        if let Some(watchdog) = &self.watchdog {
+            let entry = serde_json::json!({
+                "event": serde_json::to_value(&watchdog.event).map_err(|e| VectorError::Encode(e.to_string()))?,
+                "expected_verdict": serde_json::to_value(watchdog.expected_verdict).map_err(|e| VectorError::Encode(e.to_string()))?,
+            });
+            if let Some(object) = value.as_object_mut() {
+                object.insert("watchdog".to_string(), entry);
+            }
+        }
+        if let Some(veto) = &self.veto {
+            let entry = serde_json::json!({
+                "event": serde_json::to_value(veto.event).map_err(|e| VectorError::Encode(e.to_string()))?,
+            });
+            if let Some(object) = value.as_object_mut() {
+                object.insert("veto".to_string(), entry);
+            }
+        }
+        Ok(value)
     }
 }
 
@@ -202,6 +237,33 @@ impl VectorSuite {
                     },
                 )?,
                 heartbeat_case()?,
+                watchdog_case(
+                    "watchdog-reboot-suppress",
+                    WatchdogEvent {
+                        timeout_ms: 5_000,
+                        action: WatchdogAction::Reboot,
+                        fired_at_ns: 60_000_000_000,
+                        last_heartbeat_ms: 55_000,
+                        last_active_pid: Some(1234),
+                    },
+                    WatchdogVerdict::Suppress,
+                )?,
+                watchdog_case(
+                    "watchdog-terminate-mitigate",
+                    WatchdogEvent {
+                        timeout_ms: 5_000,
+                        action: WatchdogAction::Terminate {
+                            emit_diagnostic: true,
+                        },
+                        fired_at_ns: 60_000_000_000,
+                        last_heartbeat_ms: 55_000,
+                        last_active_pid: None,
+                    },
+                    WatchdogVerdict::Mitigate,
+                )?,
+                veto_case("veto-fork", VetoEvent::Fork)?,
+                veto_case("veto-suspend", VetoEvent::Suspend)?,
+                veto_case("veto-clock-skew", VetoEvent::ClockSkew)?,
             ],
         })
     }
@@ -262,6 +324,51 @@ fn trap_case(
         },
         event,
         expected_verdict,
+        watchdog: None,
+        veto: None,
+    })
+}
+
+fn watchdog_case(
+    name: &str,
+    event: WatchdogEvent,
+    expected_verdict: WatchdogVerdict,
+) -> Result<VectorCase, VectorError> {
+    Ok(VectorCase {
+        name: name.to_string(),
+        frame: WireFrame {
+            transport: TRANSPORT_CONTROL,
+            stream_id: 0,
+            flags: FLAG_DATA,
+            msg_type: MsgType::SystemTelemetry,
+            payload: cbor(&event)?,
+        },
+        event: GuestToHost::Heartbeat(Heartbeat {
+            uptime_ms: event.last_heartbeat_ms,
+        }),
+        expected_verdict: Verdict::Pass,
+        watchdog: Some(WatchdogCase {
+            event,
+            expected_verdict,
+        }),
+        veto: None,
+    })
+}
+
+fn veto_case(name: &str, event: VetoEvent) -> Result<VectorCase, VectorError> {
+    Ok(VectorCase {
+        name: name.to_string(),
+        frame: WireFrame {
+            transport: TRANSPORT_CONTROL,
+            stream_id: 0,
+            flags: FLAG_DATA,
+            msg_type: MsgType::VmLifecycleControl,
+            payload: cbor(&event)?,
+        },
+        event: GuestToHost::Heartbeat(Heartbeat { uptime_ms: 0 }),
+        expected_verdict: Verdict::Pass,
+        watchdog: None,
+        veto: Some(VetoCase { event }),
     })
 }
 
@@ -296,6 +403,8 @@ fn exec_rewrite_case() -> Result<VectorCase, VectorError> {
         },
         event,
         expected_verdict: Verdict::Patch(PatchPayload::ExecveMutation(mutation_cbor)),
+        watchdog: None,
+        veto: None,
     })
 }
 
@@ -312,5 +421,7 @@ fn heartbeat_case() -> Result<VectorCase, VectorError> {
         },
         event,
         expected_verdict: Verdict::Pass,
+        watchdog: None,
+        veto: None,
     })
 }

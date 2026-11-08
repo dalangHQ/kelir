@@ -2,6 +2,8 @@
 
 use std::marker::PhantomData;
 
+use kelir_interface::plugin::HandlerCtx;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HNil;
 
@@ -62,6 +64,25 @@ where
 {
     fn capability(&self) -> &T {
         self.tail.capability()
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+// TODO (L2): interface Has<T> is single-parameter, so implementing it on the accumulator is blocked by E0119/E0207; the indexed hlist search keeps the c.ctx::<T, _>() call infallible and compile-time until interface gains the inferred index parameter.
+pub trait HandlerCtxExt<Plugins, Params> {
+    fn ctx<T, Index>(&self) -> T
+    where
+        Plugins: Has<T, Index>,
+        T: Clone;
+}
+
+impl<Plugins, Params> HandlerCtxExt<Plugins, Params> for HandlerCtx<Plugins, Params> {
+    fn ctx<T, Index>(&self) -> T
+    where
+        Plugins: Has<T, Index>,
+        T: Clone,
+    {
+        self.plugins().capability().clone()
     }
 }
 

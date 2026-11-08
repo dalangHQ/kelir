@@ -235,6 +235,8 @@ pub struct ParityVector {
     pub payload_hex: String,
     pub frame_hex: String,
     pub expected_verdict_kind: String,
+    pub watchdog_verdict: Option<String>,
+    pub veto_event: Option<String>,
 }
 
 impl JsonValue {
@@ -275,6 +277,12 @@ fn encode_hex(bytes: &[u8]) -> String {
 
 // see: cans/02-plugin-model.md#Unified-verdict
 const VERDICT_VARIANTS: &[&str] = &["Pass", "Patch", "Drop", "Suspend", "Abort"];
+
+// see: cans/15-operations.md#Coverage-gates
+const WATCHDOG_VERDICTS: &[&str] = &["Suppress", "Mitigate"];
+
+// see: cans/15-operations.md#Coverage-gates
+const VETO_EVENTS: &[&str] = &["Fork", "Suspend", "ClockSkew"];
 
 fn verdict_kind(value: &JsonValue, index: usize) -> Result<String, String> {
     match value {
@@ -357,6 +365,40 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
         let expected_verdict = item.get("expected_verdict").ok_or(format!(
             "parity: vector {index} declares no `expected_verdict`"
         ))?;
+        let watchdog_verdict = match item.get("watchdog") {
+            None => None,
+            Some(watchdog) => {
+                let verdict = watchdog
+                    .get("expected_verdict")
+                    .and_then(JsonValue::as_text)
+                    .ok_or(format!(
+                        "parity: vector {index} watchdog declares no string `expected_verdict`"
+                    ))?;
+                if !WATCHDOG_VERDICTS.contains(&verdict) {
+                    return Err(format!(
+                        "parity: vector {index} watchdog verdict `{verdict}` is not Suppress or Mitigate"
+                    ));
+                }
+                Some(verdict.to_string())
+            }
+        };
+        let veto_event = match item.get("veto") {
+            None => None,
+            Some(veto) => {
+                let event = veto
+                    .get("event")
+                    .and_then(JsonValue::as_text)
+                    .ok_or(format!(
+                        "parity: vector {index} veto declares no string `event`"
+                    ))?;
+                if !VETO_EVENTS.contains(&event) {
+                    return Err(format!(
+                        "parity: vector {index} veto event `{event}` is not a VetoEvent"
+                    ));
+                }
+                Some(event.to_string())
+            }
+        };
         out.push(ParityVector {
             name: name.to_string(),
             transport,
@@ -366,6 +408,8 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
             payload_hex,
             frame_hex,
             expected_verdict_kind: verdict_kind(expected_verdict, index)?,
+            watchdog_verdict,
+            veto_event,
         });
     }
     Ok(out)
@@ -454,6 +498,26 @@ pub fn assert_vectors(vectors: &[ParityVector]) -> Result<usize, String> {
             return Err("parity: vector with empty name".to_string());
         }
         assert_frame_shape(vector)?;
+    }
+    for verdict in WATCHDOG_VERDICTS {
+        if !vectors
+            .iter()
+            .any(|vector| vector.watchdog_verdict.as_deref() == Some(verdict))
+        {
+            return Err(format!(
+                "parity: watchdog coverage missing WatchdogVerdict::{verdict} in vectors.json chains"
+            ));
+        }
+    }
+    for event in VETO_EVENTS {
+        if !vectors
+            .iter()
+            .any(|vector| vector.veto_event.as_deref() == Some(event))
+        {
+            return Err(format!(
+                "parity: veto coverage missing VetoEvent::{event} in vectors.json chains"
+            ));
+        }
     }
     Ok(vectors.len())
 }

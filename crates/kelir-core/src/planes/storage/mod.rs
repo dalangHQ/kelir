@@ -8,7 +8,7 @@ pub mod reconciler;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 pub struct StorageQuota {
     allocated_bytes: AtomicU64,
@@ -23,6 +23,9 @@ pub struct StoragePlane {
     tombstones: Arc<RwLock<HashSet<PathBuf>>>,
     quota: StorageQuota,
     io: Arc<dyn io::StorageIo>,
+    reconciler: OnceLock<reconciler::Reconciler>,
+    lock_broker: OnceLock<lock_broker::LockBroker>,
+    fuse_worker: OnceLock<Mutex<fuse::FuseWorker>>,
 }
 
 impl StoragePlane {
@@ -43,6 +46,9 @@ impl StoragePlane {
                 max_inodes,
             },
             io: Arc::new(io::UnimplementedStorageIo),
+            reconciler: OnceLock::new(),
+            lock_broker: OnceLock::new(),
+            fuse_worker: OnceLock::new(),
         }
     }
 
@@ -51,25 +57,29 @@ impl StoragePlane {
         self
     }
 
+    // TODO (L3): first construction wins; later calls with different broker_dir/guard return the anchored reconciler.
     pub fn reconciler(
         &self,
         broker_dir: PathBuf,
         guard: reconciler::TraversalGuard,
-    ) -> reconciler::Reconciler {
-        reconciler::Reconciler::new(
-            broker_dir,
-            self.workspace_root.clone(),
-            guard,
-            self.io.clone(),
-        )
+    ) -> &reconciler::Reconciler {
+        self.reconciler.get_or_init(|| {
+            reconciler::Reconciler::new(
+                broker_dir,
+                self.workspace_root.clone(),
+                guard,
+                self.io.clone(),
+                self.tombstones.clone(),
+            )
+        })
     }
 
     pub fn lock_broker(
         &self,
         interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
-    ) -> lock_broker::LockBroker {
-        let _ = self;
-        lock_broker::LockBroker::new(interposer)
+    ) -> &lock_broker::LockBroker {
+        self.lock_broker
+            .get_or_init(|| lock_broker::LockBroker::new(interposer))
     }
 
     pub fn fuse_worker(
@@ -77,9 +87,9 @@ impl StoragePlane {
         receiver: std::sync::mpsc::Receiver<fuse::FuseRequest>,
         interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
         session_id: [u8; 16],
-    ) -> fuse::FuseWorker {
-        let _ = self;
-        fuse::FuseWorker::new(receiver, interposer, session_id)
+    ) -> &Mutex<fuse::FuseWorker> {
+        self.fuse_worker
+            .get_or_init(|| Mutex::new(fuse::FuseWorker::new(receiver, interposer, session_id)))
     }
 
     pub fn reconcile(&self) -> Result<(), kelir_interface::plugin::PluginError> {

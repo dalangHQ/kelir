@@ -2,7 +2,8 @@
 use std::error::Error;
 use std::fmt;
 use std::fs;
-use std::path::Path;
+
+use sha2::Digest;
 
 // see: cans/15-operations.md#Developer-CLI
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +53,7 @@ pub enum FixtureError {
     Parse(String),
     MissingFile(String),
     NoDigestPinned(String),
+    DigestMismatch(String),
     HashUnavailable(String),
 }
 
@@ -62,6 +64,7 @@ impl fmt::Display for FixtureError {
             | FixtureError::Parse(message)
             | FixtureError::MissingFile(message)
             | FixtureError::NoDigestPinned(message)
+            | FixtureError::DigestMismatch(message)
             | FixtureError::HashUnavailable(message) => write!(f, "{message}"),
         }
     }
@@ -136,23 +139,40 @@ pub fn parse_fixtures(text: &str) -> Result<Vec<FixtureEntry>, FixtureError> {
     Ok(entries)
 }
 
-fn verify_entry(entry: &FixtureEntry) -> Result<(), FixtureError> {
-    if !Path::new(&entry.path).exists() {
-        return Err(FixtureError::MissingFile(format!(
-            "fixture {}: file missing at {}",
-            entry.name, entry.path
-        )));
+fn hex_digest(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push_str(&format!("{byte:02x}"));
     }
+    out
+}
+
+fn verify_entry(entry: &FixtureEntry) -> Result<(), FixtureError> {
+    let bytes = fs::read(&entry.path).map_err(|e| {
+        FixtureError::MissingFile(format!(
+            "fixture {}: file missing at {}: {e}",
+            entry.name, entry.path
+        ))
+    })?;
     if entry.blake3.is_none() && entry.sha256.is_none() {
         return Err(FixtureError::NoDigestPinned(format!(
             "fixture {}: pins no blake3 or sha256 digest",
             entry.name
         )));
     }
-    // TODO (L3): compute the file digest and compare it against the pinned value.
-    Err(FixtureError::HashUnavailable(
-        "fixture digest computation (L3): no hash crate is wired into kelir-plugin-cli".to_string(),
-    ))
+    if let Some(expected) = &entry.blake3 {
+        let actual = hex_digest(blake3::hash(&bytes).as_bytes());
+        compare_digest(&entry.name, expected, &actual)
+            .map_err(|mismatch| FixtureError::DigestMismatch(mismatch.to_string()))?;
+    }
+    if let Some(expected) = &entry.sha256 {
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(&bytes);
+        let actual = hex_digest(&hasher.finalize());
+        compare_digest(&entry.name, expected, &actual)
+            .map_err(|mismatch| FixtureError::DigestMismatch(mismatch.to_string()))?;
+    }
+    Ok(())
 }
 
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {

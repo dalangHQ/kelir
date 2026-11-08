@@ -3,10 +3,44 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+use kelir_transport::spsc_ring::OwnedSpscRing;
+
 pub struct BusDispatcher {
     control_transport: kelir_transport::spsc_ring::SpscRingTransport,
     stream_mux_transport: kelir_transport::spsc_ring::SpscRingTransport,
     active_streams: RwLock<HashMap<u32, kelir_interface::protocol::StreamKind>>,
+}
+
+// see: cans/01-architecture.md#Transport-engine-abstraction
+pub struct OwnedBusDispatcher {
+    control_ring: OwnedSpscRing,
+    mux_ring: OwnedSpscRing,
+    dispatcher: BusDispatcher,
+}
+
+impl OwnedBusDispatcher {
+    pub fn new(control_capacity: u32, mux_capacity: u32) -> Self {
+        let mut control_ring = OwnedSpscRing::new(control_capacity);
+        let mut mux_ring = OwnedSpscRing::new(mux_capacity);
+        let dispatcher = BusDispatcher::new(control_ring.transport(), mux_ring.transport());
+        Self {
+            control_ring,
+            mux_ring,
+            dispatcher,
+        }
+    }
+
+    pub fn control_capacity(&self) -> u32 {
+        self.control_ring.capacity()
+    }
+
+    pub fn mux_capacity(&self) -> u32 {
+        self.mux_ring.capacity()
+    }
+
+    pub fn dispatcher(&mut self) -> &mut BusDispatcher {
+        &mut self.dispatcher
+    }
 }
 
 impl BusDispatcher {

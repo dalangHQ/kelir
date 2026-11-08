@@ -15,21 +15,20 @@ pub mod protocol;
 pub mod sandbox;
 pub mod session;
 pub mod telemetry;
-pub mod trap_ctx;
 
 pub use builder::{KelirBuilder, PostExecAction, Sealed, TrapFilter, Unsealed, handler};
-pub use hlist::{HCons, HList, HNil, Has, NoParams};
+pub use hlist::{HCons, HList, HNil, HandlerCtxExt, Has, NoParams};
 pub use kelir_core::planes::checkpoint::{PidLineage, StepSlot};
+pub use kelir_core::planes::storage::reconciler::CommitStats;
 pub use kelir_interface::driver::{SnapshotDescriptor, VmConfig, WatchdogAction};
 pub use kelir_interface::plugin::HandlerCtx;
 pub use kelir_interface::protocol::Verdict;
-pub use planes::storage::{FsReconcileRequest, ReconcileStats, SyntheticFile};
+pub use planes::storage::{FsReconcileRequest, SyntheticFile};
 pub use sandbox::Sandbox;
 pub use session::{
     ClockHandle, ExecResult, FsHandle, Session, SpawnBuilder, StepStack, TerminalHandle, VmHandle,
     VsockChannel, VsockHandle, WireHandle,
 };
-pub use trap_ctx::TrapCtx;
 
 #[cfg(feature = "plugin-chaos")]
 pub use plugin_chaos::ChaosPlugin;

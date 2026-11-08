@@ -122,7 +122,8 @@ impl PyKelirBuilder {
             ));
         }
         let converted = convert_descriptor(descriptor)?;
-        self.trampolines = TrampolineTable::from_descriptor(&converted)?;
+        self.trampolines =
+            TrampolineTable::from_descriptor(&converted).map_err(PyValueError::new_err)?;
         self.fused = Some(converted);
         Ok(())
     }
@@ -178,7 +179,12 @@ impl PyKelirBuilder {
             ));
         }
         // TODO (L3): bind each fused ring chain to its single trampoline entry as one closure and dispatch through the kelir-core pipeline.
-        let session = Session::boot(self.config.clone())
+        let plugins: Vec<kelir_core::PluginRegistration> = self
+            .plugins
+            .iter()
+            .map(|plugin| kelir_core::PluginRegistration::new(plugin.name.clone(), plugin.enabled))
+            .collect();
+        let session = Session::boot_with_plugins(self.config.clone(), &plugins)
             .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
         Ok(PySessionHandle {
             session: Some(Mutex::new(session)),

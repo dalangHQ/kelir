@@ -8,29 +8,9 @@ use async_trait::async_trait;
 use tokio::io::AsyncRead;
 
 use kelir_interface::driver::{
-    BalloonConvergence, SharedMemoryHandle, SnapshotDescriptor, Stream, SuspendReason, VmConfig,
-    VmmDriver, VmmError, WatchdogAction,
+    BalloonConvergence, DriverCapabilities, DriverState, SharedMemoryHandle, SnapshotDescriptor,
+    Stream, SuspendReason, VmConfig, VmmDriver, VmmError, WatchdogAction,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DriverState {
-    Unbooted,
-    Booted,
-    Paused,
-}
-
-// see: cans/01-architecture.md#Boot-budget
-// see: cans/08-lifecycle.md#Rollback
-// see: cans/08-lifecycle.md#CoW-fork
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DriverCapabilities {
-    pub backend: &'static str,
-    pub cold_boot_budget_ms: u64,
-    pub rollback_budget_ms: u64,
-    pub fork_budget_ms: u64,
-    pub requires_hardware_vmm: bool,
-    pub supports_cow_fork: bool,
-}
 
 #[allow(dead_code)]
 pub struct ProotDriver {
@@ -65,12 +45,7 @@ impl ProotDriver {
     }
 
     fn ensure_booted(&self) -> Result<(), VmmError> {
-        match self.state {
-            DriverState::Booted | DriverState::Paused => Ok(()),
-            DriverState::Unbooted => Err(VmmError::InvalidState(
-                "proot driver is not booted (L3)".into(),
-            )),
-        }
+        self.state.ensure_booted("proot")
     }
 
     fn init_tracer(&mut self) -> Result<(), VmmError> {

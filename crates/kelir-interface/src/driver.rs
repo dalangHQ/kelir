@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::AsyncRead;
 
@@ -21,6 +22,37 @@ pub enum VmmError {
 }
 
 pub type DriverError = VmmError;
+
+// see: cans/01-architecture.md#Boot-budget
+// see: cans/08-lifecycle.md#Rollback
+// see: cans/08-lifecycle.md#CoW-fork
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DriverCapabilities {
+    pub backend: &'static str,
+    pub cold_boot_budget_ms: u64,
+    pub rollback_budget_ms: u64,
+    pub fork_budget_ms: u64,
+    pub requires_hardware_vmm: bool,
+    pub supports_cow_fork: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DriverState {
+    Unbooted,
+    Booted,
+    Paused,
+}
+
+impl DriverState {
+    pub fn ensure_booted(&self, backend: &str) -> Result<(), VmmError> {
+        match self {
+            Self::Booted | Self::Paused => Ok(()),
+            Self::Unbooted => Err(VmmError::InvalidState(format!(
+                "{backend} driver is not booted (L3)"
+            ))),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WxPolicy {
@@ -80,20 +112,20 @@ pub struct BalloonConvergence {
     pub converged: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WatchdogAction {
     Reboot,
     Terminate { emit_diagnostic: bool },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WatchdogVerdict {
     ExecuteDefault,
     Suppress,
     Mitigate,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchdogEvent {
     pub timeout_ms: u64,
     pub action: WatchdogAction,

@@ -21,7 +21,7 @@ export interface ChaosConfig extends PluginEnablement {
 }
 
 export function chaos(config: ChaosConfig): KelirPlugin {
-  return { name: "chaos", enabled: config.enabled };
+  return { name: "chaos", enabled: config.enabled, config };
 }
 
 export interface LedgerConfig extends PluginEnablement {
@@ -36,7 +36,7 @@ export interface LedgerConfig extends PluginEnablement {
 }
 
 export function ledger(config: LedgerConfig): KelirPlugin {
-  return { name: "ledger", enabled: config.enabled };
+  return { name: "ledger", enabled: config.enabled, config };
 }
 
 export interface McpConfig extends PluginEnablement {
@@ -48,7 +48,7 @@ export interface McpConfig extends PluginEnablement {
 }
 
 export function mcp(config: McpConfig): KelirPlugin {
-  return { name: "mcp", enabled: config.enabled };
+  return { name: "mcp", enabled: config.enabled, config };
 }
 
 export interface ToolGuardConfig extends PluginEnablement {
@@ -58,7 +58,7 @@ export interface ToolGuardConfig extends PluginEnablement {
 }
 
 export function toolGuard(config: ToolGuardConfig): KelirPlugin {
-  return { name: "tool-guard", enabled: config.enabled };
+  return { name: "tool-guard", enabled: config.enabled, config };
 }
 
 export interface WireIngressConfig extends PluginEnablement {
@@ -69,5 +69,5 @@ export interface WireIngressConfig extends PluginEnablement {
 }
 
 export function wireIngress(config: WireIngressConfig): KelirPlugin {
-  return { name: "wire-ingress", enabled: config.enabled };
+  return { name: "wire-ingress", enabled: config.enabled, config };
 }

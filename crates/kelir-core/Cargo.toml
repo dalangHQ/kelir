@@ -11,6 +11,7 @@ kelir-catalog = { path = "../kelir-catalog" }
 kelir-otlp = { path = "../kelir-otlp" }
 serde = { workspace = true }
 ciborium = { workspace = true }
+async-trait = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 smoltcp = { version = "0.11", default-features = false, features = ["std", "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-udp"] }

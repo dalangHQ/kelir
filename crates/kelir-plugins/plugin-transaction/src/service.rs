@@ -41,11 +41,6 @@ pub trait TransactionService: Send + Sync {
 
 // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
 #[async_trait]
-pub trait LockBrokerCoordination: Send + Sync {
-    async fn release_transaction_locks(&self) -> Result<(), PluginError>;
-}
-
-#[async_trait]
 impl TransactionService for crate::TransactionPlugin {
     async fn begin_scope(
         &mut self,

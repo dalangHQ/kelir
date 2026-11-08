@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use kelir_interface::plugin::LockBrokerCoordination;
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
     KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
@@ -13,9 +14,7 @@ use kelir_interface::plugin::{
 use plugin_db_proxy::SqlProxyService;
 
 pub mod service;
-pub use service::{
-    LockBrokerCoordination, Savepoint, TransactionHandle, TransactionScope, TransactionService,
-};
+pub use service::{Savepoint, TransactionHandle, TransactionScope, TransactionService};
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.transaction.two_phase_commit
 #[derive(Clone, Debug)]

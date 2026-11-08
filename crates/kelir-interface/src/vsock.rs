@@ -38,6 +38,9 @@ pub struct VsockPeer {
     pub spiffe_id: Option<SpiffeId>,
 }
 
+// see: cans/11-protocol.md#Control-channel
+pub const VSOCK_CONTROL_PORT: u32 = 5252;
+
 // see: cans/plugins/mesh.md
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VsockServiceSpec {

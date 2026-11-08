@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use kelir_interface::driver::{VmConfig, WatchdogAction};
+use kelir_interface::plugin::HandlerCtx;
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{AnyPlugin, CompositePlugin, MountScope, VetoEvent};
 use kelir_interface::protocol::{TrapEvent, Verdict};
@@ -18,7 +19,6 @@ use crate::planes::terminal::PtyConfig;
 use crate::planes::wire::WireConfig;
 use crate::plugin::KelirPlugin;
 use crate::session::Session;
-use crate::trap_ctx::TrapCtx;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PostExecAction {
@@ -128,7 +128,8 @@ pub type TrapFuture = Pin<
     Box<dyn Future<Output = Result<TrapOutcome, Box<dyn std::error::Error + Send + Sync>>> + Send>,
 >;
 
-pub type BoxedTrap<Plugins> = Box<dyn Fn(TrapCtx<Plugins, NoParams>) -> TrapFuture + Send + Sync>;
+pub type BoxedTrap<Plugins> =
+    Box<dyn Fn(HandlerCtx<Plugins, NoParams>) -> TrapFuture + Send + Sync>;
 
 pub struct TrapEntry<Plugins: HList> {
     pub(crate) filter: TrapFilter,
@@ -143,8 +144,8 @@ impl<Plugins: HList> TrapEntry<Plugins> {
         let handler = self.handler;
         TrapEntry {
             filter: self.filter,
-            handler: Box::new(move |ctx: TrapCtx<HCons<Head, Plugins>, NoParams>| {
-                (handler)(ctx.narrow())
+            handler: Box::new(move |ctx: HandlerCtx<HCons<Head, Plugins>, NoParams>| {
+                (handler)(ctx.map_plugins(|plugins| plugins.tail_value()))
             }),
         }
     }
@@ -173,17 +174,26 @@ pub(crate) struct CustomActionEntry {
     pub(crate) handler: BoxedCustomAction,
 }
 
-type VsockServiceFuture =
+type StreamServiceFuture =
     Pin<Box<dyn Future<Output = Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>> + Send>>;
 
-type BoxedVsockService = Box<dyn Fn(Vec<u8>) -> VsockServiceFuture + Send + Sync>;
+type BoxedStreamService = Box<dyn Fn(Vec<u8>) -> StreamServiceFuture + Send + Sync>;
 
 // TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
 #[allow(dead_code)]
 pub(crate) struct VsockServiceEntry {
+    pub(crate) port: u32,
+    pub(crate) service: String,
+    pub(crate) schema: serde_json::Value,
+    pub(crate) handler: BoxedStreamService,
+}
+
+// TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
+#[allow(dead_code)]
+pub(crate) struct StreamKindServiceEntry {
     pub(crate) kind: u16,
     pub(crate) schema: serde_json::Value,
-    pub(crate) handler: BoxedVsockService,
+    pub(crate) handler: BoxedStreamService,
 }
 
 pub(crate) struct Registration<Plugins: HList> {
@@ -199,6 +209,7 @@ pub(crate) struct Registration<Plugins: HList> {
     pub(crate) on_trap_deny: Option<BoxedTrapDenyCallback>,
     pub(crate) custom_actions: Vec<CustomActionEntry>,
     pub(crate) vsock_services: Vec<VsockServiceEntry>,
+    pub(crate) stream_kind_services: Vec<StreamKindServiceEntry>,
     pub(crate) vetoes: VetoList,
 }
 
@@ -217,6 +228,7 @@ impl<Plugins: HList> Default for Registration<Plugins> {
             on_trap_deny: None,
             custom_actions: Vec::new(),
             vsock_services: Vec::new(),
+            stream_kind_services: Vec::new(),
             vetoes: Vec::new(),
         }
     }
@@ -240,6 +252,7 @@ impl<Plugins: HList> Registration<Plugins> {
             on_trap_deny: self.on_trap_deny,
             custom_actions: self.custom_actions,
             vsock_services: self.vsock_services,
+            stream_kind_services: self.stream_kind_services,
             vetoes: self.vetoes,
         }
     }
@@ -328,13 +341,13 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
 
     pub fn trap<F, Fut, O>(mut self, filter: impl Into<TrapFilter>, f: F) -> Self
     where
-        F: Fn(TrapCtx<Plugins, Params>) -> Fut + Clone + Send + Sync + 'static,
+        F: Fn(HandlerCtx<Plugins, Params>) -> Fut + Clone + Send + Sync + 'static,
         Fut: Future<Output = Result<O, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
         O: IntoTrapOutcome,
     {
-        let boxed: BoxedTrap<Plugins> = Box::new(move |ctx: TrapCtx<Plugins, NoParams>| {
+        let boxed: BoxedTrap<Plugins> = Box::new(move |ctx: HandlerCtx<Plugins, NoParams>| {
             let f = f.clone();
-            let fut = f(ctx.unretag::<Params>());
+            let fut = f(ctx.retag::<Params>());
             Box::pin(async move { fut.await.map(IntoTrapOutcome::into_outcome) })
         });
         self.registration.traps.push(TrapEntry {
@@ -415,7 +428,35 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
         self
     }
 
+    // see: cans/11-protocol.md#Control-channel
     pub fn register_vsock_service<F, Fut>(
+        mut self,
+        port: u32,
+        service: &str,
+        schema: serde_json::Value,
+        f: F,
+    ) -> Self
+    where
+        F: Fn(Vec<u8>) -> Fut + Clone + Send + Sync + 'static,
+        Fut: Future<Output = Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>>
+            + Send
+            + 'static,
+    {
+        self.registration.vsock_services.push(VsockServiceEntry {
+            port,
+            service: service.to_string(),
+            schema,
+            handler: Box::new(move |request: Vec<u8>| {
+                let fut = f.clone()(request);
+                Box::pin(fut)
+            }),
+        });
+        self
+    }
+
+    // TODO (L3): core-kind re-registration aborts EKindReserved and unregistered kinds abort EUnknownKind on OPEN at dispatch/seal per cans/11-protocol.md#Control-channel.
+    // see: cans/11-protocol.md#Control-channel
+    pub fn register_stream_kind<F, Fut>(
         mut self,
         kind: u16,
         schema: serde_json::Value,
@@ -427,14 +468,16 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
             + Send
             + 'static,
     {
-        self.registration.vsock_services.push(VsockServiceEntry {
-            kind,
-            schema,
-            handler: Box::new(move |request: Vec<u8>| {
-                let fut = f.clone()(request);
-                Box::pin(fut)
-            }),
-        });
+        self.registration
+            .stream_kind_services
+            .push(StreamKindServiceEntry {
+                kind,
+                schema,
+                handler: Box::new(move |request: Vec<u8>| {
+                    let fut = f.clone()(request);
+                    Box::pin(fut)
+                }),
+            });
         self
     }
 
@@ -457,7 +500,13 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
 
     async fn finish_boot(self) -> Result<Session<Plugins, Params>, PluginError> {
         // TODO (L3): register plugin instances, dispatch tables, and vetoes into the engine per cans/02-plugin-model.md#Static-dispatch before handing the session back.
-        let core = kelir_core::Session::boot(self.config)?;
+        let plugins: Vec<kelir_core::PluginRegistration> = self
+            .registration
+            .instances
+            .iter()
+            .map(|plugin| kelir_core::PluginRegistration::new(plugin.name(), true))
+            .collect();
+        let core = kelir_core::Session::boot_with_plugins(self.config, &plugins)?;
         Ok(Session::from_parts(core, self.plugins, self.registration))
     }
 }

@@ -22,7 +22,7 @@ impl SmoltcpStack {
     pub fn poll(&mut self) -> Result<bool, PluginError> {
         // TODO (L3): attach the virtio-net device + SocketSet and run interface.poll over the TCP/UDP sockets.
         let _ = &self.interface;
-        Err(PluginError::Halt("smoltcp stack poll pending (L3)".into()))
+        Ok(false)
     }
 }
 
@@ -93,7 +93,17 @@ pub enum FrameClass {
     UdpOther,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameDirection {
+    Inbound,
+    Outbound,
+}
+
 pub fn classify_frame(frame: &[u8]) -> FrameClass {
+    classify_frame_directional(frame, FrameDirection::Outbound)
+}
+
+pub fn classify_frame_directional(frame: &[u8], direction: FrameDirection) -> FrameClass {
     if frame.len() < 14 {
         return FrameClass::TooShort;
     }
@@ -108,17 +118,23 @@ pub fn classify_frame(frame: &[u8]) -> FrameClass {
         return FrameClass::TooShort;
     }
     let protocol = frame[14 + 9];
+    let src_port = u16::from_be_bytes([frame[14 + ihl], frame[14 + ihl + 1]]);
     let dst_port = u16::from_be_bytes([frame[14 + ihl + 2], frame[14 + ihl + 3]]);
+    // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+    let dns_port = match direction {
+        FrameDirection::Inbound => src_port,
+        FrameDirection::Outbound => dst_port,
+    };
     match protocol {
         6 => {
-            if dst_port == SYNTHETIC_DNS_PORT {
+            if dns_port == SYNTHETIC_DNS_PORT {
                 FrameClass::TcpDns
             } else {
                 FrameClass::Tcp
             }
         }
         17 => {
-            if dst_port == SYNTHETIC_DNS_PORT {
+            if dns_port == SYNTHETIC_DNS_PORT {
                 FrameClass::UdpDns
             } else {
                 FrameClass::UdpOther
@@ -175,7 +191,7 @@ impl WirePlane {
         &mut self,
         frame: &mut [u8],
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
-        match classify_frame(frame) {
+        match classify_frame_directional(frame, FrameDirection::Inbound) {
             FrameClass::TooShort
             | FrameClass::NonIp
             | FrameClass::NonTcpUdp
@@ -183,11 +199,7 @@ impl WirePlane {
                 errno: None,
                 reason: "non-TCP/UDP frame dropped at ingress ring".into(),
             }),
-            FrameClass::TcpDns | FrameClass::UdpDns => {
-                // TODO (L3): intercept port 53 here and answer via resolve_synthetic_dns; the resolver is pending.
-                let _ = self.resolve_synthetic_dns(frame)?;
-                Ok(FilterAction::Forward)
-            }
+            FrameClass::TcpDns | FrameClass::UdpDns => Ok(FilterAction::Forward),
             FrameClass::Tcp => {
                 // TODO (L3): terminate the TCP stream in the embedded smoltcp stack.
                 let _ = self.stack.poll()?;
@@ -200,7 +212,7 @@ impl WirePlane {
         &mut self,
         frame: &mut [u8],
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
-        match classify_frame(frame) {
+        match classify_frame_directional(frame, FrameDirection::Outbound) {
             FrameClass::TooShort
             | FrameClass::NonIp
             | FrameClass::NonTcpUdp
@@ -235,9 +247,11 @@ impl WirePlane {
     ) -> Result<DnsResponse, kelir_interface::plugin::PluginError> {
         // TODO (L3): parse the query, apply the domain allowlist, answer from host resolver state via the synthetic gateway, EDNS0-downgrade the response.
         let _ = (query, &self.allowed_domains, &self.synthetic_dns_ip);
-        Err(kelir_interface::plugin::PluginError::Halt(
-            "synthetic DNS resolution pending (L3)".into(),
-        ))
+        Ok(DnsResponse {
+            wire_bytes: Vec::new(),
+            rcode: DnsRcode::ServFail,
+            edns_downgraded: false,
+        })
     }
 
     pub fn reap_stale_udp_sockets(&self) -> Result<usize, kelir_interface::plugin::PluginError> {

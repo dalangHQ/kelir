@@ -122,7 +122,8 @@ impl NativeKelirBuilder {
             ));
         }
         let descriptor = convert_descriptor(rings)?;
-        self.trampolines = TrampolineTable::from_descriptor(&descriptor)?;
+        self.trampolines =
+            TrampolineTable::from_descriptor(&descriptor).map_err(Error::from_reason)?;
         self.fused = Some(descriptor);
         Ok(())
     }
@@ -182,7 +183,12 @@ impl NativeKelirBuilder {
             ));
         }
         // TODO (L3): bind each fused ring chain to its single trampoline entry as one threadsafe closure and dispatch through the kelir-core pipeline.
-        let session = Session::boot(self.config.clone())
+        let plugins: Vec<kelir_core::PluginRegistration> = self
+            .plugins
+            .iter()
+            .map(|plugin| kelir_core::PluginRegistration::new(plugin.name.clone(), plugin.enabled))
+            .collect();
+        let session = Session::boot_with_plugins(self.config.clone(), &plugins)
             .map_err(|error| Error::from_reason(error.to_string()))?;
         Ok(NativeSessionHandle {
             session: Some(session),

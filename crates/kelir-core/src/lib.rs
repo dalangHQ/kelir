@@ -6,9 +6,11 @@
 pub mod bus;
 pub mod dispatch;
 pub mod planes;
+pub mod plugin_registry;
 pub mod session;
 pub mod trap_gate;
 pub mod uart;
 pub mod vmm;
 
+pub use plugin_registry::{KNOWN_CATALOG_PLUGINS, PluginRegistration};
 pub use session::Session;

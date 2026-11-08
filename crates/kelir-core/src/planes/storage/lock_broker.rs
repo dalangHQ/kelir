@@ -1,6 +1,7 @@
 // see: cans/05-storage-plane.md#Host-inode-lock-broker
-use kelir_interface::plugin::FsInterposer;
+use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
+use kelir_interface::plugin::{FsInterposer, LockBrokerCoordination};
 use kelir_interface::protocol::Verdict;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -140,5 +141,19 @@ impl LockBroker {
             .read()
             .map_err(|_| PluginError::Halt("lock broker state lock poisoned".into()))?;
         Ok(states.get(&guest_inode).copied().unwrap_or(LockState::Free))
+    }
+}
+
+// see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+#[async_trait]
+impl LockBrokerCoordination for LockBroker {
+    async fn release_transaction_locks(&self) -> Result<(), PluginError> {
+        // TODO (L3): release the host fds in the enclave flock delegation; the in-memory states clear here.
+        let mut states = self
+            .states
+            .write()
+            .map_err(|_| PluginError::Halt("lock broker state lock poisoned".into()))?;
+        states.clear();
+        Ok(())
     }
 }

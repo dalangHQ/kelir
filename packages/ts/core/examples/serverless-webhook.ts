@@ -73,7 +73,7 @@ const runtime = kelir({
 
 
     pre: async (c) => {
-      await c.vm.adjust_balloon(512);
+      await c.vm.adjustBalloon(512);
       return c.pass();
     },
     post: async (c) => {
@@ -86,7 +86,7 @@ const runtime = kelir({
   })
 
 
-  .on(LifecycleEvent.VmReady,    async (s) => { await s.vm.adjust_balloon(384); })
+  .on(LifecycleEvent.VmReady,    async (s) => { await s.vm.adjustBalloon(384); })
   .on(LifecycleEvent.VmShutdown, async (s) => { await s.ledger.flush(); });
 
 async function main() {

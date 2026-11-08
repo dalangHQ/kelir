@@ -328,7 +328,7 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
             }
         }),
     )
-    .register_vsock_service(
+    .register_stream_kind(
         0x0013,
         serde_json::json!({ "type": "object", "properties": {} }),
         handler(|request: Vec<u8>| async move { Ok(request) }),

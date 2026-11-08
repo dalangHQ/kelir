@@ -84,7 +84,8 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         return Verdict.pass_()
 
     async def post_migrate(c: HandlerContext) -> PostExecAction:
-        if not any(e.namespace == "net:l7:sql" for e in c.receipt().extensions):
+        receipt = await c.receipt()
+        if not any(e.namespace == "net:l7:sql" for e in receipt.extensions):
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
 

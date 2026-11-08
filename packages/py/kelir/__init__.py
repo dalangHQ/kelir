@@ -157,22 +157,52 @@ class ReceiptExtension:
 
 
 @dataclass
+class PhaseTimings:
+    trap_ingress_ns: int = 0
+    ffi_hop_ns: int = 0
+    policy_ns: int = 0
+    verdict_egress_ns: int = 0
+
+
+@dataclass
+class ExitKind:
+    kind: str = "normal"
+    signal: int | None = None
+    message: str | None = None
+
+
+@dataclass
 class ExecutionReceipt:
+    pid: int = 0
+    binary_path: str = ""
     binary_blake3: str = ""
-    egress_bytes: int = 0
+    exit_kind: ExitKind = field(default_factory=ExitKind)
+    correlation_token: str | None = None
     dirty_bytes: int = 0
+    syscall_count: int | None = None
+    exit_code: int = 0
+    wall_clock_ns: int = 0
+    phase_timings: PhaseTimings | None = None
+    egress_bytes: int = 0
+    egress_dropped_bytes: int = 0
     extensions: list[ReceiptExtension] = field(default_factory=list)
 
-    def __await__(self) -> Any:
-        async def _return_self() -> ExecutionReceipt:
-            return self
 
-        return _return_self().__await__()
+@dataclass
+class GuestClock:
+    absolute_wall_clock_ns: int = 0
+    monotonic_offset_ns: int = 0
+    timezone: str = ""
+    boot_params: str = ""
 
 
 @dataclass
 class SnapshotDescriptor:
-    name: str = ""
+    id: str = ""
+    dirty_bytes: int = 0
+    created_at_ns: int = 0
+    parent_digest: str | None = None
+    guest_clock: GuestClock | None = None
 
 
 @dataclass
@@ -182,7 +212,12 @@ class SpawnResult:
 
 @dataclass
 class CausalDelta:
-    pass
+    memory_diff_bytes: int = 0
+    modified_inodes: list[str] = field(default_factory=list)
+    spawned_pids: list[int] = field(default_factory=list)
+    egress_bytes: int = 0
+    storage_delta_root: bytes = b""
+    receipt_leaf_hash: bytes = b""
 
 
 @dataclass
@@ -342,7 +377,7 @@ class VmHandle:
 
 
 class WireHandle:
-    async def forward_port(self, guest_port: int, host_port: int) -> None:
+    async def forward_port(self, guest_port: int, host_port: int) -> int:
         # TODO (L3): forward guest port to host port via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: wire forward_port (L3)")
 
@@ -356,6 +391,10 @@ class StorageHandle:
     ) -> ReconcileStats:
         # TODO (L3): broker commit of the workspace via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: storage reconcile (L3)")
+
+    async def discard(self) -> None:
+        # TODO (L3): drop the sparse upper file and tombstones via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: storage discard (L3)")
 
 
 class VsockChannel:
@@ -385,6 +424,34 @@ class TerminalHandle:
         # TODO (L3): publish TerminalNotice to the event bus via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: terminal notice (L3)")
 
+    async def resize(self, cols: int, rows: int) -> None:
+        # TODO (L3): resize the guest terminal via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: terminal resize (L3)")
+
+    async def export_screen_matrix(self) -> bytes:
+        # TODO (L3): export the terminal screen matrix via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: terminal export_screen_matrix (L3)")
+
+    async def read_from(self, port: int, offset: int) -> tuple[bytes, int]:
+        # TODO (L3): read terminal replay bytes from port at offset via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: terminal read_from (L3)")
+
+
+class CheckpointHandle:
+    async def create(self, label: str) -> SnapshotDescriptor:
+        # TODO (L3): create a checkpoint snapshot via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: checkpoint create (L3)")
+
+
+class HostHandle:
+    async def lsm_status(self) -> bool:
+        # TODO (L3): read host LSM status via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: host lsm_status (L3)")
+
+    async def pressure_level(self) -> int:
+        # TODO (L3): read host memory-pressure level via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: host pressure_level (L3)")
+
 
 class StepHandle:
     def last(self) -> SnapshotDescriptor:
@@ -403,7 +470,7 @@ class HandlerContext:
         self.step = StepHandle()
         self.cap = Caps()
 
-    def receipt(self) -> ExecutionReceipt:
+    async def receipt(self) -> ExecutionReceipt:
         # TODO (L3): fetch the trap's execution receipt via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: trap receipt (L3)")
 
@@ -422,8 +489,11 @@ class Session:
         self.boot_ms: int = 0
         self.cap = Caps()
         self.vm = VmHandle(self)
-        self.wire = WireHandle()
+        self.terminal = TerminalHandle()
         self.storage = StorageHandle()
+        self.wire = WireHandle()
+        self.checkpoint = CheckpointHandle()
+        self.host = HostHandle()
         self.vsock = VsockHandle()
 
     async def rollback(self) -> None:
@@ -730,11 +800,16 @@ def builder(
 __all__ = [
     "Approval",
     "CausalDelta",
+    "CheckpointHandle",
     "Deadline",
     "ExecutionReceipt",
+    "ExitKind",
     "FilterAction",
+    "GuestClock",
     "HandlerContext",
+    "HostHandle",
     "KelirBuilder",
+    "PhaseTimings",
     "PostExecAction",
     "ReceiptExtension",
     "ReconcileStats",

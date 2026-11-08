@@ -152,8 +152,8 @@ const runtime = kelir({
     pre: async (c) => {
       await c.vm.checkpoint(`pre:${c.trap.pid}`);
       const intent = await oracle.analyzeIntent({
-        binary: c.trap.binary_path,
-        binaryBlake3: c.trap.binary_blake3,
+        binary: c.trap.binaryPath,
+        binaryBlake3: c.trap.binaryBlake3,
         argv: c.trap.argv, lineage: c.trap.ppid,
         cwd: c.trap.cwd,
       });
@@ -164,12 +164,12 @@ const runtime = kelir({
     post: async (c) => {
       const pre = c.step.last();
       const receipt: ExecutionReceipt = await c.receipt();
-      if (receipt.binaryBlake3 !== c.trap.binary_blake3) {
+      if (receipt.binaryBlake3 !== c.trap.binaryBlake3) {
         await c.vm.rollback(pre);
         c.terminal.notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n");
         return PostExecAction.RollbackAndHalt;
       }
-      if (c.trap.binary_path.endsWith("/npm") && receipt.egressBytes > 0 &&
+      if (c.trap.binaryPath.endsWith("/npm") && receipt.egressBytes > 0 &&
           c.trap.cwd.includes("/checkout-service")) {
         await c.vm.rollback(pre);
         c.terminal.notice(`⚡ [KELIR]: hermetic test emitted ${receipt.egressBytes}B — REVERTED\n`);
@@ -187,7 +187,7 @@ const runtime = kelir({
     await c.fs.warmCache(["node_modules", ".next/cache"]);
 
 
-    return c.patch({ binary: c.trap.binary_path, argv: c.trap.argv,
+    return c.patch({ binary: c.trap.binaryPath, argv: c.trap.argv,
                      env: { OTEL_TRACE_ID: oracle.currentTraceId(), CI: "1" } });
   })
   .trap(TrapFilter.binary("git").withArg("push"), async (c) => {

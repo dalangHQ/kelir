@@ -14,7 +14,7 @@ const policyState = {
 
 const policyPlugin = createPlugin("policy-matrix")
   .onTrap(async (event, c) => {
-    const binary = event.binary_path.split("/").pop();
+    const binary = event.binaryPath.split("/").pop();
     switch (binary) {
       case "policy-allow":
         return c.pass();

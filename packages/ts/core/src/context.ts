@@ -20,12 +20,11 @@ export interface VmHandle {
   readonly clock: {
     skew(options: { days?: number; hours?: number; ms?: number }): Promise<void>;
   };
-  adjust_balloon(megabytes: number): Promise<void>;
   adjustBalloon(megabytes: number): Promise<void>;
-  set_vcpus(count: number): Promise<void>;
-  map_shared_region(tag: string, sizeBytes: number): Promise<Uint8Array>;
-  export_snapshot(): Promise<Uint8Array>;
-  import_snapshot(data: Uint8Array): Promise<void>;
+  setVcpus(count: number): Promise<void>;
+  mapSharedRegion(tag: string, sizeBytes: number): Promise<Uint8Array>;
+  exportSnapshot(): Promise<Uint8Array>;
+  importSnapshot(data: Uint8Array): Promise<void>;
 }
 
 export interface LedgerHandle {
@@ -39,7 +38,7 @@ export interface LedgerHandle {
 }
 
 export interface WireHandle {
-  forwardPort(guestPort: number, hostPort: number): Promise<void>;
+  forwardPort(guestPort: number, hostPort: number): Promise<number>;
 }
 
 export interface StorageHandle {
@@ -48,6 +47,7 @@ export interface StorageHandle {
     atomicStaging?: boolean;
     fsync?: boolean;
   }): Promise<{ filesChanged: number; tombstonesResolved: number }>;
+  discard(): Promise<void>;
 }
 
 export interface VsockChannel {
@@ -69,6 +69,21 @@ export interface FsHandle {
 
 export interface TerminalHandle {
   notice(message: string): void;
+  resize(cols: number, rows: number): Promise<void>;
+  exportScreenMatrix(): Promise<Uint8Array>;
+  readFrom(
+    port: number,
+    offset: number,
+  ): Promise<{ bytes: Uint8Array; nextOffset: number }>;
+}
+
+export interface CheckpointHandle {
+  create(label: string): Promise<SnapshotDescriptor>;
+}
+
+export interface HostHandle {
+  lsmStatus(): Promise<boolean>;
+  pressureLevel(): Promise<number>;
 }
 
 export interface PolicyHandle {

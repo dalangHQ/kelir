@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use kelir_interface::plugin::HandlerCtx;
 use kelir_interface::plugin::PluginError;
 
-use crate::TrapCtx;
 use crate::hlist::{HCons, HList, HNil, NoParams};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,7 +78,7 @@ pub struct MaskRule {
 // see: cans/02-plugin-model.md#Shape-of-the-surface
 // see: cans/05-storage-plane.md#Interception-pipeline
 pub type SnoopHandler<Plugins = HNil, Params = NoParams> = Arc<
-    dyn Fn(PathBuf, Vec<u8>, TrapCtx<Plugins, Params>) -> Result<(), PluginError> + Send + Sync,
+    dyn Fn(PathBuf, Vec<u8>, HandlerCtx<Plugins, Params>) -> Result<(), PluginError> + Send + Sync,
 >;
 
 #[derive(Clone)]
@@ -128,8 +128,8 @@ where
     Params: 'static,
 {
     Arc::new(
-        move |path: PathBuf, raw: Vec<u8>, c: TrapCtx<Plugins, NoParams>| {
-            inner(path, raw, c.unretag::<Params>())
+        move |path: PathBuf, raw: Vec<u8>, c: HandlerCtx<Plugins, NoParams>| {
+            inner(path, raw, c.retag::<Params>())
         },
     )
 }
@@ -142,8 +142,8 @@ where
     Head: Clone + Send + Sync + 'static,
 {
     Arc::new(
-        move |path: PathBuf, raw: Vec<u8>, c: TrapCtx<HCons<Head, Plugins>, NoParams>| {
-            inner(path, raw, c.narrow())
+        move |path: PathBuf, raw: Vec<u8>, c: HandlerCtx<HCons<Head, Plugins>, NoParams>| {
+            inner(path, raw, c.map_plugins(|plugins| plugins.tail_value()))
         },
     )
 }
@@ -217,12 +217,6 @@ pub struct FsReconcileRequest {
     pub cwd: String,
     pub atomic_staging: bool,
     pub fsync: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ReconcileStats {
-    pub files_changed: usize,
-    pub tombstones_resolved: usize,
 }
 
 #[derive(Debug, Clone)]

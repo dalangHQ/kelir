@@ -7,6 +7,7 @@ use kelir_interface::plugin::MountScope;
 use kelir_interface::protocol::{TrapEvent, Verdict};
 
 const ENTROPY_SKIP_THRESHOLD_BITS: f64 = 4.0;
+const ENTROPY_DENY_THRESHOLD_BITS: f64 = 7.0;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum GateError {
@@ -14,8 +15,6 @@ pub enum GateError {
     BpfLoadPending,
     #[error("gate-1 BPF program match pending (L3)")]
     BpfMatchPending,
-    #[error("argv entropy computation pending (L3)")]
-    EntropyPending,
 }
 
 pub struct BpfProgram {
@@ -69,6 +68,12 @@ impl TrapGateEvaluator {
         if self.should_skip_gate_3(&event.binary_path, &event.argv) {
             return GateDecision::Allow;
         }
+        if self.should_deny_gate_3(&event.binary_path, &event.argv) {
+            return GateDecision::Deny(Verdict::Drop {
+                errno: None,
+                reason: "high-entropy argv from untrusted binary".into(),
+            });
+        }
         if let Some(program) = &self.bpf_program {
             // TODO (L3): gate-1 BPF match decides Allow here; no program is loaded until L3.
             if matches!(program.matches(event), Ok(true)) {
@@ -107,10 +112,41 @@ impl TrapGateEvaluator {
         )
     }
 
+    pub fn should_deny_gate_3(&self, binary_path: &str, argv: &[String]) -> bool {
+        if self
+            .trusted_prefixes
+            .iter()
+            .any(|prefix| binary_path.starts_with(prefix.as_str()))
+        {
+            return false;
+        }
+        // TODO (L3): deny threshold is policy; confirm against cans/02#Latency-ceiling.
+        matches!(
+            self.compute_shannon_entropy(argv),
+            Ok(entropy) if entropy >= ENTROPY_DENY_THRESHOLD_BITS
+        )
+    }
+
     pub fn compute_shannon_entropy(&self, argv: &[String]) -> Result<f64, GateError> {
-        // TODO (L3): Shannon entropy over the concatenated argv bytes.
-        let _ = argv;
-        Err(GateError::EntropyPending)
+        let mut counts = [0u64; 256];
+        let mut total = 0u64;
+        for arg in argv {
+            for byte in arg.as_bytes() {
+                counts[*byte as usize] += 1;
+                total += 1;
+            }
+        }
+        if total == 0 {
+            return Ok(0.0);
+        }
+        let mut entropy = 0.0;
+        for count in counts {
+            if count > 0 {
+                let p = count as f64 / total as f64;
+                entropy -= p * p.log2();
+            }
+        }
+        Ok(entropy)
     }
 
     fn gate_2_scope_match(&self, event: &TrapEvent, scope: &MountScope) -> bool {
@@ -133,8 +169,3 @@ impl TrapGateEvaluator {
         true
     }
 }
-
-// TODO (L3): dispatch.rs wiring: add a `gate: TrapGateEvaluator` field to PipelineEngine in crates/kelir-core/src/dispatch.rs.
-// TODO (L3): dispatch.rs wiring: TrapInterposer carries no mount_scope (only ForeignPluginBridge does), so pair each trap interceptor with its MountScope at registration, e.g. a parallel `trap_scopes: Vec<MountScope>`.
-// TODO (L3): dispatch.rs wiring: inside dispatch_trap, per interceptor before on_trap, call `self.gate.evaluate(event, &self.trap_scopes[i])`.
-// TODO (L3): dispatch.rs wiring: GateDecision::Allow skips that interceptor, Deny(v) returns Ok(v), FallThrough calls on_trap.

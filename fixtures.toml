@@ -1,2 +1,7 @@
 # see: cans/15-operations.md#Developer-CLI
 [fixtures]
+
+[fixtures.smoke]
+path = "fixtures/smoke.txt"
+blake3 = "67fea43ea5a77cf6dad44117a30c36a08296ac8f037be1473282bed1d6d6bb11"
+sha256 = "06169d4840bff1037955141ba3e359cb9439a87a8d9222c1c9678b5eb2810755"

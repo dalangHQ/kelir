@@ -21,6 +21,7 @@ import type {
 export interface KelirPlugin {
   readonly name: string;
   readonly enabled?: boolean;
+  readonly config?: unknown;
 }
 
 export interface CreatePluginOptions {

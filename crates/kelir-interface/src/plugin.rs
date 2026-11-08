@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::service_registry::ServiceRegistry;
@@ -15,7 +16,9 @@ use crate::driver::{
     BalloonConvergence, ClockStepControl, EntropyBackendControl, WatchdogAction, WatchdogEvent,
     WatchdogVerdict,
 };
-pub use crate::handlers::{HandlerCtx, Has};
+pub use crate::handlers::{
+    ConsoleContext, ExecContext, FsContext, HandlerCtx, Has, HostContext, NetContext,
+};
 use crate::protocol::{FilterAction, ProcessExit, StreamDirection, StreamKind, TrapEvent, Verdict};
 
 // see: cans/artifacts/code/plugin-trait.rs
@@ -140,7 +143,7 @@ impl MountScope {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VetoEvent {
     Fork,
     Suspend,
@@ -181,6 +184,12 @@ pub trait FuseDrainControl: Send + Sync {
 pub trait CowBrokerControl: Send + Sync {
     async fn commit_upper(&self) -> Result<(), PluginError>;
     async fn discard_upper(&self) -> Result<(), PluginError>;
+}
+
+// see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+#[async_trait]
+pub trait LockBrokerCoordination: Send + Sync {
+    async fn release_transaction_locks(&self) -> Result<(), PluginError>;
 }
 
 // TODO (L3): borrow &mut dyn VmmDriver + &VmConfig per cans/artifacts/code/plugin-trait.rs; owned store is the L2 stand-in.

@@ -13,8 +13,8 @@ use kelir_interface::plugin::HandlerCtx as IfaceHandlerCtx;
 use tokio::sync::Mutex;
 
 use kelir::{
-    HCons, HNil, KelirBuilder, NoParams, PidLineage, PostExecAction, SnapshotDescriptor, TrapCtx,
-    TrapFilter, Unsealed, Verdict, VmConfig,
+    HCons, HNil, HandlerCtx, HandlerCtxExt, KelirBuilder, NoParams, PidLineage, PostExecAction,
+    SnapshotDescriptor, TrapFilter, Unsealed, Verdict, VmConfig,
     driver::{DriverPolicy, WxPolicy},
     handler,
     planes::{
@@ -215,7 +215,7 @@ async fn build_runtime(
 
     // see: cans/02-plugin-model.md#Shape-of-the-surface
     let snoop_oracle = Arc::clone(&oracle);
-    let snoop: SnoopHandler = Arc::new(move |path: PathBuf, raw: Vec<u8>, _c: TrapCtx<_, _>| {
+    let snoop: SnoopHandler = Arc::new(move |path: PathBuf, raw: Vec<u8>, _c: HandlerCtx<_, _>| {
         let evt: serde_json::Value = serde_json::from_slice(&raw)
             .map_err(|e| PluginError::Halt(format!("session is not JSON: {e}")))?;
         if evt
@@ -399,7 +399,7 @@ async fn build_runtime(
 
         .trap("*", handler({
             let oracle = Arc::clone(&oracle);
-            move |c: TrapCtx<_, _>| {
+            move |c: HandlerCtx<_, _>| {
                 let oracle = Arc::clone(&oracle);
                 async move {
 
@@ -423,7 +423,7 @@ async fn build_runtime(
         }))
 
 
-        .trap(TrapFilter::binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), handler(|c: TrapCtx<_, _>| async move {
+        .trap(TrapFilter::binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), handler(|c: HandlerCtx<_, _>| async move {
             c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
 
 
@@ -436,7 +436,7 @@ async fn build_runtime(
         }))
 
 
-        .trap(TrapFilter::binary("git").with_arg("push"), handler(|c: TrapCtx<_, _>| async move {
+        .trap(TrapFilter::binary("git").with_arg("push"), handler(|c: HandlerCtx<_, _>| async move {
             if c.trap.argv.iter().any(|a| a == "--force") {
 
                 let argv: Vec<String> = c.trap.argv.iter()
@@ -454,7 +454,7 @@ async fn build_runtime(
 
         .trap("*", handler({
             let oracle = Arc::clone(&oracle);
-            move |c: TrapCtx<_, _>| {
+            move |c: HandlerCtx<_, _>| {
                 let oracle = Arc::clone(&oracle);
                 async move {
                     let pre: SnapshotDescriptor = c.step.last().ok_or_else(|| {
@@ -504,10 +504,10 @@ async fn build_runtime(
 
 
         .trap(TrapFilter::binary("git").with_arg("commit").with_arg("-m"), handler({
-            move |c: TrapCtx<_, _>| async move {
+            move |c: HandlerCtx<_, _>| async move {
 
 
-                let policy = c.ctx::<RepoPolicyHandle, _>();
+                let policy = HandlerCtxExt::ctx::<RepoPolicyHandle, _>(&c);
                 let n = policy.violations().await;
                 if n > 0 {
                     return Ok(Verdict::Drop {
@@ -520,7 +520,7 @@ async fn build_runtime(
         }))
 
 
-        .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: TrapCtx<_, _>| async move {
+        .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: HandlerCtx<_, _>| async move {
             let receipt = c.receipt().await?;
 
             if receipt.dirty_bytes == 0 {

@@ -1,9 +1,10 @@
 // see: cans/05-storage-plane.md#Workspace-commit
 // see: cans/artifacts/code/reconciler.rs
 use super::io::StorageIo;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TraversalGuard {
@@ -37,6 +38,7 @@ pub struct Reconciler {
     host_target: PathBuf,
     guard: TraversalGuard,
     io: Arc<dyn StorageIo>,
+    tombstones: Arc<RwLock<HashSet<PathBuf>>>,
 }
 
 impl Reconciler {
@@ -45,18 +47,25 @@ impl Reconciler {
         host_target: PathBuf,
         guard: TraversalGuard,
         io: Arc<dyn StorageIo>,
+        tombstones: Arc<RwLock<HashSet<PathBuf>>>,
     ) -> Self {
         Self {
             broker_dir,
             host_target,
             guard,
             io,
+            tombstones,
         }
     }
 
     pub fn detect(&self) -> Result<Vec<PathBuf>, kelir_interface::plugin::PluginError> {
         // TODO (L3): scan broker upper + tombstones for changed entries.
-        let _ = (&self.broker_dir, &self.host_target, self.guard);
+        let _ = (
+            &self.broker_dir,
+            &self.host_target,
+            self.guard,
+            &self.tombstones,
+        );
         Err(kelir_interface::plugin::PluginError::Halt(
             "TODO: Reconciler::detect".into(),
         ))
@@ -66,7 +75,12 @@ impl Reconciler {
         &self,
     ) -> Result<Vec<PathBuf>, kelir_interface::plugin::PluginError> {
         // TODO (L3): classify tombstone entries to unlink targets.
-        let _ = (&self.broker_dir, &self.host_target, self.guard);
+        let _ = (
+            &self.broker_dir,
+            &self.host_target,
+            self.guard,
+            &self.tombstones,
+        );
         Err(kelir_interface::plugin::PluginError::Halt(
             "TODO: Reconciler::classify_tombstones".into(),
         ))

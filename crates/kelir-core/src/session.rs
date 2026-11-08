@@ -6,20 +6,34 @@ pub struct Session {
     pub wire: crate::planes::wire::WirePlane,
     pub checkpoint: crate::planes::checkpoint::CheckpointPlane,
     pub host: crate::planes::host::HostPlane,
+    uart: crate::uart::UartRingBuffer,
     driver: Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>,
     bus: crate::bus::BusDispatcher,
     incarnation_id: [u8; 16],
+    plugins: Vec<crate::plugin_registry::PluginRegistration>,
 }
 
 impl Session {
     pub fn boot(
         config: kelir_interface::driver::VmConfig,
     ) -> Result<Self, kelir_interface::plugin::PluginError> {
+        Self::boot_with_plugins(config, &[])
+    }
+
+    pub fn boot_with_plugins(
+        config: kelir_interface::driver::VmConfig,
+        plugins: &[crate::plugin_registry::PluginRegistration],
+    ) -> Result<Self, kelir_interface::plugin::PluginError> {
+        let _ = crate::plugin_registry::resolve_plugin_registrations(plugins)?;
         // TODO (L3): load native driver, connect the control and mux SPSC rings, build planes, mint incarnation_id.
         let _ = config;
         Err(kelir_interface::plugin::PluginError::Halt(
             "TODO (L3): Session::boot".into(),
         ))
+    }
+
+    pub fn plugins(&self) -> &[crate::plugin_registry::PluginRegistration] {
+        &self.plugins
     }
 
     // TODO (L2): from_parts is superseded once boot() binds real drivers and rings.
@@ -33,6 +47,7 @@ impl Session {
         driver: Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>,
         bus: crate::bus::BusDispatcher,
         incarnation_id: [u8; 16],
+        plugins: Vec<crate::plugin_registry::PluginRegistration>,
     ) -> Self {
         Self {
             terminal,
@@ -40,10 +55,28 @@ impl Session {
             wire,
             checkpoint,
             host,
+            uart: crate::uart::UartRingBuffer::new(),
             driver,
             bus,
             incarnation_id,
+            plugins,
         }
+    }
+
+    pub fn uart_ring(&self) -> &crate::uart::UartRingBuffer {
+        &self.uart
+    }
+
+    pub fn record_early_boot_output(
+        &mut self,
+        bytes: &[u8],
+    ) -> Option<kelir_interface::protocol::ExitReason> {
+        self.uart.write(bytes);
+        self.uart.decode_exit_reason()
+    }
+
+    pub fn early_boot_exit(&self) -> Option<kelir_interface::protocol::ExitReason> {
+        self.uart.decode_exit_reason()
     }
 
     pub fn fork(&self) -> Result<Self, kelir_interface::plugin::PluginError> {

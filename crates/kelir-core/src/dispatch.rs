@@ -125,7 +125,7 @@ impl PipelineEngine {
     pub async fn dispatch_trap(
         &self,
         event: &TrapEvent,
-        ctx: &HandlerCtx<'_>,
+        ctx: &HandlerCtx,
     ) -> Result<Verdict, PluginError> {
         // TODO (L3): panic quarantine across await needs an executor-level catch_unwind; a panicking async hook unwinds to the caller.
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
@@ -147,7 +147,7 @@ impl PipelineEngine {
     pub async fn dispatch_process_exit(
         &self,
         event: &ProcessExit,
-        ctx: &HandlerCtx<'_>,
+        ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
         for interceptor in &self.trap_interceptors {
             interceptor.on_process_exit(event, ctx).await?;

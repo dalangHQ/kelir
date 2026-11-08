@@ -43,6 +43,12 @@ impl StreamKind {
 }
 
 // see: cans/11-protocol.md#Control-channel
+pub const CHANNEL_CONTROL: u16 = 0x0000;
+
+// see: cans/11-protocol.md#Control-channel
+pub const CHANNEL_STREAM_MUX: u16 = 0x0001;
+
+// see: cans/11-protocol.md#Control-channel
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StreamDirection {
     GuestToHost,
@@ -167,7 +173,7 @@ pub struct SyscallTrap {
 
 // TODO (L3): wire SyscallTrap into TrapEvent; TrapEvent currently carries TrappedSyscall instead.
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TrapEvent {
     pub seq: u64,
     pub pid: u32,

@@ -2,23 +2,55 @@
 
 import type {
   CausalDelta,
+  NativeCausalDeltaRecord,
+  NativeSnapshotRecord,
   SnapshotDescriptor,
   SpawnOptions,
   SpawnResult,
 } from "./types.js";
+import {
+  fromNativeCausalDelta,
+  fromNativeSnapshotDescriptor,
+} from "./types.js";
 import type {
+  CheckpointHandle,
+  HostHandle,
   LedgerHandle,
   PolicyHandle,
   StepHandle,
   StorageHandle,
+  TerminalHandle,
   VmHandle,
   VsockHandle,
   WireHandle,
 } from "./context.js";
+import { EConfig } from "./errors.js";
+
+// see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
+export interface NativeTerminalHandle {
+  notice(message: string): void;
+  resize(cols: number, rows: number): Promise<void>;
+  exportScreenMatrix(): Promise<Uint8Array>;
+  readFrom(
+    port: number,
+    offset: number,
+  ): Promise<{ bytes: Uint8Array; nextOffset: number }>;
+}
+
+// see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
+export interface NativeCheckpointHandle {
+  create(label: string): Promise<NativeSnapshotRecord>;
+}
+
+// see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
+export interface NativeHostHandle {
+  lsmStatus(): Promise<boolean>;
+  pressureLevel(): Promise<number>;
+}
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 export interface NativeVmHandle {
-  checkpoint(name: string): Promise<SnapshotDescriptor>;
+  checkpoint(name: string): Promise<NativeSnapshotRecord>;
   rollback(snapshot: SnapshotDescriptor): Promise<void>;
   fork(): Promise<NativeSessionHandle>;
   suspend(path: string): Promise<void>;
@@ -30,12 +62,11 @@ export interface NativeVmHandle {
       ms?: number;
     }): Promise<void>;
   };
-  adjust_balloon(megabytes: number): Promise<void>;
   adjustBalloon(megabytes: number): Promise<void>;
-  set_vcpus(count: number): Promise<void>;
-  map_shared_region(tag: string, sizeBytes: number): Promise<Uint8Array>;
-  export_snapshot(): Promise<Uint8Array>;
-  import_snapshot(data: Uint8Array): Promise<void>;
+  setVcpus(count: number): Promise<void>;
+  mapSharedRegion(tag: string, sizeBytes: number): Promise<Uint8Array>;
+  exportSnapshot(): Promise<Uint8Array>;
+  importSnapshot(data: Uint8Array): Promise<void>;
 }
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
@@ -43,8 +74,11 @@ export interface NativeSessionHandle {
   readonly driverName: string;
   readonly bootMs: number;
   readonly vm: NativeVmHandle;
-  readonly wire: WireHandle;
+  readonly terminal?: NativeTerminalHandle;
   readonly storage: StorageHandle;
+  readonly wire: WireHandle;
+  readonly checkpoint?: NativeCheckpointHandle;
+  readonly host?: NativeHostHandle;
   readonly ledger: LedgerHandle;
   readonly vsock: VsockHandle;
   readonly step: StepHandle;
@@ -65,7 +99,7 @@ export interface NativeSessionHandle {
   stop(): Promise<void>;
   terminate(): Promise<void>;
   console(): Promise<void>;
-  getCausalDeltaFromParent(): Promise<CausalDelta>;
+  getCausalDeltaFromParent(): Promise<NativeCausalDeltaRecord>;
   handleIngress<Req, Resp>(options: {
     cwd?: string;
     handler: (req: Req) => Promise<Resp>;
@@ -73,13 +107,52 @@ export interface NativeSessionHandle {
   ctx<T>(): T;
 }
 
+function missingPlaneError(plane: string): EConfig {
+  return new EConfig(
+    `kelir native bridge is missing the ${plane} plane (L3)`,
+  );
+}
+
+function fallbackTerminal(): TerminalHandle {
+  return {
+    notice: (): void => {
+      throw missingPlaneError("terminal");
+    },
+    resize: (): Promise<void> =>
+      Promise.reject(missingPlaneError("terminal")),
+    exportScreenMatrix: (): Promise<Uint8Array> =>
+      Promise.reject(missingPlaneError("terminal")),
+    readFrom: (): Promise<{ bytes: Uint8Array; nextOffset: number }> =>
+      Promise.reject(missingPlaneError("terminal")),
+  };
+}
+
+function fallbackCheckpoint(): CheckpointHandle {
+  return {
+    create: (): Promise<SnapshotDescriptor> =>
+      Promise.reject(missingPlaneError("checkpoint")),
+  };
+}
+
+function fallbackHost(): HostHandle {
+  return {
+    lsmStatus: (): Promise<boolean> =>
+      Promise.reject(missingPlaneError("host")),
+    pressureLevel: (): Promise<number> =>
+      Promise.reject(missingPlaneError("host")),
+  };
+}
+
 export class Session {
   // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
   readonly driverName: string;
   readonly bootMs: number;
   readonly vm: VmHandle;
-  readonly wire: WireHandle;
+  readonly terminal: TerminalHandle;
   readonly storage: StorageHandle;
+  readonly wire: WireHandle;
+  readonly checkpoint: CheckpointHandle;
+  readonly host: HostHandle;
   readonly ledger: LedgerHandle;
   readonly vsock: VsockHandle;
   readonly step: StepHandle;
@@ -91,16 +164,27 @@ export class Session {
     this.native = native;
     this.driverName = native.driverName;
     this.bootMs = native.bootMs;
-    this.wire = native.wire;
+    this.terminal = native.terminal ?? fallbackTerminal();
     this.storage = native.storage;
+    this.wire = native.wire;
+    const nativeCheckpoint = native.checkpoint;
+    this.checkpoint = nativeCheckpoint
+      ? {
+          create: async (label: string): Promise<SnapshotDescriptor> =>
+            fromNativeSnapshotDescriptor(
+              await nativeCheckpoint.create(label),
+            ),
+        }
+      : fallbackCheckpoint();
+    this.host = native.host ?? fallbackHost();
     this.ledger = native.ledger;
     this.vsock = native.vsock;
     this.step = native.step;
     this.policy = native.policy;
     const vm = native.vm;
     this.vm = {
-      checkpoint: (name: string): Promise<SnapshotDescriptor> =>
-        vm.checkpoint(name),
+      checkpoint: async (name: string): Promise<SnapshotDescriptor> =>
+        fromNativeSnapshotDescriptor(await vm.checkpoint(name)),
       rollback: (snapshot: SnapshotDescriptor): Promise<void> =>
         vm.rollback(snapshot),
       fork: async (): Promise<Session> => new Session(await vm.fork()),
@@ -113,18 +197,16 @@ export class Session {
           ms?: number;
         }): Promise<void> => vm.clock.skew(options),
       },
-      adjust_balloon: (megabytes: number): Promise<void> =>
-        vm.adjust_balloon(megabytes),
       adjustBalloon: (megabytes: number): Promise<void> =>
         vm.adjustBalloon(megabytes),
-      set_vcpus: (count: number): Promise<void> => vm.set_vcpus(count),
-      map_shared_region: (
+      setVcpus: (count: number): Promise<void> => vm.setVcpus(count),
+      mapSharedRegion: (
         tag: string,
         sizeBytes: number,
-      ): Promise<Uint8Array> => vm.map_shared_region(tag, sizeBytes),
-      export_snapshot: (): Promise<Uint8Array> => vm.export_snapshot(),
-      import_snapshot: (data: Uint8Array): Promise<void> =>
-        vm.import_snapshot(data),
+      ): Promise<Uint8Array> => vm.mapSharedRegion(tag, sizeBytes),
+      exportSnapshot: (): Promise<Uint8Array> => vm.exportSnapshot(),
+      importSnapshot: (data: Uint8Array): Promise<void> =>
+        vm.importSnapshot(data),
     };
   }
 
@@ -169,7 +251,9 @@ export class Session {
   }
 
   async getCausalDeltaFromParent(): Promise<CausalDelta> {
-    return this.native.getCausalDeltaFromParent();
+    return fromNativeCausalDelta(
+      await this.native.getCausalDeltaFromParent(),
+    );
   }
 
   async *handleIngress<Req, Resp>(options: {

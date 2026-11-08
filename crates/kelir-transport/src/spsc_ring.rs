@@ -71,6 +71,39 @@ impl SpscRingTransport {
     }
 }
 
+// see: cans/01-architecture.md#Transport-engine-abstraction
+pub struct OwnedSpscRing {
+    header: Box<RingHeader>,
+    buffer: Box<[u8]>,
+    capacity: u32,
+}
+
+impl OwnedSpscRing {
+    pub fn new(capacity: u32) -> Self {
+        Self {
+            header: Box::new(RingHeader {
+                head: AtomicU32::new(0),
+                tail: AtomicU32::new(0),
+                capacity,
+            }),
+            buffer: vec![0u8; capacity as usize].into_boxed_slice(),
+            capacity,
+        }
+    }
+
+    pub fn capacity(&self) -> u32 {
+        self.capacity
+    }
+
+    pub fn transport(&mut self) -> SpscRingTransport {
+        SpscRingTransport::new(
+            self.header.as_mut() as *mut RingHeader,
+            self.buffer.as_mut_ptr(),
+            self.capacity,
+        )
+    }
+}
+
 impl Transport for SpscRingTransport {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let _ = (buf, &self.state);
