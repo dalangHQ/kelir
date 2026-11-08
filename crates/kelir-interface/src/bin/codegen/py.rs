@@ -22,10 +22,25 @@ const PROTOCOL_PY_SEE: &str = "# see: cans/11-protocol.md#Wire-framing
 // see: cans/03-sdk-architecture.md#Python-SDK
 fn py_type(ty: &Ty) -> String {
     match ty {
-        Ty::U8 | Ty::U16 | Ty::U32 | Ty::U64 | Ty::I32 => "int".to_string(),
+        Ty::U8
+        | Ty::U16
+        | Ty::U32
+        | Ty::U64
+        | Ty::U128
+        | Ty::Usize
+        | Ty::I8
+        | Ty::I16
+        | Ty::I32
+        | Ty::I64
+        | Ty::Isize => "int".to_string(),
+        Ty::F32 | Ty::F64 => "float".to_string(),
         Ty::Str | Ty::PathBuf => "str".to_string(),
         Ty::Bool => "bool".to_string(),
         Ty::Option(inner) => format!("{} | None", py_type(inner)),
+        Ty::Tuple(items) => format!(
+            "tuple[{}]",
+            items.iter().map(py_type).collect::<Vec<_>>().join(", ")
+        ),
         Ty::VecOf(inner) => match &**inner {
             Ty::U8 => "bytes".to_string(),
             Ty::Str | Ty::PathBuf => "list[str]".to_string(),
@@ -41,10 +56,22 @@ fn py_type(ty: &Ty) -> String {
 // see: cans/03-sdk-architecture.md#Python-SDK
 fn py_default(ty: &Ty) -> String {
     match ty {
-        Ty::U8 | Ty::U16 | Ty::U32 | Ty::U64 | Ty::I32 => "0".to_string(),
+        Ty::U8
+        | Ty::U16
+        | Ty::U32
+        | Ty::U64
+        | Ty::U128
+        | Ty::Usize
+        | Ty::I8
+        | Ty::I16
+        | Ty::I32
+        | Ty::I64
+        | Ty::Isize => "0".to_string(),
+        Ty::F32 | Ty::F64 => "0.0".to_string(),
         Ty::Str | Ty::ByteArray(_) | Ty::PathBuf => "\"\"".to_string(),
         Ty::Bool => "False".to_string(),
         Ty::Option(_) => "None".to_string(),
+        Ty::Tuple(_) => "()".to_string(),
         Ty::VecOf(inner) => {
             if matches!(**inner, Ty::U8) {
                 "b\"\"".to_string()
@@ -143,14 +170,23 @@ pub fn emit_protocol() -> String {
 
 const PARITY_PY_SEE: &str = "# see: cans/15-operations.md#Multi-language-parity-gate
 ";
+const FUSION_PY_SEE: &str = "# see: cans/02-plugin-model.md#Segregated-ring-traits
+# see: cans/02-plugin-model.md#Foreign-plugin-proxy
+";
 
 // see: cans/15-operations.md#Multi-language-parity-gate
 pub fn emit_package_init(order: &[&str]) -> String {
-    let mut out = String::from(PARITY_PY_SEE);
-    out.push_str(
-        "from kelir._generated.protocol import Channel, ExecStream, MsgType, StreamKind\n",
-    );
-    out.push_str("from kelir._generated.telemetry import (\n");
+    let mut out = String::from(FUSION_PY_SEE);
+    out.push_str(PARITY_PY_SEE);
+    out.push_str("from kelir.generated.fusion_tables import (\n");
+    out.push_str("    HOOK_RINGS,\n");
+    out.push_str("    LIFECYCLE_TAGS,\n");
+    out.push_str("    HookStage,\n");
+    out.push_str("    LifecycleTag,\n");
+    out.push_str("    RingEvent,\n");
+    out.push_str(")\n");
+    out.push_str("from kelir.generated.protocol import Channel, ExecStream, MsgType, StreamKind\n");
+    out.push_str("from kelir.generated.telemetry import (\n");
     for name in order {
         let _ = writeln!(out, "    {},", py_sdk_name(name));
     }

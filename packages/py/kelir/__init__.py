@@ -9,8 +9,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
 
-from kelir._generated.protocol import Channel, ExecStream, MsgType, StreamKind
-from kelir._generated.telemetry import (
+from kelir.generated.protocol import Channel, ExecStream, MsgType, StreamKind
+from kelir.generated.telemetry import (
     CausalDelta as CausalDelta,
     ExecutionReceipt as ExecutionReceipt,
     ExitKind as ExitKind,

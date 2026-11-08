@@ -107,7 +107,16 @@ fn hash_stmts(
             needs.u64 = true;
             Ok(vec![format!("{pad}hash_u64(&mut hasher, *{field});")])
         }
-        Ty::I32 => Ok(vec![format!("{pad}hasher.update(&{field}.to_le_bytes());")]),
+        Ty::I32
+        | Ty::U128
+        | Ty::Usize
+        | Ty::Isize
+        | Ty::I8
+        | Ty::I16
+        | Ty::I64
+        | Ty::F32
+        | Ty::F64 => Ok(vec![format!("{pad}hasher.update(&{field}.to_le_bytes());")]),
+        Ty::Tuple(_) => Err(format!("{field}: tuple fields have no merkle hash rule")),
         Ty::Str => {
             needs.str = true;
             Ok(vec![format!("{pad}hash_str(&mut hasher, {field});")])

@@ -11,7 +11,8 @@ ciborium = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
-syn = { version = "2", features = ["full"] }
+syn = { version = "2", features = ["full", "visit"] }
+quote = "1"
 
 [[bin]]
 name = "codegen"

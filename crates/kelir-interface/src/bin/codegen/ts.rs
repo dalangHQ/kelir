@@ -22,10 +22,26 @@ const PROTOCOL_TS_SEE: &str = "// see: cans/11-protocol.md#Wire-framing
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 fn ts_type(ty: &Ty) -> String {
     match ty {
-        Ty::U8 | Ty::U16 | Ty::U32 | Ty::U64 | Ty::I32 => "number".to_string(),
+        Ty::U8
+        | Ty::U16
+        | Ty::U32
+        | Ty::U64
+        | Ty::U128
+        | Ty::Usize
+        | Ty::I8
+        | Ty::I16
+        | Ty::I32
+        | Ty::I64
+        | Ty::Isize
+        | Ty::F32
+        | Ty::F64 => "number".to_string(),
         Ty::Str | Ty::PathBuf => "string".to_string(),
         Ty::Bool => "boolean".to_string(),
         Ty::Option(inner) => format!("{} | null", ts_type(inner)),
+        Ty::Tuple(items) => format!(
+            "[{}]",
+            items.iter().map(ts_type).collect::<Vec<_>>().join(", ")
+        ),
         Ty::VecOf(inner) => match &**inner {
             Ty::U8 => "Uint8Array".to_string(),
             Ty::Str | Ty::PathBuf => "readonly string[]".to_string(),

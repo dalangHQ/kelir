@@ -211,12 +211,10 @@ check-tests:
 codegen:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Item 1/12/15: TS/PY SDK types, protocol consts, shim wire.h, OTLP records, Merkle leaves
+    # Item 1/2/3/12/15: one native generator emits TS/PY SDK types, plugin SDK
+    # projections, fusion ring/hook tables, protocol consts, shim wire.h,
+    # OTLP records, Merkle leaves
     cargo run --quiet -p kelir-interface --bin codegen
-    # Item 2: TS/PY plugin SDK projections from the Rust plugin crates
-    python3 packages/py/scripts/gen_plugin_sdk.py
-    # Item 3: TS/PY fusion ring/hook tables from fusion.rs SSOT
-    node packages/ts/core/src/generated/gen-fusion-tables.mjs
     # Item 13: spec anchor index (committed at crates/kelir-testkit/anchors.json)
     cargo run --quiet -p kelir-testkit --bin anchors
     # Item 5/11: UAPI tables (linux/fuse.h, linux/elf.h) via C oracle
