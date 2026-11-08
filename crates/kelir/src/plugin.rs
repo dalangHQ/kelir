@@ -5,9 +5,8 @@ pub use kelir_interface::plugin::PluginError;
 pub use kelir_interface::plugin::{
     AnyPlugin, CompositePlugin, ConsoleInterposer, EventBusBinder, ExecutionTier,
     ForeignPluginBridge, FsInodeAttr, FsInterposer, HostInterposer, KelirPlugin, LifecycleCtx,
-    LifecycleEvent, LifecycleObservation, LifecycleParticipant, MountScope, NetInterposer,
-    PANIC_QUARANTINE_ENABLED, PipelineBinder, PluginClone, SystemTelemetryParticipant,
-    TrapInterposer, VetoEvent, VirtioDevice, VirtioRing,
+    LifecycleEvent, LifecycleObservation, LifecycleParticipant, LockBrokerCoordination, MountScope,
+    NetInterposer, PANIC_QUARANTINE_ENABLED, ParkedConnectionReset, PipelineBinder, PluginClone,
+    SystemTelemetryParticipant, TrapInterposer, VetoEvent, VirtioDevice, VirtioRing,
 };
 pub use kelir_interface::protocol::{FilterAction, ProcessExit, TrapEvent, Verdict};
-pub use kelir_interface::service_registry::ServiceRegistry;

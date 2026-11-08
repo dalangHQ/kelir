@@ -6,6 +6,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use std::time::Duration;
 
 use tokio::task::JoinSet;
 
@@ -15,18 +16,17 @@ use kelir::{
     planes::storage::{LockBrokerConfig, LockMode, LockScope},
     plugin::VetoEvent,
     plugins::{
-        ledger::{LedgerCtx, LedgerPlugin},
+        ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, ReceiptConfig},
         mesh::{
             MeshConfig, MeshCtx, MeshPlugin, PeerIdentity, PeerListener, TraceParentPropagation,
         },
         supply_chain::{
-            JitValidationService, PackageGuardConfig, SupplyChainConfig, SupplyChainPlugin,
-            WxJitConfig,
+            PackageGuardConfig, SupplyChainConfig, SupplyChainCtx, SupplyChainPlugin, WxJitConfig,
         },
     },
 };
 
-type SwarmPlugins = HCons<LedgerCtx, HCons<Arc<dyn JitValidationService>, HCons<MeshCtx, HNil>>>;
+type SwarmPlugins = HCons<LedgerCtx, HCons<SupplyChainCtx, HCons<MeshCtx, HNil>>>;
 
 fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
     KelirBuilder::new(VmConfig {
@@ -85,8 +85,16 @@ fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
             ..PackageGuardConfig::default()
         },
     }))
-    // TODO (L3): mount the ledger receipts config per cans/artifacts/examples/multi-vm-swarm.rs once plugin-ledger owns LedgerConfig per cans/plugins/ledger.md.
-    .plugin(LedgerPlugin::new(true))
+    // see: cans/artifacts/examples/multi-vm-swarm.rs#LedgerPlugin
+    .plugin(LedgerPlugin::new(true).with_config(LedgerConfig {
+        store: ".kelir/swarm-audit.merkle.db".into(),
+        merkle_chain: true,
+        otel: None,
+        receipts: ReceiptConfig {
+            include_syscall_count: false,
+            ..ReceiptConfig::default()
+        },
+    }))
 }
 
 async fn boot_swarm()
@@ -155,8 +163,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
-    eprintln!("[kelir] {passed}/8 shards passed");
-    // TODO (L3): resolve the swarm winner via MeshCtx and count supply-chain denials via LedgerCtx.
+    let winner = session
+        .ctx::<MeshCtx, _>()
+        .await_winner(Duration::from_secs(2))
+        .await?;
+    eprintln!("[kelir] {passed}/8 shards passed; winner shard={winner}");
+    // TODO (L3): count supply-chain denials via session.ctx::<LedgerCtx>() once LedgerCtx grows the by-kind counter per cans/artifacts/examples/multi-vm-swarm.rs.
 
     session.stop()?;
     Ok(())

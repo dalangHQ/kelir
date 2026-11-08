@@ -1,6 +1,7 @@
 // see: cans/01-architecture.md#VmmDriver-trait
 // see: cans/08-lifecycle.md#Hypervisor-primitives
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -279,18 +280,15 @@ pub struct EntropyStreamPosition {
 }
 
 // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
-#[async_trait]
-pub trait ClockStepControl: Send + Sync {
-    async fn step_clock(&self, offset: Duration) -> Result<(), VmmError>;
-    async fn clock_offset(&self) -> Result<Duration, VmmError>;
+#[derive(Debug, Clone, Copy)]
+pub struct PmuSample {
+    pub retired_instructions: u64,
+    pub sampled_at_ns: u64,
 }
 
-// see: cans/plugins/replay.md#Deterministic-RNG
-#[async_trait]
-pub trait EntropyBackendControl: Send + Sync {
-    async fn set_backend(&self, backend: EntropyBackend) -> Result<(), VmmError>;
-    async fn position(&self) -> Result<EntropyStreamPosition, VmmError>;
-    async fn restore_position(&self, position: EntropyStreamPosition) -> Result<(), VmmError>;
+// see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+pub trait PmuSampler: Send + Sync {
+    fn on_pmu_sample(&self, sample: &PmuSample);
 }
 
 // see: cans/artifacts/code/vmm-driver-trait.rs#VmmDriver
@@ -315,6 +313,23 @@ pub trait VmmDriver: Send + Sync {
     async fn resume(&mut self, image_path: &Path) -> Result<(), VmmError>;
     async fn skew_clock(&mut self, offset: Duration) -> Result<(), VmmError>;
     async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, VmmError>;
+    // see: cans/10-attestation.md#Lifecycle-bridge
+    async fn freeze_vcpus(&mut self) -> Result<(), VmmError>;
+    async fn unfreeze_vcpus(&mut self) -> Result<(), VmmError>;
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    async fn drain_fuse(&mut self, timeout: Duration) -> Result<(), VmmError>;
+    async fn commit_broker_upper(&mut self) -> Result<(), VmmError>;
+    async fn discard_broker_upper(&mut self) -> Result<(), VmmError>;
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    async fn step_clock_window(&mut self, retired_instructions: u64) -> Result<(), VmmError>;
+    fn register_pmu_sampler(&mut self, sampler: Arc<dyn PmuSampler>) -> Result<(), VmmError>;
+    // see: cans/plugins/replay.md#Deterministic-RNG
+    async fn set_entropy_backend(&mut self, backend: EntropyBackend) -> Result<(), VmmError>;
+    async fn entropy_position(&self) -> Result<EntropyStreamPosition, VmmError>;
+    async fn restore_entropy_position(
+        &mut self,
+        position: EntropyStreamPosition,
+    ) -> Result<(), VmmError>;
     async fn set_watchdog(
         &mut self,
         timeout: Duration,

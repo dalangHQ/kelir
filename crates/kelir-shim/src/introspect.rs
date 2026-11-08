@@ -150,7 +150,8 @@ pub fn read_interp(exe_path: &str) -> Result<Option<String>, ShimError> {
     })
 }
 
-pub fn digest_exe(exe_path: &str) -> Result<String, ShimError> {
+// see: cans/artifacts/code/messages.rs#TrapEvent
+pub fn digest_exe(exe_path: &str) -> Result<[u8; 32], ShimError> {
     let mut file = std::fs::File::open(exe_path).map_err(|_| ShimError::ExeDigest {
         path: exe_path.into(),
     })?;
@@ -160,7 +161,7 @@ pub fn digest_exe(exe_path: &str) -> Result<String, ShimError> {
         .map_err(|_| ShimError::ExeDigest {
             path: exe_path.into(),
         })?;
-    Ok(hasher.finalize().to_hex().to_string())
+    Ok(*hasher.finalize().as_bytes())
 }
 
 // see: cans/11-protocol.md#Wire-framing

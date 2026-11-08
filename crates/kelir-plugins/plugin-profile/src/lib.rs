@@ -5,12 +5,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
-    HandlerCtx, KelirPlugin, LifecycleParticipant, MountScope, PipelineBinder, StreamInterposer,
-};
-use kelir_interface::protocol::{StreamDirection, StreamKind, Verdict};
+use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -352,28 +348,23 @@ pub struct ProfileConfig {
     pub cdi: Option<CdiConfig>,
 }
 
-// see: cans/plugins/profile.md#Plugin-profile
-#[derive(Clone)]
-pub struct ProfilePlugin {
+// see: cans/plugins/profile.md#Inversion-of-Control-configuration-router:
+struct ProfileState {
     config: ProfileConfig,
-    router: Arc<Mutex<NamespaceRouter>>,
-    bases: Arc<Mutex<HashMap<String, Value>>>,
+    router: Mutex<NamespaceRouter>,
+    bases: Mutex<HashMap<String, Value>>,
 }
 
-impl ProfilePlugin {
-    pub fn new() -> Self {
-        Self::with_config(ProfileConfig::default())
-    }
-
-    pub fn with_config(config: ProfileConfig) -> Self {
+impl ProfileState {
+    fn new(config: ProfileConfig) -> Self {
         Self {
             config,
-            router: Arc::new(Mutex::new(NamespaceRouter::new())),
-            bases: Arc::new(Mutex::new(HashMap::new())),
+            router: Mutex::new(NamespaceRouter::new()),
+            bases: Mutex::new(HashMap::new()),
         }
     }
 
-    pub fn register_namespace(
+    fn register_namespace(
         &self,
         namespace: &str,
         plugin: Box<dyn ConfigurablePlugin>,
@@ -386,21 +377,25 @@ impl ProfilePlugin {
         Ok(())
     }
 
-    pub fn ingest_json(&self, document: &str) -> Result<Vec<String>, PluginError> {
+    fn config(&self) -> &ProfileConfig {
+        &self.config
+    }
+
+    fn ingest_json(&self, document: &str) -> Result<Vec<String>, PluginError> {
         let value: Value = serde_json::from_str(document).map_err(|err| {
             PluginError::reject("EConfig", format!("profile JSON parse failed: {err}"))
         })?;
         self.ingest_value(value)
     }
 
-    pub fn ingest_toml(&self, document: &str) -> Result<Vec<String>, PluginError> {
+    fn ingest_toml(&self, document: &str) -> Result<Vec<String>, PluginError> {
         let value: Value = toml::from_str(document).map_err(|err| {
             PluginError::reject("EConfig", format!("profile TOML parse failed: {err}"))
         })?;
         self.ingest_value(value)
     }
 
-    pub fn ingest_yaml(&self, document: &str) -> Result<Vec<String>, PluginError> {
+    fn ingest_yaml(&self, document: &str) -> Result<Vec<String>, PluginError> {
         let value: Value = serde_yaml::from_str(document).map_err(|err| {
             PluginError::reject("EConfig", format!("profile YAML parse failed: {err}"))
         })?;
@@ -433,7 +428,7 @@ impl ProfilePlugin {
         Ok(routed)
     }
 
-    pub fn dispatch_patch(&self, payload: &[u8]) -> Result<Vec<String>, PluginError> {
+    fn dispatch_patch(&self, payload: &[u8]) -> Result<Vec<String>, PluginError> {
         if !self.config.rfc6902_dynamic_patching {
             return Err(PluginError::reject(
                 "EPERM",
@@ -495,18 +490,7 @@ impl ProfilePlugin {
                     return Ok(());
                 };
                 match &base {
-                    None => {
-                        if contains_number(value) {
-                            return Err(PluginError::reject(
-                                "ESecurityViolation",
-                                format!(
-                                    "RFC 6902 patch at `{}` carries a numeric limit with no ingested base document to compare against",
-                                    patch.path
-                                ),
-                            ));
-                        }
-                        Ok(())
-                    }
+                    None => check_value_against_base(None, value, &patch.path),
                     Some(document) => {
                         let base_at = resolve_pointer(document, &remainder);
                         check_value_against_base(base_at, value, &patch.path)
@@ -538,18 +522,7 @@ impl ProfilePlugin {
                     return Ok(());
                 };
                 match &base {
-                    None => {
-                        if contains_number(&value) {
-                            return Err(PluginError::reject(
-                                "ESecurityViolation",
-                                format!(
-                                    "RFC 6902 patch at `{}` moves a numeric limit with no ingested base document to compare against",
-                                    patch.path
-                                ),
-                            ));
-                        }
-                        Ok(())
-                    }
+                    None => check_value_against_base(None, &value, &patch.path),
                     Some(document) => {
                         let base_at = resolve_pointer(document, &remainder);
                         check_value_against_base(base_at, &value, &patch.path)
@@ -595,69 +568,94 @@ impl ProfilePlugin {
     }
 }
 
+// see: cans/plugins/profile.md#Plugin-profile
+#[derive(Clone)]
+pub struct ProfilePlugin {
+    state: Arc<ProfileState>,
+}
+
+impl ProfilePlugin {
+    pub fn new() -> Self {
+        Self::with_config(ProfileConfig::default())
+    }
+
+    pub fn with_config(config: ProfileConfig) -> Self {
+        Self {
+            state: Arc::new(ProfileState::new(config)),
+        }
+    }
+
+    pub fn register_namespace(
+        &self,
+        namespace: &str,
+        plugin: Box<dyn ConfigurablePlugin>,
+    ) -> Result<(), PluginError> {
+        self.state.register_namespace(namespace, plugin)
+    }
+
+    pub fn ingest_json(&self, document: &str) -> Result<Vec<String>, PluginError> {
+        self.state.ingest_json(document)
+    }
+
+    pub fn ingest_toml(&self, document: &str) -> Result<Vec<String>, PluginError> {
+        self.state.ingest_toml(document)
+    }
+
+    pub fn ingest_yaml(&self, document: &str) -> Result<Vec<String>, PluginError> {
+        self.state.ingest_yaml(document)
+    }
+
+    pub fn dispatch_patch(&self, payload: &[u8]) -> Result<Vec<String>, PluginError> {
+        self.state.dispatch_patch(payload)
+    }
+}
+
 impl Default for ProfilePlugin {
     fn default() -> Self {
         Self::new()
     }
 }
 
+// see: cans/plugins/profile.md#Registers-stream-kind-PROFILE_SYNC-on-the-mux
+// see: cans/11-protocol.md#Kind-registration
+#[derive(Clone)]
+pub struct ProfileCtx {
+    state: Arc<ProfileState>,
+}
+
+impl ProfileCtx {
+    // see: cans/11-protocol.md#Kind-registration
+    pub fn dispatch_profile_sync(&self, payload: &[u8]) -> Result<Vec<String>, PluginError> {
+        self.state.dispatch_patch(payload)
+    }
+
+    // see: cans/plugins/profile.md#Inversion-of-Control-configuration-router:
+    pub fn register_namespace(
+        &self,
+        namespace: &str,
+        plugin: Box<dyn ConfigurablePlugin>,
+    ) -> Result<(), PluginError> {
+        self.state.register_namespace(namespace, plugin)
+    }
+
+    pub fn config(&self) -> &ProfileConfig {
+        self.state.config()
+    }
+}
+
 impl KelirPlugin for ProfilePlugin {
-    type Context = ();
-    fn context(&self) {}
+    type Context = ProfileCtx;
+    fn context(&self) -> ProfileCtx {
+        ProfileCtx {
+            state: Arc::clone(&self.state),
+        }
+    }
     fn name(&self) -> &'static str {
         "profile"
     }
     fn default_scope(&self) -> MountScope {
         MountScope::default()
     }
-    fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
-        let stage: Arc<dyn StreamInterposer> = Arc::new(self.clone());
-        pipeline.bind_stream_scoped(StreamKind::ProfileSync, stage, self.default_scope());
-    }
 }
 
 impl LifecycleParticipant for ProfilePlugin {}
-
-#[async_trait]
-impl StreamInterposer for ProfilePlugin {
-    async fn on_stream_open(
-        &self,
-        stream_id: u32,
-        tags: &mut Vec<u8>,
-        ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        let _ = (stream_id, tags, ctx);
-        Ok(Verdict::Pass)
-    }
-
-    async fn on_stream_data(
-        &self,
-        direction: StreamDirection,
-        stream_id: u32,
-        payload: &mut Vec<u8>,
-        ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        let _ = (stream_id, ctx);
-        match direction {
-            StreamDirection::GuestToHost => match self.dispatch_patch(payload) {
-                Ok(routed) => {
-                    let _ = routed;
-                    Ok(Verdict::Pass)
-                }
-                Err(err) => Ok(Verdict::Drop {
-                    errno: None,
-                    reason: err.to_string(),
-                }),
-            },
-            StreamDirection::HostToGuest => {
-                let _ = payload;
-                Ok(Verdict::Pass)
-            }
-        }
-    }
-
-    async fn on_stream_close(&self, stream_id: u32, ctx: &HandlerCtx) -> Result<(), PluginError> {
-        let _ = (stream_id, ctx);
-        Ok(())
-    }
-}

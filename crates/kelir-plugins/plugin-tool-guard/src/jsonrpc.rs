@@ -2,6 +2,8 @@
 // see: cans/plugins/mcp.md#MCP-contract
 use kelir_interface::plugin::PluginError;
 
+use crate::service::ToolSchema;
+
 // see: cans/plugins/mcp.md#MCP-contract
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum McpMethod {
@@ -26,4 +28,19 @@ impl McpFrame {
         // TODO (L3): decode JSON Lines frames and classify tools/call vs tools/list per cans/plugins/mcp.md; FLAG_CONTINUATION reassembly per cans/11-protocol.md#Stream-mux-framing.
         Ok(Self::default())
     }
+}
+
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+#[derive(Debug, Clone, Default)]
+pub struct ToolsListResult {
+    pub tools: Vec<ToolSchema>,
+}
+
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+pub fn decode_tools_list(payload: &[u8]) -> Result<ToolsListResult, PluginError> {
+    // TODO (L3): decode the JSON Lines tools/list result envelope per cans/plugins/mcp.md.
+    Err(PluginError::Halt(format!(
+        "tools/list envelope decode pending (L3): {} bytes",
+        payload.len()
+    )))
 }

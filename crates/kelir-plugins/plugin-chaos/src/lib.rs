@@ -9,7 +9,7 @@ use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
     FsInterposer, HandlerCtx, KelirPlugin, MountScope, NetInterposer, PipelineBinder,
 };
-use kelir_interface::protocol::FilterAction;
+use kelir_interface::protocol::{FilterAction, SuspendUntil};
 
 // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
 pub const RST_INJECTION_ERRNO: &str = "ECONNREFUSED";
@@ -133,7 +133,14 @@ impl ChaosPlugin {
                     reason: format!("chaos: synthetic packet loss for {}", rule.target),
                 });
             }
-            // TODO (L3): schedule latency (base_ms plus jitter_ms) and bandwidth_kbps clamping on the matched stream.
+            if rule.base_ms > 0 || rule.jitter_ms > 0 {
+                // see: cans/02-plugin-model.md#Latency-ceiling
+                // TODO (L3): sample deterministic jitter in 0..=jitter_ms instead of the upper bound.
+                return Ok(FilterAction::Suspend {
+                    until: SuspendUntil::Deadline(rule.base_ms.saturating_add(rule.jitter_ms)),
+                });
+            }
+            // TODO (L3): bandwidth_kbps link-speed clamping on the matched stream.
         }
         Ok(FilterAction::Forward)
     }
@@ -168,7 +175,7 @@ impl ChaosPlugin {
     }
 
     fn path_matches(&self, pattern: &str, path: &Path) -> Result<bool, PluginError> {
-        // TODO (L3): glob match of the rule target_path over the guest filesystem path.
+        // TODO (L3): glob match of the rule target_path over the real FUSE write path argument.
         let _ = (pattern, path);
         Ok(false)
     }
@@ -197,10 +204,6 @@ impl KelirPlugin for ChaosPlugin {
         pipeline.bind_net_scoped(Arc::new(self.clone()), self.default_scope());
         // see: cans/05-storage-plane.md#Write-gating
         pipeline.bind_fs_scoped(Arc::new(self.clone()), self.default_scope());
-        // see: cans/plugins/chaos.md#Service-exports-(chaos)
-        pipeline
-            .service_registry()
-            .register::<dyn FaultInjectionService>(self.fault_table.clone());
     }
 }
 
@@ -215,12 +218,16 @@ impl NetInterposer for ChaosPlugin {
     }
 }
 
-// see: cans/05-storage-plane.md#Write-gating
+// see: cans/plugins/chaos.md#Storage-chaos
 impl FsInterposer for ChaosPlugin {
-    fn on_fs_write(&self, _data: &mut [u8], ctx: &HandlerCtx) -> Result<FilterAction, PluginError> {
-        match &ctx.fs_ctx {
-            Some(fs_ctx) => self.apply_storage_rules(&fs_ctx.path),
-            None => Ok(FilterAction::Forward),
-        }
+    fn on_fs_write(
+        &self,
+        path: &Path,
+        data: &mut [u8],
+        pid: u32,
+        ctx: &HandlerCtx,
+    ) -> Result<FilterAction, PluginError> {
+        let _ = (data, pid, ctx);
+        self.apply_storage_rules(path)
     }
 }

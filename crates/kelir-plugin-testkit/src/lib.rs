@@ -9,14 +9,16 @@ pub mod vectors;
 
 use std::collections::VecDeque;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::io::AsyncRead;
 
 use kelir_interface::driver::{
-    BalloonConvergence, DriverCapabilities, DriverError, SharedMemoryHandle, SnapshotDescriptor,
-    Stream, SuspendReason, VmConfig, VmmDriver, WatchdogAction, check_hw_lockfile,
+    BalloonConvergence, DriverCapabilities, DriverError, EntropyBackend, EntropyStreamPosition,
+    PmuSampler, SharedMemoryHandle, SnapshotDescriptor, Stream, SuspendReason, VmConfig, VmmDriver,
+    WatchdogAction, check_hw_lockfile,
 };
 
 // see: cans/01-architecture.md#Transport-engine-abstraction
@@ -136,6 +138,39 @@ impl VmmDriver for MockVmmDriver {
             target_mb,
             converged: true,
         })
+    }
+    async fn freeze_vcpus(&mut self) -> Result<(), DriverError> {
+        Ok(())
+    }
+    async fn unfreeze_vcpus(&mut self) -> Result<(), DriverError> {
+        Ok(())
+    }
+    async fn drain_fuse(&mut self, _timeout: Duration) -> Result<(), DriverError> {
+        Ok(())
+    }
+    async fn commit_broker_upper(&mut self) -> Result<(), DriverError> {
+        Ok(())
+    }
+    async fn discard_broker_upper(&mut self) -> Result<(), DriverError> {
+        Ok(())
+    }
+    async fn step_clock_window(&mut self, _retired_instructions: u64) -> Result<(), DriverError> {
+        Ok(())
+    }
+    fn register_pmu_sampler(&mut self, _sampler: Arc<dyn PmuSampler>) -> Result<(), DriverError> {
+        Ok(())
+    }
+    async fn set_entropy_backend(&mut self, _backend: EntropyBackend) -> Result<(), DriverError> {
+        Ok(())
+    }
+    async fn entropy_position(&self) -> Result<EntropyStreamPosition, DriverError> {
+        Ok(EntropyStreamPosition { offset_bytes: 0 })
+    }
+    async fn restore_entropy_position(
+        &mut self,
+        _position: EntropyStreamPosition,
+    ) -> Result<(), DriverError> {
+        Ok(())
     }
     async fn set_watchdog(
         &mut self,

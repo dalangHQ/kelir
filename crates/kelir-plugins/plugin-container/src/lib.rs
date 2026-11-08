@@ -15,10 +15,16 @@ use kelir_interface::protocol::{TrapEvent, Verdict};
 
 pub mod service;
 
-pub use service::{ContainerService, SharedContainerService};
+pub use service::{ContainerCtx, ContainerService, SharedContainerService};
 
 // see: cans/plugins/container.md#Error-and-return-semantics-(container)
 const EPERM: &str = "EPERM";
+
+// see: cans/plugins/container.md#Error-and-return-semantics-(container)
+const ENOENT: &str = "ENOENT";
+
+// see: cans/plugins/container.md#Error-and-return-semantics-(container)
+const EINVAL: &str = "EINVAL";
 
 // see: cans/plugins/container.md#UID/GID-mapping-isolation
 const NEWUIDMAP: &str = "newuidmap";
@@ -28,6 +34,12 @@ const NEWGIDMAP: &str = "newgidmap";
 
 // see: cans/plugins/container.md#Non-nested-OCI-container-execution
 const PODMAN: &str = "podman";
+
+// see: cans/05-storage-plane.md#Host-inode-lock-broker
+const SUBUID_PATH: &str = "/etc/subuid";
+
+// see: cans/05-storage-plane.md#Host-inode-lock-broker
+const SUBGID_PATH: &str = "/etc/subgid";
 
 // see: cans/plugins/container.md#UID/GID-mapping-isolation
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +54,13 @@ pub struct IdMapAllocation {
     pub lower: u32,
     pub upper: u32,
     pub count: u32,
+}
+
+// see: cans/plugins/container.md#UID/GID-mapping-isolation
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SubidOwner {
+    name: Option<String>,
+    uid: u32,
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.container
@@ -77,6 +96,13 @@ impl ContainerPlugin {
         Self {
             config,
             service: Arc::new(SharedContainerService::new()),
+        }
+    }
+
+    // see: cans/plugins/container.md#Service-exports-(container)
+    pub fn ctx(&self) -> ContainerCtx {
+        ContainerCtx {
+            service: Arc::clone(&self.service),
         }
     }
 
@@ -144,8 +170,10 @@ impl Default for ContainerPlugin {
 
 // see: cans/plugins/container.md#Plugin-container
 impl KelirPlugin for ContainerPlugin {
-    type Context = ();
-    fn context(&self) {}
+    type Context = ContainerCtx;
+    fn context(&self) -> Self::Context {
+        self.ctx()
+    }
     fn name(&self) -> &'static str {
         "container"
     }
@@ -161,18 +189,22 @@ impl KelirPlugin for ContainerPlugin {
         ])
     }
 
+    // see: cans/plugins/container.md#Non-nested-OCI-container-execution
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn kelir_interface::plugin::AnyPlugin> {
+        // see: cans/08-lifecycle.md#CoW-fork
+        Box::new(Self::new(self.config.clone()))
+    }
+
     // see: cans/plugins/container.md#Service-exports-(container)
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
         pipeline.bind_trap(Arc::new(self.clone()));
-        let service: Arc<dyn ContainerService> = self.service.clone();
-        pipeline.service_registry().register(service);
     }
 }
 
 // see: cans/plugins/container.md#Non-nested-OCI-container-execution
 #[async_trait]
 impl LifecycleParticipant for ContainerPlugin {
-    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         self.service.configure_rootless_runtime().await?;
         if self.config.isolate_var_lib_containers {
             let scratch = self.config.scratch_device.as_deref().ok_or_else(|| {
@@ -184,9 +216,11 @@ impl LifecycleParticipant for ContainerPlugin {
         }
         self.service.build_cgroup_delegation_hierarchy().await?;
         if self.config.pin_subuid_ranges {
-            let (subuid, subgid) = resolve_unprivileged_ranges()?;
+            let owner = invoking_subid_owner()?;
+            let (subuid, subgid) = resolve_unprivileged_ranges(&owner)?;
             self.service.pin_guest_id_map(subuid, subgid).await?;
         }
+        // TODO (L3): apply the pinned ranges through the host idmap configuration in StorageConfig.
         Ok(())
     }
 }
@@ -277,9 +311,112 @@ fn reject_eperm(reason: &str) -> Verdict {
 }
 
 // see: cans/plugins/container.md#UID/GID-mapping-isolation
-fn resolve_unprivileged_ranges() -> Result<(Range<u32>, Range<u32>), PluginError> {
-    // TODO (L3): resolve the unprivileged guest user subuid/subgid ranges to pin for rootless execution.
-    Err(PluginError::Halt(
-        "subuid/subgid range resolution pending (L3)".into(),
-    ))
+fn invoking_subid_owner() -> Result<SubidOwner, PluginError> {
+    let uid = effective_host_uid()?;
+    Ok(SubidOwner {
+        name: passwd_name_for_uid(uid),
+        uid,
+    })
+}
+
+// see: cans/plugins/container.md#UID/GID-mapping-isolation
+fn effective_host_uid() -> Result<u32, PluginError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let meta = std::fs::metadata("/proc/self")
+            .map_err(|e| PluginError::reject(ENOENT, format!("host identity probe failed: {e}")))?;
+        Ok(meta.uid())
+    }
+    #[cfg(not(unix))]
+    {
+        Err(PluginError::reject(
+            EINVAL,
+            "rootless id mapping requires a unix host",
+        ))
+    }
+}
+
+// see: cans/plugins/container.md#UID/GID-mapping-isolation
+fn passwd_name_for_uid(uid: u32) -> Option<String> {
+    let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
+    for line in passwd.lines() {
+        let mut fields = line.split(':');
+        if let (Some(name), Some(passwd_uid)) = (fields.next(), fields.nth(1)) {
+            if passwd_uid.parse::<u32>() == Ok(uid) {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+// see: cans/plugins/container.md#UID/GID-mapping-isolation
+fn parse_subid_file(path: &str, owner: &SubidOwner) -> Result<Option<Range<u32>>, PluginError> {
+    let contents = std::fs::read_to_string(path)
+        .map_err(|e| PluginError::reject(ENOENT, format!("{path} unreadable: {e}")))?;
+    let mut matched = None;
+    for line in contents.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let mut fields = line.split(':');
+        let (user, lower, count) = match (fields.next(), fields.next(), fields.next()) {
+            (Some(user), Some(lower), Some(count)) if fields.next().is_none() => {
+                (user, lower, count)
+            }
+            _ => {
+                return Err(PluginError::reject(
+                    EINVAL,
+                    format!("{path} line is not owner:lower:count: {line}"),
+                ));
+            }
+        };
+        let lower = lower.parse::<u32>().map_err(|_| {
+            PluginError::reject(EINVAL, format!("{path} lower id is not numeric: {line}"))
+        })?;
+        let count = count.parse::<u32>().map_err(|_| {
+            PluginError::reject(EINVAL, format!("{path} count is not numeric: {line}"))
+        })?;
+        if count == 0 {
+            return Err(PluginError::reject(
+                EINVAL,
+                format!("{path} count is zero: {line}"),
+            ));
+        }
+        let end = lower.checked_add(count).ok_or_else(|| {
+            PluginError::reject(EINVAL, format!("{path} range overflows u32: {line}"))
+        })?;
+        let owner_match = owner.name.as_deref().is_some_and(|name| user == name)
+            || user.parse::<u32>() == Ok(owner.uid);
+        if owner_match {
+            if matched.is_some() {
+                return Err(PluginError::reject(
+                    EINVAL,
+                    format!("{path} carries duplicate entries for uid {}", owner.uid),
+                ));
+            }
+            matched = Some(lower..end);
+        }
+    }
+    Ok(matched)
+}
+
+// see: cans/plugins/container.md#UID/GID-mapping-isolation
+fn resolve_unprivileged_ranges(
+    owner: &SubidOwner,
+) -> Result<(Range<u32>, Range<u32>), PluginError> {
+    let subuid = parse_subid_file(SUBUID_PATH, owner)?.ok_or_else(|| {
+        PluginError::reject(
+            ENOENT,
+            format!("no subuid range allocated to uid {}", owner.uid),
+        )
+    })?;
+    let subgid = parse_subid_file(SUBGID_PATH, owner)?.ok_or_else(|| {
+        PluginError::reject(
+            ENOENT,
+            format!("no subgid range allocated to uid {}", owner.uid),
+        )
+    })?;
+    Ok((subuid, subgid))
 }

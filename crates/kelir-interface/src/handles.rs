@@ -8,7 +8,9 @@ use async_trait::async_trait;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::driver::{SharedMemoryHandle, SnapshotDescriptor, VmmDriver, VmmError};
+use crate::driver::{
+    BalloonConvergence, SharedMemoryHandle, SnapshotDescriptor, SuspendReason, VmmDriver, VmmError,
+};
 use crate::plugin::PluginError;
 
 // see: cans/08-lifecycle.md#Hypervisor-primitives
@@ -16,11 +18,12 @@ use crate::plugin::PluginError;
 pub trait VmControl: Send + Sync {
     async fn checkpoint(&self, name: String) -> Result<SnapshotDescriptor, PluginError>;
     async fn rollback(&self, snapshot: &SnapshotDescriptor) -> Result<(), PluginError>;
-    async fn suspend(&self, path: &str) -> Result<(), PluginError>;
+    async fn suspend(&self, reason: SuspendReason, path: &str) -> Result<(), PluginError>;
     async fn resume(&self, path: &str) -> Result<(), PluginError>;
     async fn export_snapshot(&self) -> Result<Vec<u8>, PluginError>;
     async fn import_snapshot(&self, data: Vec<u8>) -> Result<(), PluginError>;
-    async fn adjust_balloon(&self, target_mb: u32) -> Result<(), PluginError>;
+    // see: cans/01-architecture.md#Host-memory-pressure-watcher
+    async fn adjust_balloon(&self, target_mb: u32) -> Result<BalloonConvergence, PluginError>;
     async fn set_vcpus(&self, count: u8) -> Result<(), PluginError>;
     async fn map_shared_region(
         &self,
@@ -106,11 +109,13 @@ impl VmControl for DriverVmControl {
             .map_err(|error| driver_error("rollback", error))
     }
 
-    async fn suspend(&self, _path: &str) -> Result<(), PluginError> {
-        // TODO (L3): VmHandle::suspend carries no SuspendReason; driver suspend needs one, so the adapter cannot pick a reason.
-        Err(PluginError::Halt(
-            "VmHandle::suspend carries no SuspendReason for driver suspend".into(),
-        ))
+    async fn suspend(&self, reason: SuspendReason, path: &str) -> Result<(), PluginError> {
+        self.driver
+            .lock()
+            .await
+            .suspend(reason, std::path::Path::new(path))
+            .await
+            .map_err(|error| driver_error("suspend", error))
     }
 
     async fn resume(&self, path: &str) -> Result<(), PluginError> {
@@ -148,15 +153,13 @@ impl VmControl for DriverVmControl {
             .map_err(|error| driver_error("import_snapshot", error))
     }
 
-    async fn adjust_balloon(&self, target_mb: u32) -> Result<(), PluginError> {
-        let _ = self
-            .driver
+    async fn adjust_balloon(&self, target_mb: u32) -> Result<BalloonConvergence, PluginError> {
+        self.driver
             .lock()
             .await
             .adjust_balloon(target_mb)
             .await
-            .map_err(|error| driver_error("adjust_balloon", error))?;
-        Ok(())
+            .map_err(|error| driver_error("adjust_balloon", error))
     }
 
     async fn set_vcpus(&self, _count: u8) -> Result<(), PluginError> {
@@ -306,8 +309,8 @@ impl VmHandle {
         self.bound("VmHandle::rollback")?.rollback(snap).await
     }
 
-    pub async fn suspend(&self, path: &str) -> Result<(), PluginError> {
-        self.bound("VmHandle::suspend")?.suspend(path).await
+    pub async fn suspend(&self, reason: SuspendReason, path: &str) -> Result<(), PluginError> {
+        self.bound("VmHandle::suspend")?.suspend(reason, path).await
     }
 
     pub async fn resume(&self, path: &str) -> Result<(), PluginError> {
@@ -326,7 +329,8 @@ impl VmHandle {
             .await
     }
 
-    pub async fn adjust_balloon(&self, target_mb: u32) -> Result<(), PluginError> {
+    // see: cans/01-architecture.md#Host-memory-pressure-watcher
+    pub async fn adjust_balloon(&self, target_mb: u32) -> Result<BalloonConvergence, PluginError> {
         self.bound("VmHandle::adjust_balloon")?
             .adjust_balloon(target_mb)
             .await

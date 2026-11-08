@@ -4,6 +4,10 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU8, Ordering};
 
+use kelir_interface::driver::BalloonConvergence;
+use kelir_interface::handles::VmControl;
+use kelir_interface::plugin::PluginError;
+
 pub enum HostReaperKind {
     LinuxPdeathsig,
     DarwinKqueue,
@@ -74,7 +78,7 @@ pub struct HostPlane {
     reaper_kind: HostReaperKind,
     pressure_level: AtomicU8,
     watcher: Mutex<Option<PressureSubscription>>,
-    balloon: Option<std::sync::Arc<dyn kelir_interface::plugin::BalloonControl>>,
+    vm_control: Option<std::sync::Arc<dyn VmControl>>,
     metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
 }
 
@@ -109,16 +113,14 @@ impl HostPlane {
             reaper_kind,
             pressure_level: AtomicU8::new(0),
             watcher: Mutex::new(None),
-            balloon: None,
+            vm_control: None,
             metrics: std::sync::Arc::new(kelir_otlp::registry::MetricRegistry::new()),
         }
     }
 
-    pub fn with_balloon_control(
-        mut self,
-        balloon: std::sync::Arc<dyn kelir_interface::plugin::BalloonControl>,
-    ) -> Self {
-        self.balloon = Some(balloon);
+    // see: cans/08-lifecycle.md#Hypervisor-primitives
+    pub fn with_vm_control(mut self, control: std::sync::Arc<dyn VmControl>) -> Self {
+        self.vm_control = Some(control);
         self
     }
 
@@ -190,23 +192,18 @@ impl HostPlane {
         ))
     }
 
-    pub fn inflate_balloon(
+    // see: cans/08-lifecycle.md#Hypervisor-primitives
+    pub async fn inflate_balloon(
         &self,
         request: BalloonRequest,
-    ) -> Result<(), kelir_interface::plugin::PluginError> {
-        let Some(balloon) = &self.balloon else {
-            return Err(kelir_interface::plugin::PluginError::Halt(
-                "balloon control not wired".into(),
+    ) -> Result<BalloonConvergence, PluginError> {
+        let Some(control) = &self.vm_control else {
+            return Err(PluginError::Halt(
+                "vm control not wired; inflate_balloon needs Session::boot to bind the driver control"
+                    .into(),
             ));
         };
-        let convergence = balloon.adjust_balloon(request.target_mb)?;
-        if convergence.converged {
-            Ok(())
-        } else {
-            Err(kelir_interface::plugin::PluginError::Halt(
-                "balloon did not converge".into(),
-            ))
-        }
+        control.adjust_balloon(request.target_mb).await
     }
 
     pub fn reclaim(

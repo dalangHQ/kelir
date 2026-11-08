@@ -11,24 +11,26 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
-    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
-    StreamInterposer, VirtioDevice,
+    ConsoleInterposer, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
+    VirtioDevice,
 };
-use kelir_interface::protocol::{StreamDirection, StreamKind, Verdict};
+use kelir_interface::protocol::Verdict;
 
-use crate::jsonrpc::{McpFrame, McpMethod};
+use crate::jsonrpc::{McpFrame, McpMethod, ToolsListResult, decode_tools_list};
 use crate::service::{ToolRegistry, ToolRegistryService, ToolSchema};
 
 // see: cans/plugins/tool-guard.md#Call-quota
 #[derive(Clone, Debug)]
 pub struct ToolGuardConfig {
     pub max_invocations_per_trace: u32,
+    pub pin_schemas: bool,
 }
 
 impl Default for ToolGuardConfig {
     fn default() -> Self {
         Self {
             max_invocations_per_trace: 50,
+            pin_schemas: true,
         }
     }
 }
@@ -67,15 +69,13 @@ impl ToolGuardPlugin {
         self
     }
 
-    fn charge_quota(&self, stream_id: u32) -> Result<bool, PluginError> {
+    fn charge_quota(&self, trace: u32) -> Result<bool, PluginError> {
         let mut traces = self
             .state
             .traces
             .lock()
             .map_err(|_| PluginError::Halt("tool-guard trace table poisoned".into()))?;
-        let quota = traces
-            .entry(stream_id)
-            .or_insert(TraceQuota { invocations: 0 });
+        let quota = traces.entry(trace).or_insert(TraceQuota { invocations: 0 });
         if quota.invocations >= self.config.max_invocations_per_trace {
             return Ok(false);
         }
@@ -84,15 +84,9 @@ impl ToolGuardPlugin {
         Ok(true)
     }
 
-    fn release_trace(&self, stream_id: u32) {
-        if let Ok(mut traces) = self.state.traces.lock() {
-            traces.remove(&stream_id);
-        }
-    }
-
     async fn guard_tool_call(
         &self,
-        stream_id: u32,
+        trace: u32,
         payload: &mut [u8],
     ) -> Result<Verdict, PluginError> {
         let frame = McpFrame::decode(payload)?;
@@ -105,7 +99,7 @@ impl ToolGuardPlugin {
                 reason: "tools/call frame carries no tool name".into(),
             });
         };
-        if !self.charge_quota(stream_id)? {
+        if !self.charge_quota(trace)? {
             return Ok(Verdict::Drop {
                 errno: Some("ETOOLQUOTA".into()),
                 reason: format!("tool {tool} exceeded max_invocations_per_trace"),
@@ -134,14 +128,10 @@ impl ToolGuardPlugin {
         Ok(Verdict::Pass)
     }
 
-    async fn scrub_tool_response(
-        &self,
-        stream_id: u32,
-        payload: &mut [u8],
-    ) -> Result<Verdict, PluginError> {
-        let _ = (stream_id, payload);
+    async fn scrub_tool_response(&self, payload: &mut [u8]) -> Result<(), PluginError> {
+        let _ = payload;
         // TODO (L3): strip host secrets from tool responses before model context ingestion per cans/plugins/tool-guard.md.
-        Ok(Verdict::Pass)
+        Ok(())
     }
 }
 
@@ -151,62 +141,90 @@ impl Default for ToolGuardPlugin {
     }
 }
 
+// see: cans/plugins/tool-guard.md#Service-exports-(tool-guard)
+#[derive(Clone)]
+pub struct ToolGuardCtx {
+    registry: Arc<ToolRegistry>,
+}
+
+impl ToolGuardCtx {
+    pub fn registry(&self) -> Arc<ToolRegistry> {
+        Arc::clone(&self.registry)
+    }
+
+    pub async fn lookup_schema(&self, tool: &str) -> Result<Option<ToolSchema>, PluginError> {
+        self.registry.lookup_schema(tool).await
+    }
+
+    pub async fn bind_approval(
+        &self,
+        request: &crate::service::ApprovalRequest,
+    ) -> Result<(), PluginError> {
+        self.registry.bind_approval(request).await
+    }
+}
+
 impl KelirPlugin for ToolGuardPlugin {
-    type Context = ();
-    fn context(&self) {}
+    type Context = ToolGuardCtx;
+    fn context(&self) -> ToolGuardCtx {
+        ToolGuardCtx {
+            registry: Arc::clone(&self.registry),
+        }
+    }
     fn name(&self) -> &'static str {
         "tool-guard"
     }
     fn default_scope(&self) -> MountScope {
         // see: cans/11-protocol.md#Control-channel
-        MountScope::default().with_devices([VirtioDevice::Vsock])
+        MountScope::default().with_devices([VirtioDevice::Console, VirtioDevice::Vsock])
     }
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
-        let stage: Arc<dyn StreamInterposer> = Arc::new(self.clone());
-        pipeline.bind_stream_scoped(StreamKind::McpConsole, stage, self.default_scope());
-        let registry: Arc<dyn ToolRegistryService> = self.registry.clone();
-        pipeline.service_registry().register(registry);
+        // see: cans/plugins/tool-guard.md#Executes-upstream-of-plugin-mcp-on-the-MCP_CONSOLE-mux-stream
+        // see: cans/02-plugin-model.md#Segregated-ring-traits
+        let console_stage: Arc<dyn ConsoleInterposer> = Arc::new(self.clone());
+        pipeline.bind_console_scoped(console_stage, self.default_scope());
     }
 }
 
 #[async_trait]
 impl LifecycleParticipant for ToolGuardPlugin {
-    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         // see: cans/plugins/tool-guard.md#Immutable-schema-locking
-        self.registry.lock_catalog().await
+        if self.config.pin_schemas {
+            return self.registry.lock_catalog().await;
+        }
+        Ok(())
     }
 }
 
 #[async_trait]
-impl StreamInterposer for ToolGuardPlugin {
-    async fn on_stream_open(
-        &self,
-        stream_id: u32,
-        tags: &mut Vec<u8>,
-        ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        let _ = (stream_id, tags, ctx);
-        // TODO (L3): validate MCP_CONSOLE open tags per cans/11-protocol.md#Stream-mux-framing.
-        Ok(Verdict::Pass)
-    }
-
-    async fn on_stream_data(
-        &self,
-        direction: StreamDirection,
-        stream_id: u32,
-        payload: &mut Vec<u8>,
-        ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        let _ = ctx;
-        match direction {
-            StreamDirection::GuestToHost => self.guard_tool_call(stream_id, payload).await,
-            StreamDirection::HostToGuest => self.scrub_tool_response(stream_id, payload).await,
+impl ConsoleInterposer for ToolGuardPlugin {
+    async fn on_console_input(&self, port: u32, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
+        // TODO (L3): trace quota eviction once the console surface grows a close hook per cans/plugins/tool-guard.md.
+        match self.guard_tool_call(port, bytes).await? {
+            Verdict::Pass | Verdict::Patch(_) => Ok(()),
+            Verdict::Drop { errno, reason } => Err(PluginError::reject(
+                errno.unwrap_or_else(|| "EPERM".into()),
+                reason,
+            )),
+            // TODO (L3): synthesize the JSON-RPC error object (code -32001) and the approval suspend per cans/plugins/tool-guard.md.
+            Verdict::Suspend { .. } => Err(PluginError::Halt(
+                "tool-guard approval suspend pending (L3)".into(),
+            )),
+            Verdict::Abort { reason } => Err(PluginError::Halt(reason)),
+            _ => Err(PluginError::Halt(
+                "tool-guard verdict mapping pending (L3)".into(),
+            )),
         }
     }
 
-    async fn on_stream_close(&self, stream_id: u32, ctx: &HandlerCtx) -> Result<(), PluginError> {
-        let _ = ctx;
-        self.release_trace(stream_id);
-        Ok(())
+    async fn on_console_output(&self, _port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
+        // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+        let frame = McpFrame::decode(chunk)?;
+        if frame.method == McpMethod::ToolsList {
+            let advertisement: ToolsListResult = decode_tools_list(chunk)?;
+            return self.registry.ingest_tools_list(&advertisement).await;
+        }
+        self.scrub_tool_response(chunk).await
     }
 }

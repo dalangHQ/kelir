@@ -167,15 +167,16 @@ impl LockBroker {
 #[async_trait]
 impl LockBrokerCoordination for LockBroker {
     async fn release_transaction_locks(&self) -> Result<(), PluginError> {
-        // TODO (L3): release the host fds in the enclave flock delegation; the in-memory states retain every other namespace here.
+        // TODO (L3): release the host fds in the enclave flock delegation; unscoped release stays for full-shutdown paths only.
         let mut states = self
             .states
             .write()
             .map_err(|_| PluginError::Halt("lock broker state lock poisoned".into()))?;
-        states.retain(|key, _| key.namespace != self.namespace);
+        states.clear();
         Ok(())
     }
 
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
     async fn release_transaction_locks_for(&self, namespace: [u8; 16]) -> Result<(), PluginError> {
         // TODO (L3): release the host fds in the enclave flock delegation; the in-memory states retain every other namespace here.
         let mut states = self

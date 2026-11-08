@@ -2,14 +2,16 @@
 // see: cans/01-architecture.md#Driver-backends
 // see: cans/artifacts/diagrams/host-runtime.txt#driver-avf
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::io::AsyncRead;
 
 use kelir_interface::driver::{
-    BalloonConvergence, DriverCapabilities, DriverState, SharedMemoryHandle, SnapshotDescriptor,
-    Stream, SuspendReason, VmConfig, VmmDriver, VmmError, WatchdogAction, check_hw_lockfile,
+    BalloonConvergence, DriverCapabilities, DriverState, EntropyBackend, EntropyStreamPosition,
+    PmuSampler, SharedMemoryHandle, SnapshotDescriptor, Stream, SuspendReason, VmConfig, VmmDriver,
+    VmmError, WatchdogAction, check_hw_lockfile,
 };
 
 #[allow(dead_code)]
@@ -141,6 +143,98 @@ impl VmmDriver for AvfDriver {
         let _ = target_mb;
         Err(VmmError::Unsupported(
             "avf adjust_balloon: virtio-balloon resize (L3)".into(),
+        ))
+    }
+
+    // see: cans/10-attestation.md#Lifecycle-bridge
+    async fn freeze_vcpus(&mut self) -> Result<(), VmmError> {
+        self.state.ensure_booted("avf")?;
+        // TODO (L3): halt vCPUs at the cycle boundary; guest RAM stays resident.
+        Err(VmmError::Unsupported(
+            "avf freeze_vcpus: vCPU-only halt (L3)".into(),
+        ))
+    }
+
+    // see: cans/10-attestation.md#Lifecycle-bridge
+    async fn unfreeze_vcpus(&mut self) -> Result<(), VmmError> {
+        self.state.ensure_booted("avf")?;
+        // TODO (L3): release halted vCPUs back to the scheduler.
+        Err(VmmError::Unsupported(
+            "avf unfreeze_vcpus: vCPU resume (L3)".into(),
+        ))
+    }
+
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    async fn drain_fuse(&mut self, _timeout: Duration) -> Result<(), VmmError> {
+        self.state.ensure_booted("avf")?;
+        // TODO (L3): drain in-flight virtio-fs ops until quiescent or timeout.
+        Err(VmmError::Unsupported(
+            "avf drain_fuse: in-flight FUSE drain (L3)".into(),
+        ))
+    }
+
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    async fn commit_broker_upper(&mut self) -> Result<(), VmmError> {
+        self.state.ensure_booted("avf")?;
+        // TODO (L3): replay the broker upper file and tombstones onto the base.
+        Err(VmmError::Unsupported(
+            "avf commit_broker_upper: broker upper commit (L3)".into(),
+        ))
+    }
+
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    async fn discard_broker_upper(&mut self) -> Result<(), VmmError> {
+        self.state.ensure_booted("avf")?;
+        // TODO (L3): drop the broker upper file and tombstones; base untouched.
+        Err(VmmError::Unsupported(
+            "avf discard_broker_upper: broker upper discard (L3)".into(),
+        ))
+    }
+
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    async fn step_clock_window(&mut self, _retired_instructions: u64) -> Result<(), VmmError> {
+        self.state.ensure_booted("avf")?;
+        // TODO (L3): advance KVM_SET_CLOCK / CNTVOFF_EL2 on the retired-instruction window.
+        Err(VmmError::Unsupported(
+            "avf step_clock_window: retired-instruction window clock step (L3)".into(),
+        ))
+    }
+
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    fn register_pmu_sampler(&mut self, _sampler: Arc<dyn PmuSampler>) -> Result<(), VmmError> {
+        // TODO (L3): arm host PMU counters and dispatch retired-instruction samples.
+        Err(VmmError::Unsupported(
+            "avf register_pmu_sampler: PMU sample callback registration (L3)".into(),
+        ))
+    }
+
+    // see: cans/plugins/replay.md#Deterministic-RNG
+    async fn set_entropy_backend(&mut self, _backend: EntropyBackend) -> Result<(), VmmError> {
+        self.state.ensure_booted("avf")?;
+        // TODO (L3): swap virtio-rng for the seeded ChaCha20 stream under replay.
+        Err(VmmError::Unsupported(
+            "avf set_entropy_backend: virtio-rng backend swap (L3)".into(),
+        ))
+    }
+
+    // see: cans/plugins/replay.md#Deterministic-RNG
+    async fn entropy_position(&self) -> Result<EntropyStreamPosition, VmmError> {
+        self.state.ensure_booted("avf")?;
+        // TODO (L3): report the live entropy stream offset.
+        Err(VmmError::Unsupported(
+            "avf entropy_position: stream position read (L3)".into(),
+        ))
+    }
+
+    // see: cans/plugins/replay.md#Deterministic-RNG
+    async fn restore_entropy_position(
+        &mut self,
+        _position: EntropyStreamPosition,
+    ) -> Result<(), VmmError> {
+        self.state.ensure_booted("avf")?;
+        // TODO (L3): rewind the entropy stream to the snapshot offset.
+        Err(VmmError::Unsupported(
+            "avf restore_entropy_position: stream position restore (L3)".into(),
         ))
     }
 

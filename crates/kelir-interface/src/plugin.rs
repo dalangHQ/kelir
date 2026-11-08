@@ -10,19 +10,15 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::service_registry::ServiceRegistry;
-use crate::vsock::{VsockServiceHandler, VsockServiceSpec};
-
 use crate::driver::{
-    BalloonConvergence, ClockStepControl, EntropyBackendControl, WatchdogAction, WatchdogEvent,
-    WatchdogVerdict,
+    BalloonConvergence, EntropyBackend, EntropyStreamPosition, PmuSampler, VmConfig, VmmDriver,
+    VmmError, WatchdogAction, WatchdogEvent, WatchdogVerdict,
 };
 pub use crate::handlers::{
     ConsoleContext, ExecContext, FsContext, HandlerCtx, Has, HostContext, NetContext,
 };
-use crate::protocol::{
-    FilterAction, ProcessExit, StreamDirection, StreamKind, SuspendUntil, TrapEvent, Verdict,
-};
+use crate::protocol::{FilterAction, ProcessExit, SuspendUntil, TrapEvent, Verdict};
+use crate::vsock::{VsockServiceHandler, VsockServiceSpec};
 
 // see: cans/artifacts/code/plugin-trait.rs#PluginError
 #[derive(Error, Debug)]
@@ -190,40 +186,12 @@ pub enum LifecycleEvent {
     VmShutdown,
 }
 
-// see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-#[async_trait]
-pub trait VcpuFreezeControl: Send + Sync {
-    async fn freeze(&self) -> Result<(), PluginError>;
-    async fn unfreeze(&self) -> Result<(), PluginError>;
-}
-
-// see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-#[async_trait]
-pub trait FuseDrainControl: Send + Sync {
-    async fn drain_in_flight(&self, timeout: Duration) -> Result<(), PluginError>;
-}
-
-// see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-#[async_trait]
-pub trait CowBrokerControl: Send + Sync {
-    async fn commit_upper(&self) -> Result<(), PluginError>;
-    async fn discard_upper(&self) -> Result<(), PluginError>;
-}
-
-// see: cans/artifacts/code/vmm-driver-trait.rs
-pub trait BalloonControl: Send + Sync {
-    fn adjust_balloon(&self, target_mb: u32) -> Result<BalloonConvergence, PluginError>;
-}
-
 // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
 #[async_trait]
 pub trait LockBrokerCoordination: Send + Sync {
     async fn release_transaction_locks(&self) -> Result<(), PluginError>;
-    async fn release_transaction_locks_for(&self, namespace: [u8; 16]) -> Result<(), PluginError> {
-        // TODO (L3): namespace-scoped release needs the aborting transaction identity at the call site; the unscoped release is the L2 fallback.
-        let _ = namespace;
-        self.release_transaction_locks().await
-    }
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    async fn release_transaction_locks_for(&self, namespace: [u8; 16]) -> Result<(), PluginError>;
 }
 
 // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
@@ -231,56 +199,62 @@ pub trait ParkedConnectionReset: Send + Sync {
     fn reset_parked_connections(&self) -> Result<Vec<u64>, PluginError>;
 }
 
-// TODO (L3): borrow &mut dyn VmmDriver + &VmConfig per cans/artifacts/code/plugin-trait.rs; owned store is the L2 stand-in.
-pub struct LifecycleCtx {
-    pub watchdog: Option<WatchdogAction>,
-    pub watchdog_timeout: Option<Duration>,
-    pub balloon_target_mb: Option<u32>,
-    pub vetoes: Vec<(VetoEvent, Box<dyn Fn() -> bool + Send + Sync>)>,
-    pub vcpu_freeze: Option<Arc<dyn VcpuFreezeControl>>,
-    pub fuse_drain: Option<Arc<dyn FuseDrainControl>>,
-    pub cow_broker: Option<Arc<dyn CowBrokerControl>>,
-    pub clock_step: Option<Arc<dyn ClockStepControl>>,
-    pub entropy: Option<Arc<dyn EntropyBackendControl>>,
+// see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
+pub type VetoList = Vec<(VetoEvent, Box<dyn Fn() -> bool + Send + Sync>)>;
+
+// see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
+fn vmm_error(error: VmmError) -> PluginError {
+    PluginError::Io(std::io::Error::other(error))
 }
 
-impl LifecycleCtx {
-    pub fn new() -> Self {
+// see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
+// TODO (L3): veto callback boxes carry Send + Sync beyond the artifact's Box<dyn Fn() -> bool> so LifecycleCtx stays Send across async await points.
+pub struct LifecycleCtx<'a> {
+    pub config: &'a VmConfig,
+    pub session_id: &'a str,
+    driver: &'a mut dyn VmmDriver,
+    vetoes: &'a mut VetoList,
+}
+
+impl<'a> LifecycleCtx<'a> {
+    pub fn new(
+        config: &'a VmConfig,
+        session_id: &'a str,
+        driver: &'a mut dyn VmmDriver,
+        vetoes: &'a mut VetoList,
+    ) -> Self {
         Self {
-            watchdog: None,
-            watchdog_timeout: None,
-            balloon_target_mb: None,
-            vetoes: Vec::new(),
-            vcpu_freeze: None,
-            fuse_drain: None,
-            cow_broker: None,
-            clock_step: None,
-            entropy: None,
+            config,
+            session_id,
+            driver,
+            vetoes,
         }
     }
 
+    // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
     pub async fn set_watchdog(
         &mut self,
         timeout: Duration,
         action: WatchdogAction,
     ) -> Result<(), PluginError> {
-        self.watchdog_timeout = Some(timeout);
-        self.watchdog = Some(action);
-        Ok(())
+        self.driver
+            .set_watchdog(timeout, action)
+            .await
+            .map_err(vmm_error)
     }
 
+    // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
     pub async fn adjust_balloon(
         &mut self,
         target_mb: u32,
     ) -> Result<BalloonConvergence, PluginError> {
-        // TODO (L3): converge via driver balloon ack per cans/artifacts/code/vmm-driver-trait.rs.
-        self.balloon_target_mb = Some(target_mb);
-        Ok(BalloonConvergence {
-            target_mb,
-            converged: false,
-        })
+        self.driver
+            .adjust_balloon(target_mb)
+            .await
+            .map_err(vmm_error)
     }
 
+    // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
     pub fn register_veto(
         &mut self,
         event: VetoEvent,
@@ -289,67 +263,80 @@ impl LifecycleCtx {
         self.vetoes.push((event, callback));
     }
 
-    pub async fn freeze_vcpus(&self) -> Result<(), PluginError> {
-        match &self.vcpu_freeze {
-            Some(control) => control.freeze().await,
-            None => Err(PluginError::Halt("vCPU freeze capability not wired".into())),
-        }
-    }
-
-    pub async fn unfreeze_vcpus(&self) -> Result<(), PluginError> {
-        match &self.vcpu_freeze {
-            Some(control) => control.unfreeze().await,
-            None => Err(PluginError::Halt("vCPU freeze capability not wired".into())),
-        }
-    }
-
-    pub async fn drain_fuse(&self, timeout: Duration) -> Result<(), PluginError> {
-        match &self.fuse_drain {
-            Some(control) => control.drain_in_flight(timeout).await,
-            None => Err(PluginError::Halt("FUSE drain capability not wired".into())),
-        }
-    }
-
-    pub async fn commit_broker_upper(&self) -> Result<(), PluginError> {
-        match &self.cow_broker {
-            Some(control) => control.commit_upper().await,
-            None => Err(PluginError::Halt("CoW broker capability not wired".into())),
-        }
-    }
-
-    pub async fn discard_broker_upper(&self) -> Result<(), PluginError> {
-        match &self.cow_broker {
-            Some(control) => control.discard_upper().await,
-            None => Err(PluginError::Halt("CoW broker capability not wired".into())),
-        }
-    }
-
-    pub fn clock_step_control(&self) -> Result<Arc<dyn ClockStepControl>, PluginError> {
-        match &self.clock_step {
-            Some(control) => Ok(Arc::clone(control)),
-            None => Err(PluginError::Halt(
-                "clock stepping capability not wired".into(),
-            )),
-        }
-    }
-
-    pub fn entropy_control(&self) -> Result<Arc<dyn EntropyBackendControl>, PluginError> {
-        match &self.entropy {
-            Some(control) => Ok(Arc::clone(control)),
-            None => Err(PluginError::Halt(
-                "entropy backend capability not wired".into(),
-            )),
-        }
-    }
-
+    // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
     pub fn update_dispatch(&mut self, _new_dispatch: Arc<()>) -> Result<(), PluginError> {
         Ok(())
     }
-}
 
-impl Default for LifecycleCtx {
-    fn default() -> Self {
-        Self::new()
+    // see: cans/10-attestation.md#Lifecycle-bridge
+    pub async fn freeze_vcpus(&mut self) -> Result<(), PluginError> {
+        self.driver.freeze_vcpus().await.map_err(vmm_error)
+    }
+
+    // see: cans/10-attestation.md#Lifecycle-bridge
+    pub async fn unfreeze_vcpus(&mut self) -> Result<(), PluginError> {
+        self.driver.unfreeze_vcpus().await.map_err(vmm_error)
+    }
+
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    pub async fn drain_fuse(&mut self, timeout: Duration) -> Result<(), PluginError> {
+        self.driver.drain_fuse(timeout).await.map_err(vmm_error)
+    }
+
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    pub async fn commit_broker_upper(&mut self) -> Result<(), PluginError> {
+        self.driver.commit_broker_upper().await.map_err(vmm_error)
+    }
+
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    pub async fn discard_broker_upper(&mut self) -> Result<(), PluginError> {
+        self.driver.discard_broker_upper().await.map_err(vmm_error)
+    }
+
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    pub async fn step_clock_window(
+        &mut self,
+        retired_instructions: u64,
+    ) -> Result<(), PluginError> {
+        self.driver
+            .step_clock_window(retired_instructions)
+            .await
+            .map_err(vmm_error)
+    }
+
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    pub fn register_pmu_sampler(
+        &mut self,
+        sampler: Arc<dyn PmuSampler>,
+    ) -> Result<(), PluginError> {
+        self.driver.register_pmu_sampler(sampler).map_err(vmm_error)
+    }
+
+    // see: cans/plugins/replay.md#Deterministic-RNG
+    pub async fn set_entropy_backend(
+        &mut self,
+        backend: EntropyBackend,
+    ) -> Result<(), PluginError> {
+        self.driver
+            .set_entropy_backend(backend)
+            .await
+            .map_err(vmm_error)
+    }
+
+    // see: cans/plugins/replay.md#Deterministic-RNG
+    pub async fn entropy_position(&self) -> Result<EntropyStreamPosition, PluginError> {
+        self.driver.entropy_position().await.map_err(vmm_error)
+    }
+
+    // see: cans/plugins/replay.md#Deterministic-RNG
+    pub async fn restore_entropy_position(
+        &mut self,
+        position: EntropyStreamPosition,
+    ) -> Result<(), PluginError> {
+        self.driver
+            .restore_entropy_position(position)
+            .await
+            .map_err(vmm_error)
     }
 }
 
@@ -405,6 +392,7 @@ where
 
 // see: cans/11-protocol.md#Control-channel
 // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+// see: cans/artifacts/code/plugin-trait.rs#PipelineBinder
 pub trait PipelineBinder {
     fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>);
     fn bind_fs_scoped(&mut self, stage: Arc<dyn FsInterposer>, scope: MountScope) {
@@ -431,16 +419,6 @@ pub trait PipelineBinder {
         let _ = scope;
         self.bind_host(stage);
     }
-    fn bind_stream(&mut self, kind: StreamKind, stage: Arc<dyn StreamInterposer>);
-    fn bind_stream_scoped(
-        &mut self,
-        kind: StreamKind,
-        stage: Arc<dyn StreamInterposer>,
-        scope: MountScope,
-    ) {
-        let _ = scope;
-        self.bind_stream(kind, stage);
-    }
     fn bind_vsock_service(&mut self, spec: VsockServiceSpec, service: Arc<dyn VsockServiceHandler>);
     fn bind_vsock_service_scoped(
         &mut self,
@@ -451,9 +429,10 @@ pub trait PipelineBinder {
         let _ = scope;
         self.bind_vsock_service(spec, service);
     }
+    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    fn bind_parked_connection_reset(&mut self, reset: Arc<dyn ParkedConnectionReset>);
     // see: cans/02-plugin-model.md#Mount-scoping
     fn set_active_scope(&mut self, _scope: MountScope) {}
-    fn service_registry(&mut self) -> &mut ServiceRegistry;
 }
 
 pub trait EventBusBinder {
@@ -485,31 +464,31 @@ pub trait KelirPlugin: Send + Sync + PluginClone {
 
 #[async_trait]
 pub trait LifecycleParticipant: Send + Sync {
-    async fn on_vm_init(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         let _ = ctx;
         Ok(())
     }
-    async fn on_vm_ready(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_ready(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         let _ = ctx;
         Ok(())
     }
-    async fn on_vm_shutdown(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_shutdown(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         let _ = ctx;
         Ok(())
     }
-    async fn on_pre_commit(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_pre_commit(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         let _ = ctx;
         Ok(())
     }
     async fn on_post_commit(
         &self,
-        ctx: &mut LifecycleCtx,
+        ctx: &mut LifecycleCtx<'_>,
         committed: bool,
     ) -> Result<(), PluginError> {
         let _ = (ctx, committed);
         Ok(())
     }
-    async fn on_host_preempt(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_host_preempt(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         let _ = ctx;
         Ok(())
     }
@@ -593,8 +572,14 @@ pub trait FsInterposer: Send + Sync {
         let _ = (path, buffer);
         Ok(())
     }
-    fn on_fs_write(&self, data: &mut [u8], ctx: &HandlerCtx) -> Result<FilterAction, PluginError> {
-        let _ = (data, ctx);
+    fn on_fs_write(
+        &self,
+        path: &Path,
+        data: &mut [u8],
+        pid: u32,
+        ctx: &HandlerCtx,
+    ) -> Result<FilterAction, PluginError> {
+        let _ = (path, data, pid, ctx);
         Ok(FilterAction::Forward)
     }
     fn on_fs_lock(
@@ -639,34 +624,8 @@ pub trait HostInterposer: Send + Sync {
     }
 }
 
-// see: cans/11-protocol.md#Control-channel
 // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
-#[async_trait]
-pub trait StreamInterposer: Send + Sync {
-    async fn on_stream_open(
-        &self,
-        stream_id: u32,
-        tags: &mut Vec<u8>,
-        ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        let _ = (stream_id, tags, ctx);
-        Ok(Verdict::Pass)
-    }
-    async fn on_stream_data(
-        &self,
-        direction: StreamDirection,
-        stream_id: u32,
-        payload: &mut Vec<u8>,
-        ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        let _ = (direction, stream_id, payload, ctx);
-        Ok(Verdict::Pass)
-    }
-    async fn on_stream_close(&self, stream_id: u32, ctx: &HandlerCtx) -> Result<(), PluginError> {
-        let _ = (stream_id, ctx);
-        Ok(())
-    }
-}
+// TODO (L3): MCP_CONSOLE re-binding guidance for stream-bound plugins lands with the ring traits per cans/02-plugin-model.md#Segregated-ring-traits.
 
 pub trait ForeignPluginBridge: KelirPlugin {
     fn mount_scope(&self) -> &MountScope;
@@ -736,7 +695,7 @@ impl Default for FfiDispatchQueue {
     }
 }
 
-// see: cans/artifacts/code/plugin-trait.rs
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
 pub fn foreign_suspend_action() -> FilterAction {
     FilterAction::Suspend {
         until: SuspendUntil::Approval,

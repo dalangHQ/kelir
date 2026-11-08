@@ -66,13 +66,6 @@ impl Channel {
     }
 }
 
-// see: cans/11-protocol.md#Control-channel
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StreamDirection {
-    GuestToHost,
-    HostToGuest,
-}
-
 // see: cans/11-protocol.md#Wire-framing
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u16)]
@@ -192,7 +185,8 @@ pub struct TrapEvent {
     pub binary_path: String,
     pub binary_dev: u64,
     pub binary_ino: u64,
-    pub binary_blake3: String,
+    // see: cans/artifacts/code/messages.rs#TrapEvent
+    pub binary_blake3: [u8; 32],
     pub argv: Vec<String>,
     pub envp: HashMap<String, String>,
     pub cwd: String,

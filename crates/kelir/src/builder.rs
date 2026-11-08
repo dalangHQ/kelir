@@ -7,11 +7,10 @@ use kelir_interface::driver::VmConfig;
 use kelir_interface::plugin::HandlerCtx;
 use kelir_interface::plugin::LifecycleCtx;
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{AnyPlugin, CompositePlugin, MountScope, PipelineBinder, VetoEvent};
+use kelir_interface::plugin::{
+    AnyPlugin, CompositePlugin, MountScope, PipelineBinder, VetoEvent, VetoList,
+};
 use kelir_interface::protocol::{TrapEvent, Verdict};
-
-// see: cans/08-lifecycle.md#Lifecycle-vetoes
-pub(crate) type VetoList = Vec<(VetoEvent, Box<dyn Fn() -> bool + Send + Sync>)>;
 
 use crate::hlist::{HCons, HList, HNil, NoParams};
 use crate::planes::storage::{LockBrokerConfig, StorageConfig};
@@ -149,7 +148,7 @@ type BoxFutureResult = Pin<Box<dyn Future<Output = Result<(), PluginError>> + Se
 
 type BoxedLifecycleCallback = Box<
     dyn for<'a> Fn(
-            &'a mut LifecycleCtx,
+            &'a mut LifecycleCtx<'a>,
         ) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
         + Send
         + Sync,
@@ -372,7 +371,7 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
     pub fn on_vm_init<F>(mut self, f: F) -> Self
     where
         F: for<'a> Fn(
-                &'a mut LifecycleCtx,
+                &'a mut LifecycleCtx<'a>,
             )
                 -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
             + Clone
@@ -387,7 +386,7 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
     pub fn on_vm_ready<F>(mut self, f: F) -> Self
     where
         F: for<'a> Fn(
-                &'a mut LifecycleCtx,
+                &'a mut LifecycleCtx<'a>,
             )
                 -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
             + Clone
@@ -402,7 +401,7 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
     pub fn on_vm_shutdown<F>(mut self, f: F) -> Self
     where
         F: for<'a> Fn(
-                &'a mut LifecycleCtx,
+                &'a mut LifecycleCtx<'a>,
             )
                 -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
             + Clone
