@@ -20,6 +20,11 @@ pub enum ShimError {
     UnknownMsgType { msg_type: u16 },
     TruncatedFrame,
     ControlPending { msg_type: u16 },
+    ControlOversize { len: usize },
+    UnknownExecSubLane { lane: u8 },
+    ExecControlPending,
+    InvalidSignal { signal: u32 },
+    SignalDelivery { exec_id: u64, errno: i32 },
     PtyOpen { errno: libc::c_int },
 }
 
@@ -65,6 +70,27 @@ impl fmt::Display for ShimError {
             }
             Self::ControlPending { msg_type } => {
                 write!(f, "control msg_type {msg_type:#06x} handling pending (L3)")
+            }
+            Self::ControlOversize { len } => {
+                write!(
+                    f,
+                    "control payload {len} bytes exceeds the 4KB control ceiling"
+                )
+            }
+            Self::UnknownExecSubLane { lane } => {
+                write!(f, "exec sub-lane {lane:#04x} is unknown on the data path")
+            }
+            Self::ExecControlPending => {
+                write!(f, "exec control sub-lane handling pending (L3)")
+            }
+            Self::InvalidSignal { signal } => {
+                write!(f, "signal {signal} is outside the deliverable range 1..=64")
+            }
+            Self::SignalDelivery { exec_id, errno } => {
+                write!(
+                    f,
+                    "signal delivery to exec_id {exec_id} failed with errno {errno}"
+                )
             }
             Self::PtyOpen { errno } => write!(f, "openpty failed with errno {errno}"),
         }

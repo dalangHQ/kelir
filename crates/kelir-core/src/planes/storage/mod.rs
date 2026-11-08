@@ -5,6 +5,7 @@ pub mod fuse;
 pub mod io;
 pub mod lock_broker;
 pub mod reconciler;
+pub mod synthetic;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -24,8 +25,10 @@ pub struct StoragePlane {
     quota: StorageQuota,
     io: Arc<dyn io::StorageIo>,
     reconciler: OnceLock<reconciler::Reconciler>,
-    lock_broker: OnceLock<lock_broker::LockBroker>,
+    lock_broker: OnceLock<Arc<lock_broker::LockBroker>>,
     fuse_worker: OnceLock<Mutex<fuse::FuseWorker>>,
+    metrics: Arc<kelir_otlp::registry::MetricRegistry>,
+    synthetic_files: Vec<synthetic::SyntheticFile>,
 }
 
 impl StoragePlane {
@@ -49,7 +52,27 @@ impl StoragePlane {
             reconciler: OnceLock::new(),
             lock_broker: OnceLock::new(),
             fuse_worker: OnceLock::new(),
+            metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
+            synthetic_files: Vec::new(),
         }
+    }
+
+    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry::MetricRegistry>) -> Self {
+        self.metrics = metrics;
+        self
+    }
+
+    pub fn metrics(&self) -> &Arc<kelir_otlp::registry::MetricRegistry> {
+        &self.metrics
+    }
+
+    pub fn with_synthetic_files(mut self, files: Vec<synthetic::SyntheticFile>) -> Self {
+        self.synthetic_files = files;
+        self
+    }
+
+    pub fn synthetic_files(&self) -> &[synthetic::SyntheticFile] {
+        &self.synthetic_files
     }
 
     pub fn with_io(mut self, storage_io: Arc<dyn io::StorageIo>) -> Self {
@@ -78,8 +101,24 @@ impl StoragePlane {
         &self,
         interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
     ) -> &lock_broker::LockBroker {
+        self.lock_broker_arc(interposer)
+    }
+
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub fn lock_broker_coordination(
+        &self,
+        interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
+    ) -> Arc<dyn kelir_interface::plugin::LockBrokerCoordination> {
+        let broker: Arc<lock_broker::LockBroker> = Arc::clone(self.lock_broker_arc(interposer));
+        broker
+    }
+
+    fn lock_broker_arc(
+        &self,
+        interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
+    ) -> &Arc<lock_broker::LockBroker> {
         self.lock_broker
-            .get_or_init(|| lock_broker::LockBroker::new(interposer))
+            .get_or_init(|| Arc::new(lock_broker::LockBroker::new(interposer)))
     }
 
     pub fn fuse_worker(
@@ -88,8 +127,12 @@ impl StoragePlane {
         interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
         session_id: [u8; 16],
     ) -> &Mutex<fuse::FuseWorker> {
-        self.fuse_worker
-            .get_or_init(|| Mutex::new(fuse::FuseWorker::new(receiver, interposer, session_id)))
+        self.fuse_worker.get_or_init(|| {
+            Mutex::new(
+                fuse::FuseWorker::new(receiver, interposer, session_id)
+                    .with_synthetic_files(self.synthetic_files.clone()),
+            )
+        })
     }
 
     pub fn reconcile(
@@ -125,6 +168,7 @@ impl StoragePlane {
     }
 
     // see: cans/05-storage-plane.md#Storage-quotas
+    // see: cans/14-observability.md#Metrics-pipeline
     pub fn check_quota(
         &self,
         bytes_to_write: u64,
@@ -139,6 +183,7 @@ impl StoragePlane {
                 kelir_interface::plugin::PluginError::Halt("quota byte arithmetic overflow".into())
             })?;
         if bytes > self.quota.max_bytes {
+            self.metrics.record_backpressure();
             return Err(kelir_interface::plugin::PluginError::Halt(
                 "storage byte quota exceeded".into(),
             ));
@@ -152,10 +197,12 @@ impl StoragePlane {
                 kelir_interface::plugin::PluginError::Halt("quota inode arithmetic overflow".into())
             })?;
         if inodes > self.quota.max_inodes {
+            self.metrics.record_backpressure();
             return Err(kelir_interface::plugin::PluginError::Halt(
                 "storage inode quota exceeded".into(),
             ));
         }
+        self.metrics.add_dirty_pages(bytes_to_write.div_ceil(4096));
         Ok(())
     }
 

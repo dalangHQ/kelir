@@ -2,6 +2,8 @@
 
 pub mod registry;
 
+pub use registry::{MetricRegistry, MetricSnapshot};
+
 use kelir_interface::telemetry::{CausalDelta, ExecutionReceipt, PhaseTimings};
 use thiserror::Error;
 
@@ -200,6 +202,14 @@ impl OtlpEncoder {
             "encode_causal_delta OTLP protobuf encoding (L3)".to_string(),
         ))
     }
+
+    pub fn encode_metrics(&self, snapshot: &MetricSnapshot) -> Result<Vec<u8>, OtlpError> {
+        let _ = snapshot;
+        // TODO (L3): encode the metric snapshot into an OTLP protobuf payload.
+        Err(OtlpError::NotImplemented(
+            "encode_metrics OTLP protobuf encoding (L3)".to_string(),
+        ))
+    }
 }
 
 pub struct OtlpExporter {
@@ -239,5 +249,9 @@ impl OtlpExporter {
     pub fn export_causal_delta(&self, delta: &CausalDelta) -> Result<Vec<u8>, OtlpError> {
         let record = OtlpCausalDeltaRecord::from_delta(delta);
         self.encoder.encode_causal_delta(&record)
+    }
+
+    pub fn export_metrics(&self, snapshot: &MetricSnapshot) -> Result<Vec<u8>, OtlpError> {
+        self.encoder.encode_metrics(snapshot)
     }
 }

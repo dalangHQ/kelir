@@ -192,13 +192,6 @@ pub struct TrapEvent {
     pub syscall: Option<TrappedSyscall>,
 }
 
-// see: cans/01-architecture.md#Early-boot-diagnostics
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub enum ExitReason {
-    KernelPanic(String),
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessExit {
     pub pid: u32,

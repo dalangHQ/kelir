@@ -7,7 +7,7 @@ use kelir_interface::driver::VmConfig;
 use kelir_interface::plugin::HandlerCtx;
 use kelir_interface::plugin::LifecycleCtx;
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{AnyPlugin, CompositePlugin, MountScope, VetoEvent};
+use kelir_interface::plugin::{AnyPlugin, CompositePlugin, MountScope, PipelineBinder, VetoEvent};
 use kelir_interface::protocol::{TrapEvent, Verdict};
 
 // see: cans/08-lifecycle.md#Lifecycle-vetoes
@@ -186,7 +186,7 @@ pub(crate) struct StreamKindServiceEntry {
 }
 
 pub(crate) struct Registration<Plugins: HList> {
-    pub(crate) instances: Vec<Box<dyn AnyPlugin>>,
+    pub(crate) instances: Vec<(Box<dyn AnyPlugin>, MountScope)>,
     pub(crate) traps: Vec<TrapEntry<Plugins>>,
     pub(crate) terminal_cfg: Option<PtyConfig>,
     pub(crate) storage_cfg: Option<StorageConfig<Plugins, NoParams>>,
@@ -286,8 +286,9 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
         P: KelirPlugin + Clone + 'static,
     {
         let context = plugin.context();
+        let scope = KelirPlugin::default_scope(&plugin);
         let mut registration = self.registration.narrow::<P::Context>();
-        registration.instances.push(Box::new(plugin));
+        registration.instances.push((Box::new(plugin), scope));
         KelirBuilder {
             config: self.config,
             plugins: HCons {
@@ -490,8 +491,8 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
         C: CompositePlugin + 'static,
     {
         // TODO (L3): flatten composite children into typed capability mounts once interface AnyPlugin carries KelirPlugin per cans/artifacts/code/plugin-trait.rs.
-        for (plugin, _child_scope) in CompositePlugin::unpack(Box::new(bundle), &scope) {
-            self.registration.instances.push(plugin);
+        for (plugin, child_scope) in CompositePlugin::unpack(Box::new(bundle), &scope) {
+            self.registration.instances.push((plugin, child_scope));
         }
         self
     }
@@ -502,14 +503,35 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
             .registration
             .instances
             .iter()
-            .map(|plugin| kelir_core::PluginRegistration::new(plugin.name(), true))
+            .map(|(plugin, _)| {
+                kelir_core::PluginRegistration::new(plugin.name(), plugin.is_enabled())
+            })
             .collect();
         let mut engine = kelir_core::dispatch::PipelineEngine::new();
-        for instance in &self.registration.instances {
+        for (instance, scope) in &self.registration.instances {
+            if !instance.is_enabled() {
+                continue;
+            }
+            engine.set_active_scope(scope.clone());
             instance.register_interceptors(&mut engine);
         }
+        engine.set_active_scope(MountScope::default());
         engine.seal()?;
-        let core = kelir_core::Session::boot_with_engine(self.config, &plugins, engine)?;
+        let metrics = std::sync::Arc::new(kelir_otlp::registry::MetricRegistry::new());
+        let engine = engine.with_metrics(metrics.clone());
+        let synthetic_files = self
+            .registration
+            .storage_cfg
+            .as_ref()
+            .map(|cfg| cfg.synthetic_files.clone())
+            .unwrap_or_default();
+        let core = kelir_core::Session::boot_with_engine(
+            self.config,
+            &plugins,
+            engine,
+            metrics,
+            synthetic_files,
+        )?;
         Ok(Session::from_parts(core, self.plugins, self.registration))
     }
 }

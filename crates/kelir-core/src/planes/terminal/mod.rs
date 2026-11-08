@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Default)]
 pub struct Cell {
@@ -143,6 +143,7 @@ pub struct TerminalPlane {
     session_id: [u8; 16],
     state: Mutex<Vt100StateMachine>,
     segments: Mutex<HashMap<u32, LogSegment>>,
+    metrics: Arc<kelir_otlp::registry::MetricRegistry>,
 }
 
 impl TerminalPlane {
@@ -152,7 +153,17 @@ impl TerminalPlane {
             session_id,
             state: Mutex::new(Vt100StateMachine::new()),
             segments: Mutex::new(HashMap::new()),
+            metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
         }
+    }
+
+    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry::MetricRegistry>) -> Self {
+        self.metrics = metrics;
+        self
+    }
+
+    pub fn metrics(&self) -> &Arc<kelir_otlp::registry::MetricRegistry> {
+        &self.metrics
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<(), kelir_interface::plugin::PluginError> {
@@ -167,7 +178,9 @@ impl TerminalPlane {
         let mut state = self.state.lock().map_err(|_| {
             kelir_interface::plugin::PluginError::Halt("terminal state lock poisoned".into())
         })?;
-        state.feed(bytes)
+        state.feed(bytes).inspect_err(|_| {
+            self.metrics.record_drop();
+        })
     }
 
     pub fn export_screen_matrix(&self) -> Result<Vec<u8>, kelir_interface::plugin::PluginError> {

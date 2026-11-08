@@ -1,5 +1,5 @@
 // see: cans/01-architecture.md#Early-boot-diagnostics
-use kelir_interface::protocol::ExitReason;
+use kelir_interface::telemetry::ExitKind;
 
 pub const UART_RING_CAPACITY: usize = 64 * 1024;
 
@@ -62,7 +62,7 @@ impl UartRingBuffer {
         out
     }
 
-    pub fn decode_exit_reason(&self) -> Option<ExitReason> {
+    pub fn decode_exit_kind(&self) -> Option<ExitKind> {
         decode_early_boot_exit(&self.snapshot())
     }
 }
@@ -73,10 +73,10 @@ impl Default for UartRingBuffer {
     }
 }
 
-pub fn decode_early_boot_exit(bytes: &[u8]) -> Option<ExitReason> {
+pub fn decode_early_boot_exit(bytes: &[u8]) -> Option<ExitKind> {
     let text = String::from_utf8_lossy(bytes);
     // TODO (L3): further kernel panic signatures beyond the canonical "Kernel panic" line.
     text.lines()
         .find(|line| line.contains("Kernel panic"))
-        .map(|line| ExitReason::KernelPanic(line.to_string()))
+        .map(|line| ExitKind::KernelPanic(line.to_string()))
 }

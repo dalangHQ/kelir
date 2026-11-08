@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
-    ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, MountScope, NetInterposer,
-    PipelineBinder, StreamInterposer, TrapInterposer,
+    ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, LockBrokerCoordination,
+    MountScope, NetInterposer, PipelineBinder, StreamInterposer, TrapInterposer, VirtioDevice,
 };
 use kelir_interface::protocol::{FilterAction, ProcessExit, StreamKind, TrapEvent, Verdict};
 use kelir_interface::service_registry::ServiceRegistry;
@@ -18,12 +18,18 @@ pub struct PipelineEngine {
     trap_scopes: Vec<MountScope>,
     gate: TrapGateEvaluator,
     fs_interceptors: Vec<Arc<dyn FsInterposer>>,
+    fs_scopes: Vec<MountScope>,
     net_interceptors: Vec<Arc<dyn NetInterposer>>,
+    net_scopes: Vec<MountScope>,
     console_interceptors: Vec<Arc<dyn ConsoleInterposer>>,
+    console_scopes: Vec<MountScope>,
     host_interceptors: Vec<Arc<dyn HostInterposer>>,
-    stream_interposers: Vec<(StreamKind, Arc<dyn StreamInterposer>)>,
-    vsock_services: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>)>,
+    host_scopes: Vec<MountScope>,
+    stream_interposers: Vec<(StreamKind, Arc<dyn StreamInterposer>, MountScope)>,
+    vsock_services: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>, MountScope)>,
     services: ServiceRegistry,
+    metrics: Arc<kelir_otlp::registry::MetricRegistry>,
+    active_scope: Option<MountScope>,
     sealed: bool,
 }
 
@@ -35,30 +41,77 @@ impl Default for PipelineEngine {
 
 impl PipelineBinder for PipelineEngine {
     fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>) {
+        self.bind_fs_scoped(stage, MountScope::default());
+    }
+    fn bind_fs_scoped(&mut self, stage: Arc<dyn FsInterposer>, scope: MountScope) {
+        let scope = self.effective_scope(scope);
         self.fs_interceptors.push(stage);
+        self.fs_scopes.push(scope);
     }
     fn bind_net(&mut self, stage: Arc<dyn NetInterposer>) {
+        self.bind_net_scoped(stage, MountScope::default());
+    }
+    fn bind_net_scoped(&mut self, stage: Arc<dyn NetInterposer>, scope: MountScope) {
+        let scope = self.effective_scope(scope);
         self.net_interceptors.push(stage);
+        self.net_scopes.push(scope);
     }
     fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>) {
+        self.bind_trap_scoped(stage, MountScope::default());
+    }
+    fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope) {
+        let scope = self.effective_scope(scope);
         self.trap_interceptors.push(stage);
-        self.trap_scopes.push(MountScope::default());
+        self.trap_scopes.push(scope);
     }
     fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>) {
+        self.bind_console_scoped(stage, MountScope::default());
+    }
+    fn bind_console_scoped(&mut self, stage: Arc<dyn ConsoleInterposer>, scope: MountScope) {
+        let scope = self.effective_scope(scope);
         self.console_interceptors.push(stage);
+        self.console_scopes.push(scope);
     }
     fn bind_host(&mut self, stage: Arc<dyn HostInterposer>) {
+        self.bind_host_scoped(stage, MountScope::default());
+    }
+    fn bind_host_scoped(&mut self, stage: Arc<dyn HostInterposer>, scope: MountScope) {
+        let scope = self.effective_scope(scope);
         self.host_interceptors.push(stage);
+        self.host_scopes.push(scope);
     }
     fn bind_stream(&mut self, kind: StreamKind, stage: Arc<dyn StreamInterposer>) {
-        self.stream_interposers.push((kind, stage));
+        self.bind_stream_scoped(kind, stage, MountScope::default());
+    }
+    fn bind_stream_scoped(
+        &mut self,
+        kind: StreamKind,
+        stage: Arc<dyn StreamInterposer>,
+        scope: MountScope,
+    ) {
+        // TODO (L3): scope is stored; dispatch-time enforcement lands with stream dispatch.
+        let scope = self.effective_scope(scope);
+        self.stream_interposers.push((kind, stage, scope));
     }
     fn bind_vsock_service(
         &mut self,
         spec: VsockServiceSpec,
         service: Arc<dyn VsockServiceHandler>,
     ) {
-        self.vsock_services.push((spec, service));
+        self.bind_vsock_service_scoped(spec, service, MountScope::default());
+    }
+    fn bind_vsock_service_scoped(
+        &mut self,
+        spec: VsockServiceSpec,
+        service: Arc<dyn VsockServiceHandler>,
+        scope: MountScope,
+    ) {
+        // TODO (L3): scope is stored; dispatch-time enforcement lands with vsock dispatch.
+        let scope = self.effective_scope(scope);
+        self.vsock_services.push((spec, service, scope));
+    }
+    fn set_active_scope(&mut self, scope: MountScope) {
+        self.active_scope = Some(scope);
     }
     fn service_registry(&mut self) -> &mut ServiceRegistry {
         &mut self.services
@@ -72,18 +125,38 @@ impl PipelineEngine {
             trap_scopes: Vec::new(),
             gate: TrapGateEvaluator::new(Vec::new()),
             fs_interceptors: Vec::new(),
+            fs_scopes: Vec::new(),
             net_interceptors: Vec::new(),
+            net_scopes: Vec::new(),
             console_interceptors: Vec::new(),
+            console_scopes: Vec::new(),
             host_interceptors: Vec::new(),
+            host_scopes: Vec::new(),
             stream_interposers: Vec::new(),
             vsock_services: Vec::new(),
             services: ServiceRegistry::new(),
+            metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
+            active_scope: None,
             sealed: false,
         }
     }
 
+    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry::MetricRegistry>) -> Self {
+        self.metrics = metrics;
+        self
+    }
+
+    pub fn metrics(&self) -> &Arc<kelir_otlp::registry::MetricRegistry> {
+        &self.metrics
+    }
+
     pub fn services(&self) -> &ServiceRegistry {
         &self.services
+    }
+
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub fn register_lock_broker(&mut self, coordination: Arc<dyn LockBrokerCoordination>) {
+        self.services.register(coordination);
     }
 
     pub fn is_sealed(&self) -> bool {
@@ -91,8 +164,33 @@ impl PipelineEngine {
     }
 
     pub fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope) {
-        self.trap_interceptors.push(stage);
-        self.trap_scopes.push(scope);
+        <Self as PipelineBinder>::bind_trap_scoped(self, stage, scope);
+    }
+
+    fn scope_at(scopes: &[MountScope], index: usize) -> MountScope {
+        scopes.get(index).cloned().unwrap_or_default()
+    }
+
+    fn effective_scope(&self, scope: MountScope) -> MountScope {
+        match &self.active_scope {
+            Some(active) => scope.intersect(active),
+            None => scope,
+        }
+    }
+
+    fn fs_scope_allows(scope: &MountScope, ctx: &HandlerCtx) -> bool {
+        if !scope.allows_device(VirtioDevice::Fs) {
+            return false;
+        }
+        if !ctx.trap.binary_path.is_empty() && !scope.allows_binary(&ctx.trap.binary_path) {
+            return false;
+        }
+        if let Some(fs_ctx) = &ctx.fs_ctx {
+            if !fs_ctx.path.as_os_str().is_empty() && !scope.allows_path(&fs_ctx.path) {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn seal(&mut self) -> Result<(), PluginError> {
@@ -100,20 +198,20 @@ impl PipelineEngine {
             return Err(PluginError::Halt("pipeline already sealed".into()));
         }
         // TODO (L3): conflicts surface the structured EKindConflict/EPortConflict envelope from the artifacts.
-        for (index, (kind, _)) in self.stream_interposers.iter().enumerate() {
+        for (index, (kind, _, _)) in self.stream_interposers.iter().enumerate() {
             if self.stream_interposers[..index]
                 .iter()
-                .any(|(bound, _)| bound == kind)
+                .any(|(bound, _, _)| bound == kind)
             {
                 return Err(PluginError::Halt(format!(
                     "stream kind already bound: {kind:?}"
                 )));
             }
         }
-        for (index, (spec, _)) in self.vsock_services.iter().enumerate() {
+        for (index, (spec, _, _)) in self.vsock_services.iter().enumerate() {
             if self.vsock_services[..index]
                 .iter()
-                .any(|(bound, _)| bound.port == spec.port)
+                .any(|(bound, _, _)| bound.port == spec.port)
             {
                 return Err(PluginError::Halt(format!(
                     "vsock port already bound: {}",
@@ -132,6 +230,9 @@ impl PipelineEngine {
         ctx: &HandlerCtx,
     ) -> Result<Verdict, PluginError> {
         // TODO (L3): panic quarantine across await needs an executor-level catch_unwind; a panicking async hook unwinds to the caller.
+        if event.syscall.is_some() {
+            self.metrics.record_syscall();
+        }
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
             let fallback = MountScope::default();
             let scope = self.trap_scopes.get(index).unwrap_or(&fallback);
@@ -153,7 +254,17 @@ impl PipelineEngine {
         event: &ProcessExit,
         ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
-        for interceptor in &self.trap_interceptors {
+        self.metrics.record_exec();
+        // TODO (L3): exec_started pairs with this finish once the L3 exec spawn path dispatches it.
+        self.metrics.exec_finished();
+        for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.trap_scopes, index);
+            if !matches!(
+                self.gate.evaluate(&ctx.trap, &scope),
+                GateDecision::FallThrough
+            ) {
+                continue;
+            }
             interceptor.on_process_exit(event, ctx).await?;
         }
         Ok(())
@@ -164,7 +275,11 @@ impl PipelineEngine {
         data: &mut [u8],
         ctx: &HandlerCtx,
     ) -> Result<FilterAction, PluginError> {
-        for interceptor in &self.fs_interceptors {
+        for (index, interceptor) in self.fs_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.fs_scopes, index);
+            if !Self::fs_scope_allows(&scope, ctx) {
+                continue;
+            }
             let action = interceptor.on_fs_write(data, ctx)?;
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
@@ -173,8 +288,13 @@ impl PipelineEngine {
         Ok(FilterAction::Forward)
     }
 
+    // TODO (L3): CIDR/port scope rules need a frame parser; only the device mask is enforced here.
     pub fn dispatch_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        for interceptor in &self.net_interceptors {
+        for (index, interceptor) in self.net_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.net_scopes, index);
+            if !scope.allows_device(VirtioDevice::Net) {
+                continue;
+            }
             let action = interceptor.on_net_outbound(frame)?;
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
@@ -184,7 +304,11 @@ impl PipelineEngine {
     }
 
     pub fn dispatch_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        for interceptor in &self.net_interceptors {
+        for (index, interceptor) in self.net_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.net_scopes, index);
+            if !scope.allows_device(VirtioDevice::Net) {
+                continue;
+            }
             let action = interceptor.on_net_inbound(frame)?;
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
@@ -198,7 +322,11 @@ impl PipelineEngine {
         port: u32,
         bytes: &mut Vec<u8>,
     ) -> Result<(), PluginError> {
-        for interceptor in &self.console_interceptors {
+        for (index, interceptor) in self.console_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.console_scopes, index);
+            if !scope.allows_device(VirtioDevice::Console) {
+                continue;
+            }
             interceptor.on_console_input(port, bytes).await?;
         }
         Ok(())
@@ -209,7 +337,11 @@ impl PipelineEngine {
         port: u32,
         chunk: &mut Vec<u8>,
     ) -> Result<(), PluginError> {
-        for interceptor in &self.console_interceptors {
+        for (index, interceptor) in self.console_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.console_scopes, index);
+            if !scope.allows_device(VirtioDevice::Console) {
+                continue;
+            }
             interceptor.on_console_output(port, chunk).await?;
         }
         Ok(())
@@ -221,7 +353,11 @@ impl PipelineEngine {
         exec_id: u64,
         chunk: &mut Vec<u8>,
     ) -> Result<(), PluginError> {
-        for interceptor in &self.console_interceptors {
+        for (index, interceptor) in self.console_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.console_scopes, index);
+            if !scope.allows_device(VirtioDevice::Console) {
+                continue;
+            }
             interceptor.on_exec_stdout(pid, exec_id, chunk).await?;
         }
         Ok(())
@@ -233,18 +369,27 @@ impl PipelineEngine {
         exec_id: u64,
         chunk: &mut Vec<u8>,
     ) -> Result<(), PluginError> {
-        for interceptor in &self.console_interceptors {
+        for (index, interceptor) in self.console_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.console_scopes, index);
+            if !scope.allows_device(VirtioDevice::Console) {
+                continue;
+            }
             interceptor.on_exec_stderr(pid, exec_id, chunk).await?;
         }
         Ok(())
     }
 
+    // TODO (L3): host scope.devices has no VirtioDevice mapping; only the path filter is enforced here.
     pub fn dispatch_host_lsm_exec(
         &self,
         path: &std::path::Path,
         pid: u32,
     ) -> Result<Verdict, PluginError> {
-        for interceptor in &self.host_interceptors {
+        for (index, interceptor) in self.host_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.host_scopes, index);
+            if !scope.allows_path(path) {
+                continue;
+            }
             let verdict = interceptor.on_host_lsm_exec(path, pid)?;
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
@@ -253,6 +398,7 @@ impl PipelineEngine {
         Ok(Verdict::Pass)
     }
 
+    // TODO (L3): pressure/keyring dispatch carries no path or device input, so no scope filter can evaluate here yet.
     pub fn dispatch_host_pressure(&self, level: u32) -> Result<Verdict, PluginError> {
         for interceptor in &self.host_interceptors {
             let verdict = interceptor.on_host_pressure(level)?;

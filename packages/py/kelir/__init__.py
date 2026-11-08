@@ -259,12 +259,6 @@ class LedgerService:
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger blake3_of_producing_process (L3)")
 
 
-class ContainerService:
-    async def ingest_image(self, tarball: str) -> str:
-        # TODO (L3): ingest pre-cached OCI tarball via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: container ingest_image (L3)")
-
-
 class DbService:
     def __init__(self) -> None:
         self.rewrite_target: str = "migrate_schema."
@@ -336,7 +330,6 @@ class Caps:
 
 _EXTENSION_FACTORIES: dict[str, Callable[[], Any]] = {
     "ledger": LedgerService,
-    "container": ContainerService,
     "db": DbService,
     "policy": PolicyCap,
     "transaction": TransactionService,

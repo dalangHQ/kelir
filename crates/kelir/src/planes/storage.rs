@@ -1,10 +1,13 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use kelir_interface::plugin::HandlerCtx;
 use kelir_interface::plugin::PluginError;
 
 pub use kelir_core::planes::storage::reconciler::FsReconcileRequest;
+pub use kelir_core::planes::storage::synthetic::{
+    DynamicFile, DynamicFileGenerator, SyntheticFile,
+};
 
 use crate::hlist::{HCons, HList, HNil, NoParams};
 
@@ -12,63 +15,6 @@ use crate::hlist::{HCons, HList, HNil, NoParams};
 pub struct IdmapConfig {
     pub guest_uid: u32,
     pub host_uid: u32,
-}
-
-#[derive(Debug, Clone)]
-pub struct DynamicFile {
-    pub content: String,
-    pub mode: u32,
-}
-
-// see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
-pub type DynamicFileGenerator =
-    Arc<dyn Fn(&Path) -> Result<DynamicFile, PluginError> + Send + Sync>;
-
-#[derive(Clone)]
-pub enum SyntheticFile {
-    Static {
-        path: String,
-        content: String,
-    },
-    Dynamic {
-        path: String,
-        generator: DynamicFileGenerator,
-    },
-}
-
-impl SyntheticFile {
-    pub fn static_(path: &str, content: &str) -> Self {
-        Self::Static {
-            path: path.to_string(),
-            content: content.to_string(),
-        }
-    }
-
-    // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
-    pub fn dynamic<F>(path: &str, f: F) -> Self
-    where
-        F: Fn(&Path) -> Result<DynamicFile, PluginError> + Send + Sync + 'static,
-    {
-        Self::Dynamic {
-            path: path.to_string(),
-            generator: Arc::new(f),
-        }
-    }
-}
-
-impl std::fmt::Debug for SyntheticFile {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Static { path, .. } => f
-                .debug_struct("SyntheticFile::Static")
-                .field("path", path)
-                .finish_non_exhaustive(),
-            Self::Dynamic { path, .. } => f
-                .debug_struct("SyntheticFile::Dynamic")
-                .field("path", path)
-                .finish_non_exhaustive(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

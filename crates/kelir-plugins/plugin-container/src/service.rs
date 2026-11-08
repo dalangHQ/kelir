@@ -15,7 +15,6 @@ pub trait ContainerService: Send + Sync {
     async fn configure_runtime(&mut self) -> Result<(), PluginError>;
     async fn mount_scratch(&mut self, scratch: &Path) -> Result<(), PluginError>;
     async fn build_cgroup_delegation(&mut self) -> Result<(), PluginError>;
-    async fn ingest_image(&mut self, tarball: &Path) -> Result<String, PluginError>;
     async fn pin_id_map(
         &mut self,
         subuid: Range<u32>,
@@ -67,12 +66,6 @@ impl SharedContainerService {
         Ok(())
     }
 
-    // see: cans/plugins/container.md#Non-nested-OCI-container-execution
-    pub(crate) async fn ingest_cached_image(&self, _tarball: &Path) -> Result<String, PluginError> {
-        // TODO (L3): ingest the pre-cached OCI image tarball from the host package cache.
-        Ok(String::new())
-    }
-
     // see: cans/plugins/container.md#UID/GID-mapping-isolation
     pub(crate) async fn pin_guest_id_map(
         &self,
@@ -108,10 +101,6 @@ impl ContainerService for SharedContainerService {
 
     async fn build_cgroup_delegation(&mut self) -> Result<(), PluginError> {
         SharedContainerService::build_cgroup_delegation_hierarchy(self).await
-    }
-
-    async fn ingest_image(&mut self, tarball: &Path) -> Result<String, PluginError> {
-        SharedContainerService::ingest_cached_image(self, tarball).await
     }
 
     async fn pin_id_map(

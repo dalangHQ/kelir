@@ -21,7 +21,9 @@ pub enum PackError {
     EmitPending,
     #[error("layer oversize: {0}")]
     LayerOversize(String),
-    #[error("usage: kelir-pack <oci-manifest> <erofs-output>")]
+    #[error(
+        "usage: kelir-pack <oci-manifest> <erofs-output> | kelir-pack --registry <url> --namespace <ns> --tag <tag> [--auth <token>] <erofs-output>"
+    )]
     Usage,
 }
 
@@ -43,21 +45,54 @@ pub struct ErofsImage {
     pub rootfs_digest: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PackArgs {
-    pub manifest: PathBuf,
+    pub manifest: Option<PathBuf>,
     pub output: PathBuf,
+    pub registry: Option<String>,
+    pub namespace: Option<String>,
+    pub tag: Option<String>,
+    pub auth: Option<String>,
 }
 
 impl PackArgs {
+    pub fn is_remote(&self) -> bool {
+        self.registry.is_some()
+    }
+
     pub fn from_argv(argv: &[String]) -> Result<Self, PackError> {
-        if argv.len() != 3 {
-            return Err(PackError::Usage);
+        let mut args = Self::default();
+        let mut positionals: Vec<String> = Vec::new();
+        let mut i = 1;
+        while i < argv.len() {
+            match argv[i].as_str() {
+                "--registry" | "--namespace" | "--tag" | "--auth" => {
+                    i += 1;
+                    let value = argv.get(i).ok_or(PackError::Usage)?.clone();
+                    match argv[i - 1].as_str() {
+                        "--registry" => args.registry = Some(value),
+                        "--namespace" => args.namespace = Some(value),
+                        "--tag" => args.tag = Some(value),
+                        _ => args.auth = Some(value),
+                    }
+                }
+                _ => positionals.push(argv[i].clone()),
+            }
+            i += 1;
         }
-        Ok(Self {
-            manifest: PathBuf::from(&argv[1]),
-            output: PathBuf::from(&argv[2]),
-        })
+        if args.is_remote() {
+            if args.tag.is_none() || positionals.len() != 1 {
+                return Err(PackError::Usage);
+            }
+            args.output = PathBuf::from(&positionals[0]);
+        } else {
+            if positionals.len() != 2 {
+                return Err(PackError::Usage);
+            }
+            args.manifest = Some(PathBuf::from(&positionals[0]));
+            args.output = PathBuf::from(&positionals[1]);
+        }
+        Ok(args)
     }
 }
 
@@ -73,8 +108,13 @@ impl RadixTree {
 }
 
 fn fetch_manifest(args: &PackArgs) -> Result<OciManifest, PackError> {
-    // TODO (L3): streaming HTTPS client pulls the OCI manifest and layer tar chunks directly.
-    let _ = args;
+    if args.is_remote() {
+        let _ = (&args.registry, &args.namespace, &args.tag, &args.auth);
+        // TODO (L3): streaming HTTPS client pulls the OCI manifest and layer tar chunks from the registry with bearer auth.
+        return Err(PackError::FetchPending);
+    }
+    let _ = &args.manifest;
+    // TODO (L3): read the local OCI manifest and layer tar chunks from disk.
     Err(PackError::FetchPending)
 }
 
@@ -84,16 +124,23 @@ fn phase1_scan_headers(manifest: &OciManifest) -> Result<RadixTree, PackError> {
     Err(PackError::Phase1Pending)
 }
 
-fn phase2_emit_erofs(args: &PackArgs, tree: &RadixTree) -> Result<ErofsImage, PackError> {
-    // TODO (L3): stream layer payload bodies into CAS blobs; emit finalized EROFS data and directory blocks from the phase 1 map; compute the canonical rootfs BLAKE3 digest.
-    let _ = (args, tree);
+fn phase2_emit_erofs(
+    args: &PackArgs,
+    tree: &RadixTree,
+    digest: &mut blake3::Hasher,
+) -> Result<ErofsImage, PackError> {
+    // TODO (L3): stream layer payload bodies into CAS blobs, feeding each payload chunk to digest; emit finalized EROFS data and directory blocks from the phase 1 map.
+    let _ = (args, tree, digest);
     Err(PackError::EmitPending)
 }
 
 fn run(args: PackArgs) -> Result<ErofsImage, PackError> {
     let manifest = fetch_manifest(&args)?;
     let tree = phase1_scan_headers(&manifest)?;
-    phase2_emit_erofs(&args, &tree)
+    let mut digest = blake3::Hasher::new();
+    let mut image = phase2_emit_erofs(&args, &tree, &mut digest)?;
+    image.rootfs_digest = digest.finalize().to_hex().to_string();
+    Ok(image)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -39,6 +39,11 @@ impl MetricRegistry {
         }
     }
 
+    pub fn record_syscall(&self) {
+        self.syscall_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     pub fn record_exec(&self) {
         self.exec_count
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -54,6 +59,16 @@ impl MetricRegistry {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    pub fn add_dirty_pages(&self, pages: u64) {
+        self.dirty_pages
+            .fetch_add(pages, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn set_active_vcpus(&self, vcpus: u32) {
+        self.active_vcpus
+            .store(vcpus, std::sync::atomic::Ordering::Relaxed);
+    }
+
     pub fn set_rss_bytes(&self, bytes: u64) {
         self.rss_bytes
             .store(bytes, std::sync::atomic::Ordering::Relaxed);
@@ -65,8 +80,11 @@ impl MetricRegistry {
     }
 
     pub fn exec_finished(&self) {
-        self.in_flight_execs
-            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        let _ = self.in_flight_execs.fetch_update(
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+            |in_flight| Some(in_flight.saturating_sub(1)),
+        );
     }
 
     pub fn snapshot(&self) -> MetricSnapshot {

@@ -221,12 +221,13 @@ impl KelirPlugin for MeshPlugin {
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
         let handler: Arc<dyn VsockServiceHandler> = Arc::new(self.clone());
         for listener in &self.config.listeners {
-            pipeline.bind_vsock_service(
+            pipeline.bind_vsock_service_scoped(
                 VsockServiceSpec {
                     port: listener.port,
                     service: listener.service.clone(),
                 },
                 Arc::clone(&handler),
+                KelirPlugin::default_scope(self),
             );
         }
     }

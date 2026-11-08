@@ -14,6 +14,7 @@ fn main() -> Result<(), trap::ShimError> {
     // TODO (L3): attach virtio-vsock port 5252 rings; split channels 0x0000/0x0001.
     let _unotify_fd = trap::init_seccomp_unotify()?;
     let (_pty_master, _pty_slave) = pty::open_pty_slave()?;
+    let rx_control_header = [0u8; codec::HEADER_LEN];
     let rx_header = [0u8; codec::HEADER_LEN];
     let mut tx_frame = [0u8; codec::HEADER_LEN];
     loop {
@@ -23,6 +24,18 @@ fn main() -> Result<(), trap::ShimError> {
             let pid = unsafe { libc::waitpid(-1, &mut status, libc::WNOHANG) };
             if pid <= 0 {
                 break;
+            }
+        }
+        // TODO (L3): poll control ring; copy next 9 header bytes into rx_control_header.
+        match codec::decode_header(&rx_control_header) {
+            Ok((_stream_id, _flags, _len)) => {
+                // TODO (L3): slice _len payload bytes from the control ring into the dispatch payload.
+                if let Err(_reason) = mux.dispatch_control(&[]) {
+                    // TODO (L3): emit in-band control reject from the structured reason.
+                }
+            }
+            Err(()) => {
+                // TODO (L3): framing resync after corrupt control header.
             }
         }
         // TODO (L3): poll transport ring; copy next 9 header bytes into rx_header.

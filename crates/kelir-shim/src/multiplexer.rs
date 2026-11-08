@@ -61,6 +61,26 @@ impl ExecSlot {
             stderr_fd,
         }
     }
+
+    pub fn signal(&self, signal: u32) -> Result<(), ShimError> {
+        if signal == 0 || signal > 64 {
+            return Err(ShimError::InvalidSignal { signal });
+        }
+        // TODO (L3): deliver via pidfd_open/pidfd_send_signal so a recycled pid cannot receive a stale signal.
+        // SAFETY: pid is slab-owned from spawn, never wire-supplied; signal is range-checked 1..=64 above.
+        let ret = unsafe { libc::kill(self.pid, signal as libc::c_int) };
+        if ret == 0 {
+            return Ok(());
+        }
+        let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+        if errno == libc::ESRCH {
+            return Ok(());
+        }
+        Err(ShimError::SignalDelivery {
+            exec_id: self.exec_id,
+            errno,
+        })
+    }
 }
 
 #[allow(dead_code)]
@@ -82,6 +102,20 @@ impl ExecSlotSlab {
     pub fn get(&self, idx: usize) -> Option<ExecSlot> {
         let chunk = self.chunks.get(idx / SLAB_CHUNK)?;
         chunk[idx % SLAB_CHUNK]
+    }
+
+    pub fn find_by_exec_id(&self, exec_id: u64) -> Option<ExecSlot> {
+        self.chunks
+            .iter()
+            .flat_map(|chunk| chunk.iter())
+            .find_map(|slot| {
+                let slot = slot.as_ref()?;
+                if slot.exec_id == exec_id {
+                    Some(*slot)
+                } else {
+                    None
+                }
+            })
     }
 
     // TODO (L3): size the pool by min(guest RLIMIT_NPROC, host max_exec_slots from session config).
@@ -192,6 +226,32 @@ impl Multiplexer {
         }
     }
 
+    pub fn dispatch_control(&mut self, payload: &[u8]) -> Result<(), ShimError> {
+        codec::check_control_payload(payload)
+            .map_err(|()| ShimError::ControlOversize { len: payload.len() })?;
+        let (msg_type, body) =
+            codec::decode_msg_type(payload).map_err(|()| ShimError::TruncatedFrame)?;
+        match msg_type {
+            codec::MSG_TRAP | codec::MSG_VM_LIFECYCLE_CONTROL => {
+                // TODO (L3): route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes.
+                Err(ShimError::ControlPending { msg_type })
+            }
+            codec::MSG_SIGNAL => {
+                let (signal, exec_id) =
+                    codec::decode_signal(body).map_err(|()| ShimError::TruncatedFrame)?;
+                self.signal_exec(exec_id, signal)
+            }
+            _ => Err(ShimError::UnknownMsgType { msg_type }),
+        }
+    }
+
+    pub fn signal_exec(&mut self, exec_id: u64, signal: u32) -> Result<(), ShimError> {
+        let Some(slot) = self.slots.find_by_exec_id(exec_id) else {
+            return Ok(());
+        };
+        slot.signal(signal)
+    }
+
     pub fn dispatch_frame(
         &mut self,
         stream_id: u32,
@@ -232,16 +292,26 @@ impl Multiplexer {
                 .slots
                 .get(idx)
                 .ok_or(ShimError::SlotEmpty { stream_id })?;
-            // TODO (L3): route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03).
-            let _ = (
-                body,
-                slot.pid,
-                slot.exec_id,
-                slot.stdin_fd,
-                slot.stdout_fd,
-                slot.stderr_fd,
-            );
-            return Ok(());
+            let (lane, data) =
+                codec::decode_exec_sub_lane(body).map_err(|()| ShimError::TruncatedFrame)?;
+            match lane {
+                codec::EXEC_STREAM_STDIN => {
+                    // TODO (L3): route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03).
+                    let _ = (
+                        data,
+                        slot.pid,
+                        slot.exec_id,
+                        slot.stdin_fd,
+                        slot.stdout_fd,
+                        slot.stderr_fd,
+                    );
+                    return Ok(());
+                }
+                codec::EXEC_STREAM_CONTROL => {
+                    return Err(ShimError::ExecControlPending);
+                }
+                _ => return Err(ShimError::UnknownExecSubLane { lane }),
+            }
         }
         Err(ShimError::UnknownFlags { flags })
     }

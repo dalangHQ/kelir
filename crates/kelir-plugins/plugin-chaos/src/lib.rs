@@ -194,9 +194,9 @@ impl KelirPlugin for ChaosPlugin {
     }
     // see: cans/plugins/chaos.md#Bidirectional-across-wire-plane
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
-        pipeline.bind_net(Arc::new(self.clone()));
+        pipeline.bind_net_scoped(Arc::new(self.clone()), self.default_scope());
         // see: cans/05-storage-plane.md#Write-gating
-        pipeline.bind_fs(Arc::new(self.clone()));
+        pipeline.bind_fs_scoped(Arc::new(self.clone()), self.default_scope());
         // see: cans/plugins/chaos.md#Service-exports-(chaos)
         pipeline
             .service_registry()

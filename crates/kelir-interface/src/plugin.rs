@@ -141,6 +141,27 @@ impl MountScope {
             },
         }
     }
+
+    pub fn allows_binary(&self, binary: &str) -> bool {
+        match &self.binaries {
+            None => true,
+            Some(list) => list.is_empty() || list.iter().any(|item| item == binary),
+        }
+    }
+
+    pub fn allows_path(&self, path: &Path) -> bool {
+        match &self.paths {
+            None => true,
+            Some(list) => list.is_empty() || list.iter().any(|item| path.starts_with(item)),
+        }
+    }
+
+    pub fn allows_device(&self, device: VirtioDevice) -> bool {
+        match &self.devices {
+            None => true,
+            Some(list) => list.is_empty() || list.contains(&device),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -331,6 +352,12 @@ pub trait AnyPlugin: Send + Sync {
     fn name(&self) -> &'static str;
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin>;
     fn register_interceptors(&self, _pipeline: &mut dyn PipelineBinder) {}
+    fn default_scope(&self) -> MountScope {
+        MountScope::default()
+    }
+    fn is_enabled(&self) -> bool {
+        true
+    }
 }
 
 impl<T> AnyPlugin for T
@@ -348,18 +375,66 @@ where
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
         KelirPlugin::register_interceptors(self, pipeline)
     }
+
+    fn default_scope(&self) -> MountScope {
+        KelirPlugin::default_scope(self)
+    }
+
+    fn is_enabled(&self) -> bool {
+        KelirPlugin::is_enabled(self)
+    }
 }
 
 // see: cans/11-protocol.md#Control-channel
 // see: cans/plugins/db-proxy.md
 pub trait PipelineBinder {
     fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>);
+    fn bind_fs_scoped(&mut self, stage: Arc<dyn FsInterposer>, scope: MountScope) {
+        let _ = scope;
+        self.bind_fs(stage);
+    }
     fn bind_net(&mut self, stage: Arc<dyn NetInterposer>);
+    fn bind_net_scoped(&mut self, stage: Arc<dyn NetInterposer>, scope: MountScope) {
+        let _ = scope;
+        self.bind_net(stage);
+    }
     fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>);
+    fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope) {
+        let _ = scope;
+        self.bind_trap(stage);
+    }
     fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>);
+    fn bind_console_scoped(&mut self, stage: Arc<dyn ConsoleInterposer>, scope: MountScope) {
+        let _ = scope;
+        self.bind_console(stage);
+    }
     fn bind_host(&mut self, stage: Arc<dyn HostInterposer>);
+    fn bind_host_scoped(&mut self, stage: Arc<dyn HostInterposer>, scope: MountScope) {
+        let _ = scope;
+        self.bind_host(stage);
+    }
     fn bind_stream(&mut self, kind: StreamKind, stage: Arc<dyn StreamInterposer>);
+    fn bind_stream_scoped(
+        &mut self,
+        kind: StreamKind,
+        stage: Arc<dyn StreamInterposer>,
+        scope: MountScope,
+    ) {
+        let _ = scope;
+        self.bind_stream(kind, stage);
+    }
     fn bind_vsock_service(&mut self, spec: VsockServiceSpec, service: Arc<dyn VsockServiceHandler>);
+    fn bind_vsock_service_scoped(
+        &mut self,
+        spec: VsockServiceSpec,
+        service: Arc<dyn VsockServiceHandler>,
+        scope: MountScope,
+    ) {
+        let _ = scope;
+        self.bind_vsock_service(spec, service);
+    }
+    // see: cans/02-plugin-model.md#Mount-scoping
+    fn set_active_scope(&mut self, _scope: MountScope) {}
     fn service_registry(&mut self) -> &mut ServiceRegistry;
 }
 

@@ -127,12 +127,13 @@ impl KelirPlugin for VaultPlugin {
     }
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
         let handler: Arc<dyn VsockServiceHandler> = Arc::new(self.clone());
-        pipeline.bind_vsock_service(
+        pipeline.bind_vsock_service_scoped(
             VsockServiceSpec {
                 port: self.config.metadata_vsock_port,
                 service: "kelir-credentials".into(),
             },
             handler,
+            self.default_scope(),
         );
         let broker: Arc<dyn CredentialBrokerService> = self.broker.clone();
         pipeline.service_registry().register(broker);

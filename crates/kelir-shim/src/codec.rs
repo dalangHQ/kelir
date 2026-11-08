@@ -45,6 +45,26 @@ pub const MSG_VM_LIFECYCLE_CONTROL: u16 = 0x0003;
 #[allow(dead_code)]
 pub const MSG_SYSTEM_TELEMETRY: u16 = 0x0004;
 
+// see: cans/11-protocol.md#Wire-framing
+#[allow(dead_code)]
+pub const MSG_SIGNAL: u16 = 0x0005;
+
+// see: cans/11-protocol.md#Binary-exec-channel
+#[allow(dead_code)]
+pub const EXEC_STREAM_STDIN: u8 = 0x00;
+
+// see: cans/11-protocol.md#Binary-exec-channel
+#[allow(dead_code)]
+pub const EXEC_STREAM_STDOUT: u8 = 0x01;
+
+// see: cans/11-protocol.md#Binary-exec-channel
+#[allow(dead_code)]
+pub const EXEC_STREAM_STDERR: u8 = 0x02;
+
+// see: cans/11-protocol.md#Binary-exec-channel
+#[allow(dead_code)]
+pub const EXEC_STREAM_CONTROL: u8 = 0x03;
+
 #[allow(dead_code)]
 pub fn encode_frame(
     stream_id: u32,
@@ -95,6 +115,28 @@ pub fn decode_msg_type(payload: &[u8]) -> Result<(u16, &[u8]), ()> {
     }
     let msg_type = u16::from_le_bytes([payload[0], payload[1]]);
     Ok((msg_type, &payload[2..]))
+}
+
+// see: cans/11-protocol.md#Binary-exec-channel
+#[allow(dead_code)]
+pub fn decode_exec_sub_lane(payload: &[u8]) -> Result<(u8, &[u8]), ()> {
+    let Some((&lane, rest)) = payload.split_first() else {
+        return Err(());
+    };
+    Ok((lane, rest))
+}
+
+// see: cans/11-protocol.md#Binary-exec-channel
+#[allow(dead_code)]
+pub fn decode_signal(body: &[u8]) -> Result<(u32, u64), ()> {
+    if body.len() != 12 {
+        return Err(());
+    }
+    let signal = u32::from_le_bytes([body[0], body[1], body[2], body[3]]);
+    let exec_id = u64::from_le_bytes([
+        body[4], body[5], body[6], body[7], body[8], body[9], body[10], body[11],
+    ]);
+    Ok((signal, exec_id))
 }
 
 // see: cans/11-protocol.md#Control-channel

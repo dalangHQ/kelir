@@ -183,7 +183,7 @@ impl KelirPlugin for SupplyChainPlugin {
     }
     // see: cans/plugins/supply-chain.md#Crate-dependencies-(supply-chain)
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
-        pipeline.bind_trap(Arc::new(self.clone()));
+        pipeline.bind_trap_scoped(Arc::new(self.clone()), self.default_scope());
         pipeline
             .service_registry()
             .register::<dyn JitValidationService>(Arc::new(self.clone()));

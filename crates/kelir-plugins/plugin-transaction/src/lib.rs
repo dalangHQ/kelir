@@ -103,6 +103,14 @@ impl TransactionPlugin {
         self.coordination.sql_proxy()
     }
 
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub fn bind_lock_broker(
+        &self,
+        service: Arc<dyn LockBrokerCoordination>,
+    ) -> Result<(), PluginError> {
+        self.coordination.set_lock_broker(service)
+    }
+
     async fn prepare_participants(&self) -> Result<(), PluginError> {
         // TODO (L3): issue SQL pre-commit on the coordinated SqlProxyService connections; participant failure here triggers global rollback with EPOLICY.
         let _ = self.peer_sql_proxy()?;

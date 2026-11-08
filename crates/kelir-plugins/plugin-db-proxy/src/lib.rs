@@ -130,9 +130,9 @@ impl KelirPlugin for DbProxyPlugin {
     }
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
         let sqlite_stage: Arc<dyn StreamInterposer> = Arc::new(self.clone());
-        pipeline.bind_stream(StreamKind::DbSqlite, sqlite_stage);
+        pipeline.bind_stream_scoped(StreamKind::DbSqlite, sqlite_stage, self.default_scope());
         let net_stage: Arc<dyn NetInterposer> = Arc::new(self.clone());
-        pipeline.bind_net(net_stage);
+        pipeline.bind_net_scoped(net_stage, self.default_scope());
         let service: Arc<dyn SqlProxyService> = self.proxy.clone();
         pipeline.service_registry().register(service);
     }

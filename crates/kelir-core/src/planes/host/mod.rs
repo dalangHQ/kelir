@@ -74,6 +74,7 @@ pub struct HostPlane {
     reaper_kind: HostReaperKind,
     pressure_level: AtomicU8,
     watcher: Mutex<Option<PressureSubscription>>,
+    metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
 }
 
 impl Default for HostPlane {
@@ -107,6 +108,41 @@ impl HostPlane {
             reaper_kind,
             pressure_level: AtomicU8::new(0),
             watcher: Mutex::new(None),
+            metrics: std::sync::Arc::new(kelir_otlp::registry::MetricRegistry::new()),
+        }
+    }
+
+    pub fn with_metrics(
+        mut self,
+        metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
+    ) -> Self {
+        self.metrics = metrics;
+        self
+    }
+
+    pub fn metrics(&self) -> &std::sync::Arc<kelir_otlp::registry::MetricRegistry> {
+        &self.metrics
+    }
+
+    // see: cans/14-observability.md#Metrics-pipeline
+    pub fn refresh_rss(&self) -> Option<u64> {
+        #[cfg(target_os = "linux")]
+        {
+            let status = std::fs::read_to_string("/proc/self/status").ok()?;
+            for line in status.lines() {
+                let Some(rest) = line.strip_prefix("VmRSS:") else {
+                    continue;
+                };
+                let kb: u64 = rest.split_whitespace().next()?.parse().ok()?;
+                let bytes = kb.saturating_mul(1024);
+                self.metrics.set_rss_bytes(bytes);
+                return Some(bytes);
+            }
+            None
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            None
         }
     }
 

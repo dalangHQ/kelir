@@ -90,6 +90,7 @@ pub struct CheckpointPlane {
     active_steps: Mutex<HashMap<PidLineage, StepSlot>>,
     graph: RwLock<ManifestGraph>,
     next_slot_id: AtomicU64,
+    metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
 }
 
 impl Default for CheckpointPlane {
@@ -104,7 +105,20 @@ impl CheckpointPlane {
             active_steps: Mutex::new(HashMap::new()),
             graph: RwLock::new(ManifestGraph::new()),
             next_slot_id: AtomicU64::new(0),
+            metrics: std::sync::Arc::new(kelir_otlp::registry::MetricRegistry::new()),
         }
+    }
+
+    pub fn with_metrics(
+        mut self,
+        metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
+    ) -> Self {
+        self.metrics = metrics;
+        self
+    }
+
+    pub fn metrics(&self) -> &std::sync::Arc<kelir_otlp::registry::MetricRegistry> {
+        &self.metrics
     }
 
     fn lock_steps(&self) -> Result<MutexGuard<'_, HashMap<PidLineage, StepSlot>>, PluginError> {

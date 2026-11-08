@@ -10,6 +10,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
+use super::synthetic::SyntheticFile;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FuseOpcode {
     Lookup,
@@ -63,11 +65,20 @@ pub struct FuseResponse {
 
 pub struct FuseDispatcher {
     interposer: Arc<dyn FsInterposer>,
+    synthetic_files: Vec<SyntheticFile>,
 }
 
 impl FuseDispatcher {
     pub fn new(interposer: Arc<dyn FsInterposer>) -> Self {
-        Self { interposer }
+        Self {
+            interposer,
+            synthetic_files: Vec::new(),
+        }
+    }
+
+    pub fn with_synthetic_files(mut self, files: Vec<SyntheticFile>) -> Self {
+        self.synthetic_files = files;
+        self
     }
 
     pub fn dispatch(
@@ -76,46 +87,57 @@ impl FuseDispatcher {
         ctx: &HandlerCtx,
     ) -> Result<FuseResponse, PluginError> {
         match request.opcode {
-            FuseOpcode::Lookup => match self.interposer.on_fs_lookup(&request.path)? {
-                Verdict::Pass => Ok(FuseResponse {
-                    guest_inode: request.guest_inode,
-                    // TODO (L3): fill lookup payload from broker getattr.
-                    reply: FuseReply::Payload(Vec::new()),
-                }),
-                // see: cans/02-plugin-model.md#Unified-verdict
-                Verdict::Patch(PatchPayload::FsInode {
-                    mode,
-                    uid,
-                    gid,
-                    size,
-                    content,
-                }) => Ok(FuseResponse {
-                    guest_inode: request.guest_inode,
-                    // TODO (L3): driver mints the fuse_entry_out ino for the synthetic inode.
-                    reply: FuseReply::Inode(FsInodeAttr {
-                        mode: mode & !0o6000,
+            FuseOpcode::Lookup => {
+                for file in &self.synthetic_files {
+                    if let Some(attr) = file.lookup_attr(&request.path)? {
+                        return Ok(FuseResponse {
+                            guest_inode: request.guest_inode,
+                            // TODO (L3): driver mints the fuse_entry_out ino for the synthetic inode.
+                            reply: FuseReply::Inode(attr),
+                        });
+                    }
+                }
+                match self.interposer.on_fs_lookup(&request.path)? {
+                    Verdict::Pass => Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        // TODO (L3): fill lookup payload from broker getattr.
+                        reply: FuseReply::Payload(Vec::new()),
+                    }),
+                    // see: cans/02-plugin-model.md#Unified-verdict
+                    Verdict::Patch(PatchPayload::FsInode {
+                        mode,
                         uid,
                         gid,
                         size,
                         content,
+                    }) => Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        // TODO (L3): driver mints the fuse_entry_out ino for the synthetic inode.
+                        reply: FuseReply::Inode(FsInodeAttr {
+                            mode: mode & !0o6000,
+                            uid,
+                            gid,
+                            size,
+                            content,
+                        }),
                     }),
-                }),
-                Verdict::Patch(_) => Err(PluginError::Halt(
-                    "FUSE LOOKUP Patch payload is not an FsInode".into(),
-                )),
-                Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(
-                    "FUSE LOOKUP denied: {reason} ({errno:?})"
-                ))),
-                Verdict::Suspend { .. } => Err(PluginError::Halt(
-                    "FUSE LOOKUP interposer returned Suspend, unsupported for lookup".into(),
-                )),
-                Verdict::Abort { reason } => Err(PluginError::Halt(format!(
-                    "FUSE LOOKUP aborted by interposer: {reason}"
-                ))),
-                _ => Err(PluginError::Halt(
-                    "FUSE LOOKUP interposer returned an unknown verdict".into(),
-                )),
-            },
+                    Verdict::Patch(_) => Err(PluginError::Halt(
+                        "FUSE LOOKUP Patch payload is not an FsInode".into(),
+                    )),
+                    Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(
+                        "FUSE LOOKUP denied: {reason} ({errno:?})"
+                    ))),
+                    Verdict::Suspend { .. } => Err(PluginError::Halt(
+                        "FUSE LOOKUP interposer returned Suspend, unsupported for lookup".into(),
+                    )),
+                    Verdict::Abort { reason } => Err(PluginError::Halt(format!(
+                        "FUSE LOOKUP aborted by interposer: {reason}"
+                    ))),
+                    _ => Err(PluginError::Halt(
+                        "FUSE LOOKUP interposer returned an unknown verdict".into(),
+                    )),
+                }
+            }
             FuseOpcode::Read => {
                 self.interposer
                     .on_fs_read(&request.path, &mut request.data)?;
@@ -157,8 +179,11 @@ impl FuseDispatcher {
                 FilterAction::Suspend { .. } => Err(PluginError::Halt(
                     "FUSE WRITE interposer returned Suspend, unsupported for write".into(),
                 )),
+                FilterAction::Abort { reason } => Err(PluginError::Halt(format!(
+                    "FUSE WRITE aborted by interposer: {reason}"
+                ))),
                 _ => Err(PluginError::Halt(
-                    "FUSE WRITE interposer returned an unknown filter action".into(),
+                    "FUSE WRITE interposer returned a filter action outside the known FilterAction variants".into(),
                 )),
             },
             FuseOpcode::Setlk | FuseOpcode::Setlkw => {
@@ -243,6 +268,11 @@ impl FuseWorker {
 
     pub fn dispatcher(&self) -> &FuseDispatcher {
         &self.dispatcher
+    }
+
+    pub fn with_synthetic_files(mut self, files: Vec<SyntheticFile>) -> Self {
+        self.dispatcher = self.dispatcher.with_synthetic_files(files);
+        self
     }
 
     pub fn run(&mut self) -> Result<(), PluginError> {

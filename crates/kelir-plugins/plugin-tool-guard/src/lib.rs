@@ -163,7 +163,7 @@ impl KelirPlugin for ToolGuardPlugin {
     }
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
         let stage: Arc<dyn StreamInterposer> = Arc::new(self.clone());
-        pipeline.bind_stream(StreamKind::McpConsole, stage);
+        pipeline.bind_stream_scoped(StreamKind::McpConsole, stage, self.default_scope());
         let registry: Arc<dyn ToolRegistryService> = self.registry.clone();
         pipeline.service_registry().register(registry);
     }

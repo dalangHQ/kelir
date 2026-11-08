@@ -2,12 +2,17 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_mcp_mapping.rs + examples/mcp-stdio.rs per cans/artifacts/config/project-structure.txt.
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
-    ConsoleInterposer, HandlerCtx, KelirPlugin, LifecycleParticipant, MountScope, TrapInterposer,
+    HandlerCtx, KelirPlugin, LifecycleParticipant, MountScope, PipelineBinder, StreamInterposer,
 };
-use kelir_interface::protocol::{TrapEvent, Verdict};
+use kelir_interface::protocol::{StreamDirection, StreamKind, Verdict};
+
+// see: cans/plugins/mcp.md
+pub const MCP_SOCKET_PATH: &str = "/run/kelir/mcp.sock";
 
 #[derive(Clone)]
 pub struct McpEndpointService;
@@ -40,19 +45,54 @@ impl KelirPlugin for McpPlugin {
     fn default_scope(&self) -> MountScope {
         MountScope::default()
     }
+    fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
+        let stage: Arc<dyn StreamInterposer> = Arc::new(self.clone());
+        pipeline.bind_stream(StreamKind::McpConsole, stage);
+        pipeline
+            .service_registry()
+            .register(Arc::new(self.service.clone()));
+    }
 }
 
 impl LifecycleParticipant for McpPlugin {}
+
 #[async_trait]
-impl ConsoleInterposer for McpPlugin {
-    async fn on_console_output(&self, _port: u32, _buf: &mut Vec<u8>) -> Result<(), PluginError> {
-        // TODO: Bridge raw stdio frames to MCP JSON-RPC
-        Ok(())
-    }
-}
-#[async_trait]
-impl TrapInterposer for McpPlugin {
-    async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+impl StreamInterposer for McpPlugin {
+    async fn on_stream_open(
+        &self,
+        stream_id: u32,
+        tags: &mut Vec<u8>,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        let _ = (stream_id, tags, ctx);
+        // TODO (L3): validate MCP_CONSOLE open tags and advertise JSON-RPC capabilities per cans/plugins/mcp.md.
         Ok(Verdict::Pass)
+    }
+
+    async fn on_stream_data(
+        &self,
+        direction: StreamDirection,
+        stream_id: u32,
+        payload: &mut Vec<u8>,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        let _ = (stream_id, ctx);
+        match direction {
+            StreamDirection::GuestToHost => {
+                // TODO (L3): bridge JSON-RPC frames from MCP_CONSOLE to /run/kelir/mcp.sock.
+                let _ = payload;
+                Ok(Verdict::Pass)
+            }
+            StreamDirection::HostToGuest => {
+                // TODO (L3): bridge JSON-RPC frames from /run/kelir/mcp.sock back to MCP_CONSOLE.
+                let _ = payload;
+                Ok(Verdict::Pass)
+            }
+        }
+    }
+
+    async fn on_stream_close(&self, stream_id: u32, ctx: &HandlerCtx) -> Result<(), PluginError> {
+        let _ = (stream_id, ctx);
+        Ok(())
     }
 }

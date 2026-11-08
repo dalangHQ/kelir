@@ -210,6 +210,7 @@ pub struct WirePlane {
     udp_nat_slab: Arc<Mutex<Vec<Option<UdpNatEntry>>>>,
     allowed_domains: Arc<RwLock<Vec<String>>>,
     stack: SmoltcpStack,
+    metrics: Arc<kelir_otlp::registry::MetricRegistry>,
 }
 
 impl Default for WirePlane {
@@ -225,6 +226,22 @@ impl WirePlane {
             udp_nat_slab: Arc::new(Mutex::new(Vec::new())),
             allowed_domains: Arc::new(RwLock::new(Vec::new())),
             stack: SmoltcpStack::new(),
+            metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
+        }
+    }
+
+    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry::MetricRegistry>) -> Self {
+        self.metrics = metrics;
+        self
+    }
+
+    pub fn metrics(&self) -> &Arc<kelir_otlp::registry::MetricRegistry> {
+        &self.metrics
+    }
+
+    fn record_drop(&self, action: &kelir_interface::protocol::FilterAction) {
+        if matches!(action, kelir_interface::protocol::FilterAction::Drop { .. }) {
+            self.metrics.record_drop();
         }
     }
 
@@ -246,7 +263,10 @@ impl WirePlane {
         &mut self,
         frame: &mut [u8],
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
-        match classify_frame_directional(frame, FrameDirection::Inbound) {
+        let action: Result<
+            kelir_interface::protocol::FilterAction,
+            kelir_interface::plugin::PluginError,
+        > = match classify_frame_directional(frame, FrameDirection::Inbound) {
             FrameClass::TooShort
             | FrameClass::NonIp
             | FrameClass::NonTcpUdp
@@ -260,14 +280,20 @@ impl WirePlane {
                 let _ = self.stack.poll()?;
                 Ok(FilterAction::Forward)
             }
-        }
+        };
+        let action = action?;
+        self.record_drop(&action);
+        Ok(action)
     }
 
     pub fn process_outbound_frame(
         &mut self,
         frame: &mut [u8],
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
-        match classify_frame_directional(frame, FrameDirection::Outbound) {
+        let action: Result<
+            kelir_interface::protocol::FilterAction,
+            kelir_interface::plugin::PluginError,
+        > = match classify_frame_directional(frame, FrameDirection::Outbound) {
             FrameClass::TooShort
             | FrameClass::NonIp
             | FrameClass::NonTcpUdp
@@ -293,7 +319,10 @@ impl WirePlane {
                 let _ = self.stack.poll()?;
                 Ok(FilterAction::Forward)
             }
-        }
+        };
+        let action = action?;
+        self.record_drop(&action);
+        Ok(action)
     }
 
     pub fn divert_l4(&self, guest_port: u16, host_target: String) -> Result<L4Stream, PluginError> {

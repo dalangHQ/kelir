@@ -457,6 +457,7 @@ dependencies = [
  "ciborium",
  "kelir-core",
  "kelir-interface",
+ "kelir-otlp",
  "plugin-chaos",
  "plugin-container",
  "plugin-db-proxy",
@@ -548,6 +549,7 @@ dependencies = [
 name = "kelir-pack"
 version = "1.0.0"
 dependencies = [
+ "blake3",
  "kelir-interface",
  "thiserror 2.0.21",
 ]
@@ -840,6 +842,7 @@ name = "plugin-ledger"
 version = "1.0.0"
 dependencies = [
  "kelir-interface",
+ "kelir-otlp",
  "kelir-plugin-testkit",
 ]
 
