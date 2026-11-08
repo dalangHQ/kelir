@@ -1,111 +1,106 @@
 // see: cans/15-operations.md#Per-plugin-CI
 // see: cans/02-plugin-model.md#Plugin-tiering
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
+
+use kelir_core::plugin_registry::{PluginManifest, PluginTier, parse_plugin_manifest};
 
 use crate::graph;
 use crate::layers;
 use crate::rings;
 
-// see: cans/02-plugin-model.md#Plugin-tiering
-const PLUGIN_TIERS: &[(&str, u8, &str)] = &[
-    ("plugin-mcp", 1, "mcp"),
-    ("plugin-mesh", 1, "mesh"),
-    ("plugin-tool-guard", 2, "tool-guard"),
-    ("plugin-wire-ingress", 2, "wire-ingress"),
-    ("plugin-vault", 2, "vault"),
-    ("plugin-container", 2, "container"),
-    ("plugin-replay", 2, "replay"),
-    ("plugin-db-proxy", 2, "db-proxy"),
-    ("plugin-supply-chain", 2, "supply-chain"),
-    ("plugin-ledger", 3, "ledger"),
-    ("plugin-profile", 3, "profile"),
-    ("plugin-chaos", 3, "chaos"),
-    ("plugin-transaction", 3, "transaction"),
-];
-
-// see: cans/02-plugin-model.md#Plugin-ownership
-const FORBIDDEN_DEPS: &[&str] = &[
-    "kelir",
-    "kelir-core",
-    "kelir-drivers",
-    "kelir-transport",
-    "kelir-shim",
-    "kelir-catalog",
-    "kelir-otlp",
-    "kelir-integration",
-    "kelir-plugin-cli",
-    "kelir-napi",
-    "kelir-pyo3",
-    "kelir-pack",
-    "mcp-server",
-    "driver-rustvmm",
-    "driver-hvf",
-    "driver-openvmm",
-    "driver-avf",
-    "driver-bwrap",
-    "driver-proot",
-];
-
 // see: cans/02-plugin-model.md#Plugin-testkit
 const TESTKIT_CRATE: &str = "kelir-plugin-testkit";
 const INTERFACE_CRATE: &str = "kelir-interface";
 
-struct ManifestInfo {
-    package_name: Option<String>,
-    deps: Vec<String>,
-    dev_deps: Vec<String>,
+// see: cans/02-plugin-model.md#Plugin-tiering
+const PLUGIN_DIR: &str = "crates/kelir-plugins";
+
+// see: cans/02-plugin-model.md#Plugin-ownership
+const WORKSPACE_MANIFEST: &str = "Cargo.toml";
+
+#[derive(serde::Deserialize)]
+struct WorkspaceRootToml {
+    workspace: WorkspaceToml,
 }
 
-fn strip_quotes(value: &str) -> String {
-    value.trim().trim_matches('"').to_string()
+#[derive(serde::Deserialize)]
+struct WorkspaceToml {
+    members: Vec<String>,
 }
 
-fn parse_manifest(text: &str) -> ManifestInfo {
-    let mut info = ManifestInfo {
-        package_name: None,
-        deps: Vec::new(),
-        dev_deps: Vec::new(),
-    };
-    let mut section = "";
-    for raw_line in text.lines() {
-        let line = raw_line.trim();
-        if line.starts_with('[') && line.ends_with(']') {
-            section = &line[1..line.len() - 1];
+#[derive(serde::Deserialize)]
+struct MemberToml {
+    package: MemberPackageToml,
+}
+
+#[derive(serde::Deserialize)]
+struct MemberPackageToml {
+    name: String,
+}
+
+// see: cans/02-plugin-model.md#Plugin-tiering
+fn tier_roster() -> Result<Vec<PluginManifest>, Box<dyn std::error::Error>> {
+    let mut roster: Vec<PluginManifest> = Vec::new();
+    for entry in fs::read_dir(PLUGIN_DIR)? {
+        let dir = entry?.path();
+        if !dir.is_dir() {
             continue;
         }
-        if line.is_empty() || line.starts_with('#') {
+        let manifest = dir.join("Cargo.toml");
+        if !manifest.is_file() {
             continue;
         }
-        let Some((key, _)) = line.split_once('=') else {
-            continue;
-        };
-        let key = key.trim();
-        if section == "package" && key == "name" {
-            if let Some((_, value)) = line.split_once('=') {
-                info.package_name = Some(strip_quotes(value));
-            }
-        } else if section == "dependencies" {
-            info.deps.push(key.to_string());
-        } else if let Some(dep) = section.strip_prefix("dependencies.") {
-            info.deps.push(dep.to_string());
-        } else if section == "dev-dependencies" {
-            info.dev_deps.push(key.to_string());
-        } else if let Some(dep) = section.strip_prefix("dev-dependencies.") {
-            info.dev_deps.push(dep.to_string());
-        }
+        let text = fs::read_to_string(&manifest)?;
+        let parsed = parse_plugin_manifest(&text)
+            .map_err(|e| format!("check -p: {} rejected: {e}", manifest.display()))?;
+        roster.push(parsed);
     }
-    info
+    if roster.is_empty() {
+        return Err(format!("check -p: no plugin manifests found under {PLUGIN_DIR}").into());
+    }
+    roster.sort_by(|a, b| a.tier.crate_name.cmp(&b.tier.crate_name));
+    Ok(roster)
 }
 
-fn tier_of(crate_name: &str) -> Option<u8> {
-    PLUGIN_TIERS
+// see: cans/02-plugin-model.md#Plugin-ownership
+fn forbidden_workspace_crates(
+    plugins: &BTreeSet<&str>,
+) -> Result<BTreeSet<String>, Box<dyn std::error::Error>> {
+    let root: WorkspaceRootToml = toml::from_str(&fs::read_to_string(WORKSPACE_MANIFEST)?)
+        .map_err(|e| format!("check -p: {WORKSPACE_MANIFEST} is not valid TOML: {e}"))?;
+    let mut forbidden: BTreeSet<String> = BTreeSet::new();
+    for member in &root.workspace.members {
+        let manifest = Path::new(member).join("Cargo.toml");
+        let text = fs::read_to_string(&manifest).map_err(|e| {
+            format!("check -p: workspace member {member} has no readable Cargo.toml: {e}")
+        })?;
+        let parsed: MemberToml = toml::from_str(&text)
+            .map_err(|e| format!("check -p: {} is not valid TOML: {e}", manifest.display()))?;
+        let name = parsed.package.name;
+        if plugins.contains(name.as_str()) || name == INTERFACE_CRATE || name == TESTKIT_CRATE {
+            continue;
+        }
+        forbidden.insert(name);
+    }
+    Ok(forbidden)
+}
+
+fn tier_of<'a>(roster: &'a [PluginManifest], crate_name: &str) -> Option<&'a PluginTier> {
+    roster
         .iter()
-        .find(|(name, _, _)| *name == crate_name)
-        .map(|(_, tier, _)| *tier)
+        .find(|plugin| plugin.tier.crate_name == crate_name)
+        .map(|plugin| &plugin.tier)
 }
 
-fn check_regular_dep(plugin: &str, tier: u8, dep: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn check_regular_dep(
+    plugin: &str,
+    tier: u8,
+    dep: &str,
+    roster: &[PluginManifest],
+    forbidden: &BTreeSet<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
     if dep == INTERFACE_CRATE {
         return Ok(());
     }
@@ -115,32 +110,40 @@ fn check_regular_dep(plugin: &str, tier: u8, dep: &str) -> Result<(), Box<dyn st
         )
         .into());
     }
-    if FORBIDDEN_DEPS.contains(&dep) {
+    if forbidden.contains(dep) {
         return Err(
             format!("check -p: plugin `{plugin}` depends on forbidden crate `{dep}`").into(),
         );
     }
-    match tier_of(dep) {
-        Some(dep_tier) if dep_tier >= tier => Err(format!(
-            "check -p: tier violation: `{plugin}` (tier {tier}) depends on `{dep}` (tier {dep_tier}); dependencies must be downward-only"
+    match tier_of(roster, dep) {
+        Some(dep_tier) if dep_tier.level >= tier => Err(format!(
+            "check -p: tier violation: `{plugin}` (tier {tier}) depends on `{dep}` (tier {}); dependencies must be downward-only",
+            dep_tier.level
         )
         .into()),
         Some(_) | None => Ok(()),
     }
 }
 
-fn check_dev_dep(plugin: &str, tier: u8, dep: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn check_dev_dep(
+    plugin: &str,
+    tier: u8,
+    dep: &str,
+    roster: &[PluginManifest],
+    forbidden: &BTreeSet<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
     if dep == TESTKIT_CRATE {
         return Ok(());
     }
-    if FORBIDDEN_DEPS.contains(&dep) {
+    if forbidden.contains(dep) {
         return Err(
             format!("check -p: plugin `{plugin}` dev-depends on forbidden crate `{dep}`").into(),
         );
     }
-    match tier_of(dep) {
-        Some(dep_tier) if dep_tier >= tier => Err(format!(
-            "check -p: tier violation: `{plugin}` (tier {tier}) dev-depends on `{dep}` (tier {dep_tier}); dependencies must be downward-only"
+    match tier_of(roster, dep) {
+        Some(dep_tier) if dep_tier.level >= tier => Err(format!(
+            "check -p: tier violation: `{plugin}` (tier {tier}) dev-depends on `{dep}` (tier {}); dependencies must be downward-only",
+            dep_tier.level
         )
         .into()),
         Some(_) | None => Ok(()),
@@ -156,41 +159,35 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn run_plugin(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     // TODO (L3): replace manifest and source scanning with the AST extractor required by cans/02-plugin-model.md#Auto-generated-manifest-contract.
-    let manifest = format!("crates/kelir-plugins/{name}/Cargo.toml");
-    let Some((_, tier, code_name)) = PLUGIN_TIERS
-        .iter()
-        .find(|(crate_name, _, _)| *crate_name == name)
-    else {
+    let roster = tier_roster()?;
+    let Some(plugin) = roster.iter().find(|plugin| plugin.tier.crate_name == name) else {
         return Err(format!(
             "check -p: `{name}` is not in the plugin tier roster (cans/02-plugin-model.md#Plugin-tiering)"
         )
         .into());
     };
-    let text = fs::read_to_string(&manifest)
-        .map_err(|_| format!("check -p: no such plugin `{name}` (missing {manifest})"))?;
-    let info = parse_manifest(&text);
-    if info.package_name.as_deref() != Some(name) {
-        return Err(format!(
-            "check -p: package name mismatch for `{name}`: manifest says `{}`",
-            info.package_name.as_deref().unwrap_or("<none>")
-        )
-        .into());
-    }
-    if !info.deps.iter().any(|dep| dep == INTERFACE_CRATE) {
+    let tier = plugin.tier.level;
+    let code_name = plugin.tier.name.as_str();
+    let plugin_names: BTreeSet<&str> = roster
+        .iter()
+        .map(|plugin| plugin.tier.crate_name.as_str())
+        .collect();
+    let forbidden = forbidden_workspace_crates(&plugin_names)?;
+    if !plugin.deps.iter().any(|dep| dep == INTERFACE_CRATE) {
         return Err(
             format!("check -p: plugin `{name}` does not depend on {INTERFACE_CRATE}").into(),
         );
     }
-    for dep in &info.deps {
-        check_regular_dep(name, *tier, dep)?;
+    for dep in &plugin.deps {
+        check_regular_dep(name, tier, dep, &roster, &forbidden)?;
     }
-    if !info.dev_deps.iter().any(|dep| dep == TESTKIT_CRATE) {
+    if !plugin.dev_deps.iter().any(|dep| dep == TESTKIT_CRATE) {
         return Err(
             format!("check -p: plugin `{name}` does not dev-depend on {TESTKIT_CRATE}").into(),
         );
     }
-    for dep in &info.dev_deps {
-        check_dev_dep(name, *tier, dep)?;
+    for dep in &plugin.dev_deps {
+        check_dev_dep(name, tier, dep, &roster, &forbidden)?;
     }
     let graph = graph::plugin_graph()?;
     graph::assert_acyclic(&graph)?;
@@ -205,7 +202,7 @@ pub fn run_plugin(name: &str) -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
     let declared_name = rings::declared_plugin_name(&src)?;
-    if declared_name.as_deref() != Some(*code_name) {
+    if declared_name.as_deref() != Some(code_name) {
         return Err(format!(
             "check -p: plugin `{name}` declares name() = `{}` but the tier roster expects `{code_name}`",
             declared_name.as_deref().unwrap_or("<none>")
@@ -215,7 +212,7 @@ pub fn run_plugin(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     let ring_mask: Vec<&str> = mask.iter().map(String::as_str).collect();
     println!(
         "check -p {name}: tier {tier}, {} regular dep(s), ring mask [{}]",
-        info.deps.len(),
+        plugin.deps.len(),
         ring_mask.join(", ")
     );
     Ok(())

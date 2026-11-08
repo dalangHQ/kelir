@@ -26,24 +26,10 @@ pub struct WalRecord {
     pub signature: [u8; 64],
 }
 
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+pub mod merkle;
+
 impl WalRecord {
-    // see: cans/plugins/ledger.md#Merkle-WAL-specification
-    pub fn pack(&self) -> [u8; WAL_RECORD_LEN] {
-        let mut bytes = [0u8; WAL_RECORD_LEN];
-        bytes[0..8].copy_from_slice(&self.seq.to_le_bytes());
-        bytes[8..40].copy_from_slice(&self.prev_hash);
-        bytes[40..72].copy_from_slice(&self.receipt_blake3);
-        bytes[72..104].copy_from_slice(&self.delta_root);
-        bytes[104..112].copy_from_slice(&self.timestamp_ns.to_le_bytes());
-        bytes[112..176].copy_from_slice(&self.signature);
-        bytes
-    }
-
-    // see: cans/plugins/ledger.md#Merkle-WAL-specification
-    pub fn leaf_hash(&self) -> [u8; 32] {
-        merkle_leaf(&self.pack())
-    }
-
     // see: cans/plugins/ledger.md#Merkle-WAL-specification
     pub fn from_delta(
         seq: u64,

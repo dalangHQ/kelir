@@ -12,6 +12,8 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 
 use super::synthetic::SyntheticFile;
 
+mod uapi;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FuseOpcode {
     Lookup,
@@ -25,11 +27,11 @@ impl FuseOpcode {
     pub fn from_u32(value: u32) -> Result<Self, PluginError> {
         // TODO (L3): validate opcode numbers against the virtio-fs queue parser.
         match value {
-            1 => Ok(FuseOpcode::Lookup),
-            15 => Ok(FuseOpcode::Read),
-            16 => Ok(FuseOpcode::Write),
-            32 => Ok(FuseOpcode::Setlk),
-            33 => Ok(FuseOpcode::Setlkw),
+            uapi::FUSE_LOOKUP => Ok(FuseOpcode::Lookup),
+            uapi::FUSE_READ => Ok(FuseOpcode::Read),
+            uapi::FUSE_WRITE => Ok(FuseOpcode::Write),
+            uapi::FUSE_SETLK => Ok(FuseOpcode::Setlk),
+            uapi::FUSE_SETLKW => Ok(FuseOpcode::Setlkw),
             _ => Err(PluginError::Halt(format!("unknown FUSE opcode {value}"))),
         }
     }
@@ -244,16 +246,16 @@ impl FuseDispatcher {
 // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
 fn drop_errno(errno: &str) -> Result<i32, PluginError> {
     match errno {
-        "EPERM" => Ok(1),
-        "ENXIO" => Ok(6),
-        "EWOULDBLOCK" => Ok(11),
-        "EACCES" => Ok(13),
-        "EFAULT" => Ok(14),
-        "EBUSY" => Ok(16),
-        "EXDEV" => Ok(18),
-        "ENOSPC" => Ok(28),
-        "EROFS" => Ok(30),
-        "ECONNREFUSED" => Ok(111),
+        "EPERM" => Ok(libc::EPERM),
+        "ENXIO" => Ok(libc::ENXIO),
+        "EWOULDBLOCK" => Ok(libc::EWOULDBLOCK),
+        "EACCES" => Ok(libc::EACCES),
+        "EFAULT" => Ok(libc::EFAULT),
+        "EBUSY" => Ok(libc::EBUSY),
+        "EXDEV" => Ok(libc::EXDEV),
+        "ENOSPC" => Ok(libc::ENOSPC),
+        "EROFS" => Ok(libc::EROFS),
+        "ECONNREFUSED" => Ok(libc::ECONNREFUSED),
         _ => Err(PluginError::Halt(format!(
             "FUSE errno {errno} has no POSIX mapping on the storage plane"
         ))),

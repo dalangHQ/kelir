@@ -2,229 +2,7 @@
 use std::fs;
 
 use kelir_interface::protocol::Channel;
-
-// see: cans/15-operations.md#Multi-language-parity-gate
-#[derive(Debug, Clone, PartialEq)]
-pub enum JsonValue {
-    Null,
-    Bool(bool),
-    Number(f64),
-    Text(String),
-    Array(Vec<JsonValue>),
-    Object(Vec<(String, JsonValue)>),
-}
-
-impl JsonValue {
-    pub fn get(&self, key: &str) -> Option<&JsonValue> {
-        match self {
-            JsonValue::Object(entries) => entries
-                .iter()
-                .find(|(entry_key, _)| entry_key == key)
-                .map(|(_, value)| value),
-            _ => None,
-        }
-    }
-
-    pub fn as_text(&self) -> Option<&str> {
-        match self {
-            JsonValue::Text(text) => Some(text),
-            _ => None,
-        }
-    }
-
-    pub fn as_array(&self) -> Option<&[JsonValue]> {
-        match self {
-            JsonValue::Array(items) => Some(items),
-            _ => None,
-        }
-    }
-}
-
-struct JsonParser<'a> {
-    text: &'a [u8],
-    pos: usize,
-}
-
-impl<'a> JsonParser<'a> {
-    fn new(text: &'a str) -> Self {
-        Self {
-            text: text.as_bytes(),
-            pos: 0,
-        }
-    }
-
-    fn peek(&self) -> Option<u8> {
-        self.text.get(self.pos).copied()
-    }
-
-    fn skip_ws(&mut self) {
-        while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
-            self.pos += 1;
-        }
-    }
-
-    fn parse(&mut self) -> Result<JsonValue, String> {
-        let value = self.parse_value()?;
-        self.skip_ws();
-        if self.pos != self.text.len() {
-            return Err(format!("parity: trailing characters at byte {}", self.pos));
-        }
-        Ok(value)
-    }
-
-    fn parse_value(&mut self) -> Result<JsonValue, String> {
-        self.skip_ws();
-        match self.peek() {
-            Some(b'{') => self.parse_object(),
-            Some(b'[') => self.parse_array(),
-            Some(b'"') => Ok(JsonValue::Text(self.parse_string()?)),
-            Some(b't') => self.parse_literal("true", JsonValue::Bool(true)),
-            Some(b'f') => self.parse_literal("false", JsonValue::Bool(false)),
-            Some(b'n') => self.parse_literal("null", JsonValue::Null),
-            Some(b'-') | Some(b'0'..=b'9') => self.parse_number(),
-            Some(other) => Err(format!("parity: unexpected byte `{other}` at {}", self.pos)),
-            None => Err("parity: unexpected end of input".to_string()),
-        }
-    }
-
-    fn parse_literal(&mut self, literal: &str, value: JsonValue) -> Result<JsonValue, String> {
-        if self.text[self.pos..].starts_with(literal.as_bytes()) {
-            self.pos += literal.len();
-            Ok(value)
-        } else {
-            Err(format!("parity: bad literal at byte {}", self.pos))
-        }
-    }
-
-    fn parse_number(&mut self) -> Result<JsonValue, String> {
-        let start = self.pos;
-        while matches!(
-            self.peek(),
-            Some(b'0'..=b'9' | b'-' | b'+' | b'.' | b'e' | b'E')
-        ) {
-            self.pos += 1;
-        }
-        let raw = std::str::from_utf8(&self.text[start..self.pos])
-            .map_err(|_| "parity: bad number".to_string())?;
-        raw.parse::<f64>()
-            .map(JsonValue::Number)
-            .map_err(|_| format!("parity: bad number `{raw}`"))
-    }
-
-    fn parse_string(&mut self) -> Result<String, String> {
-        if self.peek() != Some(b'"') {
-            return Err(format!("parity: expected string at byte {}", self.pos));
-        }
-        self.pos += 1;
-        let mut out: Vec<u8> = Vec::new();
-        loop {
-            match self.peek() {
-                None => return Err("parity: unterminated string".to_string()),
-                Some(b'"') => {
-                    self.pos += 1;
-                    return String::from_utf8(out)
-                        .map_err(|_| "parity: string is not valid UTF-8".to_string());
-                }
-                Some(b'\\') => {
-                    self.pos += 1;
-                    match self.peek() {
-                        Some(b'"') => out.push(b'"'),
-                        Some(b'\\') => out.push(b'\\'),
-                        Some(b'/') => out.push(b'/'),
-                        Some(b'n') => out.push(b'\n'),
-                        Some(b't') => out.push(b'\t'),
-                        Some(b'r') => out.push(b'\r'),
-                        Some(b'b') => out.push(8),
-                        Some(b'f') => out.push(12),
-                        Some(b'u') => {
-                            let hex = self
-                                .text
-                                .get(self.pos + 1..self.pos + 5)
-                                .ok_or("parity: bad unicode escape".to_string())?;
-                            let hex = std::str::from_utf8(hex)
-                                .map_err(|_| "parity: bad unicode escape".to_string())?;
-                            let code = u32::from_str_radix(hex, 16)
-                                .map_err(|_| "parity: bad unicode escape".to_string())?;
-                            let ch = char::from_u32(code)
-                                .ok_or("parity: bad unicode escape".to_string())?;
-                            let mut buf = [0u8; 4];
-                            out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
-                            self.pos += 4;
-                        }
-                        _ => {
-                            return Err(format!("parity: bad escape at byte {}", self.pos));
-                        }
-                    }
-                    self.pos += 1;
-                }
-                Some(byte) => {
-                    out.push(byte);
-                    self.pos += 1;
-                }
-            }
-        }
-    }
-
-    fn parse_array(&mut self) -> Result<JsonValue, String> {
-        self.pos += 1;
-        let mut items = Vec::new();
-        self.skip_ws();
-        if self.peek() == Some(b']') {
-            self.pos += 1;
-            return Ok(JsonValue::Array(items));
-        }
-        loop {
-            items.push(self.parse_value()?);
-            self.skip_ws();
-            match self.peek() {
-                Some(b',') => {
-                    self.pos += 1;
-                }
-                Some(b']') => {
-                    self.pos += 1;
-                    return Ok(JsonValue::Array(items));
-                }
-                _ => {
-                    return Err(format!("parity: expected `,` or `]` at byte {}", self.pos));
-                }
-            }
-        }
-    }
-
-    fn parse_object(&mut self) -> Result<JsonValue, String> {
-        self.pos += 1;
-        let mut entries = Vec::new();
-        self.skip_ws();
-        if self.peek() == Some(b'}') {
-            self.pos += 1;
-            return Ok(JsonValue::Object(entries));
-        }
-        loop {
-            self.skip_ws();
-            let key = self.parse_string()?;
-            self.skip_ws();
-            if self.peek() != Some(b':') {
-                return Err(format!("parity: expected `:` at byte {}", self.pos));
-            }
-            self.pos += 1;
-            let value = self.parse_value()?;
-            entries.push((key, value));
-            self.skip_ws();
-            match self.peek() {
-                Some(b',') => {
-                    self.pos += 1;
-                }
-                Some(b'}') => {
-                    self.pos += 1;
-                    return Ok(JsonValue::Object(entries));
-                }
-                _ => {
-                    return Err(format!("parity: expected `,` or `}}` at byte {}", self.pos));
-                }
-            }
-        }
-    }
-}
+use serde_json::Value;
 
 // see: cans/15-operations.md#Multi-language-parity-gate
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -239,17 +17,6 @@ pub struct ParityVector {
     pub expected_verdict_kind: String,
     pub watchdog_verdict: Option<String>,
     pub veto_event: Option<String>,
-}
-
-impl JsonValue {
-    fn as_u64(&self) -> Option<u64> {
-        match self {
-            JsonValue::Number(n) if n.fract() == 0.0 && *n >= 0.0 && *n <= 1.8446744e19 => {
-                Some(*n as u64)
-            }
-            _ => None,
-        }
-    }
 }
 
 fn decode_hex(text: &str) -> Result<Vec<u8>, String> {
@@ -286,18 +53,22 @@ const WATCHDOG_VERDICTS: &[&str] = &["Suppress", "Mitigate"];
 // see: cans/15-operations.md#Coverage-gates
 const VETO_EVENTS: &[&str] = &["Fork", "Suspend", "ClockSkew"];
 
-fn verdict_kind(value: &JsonValue, index: usize) -> Result<String, String> {
+fn verdict_kind(value: &Value, index: usize) -> Result<String, String> {
     match value {
-        JsonValue::Text(kind) if VERDICT_VARIANTS.contains(&kind.as_str()) => Ok(kind.clone()),
-        JsonValue::Object(entries) => {
+        Value::String(kind) if VERDICT_VARIANTS.contains(&kind.as_str()) => Ok(kind.clone()),
+        Value::Object(entries) => {
             if entries.len() != 1 {
                 return Err(format!(
                     "parity: vector {index} expected_verdict must carry exactly one Verdict variant"
                 ));
             }
-            let kind = entries[0].0.clone();
+            let Some((kind, _)) = entries.iter().next() else {
+                return Err(format!(
+                    "parity: vector {index} expected_verdict must carry exactly one Verdict variant"
+                ));
+            };
             if VERDICT_VARIANTS.contains(&kind.as_str()) {
-                Ok(kind)
+                Ok(kind.clone())
             } else {
                 Err(format!(
                     "parity: vector {index} expected_verdict `{kind}` is outside the Verdict lattice"
@@ -311,57 +82,58 @@ fn verdict_kind(value: &JsonValue, index: usize) -> Result<String, String> {
 }
 
 pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
-    let mut parser = JsonParser::new(text);
-    let root = parser.parse()?;
+    let root: Value = serde_json::from_str(text)
+        .map_err(|e| format!("parity: vectors.json is not valid JSON: {e}"))?;
     let vectors = root
         .get("vectors")
-        .and_then(JsonValue::as_array)
+        .and_then(Value::as_array)
         .ok_or("parity: vectors.json must be an object with a `vectors` array".to_string())?;
     let mut out = Vec::new();
     for (index, item) in vectors.iter().enumerate() {
         let name = item
             .get("name")
-            .and_then(JsonValue::as_text)
-            .ok_or(format!("parity: vector {index} has no string `name`"))?;
+            .and_then(Value::as_str)
+            .ok_or(format!("parity: vector {index} has no string `name`"))?
+            .to_string();
         let frame = item
             .get("frame")
             .ok_or(format!("parity: vector {index} declares no `frame`"))?;
         let transport = frame
             .get("transport")
-            .and_then(JsonValue::as_u64)
+            .and_then(Value::as_u64)
             .and_then(|v| u16::try_from(v).ok())
             .ok_or(format!(
                 "parity: vector {index} frame has no u16 `transport`"
             ))?;
         let stream_id = frame
             .get("stream_id")
-            .and_then(JsonValue::as_u64)
+            .and_then(Value::as_u64)
             .and_then(|v| u32::try_from(v).ok())
             .ok_or(format!(
                 "parity: vector {index} frame has no u32 `stream_id`"
             ))?;
         let flags = frame
             .get("flags")
-            .and_then(JsonValue::as_u64)
+            .and_then(Value::as_u64)
             .and_then(|v| u8::try_from(v).ok())
             .ok_or(format!("parity: vector {index} frame has no u8 `flags`"))?;
         let msg_type = frame
             .get("msg_type")
-            .and_then(JsonValue::as_u64)
+            .and_then(Value::as_u64)
             .and_then(|v| u16::try_from(v).ok())
             .ok_or(format!(
                 "parity: vector {index} frame has no u16 `msg_type`"
             ))?;
         let payload_hex = frame
             .get("payload_cbor_hex")
-            .and_then(JsonValue::as_text)
+            .and_then(Value::as_str)
             .ok_or(format!(
                 "parity: vector {index} frame has no `payload_cbor_hex`"
             ))?
             .to_string();
         let frame_hex = frame
             .get("frame_hex")
-            .and_then(JsonValue::as_text)
+            .and_then(Value::as_str)
             .ok_or(format!("parity: vector {index} frame has no `frame_hex`"))?
             .to_string();
         let expected_verdict = item.get("expected_verdict").ok_or(format!(
@@ -372,7 +144,7 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
             Some(watchdog) => {
                 let verdict = watchdog
                     .get("expected_verdict")
-                    .and_then(JsonValue::as_text)
+                    .and_then(Value::as_str)
                     .ok_or(format!(
                         "parity: vector {index} watchdog declares no string `expected_verdict`"
                     ))?;
@@ -387,12 +159,9 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
         let veto_event = match item.get("veto") {
             None => None,
             Some(veto) => {
-                let event = veto
-                    .get("event")
-                    .and_then(JsonValue::as_text)
-                    .ok_or(format!(
-                        "parity: vector {index} veto declares no string `event`"
-                    ))?;
+                let event = veto.get("event").and_then(Value::as_str).ok_or(format!(
+                    "parity: vector {index} veto declares no string `event`"
+                ))?;
                 if !VETO_EVENTS.contains(&event) {
                     return Err(format!(
                         "parity: vector {index} veto event `{event}` is not a VetoEvent"
@@ -402,7 +171,7 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
             }
         };
         out.push(ParityVector {
-            name: name.to_string(),
+            name,
             transport,
             stream_id,
             flags,
@@ -522,6 +291,20 @@ pub fn assert_vectors(vectors: &[ParityVector]) -> Result<usize, String> {
     Ok(vectors.len())
 }
 
+// see: cans/15-operations.md#Multi-language-parity-gate
+fn assert_canonical_roster(vectors: &[ParityVector]) -> Result<(), String> {
+    let canonical = kelir_plugin_testkit::fixtures::canonical_vector_names()
+        .map_err(|e| format!("parity: cannot derive the canonical roster from the testkit: {e}"))?;
+    let declared: Vec<&str> = vectors.iter().map(|vector| vector.name.as_str()).collect();
+    let expected: Vec<&str> = canonical.iter().map(String::as_str).collect();
+    if declared != expected {
+        return Err(format!(
+            "parity: vectors.json roster drifted from the kelir-plugin-testkit fixtures (regenerate with `kelir-plugin-cli vectors`): declared {declared:?}, expected {expected:?}"
+        ));
+    }
+    Ok(())
+}
+
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let mut path = "vectors.json".to_string();
     match args.first().map(String::as_str) {
@@ -542,6 +325,7 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     })?;
     let vectors = parse_vectors(&text)?;
     let count = assert_vectors(&vectors)?;
+    assert_canonical_roster(&vectors)?;
     println!("parity: {count} vector(s) asserted from {path}");
     Ok(())
 }

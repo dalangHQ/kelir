@@ -1,24 +1,34 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/plugins/chaos.md#Plugin-chaos
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from kelir.plugin import BasePlugin
 
-__all__ = ["ChaosConfig", "ChaosPlugin", "FsChaos", "NetworkChaos"]
+__all__ = [
+    "ChaosConfig",
+    "ChaosPlugin",
+    "FsChaos",
+    "NetworkChaos",
+    "NetworkFaultRule",
+    "StorageFaultRule",
+]
 
 
 @dataclass
-class NetworkChaos:
+class NetworkFaultRule:
     target: str = ""
+    direction: Literal["outbound", "inbound", "both"] = "outbound"
     base_ms: int = 0
     jitter_ms: int = 0
     drop_rate: float = 0.0
-    direction: str = "outbound"
+    inject_rst: bool = False
+    bandwidth_kbps: int | None = None
 
 
 @dataclass
-class FsChaos:
+class StorageFaultRule:
     target_path: str = ""
     simulate_error: str = ""
     error_probability: float = 0.0
@@ -26,8 +36,14 @@ class FsChaos:
 
 @dataclass
 class ChaosConfig:
-    network: list[NetworkChaos] = field(default_factory=list)
-    fs: list[FsChaos] = field(default_factory=list)
+    network: list[NetworkFaultRule] = field(default_factory=list)
+    fs: list[StorageFaultRule] = field(default_factory=list)
+
+
+NetworkChaos = NetworkFaultRule
+
+
+FsChaos = StorageFaultRule
 
 
 class ChaosPlugin(BasePlugin):

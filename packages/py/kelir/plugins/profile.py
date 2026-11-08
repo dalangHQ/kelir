@@ -1,11 +1,15 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/plugins/profile.md#Plugin-profile
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from kelir.plugin import BasePlugin
 
-__all__ = ["CdiConfig", "ProfileConfig", "ProfilePlugin"]
+__all__ = [
+    "CdiConfig",
+    "ProfileConfig",
+    "ProfilePlugin",
+]
 
 
 @dataclass

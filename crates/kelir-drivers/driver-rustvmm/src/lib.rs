@@ -3,6 +3,8 @@
 // see: cans/08-lifecycle.md#CoW-fork
 // see: cans/artifacts/diagrams/host-runtime.txt#driver-rustvmm
 // TODO (L3): tests/test_cow_fork.rs + test_rollback.rs per cans/artifacts/config/project-structure.txt#kelir-drivers.
+pub mod host_probe;
+
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;

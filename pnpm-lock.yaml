@@ -22,22 +22,19 @@ importers:
         version: 5.6.3
 
   packages/ts/core:
+    dependencies:
+      '@ltd/j-toml':
+        specifier: ^1.38.0
+        version: 1.38.0
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
     devDependencies:
       typescript:
         specifier: ^5.6.0
         version: 5.6.3
 
   packages/ts/e2b-compat:
-    dependencies:
-      '@kelir/core':
-        specifier: workspace:*
-        version: link:../core
-    devDependencies:
-      typescript:
-        specifier: ^5.6.0
-        version: 5.6.3
-
-  packages/ts/plugins:
     dependencies:
       '@kelir/core':
         specifier: workspace:*
@@ -102,6 +99,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@ltd/j-toml@1.38.0':
+    resolution: {integrity: sha512-lYtBcmvHustHQtg4X7TXUu1Xa/tbLC3p2wLvgQI+fWVySguVZJF60Snxijw5EiohumxZbR10kWYFFebh1zotiw==}
+
   '@turbo/darwin-64@2.11.10':
     resolution: {integrity: sha512-By4idRap5+nLnMuRzLB4qkOPRlvNdyY1ne4VJYDyUoUB11H94k7uif9mbe3JT8JSNXs1D68uMcBj6hJ/jMQRvA==}
     cpu: [x64]
@@ -147,6 +147,11 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
+  yaml@2.9.1:
+    resolution: {integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
 snapshots:
 
   '@biomejs/biome@1.9.4':
@@ -184,6 +189,8 @@ snapshots:
   '@biomejs/cli-win32-x64@1.9.4':
     optional: true
 
+  '@ltd/j-toml@1.38.0': {}
+
   '@turbo/darwin-64@2.11.10':
     optional: true
 
@@ -218,3 +225,5 @@ snapshots:
   typescript@5.6.3: {}
 
   undici-types@6.21.0: {}
+
+  yaml@2.9.1: {}

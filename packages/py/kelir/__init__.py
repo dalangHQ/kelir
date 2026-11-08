@@ -9,6 +9,16 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
 
+from kelir._generated.protocol import Channel, ExecStream, MsgType, StreamKind
+from kelir._generated.telemetry import (
+    CausalDelta as CausalDelta,
+    ExecutionReceipt as ExecutionReceipt,
+    ExitKind as ExitKind,
+    GuestClock as GuestClock,
+    PhaseTimings as PhaseTimings,
+    ReceiptExtension as ReceiptExtension,
+    SnapshotDescriptor as SnapshotDescriptor,
+)
 from kelir.errors import EConfig as EConfig
 from kelir.sandbox import Sandbox as Sandbox
 from kelir.fusion import (
@@ -154,73 +164,8 @@ class TrapFilter:
 
 
 @dataclass
-class ReceiptExtension:
-    namespace: str = ""
-    payload: bytes = b""
-
-
-@dataclass
-class PhaseTimings:
-    trap_ingress_ns: int = 0
-    ffi_hop_ns: int = 0
-    policy_ns: int = 0
-    verdict_egress_ns: int = 0
-
-
-@dataclass
-class ExitKind:
-    kind: str = "normal"
-    signal: int | None = None
-    message: str | None = None
-
-
-@dataclass
-class ExecutionReceipt:
-    pid: int = 0
-    binary_path: str = ""
-    binary_blake3: str = ""
-    exit_kind: ExitKind = field(default_factory=ExitKind)
-    correlation_token: str | None = None
-    dirty_bytes: int = 0
-    syscall_count: int | None = None
-    exit_code: int = 0
-    wall_clock_ns: int = 0
-    phase_timings: PhaseTimings | None = None
-    egress_bytes: int = 0
-    egress_dropped_bytes: int = 0
-    extensions: list[ReceiptExtension] = field(default_factory=list)
-
-
-@dataclass
-class GuestClock:
-    absolute_wall_clock_ns: int = 0
-    monotonic_offset_ns: int = 0
-    timezone: str = ""
-    boot_params: str = ""
-
-
-@dataclass
-class SnapshotDescriptor:
-    id: str = ""
-    dirty_bytes: int = 0
-    created_at_ns: int = 0
-    parent_digest: str | None = None
-    guest_clock: GuestClock | None = None
-
-
-@dataclass
 class SpawnResult:
     exit_code: int = 0
-
-
-@dataclass
-class CausalDelta:
-    memory_diff_bytes: int = 0
-    modified_inodes: list[str] = field(default_factory=list)
-    spawned_pids: list[int] = field(default_factory=list)
-    egress_bytes: int = 0
-    storage_delta_root: str = ""
-    receipt_leaf_hash: str = ""
 
 
 @dataclass
@@ -929,8 +874,10 @@ def builder(
 __all__ = [
     "Approval",
     "CausalDelta",
+    "Channel",
     "CheckpointHandle",
     "Deadline",
+    "ExecStream",
     "ExecutionReceipt",
     "ExitKind",
     "FilterAction",
@@ -938,6 +885,7 @@ __all__ = [
     "HandlerContext",
     "HostHandle",
     "KelirBuilder",
+    "MsgType",
     "PhaseTimings",
     "PostExecAction",
     "ReceiptExtension",
@@ -947,6 +895,7 @@ __all__ = [
     "Session",
     "SnapshotDescriptor",
     "SpawnResult",
+    "StreamKind",
     "TrapEvent",
     "TrapFilter",
     "Verdict",

@@ -1,7 +1,11 @@
 // see: cans/artifacts/code/causal-delta.rs#CausalDelta
+// see: cans/10-attestation.md#Causal-delta
 use std::path::PathBuf;
 
-#[derive(Debug, Clone)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct CausalDelta {
     pub memory_diff_bytes: u64,

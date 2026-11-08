@@ -1,4 +1,4 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/plugins/supply-chain.md#Plugin-supply-chain
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from kelir.plugin import BasePlugin
 
 __all__ = [
+    "AuthorizedJitEngine",
     "PackageGuardConfig",
     "SupplyChainConfig",
     "SupplyChainPlugin",
@@ -14,24 +15,30 @@ __all__ = [
 
 
 @dataclass
+class AuthorizedJitEngine:
+    binary_path: str = ""
+    binary_blake3: bytes = bytes(32)
+
+
+@dataclass
 class WxJitConfig:
     trap_memfd: bool = False
     trap_mprotect_exec: bool = False
-    allowed_jit_binaries: list[str] = field(default_factory=list)
+    allowed_jit_binaries: list[AuthorizedJitEngine] = field(default_factory=list)
 
 
 @dataclass
 class PackageGuardConfig:
-    deny_lifecycle_scripts: bool = False
-    managers: list[str] = field(default_factory=list)
-    shannon_entropy_threshold_bits: float = 0.0
-    bypass_runners: list[str] = field(default_factory=list)
+    deny_lifecycle_scripts: bool = True
+    managers: list[str] = field(default_factory=lambda: ["npm", "pip", "cargo"])
+    shannon_entropy_threshold_bits: float = 5.2
+    bypass_runners: list[str] = field(default_factory=lambda: ["node", "python"])
 
 
 @dataclass
 class SupplyChainConfig:
-    wx_jit: WxJitConfig | None = None
-    package_guard: PackageGuardConfig | None = None
+    wx_jit: WxJitConfig = field(default_factory=lambda: WxJitConfig())
+    package_guard: PackageGuardConfig = field(default_factory=lambda: PackageGuardConfig())
 
 
 class SupplyChainPlugin(BasePlugin):

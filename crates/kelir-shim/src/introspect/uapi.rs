@@ -1,0 +1,27 @@
+// see: cans/11-protocol.md#Trap-fast-path
+pub const PT_INTERP: u32 = 3;
+pub const EHDR64_SIZE: usize = 64;
+pub const EHDR64_E_PHOFF: usize = 32;
+pub const EHDR64_E_PHENTSIZE: usize = 54;
+pub const EHDR64_E_PHNUM: usize = 56;
+pub const PHDR64_SIZE: usize = 56;
+pub const PHDR64_P_TYPE: usize = 0;
+pub const PHDR64_P_OFFSET: usize = 8;
+pub const PHDR64_P_FILESZ: usize = 32;
+pub const EHDR32_E_PHOFF: usize = 28;
+pub const EHDR32_E_PHENTSIZE: usize = 42;
+pub const EHDR32_E_PHNUM: usize = 44;
+pub const PHDR32_SIZE: usize = 32;
+pub const PHDR32_P_TYPE: usize = 0;
+pub const PHDR32_P_OFFSET: usize = 4;
+pub const PHDR32_P_FILESZ: usize = 16;
+pub const EI_MAG0: usize = 0;
+pub const SELFMAG: usize = 4;
+pub const ELFMAG: [u8; SELFMAG] = [0x7f, 0x45, 0x4c, 0x46];
+pub const EI_CLASS: usize = 4;
+pub const EI_DATA: usize = 5;
+pub const ELFCLASS32: u8 = 1;
+pub const ELFCLASS64: u8 = 2;
+pub const ELFDATA2LSB: u8 = 1;
+pub const AT_NULL: u64 = 0;
+pub const AT_EXECFN: u64 = 31;

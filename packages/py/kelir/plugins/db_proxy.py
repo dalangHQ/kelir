@@ -1,8 +1,8 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/plugins/db-proxy.md#Plugin-db-proxy
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
 
 from kelir.plugin import BasePlugin
 
@@ -17,30 +17,31 @@ __all__ = [
 
 @dataclass
 class PgWireRewrite:
-    listen_port: int = 0
+    listen_port: int = 5432
     upstream: str = ""
     rewrite_rules: list[tuple[str, str]] = field(default_factory=list)
-    max_rewrites_per_conn: int = 0
+    max_rewrites_per_conn: int = 3
+
+
+@dataclass
+class SqliteOverVsock:
+    guest_socket: str = "/run/kelir/db.sock"
+    host_path: str = ""
 
 
 @dataclass
 class EphemeralCredentials:
     placeholder: str = ""
-    resolve: Callable[[], str] | None = None
     ttl_seconds: int = 0
-
-
-@dataclass
-class SqliteOverVsock:
-    guest_socket: str = ""
-    host_path: str = ""
+    # TODO (L3): resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md.
+    resolve: Callable[[], str] | None = None
 
 
 @dataclass
 class DbProxyConfig:
-    postgres: PgWireRewrite | None = None
+    postgres: PgWireRewrite = field(default_factory=lambda: PgWireRewrite())
+    sqlite: SqliteOverVsock = field(default_factory=lambda: SqliteOverVsock())
     credentials: EphemeralCredentials | None = None
-    sqlite: SqliteOverVsock | None = None
 
 
 class DbProxyPlugin(BasePlugin):

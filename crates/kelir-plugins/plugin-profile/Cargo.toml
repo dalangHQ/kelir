@@ -17,3 +17,7 @@ kelir-plugin-testkit = { path = "../../kelir-plugin-testkit" }
 
 [lints]
 workspace = true
+
+[package.metadata.kelir.tier]
+level = 3
+name = "profile"

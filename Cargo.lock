@@ -518,10 +518,12 @@ dependencies = [
  "kelir-interface",
  "kelir-otlp",
  "kelir-transport",
+ "libc",
  "serde",
  "smoltcp",
  "thiserror 2.0.21",
  "tokio",
+ "toml",
  "tracing",
 ]
 
@@ -548,6 +550,7 @@ dependencies = [
  "blake3",
  "ciborium",
  "serde",
+ "syn 2.0.119",
  "thiserror 2.0.21",
  "tokio",
 ]
@@ -585,12 +588,16 @@ name = "kelir-plugin-cli"
 version = "1.0.0"
 dependencies = [
  "blake3",
+ "driver-rustvmm",
  "kelir-catalog",
  "kelir-core",
  "kelir-interface",
  "kelir-plugin-testkit",
+ "serde",
+ "serde_json",
  "sha2",
  "thiserror 2.0.21",
+ "toml",
 ]
 
 [[package]]
@@ -628,7 +635,9 @@ dependencies = [
 name = "kelir-testkit"
 version = "0.1.0"
 dependencies = [
+ "driver-rustvmm",
  "serde",
+ "serde_json",
  "serde_yaml",
  "toml",
  "walkdir",

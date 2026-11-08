@@ -1,11 +1,17 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/plugins/mesh.md#Plugin-mesh
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from kelir.plugin import BasePlugin
 
-__all__ = ["MeshConfig", "MeshPlugin", "PeerListener"]
+__all__ = [
+    "MeshConfig",
+    "MeshPlugin",
+    "PeerIdentity",
+    "PeerListener",
+]
 
 
 @dataclass
@@ -15,11 +21,16 @@ class PeerListener:
 
 
 @dataclass
-class MeshConfig:
+class PeerIdentity:
     trust_domain: str = ""
     workload_prefix: str = ""
+
+
+@dataclass
+class MeshConfig:
+    peer_identity: PeerIdentity = field(default_factory=lambda: PeerIdentity())
     mtls: bool = False
-    propagate_traceparent: bool = False
+    traceparent: Literal["inject-and-validate"] = "inject-and-validate"
     listeners: list[PeerListener] = field(default_factory=list)
 
 

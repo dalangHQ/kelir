@@ -4,83 +4,57 @@
 use std::collections::HashSet;
 
 // see: cans/02-plugin-model.md#Segregated-ring-traits
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TrampolineRing {
-    Trap,
-    TrapDeny,
-    ProcessExit,
-    FsLookup,
-    FsRead,
-    FsWrite,
-    NetOutbound,
-    NetInbound,
-    ConsoleInput,
-    ConsoleOutput,
-    Heartbeat,
-    Lifecycle,
-    Watchdog,
-    CustomAction,
-    VsockService,
+macro_rules! tag_enum {
+    ($(#[$attr:meta])* $vis:vis enum $name:ident { $($variant:ident => $tag:literal),+ $(,)? }) => {
+        $(#[$attr])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        $vis enum $name {
+            $($variant),+
+        }
+
+        impl $name {
+            pub fn from_tag(tag: &str) -> Option<Self> {
+                match tag {
+                    $($tag => Some(Self::$variant),)+
+                    _ => None,
+                }
+            }
+
+            pub fn as_tag(&self) -> &'static str {
+                match self {
+                    $(Self::$variant => $tag,)+
+                }
+            }
+        }
+    };
 }
 
-impl TrampolineRing {
-    pub fn from_tag(tag: &str) -> Option<Self> {
-        match tag {
-            "trap" => Some(Self::Trap),
-            "trap-deny" => Some(Self::TrapDeny),
-            "process-exit" => Some(Self::ProcessExit),
-            "fs-lookup" => Some(Self::FsLookup),
-            "fs-read" => Some(Self::FsRead),
-            "fs-write" => Some(Self::FsWrite),
-            "net-outbound" => Some(Self::NetOutbound),
-            "net-inbound" => Some(Self::NetInbound),
-            "console-input" => Some(Self::ConsoleInput),
-            "console-output" => Some(Self::ConsoleOutput),
-            "heartbeat" => Some(Self::Heartbeat),
-            "lifecycle" => Some(Self::Lifecycle),
-            "watchdog" => Some(Self::Watchdog),
-            "custom-action" => Some(Self::CustomAction),
-            "vsock-service" => Some(Self::VsockService),
-            _ => None,
-        }
-    }
-
-    pub fn as_tag(&self) -> &'static str {
-        match self {
-            Self::Trap => "trap",
-            Self::TrapDeny => "trap-deny",
-            Self::ProcessExit => "process-exit",
-            Self::FsLookup => "fs-lookup",
-            Self::FsRead => "fs-read",
-            Self::FsWrite => "fs-write",
-            Self::NetOutbound => "net-outbound",
-            Self::NetInbound => "net-inbound",
-            Self::ConsoleInput => "console-input",
-            Self::ConsoleOutput => "console-output",
-            Self::Heartbeat => "heartbeat",
-            Self::Lifecycle => "lifecycle",
-            Self::Watchdog => "watchdog",
-            Self::CustomAction => "custom-action",
-            Self::VsockService => "vsock-service",
-        }
+// see: cans/02-plugin-model.md#Segregated-ring-traits
+tag_enum! {
+    pub enum TrampolineRing {
+        Trap => "trap",
+        TrapDeny => "trap-deny",
+        ProcessExit => "process-exit",
+        FsLookup => "fs-lookup",
+        FsRead => "fs-read",
+        FsWrite => "fs-write",
+        NetOutbound => "net-outbound",
+        NetInbound => "net-inbound",
+        ConsoleInput => "console-input",
+        ConsoleOutput => "console-output",
+        Heartbeat => "heartbeat",
+        Lifecycle => "lifecycle",
+        Watchdog => "watchdog",
+        CustomAction => "custom-action",
+        VsockService => "vsock-service",
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HookStage {
-    Pre,
-    Post,
-    Single,
-}
-
-impl HookStage {
-    pub fn from_tag(tag: &str) -> Option<Self> {
-        match tag {
-            "pre" => Some(Self::Pre),
-            "post" => Some(Self::Post),
-            "single" => Some(Self::Single),
-            _ => None,
-        }
+tag_enum! {
+    pub enum HookStage {
+        Pre => "pre",
+        Post => "post",
+        Single => "single",
     }
 }
 
@@ -158,13 +132,90 @@ impl TrampolineTable {
 }
 
 // see: cans/02-plugin-model.md#Hook-context-restriction
-const LIFECYCLE_TAGS: &[&str] = &[
+pub const LIFECYCLE_TAGS: &[&str] = &[
     "vm-init",
     "vm-ready",
     "vm-shutdown",
     "trap-deny",
     "pre-commit",
     "post-commit",
+];
+
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
+#[derive(Debug, Clone, Copy)]
+pub struct HookRingBinding {
+    pub method: &'static str,
+    pub ring: TrampolineRing,
+    pub lifecycle_tag: Option<&'static str>,
+}
+
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
+pub const HOOK_RINGS: &[HookRingBinding] = &[
+    HookRingBinding {
+        method: "on_trap",
+        ring: TrampolineRing::Trap,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_fs_lookup",
+        ring: TrampolineRing::FsLookup,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_fs_read",
+        ring: TrampolineRing::FsRead,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_fs_write",
+        ring: TrampolineRing::FsWrite,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_net_outbound",
+        ring: TrampolineRing::NetOutbound,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_console_input",
+        ring: TrampolineRing::ConsoleInput,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_console_output",
+        ring: TrampolineRing::ConsoleOutput,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_heartbeat",
+        ring: TrampolineRing::Heartbeat,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_process_exit",
+        ring: TrampolineRing::ProcessExit,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_vm_init",
+        ring: TrampolineRing::Lifecycle,
+        lifecycle_tag: Some("vm-init"),
+    },
+    HookRingBinding {
+        method: "on_vm_ready",
+        ring: TrampolineRing::Lifecycle,
+        lifecycle_tag: Some("vm-ready"),
+    },
+    HookRingBinding {
+        method: "on_vm_shutdown",
+        ring: TrampolineRing::Lifecycle,
+        lifecycle_tag: Some("vm-shutdown"),
+    },
+    HookRingBinding {
+        method: "on_watchdog",
+        ring: TrampolineRing::Watchdog,
+        lifecycle_tag: None,
+    },
 ];
 
 pub fn validate_hook(ring: TrampolineRing, hook: &HookEntry) -> Result<(), String> {

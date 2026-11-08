@@ -1,7 +1,8 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from kelir.plugin import BasePlugin
 
@@ -23,7 +24,7 @@ class ListenConfig:
 
 @dataclass
 class ParkingConfig:
-    max_buffered_bytes: int = 65536
+    max_buffered_bytes: int = 0
     idle_timeout_ms: int = 0
 
 
@@ -35,15 +36,15 @@ class WakeOnPacketConfig:
 @dataclass
 class BacklogConfig:
     max_connections: int = 0
-    overflow: str = ""
+    overflow: Literal["reject-503"] = "reject-503"
 
 
 @dataclass
 class WireIngressConfig:
-    listen: ListenConfig | None = None
-    parking: ParkingConfig | None = None
-    wake_on_packet: WakeOnPacketConfig | None = None
-    backlog: BacklogConfig | None = None
+    listen: ListenConfig = field(default_factory=lambda: ListenConfig(port=8443, protocol="https"))
+    parking: ParkingConfig = field(default_factory=lambda: ParkingConfig(max_buffered_bytes=64 * 1024, idle_timeout_ms=30_000))
+    wake_on_packet: WakeOnPacketConfig = field(default_factory=lambda: WakeOnPacketConfig(transport_channel=0x0001))
+    backlog: BacklogConfig = field(default_factory=lambda: BacklogConfig(max_connections=256, overflow="reject-503"))
 
 
 class WireIngressPlugin(BasePlugin):

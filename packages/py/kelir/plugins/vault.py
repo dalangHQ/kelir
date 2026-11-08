@@ -1,17 +1,20 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
+# see: cans/plugins/vault.md#Plugin-vault
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from kelir.plugin import BasePlugin
 
-__all__ = ["VaultConfig", "VaultPlugin"]
+__all__ = [
+    "VaultConfig",
+    "VaultPlugin",
+]
 
 
 @dataclass
 class VaultConfig:
     metadata_vsock_port: int = 80
-    token_ttl_seconds: int = 0
+    token_ttl_seconds: int = 60
 
 
 class VaultPlugin(BasePlugin):

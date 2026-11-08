@@ -9,12 +9,14 @@ kelir-interface = { path = "../kelir-interface" }
 kelir-transport = { path = "../kelir-transport" }
 kelir-otlp = { path = "../kelir-otlp" }
 serde = { workspace = true }
+toml = { workspace = true }
 ciborium = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 smoltcp = { version = "0.11", default-features = false, features = ["std", "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-udp"] }
+libc = { workspace = true }
 
 [lints]
 workspace = true

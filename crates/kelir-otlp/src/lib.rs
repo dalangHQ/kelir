@@ -1,7 +1,9 @@
 #![forbid(unsafe_code)]
 
+pub mod records;
 pub mod registry;
 
+pub use records::{OtlpCausalDeltaRecord, OtlpPhaseTimingRecord, OtlpReceiptRecord};
 pub use registry::{MetricRegistry, MetricSnapshot};
 
 use kelir_interface::telemetry::{CausalDelta, ExecutionReceipt, PhaseTimings};
@@ -72,99 +74,21 @@ impl OtlpSpan {
 }
 
 // see: cans/14-observability.md#Metrics-pipeline
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OtlpReceiptRecord {
-    pub pid: u32,
-    pub binary_path: String,
-    pub binary_blake3: String,
-    pub exit_code: i32,
-    pub wall_clock_ns: u64,
-    pub spans: Vec<OtlpSpan>,
-}
-
-impl OtlpReceiptRecord {
-    pub fn from_receipt(receipt: &ExecutionReceipt) -> Self {
-        let mut spans = Vec::new();
-        if let Some(timings) = &receipt.phase_timings {
-            let mut start_ns = 0;
-            for (name, duration_ns) in [
-                ("trap_ingress", timings.trap_ingress_ns),
-                ("policy", timings.policy_ns),
-                ("ffi_hop", timings.ffi_hop_ns),
-                ("verdict_egress", timings.verdict_egress_ns),
-            ] {
-                spans.push(OtlpSpan::new(name, start_ns, start_ns + duration_ns));
-                start_ns += duration_ns;
-            }
-        }
-        Self {
-            pid: receipt.pid,
-            binary_path: receipt.binary_path.clone(),
-            binary_blake3: receipt.binary_blake3.clone(),
-            exit_code: receipt.exit_code,
-            wall_clock_ns: receipt.wall_clock_ns,
-            spans,
+pub(crate) fn phase_spans(timings: Option<&PhaseTimings>) -> Vec<OtlpSpan> {
+    let mut spans = Vec::new();
+    if let Some(timings) = timings {
+        let mut start_ns = 0;
+        for (name, duration_ns) in [
+            ("trap_ingress", timings.trap_ingress_ns),
+            ("policy", timings.policy_ns),
+            ("ffi_hop", timings.ffi_hop_ns),
+            ("verdict_egress", timings.verdict_egress_ns),
+        ] {
+            spans.push(OtlpSpan::new(name, start_ns, start_ns + duration_ns));
+            start_ns += duration_ns;
         }
     }
-}
-
-// see: cans/14-observability.md#Metrics-pipeline
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OtlpPhaseTimingRecord {
-    pub trap_ingress_ns: u64,
-    pub ffi_hop_ns: u64,
-    pub policy_ns: u64,
-    pub verdict_egress_ns: u64,
-}
-
-impl OtlpPhaseTimingRecord {
-    pub fn from_timings(timings: &PhaseTimings) -> Self {
-        Self {
-            trap_ingress_ns: timings.trap_ingress_ns,
-            ffi_hop_ns: timings.ffi_hop_ns,
-            policy_ns: timings.policy_ns,
-            verdict_egress_ns: timings.verdict_egress_ns,
-        }
-    }
-}
-
-// see: cans/14-observability.md#Metrics-pipeline
-fn hex_lower(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(HEX[usize::from(*byte >> 4)] as char);
-        out.push(HEX[usize::from(*byte & 0x0f)] as char);
-    }
-    out
-}
-
-// see: cans/14-observability.md#Metrics-pipeline
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OtlpCausalDeltaRecord {
-    pub memory_diff_bytes: u64,
-    pub modified_inodes: Vec<String>,
-    pub spawned_pids: Vec<u32>,
-    pub egress_bytes: u64,
-    pub storage_delta_root: String,
-    pub receipt_leaf_hash: String,
-}
-
-impl OtlpCausalDeltaRecord {
-    pub fn from_delta(delta: &CausalDelta) -> Self {
-        Self {
-            memory_diff_bytes: delta.memory_diff_bytes,
-            modified_inodes: delta
-                .modified_inodes
-                .iter()
-                .map(|path| path.to_string_lossy().into_owned())
-                .collect(),
-            spawned_pids: delta.spawned_pids.clone(),
-            egress_bytes: delta.egress_bytes,
-            storage_delta_root: hex_lower(&delta.storage_delta_root),
-            receipt_leaf_hash: hex_lower(&delta.receipt_leaf_hash),
-        }
-    }
+    spans
 }
 
 // see: cans/14-observability.md#Metrics-pipeline

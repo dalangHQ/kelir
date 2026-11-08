@@ -2,32 +2,16 @@
 // see: cans/artifacts/config/project-structure.txt#kelir-shim
 // see: cans/artifacts/code/wire-protocol.rs#MuxFrameHeader
 
-#[allow(dead_code)]
-pub const HEADER_LEN: usize = 9;
+// see: cans/11-protocol.md#Wire-framing
+pub use kelir_interface::codec::{
+    FLAG_CLOSE, FLAG_DATA, FLAG_OPEN, FLAG_RST, FLAG_WINDOW_UPDATE, MAX_CONTROL_PAYLOAD,
+    MAX_FRAME_PAYLOAD, MAX_STREAM_ID,
+};
 
+// see: cans/11-protocol.md#Wire-framing
 #[allow(dead_code)]
-pub const MAX_FRAME_PAYLOAD: usize = 64 * 1024;
-
-#[allow(dead_code)]
-pub const MAX_CONTROL_PAYLOAD: usize = 4 * 1024;
-
-#[allow(dead_code)]
-pub const MAX_STREAM_ID: u32 = 0x00FF_FFFF;
-
-#[allow(dead_code)]
-pub const FLAG_OPEN: u8 = 0x01;
-
-#[allow(dead_code)]
-pub const FLAG_DATA: u8 = 0x02;
-
-#[allow(dead_code)]
-pub const FLAG_CLOSE: u8 = 0x04;
-
-#[allow(dead_code)]
-pub const FLAG_RST: u8 = 0x08;
-
-#[allow(dead_code)]
-pub const FLAG_WINDOW_UPDATE: u8 = 0x10;
+pub const HEADER_LEN: usize =
+    core::mem::size_of::<u32>() + core::mem::size_of::<u8>() + core::mem::size_of::<u32>();
 
 #[allow(dead_code)]
 pub fn encode_frame(

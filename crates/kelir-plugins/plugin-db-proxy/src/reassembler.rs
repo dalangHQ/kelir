@@ -9,29 +9,9 @@ use kelir_interface::plugin::PluginError;
 
 use crate::pgwire::PgFrameDescriptor;
 
-// see: cans/07-wire-plane.md#Userspace-network-stack
-pub const ETHERTYPE_IPV4: u16 = 0x0800;
-// see: cans/07-wire-plane.md#Userspace-network-stack
-pub const IP_PROTO_TCP: u8 = 6;
-// see: cans/07-wire-plane.md#Frame-drop-and-forward-semantics
-pub const TCP_FLAG_FIN: u8 = 0x01;
-// see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
-pub const TCP_FLAG_SYN: u8 = 0x02;
-// see: cans/07-wire-plane.md#Frame-drop-and-forward-semantics
-pub const TCP_FLAG_RST: u8 = 0x04;
+mod layout;
 
-// see: cans/07-wire-plane.md#Wire-architecture
-const ETH_HEADER_BYTES: usize = 14;
-// see: cans/07-wire-plane.md#Wire-architecture
-const IPV4_MIN_HEADER_WORDS: usize = 5;
-// see: cans/07-wire-plane.md#Wire-architecture
-const TCP_MIN_HEADER_WORDS: usize = 5;
-// see: cans/07-wire-plane.md#Wire-architecture
-const IPV4_FRAGMENT_OFFSET_MASK: u16 = 0x1fff;
-// see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
-const SEQ_HALF_WINDOW: u32 = 0x8000_0000;
-// see: cans/plugins/db-proxy.md#Invariants-and-policy-(db-proxy)
-const PG_HEADER_BYTES: usize = 5;
+pub use self::layout::{ETHERTYPE_IPV4, IP_PROTO_TCP, TCP_FLAG_FIN, TCP_FLAG_RST, TCP_FLAG_SYN};
 
 // see: cans/07-wire-plane.md#Raw-packet-interception-points
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,67 +40,61 @@ pub struct TcpSegmentView<'a> {
 // see: cans/07-wire-plane.md#Wire-architecture
 // TODO (L3): verify Ethernet, IPv4, and TCP checksums and reject invalid frames.
 pub fn parse_tcp_segment(frame: &[u8]) -> Option<TcpSegmentView<'_>> {
-    if frame.len() < ETH_HEADER_BYTES + IPV4_MIN_HEADER_WORDS * 4 {
+    if frame.len() < layout::ETH_HEADER_BYTES + layout::IPV4_MIN_HEADER_BYTES {
         return None;
     }
-    let ethertype = u16::from_be_bytes([frame[12], frame[13]]);
-    if ethertype != ETHERTYPE_IPV4 {
+    if layout::EthView::new_unchecked(frame).etype() != layout::ETHERTYPE_IPV4 {
         return None;
     }
-    let version_ihl = frame[14];
-    if version_ihl >> 4 != 4 {
+    let ip = layout::Ipv4View::new_unchecked(&frame[layout::ETH_HEADER_BYTES..]);
+    if ip.version() != layout::IPV4_VERSION {
         return None;
     }
-    let ihl_words = (version_ihl & 0x0f) as usize;
-    if ihl_words < IPV4_MIN_HEADER_WORDS {
+    if ip.ihl_words() < layout::IPV4_MIN_HEADER_WORDS {
         return None;
     }
-    let ip_total_len = u16::from_be_bytes([frame[16], frame[17]]) as usize;
-    if ip_total_len < (ihl_words + TCP_MIN_HEADER_WORDS) * 4 {
+    let ip_total_len = usize::from(ip.total_len());
+    if ip_total_len < ip.ihl_bytes() + layout::TCP_MIN_HEADER_BYTES {
         return None;
     }
-    let ip_end = ETH_HEADER_BYTES + ip_total_len;
+    let ip_end = layout::ETH_HEADER_BYTES + ip_total_len;
     if frame.len() < ip_end {
         return None;
     }
-    let fragment = u16::from_be_bytes([frame[20], frame[21]]);
-    if fragment & IPV4_FRAGMENT_OFFSET_MASK != 0 {
+    if ip.fragment() & layout::IPV4_FRAGMENT_OFFSET_MASK != 0 {
         return None;
     }
-    if frame[23] != IP_PROTO_TCP {
+    if ip.proto() != layout::IP_PROTO_TCP {
         return None;
     }
-    let src_ip = Ipv4Addr::new(frame[26], frame[27], frame[28], frame[29]);
-    let dst_ip = Ipv4Addr::new(frame[30], frame[31], frame[32], frame[33]);
-    let tcp_offset = ETH_HEADER_BYTES + ihl_words * 4;
-    if frame.len() < tcp_offset + TCP_MIN_HEADER_WORDS * 4 {
+    let src_ip = Ipv4Addr::from(ip.src());
+    let dst_ip = Ipv4Addr::from(ip.dst());
+    let tcp_offset = layout::ETH_HEADER_BYTES + ip.ihl_bytes();
+    if frame.len() < tcp_offset + layout::TCP_MIN_HEADER_BYTES {
         return None;
     }
-    let tcp = &frame[tcp_offset..ip_end];
-    let src_port = u16::from_be_bytes([tcp[0], tcp[1]]);
-    let dst_port = u16::from_be_bytes([tcp[2], tcp[3]]);
-    let seq = u32::from_be_bytes([tcp[4], tcp[5], tcp[6], tcp[7]]);
-    let data_offset_words = (tcp[12] >> 4) as usize;
-    if data_offset_words < TCP_MIN_HEADER_WORDS {
+    let tcp_bytes = &frame[tcp_offset..ip_end];
+    let tcp = layout::TcpView::new_unchecked(tcp_bytes);
+    let header_bytes = tcp.header_bytes();
+    if header_bytes < layout::TCP_MIN_HEADER_BYTES {
         return None;
     }
-    let header_bytes = data_offset_words * 4;
-    if tcp.len() < header_bytes {
+    if tcp_bytes.len() < header_bytes {
         return None;
     }
     Some(TcpSegmentView {
-        src: SocketAddrV4::new(src_ip, src_port),
-        dst: SocketAddrV4::new(dst_ip, dst_port),
-        seq,
-        flags: tcp[13],
-        payload: &tcp[header_bytes..],
+        src: SocketAddrV4::new(src_ip, tcp.src_port()),
+        dst: SocketAddrV4::new(dst_ip, tcp.dst_port()),
+        seq: tcp.seq(),
+        flags: tcp.flags(),
+        payload: &tcp_bytes[header_bytes..],
     })
 }
 
 // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
 fn seq_after(seq: u32, reference: u32) -> bool {
     let delta = seq.wrapping_sub(reference);
-    delta > 0 && delta < SEQ_HALF_WINDOW
+    delta > 0 && delta < layout::SEQ_HALF_WINDOW
 }
 
 // see: cans/07-wire-plane.md#Frame-drop-and-forward-semantics
@@ -152,7 +126,7 @@ impl TcpStreamReassembler {
         &mut self,
         segment: &TcpSegmentView<'_>,
     ) -> Result<SegmentOutcome, PluginError> {
-        if segment.flags & TCP_FLAG_SYN != 0 {
+        if segment.flags & layout::TCP_FLAG_SYN != 0 {
             // TODO (L3): full TCP handshake state machine; payload-carrying SYNs (TFO) stay L3.
             self.next_seq = Some(segment.seq.wrapping_add(1));
             return Ok(SegmentOutcome::Forwarded);
@@ -210,17 +184,13 @@ impl PgStreamDecoder {
         self.carryover.extend_from_slice(bytes);
         let mut frames = Vec::new();
         loop {
-            if self.carryover.len() < PG_HEADER_BYTES {
+            if self.carryover.len() < layout::PG_HEADER_BYTES {
                 break;
             }
-            let length = u32::from_be_bytes([
-                self.carryover[1],
-                self.carryover[2],
-                self.carryover[3],
-                self.carryover[4],
-            ]) as usize;
-            let total = 1 + length;
-            if length < 4 || total > MAX_FRAME_PAYLOAD {
+            let header = layout::PgHeaderView::new_unchecked(&self.carryover);
+            let length = header.length() as usize;
+            let total = layout::PG_TYPE_BYTES + length;
+            if length < layout::PG_MIN_LENGTH || total > MAX_FRAME_PAYLOAD {
                 return Err(PluginError::reject(
                     "EPROTO",
                     "pgwire frame length exceeds the 64KB frame budget",
@@ -230,7 +200,7 @@ impl PgStreamDecoder {
                 break;
             }
             frames.push(PgFrameDescriptor::classify(
-                self.carryover[0],
+                header.msg_type(),
                 length as u32,
             ));
             self.carryover.drain(..total);

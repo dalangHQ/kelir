@@ -114,6 +114,14 @@ jobs:
             -D clippy::todo \
             -D clippy::unreachable
 
+      # ── Zero-drift coherence gate (work-order-2: CI/CD Coherence Architecture) ──
+      # Regenerates every generated artifact (TS/PY SDK types, plugin
+      # projections, fusion tables, UAPI tables, anchors, scorecard) and
+      # requires the committed tree to stay byte-identical. Runs before
+      # every test job (all of them need: [lint-and-types]).
+      - name: Codegen coherence gate (just check-coherence)
+        run: just check-coherence
+
       - name: Type Checks (TS & Python)
         run: |
           pnpm install --frozen-lockfile
