@@ -6,10 +6,11 @@ license = "FSL-1.1-Apache-2.0"
 
 [dependencies]
 kelir-interface = { path = "../../kelir-interface" }
+plugin-mcp = { path = "../plugin-mcp" }
 async-trait = { workspace = true }
+blake3 = { workspace = true }
 
 [dev-dependencies]
-plugin-mcp = { path = "../plugin-mcp" }
 kelir-plugin-testkit = { path = "../../kelir-plugin-testkit" }
 
 [lints]

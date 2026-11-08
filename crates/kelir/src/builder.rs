@@ -280,7 +280,9 @@ impl KelirBuilder<Unsealed, HNil, NoParams> {
     }
 }
 
+// see: cans/03-sdk-architecture.md#Rust-SDK
 impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
+    // see: cans/03-sdk-architecture.md#Rust-SDK
     pub fn seal(self) -> KelirBuilder<Sealed, Plugins, Params> {
         KelirBuilder {
             config: self.config,
@@ -289,10 +291,8 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
             seal: PhantomData,
         }
     }
-}
 
-impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins, Params> {
-    pub fn plugin<P>(self, plugin: P) -> KelirBuilder<SealState, HCons<P::Context, Plugins>, Params>
+    pub fn plugin<P>(self, plugin: P) -> KelirBuilder<Unsealed, HCons<P::Context, Plugins>, Params>
     where
         P: KelirPlugin + Clone + 'static,
     {
@@ -341,7 +341,7 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
         self.registration.detached
     }
 
-    pub fn params<T>(self) -> KelirBuilder<SealState, Plugins, T> {
+    pub fn params<T>(self) -> KelirBuilder<Unsealed, Plugins, T> {
         KelirBuilder {
             config: self.config,
             plugins: self.plugins,
@@ -517,7 +517,9 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
         }
         self
     }
+}
 
+impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins, Params> {
     async fn finish_boot(self) -> Result<Session<Plugins, Params>, PluginError> {
         // TODO (L3): register plugin instances, dispatch tables, and vetoes into the engine per cans/02-plugin-model.md#Static-dispatch before handing the session back.
         let plugins: Vec<kelir_core::PluginRegistration> = self
@@ -562,11 +564,12 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
 impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
     // see: cans/03-sdk-architecture.md#Rust-SDK
     pub async fn boot(self) -> Result<Session<Plugins, Params>, PluginError> {
-        self.finish_boot().await
+        self.seal().finish_boot().await
     }
 }
 
 impl<Plugins: HList, Params: 'static> KelirBuilder<Sealed, Plugins, Params> {
+    // see: cans/03-sdk-architecture.md#Rust-SDK
     pub async fn boot(self) -> Result<Session<Plugins, Params>, PluginError> {
         self.finish_boot().await
     }

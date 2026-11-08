@@ -112,7 +112,6 @@ export interface TrapContext {
   readonly fs: FsHandle;
   readonly step: StepHandle;
   readonly terminal: TerminalHandle;
-  extension<T>(name: string): T;
   receipt(): Promise<ExecutionReceipt>;
   pass(): Verdict;
   drop(errno: string, reason?: string): Verdict;

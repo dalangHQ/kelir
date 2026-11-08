@@ -68,6 +68,11 @@ impl HostFdCache {
     pub fn remove(&mut self, key: LockKey) -> Option<HostFdEntry> {
         self.entries.remove(&key)
     }
+
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    pub fn remove_namespace(&mut self, namespace: [u8; 16]) {
+        self.entries.retain(|key, _| key.namespace != namespace);
+    }
 }
 
 pub struct LockBroker {
@@ -166,24 +171,26 @@ impl LockBroker {
 // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
 #[async_trait]
 impl LockBrokerCoordination for LockBroker {
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
     async fn release_transaction_locks(&self) -> Result<(), PluginError> {
-        // TODO (L3): release the host fds in the enclave flock delegation; unscoped release stays for full-shutdown paths only.
-        let mut states = self
-            .states
-            .write()
-            .map_err(|_| PluginError::Halt("lock broker state lock poisoned".into()))?;
-        states.clear();
-        Ok(())
+        self.release_transaction_locks_for(self.namespace).await
     }
 
     // see: cans/05-storage-plane.md#Host-inode-lock-broker
     async fn release_transaction_locks_for(&self, namespace: [u8; 16]) -> Result<(), PluginError> {
-        // TODO (L3): release the host fds in the enclave flock delegation; the in-memory states retain every other namespace here.
-        let mut states = self
-            .states
+        // TODO (L3): close the released host fds through the enclave flock delegation.
+        {
+            let mut states = self
+                .states
+                .write()
+                .map_err(|_| PluginError::Halt("lock broker state lock poisoned".into()))?;
+            states.retain(|key, _| key.namespace != namespace);
+        }
+        let mut cache = self
+            .cache
             .write()
-            .map_err(|_| PluginError::Halt("lock broker state lock poisoned".into()))?;
-        states.retain(|key, _| key.namespace != namespace);
+            .map_err(|_| PluginError::Halt("lock broker fd cache lock poisoned".into()))?;
+        cache.remove_namespace(namespace);
         Ok(())
     }
 }

@@ -21,6 +21,8 @@ class RingEvent(str, Enum):
     NET_INBOUND = "net-inbound"
     CONSOLE_INPUT = "console-input"
     CONSOLE_OUTPUT = "console-output"
+    EXEC_STDOUT = "exec-stdout"
+    EXEC_STDERR = "exec-stderr"
     HEARTBEAT = "heartbeat"
     LIFECYCLE = "lifecycle"
     WATCHDOG = "watchdog"

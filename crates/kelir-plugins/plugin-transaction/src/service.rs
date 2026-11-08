@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
 
 use crate::TransactionCtx;
+use crate::savepoint_marker;
 
 #[derive(Debug, Clone, Default)]
 pub struct TransactionScope {
@@ -51,10 +52,24 @@ impl TransactionService for TransactionCtx {
         self.coordination().begin_scope(scope)
     }
 
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
     async fn commit(&mut self, handle: TransactionHandle) -> Result<(), PluginError> {
-        // TODO (L3): trigger the session two-phase commit path so on_pre_commit and on_post_commit drive broker and SQL participants in order.
-        self.coordination().require_active(&handle)?;
-        Ok(())
+        let coordination = self.coordination();
+        coordination.require_active(&handle)?;
+        if let Err(err) = coordination.prepare_participants().await {
+            coordination.abort_active().await?;
+            return Err(PluginError::reject(
+                "EPOLICY",
+                format!("2PC prepare failed; participants rolled back: {err}"),
+            ));
+        }
+        // TODO (L3): broker upper replay rides the on_post_commit(true) driver hook per cans/plugins/transaction.md#Multi-resource-2PC-coordination.
+        if let Err(err) = coordination.issue_sql_commit().await {
+            coordination.abort_active().await?;
+            return Err(err);
+        }
+        coordination.release_transaction_locks_scoped().await?;
+        coordination.clear_active()
     }
 
     async fn abort(&mut self, handle: TransactionHandle) -> Result<(), PluginError> {
@@ -63,26 +78,26 @@ impl TransactionService for TransactionCtx {
         self.coordination().abort_active().await
     }
 
+    // see: cans/plugins/transaction.md#Temporal-savepoints
     async fn savepoint(&mut self, handle: &TransactionHandle) -> Result<Savepoint, PluginError> {
         self.coordination().require_active(handle)?;
         let savepoint = Savepoint {
             id: self.coordination().next_savepoint_id(),
         };
-        // TODO (L3): snapshot the broker upper and tombstone state as an opaque savepoint blob.
-        self.coordination()
-            .inject_sql_savepoint(&format!("kelir_sp_{}", savepoint.id))
-            .await?;
+        let marker = savepoint_marker(savepoint);
+        self.coordination().record_savepoint(savepoint, *handle)?;
+        self.coordination().inject_sql_savepoint(&marker).await?;
         Ok(savepoint)
     }
 
+    // see: cans/plugins/transaction.md#Temporal-savepoints
     async fn rollback_to_savepoint(
         &mut self,
         handle: &TransactionHandle,
         savepoint: Savepoint,
     ) -> Result<(), PluginError> {
         self.coordination().require_active(handle)?;
-        // TODO (L3): issue SQL ROLLBACK TO the savepoint marker and restore the snapshotted broker upper and tombstone state.
-        let _ = savepoint;
-        Ok(())
+        self.coordination()
+            .rollback_recorded_savepoint(handle, savepoint)
     }
 }

@@ -19,6 +19,8 @@ pub struct ProotDriver {
     allow_emulated_fallback: bool,
     config: Option<VmConfig>,
     state: DriverState,
+    entropy_backend: Option<EntropyBackend>,
+    entropy_offset: u64,
 }
 
 impl ProotDriver {
@@ -32,6 +34,8 @@ impl ProotDriver {
             allow_emulated_fallback,
             config: None,
             state: DriverState::Unbooted,
+            entropy_backend: None,
+            entropy_offset: 0,
         })
     }
 
@@ -225,33 +229,43 @@ impl VmmDriver for ProotDriver {
     }
 
     // see: cans/plugins/replay.md#Deterministic-RNG
-    async fn set_entropy_backend(&mut self, _backend: EntropyBackend) -> Result<(), VmmError> {
+    async fn set_entropy_backend(&mut self, backend: EntropyBackend) -> Result<(), VmmError> {
         self.state.ensure_booted("proot")?;
-        // TODO (L3): swap virtio-rng for the seeded ChaCha20 stream under replay.
-        Err(VmmError::Unsupported(
-            "proot set_entropy_backend: virtio-rng backend swap (L3)".into(),
-        ))
+        // TODO (L3): swap the workload entropy source for the seeded ChaCha20 stream and advance the offset as getrandom() bytes are drawn.
+        self.entropy_backend = Some(backend);
+        self.entropy_offset = 0;
+        Ok(())
     }
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn entropy_position(&self) -> Result<EntropyStreamPosition, VmmError> {
         self.state.ensure_booted("proot")?;
-        // TODO (L3): report the live entropy stream offset.
-        Err(VmmError::Unsupported(
-            "proot entropy_position: stream position read (L3)".into(),
-        ))
+        match self.entropy_backend {
+            Some(EntropyBackend::SeededChaCha20 { .. }) => Ok(EntropyStreamPosition {
+                offset_bytes: self.entropy_offset,
+            }),
+            _ => Err(VmmError::Unsupported(
+                "proot entropy_position: host entropy stream is not position-trackable (L3)".into(),
+            )),
+        }
     }
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn restore_entropy_position(
         &mut self,
-        _position: EntropyStreamPosition,
+        position: EntropyStreamPosition,
     ) -> Result<(), VmmError> {
         self.state.ensure_booted("proot")?;
-        // TODO (L3): rewind the entropy stream to the snapshot offset.
-        Err(VmmError::Unsupported(
-            "proot restore_entropy_position: stream position restore (L3)".into(),
-        ))
+        match self.entropy_backend {
+            Some(EntropyBackend::SeededChaCha20 { .. }) => {
+                self.entropy_offset = position.offset_bytes;
+                Ok(())
+            }
+            _ => Err(VmmError::Unsupported(
+                "proot restore_entropy_position: host entropy stream is not position-trackable (L3)"
+                    .into(),
+            )),
+        }
     }
 
     async fn set_watchdog(

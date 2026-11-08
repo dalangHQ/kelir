@@ -67,7 +67,8 @@ impl SyntheticFile {
             Self::Dynamic { generator, .. } => {
                 let file = generator(path)?;
                 Ok(Some(FsInodeAttr {
-                    mode: file.mode & !0o6000,
+                    // see: cans/02-plugin-model.md#FsInodeAttr-carries-full-mode,-uid,-gid,-size,-content
+                    mode: 0o400,
                     uid: 0,
                     gid: 0,
                     size: file.content.len() as u64,

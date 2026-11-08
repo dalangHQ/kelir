@@ -31,8 +31,9 @@ export const Verdict: {
   },
 };
 
+// see: cans/02-plugin-model.md#Unified-verdict
 export interface FilterAction {
-  readonly kind: "forward" | "drop" | "suspend";
+  readonly kind: "forward" | "drop" | "suspend" | "abort";
   readonly errno?: string;
   readonly reason?: string;
   readonly until?: SuspendUntil;
@@ -42,6 +43,7 @@ export const FilterAction: {
   readonly Forward: FilterAction;
   Drop(errno?: string, reason?: string): FilterAction;
   Suspend(until: SuspendUntil): FilterAction;
+  Abort(reason?: string): FilterAction;
 } = {
   Forward: { kind: "forward" },
   Drop(errno?: string, reason?: string): FilterAction {
@@ -50,18 +52,24 @@ export const FilterAction: {
   Suspend(until: SuspendUntil): FilterAction {
     return { kind: "suspend", until };
   },
+  Abort(reason?: string): FilterAction {
+    return { kind: "abort", reason };
+  },
 };
 
+// see: cans/11-protocol.md#Wire-messages
 export interface SuspendUntil {
-  readonly kind: "deadline" | "approval";
+  readonly kind: "deadline" | "approval" | "handshake";
   readonly deadlineMs?: number;
 }
 
 export const SuspendUntil: {
   readonly approval: SuspendUntil;
+  readonly handshake: SuspendUntil;
   deadline(ms: number): SuspendUntil;
 } = {
   approval: { kind: "approval" },
+  handshake: { kind: "handshake" },
   deadline(ms: number): SuspendUntil {
     return { kind: "deadline", deadlineMs: ms };
   },

@@ -4,7 +4,7 @@
 
 import type { Schema } from "./schema.js";
 import type { TrapContext, LifecycleContext } from "./context.js";
-import type { KelirPlugin } from "./plugin.js";
+import type { KelirPlugin, PluginContextOf } from "./plugin.js";
 import type { PostExecAction, LifecycleEvent, Verdict } from "./verdict.js";
 import type { TrapDenyEvent } from "./types.js";
 import { Session } from "./session.js";
@@ -60,7 +60,7 @@ export interface TerminalConfig {
   readonly streamEngine?: string;
 }
 
-export interface StorageConfig {
+export interface StorageConfig<Ctx = unknown> {
   readonly idmap?: { readonly guestUid: number; readonly hostUid: number };
   readonly sharedCaches?: readonly string[];
   readonly lockBroker?: boolean;
@@ -80,7 +80,7 @@ export interface StorageConfig {
     readonly onWrite: (
       path: string,
       raw: Uint8Array,
-      c: TrapContext,
+      c: TrapContext & Ctx,
     ) => Promise<void> | void;
   }[];
   readonly encapsulation?: string;
@@ -110,15 +110,13 @@ export interface WireConfig {
 
 export type TrapHandlerResult = Verdict | PostExecAction | null | void;
 
-export type TrapHandler = (
-  c: TrapContext,
+export type TrapHandler<Ctx = unknown> = (
+  c: TrapContext & Ctx,
 ) => Promise<TrapHandlerResult> | TrapHandlerResult;
 
-export interface TrapHandlers {
-  readonly pre?: TrapHandler;
-  readonly post?: (
-    c: TrapContext,
-  ) => Promise<PostExecAction> | PostExecAction;
+export interface TrapHandlers<Ctx = unknown> {
+  readonly pre?: TrapHandler<Ctx>;
+  readonly post?: (c: TrapContext & Ctx) => Promise<PostExecAction> | PostExecAction;
 }
 
 interface PluginRegistration {
@@ -135,7 +133,8 @@ export interface VsockServiceEntry {
 }
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-export class KelirBuilder {
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+export class KelirBuilder<Ctx = unknown> {
   private readonly config: KelirConfig;
   private readonly pluginRegistrations: PluginRegistration[] = [];
   private readonly hooks: HookDescriptor[] = [];
@@ -163,7 +162,7 @@ export class KelirBuilder {
     return this;
   }
 
-  storage(_config: StorageConfig): this {
+  storage<C>(_config: StorageConfig<C>): this {
     return this;
   }
 
@@ -172,7 +171,9 @@ export class KelirBuilder {
   }
 
   // see: cans/artifacts/code/typescript-accumulation.ts#runtime
-  use<P extends KelirPlugin>(plugin: P): this {
+  use<P extends KelirPlugin>(
+    plugin: P,
+  ): KelirBuilder<Ctx & PluginContextOf<P>> {
     const enabled = (plugin as { readonly enabled?: boolean }).enabled !== false;
     this.pluginRegistrations.push({ name: plugin.name, enabled });
     const contract = plugin as unknown as {
@@ -183,7 +184,7 @@ export class KelirBuilder {
         this.hooks.push(hook);
       }
     }
-    return this;
+    return this as KelirBuilder<Ctx & PluginContextOf<P>>;
   }
 
   params(_schema: Schema<any>): this {
@@ -191,7 +192,10 @@ export class KelirBuilder {
   }
 
   // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-  trap(filter: string | TrapFilter, handler: TrapHandler | TrapHandlers): this {
+  trap(
+    filter: string | TrapFilter,
+    handler: TrapHandler<Ctx> | TrapHandlers<Ctx>,
+  ): this {
     const filterSnapshot =
       typeof filter === "string" ? TrapFilter.pattern(filter).snapshot() : filter.snapshot();
     if (typeof handler === "function") {
@@ -201,7 +205,7 @@ export class KelirBuilder {
         ordinal: this.nextOrdinal,
         filter: filterSnapshot,
         run: (event: unknown): unknown =>
-          (handler as TrapHandler)(event as TrapContext),
+          (handler as TrapHandler<Ctx>)(event as TrapContext & Ctx),
       });
       this.nextOrdinal += 1;
       return this;
@@ -213,7 +217,7 @@ export class KelirBuilder {
         stage: "pre",
         ordinal: this.nextOrdinal,
         filter: filterSnapshot,
-        run: (event: unknown): unknown => pre(event as TrapContext),
+        run: (event: unknown): unknown => pre(event as TrapContext & Ctx),
       });
       this.nextOrdinal += 1;
     }
@@ -224,7 +228,7 @@ export class KelirBuilder {
         stage: "post",
         ordinal: this.nextOrdinal,
         filter: filterSnapshot,
-        run: (event: unknown): unknown => post(event as TrapContext),
+        run: (event: unknown): unknown => post(event as TrapContext & Ctx),
       });
       this.nextOrdinal += 1;
     }
@@ -256,7 +260,10 @@ export class KelirBuilder {
   }
 
   onTrapDeny(
-    handler: (event: TrapDenyEvent, session: Session) => Promise<void> | void,
+    handler: (
+      event: TrapDenyEvent,
+      session: Session & Ctx,
+    ) => Promise<void> | void,
   ): this {
     this.hooks.push({
       ring: RingEvent.Lifecycle,
@@ -352,7 +359,7 @@ export class KelirBuilder {
     }
   }
 
-  async boot(): Promise<Session> {
+  async boot(): Promise<Session & Ctx> {
     const descriptor = this.fusedDescriptor();
     const addon = await this.loadNativeAddon();
     const nativeBuilder = new addon.NativeKelirBuilder(
@@ -373,7 +380,8 @@ export class KelirBuilder {
       );
     }
     // TODO (L3): bind each fused ring chain to its single trampoline entry as one threadsafe closure.
-    return new Session(await nativeBuilder.boot());
+    // TODO (L3): bind the mounted plugins' capability members onto the booted session.
+    return new Session(await nativeBuilder.boot()) as Session & Ctx;
   }
 }
 

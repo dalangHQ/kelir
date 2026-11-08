@@ -664,6 +664,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     phase
 }
 
+// see: cans/artifacts/examples/autonomous-swe-agent.rs#UserOracle
 pub struct IntentAnalysis {
     pub is_hypothesis_valid: bool,
     pub falsification_reason: Option<String>,
@@ -681,40 +682,88 @@ fn hex_lower(bytes: &[u8]) -> String {
     out
 }
 
-struct UserOracle;
-impl UserOracle {
-    fn new() -> Self {
-        Self
-    }
+// see: cans/artifacts/examples/autonomous-swe-agent.rs#UserOracle
+struct UserOracle {
+    state: Mutex<OracleState>,
 }
 
+// see: cans/artifacts/examples/autonomous-swe-agent.rs#UserOracle
+#[derive(Default)]
+struct OracleState {
+    falsified: Option<String>,
+}
+
+// see: cans/artifacts/examples/autonomous-swe-agent.rs#UserOracle
 impl UserOracle {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(OracleState::default()),
+        }
+    }
+
     async fn analyze_intent(
         &self,
-        _trap: &TrapEvent,
+        trap: &TrapEvent,
     ) -> Result<IntentAnalysis, Box<dyn std::error::Error + Send + Sync>> {
+        let state = self.state.lock().await;
+        if let Some(reason) = state.falsified.clone() {
+            return Ok(IntentAnalysis {
+                is_hypothesis_valid: false,
+                falsification_reason: Some(reason),
+                allow_high_entropy: false,
+            });
+        }
+        if trap.argv.is_empty() {
+            return Ok(IntentAnalysis {
+                is_hypothesis_valid: false,
+                falsification_reason: Some("trap argv is empty; no hypothesis to validate".into()),
+                allow_high_entropy: false,
+            });
+        }
         Ok(IntentAnalysis {
             is_hypothesis_valid: true,
             falsification_reason: None,
             allow_high_entropy: false,
         })
     }
+
     async fn verify_physical_receipt(
         &self,
-        _r: &ExecutionReceipt,
+        receipt: &ExecutionReceipt,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(true)
+        let state = self.state.lock().await;
+        if state.falsified.is_some() {
+            return Ok(false);
+        }
+        // see: cans/artifacts/code/execution-receipt.rs#ExecutionReceipt
+        Ok(!receipt.binary_blake3.is_empty() && receipt.syscall_count.is_some())
     }
+
     // see: cans/02-plugin-model.md#Shape-of-the-surface
     fn ingest_harness_event(
         &self,
-        _p: &Path,
-        _e: &serde_json::Value,
-        _b: &str,
+        path: &Path,
+        event: &serde_json::Value,
+        _blake3: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut state = self.state.blocking_lock();
+        if event
+            .get("falsifiedResult")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+        {
+            state.falsified = Some(format!(
+                "harness event {} reported falsifiedResult",
+                path.display()
+            ));
+        }
         Ok(())
     }
+
     async fn await_human_approval(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if self.state.lock().await.falsified.is_some() {
+            return Err("human approval denied: harness falsification on record".into());
+        }
         tokio::time::sleep(Duration::from_millis(50)).await;
         Ok(())
     }

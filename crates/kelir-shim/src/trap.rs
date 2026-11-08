@@ -1,15 +1,40 @@
 // see: cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)
+// see: cans/11-protocol.md#Trap-fast-path
 // see: cans/artifacts/diagrams/trap-flow.txt#Kernel-seccomp-unotify-triggers
 use std::fmt;
 
 #[allow(dead_code)]
 pub const TRAP_CHANNEL: u16 = 0x0000;
 
+// see: cans/11-protocol.md#Trap-fast-path
+const SECCOMP_DATA_NR_OFFSET: u32 = 0;
+
+// see: cans/11-protocol.md#Trap-fast-path
+const SECCOMP_DATA_ARCH_OFFSET: u32 = 4;
+
+// see: cans/11-protocol.md#Trap-fast-path
+#[cfg(target_arch = "x86_64")]
+const AUDIT_ARCH: u32 = 0xC000_003E;
+
+// see: cans/11-protocol.md#Trap-fast-path
+#[cfg(target_arch = "aarch64")]
+const AUDIT_ARCH: u32 = 0xC000_00B7;
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShimError {
-    SeccompInstallPending,
-    SeccompNotifyPending,
+    SeccompInstall { errno: libc::c_int },
+    NotifyRecv { errno: libc::c_int },
+    NotifyPoll { errno: i32 },
+    Poll { errno: libc::c_int },
+    ChannelOpen { channel: u16, errno: libc::c_int },
+    ChannelConnect { channel: u16, errno: libc::c_int },
+    ChannelIo { channel: u16, errno: libc::c_int },
+    ChannelEof { channel: u16 },
+    FreezerIo { path: String, errno: libc::c_int },
+    FreezerTimeout { path: String },
+    FreezerRoot { pid: u32 },
+    FreezerUnsupported { pid: u32 },
     SpawnPending,
     ExecSpecParsePending,
     SlabSaturated,
@@ -30,18 +55,60 @@ pub enum ShimError {
     ExeUnresolved { pid: u32 },
     ElfParse { path: String },
     ExeDigest { path: String },
-    NotifyPoll { errno: i32 },
     TrapEncode,
 }
 
 impl fmt::Display for ShimError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::SeccompInstallPending => {
-                write!(f, "seccomp filter install pending (L3)")
+            Self::SeccompInstall { errno } => {
+                write!(f, "seccomp filter install failed with errno {errno}")
             }
-            Self::SeccompNotifyPending => {
-                write!(f, "seccomp-unotify fd pending (L3)")
+            Self::NotifyRecv { errno } => {
+                write!(f, "seccomp-unotify recv failed with errno {errno}")
+            }
+            Self::NotifyPoll { errno } => {
+                write!(f, "seccomp-unotify poll failed with errno {errno}")
+            }
+            Self::Poll { errno } => write!(f, "event poll failed with errno {errno}"),
+            Self::ChannelOpen { channel, errno } => {
+                write!(
+                    f,
+                    "channel {channel:#06x} socket open failed with errno {errno}"
+                )
+            }
+            Self::ChannelConnect { channel, errno } => {
+                write!(
+                    f,
+                    "channel {channel:#06x} connect failed with errno {errno}"
+                )
+            }
+            Self::ChannelIo { channel, errno } => {
+                write!(f, "channel {channel:#06x} io failed with errno {errno}")
+            }
+            Self::ChannelEof { channel } => {
+                write!(
+                    f,
+                    "channel {channel:#06x} closed; channel close is terminal"
+                )
+            }
+            Self::FreezerIo { path, errno } => {
+                write!(f, "cgroup freezer {path} failed with errno {errno}")
+            }
+            Self::FreezerTimeout { path } => {
+                write!(f, "cgroup {path} never reached the frozen state")
+            }
+            Self::FreezerRoot { pid } => {
+                write!(
+                    f,
+                    "pid {pid} lives in the root task group; freezing it would deadlock PID 1"
+                )
+            }
+            Self::FreezerUnsupported { pid } => {
+                write!(
+                    f,
+                    "pid {pid} has no cgroup v2 entry; no freezer protection exists"
+                )
             }
             Self::SpawnPending => {
                 write!(
@@ -111,9 +178,6 @@ impl fmt::Display for ShimError {
             Self::ExeDigest { path } => {
                 write!(f, "cannot digest executable {path}")
             }
-            Self::NotifyPoll { errno } => {
-                write!(f, "seccomp-unotify poll failed with errno {errno}")
-            }
             Self::TrapEncode => write!(f, "cannot encode MSG_TRAP frame"),
         }
     }
@@ -121,45 +185,129 @@ impl fmt::Display for ShimError {
 
 impl std::error::Error for ShimError {}
 
+// see: cans/11-protocol.md#Trap-fast-path
+fn bpf_stmt(code: u32, k: u32) -> libc::sock_filter {
+    libc::sock_filter {
+        code: code as u16,
+        jt: 0,
+        jf: 0,
+        k,
+    }
+}
+
+// see: cans/11-protocol.md#Trap-fast-path
+fn bpf_jump(code: u32, k: u32, jt: u8, jf: u8) -> libc::sock_filter {
+    libc::sock_filter {
+        code: code as u16,
+        jt,
+        jf,
+        k,
+    }
+}
+
+// see: cans/11-protocol.md#Trap-fast-path
+fn trap_filter_program() -> Vec<libc::sock_filter> {
+    // TODO (L3): gate-1 in-kernel allowlist fast path for harmless tools plus in-filter mprotect(PROT_EXEC)/memfd_create flag masking.
+    let monitored = [
+        libc::SYS_execve,
+        libc::SYS_execveat,
+        libc::SYS_mprotect,
+        libc::SYS_memfd_create,
+    ];
+    let mut prog = vec![
+        bpf_stmt(
+            libc::BPF_LD | libc::BPF_W | libc::BPF_ABS,
+            SECCOMP_DATA_ARCH_OFFSET,
+        ),
+        bpf_jump(
+            libc::BPF_JMP | libc::BPF_JEQ | libc::BPF_K,
+            AUDIT_ARCH,
+            1,
+            0,
+        ),
+        bpf_stmt(libc::BPF_RET | libc::BPF_K, libc::SECCOMP_RET_KILL_PROCESS),
+        bpf_stmt(
+            libc::BPF_LD | libc::BPF_W | libc::BPF_ABS,
+            SECCOMP_DATA_NR_OFFSET,
+        ),
+    ];
+    let checks = monitored.len();
+    for (index, nr) in monitored.iter().enumerate() {
+        prog.push(bpf_jump(
+            libc::BPF_JMP | libc::BPF_JEQ | libc::BPF_K,
+            *nr as u32,
+            (checks - index) as u8,
+            0,
+        ));
+    }
+    prog.push(bpf_stmt(
+        libc::BPF_RET | libc::BPF_K,
+        libc::SECCOMP_RET_ALLOW,
+    ));
+    prog.push(bpf_stmt(
+        libc::BPF_RET | libc::BPF_K,
+        libc::SECCOMP_RET_USER_NOTIF,
+    ));
+    prog
+}
+
 #[allow(dead_code)]
 pub struct SeccompFilter {
-    fd: Option<i32>,
+    fd: libc::c_int,
 }
 
 #[allow(dead_code)]
 impl SeccompFilter {
+    // see: cans/11-protocol.md#Trap-fast-path
     pub fn install() -> Result<Self, ShimError> {
-        // TODO (L3): seccomp(SECCOMP_SET_MODE_FILTER) with the trap filter program.
-        Ok(Self { fd: None })
+        let mut filter = trap_filter_program();
+        let fprog = libc::sock_fprog {
+            len: filter.len() as libc::c_ushort,
+            filter: filter.as_mut_ptr(),
+        };
+        // SAFETY: fprog points at the live filter vector and seccomp(2) copies the program before returning; the returned c_long is the listener fd or -1.
+        let rc = unsafe {
+            libc::syscall(
+                libc::SYS_seccomp,
+                libc::SECCOMP_SET_MODE_FILTER as libc::c_long,
+                libc::SECCOMP_FILTER_FLAG_NEW_LISTENER as libc::c_long,
+                &fprog,
+            )
+        };
+        if rc < 0 {
+            return Err(ShimError::SeccompInstall {
+                errno: std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
+            });
+        }
+        Ok(Self {
+            fd: rc as libc::c_int,
+        })
     }
 
-    pub fn fd(&self) -> Option<i32> {
+    pub fn fd(&self) -> libc::c_int {
         self.fd
     }
 }
 
 #[allow(dead_code)]
 pub struct SeccompNotify {
-    fd: Option<i32>,
+    fd: libc::c_int,
 }
 
 #[allow(dead_code)]
 impl SeccompNotify {
-    pub fn install(_filter: &SeccompFilter) -> Result<Self, ShimError> {
-        // TODO (L3): SECCOMP_IOCTL_NOTIF_RECV fd from the installed filter.
-        Ok(Self { fd: None })
+    // see: cans/11-protocol.md#Trap-fast-path
+    pub fn install(filter: &SeccompFilter) -> Result<Self, ShimError> {
+        Ok(Self { fd: filter.fd() })
     }
 
-    pub fn fd(&self) -> Option<i32> {
+    pub fn fd(&self) -> libc::c_int {
         self.fd
     }
 
     pub fn poll_ready(&self) -> Result<bool, ShimError> {
-        let Some(fd) = self.fd else {
-            return Ok(false);
-        };
         let mut pfd = libc::pollfd {
-            fd,
+            fd: self.fd,
             events: libc::POLLIN,
             revents: 0,
         };
@@ -184,12 +332,24 @@ impl SeccompNotify {
         Ok(Some(crate::introspect::inspect_trap(&trap, seq)?))
     }
 
+    // see: cans/11-protocol.md#Trap-fast-path
     pub fn recv_trap(&self) -> Result<SeccompTrap, ShimError> {
-        if self.fd.is_none() {
-            return Err(ShimError::SeccompNotifyPending);
-        }
-        // TODO (L3): SECCOMP_IOCTL_NOTIF_RECV + SECCOMP_IOCTL_NOTIF_SEND over the notify fd.
-        Err(ShimError::SeccompNotifyPending)
+        // SAFETY: a zeroed seccomp_notif is all-integer valid; NOTIF_RECV blocks only when no notification is pending, which dispatch_pending rules out via POLLIN.
+        let trap = unsafe {
+            let mut notif: libc::seccomp_notif = std::mem::zeroed();
+            let rc = libc::ioctl(self.fd, libc::SECCOMP_IOCTL_NOTIF_RECV, &mut notif);
+            if rc != 0 {
+                return Err(ShimError::NotifyRecv {
+                    errno: std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
+                });
+            }
+            SeccompTrap {
+                pid: notif.pid,
+                syscall_nr: notif.data.nr,
+                args: notif.data.args,
+            }
+        };
+        Ok(trap)
     }
 }
 
@@ -207,6 +367,7 @@ impl SeccompTrap {
     }
 }
 
+// see: cans/11-protocol.md#Trap-fast-path
 pub fn init_seccomp_unotify() -> Result<SeccompNotify, ShimError> {
     let filter = SeccompFilter::install()?;
     SeccompNotify::install(&filter)

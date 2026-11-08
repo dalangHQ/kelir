@@ -89,6 +89,8 @@ HOOK_RINGS: dict[str, tuple[RingEvent, LifecycleTag | None]] = {
     "on_net_outbound": (RingEvent.NET_OUTBOUND, None),
     "on_console_input": (RingEvent.CONSOLE_INPUT, None),
     "on_console_output": (RingEvent.CONSOLE_OUTPUT, None),
+    "on_exec_stdout": (RingEvent.EXEC_STDOUT, None),
+    "on_exec_stderr": (RingEvent.EXEC_STDERR, None),
     "on_heartbeat": (RingEvent.HEARTBEAT, None),
     "on_process_exit": (RingEvent.PROCESS_EXIT, None),
     "on_vm_init": (RingEvent.LIFECYCLE, "vm-init"),
@@ -157,6 +159,16 @@ class BasePlugin:
 
     async def on_console_output(self, port: int, chunk: bytes) -> bytes:
         # TODO: dispatch console output to the plugin
+        return chunk
+
+    # see: cans/02-plugin-model.md#KelirPlugin-trait
+    async def on_exec_stdout(self, pid: int, exec_id: int, chunk: bytes) -> bytes:
+        # TODO: dispatch EXEC stream stdout to the plugin
+        return chunk
+
+    # see: cans/02-plugin-model.md#KelirPlugin-trait
+    async def on_exec_stderr(self, pid: int, exec_id: int, chunk: bytes) -> bytes:
+        # TODO: dispatch EXEC stream stderr to the plugin
         return chunk
 
     async def on_heartbeat(self, event: Any) -> None:

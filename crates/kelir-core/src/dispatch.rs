@@ -3,13 +3,15 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
     ConsoleInterposer, FfiDispatchQueue, FsInterposer, HandlerCtx, HostInterposer,
     LockBrokerCoordination, MountScope, NetInterposer, ParkedConnectionReset, PipelineBinder,
-    TrapInterposer, VirtioDevice,
+    TokenRevocation, TrapInterposer, VirtioDevice,
 };
 use kelir_interface::protocol::{FilterAction, ProcessExit, TrapEvent, Verdict};
 use kelir_interface::vsock::{VsockServiceHandler, VsockServiceSpec};
@@ -98,8 +100,12 @@ pub struct PipelineEngine {
     vsock_services: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>, MountScope)>,
     lock_broker: Option<Arc<dyn LockBrokerCoordination>>,
     parked_reset: Option<Arc<dyn ParkedConnectionReset>>,
+    token_revoker: Option<Arc<dyn TokenRevocation>>,
     metrics: Arc<kelir_otlp::registry::MetricRegistry>,
     foreign_queue: FfiDispatchQueue,
+    ffi_rate_per_sec: u32,
+    ffi_window_start_ms: AtomicU64,
+    ffi_window_ops: AtomicU64,
     active_scope: Option<MountScope>,
     sealed: bool,
 }
@@ -171,6 +177,10 @@ impl PipelineBinder for PipelineEngine {
     fn bind_parked_connection_reset(&mut self, reset: Arc<dyn ParkedConnectionReset>) {
         self.parked_reset = Some(reset);
     }
+    // see: cans/08-lifecycle.md#Rollback
+    fn bind_token_revoker(&mut self, revoker: Arc<dyn TokenRevocation>) {
+        self.token_revoker = Some(revoker);
+    }
     fn set_active_scope(&mut self, scope: MountScope) {
         self.active_scope = Some(scope);
     }
@@ -181,7 +191,12 @@ impl PipelineEngine {
         Self {
             trap_interceptors: Vec::new(),
             trap_scopes: Vec::new(),
-            gate: TrapGateEvaluator::new(Vec::new()),
+            gate: TrapGateEvaluator::new(
+                crate::trap_gate::TRUSTED_PREFIXES
+                    .iter()
+                    .map(|prefix| (*prefix).to_string())
+                    .collect(),
+            ),
             fs_interceptors: Vec::new(),
             fs_scopes: Vec::new(),
             net_interceptors: Vec::new(),
@@ -193,20 +208,57 @@ impl PipelineEngine {
             vsock_services: Vec::new(),
             lock_broker: None,
             parked_reset: None,
+            token_revoker: None,
             metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
             foreign_queue: FfiDispatchQueue::default(),
+            ffi_rate_per_sec: 0,
+            ffi_window_start_ms: AtomicU64::new(0),
+            ffi_window_ops: AtomicU64::new(0),
             active_scope: None,
             sealed: false,
         }
+    }
+
+    // see: cans/01-architecture.md#FFI-boundary-economics
+    pub fn with_ffi_rate_limit(mut self, ops_per_sec: u32) -> Self {
+        self.ffi_rate_per_sec = ops_per_sec;
+        self
     }
 
     pub fn foreign_queue(&self) -> &FfiDispatchQueue {
         &self.foreign_queue
     }
 
+    // see: cans/01-architecture.md#FFI-boundary-economics
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
     pub fn try_foreign_submit(&self) -> Result<(), PluginError> {
+        if self.ffi_rate_per_sec != 0 {
+            self.ffi_rate_window_check()?;
+        }
         self.foreign_queue.try_submit()
+    }
+
+    // see: cans/01-architecture.md#FFI-boundary-economics
+    fn ffi_rate_window_check(&self) -> Result<(), PluginError> {
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_millis() as u64)
+            .unwrap_or(0);
+        let start_ms = self.ffi_window_start_ms.load(Ordering::Acquire);
+        if now_ms.saturating_sub(start_ms) >= 1000 {
+            self.ffi_window_start_ms.store(now_ms, Ordering::Release);
+            self.ffi_window_ops.store(1, Ordering::Release);
+            return Ok(());
+        }
+        // TODO (L3): exact token-bucket accounting; this native 1s window is the L2 pre-insertion rate gate.
+        let ops = self.ffi_window_ops.fetch_add(1, Ordering::AcqRel);
+        if ops >= u64::from(self.ffi_rate_per_sec) {
+            return Err(PluginError::Halt(format!(
+                "FFI rate limit exceeded: {} ops/s native cap before queue insertion",
+                self.ffi_rate_per_sec
+            )));
+        }
+        Ok(())
     }
 
     pub fn foreign_submit_complete(&self) {
@@ -241,6 +293,11 @@ impl PipelineEngine {
     // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
     pub fn parked_connection_reset(&self) -> Option<Arc<dyn ParkedConnectionReset>> {
         self.parked_reset.as_ref().map(Arc::clone)
+    }
+
+    // see: cans/08-lifecycle.md#Rollback
+    pub fn token_revoker(&self) -> Option<Arc<dyn TokenRevocation>> {
+        self.token_revoker.as_ref().map(Arc::clone)
     }
 
     pub fn is_sealed(&self) -> bool {
@@ -342,7 +399,14 @@ impl PipelineEngine {
                 GateDecision::Deny(verdict) => return Ok(verdict),
                 GateDecision::FallThrough => {}
             }
-            let verdict = quarantine_verdict(interceptor.on_trap(event, ctx)).await?;
+            // see: cans/01-architecture.md#FFI-boundary-economics
+            // TODO (L3): AOT hook fusion collapses chained crossings into one trampoline per ring event.
+            self.try_foreign_submit()?;
+            let verdict = {
+                let outcome = quarantine_verdict(interceptor.on_trap(event, ctx)).await;
+                self.foreign_submit_complete();
+                outcome?
+            };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }
@@ -383,14 +447,20 @@ impl PipelineEngine {
             if !Self::fs_scope_allows(&scope, path, ctx) {
                 continue;
             }
-            let action = quarantine_sync(
-                || interceptor.on_fs_write(path, data, pid, ctx),
-                || {
-                    Ok(FilterAction::Abort {
-                        reason: "Plugin panicked".into(),
-                    })
-                },
-            )?;
+            // see: cans/01-architecture.md#FFI-boundary-economics
+            self.try_foreign_submit()?;
+            let action = {
+                let outcome = quarantine_sync(
+                    || interceptor.on_fs_write(path, data, pid, ctx),
+                    || {
+                        Ok(FilterAction::Abort {
+                            reason: "Plugin panicked".into(),
+                        })
+                    },
+                );
+                self.foreign_submit_complete();
+                outcome?
+            };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }
@@ -405,14 +475,20 @@ impl PipelineEngine {
             if !scope.allows_device(VirtioDevice::Net) {
                 continue;
             }
-            let action = quarantine_sync(
-                || interceptor.on_net_outbound(frame),
-                || {
-                    Ok(FilterAction::Abort {
-                        reason: "Plugin panicked".into(),
-                    })
-                },
-            )?;
+            // see: cans/01-architecture.md#FFI-boundary-economics
+            self.try_foreign_submit()?;
+            let action = {
+                let outcome = quarantine_sync(
+                    || interceptor.on_net_outbound(frame),
+                    || {
+                        Ok(FilterAction::Abort {
+                            reason: "Plugin panicked".into(),
+                        })
+                    },
+                );
+                self.foreign_submit_complete();
+                outcome?
+            };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }

@@ -97,7 +97,6 @@ export interface NativeSessionHandle {
   readonly host?: NativeHostHandle;
   readonly vsock: VsockHandle;
   readonly step: StepHandle;
-  extension<T>(name: string): T;
   spawn(
     binary: string,
     argv: string[],
@@ -119,7 +118,6 @@ export interface NativeSessionHandle {
     cwd?: string;
     handler: (req: Req) => Promise<Resp>;
   }): AsyncGenerator<Resp, void, unknown>;
-  ctx<T>(): T;
 }
 
 function missingPlaneError(plane: string): EConfig {
@@ -229,10 +227,6 @@ export class Session {
     return this.native.spawn(binary, argv, options);
   }
 
-  extension<T>(name: string): T {
-    return this.native.extension<T>(name);
-  }
-
   async execInGuest(
     binary: string,
     argv: string[],
@@ -287,9 +281,5 @@ export class Session {
     handler: (req: Req) => Promise<Resp>;
   }): AsyncGenerator<Resp, void, unknown> {
     yield* this.native.handleIngress(options);
-  }
-
-  ctx<T>(): T {
-    return this.native.ctx<T>();
   }
 }

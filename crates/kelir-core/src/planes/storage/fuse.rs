@@ -6,8 +6,11 @@
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{FsContext, FsInodeAttr, FsInterposer, HandlerCtx};
 use kelir_interface::protocol::{FilterAction, PatchPayload, Verdict};
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::RwLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use super::synthetic::SyntheticFile;
@@ -35,6 +38,7 @@ impl FuseOpcode {
     }
 }
 
+// see: cans/05-storage-plane.md#Interception-pipeline
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuseRequest {
     pub opcode: FuseOpcode,
@@ -43,10 +47,12 @@ pub struct FuseRequest {
     pub pid: u32,
     pub data: Vec<u8>,
     pub offset: u64,
+    pub size: u64,
     pub blocking: bool,
 }
 
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
+// TODO (L3): driver marshals each reply into the fuse_out wire structs.
 #[derive(Debug, Clone)]
 pub enum FuseReply {
     // see: cans/05-storage-plane.md#Interception-pipeline
@@ -63,9 +69,12 @@ pub struct FuseResponse {
     pub reply: FuseReply,
 }
 
+// see: cans/05-storage-plane.md#Interception-pipeline
 pub struct FuseDispatcher {
     interposer: Arc<dyn FsInterposer>,
     synthetic_files: Vec<SyntheticFile>,
+    virtual_inodes: RwLock<HashMap<PathBuf, u64>>,
+    next_virtual_inode: AtomicU64,
 }
 
 impl FuseDispatcher {
@@ -73,12 +82,28 @@ impl FuseDispatcher {
         Self {
             interposer,
             synthetic_files: Vec::new(),
+            virtual_inodes: RwLock::new(HashMap::new()),
+            next_virtual_inode: AtomicU64::new(2),
         }
     }
 
     pub fn with_synthetic_files(mut self, files: Vec<SyntheticFile>) -> Self {
         self.synthetic_files = files;
         self
+    }
+
+    // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
+    fn virtual_inode(&self, path: &Path) -> Result<u64, PluginError> {
+        let mut inodes = self
+            .virtual_inodes
+            .write()
+            .map_err(|_| PluginError::Halt("fuse virtual inode map lock poisoned".into()))?;
+        if let Some(ino) = inodes.get(path) {
+            return Ok(*ino);
+        }
+        let ino = self.next_virtual_inode.fetch_add(1, Ordering::SeqCst);
+        inodes.insert(path.to_path_buf(), ino);
+        Ok(ino)
     }
 
     pub fn dispatch(
@@ -91,8 +116,7 @@ impl FuseDispatcher {
                 for file in &self.synthetic_files {
                     if let Some(attr) = file.lookup_attr(&request.path)? {
                         return Ok(FuseResponse {
-                            guest_inode: request.guest_inode,
-                            // TODO (L3): driver mints the fuse_entry_out ino for the synthetic inode.
+                            guest_inode: self.virtual_inode(&request.path)?,
                             reply: FuseReply::Inode(attr),
                         });
                     }
@@ -111,8 +135,7 @@ impl FuseDispatcher {
                         size,
                         content,
                     }) => Ok(FuseResponse {
-                        guest_inode: request.guest_inode,
-                        // TODO (L3): driver mints the fuse_entry_out ino for the synthetic inode.
+                        guest_inode: self.virtual_inode(&request.path)?,
                         reply: FuseReply::Inode(FsInodeAttr {
                             mode: mode & !0o6000,
                             uid,
@@ -142,14 +165,11 @@ impl FuseDispatcher {
                 for file in &self.synthetic_files {
                     if let Some(attr) = file.lookup_attr(&request.path)? {
                         let content = attr.content;
-                        let start = (request.offset as usize).min(content.len());
-                        let end = if request.data.is_empty() {
-                            content.len()
-                        } else {
-                            content.len().min(start.saturating_add(request.data.len()))
-                        };
+                        let len = content.len() as u64;
+                        let start = request.offset.min(len) as usize;
+                        let end = request.offset.saturating_add(request.size).min(len) as usize;
                         return Ok(FuseResponse {
-                            guest_inode: request.guest_inode,
+                            guest_inode: self.virtual_inode(&request.path)?,
                             reply: FuseReply::Payload(content[start..end].to_vec()),
                         });
                     }

@@ -41,6 +41,18 @@ struct ActiveTransaction {
     scope: TransactionScope,
 }
 
+// see: cans/plugins/transaction.md#Temporal-savepoints
+#[derive(Clone, Debug)]
+struct RecordedSavepoint {
+    savepoint: Savepoint,
+    transaction: TransactionHandle,
+}
+
+// see: cans/plugins/transaction.md#Temporal-savepoints
+fn savepoint_marker(savepoint: Savepoint) -> String {
+    format!("kelir_sp_{}", savepoint.id)
+}
+
 // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
 #[derive(Default)]
 pub(crate) struct PeerCoordination {
@@ -48,6 +60,7 @@ pub(crate) struct PeerCoordination {
     sql_proxy: RwLock<Option<SqlProxyCtx>>,
     lock_broker: RwLock<Option<Arc<dyn LockBrokerCoordination>>>,
     active: RwLock<Option<ActiveTransaction>>,
+    savepoints: RwLock<Vec<RecordedSavepoint>>,
     next_handle: AtomicU64,
     next_savepoint: AtomicU64,
     next_nonce: AtomicU64,
@@ -92,9 +105,15 @@ impl PeerCoordination {
         match self.active.write() {
             Ok(mut guard) => {
                 *guard = None;
+            }
+            Err(_) => return Err(PluginError::Halt("peer coordination slot poisoned".into())),
+        }
+        match self.savepoints.write() {
+            Ok(mut guard) => {
+                guard.clear();
                 Ok(())
             }
-            Err(_) => Err(PluginError::Halt("peer coordination slot poisoned".into())),
+            Err(_) => Err(PluginError::Halt("savepoint ledger poisoned".into())),
         }
     }
 
@@ -204,6 +223,54 @@ impl PeerCoordination {
     // see: cans/plugins/transaction.md#Temporal-savepoints
     pub(crate) fn next_savepoint_id(&self) -> u64 {
         self.next_savepoint.fetch_add(1, Ordering::AcqRel)
+    }
+
+    // see: cans/plugins/transaction.md#Temporal-savepoints
+    pub(crate) fn record_savepoint(
+        &self,
+        savepoint: Savepoint,
+        transaction: TransactionHandle,
+    ) -> Result<(), PluginError> {
+        // TODO (L3): snapshot the broker upper and tombstone state as the opaque savepoint blob per cans/plugins/transaction.md#Temporal-savepoints.
+        match self.savepoints.write() {
+            Ok(mut guard) => {
+                guard.push(RecordedSavepoint {
+                    savepoint,
+                    transaction,
+                });
+                Ok(())
+            }
+            Err(_) => Err(PluginError::Halt("savepoint ledger poisoned".into())),
+        }
+    }
+
+    // see: cans/plugins/transaction.md#Temporal-savepoints
+    pub(crate) fn rollback_recorded_savepoint(
+        &self,
+        transaction: &TransactionHandle,
+        savepoint: Savepoint,
+    ) -> Result<(), PluginError> {
+        // TODO (L3): restore the snapshotted broker upper and tombstone state and issue SQL ROLLBACK TO savepoint_marker(savepoint); plugin-db-proxy exposes no rollback-to-savepoint surface yet.
+        let mut savepoints = match self.savepoints.write() {
+            Ok(guard) => guard,
+            Err(_) => return Err(PluginError::Halt("savepoint ledger poisoned".into())),
+        };
+        let index = savepoints
+            .iter()
+            .rposition(|recorded| {
+                recorded.savepoint == savepoint && recorded.transaction == *transaction
+            })
+            .ok_or_else(|| {
+                PluginError::reject(
+                    "EINVAL",
+                    format!(
+                        "savepoint {} is not registered on transaction {}",
+                        savepoint.id, transaction.id
+                    ),
+                )
+            })?;
+        savepoints.truncate(index + 1);
+        Ok(())
     }
 
     // see: cans/plugins/transaction.md#Temporal-savepoints

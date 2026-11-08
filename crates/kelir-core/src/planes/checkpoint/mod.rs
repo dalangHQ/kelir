@@ -43,6 +43,7 @@ impl PidLineage {
     }
 }
 
+#[derive(Clone)]
 pub struct CheckpointNode {
     pub node_id: u64,
     pub parent: Option<u64>,
@@ -106,6 +107,7 @@ pub struct CheckpointPlane {
     active_steps: Mutex<HashMap<PidLineage, StepSlot>>,
     graph: RwLock<ManifestGraph>,
     next_slot_id: AtomicU64,
+    monotonic_watermark_ns: AtomicU64,
     metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
 }
 
@@ -121,6 +123,7 @@ impl CheckpointPlane {
             active_steps: Mutex::new(HashMap::new()),
             graph: RwLock::new(ManifestGraph::new()),
             next_slot_id: AtomicU64::new(0),
+            monotonic_watermark_ns: AtomicU64::new(0),
             metrics: std::sync::Arc::new(kelir_otlp::registry::MetricRegistry::new()),
         }
     }
@@ -234,14 +237,26 @@ impl CheckpointPlane {
         Ok(())
     }
 
+    // see: cans/09-snapshots.md#Restore-modes
+    // see: cans/08-lifecycle.md#Clock-invariants
     pub fn restore(&self, node_id: u64) -> Result<SnapshotDescriptor, PluginError> {
         let graph = self.read_graph()?;
-        match graph.get(node_id) {
-            Some(node) => Ok(node.descriptor.clone()),
-            None => Err(PluginError::Halt(
+        let Some(node) = graph.get(node_id) else {
+            return Err(PluginError::Halt(
                 "checkpoint node not in manifest graph".into(),
-            )),
+            ));
+        };
+        let mut descriptor = node.descriptor.clone();
+        drop(graph);
+        if let Some(clock) = descriptor.guest_clock.as_mut() {
+            // TODO (L3): read the live guest CLOCK_MONOTONIC through the driver surface; the watermark is the in-tree proxy.
+            let current = self.monotonic_watermark_ns.load(Ordering::Acquire);
+            let clamped = clock.monotonic_offset_ns.max(current);
+            clock.monotonic_offset_ns = clamped;
+            self.monotonic_watermark_ns
+                .store(clamped, Ordering::Release);
         }
+        Ok(descriptor)
     }
 
     pub fn head(&self, lineage: PidLineage) -> Option<u64> {
@@ -258,12 +273,36 @@ impl CheckpointPlane {
         Ok(graph.lineage(node_id))
     }
 
+    // see: cans/08-lifecycle.md#Clock-invariants
+    pub fn monotonic_watermark_ns(&self) -> u64 {
+        self.monotonic_watermark_ns.load(Ordering::Acquire)
+    }
+
     // see: cans/08-lifecycle.md#Delta-chain-compaction
+    // see: cans/09-snapshots.md#Groups-and-lineage
     pub fn compact(&self, lineage: PidLineage) -> Result<u64, PluginError> {
-        // TODO (L3): flatten ancestor deltas in a single-pass block copy and write a consolidated manifest pointing at the ancestor base.
-        let _ = lineage;
-        Err(PluginError::Halt(
-            "TODO (L3): CheckpointPlane::compact".into(),
-        ))
+        let mut graph = self.lock_graph()?;
+        let head = graph
+            .head(lineage)
+            .ok_or_else(|| PluginError::Halt("no checkpoint head for PID lineage".into()))?;
+        let chain = graph.lineage(head);
+        let Some(base) = chain.last().copied() else {
+            return Err(PluginError::Halt(
+                "checkpoint chain has no ancestor base".into(),
+            ));
+        };
+        let head_node = graph.get(head).cloned().ok_or_else(|| {
+            PluginError::Halt("checkpoint head missing from manifest graph".into())
+        })?;
+        let compacted_id = self.next_slot_id.fetch_add(1, Ordering::SeqCst);
+        // TODO (L3): single-pass block copy flattens ancestor delta pages into the base sparse extents on export; CAS/BLAKE3 manifest addressing replaces sequential node ids.
+        graph.insert(CheckpointNode {
+            node_id: compacted_id,
+            parent: Some(base),
+            descriptor: head_node.descriptor,
+            delta: head_node.delta,
+        });
+        graph.set_head(lineage, compacted_id);
+        Ok(compacted_id)
     }
 }

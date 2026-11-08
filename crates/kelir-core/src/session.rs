@@ -2,6 +2,8 @@
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 // see: cans/14-observability.md#Metrics-pipeline
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use kelir_interface::handles::{DriverVmControl, VmHandle};
 use kelir_interface::plugin::PipelineBinder;
@@ -14,13 +16,49 @@ pub struct Session {
     pub host: crate::planes::host::HostPlane,
     metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
     uart: crate::uart::UartRingBuffer,
-    driver: Arc<tokio::sync::Mutex<Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>>>,
+    driver:
+        Option<Arc<tokio::sync::Mutex<Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>>>>,
     owned_bus: crate::bus::OwnedBusDispatcher,
     engine: crate::dispatch::PipelineEngine,
     incarnation_id: [u8; 16],
     plugins: Vec<crate::plugin_registry::PluginRegistration>,
     detached: bool,
 }
+
+// see: cans/08-lifecycle.md#Session-incarnation
+fn incarnation_hex(id: &[u8; 16]) -> String {
+    id.iter().fold(String::with_capacity(32), |mut hex, byte| {
+        hex.push_str(&format!("{byte:02x}"));
+        hex
+    })
+}
+
+// see: cans/08-lifecycle.md#Session-incarnation
+fn mint_incarnation_id() -> [u8; 16] {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = u64::from(std::process::id());
+    let mut id = [0u8; 16];
+    let ts_ms = elapsed.as_millis() as u64 & 0x0000_FFFF_FFFF_FFFF;
+    id[0..6].copy_from_slice(&ts_ms.to_be_bytes()[2..8]);
+    let rand_a = counter & 0x0FFF;
+    id[6] = 0x70 | (rand_a >> 8) as u8;
+    id[7] = (rand_a & 0xFF) as u8;
+    let rand_b =
+        ((u64::from(elapsed.subsec_nanos()) << 20) ^ (pid << 8) ^ counter) & 0x3FFF_FFFF_FFFF_FFFF;
+    id[8] = 0x80 | (rand_b >> 56) as u8;
+    id[9..16].copy_from_slice(&(rand_b & 0x00FF_FFFF_FFFF_FFFF).to_be_bytes()[1..8]);
+    id
+}
+
+// see: cans/05-storage-plane.md#Storage-quotas
+const DEFAULT_WORKSPACE_QUOTA_BYTES: u64 = 512 * 1024 * 1024;
+
+// see: cans/05-storage-plane.md#Storage-quotas
+const DEFAULT_WORKSPACE_QUOTA_INODES: u64 = 65_536;
 
 impl Session {
     // see: cans/08-lifecycle.md#Detached-lifecycle
@@ -98,6 +136,7 @@ impl Session {
         )
     }
 
+    // see: cans/08-lifecycle.md#Hypervisor-primitives
     pub fn boot_with_engine(
         config: kelir_interface::driver::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
@@ -105,17 +144,59 @@ impl Session {
         metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
         synthetic_files: Vec<crate::planes::storage::synthetic::SyntheticFile>,
     ) -> Result<Self, kelir_interface::plugin::PluginError> {
-        let _ = crate::plugin_registry::resolve_plugin_registrations(plugins)?;
-        // TODO (L3): load native driver, connect the control and mux SPSC rings, build planes, mint incarnation_id.
-        // TODO (L3): Session::boot binds the driver VmControl into HandlerCtx vm handles and the vault vsock handler into the wire plane.
+        if let Some(reason) = config.missing_boot_path() {
+            return Err(kelir_interface::plugin::PluginError::Halt(reason.into()));
+        }
+        let resolved = crate::plugin_registry::resolve_plugin_registrations(plugins)?;
+        let incarnation_id = mint_incarnation_id();
+        let session_hex = incarnation_hex(&incarnation_id);
+        let workspace_root = std::env::temp_dir()
+            .join("kelir")
+            .join(&session_hex)
+            .join("workspace");
+        let storage = crate::planes::storage::StoragePlane::new(
+            workspace_root.clone(),
+            workspace_root.join("upper.img"),
+            DEFAULT_WORKSPACE_QUOTA_BYTES,
+            DEFAULT_WORKSPACE_QUOTA_INODES,
+        )
+        .with_synthetic_files(synthetic_files);
+        let wire = crate::planes::wire::WirePlane::new();
+        if let Some(handler) = engine.vsock_service(VAULT_METADATA_VSOCK_PORT) {
+            wire.bind_imds_sink(handler)?;
+        }
+        let engine = engine.with_metrics(metrics.clone());
         metrics.set_active_vcpus(u32::from(config.vcpus));
-        let _ = config;
-        let _ = engine;
-        let _ = metrics;
-        let _ = synthetic_files;
-        Err(kelir_interface::plugin::PluginError::Halt(
-            "TODO (L3): Session::boot".into(),
-        ))
+        // TODO (L3): DriverRouter probes KVM/HVF/AVF and completes the driver boot handshake; vm_handle stays unbound until a backend loads.
+        let driver = crate::vmm::DriverRouter::load_native_driver(
+            matches!(
+                config.driver_policy.wx_enforcement,
+                kelir_interface::driver::WxPolicy::Strict
+            ),
+            config.driver_policy.allow_emulated_fallback,
+        )
+        .ok()
+        .map(|loaded| Arc::new(tokio::sync::Mutex::new(loaded)));
+        Ok(Self {
+            terminal: crate::planes::terminal::TerminalPlane::new(incarnation_id)
+                .with_metrics(metrics.clone()),
+            storage: storage.with_metrics(metrics.clone()),
+            wire: wire.with_metrics(metrics.clone()),
+            checkpoint: crate::planes::checkpoint::CheckpointPlane::new()
+                .with_metrics(metrics.clone()),
+            host: crate::planes::host::HostPlane::new().with_metrics(metrics.clone()),
+            metrics,
+            uart: crate::uart::UartRingBuffer::new(),
+            driver,
+            owned_bus: crate::bus::OwnedBusDispatcher::new(
+                crate::bus::CONTROL_RING_CAPACITY,
+                crate::bus::MUX_RING_CAPACITY,
+            ),
+            engine,
+            incarnation_id,
+            plugins: resolved,
+            detached: false,
+        })
     }
 
     pub fn plugins(&self) -> &[crate::plugin_registry::PluginRegistration] {
@@ -145,7 +226,7 @@ impl Session {
             host: host.with_metrics(metrics.clone()),
             metrics: metrics.clone(),
             uart: crate::uart::UartRingBuffer::new(),
-            driver,
+            driver: Some(driver),
             owned_bus,
             engine: engine.with_metrics(metrics),
             incarnation_id,
@@ -168,7 +249,11 @@ impl Session {
 
     // see: cans/02-plugin-model.md#Core-context-keys
     pub fn vm_handle(&self) -> VmHandle {
-        VmHandle::new(DriverVmControl::shared(&self.driver))
+        // TODO (L3): unbound until the native driver loads; driver ops fail with the typed unbound error.
+        match &self.driver {
+            Some(driver) => VmHandle::new(DriverVmControl::shared(driver)),
+            None => VmHandle::default(),
+        }
     }
 
     // see: cans/07-wire-plane.md#Pre-policy-drop-zones
@@ -275,10 +360,22 @@ impl Session {
     }
 
     // see: cans/08-lifecycle.md#Rollback
+    // see: cans/plugins/vault.md#Revocation
     pub async fn rollback_to(
         &mut self,
         snapshot: &kelir_interface::driver::SnapshotDescriptor,
     ) -> Result<(), kelir_interface::plugin::PluginError> {
+        // see: cans/08-lifecycle.md#Rollback
+        if let Some(revoker) = self.engine.token_revoker() {
+            revoker
+                .revoke_session_tokens(&incarnation_hex(&self.incarnation_id))
+                .await?;
+        }
+        let Some(driver) = self.driver.as_ref() else {
+            return Err(kelir_interface::plugin::PluginError::Halt(
+                "driver not loaded: hardware rollback needs a booted VMM (L3)".into(),
+            ));
+        };
         self.wire.quiesce()?;
         if let Some(ingress) = self.engine.parked_connection_reset() {
             let reset = ingress.reset_parked_connections()?;
@@ -287,7 +384,7 @@ impl Session {
         }
         self.storage.discard()?;
         // TODO (L3): reset session-local RNG position and virtual clock position to the snapshot.
-        self.driver
+        driver
             .lock()
             .await
             .rollback(snapshot)
@@ -296,6 +393,19 @@ impl Session {
                 kelir_interface::plugin::PluginError::Halt(format!("driver rollback: {error}"))
             })?;
         Ok(())
+    }
+
+    // see: cans/08-lifecycle.md#Lid-sleep/wake-clock-snapping
+    pub fn dispatch_clock_resync(&mut self) -> Result<(), kelir_interface::plugin::PluginError> {
+        // TODO (L3): subscribe IOPMrootDomain (macOS) / systemd-logind (Linux) host power events and invoke this on sleep/wake.
+        let wall_clock_ns = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos() as u64)
+            .unwrap_or(0);
+        self.owned_bus.dispatcher().send_control_msg(
+            kelir_interface::protocol::MsgType::VmLifecycleControl,
+            &wall_clock_ns.to_le_bytes(),
+        )
     }
 
     pub fn suspend(

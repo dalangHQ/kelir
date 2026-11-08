@@ -34,7 +34,13 @@ def _load_native_bridge() -> Any:
         ) from exc
 
 
+# see: cans/11-protocol.md#Wire-messages
 class Approval:
+    pass
+
+
+# see: cans/11-protocol.md#Wire-messages
+class Handshake:
     pass
 
 
@@ -122,6 +128,11 @@ class FilterAction:
     @classmethod
     def suspend(cls, until: Any = None) -> FilterAction:
         return cls("suspend", until=until)
+
+    # see: cans/02-plugin-model.md#Unified-verdict
+    @classmethod
+    def abort(cls, reason: str = "") -> FilterAction:
+        return cls("abort", reason=reason)
 
 
 
@@ -363,33 +374,14 @@ class TransactionService:
         return TransactionScope(name, self, paths, schemas)
 
 
+# see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 class Caps:
 
     def __init__(self) -> None:
-        self._extensions: dict[str, Any] = {}
-
-    def register(self, name: str, service: Any) -> None:
-        self._extensions[name] = service
-
-    def extension(self, name: str) -> Any:
-        service = self._extensions.get(name)
-        if service is None:
-            factory = _EXTENSION_FACTORIES.get(name)
-            if factory is None:
-                raise EConfig(
-                    f"caps: extension `{name}` is not mounted: enable it with .use(...) (L3)"
-                )
-            service = factory()
-            self._extensions[name] = service
-        return service
-
-
-_EXTENSION_FACTORIES: dict[str, Callable[[], Any]] = {
-    "ledger": LedgerService,
-    "db": DbService,
-    "policy": PolicyCap,
-    "transaction": TransactionService,
-}
+        self.ledger = LedgerService()
+        self.db = DbService()
+        self.policy = PolicyCap()
+        self.transaction = TransactionService()
 
 
 
@@ -935,6 +927,7 @@ __all__ = [
     "ExitKind",
     "FilterAction",
     "GuestClock",
+    "Handshake",
     "HandlerContext",
     "HostHandle",
     "KelirBuilder",
