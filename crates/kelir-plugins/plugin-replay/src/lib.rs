@@ -1,11 +1,13 @@
 // see: cans/plugins/replay.md#Plugin-replay
 #![forbid(unsafe_code)]
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
-use kelir_interface::driver::{EntropyBackend, EntropyStreamPosition, PmuSample, PmuSampler};
+use kelir_interface::driver::{
+    EntropyBackend, EntropyStreamPosition, PmuSample, PmuSampler, VmmError,
+};
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope};
 
@@ -42,7 +44,8 @@ impl Default for ReplayConfig {
 struct ReplayState {
     step_window: u64,
     retired_total: AtomicU64,
-    windows_stepped: AtomicU64,
+    window_retired: AtomicU64,
+    pmu_sampling: AtomicBool,
     pending_windows: Mutex<Vec<u64>>,
     sample_floor_ns: Mutex<u64>,
     sample_regress: Mutex<Option<String>>,
@@ -54,12 +57,18 @@ impl ReplayState {
         Self {
             step_window,
             retired_total: AtomicU64::new(0),
-            windows_stepped: AtomicU64::new(0),
+            window_retired: AtomicU64::new(0),
+            pmu_sampling: AtomicBool::new(true),
             pending_windows: Mutex::new(Vec::new()),
             sample_floor_ns: Mutex::new(0),
             sample_regress: Mutex::new(None),
             rng_position: Mutex::new(None),
         }
+    }
+
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    fn mark_pmu_degraded(&self) {
+        self.pmu_sampling.store(false, Ordering::Release);
     }
 
     fn lock_slot<T>(slot: &Mutex<T>) -> Result<MutexGuard<'_, T>, PluginError> {
@@ -72,6 +81,11 @@ impl ReplayState {
         self.retired_total
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |total| {
                 Some(total.saturating_add(sample.retired_instructions))
+            })
+            .ok();
+        self.window_retired
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |window| {
+                Some(window.saturating_add(sample.retired_instructions))
             })
             .ok();
         if self.enforce_sample_floor(sample.sampled_at_ns).is_err() {
@@ -99,22 +113,17 @@ impl ReplayState {
 
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
     fn accrue_step_windows(&self) -> Result<usize, PluginError> {
+        if self.step_window == 0 {
+            return Err(PluginError::Halt(
+                "replay step_window must be a positive retired-instruction interval".into(),
+            ));
+        }
         let mut pending = Self::lock_slot(&self.pending_windows)?;
         let mut accrued = 0;
-        loop {
-            let stepped = self.windows_stepped.load(Ordering::Acquire);
-            let boundary = stepped
-                .checked_add(1)
-                .and_then(|next| next.checked_mul(self.step_window));
-            match boundary {
-                Some(boundary) if self.retired_total.load(Ordering::Acquire) >= boundary => {
-                    self.windows_stepped.store(stepped + 1, Ordering::Release);
-                    // TODO (L3): substitute the exact PMU retired-instruction delta per window instead of the fixed window size.
-                    pending.push(self.step_window);
-                    accrued += 1;
-                }
-                _ => break,
-            }
+        while self.window_retired.load(Ordering::Acquire) >= self.step_window {
+            let retired_in_window = self.window_retired.swap(0, Ordering::AcqRel);
+            pending.push(retired_in_window);
+            accrued += 1;
         }
         Ok(accrued)
     }
@@ -128,6 +137,15 @@ impl ReplayState {
         let due = pending.clone();
         pending.clear();
         Ok(due)
+    }
+
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    fn restore_pending_windows(&self, windows: Vec<u64>) -> Result<(), PluginError> {
+        let mut pending = Self::lock_slot(&self.pending_windows)?;
+        let mut restored = windows;
+        restored.append(&mut pending);
+        *pending = restored;
+        Ok(())
     }
 
     // see: cans/plugins/replay.md#Deterministic-RNG
@@ -173,6 +191,11 @@ impl ReplayCtx {
     }
 
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    pub fn pmu_sampling_active(&self) -> bool {
+        self.state.pmu_sampling.load(Ordering::Acquire)
+    }
+
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
     pub fn pending_step_windows(&self) -> Result<usize, PluginError> {
         Ok(ReplayState::lock_slot(&self.state.pending_windows)?.len())
     }
@@ -180,12 +203,14 @@ impl ReplayCtx {
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
     pub async fn step_due_windows(&self, ctx: &mut LifecycleCtx<'_>) -> Result<u64, PluginError> {
         let due = self.state.take_due_windows()?;
-        let mut stepped = 0;
-        for retired_instructions in due {
-            ctx.step_clock_window(retired_instructions).await?;
-            stepped += 1;
+        for (index, retired_instructions) in due.iter().enumerate() {
+            if let Err(err) = ctx.step_clock_window(*retired_instructions).await {
+                let unstepped: Vec<u64> = due.iter().skip(index).copied().collect();
+                self.state.restore_pending_windows(unstepped)?;
+                return Err(err);
+            }
         }
-        Ok(stepped)
+        Ok(due.len() as u64)
     }
 }
 
@@ -245,6 +270,11 @@ impl LifecycleParticipant for ReplayPlugin {
     async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         // see: cans/plugins/replay.md#Kernel-clocksource-lockdown
         assert_lockdown_params(&self.config.kernel_params)?;
+        if self.config.step_window == 0 {
+            return Err(PluginError::Halt(
+                "replay step_window must be a positive retired-instruction interval".into(),
+            ));
+        }
         // see: cans/plugins/replay.md#Invariants-and-policy-(replay)
         if !self.config.network_isolation {
             return Err(PluginError::Halt(
@@ -252,12 +282,25 @@ impl LifecycleParticipant for ReplayPlugin {
             ));
         }
         // see: cans/plugins/replay.md#Deterministic-RNG
-        ctx.set_entropy_backend(EntropyBackend::SeededChaCha20 {
-            seed: self.config.deterministic_rng_seed,
-        })
-        .await?;
+        if let Err(err) = ctx
+            .set_entropy_backend(EntropyBackend::SeededChaCha20 {
+                seed: self.config.deterministic_rng_seed,
+            })
+            .await
+        {
+            return Err(PluginError::Halt(format!(
+                "replay seeded entropy backend unavailable: {err}"
+            )));
+        }
         // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
-        ctx.register_pmu_sampler(Arc::new(ReplayPmuSampler::new(Arc::clone(&self.state))))?;
+        if let Err(err) =
+            ctx.register_pmu_sampler(Arc::new(ReplayPmuSampler::new(Arc::clone(&self.state))))
+        {
+            if !is_capability_unsupported(&err) {
+                return Err(err);
+            }
+            self.state.mark_pmu_degraded();
+        }
         // TODO (L3): capture the deterministic RNG seed in the snapshot manifest at replay start.
         Ok(())
     }
@@ -313,4 +356,15 @@ fn assert_lockdown_params(params: &[String]) -> Result<(), PluginError> {
         }
     }
     Ok(())
+}
+
+// see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+fn is_capability_unsupported(err: &PluginError) -> bool {
+    let PluginError::Io(io_err) = err else {
+        return false;
+    };
+    io_err
+        .get_ref()
+        .and_then(|source| source.downcast_ref::<VmmError>())
+        .is_some_and(|vmm| matches!(vmm, VmmError::Unsupported(_)))
 }

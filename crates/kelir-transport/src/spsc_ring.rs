@@ -142,23 +142,83 @@ impl OwnedSpscRing {
 
 impl Transport for SpscRingTransport {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
-        let _ = buf;
-        // TODO: memory-fence synchronization + ring drain (L3).
-        Err(crate::unsupported(
-            "spsc ring read: lock-free SPSC drain with memory-fence synchronization",
-        ))
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        let header = self.header_ref();
+        let tail = header.tail.load(Ordering::Acquire);
+        let head = header.head.load(Ordering::Acquire);
+        let used = head.wrapping_sub(tail);
+        if used == 0 {
+            return Ok(0);
+        }
+        let count = (used as usize).min(buf.len());
+        let capacity = header.capacity as usize;
+        let tail_offset = (tail as usize) % capacity;
+        // SAFETY: buffer maps capacity bytes once at setup; count <= used <= capacity keeps tail_offset..+count in-bounds with wraparound.
+        unsafe {
+            if tail_offset + count <= capacity {
+                buf[..count].copy_from_slice(std::slice::from_raw_parts(
+                    self.buffer.add(tail_offset),
+                    count,
+                ));
+            } else {
+                let first = capacity - tail_offset;
+                buf[..first].copy_from_slice(std::slice::from_raw_parts(
+                    self.buffer.add(tail_offset),
+                    first,
+                ));
+                buf[first..count]
+                    .copy_from_slice(std::slice::from_raw_parts(self.buffer, count - first));
+            }
+        }
+        // TODO (L3): MMIO/PCI guest doorbell wakes this consumer via host eventfd instead of caller polling.
+        header
+            .tail
+            .store(tail.wrapping_add(count as u32), Ordering::Release);
+        Ok(count)
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
-        let _ = buf;
-        // TODO: memory-fence synchronization + ring enqueue (L3).
-        Err(crate::unsupported(
-            "spsc ring write: lock-free SPSC enqueue with memory-fence synchronization",
-        ))
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        let header = self.header_ref();
+        let head = header.head.load(Ordering::Relaxed);
+        let tail = header.tail.load(Ordering::Acquire);
+        let used = head.wrapping_sub(tail);
+        let free = header.capacity.saturating_sub(used);
+        if free == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                "spsc ring full: producer must park on the doorbell",
+            ));
+        }
+        let count = (free as usize).min(buf.len());
+        let capacity = header.capacity as usize;
+        let head_offset = (head as usize) % capacity;
+        // SAFETY: buffer maps capacity bytes once at setup; count <= free keeps head_offset..+count in-bounds with wraparound.
+        unsafe {
+            if head_offset + count <= capacity {
+                std::slice::from_raw_parts_mut(self.buffer.add(head_offset), count)
+                    .copy_from_slice(&buf[..count]);
+            } else {
+                let first = capacity - head_offset;
+                std::slice::from_raw_parts_mut(self.buffer.add(head_offset), first)
+                    .copy_from_slice(&buf[..first]);
+                std::slice::from_raw_parts_mut(self.buffer, count - first)
+                    .copy_from_slice(&buf[first..count]);
+            }
+        }
+        // TODO (L3): host doorbell injects a paravirtual virtual interrupt into the guest vCPU on enqueue.
+        header
+            .head
+            .store(head.wrapping_add(count as u32), Ordering::Release);
+        Ok(count)
     }
 
     fn flush(&mut self) -> Result<(), std::io::Error> {
-        // TODO: ring flush (L3).
-        Err(crate::unsupported("spsc ring flush"))
+        // TODO (L3): explicit host memory fence + doorbell notification under the virtio-shm device model.
+        Ok(())
     }
 }

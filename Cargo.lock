@@ -561,6 +561,7 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
+ "tokio",
 ]
 
 [[package]]
@@ -942,6 +943,7 @@ name = "plugin-tool-guard"
 version = "1.0.0"
 dependencies = [
  "async-trait",
+ "blake3",
  "kelir-interface",
  "kelir-plugin-testkit",
  "plugin-mcp",
@@ -962,6 +964,7 @@ name = "plugin-vault"
 version = "1.0.0"
 dependencies = [
  "async-trait",
+ "blake3",
  "kelir-interface",
  "kelir-plugin-testkit",
 ]

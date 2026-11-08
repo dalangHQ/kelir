@@ -1,13 +1,15 @@
 // see: cans/15-operations.md#Developer-CLI
 use std::path::PathBuf;
 
+use kelir_interface::driver::{HW_LOCKFILE_PATH, verify_hw_lockfile};
+
 // see: cans/15-operations.md#Developer-CLI
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HwLockPath(pub PathBuf);
 
 impl HwLockPath {
     pub fn default_path() -> Self {
-        Self(PathBuf::from("/etc/kelir/hw.lock"))
+        Self(PathBuf::from(HW_LOCKFILE_PATH))
     }
 
     pub fn as_path(&self) -> &std::path::Path {
@@ -188,7 +190,7 @@ pub fn write_hw_lockfile(
         ));
     }
     std::fs::write(path.as_path(), contents)?;
-    // TODO (L3): set the immutable flag (chattr +i) and attest the lockfile contents against live hardware.
+    // TODO (L3): set the immutable flag (chattr +i) on the lockfile.
     Ok(())
 }
 
@@ -219,7 +221,12 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         }
         let lock = HwLockPath::default_path();
         write_hw_lockfile(&lock, &report)?;
-        println!("kelir doctor --enforce: wrote {}", lock.as_path().display());
+        // see: cans/15-operations.md#Developer-CLI
+        verify_hw_lockfile()?;
+        println!(
+            "kelir doctor --enforce: wrote {} (verified via driver::verify_hw_lockfile)",
+            lock.as_path().display()
+        );
         return Ok(());
     }
     let report = probe_host();

@@ -11,3 +11,24 @@ pub struct CausalDelta {
     pub storage_delta_root: [u8; 32],
     pub receipt_leaf_hash: [u8; 32],
 }
+
+impl CausalDelta {
+    // see: cans/artifacts/code/causal-delta.rs#CausalDelta
+    pub fn new(
+        memory_diff_bytes: u64,
+        modified_inodes: Vec<PathBuf>,
+        spawned_pids: Vec<u32>,
+        egress_bytes: u64,
+        storage_delta_root: [u8; 32],
+        receipt_leaf_hash: [u8; 32],
+    ) -> Self {
+        Self {
+            memory_diff_bytes,
+            modified_inodes,
+            spawned_pids,
+            egress_bytes,
+            storage_delta_root,
+            receipt_leaf_hash,
+        }
+    }
+}

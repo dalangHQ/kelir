@@ -18,6 +18,31 @@ pub struct StorageQuota {
     max_inodes: u64,
 }
 
+// see: cans/05-storage-plane.md#Storage-quotas
+fn accrue_quota(
+    counter: &AtomicU64,
+    delta: u64,
+    max: u64,
+    kind: &str,
+) -> Result<(), kelir_interface::plugin::PluginError> {
+    let mut current = counter.load(Ordering::SeqCst);
+    loop {
+        let total = current.checked_add(delta).ok_or_else(|| {
+            kelir_interface::plugin::PluginError::Halt(format!("quota {kind} arithmetic overflow"))
+        })?;
+        if total > max {
+            return Err(kelir_interface::plugin::PluginError::reject(
+                "ENOSPC",
+                format!("storage {kind} quota exceeded"),
+            ));
+        }
+        match counter.compare_exchange(current, total, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return Ok(()),
+            Err(observed) => current = observed,
+        }
+    }
+}
+
 pub struct StoragePlane {
     workspace_root: PathBuf,
     sparse_upper_path: PathBuf,
@@ -182,33 +207,26 @@ impl StoragePlane {
         bytes_to_write: u64,
         new_inodes: u64,
     ) -> Result<(), kelir_interface::plugin::PluginError> {
-        let bytes = self
-            .quota
-            .allocated_bytes
-            .load(Ordering::SeqCst)
-            .checked_add(bytes_to_write)
-            .ok_or_else(|| {
-                kelir_interface::plugin::PluginError::Halt("quota byte arithmetic overflow".into())
-            })?;
-        if bytes > self.quota.max_bytes {
+        if let Err(err) = accrue_quota(
+            &self.quota.allocated_bytes,
+            bytes_to_write,
+            self.quota.max_bytes,
+            "byte",
+        ) {
             self.metrics.record_backpressure();
-            return Err(kelir_interface::plugin::PluginError::Halt(
-                "storage byte quota exceeded".into(),
-            ));
+            return Err(err);
         }
-        let inodes = self
-            .quota
-            .allocated_inodes
-            .load(Ordering::SeqCst)
-            .checked_add(new_inodes)
-            .ok_or_else(|| {
-                kelir_interface::plugin::PluginError::Halt("quota inode arithmetic overflow".into())
-            })?;
-        if inodes > self.quota.max_inodes {
+        if let Err(err) = accrue_quota(
+            &self.quota.allocated_inodes,
+            new_inodes,
+            self.quota.max_inodes,
+            "inode",
+        ) {
             self.metrics.record_backpressure();
-            return Err(kelir_interface::plugin::PluginError::Halt(
-                "storage inode quota exceeded".into(),
-            ));
+            self.quota
+                .allocated_bytes
+                .fetch_sub(bytes_to_write, Ordering::SeqCst);
+            return Err(err);
         }
         self.metrics.add_dirty_pages(bytes_to_write.div_ceil(4096));
         Ok(())

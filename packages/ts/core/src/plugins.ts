@@ -1,6 +1,7 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import type { KelirPlugin } from "./plugin.js";
+import type { ChaosHandle, LedgerHandle, MeshHandle } from "./context.js";
+import type { KelirPlugin, PluginContext } from "./plugin.js";
 
 export interface PluginEnablement {
   readonly enabled?: boolean;
@@ -20,7 +21,10 @@ export interface ChaosConfig extends PluginEnablement {
   }[];
 }
 
-export function chaos(config: ChaosConfig): KelirPlugin {
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+export function chaos(
+  config: ChaosConfig,
+): KelirPlugin & PluginContext<{ chaos: ChaosHandle }> {
   return { name: "chaos", enabled: config.enabled, config };
 }
 
@@ -39,7 +43,10 @@ export interface LedgerConfig extends PluginEnablement {
   };
 }
 
-export function ledger(config: LedgerConfig): KelirPlugin {
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+export function ledger(
+  config: LedgerConfig,
+): KelirPlugin & PluginContext<{ ledger: LedgerHandle }> {
   return { name: "ledger", enabled: config.enabled, config };
 }
 
@@ -107,7 +114,10 @@ export interface MeshConfig extends PluginEnablement {
   readonly listeners?: readonly { readonly port: number; readonly service: string }[];
 }
 
-export function mesh(config: MeshConfig): KelirPlugin {
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+export function mesh(
+  config: MeshConfig,
+): KelirPlugin & PluginContext<{ mesh: MeshHandle }> {
   return { name: "mesh", enabled: config.enabled, config };
 }
 

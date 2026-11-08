@@ -1,7 +1,11 @@
 // see: cans/15-operations.md#Multi-language-parity-gate
+use std::collections::BTreeMap;
 use std::fs;
 
+use kelir_interface::driver::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
+use kelir_interface::plugin::VetoEvent;
 use kelir_interface::protocol::Channel;
+use kelir_plugin_testkit::vectors::{VetoCase, arm_watchdog_case, register_veto_case};
 
 // see: cans/15-operations.md#Multi-language-parity-gate
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +39,13 @@ impl JsonValue {
     pub fn as_array(&self) -> Option<&[JsonValue]> {
         match self {
             JsonValue::Array(items) => Some(items),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            JsonValue::Bool(value) => Some(*value),
             _ => None,
         }
     }
@@ -227,7 +238,7 @@ impl<'a> JsonParser<'a> {
 }
 
 // see: cans/15-operations.md#Multi-language-parity-gate
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct ParityVector {
     pub name: String,
     pub transport: u16,
@@ -236,9 +247,24 @@ pub struct ParityVector {
     pub msg_type: u16,
     pub payload_hex: String,
     pub frame_hex: String,
+    pub event_kind: Option<String>,
     pub expected_verdict_kind: String,
-    pub watchdog_verdict: Option<String>,
-    pub veto_event: Option<String>,
+    pub watchdog: Option<ParityWatchdog>,
+    pub veto: Option<ParityVeto>,
+}
+
+// see: cans/08-lifecycle.md#Watchdog
+#[derive(Debug, Clone)]
+pub struct ParityWatchdog {
+    pub event: WatchdogEvent,
+    pub expected_verdict: WatchdogVerdict,
+}
+
+// see: cans/08-lifecycle.md#Lifecycle-vetoes
+#[derive(Debug, Clone)]
+pub struct ParityVeto {
+    pub event: VetoEvent,
+    pub callback_allows: Option<bool>,
 }
 
 impl JsonValue {
@@ -281,10 +307,11 @@ fn encode_hex(bytes: &[u8]) -> String {
 const VERDICT_VARIANTS: &[&str] = &["Pass", "Patch", "Drop", "Suspend", "Abort"];
 
 // see: cans/15-operations.md#Coverage-gates
-const WATCHDOG_VERDICTS: &[&str] = &["Suppress", "Mitigate"];
+const WATCHDOG_VERDICTS: [WatchdogVerdict; 2] =
+    [WatchdogVerdict::Suppress, WatchdogVerdict::Mitigate];
 
 // see: cans/15-operations.md#Coverage-gates
-const VETO_EVENTS: &[&str] = &["Fork", "Suspend", "ClockSkew"];
+const VETO_EVENTS: [VetoEvent; 3] = [VetoEvent::Fork, VetoEvent::Suspend, VetoEvent::ClockSkew];
 
 fn verdict_kind(value: &JsonValue, index: usize) -> Result<String, String> {
     match value {
@@ -306,6 +333,99 @@ fn verdict_kind(value: &JsonValue, index: usize) -> Result<String, String> {
         }
         _ => Err(format!(
             "parity: vector {index} expected_verdict is not a Verdict"
+        )),
+    }
+}
+
+fn parse_watchdog_action(value: &JsonValue, index: usize) -> Result<WatchdogAction, String> {
+    match value {
+        JsonValue::Text(kind) if kind == "Reboot" => Ok(WatchdogAction::Reboot),
+        JsonValue::Object(entries) => {
+            if entries.len() != 1 || entries[0].0 != "Terminate" {
+                return Err(format!(
+                    "parity: vector {index} watchdog action is not Reboot or Terminate"
+                ));
+            }
+            let emit_diagnostic = entries[0]
+                .1
+                .get("emit_diagnostic")
+                .and_then(JsonValue::as_bool)
+                .ok_or(format!(
+                    "parity: vector {index} watchdog Terminate action has no bool `emit_diagnostic`"
+                ))?;
+            Ok(WatchdogAction::Terminate { emit_diagnostic })
+        }
+        _ => Err(format!(
+            "parity: vector {index} watchdog action is not Reboot or Terminate"
+        )),
+    }
+}
+
+// see: cans/08-lifecycle.md#Watchdog
+fn parse_watchdog_event(value: &JsonValue, index: usize) -> Result<WatchdogEvent, String> {
+    let timeout_ms = value
+        .get("timeout_ms")
+        .and_then(JsonValue::as_u64)
+        .ok_or(format!(
+            "parity: vector {index} watchdog event has no u64 `timeout_ms`"
+        ))?;
+    let action = parse_watchdog_action(
+        value.get("action").ok_or(format!(
+            "parity: vector {index} watchdog event has no `action`"
+        ))?,
+        index,
+    )?;
+    let fired_at_ns = value
+        .get("fired_at_ns")
+        .and_then(JsonValue::as_u64)
+        .ok_or(format!(
+            "parity: vector {index} watchdog event has no u64 `fired_at_ns`"
+        ))?;
+    let last_heartbeat_ms = value
+        .get("last_heartbeat_ms")
+        .and_then(JsonValue::as_u64)
+        .ok_or(format!(
+            "parity: vector {index} watchdog event has no u64 `last_heartbeat_ms`"
+        ))?;
+    let last_active_pid = match value.get("last_active_pid") {
+        None | Some(JsonValue::Null) => None,
+        Some(pid) => Some(
+            u32::try_from(pid.as_u64().ok_or(format!(
+                "parity: vector {index} watchdog `last_active_pid` is not a u32"
+            ))?)
+            .map_err(|_| {
+                format!("parity: vector {index} watchdog `last_active_pid` is not a u32")
+            })?,
+        ),
+    };
+    Ok(WatchdogEvent {
+        timeout_ms,
+        action,
+        fired_at_ns,
+        last_heartbeat_ms,
+        last_active_pid,
+    })
+}
+
+// see: cans/08-lifecycle.md#Watchdog
+fn parse_watchdog_verdict(verdict: &str, index: usize) -> Result<WatchdogVerdict, String> {
+    match verdict {
+        "Suppress" => Ok(WatchdogVerdict::Suppress),
+        "Mitigate" => Ok(WatchdogVerdict::Mitigate),
+        other => Err(format!(
+            "parity: vector {index} watchdog verdict `{other}` is not Suppress or Mitigate"
+        )),
+    }
+}
+
+// see: cans/08-lifecycle.md#Lifecycle-vetoes
+fn parse_veto_event(event: &str, index: usize) -> Result<VetoEvent, String> {
+    match event {
+        "Fork" => Ok(VetoEvent::Fork),
+        "Suspend" => Ok(VetoEvent::Suspend),
+        "ClockSkew" => Ok(VetoEvent::ClockSkew),
+        other => Err(format!(
+            "parity: vector {index} veto event `{other}` is not a VetoEvent"
         )),
     }
 }
@@ -364,28 +484,41 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
             .and_then(JsonValue::as_text)
             .ok_or(format!("parity: vector {index} frame has no `frame_hex`"))?
             .to_string();
+        let event_kind = match item.get("event") {
+            None | Some(JsonValue::Null) => None,
+            Some(JsonValue::Object(entries)) if entries.len() == 1 => Some(entries[0].0.clone()),
+            Some(_) => {
+                return Err(format!(
+                    "parity: vector {index} event must be a single-variant GuestToHost or null"
+                ));
+            }
+        };
         let expected_verdict = item.get("expected_verdict").ok_or(format!(
             "parity: vector {index} declares no `expected_verdict`"
         ))?;
-        let watchdog_verdict = match item.get("watchdog") {
-            None => None,
+        let watchdog = match item.get("watchdog") {
+            None | Some(JsonValue::Null) => None,
             Some(watchdog) => {
+                let event = parse_watchdog_event(
+                    watchdog.get("event").ok_or(format!(
+                        "parity: vector {index} watchdog declares no `event`"
+                    ))?,
+                    index,
+                )?;
                 let verdict = watchdog
                     .get("expected_verdict")
                     .and_then(JsonValue::as_text)
                     .ok_or(format!(
                         "parity: vector {index} watchdog declares no string `expected_verdict`"
                     ))?;
-                if !WATCHDOG_VERDICTS.contains(&verdict) {
-                    return Err(format!(
-                        "parity: vector {index} watchdog verdict `{verdict}` is not Suppress or Mitigate"
-                    ));
-                }
-                Some(verdict.to_string())
+                Some(ParityWatchdog {
+                    event,
+                    expected_verdict: parse_watchdog_verdict(verdict, index)?,
+                })
             }
         };
-        let veto_event = match item.get("veto") {
-            None => None,
+        let veto = match item.get("veto") {
+            None | Some(JsonValue::Null) => None,
             Some(veto) => {
                 let event = veto
                     .get("event")
@@ -393,12 +526,16 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
                     .ok_or(format!(
                         "parity: vector {index} veto declares no string `event`"
                     ))?;
-                if !VETO_EVENTS.contains(&event) {
-                    return Err(format!(
-                        "parity: vector {index} veto event `{event}` is not a VetoEvent"
-                    ));
-                }
-                Some(event.to_string())
+                let callback_allows = match veto.get("callback_allows") {
+                    None | Some(JsonValue::Null) => None,
+                    Some(value) => Some(value.as_bool().ok_or(format!(
+                        "parity: vector {index} veto `callback_allows` is not a bool"
+                    ))?),
+                };
+                Some(ParityVeto {
+                    event: parse_veto_event(event, index)?,
+                    callback_allows,
+                })
             }
         };
         out.push(ParityVector {
@@ -409,9 +546,10 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
             msg_type,
             payload_hex,
             frame_hex,
+            event_kind,
             expected_verdict_kind: verdict_kind(expected_verdict, index)?,
-            watchdog_verdict,
-            veto_event,
+            watchdog,
+            veto,
         });
     }
     Ok(out)
@@ -489,37 +627,94 @@ fn assert_frame_shape(vector: &ParityVector) -> Result<(), String> {
     Ok(())
 }
 
-pub fn assert_vectors(vectors: &[ParityVector]) -> Result<usize, String> {
+// see: cans/15-operations.md#Coverage-gates
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParityReport {
+    pub total: usize,
+    pub frame_validated: usize,
+    pub watchdog_armed: usize,
+    pub veto_registered: usize,
+    pub verdicts_executed: usize,
+    pub verdicts_not_executable: Vec<(String, &'static str)>,
+}
+
+pub fn assert_vectors(vectors: &[ParityVector]) -> Result<ParityReport, String> {
     if vectors.is_empty() {
         return Err("parity: vectors.json declares 0 vectors; nothing to assert".to_string());
     }
+    let mut report = ParityReport {
+        total: vectors.len(),
+        frame_validated: 0,
+        watchdog_armed: 0,
+        veto_registered: 0,
+        verdicts_executed: 0,
+        verdicts_not_executable: Vec::new(),
+    };
     for vector in vectors {
         if vector.name.is_empty() {
             return Err("parity: vector with empty name".to_string());
         }
         assert_frame_shape(vector)?;
+        report.frame_validated += 1;
+        if let Some(watchdog) = &vector.watchdog {
+            arm_watchdog_case(&watchdog.event).map_err(|e| {
+                format!(
+                    "parity: vector `{}` watchdog arming failed: {e}",
+                    vector.name
+                )
+            })?;
+            report.watchdog_armed += 1;
+        }
+        if let Some(veto) = &vector.veto {
+            let case = VetoCase {
+                event: veto.event,
+                callback_allows: veto.callback_allows.unwrap_or(true),
+            };
+            register_veto_case(&case).map_err(|e| {
+                format!(
+                    "parity: vector `{}` veto registration failed: {e}",
+                    vector.name
+                )
+            })?;
+            report.veto_registered += 1;
+        }
+        // TODO (L3): dispatch each trap/watchdog/veto chain through the engine and compare the observed verdict against expected_verdict typed; until engine dispatch lands, every verdict evaluation is reported not-executable, never a green pass.
+        let reason = if vector.veto.is_some() {
+            "veto firing evaluation pending engine dispatch (L3)"
+        } else if vector.watchdog.is_some() {
+            "watchdog verdict evaluation pending engine dispatch (L3)"
+        } else if vector.event_kind.as_deref() == Some("Heartbeat") {
+            "heartbeat observation evaluation pending engine dispatch (L3)"
+        } else {
+            "trap verdict evaluation pending engine dispatch (L3)"
+        };
+        report
+            .verdicts_not_executable
+            .push((vector.name.to_string(), reason));
     }
     for verdict in WATCHDOG_VERDICTS {
-        if !vectors
-            .iter()
-            .any(|vector| vector.watchdog_verdict.as_deref() == Some(verdict))
-        {
+        if !vectors.iter().any(|vector| {
+            vector
+                .watchdog
+                .as_ref()
+                .is_some_and(|watchdog| watchdog.expected_verdict == verdict)
+        }) {
             return Err(format!(
-                "parity: watchdog coverage missing WatchdogVerdict::{verdict} in vectors.json chains"
+                "parity: watchdog coverage missing WatchdogVerdict::{verdict:?} in vectors.json chains"
             ));
         }
     }
     for event in VETO_EVENTS {
         if !vectors
             .iter()
-            .any(|vector| vector.veto_event.as_deref() == Some(event))
+            .any(|vector| vector.veto.as_ref().is_some_and(|veto| veto.event == event))
         {
             return Err(format!(
-                "parity: veto coverage missing VetoEvent::{event} in vectors.json chains"
+                "parity: veto coverage missing VetoEvent::{event:?} in vectors.json chains"
             ));
         }
     }
-    Ok(vectors.len())
+    Ok(report)
 }
 
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -541,7 +736,23 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         )
     })?;
     let vectors = parse_vectors(&text)?;
-    let count = assert_vectors(&vectors)?;
-    println!("parity: {count} vector(s) asserted from {path}");
+    let report = assert_vectors(&vectors)?;
+    println!(
+        "parity: {} vector(s) from {path}: frame-validated {}; watchdog-armed {}; veto-registered {}",
+        report.total, report.frame_validated, report.watchdog_armed, report.veto_registered
+    );
+    let mut reasons: BTreeMap<&'static str, usize> = BTreeMap::new();
+    for (_, reason) in &report.verdicts_not_executable {
+        *reasons.entry(reason).or_default() += 1;
+    }
+    let summary = reasons
+        .iter()
+        .map(|(reason, count)| format!("{reason} x{count}"))
+        .collect::<Vec<_>>()
+        .join("; ");
+    println!(
+        "parity: verdict evaluations executed {}/{}: not-executable — {summary}",
+        report.verdicts_executed, report.total
+    );
     Ok(())
 }

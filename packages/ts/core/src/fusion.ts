@@ -18,6 +18,8 @@ export enum RingEvent {
   NetInbound = "net-inbound",
   ConsoleInput = "console-input",
   ConsoleOutput = "console-output",
+  ExecStdout = "exec-stdout",
+  ExecStderr = "exec-stderr",
   Heartbeat = "heartbeat",
   Lifecycle = "lifecycle",
   Watchdog = "watchdog",

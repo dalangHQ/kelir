@@ -2,7 +2,6 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_tool_guard.rs per cans/artifacts/config/project-structure.txt.
-pub mod jsonrpc;
 pub mod service;
 
 use std::collections::HashMap;
@@ -15,9 +14,12 @@ use kelir_interface::plugin::{
     VirtioDevice,
 };
 use kelir_interface::protocol::Verdict;
+use plugin_mcp::McpEndpointService;
 
-use crate::jsonrpc::{McpFrame, McpMethod, ToolsListResult, decode_tools_list};
-use crate::service::{ToolRegistry, ToolRegistryService, ToolSchema};
+use crate::service::{
+    McpFrame, McpMethod, ToolRegistry, ToolRegistryService, ToolSchema, ToolsListResult,
+    decode_tools_list,
+};
 
 // see: cans/plugins/tool-guard.md#Call-quota
 #[derive(Clone, Debug)]
@@ -51,6 +53,7 @@ pub struct ToolGuardPlugin {
     config: ToolGuardConfig,
     registry: Arc<ToolRegistry>,
     state: Arc<ToolGuardState>,
+    mcp: McpEndpointService,
 }
 
 impl ToolGuardPlugin {
@@ -61,7 +64,14 @@ impl ToolGuardPlugin {
             state: Arc::new(ToolGuardState {
                 traces: Mutex::new(HashMap::new()),
             }),
+            mcp: McpEndpointService::new(),
         }
+    }
+
+    // see: cans/plugins/tool-guard.md#Crate-dependencies-(tool-guard)
+    pub fn with_mcp_service(mut self, service: McpEndpointService) -> Self {
+        self.mcp = service;
+        self
     }
 
     pub fn with_config(mut self, config: ToolGuardConfig) -> Self {
@@ -223,7 +233,14 @@ impl ConsoleInterposer for ToolGuardPlugin {
         let frame = McpFrame::decode(chunk)?;
         if frame.method == McpMethod::ToolsList {
             let advertisement: ToolsListResult = decode_tools_list(chunk)?;
-            return self.registry.ingest_tools_list(&advertisement).await;
+            // see: cans/plugins/tool-guard.md#Executes-upstream-of-plugin-mcp-on-the-MCP_CONSOLE-mux-stream
+            let advertised: Vec<String> = advertisement
+                .tools
+                .iter()
+                .map(|schema| schema.name.clone())
+                .collect();
+            self.registry.ingest_tools_list(&advertisement).await?;
+            return self.mcp.advertise_tools(advertised);
         }
         self.scrub_tool_response(chunk).await
     }

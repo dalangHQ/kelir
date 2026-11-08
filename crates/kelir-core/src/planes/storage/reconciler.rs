@@ -167,21 +167,26 @@ impl Reconciler {
             if let Ok(meta) = fs::symlink_metadata(ancestor) {
                 if meta.is_symlink() {
                     return Err(kelir_interface::plugin::PluginError::reject(
-                        "EPERM",
+                        "EXDEV",
                         format!("symlink component rejected: {ancestor:?}"),
                     ));
                 }
             }
         }
-        if target.exists() {
-            let root = self.host_target.canonicalize()?;
-            let resolved = target.canonicalize()?;
-            if !resolved.starts_with(&root) {
-                return Err(kelir_interface::plugin::PluginError::reject(
-                    "EXDEV",
-                    format!("resolved target escapes workspace root: {resolved:?}"),
-                ));
+        // TODO (L3): openat2 RESOLVE_BENEATH via the platform root handle removes the resolve race.
+        let root = self.host_target.canonicalize()?;
+        let mut prefix = target.to_path_buf();
+        while prefix != self.host_target && !prefix.exists() {
+            if !prefix.pop() {
+                break;
             }
+        }
+        let resolved = prefix.canonicalize()?;
+        if !resolved.starts_with(&root) {
+            return Err(kelir_interface::plugin::PluginError::reject(
+                "EXDEV",
+                format!("resolved target escapes workspace root: {resolved:?}"),
+            ));
         }
         Ok(())
     }

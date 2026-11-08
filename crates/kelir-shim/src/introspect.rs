@@ -1,8 +1,10 @@
 // see: cans/11-protocol.md#Trap-fast-path
+// see: cans/11-protocol.md#Frozen-inspection-mechanics
 // see: cans/10-attestation.md#Execution-receipts
 use std::collections::HashMap;
 use std::io::Read;
 use std::os::unix::fs::MetadataExt;
+use std::path::{Path, PathBuf};
 
 use kelir_interface::protocol::{MsgType, TrapEvent, TrappedSyscall};
 
@@ -14,6 +16,12 @@ pub const AT_EXECFN: u64 = 31;
 const ELF_HEAD_LEN: u64 = 256 * 1024;
 const PT_INTERP: u32 = 3;
 
+// see: cans/11-protocol.md#Frozen-inspection-mechanics
+const CGROUP_V2_ROOT: &str = "/sys/fs/cgroup";
+
+// see: cans/11-protocol.md#Frozen-inspection-mechanics
+const FREEZE_POLL_LIMIT: u32 = 1000;
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TrapInspection {
@@ -24,6 +32,8 @@ pub struct TrapInspection {
 }
 
 pub fn inspect_trap(trap: &SeccompTrap, seq: u64) -> Result<TrapInspection, ShimError> {
+    // TODO (L3): capture argv/envp/auxv via process_vm_readv without thread attachment.
+    let _frozen = FreezeGuard::acquire(trap.pid)?;
     let (binary_path, binary_dev, binary_ino) = resolve_exe(trap.pid)?;
     let argv = read_argv(trap.pid)?;
     let envp = read_envp(trap.pid)?;
@@ -180,6 +190,68 @@ pub fn encode_trap_frame(event: &TrapEvent) -> Result<Vec<u8>, ShimError> {
     )
     .map_err(|_| ShimError::TrapEncode)?;
     Ok(frame)
+}
+
+// see: cans/11-protocol.md#Frozen-inspection-mechanics
+pub struct FreezeGuard {
+    freeze_path: PathBuf,
+}
+
+impl FreezeGuard {
+    // see: cans/11-protocol.md#Frozen-inspection-mechanics
+    pub fn acquire(pid: u32) -> Result<Self, ShimError> {
+        let relative = cgroup_v2_relative(pid)?;
+        if relative == "/" {
+            return Err(ShimError::FreezerRoot { pid });
+        }
+        let dir = Path::new(CGROUP_V2_ROOT).join(relative.trim_start_matches('/'));
+        let freeze_path = dir.join("cgroup.freeze");
+        std::fs::write(&freeze_path, b"1").map_err(|err| ShimError::FreezerIo {
+            path: freeze_path.to_string_lossy().into_owned(),
+            errno: err.raw_os_error().unwrap_or(0),
+        })?;
+        wait_frozen(&dir)?;
+        Ok(Self { freeze_path })
+    }
+}
+
+impl Drop for FreezeGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::write(&self.freeze_path, b"0");
+    }
+}
+
+// see: cans/11-protocol.md#Frozen-inspection-mechanics
+fn cgroup_v2_relative(pid: u32) -> Result<String, ShimError> {
+    let bytes = read_proc_bytes(pid, "cgroup")?;
+    let text = String::from_utf8_lossy(&bytes);
+    let Some(relative) = text.lines().find_map(|line| line.strip_prefix("0::")) else {
+        return Err(ShimError::FreezerUnsupported { pid });
+    };
+    Ok(relative.trim().to_owned())
+}
+
+// see: cans/11-protocol.md#Frozen-inspection-mechanics
+fn wait_frozen(dir: &Path) -> Result<(), ShimError> {
+    let events_path = dir.join("cgroup.events");
+    let nap = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 1_000_000,
+    };
+    for _ in 0..FREEZE_POLL_LIMIT {
+        let text = std::fs::read_to_string(&events_path).map_err(|err| ShimError::FreezerIo {
+            path: events_path.to_string_lossy().into_owned(),
+            errno: err.raw_os_error().unwrap_or(0),
+        })?;
+        if text.lines().any(|line| line == "frozen 1") {
+            return Ok(());
+        }
+        // SAFETY: nap is a fixed 1ms timespec; a null remainder pointer is valid when the leftover time is discarded.
+        unsafe { libc::nanosleep(&nap, std::ptr::null_mut()) };
+    }
+    Err(ShimError::FreezerTimeout {
+        path: events_path.to_string_lossy().into_owned(),
+    })
 }
 
 fn read_proc_bytes(pid: u32, field: &'static str) -> Result<Vec<u8>, ShimError> {

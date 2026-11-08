@@ -20,12 +20,7 @@ declare const oracle: {
 
 
 type RepoPolicyCtx = {
-  policy: {
-    violations: number;
-    currentBranch: string;
-    isProtected: () => boolean;
-    recordViolation: () => void;
-  };
+  policy: PolicyHandle;
 };
 
 const repoPolicyPlugin = (
@@ -57,7 +52,7 @@ const runtime = kelir({
   })
 
 
-  .storage({
+  .storage<{ ledger: LedgerHandle }>({
     idmap: { guestUid: 0, hostUid: process.getuid!() },
     sharedCaches: ["~/.npm", "~/.cache/pip", "~/.cargo/registry"],
     lockBroker: true,
@@ -82,7 +77,7 @@ const runtime = kelir({
         onWrite: async (path, raw, c) => {
           const evt = JSON.parse(raw.toString());
           if (evt.falsifiedResult) throw new Error("EPERM: harness hallucination detected.");
-          const producerBlake3 = await c.extension<LedgerHandle>("ledger").blake3OfProducingProcess(path);
+          const producerBlake3 = await c.ledger.blake3OfProducingProcess(path);
           await oracle.ingestHarnessEvent({
             path, event: evt, producerBlake3
           });
@@ -192,10 +187,9 @@ const runtime = kelir({
                      env: { OTEL_TRACE_ID: oracle.currentTraceId(), CI: "1" } });
   })
   .trap(TrapFilter.binary("git").withArg("push"), async (c) => {
-    const policy = c.extension<PolicyHandle>("policy");
-    if (policy.isProtected()) {
-      policy.recordViolation();
-      return c.drop("EPERM", `EPOLICY: '${policy.currentBranch}' protected.`);
+    if (c.policy.isProtected()) {
+      c.policy.recordViolation();
+      return c.drop("EPERM", `EPOLICY: '${c.policy.currentBranch}' protected.`);
     }
     if (c.trap.argv.includes("--force"))
       return c.patch({ binary: "/bin/git",
@@ -209,8 +203,8 @@ const runtime = kelir({
   })
   .trap(TrapFilter.binary("git").withArg("commit"), {
     pre: async (c) =>
-      c.extension<PolicyHandle>("policy").violations > 0
-        ? c.drop("EPERM", `EPOLICY: ${c.extension<PolicyHandle>("policy").violations} prior violation(s).`)
+      c.policy.violations > 0
+        ? c.drop("EPERM", `EPOLICY: ${c.policy.violations} prior violation(s).`)
         : c.pass(),
     post: async (c) => {
       const receipt = await c.receipt();
@@ -230,7 +224,7 @@ const runtime = kelir({
 
   .on(LifecycleEvent.VmInit,     async (driver) => driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
   .onTrapDeny(async (e, s) => {
-    if (await s.extension<LedgerHandle>("ledger").countDenials(e.ppid) > 5) {
+    if (await s.ledger.countDenials(e.ppid) > 5) {
       await s.vm.suspend("./.kelir/quarantine.snap");
 
 
@@ -287,7 +281,7 @@ async function main() {
       ["commit", "-am", `fix(stripe): dedupe webhook body reads (${winner.id})`],
       { cwd: "/workspace/checkout-service" });
 
-    const final = await session.extension<LedgerHandle>("ledger").finalize({ includeDelta: winningDelta!, includeMerkleRoot: true });
+    const final = await session.ledger.finalize({ includeDelta: winningDelta!, includeMerkleRoot: true });
     console.log("[kelir] merkle root:", final.merkleRoot);
     console.log("[kelir] signed JWS: ", final.signedJws.slice(0, 80) + "…");
   } finally {

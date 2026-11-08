@@ -11,6 +11,21 @@ use kelir_interface::vsock::{VAULT_METADATA_VSOCK_PORT, VsockServiceHandler};
 pub const SYNTHETIC_DNS_GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 127, 1);
 pub const SYNTHETIC_DNS_PORT: u16 = 53;
 
+// see: cans/07-wire-plane.md#Port-forwarding
+#[derive(Debug, thiserror::Error)]
+pub enum WireError {
+    #[error("host port {0} already forwarded (EADDRINUSE)")]
+    PortOccupied(u16),
+    #[error("ephemeral host port range exhausted (EADDRINUSE)")]
+    EphemeralExhausted,
+}
+
+impl From<WireError> for PluginError {
+    fn from(error: WireError) -> Self {
+        PluginError::Halt(error.to_string())
+    }
+}
+
 // see: cans/07-wire-plane.md#Pre-policy-drop-zones
 pub const LINK_LOCAL_IMDS_IP: Ipv4Addr = Ipv4Addr::new(169, 254, 169, 254);
 
@@ -249,13 +264,22 @@ pub fn dns_payload(frame: &[u8], direction: FrameDirection) -> Option<&[u8]> {
 
 pub struct UdpNatEntry {
     guest_source_port: u16,
-    host_socket_fd: i32,
     last_active_unix: u64,
 }
+
+// see: cans/07-wire-plane.md#UDP-socket-reaper
+pub const UDP_NAT_SLAB_CAPACITY: usize = 1_024;
+
+// see: cans/07-wire-plane.md#UDP-socket-reaper
+pub const UDP_NAT_IDLE_TIMEOUT_SECS: u64 = 30;
+
+// see: cans/07-wire-plane.md#Port-forwarding
+const EPHEMERAL_PORT_MIN: u16 = 49_152;
 
 pub struct WirePlane {
     synthetic_dns_ip: Ipv4Addr,
     udp_nat_slab: Arc<Mutex<Vec<Option<UdpNatEntry>>>>,
+    port_forwards: Arc<Mutex<std::collections::HashMap<u16, u16>>>,
     allowed_domains: Arc<RwLock<Vec<String>>>,
     stack: SmoltcpStack,
     imds_sink: Arc<RwLock<Option<Arc<dyn VsockServiceHandler>>>>,
@@ -273,6 +297,7 @@ impl WirePlane {
         Self {
             synthetic_dns_ip: SYNTHETIC_DNS_GATEWAY_IP,
             udp_nat_slab: Arc::new(Mutex::new(Vec::new())),
+            port_forwards: Arc::new(Mutex::new(std::collections::HashMap::new())),
             allowed_domains: Arc::new(RwLock::new(Vec::new())),
             stack: SmoltcpStack::new(),
             imds_sink: Arc::new(RwLock::new(None)),
@@ -317,18 +342,38 @@ impl WirePlane {
         }
     }
 
+    // see: cans/07-wire-plane.md#Port-forwarding
     pub fn forward_port(
         &self,
         guest_port: u16,
         host_port: Option<u16>,
     ) -> Result<u16, kelir_interface::plugin::PluginError> {
-        // TODO: bind a host socket and record the guest->host mapping; echo requested port until then.
-        let _ = (
-            &self.udp_nat_slab,
-            &self.allowed_domains,
-            &self.synthetic_dns_ip,
-        );
-        Ok(host_port.unwrap_or(guest_port))
+        let mut forwards = self.port_forwards.lock().map_err(|_| {
+            kelir_interface::plugin::PluginError::Halt("port forward table poisoned".into())
+        })?;
+        let Some(bind_port) = host_port.filter(|port| *port != 0) else {
+            let allocated = (EPHEMERAL_PORT_MIN..=u16::MAX)
+                .find(|port| !forwards.contains_key(port))
+                .ok_or(WireError::EphemeralExhausted)?;
+            // TODO (L3): bind host port 0 and let the host kernel allocate; publish only after the bind succeeds.
+            forwards.insert(allocated, guest_port);
+            return Ok(allocated);
+        };
+        if forwards.contains_key(&bind_port) {
+            return Err(WireError::PortOccupied(bind_port).into());
+        }
+        // TODO (L3): bind the host listener with SO_REUSEADDR|SO_REUSEPORT; bootstrap bind failure aborts VM launch.
+        forwards.insert(bind_port, guest_port);
+        Ok(bind_port)
+    }
+
+    // see: cans/07-wire-plane.md#Port-forwarding
+    pub fn forwarded_guest_port(&self, host_port: u16) -> Result<Option<u16>, PluginError> {
+        let forwards = self
+            .port_forwards
+            .lock()
+            .map_err(|_| PluginError::Halt("port forward table poisoned".into()))?;
+        Ok(forwards.get(&host_port).copied())
     }
 
     pub fn process_inbound_frame(
@@ -424,15 +469,13 @@ impl WirePlane {
     ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
         match link_local_route(frame, FrameDirection::Outbound) {
             Some(LinkLocalRoute::VaultImds { vsock_port }) => {
-                if self.imds_sink_bound() {
-                    // TODO (L3): parse the HTTP metadata request and translate it to the bound vault vsock service.
+                if self.imds_sink()?.is_none() {
                     return Err(PluginError::Halt(format!(
-                        "IMDS 169.254.169.254:{vsock_port} to vault vsock translation pending (L3)"
+                        "IMDS 169.254.169.254:{vsock_port} has no vault vsock sink bound; mount plugin-vault and bind it"
                     )));
                 }
-                Err(PluginError::Halt(format!(
-                    "IMDS 169.254.169.254:{vsock_port} has no vault vsock sink bound; mount plugin-vault and bind it"
-                )))
+                // TODO (L3): parse the HTTP metadata request and bridge it to the bound vault vsock service stream.
+                Ok(kelir_interface::protocol::FilterAction::Forward)
             }
             _ => Err(PluginError::Halt(
                 "route_imds_to_vault called on a non-IMDS frame".into(),
@@ -461,30 +504,92 @@ impl WirePlane {
         })
     }
 
-    pub fn reap_stale_udp_sockets(&self) -> Result<usize, kelir_interface::plugin::PluginError> {
-        let slab = self.udp_nat_slab.lock().map_err(|_| {
+    // see: cans/07-wire-plane.md#UDP-socket-reaper
+    pub fn udp_nat_alloc(
+        &self,
+        guest_source_port: u16,
+        now_unix: u64,
+    ) -> Result<(), kelir_interface::plugin::PluginError> {
+        let mut slab = self.udp_nat_slab.lock().map_err(|_| {
             kelir_interface::plugin::PluginError::Halt("udp nat slab lock poisoned".into())
         })?;
-        let reaped = 0;
-        for entry in slab.iter().flatten() {
-            // TODO: close entries whose last_active_unix is stale; count closed here.
-            let _ = (
-                entry.guest_source_port,
-                entry.host_socket_fd,
-                entry.last_active_unix,
-            );
+        if let Some(slot) = slab
+            .iter_mut()
+            .flatten()
+            .find(|entry| entry.guest_source_port == guest_source_port)
+        {
+            slot.last_active_unix = now_unix;
+            return Ok(());
+        }
+        // TODO (L3): open the per-source-port host UDP socket and store its descriptor in the slab entry (Full Cone endpoint independence).
+        let entry = UdpNatEntry {
+            guest_source_port,
+            last_active_unix: now_unix,
+        };
+        if let Some(free) = slab.iter().position(Option::is_none) {
+            slab[free] = Some(entry);
+            return Ok(());
+        }
+        if slab.len() < UDP_NAT_SLAB_CAPACITY {
+            slab.push(Some(entry));
+            return Ok(());
+        }
+        let oldest = slab.iter().enumerate().min_by_key(|(_, slot)| {
+            slot.as_ref()
+                .map_or(u64::MAX, |entry| entry.last_active_unix)
+        });
+        let Some((index, _)) = oldest else {
+            return Err(PluginError::Halt("udp nat slab cap exhausted".into()));
+        };
+        slab[index] = Some(entry);
+        Ok(())
+    }
+
+    // see: cans/07-wire-plane.md#UDP-socket-reaper
+    pub fn udp_nat_slab_used(&self) -> Result<usize, PluginError> {
+        let slab = self
+            .udp_nat_slab
+            .lock()
+            .map_err(|_| PluginError::Halt("udp nat slab lock poisoned".into()))?;
+        Ok(slab.iter().flatten().count())
+    }
+
+    // see: cans/07-wire-plane.md#UDP-socket-reaper
+    pub fn reap_stale_udp_sockets(
+        &self,
+        now_unix: u64,
+    ) -> Result<usize, kelir_interface::plugin::PluginError> {
+        let mut slab = self.udp_nat_slab.lock().map_err(|_| {
+            kelir_interface::plugin::PluginError::Halt("udp nat slab lock poisoned".into())
+        })?;
+        let mut reaped = 0usize;
+        for slot in slab.iter_mut() {
+            let Some(entry) = slot.as_ref() else {
+                continue;
+            };
+            if now_unix.saturating_sub(entry.last_active_unix) > UDP_NAT_IDLE_TIMEOUT_SECS {
+                // TODO (L3): close(2) the host UDP socket descriptor before releasing the slab slot.
+                *slot = None;
+                reaped += 1;
+            }
         }
         Ok(reaped)
     }
 
     // see: cans/08-lifecycle.md#Rollback
+    // see: cans/07-wire-plane.md#Rollback-interaction
     pub fn quiesce(&self) -> Result<(), PluginError> {
-        // TODO (L3): close live host-side L4 sockets, emit RST to peers, drain wire-plane splicing buffers.
+        // TODO (L3): close live host-side L4 sockets with SO_LINGER zero, emit RST to peers, drain splicing buffers.
         let mut slab = self
             .udp_nat_slab
             .lock()
             .map_err(|_| PluginError::Halt("udp nat slab lock poisoned".into()))?;
         slab.clear();
+        let mut forwards = self
+            .port_forwards
+            .lock()
+            .map_err(|_| PluginError::Halt("port forward table poisoned".into()))?;
+        forwards.clear();
         Ok(())
     }
 }

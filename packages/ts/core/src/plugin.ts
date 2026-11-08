@@ -24,6 +24,17 @@ export interface KelirPlugin {
   readonly config?: unknown;
 }
 
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+export interface PluginContext<Ctx> {
+  readonly pluginCtx?: Ctx;
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+export type PluginContextOf<P> =
+  P extends PluginContract<any, infer C, any> ? C
+    : P extends PluginContext<infer C> ? C
+      : unknown;
+
 export interface CreatePluginOptions {
   readonly opts?: unknown;
 }
@@ -34,7 +45,7 @@ function unpack(event: unknown): readonly unknown[] {
 
 export class PluginContract<
   Name extends string = string,
-  Ctx = any,
+  Ctx = unknown,
   Deps extends string = string,
 > implements KelirPlugin {
   readonly name: Name;
@@ -139,6 +150,44 @@ export class PluginContract<
     return this;
   }
 
+  // see: cans/02-plugin-model.md#KelirPlugin-trait
+  onExecStdout(
+    handler: (
+      pid: number,
+      execId: number,
+      chunk: Uint8Array,
+    ) => Promise<Uint8Array> | Uint8Array,
+  ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.ExecStdout, (event) => {
+      const args = unpack(event);
+      return handler(
+        args[0] as number,
+        args[1] as number,
+        args[2] as Uint8Array,
+      );
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#KelirPlugin-trait
+  onExecStderr(
+    handler: (
+      pid: number,
+      execId: number,
+      chunk: Uint8Array,
+    ) => Promise<Uint8Array> | Uint8Array,
+  ): PluginContract<Name, Ctx, Deps> {
+    this.addHook(RingEvent.ExecStderr, (event) => {
+      const args = unpack(event);
+      return handler(
+        args[0] as number,
+        args[1] as number,
+        args[2] as Uint8Array,
+      );
+    });
+    return this;
+  }
+
   onHeartbeat(
     handler: (event: HeartbeatEvent) => Promise<void> | void,
   ): PluginContract<Name, Ctx, Deps> {
@@ -184,7 +233,7 @@ export class PluginContract<
 
 export function createPlugin<
   Name extends string,
-  Ctx = any,
+  Ctx = unknown,
   Deps extends string = string,
 >(name: Name, options?: CreatePluginOptions): PluginContract<Name, Ctx, Deps> {
   return new PluginContract<Name, Ctx, Deps>(name, options);

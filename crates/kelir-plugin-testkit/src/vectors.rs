@@ -5,6 +5,10 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::future::Future;
+use std::sync::Arc;
+use std::task::{Context, Poll, Wake, Waker};
+use std::time::Duration;
 
 use kelir_interface::codec::{FLAG_DATA, MAX_FRAME_PAYLOAD, MAX_STREAM_ID};
 use kelir_interface::driver::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
@@ -14,12 +18,15 @@ use kelir_interface::protocol::{
     TrapEvent, Verdict,
 };
 
+use crate::handlers::LifecycleCtxFixture;
+
 // see: cans/11-protocol.md#Wire-framing
 #[derive(Debug)]
 pub enum VectorError {
     FrameTooLarge { len: usize },
     StreamIdOutOfRange { stream_id: u32 },
     Encode(String),
+    Execution(String),
 }
 
 impl fmt::Display for VectorError {
@@ -35,6 +42,7 @@ impl fmt::Display for VectorError {
                 )
             }
             VectorError::Encode(message) => write!(f, "vector encode failure: {message}"),
+            VectorError::Execution(message) => write!(f, "vector execution failure: {message}"),
         }
     }
 }
@@ -84,6 +92,7 @@ impl WireFrame {
 }
 
 // see: cans/15-operations.md#Multi-language-parity-gate
+// see: cans/08-lifecycle.md#Watchdog
 #[derive(Debug, Clone)]
 pub struct WatchdogCase {
     pub event: WatchdogEvent,
@@ -91,9 +100,11 @@ pub struct WatchdogCase {
 }
 
 // see: cans/15-operations.md#Multi-language-parity-gate
+// see: cans/08-lifecycle.md#Lifecycle-vetoes
 #[derive(Debug, Clone)]
 pub struct VetoCase {
     pub event: VetoEvent,
+    pub callback_allows: bool,
 }
 
 // see: cans/15-operations.md#Multi-language-parity-gate
@@ -101,7 +112,7 @@ pub struct VetoCase {
 pub struct VectorCase {
     pub name: String,
     pub frame: WireFrame,
-    pub event: GuestToHost,
+    pub event: Option<GuestToHost>,
     pub expected_verdict: Verdict,
     pub watchdog: Option<WatchdogCase>,
     pub veto: Option<VetoCase>,
@@ -135,6 +146,7 @@ impl VectorCase {
         if let Some(veto) = &self.veto {
             let entry = serde_json::json!({
                 "event": serde_json::to_value(veto.event).map_err(|e| VectorError::Encode(e.to_string()))?,
+                "callback_allows": veto.callback_allows,
             });
             if let Some(object) = value.as_object_mut() {
                 object.insert("veto".to_string(), entry);
@@ -245,7 +257,7 @@ impl VectorSuite {
                         action: WatchdogAction::Reboot,
                         fired_at_ns: 60_000_000_000,
                         last_heartbeat_ms: 55_000,
-                        last_active_pid: Some(1234),
+                        last_active_pid: None,
                     },
                     WatchdogVerdict::Suppress,
                 )?,
@@ -258,18 +270,20 @@ impl VectorSuite {
                         },
                         fired_at_ns: 60_000_000_000,
                         last_heartbeat_ms: 55_000,
-                        last_active_pid: None,
+                        last_active_pid: Some(1234),
                     },
                     WatchdogVerdict::Mitigate,
                 )?,
-                veto_case("veto-fork", VetoEvent::Fork)?,
-                veto_case("veto-suspend", VetoEvent::Suspend)?,
-                veto_case("veto-clock-skew", VetoEvent::ClockSkew)?,
+                veto_case("veto-fork", VetoEvent::Fork, false)?,
+                veto_case("veto-suspend", VetoEvent::Suspend, false)?,
+                veto_case("veto-clock-skew", VetoEvent::ClockSkew, false)?,
             ],
         })
     }
 }
 
+// see: cans/15-operations.md#Multi-language-parity-gate
+// TODO (L3): canonicalize CBOR map ordering (envp HashMap iteration) so `kelir-plugin-cli vectors` regenerates byte-stable frame_hex literals.
 fn cbor<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, VectorError> {
     let mut out = Vec::new();
     ciborium::ser::into_writer(value, &mut out).map_err(|e| VectorError::Encode(e.to_string()))?;
@@ -323,18 +337,23 @@ fn trap_case(
             msg_type: MsgType::Trap,
             payload: cbor(&event)?,
         },
-        event,
+        event: Some(event),
         expected_verdict,
         watchdog: None,
         veto: None,
     })
 }
 
+// see: cans/artifacts/examples/policy-matrix.rs#WatchdogSilencerPlugin
+// see: cans/artifacts/examples/policy-matrix.rs#PolicyMatrixPlugin
 fn watchdog_case(
     name: &str,
     event: WatchdogEvent,
     expected_verdict: WatchdogVerdict,
 ) -> Result<VectorCase, VectorError> {
+    let heartbeat = GuestToHost::Heartbeat(Heartbeat {
+        uptime_ms: event.last_heartbeat_ms,
+    });
     Ok(VectorCase {
         name: name.to_string(),
         frame: WireFrame {
@@ -344,9 +363,7 @@ fn watchdog_case(
             msg_type: MsgType::SystemTelemetry,
             payload: cbor(&event)?,
         },
-        event: GuestToHost::Heartbeat(Heartbeat {
-            uptime_ms: event.last_heartbeat_ms,
-        }),
+        event: Some(heartbeat),
         expected_verdict: Verdict::Pass,
         watchdog: Some(WatchdogCase {
             event,
@@ -356,7 +373,13 @@ fn watchdog_case(
     })
 }
 
-fn veto_case(name: &str, event: VetoEvent) -> Result<VectorCase, VectorError> {
+// see: cans/08-lifecycle.md#Lifecycle-vetoes
+// see: cans/artifacts/examples/policy-matrix.rs#PolicyMatrixPlugin
+fn veto_case(
+    name: &str,
+    event: VetoEvent,
+    callback_allows: bool,
+) -> Result<VectorCase, VectorError> {
     Ok(VectorCase {
         name: name.to_string(),
         frame: WireFrame {
@@ -366,10 +389,13 @@ fn veto_case(name: &str, event: VetoEvent) -> Result<VectorCase, VectorError> {
             msg_type: MsgType::VmLifecycleControl,
             payload: cbor(&event)?,
         },
-        event: GuestToHost::Heartbeat(Heartbeat { uptime_ms: 0 }),
+        event: None,
         expected_verdict: Verdict::Pass,
         watchdog: None,
-        veto: Some(VetoCase { event }),
+        veto: Some(VetoCase {
+            event,
+            callback_allows,
+        }),
     })
 }
 
@@ -402,7 +428,7 @@ fn exec_rewrite_case() -> Result<VectorCase, VectorError> {
             msg_type: MsgType::Trap,
             payload: cbor(&event)?,
         },
-        event,
+        event: Some(event),
         expected_verdict: Verdict::Patch(PatchPayload::ExecveMutation(mutation_cbor)),
         watchdog: None,
         veto: None,
@@ -420,9 +446,87 @@ fn heartbeat_case() -> Result<VectorCase, VectorError> {
             msg_type: MsgType::SystemTelemetry,
             payload: cbor(&event)?,
         },
-        event,
+        event: Some(event),
         expected_verdict: Verdict::Pass,
         watchdog: None,
         veto: None,
     })
+}
+
+// see: cans/15-operations.md#Local-velocity
+fn poll_sync<F: Future>(future: F) -> Result<F::Output, VectorError> {
+    struct ReadyWake;
+
+    impl Wake for ReadyWake {
+        fn wake(self: Arc<Self>) {}
+    }
+
+    let waker = Waker::from(Arc::new(ReadyWake));
+    let mut future = Box::pin(future);
+    let mut context = Context::from_waker(&waker);
+    match future.as_mut().poll(&mut context) {
+        Poll::Ready(output) => Ok(output),
+        Poll::Pending => Err(VectorError::Execution(
+            "fixture future suspended; the L2 fixture driver must complete in one poll".to_string(),
+        )),
+    }
+}
+
+// TODO (L3): delete once kelir-interface derives PartialEq on WatchdogAction.
+fn watchdog_action_eq(left: &WatchdogAction, right: &WatchdogAction) -> bool {
+    match (left, right) {
+        (WatchdogAction::Reboot, WatchdogAction::Reboot) => true,
+        (
+            WatchdogAction::Terminate {
+                emit_diagnostic: left_emit,
+            },
+            WatchdogAction::Terminate {
+                emit_diagnostic: right_emit,
+            },
+        ) => left_emit == right_emit,
+        _ => false,
+    }
+}
+
+// see: cans/08-lifecycle.md#Watchdog
+// see: cans/15-operations.md#Multi-language-parity-gate
+pub fn arm_watchdog_case(event: &WatchdogEvent) -> Result<(), VectorError> {
+    let mut fixture = LifecycleCtxFixture::new();
+    let timeout = Duration::from_millis(event.timeout_ms);
+    let action = event.action.clone();
+    poll_sync(fixture.ctx().set_watchdog(timeout, action))
+        .and_then(|result| result.map_err(|e| VectorError::Execution(e.to_string())))?;
+    match fixture.armed_watchdog() {
+        Some((armed_timeout, armed_action))
+            if armed_timeout == timeout && watchdog_action_eq(&armed_action, &event.action) =>
+        {
+            Ok(())
+        }
+        other => Err(VectorError::Execution(format!(
+            "armed watchdog {other:?} does not match the vector timeout {timeout:?} and action {:?}",
+            event.action
+        ))),
+    }
+}
+
+// see: cans/08-lifecycle.md#Lifecycle-vetoes
+// see: cans/15-operations.md#Multi-language-parity-gate
+pub fn register_veto_case(veto: &VetoCase) -> Result<(), VectorError> {
+    let mut fixture = LifecycleCtxFixture::new();
+    let callback_allows = veto.callback_allows;
+    fixture
+        .ctx()
+        .register_veto(veto.event, Box::new(move || callback_allows));
+    let registered = fixture
+        .vetoes()
+        .iter()
+        .any(|(event, callback)| *event == veto.event && callback() == veto.callback_allows);
+    if registered {
+        Ok(())
+    } else {
+        Err(VectorError::Execution(format!(
+            "veto registration {:?} did not survive LifecycleCtx::register_veto",
+            veto.event
+        )))
+    }
 }

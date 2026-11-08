@@ -7,6 +7,12 @@ use std::sync::Arc;
 use kelir_interface::plugin::MountScope;
 use kelir_interface::protocol::{TrapEvent, Verdict};
 
+// see: cans/11-protocol.md#Trap-fast-path
+pub const TRUSTED_PREFIXES: &[&str] = &["/usr/bin", "/bin", "/usr/lib"];
+
+// see: cans/11-protocol.md#Trap-fast-path
+pub const DYNAMIC_INTERPRETERS: &[&str] = &["python", "node", "bash", "sh", "perl", "ruby"];
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum GateError {
     #[error("gate-1 BPF program load pending (L3)")]
@@ -47,6 +53,17 @@ pub struct TrapGateEvaluator {
 
 type EntropyHook = Arc<dyn Fn(f64, bool) -> Option<GateDecision> + Send + Sync>;
 
+// see: cans/11-protocol.md#Trap-fast-path
+fn interpreter_name_matches(name: &str, interpreter: &str) -> bool {
+    if name == interpreter {
+        return true;
+    }
+    match name.strip_prefix(interpreter) {
+        Some(rest) => rest.starts_with(|c: char| c.is_ascii_digit() || c == '.'),
+        None => false,
+    }
+}
+
 impl TrapGateEvaluator {
     pub fn new(trusted_prefixes: Vec<String>) -> Self {
         Self {
@@ -72,6 +89,7 @@ impl TrapGateEvaluator {
     }
 
     // see: cans/plugins/supply-chain.md#Entropy-analysis
+    // see: cans/11-protocol.md#Trap-fast-path
     pub fn evaluate(&self, event: &TrapEvent, scope: &MountScope) -> GateDecision {
         if let Some(program) = &self.bpf_program {
             // TODO (L3): gate-1 BPF match decides Allow here; no program is loaded until L3.
@@ -90,15 +108,54 @@ impl TrapGateEvaluator {
             }
         }
         if self.gate_2_scope_match(event, scope) {
+            if self.trusted_prefix_skip(event) {
+                return GateDecision::Allow;
+            }
             return GateDecision::FallThrough;
         }
         GateDecision::Allow
     }
 
-    fn is_trusted(&self, event: &TrapEvent) -> bool {
+    // see: cans/11-protocol.md#Trap-fast-path
+    fn trusted_prefix_skip(&self, event: &TrapEvent) -> bool {
+        if !self.is_trusted(event) {
+            return false;
+        }
+        if self.is_dynamic_interpreter(&event.binary_path) {
+            return !self.interpreter_argv_escapes(event);
+        }
+        true
+    }
+
+    // see: cans/11-protocol.md#Trap-fast-path
+    fn is_dynamic_interpreter(&self, binary_path: &str) -> bool {
+        let Some(name) = binary_path.rsplit('/').next() else {
+            return false;
+        };
+        DYNAMIC_INTERPRETERS
+            .iter()
+            .any(|interpreter| interpreter_name_matches(name, interpreter))
+    }
+
+    // see: cans/11-protocol.md#Trap-fast-path
+    fn interpreter_argv_escapes(&self, event: &TrapEvent) -> bool {
+        // TODO (L3): flag/value-aware argv parse (-c/-m payloads, relative script resolution against event.cwd).
+        event.argv.iter().skip(1).any(|arg| {
+            let Some(path) = arg.strip_prefix('/') else {
+                return false;
+            };
+            !self.is_trusted_path(path)
+        })
+    }
+
+    fn is_trusted_path(&self, path: &str) -> bool {
         self.trusted_prefixes
             .iter()
-            .any(|prefix| event.binary_path.starts_with(prefix.as_str()))
+            .any(|prefix| path.starts_with(prefix.as_str()))
+    }
+
+    fn is_trusted(&self, event: &TrapEvent) -> bool {
+        self.is_trusted_path(&event.binary_path)
     }
 
     pub fn eval_gate_1_bpf(&self, event: &TrapEvent) -> bool {

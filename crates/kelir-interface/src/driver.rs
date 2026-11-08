@@ -75,15 +75,132 @@ pub struct DriverPolicy {
 pub const HW_LOCKFILE_PATH: &str = "/etc/kelir/hw.lock";
 
 // see: cans/15-operations.md#Developer-CLI
-pub fn verify_hw_lockfile() -> Result<(), VmmError> {
-    // TODO (L3): attest the lockfile contents against the live host hardware probe set.
-    match std::fs::read(HW_LOCKFILE_PATH) {
-        Ok(_) => Ok(()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Err(VmmError::InvalidState(
-            format!("hardware lockfile missing: {HW_LOCKFILE_PATH}"),
-        )),
-        Err(err) => Err(VmmError::Io(err)),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HwLockRecord {
+    pub probe: String,
+    pub status: String,
+    pub detail: String,
+}
+
+impl HwLockRecord {
+    // see: cans/15-operations.md#Developer-CLI
+    fn parse_line(line: &str) -> Option<Self> {
+        let mut parts = line.splitn(3, ':');
+        let probe = parts.next()?.trim();
+        let status = parts.next()?.trim();
+        let detail = parts.next()?.trim();
+        if probe.is_empty() || status.is_empty() || detail.is_empty() {
+            return None;
+        }
+        Some(Self {
+            probe: probe.to_string(),
+            status: status.to_string(),
+            detail: detail.to_string(),
+        })
     }
+
+    // see: cans/15-operations.md#Developer-CLI
+    pub fn passed(&self) -> bool {
+        self.status == "pass"
+    }
+}
+
+// see: cans/15-operations.md#Developer-CLI
+pub fn parse_hw_lockfile(contents: &str) -> Result<Vec<HwLockRecord>, VmmError> {
+    let mut records = Vec::new();
+    for line in contents.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Some(record) = HwLockRecord::parse_line(line) else {
+            return Err(VmmError::InvalidState(format!(
+                "hardware lockfile carries an unattested line: {line}"
+            )));
+        };
+        records.push(record);
+    }
+    if records.is_empty() {
+        return Err(VmmError::InvalidState(
+            "hardware lockfile attests no host probes".into(),
+        ));
+    }
+    Ok(records)
+}
+
+// see: cans/15-operations.md#Developer-CLI
+pub fn verify_hw_lockfile() -> Result<Vec<HwLockRecord>, VmmError> {
+    let contents = std::fs::read_to_string(HW_LOCKFILE_PATH).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            VmmError::InvalidState(format!("hardware lockfile missing: {HW_LOCKFILE_PATH}"))
+        } else {
+            VmmError::Io(err)
+        }
+    })?;
+    parse_hw_lockfile(&contents)
+}
+
+// see: cans/15-operations.md#Developer-CLI
+fn required_hw_probes(backend: &str) -> Option<&'static [&'static str]> {
+    match backend {
+        "rustvmm" => Some(&["kvm"]),
+        "hvf" => Some(&["hvf"]),
+        "avf" => Some(&["avf"]),
+        "openvmm" => {
+            if cfg!(target_os = "windows") {
+                Some(&["whp"])
+            } else {
+                Some(&["kvm"])
+            }
+        }
+        _ => None,
+    }
+}
+
+// see: cans/15-operations.md#Developer-CLI
+fn live_hw_probe(probe: &str) -> Option<bool> {
+    match probe {
+        "kvm" => Some(Path::new("/dev/kvm").exists()),
+        "avf" => Some(Path::new("/dev/avf").exists()),
+        // TODO (L3): live hvf/whp entitlement probes and page-size/pidfd verification need libc syscalls; the lockfile record is accepted until then.
+        _ => None,
+    }
+}
+
+// see: cans/15-operations.md#Developer-CLI
+pub fn attest_hw_lockfile(
+    records: &[HwLockRecord],
+    capabilities: &DriverCapabilities,
+) -> Result<(), VmmError> {
+    // TODO (L3): verify the lockfile Ed25519 signature and the chattr +i immutable flag; the parsed records alone are unauthenticated ASCII.
+    let Some(required) = required_hw_probes(capabilities.backend) else {
+        return Err(VmmError::InvalidState(format!(
+            "hardware lockfile attestation has no probe mapping for backend `{}`",
+            capabilities.backend
+        )));
+    };
+    for probe in required {
+        let Some(record) = records
+            .iter()
+            .find(|record| record.probe.as_str() == *probe)
+        else {
+            return Err(VmmError::InvalidState(format!(
+                "hardware lockfile does not attest probe `{probe}` required by backend `{}`",
+                capabilities.backend
+            )));
+        };
+        if !record.passed() {
+            return Err(VmmError::InvalidState(format!(
+                "hardware lockfile probe `{probe}` attests `{}`: {}",
+                record.status, record.detail
+            )));
+        }
+        if live_hw_probe(probe) == Some(false) {
+            return Err(VmmError::InvalidState(format!(
+                "hardware lockfile probe `{probe}` attests pass but the host device is absent"
+            )));
+        }
+    }
+    Ok(())
 }
 
 // see: cans/15-operations.md#Developer-CLI
@@ -94,7 +211,8 @@ pub fn check_hw_lockfile(
     if !policy.verify_hw_lockfile || !capabilities.requires_hardware_vmm {
         return Ok(());
     }
-    verify_hw_lockfile()
+    let records = verify_hw_lockfile()?;
+    attest_hw_lockfile(&records, capabilities)
 }
 
 // see: cans/plugins/replay.md#Invariants-and-policy-(replay)

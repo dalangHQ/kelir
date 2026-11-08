@@ -19,9 +19,12 @@ pub fn compute_causal_delta(
     storage: &StorageDelta,
     receipt: &ExecutionReceipt,
 ) -> Result<CausalDelta, PluginError> {
-    // TODO (L3): assemble the delta from storage + receipt.leaf_hash() (raw [u8; 32], extensions covered) once kelir-interface exposes a constructor for the non_exhaustive CausalDelta per cans/artifacts/code/causal-delta.rs.
-    let _ = (storage, receipt);
-    Err(PluginError::Halt(
-        "compute_causal_delta needs a kelir-interface CausalDelta constructor (L3)".into(),
+    Ok(CausalDelta::new(
+        storage.memory_diff_bytes,
+        storage.modified_inodes.clone(),
+        storage.spawned_pids.clone(),
+        storage.egress_bytes,
+        storage.storage_delta_root,
+        receipt.leaf_hash(),
     ))
 }

@@ -14,13 +14,14 @@ use kelir_interface::driver::Stream;
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
     HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
-    VirtioDevice,
+    TokenRevocation, VirtioDevice,
 };
 use kelir_interface::vsock::VAULT_METADATA_VSOCK_PORT;
 use kelir_interface::vsock::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 use crate::service::{
-    CredentialBroker, CredentialBrokerService, DEFAULT_TOKEN_TTL_SECONDS, IssuedToken, TokenRequest,
+    CredentialBroker, CredentialBrokerService, DEFAULT_TOKEN_TTL_SECONDS, IssuedToken,
+    TokenRequest, VaultError,
 };
 
 // see: cans/plugins/vault.md#Metadata-service-(vault)
@@ -223,6 +224,8 @@ impl KelirPlugin for VaultPlugin {
             handler,
             self.default_scope(),
         );
+        // see: cans/08-lifecycle.md#Rollback
+        pipeline.bind_token_revoker(self.endpoint.broker().clone());
     }
 }
 
@@ -236,13 +239,48 @@ impl CredentialBrokerCtx {
     pub fn broker(&self) -> &Arc<CredentialBroker> {
         &self.broker
     }
+
+    // see: cans/plugins/vault.md#Revocation
+    pub async fn revoke_all(&self, session_id: &str) -> Result<usize, VaultError> {
+        CredentialBrokerService::revoke_all(self.broker.as_ref(), session_id).await
+    }
+}
+
+// see: cans/plugins/vault.md#Return-errno-and-rejection-behavior-(vault)
+fn halt(err: VaultError) -> PluginError {
+    PluginError::reject(err.errno(), err.reason())
+}
+
+// see: cans/08-lifecycle.md#Rollback
+#[async_trait]
+impl TokenRevocation for CredentialBroker {
+    // see: cans/08-lifecycle.md#Rollback
+    async fn revoke_session_tokens(&self, session_id: &str) -> Result<(), PluginError> {
+        CredentialBrokerService::revoke_all(self, session_id)
+            .await
+            .map_err(halt)?;
+        Ok(())
+    }
 }
 
 // see: cans/plugins/vault.md#Revocation
 #[async_trait]
 impl LifecycleParticipant for VaultPlugin {
-    async fn on_vm_shutdown(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        self.endpoint.broker().revoke_session_tokens();
+    // see: cans/plugins/vault.md#Revocation
+    async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
+        self.endpoint
+            .broker()
+            .bind_session(ctx.session_id)
+            .map_err(halt)
+    }
+
+    // see: cans/plugins/vault.md#Revocation
+    async fn on_vm_shutdown(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
+        self.endpoint
+            .broker()
+            .revoke_all(ctx.session_id)
+            .await
+            .map_err(halt)?;
         Ok(())
     }
 }

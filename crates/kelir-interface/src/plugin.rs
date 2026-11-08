@@ -199,6 +199,12 @@ pub trait ParkedConnectionReset: Send + Sync {
     fn reset_parked_connections(&self) -> Result<Vec<u64>, PluginError>;
 }
 
+// see: cans/08-lifecycle.md#Rollback
+#[async_trait]
+pub trait TokenRevocation: Send + Sync {
+    async fn revoke_session_tokens(&self, session_id: &str) -> Result<(), PluginError>;
+}
+
 // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
 pub type VetoList = Vec<(VetoEvent, Box<dyn Fn() -> bool + Send + Sync>)>;
 
@@ -431,6 +437,8 @@ pub trait PipelineBinder {
     }
     // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
     fn bind_parked_connection_reset(&mut self, reset: Arc<dyn ParkedConnectionReset>);
+    // see: cans/08-lifecycle.md#Rollback
+    fn bind_token_revoker(&mut self, revoker: Arc<dyn TokenRevocation>);
     // see: cans/02-plugin-model.md#Mount-scoping
     fn set_active_scope(&mut self, _scope: MountScope) {}
 }

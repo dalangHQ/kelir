@@ -261,20 +261,18 @@ fn render_scorecard(manifest: &Manifest, budgets: &Budgets, subset: &PlatformSub
     out
 }
 
-// TODO (L3): probe host hypervisor capability via kelir doctor instead of assuming presence on macOS/Windows.
+// see: cans/15-operations.md#Developer-CLI
+// see: cans/artifacts/test-plan/test-plan-structure.md#3.-Anti-Slop-Laws-(AS-01-to-AS-08)
+// TODO (L3): hvf/whp presence needs the doctor entitlement probes; until a probe passes, no hypervisor is claimed present.
 fn host_hypervisors() -> Vec<String> {
-    match std::env::consts::OS {
-        "linux" => {
-            if std::path::Path::new("/dev/kvm").exists() {
-                vec!["kvm".to_string()]
-            } else {
-                Vec::new()
-            }
-        }
-        "macos" => vec!["hvf".to_string(), "avf".to_string()],
-        "windows" => vec!["whp".to_string()],
-        _ => Vec::new(),
+    let mut present = Vec::new();
+    if std::path::Path::new("/dev/kvm").exists() {
+        present.push("kvm".to_string());
     }
+    if std::path::Path::new("/dev/avf").exists() {
+        present.push("avf".to_string());
+    }
+    present
 }
 
 fn case_is_executable(

@@ -5,7 +5,48 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use kelir_interface::plugin::PluginError;
 
-use crate::jsonrpc::ToolsListResult;
+// see: cans/plugins/mcp.md#MCP-contract
+// TODO (L2): hoist the JSON-RPC frame AST into plugin-mcp so tool-guard imports it directly per cans/plugins/tool-guard.md#Crate-dependencies-(tool-guard).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum McpMethod {
+    ToolsList,
+    ToolsCall,
+    #[default]
+    Other,
+}
+
+// see: cans/11-protocol.md#Stream-mux-framing
+#[derive(Debug, Clone, Default)]
+pub struct McpFrame {
+    pub method: McpMethod,
+    pub id: u64,
+    pub tool_name: Option<String>,
+    pub arguments: Vec<u8>,
+}
+
+impl McpFrame {
+    // see: cans/plugins/mcp.md#MCP-contract
+    pub fn decode(payload: &[u8]) -> Result<Self, PluginError> {
+        let _ = payload;
+        // TODO (L3): decode JSON Lines frames and classify tools/call vs tools/list per cans/plugins/mcp.md; FLAG_CONTINUATION reassembly per cans/11-protocol.md#Stream-mux-framing.
+        Ok(Self::default())
+    }
+}
+
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+#[derive(Debug, Clone, Default)]
+pub struct ToolsListResult {
+    pub tools: Vec<ToolSchema>,
+}
+
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+pub fn decode_tools_list(payload: &[u8]) -> Result<ToolsListResult, PluginError> {
+    // TODO (L3): decode the JSON Lines tools/list result envelope per cans/plugins/mcp.md.
+    Err(PluginError::Halt(format!(
+        "tools/list envelope decode pending (L3): {} bytes",
+        payload.len()
+    )))
+}
 
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -139,9 +180,7 @@ fn canonical_catalog(schemas: &BTreeMap<String, ToolSchema>) -> Vec<u8> {
 
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
 fn catalog_digest(canonical: &[u8]) -> [u8; 32] {
-    // TODO (L3): BLAKE3 over the canonical catalog bytes per cans/plugins/tool-guard.md; the blake3 crate dep is blocked by the Cargo.lock freeze.
-    let _ = canonical;
-    [0u8; 32]
+    *blake3::hash(canonical).as_bytes()
 }
 
 // see: cans/plugins/tool-guard.md#Service-exports-(tool-guard)
