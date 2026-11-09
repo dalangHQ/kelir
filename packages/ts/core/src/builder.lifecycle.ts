@@ -3,13 +3,13 @@
 // see: cans/artifacts/code/typescript-accumulation.ts#runtime
 
 import type { Schema } from "./schema.js";
-import type { TrapContext, LifecycleContext } from "./context.js";
+import type { TrapContext, LifecycleContext } from "./context.lifecycle.types.js";
 import type { KelirPlugin, PluginContextOf } from "./plugin.js";
-import type { PostExecAction, LifecycleEvent, Verdict } from "./verdict.js";
+import type { PostExecAction, LifecycleEvent, Verdict } from "./verdict.protocol.js";
 import type { TrapDenyEvent } from "./types.js";
-import { Session } from "./session.js";
+import { Session } from "./session.lifecycle.js";
 import { EConfig } from "./errors.js";
-import { TrapFilter } from "./trap.js";
+import { TrapFilter } from "./trap.protocol.js";
 import {
   FusedTrampoline,
   RingEvent,

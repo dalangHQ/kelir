@@ -1,18 +1,18 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/artifacts/code/typescript-accumulation.ts#runtime
 // see: cans/10-attestation.md#Step-evaluation-loop
-import type { Session } from "./session.js";
+import type { Session } from "./session.lifecycle.js";
 
 export * from "./types.js";
 export * from "./schema.js";
-export * from "./verdict.js";
-export * from "./trap.js";
-export * from "./context.js";
+export * from "./verdict.protocol.js";
+export * from "./trap.protocol.js";
+export * from "./context.lifecycle.types.js";
 export * from "./errors.js";
-export * from "./session.js";
-export * from "./sandbox.js";
+export * from "./session.lifecycle.js";
+export * from "./sandbox.runtime.js";
 export * from "./plugin.js";
-export * from "./builder.js";
+export * from "./builder.lifecycle.js";
 export * from "./plugins.js";
 export * from "./fusion.js";
 

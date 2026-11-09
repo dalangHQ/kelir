@@ -32,11 +32,11 @@ from kelir import (
     Verdict,
 )
 from kelir.plugin import BasePlugin, LifecycleCtx, PluginError
-from kelir.planes.terminal import PromptRule, TokenShield
-from kelir.planes.storage import (
+from kelir.terminal_planes import PromptRule, TokenShield
+from kelir.storage_planes import (
     DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopRule
 )
-from kelir.planes.wire import (
+from kelir.wire_planes import (
     L4Proxy, Mtls, SinkholeConfig, CredentialDescriptor
 )
 from kelir.plugins.chaos import (

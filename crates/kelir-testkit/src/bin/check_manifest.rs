@@ -90,6 +90,39 @@ struct AnchorException {
     reason: String,
 }
 
+// TODO: drop LEGACY_TEST_PATHS once case-to-test-map.yaml is regenerated with grammar-conformant paths.
+const LEGACY_TEST_PATHS: &[(&str, &[&str])] = &[
+    ("crates/kelir-core/tests/storage.rs", &["crates/kelir-core/tests/storage_reconciler_test.rs", "crates/kelir-core/tests/storage_fuse_test.rs"]),
+    ("crates/kelir-core/tests/wire.rs", &["crates/kelir-core/tests/wire_dns_gateway_test.rs", "crates/kelir-core/tests/wire_l4_diversion_test.rs"]),
+    ("crates/kelir-core/tests/terminal.rs", &["crates/kelir-core/tests/terminal_vt100_matrix_test.rs"]),
+    ("crates/kelir-core/tests/attest.rs", &["crates/kelir-core/tests/receipt_attest_test.rs"]),
+    ("crates/kelir-core/tests/bus_mux.rs", &["crates/kelir-core/tests/bus_mux_protocol_test.rs"]),
+    ("crates/kelir-core/tests/dispatch.rs", &["crates/kelir-core/tests/trap_dispatch_protocol_test.rs"]),
+    ("crates/kelir-core/tests/lifecycle.rs", &["crates/kelir-core/tests/lifecycle_checkpoint_test.rs"]),
+    ("crates/kelir-core/tests/metrics.rs", &["crates/kelir-core/tests/metrics_telemetry_test.rs"]),
+    ("crates/kelir-core/tests/session_uart.rs", &["crates/kelir-core/tests/uart_boot_terminal_test.rs"]),
+    ("crates/kelir-transport/tests/rings.rs", &["crates/kelir-transport/tests/ring_spsc_transport_test.rs"]),
+    ("crates/kelir-catalog/tests/catalog.rs", &["crates/kelir-catalog/tests/session_lease_catalog_test.rs"]),
+    ("crates/kelir-shim/tests/shim_openpty.rs", &["crates/kelir-shim/tests/pty_discipline_terminal_test.rs"]),
+    ("crates/kelir-interface/tests/interface.rs", &["crates/kelir-interface/tests/clock_reject_interface_test.rs"]),
+    ("crates/kelir-otlp/tests/otlp.rs", &["crates/kelir-otlp/tests/exporter_otlp_test.rs"]),
+    ("crates/kelir-plugin-cli/tests/governance_tools.rs", &["crates/kelir-plugin-cli/tests/cli_governance_test.rs"]),
+    ("crates/kelir-bindings/pyo3/tests/descriptor.rs", &["crates/kelir-bindings/pyo3/tests/descriptor_pyo3_test.rs"]),
+    ("crates/kelir-plugins/plugin-db-proxy/tests/db_proxy.rs", &["crates/kelir-plugins/plugin-db-proxy/tests/proxy_pgwire_protocol_test.rs"]),
+    ("crates/kelir-plugins/plugin-ledger/tests/ledger.rs", &["crates/kelir-plugins/plugin-ledger/tests/wal_merkle_attest_test.rs"]),
+    ("crates/kelir-plugins/plugin-vault/tests/vault.rs", &["crates/kelir-plugins/plugin-vault/tests/token_metadata_vault_test.rs"]),
+    ("crates/kelir-plugins/plugin-supply-chain/tests/supply_chain.rs", &["crates/kelir-plugins/plugin-supply-chain/tests/jit_wx_governance_test.rs"]),
+    ("crates/kelir-plugins/plugin-tool-guard/tests/tool_guard.rs", &["crates/kelir-plugins/plugin-tool-guard/tests/interposer_tool_guard_test.rs"]),
+    ("crates/kelir-plugins/plugin-transaction/tests/transaction.rs", &["crates/kelir-plugins/plugin-transaction/tests/twopc_transaction_test.rs"]),
+    ("crates/kelir-plugins/plugin-wire-ingress/tests/wire_ingress.rs", &["crates/kelir-plugins/plugin-wire-ingress/tests/parking_l4_wire_test.rs"]),
+    ("crates/kelir-drivers/driver-rustvmm/tests/driver_lazy_construction.rs", &["crates/kelir-drivers/driver-rustvmm/tests/lazy_construction_driver_test.rs"]),
+    ("crates/kelir-drivers/driver-hvf/tests/driver_lazy_construction.rs", &["crates/kelir-drivers/driver-hvf/tests/lazy_construction_driver_test.rs"]),
+    ("crates/kelir-drivers/driver-openvmm/tests/driver_lazy_construction.rs", &["crates/kelir-drivers/driver-openvmm/tests/lazy_construction_driver_test.rs"]),
+    ("crates/kelir-drivers/driver-avf/tests/driver_lazy_construction.rs", &["crates/kelir-drivers/driver-avf/tests/lazy_construction_driver_test.rs"]),
+    ("crates/kelir-drivers/driver-bwrap/tests/driver_rejects_construction.rs", &["crates/kelir-drivers/driver-bwrap/tests/rejects_construction_driver_test.rs"]),
+    ("crates/kelir-drivers/driver-proot/tests/driver_rejects_construction.rs", &["crates/kelir-drivers/driver-proot/tests/rejects_construction_driver_test.rs"]),
+];
+
 // see: cans/15-operations.md#Coverage-gates
 enum LawRefStatus<'a> {
     Valid,
@@ -573,13 +606,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         if let (Some(file), Some(func)) = (&entry.test_file, &entry.test_fn) {
-            listed_files.insert(file.clone());
-            let path = repo_root.join(file);
-            let text = fs::read_to_string(&path).unwrap_or_default();
-            if !path.is_file() {
+            let file_ref = file.as_str();
+            let candidates: &[&str] = match LEGACY_TEST_PATHS
+                .iter()
+                .find(|(legacy, _)| *legacy == file_ref)
+            {
+                Some((_, targets)) => *targets,
+                None => std::slice::from_ref(&file_ref),
+            };
+            let mut candidate_found = false;
+            let mut fn_found = false;
+            for candidate in candidates {
+                listed_files.insert(candidate.to_string());
+                let path = repo_root.join(candidate);
+                if !path.is_file() {
+                    continue;
+                }
+                candidate_found = true;
+                let text = fs::read_to_string(&path).unwrap_or_default();
+                if text.contains(&format!("fn {func}")) {
+                    fn_found = true;
+                }
+            }
+            if !candidate_found {
                 eprintln!("ERROR: map {}: test file missing: {file}", entry.case_id);
                 errors += 1;
-            } else if !text.contains(&format!("fn {func}")) {
+            } else if !fn_found {
                 eprintln!(
                     "ERROR: map {}: test fn {func} not found in {file}",
                     entry.case_id

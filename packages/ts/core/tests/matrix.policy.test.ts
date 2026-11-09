@@ -94,29 +94,36 @@ const runtime = kelir({
   .on(LifecycleEvent.VmReady, async () => { policyState.ready = true; });
 
 
-async function main() {
-  const session: Session = await runtime.boot();
-  console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
-
-
+async function policyMatrixCase_vsockControlEcho(session: Session): Promise<void> {
   const channel = await session.vsock.channel(0x0013);
   await channel.write(new TextEncoder().encode("policy-matrix:ping"));
   const reply = await channel.read();
   console.log(`[kelir] vsock channel 0x0013 reply: ${new TextDecoder().decode(reply)}`);
+}
 
-
+async function policyMatrixCase_trapVerdictRows(session: Session): Promise<void> {
   for (const binary of ["policy-allow", "policy-deny", "policy-rewrite",
                         "policy-abort", "policy-yield", "policy-approval",
                         "policy-custom"]) {
     const run = await session.spawn(binary, ["--policy-matrix"]);
     console.log(`[kelir] ${binary} -> exit=${run.exitCode}`);
   }
+}
 
-
+async function policyMatrixCase_suspendResumeWithWatchdogVeto(session: Session): Promise<void> {
   policyState.plannedSuspend = true;
   await session.suspend("/tmp/policy-matrix.snap");
   await session.resume("/tmp/policy-matrix.snap");
   policyState.plannedSuspend = false;
+}
+
+async function main(): Promise<void> {
+  const session: Session = await runtime.boot();
+  console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
+
+  await policyMatrixCase_vsockControlEcho(session);
+  await policyMatrixCase_trapVerdictRows(session);
+  await policyMatrixCase_suspendResumeWithWatchdogVeto(session);
 
   await session.terminate();
 }

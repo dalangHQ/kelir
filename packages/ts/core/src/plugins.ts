@@ -1,6 +1,6 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import type { ChaosHandle, LedgerHandle, MeshHandle } from "./context.js";
+import type { ChaosHandle, LedgerHandle, MeshHandle } from "./context.lifecycle.types.js";
 import type { KelirPlugin, PluginContext } from "./plugin.js";
 
 export interface PluginEnablement {

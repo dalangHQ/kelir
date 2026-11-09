@@ -1,7 +1,7 @@
 // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
 
-import { KelirBuilder, type KelirConfig } from "./builder.js";
-import { Session } from "./session.js";
+import { KelirBuilder, type KelirConfig } from "./builder.lifecycle.js";
+import { Session } from "./session.lifecycle.js";
 import { EConfig } from "./errors.js";
 import type { SpawnResult } from "./types.js";
 

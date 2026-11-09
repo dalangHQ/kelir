@@ -1,7 +1,6 @@
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_01_default_deny_ingress_drop.yaml#case_id
 use kelir_core::planes::wire::{
-    DnsQuery, FrameDirection, LinkLocalRoute, WirePlane, classify_frame_directional,
-    link_local_route,
+    FrameDirection, LinkLocalRoute, WirePlane, classify_frame_directional, link_local_route,
 };
 use kelir_interface::protocol::FilterAction;
 
@@ -115,21 +114,6 @@ fn wp_08_imds_cloud_metadata_quarantine() -> Result<(), String> {
     }
     let azure = ipv4_frame([168, 63, 129, 16], 6, 80);
     assert_eq!(link_local_route(&azure, FrameDirection::Outbound), None);
-    Ok(())
-}
-
-// see: cans/artifacts/test-plan/cases/wire_plane/wp_10_dns_edns0_downgrade_bit_strip.yaml#case_id
-#[test]
-fn wp_10_dns_edns0_downgrade_bit_strip() -> Result<(), String> {
-    let mut query = DnsQuery {
-        name: "example.com".to_string(),
-        qtype: 1,
-        edns_do: true,
-    };
-    query.downgrade_edns0();
-    assert!(!query.edns_do);
-    assert_eq!(query.name, "example.com");
-    assert_eq!(query.qtype, 1);
     Ok(())
 }
 

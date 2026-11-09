@@ -130,7 +130,7 @@ kelir/
 │   │   │   ├── tsconfig.json
 │   │   │   └── src/
 │   │   │       ├── index.ts           # kelir() builder entrypoint
-│   │   │       ├── context.ts         # Generic accumulation context engine
+│   │   │       ├── context.lifecycle.types.ts # Generic accumulation context engine
 │   │   │       ├── schema.ts          # TypeBox command validation wrappers
 │   │   │       └── binding.ts         # Auto-generated NAPI loader
 │   │   ├── plugins/                   # @kelir/plugin-*

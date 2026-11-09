@@ -3,8 +3,8 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
 import { EConfig } from "./errors.js";
-import { LifecycleEvent } from "./verdict.js";
-import type { NativeSessionHandle } from "./session.js";
+import { LifecycleEvent } from "./verdict.protocol.js";
+import type { NativeSessionHandle } from "./session.lifecycle.js";
 import {
   LIFECYCLE_TAGS,
   RingEvent,

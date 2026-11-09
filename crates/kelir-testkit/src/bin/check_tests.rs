@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -6,6 +7,8 @@ use walkdir::WalkDir;
 struct Counts {
     rs_test_files: usize,
     rs_bench_files: usize,
+    ts_test_files: usize,
+    py_test_files: usize,
     yaml_cases: usize,
     yaml_snippets: usize,
 }
@@ -170,6 +173,84 @@ fn is_tautology(snippet: &str) -> bool {
     false
 }
 
+// see: cans/artifacts/test-plan/case-to-test-map.yaml#harness_tests
+fn harness_exempt_files(repo_root: &Path) -> HashSet<String> {
+    let mut exempt = HashSet::new();
+    let map_path = repo_root.join("cans/artifacts/test-plan/case-to-test-map.yaml");
+    let Ok(raw) = fs::read_to_string(&map_path) else {
+        return exempt;
+    };
+    let mut in_harness = false;
+    for line in raw.lines() {
+        if line.starts_with("harness_tests:") {
+            in_harness = true;
+        } else if in_harness {
+            if let Some(rest) = line.strip_prefix("- file:") {
+                let file = rest.trim().trim_matches('"');
+                if !file.is_empty() {
+                    exempt.insert(file.to_string());
+                }
+            } else if !line.starts_with(' ') && !line.starts_with('-') {
+                in_harness = false;
+            }
+        }
+    }
+    exempt
+}
+
+fn is_vendor_entry(entry: &walkdir::DirEntry) -> bool {
+    let name = entry.file_name().to_string_lossy();
+    name == "node_modules" || name == ".venv"
+}
+
+fn valid_rust_test_stem(stem: &str) -> bool {
+    let Some(base) = stem.strip_suffix("_test") else {
+        return false;
+    };
+    let base = ["_unit", "_integration", "_parity"]
+        .iter()
+        .find_map(|role| base.strip_suffix(*role))
+        .unwrap_or(base);
+    let tokens: Vec<&str> = base.split('_').filter(|t| !t.is_empty()).collect();
+    tokens.len() >= 2
+        && tokens
+            .iter()
+            .all(|token| token.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()))
+}
+
+fn valid_sdk_test_base(base: &str, sep: char) -> bool {
+    let mut tokens: Vec<&str> = base.split(sep).filter(|t| !t.is_empty()).collect();
+    if tokens
+        .last()
+        .is_some_and(|token| ["unit", "integration", "parity"].contains(token))
+    {
+        tokens.pop();
+    }
+    tokens.len() >= 2
+}
+
+fn lint_test_filename(
+    path: &Path,
+    repo_root: &Path,
+    exempt: &HashSet<String>,
+    valid: bool,
+    code: &str,
+    grammar: &str,
+    violations: &mut Vec<String>,
+) {
+    let rel = rel_path_of(path, repo_root);
+    if exempt.contains(&rel) || valid {
+        return;
+    }
+    violations.push(format!("{rel}: [{code}] test filename violates {grammar} grammar."));
+}
+
+fn rel_path_of(path: &Path, repo_root: &Path) -> String {
+    path.strip_prefix(repo_root)
+        .map(|rel| rel.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.display().to_string())
+}
+
 fn main() -> ExitCode {
     let repo_root = match PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -186,9 +267,12 @@ fn main() -> ExitCode {
     let mut counts = Counts {
         rs_test_files: 0,
         rs_bench_files: 0,
+        ts_test_files: 0,
+        py_test_files: 0,
         yaml_cases: 0,
         yaml_snippets: 0,
     };
+    let harness_exempt = harness_exempt_files(&repo_root);
 
     let tests_dir = repo_root.join("crates");
     for entry in WalkDir::new(&tests_dir).into_iter().filter_map(|e| e.ok()) {
@@ -201,6 +285,19 @@ fn main() -> ExitCode {
                 counts.rs_bench_files += 1;
             } else {
                 counts.rs_test_files += 1;
+                let stem = path
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                lint_test_filename(
+                    path,
+                    &repo_root,
+                    &harness_exempt,
+                    valid_rust_test_stem(&stem),
+                    "NG-01",
+                    "<entity>_<domain>[_role]_test.rs",
+                    &mut violations,
+                );
             }
             let content = match fs::read_to_string(path) {
                 Ok(content) => content,
@@ -208,6 +305,61 @@ fn main() -> ExitCode {
             };
             lint_file(path, &content, &mut violations);
         }
+    }
+
+    let ts_dir = repo_root.join("packages/ts");
+    for entry in WalkDir::new(&ts_dir)
+        .into_iter()
+        .filter_entry(|entry| !is_vendor_entry(entry))
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let Some(base) = name.strip_suffix(".test.ts") else {
+            continue;
+        };
+        counts.ts_test_files += 1;
+        lint_test_filename(
+            path,
+            &repo_root,
+            &harness_exempt,
+            valid_sdk_test_base(base, '.'),
+            "NG-02",
+            "<entity>.<domain>[.role].test.ts",
+            &mut violations,
+        );
+    }
+
+    let py_dir = repo_root.join("packages/py");
+    for entry in WalkDir::new(&py_dir)
+        .into_iter()
+        .filter_entry(|entry| !is_vendor_entry(entry))
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let Some(without_ext) = name.strip_suffix(".py") else {
+            continue;
+        };
+        let Some(base) = without_ext.strip_prefix("test_") else {
+            continue;
+        };
+        counts.py_test_files += 1;
+        lint_test_filename(
+            path,
+            &repo_root,
+            &harness_exempt,
+            valid_sdk_test_base(base, '_'),
+            "NG-03",
+            "test_<domain>_<entity>[_role].py",
+            &mut violations,
+        );
     }
 
     let cases_dir = repo_root.join("cans/artifacts/test-plan/cases");
@@ -234,6 +386,10 @@ fn main() -> ExitCode {
         println!(
             "Anti-Slop Lint passed: {} .rs test files, {} .rs bench files, {} YAML cases, {} verification snippets, zero violations.",
             counts.rs_test_files, counts.rs_bench_files, counts.yaml_cases, counts.yaml_snippets
+        );
+        println!(
+            "Filename grammar gate: {} rust, {} typescript, {} python test filenames conform or are harness-exempt.",
+            counts.rs_test_files, counts.ts_test_files, counts.py_test_files
         );
         ExitCode::SUCCESS
     } else {

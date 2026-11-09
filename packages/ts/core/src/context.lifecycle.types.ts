@@ -1,6 +1,6 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import type { Session } from "./session.js";
+import type { Session } from "./session.lifecycle.js";
 import type {
   CausalDelta,
   CustomActionPayload,
@@ -9,7 +9,7 @@ import type {
   SnapshotDescriptor,
   TrapInfo,
 } from "./types.js";
-import type { SuspendUntil, Verdict, VetoEvent } from "./verdict.js";
+import type { SuspendUntil, Verdict, VetoEvent } from "./verdict.protocol.js";
 
 export interface VmHandle {
   checkpoint(name: string): Promise<SnapshotDescriptor>;

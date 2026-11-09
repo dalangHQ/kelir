@@ -180,20 +180,25 @@ const runtime = kelir({
   tscLocked: true, enableWatchdog: true,
 }).use(hookMatrixPlugin);
 
-async function main() {
-  const session: Session = await runtime.boot();
-  console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
-
-
+async function hookMatrixCase_identityPatchProbe(session: Session): Promise<void> {
   const probe = await session.spawn("cat", [IDENTITY_PATH],
                                     { cwd: "/workspace" });
   console.log(`[kelir] cat identity -> exit=${probe.exitCode}`);
+}
 
-
+async function hookMatrixCase_heartbeatAndExitCounters(): Promise<void> {
   await new Promise((r) => setTimeout(r, 100));
   console.log(`[kelir] heartbeats=${hookState.heartbeats} ` +
               `stalls=${hookState.stalls} exits=${hookState.exits} ` +
               `failures=${hookState.failures}`);
+}
+
+async function main(): Promise<void> {
+  const session: Session = await runtime.boot();
+  console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
+
+  await hookMatrixCase_identityPatchProbe(session);
+  await hookMatrixCase_heartbeatAndExitCounters();
 
   await session.terminate();
 }

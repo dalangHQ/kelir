@@ -122,7 +122,7 @@ fn main() -> ExitCode {
 
     let writes: Vec<(PathBuf, String)> = vec![
         (
-            root.join("packages/ts/core/src/generated/telemetry.ts"),
+            root.join("packages/ts/core/src/telemetry.attest.generated.ts"),
             ts_telemetry,
         ),
         (
