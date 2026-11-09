@@ -1,35 +1,10 @@
 // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-use std::future::Future;
-use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
-
 use kelir_interface::plugin_model::PluginError;
+use kelir_plugin_testkit::block_on;
 use plugin_transaction::{
     Savepoint, TransactionConfig, TransactionHandle, TransactionPlugin, TransactionScope,
     TransactionService,
 };
-
-// see: cans/15-operations.md#Local-velocity
-fn block_on<F: Future>(future: F) -> F::Output {
-    struct ThreadWaker(std::thread::Thread);
-    impl Wake for ThreadWaker {
-        fn wake(self: Arc<Self>) {
-            self.0.unpark();
-        }
-        fn wake_by_ref(self: &Arc<Self>) {
-            self.0.unpark();
-        }
-    }
-    let mut future = Box::pin(future);
-    let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
-    let mut cx = Context::from_waker(&waker);
-    loop {
-        match future.as_mut().poll(&mut cx) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => std::thread::park(),
-        }
-    }
-}
 
 // see: cans/artifacts/test-plan/cases/relational_transaction/rt_04_2pc_post_commit_true_atomic_sync.yaml#case_id
 #[test]

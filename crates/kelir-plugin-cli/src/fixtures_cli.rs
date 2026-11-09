@@ -5,6 +5,8 @@ use std::fs;
 
 use sha2::Digest;
 
+use kelir_interface::hex_codec::encode_hex;
+
 // see: cans/15-operations.md#Developer-CLI
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixtureEntry {
@@ -139,14 +141,6 @@ pub fn parse_fixtures(text: &str) -> Result<Vec<FixtureEntry>, FixtureError> {
     Ok(entries)
 }
 
-fn hex_digest(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push_str(&format!("{byte:02x}"));
-    }
-    out
-}
-
 fn verify_entry(entry: &FixtureEntry) -> Result<(), FixtureError> {
     let bytes = fs::read(&entry.path).map_err(|e| {
         FixtureError::MissingFile(format!(
@@ -161,14 +155,14 @@ fn verify_entry(entry: &FixtureEntry) -> Result<(), FixtureError> {
         )));
     }
     if let Some(expected) = &entry.blake3 {
-        let actual = hex_digest(blake3::hash(&bytes).as_bytes());
+        let actual = encode_hex(blake3::hash(&bytes).as_bytes());
         compare_digest(&entry.name, expected, &actual)
             .map_err(|mismatch| FixtureError::DigestMismatch(mismatch.to_string()))?;
     }
     if let Some(expected) = &entry.sha256 {
         let mut hasher = sha2::Sha256::new();
         hasher.update(&bytes);
-        let actual = hex_digest(&hasher.finalize());
+        let actual = encode_hex(&hasher.finalize());
         compare_digest(&entry.name, expected, &actual)
             .map_err(|mismatch| FixtureError::DigestMismatch(mismatch.to_string()))?;
     }

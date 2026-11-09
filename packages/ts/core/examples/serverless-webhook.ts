@@ -1,6 +1,6 @@
 // see: cans/08-lifecycle.md#State-machine
 
-import { kelir, t, PostExecAction,
+import { kelir, PostExecAction,
          type ExecutionReceipt } from "@kelir/core";
 import { wireIngress, mcp, toolGuard, ledger } from "@kelir/core";
 
@@ -65,10 +65,6 @@ const runtime = kelir({
     otel: { traceParent: true, serviceName: "kelir-webhook" },
   }))
 
-  .params(t.Object({
-    action: t.Literal("dispatch-webhook"),
-    webhookId: t.String(),
-  }))
   .trap("dispatch-webhook", {
 
 

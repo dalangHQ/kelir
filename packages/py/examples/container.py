@@ -16,7 +16,7 @@ OCI_IMAGE_REF = "hello-world:latest"
 def build_runtime() -> KelirBuilder:
     return (
         kelir.builder(
-            vcpus=2, memory_mb=2048, driver="auto",
+            vcpus=2, memory_mb=2048,
             kernel=f"./fixtures/vmlinux-6.6-{os.uname().machine}-kelir",
             rootfs_erofs="./fixtures/rootfs-container.erofs",
             tsc_locked=True, enable_watchdog=True,

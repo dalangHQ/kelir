@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::fs;
 
 use kelir_interface::driver_interface::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
+use kelir_interface::hex_codec::{decode_hex, encode_hex};
 use kelir_interface::plugin_model::VetoEvent;
 use kelir_interface::protocol_wire::Channel;
 use kelir_plugin_testkit::vectors_testkit::{VetoCase, arm_watchdog_case, register_veto_case};
@@ -36,31 +37,6 @@ pub struct ParityWatchdog {
 pub struct ParityVeto {
     pub event: VetoEvent,
     pub callback_allows: Option<bool>,
-}
-
-fn decode_hex(text: &str) -> Result<Vec<u8>, String> {
-    let bytes = text.as_bytes();
-    if bytes.len() % 2 != 0 {
-        return Err(format!("parity: hex string has odd length: {text}"));
-    }
-    let mut out = Vec::with_capacity(bytes.len() / 2);
-    for pair in bytes.chunks(2) {
-        let high = (pair[0] as char).to_digit(16);
-        let low = (pair[1] as char).to_digit(16);
-        match (high, low) {
-            (Some(h), Some(l)) => out.push(((h << 4) | l) as u8),
-            _ => return Err(format!("parity: invalid hex string: {text}")),
-        }
-    }
-    Ok(out)
-}
-
-fn encode_hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push_str(&format!("{byte:02x}"));
-    }
-    out
 }
 
 // see: cans/02-plugin-model.md#Unified-verdict
@@ -339,7 +315,12 @@ fn assert_frame_shape(vector: &ParityVector) -> Result<(), String> {
             vector.name, vector.stream_id
         ));
     }
-    let frame = decode_hex(&vector.frame_hex)?;
+    let frame = decode_hex(&vector.frame_hex).map_err(|e| {
+        format!(
+            "parity: vector `{}` frame_hex is not valid hex: {e}",
+            vector.name
+        )
+    })?;
     if frame.len() < 11 {
         return Err(format!(
             "parity: vector `{}` frame is {} bytes, shorter than a 9-byte header plus msg_type",

@@ -145,7 +145,6 @@ kelir/
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, async-trait, tokio, ciborium, serde, serde_json
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── mock_bus.rs            # MockBusDispatcher: records ring messages per plane
 │   │       ├── handlers_testkit.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
 │   │       ├── fixtures_testkit.rs            # Synthetic PTY streams, broker upper files, synthetic configs
 │   │       ├── assertions_testkit.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure

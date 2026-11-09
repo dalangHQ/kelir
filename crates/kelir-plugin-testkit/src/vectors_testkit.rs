@@ -6,12 +6,12 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
-use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
 use kelir_interface::codec_protocol::{FLAG_DATA, MAX_FRAME_PAYLOAD, MAX_STREAM_ID};
 use kelir_interface::driver_interface::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
+use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::plugin_model::VetoEvent;
 use kelir_interface::protocol_wire::{
     Channel, ExecveMutation, GuestToHost, Heartbeat, MsgType, PatchPayload, SuspendUntil,
@@ -89,6 +89,47 @@ impl WireFrame {
         frame.extend_from_slice(&self.payload);
         Ok(frame)
     }
+
+    // see: cans/11-protocol.md#Wire-framing
+    pub fn decode(transport: Channel, frame: &[u8]) -> Result<Self, VectorError> {
+        const HEADER_BYTES: usize = 9;
+        if frame.len() < HEADER_BYTES {
+            return Err(VectorError::Encode(
+                "frame shorter than the 9-byte header".into(),
+            ));
+        }
+        let stream_id = u32::from_le_bytes([frame[0], frame[1], frame[2], frame[3]]);
+        let flags = frame[4];
+        let body_len = u32::from_le_bytes([frame[5], frame[6], frame[7], frame[8]]);
+        let body_len = usize::try_from(body_len)
+            .map_err(|_| VectorError::FrameTooLarge { len: usize::MAX })?;
+        if stream_id > MAX_STREAM_ID {
+            return Err(VectorError::StreamIdOutOfRange { stream_id });
+        }
+        if body_len > MAX_FRAME_PAYLOAD {
+            return Err(VectorError::FrameTooLarge { len: body_len });
+        }
+        let total = body_len
+            .checked_add(HEADER_BYTES)
+            .ok_or(VectorError::FrameTooLarge { len: usize::MAX })?;
+        if frame.len() < total {
+            return Err(VectorError::Encode(
+                "frame shorter than its declared len field".into(),
+            ));
+        }
+        let body = &frame[HEADER_BYTES..total];
+        let msg_raw = u16::from_le_bytes([body[0], body[1]]);
+        let msg_type = MsgType::from_u16(msg_raw).ok_or(VectorError::Encode(format!(
+            "msg_type {msg_raw:#06x} is not a wired MsgType"
+        )))?;
+        Ok(Self {
+            transport,
+            stream_id,
+            flags,
+            msg_type,
+            payload: body[2..].to_vec(),
+        })
+    }
 }
 
 // see: cans/15-operations.md#Multi-language-parity-gate
@@ -128,8 +169,8 @@ impl VectorCase {
                 "stream_id": self.frame.stream_id,
                 "flags": self.frame.flags,
                 "msg_type": self.frame.msg_type as u16,
-                "payload_cbor_hex": hex(&self.frame.payload),
-                "frame_hex": hex(&frame),
+                "payload_cbor_hex": encode_hex(&self.frame.payload),
+                "frame_hex": encode_hex(&frame),
             },
             "event": serde_json::to_value(&self.event).map_err(|e| VectorError::Encode(e.to_string()))?,
             "expected_verdict": serde_json::to_value(&self.expected_verdict).map_err(|e| VectorError::Encode(e.to_string()))?,
@@ -290,14 +331,6 @@ fn cbor<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, VectorError> {
     Ok(out)
 }
 
-fn hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push_str(&format!("{byte:02x}"));
-    }
-    out
-}
-
 fn trap_event(
     seq: u64,
     pid: u32,
@@ -455,15 +488,9 @@ fn heartbeat_case() -> Result<VectorCase, VectorError> {
 
 // see: cans/15-operations.md#Local-velocity
 fn poll_sync<F: Future>(future: F) -> Result<F::Output, VectorError> {
-    struct ReadyWake;
-
-    impl Wake for ReadyWake {
-        fn wake(self: Arc<Self>) {}
-    }
-
-    let waker = Waker::from(Arc::new(ReadyWake));
+    let waker = Waker::noop();
     let mut future = Box::pin(future);
-    let mut context = Context::from_waker(&waker);
+    let mut context = Context::from_waker(waker);
     match future.as_mut().poll(&mut context) {
         Poll::Ready(output) => Ok(output),
         Poll::Pending => Err(VectorError::Execution(

@@ -38,25 +38,6 @@ pub struct DriverCapabilities {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DriverState {
-    Unbooted,
-    Booted,
-    Paused,
-}
-
-impl DriverState {
-    // TODO (L3): drivers stay Unbooted until the boot handshake lands, so every guarded primitive rejects here; drop the (L3) suffix once boot is real per cans/08-lifecycle.md#Hypervisor-primitives.
-    pub fn ensure_booted(&self, backend: &str) -> Result<(), VmmError> {
-        match self {
-            Self::Booted | Self::Paused => Ok(()),
-            Self::Unbooted => Err(VmmError::InvalidState(format!(
-                "{backend} driver is not booted (L3)"
-            ))),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WxPolicy {
     Strict,
     PermissiveAudit,
@@ -415,45 +396,155 @@ pub trait PmuSampler: Send + Sync {
 pub trait VmmDriver: Send + Sync {
     fn capabilities(&self) -> DriverCapabilities;
     async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError>;
-    async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError>;
-    async fn checkpoint(&mut self, label: &str) -> Result<SnapshotDescriptor, VmmError>;
+    // TODO (L3): backend drivers override fork with the native CoW clone primitive.
+    async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
+        Err(VmmError::Unsupported(
+            "fork: no native backend override (L3)".into(),
+        ))
+    }
+    // TODO (L3): backend drivers override checkpoint with atomic RAM + register capture.
+    async fn checkpoint(&mut self, _label: &str) -> Result<SnapshotDescriptor, VmmError> {
+        Err(VmmError::Unsupported(
+            "checkpoint: no native backend override (L3)".into(),
+        ))
+    }
+    // TODO (L3): backend drivers override map_shared_region with the zero-copy guest segment map.
     async fn map_shared_region(
         &mut self,
-        tag: &str,
-        size_bytes: usize,
-    ) -> Result<SharedMemoryHandle, VmmError>;
-    async fn export_snapshot(&self) -> Result<Box<dyn AsyncRead + Send + Sync + Unpin>, VmmError>;
+        _tag: &str,
+        _size_bytes: usize,
+    ) -> Result<SharedMemoryHandle, VmmError> {
+        Err(VmmError::Unsupported(
+            "map_shared_region: no native backend override (L3)".into(),
+        ))
+    }
+    // TODO (L3): backend drivers override export_snapshot with the portable snapshot stream.
+    async fn export_snapshot(&self) -> Result<Box<dyn AsyncRead + Send + Sync + Unpin>, VmmError> {
+        Err(VmmError::Unsupported(
+            "export_snapshot: no native backend override (L3)".into(),
+        ))
+    }
+    // TODO (L3): backend drivers override import_snapshot with the portable snapshot hydrate.
     async fn import_snapshot(
         &mut self,
-        reader: Box<dyn AsyncRead + Send + Sync + Unpin>,
-    ) -> Result<(), VmmError>;
-    async fn rollback(&mut self, snapshot: &SnapshotDescriptor) -> Result<(), VmmError>;
-    async fn suspend(&mut self, reason: SuspendReason, output_path: &Path) -> Result<(), VmmError>;
-    async fn resume(&mut self, image_path: &Path) -> Result<(), VmmError>;
-    async fn skew_clock(&mut self, offset: Duration) -> Result<(), VmmError>;
-    async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, VmmError>;
+        _reader: Box<dyn AsyncRead + Send + Sync + Unpin>,
+    ) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "import_snapshot: no native backend override (L3)".into(),
+        ))
+    }
+    // TODO (L3): backend drivers override rollback with register reset + memory revert in <8ms.
+    async fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "rollback: no native backend override (L3)".into(),
+        ))
+    }
+    // TODO (L3): backend drivers override suspend with dirty-page flush to disk in <50ms.
+    async fn suspend(
+        &mut self,
+        _reason: SuspendReason,
+        _output_path: &Path,
+    ) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "suspend: no native backend override (L3)".into(),
+        ))
+    }
+    // TODO (L3): backend drivers override resume with suspended-image restore in <50ms.
+    async fn resume(&mut self, _image_path: &Path) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "resume: no native backend override (L3)".into(),
+        ))
+    }
+    // TODO (L3): backend drivers override skew_clock with the KVM_SET_CLOCK / CNTVOFF_EL2 offset.
+    async fn skew_clock(&mut self, _offset: Duration) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "skew_clock: no native backend override (L3)".into(),
+        ))
+    }
+    // TODO (L3): backend drivers override adjust_balloon with the virtio-balloon resize.
+    async fn adjust_balloon(&mut self, _target_mb: u32) -> Result<BalloonConvergence, VmmError> {
+        Err(VmmError::Unsupported(
+            "adjust_balloon: no native backend override (L3)".into(),
+        ))
+    }
     // see: cans/10-attestation.md#Lifecycle-bridge
-    async fn freeze_vcpus(&mut self) -> Result<(), VmmError>;
-    async fn unfreeze_vcpus(&mut self) -> Result<(), VmmError>;
+    // TODO (L3): backend drivers override freeze_vcpus with the cycle-boundary vCPU halt.
+    async fn freeze_vcpus(&mut self) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "freeze_vcpus: no native backend override (L3)".into(),
+        ))
+    }
+    // see: cans/10-attestation.md#Lifecycle-bridge
+    // TODO (L3): backend drivers override unfreeze_vcpus with the vCPU scheduler release.
+    async fn unfreeze_vcpus(&mut self) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "unfreeze_vcpus: no native backend override (L3)".into(),
+        ))
+    }
     // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-    async fn drain_fuse(&mut self, timeout: Duration) -> Result<(), VmmError>;
-    async fn commit_broker_upper(&mut self) -> Result<(), VmmError>;
-    async fn discard_broker_upper(&mut self) -> Result<(), VmmError>;
+    // TODO (L3): backend drivers override drain_fuse with the in-flight FUSE drain.
+    async fn drain_fuse(&mut self, _timeout: Duration) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "drain_fuse: no native backend override (L3)".into(),
+        ))
+    }
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    // TODO (L3): backend drivers override commit_broker_upper with the broker upper commit.
+    async fn commit_broker_upper(&mut self) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "commit_broker_upper: no native backend override (L3)".into(),
+        ))
+    }
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    // TODO (L3): backend drivers override discard_broker_upper with the broker upper discard.
+    async fn discard_broker_upper(&mut self) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "discard_broker_upper: no native backend override (L3)".into(),
+        ))
+    }
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
-    async fn step_clock_window(&mut self, retired_instructions: u64) -> Result<(), VmmError>;
-    fn register_pmu_sampler(&mut self, sampler: Arc<dyn PmuSampler>) -> Result<(), VmmError>;
+    // TODO (L3): backend drivers override step_clock_window with the retired-instruction clock step.
+    async fn step_clock_window(&mut self, _retired_instructions: u64) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "step_clock_window: no native backend override (L3)".into(),
+        ))
+    }
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    // TODO (L3): backend drivers override register_pmu_sampler with the host PMU counter arming.
+    fn register_pmu_sampler(&mut self, _sampler: Arc<dyn PmuSampler>) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "register_pmu_sampler: no native backend override (L3)".into(),
+        ))
+    }
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn set_entropy_backend(&mut self, backend: EntropyBackend) -> Result<(), VmmError>;
+    // see: cans/plugins/replay.md#Deterministic-RNG
     async fn entropy_position(&self) -> Result<EntropyStreamPosition, VmmError>;
+    // see: cans/plugins/replay.md#Deterministic-RNG
     async fn restore_entropy_position(
         &mut self,
         position: EntropyStreamPosition,
     ) -> Result<(), VmmError>;
+    // TODO (L3): backend drivers override set_watchdog with the hardware watchdog arm.
     async fn set_watchdog(
         &mut self,
-        timeout: Duration,
-        action: WatchdogAction,
-    ) -> Result<(), VmmError>;
-    fn transport_connect(&self, channel_id: u32) -> Result<Box<dyn Stream>, VmmError>;
-    async fn terminate(&mut self) -> Result<(), VmmError>;
+        _timeout: Duration,
+        _action: WatchdogAction,
+    ) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "set_watchdog: no native backend override (L3)".into(),
+        ))
+    }
+    // TODO (L3): backend drivers override transport_connect with the raw duplex channel.
+    fn transport_connect(&self, _channel_id: u32) -> Result<Box<dyn Stream>, VmmError> {
+        Err(VmmError::Unsupported(
+            "transport_connect: no native backend override (L3)".into(),
+        ))
+    }
+    // TODO (L3): backend drivers override terminate with the hypervisor teardown.
+    async fn terminate(&mut self) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "terminate: no native backend override (L3)".into(),
+        ))
+    }
 }

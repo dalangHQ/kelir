@@ -2,9 +2,7 @@
 // see: cans/01-architecture.md#Foreign-runtime-embedding
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 #![forbid(unsafe_code)]
-use std::future::Future;
 use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
 use std::time::Instant;
 
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -19,17 +17,26 @@ use kelir_core::planes::storage::storage_reconciler::FsReconcileRequest;
 use kelir_interface::driver_interface::{
     ExternalSuspendKind, GuestClock, SnapshotDescriptor, SuspendReason, VmConfig, default_vm_config,
 };
+use kelir_interface::error_envelope::ErrorEnvelope;
 use kelir_interface::handles_lifecycle::VmHandle as CoreVmHandle;
 use kelir_interface::plugin_model::PluginError;
+use kelir_interface::runtime_block::block_on;
 
 pub struct PluginRegistration {
     pub name: String,
     pub enabled: bool,
 }
 
-// see: cans/03-sdk-architecture.md#Session-surfaces
+// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
 fn halt(error: PluginError) -> PyErr {
-    PyRuntimeError::new_err(error.to_string())
+    envelope_error(&ErrorEnvelope::from(error))
+}
+
+// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
+fn envelope_error(envelope: &ErrorEnvelope) -> PyErr {
+    PyRuntimeError::new_err(
+        serde_json::to_string(envelope).unwrap_or_else(|_| envelope.message.clone()),
+    )
 }
 
 // see: cans/03-sdk-architecture.md#Session-surfaces
@@ -48,33 +55,6 @@ fn u64_of(value: f64, what: &str) -> PyResult<u64> {
 // see: cans/08-lifecycle.md#Suspend-and-resume
 const SDK_SUSPEND_REASON: SuspendReason =
     SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold);
-
-// see: cans/02-plugin-model.md#Latency-ceiling
-struct ThreadWaker(std::thread::Thread);
-
-impl Wake for ThreadWaker {
-    fn wake(self: Arc<Self>) {
-        self.0.unpark();
-    }
-
-    fn wake_by_ref(self: &Arc<Self>) {
-        self.0.unpark();
-    }
-}
-
-// see: cans/02-plugin-model.md#Latency-ceiling
-// TODO (L3): drive the bridge futures on the async runtime once the transport exposes a runtime handle.
-fn block_on<F: Future>(future: F) -> F::Output {
-    let mut future = Box::pin(future);
-    let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
-    let mut cx = Context::from_waker(&waker);
-    loop {
-        match future.as_mut().poll(&mut cx) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => std::thread::park(),
-        }
-    }
-}
 
 // see: cans/09-snapshots.md#Archives-and-portability
 fn snapshot_dict(py: Python<'_>, descriptor: &SnapshotDescriptor) -> PyResult<Py<PyDict>> {
@@ -673,8 +653,8 @@ impl PyKelirBuilder {
             .map(|plugin| kelir_core::PluginRegistration::new(plugin.name.clone(), plugin.enabled))
             .collect();
         let started = Instant::now();
-        let session = Session::boot_with_plugins(self.config.clone(), &plugins)
-            .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
+        let session = Session::boot_with_plugins(self.config.clone(), &plugins, Some(descriptor))
+            .map_err(halt)?;
         // TODO (L3): re-source driver_name from the booted core session once it exposes the resolved driver.
         Ok(PySessionHandle::from_session(
             session,

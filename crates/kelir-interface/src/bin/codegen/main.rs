@@ -177,13 +177,6 @@ fn main() -> ExitCode {
         .filter(|rel| rel.ends_with("plugins.registry.ts"))
         .cloned()
         .collect();
-    let fusion_written: Vec<PathBuf> = changed
-        .iter()
-        .filter(|rel| {
-            rel.ends_with("fusion.tables.generated.ts") || rel.ends_with("fusion_tables.py")
-        })
-        .map(|rel| root.join(rel))
-        .collect();
     let expected_modules: HashSet<String> = projections
         .iter()
         .map(|proj| format!("plugin_{}", proj.krate.module_name))
@@ -209,8 +202,10 @@ fn main() -> ExitCode {
         println!("wrote {rel}");
     }
     println!("plugin sdk projections: {} plugins ok", projections.len());
-    for path in &fusion_written {
-        println!("gen-fusion-tables: wrote {}", path.display());
+    for rel in &changed {
+        if rel.ends_with("fusion.tables.generated.ts") || rel.ends_with("fusion_tables.py") {
+            println!("fusion tables: wrote {rel}");
+        }
     }
     ExitCode::SUCCESS
 }

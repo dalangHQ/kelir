@@ -6,10 +6,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kelir_interface::handles_lifecycle::{DriverVmControl, VmHandle};
+use kelir_interface::hex_codec::encode_hex;
+use kelir_interface::lifecycle_state::LifecycleState;
 use kelir_interface::plugin_model::PipelineBinder;
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 pub struct Session {
-    pub terminal: crate::planes::terminal::TerminalPlane,
+    pub terminal: Arc<crate::planes::terminal::TerminalPlane>,
     pub storage: crate::planes::storage::StoragePlane,
     pub wire: crate::planes::wire::WirePlane,
     pub checkpoint: crate::planes::checkpoint::CheckpointPlane,
@@ -23,21 +25,15 @@ pub struct Session {
     >,
     owned_bus: crate::bus::OwnedBusDispatcher,
     engine: crate::dispatch_plugin::PipelineEngine,
+    session_id: [u8; 16],
     incarnation_id: [u8; 16],
     plugins: Vec<crate::plugin_registry::PluginRegistration>,
     detached: bool,
+    state: LifecycleState,
 }
 
 // see: cans/08-lifecycle.md#Session-incarnation
-fn incarnation_hex(id: &[u8; 16]) -> String {
-    id.iter().fold(String::with_capacity(32), |mut hex, byte| {
-        hex.push_str(&format!("{byte:02x}"));
-        hex
-    })
-}
-
-// see: cans/08-lifecycle.md#Session-incarnation
-fn mint_incarnation_id() -> [u8; 16] {
+fn mint_uuid_v7() -> [u8; 16] {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let elapsed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -73,14 +69,10 @@ impl Session {
                 "HOME is not set; cannot locate ~/.kelir relay socket".into(),
             )
         })?;
-        let mut hex = String::with_capacity(32);
-        for byte in session_id {
-            hex.push_str(&format!("{byte:02x}"));
-        }
         Ok(std::path::PathBuf::from(home)
             .join(".kelir")
             .join("sessions")
-            .join(hex)
+            .join(encode_hex(session_id))
             .join("relay.sock"))
     }
 
@@ -100,8 +92,9 @@ impl Session {
         self.detached
     }
 
+    // see: cans/06-storage-catalog.md#Entity-model
     pub fn session_id(&self) -> [u8; 16] {
-        self.incarnation_id
+        self.session_id
     }
 
     pub fn set_detached(&mut self, detached: bool) {
@@ -125,17 +118,23 @@ impl Session {
     pub fn boot(
         config: kelir_interface::driver_interface::VmConfig,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
-        Self::boot_with_plugins(config, &[])
+        Self::boot_with_plugins(config, &[], None)
     }
 
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
     pub fn boot_with_plugins(
         config: kelir_interface::driver_interface::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
+        trampoline: Option<&kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
+        let mut engine = crate::dispatch_plugin::PipelineEngine::new();
+        if let Some(descriptor) = trampoline {
+            engine = engine.with_trampoline(descriptor.clone());
+        }
         Self::boot_with_engine(
             config,
             plugins,
-            crate::dispatch_plugin::PipelineEngine::new(),
+            engine,
             std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             Vec::new(),
         )
@@ -155,8 +154,41 @@ impl Session {
             ));
         }
         let resolved = crate::plugin_registry::resolve_plugin_registrations(plugins)?;
-        let incarnation_id = mint_incarnation_id();
-        let session_hex = incarnation_hex(&incarnation_id);
+        let incarnation_id = mint_uuid_v7();
+        // see: cans/06-storage-catalog.md#Entity-model
+        let session_id = mint_uuid_v7();
+        let boot_id = encode_hex(&mint_uuid_v7());
+        let start_time_ns = i64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or_default(),
+        )
+        .unwrap_or(i64::MAX);
+        // TODO (L3): swap the minted boot_id and now-based start_time_ns for the OS host_boot_id and proc start_time per cans/08-lifecycle.md#Cross-platform-incarnation-proof.
+        // TODO (L3): detached boots upgrade the row to lease_kind='lease' with runner child pid and expires_at per cans/08-lifecycle.md#Detached-lifecycle.
+        let row = kelir_catalog::schema_catalog::SessionRow {
+            session_id,
+            incarnation_id: kelir_catalog::schema_catalog::IncarnationId::from_bytes(
+                incarnation_id,
+            ),
+            lease_kind: kelir_catalog::schema_catalog::LeaseKind::Ephemeral,
+            expires_at_unix: None,
+            runner_pid: i64::from(std::process::id()),
+            boot_id,
+            start_time_ns,
+        };
+        kelir_catalog::CatalogDb::open(kelir_catalog::catalog_path().map_err(|error| {
+            kelir_interface::plugin_model::PluginError::Halt(format!("{error}"))
+        })?)
+        .map_err(kelir_catalog::CatalogError::from)
+        .and_then(|catalog| catalog.register_session(&row))
+        .map_err(|error| {
+            kelir_interface::plugin_model::PluginError::Halt(format!(
+                "catalog session registration: {error}"
+            ))
+        })?;
+        let session_hex = encode_hex(&incarnation_id);
         let workspace_root = std::env::temp_dir()
             .join("kelir")
             .join(&session_hex)
@@ -172,7 +204,12 @@ impl Session {
         if let Some(handler) = engine.vsock_service(VAULT_METADATA_VSOCK_PORT) {
             wire.bind_imds_sink(handler)?;
         }
-        let engine = engine.with_metrics(metrics.clone());
+        let terminal = Arc::new(
+            crate::planes::terminal::TerminalPlane::new(session_id).with_metrics(metrics.clone()),
+        );
+        let engine = engine
+            .with_metrics(metrics.clone())
+            .with_terminal(Arc::clone(&terminal));
         metrics.set_active_vcpus(u32::from(config.vcpus));
         // TODO (L3): DriverRouter probes KVM/HVF/AVF and completes the driver boot handshake; vm_handle stays unbound until a backend loads.
         let driver = crate::vmm::DriverRouter::load_native_driver(
@@ -184,9 +221,8 @@ impl Session {
         )
         .ok()
         .map(|loaded| Arc::new(tokio::sync::Mutex::new(loaded)));
-        Ok(Self {
-            terminal: crate::planes::terminal::TerminalPlane::new(incarnation_id)
-                .with_metrics(metrics.clone()),
+        let mut session = Self {
+            terminal,
             storage: storage.with_metrics(metrics.clone()),
             wire: wire.with_metrics(metrics.clone()),
             checkpoint: crate::planes::checkpoint::CheckpointPlane::new()
@@ -200,10 +236,14 @@ impl Session {
                 crate::bus::MUX_RING_CAPACITY,
             ),
             engine,
+            session_id,
             incarnation_id,
             plugins: resolved,
             detached: false,
-        })
+            state: LifecycleState::Initializing,
+        };
+        session.advance_lifecycle(LifecycleState::Running)?;
+        Ok(session)
     }
 
     pub fn plugins(&self) -> &[crate::plugin_registry::PluginRegistration] {
@@ -223,12 +263,17 @@ impl Session {
         >,
         owned_bus: crate::bus::OwnedBusDispatcher,
         engine: crate::dispatch_plugin::PipelineEngine,
+        session_id: [u8; 16],
         incarnation_id: [u8; 16],
         plugins: Vec<crate::plugin_registry::PluginRegistration>,
         metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     ) -> Self {
-        Self {
-            terminal: terminal.with_metrics(metrics.clone()),
+        let terminal = Arc::new(terminal.with_metrics(metrics.clone()));
+        let engine = engine
+            .with_metrics(metrics.clone())
+            .with_terminal(Arc::clone(&terminal));
+        let mut session = Self {
+            terminal,
             storage: storage.with_metrics(metrics.clone()),
             wire: wire.with_metrics(metrics.clone()),
             checkpoint: checkpoint.with_metrics(metrics.clone()),
@@ -237,11 +282,15 @@ impl Session {
             uart: crate::uart_terminal::UartRingBuffer::new(),
             driver: Some(driver),
             owned_bus,
-            engine: engine.with_metrics(metrics),
+            engine,
+            session_id,
             incarnation_id,
             plugins,
             detached: false,
-        }
+            state: LifecycleState::Initializing,
+        };
+        let _ = session.advance_lifecycle(LifecycleState::Running);
+        session
     }
 
     pub fn metrics(&self) -> &std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry> {
@@ -381,7 +430,7 @@ impl Session {
         // see: cans/08-lifecycle.md#Rollback
         if let Some(revoker) = self.engine.token_revoker() {
             revoker
-                .revoke_session_tokens(&incarnation_hex(&self.incarnation_id))
+                .revoke_session_tokens(&encode_hex(&self.incarnation_id))
                 .await?;
         }
         let Some(driver) = self.driver.as_ref() else {
@@ -423,6 +472,22 @@ impl Session {
             kelir_interface::protocol_wire::MsgType::VmLifecycleControl,
             &wall_clock_ns.to_le_bytes(),
         )
+    }
+
+    // see: cans/08-lifecycle.md#State-machine
+    pub fn lifecycle_state(&self) -> LifecycleState {
+        self.state
+    }
+
+    // see: cans/08-lifecycle.md#State-machine
+    fn advance_lifecycle(
+        &mut self,
+        next: LifecycleState,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        self.state = self.state.transition(next).map_err(|error| {
+            kelir_interface::plugin_model::PluginError::Halt(format!("{error:?}"))
+        })?;
+        Ok(())
     }
 
     pub fn suspend(

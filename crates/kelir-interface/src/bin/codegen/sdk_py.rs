@@ -405,13 +405,15 @@ fn eval_default(
                     proj.krate.dir_name
                 ));
             }
-            if let syn::Expr::Lit(lit) = &*call.receiver {
-                if let syn::Lit::Str(value) = &lit.lit {
-                    return Ok(Default {
-                        ctor: py_quote(&str_content(value)?),
-                        immutable: true,
-                    });
-                }
+            if let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(value),
+                ..
+            }) = &*call.receiver
+            {
+                return Ok(Default {
+                    ctor: py_quote(&str_content(value)?),
+                    immutable: true,
+                });
             }
             Err(format!(
                 "{}: unsupported default expr for {where_}",

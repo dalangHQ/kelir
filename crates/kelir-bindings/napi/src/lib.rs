@@ -24,12 +24,21 @@ use kelir_core::planes::storage::storage_reconciler::FsReconcileRequest;
 use kelir_interface::driver_interface::{
     ExternalSuspendKind, GuestClock, SnapshotDescriptor, SuspendReason, VmConfig, default_vm_config,
 };
+use kelir_interface::error_envelope::ErrorEnvelope;
 use kelir_interface::handles_lifecycle::VmHandle as CoreVmHandle;
 use kelir_interface::plugin_model::PluginError;
 
-// see: cans/03-sdk-architecture.md#Session-surfaces
+// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
 fn halt(error: PluginError) -> Error {
-    Error::new(Status::GenericFailure, error.to_string())
+    envelope_error(&ErrorEnvelope::from(error))
+}
+
+// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
+fn envelope_error(envelope: &ErrorEnvelope) -> Error {
+    Error::new(
+        Status::GenericFailure,
+        serde_json::to_string(envelope).unwrap_or_else(|_| envelope.message.clone()),
+    )
 }
 
 // see: cans/03-sdk-architecture.md#Session-surfaces
@@ -702,8 +711,8 @@ impl NativeKelirBuilder {
             .map(|plugin| kelir_core::PluginRegistration::new(plugin.name.clone(), plugin.enabled))
             .collect();
         let started = Instant::now();
-        let session = Session::boot_with_plugins(self.config.clone(), &plugins)
-            .map_err(|error| Error::from_reason(error.to_string()))?;
+        let session = Session::boot_with_plugins(self.config.clone(), &plugins, Some(descriptor))
+            .map_err(halt)?;
         // TODO (L3): re-source driver_name from the booted core session once it exposes the resolved driver.
         Ok(NativeSessionHandle::from_session(
             session,

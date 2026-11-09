@@ -1,6 +1,6 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction,
+import { kelir, createPlugin, TrapFilter, LifecycleEvent, PostExecAction,
          type Session, type SnapshotDescriptor, type ExecutionReceipt,
          type CausalDelta, type PluginContract,
          type LedgerHandle, type PolicyHandle } from "@kelir/core";
@@ -37,78 +37,6 @@ const runtime = kelir({
 })
 
 
-  .terminal({
-    cols: 120, rows: 40,
-    dropOsc52: true, stripTitle: true,
-    tokenShield: { maxBytesTotal: 128 * 1024, maxLinesTotal: 500,
-                   clampStrategy: "head-and-tail",
-                   onClamp: (s) => `\n⚠️ [SHIELD] -${s.droppedBytes}B / -${s.droppedLines}L\n` },
-    prompts: [{ match: /Overwrite production schema\? \[y\/N\]/i,
-                timeoutMs: 3000, verifyForeground: true,
-                action: async (_p, stream) => { stream.write("y\n"); } }],
-
-
-    streamEngine: "StatelessRegex",
-  })
-
-
-  .storage<{ ledger: LedgerHandle }>({
-    idmap: { guestUid: 0, hostUid: process.getuid!() },
-    sharedCaches: ["~/.npm", "~/.cache/pip", "~/.cargo/registry"],
-    lockBroker: true,
-    syntheticFiles: [
-      { path: "/workspace/.env.local",
-        content: "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n" },
-      { path: "/workspace/identity.jwt",
-
-
-        content: () => `Bearer ${crypto.randomBytes(32).toString("hex")}`, mode: 0o400 },
-    ],
-    maskRead: [
-      { glob: "**/secrets/**",
-        pattern: /sk_live_[0-9a-zA-Z]{24}/g, replace: "[STRIPE_VAULT_KEY]" },
-      { glob: "**/secrets/**",
-        pattern: /AKIA[0-9A-Z]{16}/g,       replace: "[AWS_IAM_REDACTED]" },
-    ],
-
-
-    snoops: [
-      { path: "~/.claude/sessions/*.json", sync: true,
-        onWrite: async (path, raw, c) => {
-          const evt = JSON.parse(raw.toString());
-          if (evt.falsifiedResult) throw new Error("EPERM: harness hallucination detected.");
-          const producerBlake3 = await c.ledger.blake3OfProducingProcess(path);
-          await oracle.ingestHarnessEvent({
-            path, event: evt, producerBlake3
-          });
-        } },
-
-
-      { path: "**/*.diff", sync: true,
-        onWrite: async (_path, raw) => {
-          if (raw.byteLength > 64 * 1024)
-            throw new Error("ENOSPC: diff exceeds policy ceiling");
-        } },
-    ],
-  })
-
-
-  .wire({
-    sinkhole: { dnsExcept: ["api.stripe.com", "github.com", "*.internal.net"] },
-    sshAgentBridge: true,
-
-
-    vaults: [{ name: "STRIPE_SECRET", kind: "bearer_token",
-               audience: "api.stripe.com", placeholder: "vault://stripe_key" }],
-    l4Proxies: [{ listenPort: 5432, destination: "pg.internal.net:5432",
-                  injectMtls: { certPath: "/etc/ssl/client.crt",
-                                keyPath:  "/etc/ssl/client.key" } }],
-
-
-    tapFilter: "AllowUdpProxied",
-  })
-
-
   .use(chaos({
     network: [{ target: "api.stripe.com",
                 latency: { baseMs: 150, jitterMs: 30 }, dropRate: 0.02 },
@@ -137,13 +65,6 @@ const runtime = kelir({
                           protectedBranches: ["main", "master", "release/*"] }))
 
 
-  .params(t.Object({
-    action:  t.Literal("fix-stripe-webhook"),
-    repo:    t.String(),
-    issueId: t.String(),
-    env:     t.Union([t.Literal("staging"), t.Literal("production")]),
-    force:   t.Optional(t.Boolean()),
-  }))
   .trap("*", {
     pre: async (c) => {
       await c.vm.checkpoint(`pre:${c.trap.pid}`);

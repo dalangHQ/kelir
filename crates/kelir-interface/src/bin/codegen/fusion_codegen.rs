@@ -125,10 +125,12 @@ fn parse_hook_rings(expr: &syn::Expr) -> Result<Vec<HookRing>, String> {
             };
             match ident.to_string().as_str() {
                 "method" => {
-                    if let syn::Expr::Lit(lit) = &field.expr {
-                        if let syn::Lit::Str(value) = &lit.lit {
-                            method = Some(value.value());
-                        }
+                    if let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(value),
+                        ..
+                    }) = &field.expr
+                    {
+                        method = Some(value.value());
                     }
                 }
                 "ring" => {
@@ -145,16 +147,17 @@ fn parse_hook_rings(expr: &syn::Expr) -> Result<Vec<HookRing>, String> {
                         lifecycle_tag = Some(None);
                     }
                     syn::Expr::Call(call) => {
-                        if let syn::Expr::Path(path) = &*call.func {
-                            if path.path.is_ident("Some") {
-                                let Some(arg) = call.args.first() else {
-                                    return Err("Some() with no argument".to_string());
-                                };
-                                if let syn::Expr::Lit(lit) = arg {
-                                    if let syn::Lit::Str(value) = &lit.lit {
-                                        lifecycle_tag = Some(Some(value.value()));
-                                    }
-                                }
+                        if matches!(&*call.func, syn::Expr::Path(path) if path.path.is_ident("Some"))
+                        {
+                            let Some(arg) = call.args.first() else {
+                                return Err("Some() with no argument".to_string());
+                            };
+                            if let syn::Expr::Lit(syn::ExprLit {
+                                lit: syn::Lit::Str(value),
+                                ..
+                            }) = arg
+                            {
+                                lifecycle_tag = Some(Some(value.value()));
                             }
                         }
                     }

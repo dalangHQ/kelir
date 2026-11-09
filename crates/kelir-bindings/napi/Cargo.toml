@@ -12,6 +12,7 @@ kelir-core = { path = "../../kelir-core" }
 kelir-interface = { path = "../../kelir-interface" }
 napi = { version = "2.16", default-features = false, features = ["napi4", "async"] }
 napi-derive = "2.16"
+serde_json = { workspace = true }
 tokio = { workspace = true }
 
 [build-dependencies]

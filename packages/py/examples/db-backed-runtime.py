@@ -34,7 +34,7 @@ LOCAL_SNAPSHOT = "./fixtures/migrate-snapshot.erofs"
 def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
     builder = (
         kelir.builder(
-            vcpus=2, memory_mb=2048, driver="auto",
+            vcpus=2, memory_mb=2048,
             kernel=f"./fixtures/vmlinux-6.6-{os.uname().machine}-kelir",
             rootfs_erofs="./fixtures/rootfs-migrate.erofs",
             tsc_locked=True, enable_watchdog=True,

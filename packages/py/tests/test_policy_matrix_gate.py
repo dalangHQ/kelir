@@ -117,7 +117,6 @@ def build_runtime() -> KelirBuilder:
         rootfs_erofs="./fixtures/rootfs-policy.erofs",
         tsc_locked=True,
         enable_watchdog=True,
-        driver="auto",
     )
 
     builder = builder.plugin(PolicyMatrixPlugin())

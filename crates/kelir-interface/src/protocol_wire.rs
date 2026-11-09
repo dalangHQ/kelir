@@ -58,6 +58,7 @@ wire_enum! { StreamKind, STREAM_KINDS, {
 }}
 
 impl Default for StreamKind {
+    #[allow(clippy::derivable_impls)]
     fn default() -> Self {
         Self::Exec
     }

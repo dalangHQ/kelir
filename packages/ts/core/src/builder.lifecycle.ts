@@ -22,90 +22,16 @@ import {
 export interface KelirConfig {
   readonly vcpus?: number;
   readonly memoryMb?: number;
+  readonly pageSizeKb?: number;
+  readonly deterministicClock?: boolean;
+  readonly pinnedClocksource?: string;
+  readonly preemptionGraceMs?: number;
   readonly driver?: string;
   readonly kernel?: string;
   readonly rootfsErofs?: string;
   readonly tscLocked?: boolean;
   readonly enableWatchdog?: boolean;
   readonly detached?: boolean;
-}
-
-export interface TerminalStream {
-  write(data: string): void;
-}
-
-export interface TerminalConfig {
-  readonly cols?: number;
-  readonly rows?: number;
-  readonly dropOsc52?: boolean;
-  readonly stripTitle?: boolean;
-  readonly tokenShield?: {
-    readonly maxBytesTotal: number;
-    readonly maxLinesTotal: number;
-    readonly clampStrategy: string;
-    readonly onClamp: (stats: {
-      droppedBytes: number;
-      droppedLines: number;
-    }) => string;
-  };
-  readonly prompts?: readonly {
-    readonly match: RegExp;
-    readonly timeoutMs: number;
-    readonly verifyForeground: boolean;
-    readonly action: (
-      prompt: unknown,
-      stream: TerminalStream,
-    ) => Promise<void> | void;
-  }[];
-  readonly streamEngine?: string;
-}
-
-export interface StorageConfig<Ctx = unknown> {
-  readonly idmap?: { readonly guestUid: number; readonly hostUid: number };
-  readonly sharedCaches?: readonly string[];
-  readonly lockBroker?: boolean;
-  readonly syntheticFiles?: readonly {
-    readonly path: string;
-    readonly content: string | (() => string);
-    readonly mode?: number;
-  }[];
-  readonly maskRead?: readonly {
-    readonly glob: string;
-    readonly pattern: RegExp;
-    readonly replace: string;
-  }[];
-  readonly snoops?: readonly {
-    readonly path: string;
-    readonly sync: boolean;
-    readonly onWrite: (
-      path: string,
-      raw: Uint8Array,
-      c: TrapContext & Ctx,
-    ) => Promise<void> | void;
-  }[];
-  readonly encapsulation?: string;
-  readonly scanEngine?: string;
-  readonly carryoverBytes?: number;
-}
-
-export interface WireConfig {
-  readonly sinkhole?: { readonly dnsExcept: readonly string[] };
-  readonly sshAgentBridge?: boolean;
-  readonly vaults?: readonly {
-    readonly name: string;
-    readonly kind: "bearer_token" | "sigv4" | "mtls_bundle";
-    readonly audience: string;
-    readonly placeholder: string;
-  }[];
-  readonly l4Proxies?: readonly {
-    readonly listenPort: number;
-    readonly destination: string;
-    readonly injectMtls?: {
-      readonly certPath: string;
-      readonly keyPath: string;
-    };
-  }[];
-  readonly tapFilter?: string;
 }
 
 export type TrapHandlerResult = Verdict | PostExecAction | null | void;
@@ -158,19 +84,6 @@ export class KelirBuilder<Ctx = unknown> {
     return this.detachedFlag;
   }
 
-  // TODO (L3): record and apply the terminal/storage/wire plane and params schema configs through the native builder at boot.
-  terminal(_config: TerminalConfig): this {
-    return this;
-  }
-
-  storage<C>(_config: StorageConfig<C>): this {
-    return this;
-  }
-
-  wire(_config: WireConfig): this {
-    return this;
-  }
-
   // see: cans/artifacts/code/typescript-accumulation.ts#runtime
   use<P extends KelirPlugin>(
     plugin: P,
@@ -186,10 +99,6 @@ export class KelirBuilder<Ctx = unknown> {
       }
     }
     return this as KelirBuilder<Ctx & PluginContextOf<P>>;
-  }
-
-  params(_schema: Schema<any>): this {
-    return this;
   }
 
   // see: cans/02-plugin-model.md#Foreign-plugin-proxy
@@ -370,7 +279,9 @@ export class KelirBuilder<Ctx = unknown> {
       this.config.rootfsErofs,
       this.config.tscLocked,
       this.config.enableWatchdog,
+      this.config.driver,
     );
+    // TODO (L3): forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.
     for (const registration of this.pluginRegistrations) {
       nativeBuilder.addPlugin(registration.name, registration.enabled);
     }

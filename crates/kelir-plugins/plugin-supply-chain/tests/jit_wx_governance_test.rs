@@ -1,37 +1,13 @@
 // see: cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)
 use std::collections::HashMap;
-use std::future::Future;
-use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
 
 use kelir_interface::plugin_model::TrapInterposer;
 use kelir_interface::protocol_wire::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
+use kelir_plugin_testkit::block_on;
 use kelir_plugin_testkit::handlers_testkit::handler_ctx;
 use plugin_supply_chain::{
     AuthorizedJitEngine, PackageGuardConfig, SupplyChainConfig, SupplyChainPlugin, WxJitConfig,
 };
-
-// see: cans/15-operations.md#Local-velocity
-fn block_on<F: Future>(future: F) -> F::Output {
-    struct ThreadWaker(std::thread::Thread);
-    impl Wake for ThreadWaker {
-        fn wake(self: Arc<Self>) {
-            self.0.unpark();
-        }
-        fn wake_by_ref(self: &Arc<Self>) {
-            self.0.unpark();
-        }
-    }
-    let mut future = Box::pin(future);
-    let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
-    let mut cx = Context::from_waker(&waker);
-    loop {
-        match future.as_mut().poll(&mut cx) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => std::thread::park(),
-        }
-    }
-}
 
 fn trap_event(
     pid: u32,

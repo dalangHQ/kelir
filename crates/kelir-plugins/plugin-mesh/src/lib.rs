@@ -198,16 +198,18 @@ impl MeshPlugin {
                 ),
             ));
         }
-        if let Some(peer_id) = &peer.spiffe_id {
-            if peer_id != &handshake.svid.spiffe_id {
-                return Err(PluginError::reject(
-                    ECONNREFUSED,
-                    format!(
-                        "peer {}:{} vsock identity diverges from the handshake SVID",
-                        peer.cid, peer.port
-                    ),
-                ));
-            }
+        if peer
+            .spiffe_id
+            .as_ref()
+            .is_some_and(|peer_id| peer_id != &handshake.svid.spiffe_id)
+        {
+            return Err(PluginError::reject(
+                ECONNREFUSED,
+                format!(
+                    "peer {}:{} vsock identity diverges from the handshake SVID",
+                    peer.cid, peer.port
+                ),
+            ));
         }
         // TODO (L3): verify the SVID credential signature and the workload prefix authorization.
         Ok(())

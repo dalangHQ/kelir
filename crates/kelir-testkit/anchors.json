@@ -2542,7 +2542,7 @@
       "Asserts-zero-unhandled-panics-across-malformed-CBOR,-VFS,-and-FUSE-ops",
       "Attestation-flow-sketch",
       "Automated-AST-scraper-extracts-public-exported-API-signatures",
-      "Barrels-stay-conventional:-Rust-lib.rs/main.rs/mod.rs,-index.ts-entry,-init-.py-markers,-*.d.ts-declarations",
+      "Barrels-stay-conventional:-lib.rs/main.rs/mod.rs,-index.ts,-init-.py,-*.d.ts",
       "Binding-coverage-assertion",
       "Boot-budget-target",
       "Budgets-in-perf/budgets.toml-enforced-strictly-with-enforce-=-true",

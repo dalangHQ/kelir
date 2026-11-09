@@ -124,6 +124,7 @@ pub fn read_ppid(pid: u32) -> Result<u32, ShimError> {
         .map_err(|_| ShimError::ProcRead { pid, field: "stat" })
 }
 
+#[allow(clippy::chunks_exact_to_as_chunks)]
 pub fn read_auxv(pid: u32) -> Result<Vec<(u64, u64)>, ShimError> {
     let bytes = read_proc_bytes(pid, "auxv")?;
     let mut pairs = Vec::new();

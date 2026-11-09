@@ -13,9 +13,12 @@ use kelir_interface::plugin_model::{
     LockBrokerCoordination, MountScope, NetInterposer, ParkedConnectionReset, PipelineBinder,
     TokenRevocation, TrapInterposer, VirtioDevice,
 };
-use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{
+    EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, ProcessExit, TrapEvent, Verdict,
+};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
+use crate::planes::terminal::LogStream;
 use crate::trap_gate::{GateDecision, TrapGateEvaluator};
 
 // see: cans/artifacts/code/plugin-trait.rs#PANIC_QUARANTINE_ENABLED
@@ -95,6 +98,7 @@ pub struct PipelineEngine {
     net_scopes: Vec<MountScope>,
     console_interceptors: Vec<Arc<dyn ConsoleInterposer>>,
     console_scopes: Vec<MountScope>,
+    terminal: Option<Arc<crate::planes::terminal::TerminalPlane>>,
     host_interceptors: Vec<Arc<dyn HostInterposer>>,
     host_scopes: Vec<MountScope>,
     vsock_services: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>, MountScope)>,
@@ -102,6 +106,7 @@ pub struct PipelineEngine {
     parked_reset: Option<Arc<dyn ParkedConnectionReset>>,
     token_revoker: Option<Arc<dyn TokenRevocation>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
+    trampoline: Option<kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
     foreign_queue: FfiDispatchQueue,
     ffi_rate_per_sec: u32,
     ffi_window_start_ms: AtomicU64,
@@ -203,6 +208,7 @@ impl PipelineEngine {
             net_scopes: Vec::new(),
             console_interceptors: Vec::new(),
             console_scopes: Vec::new(),
+            terminal: None,
             host_interceptors: Vec::new(),
             host_scopes: Vec::new(),
             vsock_services: Vec::new(),
@@ -210,6 +216,7 @@ impl PipelineEngine {
             parked_reset: None,
             token_revoker: None,
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
+            trampoline: None,
             foreign_queue: FfiDispatchQueue::default(),
             ffi_rate_per_sec: 0,
             ffi_window_start_ms: AtomicU64::new(0),
@@ -270,8 +277,28 @@ impl PipelineEngine {
         self
     }
 
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    pub fn with_terminal(mut self, terminal: Arc<crate::planes::terminal::TerminalPlane>) -> Self {
+        self.terminal = Some(terminal);
+        self
+    }
+
     pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
         &self.metrics
+    }
+
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    // TODO (L3): dispatch consults the fused trampoline descriptor so each ring event crosses FFI exactly once.
+    pub fn with_trampoline(
+        mut self,
+        descriptor: kelir_interface::fusion_plugin::FusedTrampolineDescriptor,
+    ) -> Self {
+        self.trampoline = Some(descriptor);
+        self
+    }
+
+    pub fn trampoline(&self) -> Option<&kelir_interface::fusion_plugin::FusedTrampolineDescriptor> {
+        self.trampoline.as_ref()
     }
 
     pub fn vsock_service(&self, port: u32) -> Option<Arc<dyn VsockServiceHandler>> {
@@ -544,6 +571,10 @@ impl PipelineEngine {
             }
             quarantine_unit(interceptor.on_console_output(port, chunk)).await?;
         }
+        // see: cans/04-terminal-plane.md#Terminal-pipeline
+        if let Some(terminal) = &self.terminal {
+            terminal.record_output(LogStream::Port(port), chunk)?;
+        }
         Ok(())
     }
 
@@ -560,6 +591,16 @@ impl PipelineEngine {
             }
             quarantine_unit(interceptor.on_exec_stdout(pid, exec_id, chunk)).await?;
         }
+        // see: cans/04-terminal-plane.md#Binary-exec-channel-(terminal-plane)
+        if let Some(terminal) = &self.terminal {
+            terminal.record_output(
+                LogStream::Exec {
+                    id: exec_id,
+                    lane: EXEC_STREAM_STDOUT,
+                },
+                chunk,
+            )?;
+        }
         Ok(())
     }
 
@@ -575,6 +616,16 @@ impl PipelineEngine {
                 continue;
             }
             quarantine_unit(interceptor.on_exec_stderr(pid, exec_id, chunk)).await?;
+        }
+        // see: cans/04-terminal-plane.md#Binary-exec-channel-(terminal-plane)
+        if let Some(terminal) = &self.terminal {
+            terminal.record_output(
+                LogStream::Exec {
+                    id: exec_id,
+                    lane: EXEC_STREAM_STDERR,
+                },
+                chunk,
+            )?;
         }
         Ok(())
     }

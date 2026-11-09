@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
 use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::plugin_model::HandlerCtx as IfaceHandlerCtx;
 use tokio::sync::Mutex;
@@ -17,13 +16,9 @@ use kelir::{
     SnapshotDescriptor, TrapFilter, Unsealed, Verdict, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     handler,
-    planes::{
-        storage_plane::{
-            DynamicFile, IdmapConfig, MaskRule, ReadMaskEngine, SnoopHandler, SnoopRule,
-            StorageConfig, SyntheticFile, WorkspaceEncapsulation,
-        },
-        terminal_plane::{PromptRule, PtyConfig, TokenShield},
-        wire_plane::{L4Proxy, Mtls, SinkholeConfig, TapFilter, WireConfig},
+    planes::storage_plane::{
+        DynamicFile, IdmapConfig, MaskRule, ReadMaskEngine, SnoopHandler, SnoopRule, StorageConfig,
+        SyntheticFile, WorkspaceEncapsulation,
     },
     plugin_model::{
         AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginError, TrapInterposer,
@@ -200,8 +195,6 @@ impl RepoPolicyPlugin {
 
 async fn build_runtime(
     oracle: Arc<UserOracle>,
-    pg_cert: PathBuf,
-    pg_key: PathBuf,
 ) -> Result<
     KelirBuilder<
         Unsealed,
@@ -262,31 +255,6 @@ async fn build_runtime(
         preemption_grace_ms: 0,
         entropy_seed: None,
     })
-    .terminal(PtyConfig {
-        cols: 120,
-        rows: 40,
-        drop_osc52: true,
-        strip_title: true,
-        token_shield: Some(TokenShield {
-            max_bytes_total: 128 * 1024,
-            max_lines_total: 500,
-            clamp_strategy: "head-and-tail".into(),
-            notice: "⚠️ [SHIELD]".into(),
-        }),
-        prompts: vec![PromptRule {
-            pattern: r"(?i)Overwrite production schema\? \[y/N\]".into(),
-            timeout: Duration::from_secs(3),
-            verify_foreground: true,
-            action: Arc::new(|_, stream| {
-                Box::pin(async move {
-                    stream.write(b"y\n").await?;
-                    Ok(())
-                })
-            }),
-        }],
-
-        stream_engine: "StatelessRegex".into(),
-    })
     .storage(StorageConfig {
         idmap: IdmapConfig {
             guest_uid: 0,
@@ -329,34 +297,6 @@ async fn build_runtime(
         encapsulation: WorkspaceEncapsulation::Passthrough,
         scan_engine: ReadMaskEngine::FastRegex,
         carryover_bytes: 1024,
-    })
-    .wire(WireConfig {
-        sinkhole: SinkholeConfig {
-            allowlist: vec![
-                "api.stripe.com".into(),
-                "github.com".into(),
-                "*.internal.net".into(),
-            ],
-            drop_all: true,
-        },
-        ssh_agent_bridge: true,
-
-        vaults: vec![CredentialDescriptor {
-            name: "STRIPE_SECRET".into(),
-            kind: CredentialKind::BearerToken,
-            audience: "api.stripe.com".into(),
-            placeholder: "vault://stripe_key".into(),
-        }],
-        l4_proxies: vec![L4Proxy {
-            listen_port: 5432,
-            destination: "pg.internal.net:5432".into(),
-            inject_mtls: Some(Mtls {
-                cert_path: pg_cert,
-                key_path: pg_key,
-            }),
-        }],
-
-        tap_filter: TapFilter::AllowUdpProxied,
     })
     .plugin(ChaosPlugin::new(ChaosConfig {
         network: vec![
@@ -576,12 +516,7 @@ async fn build_runtime(
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let oracle: Arc<UserOracle> = Arc::new(UserOracle::new());
 
-    let builder = build_runtime(
-        Arc::clone(&oracle),
-        "/etc/ssl/client.crt".into(),
-        "/etc/ssl/client.key".into(),
-    )
-    .await?;
+    let builder = build_runtime(Arc::clone(&oracle)).await?;
 
     let mut session = builder.boot().await?;
     session.terminal.resize(120, 40)?;

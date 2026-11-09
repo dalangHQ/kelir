@@ -193,8 +193,7 @@ async def main() -> None:
             rootfs_erofs="./fixtures/rootfs-hooks.erofs",
             tsc_locked=True,
             enable_watchdog=True,
-            driver="auto",
-        )
+            )
         .plugin(plugin)
     )
 

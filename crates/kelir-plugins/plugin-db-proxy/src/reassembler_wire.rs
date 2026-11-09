@@ -124,6 +124,7 @@ impl TcpStreamReassembler {
     }
 
     // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+    // TODO (L3): converge on WirePlane::divert_l4 once L4 diversion lands.
     pub fn push_segment(
         &mut self,
         segment: &TcpSegmentView<'_>,

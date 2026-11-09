@@ -312,14 +312,15 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
             async move {
                 if let CborValue::Map(entries) = payload {
                     for (k, v) in entries {
-                        if k == CborValue::Text("pid".into()) {
-                            if let CborValue::Integer(pid) = v {
+                        match (&k, &v) {
+                            (CborValue::Text(key), CborValue::Integer(pid)) if key == "pid" => {
                                 quarantine_state
                                     .quarantined_pids
                                     .lock()
                                     .unwrap_or_else(|e| e.into_inner())
-                                    .push(i128::from(pid) as u32);
+                                    .push(i128::from(*pid) as u32);
                             }
+                            _ => {}
                         }
                     }
                 }

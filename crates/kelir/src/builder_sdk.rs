@@ -13,9 +13,7 @@ use kelir_interface::plugin_model::{
 use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
-use crate::planes::storage_plane::{LockBrokerConfig, StorageConfig};
-use crate::planes::terminal_plane::PtyConfig;
-use crate::planes::wire_plane::WireConfig;
+use crate::planes::storage_plane::StorageConfig;
 use crate::plugin_model::KelirPlugin;
 use crate::session_lifecycle::Session;
 
@@ -64,10 +62,12 @@ impl TrapFilter {
     }
 
     pub(crate) fn matches(&self, event: &TrapEvent) -> bool {
-        if let Some(binary) = &self.binary {
-            if binary != &event.binary_path {
-                return false;
-            }
+        if self
+            .binary
+            .as_ref()
+            .is_some_and(|binary| binary != &event.binary_path)
+        {
+            return false;
         }
         self.args.iter().all(|arg| event.argv.contains(arg))
     }
@@ -196,10 +196,7 @@ pub(crate) struct StreamKindServiceEntry {
 pub(crate) struct Registration<Plugins: HList> {
     pub(crate) instances: Vec<(Box<dyn AnyPlugin>, MountScope)>,
     pub(crate) traps: Vec<TrapEntry<Plugins>>,
-    pub(crate) terminal_cfg: Option<PtyConfig>,
     pub(crate) storage_cfg: Option<StorageConfig<Plugins, NoParams>>,
-    pub(crate) wire_cfg: Option<WireConfig>,
-    pub(crate) lock_broker_cfg: Option<LockBrokerConfig>,
     pub(crate) on_vm_init: Option<BoxedLifecycleCallback>,
     pub(crate) on_vm_ready: Option<BoxedLifecycleCallback>,
     pub(crate) on_vm_shutdown: Option<BoxedLifecycleCallback>,
@@ -216,10 +213,7 @@ impl<Plugins: HList> Default for Registration<Plugins> {
         Self {
             instances: Vec::new(),
             traps: Vec::new(),
-            terminal_cfg: None,
             storage_cfg: None,
-            wire_cfg: None,
-            lock_broker_cfg: None,
             on_vm_init: None,
             on_vm_ready: None,
             on_vm_shutdown: None,
@@ -241,10 +235,7 @@ impl<Plugins: HList> Registration<Plugins> {
         Registration {
             instances: self.instances,
             traps: self.traps.into_iter().map(|entry| entry.narrow()).collect(),
-            terminal_cfg: self.terminal_cfg,
             storage_cfg: self.storage_cfg.map(|cfg| cfg.narrow()),
-            wire_cfg: self.wire_cfg,
-            lock_broker_cfg: self.lock_broker_cfg,
             on_vm_init: self.on_vm_init,
             on_vm_ready: self.on_vm_ready,
             on_vm_shutdown: self.on_vm_shutdown,
@@ -311,23 +302,8 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
         }
     }
 
-    pub fn terminal(mut self, config: PtyConfig) -> Self {
-        self.registration.terminal_cfg = Some(config);
-        self
-    }
-
     pub fn storage(mut self, config: StorageConfig<Plugins, Params>) -> Self {
         self.registration.storage_cfg = Some(config.retag());
-        self
-    }
-
-    pub fn wire(mut self, config: WireConfig) -> Self {
-        self.registration.wire_cfg = Some(config);
-        self
-    }
-
-    pub fn lock_broker(mut self, config: LockBrokerConfig) -> Self {
-        self.registration.lock_broker_cfg = Some(config);
         self
     }
 
@@ -522,6 +498,7 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
 impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins, Params> {
     async fn finish_boot(self) -> Result<Session<Plugins, Params>, PluginError> {
         // TODO (L3): register plugin instances, dispatch tables, and vetoes into the engine per cans/02-plugin-model.md#Static-dispatch before handing the session back.
+        // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
         let plugins: Vec<kelir_core::PluginRegistration> = self
             .registration
             .instances

@@ -1,24 +1,15 @@
 #![forbid(unsafe_code)]
 // see: cans/01-architecture.md#Driver-backends
 // see: cans/artifacts/diagrams/host-runtime.txt#driver-avf
-use std::path::Path;
-use std::sync::Arc;
-use std::time::Duration;
-
-use async_trait::async_trait;
-use tokio::io::AsyncRead;
-
 use kelir_interface::driver_interface::{
-    BalloonConvergence, DriverCapabilities, DriverState, EntropyBackend, EntropyStreamPosition,
-    PmuSampler, SharedMemoryHandle, SnapshotDescriptor, Stream, SuspendReason, VmConfig, VmmDriver,
-    VmmError, WatchdogAction, check_hw_lockfile,
+    DriverCapabilities, EntropyBackend, EntropyStreamPosition, VmConfig, VmmDriver, VmmError,
+    check_hw_lockfile,
 };
 
 #[allow(dead_code)]
 pub struct AvfDriver {
     avf_fd: i32,
     config: Option<VmConfig>,
-    state: DriverState,
     entropy_backend: Option<EntropyBackend>,
     entropy_offset: u64,
 }
@@ -28,7 +19,6 @@ impl AvfDriver {
         Ok(Self {
             avf_fd: -1,
             config: None,
-            state: DriverState::Unbooted,
             entropy_backend: None,
             entropy_offset: 0,
         })
@@ -45,7 +35,7 @@ impl AvfDriver {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl VmmDriver for AvfDriver {
     fn capabilities(&self) -> DriverCapabilities {
         DriverCapabilities {
@@ -65,161 +55,8 @@ impl VmmDriver for AvfDriver {
         self.open_node()
     }
 
-    async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): clone VM state via CoW fork in <15ms per cans/artifacts/code/vmm-driver-trait.rs.
-        Err(VmmError::Unsupported("avf fork: AVF VM clone (L3)".into()))
-    }
-
-    async fn checkpoint(&mut self, _label: &str) -> Result<SnapshotDescriptor, VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): capture an atomic in-memory checkpoint of guest RAM and vCPU registers.
-        Err(VmmError::Unsupported(
-            "avf checkpoint: RAM + register capture (L3)".into(),
-        ))
-    }
-
-    async fn map_shared_region(
-        &mut self,
-        _tag: &str,
-        _size_bytes: usize,
-    ) -> Result<SharedMemoryHandle, VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): map an anonymous zero-copy host memory segment into guest address space.
-        Err(VmmError::Unsupported(
-            "avf map_shared_region: zero-copy segment map (L3)".into(),
-        ))
-    }
-
-    async fn export_snapshot(&self) -> Result<Box<dyn AsyncRead + Send + Sync + Unpin>, VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): serialize registers and compressed dirty pages into a portable stream.
-        Err(VmmError::Unsupported(
-            "avf export_snapshot: portable snapshot stream (L3)".into(),
-        ))
-    }
-
-    async fn import_snapshot(
-        &mut self,
-        _reader: Box<dyn AsyncRead + Send + Sync + Unpin>,
-    ) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): hydrate microVM registers and memory pages from a portable snapshot stream.
-        Err(VmmError::Unsupported(
-            "avf import_snapshot: portable snapshot hydrate (L3)".into(),
-        ))
-    }
-
-    async fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): reset vCPU registers and revert memory tracking in <8ms.
-        Err(VmmError::Unsupported(
-            "avf rollback: register reset + memory revert (L3)".into(),
-        ))
-    }
-
-    async fn suspend(
-        &mut self,
-        _reason: SuspendReason,
-        _output_path: &Path,
-    ) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): flush dirty RAM pages to disk and drop host memory to 0 MB in <50ms.
-        Err(VmmError::Unsupported(
-            "avf suspend: flush dirty pages to disk (L3)".into(),
-        ))
-    }
-
-    async fn resume(&mut self, _image_path: &Path) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): restore a suspended VM image from storage in <50ms.
-        Err(VmmError::Unsupported(
-            "avf resume: restore suspended image (L3)".into(),
-        ))
-    }
-
-    async fn skew_clock(&mut self, _offset: Duration) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): offset the virtual hardware clock.
-        Err(VmmError::Unsupported(
-            "avf skew_clock: pKVM clock offset (L3)".into(),
-        ))
-    }
-
-    async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): adjust the guest RAM ceiling via virtio-balloon; fork, snapshot, and heavy exec require prior convergence.
-        let _ = target_mb;
-        Err(VmmError::Unsupported(
-            "avf adjust_balloon: virtio-balloon resize (L3)".into(),
-        ))
-    }
-
-    // see: cans/10-attestation.md#Lifecycle-bridge
-    async fn freeze_vcpus(&mut self) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): halt vCPUs at the cycle boundary; guest RAM stays resident.
-        Err(VmmError::Unsupported(
-            "avf freeze_vcpus: vCPU-only halt (L3)".into(),
-        ))
-    }
-
-    // see: cans/10-attestation.md#Lifecycle-bridge
-    async fn unfreeze_vcpus(&mut self) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): release halted vCPUs back to the scheduler.
-        Err(VmmError::Unsupported(
-            "avf unfreeze_vcpus: vCPU resume (L3)".into(),
-        ))
-    }
-
-    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-    async fn drain_fuse(&mut self, _timeout: Duration) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): drain in-flight virtio-fs ops until quiescent or timeout.
-        Err(VmmError::Unsupported(
-            "avf drain_fuse: in-flight FUSE drain (L3)".into(),
-        ))
-    }
-
-    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-    async fn commit_broker_upper(&mut self) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): replay the broker upper file and tombstones onto the base.
-        Err(VmmError::Unsupported(
-            "avf commit_broker_upper: broker upper commit (L3)".into(),
-        ))
-    }
-
-    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-    async fn discard_broker_upper(&mut self) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): drop the broker upper file and tombstones; base untouched.
-        Err(VmmError::Unsupported(
-            "avf discard_broker_upper: broker upper discard (L3)".into(),
-        ))
-    }
-
-    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
-    async fn step_clock_window(&mut self, _retired_instructions: u64) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): advance KVM_SET_CLOCK / CNTVOFF_EL2 on the retired-instruction window.
-        Err(VmmError::Unsupported(
-            "avf step_clock_window: retired-instruction window clock step (L3)".into(),
-        ))
-    }
-
-    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
-    fn register_pmu_sampler(&mut self, _sampler: Arc<dyn PmuSampler>) -> Result<(), VmmError> {
-        // TODO (L3): arm host PMU counters and dispatch retired-instruction samples.
-        Err(VmmError::Unsupported(
-            "avf register_pmu_sampler: PMU sample callback registration (L3)".into(),
-        ))
-    }
-
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn set_entropy_backend(&mut self, backend: EntropyBackend) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
         // TODO (L3): swap the virtio-rng device model for the seeded ChaCha20 stream and advance the offset as getrandom() bytes are drawn.
         self.entropy_backend = Some(backend);
         self.entropy_offset = 0;
@@ -228,7 +65,6 @@ impl VmmDriver for AvfDriver {
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn entropy_position(&self) -> Result<EntropyStreamPosition, VmmError> {
-        self.state.ensure_booted("avf")?;
         // TODO (L3): report the live seeded-stream offset; host entropy is not position-trackable.
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => Ok(EntropyStreamPosition {
@@ -245,7 +81,6 @@ impl VmmDriver for AvfDriver {
         &mut self,
         position: EntropyStreamPosition,
     ) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
         // TODO (L3): rewind the seeded stream to the restored offset before the next draw.
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => {
@@ -257,33 +92,5 @@ impl VmmDriver for AvfDriver {
                     .into(),
             )),
         }
-    }
-
-    async fn set_watchdog(
-        &mut self,
-        _timeout: Duration,
-        _action: WatchdogAction,
-    ) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): arm the hardware watchdog; on timeout the driver executes the action.
-        Err(VmmError::Unsupported(
-            "avf set_watchdog: hardware watchdog arm (L3)".into(),
-        ))
-    }
-
-    fn transport_connect(&self, _channel_id: u32) -> Result<Box<dyn Stream>, VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): yield a raw duplex channel to the transport backend multiplexer.
-        Err(VmmError::Unsupported(
-            "avf transport_connect: duplex channel (L3)".into(),
-        ))
-    }
-
-    async fn terminate(&mut self) -> Result<(), VmmError> {
-        self.state.ensure_booted("avf")?;
-        // TODO (L3): terminate the hypervisor instance and release memory allocations.
-        Err(VmmError::Unsupported(
-            "avf terminate: hypervisor teardown (L3)".into(),
-        ))
     }
 }

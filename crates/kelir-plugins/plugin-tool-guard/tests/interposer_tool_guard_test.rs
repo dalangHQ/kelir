@@ -1,34 +1,9 @@
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
-use std::future::Future;
-use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
-
 use kelir_interface::plugin_model::PluginError;
+use kelir_plugin_testkit::block_on;
 use plugin_tool_guard::service_tool_guard::{
     ToolRegistry, ToolRegistryService, ToolSchema, ToolsListResult,
 };
-
-// see: cans/15-operations.md#Local-velocity
-fn block_on<F: Future>(future: F) -> F::Output {
-    struct ThreadWaker(std::thread::Thread);
-    impl Wake for ThreadWaker {
-        fn wake(self: Arc<Self>) {
-            self.0.unpark();
-        }
-        fn wake_by_ref(self: &Arc<Self>) {
-            self.0.unpark();
-        }
-    }
-    let mut future = Box::pin(future);
-    let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
-    let mut cx = Context::from_waker(&waker);
-    loop {
-        match future.as_mut().poll(&mut cx) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => std::thread::park(),
-        }
-    }
-}
 
 // see: cans/artifacts/test-plan/cases/governance_tools/gt_02_immutable_schema_locking_esecurity.yaml#case_id
 #[test]

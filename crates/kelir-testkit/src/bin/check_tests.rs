@@ -715,7 +715,8 @@ fn lint_file(path: &Path, content: &str, violations: &mut Vec<String>) {
     if rel_path.contains("/integration/")
         && (content.contains("mockall")
             || content.contains("MockVmmDriver")
-            || content.contains("MockHostInterposer"))
+            || content.contains("MockHostInterposer")
+            || content.contains("MockBusDispatcher"))
     {
         violations.push(format!(
             "{}: [AS-01] Mocking hypervisor interfaces in integration tier is prohibited.",

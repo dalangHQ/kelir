@@ -164,13 +164,11 @@ impl Reconciler {
             if ancestor == self.host_target.as_path() {
                 break;
             }
-            if let Ok(meta) = fs::symlink_metadata(ancestor) {
-                if meta.is_symlink() {
-                    return Err(kelir_interface::plugin_model::PluginError::reject(
-                        "EXDEV",
-                        format!("symlink component rejected: {ancestor:?}"),
-                    ));
-                }
+            if fs::symlink_metadata(ancestor).is_ok_and(|meta| meta.is_symlink()) {
+                return Err(kelir_interface::plugin_model::PluginError::reject(
+                    "EXDEV",
+                    format!("symlink component rejected: {ancestor:?}"),
+                ));
             }
         }
         // TODO (L3): openat2 RESOLVE_BENEATH via the platform root handle removes the resolve race.

@@ -22,15 +22,57 @@ class ProfileField(NamedTuple):
 # see: cans/plugins/profile.md#Session-compute-schema-(profile)
 # see: cans/plugins/profile.md#Invariants-and-policy-(profile)
 PROFILE_FIELDS: tuple[ProfileField, ...] = (
+    ProfileField(("version",), "integer", None),
     ProfileField(("session", "id"), "string", None),
+    ProfileField(("session", "topology"), "string", None),
     ProfileField(("session", "compute", "vcpus"), "integer", "vcpus"),
+    ProfileField(("session", "compute", "max_vcpus"), "integer", None),
     ProfileField(("session", "compute", "memory_mb"), "integer", "memory_mb"),
+    ProfileField(
+        ("session", "compute", "page_size_kb"), "integer", "page_size_kb"
+    ),
+    ProfileField(("session", "balloon", "enabled"), "boolean", None),
+    ProfileField(("session", "balloon", "initial_mb"), "integer", None),
+    ProfileField(("session", "balloon", "pressure_reclaim"), "boolean", None),
+    ProfileField(("session", "balloon", "reclaim_strategy"), "string", None),
+    ProfileField(("session", "clock", "tsc_locked"), "boolean", "tsc_locked"),
+    ProfileField(
+        ("session", "clock", "pinned_clocksource"), "string", "pinned_clocksource"
+    ),
+    ProfileField(
+        ("session", "clock", "deterministic_clock"),
+        "boolean",
+        "deterministic_clock",
+    ),
+    ProfileField(
+        ("session", "clock", "preemption_grace_ms"),
+        "integer",
+        "preemption_grace_ms",
+    ),
+    ProfileField(
+        ("session", "watchdog", "enabled"), "boolean", "enable_watchdog"
+    ),
+    ProfileField(("session", "watchdog", "timeout_seconds"), "integer", None),
+    ProfileField(("session", "watchdog", "action"), "string", None),
+    ProfileField(
+        ("session", "watchdog", "heartbeat_cadence_seconds"), "integer", None
+    ),
+    ProfileField(("session", "devices", "virtio_rng", "enabled"), "boolean", None),
+    ProfileField(("session", "devices", "virtio_rng", "source"), "string", None),
+    ProfileField(("session", "devices", "virtio_shm", "enabled"), "boolean", None),
+    ProfileField(
+        ("session", "devices", "virtio_shm", "regions"), "table_list", None
+    ),
     ProfileField(("session", "artifacts", "kernel_path"), "string", "kernel"),
     ProfileField(
         ("session", "artifacts", "rootfs_erofs_path"), "string", "rootfs_erofs"
     ),
-    ProfileField(("session", "clock", "tsc_locked"), "boolean", "tsc_locked"),
-    ProfileField(("session", "watchdog", "enabled"), "boolean", "enable_watchdog"),
+    ProfileField(
+        ("session", "artifacts", "kernel_boot_params"), "string_list", None
+    ),
+    ProfileField(("session", "shim", "max_exec_slots"), "integer", None),
+    ProfileField(("session", "shim", "hide_pid"), "integer", None),
+    ProfileField(("session", "shim", "anti_toctou_cgroups"), "boolean", None),
 )
 
 
@@ -48,14 +90,24 @@ def _matches(value: Any, kind: str) -> bool:
         return isinstance(value, bool)
     if kind == "integer":
         return isinstance(value, int) and not isinstance(value, bool)
-    return isinstance(value, str)
+    if kind == "string":
+        return isinstance(value, str)
+    if kind == "string_list":
+        return isinstance(value, list) and all(isinstance(item, str) for item in value)
+    return isinstance(value, list) and all(
+        isinstance(item, dict)
+        and all(isinstance(entry, (bool, int, str)) for entry in item.values())
+        for item in value
+    )
 
 
-def _render_toml_value(kind: str, value: Any) -> str:
-    if kind == "boolean":
+def _render_toml_value(value: Any) -> str:
+    if isinstance(value, bool):
         return "true" if value else "false"
-    if kind == "integer":
+    if isinstance(value, int):
         return str(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(json.dumps(item) for item in value) + "]"
     return json.dumps(value)
 
 
@@ -66,13 +118,23 @@ def _render_toml(profile: dict[str, Any]) -> str:
         value = _dig(profile, field.path)
         if not _matches(value, field.kind):
             continue
+        if field.kind == "table_list":
+            for item in value:
+                if lines:
+                    lines.append("")
+                lines.append(f"[[{'.'.join(field.path)}]]")
+                for key, entry in item.items():
+                    lines.append(f"{key} = {_render_toml_value(entry)}")
+            section = ".".join(field.path)
+            continue
         head = ".".join(field.path[:-1])
         if head != section:
-            if lines:
-                lines.append("")
-            lines.append(f"[{head}]")
+            if head:
+                if lines:
+                    lines.append("")
+                lines.append(f"[{head}]")
             section = head
-        lines.append(f"{field.path[-1]} = {_render_toml_value(field.kind, value)}")
+        lines.append(f"{field.path[-1]} = {_render_toml_value(value)}")
     return "\n".join(lines) + ("\n" if lines else "")
 
 
@@ -120,11 +182,14 @@ class Sandbox:
         *,
         vcpus: int | None = None,
         memory_mb: int | None = None,
+        page_size_kb: int | None = None,
+        deterministic_clock: bool | None = None,
+        pinned_clocksource: str | None = None,
+        preemption_grace_ms: int | None = None,
         kernel: str | None = None,
         rootfs_erofs: str | None = None,
         tsc_locked: bool | None = None,
         enable_watchdog: bool | None = None,
-        driver: str | None = None,
         detached: bool = False,
     ) -> Sandbox:
         from kelir import KelirBuilder
@@ -132,11 +197,14 @@ class Sandbox:
         builder = KelirBuilder(
             vcpus=vcpus,
             memory_mb=memory_mb,
+            page_size_kb=page_size_kb,
+            deterministic_clock=deterministic_clock,
+            pinned_clocksource=pinned_clocksource,
+            preemption_grace_ms=preemption_grace_ms,
             kernel=kernel,
             rootfs_erofs=rootfs_erofs,
             tsc_locked=tsc_locked,
             enable_watchdog=enable_watchdog,
-            driver=driver,
         ).detached(detached)
         return cls(builder, {}, "")
 

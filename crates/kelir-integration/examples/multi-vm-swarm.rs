@@ -13,7 +13,6 @@ use tokio::task::JoinSet;
 use kelir::{
     HCons, HNil, KelirBuilder, NoParams, Session, SnapshotDescriptor, Unsealed, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
-    planes::storage_plane::{LockBrokerConfig, LockMode, LockScope},
     plugin_model::VetoEvent,
     plugins::{
         plugin_ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, ReceiptConfig},
@@ -52,11 +51,6 @@ fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
         ns_per_instruction: None,
         preemption_grace_ms: 0,
         entropy_seed: Some(0x5EED),
-    })
-    .lock_broker(LockBrokerConfig {
-        scope: LockScope::Globs(vec!["**/Cargo.lock".into(), "**/package-lock.json".into()]),
-        default_mode: LockMode::Exclusive,
-        non_blocking: true,
     })
     // see: cans/artifacts/examples/multi-vm-swarm.rs#MeshPlugin
     .plugin(MeshPlugin::new(MeshConfig {

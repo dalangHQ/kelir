@@ -4,25 +4,15 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+// see: cans/11-protocol.md#Wire-framing
+pub use kelir_interface::codec_protocol::{FLAG_DATA, FLAG_OPEN, MAX_FRAME_PAYLOAD, MAX_STREAM_ID};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::{MsgType, StreamKind};
 use kelir_transport::Transport;
 use kelir_transport::spsc_ring::OwnedSpscRing;
 
 // see: cans/11-protocol.md#Wire-framing
-pub const FRAME_HEADER_LEN: usize = 9;
-
-// see: cans/11-protocol.md#Wire-framing
-pub const MAX_FRAME_PAYLOAD: usize = 64 * 1024;
-
-// see: cans/11-protocol.md#Wire-framing
-pub const MAX_STREAM_ID: u32 = 0x00FF_FFFF;
-
-// see: cans/11-protocol.md#Stream-mux-framing
-pub const FLAG_OPEN: u8 = 0x01;
-
-// see: cans/11-protocol.md#Stream-mux-framing
-pub const FLAG_DATA: u8 = 0x02;
+pub const HEADER_LEN: usize = 9;
 
 // see: cans/01-architecture.md#Transport-engine-abstraction
 pub const CONTROL_RING_CAPACITY: u32 = 128 * 1024;
@@ -125,7 +115,7 @@ fn encode_frame(
 
 // see: cans/11-protocol.md#Wire-framing
 fn take_frame(rx: &mut Vec<u8>) -> Result<Option<(u32, u8, Vec<u8>)>, PluginError> {
-    if rx.len() < FRAME_HEADER_LEN {
+    if rx.len() < HEADER_LEN {
         return Ok(None);
     }
     let stream_id = u32::from_le_bytes([rx[0], rx[1], rx[2], rx[3]]);
@@ -143,13 +133,13 @@ fn take_frame(rx: &mut Vec<u8>) -> Result<Option<(u32, u8, Vec<u8>)>, PluginErro
             "frame payload exceeds the 64KB budget".into(),
         ));
     }
-    let total = FRAME_HEADER_LEN
+    let total = HEADER_LEN
         .checked_add(payload_len)
         .ok_or_else(|| PluginError::Halt("frame length overflow".into()))?;
     if rx.len() < total {
         return Ok(None);
     }
-    let payload = rx[FRAME_HEADER_LEN..total].to_vec();
+    let payload = rx[HEADER_LEN..total].to_vec();
     rx.drain(..total);
     Ok(Some((stream_id, flags, payload)))
 }
@@ -285,7 +275,7 @@ impl BusDispatcher {
         let mut body = Vec::with_capacity(body_len);
         body.extend_from_slice(&(msg_type as u16).to_le_bytes());
         body.extend_from_slice(payload);
-        let mut frame = Vec::with_capacity(FRAME_HEADER_LEN + body.len());
+        let mut frame = Vec::with_capacity(HEADER_LEN + body.len());
         encode_frame(0, FLAG_DATA, &body, &mut frame)?;
         write_all_frame(&mut self.control_transport, &frame)
     }

@@ -10,8 +10,6 @@ unmapped_crates:
   reason: Harness itself (check-manifest/check-tests/scorecard); no case targets it.
 - crate: crates/kelir-plugin-testkit
   reason: Harness itself; no case targets it.
-- crate: crates/kelir
-  reason: Facade seal() PhantomData-only; no case targets it.
 - crate: crates/kelir-plugins/plugin-profile
   reason: 'No dedicated case; its behavior is covered by gv_12 (vault placeholder profile resolution), itself a gap: no ProfileHydrator type exists in-tree.'
 cases:
@@ -2063,3 +2061,13 @@ harness_tests:
 - file: crates/kelir-core/tests/panic_hunt.rs
   reason: Harness-level panic probe (hostile mux frame plus oversized control payload); not a case test.
     The mapped test for pm_11 lives in bus_mux_protocol_test.rs.
+- file: crates/kelir-plugin-testkit/tests/wire_frame_decode_test.rs
+  reason: Testkit-side WireFrame encode/decode round trip plus checked-math rejection (pm_11 framing
+    semantics from the parity-vector side); not a case test.
+- file: crates/kelir-core/tests/lifecycle_state_test.rs
+  reason: LifecycleState transition-legality unit test per cans/08-lifecycle.md#State-machine; the plan
+    carries no dedicated case for the core state machine yet (L2 wiring addition).
+- file: crates/kelir/tests/profile_schema_parity_test.rs
+  reason: SSOT session-compute schema parity across the Rust/TS/Py PROFILE_FIELDS lists; parses
+    cans/artifacts/examples/fixtures/kelir.yaml and compares all three interpreters; no plan case
+    covers cross-language profile parity.

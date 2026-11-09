@@ -96,30 +96,47 @@ impl LogCursor {
     }
 }
 
+// see: cans/04-terminal-plane.md#Stream-replay
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LogStream {
+    Port(u32),
+    Exec { id: u64, lane: u8 },
+}
+
 pub struct LogSegment {
-    pub port: u32,
+    pub stream: LogStream,
     pub head: LogCursor,
     pub bytes: Vec<u8>,
-    pub index_path: PathBuf,
+    pub log_path: PathBuf,
 }
 
 impl LogSegment {
     pub fn new(
         session_id: [u8; 16],
-        port: u32,
+        stream: LogStream,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
         Ok(Self {
-            port,
+            stream,
             head: LogCursor::start(),
             bytes: Vec::new(),
-            index_path: session_log_path(&session_id)?,
+            log_path: session_log_path(&session_id, stream)?,
         })
     }
 }
 
 // see: cans/01-architecture.md#Host-state-root
+fn log_file_name(stream: LogStream) -> String {
+    match stream {
+        LogStream::Port(port) => format!("port-{port}.log"),
+        LogStream::Exec { id, lane } => format!("exec-{id}-{lane}.log"),
+    }
+}
+
+// see: cans/01-architecture.md#Host-state-root
+// TODO (L3): write the append-only index.bin chunk index beside the per-stream logs so cursors survive restarts.
 fn session_log_path(
     session_id: &[u8; 16],
+    stream: LogStream,
 ) -> Result<PathBuf, kelir_interface::plugin_model::PluginError> {
     let home = std::env::var("HOME").map_err(|_| {
         kelir_interface::plugin_model::PluginError::Halt(
@@ -135,13 +152,13 @@ fn session_log_path(
         .join("sessions")
         .join(hex)
         .join("logs")
-        .join("index.bin"))
+        .join(log_file_name(stream)))
 }
 
 pub struct TerminalPlane {
     session_id: [u8; 16],
     state: Mutex<Vt100StateMachine>,
-    segments: Mutex<HashMap<u32, LogSegment>>,
+    segments: Mutex<HashMap<LogStream, LogSegment>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
 }
 
@@ -208,7 +225,7 @@ impl TerminalPlane {
         let segments = self.segments.lock().map_err(|_| {
             kelir_interface::plugin_model::PluginError::Halt("terminal log lock poisoned".into())
         })?;
-        let segment = segments.get(&port).ok_or_else(|| {
+        let segment = segments.get(&LogStream::Port(port)).ok_or_else(|| {
             kelir_interface::plugin_model::PluginError::Halt("no log segment for port".into())
         })?;
         if cursor > segment.head.0 {
@@ -227,13 +244,33 @@ impl TerminalPlane {
         port: u32,
         chunk: &[u8],
     ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
+        self.append_stream_chunk(LogStream::Port(port), chunk)
+    }
+
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    // see: cans/04-terminal-plane.md#Stream-replay
+    pub fn record_output(
+        &self,
+        stream: LogStream,
+        bytes: &[u8],
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        self.append_stream_chunk(stream, bytes)?;
+        self.feed(bytes)
+    }
+
+    // see: cans/04-terminal-plane.md#Stream-replay
+    pub fn append_stream_chunk(
+        &self,
+        stream: LogStream,
+        chunk: &[u8],
+    ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
         let mut segments = self.segments.lock().map_err(|_| {
             kelir_interface::plugin_model::PluginError::Halt("terminal log lock poisoned".into())
         })?;
-        if let std::collections::hash_map::Entry::Vacant(e) = segments.entry(port) {
-            e.insert(LogSegment::new(self.session_id, port)?);
+        if let std::collections::hash_map::Entry::Vacant(entry) = segments.entry(stream) {
+            entry.insert(LogSegment::new(self.session_id, stream)?);
         }
-        let segment = segments.get_mut(&port).ok_or_else(|| {
+        let segment = segments.get_mut(&stream).ok_or_else(|| {
             kelir_interface::plugin_model::PluginError::Halt(
                 "log segment missing after insert".into(),
             )
@@ -242,7 +279,7 @@ impl TerminalPlane {
             kelir_interface::plugin_model::PluginError::Halt("log chunk too large".into())
         })?;
         let new_head = segment.head.advance(len)?;
-        if let Some(parent) = segment.index_path.parent() {
+        if let Some(parent) = segment.log_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
                 kelir_interface::plugin_model::PluginError::Halt(format!(
                     "create session log dir: {e}"
@@ -252,12 +289,12 @@ impl TerminalPlane {
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(&segment.index_path)
+            .open(&segment.log_path)
             .map_err(|e| {
-                kelir_interface::plugin_model::PluginError::Halt(format!("open log index: {e}"))
+                kelir_interface::plugin_model::PluginError::Halt(format!("open stream log: {e}"))
             })?;
         file.write_all(chunk).map_err(|e| {
-            kelir_interface::plugin_model::PluginError::Halt(format!("append log index: {e}"))
+            kelir_interface::plugin_model::PluginError::Halt(format!("append stream log: {e}"))
         })?;
         segment.head = new_head;
         segment.bytes.extend_from_slice(chunk);

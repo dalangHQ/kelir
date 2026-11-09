@@ -179,5 +179,6 @@ export interface NativeAddonBinding {
     rootfsErofs?: string,
     tscLocked?: boolean,
     enableWatchdog?: boolean,
+    driver?: string,
   ) => NativeKelirBuilderBinding;
 }

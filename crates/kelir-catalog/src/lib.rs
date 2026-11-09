@@ -11,20 +11,27 @@ use thiserror::Error;
 pub enum CatalogError {
     #[error("catalog sqlite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
+    #[error("HOME is not set; cannot locate ~/.kelir/catalog.db")]
+    HomeUnset,
 }
 
 fn now_unix() -> i64 {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    match i64::try_from(secs) {
-        Ok(v) => v,
-        Err(_) => i64::MAX,
-    }
+    i64::try_from(secs).unwrap_or(i64::MAX)
 }
 
 pub struct CatalogDb {
     pub pool: rusqlite::Connection,
+}
+
+// see: cans/01-architecture.md#Host-state-root
+pub fn catalog_path() -> Result<std::path::PathBuf, CatalogError> {
+    let home = std::env::var("HOME").map_err(|_| CatalogError::HomeUnset)?;
+    Ok(std::path::PathBuf::from(home)
+        .join(".kelir")
+        .join("catalog.db"))
 }
 
 impl CatalogDb {

@@ -77,6 +77,7 @@ impl ReplayState {
     }
 
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    #[allow(deprecated)]
     fn record_pmu_sample(&self, sample: &PmuSample) {
         self.retired_total
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |total| {

@@ -170,9 +170,8 @@ fn dispatch_control_frame(
     payload: &mut [u8; codec_protocol::MAX_FRAME_PAYLOAD],
 ) -> Result<(), trap_protocol::ShimError> {
     if let Some((_, _, len)) = read_frame(fd, trap_protocol::TRAP_CHANNEL, header, payload)? {
-        if let Err(_reason) = mux.dispatch_control(&payload[..len]) {
-            // TODO (L3): emit in-band control reject from the structured reason.
-        }
+        // TODO (L3): emit in-band control reject when dispatch_control returns a structured Err reason.
+        let _ = mux.dispatch_control(&payload[..len]);
     }
     Ok(())
 }
@@ -185,9 +184,8 @@ fn dispatch_data_frame(
     payload: &mut [u8; codec_protocol::MAX_FRAME_PAYLOAD],
 ) -> Result<(), trap_protocol::ShimError> {
     if let Some((stream_id, flags, len)) = read_frame(fd, STREAM_CHANNEL, header, payload)? {
-        if let Err(_reason) = mux.dispatch_frame(stream_id, flags, &payload[..len]) {
-            // TODO (L3): emit in-band reject from the structured reason (SlabSaturated => MSG_EXEC_REJECT{ENOMEM}).
-        }
+        // TODO (L3): emit in-band reject when dispatch_frame errs (SlabSaturated => MSG_EXEC_REJECT{ENOMEM}).
+        let _ = mux.dispatch_frame(stream_id, flags, &payload[..len]);
     }
     Ok(())
 }

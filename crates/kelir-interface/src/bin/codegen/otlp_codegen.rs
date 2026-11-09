@@ -174,7 +174,6 @@ fn param_name(spec: &OtlpRecordSpec) -> &'static str {
 
 // see: cans/14-observability.md#Metrics-pipeline
 pub fn emit_records(model: &Model) -> Result<String, String> {
-    let mut needs_hex = false;
     let mut needs_paths = false;
     let mut rendered: Vec<(&OtlpRecordSpec, Vec<RenderedField>)> = Vec::new();
     for spec in OTLP_SPECS {
@@ -229,10 +228,9 @@ pub fn emit_records(model: &Model) -> Result<String, String> {
                     )
                 }
             } else if matches!(field.ty, Ty::ByteArray(32)) {
-                needs_hex = true;
                 (
                     "String".to_string(),
-                    format!("hex_lower(&{param}.{source_name})"),
+                    format!("kelir_interface::hex_codec::encode_hex(&{param}.{source_name})"),
                 )
             } else if field.ty.scalar() {
                 (rust_type(&field.ty), format!("{param}.{source_name}"))
@@ -268,18 +266,6 @@ pub fn emit_records(model: &Model) -> Result<String, String> {
     out.push_str(
         "use kelir_interface::telemetry::{CausalDelta, ExecutionReceipt, PhaseTimings};\n\n",
     );
-    if needs_hex {
-        out.push_str(RECORDS_SEE);
-        out.push_str("fn hex_lower(bytes: &[u8]) -> String {\n");
-        out.push_str("    const HEX: &[u8; 16] = b\"0123456789abcdef\";\n");
-        out.push_str("    let mut out = String::with_capacity(bytes.len() * 2);\n");
-        out.push_str("    for byte in bytes {\n");
-        out.push_str("        out.push(HEX[usize::from(*byte >> 4)] as char);\n");
-        out.push_str("        out.push(HEX[usize::from(*byte & 0x0f)] as char);\n");
-        out.push_str("    }\n");
-        out.push_str("    out\n");
-        out.push_str("}\n\n");
-    }
     if needs_paths {
         out.push_str(RECORDS_SEE);
         out.push_str("fn paths_to_strings(paths: &[std::path::PathBuf]) -> Vec<String> {\n");

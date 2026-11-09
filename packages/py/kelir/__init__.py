@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
+from typing import Any, Awaitable, Callable, Literal, Self
 
 from kelir.generated.wire_protocol import Channel, ExecStream, MsgType, StreamKind
 from kelir.generated.attest_telemetry import (
@@ -29,9 +29,6 @@ from kelir.plugin_fusion import (
     RingEvent,
     TrapFilterSnapshot,
 )
-
-if TYPE_CHECKING:
-    from pydantic import BaseModel
 
 
 def _load_native_bridge() -> Any:
@@ -481,14 +478,13 @@ class HandlerContext:
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: trap receipt (L3)")
 
 
-
 # see: cans/08-lifecycle.md#Detached-lifecycle
 def relay_socket_path(session_id: str) -> str:
     if len(session_id) != 32 or any(
         c not in "0123456789abcdefABCDEF" for c in session_id
     ):
         raise EConfig(f"attach: session id `{session_id}` is not 32 hex chars")
-    home = os.path.expanduser("~")
+    home = os.environ.get("HOME")
     if not home:
         raise EConfig("HOME is not set; cannot locate ~/.kelir relay socket")
     return str(
@@ -579,11 +575,14 @@ class KelirBuilder:
         *,
         vcpus: int | None = None,
         memory_mb: int | None = None,
+        page_size_kb: int | None = None,
+        deterministic_clock: bool | None = None,
+        pinned_clocksource: str | None = None,
+        preemption_grace_ms: int | None = None,
         kernel: str | None = None,
         rootfs_erofs: str | None = None,
         tsc_locked: bool | None = None,
         enable_watchdog: bool | None = None,
-        driver: str | None = None,
         detached: bool | None = None,
     ) -> None:
         self._plugins: list[object] = []
@@ -596,14 +595,16 @@ class KelirBuilder:
         self._config: dict[str, Any] = {
             "vcpus": vcpus,
             "memory_mb": memory_mb,
+            "page_size_kb": page_size_kb,
+            "deterministic_clock": deterministic_clock,
+            "pinned_clocksource": pinned_clocksource,
+            "preemption_grace_ms": preemption_grace_ms,
             "kernel": kernel,
             "rootfs_erofs": rootfs_erofs,
             "tsc_locked": tsc_locked,
             "enable_watchdog": enable_watchdog,
-            "driver": driver,
             "detached": detached,
         }
-        self._params_model: type | None = None
 
     # see: cans/08-lifecycle.md#Detached-lifecycle
     def detached(self, detached: bool) -> Self:
@@ -629,21 +630,6 @@ class KelirBuilder:
 
     def plugin(self, plugin: object) -> Self:
         return self.use(plugin)
-
-    def terminal(self, **kwargs: Any) -> Self:
-        # TODO (L3): configure the terminal plane
-        self._config["terminal"] = kwargs
-        return self
-
-    def storage(self, **kwargs: Any) -> Self:
-        # TODO (L3): configure the storage plane
-        self._config["storage"] = kwargs
-        return self
-
-    def wire(self, **kwargs: Any) -> Self:
-        # TODO (L3): configure the wire plane
-        self._config["wire"] = kwargs
-        return self
 
     def trap(
         self,
@@ -792,10 +778,6 @@ class KelirBuilder:
     def on_post_commit(self) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
         return self._lifecycle_decorator("on_post_commit")
 
-    def params(self, model: "type[BaseModel]") -> Self:
-        self._params_model = model
-        return self
-
     @property
     def vsock_services(self) -> list[VsockServiceEntry]:
         return self._vsock_services
@@ -815,6 +797,7 @@ class KelirBuilder:
             tsc_locked=self._config["tsc_locked"],
             enable_watchdog=self._config["enable_watchdog"],
         )
+        # TODO (L3): forward page_size_kb/deterministic_clock/pinned_clocksource/preemption_grace_ms once the PyO3 constructor accepts them.
         for registration in self._plugin_registrations:
             native.use_plugin(registration.name, registration.enabled)
         native.fuse_hooks(descriptor)
@@ -844,21 +827,27 @@ def builder(
     *,
     vcpus: int | None = None,
     memory_mb: int | None = None,
+    page_size_kb: int | None = None,
+    deterministic_clock: bool | None = None,
+    pinned_clocksource: str | None = None,
+    preemption_grace_ms: int | None = None,
     kernel: str | None = None,
     rootfs_erofs: str | None = None,
     tsc_locked: bool | None = None,
     enable_watchdog: bool | None = None,
-    driver: str | None = None,
     detached: bool | None = None,
 ) -> KelirBuilder:
     return KelirBuilder(
         vcpus=vcpus,
         memory_mb=memory_mb,
+        page_size_kb=page_size_kb,
+        deterministic_clock=deterministic_clock,
+        pinned_clocksource=pinned_clocksource,
+        preemption_grace_ms=preemption_grace_ms,
         kernel=kernel,
         rootfs_erofs=rootfs_erofs,
         tsc_locked=tsc_locked,
         enable_watchdog=enable_watchdog,
-        driver=driver,
         detached=detached,
     )
 

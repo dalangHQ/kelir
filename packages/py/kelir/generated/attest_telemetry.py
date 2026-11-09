@@ -3,6 +3,8 @@
 # see: cans/10-attestation.md#Execution-receipts
 from __future__ import annotations
 
+from typing import Literal, cast
+
 from pydantic import BaseModel, Field
 
 class GuestClock(BaseModel):
@@ -32,17 +34,67 @@ class PhaseTimings(BaseModel):
     verdict_egress_ns: int = 0
 
 
-class ExitKind(BaseModel):
-    kind: str = "normal"
-    signal: int | None = None
-    message: str | None = None
+class ExitKindNormal(BaseModel):
+    kind: Literal["normal"] = "normal"
 
 
+class ExitKindSignal(BaseModel):
+    kind: Literal["signal"] = "signal"
+    signal: int = 0
+
+
+class ExitKindKernelPanic(BaseModel):
+    kind: Literal["kernel-panic"] = "kernel-panic"
+    message: str = ""
+
+
+class ExitKindHypervisorFault(BaseModel):
+    kind: Literal["hypervisor-fault"] = "hypervisor-fault"
+    message: str = ""
+
+
+class ExitKindDirtyShutdown(BaseModel):
+    kind: Literal["dirty-shutdown"] = "dirty-shutdown"
+
+
+class ExitKindHardKilled(BaseModel):
+    kind: Literal["hard-killed"] = "hard-killed"
+
+
+ExitKind = (
+    ExitKindNormal
+    | ExitKindSignal
+    | ExitKindKernelPanic
+    | ExitKindHypervisorFault
+    | ExitKindDirtyShutdown
+    | ExitKindHardKilled
+)
+
+NativeExitKindRecord = str | dict[str, int | str]
+
+
+def from_native_exit_kind(raw: NativeExitKindRecord) -> ExitKind:
+    if isinstance(raw, str):
+        if raw == "normal":
+            return ExitKindNormal()
+        if raw == "dirtyShutdown":
+            return ExitKindDirtyShutdown()
+        if raw == "hardKilled":
+            return ExitKindHardKilled()
+        raise ValueError(f"unknown native exit kind tag: {raw}")
+    if "signal" in raw:
+        return ExitKindSignal(signal=cast(int, raw["signal"]))
+    if "kernelPanic" in raw:
+        return ExitKindKernelPanic(message=cast(str, raw["kernelPanic"]))
+    return ExitKindHypervisorFault(message=cast(str, raw["hypervisorFault"]))
+
+
+# TODO (L3): no FFI producer populates ExecutionReceipt.exit_kind yet
 class ExecutionReceipt(BaseModel):
     pid: int = 0
     binary_path: str = ""
     binary_blake3: str = ""
-    exit_kind: ExitKind = Field(default_factory=ExitKind)
+    exit_kind: ExitKind = Field(default_factory=ExitKindNormal)
     correlation_token: str | None = None
     dirty_bytes: int = 0
     syscall_count: int | None = None

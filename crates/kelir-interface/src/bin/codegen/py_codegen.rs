@@ -7,8 +7,8 @@ use kelir_interface::codec_protocol::{
 };
 use kelir_interface::protocol_wire::{CHANNELS, EXEC_STREAMS, MSG_TYPES, STREAM_KINDS};
 
-use crate::model_codegen::{Model, Ty};
-use crate::naming_codegen::{py_sdk_name, screaming};
+use crate::model_codegen::{EnumDef, Model, Ty};
+use crate::naming_codegen::{camel, kebab, py_sdk_name, screaming};
 
 pub const PY_SEE: &str = "# see: cans/03-sdk-architecture.md#Python-SDK
 # see: cans/15-operations.md#Multi-language-parity-gate
@@ -79,8 +79,94 @@ fn py_default(ty: &Ty) -> String {
                 "Field(default_factory=list)".to_string()
             }
         }
+        Ty::Custom(name) if name == "ExitKind" => {
+            "Field(default_factory=ExitKindNormal)".to_string()
+        }
         Ty::Custom(name) => format!("Field(default_factory={})", py_sdk_name(name)),
     }
+}
+
+// see: cans/10-attestation.md#Execution-receipts
+fn emit_exit_kind_union(def: &EnumDef) -> Result<String, String> {
+    let mut out = String::new();
+    let mut union = Vec::new();
+    for variant in &def.variants {
+        let tag = kebab(&variant.name);
+        let class = format!("ExitKind{}", variant.name);
+        let _ = writeln!(out, "class {class}(BaseModel):");
+        let _ = writeln!(out, "    kind: Literal[\"{tag}\"] = \"{tag}\"");
+        match &variant.payload {
+            None => {}
+            Some(Ty::U32) => out.push_str("    signal: int = 0\n"),
+            Some(Ty::Str) => out.push_str("    message: str = \"\"\n"),
+            Some(other) => {
+                return Err(format!("ExitKind::{}: {other:?}", variant.name));
+            }
+        }
+        out.push_str("\n\n");
+        union.push(class);
+    }
+    out.push_str("ExitKind = (\n");
+    for (index, class) in union.iter().enumerate() {
+        if index == 0 {
+            let _ = writeln!(out, "    {class}");
+        } else {
+            let _ = writeln!(out, "    | {class}");
+        }
+    }
+    out.push_str(")\n\n");
+    Ok(out)
+}
+
+// see: cans/10-attestation.md#Execution-receipts
+fn emit_native_exit_kind(def: &EnumDef) -> Result<String, String> {
+    let native_tag = |name: &str| -> String {
+        if def.serde_camel {
+            camel(name)
+        } else {
+            name.to_string()
+        }
+    };
+    let mut out = String::from("NativeExitKindRecord = str | dict[str, int | str]\n\n\n");
+    let _ = writeln!(
+        out,
+        "def from_native_exit_kind(raw: NativeExitKindRecord) -> ExitKind:"
+    );
+    out.push_str("    if isinstance(raw, str):\n");
+    let mut payload_variants = Vec::new();
+    for variant in &def.variants {
+        if variant.payload.is_none() {
+            let tag = native_tag(&variant.name);
+            let class = format!("ExitKind{}", variant.name);
+            let _ = writeln!(out, "        if raw == \"{tag}\":");
+            let _ = writeln!(out, "            return {class}()");
+        } else {
+            payload_variants.push(variant);
+        }
+    }
+    out.push_str("        raise ValueError(f\"unknown native exit kind tag: {raw}\")\n");
+    for (index, variant) in payload_variants.iter().enumerate() {
+        let tag = native_tag(&variant.name);
+        let class = format!("ExitKind{}", variant.name);
+        let (payload_name, payload_py) = match variant.payload.as_ref() {
+            Some(Ty::U32) => ("signal", "int"),
+            _ => ("message", "str"),
+        };
+        if index + 1 == payload_variants.len() {
+            let _ = writeln!(
+                out,
+                "    return {class}({payload_name}=cast({payload_py}, raw[\"{tag}\"]))"
+            );
+        } else {
+            let _ = writeln!(out, "    if \"{tag}\" in raw:");
+            let _ = writeln!(
+                out,
+                "        return {class}({payload_name}=cast({payload_py}, raw[\"{tag}\"]))"
+            );
+        }
+    }
+    out.push_str("\n\n");
+    Ok(out)
 }
 
 // see: cans/03-sdk-architecture.md#Python-SDK
@@ -88,30 +174,19 @@ pub fn emit_telemetry(model: &Model, order: &[&str]) -> Result<String, String> {
     let mut out = String::new();
     out.push_str(PY_SEE);
     out.push_str("from __future__ import annotations\n\n");
+    out.push_str("from typing import Literal, cast\n\n");
     out.push_str("from pydantic import BaseModel, Field\n\n");
     for name in order {
         if *name == "ExitKind" {
             let def = model.enum_def(name)?;
-            let _ = writeln!(out, "class ExitKind(BaseModel):");
-            out.push_str("    kind: str = \"normal\"\n");
-            let has_signal = def
-                .variants
-                .iter()
-                .any(|v| matches!(v.payload, Some(Ty::U32)));
-            let has_message = def
-                .variants
-                .iter()
-                .any(|v| matches!(v.payload, Some(Ty::Str)));
-            if has_signal {
-                out.push_str("    signal: int | None = None\n");
-            }
-            if has_message {
-                out.push_str("    message: str | None = None\n");
-            }
-            out.push_str("\n\n");
+            out.push_str(&emit_exit_kind_union(def)?);
+            out.push_str(&emit_native_exit_kind(def)?);
             continue;
         }
         let def = model.struct_def(name)?;
+        if *name == "ExecutionReceipt" {
+            out.push_str("# TODO (L3): no FFI producer populates ExecutionReceipt.exit_kind yet\n");
+        }
         let _ = writeln!(out, "class {}(BaseModel):", py_sdk_name(name));
         for field in &def.fields {
             let _ = writeln!(

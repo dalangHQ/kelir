@@ -338,20 +338,22 @@ pub fn parse_model(path: &Path) -> Result<Model, String> {
                         continue;
                     };
                     if trait_name == "Default" && method.sig.ident == "default" {
-                        if let Some(fields) = find_struct_literal(&method.block, &self_name) {
-                            defaults.push(DefaultImpl {
-                                name: self_name.clone(),
-                                fields,
-                            });
-                        }
+                        let Some(fields) = find_struct_literal(&method.block, &self_name) else {
+                            continue;
+                        };
+                        defaults.push(DefaultImpl {
+                            name: self_name.clone(),
+                            fields,
+                        });
                     }
                     if trait_name == "KelirPlugin" && method.sig.ident == "name" {
-                        if let Some(plugin_name) = find_string_literal(&method.block) {
-                            plugin_impls.push(PluginImpl {
-                                name: self_name.clone(),
-                                plugin_name,
-                            });
-                        }
+                        let Some(plugin_name) = find_string_literal(&method.block) else {
+                            continue;
+                        };
+                        plugin_impls.push(PluginImpl {
+                            name: self_name.clone(),
+                            plugin_name,
+                        });
                     }
                 }
             }
