@@ -32,6 +32,13 @@ from kelir import (
     Verdict,
 )
 from kelir.model_plugin import BasePlugin, LifecycleCtx, PluginError
+from kelir.terminal_planes import PromptRule, TokenShield
+from kelir.storage_planes import (
+    DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopRule
+)
+from kelir.wire_planes import (
+    L4Proxy, Mtls, SinkholeConfig, CredentialDescriptor
+)
 from kelir.plugins.plugin_chaos import (
     ChaosConfig,
     FsChaos,
@@ -151,6 +158,19 @@ class RepoPolicyPlugin(BasePlugin):
         return f"[repo-policy: {n} open violations]\n".encode()
 
 
+def make_snoop(oracle: UserOracle) -> Callable[[Path, bytes, HandlerContext], Awaitable[None]]:
+    async def on_write(path: Path, raw: bytes, c: HandlerContext) -> None:
+        evt = json.loads(raw)
+        if evt.get("falsifiedResult") is True:
+            raise PluginError.reject(
+                errno="EPERM",
+                reason=f"harness hallucination at {path}",
+            )
+        producer_blake3 = await c.cap.ledger.blake3_of_producing_process(path)
+        await oracle.ingest_harness_event(path, evt, producer_blake3)
+    return on_write
+
+
 PreExecHandler = Callable[[HandlerContext], Awaitable[Verdict]]
 PostExecHandler = Callable[[HandlerContext], Awaitable[PostExecAction]]
 
@@ -252,6 +272,8 @@ def make_zero_byte_check() -> PostExecHandler:
 async def build_runtime(
     *,
     oracle: UserOracle,
+    pg_cert: Path,
+    pg_key: Path,
 ) -> KelirBuilder:
     policy_plugin = RepoPolicyPlugin(
         max_diff_bytes=64 * 1024,
@@ -265,6 +287,94 @@ async def build_runtime(
             rootfs_erofs="./fixtures/rootfs-swebench.erofs",
             tsc_locked=True,
             enable_watchdog=True,
+            driver="auto",
+        )
+
+        .terminal(
+            cols=120,
+            rows=40,
+            drop_osc52=True,
+            strip_title=True,
+            token_shield=TokenShield(
+                max_bytes_total=128 * 1024,
+                max_lines_total=500,
+                clamp_strategy="head-and-tail",
+                notice="⚠️ [SHIELD]",
+            ),
+            prompts=[
+                PromptRule(
+                    pattern=re.compile(
+                        r"Overwrite production schema\? \[y/N\]", re.I
+                    ),
+                    timeout=3.0,
+                    verify_foreground=True,
+                    action=lambda _p, stream: stream.write(b"y\n"),
+                ),
+            ],
+            stream_engine="StatelessRegex",
+        )
+
+        .storage(
+            idmap=IdmapConfig(guest_uid=0, host_uid=os.getuid()),
+            shared_caches=[
+                "~/.npm", "~/.cache/pip", "~/.cargo/registry",
+            ],
+            lock_broker=True,
+            synthetic_files=[
+                SyntheticFile.static(
+                    "/workspace/.env.local",
+                    "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n",
+                ),
+                SyntheticFile.dynamic(
+                    "/workspace/identity.jwt",
+                    lambda _p: DynamicFile(
+                        content=f"Bearer {uuid.uuid4().hex}",
+                        mode=0o400,
+                    ),
+                ),
+            ],
+            mask_read=[
+                MaskRule(
+                    glob="**/secrets/**",
+                    patterns=[
+                        (r"sk_live_[0-9a-zA-Z]{24}", "[STRIPE_VAULT_KEY]"),
+                        (r"AKIA[0-9A-Z]{16}", "[AWS_IAM_REDACTED]"),
+                    ],
+                ),
+            ],
+            snoops=[
+                SnoopRule(
+                    glob="~/.claude/sessions/*.json",
+                    sync=True,
+                    on_write=make_snoop(oracle),
+                ),
+            ],
+        )
+
+        .wire(
+            sinkhole=SinkholeConfig(
+                allowlist=[
+                    "api.stripe.com", "github.com", "*.internal.net",
+                ],
+                drop_all=True,
+            ),
+            ssh_agent_bridge=True,
+            vaults=[
+                CredentialDescriptor(
+                    name="STRIPE_SECRET",
+                    kind="bearer_token",
+                    audience="api.stripe.com",
+                    placeholder="vault://stripe_key",
+                ),
+            ],
+            l4_proxies=[
+                L4Proxy(
+                    listen_port=5432,
+                    destination="pg.internal.net:5432",
+                    inject_mtls=Mtls(cert_path=pg_cert, key_path=pg_key),
+                ),
+            ],
+            tap_filter="AllowUdpProxied",
         )
 
         .plugin(ChaosPlugin(ChaosConfig(
@@ -366,6 +476,8 @@ async def main() -> None:
 
     builder = await build_runtime(
         oracle=oracle,
+        pg_cert=Path("/etc/ssl/client.crt"),
+        pg_key=Path("/etc/ssl/client.key"),
     )
 
     async with builder as session:

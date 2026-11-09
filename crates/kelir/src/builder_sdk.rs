@@ -13,7 +13,9 @@ use kelir_interface::plugin_model::{
 use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
-use crate::planes::storage_plane::StorageConfig;
+use crate::planes::storage_plane::{LockBrokerConfig, LockScope, StorageConfig};
+use crate::planes::terminal_plane::PtyConfig;
+use crate::planes::wire_plane::{TapFilter, WireConfig};
 use crate::plugin_model::KelirPlugin;
 use crate::session_lifecycle::Session;
 
@@ -197,6 +199,9 @@ pub(crate) struct Registration<Plugins: HList> {
     pub(crate) instances: Vec<(Box<dyn AnyPlugin>, MountScope)>,
     pub(crate) traps: Vec<TrapEntry<Plugins>>,
     pub(crate) storage_cfg: Option<StorageConfig<Plugins, NoParams>>,
+    pub(crate) terminal_cfg: Option<PtyConfig>,
+    pub(crate) wire_cfg: Option<WireConfig>,
+    pub(crate) lock_broker_cfg: Option<LockBrokerConfig>,
     pub(crate) on_vm_init: Option<BoxedLifecycleCallback>,
     pub(crate) on_vm_ready: Option<BoxedLifecycleCallback>,
     pub(crate) on_vm_shutdown: Option<BoxedLifecycleCallback>,
@@ -214,6 +219,9 @@ impl<Plugins: HList> Default for Registration<Plugins> {
             instances: Vec::new(),
             traps: Vec::new(),
             storage_cfg: None,
+            terminal_cfg: None,
+            wire_cfg: None,
+            lock_broker_cfg: None,
             on_vm_init: None,
             on_vm_ready: None,
             on_vm_shutdown: None,
@@ -236,6 +244,9 @@ impl<Plugins: HList> Registration<Plugins> {
             instances: self.instances,
             traps: self.traps.into_iter().map(|entry| entry.narrow()).collect(),
             storage_cfg: self.storage_cfg.map(|cfg| cfg.narrow()),
+            terminal_cfg: self.terminal_cfg,
+            wire_cfg: self.wire_cfg,
+            lock_broker_cfg: self.lock_broker_cfg,
             on_vm_init: self.on_vm_init,
             on_vm_ready: self.on_vm_ready,
             on_vm_shutdown: self.on_vm_shutdown,
@@ -304,6 +315,24 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
 
     pub fn storage(mut self, config: StorageConfig<Plugins, Params>) -> Self {
         self.registration.storage_cfg = Some(config.retag());
+        self
+    }
+
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    pub fn terminal(mut self, config: PtyConfig) -> Self {
+        self.registration.terminal_cfg = Some(config);
+        self
+    }
+
+    // see: cans/07-wire-plane.md#DNS-policy-filter
+    pub fn wire(mut self, config: WireConfig) -> Self {
+        self.registration.wire_cfg = Some(config);
+        self
+    }
+
+    // see: cans/05-storage-plane.md#Workspace-commit
+    pub fn lock_broker(mut self, config: LockBrokerConfig) -> Self {
+        self.registration.lock_broker_cfg = Some(config);
         self
     }
 
@@ -525,12 +554,49 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
             .as_ref()
             .map(|cfg| cfg.synthetic_files.clone())
             .unwrap_or_default();
+        let plane_wiring = kelir_core::session_lifecycle::PlaneWiring {
+            terminal: self.registration.terminal_cfg.as_ref().map(|cfg| {
+                kelir_core::planes::terminal::TerminalWiring {
+                    cols: cfg.cols,
+                    rows: cfg.rows,
+                    drop_osc52: cfg.drop_osc52,
+                    strip_title: cfg.strip_title,
+                }
+            }),
+            wire: self.registration.wire_cfg.as_ref().map(|cfg| {
+                kelir_core::planes::wire::WireWiring {
+                    sinkhole_allowlist: cfg.sinkhole.allowlist.clone(),
+                    sinkhole_drop_all: cfg.sinkhole.drop_all,
+                    ssh_agent_bridge: cfg.ssh_agent_bridge,
+                    vault_placeholders: cfg
+                        .vaults
+                        .iter()
+                        .map(|vault| vault.placeholder.clone())
+                        .collect(),
+                    l4_proxies: cfg
+                        .l4_proxies
+                        .iter()
+                        .map(|proxy| (proxy.listen_port, proxy.destination.clone()))
+                        .collect(),
+                    allow_udp_proxied: matches!(cfg.tap_filter, TapFilter::AllowUdpProxied),
+                }
+            }),
+            lock_broker: self.registration.lock_broker_cfg.as_ref().map(|cfg| {
+                kelir_core::planes::storage::LockBrokerWiring {
+                    scope_globs: match &cfg.scope {
+                        LockScope::Globs(globs) => globs.clone(),
+                    },
+                    non_blocking: cfg.non_blocking,
+                }
+            }),
+        };
         let core = kelir_core::Session::boot_with_engine(
             self.config,
             &plugins,
             engine,
             metrics,
             synthetic_files,
+            plane_wiring,
         )?;
         let mut core = core;
         core.set_detached(self.registration.detached);

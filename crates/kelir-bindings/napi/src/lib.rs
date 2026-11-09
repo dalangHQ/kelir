@@ -589,6 +589,78 @@ impl NativeSessionHandle {
     }
 }
 
+// see: cans/03-sdk-architecture.md#Session-control-surface
+#[napi(object)]
+pub struct NativeTerminalConfig {
+    pub cols: Option<u16>,
+    pub rows: Option<u16>,
+    pub drop_osc52: Option<bool>,
+    pub strip_title: Option<bool>,
+    pub token_shield_max_bytes_total: Option<f64>,
+    pub token_shield_max_lines_total: Option<f64>,
+    pub token_shield_clamp_strategy: Option<String>,
+    pub stream_engine: Option<String>,
+}
+
+// see: cans/03-sdk-architecture.md#Session-control-surface
+#[napi(object)]
+pub struct NativeStorageConfig {
+    pub idmap_guest_uid: Option<f64>,
+    pub idmap_host_uid: Option<f64>,
+    pub shared_caches: Option<Vec<String>>,
+    pub lock_broker: Option<bool>,
+    pub synthetic_files: Option<Vec<NativeSyntheticFile>>,
+    pub mask_read: Option<Vec<NativeMaskRule>>,
+    pub encapsulation: Option<String>,
+    pub scan_engine: Option<String>,
+    pub carryover_bytes: Option<f64>,
+}
+
+// see: cans/05-storage-plane.md#Workspace-commit
+#[napi(object)]
+pub struct NativeSyntheticFile {
+    pub path: String,
+    pub content: String,
+    pub mode: Option<f64>,
+}
+
+// see: cans/05-storage-plane.md#Workspace-commit
+#[napi(object)]
+pub struct NativeMaskRule {
+    pub glob: String,
+    pub pattern: String,
+    pub replace: String,
+}
+
+// see: cans/07-wire-plane.md#DNS-policy-filter
+#[napi(object)]
+pub struct NativeVaultDescriptor {
+    pub name: String,
+    pub kind: String,
+    pub audience: String,
+    pub placeholder: String,
+}
+
+// see: cans/07-wire-plane.md#Port-forwarding
+#[napi(object)]
+pub struct NativeL4Proxy {
+    pub listen_port: u16,
+    pub destination: String,
+    pub inject_mtls_cert_path: Option<String>,
+    pub inject_mtls_key_path: Option<String>,
+}
+
+// see: cans/07-wire-plane.md#DNS-policy-filter
+#[napi(object)]
+pub struct NativeWireConfig {
+    pub sinkhole_dns_except: Option<Vec<String>>,
+    pub sinkhole_drop_all: Option<bool>,
+    pub ssh_agent_bridge: Option<bool>,
+    pub vaults: Option<Vec<NativeVaultDescriptor>>,
+    pub l4_proxies: Option<Vec<NativeL4Proxy>>,
+    pub tap_filter: Option<String>,
+}
+
 #[napi]
 pub struct NativeKelirBuilder {
     config: VmConfig,
@@ -596,6 +668,9 @@ pub struct NativeKelirBuilder {
     plugins: Vec<PluginRegistration>,
     fused: Option<FusedTrampolineDescriptor>,
     trampolines: TrampolineTable,
+    terminal_cfg: Option<NativeTerminalConfig>,
+    storage_cfg: Option<NativeStorageConfig>,
+    wire_cfg: Option<NativeWireConfig>,
 }
 
 #[napi]
@@ -611,20 +686,46 @@ impl NativeKelirBuilder {
         enable_watchdog: Option<bool>,
         driver: Option<String>,
     ) -> Self {
+        let mut config = default_vm_config(
+            vcpus,
+            memory_mb,
+            kernel,
+            rootfs_erofs,
+            tsc_locked,
+            enable_watchdog,
+        );
+        // see: cans/01-architecture.md#Driver-backends
+        config.driver_policy.driver = driver.clone();
         Self {
-            config: default_vm_config(
-                vcpus,
-                memory_mb,
-                kernel,
-                rootfs_erofs,
-                tsc_locked,
-                enable_watchdog,
-            ),
+            config,
             driver_name: driver.unwrap_or_else(|| "auto".to_string()),
             plugins: Vec::new(),
             fused: None,
             trampolines: TrampolineTable::default(),
+            terminal_cfg: None,
+            storage_cfg: None,
+            wire_cfg: None,
         }
+    }
+
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    // TODO (L3): prompt rules and the token-shield clamp callback stay TypeScript-side until threadsafe-function bridging lands.
+    #[napi]
+    pub fn set_terminal_config(&mut self, config: NativeTerminalConfig) {
+        self.terminal_cfg = Some(config);
+    }
+
+    // see: cans/05-storage-plane.md#Workspace-commit
+    // TODO (L3): snoop on_write callbacks stay TypeScript-side until threadsafe-function bridging lands.
+    #[napi]
+    pub fn set_storage_config(&mut self, config: NativeStorageConfig) {
+        self.storage_cfg = Some(config);
+    }
+
+    // see: cans/07-wire-plane.md#DNS-policy-filter
+    #[napi]
+    pub fn set_wire_config(&mut self, config: NativeWireConfig) {
+        self.wire_cfg = Some(config);
     }
 
     #[napi]
@@ -710,9 +811,15 @@ impl NativeKelirBuilder {
             .iter()
             .map(|plugin| kelir_core::PluginRegistration::new(plugin.name.clone(), plugin.enabled))
             .collect();
+        let plane_wiring = self.plane_wiring();
         let started = Instant::now();
-        let session = Session::boot_with_plugins(self.config.clone(), &plugins, Some(descriptor))
-            .map_err(halt)?;
+        let session = Session::boot_with_plugins(
+            self.config.clone(),
+            &plugins,
+            Some(descriptor),
+            plane_wiring,
+        )
+        .map_err(halt)?;
         // TODO (L3): re-source driver_name from the booted core session once it exposes the resolved driver.
         Ok(NativeSessionHandle::from_session(
             session,
@@ -725,5 +832,63 @@ impl NativeKelirBuilder {
 impl Default for NativeKelirBuilder {
     fn default() -> Self {
         Self::new(None, None, None, None, None, None, None)
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
+impl NativeKelirBuilder {
+    // TODO (L3): token-shield clamps, prompt rules, snoop callbacks, and mtls injection ride threadsafe functions into the planes.
+    fn plane_wiring(&self) -> kelir_core::session_lifecycle::PlaneWiring {
+        let terminal =
+            self.terminal_cfg
+                .as_ref()
+                .map(|cfg| kelir_core::planes::terminal::TerminalWiring {
+                    cols: cfg.cols.unwrap_or(80),
+                    rows: cfg.rows.unwrap_or(24),
+                    drop_osc52: cfg.drop_osc52.unwrap_or(false),
+                    strip_title: cfg.strip_title.unwrap_or(false),
+                });
+        let wire = self
+            .wire_cfg
+            .as_ref()
+            .map(|cfg| kelir_core::planes::wire::WireWiring {
+                sinkhole_allowlist: cfg.sinkhole_dns_except.clone().unwrap_or_default(),
+                sinkhole_drop_all: cfg.sinkhole_drop_all.unwrap_or(false),
+                ssh_agent_bridge: cfg.ssh_agent_bridge.unwrap_or(false),
+                vault_placeholders: cfg
+                    .vaults
+                    .as_ref()
+                    .map(|vaults| {
+                        vaults
+                            .iter()
+                            .map(|vault| vault.placeholder.clone())
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                l4_proxies: cfg
+                    .l4_proxies
+                    .as_ref()
+                    .map(|proxies| {
+                        proxies
+                            .iter()
+                            .map(|proxy| (proxy.listen_port, proxy.destination.clone()))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                allow_udp_proxied: cfg.tap_filter.as_deref() == Some("AllowUdpProxied"),
+            });
+        let lock_broker = self.storage_cfg.as_ref().and_then(|cfg| {
+            cfg.lock_broker.filter(|enabled| *enabled).map(|_| {
+                kelir_core::planes::storage::LockBrokerWiring {
+                    scope_globs: cfg.shared_caches.clone().unwrap_or_default(),
+                    non_blocking: false,
+                }
+            })
+        });
+        kelir_core::session_lifecycle::PlaneWiring {
+            terminal,
+            wire,
+            lock_broker,
+        }
     }
 }

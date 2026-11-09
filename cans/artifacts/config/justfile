@@ -108,6 +108,7 @@ lint:
 
 typecheck: build-ts
     pnpm -r exec tsc --noEmit
+    pnpm --filter @kelir/core run typecheck
     uv run mypy packages/py
 
 # ── Testing ──

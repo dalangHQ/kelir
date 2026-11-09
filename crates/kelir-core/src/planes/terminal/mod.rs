@@ -160,6 +160,16 @@ pub struct TerminalPlane {
     state: Mutex<Vt100StateMachine>,
     segments: Mutex<HashMap<LogStream, LogSegment>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
+    filters: (bool, bool),
+}
+
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TerminalWiring {
+    pub cols: u16,
+    pub rows: u16,
+    pub drop_osc52: bool,
+    pub strip_title: bool,
 }
 
 impl TerminalPlane {
@@ -170,6 +180,17 @@ impl TerminalPlane {
             state: Mutex::new(Vt100StateMachine::new()),
             segments: Mutex::new(HashMap::new()),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
+            filters: (false, false),
+        }
+    }
+
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    // TODO (L3): the host filter pipeline applies drop_osc52/strip_title to console output before VT100 feed.
+    pub fn with_wiring(self, wiring: &TerminalWiring) -> Self {
+        let _ = self.resize(wiring.cols, wiring.rows);
+        Self {
+            filters: (wiring.drop_osc52, wiring.strip_title),
+            ..self
         }
     }
 
@@ -180,6 +201,11 @@ impl TerminalPlane {
 
     pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
         &self.metrics
+    }
+
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    pub fn output_filters(&self) -> (bool, bool) {
+        self.filters
     }
 
     pub fn resize(

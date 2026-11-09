@@ -163,8 +163,64 @@ export interface FusedTrampolineDescriptor {
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
+export interface NativeTerminalConfigBinding {
+  readonly cols?: number;
+  readonly rows?: number;
+  readonly dropOsc52?: boolean;
+  readonly stripTitle?: boolean;
+  readonly tokenShieldMaxBytesTotal?: number;
+  readonly tokenShieldMaxLinesTotal?: number;
+  readonly tokenShieldClampStrategy?: string;
+  readonly streamEngine?: string;
+}
+
+// see: cans/05-storage-plane.md#Workspace-commit
+export interface NativeStorageConfigBinding {
+  readonly idmapGuestUid?: number;
+  readonly idmapHostUid?: number;
+  readonly sharedCaches?: string[];
+  readonly lockBroker?: boolean;
+  readonly syntheticFiles?: readonly {
+    readonly path: string;
+    readonly content: string;
+    readonly mode?: number;
+  }[];
+  readonly maskRead?: readonly {
+    readonly glob: string;
+    readonly pattern: string;
+    readonly replace: string;
+  }[];
+  readonly encapsulation?: string;
+  readonly scanEngine?: string;
+  readonly carryoverBytes?: number;
+}
+
+// see: cans/07-wire-plane.md#DNS-policy-filter
+export interface NativeWireConfigBinding {
+  readonly sinkholeDnsExcept?: string[];
+  readonly sinkholeDropAll?: boolean;
+  readonly sshAgentBridge?: boolean;
+  readonly vaults?: readonly {
+    readonly name: string;
+    readonly kind: string;
+    readonly audience: string;
+    readonly placeholder: string;
+  }[];
+  readonly l4Proxies?: readonly {
+    readonly listenPort: number;
+    readonly destination: string;
+    readonly injectMtlsCertPath?: string;
+    readonly injectMtlsKeyPath?: string;
+  }[];
+  readonly tapFilter?: string;
+}
+
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
 export interface NativeKelirBuilderBinding {
   addPlugin(name: string, enabled?: boolean): void;
+  setTerminalConfig(config: NativeTerminalConfigBinding): void;
+  setStorageConfig(config: NativeStorageConfigBinding): void;
+  setWireConfig(config: NativeWireConfigBinding): void;
   fuseHooks(rings: readonly FusedRingChainDescriptor[]): void;
   trampolineEntryCount(): number;
   boot(): Promise<NativeSessionHandle>;

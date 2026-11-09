@@ -41,6 +41,61 @@ def _load_native_bridge() -> Any:
         ) from exc
 
 
+# see: cans/03-sdk-architecture.md#Python-SDK
+def _bridge_safe_config(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
+    # TODO (L3): token shields, prompts, and snoop callbacks cross once the FFI callback bridge lands.
+    known = {
+        "terminal": {
+            "cols", "rows", "drop_osc52", "strip_title",
+            "token_shield", "prompts", "stream_engine",
+        },
+        "storage": {
+            "idmap", "shared_caches", "lock_broker", "synthetic_files",
+            "mask_read", "snoops", "encapsulation", "scan_engine",
+            "carryover_bytes",
+        },
+        "wire": {
+            "sinkhole", "ssh_agent_bridge", "vaults", "l4_proxies",
+            "tap_filter",
+        },
+    }[kind]
+    unknown = set(kwargs) - known
+    if unknown:
+        raise EConfig(
+            f"unknown {kind} plane config keys: {', '.join(sorted(unknown))}"
+        )
+    bridged: dict[str, Any] = {}
+    for key, value in kwargs.items():
+        if key in ("token_shield", "prompts", "snoops"):
+            continue
+        if key == "sinkhole" and value is not None:
+            bridged["sinkhole"] = {
+                "allowlist": list(value.allowlist),
+                "drop_all": bool(value.drop_all),
+            }
+        elif key == "vaults" and value is not None:
+            bridged["vaults"] = [
+                {
+                    "name": vault.name,
+                    "kind": str(vault.kind),
+                    "audience": vault.audience,
+                    "placeholder": vault.placeholder,
+                }
+                for vault in value
+            ]
+        elif key == "l4_proxies" and value is not None:
+            bridged["l4_proxies"] = [
+                {
+                    "listen_port": proxy.listen_port,
+                    "destination": proxy.destination,
+                }
+                for proxy in value
+            ]
+        else:
+            bridged[key] = value
+    return bridged
+
+
 # see: cans/11-protocol.md#Wire-messages
 class Approval:
     pass
@@ -583,6 +638,7 @@ class KelirBuilder:
         rootfs_erofs: str | None = None,
         tsc_locked: bool | None = None,
         enable_watchdog: bool | None = None,
+        driver: str | None = None,
         detached: bool | None = None,
     ) -> None:
         self._plugins: list[object] = []
@@ -592,6 +648,7 @@ class KelirBuilder:
         self._vsock_services: list[VsockServiceEntry] = []
         self._next_ordinal: int = 0
         self._session: Session | None = None
+        self._params_model: type | None = None
         self._config: dict[str, Any] = {
             "vcpus": vcpus,
             "memory_mb": memory_mb,
@@ -603,6 +660,7 @@ class KelirBuilder:
             "rootfs_erofs": rootfs_erofs,
             "tsc_locked": tsc_locked,
             "enable_watchdog": enable_watchdog,
+            "driver": driver,
             "detached": detached,
         }
 
@@ -613,6 +671,27 @@ class KelirBuilder:
 
     def is_detached(self) -> bool:
         return bool(self._config.get("detached", False))
+
+    # see: cans/04-terminal-plane.md#Terminal-pipeline
+    def terminal(self, **kwargs: Any) -> Self:
+        self._config["terminal"] = kwargs
+        return self
+
+    # see: cans/05-storage-plane.md#Workspace-commit
+    def storage(self, **kwargs: Any) -> Self:
+        self._config["storage"] = kwargs
+        return self
+
+    # see: cans/07-wire-plane.md#DNS-policy-filter
+    def wire(self, **kwargs: Any) -> Self:
+        self._config["wire"] = kwargs
+        return self
+
+    # see: cans/03-sdk-architecture.md#Python-SDK
+    def params(self, model: type) -> Self:
+        # TODO (L3): validated params models ride the native boot once the PyO3 binding awaits.
+        self._params_model = model
+        return self
 
     def use(self, plugin: object) -> Self:
         # TODO (L2): validate prerequisites at boot
@@ -796,8 +875,21 @@ class KelirBuilder:
             rootfs_erofs=self._config["rootfs_erofs"],
             tsc_locked=self._config["tsc_locked"],
             enable_watchdog=self._config["enable_watchdog"],
+            driver=self._config["driver"],
         )
         # TODO (L3): forward page_size_kb/deterministic_clock/pinned_clocksource/preemption_grace_ms once the PyO3 constructor accepts them.
+        if "terminal" in self._config:
+            # TODO (L3): token_shield and prompt callbacks stay Python-side until the FFI callback bridge lands.
+            native.set_terminal_config(
+                _bridge_safe_config("terminal", self._config["terminal"])
+            )
+        if "storage" in self._config:
+            # TODO (L3): snoop on_write callbacks stay Python-side until the FFI callback bridge lands.
+            native.set_storage_config(
+                _bridge_safe_config("storage", self._config["storage"])
+            )
+        if "wire" in self._config:
+            native.set_wire_config(_bridge_safe_config("wire", self._config["wire"]))
         for registration in self._plugin_registrations:
             native.use_plugin(registration.name, registration.enabled)
         native.fuse_hooks(descriptor)
@@ -835,6 +927,7 @@ def builder(
     rootfs_erofs: str | None = None,
     tsc_locked: bool | None = None,
     enable_watchdog: bool | None = None,
+    driver: str | None = None,
     detached: bool | None = None,
 ) -> KelirBuilder:
     return KelirBuilder(
@@ -848,6 +941,7 @@ def builder(
         rootfs_erofs=rootfs_erofs,
         tsc_locked=tsc_locked,
         enable_watchdog=enable_watchdog,
+        driver=driver,
         detached=detached,
     )
 

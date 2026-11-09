@@ -54,9 +54,17 @@ pub struct StoragePlane {
     reconciler: OnceLock<storage_reconciler::Reconciler>,
     lock_broker: OnceLock<Arc<lock_broker::LockBroker>>,
     lock_namespace: [u8; 16],
+    lock_broker_wiring: Option<LockBrokerWiring>,
     fuse_worker: OnceLock<Mutex<fuse_storage::FuseWorker>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     synthetic_files: Vec<storage_synthetic::SyntheticFile>,
+}
+
+// see: cans/05-storage-plane.md#Workspace-commit
+#[derive(Debug, Clone, Default)]
+pub struct LockBrokerWiring {
+    pub scope_globs: Vec<String>,
+    pub non_blocking: bool,
 }
 
 impl StoragePlane {
@@ -80,10 +88,18 @@ impl StoragePlane {
             reconciler: OnceLock::new(),
             lock_broker: OnceLock::new(),
             lock_namespace: [0; 16],
+            lock_broker_wiring: None,
             fuse_worker: OnceLock::new(),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             synthetic_files: Vec::new(),
         }
+    }
+
+    // see: cans/05-storage-plane.md#Workspace-commit
+    // TODO (L3): the lazily created LockBroker seeds its scope globs and non-blocking mode from this wiring.
+    pub fn with_lock_broker(mut self, wiring: LockBrokerWiring) -> Self {
+        self.lock_broker_wiring = Some(wiring);
+        self
     }
 
     pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>) -> Self {

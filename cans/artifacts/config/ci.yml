@@ -125,6 +125,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm -r exec tsc --noEmit
+          pnpm --filter @kelir/core run typecheck
           uv venv && uv pip install -e "packages/py[dev]"
           uv run mypy packages/py
 

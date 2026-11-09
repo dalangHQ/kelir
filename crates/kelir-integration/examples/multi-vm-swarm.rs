@@ -37,6 +37,7 @@ fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
         enable_watchdog: true,
         enable_gpu_passthrough: true,
         driver_policy: DriverPolicy {
+            driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
             verify_hw_lockfile: false,

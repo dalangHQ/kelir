@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-03"
-    verification: "assert_matches!(session.suspend(SuspendReason::ResourcePressure), Ok(()));"
+    verification: "assert_matches!(session.suspend(SuspendReason::ResourcePressure), Ok(())); assert_eq!(session.lifecycle_state(), LifecycleState::Suspended(SuspendReason::ResourcePressure));"

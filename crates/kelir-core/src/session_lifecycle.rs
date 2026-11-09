@@ -10,6 +10,15 @@ use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::lifecycle_state::LifecycleState;
 use kelir_interface::plugin_model::PipelineBinder;
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
+
+// see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
+#[derive(Debug, Clone, Default)]
+pub struct PlaneWiring {
+    pub terminal: Option<crate::planes::terminal::TerminalWiring>,
+    pub wire: Option<crate::planes::wire::WireWiring>,
+    pub lock_broker: Option<crate::planes::storage::LockBrokerWiring>,
+}
+
 pub struct Session {
     pub terminal: Arc<crate::planes::terminal::TerminalPlane>,
     pub storage: crate::planes::storage::StoragePlane,
@@ -118,7 +127,7 @@ impl Session {
     pub fn boot(
         config: kelir_interface::driver_interface::VmConfig,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
-        Self::boot_with_plugins(config, &[], None)
+        Self::boot_with_plugins(config, &[], None, PlaneWiring::default())
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
@@ -126,6 +135,7 @@ impl Session {
         config: kelir_interface::driver_interface::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
         trampoline: Option<&kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
+        plane_wiring: PlaneWiring,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
         let mut engine = crate::dispatch_plugin::PipelineEngine::new();
         if let Some(descriptor) = trampoline {
@@ -137,16 +147,19 @@ impl Session {
             engine,
             std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             Vec::new(),
+            plane_wiring,
         )
     }
 
     // see: cans/08-lifecycle.md#Hypervisor-primitives
+    #[allow(clippy::too_many_arguments)]
     pub fn boot_with_engine(
         config: kelir_interface::driver_interface::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
         engine: crate::dispatch_plugin::PipelineEngine,
         metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
         synthetic_files: Vec<crate::planes::storage::storage_synthetic::SyntheticFile>,
+        plane_wiring: PlaneWiring,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
         if let Some(reason) = config.missing_boot_path() {
             return Err(kelir_interface::plugin_model::PluginError::Halt(
@@ -199,13 +212,23 @@ impl Session {
             DEFAULT_WORKSPACE_QUOTA_BYTES,
             DEFAULT_WORKSPACE_QUOTA_INODES,
         )
-        .with_synthetic_files(synthetic_files);
-        let wire = crate::planes::wire::WirePlane::new();
+        .with_synthetic_files(synthetic_files)
+        .with_lock_broker(plane_wiring.lock_broker.unwrap_or_default());
+        let wire = match plane_wiring.wire {
+            Some(wiring) => crate::planes::wire::WirePlane::new().with_wiring(wiring),
+            None => crate::planes::wire::WirePlane::new(),
+        };
         if let Some(handler) = engine.vsock_service(VAULT_METADATA_VSOCK_PORT) {
             wire.bind_imds_sink(handler)?;
         }
         let terminal = Arc::new(
-            crate::planes::terminal::TerminalPlane::new(session_id).with_metrics(metrics.clone()),
+            match &plane_wiring.terminal {
+                Some(wiring) => {
+                    crate::planes::terminal::TerminalPlane::new(session_id).with_wiring(wiring)
+                }
+                None => crate::planes::terminal::TerminalPlane::new(session_id),
+            }
+            .with_metrics(metrics.clone()),
         );
         let engine = engine
             .with_metrics(metrics.clone())
@@ -213,6 +236,7 @@ impl Session {
         metrics.set_active_vcpus(u32::from(config.vcpus));
         // TODO (L3): DriverRouter probes KVM/HVF/AVF and completes the driver boot handshake; vm_handle stays unbound until a backend loads.
         let driver = crate::vmm::DriverRouter::load_native_driver(
+            config.driver_policy.driver.as_deref(),
             matches!(
                 config.driver_policy.wx_enforcement,
                 kelir_interface::driver_interface::WxPolicy::Strict

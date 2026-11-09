@@ -11,8 +11,7 @@ export interface PluginEnablement {
 export interface NetworkFaultRule {
   readonly target?: string;
   readonly direction?: "outbound" | "inbound" | "both";
-  readonly baseMs?: number;
-  readonly jitterMs?: number;
+  readonly latency?: { readonly baseMs: number; readonly jitterMs: number };
   readonly dropRate?: number;
   readonly injectRst?: boolean;
   readonly bandwidthKbps?: number;
@@ -88,7 +87,7 @@ export function dbProxy(config: DbProxyConfig): KelirPlugin {
 export interface OtelConfig {
   readonly endpoint?: string;
   readonly serviceName?: string;
-  readonly propagateW3cTraceparent?: boolean;
+  readonly traceParent?: boolean;
   readonly exportDiagnosticPmuGauges?: boolean;
 }
 
@@ -119,6 +118,11 @@ export function ledger(
 
 
 export interface McpConfig extends PluginEnablement {
+  readonly transport?: {
+    readonly streamKind: string;
+    readonly framing: string;
+  };
+  readonly advertise?: { readonly tools: readonly string[] };
 }
 
 
@@ -221,6 +225,7 @@ export function supplyChain(config: SupplyChainConfig): KelirPlugin {
 export interface ToolGuardConfig extends PluginEnablement {
   readonly maxInvocationsPerTrace?: number;
   readonly pinSchemas?: boolean;
+  readonly approvals?: Readonly<Record<string, { readonly action: "hold"; readonly durationMs: number }>>;
 }
 
 

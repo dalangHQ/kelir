@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-06"
-    verification: "assert_eq!(token.vmlinux_blake3.len(), 64); assert_ne!(token.vmlinux_blake3, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');"
+    verification: "assert_eq!(token.vmlinux_blake3, blake3_file(kernel_image_path));"

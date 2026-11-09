@@ -34,6 +34,88 @@ export interface KelirConfig {
   readonly detached?: boolean;
 }
 
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+export interface TerminalStream {
+  write(data: string): void;
+}
+
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+export interface TerminalConfig {
+  readonly cols?: number;
+  readonly rows?: number;
+  readonly dropOsc52?: boolean;
+  readonly stripTitle?: boolean;
+  readonly tokenShield?: {
+    readonly maxBytesTotal: number;
+    readonly maxLinesTotal: number;
+    readonly clampStrategy: string;
+    readonly onClamp: (stats: {
+      droppedBytes: number;
+      droppedLines: number;
+    }) => string;
+  };
+  readonly prompts?: readonly {
+    readonly match: RegExp;
+    readonly timeoutMs: number;
+    readonly verifyForeground: boolean;
+    readonly action: (
+      prompt: unknown,
+      stream: TerminalStream,
+    ) => Promise<void> | void;
+  }[];
+  readonly streamEngine?: string;
+}
+
+// see: cans/05-storage-plane.md#Workspace-commit
+export interface StorageConfig<Ctx = unknown> {
+  readonly idmap?: { readonly guestUid: number; readonly hostUid: number };
+  readonly sharedCaches?: readonly string[];
+  readonly lockBroker?: boolean;
+  readonly syntheticFiles?: readonly {
+    readonly path: string;
+    readonly content: string | (() => string);
+    readonly mode?: number;
+  }[];
+  readonly maskRead?: readonly {
+    readonly glob: string;
+    readonly pattern: RegExp;
+    readonly replace: string;
+  }[];
+  readonly snoops?: readonly {
+    readonly path: string;
+    readonly sync: boolean;
+    readonly onWrite: (
+      path: string,
+      raw: Uint8Array,
+      c: TrapContext & Ctx,
+    ) => Promise<void> | void;
+  }[];
+  readonly encapsulation?: string;
+  readonly scanEngine?: string;
+  readonly carryoverBytes?: number;
+}
+
+// see: cans/07-wire-plane.md#DNS-policy-filter
+export interface WireConfig {
+  readonly sinkhole?: { readonly dnsExcept: readonly string[] };
+  readonly sshAgentBridge?: boolean;
+  readonly vaults?: readonly {
+    readonly name: string;
+    readonly kind: "bearer_token" | "sigv4" | "mtls_bundle";
+    readonly audience: string;
+    readonly placeholder: string;
+  }[];
+  readonly l4Proxies?: readonly {
+    readonly listenPort: number;
+    readonly destination: string;
+    readonly injectMtls?: {
+      readonly certPath: string;
+      readonly keyPath: string;
+    };
+  }[];
+  readonly tapFilter?: string;
+}
+
 export type TrapHandlerResult = Verdict | PostExecAction | null | void;
 
 export type TrapHandler<Ctx = unknown> = (
@@ -68,10 +150,38 @@ export class KelirBuilder<Ctx = unknown> {
   readonly vsockServices: VsockServiceEntry[] = [];
   private nextOrdinal = 0;
   private detachedFlag: boolean;
+  private terminalCfg: TerminalConfig | undefined;
+  private storageCfg: StorageConfig<never> | undefined;
+  private wireCfg: WireConfig | undefined;
+  private paramsSchema: Schema<unknown> | undefined;
 
   constructor(config: KelirConfig = {}) {
     this.config = config;
     this.detachedFlag = config.detached ?? false;
+  }
+
+  // see: cans/04-terminal-plane.md#Terminal-pipeline
+  terminal(config: TerminalConfig): this {
+    this.terminalCfg = config;
+    return this;
+  }
+
+  // see: cans/05-storage-plane.md#Workspace-commit
+  storage<C>(_config: StorageConfig<C>): this {
+    this.storageCfg = _config as StorageConfig<never>;
+    return this;
+  }
+
+  // see: cans/07-wire-plane.md#DNS-policy-filter
+  wire(config: WireConfig): this {
+    this.wireCfg = config;
+    return this;
+  }
+
+  // see: cans/03-sdk-architecture.md#TypeScript-SDK
+  params(schema: Schema<unknown>): this {
+    this.paramsSchema = schema;
+    return this;
   }
 
   // see: cans/08-lifecycle.md#Detached-lifecycle
@@ -282,6 +392,60 @@ export class KelirBuilder<Ctx = unknown> {
       this.config.driver,
     );
     // TODO (L3): forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.
+    if (this.terminalCfg) {
+      // TODO (L3): tokenShield.onClamp and prompt actions stay TypeScript-side until threadsafe-function bridging lands.
+      nativeBuilder.setTerminalConfig({
+        cols: this.terminalCfg.cols,
+        rows: this.terminalCfg.rows,
+        dropOsc52: this.terminalCfg.dropOsc52,
+        stripTitle: this.terminalCfg.stripTitle,
+        tokenShieldMaxBytesTotal: this.terminalCfg.tokenShield?.maxBytesTotal,
+        tokenShieldMaxLinesTotal: this.terminalCfg.tokenShield?.maxLinesTotal,
+        tokenShieldClampStrategy: this.terminalCfg.tokenShield?.clampStrategy,
+        streamEngine: this.terminalCfg.streamEngine,
+      });
+    }
+    if (this.storageCfg) {
+      // TODO (L3): snoop onWrite callbacks stay TypeScript-side until threadsafe-function bridging lands.
+      nativeBuilder.setStorageConfig({
+        idmapGuestUid: this.storageCfg.idmap?.guestUid,
+        idmapHostUid: this.storageCfg.idmap?.hostUid,
+        sharedCaches: this.storageCfg.sharedCaches as string[] | undefined,
+        lockBroker: this.storageCfg.lockBroker,
+        syntheticFiles: this.storageCfg.syntheticFiles?.map((file) => ({
+          path: file.path,
+          content: typeof file.content === "function" ? file.content() : file.content,
+          mode: file.mode,
+        })),
+        maskRead: this.storageCfg.maskRead?.map((rule) => ({
+          glob: rule.glob,
+          pattern: rule.pattern.source,
+          replace: rule.replace,
+        })),
+        encapsulation: this.storageCfg.encapsulation,
+        scanEngine: this.storageCfg.scanEngine,
+        carryoverBytes: this.storageCfg.carryoverBytes,
+      });
+    }
+    if (this.wireCfg) {
+      nativeBuilder.setWireConfig({
+        sinkholeDnsExcept: this.wireCfg.sinkhole?.dnsExcept as string[] | undefined,
+        sinkholeDropAll: this.wireCfg.sinkhole !== undefined ? true : undefined,
+        sshAgentBridge: this.wireCfg.sshAgentBridge,
+        vaults: this.wireCfg.vaults,
+        l4Proxies: this.wireCfg.l4Proxies?.map((proxy) => ({
+          listenPort: proxy.listenPort,
+          destination: proxy.destination,
+          injectMtlsCertPath: proxy.injectMtls?.certPath,
+          injectMtlsKeyPath: proxy.injectMtls?.keyPath,
+        })),
+        tapFilter: this.wireCfg.tapFilter,
+      });
+    }
+    // TODO (L3): the params schema stays TypeScript-side; the native params model bridge lands with typed context threading.
+    if (this.paramsSchema) {
+      // params schema recorded for the SDK session; nothing crosses yet.
+    }
     for (const registration of this.pluginRegistrations) {
       nativeBuilder.addPlugin(registration.name, registration.enabled);
     }

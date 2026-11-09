@@ -68,4 +68,4 @@ anti_slop_assertions:
   - rule: "AS-03"
     verification: "assert_eq!(receipt.exit_code, 0); assert_matches!(receipt.exit_kind, ExitKind::Normal);"
   - rule: "AS-06"
-    verification: "assert_eq!(receipt.binary_blake3.len(), 64); assert_ne!(receipt.binary_blake3, 'af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262');"
+    verification: "assert_eq!(receipt.binary_blake3, blake3_file(guest_rootfs_mount.join('/bin/true')));"

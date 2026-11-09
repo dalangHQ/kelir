@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-04A"
-    verification: "assert_eq!(ts_sandbox.close().await.is_ok(), true); assert_eq!(py_sandbox.close().await.is_ok(), true);"
+    verification: "assert_eq!(ts_sandbox.close().await.is_ok(), true); assert_eq!(py_sandbox.close().await.is_ok(), true); assert_eq!(ts_session.lifecycle_state(), LifecycleState::Terminated); assert_eq!(py_session.lifecycle_state(), LifecycleState::Terminated);"

@@ -20,6 +20,9 @@ pub enum VmmError {
     Io(#[from] std::io::Error),
     #[error("exhausted: {0}")]
     ResourceExhausted(String),
+    // see: cans/01-architecture.md#Fallback-policy
+    #[error("no hardware virtualization: {0}")]
+    NoHardwareVmm(String),
 }
 
 pub type DriverError = VmmError;
@@ -45,6 +48,8 @@ pub enum WxPolicy {
 
 #[derive(Debug, Clone)]
 pub struct DriverPolicy {
+    // see: cans/01-architecture.md#Driver-backends
+    pub driver: Option<String>,
     pub require_hardware_vmm: bool,
     pub allow_emulated_fallback: bool,
     pub verify_hw_lockfile: bool,
@@ -260,6 +265,8 @@ pub fn default_vm_config(
         tsc_locked: tsc_locked.unwrap_or(true),
         entropy_seed: None,
         driver_policy: DriverPolicy {
+            // see: cans/01-architecture.md#Driver-backends
+            driver: None,
             require_hardware_vmm: true,
             allow_emulated_fallback: false,
             verify_hw_lockfile: false,
@@ -396,6 +403,13 @@ pub trait PmuSampler: Send + Sync {
 pub trait VmmDriver: Send + Sync {
     fn capabilities(&self) -> DriverCapabilities;
     async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError>;
+    // see: cans/01-architecture.md#Fallback-policy
+    // TODO (L3): backend drivers override is_emulated with the real emulation-tier probe.
+    fn is_emulated(&self) -> Result<bool, VmmError> {
+        Err(VmmError::Unsupported(
+            "is_emulated: no native backend override (L3)".into(),
+        ))
+    }
     // TODO (L3): backend drivers override fork with the native CoW clone primitive.
     async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
         Err(VmmError::Unsupported(

@@ -2067,6 +2067,11 @@ harness_tests:
 - file: crates/kelir-core/tests/lifecycle_state_test.rs
   reason: LifecycleState transition-legality unit test per cans/08-lifecycle.md#State-machine; the plan
     carries no dedicated case for the core state machine yet (L2 wiring addition).
+- file: crates/kelir-core/tests/driver_selection_config_test.rs
+  reason: Driver-selection L1/L2 contract test per cans/01-architecture.md Driver-backends and
+    Fallback-policy anchors (unknown-backend and unprivileged-tier-without-opt-in rejections,
+    known-backend pass-through to the L3 stub, is_emulated default, DriverPolicy.driver
+    round-trip); hd_01/hd_20 remain gap cases against the L3 hardware probe.
 - file: crates/kelir/tests/profile_schema_parity_test.rs
   reason: SSOT session-compute schema parity across the Rust/TS/Py PROFILE_FIELDS lists; parses
     cans/artifacts/examples/fixtures/kelir.yaml and compares all three interpreters; no plan case
