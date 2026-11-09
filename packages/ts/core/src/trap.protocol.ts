@@ -1,7 +1,7 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/02-plugin-model.md#Filter-before-FFI-gate
 
-import type { TrapFilterSnapshot } from "./fusion.js";
+import type { TrapFilterSnapshot } from "./fusion.plugin.js";
 
 export class TrapFilter {
   private readonly binaryName?: string;

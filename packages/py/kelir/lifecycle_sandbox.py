@@ -7,7 +7,7 @@ import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from kelir.errors import EConfig as EConfig
+from kelir.sdk_errors import EConfig as EConfig
 
 if TYPE_CHECKING:
     from kelir import CommitStats, KelirBuilder, Session, SpawnResult

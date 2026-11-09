@@ -21,8 +21,8 @@ from kelir import (
     Verdict,
     relay_socket_path,
 )
-from kelir.errors import EConfig
-from kelir.fusion import FusedTrampoline, HookStage, RingEvent, TrapFilterSnapshot
+from kelir.sdk_errors import EConfig
+from kelir.plugin_fusion import FusedTrampoline, HookStage, RingEvent, TrapFilterSnapshot
 from kelir.storage_planes import MaskRule, SyntheticFile
 
 

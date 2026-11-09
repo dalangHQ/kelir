@@ -1,6 +1,6 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import type { PatchInput } from "./types.js";
+import type { PatchInput } from "./types.core.js";
 
 export interface Verdict {
   readonly kind: "pass" | "drop" | "patch" | "suspend" | "abort";

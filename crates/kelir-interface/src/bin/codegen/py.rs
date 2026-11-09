@@ -185,8 +185,10 @@ pub fn emit_package_init(order: &[&str]) -> String {
     out.push_str("    LifecycleTag,\n");
     out.push_str("    RingEvent,\n");
     out.push_str(")\n");
-    out.push_str("from kelir.generated.protocol import Channel, ExecStream, MsgType, StreamKind\n");
-    out.push_str("from kelir.generated.telemetry import (\n");
+    out.push_str(
+        "from kelir.generated.wire_protocol import Channel, ExecStream, MsgType, StreamKind\n",
+    );
+    out.push_str("from kelir.generated.attest_telemetry import (\n");
     for name in order {
         let _ = writeln!(out, "    {},", py_sdk_name(name));
     }

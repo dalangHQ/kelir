@@ -34,7 +34,7 @@
 │    - See kelir-cloud ingestion-adapters-commercial diagram.                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 5. SANDBOX ENGINE COMPATIBILITY (E2B Drop-In):                              │
-│    - `@kelir/e2b-compat` (TS) and `kelir.compat.e2b` (Python).              │
+│    - `@kelir/e2b-compat` (TS) and `kelir.compat.compat_e2b` (Python).       │
 │    - Replicates the `Sandbox` interface with local hardware boots.          │
 └─────────────────────────────────────────────────────────────────────────────┘
 Boundary rule: the process owns the wire; kelir-pack owns image→EROFS

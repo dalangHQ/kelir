@@ -352,21 +352,21 @@ kelir/
 │   │   │   │   ├── index.ts           # kelir() builder entrypoint
 │   │   │   │   ├── builder.lifecycle.ts # KelirBuilder
 │   │   │   │   ├── context.lifecycle.types.ts # Generic accumulation context engine
-│   │   │   │   ├── schema.ts          # TypeBox command validation wrappers
-│   │   │   │   ├── errors.ts          # SDK error types
-│   │   │   │   ├── fusion.ts          # AOT hook-fusion client
-│   │   │   │   ├── plugin.ts          # Plugin registration surface
-│   │   │   │   ├── plugins.ts         # Plugin bindings index (no per-plugin dirs)
+│   │   │   │   ├── schema.config.ts   # TypeBox command validation wrappers
+│   │   │   │   ├── errors.sdk.ts      # SDK error types
+│   │   │   │   ├── fusion.plugin.ts   # AOT hook-fusion client
+│   │   │   │   ├── plugin.model.ts    # Plugin registration surface
+│   │   │   │   ├── plugins.registry.ts # Plugin bindings index (no per-plugin dirs)
 │   │   │   │   ├── sandbox.runtime.ts # Sandbox entrypoint
 │   │   │   │   ├── session.lifecycle.ts # Session handle
 │   │   │   │   ├── trap.protocol.ts   # Trap registration
-│   │   │   │   ├── types.ts           # Shared SDK types
+│   │   │   │   ├── types.core.ts      # Shared SDK types
 │   │   │   │   ├── verdict.protocol.ts # Verdict mapping
 │   │   │   │   ├── telemetry.attest.generated.ts # Generated receipts/deltas (codegen)
 │   │   │   │   ├── node-fs.d.ts       # Node fs type shims
 │   │   │   │   ├── generated/
-│   │   │   │   │   ├── fusion-tables.ts # Generated hook-fusion tables
-│   │   │   │   │   └── protocol.ts    # Generated protocol constants
+│   │   │   │   │   ├── fusion.tables.generated.ts # Generated hook-fusion tables
+│   │   │   │   │   └── protocol.wire.generated.ts # Generated protocol constants
 │   │   │   │   ├── reconciler.storage.test.ts
 │   │   │   │   ├── session.lifecycle.test.ts
 │   │   │   │   └── sinkhole.wire.test.ts
@@ -381,37 +381,37 @@ kelir/
 │   │       ├── package.json
 │   │       ├── tsconfig.json
 │   │       └── src/index.ts           # Drop-in replacement for @e2b/code-interpreter
-│   │   # No packages/ts/plugins/ dir: TS plugin bindings live in core/src/plugins.ts
+│   │   # No packages/ts/plugins/ dir: TS plugin bindings live in core/src/plugins.registry.ts
 │   │
 │   └── py/                            # Python Distribution (PyPI: kelir)
 │       ├── pyproject.toml
 │       ├── kelir/                     # <domain>_<entity>.py naming
 │       │   ├── __init__.py            # Async builder interface
-│       │   ├── errors.py              # SDK error types
-│       │   ├── fusion.py              # AOT hook-fusion client
-│       │   ├── plugin.py              # Plugin registration surface
+│       │   ├── sdk_errors.py          # SDK error types
+│       │   ├── plugin_fusion.py       # AOT hook-fusion client
+│       │   ├── model_plugin.py        # Plugin registration surface
 │       │   ├── lifecycle_sandbox.py   # Sandbox entrypoint
 │       │   ├── storage_planes.py      # Storage plane bindings
 │       │   ├── terminal_planes.py     # Terminal plane bindings
 │       │   ├── wire_planes.py         # Wire plane bindings
-│       │   ├── generated/             # Codegen output: fusion_tables.py, protocol.py, telemetry.py
+│       │   ├── generated/             # Codegen output: fusion_tables.py, wire_protocol.py, attest_telemetry.py
 │       │   ├── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
-│       │   │   ├── wire_ingress.py    # Python bindings for connection parking
-│       │   │   ├── chaos.py           # Python bindings for fault injection
-│       │   │   ├── ledger.py          # Python bindings for OTLP + opt-in Merkle WAL audit ledger
-│       │   │   ├── mcp.py             # Python bindings for MCP stdio JSON-RPC console
-│       │   │   ├── db_proxy.py        # Python bindings for pgwire + vsock DB mediation
-│       │   │   ├── mesh.py            # Python bindings for vsock federation transport
-│       │   │   ├── supply_chain.py    # Python bindings for package lifecycle guard
-│       │   │   ├── profile.py         # Python bindings for declarative profile ingestion
-│       │   │   ├── tool_guard.py      # Python bindings for MCP tool-call interposition
-│       │   │   ├── vault.py           # Python bindings for out-of-band credential broker
-│       │   │   ├── container.py       # Python bindings for rootless OCI container runner
-│       │   │   ├── replay.py          # Python bindings for deterministic clock replay
-│       │   │   └── transaction.py     # Python bindings for multi-resource 2PC coordination
+│       │   │   ├── plugin_wire_ingress.py # Python bindings for connection parking
+│       │   │   ├── plugin_chaos.py    # Python bindings for fault injection
+│       │   │   ├── plugin_ledger.py   # Python bindings for OTLP + opt-in Merkle WAL audit ledger
+│       │   │   ├── plugin_mcp.py      # Python bindings for MCP stdio JSON-RPC console
+│       │   │   ├── plugin_db_proxy.py # Python bindings for pgwire + vsock DB mediation
+│       │   │   ├── plugin_mesh.py     # Python bindings for vsock federation transport
+│       │   │   ├── plugin_supply_chain.py # Python bindings for package lifecycle guard
+│       │   │   ├── plugin_profile.py  # Python bindings for declarative profile ingestion
+│       │   │   ├── plugin_tool_guard.py # Python bindings for MCP tool-call interposition
+│       │   │   ├── plugin_vault.py    # Python bindings for out-of-band credential broker
+│       │   │   ├── plugin_container.py # Python bindings for rootless OCI container runner
+│       │   │   ├── plugin_replay.py   # Python bindings for deterministic clock replay
+│       │   │   └── plugin_transaction.py # Python bindings for multi-resource 2PC coordination
 │       │   └── compat/
 │       │       ├── __init__.py
-│       │       └── e2b.py             # Drop-in E2B Sandbox replacement class
+│       │       └── compat_e2b.py      # Drop-in E2B Sandbox replacement class
 │       ├── tests/                     # test_<domain>_<entity>.py naming
 │       │   ├── test_attest_receipt.py
 │       │   ├── test_lifecycle_session.py
@@ -421,7 +421,7 @@ kelir/
 │       │   └── test_wire_sinkhole.py
 │       └── examples/
 │           ├── autonomous-swe-agent.py
-│           ├── container.py
+│           ├── plugin_container.py
 │           ├── db-backed-runtime.py
 │           └── hook-matrix.py
 │

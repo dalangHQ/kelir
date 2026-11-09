@@ -8,8 +8,8 @@ from kelir.generated.fusion_tables import (
     LifecycleTag,
     RingEvent,
 )
-from kelir.generated.protocol import Channel, ExecStream, MsgType, StreamKind
-from kelir.generated.telemetry import (
+from kelir.generated.wire_protocol import Channel, ExecStream, MsgType, StreamKind
+from kelir.generated.attest_telemetry import (
     GuestClock,
     SnapshotDescriptor,
     ReceiptExtension,

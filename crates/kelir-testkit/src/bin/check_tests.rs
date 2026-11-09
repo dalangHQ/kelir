@@ -9,6 +9,8 @@ struct Counts {
     rs_bench_files: usize,
     ts_test_files: usize,
     py_test_files: usize,
+    ts_src_files: usize,
+    py_src_files: usize,
     yaml_cases: usize,
     yaml_snippets: usize,
 }
@@ -231,6 +233,22 @@ fn valid_sdk_test_base(base: &str, sep: char) -> bool {
     tokens.len() >= 2
 }
 
+fn valid_src_base(base: &str, sep: char) -> bool {
+    let mut tokens: Vec<&str> = base.split(sep).filter(|t| !t.is_empty()).collect();
+    if tokens
+        .last()
+        .is_some_and(|token| ["unit", "integration", "parity", "generated"].contains(token))
+    {
+        tokens.pop();
+    }
+    tokens.len() >= 2
+        && tokens.iter().all(|token| {
+            token
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        })
+}
+
 fn lint_test_filename(
     path: &Path,
     repo_root: &Path,
@@ -273,6 +291,8 @@ fn main() -> ExitCode {
         rs_bench_files: 0,
         ts_test_files: 0,
         py_test_files: 0,
+        ts_src_files: 0,
+        py_src_files: 0,
         yaml_cases: 0,
         yaml_snippets: 0,
     };
@@ -366,6 +386,68 @@ fn main() -> ExitCode {
         );
     }
 
+    // see: cans/artifacts/test-plan/matrix.yaml#filename_grammar
+    for entry in WalkDir::new(&ts_dir)
+        .into_iter()
+        .filter_entry(|entry| !is_vendor_entry(entry))
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if !path.to_string_lossy().contains("/src/") {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if name == "index.ts" || name.ends_with(".d.ts") || name.ends_with(".test.ts") {
+            continue;
+        }
+        let Some(base) = name.strip_suffix(".ts") else {
+            continue;
+        };
+        counts.ts_src_files += 1;
+        lint_test_filename(
+            path,
+            &repo_root,
+            &harness_exempt,
+            valid_src_base(base, '.'),
+            "NG-04",
+            "<entity>.<domain>[.role].ts",
+            &mut violations,
+        );
+    }
+
+    // see: cans/artifacts/test-plan/matrix.yaml#filename_grammar
+    let py_src_dir = repo_root.join("packages/py/kelir");
+    for entry in WalkDir::new(&py_src_dir)
+        .into_iter()
+        .filter_entry(|entry| !is_vendor_entry(entry))
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if name == "__init__.py" {
+            continue;
+        }
+        let Some(base) = name.strip_suffix(".py") else {
+            continue;
+        };
+        counts.py_src_files += 1;
+        lint_test_filename(
+            path,
+            &repo_root,
+            &harness_exempt,
+            valid_src_base(base, '_'),
+            "NG-05",
+            "<domain>_<entity>.py",
+            &mut violations,
+        );
+    }
+
     let cases_dir = repo_root.join("cans/artifacts/test-plan/cases");
     let mut case_paths: Vec<PathBuf> = Vec::new();
     for entry in WalkDir::new(&cases_dir).into_iter().filter_map(|e| e.ok()) {
@@ -392,8 +474,12 @@ fn main() -> ExitCode {
             counts.rs_test_files, counts.rs_bench_files, counts.yaml_cases, counts.yaml_snippets
         );
         println!(
-            "Filename grammar gate: {} rust, {} typescript, {} python test filenames conform or are harness-exempt.",
-            counts.rs_test_files, counts.ts_test_files, counts.py_test_files
+            "Filename grammar gate: {} rust, {} typescript, {} python test filenames conform or are harness-exempt; {} typescript, {} python source modules conform.",
+            counts.rs_test_files,
+            counts.ts_test_files,
+            counts.py_test_files,
+            counts.ts_src_files,
+            counts.py_src_files
         );
         ExitCode::SUCCESS
     } else {

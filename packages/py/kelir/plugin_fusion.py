@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from kelir.errors import EConfig
+from kelir.sdk_errors import EConfig
 from kelir.generated.fusion_tables import (
     HookStage as HookStage,
     LIFECYCLE_TAGS as LIFECYCLE_TAGS,

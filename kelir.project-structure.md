@@ -131,7 +131,7 @@ kelir/
 │   │   │   └── src/
 │   │   │       ├── index.ts           # kelir() builder entrypoint
 │   │   │       ├── context.lifecycle.types.ts # Generic accumulation context engine
-│   │   │       ├── schema.ts          # TypeBox command validation wrappers
+│   │   │       ├── schema.config.ts   # TypeBox command validation wrappers
 │   │   │       └── binding.ts         # Auto-generated NAPI loader
 │   │   ├── plugins/                   # @kelir/plugin-*
 │   │   │   ├── pty/                   # TS bindings for virtio-console
@@ -154,10 +154,10 @@ kelir/
 │           │   ├── pty.py             # Python bindings for the pty plugin
 │           │   ├── vfs.py             # Python bindings for the vfs plugin
 │           │   ├── wire.py            # Python bindings for the wire plugin
-│           │   ├── chaos.py           # Python bindings for the chaos plugin
-│           │   └── ledger.py          # Python bindings for the ledger plugin
+│           │   ├── plugin_chaos.py    # Python bindings for the chaos plugin
+│           │   └── plugin_ledger.py   # Python bindings for the ledger plugin
 │           └── compat/
-│               └── e2b.py             # Drop-in E2B Sandbox replacement class
+│               └── compat_e2b.py      # Drop-in E2B Sandbox replacement class
 │
 ├── tests/                             # ── VERIFICATION SUITES ──
 │   ├── fixtures/

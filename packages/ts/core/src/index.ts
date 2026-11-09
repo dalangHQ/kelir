@@ -3,18 +3,18 @@
 // see: cans/10-attestation.md#Step-evaluation-loop
 import type { Session } from "./session.lifecycle.js";
 
-export * from "./types.js";
-export * from "./schema.js";
+export * from "./types.core.js";
+export * from "./schema.config.js";
 export * from "./verdict.protocol.js";
 export * from "./trap.protocol.js";
 export * from "./context.lifecycle.types.js";
-export * from "./errors.js";
+export * from "./errors.sdk.js";
 export * from "./session.lifecycle.js";
 export * from "./sandbox.runtime.js";
-export * from "./plugin.js";
+export * from "./plugin.model.js";
 export * from "./builder.lifecycle.js";
-export * from "./plugins.js";
-export * from "./fusion.js";
+export * from "./plugins.registry.js";
+export * from "./fusion.plugin.js";
 
 export interface IntentInput {
   readonly binary: string;

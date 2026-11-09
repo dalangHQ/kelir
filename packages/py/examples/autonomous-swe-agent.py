@@ -31,7 +31,7 @@ from kelir import (
     TrapFilter,
     Verdict,
 )
-from kelir.plugin import BasePlugin, LifecycleCtx, PluginError
+from kelir.model_plugin import BasePlugin, LifecycleCtx, PluginError
 from kelir.terminal_planes import PromptRule, TokenShield
 from kelir.storage_planes import (
     DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopRule
@@ -39,13 +39,13 @@ from kelir.storage_planes import (
 from kelir.wire_planes import (
     L4Proxy, Mtls, SinkholeConfig, CredentialDescriptor
 )
-from kelir.plugins.chaos import (
+from kelir.plugins.plugin_chaos import (
     ChaosConfig,
     FsChaos,
     NetworkChaos,
     ChaosPlugin,
 )
-from kelir.plugins.ledger import (
+from kelir.plugins.plugin_ledger import (
     LedgerConfig,
     LedgerPlugin,
     OtelConfig,

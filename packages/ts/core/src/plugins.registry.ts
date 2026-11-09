@@ -1,7 +1,7 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
 import type { ChaosHandle, LedgerHandle, MeshHandle } from "./context.lifecycle.types.js";
-import type { KelirPlugin, PluginContext } from "./plugin.js";
+import type { KelirPlugin, PluginContext } from "./plugin.model.js";
 
 export interface PluginEnablement {
   readonly enabled?: boolean;

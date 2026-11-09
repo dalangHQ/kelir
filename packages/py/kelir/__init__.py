@@ -9,8 +9,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
 
-from kelir.generated.protocol import Channel, ExecStream, MsgType, StreamKind
-from kelir.generated.telemetry import (
+from kelir.generated.wire_protocol import Channel, ExecStream, MsgType, StreamKind
+from kelir.generated.attest_telemetry import (
     CausalDelta as CausalDelta,
     ExecutionReceipt as ExecutionReceipt,
     ExitKind as ExitKind,
@@ -19,9 +19,9 @@ from kelir.generated.telemetry import (
     ReceiptExtension as ReceiptExtension,
     SnapshotDescriptor as SnapshotDescriptor,
 )
-from kelir.errors import EConfig as EConfig
+from kelir.sdk_errors import EConfig as EConfig
 from kelir.lifecycle_sandbox import Sandbox as Sandbox
-from kelir.fusion import (
+from kelir.plugin_fusion import (
     FusedTrampoline,
     HookDescriptor,
     HookStage,
@@ -615,7 +615,7 @@ class KelirBuilder:
 
     def use(self, plugin: object) -> Self:
         # TODO (L2): validate prerequisites at boot
-        from kelir.plugin import hook_descriptors
+        from kelir.model_plugin import hook_descriptors
 
         self._plugins.append(plugin)
         name = getattr(plugin, "name", None) or type(plugin).__name__

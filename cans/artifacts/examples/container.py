@@ -23,7 +23,7 @@ import os
 
 import kelir
 from kelir import KelirBuilder, Session
-from kelir.plugins.container import ContainerConfig, ContainerPlugin
+from kelir.plugins.plugin_container import ContainerConfig, ContainerPlugin
 
 
 OCI_TARBALL = "./fixtures/oci-hello-world.tar"

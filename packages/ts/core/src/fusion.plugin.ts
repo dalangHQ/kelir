@@ -2,7 +2,7 @@
 // see: cans/01-architecture.md#Foreign-runtime-embedding
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import { EConfig } from "./errors.js";
+import { EConfig } from "./errors.sdk.js";
 import { LifecycleEvent } from "./verdict.protocol.js";
 import type { NativeSessionHandle } from "./session.lifecycle.js";
 import {
@@ -10,14 +10,14 @@ import {
   RingEvent,
   type HookStage,
   type LifecycleTag,
-} from "./generated/fusion-tables.js";
+} from "./generated/fusion.tables.generated.js";
 
 export {
   LIFECYCLE_TAGS,
   RingEvent,
   type HookStage,
   type LifecycleTag,
-} from "./generated/fusion-tables.js";
+} from "./generated/fusion.tables.generated.js";
 
 export interface TrapFilterSnapshot {
   readonly binary?: string;

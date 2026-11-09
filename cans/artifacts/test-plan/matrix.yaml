@@ -96,7 +96,8 @@ filename_grammar:
   purpose: >-
     Domain-first test filenames across the three implementation languages: every
     test file names its entity and its subsystem plane, so suite intent survives
-    a directory listing. Enforced by check-tests gates NG-01 through NG-03.
+    a directory listing. Enforced by check-tests gates NG-01 through NG-05
+    (NG-04 and NG-05 cover source modules under the same grammar).
   rust:
     pattern: "<entity>_<domain>[_role]_test.rs"
     example: "storage_reconciler_test.rs"
@@ -109,9 +110,10 @@ filename_grammar:
     pattern: "test_<domain>_<entity>[_role].py"
     example: "test_lifecycle_session.py"
     src_rule: "source modules use <domain>_<entity>.py; dots would break import statements"
-  role_tokens: [unit, integration, parity]
+  role_tokens: [unit, integration, parity, generated]
   harness_exceptions: "case-to-test-map.yaml#harness_tests"
-  gates: [NG-01, NG-02, NG-03]
+  src_exemptions: "index.ts package entry, __init__.py package markers, *.d.ts ambient declarations"
+  gates: [NG-01, NG-02, NG-03, NG-04, NG-05]
 
 ci_gates:
   - id: "gate_check_manifest"
@@ -119,7 +121,7 @@ ci_gates:
     description: "Asserts 100% parity between manifest.yaml and test case files."
   - id: "gate_check_linter_laws"
     command: "cargo run -p kelir-testkit --bin check-tests"
-    description: "AST analysis asserting AS-01 through AS-08 (AS-04 split into AS-04A/AS-04B) plus filename grammar NG-01 through NG-03 across tests/ and benches/ directories."
+    description: "AST analysis asserting AS-01 through AS-08 (AS-04 split into AS-04A/AS-04B) plus filename grammar NG-01 through NG-05 across tests/, benches/ and source modules."
   - id: "gate_check_scorecard"
     command: "just check-scorecard"
     description: "Byte-for-byte verification between physical evidence and scorecard.md."

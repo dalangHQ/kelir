@@ -8,8 +8,8 @@ from typing import Any, cast
 import pytest
 
 from kelir import KelirBuilder
-from kelir.errors import EConfig
-from kelir.fusion import (
+from kelir.sdk_errors import EConfig
+from kelir.plugin_fusion import (
     FusedTrampoline,
     HookDescriptor,
     HookStage,
@@ -19,7 +19,7 @@ from kelir.fusion import (
     TrapFilterSnapshot,
 )
 from kelir.generated.fusion_tables import LIFECYCLE_TAGS
-from kelir.plugin import BasePlugin, WatchdogEvent, WatchdogVerdict, hook_descriptors
+from kelir.model_plugin import BasePlugin, WatchdogEvent, WatchdogVerdict, hook_descriptors
 
 
 async def _noop(event: Any) -> None:

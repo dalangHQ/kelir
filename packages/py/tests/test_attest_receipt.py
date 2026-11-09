@@ -2,7 +2,7 @@
 # see: cans/03-sdk-architecture.md#Python-SDK
 from __future__ import annotations
 
-from kelir.generated.telemetry import (
+from kelir.generated.attest_telemetry import (
     CausalDelta,
     ExecutionReceipt,
     ExitKind,

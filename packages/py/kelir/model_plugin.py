@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from kelir import FilterAction, HandlerContext, Verdict
-from kelir.fusion import HookDescriptor, HookStage
+from kelir.plugin_fusion import HookDescriptor, HookStage
 from kelir.generated.fusion_tables import HOOK_RINGS
 
 __all__ = [

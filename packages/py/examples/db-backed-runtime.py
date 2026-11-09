@@ -9,14 +9,14 @@ from pydantic import BaseModel, Field
 
 import kelir
 from kelir import HandlerContext, KelirBuilder, PostExecAction, Session, TrapFilter, Verdict
-from kelir.plugins.db_proxy import (
+from kelir.plugins.plugin_db_proxy import (
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials,
     PgWireRewrite, SqliteOverVsock,
 )
-from kelir.plugins.ledger import (
+from kelir.plugins.plugin_ledger import (
     LedgerConfig, LedgerPlugin, ReceiptConfig,
 )
-from kelir.plugins.transaction import (
+from kelir.plugins.plugin_transaction import (
     TransactionConfig, TransactionPlugin,
 )
 

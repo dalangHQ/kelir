@@ -6,7 +6,7 @@ import os
 
 import kelir
 from kelir import KelirBuilder, Session
-from kelir.plugins.container import ContainerConfig, ContainerPlugin
+from kelir.plugins.plugin_container import ContainerConfig, ContainerPlugin
 
 
 # TODO (L3): image reference emitted by kelir-pack (single ingestion compiler).

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from kelir.plugin import BasePlugin
+from kelir.model_plugin import BasePlugin
 
 __all__ = [
     "VaultConfig",

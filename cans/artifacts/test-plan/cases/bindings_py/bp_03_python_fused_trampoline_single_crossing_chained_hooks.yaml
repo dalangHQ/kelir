@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/02-plugin-model.md#Foreign-plugin-proxy"
-  statement: "AOT hook fusion compiles chained host hooks into a single flat closure; exactly one FFI trampoline crossing per ring event regardless of hook count. GAP: the compiled flat closure is not yet real — packages/py/kelir/fusion.py FusedTrampoline.describe() returns a descriptor and carries TODO (L3) to compile each fused chain into the single flat closure, and crates/kelir-bindings/pyo3/src/lib.rs carries the matching L3 bind step; the single-crossing property is therefore asserted at the descriptor and trampoline-table level (crossings_per_ring_event() == 1), not by executing a compiled closure."
+  statement: "AOT hook fusion compiles chained host hooks into a single flat closure; exactly one FFI trampoline crossing per ring event regardless of hook count. GAP: the compiled flat closure is not yet real — packages/py/kelir/plugin_fusion.py FusedTrampoline.describe() returns a descriptor and carries TODO (L3) to compile each fused chain into the single flat closure, and crates/kelir-bindings/pyo3/src/lib.rs carries the matching L3 bind step; the single-crossing property is therefore asserted at the descriptor and trampoline-table level (crossings_per_ring_event() == 1), not by executing a compiled closure."
   blast_radius_if_breached: "Composing 5 Python hooks causes 5 consecutive FFI context switches per trap event."
 
 confusion_matrix:

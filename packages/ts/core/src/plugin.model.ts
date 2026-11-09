@@ -5,7 +5,7 @@ import type { TrapContext } from "./context.lifecycle.types.js";
 import {
   RingEvent,
   type HookDescriptor,
-} from "./fusion.js";
+} from "./fusion.plugin.js";
 import type {
   FilterAction,
   Verdict,
@@ -16,7 +16,7 @@ import type {
   TrapInfo,
   WatchdogEvent,
   WatchdogVerdict,
-} from "./types.js";
+} from "./types.core.js";
 
 export interface KelirPlugin {
   readonly name: string;

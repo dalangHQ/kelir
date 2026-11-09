@@ -2,13 +2,13 @@
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 // see: cans/artifacts/code/typescript-accumulation.ts#runtime
 
-import type { Schema } from "./schema.js";
+import type { Schema } from "./schema.config.js";
 import type { TrapContext, LifecycleContext } from "./context.lifecycle.types.js";
-import type { KelirPlugin, PluginContextOf } from "./plugin.js";
+import type { KelirPlugin, PluginContextOf } from "./plugin.model.js";
 import type { PostExecAction, LifecycleEvent, Verdict } from "./verdict.protocol.js";
-import type { TrapDenyEvent } from "./types.js";
+import type { TrapDenyEvent } from "./types.core.js";
 import { Session } from "./session.lifecycle.js";
-import { EConfig } from "./errors.js";
+import { EConfig } from "./errors.sdk.js";
 import { TrapFilter } from "./trap.protocol.js";
 import {
   FusedTrampoline,
@@ -17,7 +17,7 @@ import {
   type FusedTrampolineDescriptor,
   type HookDescriptor,
   type NativeAddonBinding,
-} from "./fusion.js";
+} from "./fusion.plugin.js";
 
 export interface KelirConfig {
   readonly vcpus?: number;

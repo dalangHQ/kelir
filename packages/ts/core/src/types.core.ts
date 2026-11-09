@@ -4,7 +4,7 @@
 // see: cans/11-protocol.md#Wire-framing
 
 export * from "./telemetry.attest.generated.js";
-export * from "./generated/protocol.js";
+export * from "./generated/protocol.wire.generated.js";
 
 export interface SpawnOptions {
   readonly cwd?: string;

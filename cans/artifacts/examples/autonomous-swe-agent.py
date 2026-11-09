@@ -44,7 +44,7 @@ from kelir import (
     TrapFilter,
     Verdict,
 )
-from kelir.plugin import BasePlugin, PluginError
+from kelir.model_plugin import BasePlugin, PluginError
 from kelir.planes.terminal import PromptRule, TokenShield
 from kelir.planes.storage import (
     DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopRule
@@ -52,13 +52,13 @@ from kelir.planes.storage import (
 from kelir.planes.wire import (
     L4Proxy, Mtls, SinkholeConfig, VaultEntry
 )
-from kelir.plugins.chaos import (
+from kelir.plugins.plugin_chaos import (
     ChaosConfig,
     FsChaos,
     NetworkChaos,
     ChaosPlugin,
 )
-from kelir.plugins.ledger import (
+from kelir.plugins.plugin_ledger import (
     LedgerConfig,
     LedgerPlugin,
     OtelConfig,

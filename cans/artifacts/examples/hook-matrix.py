@@ -53,7 +53,7 @@ from typing import Optional
 
 import kelir
 from kelir import Deadline, FilterAction, Verdict
-from kelir.plugin import (
+from kelir.model_plugin import (
     BasePlugin,
     PluginError,
     FsInodeAttr,

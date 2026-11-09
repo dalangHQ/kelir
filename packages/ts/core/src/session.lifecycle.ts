@@ -7,11 +7,11 @@ import type {
   SnapshotDescriptor,
   SpawnOptions,
   SpawnResult,
-} from "./types.js";
+} from "./types.core.js";
 import {
   fromNativeCausalDelta,
   fromNativeSnapshotDescriptor,
-} from "./types.js";
+} from "./types.core.js";
 import type {
   CheckpointHandle,
   HostHandle,
@@ -22,7 +22,7 @@ import type {
   VsockHandle,
   WireHandle,
 } from "./context.lifecycle.types.js";
-import { EConfig } from "./errors.js";
+import { EConfig } from "./errors.sdk.js";
 
 declare const process: {
   readonly env: Readonly<Record<string, string | undefined>>;

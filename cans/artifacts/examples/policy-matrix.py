@@ -57,7 +57,7 @@ from typing import Awaitable, Callable
 
 import kelir
 from kelir import Approval, Deadline, HandlerContext, KelirBuilder, TrapFilter, Verdict
-from kelir.plugin import (
+from kelir.model_plugin import (
     BasePlugin,
     VetoEvent,
     WatchdogEvent,

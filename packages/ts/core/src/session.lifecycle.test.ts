@@ -5,7 +5,7 @@ import {
   relaySocketPath,
   type NativeSessionHandle,
 } from "./session.lifecycle.js";
-import { EConfig } from "./errors.js";
+import { EConfig } from "./errors.sdk.js";
 import type {
   CausalDelta,
   NativeCausalDeltaRecord,
@@ -13,7 +13,7 @@ import type {
   SnapshotDescriptor,
   SpawnOptions,
   SpawnResult,
-} from "./types.js";
+} from "./types.core.js";
 
 declare const process: {
   env: Record<string, string | undefined>;

@@ -8,7 +8,7 @@ import type {
   ExecutionReceipt,
   SnapshotDescriptor,
   TrapInfo,
-} from "./types.js";
+} from "./types.core.js";
 import type { SuspendUntil, Verdict, VetoEvent } from "./verdict.protocol.js";
 
 export interface VmHandle {

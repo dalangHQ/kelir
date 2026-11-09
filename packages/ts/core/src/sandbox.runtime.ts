@@ -2,8 +2,8 @@
 
 import { KelirBuilder, type KelirConfig } from "./builder.lifecycle.js";
 import { Session } from "./session.lifecycle.js";
-import { EConfig } from "./errors.js";
-import type { SpawnResult } from "./types.js";
+import { EConfig } from "./errors.sdk.js";
+import type { SpawnResult } from "./types.core.js";
 
 import { readFile, writeFile } from "node:fs/promises";
 import { parse as parseToml } from "@ltd/j-toml";

@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from kelir.plugin import BasePlugin
+from kelir.model_plugin import BasePlugin
 
 __all__ = [
     "BacklogConfig",

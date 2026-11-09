@@ -126,15 +126,15 @@ fn main() -> ExitCode {
             ts_telemetry,
         ),
         (
-            root.join("packages/ts/core/src/generated/protocol.ts"),
+            root.join("packages/ts/core/src/generated/protocol.wire.generated.ts"),
             ts::emit_protocol(),
         ),
         (
-            root.join("packages/py/kelir/generated/telemetry.py"),
+            root.join("packages/py/kelir/generated/attest_telemetry.py"),
             py_telemetry,
         ),
         (
-            root.join("packages/py/kelir/generated/protocol.py"),
+            root.join("packages/py/kelir/generated/wire_protocol.py"),
             py::emit_protocol(),
         ),
         (
@@ -155,29 +155,34 @@ fn main() -> ExitCode {
             packed_merkle,
         ),
         (
-            root.join("packages/ts/core/src/generated/fusion-tables.ts"),
+            root.join("packages/ts/core/src/generated/fusion.tables.generated.ts"),
             ts_fusion,
         ),
         (
             root.join("packages/py/kelir/generated/fusion_tables.py"),
             py_fusion,
         ),
-        (root.join("packages/ts/core/src/plugins.ts"), ts_plugins),
+        (
+            root.join("packages/ts/core/src/plugins.registry.ts"),
+            ts_plugins,
+        ),
     ];
     let changed = write_all(&writes, &root);
     let mut sdk_written: Vec<String> = changed
         .iter()
-        .filter(|rel| rel.ends_with("plugins.ts"))
+        .filter(|rel| rel.ends_with("plugins.registry.ts"))
         .cloned()
         .collect();
     let fusion_written: Vec<PathBuf> = changed
         .iter()
-        .filter(|rel| rel.ends_with("fusion-tables.ts") || rel.ends_with("fusion_tables.py"))
+        .filter(|rel| {
+            rel.ends_with("fusion.tables.generated.ts") || rel.ends_with("fusion_tables.py")
+        })
         .map(|rel| root.join(rel))
         .collect();
     let expected_modules: HashSet<String> = projections
         .iter()
-        .map(|proj| proj.krate.module_name.clone())
+        .map(|proj| format!("plugin_{}", proj.krate.module_name))
         .collect();
     check_py_modules(&root, &expected_modules).unwrap_or_else(|e| die(&e));
     let mut module_writes: Vec<(PathBuf, String)> = Vec::new();
@@ -185,7 +190,7 @@ fn main() -> ExitCode {
         let content = sdk_py::emit_py_module(proj).unwrap_or_else(|e| die(&e));
         module_writes.push((
             root.join(format!(
-                "packages/py/kelir/plugins/{}.py",
+                "packages/py/kelir/plugins/plugin_{}.py",
                 proj.krate.module_name
             )),
             content,

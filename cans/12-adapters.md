@@ -69,7 +69,7 @@
     - OpenShell interface: OpenShellCoordinationPolicy trait
   - E2B compatibility
     - TypeScript: @kelir/e2b-compat
-    - Python: kelir.compat.e2b
+    - Python: kelir.compat.compat_e2b
     - External translation shim mapping Sandbox abstractions to Kelir Session primitives
     - In-process SDK client wrapper
       - Consumes standard Kelir runtime without hypervisor modifications

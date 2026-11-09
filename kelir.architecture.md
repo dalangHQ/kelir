@@ -1292,7 +1292,7 @@ await session.spawn("claude", ["code", "run test verification"]);
 │    - See kelir-cloud ingestion-adapters-commercial diagram.                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 5. SANDBOX ENGINE COMPATIBILITY (E2B Drop-In):                              │
-│    - `@kelir/e2b-compat` (TS) and `kelir.compat.e2b` (Python).              │
+│    - `@kelir/e2b-compat` (TS) and `kelir.compat.compat_e2b` (Python).       │
 │    - Replicates the `Sandbox` interface with sub-60ms local hardware boots. │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1447,7 +1447,7 @@ kelir/
 │           │   ├── chaos.py
 │           │   └── ledger.py
 │           └── compat/
-│               └── e2b.py             # Drop-in Python Sandbox implementation
+│               └── compat_e2b.py      # Drop-in Python Sandbox implementation
 │
 ├── tests/
 │   ├── e2e/                           # Full Claude Code, Cursor, and SWE-bench test runs

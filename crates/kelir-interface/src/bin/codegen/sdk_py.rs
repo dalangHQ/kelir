@@ -618,7 +618,7 @@ pub fn emit_py_module(proj: &Projection) -> Result<String, String> {
         lines.push("from typing import Literal".to_string());
     }
     lines.push(String::new());
-    lines.push("from kelir.plugin import BasePlugin".to_string());
+    lines.push("from kelir.model_plugin import BasePlugin".to_string());
     lines.push(String::new());
     let mut public: Vec<String> = proj.structs.iter().map(|ps| ps.rust_name.clone()).collect();
     public.push(krate.plugin_class.clone());
@@ -701,11 +701,11 @@ pub fn emit_py_barrel(projections: &[Projection]) -> String {
     ordered.sort_by_key(|proj| proj.krate.module_name.clone());
     for proj in &ordered {
         lines.push(format!(
-            "from kelir.plugins.{} import {} as {}",
+            "from kelir.plugins.plugin_{} import {} as {}",
             proj.krate.module_name, proj.root.rust_name, proj.root.rust_name
         ));
         lines.push(format!(
-            "from kelir.plugins.{} import {} as {}",
+            "from kelir.plugins.plugin_{} import {} as {}",
             proj.krate.module_name, proj.krate.plugin_class, proj.krate.plugin_class
         ));
     }
