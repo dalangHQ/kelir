@@ -1,8 +1,5 @@
 $schema: kelir-test-plan/case-to-test-map/v1
-generated: 'Finalized by the coordinator at converge from Parts 2-5 reports and the real test files (fn
-  names equal case ids): 72 implemented with file/fn, 168 gap with reasons. Pre-fill statuses corrected
-  both ways (46 implemented->gap, 17 gap->implemented where the Gap note was proven wrong against the
-  live tree).'
+generated: 'Finalized by the coordinator at converge from Parts 2-5 reports and the real test files (fn names equal case ids): 72 implemented with file/fn, 168 gap with reasons. Pre-fill statuses corrected both ways (46 implemented->gap, 17 gap->implemented where the Gap note was proven wrong against the live tree).'
 total_cases: 240
 implemented: 72
 gap: 168
@@ -16,8 +13,7 @@ unmapped_crates:
 - crate: crates/kelir
   reason: Facade seal() PhantomData-only; no case targets it.
 - crate: crates/kelir-plugins/plugin-profile
-  reason: 'No dedicated case; its behavior is covered by gv_12 (vault placeholder profile resolution),
-    itself a gap: no ProfileHydrator type exists in-tree.'
+  reason: 'No dedicated case; its behavior is covered by gv_12 (vault placeholder profile resolution), itself a gap: no ProfileHydrator type exists in-tree.'
 cases:
 - case_id: ad_01_radix_layer_unpack_whiteout_merge
   case_file: cases/adapters_ingestion/ad_01_radix_layer_unpack_whiteout_merge.yaml
@@ -93,9 +89,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'mcp-server main is a stub (TODO: direct stdio wire frames to plugin-mcp) and the plugin-mcp
-    bridge is L3 TODOs in crates/kelir-plugins/plugin-mcp/src/lib.rs, so this case is specified against
-    the spec text, not a live surface.'
+  reason: 'mcp-server main is a stub (TODO: direct stdio wire frames to plugin-mcp) and the plugin-mcp bridge is L3 TODOs in crates/kelir-plugins/plugin-mcp/src/lib.rs, so this case is specified against the spec text, not a live surface.'
 - case_id: ad_09_mcp_console_framing_continuation
   case_file: cases/adapters_ingestion/ad_09_mcp_console_framing_continuation.yaml
   target_crate: crates/kelir-adapters/mcp-server
@@ -132,8 +126,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness
-    in this run.'
+  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness in this run.'
 - case_id: ar_01_execution_receipt_blake3_binding
   case_file: cases/attestation_receipts/ar_01_execution_receipt_blake3_binding.yaml
   target_crate: crates/kelir-core
@@ -161,8 +154,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'session.exec path missing: SpawnBuilder::poll is TODO L3; no guest exec result exists to assert
-    dirty bytes against.'
+  reason: 'session.exec path missing: SpawnBuilder::poll is TODO L3; no guest exec result exists to assert dirty bytes against.'
 - case_id: ar_04_binary_blake3_cache_invalidation
   case_file: cases/attestation_receipts/ar_04_binary_blake3_cache_invalidation.yaml
   target_crate: crates/kelir-core
@@ -170,8 +162,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'session.exec path missing: SpawnBuilder::poll is TODO L3; no exec result exists to assert the
-    cache against.'
+  reason: 'session.exec path missing: SpawnBuilder::poll is TODO L3; no exec result exists to assert the cache against.'
 - case_id: ar_05_erofs_trusted_prefix_fast_path
   case_file: cases/attestation_receipts/ar_05_erofs_trusted_prefix_fast_path.yaml
   target_crate: crates/kelir-core
@@ -263,8 +254,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness
-    in this run.'
+  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness in this run.'
 - case_id: bp_02_python_vectors_parity_frame_verdict_equality
   case_file: cases/bindings_py/bp_02_python_vectors_parity_frame_verdict_equality.yaml
   target_crate: packages/py
@@ -272,8 +262,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness
-    in this run.'
+  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness in this run.'
 - case_id: bp_03_python_fused_trampoline_single_crossing_chained_hooks
   case_file: cases/bindings_py/bp_03_python_fused_trampoline_single_crossing_chained_hooks.yaml
   target_crate: packages/py
@@ -281,8 +270,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness
-    in this run.'
+  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness in this run.'
 - case_id: bp_04_pyo3_descriptor_without_rings_fails_closed
   case_file: cases/bindings_py/bp_04_pyo3_descriptor_without_rings_fails_closed.yaml
   target_crate: crates/kelir-bindings/pyo3
@@ -297,8 +285,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness
-    in this run.'
+  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness in this run.'
 - case_id: bt_02_typescript_vectors_parity_frame_verdict_equality
   case_file: cases/bindings_ts/bt_02_typescript_vectors_parity_frame_verdict_equality.yaml
   target_crate: packages/ts
@@ -306,8 +293,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness
-    in this run.'
+  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness in this run.'
 - case_id: bt_03_typescript_fused_trampoline_single_crossing_chained_hooks
   case_file: cases/bindings_ts/bt_03_typescript_fused_trampoline_single_crossing_chained_hooks.yaml
   target_crate: packages/ts
@@ -315,8 +301,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness
-    in this run.'
+  reason: 'Rust-only run: no TS/Py test runner exists; packages/ts and packages/py have no test harness in this run.'
 - case_id: bt_04_napi_boot_before_fuse_hooks_fails_closed
   case_file: cases/bindings_ts/bt_04_napi_boot_before_fuse_hooks_fails_closed.yaml
   target_crate: crates/kelir-bindings/napi
@@ -324,8 +309,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'No Rust test surface: cdylib-only crate (use kelir_napi -> E0433; rlib -> link fails on N-API
-    symbols that exist only inside a Node host). Needs a Node-host harness.'
+  reason: 'No Rust test surface: cdylib-only crate (use kelir_napi -> E0433; rlib -> link fails on N-API symbols that exist only inside a Node host). Needs a Node-host harness.'
 - case_id: gt_01_jsonrpc_tool_call_interposition
   case_file: cases/governance_tools/gt_01_jsonrpc_tool_call_interposition.yaml
   target_crate: crates/kelir-plugins
@@ -499,8 +483,7 @@ cases:
   status: implemented
   test_file: crates/kelir-plugins/plugin-vault/tests/vault.rs
   test_fn: gv_06_rollback_credential_revocation
-  note: 'Deviated: live revocation path proven (issue -> validate true -> revoke_all -> 1 -> validate
-    false); rollback hook still missing.'
+  note: 'Deviated: live revocation path proven (issue -> validate true -> revoke_all -> 1 -> validate false); rollback hook still missing.'
 - case_id: gv_07_unregistered_credential_enodata
   case_file: cases/governance_vault/gv_07_unregistered_credential_enodata.yaml
   target_crate: crates/kelir-plugins
@@ -666,8 +649,7 @@ cases:
   status: implemented
   test_file: crates/kelir-core/tests/session_uart.rs
   test_fn: hd_12_arm64_stage2_4k_on_16k_host
-  note: 'Adapted: config literal asserted (page_size_kb 4, vcpus 1, memory 256, tsc_locked); live boot
-    path not exercised.'
+  note: 'Adapted: config literal asserted (page_size_kb 4, vcpus 1, memory 256, tsc_locked); live boot path not exercised.'
 - case_id: hd_13_uart_early_boot_panic_scrape
   case_file: cases/hypervisor_driver/hd_13_uart_early_boot_panic_scrape.yaml
   target_crate: crates/kelir-core
@@ -721,9 +703,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'no exists_in_guest helper exists in code, and shim-side binfmt_misc registration is unimplemented;
-    the case asserts Rosetta translation via the x86_64 guest exec succeeding. GAP: session.exec is the
-    spec surface (cans/03-sdk-architecture...'
+  reason: 'no exists_in_guest helper exists in code, and shim-side binfmt_misc registration is unimplemented; the case asserts Rosetta translation via the x86_64 guest exec succeeding. GAP: session.exec is the spec surface (cans/03-sdk-architecture...'
 - case_id: hd_19_rustvmm_driver_lazy_construction_no_kvm_open
   case_file: cases/hypervisor_driver/hd_19_rustvmm_driver_lazy_construction_no_kvm_open.yaml
   target_crate: crates/kelir-drivers/driver-rustvmm
@@ -923,8 +903,7 @@ cases:
   status: implemented
   test_file: crates/kelir-core/tests/lifecycle.rs
   test_fn: lc_19_delta_chain_unbounded_compaction
-  note: 'Adapted: graph-level compaction live (new node, head moves, parent = base); single-pass block
-    copy is TODO L3.'
+  note: 'Adapted: graph-level compaction live (new node, head moves, parent = base); single-pass block copy is TODO L3.'
 - case_id: lc_20_portable_snapshot_archive_export
   case_file: cases/lifecycle_checkpoint/lc_20_portable_snapshot_archive_export.yaml
   target_crate: crates/kelir-core
@@ -967,9 +946,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'the live lint is kelir-plugin-cli layers::check() (kelir-plugin-cli check --layers), which
-    scans source for forbidden crate prefixes (kelir_core:: / kelir_drivers::) only; no per-tier plugin-to-plugin
-    rule exists, so a Tier 1 crate impor...'
+  reason: 'the live lint is kelir-plugin-cli layers::check() (kelir-plugin-cli check --layers), which scans source for forbidden crate prefixes (kelir_core:: / kelir_drivers::) only; no per-tier plugin-to-plugin rule exists, so a Tier 1 crate impor...'
 - case_id: pe_02_cyclic_dependency_graph_abort
   case_file: cases/plugin_engine/pe_02_cyclic_dependency_graph_abort.yaml
   target_crate: crates/kelir-core
@@ -977,9 +954,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'no registration-graph cycle detection exists in the live tree; resolve_plugin_registrations()
-    only validates shape and dedupes, and Session::boot_with_engine returns Err(PluginError::Halt("TODO
-    (L3): Session::boot")) before any graph check.'
+  reason: 'no registration-graph cycle detection exists in the live tree; resolve_plugin_registrations() only validates shape and dedupes, and Session::boot_with_engine returns Err(PluginError::Halt("TODO (L3): Session::boot")) before any graph check.'
 - case_id: pe_03_overlapping_mutator_scope_eambiguous
   case_file: cases/plugin_engine/pe_03_overlapping_mutator_scope_eambiguous.yaml
   target_crate: crates/kelir-core
@@ -1025,8 +1000,7 @@ cases:
   status: implemented
   test_file: crates/kelir-core/tests/dispatch.rs
   test_fn: pe_08_segregated_ring_traits_zero_vtable
-  note: 'Adapted: fs-only bind proves segregation (fs write mutates, net outbound forwards byte-identical);
-    no interceptor-count accessor exists.'
+  note: 'Adapted: fs-only bind proves segregation (fs write mutates, net outbound forwards byte-identical); no interceptor-count accessor exists.'
 - case_id: pe_09_panic_quarantine_catch_unwind_efault
   case_file: cases/plugin_engine/pe_09_panic_quarantine_catch_unwind_efault.yaml
   target_crate: crates/kelir-core
@@ -1066,9 +1040,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'KelirPlugin::fork_state defaulting to clone_box() is live, but Session::fork is an L3 TODO
-    returning Err(PluginError::Halt("TODO (L3): Session::fork")), so the end-to-end fork path is specified,
-    not live.'
+  reason: 'KelirPlugin::fork_state defaulting to clone_box() is live, but Session::fork is an L3 TODO returning Err(PluginError::Halt("TODO (L3): Session::fork")), so the end-to-end fork path is specified, not live.'
 - case_id: pe_14_service_registry_peer_resolution
   case_file: cases/plugin_engine/pe_14_service_registry_peer_resolution.yaml
   target_crate: crates/kelir-core
@@ -1129,8 +1101,7 @@ cases:
   status: implemented
   test_file: crates/kelir-core/tests/bus_mux.rs
   test_fn: pm_04_plugin_stream_kind_dynamic_registration
-  note: 'Adapted: bus-level kind dispatch proven; builder register_stream_kind lives in crates/kelir,
-    out of scope.'
+  note: 'Adapted: bus-level kind dispatch proven; builder register_stream_kind lives in crates/kelir, out of scope.'
 - case_id: pm_05_stream_kind_conflict_ekindconflict
   case_file: cases/protocol_mux/pm_05_stream_kind_conflict_ekindconflict.yaml
   target_crate: crates/kelir-core
@@ -1187,8 +1158,7 @@ cases:
   status: implemented
   test_file: crates/kelir-core/tests/bus_mux.rs
   test_fn: pm_11_wire_framing_checked_math_validation
-  note: 'Adapted: MAX_FRAME_PAYLOAD == 65536 asserted; small control msg Ok, 65535-byte payload errors.
-    panic_hunt.rs is a supplementary harness test for the same framing (see harness_tests).'
+  note: 'Adapted: MAX_FRAME_PAYLOAD == 65536 asserted; small control msg Ok, 65535-byte payload errors. panic_hunt.rs is a supplementary harness test for the same framing (see harness_tests).'
 - case_id: pm_12_version_negotiation_handshake_reject
   case_file: cases/protocol_mux/pm_12_version_negotiation_handshake_reject.yaml
   target_crate: crates/kelir-core
@@ -1247,8 +1217,7 @@ cases:
   status: implemented
   test_file: crates/kelir-plugins/plugin-transaction/tests/transaction.rs
   test_fn: rt_04_2pc_post_commit_true_atomic_sync
-  note: 'Deviated: live TransactionService::commit proven (handle id 0 -> Ok -> namespace None -> next
-    begin id 1); on_post_commit hook path not exercised.'
+  note: 'Deviated: live TransactionService::commit proven (handle id 0 -> Ok -> namespace None -> next begin id 1); on_post_commit hook path not exercised.'
 - case_id: rt_05_2pc_post_commit_false_rollback_sync
   case_file: cases/relational_transaction/rt_05_2pc_post_commit_false_rollback_sync.yaml
   target_crate: crates/kelir-plugins
@@ -1273,8 +1242,7 @@ cases:
   status: implemented
   test_file: crates/kelir-plugins/plugin-transaction/tests/transaction.rs
   test_fn: rt_07_temporal_savepoint_rollback_restore
-  note: 'Partial: savepoint ledger proven (id 0 -> rollback Ok -> unknown 99 -> EINVAL -> commit Ok);
-    broker-upper restore is L3.'
+  note: 'Partial: savepoint ledger proven (id 0 -> rollback Ok -> unknown 99 -> EINVAL -> commit Ok); broker-upper restore is L3.'
 - case_id: rt_08_side_effect_egress_transaction_taint
   case_file: cases/relational_transaction/rt_08_side_effect_egress_transaction_taint.yaml
   target_crate: crates/kelir-plugins
@@ -1578,8 +1546,7 @@ cases:
   status: implemented
   test_file: crates/kelir-plugins/plugin-supply-chain/tests/supply_chain.rs
   test_fn: sc_09_whitelisted_interpreter_entropy_bypass
-  note: 'Weak: Pass pinned for /usr/bin/python + high-entropy argv; no entropy discrimination exists to
-    fail the negative half.'
+  note: 'Weak: Pass pinned for /usr/bin/python + high-entropy argv; no entropy discrimination exists to fail the negative half.'
 - case_id: sc_10_stderr_script_blocked_diagnostic
   case_file: cases/supply_chain_security/sc_10_stderr_script_blocked_diagnostic.yaml
   target_crate: crates/kelir-plugins
@@ -1683,8 +1650,7 @@ cases:
   status: implemented
   test_file: crates/kelir-otlp/tests/otlp.rs
   test_fn: ta_11_otlp_exporter_encodes_execution_receipt
-  note: 'Adapted: from_receipt field copies + 4 cumulative phase spans asserted; export_receipt encode
-    is a NotImplemented stub.'
+  note: 'Adapted: from_receipt field copies + 4 cumulative phase spans asserted; export_receipt encode is a NotImplemented stub.'
 - case_id: ta_12_otlp_metric_registry_snapshot_encodes
   case_file: cases/telemetry_audit/ta_12_otlp_metric_registry_snapshot_encodes.yaml
   target_crate: crates/kelir-otlp
@@ -1816,8 +1782,7 @@ cases:
   status: implemented
   test_file: crates/kelir-core/tests/terminal.rs
   test_fn: tp_14_window_resize_exec_control_propagation
-  note: 'Adapted: resize export sizes asserted (120x40 -> 4840, 80x24 -> 1944); guest winsize propagation
-    not live.'
+  note: 'Adapted: resize export sizes asserted (120x40 -> 4840, 80x24 -> 1944); guest winsize propagation not live.'
 - case_id: tp_15_shim_openpty_returns_distinct_master_slave
   case_file: cases/terminal_plane/tp_15_shim_openpty_returns_distinct_master_slave.yaml
   target_crate: crates/kelir-shim
@@ -2093,8 +2058,7 @@ cases:
   status: implemented
   test_file: crates/kelir-plugins/plugin-wire-ingress/tests/wire_ingress.rs
   test_fn: wp_17_wire_ingress_park_connection_suspends_session
-  note: 'Partial: parking proven (decode round-trip + Parked + append-Parked + oversize Overflow + reset);
-    is_suspended flag not asserted.'
+  note: 'Partial: parking proven (decode round-trip + Parked + append-Parked + oversize Overflow + reset); is_suspended flag not asserted.'
 harness_tests:
 - file: crates/kelir-core/tests/panic_hunt.rs
   reason: Harness-level panic probe (hostile mux frame plus oversized control payload); not a case test.
