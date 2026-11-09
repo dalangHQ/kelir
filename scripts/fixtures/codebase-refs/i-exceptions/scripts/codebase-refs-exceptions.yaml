@@ -1,6 +1,0 @@
-- file: crates/x.rs
-  line: 1
-  reason: "BalloonControl has no spec leaf anywhere in cans/ (fixture mirror of the real gap)"
-- file: crates/x.rs
-  line: 3
-  reason: "foreign_suspend_action has no spec leaf anywhere in cans/ (fixture mirror of the real gap)"

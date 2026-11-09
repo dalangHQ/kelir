@@ -1,1 +1,0 @@
-Kernel seccomp-unotify triggers

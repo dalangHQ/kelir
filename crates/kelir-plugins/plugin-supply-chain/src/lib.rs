@@ -8,9 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use kelir_interface::driver::Stream;
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
-    HandlerCtx, KelirPlugin, PipelineBinder, TrapInterposer,
-};
+use kelir_interface::plugin::{HandlerCtx, KelirPlugin, PipelineBinder, TrapInterposer};
 use kelir_interface::protocol::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
 use kelir_interface::vsock::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 

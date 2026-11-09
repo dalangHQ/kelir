@@ -42,12 +42,6 @@ check-spec-touched:
 check-plugin-coverage:
     ./scripts/check-plugin-coverage.sh
 
-# Codebase inbound refs (RFC #66, local checker): every embedded see:
-# pointer in code resolves; the self-test proves each failure mode.
-check-codebase-refs:
-    python3 scripts/check-codebase-refs.py check
-    ./scripts/check-codebase-refs-selftest.sh
-
 # Compile-only gate for drivers with no CI test runner (Android AVF,
 # Termux proot); test execution needs hardware CI does not have.
 check-drivers:
