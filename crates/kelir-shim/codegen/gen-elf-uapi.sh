@@ -1,10 +1,10 @@
 #!/bin/sh
 # see: cans/11-protocol.md#Trap-fast-path
-# Regenerates src/introspect/uapi.rs from <linux/elf.h> (TU1) + glibc <elf.h>
+# Regenerates src/introspect_trap/uapi_trap.rs from <linux/elf.h> (TU1) + glibc <elf.h>
 # (TU2). Deterministic: re-running yields byte-identical output.
 set -eu
 cd "$(dirname "$0")"
-out=../src/introspect/uapi.rs
+out=../src/introspect_trap/uapi_trap.rs
 tmp1=$(mktemp)
 tmp2=$(mktemp)
 trap 'rm -f "$tmp1" "$tmp2"' EXIT

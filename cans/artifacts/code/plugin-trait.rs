@@ -1,4 +1,4 @@
-// crates/kelir-interface/src/plugin.rs
+// crates/kelir-interface/src/plugin_model.rs
 //
 // The typed KelirPlugin trait and ring interposer contracts.
 // Plugins link directly via Cargo crates; no runtime string resolution.

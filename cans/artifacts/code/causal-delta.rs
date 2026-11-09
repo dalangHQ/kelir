@@ -1,4 +1,4 @@
-// crates/kelir-interface/src/telemetry/delta.rs
+// crates/kelir-interface/src/telemetry/delta_attest.rs
 //
 // Differential state delta between two checkpoints: Δ = S_A - S_B.
 // Net logical diffs only: host CoW broker upper file + explicit

@@ -1,4 +1,4 @@
-// crates/kelir-interface/src/codec.rs
+// crates/kelir-interface/src/codec_protocol.rs
 //
 // Mux frame header for host↔guest transport over port 5252.
 // Transport backend: SPSC rings primary; AF_VSOCK / named-pipe fallback —
@@ -78,5 +78,5 @@ pub const KIND_MCP_CONSOLE: u16 = 0x0012;
 
 // Binary exec frame layout (mux 0x0001, kind EXEC 0x0001):
 // MuxFrameHeader (stream_id: u32, flags: u8, len: u32), payload.
-// EXEC sub-lane codes live in protocol.rs (EXEC_STREAM_*); 0=stdin,
+// EXEC sub-lane codes live in protocol_wire.rs (EXEC_STREAM_*); 0=stdin,
 // 1=stdout, 2=stderr, 3=exec control.

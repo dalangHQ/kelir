@@ -1,4 +1,4 @@
-// crates/kelir-plugins/plugin-transaction/src/service.rs
+// crates/kelir-plugins/plugin-transaction/src/service_transaction.rs
 //
 // The TransactionService surface: what the transaction plugin exposes
 // via PipelineBinder for multi-resource 2PC management. The service

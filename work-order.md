@@ -8,11 +8,11 @@
 - **Verdicts:** CONFIRMED / PARTIAL / REFUTED, per sub-claim. A PARTIAL keeps the
   substance with corrected wording; a REFUTED claim is struck and replaced by
   the real finding underneath it — it is not deleted silently.
-- **Paths are HEAD paths.** A domain-first Rust rename wave has since landed as
+- **Paths are post-rename paths.** A domain-first Rust rename wave has since landed as
   `353e0b5` (e.g. `session.rs` → `session_lifecycle.rs`, `codec.rs` →
-  `codec_protocol.rs`); the paths below are still the `989701f` spellings, and
-  the content was verified identical across the renames. A rename pass over
-  this file is owed — it was not done in this turn.
+  `codec_protocol.rs`); the paths below are the `353e0b5` spellings, and
+  the content was verified identical across the renames. The rename pass over
+  this file is done.
 - **Phase is L1/L2 only (AGENTS.md §2).** Items tagged L3 are deferred by design,
   not accidental rot. Separate them from wrong-shape-now items: a `TODO (L3)`
   stub is a scheduled gap; a duplicated constant, a dead export, or a
@@ -23,8 +23,8 @@
 ## 1. Blatant code & logic duplication — CONFIRMED in substance, 3 of 5 sub-claims corrected
 
 ### 1a. Wire layout views: shared skeleton, not clones — PARTIAL
-- Both files exist: `crates/kelir-core/src/planes/wire/layout.rs` (119 lines) vs
-  `crates/kelir-plugins/plugin-db-proxy/src/reassembler/layout.rs` (176 lines).
+- Both files exist: `crates/kelir-core/src/planes/wire/layout_wire.rs` (119 lines) vs
+  `crates/kelir-plugins/plugin-db-proxy/src/reassembler_wire/layout_wire.rs` (176 lines).
   Shared: `ETH_HEADER_BYTES = 14`, `ETHERTYPE_IPV4`, `IP_PROTO_TCP`,
   `IPV4_MIN_HEADER_BYTES` / `TCP_MIN_HEADER_BYTES` = 20, `EthView` / `Ipv4View` /
   `TcpView` with `new_unchecked`; `EthView::etype()` is byte-identical.
@@ -40,7 +40,7 @@
   skeleton. Decide the canonical home first; do not invent a third copy.
 
 ### 1b. Driver stubs: 25 methods, not ~20; Mock is not a stub — PARTIAL
-- Trait `crates/kelir-interface/src/driver.rs:415-458` has **25 methods, zero with
+- Trait `crates/kelir-interface/src/driver_interface.rs:415-458` has **25 methods, zero with
   default bodies** — the "no default impls" half is confirmed.
 - `VmmError::Unsupported` per `lib.rs`: avf 23, bwrap 25, hvf 26, openvmm 23,
   proot 25, rustvmm 25. "~20" understates. Not all identical: `boot` /
@@ -55,26 +55,26 @@
   Mock stays as the Ok-zero test double.
 
 ### 1c. Hex reinvented 9 times — CONFIRMED, one double-count
-- All 9 sites exist with the named functions: codegen `otlp.rs:273`,
-  `kelir-otlp/src/records.rs:5`, ledger `otel.rs:16,26,36`, vault
-  `service.rs:271`, cli `attach.rs:6,15`, cli `fixtures.rs:142`, cli
-  `parity.rs:41,58`, testkit `vectors.rs:293`, core `session.rs:29`
+- All 9 sites exist with the named functions: codegen `otlp_codegen.rs:273`,
+  `kelir-otlp/src/records_otlp.rs:5`, ledger `otel_ledger.rs:16,26,36`, vault
+  `service_vault.rs:271`, cli `attach_cli.rs:6,15`, cli `fixtures_cli.rs:142`, cli
+  `parity_cli.rs:41,58`, testkit `vectors_testkit.rs:293`, core `session_lifecycle.rs:32`
   (`incarnation_hex`). Three encode styles: lookup-table vs
   `format!("{byte:02x}")`; decode via `hex_digit` / `hex_val` / `to_digit(16)`.
-- Correction: `otlp.rs:273` is the **codegen template string that emits**
-  `records.rs:5` (`main.rs:148` writes it) — generator + output, not two
+- Correction: `otlp_codegen.rs:273` is the **codegen template string that emits**
+  `records_otlp.rs:5` (`main.rs:150` writes it) — generator + output, not two
   independent reinventions. So **8 independent implementations + 1 template**.
   No `hex` crate in root `Cargo.toml`, no shared hex util in `kelir-interface`.
 - **Fix (L2):** one hex util in `kelir-interface`; delete the 8, make the
   template emit a call to it.
 
 ### 1d. Session relay path: 3 implementations, not 4 — PARTIAL
-- Independent: core `crates/kelir-core/src/session.rs:65-82`
+- Independent: core `crates/kelir-core/src/session_lifecycle.rs:68-85`
   (`relay_socket_path`, HOME env + hex loop + `PathBuf` join); TS
   `packages/ts/core/src/session.lifecycle.ts:32-43` (`relaySocketPath`,
   `/^[0-9a-fA-F]{32}$/` regex); Py `packages/py/kelir/__init__.py:486-495`
   (charset check, `expanduser("~")`, `Path` join).
-- **Refuted as a 4th implementation:** `crates/kelir-plugin-cli/src/attach.rs:60`
+- **Refuted as a 4th implementation:** `crates/kelir-plugin-cli/src/attach_cli.rs:60`
   calls `kelir_core::Session::relay_socket_path(&session_id)` — it only adds
   its own `parse_session_id` / `hex_val` (lines 6–27) and a catalog lookup.
   Regex validation exists only in TS; core takes `[u8; 16]` with no validation.
@@ -95,15 +95,15 @@
 ## 2. The "facade illusion" (builder config black holes) — CONFIRMED in substance; 2a/2d wording corrected
 
 ### 2a. Rust builder: retained-but-never-read, not dropped — PARTIAL (wording)
-- `crates/kelir/src/builder.rs:314-331` store the configs; `finish_boot()`
+- `crates/kelir/src/builder_sdk.rs:314-331` store the configs; `finish_boot()`
   (522–562) forwards only `self.config`, plugin name/enabled
   `PluginRegistration`s, engine, metrics, and `synthetic_files` (545–550, the
   sole `storage_cfg` extraction). `terminal_cfg` / `wire_cfg` /
   `lock_broker_cfg` appear only at set / narrow / `Default` sites — never read.
 - Correction: they are **retained-but-never-read, not dropped** —
   `Registration` is carried into `Session::from_parts`
-  (`crates/kelir/src/session.rs:25,30-38`), and `Registration.traps` *is*
-  consumed by `Session::dispatch_trap` (session.rs:72). Only the three plane
+  (`crates/kelir/src/session_lifecycle.rs:27,32-43`), and `Registration.traps` *is*
+  consumed by `Session::dispatch_trap` (session_lifecycle.rs:65). Only the three plane
   cfgs are dead.
 - No `cans/` anchor states builder configs must reach core;
   `cans/03-sdk-architecture.md:12-15` only describes the fluent-builder model.
@@ -134,12 +134,12 @@
 
 ### 2d. HList "erasure": wrong location, "useless" overstated — PARTIAL
 - The erasure is **not in `finish_boot()`**: `Registration.instances` is
-  already `Vec<(Box<dyn AnyPlugin>, MountScope)>` (builder.rs:197); boxing
+  already `Vec<(Box<dyn AnyPlugin>, MountScope)>` (builder_sdk.rs:197); boxing
   happens in `.plugin()` (295–310). `finish_boot()` only maps those to
   name/enabled `PluginRegistration`s (525–534).
 - The HList is **not erased at boot**: `self.plugins` (the `HCons` chain) is
-  passed into `Session<Plugins, Params>` (session.rs:19–38) and powers typed
-  lookup `Session::ctx::<T>()` (session.rs:44–50 via `Has`) — exactly the model
+  passed into `Session<Plugins, Params>` (session_lifecycle.rs:21–43) and powers typed
+  lookup `Session::ctx::<T>()` (session_lifecycle.rs:46–51 via `Has`) — exactly the model
   `cans/03-sdk-architecture.md:23-30` specifies ("Rust: `c.ctx::<T>()`
   infallible, statically resolved").
 - Real disconnect: the *engine* only ever sees name/enabled registrations —
@@ -153,11 +153,11 @@
 
 ### 3a. db-proxy "bypasses" WirePlane L4 — PARTIAL (specified-future vs present code, not a rogue plugin)
 - Confirmed: db-proxy implements `NetInterposer` (lib.rs:243–253), parses
-  Eth/IPv4/TCP itself (`reassembler.rs:44-100` `parse_tcp_segment`), runs
-  `TcpStreamReassembler` (reassembler.rs:110–115, driven at lib.rs:148–165),
+  Eth/IPv4/TCP itself (`reassembler_wire.rs:44-100` `parse_tcp_segment`), runs
+  `TcpStreamReassembler` (reassembler_wire.rs:110–116, driven at lib.rs:148–165),
   and never calls `WirePlane` / `divert_l4` (zero hits in the crate).
 - But "pulls raw Ethernet frames via NetInterposer" is the **designed contract**:
-  `NetInterposer` (`crates/kelir-interface/src/plugin.rs:608-620`, artifact
+  `NetInterposer` (`crates/kelir-interface/src/plugin_model.rs:608-620`, artifact
   `cans/artifacts/code/plugin-trait.rs:382-388`) is "Sync L2 outbound/inbound
   buffer transform" over `&mut [u8]` frames.
 - Spec side: `cans/07-wire-plane.md:107-123` ("Transparent L4 stream
@@ -186,7 +186,7 @@
   completely" — then hits `TODO (L3)` (line 698) and calls
   `Session::boot_with_plugins(config, &plugins)` (705) with only name/enabled
   registrations. PyO3 mirrors this exactly (lib.rs:613–676). Core
-  `boot_with_plugins` (`crates/kelir-core/src/session.rs:126-138`) takes only
+  `boot_with_plugins` (`crates/kelir-core/src/session_lifecycle.rs:131-142`) takes only
   `(config, plugins)` and builds a fresh `PipelineEngine` — no
   trampoline/descriptor parameter exists anywhere in the chain.
 - **Fix (L2 wiring + L3 fusion execution):** add a descriptor parameter through
@@ -216,12 +216,12 @@
 
 ### 3d. Schizophrenic error handling — PARTIAL (one example wrong; spec anchor found)
 - Confirmed forms: (1) POSIX ints only at the FUSE boundary — `drop_errno`
-  (`crates/kelir-core/src/planes/storage/fuse.rs:268-280`) maps string codes
+  (`crates/kelir-core/src/planes/storage/fuse_storage.rs:269-281`) maps string codes
   to `libc::EPERM` etc. (`i32`); (2) typed `VmmError`
-  (`driver.rs:14-23`: `Unsupported` / `InvalidState` / `Io` /
+  (`driver_interface.rs:14-23`: `Unsupported` / `InvalidState` / `Io` /
   `ResourceExhausted`, no errno variant) and `PluginError`
-  (`plugin.rs:25-36`); (3) errno-as-string in `FilterAction::Drop { errno:
-  Option<String> }` (`protocol.rs:121,138`, e.g. `errno: Some("EPERM")` in
+  (`plugin_model.rs:25-36`); (3) errno-as-string in `FilterAction::Drop { errno:
+  Option<String> }` (`protocol_wire.rs:121,138`, e.g. `errno: Some("EPERM")` in
   tests/vectors); (4) catch-all `EConfig`: TS `errors.sdk.ts:3-8` (message-only),
   Py `sdk_errors.py:5` (bare `class EConfig(Exception): pass`).
 - Wrong example: **no `PluginError::Halt("EPERM: ...")` literal exists in
@@ -243,7 +243,7 @@
 
 ## 4. Fragmented & conflicting session identity models — CONFIRMED, 3 wording fixes
 
-- **Schema — CONFIRMED.** `crates/kelir-catalog/src/schema.rs:8-9`:
+- **Schema — CONFIRMED.** `crates/kelir-catalog/src/schema_catalog.rs:8-9`:
   `session_id BLOB PRIMARY KEY,` / `incarnation_id BLOB NOT NULL,`. Spec:
   `cans/06-storage-catalog.md` "Entity model" ("sessions row carries
   incarnation_id: 128-bit UUIDv7 minted per spawn", "Both row kinds are the sole
@@ -252,11 +252,11 @@
   `session_id` is stable across spawns — implied by PRIMARY KEY + CAS, not
   spelled out.
 - **Collapse — CONFIRMED, stronger than stated.**
-  `crates/kelir-core/src/session.rs:98-99`: `pub fn session_id(&self) -> [u8; 16]
+  `crates/kelir-core/src/session_lifecycle.rs:103-105`: `pub fn session_id(&self) -> [u8; 16]
   { self.incarnation_id }`. `Session` has **no** `session_id` field at all —
-  only `incarnation_id: [u8; 16]` (line 23) — and a separate `incarnation_id()`
-  accessor (333–334) returns the same bytes.
-- **Catalog definitions — CONFIRMED.** `schema.rs:3` (`SCHEMA_V1_SQL`), `:67`
+  only `incarnation_id: [u8; 16]` (line 26) — and a separate `incarnation_id()`
+  accessor (344–346) returns the same bytes.
+- **Catalog definitions — CONFIRMED.** `schema_catalog.rs:3` (`SCHEMA_V1_SQL`), `:67`
   (`CasLease`), `:75` (`SessionRow`); `crates/kelir-catalog/src/lib.rs:31-35`:
   `CatalogDb::open` executes `SCHEMA_V1_SQL`.
 - **Core/catalog disconnect — CONFIRMED.**
@@ -265,21 +265,21 @@
   async-trait/thiserror/tokio/tracing/smoltcp/libc); `grep kelir_catalog
   crates/kelir-core/src/` is empty. Only crate depending on `kelir-catalog` is
   `kelir-plugin-cli` (`Cargo.toml:9`).
-- **"Random ID" — WRONG WORD.** `mint_incarnation_id()` (session.rs:37–61,
+- **"Random ID" — WRONG WORD.** `mint_incarnation_id()` (session_lifecycle.rs:40–58,
   called from `boot_with_engine:151`): no RNG anywhere — ID is timestamp-ms +
   `AtomicU64` counter + pid + subsec-nanos, shaped UUIDv7 (version nibble
   `0x70` line 48, variant `0x80` line 52). Correct: "mints a
   time/counter-derived UUIDv7-shaped ID in memory, never persisted".
-- **"/tmp" — IMPRECISE.** session.rs:153–156:
+- **"/tmp" — IMPRECISE.** session_lifecycle.rs:160–163:
   `std::env::temp_dir().join("kelir").join(&session_hex).join("workspace")`.
   `temp_dir()` honours `$TMPDIR`; `/tmp` is only the Unix default. Correct:
   "workspace under the OS temp dir (default `/tmp`)".
 - **"Only touched by the CLI attach tool" — PARTIAL.** Zero rows: follows from
   the disconnect above + `register_session` has **no production callers at
   all** — only `crates/kelir-catalog/tests/session_lease_catalog_test.rs:43,73`.
-  CLI attach (`crates/kelir-plugin-cli/src/attach.rs:49-50`) only does
+  CLI attach (`crates/kelir-plugin-cli/src/attach_cli.rs:49-50`) only does
   `CatalogDb::open(catalog_path()?)` + `lookup_session` — a **read**.
-  `Session::attach` (session.rs:85–94) is an L3 TODO stub returning
+  `Session::attach` (session_lifecycle.rs:88–97) is an L3 TODO stub returning
   `Err("TODO (L3): Session::attach")`. So in production the catalog is
   read-only-from-CLI and never written by anything.
 - **Fix — spec decision first, then L2:** give `Session` a real `session_id`
@@ -295,33 +295,35 @@
      syn-based `parse_model`, bin still named `codegen`
      (`crates/kelir-interface/Cargo.toml:17-19`).
   2. `crates/kelir-core/codegen/gen-fuse-uapi.sh`: `cc fuse_uapi.c` →
-     `src/planes/storage/fuse/uapi.rs`.
+     `src/planes/storage/fuse_storage/uapi_fuse.rs`.
   3. `crates/kelir-shim/codegen/gen-elf-uapi.sh`: `cc elf_uapi_kernel.c` +
-     `elf_uapi_glibc.c` → `src/introspect/uapi.rs`.
-  4. `crates/kelir-testkit/src/bin/anchors.rs`: scans Markdown, writes
-     `crates/kelir-testkit/anchors.json` (`anchors.rs:16-17`).
+     `elf_uapi_glibc.c` → `src/introspect_trap/uapi_trap.rs`.
+  4. `crates/kelir-testkit/src/bin/anchors_testkit.rs`: scans Markdown, writes
+     `crates/kelir-testkit/anchors.json` (`anchors_testkit.rs:16-17`).
   5. `justfile:205-219` `codegen` runs a fifth emit step the original order
      missed: `cargo run -p kelir-testkit --bin scorecard -- generate` (writes
-     `target/scorecard.md`; `scorecard.rs:112,132-136`). "Four" undercounts
+     `target/scorecard.md`; `scorecard_testkit.rs:112,132-136`). "Four" undercounts
      unless scorecard is explicitly excluded as a report, not a generator.
   - `gen_plugin_sdk.py` / `gen-fusion-tables.mjs` deletion — CONFIRMED: no
     source files remain anywhere (excluding `node_modules` / `target`); only
     stale bytecode `packages/py/scripts/__pycache__/gen_plugin_sdk.cpython-312.pyc`.
-    Fusion emission is now inside the Rust bin (`fusion.rs`; `main.rs:209`
+    Fusion emission is now inside the Rust bin (`fusion_codegen.rs`; `main.rs:213`
     still prints `gen-fusion-tables: wrote ...` — stale log string, fix it).
-- **Self-overwriting crate boundary — CONFIRMED.** `main.rs:123-170` writes:
+- **Self-overwriting crate boundary — CONFIRMED.** `main.rs:124-173` writes:
   `crates/kelir-shim/include/kelir/wire.h` (:145),
-  `crates/kelir-otlp/src/records.rs` (:148),
-  `crates/kelir-plugins/plugin-ledger/src/wal/merkle.rs` (:154), plus its own
-  crate's `crates/kelir-interface/src/telemetry/merkle.rs`, and TS/Py SDK
+  `crates/kelir-otlp/src/records_otlp.rs` (:148),
+  `crates/kelir-plugins/plugin-ledger/src/wal_ledger/merkle_wal.rs` (:154), plus its own
+  crate's `crates/kelir-interface/src/telemetry/merkle_attest.rs`, and TS/Py SDK
   files (`packages/ts/...`, `packages/py/kelir/generated/...`,
   `packages/py/kelir/plugins/plugin_<name>.py`).
 - **Fix (L2):** `just codegen` already exists as the single entry point — the
   fix is consolidation of the UAPI shell scripts + anchors + scorecard into it
   (or an explicit exclusion for scorecard), and either stop cross-crate
-  emission or record it as intended (spec decision). Note: in the live worktree
-  both UAPI scripts are stale against the rename wave (targets renamed, scripts
-  still write `uapi.rs`) — re-check after that wave lands.
+  emission or record it as intended (spec decision). Note: the rename wave
+  broke both UAPI scripts (targets renamed, scripts still wrote `uapi.rs` —
+  the fuse script failed `Directory nonexistent`). The rename pass fixed their
+  output paths (`uapi_fuse.rs`, `uapi_trap.rs`) and re-ran both; outputs
+  byte-identical to the committed files.
 
 ## 6. Wire framing & protocol layout incoherence — MIXED: 6a partial, 6b/6c refuted as attributed
 
@@ -329,14 +331,14 @@
 - Bus defines **`FRAME_HEADER_LEN: usize = 9`**, not `HEADER_LEN`
   (`crates/kelir-core/src/bus/mod.rs:13`). `encode_frame` (:104–124) and
   `take_frame` (:128–155) implement exactly stream_id LE u32 / flags u8 /
-  len LE u32, payload after byte 9. Shim `crates/kelir-shim/src/codec.rs:13`
+  len LE u32, payload after byte 9. Shim `crates/kelir-shim/src/codec_protocol.rs:13`
   defines `HEADER_LEN = size_of::<u32>() + size_of::<u8>() + size_of::<u32>()`
   = 9, with matching `encode_frame` / `decode_header`.
 - `msg_type`-as-payload — CONFIRMED and by design: shim `decode_msg_type(payload)`
   (:60–65) strips the first u16 of the payload; bus `send_control_msg`
   (:273–289) prepends `msg_type as u16` to the body then frames it;
   `take_frame` returns the payload verbatim (msg_type bytes included);
-  consumers `crates/kelir-shim/src/multiplexer.rs:235-236,274-275` call
+  consumers `crates/kelir-shim/src/multiplexer_protocol.rs:235-236,274-275` call
   `decode_msg_type`.
 - Spec sides with the bus/shim: `cans/11-protocol.md#Wire-framing` (:163–164):
   "Layout: 9-byte header, stream_id u32, flags u8, len u32, LE, no
@@ -351,7 +353,7 @@
   No layout change.
 
 ### 6b. "11-byte frame header" — REFUTED; vectors, bus, shim, and spec all agree
-- `crates/kelir-plugin-testkit/src/vectors.rs:64-92` (`WireFrame::encode`):
+- `crates/kelir-plugin-testkit/src/vectors_testkit.rs:64-92` (`WireFrame::encode`):
   `body_len = payload.len().checked_add(2)` (:69–73), `len` field =
   `body_len`, capacity `body_len.checked_add(9)` (:80–84), then writes the
   9-byte header + `msg_type` u16 + payload. The wire header is still **9
@@ -363,27 +365,27 @@
   to shim `decode_header` + `decode_msg_type`. The "test vectors vs runtime
   bus disagree" claim is **REFUTED**.
 - **Genuine narrower gap (replaces the claim):** `WireFrame` has **no `decode`**
-  in the testkit (no `fn decode` in `vectors.rs`); decode lives only in shim
-  `codec.rs` and bus `take_frame` (which does not strip `msg_type`).
+  in the testkit (no `fn decode` in `vectors_testkit.rs`); decode lives only in shim
+  `codec_protocol.rs` and bus `take_frame` (which does not strip `msg_type`).
 - **Fix (L2):** add `WireFrame::decode` in the testkit, or drop `WireFrame` in
   favour of the bus/shim codec.
 
-### 6c. "codec.rs vs protocol.rs define the 7 constants twice" — REFUTED as attributed; real duplication is elsewhere
-- `protocol.rs` defines **zero** of `FLAG_OPEN` / `FLAG_DATA` / `FLAG_CLOSE` /
+### 6c. "codec_protocol.rs vs protocol_wire.rs define the 7 constants twice" — REFUTED as attributed; real duplication is elsewhere
+- `protocol_wire.rs` defines **zero** of `FLAG_OPEN` / `FLAG_DATA` / `FLAG_CLOSE` /
   `FLAG_RST` / `FLAG_WINDOW_UPDATE` / `MAX_FRAME_PAYLOAD` / `MAX_STREAM_ID`
   (it defines `MsgType` / `StreamKind` enums, `EXEC_STREAM_*`, `PROT_*`,
-  `MFD_*`). Shim `codec.rs:5-9` does **not** redefine them — it `pub use`s all
+  `MFD_*`). Shim `codec_protocol.rs:5-9` does **not** redefine them — it `pub use`s all
   8 items from `kelir_interface::codec` (a re-export, not a duplicate).
 - The real duplication: **`crates/kelir-core/src/bus/mod.rs` redefines**
   `MAX_FRAME_PAYLOAD` (:16), `MAX_STREAM_ID` (:19), `FLAG_OPEN` (:22),
   `FLAG_DATA` (:25) with identical values instead of importing them — and
   only 2 of the 5 flags. Canonical home is
-  `crates/kelir-interface/src/codec.rs:1-15` (all 7 + `MAX_CONTROL_PAYLOAD`,
+  `crates/kelir-interface/src/codec_protocol.rs:1-15` (all 7 + `MAX_CONTROL_PAYLOAD`,
   `MuxFrameHeader`).
 - Third copy: the SSOT artifact `cans/artifacts/code/wire-protocol.rs:19-35`
   defines all 7 constants again (by design — artifacts own content — and its
-  line-1 comment cites `// crates/kelir-interface/src/codec.rs`, correct at
-  HEAD; it goes stale once the rename wave lands, since `codec.rs` becomes
+  line-1 comment cited `// crates/kelir-interface/src/codec.rs`, correct at
+  989701f; the rename wave made it stale, and the rename pass updated it to
   `codec_protocol.rs`).
 - **Fix (L2):** bus imports the constants from `kelir-interface::codec`;
   delete the 4 redefinitions.
@@ -400,15 +402,15 @@
   starts empty each boot — writes reach disk, durable read-back does not exist;
   (c) `Vt100StateMachine::feed` (:72–79) is itself a `TODO (L3)` stub returning
   `Err` — the VT100 engine parses nothing yet.
-- Dispatch confirmed: `crates/kelir-core/src/dispatch.rs:520,535,550,566`
+- Dispatch confirmed: `crates/kelir-core/src/dispatch_plugin.rs:520,535,550,566`
   defines `dispatch_console_input` / `dispatch_console_output` /
   `dispatch_exec_stdout` / `dispatch_exec_stderr`. Each only loops
   `console_interceptors` calling the `ConsoleInterposer` hook
-  (`plugin.rs:524+`).
+  (`plugin_model.rs:524+`).
 - Dispatcher never routes bytes to `session.terminal` — CONFIRMED:
-  `PipelineEngine` struct (dispatch.rs:89–115) has **no terminal field** —
+  `PipelineEngine` struct (dispatch_plugin.rs:88–111) has **no terminal field** —
   only interceptor vecs, gate, metrics, FFI queue. Zero occurrences of
-  `terminal` in `dispatch.rs`.
+  `terminal` in `dispatch_plugin.rs`.
 - `TerminalPlane::feed` / `append_log_chunk` never called by the pipeline —
   CONFIRMED, stronger: zero callers in all of `crates/` src; `append_log_chunk`
   is called only by tests
@@ -436,7 +438,7 @@
 
 ## 8. Triple-written profile interpreters — CONFIRMED, worse than stated; TS wording corrected
 
-- Rust — CONFIRMED: `crates/kelir/src/sandbox.rs:16-70`:
+- Rust — CONFIRMED: `crates/kelir/src/sandbox_runtime.rs:16-70`:
   `SandboxProfile` / `SessionProfile` / `ComputeProfile` / `ArtifactsProfile` /
   `ClockProfile` / `WatchdogProfile`, all `Serialize+Deserialize`;
   `to_vm_config` at `:74-103`.
@@ -476,7 +478,7 @@
 
 ## 9. Type flattening and information loss in SDK models — CONFIRMED, worse than stated; TS is the counterexample
 
-- Rust `ExitKind` — CONFIRMED: `crates/kelir-interface/src/telemetry/receipt.rs:20-28`:
+- Rust `ExitKind` — CONFIRMED: `crates/kelir-interface/src/telemetry/receipt_attest.rs:20-28`:
   `Normal` / `Signal(u32)` / `KernelPanic(String)` / `HypervisorFault(String)` /
   `DirtyShutdown` / `HardKilled`, verbatim as quoted. Artifact SSOT
   `cans/artifacts/code/execution-receipt.rs:30-38` has the identical 6
@@ -487,7 +489,7 @@
   `packages/py/kelir/generated/attest_telemetry.py:35-38`:
   `kind: str = "normal"`, `signal: int | None = None`,
   `message: str | None = None`, verbatim.
-- Generator — CONFIRMED: `crates/kelir-interface/src/bin/codegen/py.rs`,
+- Generator — CONFIRMED: `crates/kelir-interface/src/bin/codegen/py_codegen.rs`,
   `emit_telemetry` (~`:93-110`): hardcodes `kind: str = "normal"`, emits
   `signal` iff any variant has a `U32` payload, `message` iff any has a `Str`
   payload.
@@ -498,7 +500,7 @@
   FFI producer ever populates `kind` / `signal` / `message`**. The two `String`
   variants don't just share a slot; nothing ever sets the discriminator to
   distinct values at all.
-- TS has the same flattening — **REFUTED**: `ts.rs:113-137` `emit_exit_kind`
+- TS has the same flattening — **REFUTED**: `ts_codegen.rs:112-133` `emit_exit_kind`
   generates a discriminated union:
   `packages/ts/core/src/telemetry.attest.generated.ts:32-38`
   (`"kernel-panic"` / `"hypervisor-fault"` distinct tags with
@@ -523,13 +525,13 @@
   Suspended(SuspendReason), Terminated" + "Eliminates independent suspend
   implementations outside core". Also `:12`: "Entered via
   `session.drain(timeout_ms)`".
-- `DriverState` — CONFIRMED: `crates/kelir-interface/src/driver.rs:41-45`:
+- `DriverState` — CONFIRMED: `crates/kelir-interface/src/driver_interface.rs:41-45`:
   `Unbooted` / `Booted` / `Paused`. Only ever constructed as `Unbooted` in all
   6 drivers; `ensure_booted` treats `Booted|Paused` as ok. No
   `Initializing` / `Running` / `Draining` / `Suspended` / `Terminated` member;
   no mapping to spec states.
 - `Session` — CONFIRMED, with nuance: struct
-  `crates/kelir-core/src/session.rs:12-27` has no phase field — only
+  `crates/kelir-core/src/session_lifecycle.rs:12-28` has no phase field — only
   `detached: bool` (plus terminal, storage, wire, checkpoint, host, metrics,
   uart, driver, owned_bus, engine, incarnation_id, plugins). Lifecycle
   **verbs** exist as methods — `suspend` (`:411`), `resume` (`:422`),
@@ -546,10 +548,10 @@
   `LifecycleState` / `SupervisorState` / `VmLifecycleState` enum in `crates/`,
   `packages/`, or `cans/` (grep: only prose "supervisor" + a shim TODO comment).
   Closest enums are events, not state: `LifecycleObservation`
-  (`plugin.rs:174-179`: `Checkpoint` / `Rollback` / `Resume` / `Terminate`)
+  (`plugin_model.rs:174-179`: `Checkpoint` / `Rollback` / `Resume` / `Terminate`)
   and `LifecycleEvent` (`:182-187`: `VmInit` / `VmReady` / `VmPreempt` /
   `VmShutdown`) — no current-state field, no transition function.
-  `SuspendReason` **does** exist (`driver.rs:356-359`:
+  `SuspendReason` **does** exist (`driver_interface.rs:356-359`:
   `External(ExternalSuspendKind) | ResourcePressure`, matching the spec shape)
   but nothing holds a `Suspended(SuspendReason)` state.
 - **Fix (L2 state + L3 transitions):** introduce a single supervisor state
@@ -566,11 +568,11 @@
   exports + the AS-01 arm mismatch (see §3c).
 - §6b "11-byte header; vectors vs bus disagree" — refuted; the real item is
   the missing `WireFrame::decode` (see §6b).
-- §6c "codec.rs vs protocol.rs duplicate the 7 constants" — refuted; the real
+- §6c "codec_protocol.rs vs protocol_wire.rs duplicate the 7 constants" — refuted; the real
   item is `bus/mod.rs` redefining 4 of them (see §6c).
 - §9 "TS flattens ExitKind too" — refuted; TS is the correct shape to copy
   (see §9).
-- §1d "attach.rs is a 4th relay-path implementation" — refuted; it calls core
+- §1d "attach_cli.rs is a 4th relay-path implementation" — refuted; it calls core
   (see §1d).
 - §2d "HList is useless compile-time overhead" — refuted; it powers typed
   `ctx::<T>()` per spec (see §2d).

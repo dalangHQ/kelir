@@ -1,4 +1,4 @@
-// crates/kelir-interface/src/protocol.rs
+// crates/kelir-interface/src/protocol_wire.rs
 //
 // All wire messages exchanged over transport port 5252.
 // 5252 is a transport identifier, not an AF_VSOCK port: the Transport
@@ -7,7 +7,7 @@
 // Exactly two transports: Control 0x0000 and Stream Mux 0x0001;
 // every other capability is a stream kind multiplexed on 0x0001
 // (see wire-protocol.rs for the kind registry).
-// Payloads encode as CBOR inside the TLV frame defined in codec.rs.
+// Payloads encode as CBOR inside the TLV frame defined in codec_protocol.rs.
 //
 // Owned by: cans/11-protocol.md#Wire-messages
 
