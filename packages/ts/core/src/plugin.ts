@@ -1,7 +1,7 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 
-import type { TrapContext } from "./context.js";
+import type { TrapContext } from "./context.lifecycle.types.js";
 import {
   RingEvent,
   type HookDescriptor,
@@ -9,7 +9,7 @@ import {
 import type {
   FilterAction,
   Verdict,
-} from "./verdict.js";
+} from "./verdict.protocol.js";
 import type {
   HeartbeatEvent,
   ProcessExitEvent,

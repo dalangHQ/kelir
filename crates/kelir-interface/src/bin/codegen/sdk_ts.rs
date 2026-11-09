@@ -137,7 +137,7 @@ pub fn emit_ts(projections: &[Projection]) -> Result<String, String> {
     if !handles.is_empty() {
         let handle_types: Vec<&str> = handles.iter().map(|(_, handle)| *handle).collect();
         lines.push(format!(
-            "import type {{ {} }} from \"./context.js\";",
+            "import type {{ {} }} from \"./context.lifecycle.types.js\";",
             handle_types.join(", ")
         ));
         lines.push("import type { KelirPlugin, PluginContext } from \"./plugin.js\";".to_string());

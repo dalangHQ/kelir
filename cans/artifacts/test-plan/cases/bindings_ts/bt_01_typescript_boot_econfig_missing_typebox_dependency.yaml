@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/03-sdk-architecture.md#TypeScript-SDK"
-  statement: "Prerequisite validation happens at builder.boot(): a missing dependency throws EConfig with an error envelope identifying the missing requirement before vCPU launch. GAP: TypeBox is the spec-named runtime validator (cans/03-sdk-architecture.md Type-safety invariants), but packages/ts/core/package.json declares no TypeBox dependency and packages/ts/core/src/schema.ts ships a local stub t object with no runtime validation, so no boot-time EConfig on missing TypeBox exists in the live tree; this case asserts the spec-required behavior and fails against the live tree until TypeBox is wired. The real EConfig surface today is the missing NAPI addon in packages/ts/core/src/builder.ts loadNativeAddon()."
+  statement: "Prerequisite validation happens at builder.boot(): a missing dependency throws EConfig with an error envelope identifying the missing requirement before vCPU launch. GAP: TypeBox is the spec-named runtime validator (cans/03-sdk-architecture.md Type-safety invariants), but packages/ts/core/package.json declares no TypeBox dependency and packages/ts/core/src/schema.ts ships a local stub t object with no runtime validation, so no boot-time EConfig on missing TypeBox exists in the live tree; this case asserts the spec-required behavior and fails against the live tree until TypeBox is wired. The real EConfig surface today is the missing NAPI addon in packages/ts/core/src/builder.lifecycle.ts loadNativeAddon()."
   blast_radius_if_breached: "A TypeScript plugin boots with unvalidated params, so a malformed trap payload crosses the FFI boundary unchecked and corrupts guest execution state."
 
 confusion_matrix:

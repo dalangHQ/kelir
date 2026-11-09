@@ -3,7 +3,7 @@
 // see: cans/10-attestation.md#Execution-receipts
 // see: cans/11-protocol.md#Wire-framing
 
-export * from "./generated/telemetry.js";
+export * from "./telemetry.attest.generated.js";
 export * from "./generated/protocol.js";
 
 export interface SpawnOptions {

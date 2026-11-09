@@ -20,7 +20,7 @@ from kelir.generated.telemetry import (
     SnapshotDescriptor as SnapshotDescriptor,
 )
 from kelir.errors import EConfig as EConfig
-from kelir.sandbox import Sandbox as Sandbox
+from kelir.lifecycle_sandbox import Sandbox as Sandbox
 from kelir.fusion import (
     FusedTrampoline,
     HookDescriptor,

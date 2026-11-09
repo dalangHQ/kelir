@@ -194,3 +194,48 @@ check-manifest:
 # Run static AST linter enforcing Anti-Slop Laws AS-01 to AS-08
 check-tests:
     cargo run -p kelir-testkit --bin check-tests
+
+# ── Codegen coherence pipeline (work-order-2: CI/CD Coherence Architecture) ──
+# SSOT flow: cans/*.md + artifacts -> kelir-interface (macros/schemas)
+#   -> code generation (TS/PY types, plugin projections, fusion tables,
+#      wire consts, UAPI tables, anchors, scorecard) -> committed output
+#   -> CI coherence gate: regenerate + `git diff --exit-code` (zero drift).
+# Generated files are checked in (Hermetic Commit Invariant); every
+# generator below is deterministic and byte-stable across runs.
+codegen:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Item 1/2/3/12/15: one native generator emits TS/PY SDK types, plugin SDK
+    # projections, fusion ring/hook tables, protocol consts, shim wire.h,
+    # OTLP records, Merkle leaves
+    cargo run --quiet -p kelir-interface --bin codegen
+    # Item 13: spec anchor index (committed at crates/kelir-testkit/anchors.json)
+    cargo run --quiet -p kelir-testkit --bin anchors
+    # Item 5/11: UAPI tables (linux/fuse.h, linux/elf.h) via C oracle
+    sh crates/kelir-core/codegen/gen-fuse-uapi.sh
+    sh crates/kelir-shim/codegen/gen-elf-uapi.sh
+    # Item 9: scorecard render from perf/budgets.toml (writes target/scorecard.md
+    # while cans/ is frozen; the committed artifact stays gate-checked by check-scorecard)
+    cargo run --quiet -p kelir-testkit --bin scorecard -- generate
+
+# Zero-drift verification gate: regenerate everything, tree must stay clean.
+# check-codegen is the work-order-2 section-2 spelling of the same gate.
+check-coherence: codegen
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! git diff --exit-code; then
+        echo "FAIL: Generated code out of sync. Run \`just codegen\`" >&2
+        exit 1
+    fi
+    echo "OK: zero drift between SSOT schemas and committed artifacts."
+
+check-codegen: check-coherence
+
+# Compile-only gate across all three languages (work-order-2 section 3).
+check-types:
+    cargo check --workspace --all-targets
+    pnpm -r exec tsc --noEmit
+    uv run mypy packages/py
+
+# Test-plan gates in one recipe (work-order-2 section 3).
+check-gates: check-manifest check-tests check-scorecard

@@ -349,7 +349,7 @@
       - Standalone repo layout (hermetic; required for external plugins)
         - Cargo.toml: Rust crate root, depends on kelir-interface only
         - src/lib.rs: plugin logic, zero unsafe, zero panic
-        - tests/test_contract.rs: unit and integration via kelir-plugin-testkit
+        - tests/<name>_<domain>_test.rs: unit and integration via kelir-plugin-testkit
         - tests/fixtures/: fixtures specific to this plugin
         - bindings/ts/: @kelir/plugin-<name> (NAPI-RS) with parity tests
         - bindings/py/: kelir-plugin-<name> (PyO3) with parity tests

@@ -34,15 +34,15 @@ confusion_matrix:
 tier_taxonomy:
   tier_1_unit:
     scope: "Pure functions in native memory: AST/schema parser, MountScope intersection, frame encoders/decoders, CBOR decoders, radix layer compiler; zero FFI, zero hypervisor calls."
-    location: "crates/kelir-core/tests/unit/, crates/kelir-interface/tests/"
+    location: "crates/kelir-interface/tests/, crates/kelir-core/tests/"
     hardware_required: false
   tier_2_integration:
     scope: "In-process engine tests using real drivers: driver-rustvmm (KVM) or driver-hvf (HVF); real SPSC shared-memory rings, real VirtIO-FS/FUSE broker mounts, smoltcp packet handling, local Unix sockets."
-    location: "crates/kelir-core/tests/integration/, crates/kelir-plugins/*/tests/"
+    location: "crates/kelir-core/tests/, crates/kelir-plugins/*/tests/, crates/kelir-drivers/*/tests/"
     hardware_required: true
   tier_3_e2e:
     scope: "Black-box SDK driver verification across languages (Rust, TS/NAPI, Python/PyO3), external binary adapters (kelir-pack, mcp-server), and full agent loop replays against pre-compiled EROFS images."
-    location: "crates/kelir-integration/tests/, packages/ts/tests/, packages/py/tests/"
+    location: "packages/ts/core/tests/, packages/py/tests/"
     hardware_required: true
 
 anti_slop_laws:
@@ -92,13 +92,34 @@ anti_slop_laws:
     slop_vector: "MicroVM is killed, but sparse backing files remain on disk, UDP NAT slab entries leak, and flock locks remain held."
     enforcement: "Tear-down verification queries /proc/self/fd (or macOS lsof) and confirms scratch directory UUID is wiped."
 
+filename_grammar:
+  purpose: >-
+    Domain-first test filenames across the three implementation languages: every
+    test file names its entity and its subsystem plane, so suite intent survives
+    a directory listing. Enforced by check-tests gates NG-01 through NG-03.
+  rust:
+    pattern: "<entity>_<domain>[_role]_test.rs"
+    example: "storage_reconciler_test.rs"
+    src_rule: "src/ modules stay snake_case; dot-separated names would break mod declarations"
+  typescript:
+    pattern: "<entity>.<domain>[.role].test.ts"
+    example: "session.lifecycle.test.ts"
+    src_rule: "source modules use <entity>.<domain>[.role].ts (session.lifecycle.ts, sandbox.runtime.ts)"
+  python:
+    pattern: "test_<domain>_<entity>[_role].py"
+    example: "test_lifecycle_session.py"
+    src_rule: "source modules use <domain>_<entity>.py; dots would break import statements"
+  role_tokens: [unit, integration, parity]
+  harness_exceptions: "case-to-test-map.yaml#harness_tests"
+  gates: [NG-01, NG-02, NG-03]
+
 ci_gates:
   - id: "gate_check_manifest"
     command: "cargo run -p kelir-testkit --bin check-manifest"
     description: "Asserts 100% parity between manifest.yaml and test case files."
   - id: "gate_check_linter_laws"
     command: "cargo run -p kelir-testkit --bin check-tests"
-    description: "AST analysis asserting AS-01 through AS-08 (AS-04 split into AS-04A/AS-04B) across tests/ and benches/ directories."
+    description: "AST analysis asserting AS-01 through AS-08 (AS-04 split into AS-04A/AS-04B) plus filename grammar NG-01 through NG-03 across tests/ and benches/ directories."
   - id: "gate_check_scorecard"
     command: "just check-scorecard"
     description: "Byte-for-byte verification between physical evidence and scorecard.md."

@@ -574,12 +574,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         if let (Some(file), Some(func)) = (&entry.test_file, &entry.test_fn) {
             listed_files.insert(file.clone());
-            let path = repo_root.join(file);
-            let text = fs::read_to_string(&path).unwrap_or_default();
+            let path = repo_root.join(file.as_str());
             if !path.is_file() {
                 eprintln!("ERROR: map {}: test file missing: {file}", entry.case_id);
                 errors += 1;
-            } else if !text.contains(&format!("fn {func}")) {
+            } else if !fs::read_to_string(&path)
+                .map(|text| text.contains(&format!("fn {func}")))
+                .unwrap_or(false)
+            {
                 eprintln!(
                     "ERROR: map {}: test fn {func} not found in {file}",
                     entry.case_id

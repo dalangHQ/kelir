@@ -92,6 +92,8 @@
       - Clock-continuity replay runs in the plugin-replay cell
     - Invariant test manifest: see: artifacts/test-plan/manifest.yaml
     - Execution matrix and anti-slop rules: see: artifacts/test-plan/matrix.yaml
+    - Filename grammar gates NG-01..NG-03 ride check-tests
+      - Grammar: see: artifacts/test-plan/matrix.yaml#filename_grammar
     - --plugin-coverage
       - Plugin asserts: see: [4]
       - Each plugin appears in at least one example (any example)
@@ -287,6 +289,10 @@
       - A local pass that CI rejects means the CLI is broken
   - Project structure
     - see: artifacts/config/project-structure.txt
+    - Module naming grammar (domain-first)
+      - Rust src/ modules stay snake_case; dots would break mod declarations
+      - TS source: <entity>.<domain>[.role].ts; Python source: <domain>_<entity>.py
+      - Test filename grammar: see: artifacts/test-plan/matrix.yaml#filename_grammar
     - Plugin testkit is dev-only; see: 02-plugin-model.md#Plugin-testkit
     - Integration needs a real hypervisor; see: #Per-plugin-CI
     - Adapter crates: see: 12-adapters.md

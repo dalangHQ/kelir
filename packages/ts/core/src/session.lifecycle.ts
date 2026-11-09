@@ -21,7 +21,7 @@ import type {
   VmHandle,
   VsockHandle,
   WireHandle,
-} from "./context.js";
+} from "./context.lifecycle.types.js";
 import { EConfig } from "./errors.js";
 
 declare const process: {
