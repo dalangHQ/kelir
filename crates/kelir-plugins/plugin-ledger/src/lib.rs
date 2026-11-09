@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope, TrapInterposer};
+use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, TrapInterposer};
 use kelir_interface::telemetry::CausalDelta;
 use kelir_otlp::registry::{MetricRegistry, MetricSnapshot};
 use kelir_otlp::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfig};
@@ -226,9 +226,6 @@ impl KelirPlugin for LedgerPlugin {
     }
     fn name(&self) -> &'static str {
         "ledger"
-    }
-    fn default_scope(&self) -> MountScope {
-        MountScope::default()
     }
 }
 

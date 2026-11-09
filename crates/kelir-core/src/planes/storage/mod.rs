@@ -168,6 +168,7 @@ impl StoragePlane {
         })
     }
 
+    // TODO (L3): wire boot to anchor the reconciler with the broker dir and traversal guard; no in-tree caller does, so this guard rejects every reconcile.
     pub fn reconcile(
         &self,
         req: reconciler::FsReconcileRequest,
@@ -263,6 +264,7 @@ impl StoragePlane {
     }
 
     // see: cans/05-storage-plane.md#Host-CoW-broker
+    // TODO (L3): report the sparse upper allocation on non-Unix hosts; the constant 0 hides host block usage.
     #[cfg(not(unix))]
     pub fn sparse_upper_blocks(&self) -> u64 {
         0

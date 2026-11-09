@@ -6,6 +6,7 @@ export interface Schema<T = unknown> {
 
 export type Infer<S> = S extends Schema<infer T> ? T : unknown;
 
+// TODO (L3): emit real TypeBox schemas from the t.* builders so builder.boot() fails closed without the typebox dependency.
 export const t = {
   String(): Schema<string> {
     return {};

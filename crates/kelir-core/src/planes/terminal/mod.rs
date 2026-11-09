@@ -194,6 +194,7 @@ impl TerminalPlane {
         ))
     }
 
+    // TODO (L3): replay from the durable chunk files and index.bin so cursors survive process restarts; the in-memory segment map starts empty each boot.
     pub fn read_from(
         &self,
         port: u32,

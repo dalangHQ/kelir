@@ -9,7 +9,7 @@ use kelir_interface::driver::{
     EntropyBackend, EntropyStreamPosition, PmuSample, PmuSampler, VmmError,
 };
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope};
+use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant};
 
 // see: cans/plugins/replay.md#Error-and-return-semantics-(replay)
 const ECLOCKREGRESS: &str = "EClockRegress";
@@ -252,10 +252,6 @@ impl KelirPlugin for ReplayPlugin {
     fn name(&self) -> &'static str {
         "replay"
     }
-    fn default_scope(&self) -> MountScope {
-        MountScope::default()
-    }
-
     // see: cans/plugins/replay.md#Service-exports-(replay)
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn kelir_interface::plugin::AnyPlugin> {
         // see: cans/08-lifecycle.md#CoW-fork

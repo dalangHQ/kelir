@@ -229,6 +229,7 @@ impl VmmDriver for AvfDriver {
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn entropy_position(&self) -> Result<EntropyStreamPosition, VmmError> {
         self.state.ensure_booted("avf")?;
+        // TODO (L3): report the live seeded-stream offset; host entropy is not position-trackable.
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => Ok(EntropyStreamPosition {
                 offset_bytes: self.entropy_offset,
@@ -245,6 +246,7 @@ impl VmmDriver for AvfDriver {
         position: EntropyStreamPosition,
     ) -> Result<(), VmmError> {
         self.state.ensure_booted("avf")?;
+        // TODO (L3): rewind the seeded stream to the restored offset before the next draw.
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => {
                 self.entropy_offset = position.offset_bytes;

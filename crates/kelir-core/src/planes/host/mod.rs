@@ -154,12 +154,13 @@ impl HostPlane {
         }
         #[cfg(not(target_os = "linux"))]
         {
+            // TODO (L3): report host RSS on non-Linux (task_info on macOS, GetProcessMemoryInfo on Windows).
             None
         }
     }
 
     pub fn lsm_status(&self) -> bool {
-        // TODO: query the host LSM (Linux LSM / macOS sandbox / Windows integrity) status.
+        // TODO (L3): query the host LSM (Linux LSM / macOS sandbox / Windows integrity) status.
         let _ = &self.reaper_kind;
         false
     }

@@ -10,8 +10,7 @@ use kelir_interface::codec::MAX_FRAME_PAYLOAD;
 use kelir_interface::driver::{SharedMemoryHandle, Stream};
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
-    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope,
-    PipelineBinder,
+    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, PipelineBinder,
 };
 use kelir_interface::vsock::{
     PeerSessionHandshake, SpiffeId, SpiffeSvid, VsockPeer, VsockServiceHandler, VsockServiceSpec,
@@ -278,10 +277,6 @@ impl KelirPlugin for MeshPlugin {
     fn name(&self) -> &'static str {
         "mesh"
     }
-    fn default_scope(&self) -> MountScope {
-        MountScope::default()
-    }
-
     // see: cans/plugins/mesh.md#Peer-identity
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
         // see: cans/08-lifecycle.md#CoW-fork

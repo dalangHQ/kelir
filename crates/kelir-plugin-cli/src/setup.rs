@@ -70,6 +70,7 @@ pub fn run_step(step: SetupStep) -> Result<(), SetupError> {
             // TODO (L3): enforce 0660 perms on /dev/kvm (group kelir) once privileged hardening lands.
             Ok(())
         }
+        // TODO (L3): implement the InstallShims, AttachLsm, and QuarantineCredentials steps.
         _ => Err(SetupError::NotImplemented(format!(
             "setup step {} (L3)",
             step.name()

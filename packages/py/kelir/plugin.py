@@ -78,7 +78,7 @@ class LifecycleCtx:
     def register_veto(
         self, event: VetoEvent, predicate: Callable[[], bool]
     ) -> None:
-        # TODO: register the veto predicate with the lifecycle
+        # TODO (L3): register the veto predicate with the lifecycle
         self._vetoes.append((event, predicate))
 
 
@@ -116,65 +116,65 @@ class BasePlugin:
     requires: tuple[str, ...] = ()
 
     async def on_trap(self, event: Any) -> Optional[Verdict]:
-        # TODO: dispatch trap event to the plugin
+        # TODO (L3): dispatch trap event to the plugin
         return None
 
     def on_fs_lookup(self, path: Path) -> Verdict:
-        # TODO: dispatch fs lookup to the plugin
+        # TODO (L3): dispatch fs lookup to the plugin
         return Verdict.pass_()
 
     def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
-        # TODO: dispatch fs read to the plugin
+        # TODO (L3): dispatch fs read to the plugin
         return buffer
 
     def on_fs_write(
         self, path: Path, data: Any, pid: int, ctx: HandlerContext
     ) -> FilterAction:
-        # TODO: dispatch fs write to the plugin
+        # TODO (L3): dispatch fs write to the plugin
         return FilterAction.forward()
 
     def on_net_outbound(self, frame: bytearray) -> FilterAction:
-        # TODO: dispatch outbound frame to the plugin
+        # TODO (L3): dispatch outbound frame to the plugin
         return FilterAction.forward()
 
     async def on_console_input(self, port: int, data: bytes) -> bytes:
-        # TODO: dispatch console input to the plugin
+        # TODO (L3): dispatch console input to the plugin
         return data
 
     async def on_console_output(self, port: int, chunk: bytes) -> bytes:
-        # TODO: dispatch console output to the plugin
+        # TODO (L3): dispatch console output to the plugin
         return chunk
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
     async def on_exec_stdout(self, pid: int, exec_id: int, chunk: bytes) -> bytes:
-        # TODO: dispatch EXEC stream stdout to the plugin
+        # TODO (L3): dispatch EXEC stream stdout to the plugin
         return chunk
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
     async def on_exec_stderr(self, pid: int, exec_id: int, chunk: bytes) -> bytes:
-        # TODO: dispatch EXEC stream stderr to the plugin
+        # TODO (L3): dispatch EXEC stream stderr to the plugin
         return chunk
 
     async def on_heartbeat(self, event: Any) -> None:
-        # TODO: dispatch heartbeat telemetry to the plugin
+        # TODO (L3): dispatch heartbeat telemetry to the plugin
         pass
 
     async def on_process_exit(self, event: Any) -> None:
-        # TODO: dispatch process-exit event to the plugin
+        # TODO (L3): dispatch process-exit event to the plugin
         pass
 
     async def on_vm_init(self, ctx: Any) -> None:
-        # TODO: dispatch vm-init lifecycle event to the plugin
+        # TODO (L3): dispatch vm-init lifecycle event to the plugin
         pass
 
     async def on_vm_ready(self, ctx: Any) -> None:
-        # TODO: dispatch vm-ready lifecycle event to the plugin
+        # TODO (L3): dispatch vm-ready lifecycle event to the plugin
         pass
 
     async def on_vm_shutdown(self, ctx: Any) -> None:
-        # TODO: dispatch vm-shutdown lifecycle event to the plugin
+        # TODO (L3): dispatch vm-shutdown lifecycle event to the plugin
         pass
 
     async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
-        # TODO: dispatch watchdog event to the plugin
+        # TODO (L3): dispatch watchdog event to the plugin
         return WatchdogVerdict.ExecuteDefault

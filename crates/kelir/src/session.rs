@@ -130,6 +130,7 @@ pub struct ExecResult {
 pub struct WireHandle;
 
 impl WireHandle {
+    // TODO (L3): divert the guest TCP stream to the host socket per cans/07-wire-plane.md#Transparent-L4-stream-diversion.
     pub async fn forward_port(&self, _guest: u16, _host: u16) -> Result<(), PluginError> {
         Err(PluginError::Halt(
             "TODO (L3): WireHandle::forward_port".into(),
@@ -141,6 +142,7 @@ impl WireHandle {
 pub struct StorageHandle;
 
 impl StorageHandle {
+    // TODO (L3): replay the upper file and tombstones through the atomic commit reconciler per cans/05-storage-plane.md#Workspace-commit.
     pub async fn reconcile(&self, _req: FsReconcileRequest) -> Result<CommitStats, PluginError> {
         Err(PluginError::Halt(
             "TODO (L3): StorageHandle::reconcile".into(),
@@ -152,6 +154,7 @@ impl StorageHandle {
 pub struct VsockHandle;
 
 impl VsockHandle {
+    // TODO (L3): open the multiplexed vsock channel for the stream kind per cans/03-sdk-architecture.md#Session-surfaces.
     pub async fn channel(&self, _kind: u16) -> Result<VsockChannel, PluginError> {
         Err(PluginError::Halt("TODO (L3): VsockHandle::channel".into()))
     }
@@ -224,6 +227,7 @@ impl SpawnBuilder {
         self.session_id.is_some()
     }
 
+    // TODO (L3): serialize the params value into the request buffer so HandlerCtx::params::<T>() decodes it per cans/03-sdk-architecture.md#Params-typed-views.
     pub fn params<T>(self, _params: T) -> Self {
         self
     }

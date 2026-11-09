@@ -355,6 +355,7 @@ impl VmHandle {
 pub struct FsHandle;
 
 impl FsHandle {
+    // TODO (L3): prefetch the storage catalog entries for the requested paths into the warm cache.
     pub async fn warm_cache(&self, _paths: &[&str]) -> Result<(), PluginError> {
         Err(PluginError::Halt("TODO (L3): FsHandle::warm_cache".into()))
     }
@@ -364,9 +365,11 @@ impl FsHandle {
 pub struct TerminalHandle;
 
 impl TerminalHandle {
+    // TODO (L3): publish the TerminalNotice event to the event bus per cans/04-terminal-plane.md#Terminal-pipeline.
     pub fn notice(&self, _msg: &str) {}
 }
 
+// TODO (L3): push SnapshotDescriptor slots on checkpoint create/restore; nothing populates them at L2, so last() always returns None.
 #[derive(Debug, Clone, Default)]
 pub struct StepStack {
     slots: Vec<SnapshotDescriptor>,

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, MountScope};
+use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -652,9 +652,6 @@ impl KelirPlugin for ProfilePlugin {
     }
     fn name(&self) -> &'static str {
         "profile"
-    }
-    fn default_scope(&self) -> MountScope {
-        MountScope::default()
     }
 }
 

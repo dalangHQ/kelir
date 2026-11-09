@@ -159,6 +159,7 @@ impl CheckpointPlane {
     }
 
     // see: cans/10-attestation.md#Step-evaluation-loop
+    // TODO (L3): invoke this create from the trap-match pre-hook; the step evaluation loop wiring is absent, so the interface StepStack stays empty.
     pub fn create_step(
         &self,
         lineage: PidLineage,

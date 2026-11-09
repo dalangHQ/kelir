@@ -253,6 +253,7 @@ pub struct NativeTerminalHandle {
 impl NativeTerminalHandle {
     #[napi]
     pub fn notice(&self, _message: String) -> Result<()> {
+        // TODO (L3): publish the TerminalNotice event once the reactive event bus lands.
         Err(missing(
             "terminal notice: TerminalNotice emission lands with the reactive event bus (L3)",
         ))

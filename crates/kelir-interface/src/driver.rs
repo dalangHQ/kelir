@@ -45,6 +45,7 @@ pub enum DriverState {
 }
 
 impl DriverState {
+    // TODO (L3): drivers stay Unbooted until the boot handshake lands, so every guarded primitive rejects here; drop the (L3) suffix once boot is real per cans/08-lifecycle.md#Hypervisor-primitives.
     pub fn ensure_booted(&self, backend: &str) -> Result<(), VmmError> {
         match self {
             Self::Booted | Self::Paused => Ok(()),

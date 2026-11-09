@@ -128,6 +128,7 @@ pub enum LinkLocalRoute {
 }
 
 // see: cans/07-wire-plane.md#Pre-policy-drop-zones
+// TODO (L3): drop non-link-local cloud IMDS endpoints (e.g. Azure 168.63.129.16) at ingress; only the link-local 169.254.169.254 exception reaches the vault.
 pub fn link_local_route(frame: &[u8], direction: FrameDirection) -> Option<LinkLocalRoute> {
     let remote = frame_remote_ip(frame, direction)?;
     if !remote.is_link_local() {

@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
-    FsInterposer, HandlerCtx, KelirPlugin, MountScope, NetInterposer, PipelineBinder,
+    FsInterposer, HandlerCtx, KelirPlugin, NetInterposer, PipelineBinder,
 };
 use kelir_interface::protocol::{FilterAction, SuspendUntil};
 
@@ -195,9 +195,6 @@ impl KelirPlugin for ChaosPlugin {
     }
     fn name(&self) -> &'static str {
         "chaos"
-    }
-    fn default_scope(&self) -> MountScope {
-        MountScope::default()
     }
     // see: cans/plugins/chaos.md#Bidirectional-across-wire-plane
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {

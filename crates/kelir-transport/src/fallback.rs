@@ -33,18 +33,18 @@ impl VsockFallbackTransport {
 impl Transport for VsockFallbackTransport {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // TODO: AF_VSOCK read (L3).
+        // TODO (L3): AF_VSOCK read.
         Err(crate::unsupported("vsock fallback read"))
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // TODO: AF_VSOCK write (L3).
+        // TODO (L3): AF_VSOCK write.
         Err(crate::unsupported("vsock fallback write"))
     }
 
     fn flush(&mut self) -> Result<(), std::io::Error> {
-        // TODO: AF_VSOCK flush (L3).
+        // TODO (L3): AF_VSOCK flush.
         Err(crate::unsupported("vsock fallback flush"))
     }
 }
@@ -73,18 +73,18 @@ impl NamedPipeFallbackTransport {
 impl Transport for NamedPipeFallbackTransport {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // TODO: named-pipe read (L3).
+        // TODO (L3): named-pipe read.
         Err(crate::unsupported("named-pipe fallback read"))
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // TODO: named-pipe write (L3).
+        // TODO (L3): named-pipe write.
         Err(crate::unsupported("named-pipe fallback write"))
     }
 
     fn flush(&mut self) -> Result<(), std::io::Error> {
-        // TODO: named-pipe flush (L3).
+        // TODO (L3): named-pipe flush.
         Err(crate::unsupported("named-pipe fallback flush"))
     }
 }

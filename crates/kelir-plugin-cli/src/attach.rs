@@ -41,6 +41,7 @@ fn now_unix() -> i64 {
 }
 
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    // TODO (L3): connect to relay.sock and stream the detached session after the catalog lease check per cans/08-lifecycle.md#Detached-lifecycle.
     let Some(id_arg) = args.first() else {
         return Err("attach requires a session id: kelir attach <session-id>".into());
     };

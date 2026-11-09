@@ -10,6 +10,7 @@ use kelir_interface::protocol::TrapEvent;
 pub struct PromptStream;
 
 impl PromptStream {
+    // TODO (L3): write the matched prompt's response bytes into the guest console stream per cans/04-terminal-plane.md#Host-filter-pipeline-execution-order; Ok(0) drops the answer.
     pub async fn write(&self, _data: &[u8]) -> Result<usize, PluginError> {
         Ok(0)
     }

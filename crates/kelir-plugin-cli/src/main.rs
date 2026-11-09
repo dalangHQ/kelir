@@ -66,6 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             budgets::check(path)?;
         }
+        // TODO (L3): logs, manifest, registry, rings, and scaffold dispatch into skeleton subcommands that succeed silently.
         "logs" => logs::run()?,
         "manifest" => manifest::run()?,
         "registry" => registry::run()?,

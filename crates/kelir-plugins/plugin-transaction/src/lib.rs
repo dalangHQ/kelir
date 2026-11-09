@@ -9,7 +9,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use kelir_interface::plugin::LockBrokerCoordination;
 use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope};
+use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant};
 use plugin_db_proxy::{SqlProxyCtx, SqlProxyService};
 
 pub mod service;
@@ -383,10 +383,6 @@ impl KelirPlugin for TransactionPlugin {
     fn name(&self) -> &'static str {
         "transaction"
     }
-    fn default_scope(&self) -> MountScope {
-        MountScope::default()
-    }
-
     // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn kelir_interface::plugin::AnyPlugin> {
         // see: cans/08-lifecycle.md#CoW-fork

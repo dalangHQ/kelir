@@ -85,7 +85,7 @@ class Verdict:
         cbor: dict[str, Any] | None = None,
         attr: Any = None,
     ) -> Verdict:
-        # TODO: serialize to ExecveMutation / FsInodeAttr / Custom payload
+        # TODO (L3): serialize to ExecveMutation / FsInodeAttr / Custom payload
         if args and attr is None:
             attr = args[0]
         return cls(
@@ -631,17 +631,17 @@ class KelirBuilder:
         return self.use(plugin)
 
     def terminal(self, **kwargs: Any) -> Self:
-        # TODO: configure the terminal plane
+        # TODO (L3): configure the terminal plane
         self._config["terminal"] = kwargs
         return self
 
     def storage(self, **kwargs: Any) -> Self:
-        # TODO: configure the storage plane
+        # TODO (L3): configure the storage plane
         self._config["storage"] = kwargs
         return self
 
     def wire(self, **kwargs: Any) -> Self:
-        # TODO: configure the wire plane
+        # TODO (L3): configure the wire plane
         self._config["wire"] = kwargs
         return self
 

@@ -59,6 +59,8 @@ impl Stream for LoopbackStream {
     }
 }
 
+// see: cans/02-plugin-model.md#Plugin-testkit
+// TODO (L3): every primitive returns Ok; the mock keeps plugin tests running without a hypervisor.
 pub struct MockVmmDriver;
 
 #[async_trait]

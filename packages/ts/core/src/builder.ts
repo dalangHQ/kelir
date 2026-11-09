@@ -158,6 +158,7 @@ export class KelirBuilder<Ctx = unknown> {
     return this.detachedFlag;
   }
 
+  // TODO (L3): record and apply the terminal/storage/wire plane and params schema configs through the native builder at boot.
   terminal(_config: TerminalConfig): this {
     return this;
   }

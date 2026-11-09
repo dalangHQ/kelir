@@ -270,6 +270,7 @@ impl<'a> LifecycleCtx<'a> {
     }
 
     // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
+    // TODO (L3): atomically swap the compiled hook pipeline via ArcSwap as documented on LifecycleCtx in cans/artifacts/code/plugin-trait.rs#LifecycleCtx; the new dispatch handle is discarded at L2.
     pub fn update_dispatch(&mut self, _new_dispatch: Arc<()>) -> Result<(), PluginError> {
         Ok(())
     }

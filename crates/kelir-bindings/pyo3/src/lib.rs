@@ -250,6 +250,7 @@ fn lock_session(
 impl PyTerminalHandle {
     #[pyo3(signature = (_message))]
     fn notice(&self, _message: String) -> PyResult<()> {
+        // TODO (L3): publish the TerminalNotice event once the reactive event bus lands.
         Err(missing(
             "terminal notice: TerminalNotice emission lands with the reactive event bus (L3)",
         ))

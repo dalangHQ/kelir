@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use kelir_interface::driver::Stream;
 use kelir_interface::plugin::PluginError;
 use kelir_interface::plugin::{
-    HandlerCtx, KelirPlugin, MountScope, PipelineBinder, TrapInterposer,
+    HandlerCtx, KelirPlugin, PipelineBinder, TrapInterposer,
 };
 use kelir_interface::protocol::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
 use kelir_interface::vsock::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
@@ -368,10 +368,6 @@ impl KelirPlugin for SupplyChainPlugin {
     fn name(&self) -> &'static str {
         "supply-chain"
     }
-    fn default_scope(&self) -> MountScope {
-        MountScope::default()
-    }
-
     // see: cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn kelir_interface::plugin::AnyPlugin> {
         // see: cans/08-lifecycle.md#CoW-fork

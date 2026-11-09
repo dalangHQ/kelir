@@ -348,7 +348,7 @@ impl PipelineEngine {
                 )));
             }
         }
-        // TODO: freeze all five ring chains.
+        // TODO (L3): freeze all five ring chains.
         self.sealed = true;
         Ok(())
     }

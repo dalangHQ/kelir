@@ -326,6 +326,7 @@ impl Multiplexer {
                     return Ok(());
                 }
                 EXEC_STREAM_CONTROL => {
+                    // TODO (L3): apply exec control frames: exit code, EOF, window resize, rlimit descriptors.
                     return Err(ShimError::ExecControlPending);
                 }
                 _ => return Err(ShimError::UnknownExecSubLane { lane }),

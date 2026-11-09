@@ -17,6 +17,8 @@ use super::synthetic::SyntheticFile;
 
 mod uapi;
 
+// see: cans/05-storage-plane.md#Host-CoW-broker
+// TODO (L3): add the remaining broker opcodes (getattr, readdir, unlink, mkdir, rename, statfs); statfs replies remaining broker quota from the plane atomics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FuseOpcode {
     Lookup,

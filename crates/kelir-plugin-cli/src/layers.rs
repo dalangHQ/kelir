@@ -46,6 +46,7 @@ pub fn check_dir(dir: &Path, forbidden: &[&str]) -> Result<(), Box<dyn std::erro
 }
 
 pub fn check() -> Result<(), Box<dyn std::error::Error>> {
+    // TODO (L3): enforce the per-tier plugin-to-plugin rule so a Tier 1 plugin importing a Tier 3 plugin crate aborts per cans/02-plugin-model.md#Plugin-tiering; the scan bans only core/driver/adapter prefixes today.
     for (root, forbidden) in RULES {
         check_dir(Path::new(root), forbidden)?;
     }
