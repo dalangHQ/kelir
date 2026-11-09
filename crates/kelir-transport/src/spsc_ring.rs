@@ -42,7 +42,7 @@ impl SpscRingTransport {
 
 // see: cans/01-architecture.md#Transport-engine-abstraction
 // see: cans/01-architecture.md#Shared-memory-channel
-use kelir_interface::driver::SharedMemoryHandle;
+use kelir_interface::driver_interface::SharedMemoryHandle;
 
 enum RingBacking {
     Owned {

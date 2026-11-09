@@ -4,9 +4,9 @@ use std::future::Future;
 use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
 
-use kelir_interface::plugin::TrapInterposer;
-use kelir_interface::protocol::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
-use kelir_plugin_testkit::handlers::handler_ctx;
+use kelir_interface::plugin_model::TrapInterposer;
+use kelir_interface::protocol_wire::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
+use kelir_plugin_testkit::handlers_testkit::handler_ctx;
 use plugin_supply_chain::{
     AuthorizedJitEngine, PackageGuardConfig, SupplyChainConfig, SupplyChainPlugin, WxJitConfig,
 };

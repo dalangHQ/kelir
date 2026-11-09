@@ -2,8 +2,8 @@
 // see: cans/03-sdk-architecture.md#Python-SDK
 use quote::ToTokens;
 
-use crate::model::Ty;
-use crate::sdk::{ProjStruct, Projection, py_kebab};
+use crate::model_codegen::Ty;
+use crate::sdk_codegen::{ProjStruct, Projection, py_kebab};
 use syn::parse::Parser;
 
 #[derive(Debug, Clone)]

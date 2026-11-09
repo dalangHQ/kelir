@@ -6,12 +6,12 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{
     ConsoleInterposer, FsInterposer, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant,
     MountScope, PipelineBinder, TrapInterposer, VirtioDevice,
 };
-use kelir_interface::protocol::{FilterAction, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdict};
 
 // see: cans/plugins/mcp.md#Crate-dependencies-(mcp)
 pub const MCP_SOCKET_PATH: &str = "/run/kelir/mcp.sock";

@@ -4,15 +4,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use kelir_core::Session;
-use kelir_core::dispatch::PipelineEngine;
-use kelir_interface::driver::default_vm_config;
-use kelir_interface::fusion::{
+use kelir_core::dispatch_plugin::PipelineEngine;
+use kelir_interface::driver_interface::default_vm_config;
+use kelir_interface::fusion_plugin::{
     FusedTrampolineDescriptor, HookEntry, HookStage, RingChain, TrampolineRing, TrampolineTable,
 };
-use kelir_interface::plugin::{
+use kelir_interface::plugin_model::{
     FsInterposer, HandlerCtx, KelirPlugin, PipelineBinder, TrapInterposer,
 };
-use kelir_interface::protocol::{FilterAction, TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{FilterAction, TrapEvent, Verdict};
 
 fn trap_ctx() -> HandlerCtx<(), ()> {
     HandlerCtx::new([0u8; 16], 42, (), Vec::new())
@@ -25,7 +25,7 @@ fn trap_event() -> TrapEvent {
     }
 }
 
-fn boot_config() -> kelir_interface::driver::VmConfig {
+fn boot_config() -> kelir_interface::driver_interface::VmConfig {
     default_vm_config(
         None,
         None,
@@ -44,7 +44,7 @@ impl TrapInterposer for DropTrap {
         &self,
         _event: &TrapEvent,
         _ctx: &HandlerCtx,
-    ) -> Result<Verdict, kelir_interface::plugin::PluginError> {
+    ) -> Result<Verdict, kelir_interface::plugin_model::PluginError> {
         Ok(Verdict::Drop {
             errno: Some("EPERM".into()),
             reason: "denied".to_string(),
@@ -62,7 +62,7 @@ impl TrapInterposer for CountingTrap {
         &self,
         _event: &TrapEvent,
         _ctx: &HandlerCtx,
-    ) -> Result<Verdict, kelir_interface::plugin::PluginError> {
+    ) -> Result<Verdict, kelir_interface::plugin_model::PluginError> {
         self.called.store(true, Ordering::SeqCst);
         Ok(Verdict::Pass)
     }
@@ -76,7 +76,7 @@ impl TrapInterposer for PanicTrap {
         &self,
         event: &TrapEvent,
         _ctx: &HandlerCtx,
-    ) -> Result<Verdict, kelir_interface::plugin::PluginError> {
+    ) -> Result<Verdict, kelir_interface::plugin_model::PluginError> {
         assert_eq!(event.pid, u32::MAX);
         Ok(Verdict::Pass)
     }
@@ -91,7 +91,7 @@ impl FsInterposer for MutatingFs {
         data: &mut [u8],
         _pid: u32,
         _ctx: &HandlerCtx,
-    ) -> Result<FilterAction, kelir_interface::plugin::PluginError> {
+    ) -> Result<FilterAction, kelir_interface::plugin_model::PluginError> {
         data.copy_from_slice(b"SELECT 2");
         Ok(FilterAction::Forward)
     }
@@ -293,7 +293,7 @@ fn pe_10_immutable_dispatch_table_post_seal() -> Result<(), String> {
     engine.seal().map_err(|e| e.to_string())?;
     assert!(engine.is_sealed());
     match engine.seal() {
-        Err(kelir_interface::plugin::PluginError::Halt(message)) => {
+        Err(kelir_interface::plugin_model::PluginError::Halt(message)) => {
             assert_eq!(message, "pipeline already sealed");
         }
         Err(e) => return Err(format!("second seal gave wrong error: {e}")),
@@ -305,7 +305,7 @@ fn pe_10_immutable_dispatch_table_post_seal() -> Result<(), String> {
     assert!(session.pipeline().is_sealed());
     let late = LatePlugin;
     match session.bind_plugin(&late) {
-        Err(kelir_interface::plugin::PluginError::Halt(message)) => {
+        Err(kelir_interface::plugin_model::PluginError::Halt(message)) => {
             assert_eq!(message, "pipeline already sealed");
         }
         Err(e) => return Err(format!("late bind gave wrong error: {e}")),

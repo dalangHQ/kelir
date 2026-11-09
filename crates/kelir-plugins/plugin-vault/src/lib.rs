@@ -1,7 +1,7 @@
 // see: cans/plugins/vault.md#Plugin-vault
 #![forbid(unsafe_code)]
 
-pub mod service;
+pub mod service_vault;
 
 use std::future::Future;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -9,17 +9,17 @@ use std::task::{Context, Poll, Wake, Waker};
 use std::thread::JoinHandle;
 
 use async_trait::async_trait;
-use kelir_interface::credential::CredentialDescriptor;
-use kelir_interface::driver::Stream;
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
+use kelir_interface::credential_vault::CredentialDescriptor;
+use kelir_interface::driver_interface::Stream;
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{
     HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
     TokenRevocation, VirtioDevice,
 };
-use kelir_interface::vsock::VAULT_METADATA_VSOCK_PORT;
-use kelir_interface::vsock::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
+use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
+use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
-use crate::service::{
+use crate::service_vault::{
     CredentialBroker, CredentialBrokerService, DEFAULT_TOKEN_TTL_SECONDS, IssuedToken,
     TokenRequest, VaultError,
 };

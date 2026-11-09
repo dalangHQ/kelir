@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Workspace-commit"
-  statement: "Fallback on EBUSY or EPERM: in-place write with 2000ms backoff. Gap: Reconciler::reconcile orchestration and the retry loop are TODO (L3) in crates/kelir-core/src/planes/storage/reconciler.rs; the backoff is specified against cans/05-storage-plane.md#Workspace-commit, not a live retry path."
+  statement: "Fallback on EBUSY or EPERM: in-place write with 2000ms backoff. Gap: Reconciler::reconcile orchestration and the retry loop are TODO (L3) in crates/kelir-core/src/planes/storage/storage_reconciler.rs; the backoff is specified against cans/05-storage-plane.md#Workspace-commit, not a live retry path."
   blast_radius_if_breached: "Transient host locks (antivirus, indexers) cause commit failures and dropped work."
 
 confusion_matrix:

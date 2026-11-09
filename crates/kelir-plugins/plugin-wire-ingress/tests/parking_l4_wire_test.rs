@@ -1,5 +1,5 @@
 // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
-use kelir_interface::plugin::KelirPlugin;
+use kelir_interface::plugin_model::KelirPlugin;
 use plugin_wire_ingress::{L4ForwardFrame, MAX_PARKED_BYTES, ParkOutcome, WireIngressPlugin};
 
 fn l4_frame_bytes(target_port: u16, connection_id: u64, payload: &[u8]) -> Vec<u8> {

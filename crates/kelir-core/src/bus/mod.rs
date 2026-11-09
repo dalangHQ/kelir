@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use kelir_interface::plugin::PluginError;
-use kelir_interface::protocol::{MsgType, StreamKind};
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::protocol_wire::{MsgType, StreamKind};
 use kelir_transport::Transport;
 use kelir_transport::spsc_ring::OwnedSpscRing;
 
@@ -46,7 +46,7 @@ pub trait StreamFrameSink: Send + Sync {
 pub struct BusDispatcher {
     control_transport: kelir_transport::spsc_ring::SpscRingTransport,
     stream_mux_transport: kelir_transport::spsc_ring::SpscRingTransport,
-    active_streams: RwLock<HashMap<u32, kelir_interface::protocol::StreamKind>>,
+    active_streams: RwLock<HashMap<u32, kelir_interface::protocol_wire::StreamKind>>,
     stream_sinks: RwLock<HashMap<u16, Arc<dyn StreamFrameSink>>>,
     mux_rx: Vec<u8>,
 }
@@ -73,8 +73,8 @@ impl OwnedBusDispatcher {
 
     // see: cans/01-architecture.md#Shared-memory-channel
     pub fn from_shared_regions(
-        control: &kelir_interface::driver::SharedMemoryHandle,
-        mux: &kelir_interface::driver::SharedMemoryHandle,
+        control: &kelir_interface::driver_interface::SharedMemoryHandle,
+        mux: &kelir_interface::driver_interface::SharedMemoryHandle,
     ) -> Option<Self> {
         let mut control_ring = OwnedSpscRing::from_shared_region(control)?;
         let mut mux_ring = OwnedSpscRing::from_shared_region(mux)?;
@@ -224,7 +224,7 @@ impl BusDispatcher {
 
     pub fn poll_ingress(
         &mut self,
-    ) -> Result<Option<(u32, u8, Vec<u8>)>, kelir_interface::plugin::PluginError> {
+    ) -> Result<Option<(u32, u8, Vec<u8>)>, kelir_interface::plugin_model::PluginError> {
         let mut scratch = [0u8; POLL_SCRATCH_LEN];
         loop {
             let count = self.stream_mux_transport.read(&mut scratch)?;
@@ -246,7 +246,7 @@ impl BusDispatcher {
         stream_id: u32,
         flags: u8,
         payload: &[u8],
-    ) -> Result<(), kelir_interface::plugin::PluginError> {
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let kind = match self.active_streams.read() {
             Ok(guard) => guard.get(&stream_id).copied(),
             Err(_) => return Err(PluginError::Halt("active stream table poisoned".into())),
@@ -272,7 +272,7 @@ impl BusDispatcher {
         &mut self,
         msg_type: MsgType,
         payload: &[u8],
-    ) -> Result<(), kelir_interface::plugin::PluginError> {
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let body_len = payload
             .len()
             .checked_add(2)

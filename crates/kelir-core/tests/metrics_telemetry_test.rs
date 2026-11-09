@@ -1,6 +1,6 @@
 // see: cans/artifacts/test-plan/cases/telemetry_audit/ta_08_zero_allocation_metric_registry.yaml#case_id
 use kelir_otlp::MetricSnapshot;
-use kelir_otlp::registry::MetricRegistry;
+use kelir_otlp::registry_otlp::MetricRegistry;
 
 // see: cans/artifacts/test-plan/cases/telemetry_audit/ta_08_zero_allocation_metric_registry.yaml#case_id
 #[test]

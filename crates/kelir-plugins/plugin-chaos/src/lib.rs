@@ -5,11 +5,11 @@
 use std::path::Path;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{
     FsInterposer, HandlerCtx, KelirPlugin, NetInterposer, PipelineBinder,
 };
-use kelir_interface::protocol::{FilterAction, SuspendUntil};
+use kelir_interface::protocol_wire::{FilterAction, SuspendUntil};
 
 // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
 pub const RST_INJECTION_ERRNO: &str = "ECONNREFUSED";

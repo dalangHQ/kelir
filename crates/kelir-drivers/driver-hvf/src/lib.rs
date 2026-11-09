@@ -1,7 +1,7 @@
 // see: cans/01-architecture.md#Host-memory-pressure-watcher
 // see: cans/08-lifecycle.md#CoW-fork
 // see: cans/artifacts/diagrams/host-runtime.txt#driver-hvf
-pub mod sys;
+pub mod sys_driver;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::io::AsyncRead;
 
-use kelir_interface::driver::{
+use kelir_interface::driver_interface::{
     BalloonConvergence, DriverCapabilities, DriverState, EntropyBackend, EntropyStreamPosition,
     PmuSampler, SharedMemoryHandle, SnapshotDescriptor, Stream, SuspendReason, VmConfig, VmmDriver,
     VmmError, WatchdogAction, check_hw_lockfile,
@@ -18,7 +18,7 @@ use kelir_interface::driver::{
 
 #[allow(dead_code)]
 pub struct HvfDriver {
-    vcpu_ids: Vec<sys::hv_vcpu_t>,
+    vcpu_ids: Vec<sys_driver::hv_vcpu_t>,
     memory_mapped_bytes: usize,
     config: Option<VmConfig>,
     state: DriverState,
@@ -49,7 +49,7 @@ impl HvfDriver {
     }
 
     fn create_vm(&mut self) -> Result<(), VmmError> {
-        // TODO (L3): call sys::hv_vm_create(0) inside an unsafe block, then sys::hv_vcpu_create per vCPU.
+        // TODO (L3): call sys_driver::hv_vm_create(0) inside an unsafe block, then sys_driver::hv_vcpu_create per vCPU.
         Err(VmmError::Unsupported(
             "hvf boot: hv_vm_create + hv_vcpu_create (L3)".into(),
         ))
@@ -57,12 +57,12 @@ impl HvfDriver {
 
     #[allow(dead_code)]
     fn run_vcpu(&mut self) -> Result<(), VmmError> {
-        // TODO (L3): call sys::hv_vcpu_run on each vcpu handle inside an unsafe block.
+        // TODO (L3): call sys_driver::hv_vcpu_run on each vcpu handle inside an unsafe block.
         Err(VmmError::Unsupported("hvf run: hv_vcpu_run (L3)".into()))
     }
 
     fn protect_fork(&self) -> Result<(), VmmError> {
-        // TODO (L3): Mach copy-on-write + Stage-2 write protection via sys::hv_vm_protect.
+        // TODO (L3): Mach copy-on-write + Stage-2 write protection via sys_driver::hv_vm_protect.
         Err(VmmError::Unsupported(
             "hvf fork: hv_vm_protect CoW fork (L3)".into(),
         ))

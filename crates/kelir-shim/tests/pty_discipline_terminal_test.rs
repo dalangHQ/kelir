@@ -1,7 +1,7 @@
 #![cfg(target_os = "linux")]
 
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_15_shim_openpty_returns_distinct_master_slave.yaml#case_id
-use kelir_shim::pty::open_pty_slave;
+use kelir_shim::pty_terminal::open_pty_slave;
 
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_15_shim_openpty_returns_distinct_master_slave.yaml#case_id
 fn open_fd_count() -> Result<usize, String> {

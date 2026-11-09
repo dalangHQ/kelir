@@ -7,13 +7,13 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use kelir_interface::plugin::LockBrokerCoordination;
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant};
+use kelir_interface::plugin_model::LockBrokerCoordination;
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{KelirPlugin, LifecycleCtx, LifecycleParticipant};
 use plugin_db_proxy::{SqlProxyCtx, SqlProxyService};
 
-pub mod service;
-pub use service::{Savepoint, TransactionHandle, TransactionScope, TransactionService};
+pub mod service_transaction;
+pub use service_transaction::{Savepoint, TransactionHandle, TransactionScope, TransactionService};
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.transaction.two_phase_commit
 #[derive(Clone, Debug)]
@@ -384,7 +384,10 @@ impl KelirPlugin for TransactionPlugin {
         "transaction"
     }
     // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
-    fn fork_state(&self, _child_session_id: &str) -> Box<dyn kelir_interface::plugin::AnyPlugin> {
+    fn fork_state(
+        &self,
+        _child_session_id: &str,
+    ) -> Box<dyn kelir_interface::plugin_model::AnyPlugin> {
         // see: cans/08-lifecycle.md#CoW-fork
         Box::new(Self::new(self.config.clone()))
     }

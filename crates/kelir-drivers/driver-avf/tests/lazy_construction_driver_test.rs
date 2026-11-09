@@ -3,7 +3,7 @@
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_23_avf_driver_lazy_construction_avf_fd_unset.yaml#case_id
 use driver_avf::AvfDriver;
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_23_avf_driver_lazy_construction_avf_fd_unset.yaml#case_id
-use kelir_interface::driver::VmmDriver;
+use kelir_interface::driver_interface::VmmDriver;
 
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_23_avf_driver_lazy_construction_avf_fd_unset.yaml#case_id
 fn open_fd_count() -> Result<usize, String> {

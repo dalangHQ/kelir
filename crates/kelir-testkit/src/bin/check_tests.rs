@@ -11,6 +11,7 @@ struct Counts {
     py_test_files: usize,
     ts_src_files: usize,
     py_src_files: usize,
+    rs_src_files: usize,
     yaml_cases: usize,
     yaml_snippets: usize,
 }
@@ -293,6 +294,7 @@ fn main() -> ExitCode {
         py_test_files: 0,
         ts_src_files: 0,
         py_src_files: 0,
+        rs_src_files: 0,
         yaml_cases: 0,
         yaml_snippets: 0,
     };
@@ -448,6 +450,35 @@ fn main() -> ExitCode {
         );
     }
 
+    // see: cans/artifacts/test-plan/matrix.yaml#filename_grammar
+    let rs_src_dir = repo_root.join("crates");
+    for entry in WalkDir::new(&rs_src_dir).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if !path.to_string_lossy().contains("/src/") {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if name == "lib.rs" || name == "main.rs" || name == "mod.rs" {
+            continue;
+        }
+        let Some(base) = name.strip_suffix(".rs") else {
+            continue;
+        };
+        counts.rs_src_files += 1;
+        lint_test_filename(
+            path,
+            &repo_root,
+            &harness_exempt,
+            valid_src_base(base, '_'),
+            "NG-06",
+            "<entity>_<domain>.rs",
+            &mut violations,
+        );
+    }
+
     let cases_dir = repo_root.join("cans/artifacts/test-plan/cases");
     let mut case_paths: Vec<PathBuf> = Vec::new();
     for entry in WalkDir::new(&cases_dir).into_iter().filter_map(|e| e.ok()) {
@@ -474,12 +505,13 @@ fn main() -> ExitCode {
             counts.rs_test_files, counts.rs_bench_files, counts.yaml_cases, counts.yaml_snippets
         );
         println!(
-            "Filename grammar gate: {} rust, {} typescript, {} python test filenames conform or are harness-exempt; {} typescript, {} python source modules conform.",
+            "Filename grammar gate: {} rust, {} typescript, {} python test filenames conform or are harness-exempt; {} typescript, {} python, {} rust source modules conform.",
             counts.rs_test_files,
             counts.ts_test_files,
             counts.py_test_files,
             counts.ts_src_files,
-            counts.py_src_files
+            counts.py_src_files,
+            counts.rs_src_files
         );
         ExitCode::SUCCESS
     } else {

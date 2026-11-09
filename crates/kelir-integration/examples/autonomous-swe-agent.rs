@@ -7,34 +7,36 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use kelir_interface::credential::{CredentialDescriptor, CredentialKind};
-use kelir_interface::driver::{ExternalSuspendKind, SuspendReason};
-use kelir_interface::plugin::HandlerCtx as IfaceHandlerCtx;
+use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
+use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
+use kelir_interface::plugin_model::HandlerCtx as IfaceHandlerCtx;
 use tokio::sync::Mutex;
 
 use kelir::{
     FsReconcileRequest, HCons, HNil, HandlerCtx, KelirBuilder, NoParams, PostExecAction,
     SnapshotDescriptor, TrapFilter, Unsealed, Verdict, VmConfig,
-    driver::{DriverPolicy, WxPolicy},
+    driver_interface::{DriverPolicy, WxPolicy},
     handler,
     planes::{
-        storage::{
+        storage_plane::{
             DynamicFile, IdmapConfig, MaskRule, ReadMaskEngine, SnoopHandler, SnoopRule,
             StorageConfig, SyntheticFile, WorkspaceEncapsulation,
         },
-        terminal::{PromptRule, PtyConfig, TokenShield},
-        wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, WireConfig},
+        terminal_plane::{PromptRule, PtyConfig, TokenShield},
+        wire_plane::{L4Proxy, Mtls, SinkholeConfig, TapFilter, WireConfig},
     },
-    plugin::{AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginError, TrapInterposer},
+    plugin_model::{
+        AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginError, TrapInterposer,
+    },
     plugins::{
-        chaos::{
+        plugin_chaos::{
             ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, NetworkFaultRule,
             StorageFaultRule,
         },
-        ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
+        plugin_ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
     },
-    protocol::{PatchPayload, TrapEvent},
-    telemetry::ExecutionReceipt,
+    protocol_wire::{PatchPayload, TrapEvent},
+    telemetry_attest::ExecutionReceipt,
 };
 
 #[derive(Debug, Clone)]

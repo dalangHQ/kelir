@@ -1,5 +1,5 @@
 // see: cans/02-plugin-model.md#Plugin-testkit
-use kelir_interface::protocol::{MsgType, StreamKind};
+use kelir_interface::protocol_wire::{MsgType, StreamKind};
 
 #[derive(Debug, Clone)]
 pub struct RecordedMessage {

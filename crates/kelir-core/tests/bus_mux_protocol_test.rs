@@ -3,12 +3,12 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use kelir_core::bus::{BusDispatcher, FLAG_DATA, FLAG_OPEN, OwnedBusDispatcher};
-use kelir_core::dispatch::PipelineEngine;
-use kelir_interface::codec::MAX_FRAME_PAYLOAD;
-use kelir_interface::driver::Stream;
-use kelir_interface::plugin::{HandlerCtx, PipelineBinder, PluginError};
-use kelir_interface::protocol::{MsgType, StreamKind};
-use kelir_interface::vsock::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
+use kelir_core::dispatch_plugin::PipelineEngine;
+use kelir_interface::codec_protocol::MAX_FRAME_PAYLOAD;
+use kelir_interface::driver_interface::Stream;
+use kelir_interface::plugin_model::{HandlerCtx, PipelineBinder, PluginError};
+use kelir_interface::protocol_wire::{MsgType, StreamKind};
+use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 use kelir_transport::Transport;
 use kelir_transport::spsc_ring::OwnedSpscRing;
 

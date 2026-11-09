@@ -1,7 +1,7 @@
 // see: cans/artifacts/test-plan/cases/lifecycle_checkpoint/lc_05_monotonic_clock_clamp_on_resume.yaml#case_id
 use kelir_core::planes::checkpoint::{CheckpointPlane, PidLineage};
-use kelir_interface::driver::{GuestClock, SnapshotDescriptor};
-use kelir_interface::plugin::PluginError;
+use kelir_interface::driver_interface::{GuestClock, SnapshotDescriptor};
+use kelir_interface::plugin_model::PluginError;
 
 fn descriptor(offset_ns: u64) -> SnapshotDescriptor {
     SnapshotDescriptor {

@@ -157,7 +157,7 @@
 Hypervisor backends are completely swappable via `VmmDriver`. The microkernel drives all backends through identical primitives:
 
 ```rust
-// crates/kelir-core/src/vmm/driver.rs
+// crates/kelir-core/src/vmm/driver_interface.rs
 
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
@@ -422,7 +422,7 @@ pub enum TrapAction {
 The core binary maintains an internal asynchronous **Plugin Event Bus**. Every subsystem—internal or third-party—implements the unified `KelirPlugin` Rust trait across the 4 VirtIO hardware rings:
 
 ```rust
-// crates/kelir-core/src/plugin.rs
+// crates/kelir-core/src/plugin_model_codegen.rs
 
 use async_trait::async_trait;
 use std::path::Path;
@@ -788,7 +788,7 @@ When an agent mutates files in its in-memory `tmpfs` scratchpad, changes merge b
   5. Flushes disk buffers with `syncfs()`/`fsync()` before reporting completion.
 
 ```rust
-// crates/kelir-plugins/plugin-vfs/src/reconciler.rs
+// crates/kelir-plugins/plugin-vfs/src/storage_reconciler.rs
 
 pub async fn reconcile_upperdir(
     upperdir: &Path,
@@ -1093,7 +1093,7 @@ Verification orchestrators (Axiom, RLVR runners, Popperian falsifiers) require o
 Every executed process emits an unforgeable physical signature to the host:
 
 ```rust
-// crates/kelir-core/src/telemetry/receipt.rs
+// crates/kelir-core/src/telemetry/receipt_attest.rs
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionReceipt {
@@ -1386,7 +1386,7 @@ kelir/
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # Core library entrypoint
 │   │   │   ├── bus/                   # 4-Ring VirtIO event bus & dispatcher
-│   │   │   ├── plugin.rs              # KelirPlugin async trait definition
+│   │   │   ├── plugin_model_codegen.rs              # KelirPlugin async trait definition
 │   │   │   ├── protocol/              # AF_VSOCK TLV & CBOR wire framing
 │   │   │   ├── step.rs                # StepSlot: typed per-PID checkpoint slots on HandlerCtx
 │   │   │   ├── telemetry/             # ExecutionReceipt generation & CausalDelta engine
@@ -1411,11 +1411,11 @@ kelir/
 │   │   │   ├── main.rs                # Guest PID 1 init, openpty/setsid/TIOCSCTTY broker,
 │   │   │   │                          #   seccomp-unotify loop
 │   │   │   ├── reaper.rs              # Non-blocking waitpid(-1, WNOHANG) orphan reap pass
-│   │   │   ├── trap.rs                # PTRACE_SEIZE anti-TOCTOU (all /proc/PID/task
+│   │   │   ├── trap_protocol_wire.rs                # PTRACE_SEIZE anti-TOCTOU (all /proc/PID/task
 │   │   │   │                          #   threads), on-disk ELF DT_NEEDED scan,
 │   │   │   │                          #   argv[1:] entropy scoring
 │   │   │   ├── ingress.rs             # vsock:5253 ingress multiplexer (port forwarding)
-│   │   │   └── vsock.rs               # /dev/vhost-vsock client transport
+│   │   │   └── vsock_mesh.rs               # /dev/vhost-vsock client transport
 │   │   └── Cargo.toml                 # Target: x86_64/aarch64-unknown-linux-musl
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability Shims

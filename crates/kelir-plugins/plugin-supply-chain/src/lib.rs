@@ -6,11 +6,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use kelir_interface::driver::Stream;
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{HandlerCtx, KelirPlugin, PipelineBinder, TrapInterposer};
-use kelir_interface::protocol::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
-use kelir_interface::vsock::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
+use kelir_interface::driver_interface::Stream;
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{HandlerCtx, KelirPlugin, PipelineBinder, TrapInterposer};
+use kelir_interface::protocol_wire::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
+use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 // see: cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)
 pub const WX_VIOLATION_ERRNO: &str = "EWXVIOLATION";
@@ -367,7 +367,10 @@ impl KelirPlugin for SupplyChainPlugin {
         "supply-chain"
     }
     // see: cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)
-    fn fork_state(&self, _child_session_id: &str) -> Box<dyn kelir_interface::plugin::AnyPlugin> {
+    fn fork_state(
+        &self,
+        _child_session_id: &str,
+    ) -> Box<dyn kelir_interface::plugin_model::AnyPlugin> {
         // see: cans/08-lifecycle.md#CoW-fork
         Box::new(Self::new(self.state.config.clone()))
     }

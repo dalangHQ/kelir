@@ -4,11 +4,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use kelir_core::planes::storage::StoragePlane;
-use kelir_core::planes::storage::fuse::{FuseDispatcher, FuseOpcode, FuseReply, FuseRequest};
-use kelir_core::planes::storage::io::UnimplementedStorageIo;
-use kelir_core::planes::storage::reconciler::{Reconciler, TraversalGuard};
-use kelir_interface::plugin::{FsInterposer, HandlerCtx, PluginError};
-use kelir_interface::protocol::{PatchPayload, Verdict};
+use kelir_core::planes::storage::fuse_storage::{
+    FuseDispatcher, FuseOpcode, FuseReply, FuseRequest,
+};
+use kelir_core::planes::storage::io_storage::UnimplementedStorageIo;
+use kelir_core::planes::storage::storage_reconciler::{Reconciler, TraversalGuard};
+use kelir_interface::plugin_model::{FsInterposer, HandlerCtx, PluginError};
+use kelir_interface::protocol_wire::{PatchPayload, Verdict};
 
 fn temp_workspace(name: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("kelir-et2-{name}"));

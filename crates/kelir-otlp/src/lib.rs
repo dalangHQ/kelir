@@ -1,10 +1,10 @@
 #![forbid(unsafe_code)]
 
-pub mod records;
-pub mod registry;
+pub mod records_otlp;
+pub mod registry_otlp;
 
-pub use records::{OtlpCausalDeltaRecord, OtlpPhaseTimingRecord, OtlpReceiptRecord};
-pub use registry::{MetricRegistry, MetricSnapshot};
+pub use records_otlp::{OtlpCausalDeltaRecord, OtlpPhaseTimingRecord, OtlpReceiptRecord};
+pub use registry_otlp::{MetricRegistry, MetricSnapshot};
 
 use kelir_interface::telemetry::{CausalDelta, ExecutionReceipt, PhaseTimings};
 use thiserror::Error;

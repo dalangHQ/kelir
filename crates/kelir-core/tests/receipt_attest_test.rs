@@ -1,5 +1,5 @@
 // see: cans/artifacts/test-plan/cases/attestation_receipts/ar_06_exit_kind_kernel_panic_uart_scrape.yaml#case_id
-use kelir_core::uart::{UartRingBuffer, decode_early_boot_exit};
+use kelir_core::uart_terminal::{UartRingBuffer, decode_early_boot_exit};
 use kelir_interface::telemetry::{ExecutionReceipt, ExitKind};
 
 fn receipt_toml(wall: u64, ffi: u64, dirty: u64) -> String {

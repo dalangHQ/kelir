@@ -15,8 +15,8 @@
 
 use kelir::{
     KelirBuilder, Session, VmConfig,
-    driver::{DriverPolicy, WxPolicy},
-    plugins::replay::{ReplayConfig, ReplayPlugin},
+    driver_interface::{DriverPolicy, WxPolicy},
+    plugins::plugin_replay::{ReplayConfig, ReplayPlugin},
 };
 
 #[tokio::main]

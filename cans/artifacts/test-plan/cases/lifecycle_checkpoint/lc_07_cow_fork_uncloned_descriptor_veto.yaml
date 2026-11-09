@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/08-lifecycle.md#CoW-fork"
-  statement: "Plugins holding un-clonable host descriptors veto via VetoEvent::Fork; callback false -> ESessionVeto; no child VM. Gap: Session::fork is a TODO (L3) in crates/kelir-core/src/session.rs and performs no veto check yet; the veto is specified against cans/08-lifecycle.md#CoW-fork, not a live fork path."
+  statement: "Plugins holding un-clonable host descriptors veto via VetoEvent::Fork; callback false -> ESessionVeto; no child VM. Gap: Session::fork is a TODO (L3) in crates/kelir-core/src/session_lifecycle.rs and performs no veto check yet; the veto is specified against cans/08-lifecycle.md#CoW-fork, not a live fork path."
   blast_radius_if_breached: "Child microVM inherits unshareable host hardware state, leading to cross-session descriptor races."
 
 confusion_matrix:

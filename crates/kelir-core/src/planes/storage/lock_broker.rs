@@ -1,8 +1,8 @@
 // see: cans/05-storage-plane.md#Host-inode-lock-broker
 use async_trait::async_trait;
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{FsInterposer, LockBrokerCoordination};
-use kelir_interface::protocol::Verdict;
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{FsInterposer, LockBrokerCoordination};
+use kelir_interface::protocol_wire::Verdict;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};

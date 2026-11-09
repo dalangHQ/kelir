@@ -17,10 +17,10 @@
 use std::path::Path;
 use async_trait::async_trait;
 use kelir::{
-    driver::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
-    plugin::{KelirPlugin, PluginError, TrapInterposer, Verdict},
-    protocol::TrapEvent,
-    planes::storage::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
+    driver_interface::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
+    plugin_model::{KelirPlugin, PluginError, TrapInterposer, Verdict},
+    protocol_wire::TrapEvent,
+    planes::storage_plane::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
 };
 
 const PROTECTED: &[&str] = &["main", "master"];

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Guest-kernel-hardening"
-  statement: "kptr_restrict=2 and hidepid=2 suppress /proc/kallsyms and process inspection leaks. GAP: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes session.spawn (crates/kelir/src/session.rs:56) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll, so this case asserts the spec-required behavior and fails against the live tree until exec is wired."
+  statement: "kptr_restrict=2 and hidepid=2 suppress /proc/kallsyms and process inspection leaks. GAP: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes session.spawn (crates/kelir/src/session_lifecycle.rs:58) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll, so this case asserts the spec-required behavior and fails against the live tree until exec is wired."
   blast_radius_if_breached: "Untrusted agent scripts read kernel symbols to construct local root privilege escalation exploits."
 
 confusion_matrix:

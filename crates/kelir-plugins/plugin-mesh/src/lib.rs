@@ -6,13 +6,13 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use kelir_interface::codec::MAX_FRAME_PAYLOAD;
-use kelir_interface::driver::{SharedMemoryHandle, Stream};
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
+use kelir_interface::codec_protocol::MAX_FRAME_PAYLOAD;
+use kelir_interface::driver_interface::{SharedMemoryHandle, Stream};
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{
     AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, PipelineBinder,
 };
-use kelir_interface::vsock::{
+use kelir_interface::vsock_mesh::{
     PeerSessionHandshake, SpiffeId, SpiffeSvid, VsockPeer, VsockServiceHandler, VsockServiceSpec,
 };
 

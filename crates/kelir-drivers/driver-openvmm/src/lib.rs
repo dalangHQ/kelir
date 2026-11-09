@@ -9,7 +9,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::io::AsyncRead;
 
-use kelir_interface::driver::{
+use kelir_interface::driver_interface::{
     BalloonConvergence, DriverCapabilities, DriverState, EntropyBackend, EntropyStreamPosition,
     PmuSampler, SharedMemoryHandle, SnapshotDescriptor, Stream, SuspendReason, VmConfig, VmmDriver,
     VmmError, WatchdogAction, check_hw_lockfile,

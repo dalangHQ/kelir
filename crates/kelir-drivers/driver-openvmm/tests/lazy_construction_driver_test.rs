@@ -3,7 +3,7 @@
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_24_openvmm_driver_lazy_construction_partition_unset.yaml#case_id
 use driver_openvmm::OpenVmmDriver;
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_24_openvmm_driver_lazy_construction_partition_unset.yaml#case_id
-use kelir_interface::driver::VmmDriver;
+use kelir_interface::driver_interface::VmmDriver;
 
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_24_openvmm_driver_lazy_construction_partition_unset.yaml#case_id
 #[test]

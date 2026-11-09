@@ -24,24 +24,24 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use kelir::{
-    handler, driver::{DriverPolicy, WxPolicy}, FinalizeRequest, FsReconcileRequest, HandlerCtx,
+    handler, driver_interface::{DriverPolicy, WxPolicy}, FinalizeRequest, FsReconcileRequest, HandlerCtx,
     KelirBuilder, PostExecAction, Session, SnapshotDescriptor, StepSlot, Verdict, VmConfig,
-    plugin::{
+    plugin_model::{
         AnyPlugin, KelirPlugin, PluginError,
         FsInterposer,
         TrapInterposer,
     },
     plugins::{
-        chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
-        ledger::{FinalReceipt, LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
+        plugin_chaos::{ChaosConfig, ChaosPlugin, FsChaos, NetworkChaos},
+        plugin_ledger::{FinalReceipt, LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
     },
     planes::{
-        terminal::{PtyConfig, PromptRule, TokenShield},
-        storage::{DynamicFile, SyntheticFile, IdmapConfig, MaskRule, ReadMaskEngine, SnoopHandler, SnoopRule, StorageConfig, WorkspaceEncapsulation},
-        wire::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig},
+        terminal_plane::{PtyConfig, PromptRule, TokenShield},
+        storage_plane::{DynamicFile, SyntheticFile, IdmapConfig, MaskRule, ReadMaskEngine, SnoopHandler, SnoopRule, StorageConfig, WorkspaceEncapsulation},
+        wire_plane::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig},
     },
-    protocol::{PatchPayload, TrapEvent},
-    telemetry::{CausalDelta, ExecutionReceipt},
+    protocol_wire::{PatchPayload, TrapEvent},
+    telemetry_attest::{CausalDelta, ExecutionReceipt},
 };
 
 // ============================================================================

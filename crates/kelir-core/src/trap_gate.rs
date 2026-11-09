@@ -4,8 +4,8 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use kelir_interface::plugin::MountScope;
-use kelir_interface::protocol::{TrapEvent, Verdict};
+use kelir_interface::plugin_model::MountScope;
+use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 
 // see: cans/11-protocol.md#Trap-fast-path
 pub const TRUSTED_PREFIXES: &[&str] = &["/usr/bin", "/bin", "/usr/lib"];

@@ -10,9 +10,9 @@ use napi::{Error, Result, Status};
 use napi_derive::napi;
 use tokio::sync::Mutex as AsyncMutex;
 
-pub mod fusion;
+pub mod fusion_plugin;
 
-use fusion::{FusedTrampolineDescriptor, TrampolineTable, convert_descriptor};
+use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, convert_descriptor};
 
 pub struct PluginRegistration {
     pub name: String,
@@ -20,12 +20,12 @@ pub struct PluginRegistration {
 }
 
 use kelir_core::Session;
-use kelir_core::planes::storage::reconciler::FsReconcileRequest;
-use kelir_interface::driver::{
+use kelir_core::planes::storage::storage_reconciler::FsReconcileRequest;
+use kelir_interface::driver_interface::{
     ExternalSuspendKind, GuestClock, SnapshotDescriptor, SuspendReason, VmConfig, default_vm_config,
 };
-use kelir_interface::handles::VmHandle as CoreVmHandle;
-use kelir_interface::plugin::PluginError;
+use kelir_interface::handles_lifecycle::VmHandle as CoreVmHandle;
+use kelir_interface::plugin_model::PluginError;
 
 // see: cans/03-sdk-architecture.md#Session-surfaces
 fn halt(error: PluginError) -> Error {
@@ -158,7 +158,7 @@ pub struct NativeTerminalReadRecord {
 // see: cans/08-lifecycle.md#Clock-skew
 #[napi]
 pub struct NativeClockHandle {
-    clock: kelir_interface::handles::ClockHandle,
+    clock: kelir_interface::handles_lifecycle::ClockHandle,
 }
 
 #[napi]

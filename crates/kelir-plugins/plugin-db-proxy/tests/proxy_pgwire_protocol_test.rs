@@ -1,11 +1,11 @@
 // see: cans/plugins/db-proxy.md#Invariants-and-policy-(db-proxy)
 use std::net::{Ipv4Addr, SocketAddrV4};
 
-use kelir_interface::plugin::NetInterposer;
-use kelir_interface::protocol::FilterAction;
+use kelir_interface::plugin_model::NetInterposer;
+use kelir_interface::protocol_wire::FilterAction;
 use plugin_db_proxy::DbProxyPlugin;
-use plugin_db_proxy::pgwire::{PgFrameDescriptor, PgFrameKind};
-use plugin_db_proxy::reassembler::FlowKey;
+use plugin_db_proxy::pgwire_db_proxy::{PgFrameDescriptor, PgFrameKind};
+use plugin_db_proxy::reassembler_wire::FlowKey;
 
 fn pgwire_query_frame(sql: &str) -> Vec<u8> {
     let mut frame = Vec::new();

@@ -1,11 +1,11 @@
 // see: cans/02-plugin-model.md#Plugin-testkit
 #![forbid(unsafe_code)]
 
-pub mod assertions;
-pub mod fixtures;
-pub mod handlers;
+pub mod assertions_testkit;
+pub mod fixtures_testkit;
+pub mod handlers_testkit;
 pub mod mock_bus;
-pub mod vectors;
+pub mod vectors_testkit;
 
 use std::collections::VecDeque;
 use std::path::Path;
@@ -15,7 +15,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::io::AsyncRead;
 
-use kelir_interface::driver::{
+use kelir_interface::driver_interface::{
     BalloonConvergence, DriverCapabilities, DriverError, EntropyBackend, EntropyStreamPosition,
     PmuSampler, SharedMemoryHandle, SnapshotDescriptor, Stream, SuspendReason, VmConfig, VmmDriver,
     WatchdogAction, check_hw_lockfile,

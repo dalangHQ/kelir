@@ -1,7 +1,7 @@
 // see: cans/artifacts/test-plan/cases/telemetry_audit/ta_11_otlp_exporter_encodes_execution_receipt.yaml#case_id
 use kelir_interface::telemetry::ExecutionReceipt;
-use kelir_otlp::records::OtlpReceiptRecord;
-use kelir_otlp::registry::MetricRegistry;
+use kelir_otlp::records_otlp::OtlpReceiptRecord;
+use kelir_otlp::registry_otlp::MetricRegistry;
 use kelir_otlp::{MetricSnapshot, OtlpError, OtlpExporter};
 
 fn receipt_toml() -> String {

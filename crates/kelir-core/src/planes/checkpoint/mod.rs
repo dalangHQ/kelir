@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use kelir_interface::driver::SnapshotDescriptor;
-use kelir_interface::plugin::PluginError;
+use kelir_interface::driver_interface::SnapshotDescriptor;
+use kelir_interface::plugin_model::PluginError;
 use kelir_interface::telemetry::CausalDelta;
 
 // see: cans/10-attestation.md#Step-evaluation-loop
@@ -108,7 +108,7 @@ pub struct CheckpointPlane {
     graph: RwLock<ManifestGraph>,
     next_slot_id: AtomicU64,
     monotonic_watermark_ns: AtomicU64,
-    metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
+    metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
 }
 
 impl Default for CheckpointPlane {
@@ -124,19 +124,19 @@ impl CheckpointPlane {
             graph: RwLock::new(ManifestGraph::new()),
             next_slot_id: AtomicU64::new(0),
             monotonic_watermark_ns: AtomicU64::new(0),
-            metrics: std::sync::Arc::new(kelir_otlp::registry::MetricRegistry::new()),
+            metrics: std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
         }
     }
 
     pub fn with_metrics(
         mut self,
-        metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
+        metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     ) -> Self {
         self.metrics = metrics;
         self
     }
 
-    pub fn metrics(&self) -> &std::sync::Arc<kelir_otlp::registry::MetricRegistry> {
+    pub fn metrics(&self) -> &std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry> {
         &self.metrics
     }
 

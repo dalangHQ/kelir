@@ -12,12 +12,12 @@ use tokio::task::JoinSet;
 
 use kelir::{
     HCons, HNil, KelirBuilder, NoParams, Session, SnapshotDescriptor, Unsealed, VmConfig,
-    driver::{DriverPolicy, WxPolicy},
-    planes::storage::{LockBrokerConfig, LockMode, LockScope},
-    plugin::VetoEvent,
+    driver_interface::{DriverPolicy, WxPolicy},
+    planes::storage_plane::{LockBrokerConfig, LockMode, LockScope},
+    plugin_model::VetoEvent,
     plugins::{
-        ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, ReceiptConfig},
-        mesh::{
+        plugin_ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, ReceiptConfig},
+        plugin_mesh::{
             MeshConfig, MeshCtx, MeshPlugin, PeerIdentity, PeerListener, TraceParentPropagation,
         },
         supply_chain::{

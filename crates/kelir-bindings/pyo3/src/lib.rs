@@ -11,16 +11,16 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 
-pub mod fusion;
+pub mod fusion_plugin;
 
-use fusion::{FusedTrampolineDescriptor, TrampolineTable, convert_descriptor};
+use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, convert_descriptor};
 use kelir_core::Session;
-use kelir_core::planes::storage::reconciler::FsReconcileRequest;
-use kelir_interface::driver::{
+use kelir_core::planes::storage::storage_reconciler::FsReconcileRequest;
+use kelir_interface::driver_interface::{
     ExternalSuspendKind, GuestClock, SnapshotDescriptor, SuspendReason, VmConfig, default_vm_config,
 };
-use kelir_interface::handles::VmHandle as CoreVmHandle;
-use kelir_interface::plugin::PluginError;
+use kelir_interface::handles_lifecycle::VmHandle as CoreVmHandle;
+use kelir_interface::plugin_model::PluginError;
 
 pub struct PluginRegistration {
     pub name: String,

@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant};
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{KelirPlugin, LifecycleParticipant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

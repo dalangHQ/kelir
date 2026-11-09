@@ -1,7 +1,7 @@
 // see: cans/02-plugin-model.md#Auto-generated-manifest-contract
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-use crate::model::Ty;
-use crate::sdk::{Projection, sdk_camel};
+use crate::model_codegen::Ty;
+use crate::sdk_codegen::{Projection, sdk_camel};
 
 const TS_HEADER: &str = "// see: cans/03-sdk-architecture.md#TypeScript-SDK
 ";

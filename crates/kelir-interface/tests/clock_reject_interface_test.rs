@@ -1,5 +1,5 @@
 // see: cans/artifacts/test-plan/cases/plugin_engine/pe_15_interface_rejects_emulated_deterministic_clock.yaml#case_id
-use kelir_interface::driver::{VmmError, reject_emulated_deterministic_clock};
+use kelir_interface::driver_interface::{VmmError, reject_emulated_deterministic_clock};
 
 // see: cans/artifacts/test-plan/cases/plugin_engine/pe_15_interface_rejects_emulated_deterministic_clock.yaml#case_id
 #[test]

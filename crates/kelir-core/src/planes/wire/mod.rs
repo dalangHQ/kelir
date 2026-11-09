@@ -4,11 +4,11 @@
 use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex, RwLock};
 
-use kelir_interface::plugin::PluginError;
-use kelir_interface::protocol::{FilterAction, StreamKind};
-use kelir_interface::vsock::{VAULT_METADATA_VSOCK_PORT, VsockServiceHandler};
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::protocol_wire::{FilterAction, StreamKind};
+use kelir_interface::vsock_mesh::{VAULT_METADATA_VSOCK_PORT, VsockServiceHandler};
 
-mod layout;
+mod layout_wire;
 
 pub const SYNTHETIC_DNS_GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 127, 1);
 pub const SYNTHETIC_DNS_PORT: u16 = 53;
@@ -144,13 +144,13 @@ pub fn link_local_route(frame: &[u8], direction: FrameDirection) -> Option<LinkL
 
 // see: cans/07-wire-plane.md#Pre-policy-drop-zones
 fn frame_remote_ip(frame: &[u8], direction: FrameDirection) -> Option<Ipv4Addr> {
-    if frame.len() < layout::ETH_HEADER_BYTES {
+    if frame.len() < layout_wire::ETH_HEADER_BYTES {
         return None;
     }
-    if layout::EthView::new_unchecked(frame).etype() != layout::ETHERTYPE_IPV4 {
+    if layout_wire::EthView::new_unchecked(frame).etype() != layout_wire::ETHERTYPE_IPV4 {
         return None;
     }
-    let ip = layout::Ipv4View::new_unchecked(&frame[layout::ETH_HEADER_BYTES..]);
+    let ip = layout_wire::Ipv4View::new_unchecked(&frame[layout_wire::ETH_HEADER_BYTES..]);
     let octets = match direction {
         FrameDirection::Inbound => ip.src_checked(),
         FrameDirection::Outbound => ip.dst_checked(),
@@ -163,30 +163,30 @@ pub fn classify_frame(frame: &[u8]) -> FrameClass {
 }
 
 pub fn classify_frame_directional(frame: &[u8], direction: FrameDirection) -> FrameClass {
-    if frame.len() < layout::ETH_HEADER_BYTES {
+    if frame.len() < layout_wire::ETH_HEADER_BYTES {
         return FrameClass::TooShort;
     }
-    if layout::EthView::new_unchecked(frame).etype() != layout::ETHERTYPE_IPV4 {
+    if layout_wire::EthView::new_unchecked(frame).etype() != layout_wire::ETHERTYPE_IPV4 {
         return FrameClass::NonIp;
     }
-    let ip = layout::Ipv4View::new_unchecked(&frame[layout::ETH_HEADER_BYTES..]);
+    let ip = layout_wire::Ipv4View::new_unchecked(&frame[layout_wire::ETH_HEADER_BYTES..]);
     let Some(ihl) = ip.ihl_bytes_checked() else {
         return FrameClass::TooShort;
     };
-    if ihl < layout::IPV4_MIN_HEADER_BYTES
-        || frame.len() < layout::ETH_HEADER_BYTES + ihl + layout::L4_PORT_PAIR_BYTES
+    if ihl < layout_wire::IPV4_MIN_HEADER_BYTES
+        || frame.len() < layout_wire::ETH_HEADER_BYTES + ihl + layout_wire::L4_PORT_PAIR_BYTES
     {
         return FrameClass::TooShort;
     }
     match ip.proto() {
-        layout::IP_PROTO_TCP => {
+        layout_wire::IP_PROTO_TCP => {
             if is_synthetic_dns(frame, direction) {
                 FrameClass::TcpDns
             } else {
                 FrameClass::Tcp
             }
         }
-        layout::IP_PROTO_UDP => {
+        layout_wire::IP_PROTO_UDP => {
             if is_synthetic_dns(frame, direction) {
                 FrameClass::UdpDns
             } else {
@@ -199,18 +199,18 @@ pub fn classify_frame_directional(frame: &[u8], direction: FrameDirection) -> Fr
 
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
 pub fn is_synthetic_dns(frame: &[u8], direction: FrameDirection) -> bool {
-    if frame.len() < layout::ETH_HEADER_BYTES {
+    if frame.len() < layout_wire::ETH_HEADER_BYTES {
         return false;
     }
-    if layout::EthView::new_unchecked(frame).etype() != layout::ETHERTYPE_IPV4 {
+    if layout_wire::EthView::new_unchecked(frame).etype() != layout_wire::ETHERTYPE_IPV4 {
         return false;
     }
-    let ip = layout::Ipv4View::new_unchecked(&frame[layout::ETH_HEADER_BYTES..]);
+    let ip = layout_wire::Ipv4View::new_unchecked(&frame[layout_wire::ETH_HEADER_BYTES..]);
     let Some(ihl) = ip.ihl_bytes_checked() else {
         return false;
     };
-    if ihl < layout::IPV4_MIN_HEADER_BYTES
-        || frame.len() < layout::ETH_HEADER_BYTES + ihl + layout::L4_PORT_PAIR_BYTES
+    if ihl < layout_wire::IPV4_MIN_HEADER_BYTES
+        || frame.len() < layout_wire::ETH_HEADER_BYTES + ihl + layout_wire::L4_PORT_PAIR_BYTES
     {
         return false;
     }
@@ -223,11 +223,11 @@ pub fn is_synthetic_dns(frame: &[u8], direction: FrameDirection) -> bool {
         return false;
     }
     let protocol = ip.proto();
-    if protocol != layout::IP_PROTO_TCP && protocol != layout::IP_PROTO_UDP {
+    if protocol != layout_wire::IP_PROTO_TCP && protocol != layout_wire::IP_PROTO_UDP {
         return false;
     }
-    let l4_start = layout::ETH_HEADER_BYTES + ihl;
-    let tcp = layout::TcpView::new_unchecked(&frame[l4_start..]);
+    let l4_start = layout_wire::ETH_HEADER_BYTES + ihl;
+    let tcp = layout_wire::TcpView::new_unchecked(&frame[l4_start..]);
     let port = match direction {
         FrameDirection::Inbound => tcp.src_port(),
         FrameDirection::Outbound => tcp.dst_port(),
@@ -240,19 +240,20 @@ pub fn dns_payload(frame: &[u8], direction: FrameDirection) -> Option<&[u8]> {
     if !is_synthetic_dns(frame, direction) {
         return None;
     }
-    let ip = layout::Ipv4View::new_unchecked(&frame[layout::ETH_HEADER_BYTES..]);
-    let l4_start = layout::ETH_HEADER_BYTES + ip.ihl_bytes_checked()?;
+    let ip = layout_wire::Ipv4View::new_unchecked(&frame[layout_wire::ETH_HEADER_BYTES..]);
+    let l4_start = layout_wire::ETH_HEADER_BYTES + ip.ihl_bytes_checked()?;
     match ip.proto() {
-        layout::IP_PROTO_UDP => {
-            if frame.len() < l4_start + layout::UDP_HEADER_BYTES {
+        layout_wire::IP_PROTO_UDP => {
+            if frame.len() < l4_start + layout_wire::UDP_HEADER_BYTES {
                 return None;
             }
-            Some(&frame[l4_start + layout::UDP_HEADER_BYTES..])
+            Some(&frame[l4_start + layout_wire::UDP_HEADER_BYTES..])
         }
-        layout::IP_PROTO_TCP => {
-            let tcp = layout::TcpView::new_unchecked(&frame[l4_start..]);
+        layout_wire::IP_PROTO_TCP => {
+            let tcp = layout_wire::TcpView::new_unchecked(&frame[l4_start..]);
             let header_bytes = tcp.header_bytes_checked()?;
-            if header_bytes < layout::TCP_MIN_HEADER_BYTES || frame.len() < l4_start + header_bytes
+            if header_bytes < layout_wire::TCP_MIN_HEADER_BYTES
+                || frame.len() < l4_start + header_bytes
             {
                 return None;
             }
@@ -283,7 +284,7 @@ pub struct WirePlane {
     allowed_domains: Arc<RwLock<Vec<String>>>,
     stack: SmoltcpStack,
     imds_sink: Arc<RwLock<Option<Arc<dyn VsockServiceHandler>>>>,
-    metrics: Arc<kelir_otlp::registry::MetricRegistry>,
+    metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
 }
 
 impl Default for WirePlane {
@@ -301,16 +302,16 @@ impl WirePlane {
             allowed_domains: Arc::new(RwLock::new(Vec::new())),
             stack: SmoltcpStack::new(),
             imds_sink: Arc::new(RwLock::new(None)),
-            metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
+            metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
         }
     }
 
-    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry::MetricRegistry>) -> Self {
+    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>) -> Self {
         self.metrics = metrics;
         self
     }
 
-    pub fn metrics(&self) -> &Arc<kelir_otlp::registry::MetricRegistry> {
+    pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
         &self.metrics
     }
 
@@ -336,8 +337,11 @@ impl WirePlane {
         }
     }
 
-    fn record_drop(&self, action: &kelir_interface::protocol::FilterAction) {
-        if matches!(action, kelir_interface::protocol::FilterAction::Drop { .. }) {
+    fn record_drop(&self, action: &kelir_interface::protocol_wire::FilterAction) {
+        if matches!(
+            action,
+            kelir_interface::protocol_wire::FilterAction::Drop { .. }
+        ) {
             self.metrics.record_drop();
         }
     }
@@ -347,9 +351,9 @@ impl WirePlane {
         &self,
         guest_port: u16,
         host_port: Option<u16>,
-    ) -> Result<u16, kelir_interface::plugin::PluginError> {
+    ) -> Result<u16, kelir_interface::plugin_model::PluginError> {
         let mut forwards = self.port_forwards.lock().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("port forward table poisoned".into())
+            kelir_interface::plugin_model::PluginError::Halt("port forward table poisoned".into())
         })?;
         let Some(bind_port) = host_port.filter(|port| *port != 0) else {
             let allocated = (EPHEMERAL_PORT_MIN..=u16::MAX)
@@ -379,7 +383,10 @@ impl WirePlane {
     pub fn process_inbound_frame(
         &mut self,
         frame: &mut [u8],
-    ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
+    ) -> Result<
+        kelir_interface::protocol_wire::FilterAction,
+        kelir_interface::plugin_model::PluginError,
+    > {
         if let Some(LinkLocalRoute::Drop) = link_local_route(frame, FrameDirection::Inbound) {
             let action = FilterAction::Drop {
                 errno: None,
@@ -389,8 +396,8 @@ impl WirePlane {
             return Ok(action);
         }
         let action: Result<
-            kelir_interface::protocol::FilterAction,
-            kelir_interface::plugin::PluginError,
+            kelir_interface::protocol_wire::FilterAction,
+            kelir_interface::plugin_model::PluginError,
         > = match classify_frame_directional(frame, FrameDirection::Inbound) {
             FrameClass::TooShort
             | FrameClass::NonIp
@@ -414,7 +421,10 @@ impl WirePlane {
     pub fn process_outbound_frame(
         &mut self,
         frame: &mut [u8],
-    ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
+    ) -> Result<
+        kelir_interface::protocol_wire::FilterAction,
+        kelir_interface::plugin_model::PluginError,
+    > {
         match link_local_route(frame, FrameDirection::Outbound) {
             Some(LinkLocalRoute::Drop) => {
                 let action = FilterAction::Drop {
@@ -428,8 +438,8 @@ impl WirePlane {
             None => {}
         }
         let action: Result<
-            kelir_interface::protocol::FilterAction,
-            kelir_interface::plugin::PluginError,
+            kelir_interface::protocol_wire::FilterAction,
+            kelir_interface::plugin_model::PluginError,
         > = match classify_frame_directional(frame, FrameDirection::Outbound) {
             FrameClass::TooShort
             | FrameClass::NonIp
@@ -466,7 +476,10 @@ impl WirePlane {
     pub fn route_imds_to_vault(
         &self,
         frame: &[u8],
-    ) -> Result<kelir_interface::protocol::FilterAction, kelir_interface::plugin::PluginError> {
+    ) -> Result<
+        kelir_interface::protocol_wire::FilterAction,
+        kelir_interface::plugin_model::PluginError,
+    > {
         match link_local_route(frame, FrameDirection::Outbound) {
             Some(LinkLocalRoute::VaultImds { vsock_port }) => {
                 if self.imds_sink()?.is_none() {
@@ -475,7 +488,7 @@ impl WirePlane {
                     )));
                 }
                 // TODO (L3): parse the HTTP metadata request and bridge it to the bound vault vsock service stream.
-                Ok(kelir_interface::protocol::FilterAction::Forward)
+                Ok(kelir_interface::protocol_wire::FilterAction::Forward)
             }
             _ => Err(PluginError::Halt(
                 "route_imds_to_vault called on a non-IMDS frame".into(),
@@ -494,7 +507,7 @@ impl WirePlane {
     pub fn resolve_synthetic_dns(
         &self,
         payload: &[u8],
-    ) -> Result<DnsResponse, kelir_interface::plugin::PluginError> {
+    ) -> Result<DnsResponse, kelir_interface::plugin_model::PluginError> {
         // TODO (L3): parse the query, apply the domain allowlist, answer from host resolver state via the synthetic gateway, EDNS0-downgrade the response.
         let _ = (payload, &self.allowed_domains, &self.synthetic_dns_ip);
         Ok(DnsResponse {
@@ -509,9 +522,9 @@ impl WirePlane {
         &self,
         guest_source_port: u16,
         now_unix: u64,
-    ) -> Result<(), kelir_interface::plugin::PluginError> {
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let mut slab = self.udp_nat_slab.lock().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("udp nat slab lock poisoned".into())
+            kelir_interface::plugin_model::PluginError::Halt("udp nat slab lock poisoned".into())
         })?;
         if let Some(slot) = slab
             .iter_mut()
@@ -558,9 +571,9 @@ impl WirePlane {
     pub fn reap_stale_udp_sockets(
         &self,
         now_unix: u64,
-    ) -> Result<usize, kelir_interface::plugin::PluginError> {
+    ) -> Result<usize, kelir_interface::plugin_model::PluginError> {
         let mut slab = self.udp_nat_slab.lock().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("udp nat slab lock poisoned".into())
+            kelir_interface::plugin_model::PluginError::Halt("udp nat slab lock poisoned".into())
         })?;
         let mut reaped = 0usize;
         for slot in slab.iter_mut() {

@@ -2,21 +2,21 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_tool_guard.rs per cans/artifacts/config/project-structure.txt.
-pub mod service;
+pub mod service_tool_guard;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{
     ConsoleInterposer, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
     VirtioDevice,
 };
-use kelir_interface::protocol::Verdict;
+use kelir_interface::protocol_wire::Verdict;
 use plugin_mcp::McpEndpointService;
 
-use crate::service::{
+use crate::service_tool_guard::{
     McpFrame, McpMethod, ToolRegistry, ToolRegistryService, ToolSchema, ToolsListResult,
     decode_tools_list,
 };
@@ -168,7 +168,7 @@ impl ToolGuardCtx {
 
     pub async fn bind_approval(
         &self,
-        request: &crate::service::ApprovalRequest,
+        request: &crate::service_tool_guard::ApprovalRequest,
     ) -> Result<(), PluginError> {
         self.registry.bind_approval(request).await
     }

@@ -3,7 +3,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
 
-use kelir_interface::plugin::PluginError;
+use kelir_interface::plugin_model::PluginError;
 use plugin_transaction::{
     Savepoint, TransactionConfig, TransactionHandle, TransactionPlugin, TransactionScope,
     TransactionService,

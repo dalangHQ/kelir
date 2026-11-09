@@ -2,26 +2,26 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt.
-pub mod pgwire;
-pub mod reassembler;
-pub mod service;
-pub mod sqlite;
-pub use service::SqlProxyService;
+pub mod pgwire_db_proxy;
+pub mod reassembler_wire;
+pub mod service_db_proxy;
+pub mod sqlite_db_proxy;
+pub use service_db_proxy::SqlProxyService;
 
 use std::sync::Arc;
 
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{
     KelirPlugin, MountScope, NetInterposer, PipelineBinder, VirtioDevice,
 };
-use kelir_interface::protocol::FilterAction;
+use kelir_interface::protocol_wire::FilterAction;
 
-use crate::pgwire::PgFrameDescriptor;
-use crate::reassembler::{
+use crate::pgwire_db_proxy::PgFrameDescriptor;
+use crate::reassembler_wire::{
     FlowKey, NetDirection, NetPlaneState, SegmentOutcome, TCP_FLAG_RST, parse_tcp_segment,
 };
-use crate::service::{SqlDialect, SqlProxy, StatementHandle};
-use crate::sqlite::SqliteBridge;
+use crate::service_db_proxy::{SqlDialect, SqlProxy, StatementHandle};
+use crate::sqlite_db_proxy::SqliteBridge;
 
 // see: cans/artifacts/examples/db-backed-runtime.py#PgWireRewrite
 #[derive(Clone, Debug)]

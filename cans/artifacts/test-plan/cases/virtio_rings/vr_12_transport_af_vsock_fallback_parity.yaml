@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Transport-engine-abstraction"
-  statement: "Fallbacks carry identical framing; only the byte carrier differs. GAP: no frame encoder exists in crates/kelir-interface/src/protocol.rs (only the StreamKind/MsgType enums), and both SpscRingTransport and VsockFallbackTransport read/write are TODO (L3) stubs, so byte-for-byte framing parity has no executable surface yet."
+  statement: "Fallbacks carry identical framing; only the byte carrier differs. GAP: no frame encoder exists in crates/kelir-interface/src/protocol_wire.rs (only the StreamKind/MsgType enums), and both SpscRingTransport and VsockFallbackTransport read/write are TODO (L3) stubs, so byte-for-byte framing parity has no executable surface yet."
   blast_radius_if_breached: "Debug and testing workflows using AF_VSOCK diverge from production shared-memory behavior."
 
 confusion_matrix:

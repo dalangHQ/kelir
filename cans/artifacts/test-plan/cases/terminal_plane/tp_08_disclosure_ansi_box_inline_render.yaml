@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Disclosure"
-  statement: "Injects formatted ANSI box into Port 0 stream; renders inline without corrupting cursor state. GAP: no TerminalNotice type and no publish_notice method exist in code — EventBusBinder (crates/kelir-interface/src/plugin.rs:438) exposes no publish surface — so the disclosure is asserted as the spec-required behavior, not via a callable surface."
+  statement: "Injects formatted ANSI box into Port 0 stream; renders inline without corrupting cursor state. GAP: no TerminalNotice type and no publish_notice method exist in code — EventBusBinder (crates/kelir-interface/src/plugin_model.rs:447) exposes no publish surface — so the disclosure is asserted as the spec-required behavior, not via a callable surface."
   blast_radius_if_breached: "Host notices overwrite active command input line or corrupt curses-based terminal state."
 
 confusion_matrix:

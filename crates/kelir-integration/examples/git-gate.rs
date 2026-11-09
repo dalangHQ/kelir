@@ -3,12 +3,12 @@
 use async_trait::async_trait;
 use kelir::{
     KelirBuilder, PidLineage, SnapshotDescriptor, VmConfig,
-    driver::{DriverPolicy, WxPolicy},
-    planes::storage::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
-    plugin::{KelirPlugin, PluginError, TrapInterposer, Verdict},
-    protocol::TrapEvent,
+    driver_interface::{DriverPolicy, WxPolicy},
+    planes::storage_plane::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
+    plugin_model::{KelirPlugin, PluginError, TrapInterposer, Verdict},
+    protocol_wire::TrapEvent,
 };
-use kelir_interface::plugin::HandlerCtx;
+use kelir_interface::plugin_model::HandlerCtx;
 
 const PROTECTED: &[&str] = &["main", "master"];
 

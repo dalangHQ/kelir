@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/11-protocol.md#Control-channel"
-  statement: "0x0013-0x7FFF: plugin-registered; collision aborts EKindConflict. Gap: register_stream_kind returns Self infallibly and the collision abort is a TODO (L3) (crates/kelir-core/src/dispatch.rs); the abort is specified against cans/11-protocol.md#Control-channel, not a live check."
+  statement: "0x0013-0x7FFF: plugin-registered; collision aborts EKindConflict. Gap: register_stream_kind returns Self infallibly and the collision abort is a TODO (L3) (crates/kelir-core/src/dispatch_plugin.rs); the abort is specified against cans/11-protocol.md#Control-channel, not a live check."
   blast_radius_if_breached: "Conflicting plugins overwrite stream routers, causing silent data corruption."
 
 confusion_matrix:

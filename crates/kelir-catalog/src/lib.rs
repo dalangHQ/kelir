@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
-pub mod schema;
+pub mod schema_catalog;
 
-use crate::schema::{IncarnationId, LeaseKind, SCHEMA_V1_SQL, SessionRow};
+use crate::schema_catalog::{IncarnationId, LeaseKind, SCHEMA_V1_SQL, SessionRow};
 use rusqlite::params;
 use thiserror::Error;
 

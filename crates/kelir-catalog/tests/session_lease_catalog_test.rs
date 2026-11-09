@@ -2,7 +2,7 @@
 use std::path::PathBuf;
 
 use kelir_catalog::CatalogDb;
-use kelir_catalog::schema::{IncarnationId, LeaseKind, SessionRow};
+use kelir_catalog::schema_catalog::{IncarnationId, LeaseKind, SessionRow};
 
 fn temp_db(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("kelir-et2-{name}.db"))

@@ -15,12 +15,12 @@ use serde::Deserialize;
 use tokio::task::JoinSet;
 
 use kelir::{
-    driver::{DriverPolicy, WxPolicy}, KelirBuilder, Session, VmConfig,
-    plugin::VetoEvent,
-    planes::storage::{LockBrokerConfig, LockScope, LockMode},
+    driver_interface::{DriverPolicy, WxPolicy}, KelirBuilder, Session, VmConfig,
+    plugin_model::VetoEvent,
+    planes::storage_plane::{LockBrokerConfig, LockScope, LockMode},
     plugins::{
-        ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, ReceiptConfig},
-        mesh::{MeshConfig, MeshCtx, MeshPlugin, PeerIdentity, TraceParentPropagation},
+        plugin_ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, ReceiptConfig},
+        plugin_mesh::{MeshConfig, MeshCtx, MeshPlugin, PeerIdentity, TraceParentPropagation},
         supply_chain::{
             LifecyclePolicy, PackageManager, SupplyChainConfig, SupplyChainPlugin,
         },
@@ -79,10 +79,10 @@ fn swarm_builder() -> KelirBuilder {
         mtls: true,
         traceparent: TraceParentPropagation::InjectAndValidate,
         listeners: vec![
-            kelir::plugins::mesh::PeerListener {
+            kelir::plugins::plugin_mesh::PeerListener {
                 port: 7001, service: "shard-exchange".into(),
             },
-            kelir::plugins::mesh::PeerListener {
+            kelir::plugins::plugin_mesh::PeerListener {
                 port: 7002, service: "winner-announce".into(),
             },
         ],

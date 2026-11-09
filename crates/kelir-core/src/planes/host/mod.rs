@@ -4,9 +4,9 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use kelir_interface::driver::BalloonConvergence;
-use kelir_interface::handles::VmControl;
-use kelir_interface::plugin::PluginError;
+use kelir_interface::driver_interface::BalloonConvergence;
+use kelir_interface::handles_lifecycle::VmControl;
+use kelir_interface::plugin_model::PluginError;
 
 pub enum HostReaperKind {
     LinuxPdeathsig,
@@ -79,7 +79,7 @@ pub struct HostPlane {
     pressure_level: AtomicU8,
     watcher: Mutex<Option<PressureSubscription>>,
     vm_control: Option<std::sync::Arc<dyn VmControl>>,
-    metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
+    metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
 }
 
 impl Default for HostPlane {
@@ -114,7 +114,7 @@ impl HostPlane {
             pressure_level: AtomicU8::new(0),
             watcher: Mutex::new(None),
             vm_control: None,
-            metrics: std::sync::Arc::new(kelir_otlp::registry::MetricRegistry::new()),
+            metrics: std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
         }
     }
 
@@ -126,13 +126,13 @@ impl HostPlane {
 
     pub fn with_metrics(
         mut self,
-        metrics: std::sync::Arc<kelir_otlp::registry::MetricRegistry>,
+        metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     ) -> Self {
         self.metrics = metrics;
         self
     }
 
-    pub fn metrics(&self) -> &std::sync::Arc<kelir_otlp::registry::MetricRegistry> {
+    pub fn metrics(&self) -> &std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry> {
         &self.metrics
     }
 
@@ -175,20 +175,20 @@ impl HostPlane {
 
     pub fn subscribe_pressure(
         &self,
-    ) -> Result<PressureSubscription, kelir_interface::plugin::PluginError> {
+    ) -> Result<PressureSubscription, kelir_interface::plugin_model::PluginError> {
         // TODO (L3): subscribe to the kernel pressure source (cgroup v2 memory.pressure via epoll/io_uring, DISPATCH_SOURCE_TYPE_MEMORYPRESSURE on macOS) and store the subscription in watcher.
         let _ = &self.watcher;
-        Err(kelir_interface::plugin::PluginError::Halt(
+        Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3): HostPlane::subscribe_pressure".into(),
         ))
     }
 
     pub fn poll_pressure_events(
         &self,
-    ) -> Result<Vec<PressureEvent>, kelir_interface::plugin::PluginError> {
+    ) -> Result<Vec<PressureEvent>, kelir_interface::plugin_model::PluginError> {
         // TODO (L3): drain kernel pressure events into PressureEvents and update pressure_level.
         let _ = &self.watcher;
-        Err(kelir_interface::plugin::PluginError::Halt(
+        Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3): HostPlane::poll_pressure_events".into(),
         ))
     }
@@ -210,10 +210,10 @@ impl HostPlane {
     pub fn reclaim(
         &self,
         request: ReclaimRequest,
-    ) -> Result<u64, kelir_interface::plugin::PluginError> {
+    ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
         // TODO (L3): reclaim request.bytes of host frames via madvise(MADV_DONTNEED) on Linux, hv_vm_unmap + mach_vm_deallocate on macOS.
         let _ = request;
-        Err(kelir_interface::plugin::PluginError::Halt(
+        Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3): HostPlane::reclaim".into(),
         ))
     }
@@ -221,10 +221,10 @@ impl HostPlane {
     pub fn arm_host_reaper(
         &self,
         parent_pid: u32,
-    ) -> Result<(), kelir_interface::plugin::PluginError> {
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): arm the platform reaper (pdeathsig / kqueue NOTE_EXIT / Job Object) on parent_pid.
         let _ = parent_pid;
-        Err(kelir_interface::plugin::PluginError::Halt(
+        Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3): HostPlane::arm_host_reaper".into(),
         ))
     }

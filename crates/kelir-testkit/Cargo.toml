@@ -14,7 +14,7 @@ path = "src/bin/check_manifest.rs"
 
 [[bin]]
 name = "anchors"
-path = "src/bin/anchors.rs"
+path = "src/bin/anchors_testkit.rs"
 
 [[bin]]
 name = "check-tests"
@@ -22,7 +22,7 @@ path = "src/bin/check_tests.rs"
 
 [[bin]]
 name = "scorecard"
-path = "src/bin/scorecard.rs"
+path = "src/bin/scorecard_testkit.rs"
 
 [dependencies]
 serde = { workspace = true }

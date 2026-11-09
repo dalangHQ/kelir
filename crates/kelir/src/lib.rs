@@ -5,28 +5,28 @@
 pub use kelir_core::*;
 pub use kelir_interface as interface;
 
-pub mod builder;
-pub mod driver;
-pub mod hlist;
+pub mod builder_sdk;
+pub mod driver_interface;
+pub mod hlist_sdk;
 pub mod planes;
-pub mod plugin;
+pub mod plugin_model;
 pub mod plugins;
-pub mod protocol;
-pub mod sandbox;
-pub mod session;
-pub mod telemetry;
+pub mod protocol_wire;
+pub mod sandbox_runtime;
+pub mod session_lifecycle;
+pub mod telemetry_attest;
 
-pub use builder::{KelirBuilder, PostExecAction, Sealed, TrapFilter, Unsealed, handler};
-pub use hlist::{HCons, HList, HNil, NoParams};
+pub use builder_sdk::{KelirBuilder, PostExecAction, Sealed, TrapFilter, Unsealed, handler};
+pub use hlist_sdk::{HCons, HList, HNil, NoParams};
 pub use kelir_core::planes::checkpoint::{PidLineage, StepSlot};
-pub use kelir_core::planes::storage::reconciler::CommitStats;
-pub use kelir_interface::driver::{SnapshotDescriptor, VmConfig, WatchdogAction};
-pub use kelir_interface::handlers::Has;
-pub use kelir_interface::plugin::HandlerCtx;
-pub use kelir_interface::protocol::Verdict;
-pub use planes::storage::{FsReconcileRequest, SyntheticFile};
-pub use sandbox::{Sandbox, SandboxOptions, SandboxProfile};
-pub use session::{
+pub use kelir_core::planes::storage::storage_reconciler::CommitStats;
+pub use kelir_interface::driver_interface::{SnapshotDescriptor, VmConfig, WatchdogAction};
+pub use kelir_interface::handlers_plugin::Has;
+pub use kelir_interface::plugin_model::HandlerCtx;
+pub use kelir_interface::protocol_wire::Verdict;
+pub use planes::storage_plane::{FsReconcileRequest, SyntheticFile};
+pub use sandbox_runtime::{Sandbox, SandboxOptions, SandboxProfile};
+pub use session_lifecycle::{
     ClockHandle, ExecResult, FsHandle, Session, SpawnBuilder, StepStack, TerminalHandle, VmHandle,
     VsockChannel, VsockHandle, WireHandle,
 };

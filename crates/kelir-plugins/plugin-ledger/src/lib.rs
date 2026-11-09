@@ -6,18 +6,18 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{KelirPlugin, LifecycleParticipant, TrapInterposer};
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{KelirPlugin, LifecycleParticipant, TrapInterposer};
 use kelir_interface::telemetry::CausalDelta;
-use kelir_otlp::registry::{MetricRegistry, MetricSnapshot};
+use kelir_otlp::registry_otlp::{MetricRegistry, MetricSnapshot};
 use kelir_otlp::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfig};
 
-pub mod compute;
-pub mod otel;
-pub mod wal;
+pub mod compute_ledger;
+pub mod otel_ledger;
+pub mod wal_ledger;
 
-pub use otel::TraceParent;
-pub use wal::{LedgerSink, LocalMerkleDbSink, OtlpLedgerSink, WalRecord};
+pub use otel_ledger::TraceParent;
+pub use wal_ledger::{LedgerSink, LocalMerkleDbSink, OtlpLedgerSink, WalRecord};
 
 // see: cans/plugins/ledger.md#OpenTelemetry
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -142,7 +142,7 @@ impl LedgerCtx {
     }
 
     pub async fn finalize(&self, _request: FinalizeRequest) -> Result<FinalReceipt, PluginError> {
-        // TODO (L3): append the leaf via wal::WalRecord + wal::merkle_root, sign the receipt, and return the finalized root.
+        // TODO (L3): append the leaf via wal_ledger::WalRecord + wal_ledger::merkle_root, sign the receipt, and return the finalized root.
         Err(PluginError::Halt(
             "ledger finalize needs the Merkle WAL sink".into(),
         ))

@@ -1,9 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use kelir_core::planes::storage::fuse::{FuseDispatcher, FuseOpcode, FuseReply, FuseRequest};
-use kelir_core::planes::storage::synthetic::SyntheticFile;
-use kelir_interface::plugin::{FsInterposer, HandlerCtx};
+use kelir_core::planes::storage::fuse_storage::{
+    FuseDispatcher, FuseOpcode, FuseReply, FuseRequest,
+};
+use kelir_core::planes::storage::storage_synthetic::SyntheticFile;
+use kelir_interface::plugin_model::{FsInterposer, HandlerCtx};
 
 fn temp_workspace(name: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("kelir-et2-{name}"));

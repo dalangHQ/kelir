@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Terminal-plane-attributes"
-  statement: "Port 0 allocated to standard console IO; programmatic tooling uses stream kind EXEC exclusively. GAP: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes session.spawn (crates/kelir/src/session.rs:56) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll, so this case asserts the spec-required behavior and fails against the live tree until exec is wired."
+  statement: "Port 0 allocated to standard console IO; programmatic tooling uses stream kind EXEC exclusively. GAP: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes session.spawn (crates/kelir/src/session_lifecycle.rs:58) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll, so this case asserts the spec-required behavior and fails against the live tree until exec is wired."
   blast_radius_if_breached: "Automated agent commands interleave with interactive human break-glass session."
 
 confusion_matrix:

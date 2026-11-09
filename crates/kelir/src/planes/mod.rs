@@ -1,3 +1,3 @@
-pub mod storage;
-pub mod terminal;
-pub mod wire;
+pub mod storage_plane;
+pub mod terminal_plane;
+pub mod wire_plane;

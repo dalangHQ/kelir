@@ -6,16 +6,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{
     HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
     TrapInterposer,
 };
-use kelir_interface::protocol::{TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 
-pub mod service;
+pub mod service_container;
 
-pub use service::{ContainerCtx, ContainerService, SharedContainerService};
+pub use service_container::{ContainerCtx, ContainerService, SharedContainerService};
 
 // see: cans/plugins/container.md#Error-and-return-semantics-(container)
 const EPERM: &str = "EPERM";
@@ -190,7 +190,10 @@ impl KelirPlugin for ContainerPlugin {
     }
 
     // see: cans/plugins/container.md#Non-nested-OCI-container-execution
-    fn fork_state(&self, _child_session_id: &str) -> Box<dyn kelir_interface::plugin::AnyPlugin> {
+    fn fork_state(
+        &self,
+        _child_session_id: &str,
+    ) -> Box<dyn kelir_interface::plugin_model::AnyPlugin> {
         // see: cans/08-lifecycle.md#CoW-fork
         Box::new(Self::new(self.config.clone()))
     }

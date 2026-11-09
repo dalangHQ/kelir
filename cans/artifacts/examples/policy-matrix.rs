@@ -56,13 +56,13 @@ use ciborium::value::Value as CborValue;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use kelir::{
-    handler, driver::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
-    plugin::{
+    handler, driver_interface::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
+    plugin_model::{
         AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant,
         PluginError, SystemTelemetryParticipant, TrapInterposer,
         VetoEvent, Verdict, WatchdogEvent, WatchdogVerdict,
     },
-    protocol::{PatchPayload, SuspendUntil, TrapEvent},
+    protocol_wire::{PatchPayload, SuspendUntil, TrapEvent},
 };
 
 // ============================================================================

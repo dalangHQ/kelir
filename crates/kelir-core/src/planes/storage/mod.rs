@@ -1,11 +1,11 @@
 // see: cans/05-storage-plane.md#Storage-architecture
 // see: cans/05-storage-plane.md#Host-CoW-broker
 // see: cans/05-storage-plane.md#Storage-quotas
-pub mod fuse;
-pub mod io;
+pub mod fuse_storage;
+pub mod io_storage;
 pub mod lock_broker;
-pub mod reconciler;
-pub mod synthetic;
+pub mod storage_reconciler;
+pub mod storage_synthetic;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -24,14 +24,16 @@ fn accrue_quota(
     delta: u64,
     max: u64,
     kind: &str,
-) -> Result<(), kelir_interface::plugin::PluginError> {
+) -> Result<(), kelir_interface::plugin_model::PluginError> {
     let mut current = counter.load(Ordering::SeqCst);
     loop {
         let total = current.checked_add(delta).ok_or_else(|| {
-            kelir_interface::plugin::PluginError::Halt(format!("quota {kind} arithmetic overflow"))
+            kelir_interface::plugin_model::PluginError::Halt(format!(
+                "quota {kind} arithmetic overflow"
+            ))
         })?;
         if total > max {
-            return Err(kelir_interface::plugin::PluginError::reject(
+            return Err(kelir_interface::plugin_model::PluginError::reject(
                 "ENOSPC",
                 format!("storage {kind} quota exceeded"),
             ));
@@ -48,13 +50,13 @@ pub struct StoragePlane {
     sparse_upper_path: PathBuf,
     tombstones: Arc<RwLock<HashSet<PathBuf>>>,
     quota: StorageQuota,
-    io: Arc<dyn io::StorageIo>,
-    reconciler: OnceLock<reconciler::Reconciler>,
+    io: Arc<dyn io_storage::StorageIo>,
+    reconciler: OnceLock<storage_reconciler::Reconciler>,
     lock_broker: OnceLock<Arc<lock_broker::LockBroker>>,
     lock_namespace: [u8; 16],
-    fuse_worker: OnceLock<Mutex<fuse::FuseWorker>>,
-    metrics: Arc<kelir_otlp::registry::MetricRegistry>,
-    synthetic_files: Vec<synthetic::SyntheticFile>,
+    fuse_worker: OnceLock<Mutex<fuse_storage::FuseWorker>>,
+    metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
+    synthetic_files: Vec<storage_synthetic::SyntheticFile>,
 }
 
 impl StoragePlane {
@@ -74,35 +76,35 @@ impl StoragePlane {
                 max_bytes,
                 max_inodes,
             },
-            io: Arc::new(io::UnimplementedStorageIo),
+            io: Arc::new(io_storage::UnimplementedStorageIo),
             reconciler: OnceLock::new(),
             lock_broker: OnceLock::new(),
             lock_namespace: [0; 16],
             fuse_worker: OnceLock::new(),
-            metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
+            metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             synthetic_files: Vec::new(),
         }
     }
 
-    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry::MetricRegistry>) -> Self {
+    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>) -> Self {
         self.metrics = metrics;
         self
     }
 
-    pub fn metrics(&self) -> &Arc<kelir_otlp::registry::MetricRegistry> {
+    pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
         &self.metrics
     }
 
-    pub fn with_synthetic_files(mut self, files: Vec<synthetic::SyntheticFile>) -> Self {
+    pub fn with_synthetic_files(mut self, files: Vec<storage_synthetic::SyntheticFile>) -> Self {
         self.synthetic_files = files;
         self
     }
 
-    pub fn synthetic_files(&self) -> &[synthetic::SyntheticFile] {
+    pub fn synthetic_files(&self) -> &[storage_synthetic::SyntheticFile] {
         &self.synthetic_files
     }
 
-    pub fn with_io(mut self, storage_io: Arc<dyn io::StorageIo>) -> Self {
+    pub fn with_io(mut self, storage_io: Arc<dyn io_storage::StorageIo>) -> Self {
         self.io = storage_io;
         self
     }
@@ -111,10 +113,10 @@ impl StoragePlane {
     pub fn reconciler(
         &self,
         broker_dir: PathBuf,
-        guard: reconciler::TraversalGuard,
-    ) -> &reconciler::Reconciler {
+        guard: storage_reconciler::TraversalGuard,
+    ) -> &storage_reconciler::Reconciler {
         self.reconciler.get_or_init(|| {
-            reconciler::Reconciler::new(
+            storage_reconciler::Reconciler::new(
                 broker_dir,
                 self.workspace_root.clone(),
                 guard,
@@ -131,7 +133,7 @@ impl StoragePlane {
 
     pub fn lock_broker(
         &self,
-        interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
+        interposer: Arc<dyn kelir_interface::plugin_model::FsInterposer>,
     ) -> &lock_broker::LockBroker {
         self.lock_broker_arc(interposer)
     }
@@ -139,15 +141,15 @@ impl StoragePlane {
     // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
     pub fn lock_broker_coordination(
         &self,
-        interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
-    ) -> Arc<dyn kelir_interface::plugin::LockBrokerCoordination> {
+        interposer: Arc<dyn kelir_interface::plugin_model::FsInterposer>,
+    ) -> Arc<dyn kelir_interface::plugin_model::LockBrokerCoordination> {
         let broker: Arc<lock_broker::LockBroker> = Arc::clone(self.lock_broker_arc(interposer));
         broker
     }
 
     fn lock_broker_arc(
         &self,
-        interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
+        interposer: Arc<dyn kelir_interface::plugin_model::FsInterposer>,
     ) -> &Arc<lock_broker::LockBroker> {
         self.lock_broker.get_or_init(|| {
             Arc::new(lock_broker::LockBroker::new(interposer).with_namespace(self.lock_namespace))
@@ -156,13 +158,13 @@ impl StoragePlane {
 
     pub fn fuse_worker(
         &self,
-        receiver: std::sync::mpsc::Receiver<fuse::FuseRequest>,
-        interposer: Arc<dyn kelir_interface::plugin::FsInterposer>,
+        receiver: std::sync::mpsc::Receiver<fuse_storage::FuseRequest>,
+        interposer: Arc<dyn kelir_interface::plugin_model::FsInterposer>,
         session_id: [u8; 16],
-    ) -> &Mutex<fuse::FuseWorker> {
+    ) -> &Mutex<fuse_storage::FuseWorker> {
         self.fuse_worker.get_or_init(|| {
             Mutex::new(
-                fuse::FuseWorker::new(receiver, interposer, session_id)
+                fuse_storage::FuseWorker::new(receiver, interposer, session_id)
                     .with_synthetic_files(self.synthetic_files.clone()),
             )
         })
@@ -171,21 +173,21 @@ impl StoragePlane {
     // TODO (L3): wire boot to anchor the reconciler with the broker dir and traversal guard; no in-tree caller does, so this guard rejects every reconcile.
     pub fn reconcile(
         &self,
-        req: reconciler::FsReconcileRequest,
-    ) -> Result<reconciler::CommitStats, kelir_interface::plugin::PluginError> {
+        req: storage_reconciler::FsReconcileRequest,
+    ) -> Result<storage_reconciler::CommitStats, kelir_interface::plugin_model::PluginError> {
         match self.reconciler.get() {
             Some(reconciler) => reconciler.reconcile(req),
-            None => Err(kelir_interface::plugin::PluginError::Halt(
+            None => Err(kelir_interface::plugin_model::PluginError::Halt(
                 "StoragePlane::reconcile needs the anchored reconciler; call reconciler() first"
                     .into(),
             )),
         }
     }
 
-    pub fn discard(&self) -> Result<(), kelir_interface::plugin::PluginError> {
+    pub fn discard(&self) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): drop the sparse upper file and tombstones; base untouched.
         let _ = (&self.sparse_upper_path, &self.tombstones);
-        Err(kelir_interface::plugin::PluginError::Halt(
+        Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3): StoragePlane::discard needs the sparse upper drop".into(),
         ))
     }
@@ -193,9 +195,9 @@ impl StoragePlane {
     pub fn record_tombstone(
         &self,
         path: &Path,
-    ) -> Result<(), kelir_interface::plugin::PluginError> {
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let mut tombstones = self.tombstones.write().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("tombstone lock poisoned".into())
+            kelir_interface::plugin_model::PluginError::Halt("tombstone lock poisoned".into())
         })?;
         tombstones.insert(path.to_path_buf());
         Ok(())
@@ -207,7 +209,7 @@ impl StoragePlane {
         &self,
         bytes_to_write: u64,
         new_inodes: u64,
-    ) -> Result<(), kelir_interface::plugin::PluginError> {
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         if let Err(err) = accrue_quota(
             &self.quota.allocated_bytes,
             bytes_to_write,
@@ -233,7 +235,9 @@ impl StoragePlane {
         Ok(())
     }
 
-    pub fn punch_hole_sparse_upper(&self) -> Result<(), kelir_interface::plugin::PluginError> {
+    pub fn punch_hole_sparse_upper(
+        &self,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on sparse_upper_path.
         self.io.punch_hole(&self.sparse_upper_path, 0, u64::MAX)?;
         self.io.advise_dontneed(&self.sparse_upper_path)

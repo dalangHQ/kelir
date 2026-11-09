@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Rollback-interaction"
-  statement: "session.rollback() closes every host-side socket for the session; guest TCP stack observes RST/FIN; sends fail ECONNRESET. GAP: emitting TCP RST on rollback is a TODO (L3) in Session::rollback_to and WirePlane::quiesce (crates/kelir-core/src/session.rs, crates/kelir-core/src/planes/wire/mod.rs) — rollback_to currently quiesces and parks connections but emits no RST — so the guest ECONNRESET observation is asserted as the spec-required behavior, and the real entry point is session.rollback(lineage: PidLineage), not a bare rollback()."
+  statement: "session.rollback() closes every host-side socket for the session; guest TCP stack observes RST/FIN; sends fail ECONNRESET. GAP: emitting TCP RST on rollback is a TODO (L3) in Session::rollback_to and WirePlane::quiesce (crates/kelir-core/src/session_lifecycle.rs, crates/kelir-core/src/planes/wire/mod.rs) — rollback_to currently quiesces and parks connections but emits no RST — so the guest ECONNRESET observation is asserted as the spec-required behavior, and the real entry point is session.rollback(lineage: PidLineage), not a bare rollback()."
   blast_radius_if_breached: "Lingering external TCP connections allow cross-talk across rollback cycles."
 
 confusion_matrix:

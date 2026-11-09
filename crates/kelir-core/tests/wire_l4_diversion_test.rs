@@ -2,7 +2,7 @@
 use kelir_core::planes::wire::{
     FrameDirection, LinkLocalRoute, WirePlane, classify_frame_directional, link_local_route,
 };
-use kelir_interface::protocol::FilterAction;
+use kelir_interface::protocol_wire::FilterAction;
 
 fn ipv4_frame(dst: [u8; 4], proto: u8, dst_port: u16) -> Vec<u8> {
     let mut frame = Vec::with_capacity(42);
@@ -106,7 +106,7 @@ fn wp_08_imds_cloud_metadata_quarantine() -> Result<(), String> {
     let wire = WirePlane::new();
     assert!(!wire.imds_sink_bound());
     match wire.route_imds_to_vault(&frame) {
-        Err(kelir_interface::plugin::PluginError::Halt(message)) => {
+        Err(kelir_interface::plugin_model::PluginError::Halt(message)) => {
             assert!(message.contains("no vault vsock sink bound"));
         }
         Err(e) => return Err(format!("IMDS without sink gave wrong error: {e}")),
@@ -151,7 +151,7 @@ fn wp_15_port_forward_collision_abort() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     assert_eq!(first, 9999);
     match wire.forward_port(9090, Some(9999)) {
-        Err(kelir_interface::plugin::PluginError::Halt(message)) => {
+        Err(kelir_interface::plugin_model::PluginError::Halt(message)) => {
             assert!(message.contains("already forwarded"));
             assert!(message.contains("9999"));
         }

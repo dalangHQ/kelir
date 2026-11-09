@@ -3,7 +3,7 @@
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_19_rustvmm_driver_lazy_construction_no_kvm_open.yaml#case_id
 use driver_rustvmm::RustVmmDriver;
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_19_rustvmm_driver_lazy_construction_no_kvm_open.yaml#case_id
-use kelir_interface::driver::VmmDriver;
+use kelir_interface::driver_interface::VmmDriver;
 
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_19_rustvmm_driver_lazy_construction_no_kvm_open.yaml#case_id
 fn open_fd_count() -> Result<usize, String> {

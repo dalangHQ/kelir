@@ -3,8 +3,10 @@ use std::future::Future;
 use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
 
-use kelir_interface::plugin::PluginError;
-use plugin_tool_guard::service::{ToolRegistry, ToolRegistryService, ToolSchema, ToolsListResult};
+use kelir_interface::plugin_model::PluginError;
+use plugin_tool_guard::service_tool_guard::{
+    ToolRegistry, ToolRegistryService, ToolSchema, ToolsListResult,
+};
 
 // see: cans/15-operations.md#Local-velocity
 fn block_on<F: Future>(future: F) -> F::Output {

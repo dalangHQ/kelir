@@ -3,7 +3,7 @@
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_22_hvf_driver_lazy_construction_no_entitlement_touch.yaml#case_id
 use driver_hvf::HvfDriver;
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_22_hvf_driver_lazy_construction_no_entitlement_touch.yaml#case_id
-use kelir_interface::driver::VmmDriver;
+use kelir_interface::driver_interface::VmmDriver;
 
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_22_hvf_driver_lazy_construction_no_entitlement_touch.yaml#case_id
 fn open_fd_count() -> Result<usize, String> {

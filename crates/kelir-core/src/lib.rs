@@ -4,13 +4,13 @@
 
 // TODO (L3): vmm/router.rs + tests/unit_bus.rs, unit_dispatch.rs, unit_planes.rs per cans/artifacts/config/project-structure.txt.
 pub mod bus;
-pub mod dispatch;
+pub mod dispatch_plugin;
 pub mod planes;
 pub mod plugin_registry;
-pub mod session;
+pub mod session_lifecycle;
 pub mod trap_gate;
-pub mod uart;
+pub mod uart_terminal;
 pub mod vmm;
 
 pub use plugin_registry::PluginRegistration;
-pub use session::Session;
+pub use session_lifecycle::Session;

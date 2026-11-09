@@ -55,8 +55,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use kelir::{
-    driver::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
-    plugin::{
+    driver_interface::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
+    plugin_model::{
         AnyPlugin, KelirPlugin, PluginError,
         FsInterposer, FilterAction, Verdict, ConsoleInterposer,
         TrapInterposer, SystemTelemetryParticipant,
@@ -64,7 +64,7 @@ use kelir::{
         WatchdogEvent, WatchdogVerdict,
         NetInterposer,
     },
-    protocol::{PatchPayload, ProcessExit, SuspendUntil},
+    protocol_wire::{PatchPayload, ProcessExit, SuspendUntil},
 };
 
 /// Guest path served as a synthetic inode, and the secret-token shape the

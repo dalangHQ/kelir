@@ -69,10 +69,10 @@ impl Vt100StateMachine {
         self.cursor_col = 0;
     }
 
-    pub fn feed(&mut self, bytes: &[u8]) -> Result<(), kelir_interface::plugin::PluginError> {
+    pub fn feed(&mut self, bytes: &[u8]) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): parse VT100 escape sequences in bytes and update matrix + cursor.
         let _ = bytes;
-        Err(kelir_interface::plugin::PluginError::Halt(
+        Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3): Vt100StateMachine::feed".into(),
         ))
     }
@@ -89,11 +89,10 @@ impl LogCursor {
         Self(0)
     }
 
-    pub fn advance(&self, len: u64) -> Result<Self, kelir_interface::plugin::PluginError> {
-        self.0
-            .checked_add(len)
-            .map(Self)
-            .ok_or_else(|| kelir_interface::plugin::PluginError::Halt("log cursor overflow".into()))
+    pub fn advance(&self, len: u64) -> Result<Self, kelir_interface::plugin_model::PluginError> {
+        self.0.checked_add(len).map(Self).ok_or_else(|| {
+            kelir_interface::plugin_model::PluginError::Halt("log cursor overflow".into())
+        })
     }
 }
 
@@ -108,7 +107,7 @@ impl LogSegment {
     pub fn new(
         session_id: [u8; 16],
         port: u32,
-    ) -> Result<Self, kelir_interface::plugin::PluginError> {
+    ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
         Ok(Self {
             port,
             head: LogCursor::start(),
@@ -121,9 +120,9 @@ impl LogSegment {
 // see: cans/01-architecture.md#Host-state-root
 fn session_log_path(
     session_id: &[u8; 16],
-) -> Result<PathBuf, kelir_interface::plugin::PluginError> {
+) -> Result<PathBuf, kelir_interface::plugin_model::PluginError> {
     let home = std::env::var("HOME").map_err(|_| {
-        kelir_interface::plugin::PluginError::Halt(
+        kelir_interface::plugin_model::PluginError::Halt(
             "HOME is not set; cannot locate ~/.kelir session logs".into(),
         )
     })?;
@@ -143,7 +142,7 @@ pub struct TerminalPlane {
     session_id: [u8; 16],
     state: Mutex<Vt100StateMachine>,
     segments: Mutex<HashMap<u32, LogSegment>>,
-    metrics: Arc<kelir_otlp::registry::MetricRegistry>,
+    metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
 }
 
 impl TerminalPlane {
@@ -153,39 +152,45 @@ impl TerminalPlane {
             session_id,
             state: Mutex::new(Vt100StateMachine::new()),
             segments: Mutex::new(HashMap::new()),
-            metrics: Arc::new(kelir_otlp::registry::MetricRegistry::new()),
+            metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
         }
     }
 
-    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry::MetricRegistry>) -> Self {
+    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>) -> Self {
         self.metrics = metrics;
         self
     }
 
-    pub fn metrics(&self) -> &Arc<kelir_otlp::registry::MetricRegistry> {
+    pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
         &self.metrics
     }
 
-    pub fn resize(&self, cols: u16, rows: u16) -> Result<(), kelir_interface::plugin::PluginError> {
+    pub fn resize(
+        &self,
+        cols: u16,
+        rows: u16,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let mut state = self.state.lock().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("terminal state lock poisoned".into())
+            kelir_interface::plugin_model::PluginError::Halt("terminal state lock poisoned".into())
         })?;
         state.resize(cols, rows);
         Ok(())
     }
 
-    pub fn feed(&self, bytes: &[u8]) -> Result<(), kelir_interface::plugin::PluginError> {
+    pub fn feed(&self, bytes: &[u8]) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let mut state = self.state.lock().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("terminal state lock poisoned".into())
+            kelir_interface::plugin_model::PluginError::Halt("terminal state lock poisoned".into())
         })?;
         state.feed(bytes).inspect_err(|_| {
             self.metrics.record_drop();
         })
     }
 
-    pub fn export_screen_matrix(&self) -> Result<Vec<u8>, kelir_interface::plugin::PluginError> {
+    pub fn export_screen_matrix(
+        &self,
+    ) -> Result<Vec<u8>, kelir_interface::plugin_model::PluginError> {
         let state = self.state.lock().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("terminal state lock poisoned".into())
+            kelir_interface::plugin_model::PluginError::Halt("terminal state lock poisoned".into())
         })?;
         Ok(apply_token_shield(
             &filter_ansi_shadow(&state.export()),
@@ -199,20 +204,20 @@ impl TerminalPlane {
         &self,
         port: u32,
         cursor: u64,
-    ) -> Result<(Vec<u8>, u64), kelir_interface::plugin::PluginError> {
+    ) -> Result<(Vec<u8>, u64), kelir_interface::plugin_model::PluginError> {
         let segments = self.segments.lock().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("terminal log lock poisoned".into())
+            kelir_interface::plugin_model::PluginError::Halt("terminal log lock poisoned".into())
         })?;
         let segment = segments.get(&port).ok_or_else(|| {
-            kelir_interface::plugin::PluginError::Halt("no log segment for port".into())
+            kelir_interface::plugin_model::PluginError::Halt("no log segment for port".into())
         })?;
         if cursor > segment.head.0 {
-            return Err(kelir_interface::plugin::PluginError::Halt(
+            return Err(kelir_interface::plugin_model::PluginError::Halt(
                 "cursor beyond log head".into(),
             ));
         }
         let offset = usize::try_from(cursor).map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("log cursor too large".into())
+            kelir_interface::plugin_model::PluginError::Halt("log cursor too large".into())
         })?;
         Ok((segment.bytes[offset..].to_vec(), segment.head.0))
     }
@@ -221,23 +226,27 @@ impl TerminalPlane {
         &self,
         port: u32,
         chunk: &[u8],
-    ) -> Result<u64, kelir_interface::plugin::PluginError> {
+    ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
         let mut segments = self.segments.lock().map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("terminal log lock poisoned".into())
+            kelir_interface::plugin_model::PluginError::Halt("terminal log lock poisoned".into())
         })?;
         if let std::collections::hash_map::Entry::Vacant(e) = segments.entry(port) {
             e.insert(LogSegment::new(self.session_id, port)?);
         }
         let segment = segments.get_mut(&port).ok_or_else(|| {
-            kelir_interface::plugin::PluginError::Halt("log segment missing after insert".into())
+            kelir_interface::plugin_model::PluginError::Halt(
+                "log segment missing after insert".into(),
+            )
         })?;
         let len = u64::try_from(chunk.len()).map_err(|_| {
-            kelir_interface::plugin::PluginError::Halt("log chunk too large".into())
+            kelir_interface::plugin_model::PluginError::Halt("log chunk too large".into())
         })?;
         let new_head = segment.head.advance(len)?;
         if let Some(parent) = segment.index_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                kelir_interface::plugin::PluginError::Halt(format!("create session log dir: {e}"))
+                kelir_interface::plugin_model::PluginError::Halt(format!(
+                    "create session log dir: {e}"
+                ))
             })?;
         }
         let mut file = OpenOptions::new()
@@ -245,10 +254,10 @@ impl TerminalPlane {
             .append(true)
             .open(&segment.index_path)
             .map_err(|e| {
-                kelir_interface::plugin::PluginError::Halt(format!("open log index: {e}"))
+                kelir_interface::plugin_model::PluginError::Halt(format!("open log index: {e}"))
             })?;
         file.write_all(chunk).map_err(|e| {
-            kelir_interface::plugin::PluginError::Halt(format!("append log index: {e}"))
+            kelir_interface::plugin_model::PluginError::Halt(format!("append log index: {e}"))
         })?;
         segment.head = new_head;
         segment.bytes.extend_from_slice(chunk);

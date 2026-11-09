@@ -3,7 +3,7 @@
 pub struct DriverRouter {
     // see: cans/01-architecture.md#Driver-backends
     #[allow(dead_code)]
-    active_driver: Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>,
+    active_driver: Box<dyn kelir_interface::driver_interface::VmmDriver + Send + Sync>,
 }
 
 impl DriverRouter {
@@ -12,16 +12,18 @@ impl DriverRouter {
         policy_wx: bool,
         allow_emulated: bool,
     ) -> Result<
-        Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>,
-        kelir_interface::driver::VmmError,
+        Box<dyn kelir_interface::driver_interface::VmmDriver + Send + Sync>,
+        kelir_interface::driver_interface::VmmError,
     > {
         let _ = (policy_wx, allow_emulated);
-        Err(kelir_interface::driver::VmmError::Unsupported(
+        Err(kelir_interface::driver_interface::VmmError::Unsupported(
             "TODO (L3): DriverRouter::load_native_driver".into(),
         ))
     }
 
-    pub fn new(driver: Box<dyn kelir_interface::driver::VmmDriver + Send + Sync>) -> Self {
+    pub fn new(
+        driver: Box<dyn kelir_interface::driver_interface::VmmDriver + Send + Sync>,
+    ) -> Self {
         Self {
             active_driver: driver,
         }

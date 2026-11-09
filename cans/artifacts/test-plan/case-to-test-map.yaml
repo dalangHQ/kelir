@@ -186,7 +186,7 @@ cases:
   test_file: null
   test_fn: null
   reason: the original_/final_ split is spec-only; live TrapEvent carries a single binary_blake3 field
-    (crates/kelir-interface/src/protocol.rs) and ExecutionReceipt carries binary_blake3 (crates/kelir-interface/src/telemetry/receipt.rs).
+    (crates/kelir-interface/src/protocol_wire.rs) and ExecutionReceipt carries binary_blake3 (crates/kelir-interface/src/telemetry/receipt_attest.rs).
 - case_id: ar_08_phase_span_telemetry_isolation
   case_file: cases/attestation_receipts/ar_08_phase_span_telemetry_isolation.yaml
   target_crate: crates/kelir-core
@@ -225,7 +225,7 @@ cases:
   test_file: null
   test_fn: null
   reason: no signature-verification method exists in-tree; AttestationToken carries session_token, vmlinux_blake3,
-    and erofs_blake3 only (crates/kelir-interface/src/telemetry/receipt.rs), so verification is specified
+    and erofs_blake3 only (crates/kelir-interface/src/telemetry/receipt_attest.rs), so verification is specified
     against cans/01-architecture.m...
 - case_id: ar_13_vmlinux_blake3_pre_vcpu_attest
   case_file: cases/attestation_receipts/ar_13_vmlinux_blake3_pre_vcpu_attest.yaml
@@ -447,7 +447,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: MountScope confinement is an L3 TODO in CredentialBroker::issue (crates/kelir-plugins/plugin-vault/src/service.rs);
+  reason: MountScope confinement is an L3 TODO in CredentialBroker::issue (crates/kelir-plugins/plugin-vault/src/service_vault.rs);
     unregistered names reject with VaultError::Enodata today, but an out-of-scope yet registered credential
     is not checked.
 - case_id: gv_03_audience_locking_validation
@@ -457,7 +457,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: audience locking is an L3 TODO in CredentialBroker::issue (crates/kelir-plugins/plugin-vault/src/service.rs);
+  reason: audience locking is an L3 TODO in CredentialBroker::issue (crates/kelir-plugins/plugin-vault/src/service_vault.rs);
     the issued token copies the descriptor audience unchecked.
 - case_id: gv_04_token_ttl_max_ceiling_einval
   case_file: cases/governance_vault/gv_04_token_ttl_max_ceiling_einval.yaml
@@ -542,7 +542,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: no typed NoHardwareVmm variant exists — VmmError (crates/kelir-interface/src/driver.rs) has
+  reason: no typed NoHardwareVmm variant exists — VmmError (crates/kelir-interface/src/driver_interface.rs) has
     only Unsupported, InvalidState, Io, ResourceExhausted, and DriverRouter::load_native_driver is a TODO
     (L2) stub returning Unsupported; no is_emul...
 - case_id: hd_02_wx_mmu_prot_exec_trap
@@ -553,7 +553,7 @@ cases:
   test_file: null
   test_fn: null
   reason: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes
-    session.spawn (crates/kelir/src/session.rs:56) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll,
+    session.spawn (crates/kelir/src/session_lifecycle.rs:58) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll,
     so this case asserts the spec-requ...
 - case_id: hd_03_hardware_rollback_timing_bound
   case_file: cases/hypervisor_driver/hd_03_hardware_rollback_timing_bound.yaml
@@ -630,7 +630,7 @@ cases:
   test_file: null
   test_fn: null
   reason: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes
-    session.spawn (crates/kelir/src/session.rs:56) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll,
+    session.spawn (crates/kelir/src/session_lifecycle.rs:58) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll,
     so this case asserts the spec-requ...
 - case_id: hd_11_cpuid_tsc_deadline_normalization
   case_file: cases/hypervisor_driver/hd_11_cpuid_tsc_deadline_normalization.yaml
@@ -665,7 +665,7 @@ cases:
   test_file: null
   test_fn: null
   reason: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes
-    session.spawn (crates/kelir/src/session.rs:56) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll,
+    session.spawn (crates/kelir/src/session_lifecycle.rs:58) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll,
     so this case asserts the spec-requ...
 - case_id: hd_15_vcpu_scale_online_offline_dynamic
   case_file: cases/hypervisor_driver/hd_15_vcpu_scale_online_offline_dynamic.yaml
@@ -675,7 +675,7 @@ cases:
   test_file: null
   test_fn: null
   reason: VmmDriver has no set_vcpus surface — the VmHandle::set_vcpus adapter returns Err noting exactly
-    that (crates/kelir-interface/src/handles.rs) — and no active_vcpu_threads probe exists, so thread
+    that (crates/kelir-interface/src/handles_lifecycle.rs) — and no active_vcpu_threads probe exists, so thread
     park/unpark is asserted via the set_vcpus c...
 - case_id: hd_16_virtio_balloon_pressure_reclaim
   case_file: cases/hypervisor_driver/hd_16_virtio_balloon_pressure_reclaim.yaml
@@ -778,7 +778,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: Session::drain is a TODO (L3) in crates/kelir-core/src/session.rs; the EBUSY refusal is specified
+  reason: Session::drain is a TODO (L3) in crates/kelir-core/src/session_lifecycle.rs; the EBUSY refusal is specified
     against cans/08-lifecycle.md#State-machine, not a live drain path.
 - case_id: lc_05_monotonic_clock_clamp_on_resume
   case_file: cases/lifecycle_checkpoint/lc_05_monotonic_clock_clamp_on_resume.yaml
@@ -802,7 +802,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: Session::fork is a TODO (L3) in crates/kelir-core/src/session.rs and performs no veto check
+  reason: Session::fork is a TODO (L3) in crates/kelir-core/src/session_lifecycle.rs and performs no veto check
     yet; the veto is specified against cans/08-lifecycle.md#CoW-fork, not a live fork path.
 - case_id: lc_08_rollback_trap_held_precondition
   case_file: cases/lifecycle_checkpoint/lc_08_rollback_trap_held_precondition.yaml
@@ -811,7 +811,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: Session::rollback_to performs no held-trap release step (crates/kelir-core/src/session.rs);
+  reason: Session::rollback_to performs no held-trap release step (crates/kelir-core/src/session_lifecycle.rs);
     the release is specified against cans/08-lifecycle.md#Rollback, not a live path.
 - case_id: lc_09_graceful_shutdown_syncfs_flushed
   case_file: cases/lifecycle_checkpoint/lc_09_graceful_shutdown_syncfs_flushed.yaml
@@ -886,7 +886,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: ExecResult (crates/kelir/src/session.rs) carries exit_code only and no stdout capture, so the
+  reason: ExecResult (crates/kelir/src/session_lifecycle.rs) carries exit_code only and no stdout capture, so the
     `ps` output assertion is specified against the L3 ExecResult shape.
 - case_id: lc_18_watchdog_heartbeat_timeout_reboot
   case_file: cases/lifecycle_checkpoint/lc_18_watchdog_heartbeat_timeout_reboot.yaml
@@ -919,7 +919,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: the handoff is a TODO in crates/kelir-core/src/session.rs (pass the descriptor via SCM_RIGHTS
+  reason: the handoff is a TODO in crates/kelir-core/src/session_lifecycle.rs (pass the descriptor via SCM_RIGHTS
     and close the parent end after the handoff ack); no live ack protocol exists, so this case is specified
     against the spec text, not a live surface.
 - case_id: lc_22_sqlite_wal_busy_timeout_recovery
@@ -1083,7 +1083,7 @@ cases:
   test_file: null
   test_fn: null
   reason: StreamMuxParser and ProtocolError do not exist in-tree; mux flag decoding lives in the kelir-shim
-    multiplexer (crates/kelir-shim/src/multiplexer.rs, ShimError::UnknownFlags), so the OPEN|CLOSE rejection
+    multiplexer (crates/kelir-shim/src/multiplexer_protocol.rs, ShimError::UnknownFlags), so the OPEN|CLOSE rejection
     is specified against cans/11-proto...
 - case_id: pm_03_core_stream_kind_reregistration_abort
   case_file: cases/protocol_mux/pm_03_core_stream_kind_reregistration_abort.yaml
@@ -1092,7 +1092,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: register_stream_kind returns Self infallibly and the abort is a TODO (L3) in crates/kelir/src/builder.rs;
+  reason: register_stream_kind returns Self infallibly and the abort is a TODO (L3) in crates/kelir/src/builder_sdk.rs;
     the abort is specified against cans/11-protocol.md#Kind-registration, not a live check.
 - case_id: pm_04_plugin_stream_kind_dynamic_registration
   case_file: cases/protocol_mux/pm_04_plugin_stream_kind_dynamic_registration.yaml
@@ -1166,7 +1166,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: no handshake validation exists in-tree (only the Handshake struct in crates/kelir-interface/src/protocol.rs);
+  reason: no handshake validation exists in-tree (only the Handshake struct in crates/kelir-interface/src/protocol_wire.rs);
     the rejection is specified against cans/11-protocol.md#Wire-framing, not a live check.
 - case_id: pm_13_vsock_fallback_connect_fails_closed
   case_file: cases/protocol_mux/pm_13_vsock_fallback_connect_fails_closed.yaml
@@ -1350,7 +1350,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: Reconciler::commit is a TODO (L3) in crates/kelir-core/src/planes/storage/reconciler.rs and
+  reason: Reconciler::commit is a TODO (L3) in crates/kelir-core/src/planes/storage/storage_reconciler.rs and
     StorageIo::atomic_rename needs the driver/transport enclave; the atomic leaf commit is specified against
     cans/05-storage-plane.md#Workspace-commi...
 - case_id: sp_09_reconciler_tombstone_unlink_commit
@@ -1360,7 +1360,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: Reconciler::commit is a TODO (L3) in crates/kelir-core/src/planes/storage/reconciler.rs; the
+  reason: Reconciler::commit is a TODO (L3) in crates/kelir-core/src/planes/storage/storage_reconciler.rs; the
     tombstone commit is specified against cans/05-storage-plane.md#Workspace-commit, not a live commit
     path.
 - case_id: sp_10_reconciler_busy_lock_retry_backoff
@@ -1370,7 +1370,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: Reconciler::reconcile orchestration and the retry loop are TODO (L3) in crates/kelir-core/src/planes/storage/reconciler.rs;
+  reason: Reconciler::reconcile orchestration and the retry loop are TODO (L3) in crates/kelir-core/src/planes/storage/storage_reconciler.rs;
     the backoff is specified against cans/05-storage-plane.md#Workspace-commit, not a live retry path.
 - case_id: sp_11_host_fifo_socket_lookup_enxio
   case_file: cases/storage_plane/sp_11_host_fifo_socket_lookup_enxio.yaml
@@ -1379,7 +1379,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: no S_IFIFO/S_IFSOCK lookup check exists in-tree (only the ENXIO string mapping in crates/kelir-core/src/planes/storage/fuse.rs);
+  reason: no S_IFIFO/S_IFSOCK lookup check exists in-tree (only the ENXIO string mapping in crates/kelir-core/src/planes/storage/fuse_storage.rs);
     the rejection is specified against cans/05-storage-plane.md#Host-I/O-invariants, not a live lookup
     path.
 - case_id: sp_12_workspace_encapsulation_mode_000
@@ -1702,7 +1702,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: TokenShield (crates/kelir/src/planes/terminal.rs) has no clamp_stream method — only max_bytes_total/max_lines_total
+  reason: TokenShield (crates/kelir/src/planes/terminal_plane.rs) has no clamp_stream method — only max_bytes_total/max_lines_total
     fields — and the real clamp is the private apply_token_shield in crates/kelir-core/src/planes/terminal/mod.rs,
     currently ...
 - case_id: tp_06_placeholder_mask_carryover_window
@@ -1713,7 +1713,7 @@ cases:
   test_file: null
   test_fn: null
   reason: no masking_engine/process_chunk surface exists — the real hook is ConsoleInterposer::on_console_output(port,
-    chunk) (crates/kelir-interface/src/plugin.rs:515) — and MAX_PLACEHOLDER_LEN has no numeric value anywhere
+    chunk) (crates/kelir-interface/src/plugin_model.rs:529) — and MAX_PLACEHOLDER_LEN has no numeric value anywhere
     in spec or artifacts, ...
 - case_id: tp_07_vt100_wireframe_matrix_determinism
   case_file: cases/terminal_plane/tp_07_vt100_wireframe_matrix_determinism.yaml
@@ -1730,7 +1730,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: no TerminalNotice type and no publish_notice method exist in code — EventBusBinder (crates/kelir-interface/src/plugin.rs:438)
+  reason: no TerminalNotice type and no publish_notice method exist in code — EventBusBinder (crates/kelir-interface/src/plugin_model.rs:447)
     exposes no publish surface — so the disclosure is asserted as the spec-required behavior, not via
     a callable su...
 - case_id: tp_09_exec_stream_sublane_stdio_fidelity
@@ -1741,7 +1741,7 @@ cases:
   test_file: null
   test_fn: null
   reason: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes
-    session.spawn (crates/kelir/src/session.rs:56) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll,
+    session.spawn (crates/kelir/src/session_lifecycle.rs:58) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll,
     so this case asserts the spec-requ...
 - case_id: tp_10_exec_slot_flag_alloc_pty_opt_in
   case_file: cases/terminal_plane/tp_10_exec_slot_flag_alloc_pty_opt_in.yaml
@@ -1750,7 +1750,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: no exec_pty method and no alloc_pty surface exist on SpawnBuilder (crates/kelir/src/session.rs)
+  reason: no exec_pty method and no alloc_pty surface exist on SpawnBuilder (crates/kelir/src/session_lifecycle.rs)
     — FLAG_ALLOC_PTY (0x04) lives only in spec (cans/11-protocol.md:58) and shim EXEC_IO_SPEC parsing
     is a TODO (L3) — so the opt-in is asserted ...
 - case_id: tp_11_stream_replay_monotonic_cursor_read
@@ -1823,7 +1823,7 @@ cases:
   test_file: null
   test_fn: null
   reason: no from_spec entry point, no KelirError type, and no profile-validation path exist in code —
-    VmConfig (crates/kelir-interface/src/driver.rs) has no virtio_rng field — and EConfig is a spec error
+    VmConfig (crates/kelir-interface/src/driver_interface.rs) has no virtio_rng field — and EConfig is a spec error
     code (cans/03-sdk-architecture.md:21, cans...
 - case_id: vr_05_virtio_blk_erofs_readonly_mount
   case_file: cases/virtio_rings/vr_05_virtio_blk_erofs_readonly_mount.yaml
@@ -1865,7 +1865,7 @@ cases:
   test_file: null
   test_fn: null
   reason: session.exec is the spec surface (cans/03-sdk-architecture.md:107); the live Rust SDK exposes
-    session.spawn (crates/kelir/src/session.rs:56) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll,
+    session.spawn (crates/kelir/src/session_lifecycle.rs:58) and guest exec dispatch is a TODO (L3) in SpawnBuilder::poll,
     so this case asserts the spec-requ...
 - case_id: vr_10_virtio_fs_fuse_req_channel
   case_file: cases/virtio_rings/vr_10_virtio_fs_fuse_req_channel.yaml
@@ -1875,7 +1875,7 @@ cases:
   test_file: null
   test_fn: null
   reason: O_NONBLOCK is mandated by spec (cans/05-storage-plane.md) but no O_NONBLOCK handling exists
-    in crates/kelir-core/src/planes/storage/fuse.rs, so the non-blocking broker assertion has no executable
+    in crates/kelir-core/src/planes/storage/fuse_storage.rs, so the non-blocking broker assertion has no executable
     surface yet.
 - case_id: vr_11_virtio_net_smoltcp_frame_sink
   case_file: cases/virtio_rings/vr_11_virtio_net_smoltcp_frame_sink.yaml
@@ -1893,7 +1893,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: no frame encoder exists in crates/kelir-interface/src/protocol.rs (only the StreamKind/MsgType
+  reason: no frame encoder exists in crates/kelir-interface/src/protocol_wire.rs (only the StreamKind/MsgType
     enums), and both SpscRingTransport and VsockFallbackTransport read/write are TODO (L3) stubs, so byte-for-byte
     framing parity has no executabl...
 - case_id: vr_13_transport_named_pipe_windows_parity
@@ -1941,7 +1941,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: emitting TCP RST on rollback is a TODO (L3) in Session::rollback_to and WirePlane::quiesce (crates/kelir-core/src/session.rs,
+  reason: emitting TCP RST on rollback is a TODO (L3) in Session::rollback_to and WirePlane::quiesce (crates/kelir-core/src/session_lifecycle.rs,
     crates/kelir-core/src/planes/wire/mod.rs) — rollback_to currently quiesces and parks connections but
     emits no R...
 - case_id: wp_04_userspace_netstack_unprivileged_dial

@@ -1,7 +1,7 @@
 // see: cans/02-plugin-model.md#Catalog-tiering
 use std::collections::BTreeMap;
 
-use kelir_interface::plugin::PluginError;
+use kelir_interface::plugin_model::PluginError;
 
 // see: cans/02-plugin-model.md#Catalog-tiering
 #[derive(Debug, Clone, PartialEq, Eq)]

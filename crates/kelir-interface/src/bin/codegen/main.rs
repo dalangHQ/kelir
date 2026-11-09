@@ -1,24 +1,24 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/03-sdk-architecture.md#Python-SDK
 // see: cans/15-operations.md#Multi-language-parity-gate
-mod fusion;
-mod merkle;
-mod model;
-mod naming;
-mod otlp;
-mod py;
-mod sdk;
+mod fusion_codegen;
+mod merkle_codegen;
+mod model_codegen;
+mod naming_codegen;
+mod otlp_codegen;
+mod py_codegen;
+mod sdk_codegen;
 mod sdk_py;
 mod sdk_ts;
-mod ts;
-mod wire;
+mod ts_codegen;
+mod wire_codegen;
 
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use model::parse_model;
+use model_codegen::parse_model;
 
 // see: cans/15-operations.md#Multi-language-parity-gate
 fn write_if_changed(path: &Path, content: &str) -> Result<bool, String> {
@@ -86,11 +86,11 @@ fn die(message: &str) -> ! {
 fn main() -> ExitCode {
     let root = repo_root();
     let interface = root.join("crates/kelir-interface/src");
-    let mut model = parse_model(&interface.join("driver.rs")).unwrap_or_else(|e| die(&e));
+    let mut model = parse_model(&interface.join("driver_interface.rs")).unwrap_or_else(|e| die(&e));
     for path in [
-        interface.join("telemetry/receipt.rs"),
-        interface.join("telemetry/delta.rs"),
-        root.join("crates/kelir-plugins/plugin-ledger/src/wal.rs"),
+        interface.join("telemetry/receipt_attest.rs"),
+        interface.join("telemetry/delta_attest.rs"),
+        root.join("crates/kelir-plugins/plugin-ledger/src/wal_ledger.rs"),
     ] {
         let parsed = parse_model(&path).unwrap_or_else(|e| die(&e));
         model.structs.extend(parsed.structs);
@@ -108,16 +108,17 @@ fn main() -> ExitCode {
     ];
     const NATIVE_SKIP: &[&str] = &["TelemetryExtension"];
 
-    let ts_telemetry = ts::emit_telemetry(&model, ORDER, NATIVE_SKIP).unwrap_or_else(|e| die(&e));
-    let py_telemetry = py::emit_telemetry(&model, ORDER).unwrap_or_else(|e| die(&e));
-    let otlp_records = otlp::emit_records(&model).unwrap_or_else(|e| die(&e));
-    let domain_merkle = merkle::emit_domain_leaves(&model).unwrap_or_else(|e| die(&e));
-    let packed_merkle = merkle::emit_packed_records(&model).unwrap_or_else(|e| die(&e));
-    let fusion_model =
-        fusion::parse_fusion(&interface.join("fusion.rs")).unwrap_or_else(|e| die(&e));
-    let ts_fusion = fusion::emit_typescript(&fusion_model);
-    let py_fusion = fusion::emit_python(&fusion_model);
-    let projections = sdk::load_projections(&root).unwrap_or_else(|e| die(&e));
+    let ts_telemetry =
+        ts_codegen::emit_telemetry(&model, ORDER, NATIVE_SKIP).unwrap_or_else(|e| die(&e));
+    let py_telemetry = py_codegen::emit_telemetry(&model, ORDER).unwrap_or_else(|e| die(&e));
+    let otlp_records = otlp_codegen::emit_records(&model).unwrap_or_else(|e| die(&e));
+    let domain_merkle = merkle_codegen::emit_domain_leaves(&model).unwrap_or_else(|e| die(&e));
+    let packed_merkle = merkle_codegen::emit_packed_records(&model).unwrap_or_else(|e| die(&e));
+    let fusion_model = fusion_codegen::parse_fusion(&interface.join("fusion_plugin.rs"))
+        .unwrap_or_else(|e| die(&e));
+    let ts_fusion = fusion_codegen::emit_typescript(&fusion_model);
+    let py_fusion = fusion_codegen::emit_python(&fusion_model);
+    let projections = sdk_codegen::load_projections(&root).unwrap_or_else(|e| die(&e));
     let ts_plugins = sdk_ts::emit_ts(&projections).unwrap_or_else(|e| die(&e));
 
     let writes: Vec<(PathBuf, String)> = vec![
@@ -127,7 +128,7 @@ fn main() -> ExitCode {
         ),
         (
             root.join("packages/ts/core/src/generated/protocol.wire.generated.ts"),
-            ts::emit_protocol(),
+            ts_codegen::emit_protocol(),
         ),
         (
             root.join("packages/py/kelir/generated/attest_telemetry.py"),
@@ -135,23 +136,26 @@ fn main() -> ExitCode {
         ),
         (
             root.join("packages/py/kelir/generated/wire_protocol.py"),
-            py::emit_protocol(),
+            py_codegen::emit_protocol(),
         ),
         (
             root.join("packages/py/kelir/generated/__init__.py"),
-            py::emit_package_init(ORDER),
+            py_codegen::emit_package_init(ORDER),
         ),
         (
             root.join("crates/kelir-shim/include/kelir/wire.h"),
-            wire::emit_wire_h(),
+            wire_codegen::emit_wire_h(),
         ),
-        (root.join("crates/kelir-otlp/src/records.rs"), otlp_records),
         (
-            root.join("crates/kelir-interface/src/telemetry/merkle.rs"),
+            root.join("crates/kelir-otlp/src/records_otlp.rs"),
+            otlp_records,
+        ),
+        (
+            root.join("crates/kelir-interface/src/telemetry/merkle_attest.rs"),
             domain_merkle,
         ),
         (
-            root.join("crates/kelir-plugins/plugin-ledger/src/wal/merkle.rs"),
+            root.join("crates/kelir-plugins/plugin-ledger/src/wal_ledger/merkle_wal.rs"),
             packed_merkle,
         ),
         (

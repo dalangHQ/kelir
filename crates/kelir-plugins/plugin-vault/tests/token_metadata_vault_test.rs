@@ -3,12 +3,14 @@ use std::future::Future;
 use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
 
-use kelir_interface::credential::{CredentialDescriptor, CredentialKind};
-use kelir_interface::plugin::PluginError;
-use kelir_interface::vsock::VsockPeer;
+use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::vsock_mesh::VsockPeer;
 use kelir_plugin_testkit::LoopbackStream;
-use kelir_plugin_testkit::handlers::handler_ctx;
-use plugin_vault::service::{CredentialBroker, CredentialBrokerService, TokenRequest, VaultError};
+use kelir_plugin_testkit::handlers_testkit::handler_ctx;
+use plugin_vault::service_vault::{
+    CredentialBroker, CredentialBrokerService, TokenRequest, VaultError,
+};
 use plugin_vault::{MetadataEndpoint, VaultConfig, VaultPlugin};
 
 // see: cans/15-operations.md#Local-velocity
@@ -149,7 +151,7 @@ fn gv_07_unregistered_credential_enodata() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/governance_vault/gv_09_metadata_non_vsock_peer_econnrefused.yaml#case_id
 #[test]
 fn gv_09_metadata_non_vsock_peer_econnrefused() -> Result<(), String> {
-    use kelir_interface::vsock::VsockServiceHandler;
+    use kelir_interface::vsock_mesh::VsockServiceHandler;
     let plugin = VaultPlugin::new().with_session_guest_cid(3);
     let ctx = handler_ctx([0u8; 16], 1);
     let foreign = VsockPeer {

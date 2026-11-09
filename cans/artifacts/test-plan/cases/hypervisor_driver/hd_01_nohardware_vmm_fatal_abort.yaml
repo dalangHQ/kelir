@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Fallback-policy"
-  statement: "Silent driver downgrade is an uncatchable fatal error: E_NOHARDWAREVMM; unprivileged emulation tiers require explicit granular opt-in. GAP: no typed NoHardwareVmm variant exists — VmmError (crates/kelir-interface/src/driver.rs) has only Unsupported, InvalidState, Io, ResourceExhausted, and DriverRouter::load_native_driver is a TODO (L2) stub returning Unsupported; no is_emulated() probe exists on any driver, so the no-hardware detection path is unimplemented and this case asserts the spec-required behavior."
+  statement: "Silent driver downgrade is an uncatchable fatal error: E_NOHARDWAREVMM; unprivileged emulation tiers require explicit granular opt-in. GAP: no typed NoHardwareVmm variant exists — VmmError (crates/kelir-interface/src/driver_interface.rs) has only Unsupported, InvalidState, Io, ResourceExhausted, and DriverRouter::load_native_driver is a TODO (L2) stub returning Unsupported; no is_emulated() probe exists on any driver, so the no-hardware detection path is unimplemented and this case asserts the spec-required behavior."
   blast_radius_if_breached: "Microkernel silently falls back to unconfined userspace namespaces, defeating hardware virtualization boundaries."
 
 confusion_matrix:

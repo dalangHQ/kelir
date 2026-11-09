@@ -5,14 +5,14 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use kelir_interface::driver::{ExternalSuspendKind, SuspendReason};
-use kelir_interface::handles::VmHandle;
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{
+use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
+use kelir_interface::handles_lifecycle::VmHandle;
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{
     KelirPlugin, LifecycleParticipant, MountScope, NetInterposer, ParkedConnectionReset,
     PipelineBinder, VirtioDevice,
 };
-use kelir_interface::protocol::{Channel, FilterAction, SuspendUntil};
+use kelir_interface::protocol_wire::{Channel, FilterAction, SuspendUntil};
 
 // see: cans/plugins/wire-ingress.md#Host-proxy-terminates-TCP-handshake-and-buffers-up-to-64KB-initial-request-data
 pub const MAX_PARKED_BYTES: usize = 64 * 1024;

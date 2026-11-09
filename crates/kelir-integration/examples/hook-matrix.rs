@@ -5,17 +5,17 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use kelir_interface::plugin::HandlerCtx;
+use kelir_interface::plugin_model::HandlerCtx;
 
 use kelir::{
     KelirBuilder, PidLineage, SnapshotDescriptor, VmConfig,
-    driver::{DriverPolicy, WxPolicy},
-    plugin::{
+    driver_interface::{DriverPolicy, WxPolicy},
+    plugin_model::{
         AnyPlugin, ConsoleInterposer, FilterAction, FsInterposer, HostInterposer, KelirPlugin,
         NetInterposer, PluginError, SystemTelemetryParticipant, TrapInterposer, Verdict,
         WatchdogEvent, WatchdogVerdict,
     },
-    protocol::{PatchPayload, ProcessExit, SuspendUntil},
+    protocol_wire::{PatchPayload, ProcessExit, SuspendUntil},
 };
 
 const IDENTITY_PATH: &str = "/workspace/.policy/identity";

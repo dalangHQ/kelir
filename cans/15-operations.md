@@ -290,9 +290,9 @@
   - Project structure
     - see: artifacts/config/project-structure.txt
     - Module naming grammar (domain-first)
-      - Rust src/ modules stay snake_case; dots would break mod declarations
+      - Rust src: <entity>_<domain>.rs; lib.rs, main.rs, mod.rs stay conventional
       - TS source: <entity>.<domain>[.role].ts; Python source: <domain>_<entity>.py
-      - Barrels stay conventional: index.ts entry, __init__.py markers, *.d.ts declarations
+      - Barrels stay conventional: lib.rs/main.rs/mod.rs, index.ts, __init__.py, *.d.ts
       - Test filename grammar: see: artifacts/test-plan/matrix.yaml#filename_grammar
     - Plugin testkit is dev-only; see: 02-plugin-model.md#Plugin-testkit
     - Integration needs a real hypervisor; see: #Per-plugin-CI

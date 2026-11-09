@@ -3,7 +3,7 @@
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_20_bwrap_driver_rejects_construction_without_opt_in.yaml#case_id
 use driver_bwrap::BwrapDriver;
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_20_bwrap_driver_rejects_construction_without_opt_in.yaml#case_id
-use kelir_interface::driver::{VmmDriver, VmmError};
+use kelir_interface::driver_interface::{VmmDriver, VmmError};
 
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_20_bwrap_driver_rejects_construction_without_opt_in.yaml#case_id
 fn open_fd_count() -> Result<usize, String> {

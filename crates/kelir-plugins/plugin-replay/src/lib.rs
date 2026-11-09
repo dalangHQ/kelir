@@ -5,11 +5,11 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
-use kelir_interface::driver::{
+use kelir_interface::driver_interface::{
     EntropyBackend, EntropyStreamPosition, PmuSample, PmuSampler, VmmError,
 };
-use kelir_interface::plugin::PluginError;
-use kelir_interface::plugin::{KelirPlugin, LifecycleCtx, LifecycleParticipant};
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::{KelirPlugin, LifecycleCtx, LifecycleParticipant};
 
 // see: cans/plugins/replay.md#Error-and-return-semantics-(replay)
 const ECLOCKREGRESS: &str = "EClockRegress";
@@ -253,7 +253,10 @@ impl KelirPlugin for ReplayPlugin {
         "replay"
     }
     // see: cans/plugins/replay.md#Service-exports-(replay)
-    fn fork_state(&self, _child_session_id: &str) -> Box<dyn kelir_interface::plugin::AnyPlugin> {
+    fn fork_state(
+        &self,
+        _child_session_id: &str,
+    ) -> Box<dyn kelir_interface::plugin_model::AnyPlugin> {
         // see: cans/08-lifecycle.md#CoW-fork
         Box::new(Self::new(self.config.clone()))
     }

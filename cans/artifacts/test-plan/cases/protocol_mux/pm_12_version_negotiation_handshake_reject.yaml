@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/11-protocol.md#Wire-framing"
-  statement: "Handshake validates version == 0x01; mismatches reject with E_INCOMPATIBLE_SHIM_VERSION; session aborts. Gap: no handshake validation exists in-tree (only the Handshake struct in crates/kelir-interface/src/protocol.rs); the rejection is specified against cans/11-protocol.md#Wire-framing, not a live check."
+  statement: "Handshake validates version == 0x01; mismatches reject with E_INCOMPATIBLE_SHIM_VERSION; session aborts. Gap: no handshake validation exists in-tree (only the Handshake struct in crates/kelir-interface/src/protocol_wire.rs); the rejection is specified against cans/11-protocol.md#Wire-framing, not a live check."
   blast_radius_if_breached: "Outdated or incompatible guest shims execute with undefined wire parsing behavior."
 
 confusion_matrix:

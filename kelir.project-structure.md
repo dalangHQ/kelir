@@ -34,22 +34,22 @@ kelir/
 │   │       ├── bus/                   # 4-Ring VirtIO Hardware Multiplexer
 │   │       │   ├── mod.rs             # BusDispatcher trait
 │   │       │   ├── console.rs         # Ring 1: Raw terminal stream broker
-│   │       │   ├── vsock.rs           # Ring 2: Syscall trap & IPC multiplexer
+│   │       │   ├── vsock_mesh.rs           # Ring 2: Syscall trap & IPC multiplexer
 │   │       │   ├── fs.rs              # Ring 3: virtio-fs in-memory bridge
 │   │       │   └── net.rs             # Ring 4: virtio-net frame interception
-│   │       ├── plugin.rs              # KelirPlugin trait & static dispatch pipeline
+│   │       ├── plugin_model_codegen.rs              # KelirPlugin trait & static dispatch pipeline
 │   │       ├── protocol/              # Wire framing between Host and Shim
 │   │       │   ├── mod.rs
-│   │       │   ├── codec.rs           # 0x4B45 binary TLV framing parser
+│   │       │   ├── codec_protocol.rs           # 0x4B45 binary TLV framing parser
 │   │       │   └── messages.rs        # TrapEvent, TrapAction, WindowResize CBOR models
 │   │       ├── vmm/                   # Driver orchestration
 │   │       │   ├── mod.rs
-│   │       │   ├── driver.rs          # VmmDriver trait (boot, fork, checkpoint, rollback)
+│   │       │   ├── driver_interface.rs          # VmmDriver trait (boot, fork, checkpoint, rollback)
 │   │       │   └── router.rs          # Dynamic backend loader (libkrun vs rustvmm)
 │   │       └── telemetry/             # Hardware verification engines
 │   │           ├── mod.rs
-│   │           ├── receipt.rs         # Cryptographic ExecutionReceipt (BLAKE3, dirty pages)
-│   │           └── delta.rs           # CausalDelta state diff computer
+│   │           ├── receipt_attest.rs         # Cryptographic ExecutionReceipt (BLAKE3, dirty pages)
+│   │           └── delta_attest.rs           # CausalDelta state diff computer
 │   │
 │   ├── kelir-shim/                    # In-guest Musl static binary (<50KB payload)
 │   │   ├── Cargo.toml                 # Configured with lto = "fat", opt-level = "z", panic = "abort"
@@ -58,10 +58,10 @@ kelir/
 │   │       ├── reaper.rs              # Non-blocking waitpid(-1, WNOHANG) zombie reclamation loop
 │   │       ├── ingress.rs             # vsock:5253 ingress multiplexer → guest loopback TCP proxy
 │   │       ├── pty_broker.rs          # openpty() master/slave broker: setsid() + TIOCSCTTY controlling terminals
-│   │       ├── trap.rs                # seccomp-unotify loop + all-threads PTRACE_SEIZE/INTERRUPT anti-TOCTOU
-│   │       ├── entropy.rs             # Shannon entropy on argv[1:] payload
-│   │       ├── audit.rs               # ELF static scan (DT_NEEDED, PT_INTERP) + LD_PRELOAD verification
-│   │       └── vsock.rs               # /dev/vhost-vsock hardware client socket
+│   │       ├── trap_protocol_wire.rs                # seccomp-unotify loop + all-threads PTRACE_SEIZE/INTERRUPT anti-TOCTOU
+│   │       ├── entropy_codegen.rs             # Shannon entropy on argv[1:] payload
+│   │       ├── audit_cli.rs               # ELF static scan (DT_NEEDED, PT_INTERP) + LD_PRELOAD verification
+│   │       └── vsock_mesh.rs               # /dev/vhost-vsock hardware client socket
 │   │
 │   ├── kelir-drivers/                 # Pluggable Virtualization Implementations
 │   │   ├── driver-libkrun/            # dalangHQ libkrun fork: userfaultfd CoW fork (<15ms), GPA snapshot engine (<8ms), clock skew patches — macOS HVF default
@@ -88,7 +88,7 @@ kelir/
 │   │   │       ├── lib.rs
 │   │   │       ├── mask.rs            # Sliding-window read replacement (MaskRule regex redaction, fixed-width)
 │   │   │       ├── ghost.rs           # Synthetic RAM-only inode injector (VfsInodeAttr: mode/uid/gid/size)
-│   │   │       ├── reconciler.rs      # Host-boundary reconciliation: c 0 0 whiteouts + opaque dirs → atomic host sync (session.fs.reconcile())
+│   │   │       ├── storage_reconciler.rs      # Host-boundary reconciliation: c 0 0 whiteouts + opaque dirs → atomic host sync (session.fs.reconcile())
 │   │   │       ├── idmap.rs           # FUSE dynamic UID/GID translation (0 -> geteuid())
 │   │   │       └── lock_broker.rs     # Cross-VM lock broker keyed on host-mapped physical inodes
 │   │   ├── plugin-wire/               # Zero-Knowledge credential proxy & DNS Sinkhole
@@ -106,8 +106,8 @@ kelir/
 │   │       ├── Cargo.toml
 │   │       └── src/
 │   │           ├── lib.rs
-│   │           ├── wal.rs             # Append-only Merkle-chained SQLite/DuckDB WAL
-│   │           └── otel.rs            # W3C traceparent context propagator
+│   │           ├── wal_plugin_ledger.rs             # Append-only Merkle-chained SQLite/DuckDB WAL
+│   │           └── otel_plugin_ledger.rs            # W3C traceparent context propagator
 │   │
 │   ├── kelir-adapters/                # Ecosystem Interoperability
 │   │   └── mcp-server/                # Model Context Protocol stdio terminal server

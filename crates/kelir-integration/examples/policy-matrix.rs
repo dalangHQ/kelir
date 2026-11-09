@@ -9,19 +9,19 @@ use std::sync::{
 
 use async_trait::async_trait;
 use ciborium::value::Value as CborValue;
-use kelir_interface::driver::SuspendReason;
-use kelir_interface::plugin::HandlerCtx;
+use kelir_interface::driver_interface::SuspendReason;
+use kelir_interface::plugin_model::HandlerCtx;
 
 use kelir::{
     HCons, HNil, KelirBuilder, NoParams, PidLineage, SnapshotDescriptor, Unsealed, VmConfig,
-    driver::{DriverPolicy, WxPolicy},
+    driver_interface::{DriverPolicy, WxPolicy},
     handler,
-    plugin::{
+    plugin_model::{
         AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant, PluginError,
         SystemTelemetryParticipant, TrapInterposer, Verdict, VetoEvent, WatchdogEvent,
         WatchdogVerdict,
     },
-    protocol::{PatchPayload, SuspendUntil, TrapEvent},
+    protocol_wire::{PatchPayload, SuspendUntil, TrapEvent},
 };
 
 #[derive(Default)]

@@ -3,13 +3,13 @@
 // see: cans/artifacts/diagrams/guest-vm.txt#kelir-shim
 // TODO (L3): tests/test_anti_toctou.rs + tests/test_reaper.rs per cans/artifacts/config/project-structure.txt#kelir-shim.
 
-mod codec;
-mod introspect;
-mod multiplexer;
-mod pty;
-mod trap;
+mod codec_protocol;
+mod introspect_trap;
+mod multiplexer_protocol;
+mod pty_terminal;
+mod trap_protocol;
 
-use kelir_interface::vsock::VSOCK_CONTROL_PORT;
+use kelir_interface::vsock_mesh::VSOCK_CONTROL_PORT;
 
 // see: cans/11-protocol.md#Control-channel
 const STREAM_CHANNEL: u16 = 0x0001;
@@ -18,17 +18,17 @@ const STREAM_CHANNEL: u16 = 0x0001;
 const POLL_INTERVAL_MS: libc::c_int = 100;
 
 // TODO (L3): surface the exit reason to the host supervisor for attestation receipts (in-band Channel 0x0000 or early-boot UART scrape).
-fn main() -> Result<(), trap::ShimError> {
-    let mut mux = multiplexer::Multiplexer::new();
+fn main() -> Result<(), trap_protocol::ShimError> {
+    let mut mux = multiplexer_protocol::Multiplexer::new();
     // TODO (L3): SPSC ring primary carrier per cans/11-protocol.md#Wire-framing; the AF_VSOCK fallback carrier is wired below.
-    let control_fd = connect_channel(trap::TRAP_CHANNEL)?;
+    let control_fd = connect_channel(trap_protocol::TRAP_CHANNEL)?;
     let data_fd = connect_channel(STREAM_CHANNEL)?;
     // TODO (L3): exchange the Control 0x0000 handshake (version 0x01 + capabilities) before frame traffic.
-    let unotify = trap::init_seccomp_unotify()?;
-    let (_pty_master, _pty_slave) = pty::open_pty_slave()?;
+    let unotify = trap_protocol::init_seccomp_unotify()?;
+    let (_pty_master, _pty_slave) = pty_terminal::open_pty_slave()?;
     let mut trap_seq: u64 = 0;
-    let mut header = [0u8; codec::HEADER_LEN];
-    let mut payload = [0u8; codec::MAX_FRAME_PAYLOAD];
+    let mut header = [0u8; codec_protocol::HEADER_LEN];
+    let mut payload = [0u8; codec_protocol::MAX_FRAME_PAYLOAD];
     loop {
         let mut status: libc::c_int = 0;
         loop {
@@ -43,9 +43,9 @@ fn main() -> Result<(), trap::ShimError> {
         match unotify.dispatch_pending(trap_seq) {
             Ok(Some(inspection)) => {
                 trap_seq += 1;
-                match introspect::encode_trap_frame(&inspection.event) {
+                match introspect_trap::encode_trap_frame(&inspection.event) {
                     Ok(frame) => {
-                        write_all(control_fd, &frame, trap::TRAP_CHANNEL)?;
+                        write_all(control_fd, &frame, trap_protocol::TRAP_CHANNEL)?;
                         // TODO (L3): await the host verdict, re-freeze for ExecveMutation patch application, then SECCOMP_IOCTL_NOTIF_SEND (continue/errno/patch) releases the trapped syscall.
                     }
                     Err(_reason) => {
@@ -68,11 +68,11 @@ fn main() -> Result<(), trap::ShimError> {
 }
 
 // see: cans/11-protocol.md#Control-channel
-fn connect_channel(channel: u16) -> Result<libc::c_int, trap::ShimError> {
+fn connect_channel(channel: u16) -> Result<libc::c_int, trap_protocol::ShimError> {
     // SAFETY: a fresh AF_VSOCK stream socket has no aliased state; failure returns -1 without side effects.
     let fd = unsafe { libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM, 0) };
     if fd < 0 {
-        return Err(trap::ShimError::ChannelOpen {
+        return Err(trap_protocol::ShimError::ChannelOpen {
             channel,
             errno: std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
         });
@@ -96,7 +96,7 @@ fn connect_channel(channel: u16) -> Result<libc::c_int, trap::ShimError> {
         let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
         // SAFETY: fd is a live socket descriptor owned by this call and no longer needed on failure.
         unsafe { libc::close(fd) };
-        return Err(trap::ShimError::ChannelConnect { channel, errno });
+        return Err(trap_protocol::ShimError::ChannelConnect { channel, errno });
     }
     Ok(fd)
 }
@@ -106,7 +106,7 @@ fn wait_channels(
     notify_fd: libc::c_int,
     control_fd: libc::c_int,
     data_fd: libc::c_int,
-) -> Result<(bool, bool), trap::ShimError> {
+) -> Result<(bool, bool), trap_protocol::ShimError> {
     let mut pfds = [
         libc::pollfd {
             fd: notify_fd,
@@ -137,18 +137,18 @@ fn wait_channels(
         if errno == libc::EINTR {
             return Ok((false, false));
         }
-        return Err(trap::ShimError::Poll { errno });
+        return Err(trap_protocol::ShimError::Poll { errno });
     }
     Ok((
-        channel_readable(&pfds[1], trap::TRAP_CHANNEL)?,
+        channel_readable(&pfds[1], trap_protocol::TRAP_CHANNEL)?,
         channel_readable(&pfds[2], STREAM_CHANNEL)?,
     ))
 }
 
 // see: cans/11-protocol.md#Wire-framing
-fn channel_readable(pfd: &libc::pollfd, channel: u16) -> Result<bool, trap::ShimError> {
+fn channel_readable(pfd: &libc::pollfd, channel: u16) -> Result<bool, trap_protocol::ShimError> {
     if pfd.revents & libc::POLLNVAL != 0 {
-        return Err(trap::ShimError::ChannelIo {
+        return Err(trap_protocol::ShimError::ChannelIo {
             channel,
             errno: libc::EBADF,
         });
@@ -157,7 +157,7 @@ fn channel_readable(pfd: &libc::pollfd, channel: u16) -> Result<bool, trap::Shim
         return Ok(true);
     }
     if pfd.revents & (libc::POLLERR | libc::POLLHUP) != 0 {
-        return Err(trap::ShimError::ChannelEof { channel });
+        return Err(trap_protocol::ShimError::ChannelEof { channel });
     }
     Ok(false)
 }
@@ -165,11 +165,11 @@ fn channel_readable(pfd: &libc::pollfd, channel: u16) -> Result<bool, trap::Shim
 // see: cans/11-protocol.md#Control-channel
 fn dispatch_control_frame(
     fd: libc::c_int,
-    mux: &mut multiplexer::Multiplexer,
-    header: &mut [u8; codec::HEADER_LEN],
-    payload: &mut [u8; codec::MAX_FRAME_PAYLOAD],
-) -> Result<(), trap::ShimError> {
-    if let Some((_, _, len)) = read_frame(fd, trap::TRAP_CHANNEL, header, payload)? {
+    mux: &mut multiplexer_protocol::Multiplexer,
+    header: &mut [u8; codec_protocol::HEADER_LEN],
+    payload: &mut [u8; codec_protocol::MAX_FRAME_PAYLOAD],
+) -> Result<(), trap_protocol::ShimError> {
+    if let Some((_, _, len)) = read_frame(fd, trap_protocol::TRAP_CHANNEL, header, payload)? {
         if let Err(_reason) = mux.dispatch_control(&payload[..len]) {
             // TODO (L3): emit in-band control reject from the structured reason.
         }
@@ -180,10 +180,10 @@ fn dispatch_control_frame(
 // see: cans/11-protocol.md#Stream-mux-framing
 fn dispatch_data_frame(
     fd: libc::c_int,
-    mux: &mut multiplexer::Multiplexer,
-    header: &mut [u8; codec::HEADER_LEN],
-    payload: &mut [u8; codec::MAX_FRAME_PAYLOAD],
-) -> Result<(), trap::ShimError> {
+    mux: &mut multiplexer_protocol::Multiplexer,
+    header: &mut [u8; codec_protocol::HEADER_LEN],
+    payload: &mut [u8; codec_protocol::MAX_FRAME_PAYLOAD],
+) -> Result<(), trap_protocol::ShimError> {
     if let Some((stream_id, flags, len)) = read_frame(fd, STREAM_CHANNEL, header, payload)? {
         if let Err(_reason) = mux.dispatch_frame(stream_id, flags, &payload[..len]) {
             // TODO (L3): emit in-band reject from the structured reason (SlabSaturated => MSG_EXEC_REJECT{ENOMEM}).
@@ -196,11 +196,11 @@ fn dispatch_data_frame(
 fn read_frame(
     fd: libc::c_int,
     channel: u16,
-    header: &mut [u8; codec::HEADER_LEN],
-    payload: &mut [u8; codec::MAX_FRAME_PAYLOAD],
-) -> Result<Option<(u32, u8, usize)>, trap::ShimError> {
+    header: &mut [u8; codec_protocol::HEADER_LEN],
+    payload: &mut [u8; codec_protocol::MAX_FRAME_PAYLOAD],
+) -> Result<Option<(u32, u8, usize)>, trap_protocol::ShimError> {
     read_exact(fd, channel, header)?;
-    let Ok((stream_id, flags, len)) = codec::decode_header(header) else {
+    let Ok((stream_id, flags, len)) = codec_protocol::decode_header(header) else {
         // TODO (L3): framing resync after a corrupt header; the frame boundary is unrecoverable until then.
         return Ok(None);
     };
@@ -210,20 +210,24 @@ fn read_frame(
 }
 
 // see: cans/11-protocol.md#Wire-framing
-fn read_exact(fd: libc::c_int, channel: u16, buf: &mut [u8]) -> Result<(), trap::ShimError> {
+fn read_exact(
+    fd: libc::c_int,
+    channel: u16,
+    buf: &mut [u8],
+) -> Result<(), trap_protocol::ShimError> {
     let mut filled = 0;
     while filled < buf.len() {
         // SAFETY: buf+filled is valid for buf.len()-filled writable bytes; read(2) writes at most that span and only returns n>=0 on success.
         let n = unsafe { libc::read(fd, buf.as_mut_ptr().add(filled).cast(), buf.len() - filled) };
         if n == 0 {
-            return Err(trap::ShimError::ChannelEof { channel });
+            return Err(trap_protocol::ShimError::ChannelEof { channel });
         }
         if n < 0 {
             let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             if errno == libc::EINTR {
                 continue;
             }
-            return Err(trap::ShimError::ChannelIo { channel, errno });
+            return Err(trap_protocol::ShimError::ChannelIo { channel, errno });
         }
         filled += n as usize;
     }
@@ -231,20 +235,20 @@ fn read_exact(fd: libc::c_int, channel: u16, buf: &mut [u8]) -> Result<(), trap:
 }
 
 // see: cans/11-protocol.md#Trap-fast-path
-fn write_all(fd: libc::c_int, buf: &[u8], channel: u16) -> Result<(), trap::ShimError> {
+fn write_all(fd: libc::c_int, buf: &[u8], channel: u16) -> Result<(), trap_protocol::ShimError> {
     let mut written = 0;
     while written < buf.len() {
         // SAFETY: buf+written is valid for buf.len()-written readable bytes; write(2) reads at most that span.
         let n = unsafe { libc::write(fd, buf.as_ptr().add(written).cast(), buf.len() - written) };
         if n == 0 {
-            return Err(trap::ShimError::ChannelEof { channel });
+            return Err(trap_protocol::ShimError::ChannelEof { channel });
         }
         if n < 0 {
             let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
             if errno == libc::EINTR {
                 continue;
             }
-            return Err(trap::ShimError::ChannelIo { channel, errno });
+            return Err(trap_protocol::ShimError::ChannelIo { channel, errno });
         }
         written += n as usize;
     }
