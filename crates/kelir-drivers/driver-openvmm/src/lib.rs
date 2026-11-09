@@ -35,6 +35,11 @@ impl OpenVmmDriver {
         })
     }
 
+    // see: cans/01-architecture.md#Driver-backends
+    pub fn partition_handle(&self) -> usize {
+        self.partition_handle
+    }
+
     fn create_partition(&mut self) -> Result<(), VmmError> {
         // TODO (L3): create the WHP partition via WHvCreatePartition and commit Local APIC state before the TSC deadline.
         Err(VmmError::Unsupported(

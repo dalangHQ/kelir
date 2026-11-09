@@ -62,6 +62,29 @@ struct Execution {
 }
 
 #[derive(serde::Deserialize)]
+struct CaseMap {
+    cases: Vec<MapEntry>,
+    #[serde(default)]
+    harness_tests: Vec<HarnessTest>,
+}
+
+// see: cans/artifacts/test-plan/case-to-test-map.yaml#harness_tests
+#[derive(serde::Deserialize)]
+struct HarnessTest {
+    file: String,
+    reason: String,
+}
+
+#[derive(serde::Deserialize)]
+struct MapEntry {
+    case_id: String,
+    status: String,
+    test_file: Option<String>,
+    test_fn: Option<String>,
+    reason: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
 struct AnchorException {
     reference: String,
     reason: String,
@@ -500,6 +523,98 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // see: cans/artifacts/test-plan/case-to-test-map.yaml#cases
+    let map_path = repo_root.join("cans/artifacts/test-plan/case-to-test-map.yaml");
+    let map_raw = fs::read_to_string(&map_path)
+        .map_err(|err| format!("cannot read {}: {err}", map_path.display()))?;
+    let map: CaseMap = serde_yaml::from_str(&map_raw)
+        .map_err(|err| format!("malformed {}: {err}", map_path.display()))?;
+    if map.cases.len() != manifest.plan.total_cases {
+        eprintln!(
+            "ERROR: case-to-test-map holds {} cases, manifest declares {}",
+            map.cases.len(),
+            manifest.plan.total_cases
+        );
+        errors += 1;
+    }
+    let manifest_ids: HashSet<&str> = manifest.cases.iter().map(|c| c.case_id.as_str()).collect();
+    let mut map_ids = HashSet::new();
+    let mut listed_files = HashSet::new();
+    // see: cans/artifacts/test-plan/case-to-test-map.yaml#harness_tests
+    for harness in &map.harness_tests {
+        if harness.reason.is_empty() {
+            eprintln!("ERROR: harness test {} carries no reason", harness.file);
+            errors += 1;
+        }
+        listed_files.insert(harness.file.clone());
+    }
+    let mut map_implemented = 0;
+    let mut map_gap = 0;
+    for entry in &map.cases {
+        if !map_ids.insert(entry.case_id.as_str()) {
+            eprintln!("ERROR: duplicate case-to-test-map entry: {}", entry.case_id);
+            errors += 1;
+        }
+        if !manifest_ids.contains(entry.case_id.as_str()) {
+            eprintln!("ERROR: map entry has no manifest case: {}", entry.case_id);
+            errors += 1;
+        }
+        match entry.status.as_str() {
+            "implemented" => map_implemented += 1,
+            "gap" if entry.reason.as_deref().is_none_or(|r| r.is_empty()) => {
+                map_gap += 1;
+                eprintln!("ERROR: gap entry {} carries no reason", entry.case_id);
+                errors += 1;
+            }
+            "gap" => map_gap += 1,
+            other => {
+                eprintln!("ERROR: map {}: invalid status: {}", entry.case_id, other);
+                errors += 1;
+            }
+        }
+        if let (Some(file), Some(func)) = (&entry.test_file, &entry.test_fn) {
+            listed_files.insert(file.clone());
+            let path = repo_root.join(file);
+            let text = fs::read_to_string(&path).unwrap_or_default();
+            if !path.is_file() {
+                eprintln!("ERROR: map {}: test file missing: {file}", entry.case_id);
+                errors += 1;
+            } else if !text.contains(&format!("fn {func}")) {
+                eprintln!(
+                    "ERROR: map {}: test fn {func} not found in {file}",
+                    entry.case_id
+                );
+                errors += 1;
+            }
+        } else if entry.test_file.is_some() || entry.test_fn.is_some() {
+            eprintln!(
+                "ERROR: map {}: test_file and test_fn must be set together",
+                entry.case_id
+            );
+            errors += 1;
+        }
+    }
+    for entry in WalkDir::new(repo_root.join("crates"))
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let p = entry.path();
+        if p.extension().is_some_and(|ext| ext == "rs")
+            && p.parent()
+                .is_some_and(|d| d.file_name().is_some_and(|n| n == "tests"))
+        {
+            let rel = p
+                .strip_prefix(&repo_root)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .to_string();
+            if !listed_files.contains(&rel) {
+                eprintln!("ERROR: test file {rel} is not listed in case-to-test-map.yaml");
+                errors += 1;
+            }
+        }
+    }
+
     if errors == 0 {
         println!(
             "Manifest verification passed: {}/{} cases synchronized with filesystem.",
@@ -511,6 +626,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             disk_total,
             disk_domain_counts.len()
         );
+        println!("Case-to-test map verified: {map_implemented} implemented / {map_gap} gap.");
         if warnings > 0 {
             println!(
                 "WARNING: {} case files lack platform_target; validated when present until Part 2 lands.",

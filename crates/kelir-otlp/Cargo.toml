@@ -8,5 +8,8 @@ license = "FSL-1.1-Apache-2.0"
 kelir-interface = { path = "../kelir-interface" }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+toml = { workspace = true }
+
 [lints]
 workspace = true

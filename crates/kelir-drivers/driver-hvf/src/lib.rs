@@ -38,6 +38,16 @@ impl HvfDriver {
         })
     }
 
+    // see: cans/01-architecture.md#Driver-backends
+    pub fn vcpu_count(&self) -> usize {
+        self.vcpu_ids.len()
+    }
+
+    // see: cans/01-architecture.md#Driver-backends
+    pub fn memory_mapped_bytes(&self) -> usize {
+        self.memory_mapped_bytes
+    }
+
     fn create_vm(&mut self) -> Result<(), VmmError> {
         // TODO (L3): call sys::hv_vm_create(0) inside an unsafe block, then sys::hv_vcpu_create per vCPU.
         Err(VmmError::Unsupported(

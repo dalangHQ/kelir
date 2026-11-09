@@ -34,6 +34,11 @@ impl AvfDriver {
         })
     }
 
+    // see: cans/01-architecture.md#Driver-backends
+    pub fn avf_fd(&self) -> i32 {
+        self.avf_fd
+    }
+
     fn open_node(&mut self) -> Result<(), VmmError> {
         // TODO (L3): connect /dev/avf or the pKVM node.
         Err(VmmError::Unsupported("avf boot: /dev/avf open (L3)".into()))

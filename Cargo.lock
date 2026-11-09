@@ -574,6 +574,7 @@ version = "1.0.0"
 dependencies = [
  "kelir-interface",
  "thiserror 2.0.21",
+ "toml",
 ]
 
 [[package]]
