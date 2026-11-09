@@ -1,309 +1,141 @@
-### 1. Contract & Spec Violations (Overt Lies)
+### 1. Blatant Code & Logic Duplication
 
-* **String-Keyed Service Lookup in TS & Python SDKs**
-  * *Spec (`cans/03-sdk-architecture.md#Service-lookup-across-languages`):* "No string-keyed service registry on any SDK. TypeScript: `c.<pluginKey>` typed by `.use()` overloads. Python: `c.cap.<plugin_key>` typed by `.use()` overloads. No `session.ext(T)`."
-  * *Code (`packages/ts/core/src/context.ts`, `packages/py/kelir/__init__.py`):* TS uses `c.extension<LedgerHandle>("ledger")` and Python uses `c.cap.extension("ledger")`. The SDKs implemented the exact anti-pattern forbidden by the spec.
-* **`FilterAction` Missing `Abort` Variant in SDKs**
-  * *Spec (`cans/02-plugin-model.md#Unified-verdict`):* `FilterAction = { Forward, Drop{errno,reason}, Suspend{until}, Abort{reason} }`.
-  * *Code (`packages/ts/core/src/verdict.ts`, `packages/py/kelir/__init__.py`):* TS `FilterAction` only defines `forward | drop | suspend`. Python `FilterAction` only defines `forward`, `drop`, `suspend`. Neither SDK can express an in-flight byte-transform abort.
-* **`SuspendUntil` Missing `Handshake`**
-  * *Spec (`cans/11-protocol.md#Wire-messages`):* `SuspendUntil: Deadline(ms) | Approval | Handshake`.
-  * *Code (`packages/ts/core/src/verdict.ts`, `packages/py/kelir/__init__.py`):* Both SDKs omit `Handshake` completely.
-* **`CausalDelta` Cannot Be Constructed by Any Plugin**
-  * *Code (`crates/kelir-interface/src/telemetry/delta.rs`):* `CausalDelta` is marked `#[non_exhaustive]` and defines zero constructor methods.
-  * *Consequence:* `plugin-ledger` (`crates/kelir-plugins/plugin-ledger/src/compute.rs`) explicitly cannot assemble a `CausalDelta` and throws an error at compile/runtime boundary. The L1 contract is broken.
-* **Catalog State Machine Lie (`pending` -> `owned`)**
-  * *Spec (`cans/08-lifecycle.md#Detached-lifecycle`):* "disk_lock_handoff: SQLite row transition from `pending` to `owned` by the runner; atomic".
-  * *Code (`crates/kelir-catalog/src/lib.rs` & `schema.rs`):* `SCHEMA_V1_SQL` has no state or lock column. The code explicitly admits: `// TODO (L3): no pending/owned lock-state column exists in SCHEMA_V1_SQL or cans/06; claim is runner_pid plus lease refresh until the schema gains one.`
-
----
-
-### 2. Phantom FFI Boundaries (The Binding Shells)
-
-* **NAPI `NativeSessionHandle` is an Empty Shell**
-  * *Code (`crates/kelir-bindings/napi/src/lib.rs`):* `NativeSessionHandle` exposes zero methods or fields across the NAPI bridge.
-  * *Code (`packages/ts/core/src/session.ts`):* TS expects `native.driverName`, `native.bootMs`, `native.vm`, `native.storage`, `native.wire`, `native.checkpoint`, etc. Not a single plane or handle actually crosses the bridge.
-* **PyO3 `PySessionHandle` is an Empty Shell**
-  * *Code (`crates/kelir-bindings/pyo3/src/lib.rs`):* `PySessionHandle` exposes zero methods to Python.
-  * *Code (`packages/py/kelir/__init__.py`):* Every session plane method (`rollback`, `spawn`, `suspend`, `resume`) unconditionally throws `raise EConfig("kelir native PyO3 bridge (_kelir) is missing...")`.
-* **Universal Hard Halt on `Session::boot`**
-  * *Code (`crates/kelir-core/src/session.rs`):* `Session::boot_with_engine` ignores its config and immediately returns `Err(PluginError::Halt("TODO (L3): Session::boot".into()))`.
-  * *Consequence:* Despite L2 examples claiming runnable status (`autonomous-swe-agent`, `policy-matrix`, `git-gate`), calling `.boot().await` fails unconditionally.
+* **Duplicate Network Layout & Packet View Engines**:
+  * `crates/kelir-core/src/planes/wire/layout.rs` and `crates/kelir-plugins/plugin-db-proxy/src/reassembler/layout.rs` are near-verbatim clones. Both independently define byte offsets (`ETH_HEADER_BYTES`, `IPV4_MIN_HEADER_BYTES`, `TCP_MIN_HEADER_BYTES`), bitmasks, and unsafe zero-copy views (`EthView`, `Ipv4View`, `TcpView`).
+* **Copy-Pasted Driver Boilerplate**:
+  * `driver-avf`, `driver-bwrap`, `driver-hvf`, `driver-openvmm`, `driver-proot`, `driver-rustvmm`, and `MockVmmDriver` each duplicate ~20 identical `VmmDriver` trait stub methods (`adjust_balloon`, `step_clock_window`, `commit_broker_upper`, `discard_broker_upper`, `freeze_vcpus`, `unfreeze_vcpus`, `entropy_position`, `restore_entropy_position`). Default trait implementations in `kelir-interface` would eliminate hundreds of lines of identical `Err(VmmError::Unsupported(...))` stubs.
+* **Hex Encoding/Decoding Reinvented 9 Times**:
+  * Instead of standardizing on `hex` or a shared utility in `kelir-interface`, bespoke byte-to-hex and hex-to-byte routines are hand-rolled in:
+    * `crates/kelir-interface/src/bin/codegen/otlp.rs` (`hex_lower`)
+    * `crates/kelir-otlp/src/records.rs` (`hex_lower`)
+    * `crates/kelir-plugins/plugin-ledger/src/otel.rs` (`hex`, `hex_digit`, `decode_hex`)
+    * `crates/kelir-plugins/plugin-vault/src/service.rs` (`hex_encode`)
+    * `crates/kelir-plugin-cli/src/attach.rs` (`hex_val`, `parse_session_id`)
+    * `crates/kelir-plugin-cli/src/fixtures.rs` (`hex_digest`)
+    * `crates/kelir-plugin-cli/src/parity.rs` (`decode_hex`, `encode_hex`)
+    * `crates/kelir-plugin-testkit/src/vectors.rs` (`hex`)
+    * `crates/kelir-core/src/session.rs` (`incarnation_hex`)
+* **Session Relay Path Resolution**:
+  * Regex validation, home directory discovery, and string formatting for `~/.kelir/sessions/<id>/relay.sock` are implemented independently across `kelir-core/src/session.rs`, `kelir-plugin-cli/src/attach.rs`, `packages/ts/core/src/session.lifecycle.ts`, and `packages/py/kelir/__init__.py`.
+* **Ad-hoc Thread Wakers (`block_on`)**:
+  * Identical `ThreadWaker` and `block_on` runtime implementations are duplicated in `crates/kelir-bindings/pyo3/src/lib.rs` and `crates/kelir-plugins/plugin-vault/src/lib.rs`.
 
 ---
 
-### 3. Tautologies & Goodhart's Law (Fake Green Gates)
+### 2. The "Facade Illusion" (Builder Configuration Black Holes)
 
-* **Parity Vector Tautology for Veto & Watchdog**
-  * *Code (`crates/kelir-plugin-testkit/src/vectors.rs` & `crates/kelir-plugin-cli/src/parity.rs`):*
-    * `veto_case()` generates a mock frame carrying `GuestToHost::Heartbeat` with `expected_verdict: Verdict::Pass`.
-    * `watchdog_case()` generates a mock frame carrying `GuestToHost::Heartbeat` with `expected_verdict: Verdict::Pass`.
-    * `assert_vectors` only checks if the string `"Fork"`, `"Suspend"`, `"ClockSkew"`, `"Suppress"`, `"Mitigate"` is present in the JSON.
-    * No veto or watchdog logic is evaluated. Green tests, zero verification.
-* **Scorecard Hardware Probe Fake**
-  * *Code (`crates/kelir-testkit/src/bin/scorecard.rs`):* Claims `| AS-07 | Hardware Platform Tier | Strict KVM/HVF/WHP probing via doctor | pass |`.
-  * *Reality:* `host_hypervisors()` hardcodes `vec!["hvf", "avf"]` on macOS and `vec!["whp"]` on Windows via `std::env::consts::OS` without invoking `doctor` or probing hardware.
-* **Integration Example Oracles**
-  * *Code (`crates/kelir-integration/examples/autonomous-swe-agent.rs`, `packages/py/examples/autonomous-swe-agent.py`):* `UserOracle` hardcodes `is_hypothesis_valid: true`, `verify_physical_receipt: true`, and `await_human_approval: sleep(50ms)`. The verification loop cannot fail.
+* **Silent Config Dropping in Rust Builder**:
+  * `crates/kelir/src/builder.rs` exposes fluent builder APIs: `.terminal()`, `.storage()`, `.wire()`, and `.lock_broker()`.
+  * In `finish_boot()`, `terminal_cfg`, `wire_cfg`, and `lock_broker_cfg` are **never passed to `kelir-core`**. They are stored in `Registration` and silently dropped. Only `synthetic_files` from `storage_cfg` are forwarded.
+* **No-Op Builder Methods in TypeScript**:
+  * In `packages/ts/core/src/builder.lifecycle.ts`, `.terminal()`, `.storage()`, `.wire()`, and `.params()` accept complex schema objects and literally return `this` without storing the arguments.
+* **Ignored Subsystem Configs in Python**:
+  * `packages/py/kelir/__init__.py` records `kwargs` in `self._config["terminal"]`, `["storage"]`, and `["wire"]`. When calling `native.PyKelirBuilder` in `boot()`, only compute, memory, and kernel paths are forwarded; all plane configs are discarded.
+* **Zero-Value HList Typing in Rust**:
+  * `crates/kelir/src/builder.rs` and `hlist.rs` implement type-level `HList` recursion (`HCons`, `HNil`) to statically track plugin capabilities at compile time.
+  * In `finish_boot()`, this typed structure is erased into a dynamically allocated vector (`Vec<Box<dyn AnyPlugin>>`), making the entire generic `HList` machinery useless compile-time overhead that doesn't feed the underlying microkernel.
 
 ---
 
-### 4. Broken Flow Plumbing & Fake Accounting
+### 3. Architectural Incoherence & Leaky Abstractions
 
-* **Dead Quota Accounting in Storage Plane**
-  * *Code (`crates/kelir-core/src/planes/storage/mod.rs`):*
-    `check_quota` calculates:
-    ```rust
-    let bytes = self.quota.allocated_bytes.load(...).checked_add(bytes_to_write)?;
-    ```
-    It compares `bytes` against `max_bytes`, but **never stores it back** into `allocated_bytes`. Cumulative usage is never tracked; quota remains at zero indefinitely.
-* **Fake Port Forwarding**
-  * *Code (`crates/kelir-core/src/planes/wire/mod.rs`):*
-    `WirePlane::forward_port` performs zero host socket binding, collision checking, or NAT table updates. It unconditionally returns `Ok(host_port.unwrap_or(guest_port))`.
-* **Gate 3 Trusted-Prefix Skip Does Not Exist**
-  * *Spec (`cans/11-protocol.md#Trap-fast-path`):* EROFS binaries bypass Gate 3 FFI crossing; dynamic interpreters check `argv[1..]`.
-  * *Code (`crates/kelir-core/src/trap_gate.rs`):* `is_trusted` is computed but only used to decide whether to run an `entropy_hook`. If `gate_2_scope_match` succeeds, it returns `GateDecision::FallThrough` directly into the FFI queue. Interpreter inspection is nonexistent.
-* **Tool-Guard DRY & Hash Hallucination**
-  * *Spec (`cans/plugins/tool-guard.md`):* Depends on `plugin-mcp`, parses JSON-RPC via MCP AST.
-  * *Code (`crates/kelir-plugins/plugin-tool-guard/`):* Does not depend on `plugin-mcp`; duplicates a private `jsonrpc.rs` module. In `service.rs`, `catalog_digest` returns hardcoded `[0u8; 32]` with an inline comment blaming a "Cargo.lock freeze" despite `blake3` already existing in the workspace.
+* **Layer Violation in `plugin-db-proxy`**:
+  * The architecture specifies that `WirePlane` handles raw VirtIO-Net packet interception, Ethernet decoding, and L4 stream diversion.
+  * Despite this, `plugin-db-proxy` bypasses `WirePlane`'s L4 abstraction, pulls raw Ethernet frames via `NetInterposer`, parses IPv4/TCP headers from scratch, and runs an internal TCP reassembly engine (`TcpStreamReassembler`). A domain plugin is implementing transport-layer networking.
+* **Trampoline Table Generation Disconnect**:
+  * Both TypeScript (`builder.lifecycle.ts`) and Python (`__init__.py`) execute AOT hook fusion, generate a `FusedTrampolineDescriptor`, and pass it to the native bindings (`NativeKelirBuilder::fuse_hooks`).
+  * In both `kelir-napi` and `kelir-pyo3`, `NativeKelirBuilder::boot()` verifies that `trampoline_entry_count` matches the descriptor, and then **ignores the table completely**. `Session::boot_with_plugins` is invoked without passing the fused trampoline table. None of the fused trampolines are wired to the runtime engine.
+* **Test Plan / Anti-Slop Self-Contradiction**:
+  * `crates/kelir-testkit/src/bin/check_tests.rs` strictly enforces rule `AS-01`, which rejects test files containing identifiers like `MockVmmDriver` and `MockBusDispatcher`.
+  * Yet `crates/kelir-plugin-testkit/src/lib.rs` and `mock_bus.rs` export `MockVmmDriver` and `MockBusDispatcher` as first-class public APIs. The framework exports mock infrastructure that its own verification linter forbids.
+* **Schizophrenic Error Handling**:
+  * Errnos are alternately passed as native POSIX integers, typed variants in `VmmError`, string codes wrapped inside generic `PluginError::Halt("EPERM: ...")` blobs via string concatenation, and catch-all `EConfig` error types in Python and TypeScript. There is no structured machine-readable error transport across the FFI boundaries.
  
-### 5. Transport Engine & SPSC Ring Illusion
+  * ### 4. Fragmented & Conflicting Session Identity Models
 
-* **Spec (`cans/01-architecture.md#Shared-memory-channel`, `#Transport-engine-abstraction`):**
-  * Both transport channels (Control `0x0000`, Stream Mux `0x0001`) terminate in lock-free SPSC rings mapped to supervisor memory.
-  * MMIO/PCI doorbells notify via host `eventfd` and guest virtual interrupts under explicit memory fences without spin-polling.
-* **Code (`crates/kelir-transport/src/spsc_ring.rs`, `crates/kelir-core/src/bus/mod.rs`):**
-  * `SpscRingTransport::read` and `write` unconditionally return `Err(crate::unsupported("..."))`.
-  * No `eventfd`, no guest doorbell, no interrupt injection, and zero memory fences exist in `kelir-transport`.
-  * In `kelir-core/src/bus/mod.rs`, `BusDispatcher::poll_ingress` returns `Ok(None)`, while `route_stream_frame` and `send_control_msg` return `Ok(())` without ever reading, writing, or touching the rings. The transport bus is a disconnected stub that silently blackholes frames.
-
----
-
-### 6. Deterministic Replay & PMU Clock-Lockdown Sham
-
-* **Spec (`cans/plugins/replay.md#Invariants-and-policy-(replay)`, `cans/08-lifecycle.md#Clock-skew`):**
-  * PMU counters step the instruction window across retired instructions (`step_window_instructions`).
-  * `virtio-rng` backend swaps to a seeded ChaCha20 stream captured in snapshot manifests for byte-for-byte `getrandom()` determinism.
-  * Kernel clocksource is locked via `clocksource=kvm-clock tsc=reliable nohpet`.
-* **Code (`crates/kelir-plugins/plugin-replay/src/lib.rs`, `crates/kelir-drivers/`):**
-  * `ReplayState::accrue_step_windows` ignores hardware counters and hardcodes a fixed window push: `pending.push(self.step_window)`.
-  * Every single hardware driver backend (`driver-rustvmm`, `driver-hvf`, `driver-openvmm`, `driver-avf`) returns `Err(VmmError::Unsupported(...))` on:
-    * `step_clock_window`
-    * `register_pmu_sampler`
-    * `set_entropy_backend`
-    * `entropy_position`
-  * Calling `ReplayPlugin::on_vm_init` crashes immediately on any real driver because the driver capabilities are completely unwritten.
+* **`session_id` vs. `incarnation_id` Identity Crisis**:
+  * In `crates/kelir-catalog/src/schema.rs`, `session_id` and `incarnation_id` are strictly distinct entities (`session_id BLOB PRIMARY KEY, incarnation_id BLOB NOT NULL`). A persistent session has a stable ID, while each boot/spawn mints a unique `incarnation_id`.
+  * In `crates/kelir-core/src/session.rs`, `Session` completely collapses this distinction: `session.session_id()` literally returns `self.incarnation_id`. 
+* **Complete Disconnect Between `kelir-core` and `kelir-catalog`**:
+  * `kelir-catalog` defines the canonical SQLite session persistence schema (`SCHEMA_V1_SQL`, `SessionRow`, `CasLease`). 
+  * However, `kelir-core` does not import or depend on `kelir-catalog`. When `Session::boot` or `Session::boot_with_plugins` runs, it mints a random ID in memory, creates a temporary directory in `/tmp`, and writes zero rows to the catalog database. The catalog exists in a vacuum and is only touched by the CLI attach tool.
 
 ---
 
-### 7. FUSE Synthetic File Inode Collision & Read Chunking Bug
+### 5. Fragmented Codegen Architecture
 
-* **Spec (`cans/05-storage-plane.md#Synthetic-FUSE-inodes`, `cans/02-plugin-model.md#FsInodeAttr-carries-full-mode,-uid,-gid,-size,-content`):**
-  * Injected configuration files (.env, .gitconfig) layer onto the host CoW broker at lookup.
-  * Mode `0o400` is honored strictly with zero fallback; permissions cannot be widened.
-* **Code (`crates/kelir-core/src/planes/storage/fuse.rs`, `synthetic.rs`):**
-  * **Inode Identity Collision:** In `FuseDispatcher::dispatch` for `FuseOpcode::Lookup`, every synthetic file lookup returns `guest_inode: request.guest_inode`. It never allocates or maps virtual inodes. If multiple synthetic files are resolved, they all collide on the same caller-supplied inode number.
-  * **Broken Chunked Reads:** In `FuseOpcode::Read`, the code evaluates `if request.data.is_empty() { content.len() }`. Incoming FUSE read requests allocate no buffer in `request.data`, meaning `request.data.is_empty()` is always `true`. The dispatcher returns the entire file content on every single chunk read regardless of offset or requested size.
-  * **Arbitrary Mode Permissiveness:** `SyntheticFile::dynamic` masks with `file.mode & !0o6000`, allowing arbitrary permissions like `0o777` instead of enforcing strict `0o400`.
-
----
-
-### 8. `kelir-shim` Anti-TOCTOU & Seccomp Trap Mirage
-
-* **Spec (`cans/01-architecture.md#Axiomatic-foundations`, `cans/11-protocol.md#Trap-fast-path`):**
-  * Minimal paravirtual micro-init (<50KB musl) traps monitored syscalls via in-kernel eBPF and seccomp-unotify.
-  * Anti-TOCTOU: `cgroup v2` freezer pauses task groups on trap matches. `process_vm_readv` captures exact memory without thread attachment.
-  * Executable identity BLAKE3 is computed from raw bytes at trap time before unfreeze.
-* **Code (`crates/kelir-shim/src/trap.rs`, `introspect.rs`, `main.rs`):**
-  * `SeccompFilter::install()` and `SeccompNotify::install()` are empty stubs returning `Ok(Self { fd: None })`. No seccomp filter is installed in the guest kernel.
-  * In `main.rs`, `unotify.dispatch_pending()` immediately returns `Ok(None)` because `self.fd` is `None`. The event loop burns cycles doing zero syscall interception.
-  * In `introspect.rs`, `read_argv` reads `/proc/{pid}/cmdline` and `read_envp` reads `/proc/{pid}/environ` directly from the procfs filesystem without freezing the target task via cgroups. This is the exact TOCTOU race condition the spec explicitly mandates preventing.
+* **Four Disconnected Generation Pipelines**:
+  * The workspace maintains four separate, uncoordinated code generators instead of a unified build step:
+    1. `crates/kelir-interface/src/bin/codegen/main.rs`: A heavyweight `syn`-based parser generating TS/Python SDK files, wire headers, and OTLP records.
+    2. `crates/kelir-core/codegen/gen-fuse-uapi.sh`: Shell script invoking `cc` against `fuse_uapi.c` to emit `uapi.rs`.
+    3. `crates/kelir-shim/codegen/gen-elf-uapi.sh`: Shell script invoking `cc` against `elf_uapi_kernel.c` and `elf_uapi_glibc.c` to emit `uapi.rs`.
+    4. `crates/kelir-testkit/src/bin/anchors.rs`: Separate binary scanning Markdown files to generate `anchors.json`.
+* **Self-Overwriting Crate Boundary Violation**:
+  * `kelir-interface`'s codegen binary generates source files located inside completely different workspace crates (`crates/kelir-otlp/src/records.rs`, `crates/kelir-shim/include/kelir/wire.h`, `crates/kelir-plugins/plugin-ledger/src/wal/merkle.rs`). This couples crates across the workspace through out-of-band file emission rather than shared library types.
 
 ---
 
-### 9. Checkpoint Plane DAG & CoW Compaction Fiction
+### 6. Wire Framing & Protocol Layout Incoherence
 
-* **Spec (`cans/08-lifecycle.md#Delta-chain-compaction`, `cans/09-snapshots.md#Restore-modes`):**
-  * Checkpoint DAG supports unbounded depth.
-  * `StepVerdict::Commit` advances delta DAG head in sparse extents.
-  * `StepVerdict::Rollback` discards working delta in $\le$8ms.
-  * Compaction flattens ancestor deltas in a single-pass block copy on export.
-  * Restoration walks CAS manifest graphs.
-* **Code (`crates/kelir-core/src/planes/checkpoint/mod.rs`):**
-  * `CheckpointPlane::compact` unconditionally aborts:
+* **Inconsistent Header Lengths and Offsets**:
+  * `crates/kelir-core/src/bus/mod.rs` and `crates/kelir-shim/src/codec.rs` define `HEADER_LEN = 9` (4 bytes `stream_id` + 1 byte `flags` + 4 bytes `len`). Under this model, `msg_type` is treated as payload data.
+  * In `crates/kelir-plugin-testkit/src/vectors.rs`, `WireFrame::encode()` treats `msg_type` as a required protocol header field, packing it directly after `len`, producing an 11-byte frame header (`checked_add(9) + 2`).
+  * Test vectors and runtime bus dispatchers disagree on whether `msg_type` belongs to the transport frame envelope or the application payload.
+* **Redundant Wire Enums**:
+  * `crates/kelir-interface/src/codec.rs` and `crates/kelir-interface/src/protocol.rs` define redundant framing constants: `FLAG_OPEN`, `FLAG_DATA`, `FLAG_CLOSE`, `FLAG_RST`, `FLAG_WINDOW_UPDATE`, `MAX_FRAME_PAYLOAD`, and `MAX_STREAM_ID` are defined twice in the same crate across two sibling files.
+
+---
+
+### 7. Isolated Terminal Plane vs. Pipeline Engine Silo
+
+* **Dead Pipeline Routing for Terminal I/O**:
+  * `crates/kelir-core/src/planes/terminal/mod.rs` implements `Vt100StateMachine`, `ScreenMatrix`, and `TerminalPlane` (with on-disk chunk appending via `index.bin`).
+  * `crates/kelir-core/src/dispatch.rs` defines `dispatch_console_input`, `dispatch_console_output`, `dispatch_exec_stdout`, and `dispatch_exec_stderr`.
+  * The dispatcher invokes `ConsoleInterposer` trait hooks, but **never routes bytes to `session.terminal`**. `TerminalPlane::feed` and `TerminalPlane::append_log_chunk` are never called by the pipeline engine. The terminal emulator and chunk logger sit completely isolated from the execution streams.
+
+---
+
+### 8. Triple-Written Profile Interpreters
+
+* **Serde vs. Manual Path Crawlers**:
+  * `crates/kelir/src/sandbox.rs` uses strongly typed Rust structs (`SandboxProfile`, `SessionProfile`, `ComputeProfile`) to parse `kelir.toml`/`kelir.yaml` via `serde`.
+  * `packages/ts/core/src/sandbox.runtime.ts` ignores TypeBox/types and hand-rolls a dynamic recursive dictionary crawler (`profileValueAt`) using a hardcoded `PROFILE_FIELDS` tuple list.
+  * `packages/py/kelir/lifecycle_sandbox.py` duplicates the exact same untyped crawler with `_dig()` and its own copy-pasted `PROFILE_FIELDS` tuple list.
+  * Three diverging implementations parse the exact same configuration files. Changes to schema fields in `kelir.toml` require manually synchronizing Rust struct fields and two separate string-path list arrays in TS and Python.
+
+---
+
+### 9. Type Flattening and Information Loss in SDK Models
+
+* **Lossy Python `ExitKind` Translation**:
+  * In `kelir-interface/src/telemetry/receipt.rs`, `ExitKind` is a strongly typed enum:
     ```rust
-    Err(PluginError::Halt("TODO (L3): CheckpointPlane::compact".into()))
-    ```
-  * `ManifestGraph` is a primitive in-memory `HashMap<u64, CheckpointNode>` with sequential integer IDs (`AtomicU64`), not content-addressed BLAKE3 digests or CAS graph walks.
-  * `commit_step` simply inserts this node into RAM without flushing delta pages or talking to the broker upper backing file.
-  * `rollback_step` removes the entry from the in-memory map without issuing hole-punching ioctls or reverting memory tracking slots.
-
----
-
-### 10. Vault Secret Zeroization & Rollback Revocation Myth
-
-* **Spec (`cans/plugins/vault.md#Memory-isolation-and-zeroization`, `cans/plugins/vault.md#Revocation`, `cans/08-lifecycle.md#Rollback`):**
-  * Host keyring memory is pinned with `mlock(2)` and excluded from swap.
-  * Issued token buffers zeroize on drop; TTL expiry revokes host-side.
-  * **Hard Invariant:** `Session::rollback()` revokes all outstanding tokens for the session immediately.
-* **Code (`crates/kelir-plugins/plugin-vault/src/service.rs`, `crates/kelir-core/src/session.rs`):**
-  * `IssuedToken` stores secrets as raw, heap-allocated Rust `String`s with zero custom `Drop` zeroization and zero `mlock` pinning.
-  * `CredentialBroker::issue` does not generate secrets at all: it mints `token: String::new()` (an empty string).
-  * In `crates/kelir-core/src/session.rs#rollback_to`, the rollback sequence runs:
-    ```rust
-    self.wire.quiesce()?;
-    if let Some(ingress) = self.engine.parked_connection_reset() { ... }
-    self.storage.discard()?;
-    self.driver.lock().await.rollback(snapshot)?;
-    ```
-    `plugin-vault` token revocation is **completely omitted** from the rollback pipeline. Issued credentials remain alive and valid across hypervisor rollbacks, violating the security contract.
-
-### 11. Fake Typestate in `KelirBuilder`
-
-* **Spec (`cans/03-sdk-architecture.md#Rust-SDK`):**
-  * Affine typestate transitions enforce lifecycle correctness at compile time:
-    $$\text{KelirBuilder}\langle\text{Unsealed}\rangle \longrightarrow \text{KelirBuilder}\langle\text{Sealed}\rangle \longrightarrow \text{Session}$$
-* **Code (`crates/kelir/src/builder.rs`):**
-  * `boot()` is implemented directly on `KelirBuilder<Unsealed, Plugins, Params>`:
-    ```rust
-    impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
-        pub async fn boot(self) -> Result<Session<Plugins, Params>, PluginError> {
-            self.finish_boot().await
-        }
+    pub enum ExitKind {
+        Normal,
+        Signal(u32),
+        KernelPanic(String),
+        HypervisorFault(String),
+        DirtyShutdown,
+        HardKilled,
     }
     ```
-  * Callers can invoke `.boot()` directly on an `Unsealed` builder without ever calling `.seal()`. The typestate parameter `SealState` is decorative phantom data that enforces zero compile-time constraints.
-
----
-
-### 12. `kelir-shim` Event Loop Self-Sabotage (Truncated Frame Loop)
-
-* **Spec (`cans/11-protocol.md#Wire-framing`, `cans/11-protocol.md#Control-channel`):**
-  * Paravirtual micro-init multiplexes Channel `0x0000` (Control) and Channel `0x0001` (Data) via 9-byte headers followed by message payloads.
-* **Code (`crates/kelir-shim/src/main.rs`, `multiplexer.rs`, `codec.rs`):**
-  * In `main.rs`, the polling loop decodes headers and dispatches empty slices:
-    ```rust
-    if let Err(_reason) = mux.dispatch_control(&[]) { ... }
-    if let Err(_reason) = mux.dispatch_frame(stream_id, flags, &[]) { ... }
+  * In `packages/py/kelir/generated/attest_telemetry.py` (and the `codegen/py.rs` generator that produces it):
+    ```python
+    class ExitKind(BaseModel):
+        kind: str = "normal"
+        signal: int | None = None
+        message: str | None = None
     ```
-  * In `multiplexer.rs`, both `dispatch_control` and `dispatch_frame` call `codec::decode_msg_type(payload)`.
-  * `codec::decode_msg_type` requires at least 2 bytes (`payload.len() < 2` returns `Err(())`).
-  * Passing `&[]` guarantees that every single iteration of `kelir-shim`'s main loop errors out with `ShimError::TruncatedFrame`. The micro-init event loop fails its own wire protocol check on every cycle.
+  * String variants (`KernelPanic` vs `HypervisorFault`) are squashed into an ambiguous `message` field, destroying Rust's variant integrity across language boundaries.
 
 ---
 
-### 13. `ConsoleInterposer` Exec Stream Kind Missing in SDKs
+### 10. Split and Unsynchronized State Enums
 
-* **Spec (`cans/02-plugin-model.md#KelirPlugin-trait`):**
-  * `ConsoleInterposer` expands to include `on_exec_stdout(pid, exec_id, chunk)` and `on_exec_stderr(pid, exec_id, chunk)` for the `EXEC` stream kind.
-* **Code (`packages/ts/core/src/plugin.ts`, `packages/py/kelir/plugin.py`):**
-  * Rust interface (`crates/kelir-interface/src/plugin.rs`) has the hooks.
-  * TypeScript's `PluginContract` has **zero** methods for `onExecStdout` or `onExecStderr`.
-  * Python's `BasePlugin` and `HOOK_RINGS` omit `on_exec_stdout` and `on_exec_stderr`.
-  * Neither TS nor Python SDK plugins can observe or intercept binary programmatic stdout/stderr execution streams.
-
----
-
-### 14. Reconciler Path Traversal & Errno Inversion
-
-* **Spec (`cans/05-storage-plane.md#Containment`):**
-  * Strict containment: Symlink traversals escaping root fail with `EXDEV` at the host VFS layer.
-* **Code (`crates/kelir-core/src/planes/storage/reconciler.rs`):**
-  * **New File Bypass:** `Reconciler::contain` only runs path canonicalization if `target.exists()`:
-    ```rust
-    if target.exists() {
-        let root = self.host_target.canonicalize()?;
-        let resolved = target.canonicalize()?;
-        if !resolved.starts_with(&root) { return Err(...); }
-    }
-    ```
-    Any newly created or staged file that does not yet exist on the host filesystem skips resolution entirely, bypassing root escape checks.
-  * **Wrong Errno:** When a symlink component is detected, it returns `PluginError::reject("EPERM", ...)` instead of the mandated `EXDEV`.
-
----
-
-### 15. Inode Lock Broker Multi-Tenant State Wipe
-
-* **Spec (`cans/05-storage-plane.md#Host-inode-lock-broker`):**
-  * Cross-VM advisory file lock mediation maps guest virtual inodes to host physical inodes and scopes lock release per transaction/session.
-* **Code (`crates/kelir-core/src/planes/storage/lock_broker.rs`):**
-  * `release_transaction_locks()` clears the global lock state across **all** namespaces:
-    ```rust
-    async fn release_transaction_locks(&self) -> Result<(), PluginError> {
-        let mut states = self.states.write()...;
-        states.clear();
-        Ok(())
-    }
-    ```
-    Invoking release on one session wipes active file locks held by every other session on the host.
-  * In `release_transaction_locks_for(namespace)`, entries are purged from `states`, but `self.cache` (`HostFdCache`) is never pruned, permanently leaking open host file descriptors.
-
----
-
-### 16. Two-Phase Commit (2PC) Commit & Savepoint No-Ops
-
-* **Spec (`cans/plugins/transaction.md#Multi-resource-2PC-coordination`, `#Temporal-savepoints`):**
-  * `commit()` drives two-phase commit across broker upper files, db-proxy SQL connections, and lock brokers.
-  * `rollback_to_savepoint()` restores intermediate upper/tombstone state and executes SQL `ROLLBACK TO SAVEPOINT`.
-* **Code (`crates/kelir-plugins/plugin-transaction/src/service.rs`):**
-  * `commit()` only validates active status and returns empty `Ok(())` without triggering the 2PC pipeline.
-  * `rollback_to_savepoint()` takes the savepoint handle, executes `let _ = savepoint;`, and returns `Ok(())`.
-  * In `db-backed-runtime.py`, transactions claim savepoint rollback resilience, but the underlying L2 service silently drops the call.
-
----
-
-### 17. Phantom FFI Dispatch Queue & Rate Limiting
-
-* **Spec (`cans/01-architecture.md#FFI-boundary-economics`, `cans/02-plugin-model.md#Foreign-plugin-proxy`):**
-  * Rate limits evaluate in native memory before FFI queue insertion; queue capacity is bounded to 4,096 items to prevent foreign event loop thrashing.
-* **Code (`crates/kelir-interface/src/plugin.rs`, `crates/kelir-core/src/dispatch.rs`):**
-  * `FfiDispatchQueue` defines `try_submit()` and `complete()`.
-  * In `crates/kelir-core/src/dispatch.rs`, `PipelineEngine::try_foreign_submit` is **never called anywhere** in any dispatch method (`dispatch_trap`, `dispatch_fs_write`, `dispatch_net_outbound`).
-  * Events bypass the queue counter entirely. The 4,096 depth limit and `PluginError::FfiQueueSaturated` are unreferenced dead code.
-
----
-
-### 18. Decorative Hardware Lockfile Attestation
-
-* **Spec (`cans/15-operations.md#Developer-CLI`):**
-  * `kelir doctor --enforce` writes an immutable `/etc/kelir/hw.lock`.
-  * `verify_hw_lockfile()` attests that host hardware configuration matches the lockfile before boot.
-* **Code (`crates/kelir-interface/src/driver.rs`, `crates/kelir-plugin-cli/src/doctor.rs`):**
-  * `verify_hw_lockfile()` only checks if the file exists:
-    ```rust
-    match std::fs::read(HW_LOCKFILE_PATH) {
-        Ok(_) => Ok(()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => ...
-    ```
-    An empty file created via `touch /etc/kelir/hw.lock` passes verification.
-  * `write_hw_lockfile()` writes plain unauthenticated ASCII lines without setting immutable attributes (`chattr +i`) or computing cryptographic signatures.
-
----
-
-### 19. Wire Plane IMDS Crash-on-Bind & Unbounded NAT Slab
-
-* **Spec (`cans/07-wire-plane.md#Pre-policy-drop-zones`, `#UDP-socket-reaper`):**
-  * Destination `169.254.169.254` intercepts at L3 and translates transparently to the vault vsock service.
-  * UDP NAT slab enforces a strict 1,024-entry cap; oldest idle sockets reclaim on saturation.
-* **Code (`crates/kelir-core/src/planes/wire/mod.rs`):**
-  * In `route_imds_to_vault()`, if the vault sink **is** properly bound (`self.imds_sink_bound() == true`), it panics the caller:
-    ```rust
-    if self.imds_sink_bound() {
-        return Err(PluginError::Halt("IMDS ... to vault vsock translation pending (L3)".into()));
-    }
-    ```
-    Binding `plugin-vault` turns any cloud metadata fetch into an immediate hypervisor error.
-  * `udp_nat_slab` is an unbounded `Vec` with zero cap checks and zero eviction logic.
-
----
-
-### 20. Nonexistent Monotonic Clock Clamping & Power Event Sync
-
-* **Spec (`cans/08-lifecycle.md#Clock-invariants`, `#Lid-sleep/wake-clock-snapping`):**
-  * `CLOCK_MONOTONIC` clamps to $\max(\text{current}, \text{snapshot})$ across restore.
-  * Host power event listeners (`IOPMrootDomain` on macOS, `systemd-logind` on Linux) dispatch clock resync frames over Channel `0x0000` on sleep/wake.
-* **Code (`crates/kelir-core/src/planes/checkpoint/mod.rs`):**
-  * `CheckpointPlane::restore()` performs a direct memory clone of the `SnapshotDescriptor` without querying host time or clamping guest monotonic counters.
-  * Zero power event listeners or logind/IOPM bindings exist anywhere in the core or drivers. The sleep/wake resync mechanism is absent.
- 
-  * 
+* **Disjoint Machine States**:
+  * The lifecycle specification dictates state transitions through `Initializing`, `Running`, `Draining`, `Suspended`, and `Terminated`.
+  * The actual implementation scatters state tracking across conflicting, unsynchronized variables:
+    * `kelir-interface::driver::DriverState` tracks `Unbooted`, `Booted`, `Paused`.
+    * `kelir-core::session::Session` only tracks an isolated `detached: bool` flag with no lifecycle phase enum.
+    * `plugin-wire-ingress` manages its own disconnected lifecycle via `suspended: Mutex<bool>` and `pending_wake: Mutex<bool>`.
+  * There is no unified supervisor state machine. Multiple components maintain private, uncoordinated booleans representing whether the VM is running, suspended, or unbooted.
