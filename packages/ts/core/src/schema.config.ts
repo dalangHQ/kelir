@@ -25,6 +25,10 @@ export const t = {
     void schema;
     return {};
   },
+  Array<S extends Schema<any>>(schema: S): Schema<readonly Infer<S>[]> {
+    void schema;
+    return {};
+  },
   Union<const T extends readonly Schema<any>[]>(
     schemas: T,
   ): Schema<Infer<T[number]>> {

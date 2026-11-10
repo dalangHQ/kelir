@@ -2,9 +2,9 @@
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 // see: cans/artifacts/code/typescript-accumulation.ts#runtime
 
-import type { Schema } from "./schema.config.js";
-import type { TrapContext, LifecycleContext } from "./context.lifecycle.types.js";
-import type { KelirPlugin, PluginContextOf } from "./plugin.model.js";
+import type { Schema, Infer } from "./schema.config.js";
+import type { TrapContext, LifecycleContext, HandlerContext } from "./context.lifecycle.types.js";
+import type { KelirPlugin, PluginContextOf, PluginContract } from "./plugin.model.js";
 import type { PostExecAction, LifecycleEvent, Verdict } from "./verdict.protocol.js";
 import type { TrapDenyEvent } from "./types.core.js";
 import { Session } from "./session.lifecycle.js";
@@ -118,13 +118,13 @@ export interface WireConfig {
 
 export type TrapHandlerResult = Verdict | PostExecAction | null | void;
 
-export type TrapHandler<Ctx = unknown> = (
-  c: TrapContext & Ctx,
+export type TrapHandler<Ctx = unknown, Params = unknown> = (
+  c: HandlerContext<Ctx, Params>,
 ) => Promise<TrapHandlerResult> | TrapHandlerResult;
 
-export interface TrapHandlers<Ctx = unknown> {
-  readonly pre?: TrapHandler<Ctx>;
-  readonly post?: (c: TrapContext & Ctx) => Promise<PostExecAction> | PostExecAction;
+export interface TrapHandlers<Ctx = unknown, Params = unknown> {
+  readonly pre?: TrapHandler<Ctx, Params>;
+  readonly post?: (c: HandlerContext<Ctx, Params>) => Promise<PostExecAction> | PostExecAction;
 }
 
 interface PluginRegistration {
@@ -140,9 +140,20 @@ export interface VsockServiceEntry {
   readonly handler: (request: unknown) => Promise<unknown> | unknown;
 }
 
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
+type ValidateDeps<Ctx, P> = P extends PluginContract<any, any, infer Deps>
+  ? [Deps] extends [never]
+    ? unknown
+    : string extends Deps
+      ? unknown
+      : [Deps] extends [keyof Ctx]
+        ? unknown
+        : { readonly __missing_dependency: Deps }
+  : unknown;
+
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export class KelirBuilder<Ctx = unknown> {
+export class KelirBuilder<Ctx = unknown, Params = unknown> {
   private readonly config: KelirConfig;
   private readonly pluginRegistrations: PluginRegistration[] = [];
   private readonly hooks: HookDescriptor[] = [];
@@ -151,7 +162,7 @@ export class KelirBuilder<Ctx = unknown> {
   private nextOrdinal = 0;
   private detachedFlag: boolean;
   private terminalCfg: TerminalConfig | undefined;
-  private storageCfg: StorageConfig<never> | undefined;
+  private storageCfg: StorageConfig<any> | undefined;
   private wireCfg: WireConfig | undefined;
   private paramsSchema: Schema<unknown> | undefined;
 
@@ -167,9 +178,9 @@ export class KelirBuilder<Ctx = unknown> {
   }
 
   // see: cans/05-storage-plane.md#Workspace-commit
-  storage<C>(_config: StorageConfig<C>): this {
-    this.storageCfg = _config as StorageConfig<never>;
-    return this;
+  storage<C = Ctx>(config: StorageConfig<C>): KelirBuilder<Ctx & C, Params> {
+    this.storageCfg = config as StorageConfig<any>;
+    return this as unknown as KelirBuilder<Ctx & C, Params>;
   }
 
   // see: cans/07-wire-plane.md#DNS-policy-filter
@@ -179,9 +190,9 @@ export class KelirBuilder<Ctx = unknown> {
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
-  params(schema: Schema<unknown>): this {
+  params<S extends Schema<any>>(schema: S): KelirBuilder<Ctx, Infer<S>> {
     this.paramsSchema = schema;
-    return this;
+    return this as unknown as KelirBuilder<Ctx, Infer<S>>;
   }
 
   // see: cans/08-lifecycle.md#Detached-lifecycle
@@ -196,8 +207,8 @@ export class KelirBuilder<Ctx = unknown> {
 
   // see: cans/artifacts/code/typescript-accumulation.ts#runtime
   use<P extends KelirPlugin>(
-    plugin: P,
-  ): KelirBuilder<Ctx & PluginContextOf<P>> {
+    plugin: P & ValidateDeps<Ctx, P>,
+  ): KelirBuilder<Ctx & PluginContextOf<P>, Params> {
     const enabled = (plugin as { readonly enabled?: boolean }).enabled !== false;
     this.pluginRegistrations.push({ name: plugin.name, enabled });
     const contract = plugin as unknown as {
@@ -208,13 +219,13 @@ export class KelirBuilder<Ctx = unknown> {
         this.hooks.push(hook);
       }
     }
-    return this as KelirBuilder<Ctx & PluginContextOf<P>>;
+    return this as unknown as KelirBuilder<Ctx & PluginContextOf<P>, Params>;
   }
 
   // see: cans/02-plugin-model.md#Foreign-plugin-proxy
   trap(
     filter: string | TrapFilter,
-    handler: TrapHandler<Ctx> | TrapHandlers<Ctx>,
+    handler: TrapHandler<Ctx, Params> | TrapHandlers<Ctx, Params>,
   ): this {
     const filterSnapshot =
       typeof filter === "string" ? TrapFilter.pattern(filter).snapshot() : filter.snapshot();
@@ -225,7 +236,7 @@ export class KelirBuilder<Ctx = unknown> {
         ordinal: this.nextOrdinal,
         filter: filterSnapshot,
         run: (event: unknown): unknown =>
-          (handler as TrapHandler<Ctx>)(event as TrapContext & Ctx),
+          (handler as TrapHandler<Ctx, Params>)(event as HandlerContext<Ctx, Params>),
       });
       this.nextOrdinal += 1;
       return this;
@@ -237,7 +248,7 @@ export class KelirBuilder<Ctx = unknown> {
         stage: "pre",
         ordinal: this.nextOrdinal,
         filter: filterSnapshot,
-        run: (event: unknown): unknown => pre(event as TrapContext & Ctx),
+        run: (event: unknown): unknown => pre(event as HandlerContext<Ctx, Params>),
       });
       this.nextOrdinal += 1;
     }
@@ -248,7 +259,7 @@ export class KelirBuilder<Ctx = unknown> {
         stage: "post",
         ordinal: this.nextOrdinal,
         filter: filterSnapshot,
-        run: (event: unknown): unknown => post(event as TrapContext & Ctx),
+        run: (event: unknown): unknown => post(event as HandlerContext<Ctx, Params>),
       });
       this.nextOrdinal += 1;
     }
@@ -322,11 +333,11 @@ export class KelirBuilder<Ctx = unknown> {
   }
 
   // see: cans/11-protocol.md#Control-channel
-  registerVsockService<Req>(
+  registerVsockService<Req, Resp = unknown>(
     port: number,
     service: string,
     _schema: Schema<Req>,
-    handler: (request: Req) => Promise<Req> | Req,
+    handler: (request: Req) => Promise<Resp> | Resp,
   ): this {
     if (!Number.isInteger(port) || port < 0 || port > 0xffffffff) {
       throw new EConfig(`vsock service port ${String(port)} outside u32`);
@@ -341,10 +352,10 @@ export class KelirBuilder<Ctx = unknown> {
   }
 
   // see: cans/11-protocol.md#Control-channel
-  registerStreamKind<Req>(
+  registerStreamKind<Req, Resp = unknown>(
     kind: number,
     _schema: Schema<Req>,
-    handler: (request: Req) => Promise<Req> | Req,
+    handler: (request: Req) => Promise<Resp> | Resp,
   ): this {
     this.hooks.push({
       ring: RingEvent.VsockService,

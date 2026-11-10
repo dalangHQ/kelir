@@ -391,9 +391,9 @@
     - Invariant: Same first-class plugins across Rust, TypeScript, Python (1:1)
     - Enforcement gate: see: 15-operations.md#Multi-language-parity-gate
     - Projection implementations: see: [2]
-    - Typestate is Rust-only
-      - Compile-time prerequisites in Rust; boot-time in TS/Py
-      - Both produce EConfig with identical structure
+    - Type-level accumulation in Rust and TypeScript
+      - Compile-time prerequisites in Rust (HList) and TS (generic monad)
+      - Python enforces prerequisites at builder.boot() via EConfig
 
 - [1]: artifacts/code/plugin-trait.rs
 - [2]: 03-sdk-architecture.md#Language-surfaces

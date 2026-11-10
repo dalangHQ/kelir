@@ -8,10 +8,10 @@
 │              │ to Plugins; `c.ctx::<T>()`         │ before traps execute               │                                    │
 │              │ infallible via `Plugins: Has<T>`   │                                    │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ TypeScript   │ Flat builder returning this;       │ `.params(schema)` pins TParams =   │ `try...finally` / `using` cleanup; │
-│              │ `.use()` overloads; fork-blind     │ Static<TSchema>; `c.params` typed  │ `.error()` maps host exceptions to │
-│              │ yields EConfig at builder.boot();  │ from TSchema, not runtime lookup   │ POSIX errnos before crash/abort    │
-│              │ `c.<pluginKey>` static             │                                    │                                    │
+│ TypeScript   │ Generic accumulation monad:        │ `.params(schema)` pins TParams =   │ `try...finally` / `using` cleanup; │
+│              │ KelirBuilder<TPlugins, TParams>;   │ Static<TSchema>; `c.params` typed  │ `.error()` maps host exceptions to │
+│              │ `.use()` accumulates context;      │ from TSchema; `c.<pluginKey>` is   │ POSIX errnos before crash/abort    │
+│              │ compile-time prereq enforcement    │ statically derived from TPlugins   │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
 │ Python       │ Flat builder returning self;       │ `.params(schema: type[TParams])`   │ `async with` __aexit__ terminates; │
 │              │ `.use()` overloads; prereq         │ pins TParams; `c.params` typed     │ boot-time EConfig; perimeter       │

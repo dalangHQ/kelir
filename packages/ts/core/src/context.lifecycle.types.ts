@@ -119,3 +119,8 @@ export interface TrapContext {
   suspend(until: SuspendUntil): Verdict;
   abort(reason?: string): Verdict;
 }
+
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
+export type HandlerContext<Ctx = unknown, Params = unknown> = TrapContext & Ctx & {
+  readonly params: Params;
+};

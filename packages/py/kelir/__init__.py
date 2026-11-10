@@ -644,6 +644,7 @@ class HandlerContext:
         self.ctx: Any = None
         self.step = StepHandle()
         self.cap = Caps()
+        self.params: Any = None
 
     async def receipt(self) -> ExecutionReceipt:
         # TODO (L3): fetch the trap's execution receipt via the PyO3 _kelir bridge.
