@@ -493,7 +493,7 @@ To achieve sub-12 microsecond hook execution, `kelir-core` compiles registered p
 `kelir` rejects dynamic `any`-typing and second-class shims. All three host consumer SDKs enforce identical runtime guarantees through their language-native compile-time type systems:
 
 1. **Rust:** Borrow-checker verified handle injection + zero-cost Serde deserialization.
-2. **TypeScript:** Generic context accumulation (`Kelir<TContext>`) + TypeBox AOT validation.
+2. **TypeScript:** Generic context accumulation (`KelirBuilder<TPlugins, TParams>`) + TypeBox AOT validation.
 3. **Python:** RAII context managers (`async with`) + Pydantic v2 execution validation.
 
 All three SDKs publish the same five first-class plugin packages, maintained **1:1 across languages**: the Rust crates `plugin-pty`, `plugin-vfs`, `plugin-wire`, `plugin-chaos`, and `plugin-ledger`; the TypeScript packages `@kelir/plugin-pty`, `@kelir/plugin-vfs`, `@kelir/plugin-wire`, `@kelir/plugin-chaos`, and `@kelir/plugin-ledger`; and the Python modules under `kelir.plugins.*`. A plugin mounted in one language has an exact counterpart — same trait surface, same hook semantics — in the other two.
@@ -510,7 +510,7 @@ Spawn options follow the params ingress contract defined in §1: `params` are va
 │              │ returns Builder only; host-held    │ via Serde; failure halts spawn     │
 │              │ `policy = plugin.handle()`         │ before traps execute               │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
-│ TypeScript   │ Type-level context accumulation;   │ `.params({ schema: t.Object(...) })`│
+│ TypeScript   │ Type-level context accumulation;   │ `.params(t.Object(...))`             │
 │              │ `c.pluginKey` fails `tsc` if       │ validates via TypeBox prior to     │
 │              │ `.use()` is absent upstream        │ execution                          │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┤
@@ -564,7 +564,7 @@ let builder = builder
 
 ### 6.2 TypeScript Architecture: Type-Accumulating Pipeline (`@kelir/core`)
 
-The TypeScript SDK models pipeline state as an accumulating generic type `Kelir<TContext>`. Each `.use()` call returns an expanded type context.
+The TypeScript SDK models pipeline state as an accumulating generic type `KelirBuilder<TPlugins, TParams>`. Each `.use()` call returns a newly typed builder with an expanded context.
 
 ```typescript
 // TypeScript Consumer: Generic Inference & TypeBox AOT Validation
@@ -580,16 +580,16 @@ const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
     action: t.Literal("fix-webhook"),
     issueId: t.String(),
   }))
-  // 2. `c.policy` and `c.fs` are fully inferred on HandlerContext:
+  // 2. `c['repo-policy']` and `c.fs` are fully inferred on HandlerContext:
   .trap("git commit *", async (c) => {
-    if (c.policy.violations > 0) {
-      return c.deny(1, `EPOLICY: ${c.policy.violations} violation(s)`);
+    if (c["repo-policy"].policy.violations > 0) {
+      return c.deny(1, `EPOLICY: ${c["repo-policy"].policy.violations} violation(s)`);
     }
     return c.resume();
   });
 ```
 
-* **Build-Time Invalidation:** Removing `.use(repoPolicyPlugin)` strips `policy` from `TContext`. Downstream references to `c.policy` fail at `tsc` compilation.
+* **Build-Time Invalidation:** Removing `.use(repoPolicyPlugin)` strips `repo-policy` from the accumulated context. Downstream references to `c['repo-policy']` fail at `tsc` compilation.
 * **Schema Boundary:** Spawn actions failing the `.params()` schema terminate execution with `EINVAL` prior to VM instruction dispatch.
 
 ---

@@ -142,9 +142,9 @@ const runtime = kelir({
                      env: { OTEL_TRACE_ID: oracle.currentTraceId(), CI: "1" } });
   })
   .trap(TrapFilter.binary("git").withArg("push"), async (c) => {
-    if (c.policy.isProtected()) {
-      c.policy.recordViolation();
-      return c.drop("EPERM", `EPOLICY: '${c.policy.currentBranch}' protected.`);
+    if (c["repo-policy"].policy.isProtected()) {
+      c["repo-policy"].policy.recordViolation();
+      return c.drop("EPERM", `EPOLICY: '${c["repo-policy"].policy.currentBranch}' protected.`);
     }
     if (c.trap.argv.includes("--force"))
       return c.patch({ binary: "/bin/git",
@@ -159,8 +159,8 @@ const runtime = kelir({
   // see: cans/10-attestation.md#Execution-receipts
   .trap(TrapFilter.binary("git").withArg("commit"), {
     pre: async (c) =>
-      c.policy.violations > 0
-        ? c.drop("EPERM", `EPOLICY: ${c.policy.violations} prior violation(s).`)
+      c["repo-policy"].policy.violations > 0
+        ? c.drop("EPERM", `EPOLICY: ${c["repo-policy"].policy.violations} prior violation(s).`)
         : c.pass(),
     post: async (c) => {
       const receipt = await c.receipt();

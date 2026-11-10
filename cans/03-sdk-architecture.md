@@ -11,7 +11,7 @@
       - Unhandled errors abort hypervisor immediately to eliminate zombie runs
     - Builder consumption model across languages
       - Rust: affine typestate; .plugin() consumes self by value
-      - TypeScript: fluent builder returning this; registers plugins and planes
+      - TypeScript: accumulation monad; each .use() returns a new typed builder
       - Python: fluent builder returning self; async context management
       - Inline closures: trap and lifecycle handlers are fully fork-blind
     - Prerequisite gating across languages
@@ -22,7 +22,7 @@
       - Python runtime check cost: O(plugins) at boot; <2µs; validated once
     - Service lookup across languages
       - Rust: c.ctx::<T>() infallible, statically resolved
-      - TypeScript: c.<pluginKey> typed by .use(plugin) overloads;
+      - TypeScript: c.<pluginKey> typed by accumulated Ctx from .use(plugin);
         - exposes typed plugin context objects without string lookups
       - Python: c.cap.<plugin_key> typed by .use(plugin) overloads;
         - maps capability attributes directly without dictionary indexing
@@ -36,7 +36,7 @@
     - Type-safety
       - Type-safety invariants
         - Rust borrow checker and Serde perimeter validation: see: #Rust-SDK
-        - TypeScript tsc + TypeBox runtime validators at builder.boot()
+        - TypeScript tsc at compile time + TypeBox runtime validators at builder.boot()
         - Python Pydantic v2 frozen models, validated at builder.boot()
         - AOT hook fusion and FFI crossing: see: 02-plugin-model.md#Foreign-plugin-proxy
       - Filter-before-FFI declaration
@@ -45,10 +45,10 @@
     - Runtime surface
       - Language surfaces
         - Rust: extension traits provide zero-cost fluent chaining on builder
-        - TypeScript: fluent builder; plugin verbs are overloads of .use()
+        - TypeScript: accumulation monad; plugin verbs accumulate via .use()
         - Python: builder chaining; plugin verbs are .use() overloads
         - Verbs are available after .use() in all languages (typed in Rust,
-          - returned by overload in TS/Py)      - Typed dispatch and session extensions
+          - accumulated in TS, returned by overload in Py)      - Typed dispatch and session extensions
         - Typed event hooks
           - .on(LifecycleEvent.VmReady, handler) for lifecycle events
           - .intercept(Ring.NetOutbound, handler) for ring interception
@@ -67,7 +67,7 @@
         - Optional domain plugins attach via typed extensions
         - Rust: session.ctx::<T>() infallible via `Session<Plugins, Params>`
           - where `Plugins: Has<T>`; no Result, no `ext`/`extension` surface
-        - TypeScript: session.<pluginKey> is typed by the .use() overload
+        - TypeScript: session.<pluginKey> is typed by accumulated Ctx
           - for that plugin; no session.use(ext), no session.ext(T)
         - Python: session.cap.<plugin_key> is typed by the .use() overload
           - for that plugin; no session.ext(T)

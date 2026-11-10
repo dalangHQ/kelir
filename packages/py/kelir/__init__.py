@@ -847,7 +847,6 @@ class KelirBuilder:
         return self
 
     def use(self, plugin: object) -> Self:
-        # TODO (L2): validate prerequisites at boot
         from kelir.model_plugin import hook_descriptors
 
         self._plugins.append(plugin)
@@ -1019,6 +1018,16 @@ class KelirBuilder:
         return FusedTrampoline.fuse(self._hooks)
 
     async def boot(self) -> Session:
+        # see: cans/03-sdk-architecture.md#Python-SDK
+        registered = {registration.name for registration in self._plugin_registrations}
+        for plugin in self._plugins:
+            name = getattr(plugin, "name", None) or type(plugin).__name__
+            required_names = getattr(plugin, "requires", ())
+            if isinstance(required_names, str):
+                required_names = (required_names,)
+            for required in required_names:
+                if required not in registered:
+                    raise EConfig(f"missing prerequisite '{required}' required by plugin '{name}'")
         descriptor = self.fuse().describe()
         bridge = _load_native_bridge()
         native = bridge.PyKelirBuilder(

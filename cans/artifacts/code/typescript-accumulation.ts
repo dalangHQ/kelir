@@ -5,7 +5,7 @@
 // compile-time. Each .use(plugin) appends the plugin's context type
 // to TPlugins and verifies prerequisite constraints via `requires`.
 // Downstream handlers receive HandlerContext<TPlugins, TParams> where
-// capabilities (c.policy, c.secretMask) exist as statically typed members.
+// capabilities (c['repo-policy'], c.secretMask) exist as statically typed members.
 //
 // Full runnable example: artifacts/examples/autonomous-swe-agent.ts
 // Canonical spec home:    cans/03-sdk-architecture.md#TypeScript-SDK
@@ -33,9 +33,9 @@ const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
     action: t.Literal("fix-webhook"),
     issueId: t.String(),
   }))
-  // c is fully typed: c.policy, c.secretMask, c.secureWorkspace exist at compile time
+  // c is fully typed: c['repo-policy'], c.secretMask, c.secureWorkspace exist at compile time
   .trap(TrapFilter.binary("git").withArg("commit"), async (c) => {
-    const violations = c.repoPolicy.violations;
+    const violations = c["repo-policy"].policy.violations;
     if (violations > 0) {
       return c.drop("EPERM", `EPOLICY: ${violations} violation(s)`);
     }

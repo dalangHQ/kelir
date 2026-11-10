@@ -6,5 +6,5 @@
     "baseUrl": ".",
     "paths": { "@kelir/core": ["./src/index.ts"] }
   },
-  "include": ["src/**/*", "examples/*.ts"]
+  "include": ["src/**/*", "tests/*.test.ts", "examples/*.ts"]
 }

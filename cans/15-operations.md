@@ -253,7 +253,8 @@
     - Syntax is idiomatic per language runtime, not copied across SDKs
     - Gating is behavioral, not type-level
       - Rust: dependency failures surface at compile time
-      - TS/Py: builder.boot() EConfig on missing dependency
+      - TS: dependency failures surface at compile time (generic accumulation)
+      - Py: builder.boot() EConfig on missing dependency
       - Identical vectors.json outcomes; runtime EConfig is a parity vector
     - Testkit ground truth
       - kelir-plugin-testkit serializes canonical ring events and verdicts
@@ -263,8 +264,8 @@
       - Automated AST scraper extracts public exported API signatures
       - Asserts 1:1 match across Rust, TypeScript, and Python SDK surfaces
       - Fails CI on divergent method names, parameter arity, or return types
-      - Divergence in typestate encoding is allowed: Rust may express a
-        - constraint at compile time that TS/Py expresses at boot(); the
+      - Divergence in typestate encoding is allowed: Rust and TS may express a
+        - constraint at compile time that Python expresses at boot(); the
         - behavioral outcome in vectors.json is what the gate asserts
     - Chain parity
       - vectors.json must encode the same trap/pre/post/hook chain for each SDK

@@ -33,7 +33,9 @@ export interface PluginContext<Ctx> {
 export type PluginContextOf<P> =
   P extends PluginContract<infer Name, infer C, any>
     ? (C extends Record<string, unknown>
-        ? (Name extends keyof C ? C : { readonly [K in Name]: C })
+        ? (string extends keyof C
+            ? { readonly [K in Name]: C }
+            : (Name extends keyof C ? C : { readonly [K in Name]: C }))
         : { readonly [K in Name]: C })
     : P extends PluginContext<infer C>
       ? C
@@ -69,14 +71,14 @@ export class PluginContract<
   requires<Req extends string | PluginContract<any, any, any>>(): PluginContract<
     Name,
     Ctx & (Req extends PluginContract<infer N, infer C, any>
-      ? (C extends Record<string, unknown> ? (N extends keyof C ? C : { readonly [K in N]: C }) : { readonly [K in N]: C })
+      ? (C extends Record<string, unknown> ? (string extends keyof C ? { readonly [K in N]: C } : (N extends keyof C ? C : { readonly [K in N]: C })) : { readonly [K in N]: C })
       : unknown),
     Deps | (Req extends PluginContract<infer N, any, any> ? N : Req extends string ? Req : never)
   > {
     return this as unknown as PluginContract<
       Name,
       Ctx & (Req extends PluginContract<infer N, infer C, any>
-        ? (C extends Record<string, unknown> ? (N extends keyof C ? C : { readonly [K in N]: C }) : { readonly [K in N]: C })
+        ? (C extends Record<string, unknown> ? (string extends keyof C ? { readonly [K in N]: C } : (N extends keyof C ? C : { readonly [K in N]: C })) : { readonly [K in N]: C })
         : unknown),
       Deps | (Req extends PluginContract<infer N, any, any> ? N : Req extends string ? Req : never)
     >;

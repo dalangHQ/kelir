@@ -141,7 +141,7 @@ export interface VsockServiceEntry {
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-type ValidateDeps<Ctx, P> = P extends PluginContract<any, any, infer Deps>
+export type ValidateDeps<Ctx, P> = P extends PluginContract<any, any, infer Deps>
   ? [Deps] extends [never]
     ? unknown
     : string extends Deps
