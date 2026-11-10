@@ -19,10 +19,16 @@ macro_rules! wire_consts {
 // see: cans/11-protocol.md#Control-channel
 macro_rules! wire_enum {
     ($name:ident, $table:ident, { $($variant:ident = $value:literal),+ $(,)? }) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+        wire_enum! { @decl $name, $table, () { $($variant = $value, )+ } }
+    };
+    ($name:ident, $table:ident, { default $default:ident = $default_value:literal, $($variant:ident = $value:literal),+ $(,)? }) => {
+        wire_enum! { @decl $name, $table, (Default) { #[default] $default = $default_value, $($variant = $value, )+ } }
+    };
+    (@decl $name:ident, $table:ident, ($($der:ident),*) { $( $(#[$attr:meta])* $variant:ident = $value:literal ),+ $(,)? }) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq $(, $der)* , Serialize, Deserialize)]
         #[repr(u16)]
         pub enum $name {
-            $( $variant = $value, )+
+            $( $(#[$attr])* $variant = $value, )+
         }
 
         impl $name {
@@ -48,7 +54,7 @@ wire_consts! { EXEC_STREAMS, u8, {
 
 // see: cans/11-protocol.md#Control-channel
 wire_enum! { StreamKind, STREAM_KINDS, {
-    Exec = 0x0001,
+    default Exec = 0x0001,
     PtyControl = 0x0002,
     Vfs = 0x0003,
     Bulk = 0x0004,
@@ -58,13 +64,6 @@ wire_enum! { StreamKind, STREAM_KINDS, {
     DbSqlite = 0x0011,
     McpConsole = 0x0012,
 }}
-
-impl Default for StreamKind {
-    #[allow(clippy::derivable_impls)]
-    fn default() -> Self {
-        Self::Exec
-    }
-}
 
 // see: cans/11-protocol.md#Control-channel
 wire_enum! { Channel, CHANNELS, {
@@ -124,11 +123,9 @@ where
 // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecveMutation {
-    #[serde(alias = "binary")]
     pub new_binary: Option<String>,
-    #[serde(alias = "argv")]
     pub new_argv: Option<Vec<String>>,
-    #[serde(default, alias = "env", deserialize_with = "deserialize_env_pairs")]
+    #[serde(default, deserialize_with = "deserialize_env_pairs")]
     pub set_env: Vec<(String, String)>,
     #[serde(default)]
     pub unset_env: Vec<String>,

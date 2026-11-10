@@ -47,9 +47,7 @@ fn exec_event(pid: u32, ppid: u32, binary_path: &str, argv: Vec<String>) -> Trap
         envp: HashMap::new(),
         cwd: "/workspace".into(),
         syscall: None,
-        resolved_binary: Default::default(),
-        interpreter_chain: Vec::new(),
-        shell_payload: None,
+        ..Default::default()
     }
 }
 

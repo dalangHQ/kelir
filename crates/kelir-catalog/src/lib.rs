@@ -2,7 +2,7 @@
 
 pub mod schema_catalog;
 
-use crate::schema_catalog::{IncarnationId, LeaseKind, SCHEMA_V1_SQL, SessionRow};
+use crate::schema_catalog::{IncarnationId, LeaseKind, SCHEMA_SQL, SessionRow};
 use rusqlite::params;
 use thiserror::Error;
 
@@ -37,7 +37,7 @@ pub fn catalog_path() -> Result<std::path::PathBuf, CatalogError> {
 impl CatalogDb {
     pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Self, rusqlite::Error> {
         let pool = rusqlite::Connection::open(path)?;
-        pool.execute_batch(SCHEMA_V1_SQL)?;
+        pool.execute_batch(SCHEMA_SQL)?;
         // see: cans/01-architecture.md#Host-state-root
         pool.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
         Ok(Self { pool })
@@ -111,7 +111,7 @@ impl CatalogDb {
         runner_pid: i64,
         ttl_seconds: u32,
     ) -> Result<bool, CatalogError> {
-        // TODO (L3): no pending/owned lock-state column exists in SCHEMA_V1_SQL or cans/06; claim is runner_pid plus lease refresh until the schema gains one.
+        // TODO (L3): no pending/owned lock-state column exists in SCHEMA_SQL or cans/06; claim is runner_pid plus lease refresh until the schema gains one.
         let now = now_unix();
         let expires = now.saturating_add(i64::from(ttl_seconds));
         let claimed = self.pool.execute(

@@ -7,5 +7,5 @@ pub mod receipt_attest;
 
 pub use delta_attest::CausalDelta;
 pub use receipt_attest::{
-    AttestationToken, ExecutionReceipt, ExitKind, PhaseTimings, TelemetryExtension,
+    AttestationToken, ExecutionReceipt, ExitKind, PhaseTimings, ReceiptExtension,
 };

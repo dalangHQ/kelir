@@ -77,18 +77,33 @@ impl ReplayState {
     }
 
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
-    #[allow(deprecated)]
     fn record_pmu_sample(&self, sample: &PmuSample) {
-        self.retired_total
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |total| {
-                Some(total.saturating_add(sample.retired_instructions))
-            })
-            .ok();
-        self.window_retired
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |window| {
-                Some(window.saturating_add(sample.retired_instructions))
-            })
-            .ok();
+        let mut retired = self.retired_total.load(Ordering::Acquire);
+        loop {
+            let next = retired.saturating_add(sample.retired_instructions);
+            match self.retired_total.compare_exchange_weak(
+                retired,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(actual) => retired = actual,
+            }
+        }
+        let mut window = self.window_retired.load(Ordering::Acquire);
+        loop {
+            let next = window.saturating_add(sample.retired_instructions);
+            match self.window_retired.compare_exchange_weak(
+                window,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(actual) => window = actual,
+            }
+        }
         if self.enforce_sample_floor(sample.sampled_at_ns).is_err() {
             return;
         }

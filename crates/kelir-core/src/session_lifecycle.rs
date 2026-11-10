@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use kelir_interface::driver_interface::{
     DriverCapabilities, DriverError, EntropyBackend, EntropyStreamPosition, VmConfig, VmmDriver,
-    WatchdogAction, default_vm_config,
+    WatchdogAction,
 };
 use kelir_interface::handles_lifecycle::{DriverVmControl, VmHandle};
 use kelir_interface::hex_codec::encode_hex;
@@ -357,53 +357,6 @@ impl Session {
 
     pub fn plugins(&self) -> &[crate::plugin_registry::PluginRegistration] {
         &self.plugins
-    }
-
-    // TODO (L2): from_parts is superseded once boot() binds real drivers and rings.
-    #[allow(clippy::too_many_arguments)]
-    pub fn from_parts(
-        terminal: crate::planes::terminal::TerminalPlane,
-        storage: crate::planes::storage::StoragePlane,
-        wire: crate::planes::wire::WirePlane,
-        checkpoint: crate::planes::checkpoint::CheckpointPlane,
-        host: crate::planes::host::HostPlane,
-        driver: Arc<
-            tokio::sync::Mutex<Box<dyn kelir_interface::driver_interface::VmmDriver + Send + Sync>>,
-        >,
-        owned_bus: crate::bus::OwnedBusDispatcher,
-        engine: crate::dispatch_plugin::PipelineEngine,
-        session_id: [u8; 16],
-        incarnation_id: [u8; 16],
-        plugins: Vec<crate::plugin_registry::PluginRegistration>,
-        metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
-    ) -> Self {
-        let terminal = Arc::new(terminal.with_metrics(metrics.clone()));
-        let checkpoint = Arc::new(checkpoint.with_metrics(metrics.clone()));
-        let engine = engine
-            .with_metrics(metrics.clone())
-            .with_terminal(Arc::clone(&terminal))
-            .with_checkpoint(Arc::clone(&checkpoint));
-        let mut session = Self {
-            terminal,
-            storage: storage.with_metrics(metrics.clone()),
-            wire: wire.with_metrics(metrics.clone()),
-            checkpoint,
-            host: host.with_metrics(metrics.clone()),
-            metrics: metrics.clone(),
-            uart: crate::uart_terminal::UartRingBuffer::new(),
-            driver: Some(driver),
-            owned_bus,
-            engine,
-            config: default_vm_config(None, None, None, None, None, None),
-            vetoes: Vec::new(),
-            session_id,
-            incarnation_id,
-            plugins,
-            detached: false,
-            state: LifecycleState::Initializing,
-        };
-        let _ = session.advance_lifecycle(LifecycleState::Running);
-        session
     }
 
     pub fn metrics(&self) -> &std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry> {

@@ -432,22 +432,6 @@ fn poll_sync<F: Future>(future: F) -> Result<F::Output, VectorError> {
     }
 }
 
-// TODO (L3): delete once kelir-interface derives PartialEq on WatchdogAction.
-fn watchdog_action_eq(left: &WatchdogAction, right: &WatchdogAction) -> bool {
-    match (left, right) {
-        (WatchdogAction::Reboot, WatchdogAction::Reboot) => true,
-        (
-            WatchdogAction::Terminate {
-                emit_diagnostic: left_emit,
-            },
-            WatchdogAction::Terminate {
-                emit_diagnostic: right_emit,
-            },
-        ) => left_emit == right_emit,
-        _ => false,
-    }
-}
-
 // see: cans/08-lifecycle.md#Watchdog
 // see: cans/15-operations.md#Multi-language-parity-gate
 pub fn arm_watchdog_case(event: &WatchdogEvent) -> Result<(), VectorError> {
@@ -458,7 +442,7 @@ pub fn arm_watchdog_case(event: &WatchdogEvent) -> Result<(), VectorError> {
         .and_then(|result| result.map_err(|e| VectorError::Execution(e.to_string())))?;
     match fixture.armed_watchdog() {
         Some((armed_timeout, armed_action))
-            if armed_timeout == timeout && watchdog_action_eq(&armed_action, &event.action) =>
+            if armed_timeout == timeout && armed_action == event.action =>
         {
             Ok(())
         }

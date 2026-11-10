@@ -671,29 +671,37 @@ impl FfiDispatchQueue {
         }
     }
 
-    #[allow(deprecated)]
     pub fn try_submit(&self) -> Result<(), PluginError> {
-        match self
-            .depth
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |depth| {
-                if depth >= self.capacity {
-                    None
-                } else {
-                    Some(depth + 1)
-                }
-            }) {
-            Ok(_) => Ok(()),
-            Err(depth) => Err(PluginError::FfiQueueSaturated { depth }),
+        let mut current = self.depth.load(Ordering::Acquire);
+        loop {
+            if current >= self.capacity {
+                return Err(PluginError::FfiQueueSaturated { depth: current });
+            }
+            match self.depth.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return Ok(()),
+                Err(actual) => current = actual,
+            }
         }
     }
 
-    #[allow(deprecated)]
     pub fn complete(&self) {
-        let _ = self
-            .depth
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |depth| {
-                if depth == 0 { None } else { Some(depth - 1) }
-            });
+        let mut current = self.depth.load(Ordering::Acquire);
+        while current > 0 {
+            match self.depth.compare_exchange_weak(
+                current,
+                current - 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
+        }
     }
 
     pub fn depth(&self) -> usize {

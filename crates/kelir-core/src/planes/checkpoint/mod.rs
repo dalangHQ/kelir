@@ -19,15 +19,6 @@ pub struct PidLineage {
 
 impl PidLineage {
     // see: cans/08-lifecycle.md#CoW-fork
-    #[deprecated = "hardcodes the zero incarnation UUID and bypasses session isolation; use Session::lineage(root_pid) or PidLineage::new_in_session(root_pid, incarnation_id)"]
-    pub const fn new(root_pid: u32) -> Self {
-        Self {
-            root_pid,
-            incarnation_id: [0; 16],
-        }
-    }
-
-    // see: cans/08-lifecycle.md#CoW-fork
     pub const fn new_in_session(root_pid: u32, incarnation_id: [u8; 16]) -> Self {
         Self {
             root_pid,

@@ -10,7 +10,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TelemetryExtension {
+pub struct ReceiptExtension {
     pub namespace: String,
     pub payload: Vec<u8>,
 }
@@ -83,7 +83,7 @@ pub struct ExecutionReceipt {
     // limits block is not pinned in spec yet — TBD, do not invent one.
     /// Extension entries. Core treats entries as opaque;
     /// empty for sessions with no extension producer.
-    pub extensions: Vec<TelemetryExtension>,
+    pub extensions: Vec<ReceiptExtension>,
 }
 
 /// Attestation token: a separate fact emission per 10-attestation

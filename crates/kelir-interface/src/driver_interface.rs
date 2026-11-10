@@ -326,7 +326,7 @@ pub struct BalloonConvergence {
     pub converged: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WatchdogAction {
     Reboot,
     Terminate { emit_diagnostic: bool },

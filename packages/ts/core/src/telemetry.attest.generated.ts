@@ -69,7 +69,7 @@ export interface NativeGuestClockRecord {
   readonly boot_params: string;
 }
 
-export interface NativeSnapshotRecord {
+export interface NativeSnapshotDescriptorRecord {
   readonly id: string;
   readonly dirty_bytes: number;
   readonly created_at_ns: number;
@@ -139,7 +139,7 @@ export function fromNativeGuestClock(raw: NativeGuestClockRecord): GuestClock {
   };
 }
 
-export function fromNativeSnapshotDescriptor(raw: NativeSnapshotRecord): SnapshotDescriptor {
+export function fromNativeSnapshotDescriptor(raw: NativeSnapshotDescriptorRecord): SnapshotDescriptor {
   return {
     id: raw.id,
     dirtyBytes: raw.dirty_bytes,

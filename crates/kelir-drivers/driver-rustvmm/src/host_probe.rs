@@ -28,7 +28,7 @@ pub fn device_present(hypervisor: &str) -> bool {
     device_node(hypervisor).is_some_and(|node| Path::new(node).exists())
 }
 
-// TODO (L3): gate every backend on a real capability probe; only kvm exposes a device node today.
+// TODO (L3): gate every backend on a real capability probe; kvm is the only backend with a device-node surface.
 pub fn available_hypervisors(os: &str) -> Vec<&'static str> {
     os_hypervisors(os)
         .iter()

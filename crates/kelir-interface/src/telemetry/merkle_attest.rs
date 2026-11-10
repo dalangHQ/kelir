@@ -1,5 +1,5 @@
 // see: cans/10-attestation.md#Execution-receipts
-use super::{ExecutionReceipt, ExitKind, TelemetryExtension};
+use super::{ExecutionReceipt, ExitKind, ReceiptExtension};
 
 // see: cans/10-attestation.md#Execution-receipts
 fn hash_u64(hasher: &mut blake3::Hasher, value: u64) {
@@ -98,7 +98,7 @@ impl ExecutionReceipt {
         hash_u64(&mut hasher, *egress_dropped_bytes);
         hash_u64(&mut hasher, extensions.len() as u64);
         for item in extensions {
-            let TelemetryExtension { namespace, payload } = item;
+            let ReceiptExtension { namespace, payload } = item;
             hash_str(&mut hasher, namespace);
             hash_u64(&mut hasher, payload.len() as u64);
             hasher.update(payload);

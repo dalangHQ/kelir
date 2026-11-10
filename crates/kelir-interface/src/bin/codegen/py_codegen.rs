@@ -8,7 +8,7 @@ use kelir_interface::codec_protocol::{
 use kelir_interface::protocol_wire::{CHANNELS, EXEC_STREAMS, MSG_TYPES, STREAM_KINDS};
 
 use crate::model_codegen::{EnumDef, Model, Ty};
-use crate::naming_codegen::{camel, kebab, py_sdk_name, screaming};
+use crate::naming_codegen::{camel, kebab, screaming};
 
 pub const PY_SEE: &str = "# see: cans/03-sdk-architecture.md#Python-SDK
 # see: cans/15-operations.md#Multi-language-parity-gate
@@ -45,11 +45,11 @@ fn py_type(ty: &Ty) -> String {
             Ty::U8 => "bytes".to_string(),
             Ty::Str | Ty::PathBuf => "list[str]".to_string(),
             Ty::U32 => "list[int]".to_string(),
-            Ty::Custom(name) => format!("list[{}]", py_sdk_name(name)),
+            Ty::Custom(name) => format!("list[{}]", name),
             other => format!("list[{}]", py_type(other)),
         },
         Ty::ByteArray(_) => "str".to_string(),
-        Ty::Custom(name) => py_sdk_name(name),
+        Ty::Custom(name) => name.clone(),
     }
 }
 
@@ -82,7 +82,7 @@ fn py_default(ty: &Ty) -> String {
         Ty::Custom(name) if name == "ExitKind" => {
             "Field(default_factory=ExitKindNormal)".to_string()
         }
-        Ty::Custom(name) => format!("Field(default_factory={})", py_sdk_name(name)),
+        Ty::Custom(name) => format!("Field(default_factory={})", name),
     }
 }
 
@@ -187,7 +187,7 @@ pub fn emit_telemetry(model: &Model, order: &[&str]) -> Result<String, String> {
         if *name == "ExecutionReceipt" {
             out.push_str("# TODO (L3): no FFI producer populates ExecutionReceipt.exit_kind yet\n");
         }
-        let _ = writeln!(out, "class {}(BaseModel):", py_sdk_name(name));
+        let _ = writeln!(out, "class {}(BaseModel):", name);
         for field in &def.fields {
             let _ = writeln!(
                 out,
@@ -265,7 +265,7 @@ pub fn emit_package_init(order: &[&str]) -> String {
     );
     out.push_str("from kelir.generated.attest_telemetry import (\n");
     for name in order {
-        let _ = writeln!(out, "    {},", py_sdk_name(name));
+        let _ = writeln!(out, "    {},", name);
     }
     out.push_str(")\n");
     out

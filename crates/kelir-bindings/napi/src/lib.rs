@@ -71,7 +71,7 @@ pub struct NativeGuestClockRecord {
 
 // see: cans/09-snapshots.md#Archives-and-portability
 #[napi(object)]
-pub struct NativeSnapshotRecord {
+pub struct NativeSnapshotDescriptorRecord {
     pub id: String,
     pub dirty_bytes: f64,
     pub created_at_ns: f64,
@@ -80,8 +80,8 @@ pub struct NativeSnapshotRecord {
 }
 
 // see: cans/09-snapshots.md#Archives-and-portability
-fn snapshot_record(descriptor: &SnapshotDescriptor) -> NativeSnapshotRecord {
-    NativeSnapshotRecord {
+fn snapshot_record(descriptor: &SnapshotDescriptor) -> NativeSnapshotDescriptorRecord {
+    NativeSnapshotDescriptorRecord {
         id: descriptor.id.clone(),
         dirty_bytes: descriptor.dirty_bytes as f64,
         created_at_ns: descriptor.created_at_ns as f64,
@@ -115,7 +115,7 @@ fn guest_clock_of(record: NativeGuestClockRecord) -> Result<GuestClock> {
 }
 
 // see: cans/09-snapshots.md#Archives-and-portability
-fn snapshot_descriptor(record: NativeSnapshotRecord) -> Result<SnapshotDescriptor> {
+fn snapshot_descriptor(record: NativeSnapshotDescriptorRecord) -> Result<SnapshotDescriptor> {
     Ok(SnapshotDescriptor {
         id: record.id,
         dirty_bytes: u64_of(record.dirty_bytes, "snapshot dirty_bytes is not a u64")?,
@@ -189,13 +189,13 @@ pub struct NativeVmHandle {
 #[napi]
 impl NativeVmHandle {
     #[napi]
-    pub async fn checkpoint(&self, name: String) -> Result<NativeSnapshotRecord> {
+    pub async fn checkpoint(&self, name: String) -> Result<NativeSnapshotDescriptorRecord> {
         let descriptor = self.vm.checkpoint(name).await.map_err(halt)?;
         Ok(snapshot_record(&descriptor))
     }
 
     #[napi]
-    pub async fn rollback(&self, snapshot: NativeSnapshotRecord) -> Result<()> {
+    pub async fn rollback(&self, snapshot: NativeSnapshotDescriptorRecord) -> Result<()> {
         self.vm
             .rollback(&snapshot_descriptor(snapshot)?)
             .await
@@ -360,7 +360,7 @@ pub struct NativeCheckpointHandle {
 #[napi]
 impl NativeCheckpointHandle {
     #[napi]
-    pub async fn create(&self, label: String) -> Result<NativeSnapshotRecord> {
+    pub async fn create(&self, label: String) -> Result<NativeSnapshotDescriptorRecord> {
         let descriptor = self.vm.checkpoint(label).await.map_err(halt)?;
         Ok(snapshot_record(&descriptor))
     }
@@ -409,7 +409,7 @@ pub struct NativeStepHandle {}
 #[napi]
 impl NativeStepHandle {
     #[napi]
-    pub fn last(&self) -> Result<NativeSnapshotRecord> {
+    pub fn last(&self) -> Result<NativeSnapshotDescriptorRecord> {
         // TODO (L3): expose the active StepSlot once dispatch constructs HandlerCtx step stacks.
         Err(missing(
             "step last: step slots live in the dispatch HandlerCtx (L3)",

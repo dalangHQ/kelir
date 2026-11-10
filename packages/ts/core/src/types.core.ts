@@ -38,9 +38,10 @@ export interface FsInodeAttr {
 }
 
 export interface ExecveMutation {
-  readonly binary: string;
-  readonly argv: string[];
+  readonly binary?: string;
+  readonly argv?: string[];
   readonly env?: Record<string, string>;
+  readonly unset_env?: string[];
 }
 
 export interface CustomActionPayload {

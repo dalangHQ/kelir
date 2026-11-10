@@ -1,6 +1,6 @@
 - Storage catalog schema
   - Entity model
-    - Minimal 3-table ledger: sessions, cas_leases, schema_version
+    - Minimal 2-table ledger: sessions, cas_leases
     - Single Source of Truth for runtime persistence schema
       - sessions table tracks every session: ephemeral and detached
       - Ephemeral rows carry expires_at_unix = NULL and lease_kind = 'ephemeral'
@@ -9,7 +9,6 @@
       - sessions row carries incarnation_id: 128-bit UUIDv7 minted per spawn
       - sessions row carries boot_id, start_time_ns, pid for OS-native proof
       - cas_leases tracks blob_hash, holder_pid, expires_at_unix with 30s TTL
-      - schema_version tracks single-digit schema state
       - Lineage parent_digest edges are stored inside immutable snapshot manifests
       - CAS blobs with zero active unexpired leases are safely pruned without locks
       - Ephemeral rows are reaped on pidfd/kqueue/Job-Object death without lease wait
