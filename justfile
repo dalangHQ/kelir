@@ -42,6 +42,10 @@ check-spec-touched:
 check-plugin-coverage:
     ./scripts/check-plugin-coverage.sh
 
+# --examples-canonical: cans/artifacts/examples/ is the single canonical home.
+check-examples-canonical:
+    ./scripts/check-examples-canonical.sh
+
 # Compile-only gate for drivers with no CI test runner (Android AVF,
 # Termux proot); test execution needs hardware CI does not have.
 check-drivers:

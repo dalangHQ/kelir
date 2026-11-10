@@ -1,1 +1,0 @@
-{"compilerOptions":{"noEmit":true,"paths":{"@kelir/core":["./src/index.ts"]},"rootDir":"."},"extends":"./tsconfig.json","include":["src/**/*","examples/**/*"]}

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/02-plugin-model.md#Plugin-tiering"
-  statement: "Plugins depend on kelir-interface and resolve peer capabilities via ServiceRegistry. Gap: no ServiceRegistry type exists in the live tree; peer capabilities resolve through the typed handler context (HandlerCtx::ctx::<T, _>(), e.g. ctx::<CredentialBrokerCtx, _>().broker()), as used by crates/kelir-integration/examples/autonomous-swe-agent.rs."
+  statement: "Plugins depend on kelir-interface and resolve peer capabilities via ServiceRegistry. Gap: no ServiceRegistry type exists in the live tree; peer capabilities resolve through the typed handler context (HandlerCtx::ctx::<T, _>(), e.g. ctx::<CredentialBrokerCtx, _>().broker()), as used by cans/artifacts/examples/autonomous-swe-agent.rs."
   blast_radius_if_breached: "Plugins tightly couple to peer concrete struct types, breaking modular distribution."
 
 confusion_matrix:

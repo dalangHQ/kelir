@@ -1,27 +1,16 @@
-//! examples/git-gate.rs
-//!
-//! Focused example: terminal + trap interposition.
-//! One plugin, one hook (on_trap), one binary family (git).
-//!
-//! Non-default storage knobs exercised in context:
-//!   encapsulation   Passthrough     (git-gate does not lock workspace)
-//!   scan_engine     FastRegex       (diff inspection is regex-shaped)
-//!   carryover_bytes 1024            (diff chunks exceed 512)
-//!
-//! Cargo.toml:
-//!   [dependencies]
-//!   kelir = "1.0"
-//!   tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-//!   async-trait = "0.1"
+// see: cans/02-plugin-model.md#Unified-interposition-pipeline
+// see: cans/05-storage-plane.md#Encapsulation-invariant
+// see: cans/05-storage-plane.md#In-flight-read-masking
 
-use std::path::Path;
 use async_trait::async_trait;
 use kelir::{
-    driver_interface::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
+    driver_interface::{DriverPolicy, WxPolicy},
+    planes::storage_plane::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
     plugin_model::{KelirPlugin, PluginError, TrapInterposer, Verdict},
     protocol_wire::TrapEvent,
-    planes::storage_plane::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
+    KelirBuilder, PidLineage, SnapshotDescriptor, VmConfig,
 };
+use kelir_interface::plugin_model::HandlerCtx;
 
 const PROTECTED: &[&str] = &["main", "master"];
 
@@ -30,17 +19,19 @@ pub struct GitGatePlugin;
 
 impl KelirPlugin for GitGatePlugin {
     type Context = ();
-    fn context(&self) -> Self::Context { () }
-    fn name(&self) -> &'static str { "git-gate" }
+    fn context(&self) -> Self::Context {}
+    fn name(&self) -> &'static str {
+        "git-gate"
+    }
 }
 
 #[async_trait]
 impl TrapInterposer for GitGatePlugin {
-    async fn on_trap(
-        &self, event: &TrapEvent, _c: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
+    async fn on_trap(&self, event: &TrapEvent, _c: &HandlerCtx) -> Result<Verdict, PluginError> {
         let binary = event.binary_path.rsplit('/').next().unwrap_or("");
-        if binary != "git" { return Ok(Verdict::Pass); }
+        if binary != "git" {
+            return Ok(Verdict::Pass);
+        }
         match event.argv.get(1).map(String::as_str) {
             Some("push") => {
                 if event.argv.iter().any(|a| a == "--force") {
@@ -52,7 +43,9 @@ impl TrapInterposer for GitGatePlugin {
                 Ok(Verdict::Pass)
             }
             Some("commit") => {
-                let msg = event.argv.iter()
+                let msg = event
+                    .argv
+                    .iter()
                     .skip_while(|a| *a != "-m")
                     .nth(1)
                     .map(String::as_str)
@@ -71,11 +64,13 @@ impl TrapInterposer for GitGatePlugin {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let session: Session = KelirBuilder::new(VmConfig {
-        vcpus: 2, memory_mb: 1024,
+    let mut session = KelirBuilder::new(VmConfig {
+        vcpus: 2,
+        memory_mb: 1024,
         kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
         rootfs_erofs_path: "./fixtures/rootfs-git.erofs".into(),
-        tsc_locked: true, enable_watchdog: true,
+        tsc_locked: true,
+        enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
             require_hardware_vmm: false,
@@ -94,7 +89,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         entropy_seed: None,
     })
     .storage(StorageConfig {
-        idmap: IdmapConfig { guest_uid: 0, host_uid: 0 },
+        idmap: IdmapConfig {
+            guest_uid: 0,
+            host_uid: 0,
+        },
         shared_caches: vec![],
         lock_broker: false,
         synthetic_files: vec![],
@@ -108,12 +106,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     .boot()
     .await?;
 
-    let run = session.spawn("git")
-        .args(["push", "--force", "origin", "main"])
-        .cwd("/workspace/repo")
-        .await?;
-    eprintln!("[kelir] git push --force -> exit={}", run.exit_code);
-
-    session.terminate().await?;
+    session.terminal.resize(120, 40)?;
+    let slot = session.checkpoint.create_step(
+        PidLineage::new(1),
+        SnapshotDescriptor {
+            id: "git-gate-base".into(),
+            dirty_bytes: 0,
+            created_at_ns: 0,
+            parent_digest: None,
+            guest_clock: None,
+        },
+    )?;
+    let node = session.checkpoint.commit_step(PidLineage::new(1))?;
+    eprintln!("[kelir] checkpoint slot={slot} node={node}");
+    // TODO (L3): spawn git push --force origin main in the guest and gate it via GitGatePlugin.
+    session.stop()?;
     Ok(())
 }

@@ -1,28 +1,6 @@
-# examples/db-backed-runtime.py
-"""
-Database-backed secure runtime. pgwire traffic is rewritten at the L7
-boundary; credentials are scoped short-lived tokens issued by
-plugin-vault and presented by the workload itself. No host TLS
-termination by default, no CA injection. The guest root filesystem
-and the migration snapshot are local EROFS fixtures under ./fixtures/;
-no remote image translation or snapshot streaming is involved.
-
-Mounts:     db-proxy, ledger, transaction.
-Primitives: export_snapshot, import_snapshot.
-Commit:     two-phase commit around the snapshot export, inside a
-            TransactionService scope declaring the migration subtree
-            and schema. on_pre_commit pauses vCPUs and drains FUSE
-            in-flight ops (the handler flushes the host ledger before
-            staging); on_post_commit(True) is a per-entry leaf commit,
-            on_post_commit(False) unlinks staging and drops the broker
-            upper file and tombstones. A failed migration rolls back
-            to the pre-migration savepoint and aborts the scope.
-
-Requirements:
-    kelir>=1.0
-    pydantic>=2.6
-"""
-
+# see: cans/plugins/db-proxy.md#Plugin-db-proxy
+# see: cans/plugins/ledger.md#Plugin-ledger
+# see: cans/plugins/transaction.md#Plugin-transaction
 from __future__ import annotations
 
 import asyncio
@@ -64,40 +42,28 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             tsc_locked=True, enable_watchdog=True,
         )
 
-        # Local EROFS fixtures: the root filesystem above
-        # (./fixtures/rootfs-migrate.erofs) and LOCAL_SNAPSHOT are
-        # mounted/imported directly; no image translation step runs.
-        # pgwire L7 rewrite + ephemeral creds + SQLite over vsock.
+        # see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
         .plugin(DbProxyPlugin(DbProxyConfig(
             postgres=PgWireRewrite(
                 listen_port=5432,
                 upstream=f"{pg_host}:5432",
-                # Proxy parses Q/P frames, rewrites the schema prefix,
-                # and re-encodes. Rewrite applies at the L7 boundary,
-                # not inside the guest kernel.
                 rewrite_rules=[
                     ("public.", "migrate_schema."),
                 ],
             ),
-            # Guest sees a vault:// URN; the workload presents a scoped
-            # short-lived token issued by plugin-vault itself. No host
-            # TLS termination by default, no CA injection. TTL bounds
-            # exposure.
+            # see: cans/plugins/db-proxy.md#Ephemeral-credentials-injected-at-host-connection-boundary
             credentials=EphemeralCredentials(
                 placeholder="vault://pg/app_migrate",
                 resolve=lambda: pg_secret,
                 ttl_seconds=300,
             ),
-            # SQLite over vsock: forwarded to a host service that opens
-            # the real .sqlite file.
             sqlite=SqliteOverVsock(
                 guest_socket="/run/kelir/db.sock",
                 host_path="/var/lib/app/migrations.sqlite",
             ),
         )))
 
-        # Ledger: mounted so session.cap.ledger in _pre_commit and main()
-        # resolves; without it the capability access fails at boot.
+        # see: cans/plugins/ledger.md#Merkle-WAL
         .plugin(LedgerPlugin(LedgerConfig(
             store="sqlite://.kelir/migrate-audit.merkle.db",
             merkle_chain=True,
@@ -107,11 +73,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             ),
         )))
 
-        # Transaction: values from the default profile
-        # (fixtures/kelir.yaml#plugins.transaction.two_phase_commit).
-        # The plugin coordinates the 2PC commit across the CoW broker,
-        # db-proxy, and lock broker; the scope in main() declares the
-        # blast radius and the commit/abort decision.
+        # see: cans/plugins/transaction.md#Two-phase-commit-demonstration
         .plugin(TransactionPlugin(TransactionConfig(
             timeout_ms=30000,
             auto_rollback_on_taint=True,
@@ -119,10 +81,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         )))
     )
 
-    def pre_migrate(c: HandlerContext) -> Verdict:
-        # Pin the pgwire rewrite to the expected schema prefix. A drift
-        # means the proxy config diverged from the migration source;
-        # the correct action is drop, not retry.
+    async def pre_migrate(c: HandlerContext) -> Verdict:
         if c.cap.db.rewrite_target != "migrate_schema.":
             return Verdict.drop(
                 "EdbProxySchema",
@@ -130,41 +89,22 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             )
         return Verdict.pass_()
 
-    def post_migrate(c: HandlerContext) -> PostExecAction:
-        # A migration with no db-proxy telemetry is either a no-op
-        # or a falsified report; the ledger cannot distinguish them.
-        # Payload format is plugin-defined, so presence (not a decoded
-        # count) is the gate: no "net:l7:sql" extension, no proceed.
-        if not any(e.namespace == "net:l7:sql" for e in c.receipt().extensions):
+    async def post_migrate(c: HandlerContext) -> PostExecAction:
+        receipt = await c.receipt()
+        if not any(e.namespace == "net:l7:sql" for e in receipt.extensions):
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
 
+    # see: cans/plugins/db-proxy.md#Plugin-db-proxy
     builder.trap(TrapFilter.binary("migrate"), pre=pre_migrate, post=post_migrate)
 
-    # ── TWO-PHASE COMMIT (plugins/transaction.md) ──────────
-    # LifecycleParticipant commit hooks, registered the same decorator
-    # way as on_vm_ready / on_vm_shutdown in autonomous-swe-agent.py.
-    # They bracket the snapshot export in main(): the mounted
-    # TransactionPlugin pauses vCPUs and drains FUSE in-flight ops
-    # and coordinates the broker commit and SQL COMMIT/ROLLBACK, while
-    # these handlers add this example's own prepare step — flushing
-    # the host ledger before staging.
+    # see: cans/plugins/transaction.md#Plugin-transaction
     @builder.on_pre_commit
     async def _pre_commit(session: Session) -> None:
-        # Prepare phase: make the host side durable BEFORE the guest
-        # snapshot is staged. A crash between export and ledger finalize
-        # must not leave host DB state ahead of guest state — the exact
-        # desynchronization the commit protocol exists to prevent.
         await session.cap.ledger.flush()
 
     @builder.on_post_commit
     async def _post_commit(session: Session, committed: bool) -> None:
-        # Commit phase: committed=True is a per-entry leaf commit —
-        # the broker replays the upper file + tombstones against the
-        # base workspace, so the staged snapshot becomes the next
-        # cold-start fixture; False unlinks staging and drops the
-        # broker upper file and tombstones, so a failed export never
-        # overwrites the last good snapshot.
         if committed:
             print("[kelir] commit: per-entry leaf commit, staged snapshot "
                   "is next cold-start fixture")
@@ -180,30 +120,16 @@ async def main() -> None:
     pg_secret = os.environ["KELIR_PG_SECRET"]
 
     async with build_runtime(pg_host, pg_secret) as session:
-        # Cold start: hydrate registers and dirty pages from the local
-        # EROFS snapshot fixture. The first workload exec runs against
-        # warm memory, not empty RAM.
+        # see: cans/09-snapshots.md#Snapshots
         with open(LOCAL_SNAPSHOT, "rb") as f:
             await session.vm.import_snapshot(f.read())
 
-        # Commit point (plugins/transaction.md): the migration and the
-        # snapshot export run inside a TransactionService scope declaring
-        # the migration subtree and schema. Exporting the post-migration
-        # state stages the snapshot; on_pre_commit already paused vCPUs,
-        # drained FUSE in-flight ops, and flushed the host ledger, and
-        # on_post_commit(True) per-entry leaf-commits the staged snapshot
-        # into LOCAL_SNAPSHOT while on_post_commit(False) unlinks staging
-        # and drops the broker upper file and tombstones, leaving the last
-        # good fixture intact. The next cold start hydrates from the same
-        # local file. Scope exit commits; a raised error aborts it.
+        # see: cans/plugins/transaction.md#Temporal-savepoints
         async with session.cap.transaction.scope(
             "migrate-42",
             paths=["/workspace/migrations"],
             schemas=["migrate_schema"],
         ) as tx:
-            # Savepoint before the migration: a failed migration rolls
-            # back to the pre-migration state without aborting the
-            # parent transaction first; the raise below then aborts it.
             sp = await tx.savepoint()
             run = await session.spawn(
                 "python", ["-m", "app.migrate", "--schema", "migrate"],
@@ -222,6 +148,7 @@ async def main() -> None:
                 f.write(out)
 
         ledger = session.cap.ledger
+        # see: cans/10-attestation.md#Execution-receipts
         final = await ledger.finalize(
             include_merkle_root=True,
             include_delta=await ledger.get_causal_delta_from_parent(),

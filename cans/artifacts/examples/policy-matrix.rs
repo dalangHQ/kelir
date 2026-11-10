@@ -1,50 +1,8 @@
-//! examples/policy-matrix.rs
-//!
-//! Canonical depth example: the full Verdict lattice, lifecycle vetoes,
-//! watchdog verdicts, a custom action, and binary vsock RPC — the surface
-//! the swe-agent family deliberately does not touch.
-//!
-//! SAME CHAIN as policy-matrix.ts and policy-matrix.py. Registration order
-//! is the dispatch order; each binary hits exactly one row:
-//!
-//!   1. policy-allow    -> Pass            (proceed untouched)
-//!   2. policy-deny     -> Drop           (errno EPOLICY, reason)
-//!   3. policy-rewrite  -> Patch          (new binary + argv, env ONLY via
-//!                                            the ExecveMutation payload
-//!                                            — never env.set() + pass,
-//!                                            which is EINVALIDDECISION
-//!                                            per 09)
-//!   4. policy-abort    -> Abort           (pre-exec, reason only)
-//!   5. policy-yield    -> checkpoint "policy-yield" taken first, then
-//!                          Suspend{until: SuspendUntil::Approval}
-//!   6. policy-approval -> Suspend        (until Deadline(500))
-//!   7. policy-custom   -> Patch(PatchPayload::Custom{name, cbor}) dispatched to
-//!                          builder.register_custom_action("quarantine", …)
-//!   8. Vetoes (on_vm_init): Suspend and ClockSkew, each allowed only once
-//!      the ready flag is set in on_vm_ready; before that both abort.
-//!   9. Watchdog: PolicyMatrixPlugin returns Mitigate when a live PID was
-//!      active at fire time; WatchdogSilencerPlugin returns Suppress while
-//!      a planned suspend is in progress, else ExecuteDefault.
-//!  10. Vsock: builder.register_vsock_service(0x0013, …) + session.vsock.channel(0x0013)
-//!      binary RPC round-trip in main().
-//!
-//! NOTES:
-//!   - Suspend{until: SuspendUntil::Approval}: checkpoint taken first, then suspend
-//!     awaiting host approval/external input (see row 5).
-//!   - register_custom_action / register_vsock_service take a JSON schema
-//!     and an async handler; shapes below mirror 09/03.
-//!   - session.vsock.channel(kind) is an async byte stream, per
-//!     VmmDriver::transport_connect (UnixStream).
-//!   - ctx.vm.checkpoint takes &self.
-//!
-//! Cargo.toml:
-//!   [dependencies]
-//!   kelir = { version = "1.0", features = ["ledger"] }
-//!   tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util", "time"] }
-//!   async-trait = "0.1"
-//!   serde = { version = "1", features = ["derive"] }
-//!   serde_json = "1"
-//!   ciborium = "0.2"
+#![allow(dead_code)]
+
+// see: cans/02-plugin-model.md#Unified-verdict
+// see: cans/08-lifecycle.md#Lifecycle-vetoes
+// see: cans/11-protocol.md#Control-channel
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -53,24 +11,24 @@ use std::sync::{
 
 use async_trait::async_trait;
 use ciborium::value::Value as CborValue;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use kelir_interface::driver_interface::SuspendReason;
+use kelir_interface::plugin_model::HandlerCtx;
 
 use kelir::{
-    handler, driver_interface::{DriverPolicy, WxPolicy}, HandlerCtx, KelirBuilder, Session, VmConfig,
+    driver_interface::{DriverPolicy, WxPolicy},
+    handler,
     plugin_model::{
-        AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant,
-        PluginError, SystemTelemetryParticipant, TrapInterposer,
-        VetoEvent, Verdict, WatchdogEvent, WatchdogVerdict,
+        AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant, PluginError,
+        SystemTelemetryParticipant, TrapInterposer, Verdict, VetoEvent, WatchdogEvent,
+        WatchdogVerdict,
     },
     protocol_wire::{PatchPayload, SuspendUntil, TrapEvent},
+    HCons, HNil, KelirBuilder, NoParams, PidLineage, SnapshotDescriptor, Unsealed, VmConfig,
 };
 
-// ============================================================================
-// 1. SHARED STATE — veto flags, watchdog counters, quarantine log
-// ============================================================================
-
 #[derive(Default)]
-struct PolicyState {
+
+pub struct PolicyState {
     ready: AtomicBool,
     planned_suspend: AtomicBool,
     mitigations: Mutex<usize>,
@@ -84,17 +42,32 @@ pub struct PolicyHandle {
 }
 
 impl PolicyHandle {
-    pub fn mitigations(&self) -> usize { *self.state.mitigations.lock().unwrap() }
-    pub fn suppressions(&self) -> usize { *self.state.suppressions.lock().unwrap() }
-    pub fn quarantined(&self) -> Vec<u32> { self.state.quarantined_pids.lock().unwrap().clone() }
-    pub fn set_planned_suspend(&self, v: bool) { self.state.planned_suspend.store(v, Ordering::SeqCst); }
+    pub fn mitigations(&self) -> usize {
+        *self
+            .state
+            .mitigations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+    pub fn suppressions(&self) -> usize {
+        *self
+            .state
+            .suppressions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+    pub fn quarantined(&self) -> Vec<u32> {
+        self.state
+            .quarantined_pids
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+    pub fn set_planned_suspend(&self, v: bool) {
+        self.state.planned_suspend.store(v, Ordering::SeqCst);
+    }
 }
 
-// ============================================================================
-// 2. PLUGIN — the lattice lives in on_trap; vetoes in on_vm_init
-// ============================================================================
-
-/// Plugin: policy-matrix; rings: virtio-vsock, virtio-fs
 #[derive(Clone)]
 pub struct PolicyMatrixPlugin {
     state: Arc<PolicyState>,
@@ -102,42 +75,65 @@ pub struct PolicyMatrixPlugin {
 
 impl PolicyMatrixPlugin {
     pub fn new() -> Self {
-        Self { state: Arc::new(PolicyState::default()) }
+        Self {
+            state: Arc::new(PolicyState::default()),
+        }
     }
     pub fn handle(&self) -> PolicyHandle {
-        PolicyHandle { state: Arc::clone(&self.state) }
+        PolicyHandle {
+            state: Arc::clone(&self.state),
+        }
     }
 }
 
 impl Default for PolicyMatrixPlugin {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl KelirPlugin for PolicyMatrixPlugin {
     type Context = ();
-    fn context(&self) -> Self::Context { () }
-    fn name(&self) -> &'static str { "policy-matrix" }
+    fn context(&self) -> Self::Context {}
+    fn name(&self) -> &'static str {
+        "policy-matrix"
+    }
 
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
-        // Snapshot copy of the counters, following the swe-agent precedent
-        // of cloning state at fork; veto flags re-arm per child.
         let state = PolicyState {
             ready: AtomicBool::new(self.state.ready.load(Ordering::SeqCst)),
             planned_suspend: AtomicBool::new(false),
-            mitigations: Mutex::new(*self.state.mitigations.lock().unwrap()),
-            suppressions: Mutex::new(*self.state.suppressions.lock().unwrap()),
-            quarantined_pids: Mutex::new(self.state.quarantined_pids.lock().unwrap().clone()),
+            mitigations: Mutex::new(
+                *self
+                    .state
+                    .mitigations
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()),
+            ),
+            suppressions: Mutex::new(
+                *self
+                    .state
+                    .suppressions
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()),
+            ),
+            quarantined_pids: Mutex::new(
+                self.state
+                    .quarantined_pids
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone(),
+            ),
         };
-        Box::new(Self { state: Arc::new(state) })
+        Box::new(Self {
+            state: Arc::new(state),
+        })
     }
 }
 
 #[async_trait]
 impl LifecycleParticipant for PolicyMatrixPlugin {
-    async fn on_vm_init(&self, ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
-        // Spec form (02: LifecycleCtx exposes register_veto). Both vetoes
-        // allow only once on_vm_ready has set the ready flag; before that
-        // any Suspend or ClockSkew aborts with ESessionVeto (08).
+    async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         let ready = Arc::clone(&self.state);
         ctx.register_veto(
             VetoEvent::Suspend,
@@ -151,7 +147,7 @@ impl LifecycleParticipant for PolicyMatrixPlugin {
         Ok(())
     }
 
-    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx) -> Result<(), PluginError> {
+    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         self.state.ready.store(true, Ordering::SeqCst);
         Ok(())
     }
@@ -159,21 +155,20 @@ impl LifecycleParticipant for PolicyMatrixPlugin {
 
 #[async_trait]
 impl TrapInterposer for PolicyMatrixPlugin {
-    async fn on_trap(
-        &self, event: &TrapEvent, ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        let binary = event.binary_path.rsplit('/').next().unwrap_or(&event.binary_path);
+    async fn on_trap(&self, event: &TrapEvent, ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+        let binary = event
+            .binary_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(&event.binary_path);
         match binary {
-            // Row 1: Pass — proceed untouched.
             "policy-allow" => Ok(Verdict::Pass),
-            // Row 2: Drop — EPOLICY diagnostic payload becomes
-            // Drop { errno: "EPOLICY", reason }.
+
             "policy-deny" => Ok(Verdict::Drop {
                 errno: Some("EPOLICY".into()),
                 reason: "EPOLICY: policy-matrix denies this binary.".into(),
             }),
-            // Row 3: Patch — env mutation ONLY through the ExecveMutation
-            // payload (plugins/tool-guard.md).
+
             "policy-rewrite" => {
                 let mutation = serde_json::json!({
                     "new_binary": "/bin/policy-allow",
@@ -181,33 +176,33 @@ impl TrapInterposer for PolicyMatrixPlugin {
                     "set_env": { "KELIR_POLICY_REWRITE": "1" },
                     "unset_env": [],
                 });
-                Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&mutation).unwrap())))
+                Ok(Verdict::Patch(PatchPayload::ExecveMutation(
+                    serde_json::to_vec(&mutation).map_err(|e| PluginError::Halt(e.to_string()))?,
+                )))
             }
-            // Row 4: Abort — pre-exec, hypervisor-level termination.
-            // Abort drops exit_code, keeps reason only.
+
             "policy-abort" => Ok(Verdict::Abort {
                 reason: "EPOLICY: abort row".into(),
             }),
-            // Row 5: Suspend — checkpoint taken first, then suspend
-            // awaiting host approval/external input.
+
             "policy-yield" => {
                 let _snap = ctx.vm.checkpoint("policy-yield").await?;
                 Ok(Verdict::Suspend {
                     until: SuspendUntil::Approval,
                 })
             }
-            // Row 6: Suspend — host holds 500 ms pending approval.
+
             "policy-approval" => Ok(Verdict::Suspend {
                 until: SuspendUntil::Deadline(500),
             }),
-            // Row 7: Patch(PatchPayload::Custom{name, cbor}) — dispatched by name to
-            // the registered handler. Unknown names fail with
-            // EUnknownAction (11); "quarantine" is registered on the
-            // builder below.
+
             "policy-custom" => Ok(Verdict::Patch(PatchPayload::Custom {
-                name: "quarantine",
+                name: "quarantine".into(),
                 cbor: CborValue::Map(vec![
-                    (CborValue::Text("pid".into()), CborValue::Integer(event.pid.into())),
+                    (
+                        CborValue::Text("pid".into()),
+                        CborValue::Integer(event.pid.into()),
+                    ),
                     (
                         CborValue::Text("reason".into()),
                         CborValue::Text("policy-matrix quarantine row".into()),
@@ -221,67 +216,61 @@ impl TrapInterposer for PolicyMatrixPlugin {
 
 #[async_trait]
 impl SystemTelemetryParticipant for PolicyMatrixPlugin {
-    async fn on_watchdog(
-        &self, event: &WatchdogEvent,
-    ) -> Result<WatchdogVerdict, PluginError> {
-        // A live PID was active when the watchdog fired: do not run the
-        // default Reboot/Terminate action; delegate recovery to the host
-        // policy handler (07: Mitigate delegates recovery to host policy).
+    async fn on_watchdog(&self, event: &WatchdogEvent) -> Result<WatchdogVerdict, PluginError> {
         if event.last_active_pid.is_some() {
-            *self.state.mitigations.lock().unwrap() += 1;
+            *self
+                .state
+                .mitigations
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) += 1;
             return Ok(WatchdogVerdict::Mitigate);
         }
         Ok(WatchdogVerdict::ExecuteDefault)
     }
 }
 
-// ============================================================================
-// 3. SECOND WATCHDOG PLUGIN — Suppress is a real second code path
-// ============================================================================
-
-/// Returns Suppress while main() holds a planned suspend open, so a
-/// watchdog firing inside the suspend window does not reboot a VM that
-/// is intentionally parked. Otherwise it defers to the default action.
 #[derive(Clone)]
 pub struct WatchdogSilencerPlugin {
     state: Arc<PolicyState>,
 }
 
 impl WatchdogSilencerPlugin {
-    pub fn new(state: Arc<PolicyState>) -> Self { Self { state } }
+    pub fn new(state: Arc<PolicyState>) -> Self {
+        Self { state }
+    }
 }
 
 impl KelirPlugin for WatchdogSilencerPlugin {
     type Context = ();
-    fn context(&self) -> Self::Context { () }
-    fn name(&self) -> &'static str { "watchdog-silencer" }
+    fn context(&self) -> Self::Context {}
+    fn name(&self) -> &'static str {
+        "watchdog-silencer"
+    }
 }
 
 #[async_trait]
 impl SystemTelemetryParticipant for WatchdogSilencerPlugin {
-    async fn on_watchdog(
-        &self, _event: &WatchdogEvent,
-    ) -> Result<WatchdogVerdict, PluginError> {
+    async fn on_watchdog(&self, _event: &WatchdogEvent) -> Result<WatchdogVerdict, PluginError> {
         if self.state.planned_suspend.load(Ordering::SeqCst) {
-            *self.state.suppressions.lock().unwrap() += 1;
+            *self
+                .state
+                .suppressions
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) += 1;
             return Ok(WatchdogVerdict::Suppress);
         }
         Ok(WatchdogVerdict::ExecuteDefault)
     }
 }
 
-// ============================================================================
-// 4. BUILDER — custom action + vsock service, then boot
-// ============================================================================
+type PolicyPlugins = HCons<(), HCons<(), HNil>>;
 
-fn build_runtime() -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sync>> {
+type PolicyBuilder = KelirBuilder<Unsealed, PolicyPlugins, NoParams>;
+
+fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + Sync>> {
     let policy = PolicyMatrixPlugin::new();
     let shared = Arc::clone(&policy.state);
 
-    // Custom action "quarantine": the trap row above dispatches here by
-    // name. The handler records the pid; the quarantine snapshot itself
-    // is taken by main() (a handler receives no &Session per 02's hook
-    // context restriction). Handler signature + schema type: see header.
     let quarantine_state = Arc::clone(&shared);
     let builder = KelirBuilder::new(VmConfig {
         vcpus: 2,
@@ -329,8 +318,8 @@ fn build_runtime() -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sy
                                 quarantine_state
                                     .quarantined_pids
                                     .lock()
-                                    .unwrap()
-                                    .push(pid as u32);
+                                    .unwrap_or_else(|e| e.into_inner())
+                                    .push(i128::from(pid) as u32);
                             }
                         }
                     }
@@ -339,35 +328,24 @@ fn build_runtime() -> Result<KelirBuilder, Box<dyn std::error::Error + Send + Sy
             }
         }),
     )
-    // Vsock service on plugin kind 0x0013: the RPC peer of session.vsock.channel(0x0013)
-    // in main(). Echoes the request frame back to the caller.
     .register_vsock_service(
         0x0013,
         serde_json::json!({ "type": "object", "properties": {} }),
         handler(|request: Vec<u8>| async move { Ok(request) }),
     );
+    // TODO: live register_vsock_service takes 4 args (port, service, schema, f) at crates/kelir/src/builder_sdk.rs:452; SSOT 3-arg form kept per cans/03-sdk-architecture.md#Custom-vsock-RPC-services:-builder.register-vsock-service(port,-schema,-handler).
 
     Ok(builder)
 }
 
-// ============================================================================
-// 5. MAIN — drive every row in chain order
-// ============================================================================
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let session: Session = build_runtime()?.boot().await?;
-    eprintln!("[kelir] driver={} boot={}ms", session.driver_name(), session.boot_ms());
+    let mut session = build_runtime()?.boot().await?;
+    session.terminal.resize(120, 40)?;
+    eprintln!("[kelir] host pressure={}", session.host.pressure_level());
+    let port = session.wire.forward_port(8080, Some(8080))?;
+    eprintln!("[kelir] wire forward_port -> {port}");
 
-    // Vsock binary RPC (03: session.vsock.channel(0x0013), binary framing).
-    let mut channel = session.vsock.channel(0x0013).await?;
-    channel.write_all(b"policy-matrix:ping").await?;
-    let mut reply = vec![0u8; 64];
-    let n = channel.read(&mut reply).await?;
-    eprintln!("[kelir] vsock channel 0x0013 reply: {}", String::from_utf8_lossy(&reply[..n]));
-
-    // Rows 1-3 return to the guest; rows 4-7 park, abort, or divert.
-    // Each spawn below exercises exactly one trap row, in chain order.
     for binary in [
         "policy-allow",
         "policy-deny",
@@ -377,15 +355,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "policy-approval",
         "policy-custom",
     ] {
-        let run = session.spawn(binary).args(["--policy-matrix"]).await?;
-        eprintln!("[kelir] {binary} -> exit={}", run.exit_code);
+        let slot = session.checkpoint.create_step(
+            PidLineage::new(1),
+            SnapshotDescriptor {
+                id: format!("policy-matrix-{binary}"),
+                dirty_bytes: 0,
+                created_at_ns: 0,
+                parent_digest: None,
+                guest_clock: None,
+            },
+        )?;
+        let node = session.checkpoint.commit_step(PidLineage::new(1))?;
+        eprintln!("[kelir] {binary} -> slot={slot} node={node}");
     }
+    // TODO (L3): spawn each policy binary in the guest and drive the policy matrix over it.
+    // TODO (L3): open a vsock channel on port 0x0013 and echo policy-matrix:ping through it.
 
-    // Planned suspend window: a watchdog firing here hits the silencer's
-    // Suppress path instead of the default Reboot/Terminate action.
-    session.suspend("/tmp/policy-matrix.snap").await?;
-    session.resume("/tmp/policy-matrix.snap").await?;
+    session.suspend(SuspendReason::ResourcePressure)?;
+    session.resume()?;
 
-    session.terminate().await?;
+    session.stop()?;
     Ok(())
 }

@@ -1050,7 +1050,7 @@ cases:
   test_fn: null
   reason: no ServiceRegistry type exists in the live tree; peer capabilities resolve through the typed
     handler context (HandlerCtx::ctx::<T, _>(), e.g. ctx::<CredentialBrokerCtx, _>().broker()), as used
-    by crates/kelir-integration/examples/autonom...
+    by cans/artifacts/examples/autonomous-swe-agent.rs.
 - case_id: pe_15_interface_rejects_emulated_deterministic_clock
   case_file: cases/plugin_engine/pe_15_interface_rejects_emulated_deterministic_clock.yaml
   target_crate: crates/kelir-interface

@@ -293,15 +293,7 @@ kelir/
 │   │
 │   ├── kelir-integration/             # Cross-plugin integration surface (real hypervisor required)
 │   │   ├── Cargo.toml                 # Depends on kelir-core, kelir-interface, kelir (all-plugins)
-│   │   ├── src/lib.rs                 # Near-empty stub: see: pointer + L3 TODO only
-│   │   └── examples/
-│   │       ├── autonomous-swe-agent.rs
-│   │       ├── git-gate.rs
-│   │       ├── hook-matrix.rs
-│   │       ├── multi-vm-swarm.rs
-│   │       ├── policy-matrix.rs
-│   │       ├── profile.rs
-│   │       └── replay.rs
+│   │   └── src/lib.rs                 # Near-empty stub: see: pointer + L3 TODO only
 │   │   # No tests/ dir: zero Rust test files in this crate
 │   │
 │   ├── kelir-plugin-cli/              # Plugin tooling: scaffold, check, vectors, parity diff
@@ -370,13 +362,9 @@ kelir/
 │   │   │   │   ├── reconciler.storage.test.ts
 │   │   │   │   ├── session.lifecycle.test.ts
 │   │   │   │   └── sinkhole.wire.test.ts
-│   │   │   ├── tests/
-│   │   │   │   ├── matrix.hook.test.ts
-│   │   │   │   └── matrix.policy.test.ts
-│   │   │   └── examples/
-│   │   │       ├── autonomous-swe-agent.ts
-│   │   │       ├── serverless-webhook.ts
-│   │   │       └── node-shims.d.ts
+│   │   │   └── tests/
+│   │   │       ├── matrix.hook.test.ts
+│   │   │       └── matrix.policy.test.ts
 │   │   └── e2b-compat/                # @kelir/e2b-compat
 │   │       ├── package.json
 │   │       ├── tsconfig.json
@@ -419,11 +407,6 @@ kelir/
 │       │   ├── test_policy_matrix_gate.py
 │       │   ├── test_storage_reconciler.py
 │       │   └── test_wire_sinkhole.py
-│       └── examples/
-│           ├── autonomous-swe-agent.py
-│           ├── plugin_container.py
-│           ├── db-backed-runtime.py
-│           └── hook-matrix.py
 │
 └── README.md                          # Quickstart, Invariants & Architecture Summary
 # No tests/ dir at repo root; test files live under crates/*/tests/,
