@@ -581,14 +581,7 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
                     allow_udp_proxied: matches!(cfg.tap_filter, TapFilter::AllowUdpProxied),
                 }
             }),
-            lock_broker: self.registration.lock_broker_cfg.as_ref().map(|cfg| {
-                kelir_core::planes::storage::LockBrokerWiring {
-                    scope_globs: match &cfg.scope {
-                        LockScope::Globs(globs) => globs.clone(),
-                    },
-                    non_blocking: cfg.non_blocking,
-                }
-            }),
+            storage: self.storage_wiring(),
         };
         let core = kelir_core::Session::boot_with_engine(
             self.config,
@@ -601,6 +594,49 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
         let mut core = core;
         core.set_detached(self.registration.detached);
         Ok(Session::from_parts(core, self.plugins, self.registration))
+    }
+
+    // see: cans/05-storage-plane.md#Storage-architecture
+    // TODO (L3): snoop on_write closures register as engine FsInterposer hooks at seal per cans/02-plugin-model.md#Unified-interposition-pipeline.
+    fn storage_wiring(&self) -> kelir_core::planes::storage::StorageWiring {
+        let Some(cfg) = self.registration.storage_cfg.as_ref() else {
+            return kelir_core::planes::storage::StorageWiring::default();
+        };
+        let lock_broker = self
+            .registration
+            .lock_broker_cfg
+            .as_ref()
+            .map(|broker| kelir_core::planes::storage::LockBrokerWiring {
+                scope_globs: match &broker.scope {
+                    LockScope::Globs(globs) => globs.clone(),
+                },
+                non_blocking: broker.non_blocking,
+            })
+            .or_else(|| {
+                cfg.lock_broker
+                    .then(|| kelir_core::planes::storage::LockBrokerWiring {
+                        scope_globs: Vec::new(),
+                        non_blocking: false,
+                    })
+            });
+        kelir_core::planes::storage::StorageWiring {
+            shared_caches: cfg
+                .shared_caches
+                .iter()
+                .map(std::path::PathBuf::from)
+                .collect(),
+            lock_broker,
+            idmap: Some(kelir_core::planes::storage::IdmapConfig {
+                guest_uid: cfg.idmap.guest_uid,
+                host_uid: cfg.idmap.host_uid,
+            }),
+            mask_read: Some(kelir_core::planes::storage::MaskReadConfig {
+                engine: cfg.scan_engine,
+                carryover_bytes: cfg.carryover_bytes,
+                rules: cfg.mask_read.clone(),
+            }),
+            encapsulation: cfg.encapsulation,
+        }
     }
 }
 

@@ -13,6 +13,7 @@ pub enum McpMethod {
     ToolsCall,
     #[default]
     Other,
+    Unparsed,
 }
 
 // see: cans/11-protocol.md#Stream-mux-framing
@@ -25,11 +26,16 @@ pub struct McpFrame {
 }
 
 impl McpFrame {
-    // see: cans/plugins/mcp.md#MCP-contract
+    // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
     pub fn decode(payload: &[u8]) -> Result<Self, PluginError> {
-        let _ = payload;
         // TODO (L3): decode JSON Lines frames and classify tools/call vs tools/list per cans/plugins/mcp.md; FLAG_CONTINUATION reassembly per cans/11-protocol.md#Stream-mux-framing.
-        Ok(Self::default())
+        let _ = payload;
+        Ok(Self {
+            method: McpMethod::Unparsed,
+            id: 0,
+            tool_name: None,
+            arguments: Vec::new(),
+        })
     }
 }
 

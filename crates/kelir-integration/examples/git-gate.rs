@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use kelir::{
-    KelirBuilder, PidLineage, SnapshotDescriptor, VmConfig,
+    KelirBuilder, SnapshotDescriptor, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     planes::storage_plane::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
     plugin_model::{KelirPlugin, PluginError, TrapInterposer, Verdict},
@@ -107,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     session.terminal.resize(120, 40)?;
     let slot = session.checkpoint.create_step(
-        PidLineage::new(1),
+        session.lineage(1),
         SnapshotDescriptor {
             id: "git-gate-base".into(),
             dirty_bytes: 0,
@@ -116,7 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             guest_clock: None,
         },
     )?;
-    let node = session.checkpoint.commit_step(PidLineage::new(1))?;
+    let node = session.checkpoint.commit_step(session.lineage(1))?;
     eprintln!("[kelir] checkpoint slot={slot} node={node}");
     // TODO (L3): spawn git push --force origin main in the guest and gate it via GitGatePlugin.
     session.stop()?;

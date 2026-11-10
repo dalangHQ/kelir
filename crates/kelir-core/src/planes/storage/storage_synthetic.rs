@@ -19,6 +19,7 @@ pub enum SyntheticFile {
     Static {
         path: String,
         content: String,
+        mode: u32,
     },
     Dynamic {
         path: String,
@@ -28,9 +29,16 @@ pub enum SyntheticFile {
 
 impl SyntheticFile {
     pub fn static_(path: &str, content: &str) -> Self {
+        // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
+        Self::static_with_mode(path, content, 0o400)
+    }
+
+    // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
+    pub fn static_with_mode(path: &str, content: &str, mode: u32) -> Self {
         Self::Static {
             path: path.to_string(),
             content: content.to_string(),
+            mode,
         }
     }
 
@@ -57,8 +65,8 @@ impl SyntheticFile {
             return Ok(None);
         }
         match self {
-            Self::Static { content, .. } => Ok(Some(FsInodeAttr {
-                mode: 0o400,
+            Self::Static { content, mode, .. } => Ok(Some(FsInodeAttr {
+                mode: *mode,
                 uid: 0,
                 gid: 0,
                 size: content.len() as u64,

@@ -18,6 +18,8 @@ pub struct PidLineage {
 }
 
 impl PidLineage {
+    // see: cans/08-lifecycle.md#CoW-fork
+    #[deprecated = "hardcodes the zero incarnation UUID and bypasses session isolation; use Session::lineage(root_pid) or PidLineage::new_in_session(root_pid, incarnation_id)"]
     pub const fn new(root_pid: u32) -> Self {
         Self {
             root_pid,
@@ -159,7 +161,7 @@ impl CheckpointPlane {
     }
 
     // see: cans/10-attestation.md#Step-evaluation-loop
-    // TODO (L3): invoke this create from the trap-match pre-hook; the step evaluation loop wiring is absent, so the interface StepStack stays empty.
+    // TODO (L3): invoke this create from the trap-match pre-hook so active_step() has a live slot per trap event.
     pub fn create_step(
         &self,
         lineage: PidLineage,
@@ -181,6 +183,15 @@ impl CheckpointPlane {
             },
         );
         Ok(slot_id)
+    }
+
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    pub fn active_step(
+        &self,
+        lineage: PidLineage,
+    ) -> Result<Option<SnapshotDescriptor>, PluginError> {
+        let steps = self.lock_steps()?;
+        Ok(steps.get(&lineage).map(|slot| slot.base_descriptor.clone()))
     }
 
     // see: cans/08-lifecycle.md#Delta-chain-compaction

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use kelir::protocol_wire::ExecveMutation;
 use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
 use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::plugin_model::HandlerCtx as IfaceHandlerCtx;
@@ -155,16 +156,13 @@ impl TrapInterposer for RepoPolicyPlugin {
         let new_branch = format!("agent/{:08x}", std::process::id());
         let mut argv = event.argv.clone();
         argv.push(format!("HEAD:refs/heads/{new_branch}"));
-
-        let mutation = serde_json::json!({
-            "new_binary": "/bin/git",
-            "new_argv": argv,
-            "set_env": { "KELIR_REWRITTEN": "1" },
-            "unset_env": [],
-        });
-        Ok(Verdict::Patch(PatchPayload::ExecveMutation(
-            serde_json::to_vec(&mutation).map_err(|e| PluginError::Halt(e.to_string()))?,
-        )))
+        let mutation = ExecveMutation {
+            new_binary: Some("/bin/git".into()),
+            new_argv: Some(argv),
+            set_env: vec![("KELIR_REWRITTEN".into(), "1".into())],
+            unset_env: vec![],
+        };
+        Ok(Verdict::Patch(PatchPayload::ExecveMutation(mutation)))
     }
 }
 
@@ -417,146 +415,160 @@ async fn build_runtime(
     let builder = builder.plugin(policy_plugin);
 
     let builder = builder
-
-        .trap("*", handler({
-            let oracle = Arc::clone(&oracle);
-            move |c: HandlerCtx<_, _>| {
+        .trap(
+            "*",
+            handler({
                 let oracle = Arc::clone(&oracle);
-                async move {
+                move |c: HandlerCtx<_, _>| {
+                    let oracle = Arc::clone(&oracle);
+                    async move {
+                        let _pre = c.vm.checkpoint(format!("pre:{}", c.trap.pid)).await?;
 
-                    let _pre = c.vm
-                        .checkpoint(format!("pre:{}", c.trap.pid))
-                        .await?;
+                        let intent: IntentAnalysis = oracle.analyze_intent(&c.trap).await?;
+                        if !intent.is_hypothesis_valid {
+                            // see: cans/artifacts/examples/autonomous-swe-agent.rs#LedgerCtx
+                            c.ctx::<LedgerCtx, _>().record_denial(c.trap.ppid);
+                            return Ok(Verdict::Drop {
+                                errno: Some("EPERM".into()),
+                                reason: format!(
+                                    "Verification Reject: {}",
+                                    intent.falsification_reason.unwrap_or_default()
+                                ),
+                            });
+                        }
+                        Ok(Verdict::Pass)
+                    }
+                }
+            }),
+        )
+        .trap(
+            TrapFilter::binary("npm")
+                .with_arg("test")
+                .with_arg("--")
+                .with_arg("--runInBand"),
+            handler(|c: HandlerCtx<_, _>| async move {
+                c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
 
-                    let intent: IntentAnalysis = oracle.analyze_intent(&c.trap).await?;
-                    if !intent.is_hypothesis_valid {
-                        // see: cans/artifacts/examples/autonomous-swe-agent.rs#LedgerCtx
-                        c.ctx::<LedgerCtx, _>().record_denial(c.trap.ppid);
+                Ok(Verdict::Patch(PatchPayload::ExecveMutation(
+                    ExecveMutation {
+                        new_binary: Some(c.trap.binary_path.clone()),
+                        new_argv: Some(c.trap.argv.clone()),
+                        set_env: vec![
+                            (
+                                "OTEL_TRACE_ID".into(),
+                                format!("{:032x}", std::process::id()),
+                            ),
+                            ("CI".into(), "1".into()),
+                        ],
+                        unset_env: vec![],
+                    },
+                )))
+            }),
+        )
+        .trap(
+            TrapFilter::binary("git").with_arg("push"),
+            handler(|c: HandlerCtx<_, _>| async move {
+                if c.trap.argv.iter().any(|a| a == "--force") {
+                    let argv: Vec<String> = c
+                        .trap
+                        .argv
+                        .iter()
+                        .filter(|a| *a != "--force")
+                        .cloned()
+                        .collect();
+                    return Ok(Verdict::Patch(PatchPayload::ExecveMutation(
+                        ExecveMutation {
+                            new_binary: Some("/bin/git".into()),
+                            new_argv: Some(argv),
+                            set_env: vec![("KELIR_DISARMED".into(), "1".into())],
+                            unset_env: vec![],
+                        },
+                    )));
+                }
+                Ok(Verdict::Pass)
+            }),
+        )
+        .trap(
+            "*",
+            handler({
+                let oracle = Arc::clone(&oracle);
+                move |c: HandlerCtx<_, _>| {
+                    let oracle = Arc::clone(&oracle);
+                    async move {
+                        let pre: SnapshotDescriptor = c
+                            .step
+                            .last()
+                            .ok_or_else(|| PluginError::Halt("no pre-exec checkpoint".into()))?;
+                        let receipt: ExecutionReceipt = c.receipt().await?;
+
+                        // see: cans/artifacts/examples/autonomous-swe-agent.rs#binary_blake3
+                        let trap_hex = hex_lower(&c.trap.binary_blake3);
+                        if receipt.binary_blake3 != trap_hex {
+                            c.vm.rollback(&pre).await?;
+                            c.terminal
+                                .notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n");
+                            return Ok(PostExecAction::RollbackAndHalt);
+                        }
+
+                        if c.trap.binary_path.ends_with("/npm")
+                            && receipt.egress_bytes > 0
+                            && c.trap.cwd.contains("/checkout-service")
+                        {
+                            c.vm.rollback(&pre).await?;
+                            c.terminal.notice(&format!(
+                                "⚡ [KELIR]: hermetic test emitted {}B egress — REVERTED\n",
+                                receipt.egress_bytes
+                            ));
+                            return Ok(PostExecAction::RollbackAndHalt);
+                        }
+
+                        if !oracle.verify_physical_receipt(&receipt).await? {
+                            c.vm.rollback(&pre).await?;
+                            c.terminal
+                                .notice("⚡ [KELIR]: post-condition violated — REVERTED\n");
+                            return Ok(PostExecAction::RollbackAndHalt);
+                        }
+                        Ok(PostExecAction::Proceed)
+                    }
+                }
+            }),
+        )
+        .trap(
+            TrapFilter::binary("git").with_arg("commit").with_arg("-m"),
+            handler({
+                move |c: HandlerCtx<_, _>| async move {
+                    let policy = c.ctx::<RepoPolicyHandle, _>();
+                    let n = policy.violations().await;
+                    if n > 0 {
                         return Ok(Verdict::Drop {
                             errno: Some("EPERM".into()),
-                            reason: format!(
-                                "Verification Reject: {}",
-                                intent.falsification_reason.unwrap_or_default()
-                            ),
+                            reason: format!("EPOLICY: {n} prior violation(s)."),
                         });
                     }
                     Ok(Verdict::Pass)
                 }
-            }
-        }))
+            }),
+        )
+        .trap(
+            TrapFilter::binary("git").with_arg("commit"),
+            handler(|c: HandlerCtx<_, _>| async move {
+                let receipt = c.receipt().await?;
 
-
-        .trap(TrapFilter::binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), handler(|c: HandlerCtx<_, _>| async move {
-            c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
-
-
-            Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&serde_json::json!({
-                "new_binary": c.trap.binary_path.clone(),
-                "new_argv": c.trap.argv.clone(),
-                "set_env": { "OTEL_TRACE_ID": format!("{:032x}", std::process::id()), "CI": "1" },
-                "unset_env": [],
-            }))?)))
-        }))
-
-
-        .trap(TrapFilter::binary("git").with_arg("push"), handler(|c: HandlerCtx<_, _>| async move {
-            if c.trap.argv.iter().any(|a| a == "--force") {
-
-                let argv: Vec<String> = c.trap.argv.iter()
-                    .filter(|a| *a != "--force").cloned().collect();
-                return Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&serde_json::json!({
-                    "new_binary": "/bin/git",
-                    "new_argv": argv,
-                    "set_env": { "KELIR_DISARMED": "1" },
-                    "unset_env": [],
-                }))?)));
-            }
-            Ok(Verdict::Pass)
-        }))
-
-
-        .trap("*", handler({
-            let oracle = Arc::clone(&oracle);
-            move |c: HandlerCtx<_, _>| {
-                let oracle = Arc::clone(&oracle);
-                async move {
-                    let pre: SnapshotDescriptor = c.step.last().ok_or_else(|| {
-                        PluginError::Halt("no pre-exec checkpoint".into())
-                    })?;
-                    let receipt: ExecutionReceipt = c.receipt().await?;
-
-
-                    // see: cans/artifacts/examples/autonomous-swe-agent.rs#binary_blake3
-                    let trap_hex = hex_lower(&c.trap.binary_blake3);
-                    if receipt.binary_blake3 != trap_hex {
-                        c.vm.rollback(&pre).await?;
-                        c.terminal.notice(
-                            "⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n",
-                        );
-                        return Ok(PostExecAction::RollbackAndHalt);
-                    }
-
-                    if c.trap.binary_path.ends_with("/npm")
-                        && receipt.egress_bytes > 0
-                        && c.trap.cwd.contains("/checkout-service")
-                    {
-                        c.vm.rollback(&pre).await?;
-                        c.terminal.notice(&format!(
-                            "⚡ [KELIR]: hermetic test emitted {}B egress — REVERTED\n",
-                            receipt.egress_bytes
-                        ));
-                        return Ok(PostExecAction::RollbackAndHalt);
-                    }
-
-                    if !oracle.verify_physical_receipt(&receipt).await? {
-                        c.vm.rollback(&pre).await?;
-                        c.terminal.notice(
-                            "⚡ [KELIR]: post-condition violated — REVERTED\n",
-                        );
-                        return Ok(PostExecAction::RollbackAndHalt);
-                    }
-                    Ok(PostExecAction::Proceed)
+                if receipt.dirty_bytes == 0 {
+                    return Err(Box::new(PluginError::Halt("zero-byte delta commit".into()))
+                        as Box<dyn std::error::Error + Send + Sync>);
                 }
-            }
-        }))
 
-
-        .trap(TrapFilter::binary("git").with_arg("commit").with_arg("-m"), handler({
-            move |c: HandlerCtx<_, _>| async move {
-
-
-                let policy = c.ctx::<RepoPolicyHandle, _>();
-                let n = policy.violations().await;
-                if n > 0 {
-                    return Ok(Verdict::Drop {
-                        errno: Some("EPERM".into()),
-                        reason: format!("EPOLICY: {n} prior violation(s)."),
-                    });
+                match receipt.extensions.iter().find(|e| e.namespace == "fs:vfs") {
+                    Some(ext) => eprintln!(
+                        "[kelir] commit fs:vfs extension present, payload_len={}",
+                        ext.payload.len(),
+                    ),
+                    None => eprintln!("[kelir] commit fs:vfs extension absent"),
                 }
-                Ok(Verdict::Pass)
-            }
-        }))
-
-
-        .trap(TrapFilter::binary("git").with_arg("commit"), handler(|c: HandlerCtx<_, _>| async move {
-            let receipt = c.receipt().await?;
-
-            if receipt.dirty_bytes == 0 {
-
-                return Err(Box::new(PluginError::Halt("zero-byte delta commit".into()))
-                    as Box<dyn std::error::Error + Send + Sync>);
-            }
-
-
-            match receipt.extensions.iter().find(|e| e.namespace == "fs:vfs") {
-                Some(ext) => eprintln!(
-                    "[kelir] commit fs:vfs extension present, payload_len={}",
-                    ext.payload.len(),
-                ),
-                None => eprintln!("[kelir] commit fs:vfs extension absent"),
-            }
-            Ok(PostExecAction::Proceed)
-        }));
+                Ok(PostExecAction::Proceed)
+            }),
+        );
 
     let builder = builder
         .on_vm_init(|ctx| {

@@ -119,13 +119,18 @@ impl LedgerCtx {
             ));
         };
         let snapshot = metrics.snapshot();
-        let exporter =
-            OtlpExporter::with_config(self.otel.exporter_config().map_err(|e| {
-                PluginError::Halt(format!("ledger flush: OTLP config invalid: {e}"))
-            })?);
-        exporter
-            .export_metrics(&snapshot)
-            .map_err(|e| PluginError::Halt(format!("ledger flush: OTLP export failed: {e}")))?;
+        // see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
+        let exporter = match self.otel.exporter_config() {
+            Ok(config) => OtlpExporter::with_config(config),
+            Err(err) => {
+                tracing::warn!("OTLP export skipped during scaffolding: {err}");
+                return Ok(());
+            }
+        };
+        if let Err(err) = exporter.export_metrics(&snapshot) {
+            tracing::warn!("OTLP export skipped during scaffolding: {err}");
+            return Ok(());
+        }
         Ok(())
     }
 

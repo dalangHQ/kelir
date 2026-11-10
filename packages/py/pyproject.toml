@@ -8,7 +8,8 @@ version = "1.0.0"
 description = "Kelir MicroVM Hypervisor Python SDK"
 requires-python = ">=3.11"
 dependencies = [
-    "pydantic>=2.0"
+    "pydantic>=2.0",
+    "tomli-w>=1.0"
 ]
 
 [project.optional-dependencies]

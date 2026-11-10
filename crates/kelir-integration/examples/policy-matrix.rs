@@ -9,11 +9,12 @@ use std::sync::{
 
 use async_trait::async_trait;
 use ciborium::value::Value as CborValue;
+use kelir::protocol_wire::ExecveMutation;
 use kelir_interface::driver_interface::SuspendReason;
 use kelir_interface::plugin_model::HandlerCtx;
 
 use kelir::{
-    HCons, HNil, KelirBuilder, NoParams, PidLineage, SnapshotDescriptor, Unsealed, VmConfig,
+    HCons, HNil, KelirBuilder, NoParams, SnapshotDescriptor, Unsealed, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     handler,
     plugin_model::{
@@ -167,17 +168,14 @@ impl TrapInterposer for PolicyMatrixPlugin {
                 reason: "EPOLICY: policy-matrix denies this binary.".into(),
             }),
 
-            "policy-rewrite" => {
-                let mutation = serde_json::json!({
-                    "new_binary": "/bin/policy-allow",
-                    "new_argv": ["policy-allow", "--rewritten"],
-                    "set_env": { "KELIR_POLICY_REWRITE": "1" },
-                    "unset_env": [],
-                });
-                Ok(Verdict::Patch(PatchPayload::ExecveMutation(
-                    serde_json::to_vec(&mutation).map_err(|e| PluginError::Halt(e.to_string()))?,
-                )))
-            }
+            "policy-rewrite" => Ok(Verdict::Patch(PatchPayload::ExecveMutation(
+                ExecveMutation {
+                    new_binary: Some("/bin/policy-allow".into()),
+                    new_argv: Some(vec!["policy-allow".into(), "--rewritten".into()]),
+                    set_env: vec![("KELIR_POLICY_REWRITE".into(), "1".into())],
+                    unset_env: vec![],
+                },
+            ))),
 
             "policy-abort" => Ok(Verdict::Abort {
                 reason: "EPOLICY: abort row".into(),
@@ -356,7 +354,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "policy-custom",
     ] {
         let slot = session.checkpoint.create_step(
-            PidLineage::new(1),
+            session.lineage(1),
             SnapshotDescriptor {
                 id: format!("policy-matrix-{binary}"),
                 dirty_bytes: 0,
@@ -365,7 +363,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 guest_clock: None,
             },
         )?;
-        let node = session.checkpoint.commit_step(PidLineage::new(1))?;
+        let node = session.checkpoint.commit_step(session.lineage(1))?;
         eprintln!("[kelir] {binary} -> slot={slot} node={node}");
     }
     // TODO (L3): spawn each policy binary in the guest and drive the policy matrix over it.

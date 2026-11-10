@@ -232,7 +232,7 @@ impl Multiplexer {
         codec_protocol::check_control_payload(payload)
             .map_err(|()| ShimError::ControlOversize { len: payload.len() })?;
         let (raw_msg_type, body) =
-            codec_protocol::decode_msg_type(payload).map_err(|()| ShimError::TruncatedFrame)?;
+            codec_protocol::decode_msg_type(payload).map_err(|_| ShimError::TruncatedFrame)?;
         let msg_type = MsgType::from_u16(raw_msg_type).ok_or(ShimError::UnknownMsgType {
             msg_type: raw_msg_type,
         })?;
@@ -271,7 +271,7 @@ impl Multiplexer {
             return Err(ShimError::InvalidStreamId { stream_id });
         }
         let (raw_msg_type, body) =
-            codec_protocol::decode_msg_type(payload).map_err(|()| ShimError::TruncatedFrame)?;
+            codec_protocol::decode_msg_type(payload).map_err(|_| ShimError::TruncatedFrame)?;
         let msg_type = MsgType::from_u16(raw_msg_type).ok_or(ShimError::UnknownMsgType {
             msg_type: raw_msg_type,
         })?;

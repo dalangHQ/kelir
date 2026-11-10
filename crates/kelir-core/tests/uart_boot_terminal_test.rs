@@ -31,23 +31,8 @@ fn hd_12_arm64_stage2_4k_on_16k_host() -> Result<(), String> {
 #[test]
 fn hd_13_uart_early_boot_panic_scrape() -> Result<(), String> {
     let mut session = Session::boot(boot_config()).map_err(|e| e.to_string())?;
-    let clean = session.record_early_boot_output(b"early boot ok\n");
-    match clean {
-        None => {}
-        Some(kind) => return Err(format!("clean boot output decoded as exit: {kind:?}")),
-    }
-    let panicked =
-        session.record_early_boot_output(b"Kernel panic - not syncing: test_early_boot_oops\n");
-    match panicked {
-        Some(ExitKind::KernelPanic(message)) => {
-            assert!(message.contains("test_early_boot_oops"));
-        }
-        other => {
-            return Err(format!(
-                "panic line did not decode to KernelPanic: {other:?}"
-            ));
-        }
-    }
+    session.record_early_boot_output(b"early boot ok\n");
+    session.record_early_boot_output(b"Kernel panic - not syncing: test_early_boot_oops\n");
     match session.early_boot_exit() {
         Some(ExitKind::KernelPanic(message)) => {
             assert!(message.contains("test_early_boot_oops"));

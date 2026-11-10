@@ -198,13 +198,13 @@ fn read_frame(
     payload: &mut [u8; codec_protocol::MAX_FRAME_PAYLOAD],
 ) -> Result<Option<(u32, u8, usize)>, trap_protocol::ShimError> {
     read_exact(fd, channel, header)?;
-    let Ok((stream_id, flags, len)) = codec_protocol::decode_header(header) else {
+    let Ok(frame) = codec_protocol::decode_header(header) else {
         // TODO (L3): framing resync after a corrupt header; the frame boundary is unrecoverable until then.
         return Ok(None);
     };
-    let len = len as usize;
+    let len = frame.len as usize;
     read_exact(fd, channel, &mut payload[..len])?;
-    Ok(Some((stream_id, flags, len)))
+    Ok(Some((frame.stream_id, frame.flags, len)))
 }
 
 // see: cans/11-protocol.md#Wire-framing

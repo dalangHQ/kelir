@@ -1,6 +1,6 @@
 // see: cans/plugins/profile.md#Session-compute-schema-(profile)
 // see: cans/15-operations.md#Multi-language-parity-gate
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
 
@@ -10,53 +10,182 @@ fn repo_path(rel: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel)
 }
 
-fn quoted_segments(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut rest = text;
-    while let Some(start) = rest.find('"') {
-        let after = &rest[start + 1..];
-        let Some(end) = after.find('"') else {
-            break;
-        };
-        out.push(after[..end].to_string());
-        rest = &after[end + 1..];
+// see: cans/15-operations.md#Multi-language-parity-gate
+// see: cans/plugins/profile.md#Session-compute-schema-(profile)
+fn ts_skip_ws(source: &str, index: &mut usize) {
+    let bytes = source.as_bytes();
+    while *index < bytes.len() && matches!(bytes[*index], b' ' | b'\n' | b'\t' | b'\r') {
+        *index += 1;
     }
-    out
+}
+
+fn ts_skip_value(source: &str, index: &mut usize) {
+    let bytes = source.as_bytes();
+    let mut depth = 0usize;
+    while *index < bytes.len() {
+        match bytes[*index] {
+            b'(' | b'{' | b'[' => depth += 1,
+            b')' | b'}' | b']' => {
+                if depth == 0 {
+                    return;
+                }
+                depth -= 1;
+            }
+            b',' if depth == 0 => return,
+            _ => {}
+        }
+        *index += 1;
+    }
+}
+
+fn ts_object_paths(source: &str, index: &mut usize, prefix: &str, out: &mut BTreeSet<String>) {
+    ts_skip_ws(source, index);
+    if source.as_bytes().get(*index) != Some(&b'{') {
+        return;
+    }
+    *index += 1;
+    loop {
+        ts_skip_ws(source, index);
+        match source.as_bytes().get(*index) {
+            Some(&b'}') => {
+                *index += 1;
+                return;
+            }
+            None => return,
+            _ => {}
+        }
+        let key_start = *index;
+        while matches!(
+            source.as_bytes().get(*index),
+            Some(c) if c.is_ascii_alphanumeric() || *c == b'_'
+        ) {
+            *index += 1;
+        }
+        if *index == key_start {
+            return;
+        }
+        let key = source[key_start..*index].to_string();
+        ts_skip_ws(source, index);
+        if source.as_bytes().get(*index) != Some(&b':') {
+            return;
+        }
+        *index += 1;
+        ts_skip_ws(source, index);
+        let path = if prefix.is_empty() {
+            key.clone()
+        } else {
+            format!("{prefix}.{key}")
+        };
+        let mut probe = *index;
+        loop {
+            ts_skip_ws(source, &mut probe);
+            if source[probe..].starts_with("Type.Optional(") {
+                probe += "Type.Optional(".len();
+            } else {
+                break;
+            }
+        }
+        if source[probe..].starts_with("Type.Object(") {
+            *index = probe + "Type.Object(".len();
+            ts_object_paths(source, index, &path, out);
+            loop {
+                ts_skip_ws(source, index);
+                match source.as_bytes().get(*index) {
+                    Some(&b')') | Some(&b',') => *index += 1,
+                    _ => break,
+                }
+            }
+            continue;
+        }
+        out.insert(path);
+        ts_skip_value(source, index);
+        ts_skip_ws(source, index);
+        match source.as_bytes().get(*index) {
+            Some(&b',') => *index += 1,
+            Some(&b'}') => {
+                *index += 1;
+                return;
+            }
+            _ => return,
+        }
+    }
 }
 
 // see: cans/15-operations.md#Multi-language-parity-gate
-fn ts_profile_paths(source: &str) -> BTreeSet<String> {
+fn ts_schema_paths(source: &str) -> BTreeSet<String> {
+    let anchor = "const ProfileSchema = Type.Object(";
+    let Some(start) = source.find(anchor) else {
+        return BTreeSet::new();
+    };
+    let mut index = start + anchor.len();
     let mut paths = BTreeSet::new();
-    let mut rest = source;
-    while let Some(start) = rest.find("path: [") {
-        let after = &rest[start + "path: [".len()..];
-        let Some(end) = after.find(']') else {
-            break;
-        };
-        let segments = quoted_segments(&after[..end]);
-        if !segments.is_empty() {
-            paths.insert(segments.join("."));
-        }
-        rest = &after[end..];
-    }
+    ts_object_paths(source, &mut index, "", &mut paths);
     paths
 }
 
 // see: cans/15-operations.md#Multi-language-parity-gate
-fn py_profile_paths(source: &str) -> BTreeSet<String> {
-    let mut paths = BTreeSet::new();
-    let mut rest = source;
-    while let Some(start) = rest.find("ProfileField(") {
-        let after = &rest[start + "ProfileField(".len()..];
-        let Some(end) = after.find(')') else {
-            break;
-        };
-        let segments = quoted_segments(&after[..end]);
-        if !segments.is_empty() {
-            paths.insert(segments.join("."));
+fn py_model_fields(source: &str) -> BTreeMap<String, Vec<(String, String)>> {
+    let mut classes: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    let mut current: Option<String> = None;
+    for line in source.lines() {
+        if let Some(rest) = line.strip_prefix("class ") {
+            let name = rest.split('(').next().unwrap_or(rest).to_string();
+            classes.entry(name.clone()).or_default();
+            current = Some(name);
+        } else if line.starts_with(' ') && !line.trim().is_empty() {
+            if let Some(current) = &current
+                && let Some((field, annotation)) = line.trim().split_once(':')
+            {
+                let field = field.trim();
+                let annotation = annotation.trim();
+                let valid = !field.is_empty()
+                    && field
+                        .bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || c == b'_')
+                    && !annotation.is_empty();
+                if valid {
+                    classes
+                        .entry(current.clone())
+                        .or_default()
+                        .push((field.to_string(), annotation.to_string()));
+                }
+            }
+        } else if !line.trim().is_empty() {
+            current = None;
         }
-        rest = &after[end..];
     }
+    classes
+}
+
+fn py_walk(
+    class: &str,
+    prefix: &str,
+    classes: &BTreeMap<String, Vec<(String, String)>>,
+    out: &mut BTreeSet<String>,
+) {
+    let Some(fields) = classes.get(class) else {
+        return;
+    };
+    for (field, annotation) in fields {
+        let path = if prefix.is_empty() {
+            field.clone()
+        } else {
+            format!("{prefix}.{field}")
+        };
+        let head = annotation.split(['|', '[', '<', ' ']).next().unwrap_or("");
+        if classes.contains_key(head) {
+            py_walk(head, &path, classes, out);
+        } else {
+            out.insert(path);
+        }
+    }
+}
+
+// see: cans/15-operations.md#Multi-language-parity-gate
+fn py_schema_paths(source: &str) -> BTreeSet<String> {
+    let classes = py_model_fields(source);
+    let mut paths = BTreeSet::new();
+    py_walk("ProfileConfig", "", &classes, &mut paths);
     paths
 }
 
@@ -268,17 +397,17 @@ fn ts_and_py_profile_fields_match_the_ssot_fixture() -> Result<(), Box<dyn std::
     if let Some(session) = root.get("session") {
         flatten_paths(session, "session", &mut expected);
     }
-    let ts = fs::read_to_string(repo_path("../../packages/ts/core/src/sandbox.runtime.ts"))?;
+    let ts = fs::read_to_string(repo_path("../../packages/ts/core/src/profile.schema.ts"))?;
     assert_eq!(
-        ts_profile_paths(&ts),
+        ts_schema_paths(&ts),
         expected,
-        "TS PROFILE_FIELDS drifted from the SSOT session-compute field list"
+        "TS ProfileSchema drifted from the SSOT session-compute field list"
     );
-    let py = fs::read_to_string(repo_path("../../packages/py/kelir/lifecycle_sandbox.py"))?;
+    let py = fs::read_to_string(repo_path("../../packages/py/kelir/profile_config.py"))?;
     assert_eq!(
-        py_profile_paths(&py),
+        py_schema_paths(&py),
         expected,
-        "Py PROFILE_FIELDS drifted from the SSOT session-compute field list"
+        "Py ProfileConfig drifted from the SSOT session-compute field list"
     );
     Ok(())
 }

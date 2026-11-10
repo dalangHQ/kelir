@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use kelir_interface::plugin_model::HandlerCtx;
 
 use kelir::{
-    KelirBuilder, PidLineage, SnapshotDescriptor, VmConfig,
+    KelirBuilder, SnapshotDescriptor, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     plugin_model::{
         AnyPlugin, ConsoleInterposer, FilterAction, FsInterposer, HostInterposer, KelirPlugin,
@@ -394,7 +394,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     session.terminal.resize(120, 40)?;
     eprintln!("[kelir] host pressure={}", session.host.pressure_level());
     let slot = session.checkpoint.create_step(
-        PidLineage::new(1),
+        session.lineage(1),
         SnapshotDescriptor {
             id: "hook-matrix-probe".into(),
             dirty_bytes: 0,
@@ -403,7 +403,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             guest_clock: None,
         },
     )?;
-    let node = session.checkpoint.commit_step(PidLineage::new(1))?;
+    let node = session.checkpoint.commit_step(session.lineage(1))?;
     eprintln!("[kelir] checkpoint slot={slot} node={node}");
     // TODO (L3): spawn cat IDENTITY_PATH in the guest and drive the hook matrix over it.
 

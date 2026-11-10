@@ -178,9 +178,10 @@ check-canon:
     just test-all
 
 # ── Test plan gates (work-order.md Phase 6: Scorecard & Linter Harness) ──
-# Generate cans/artifacts/scorecard.md from manifest and live telemetry
+# Regenerate cans/artifacts/scorecard.md in place from manifest truth +
+# perf/budgets.toml; check-scorecard gates the committed artifact byte-for-byte.
 scorecard:
-    cargo run -p kelir-testkit --bin scorecard -- generate
+    cargo run -p kelir-testkit --bin scorecard -- generate --in-place
 
 # CI Gate: Verify scorecard is byte-for-byte identical to physical evidence.
 # At base this verifies against manifest truth only; platform-subset
@@ -215,8 +216,10 @@ codegen:
     # Item 5/11: UAPI tables (linux/fuse.h, linux/elf.h) via C oracle
     sh crates/kelir-core/codegen/gen-fuse-uapi.sh
     sh crates/kelir-shim/codegen/gen-elf-uapi.sh
-    # Item 9: scorecard render from perf/budgets.toml (writes target/scorecard.md
-    # while cans/ is frozen; the committed artifact stays gate-checked by check-scorecard)
+    # Item 9: scorecard render from perf/budgets.toml. Stays a target/ preview
+    # here, NOT --in-place: the platform-subset section is host-dependent, and
+    # check-coherence must stay zero-drift on any host. Sync the committed
+    # artifact explicitly via `just scorecard`; check-scorecard gates it.
     cargo run --quiet -p kelir-testkit --bin scorecard -- generate
 
 # Zero-drift verification gate: regenerate everything, tree must stay clean.

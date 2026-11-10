@@ -90,7 +90,7 @@ pub struct ExecveMutation {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum PatchPayload {
-    ExecveMutation(Vec<u8>),
+    ExecveMutation(ExecveMutation),
     FsInode {
         mode: u32,
         uid: u32,

@@ -1,7 +1,7 @@
 // see: cans/plugins/replay.md#Plugin-replay
 
 use kelir::{
-    KelirBuilder, PidLineage, SnapshotDescriptor, VmConfig,
+    KelirBuilder, SnapshotDescriptor, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     plugins::plugin_replay::{ReplayConfig, ReplayPlugin},
 };
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     for run in 0..2 {
         let slot = session.checkpoint.create_step(
-            PidLineage::new(1),
+            session.lineage(1),
             SnapshotDescriptor {
                 id: format!("replay-run-{run}"),
                 dirty_bytes: 0,
@@ -59,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 guest_clock: None,
             },
         )?;
-        let node = session.checkpoint.commit_step(PidLineage::new(1))?;
+        let node = session.checkpoint.commit_step(session.lineage(1))?;
         eprintln!("[kelir] run {run} -> slot={slot} node={node}");
     }
     // TODO (L3): spawn date +%s.%N in the guest twice and replay both runs deterministically.

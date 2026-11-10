@@ -9,7 +9,7 @@ use std::future::Future;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
-use kelir_interface::codec_protocol::{FLAG_DATA, MAX_FRAME_PAYLOAD, MAX_STREAM_ID};
+use kelir_interface::codec_protocol::{CodecError, FLAG_DATA};
 use kelir_interface::driver_interface::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
 use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::plugin_model::VetoEvent;
@@ -19,6 +19,9 @@ use kelir_interface::protocol_wire::{
 };
 
 use crate::handlers_testkit::LifecycleCtxFixture;
+
+// see: cans/11-protocol.md#Wire-framing
+pub use kelir_interface::codec_protocol::WireFrame;
 
 // see: cans/11-protocol.md#Wire-framing
 #[derive(Debug)]
@@ -50,85 +53,15 @@ impl fmt::Display for VectorError {
 impl Error for VectorError {}
 
 // see: cans/11-protocol.md#Wire-framing
-#[derive(Debug, Clone)]
-pub struct WireFrame {
-    pub transport: Channel,
-    pub stream_id: u32,
-    pub flags: u8,
-    pub msg_type: MsgType,
-    pub payload: Vec<u8>,
-}
-
-impl WireFrame {
-    // see: cans/artifacts/code/wire-protocol.rs#MuxFrameHeader
-    pub fn encode(&self) -> Result<Vec<u8>, VectorError> {
-        if self.stream_id > MAX_STREAM_ID {
-            return Err(VectorError::StreamIdOutOfRange {
-                stream_id: self.stream_id,
-            });
+impl From<CodecError> for VectorError {
+    fn from(err: CodecError) -> Self {
+        match err {
+            CodecError::FrameTooLarge { len } => VectorError::FrameTooLarge { len },
+            CodecError::StreamIdOutOfRange { stream_id } => {
+                VectorError::StreamIdOutOfRange { stream_id }
+            }
+            other => VectorError::Encode(other.to_string()),
         }
-        let body_len = self
-            .payload
-            .len()
-            .checked_add(2)
-            .ok_or(VectorError::FrameTooLarge { len: usize::MAX })?;
-        if body_len > MAX_FRAME_PAYLOAD {
-            return Err(VectorError::FrameTooLarge { len: body_len });
-        }
-        let len =
-            u32::try_from(body_len).map_err(|_| VectorError::FrameTooLarge { len: body_len })?;
-        let mut frame = Vec::with_capacity(
-            body_len
-                .checked_add(9)
-                .ok_or(VectorError::FrameTooLarge { len: usize::MAX })?,
-        );
-        frame.extend_from_slice(&self.stream_id.to_le_bytes());
-        frame.push(self.flags);
-        frame.extend_from_slice(&len.to_le_bytes());
-        frame.extend_from_slice(&(self.msg_type as u16).to_le_bytes());
-        frame.extend_from_slice(&self.payload);
-        Ok(frame)
-    }
-
-    // see: cans/11-protocol.md#Wire-framing
-    pub fn decode(transport: Channel, frame: &[u8]) -> Result<Self, VectorError> {
-        const HEADER_BYTES: usize = 9;
-        if frame.len() < HEADER_BYTES {
-            return Err(VectorError::Encode(
-                "frame shorter than the 9-byte header".into(),
-            ));
-        }
-        let stream_id = u32::from_le_bytes([frame[0], frame[1], frame[2], frame[3]]);
-        let flags = frame[4];
-        let body_len = u32::from_le_bytes([frame[5], frame[6], frame[7], frame[8]]);
-        let body_len = usize::try_from(body_len)
-            .map_err(|_| VectorError::FrameTooLarge { len: usize::MAX })?;
-        if stream_id > MAX_STREAM_ID {
-            return Err(VectorError::StreamIdOutOfRange { stream_id });
-        }
-        if body_len > MAX_FRAME_PAYLOAD {
-            return Err(VectorError::FrameTooLarge { len: body_len });
-        }
-        let total = body_len
-            .checked_add(HEADER_BYTES)
-            .ok_or(VectorError::FrameTooLarge { len: usize::MAX })?;
-        if frame.len() < total {
-            return Err(VectorError::Encode(
-                "frame shorter than its declared len field".into(),
-            ));
-        }
-        let body = &frame[HEADER_BYTES..total];
-        let msg_raw = u16::from_le_bytes([body[0], body[1]]);
-        let msg_type = MsgType::from_u16(msg_raw).ok_or(VectorError::Encode(format!(
-            "msg_type {msg_raw:#06x} is not a wired MsgType"
-        )))?;
-        Ok(Self {
-            transport,
-            stream_id,
-            flags,
-            msg_type,
-            payload: body[2..].to_vec(),
-        })
     }
 }
 
@@ -439,7 +372,6 @@ fn exec_rewrite_case() -> Result<VectorCase, VectorError> {
         set_env: vec![("KELIR_TAINT".to_string(), "1".to_string())],
         unset_env: vec!["KELIR_UNTRUSTED".to_string()],
     };
-    let mutation_cbor = cbor(&mutation)?;
     let event = GuestToHost::TrapEvent(trap_event(
         3,
         1300,
@@ -462,7 +394,7 @@ fn exec_rewrite_case() -> Result<VectorCase, VectorError> {
             payload: cbor(&event)?,
         },
         event: Some(event),
-        expected_verdict: Verdict::Patch(PatchPayload::ExecveMutation(mutation_cbor)),
+        expected_verdict: Verdict::Patch(PatchPayload::ExecveMutation(mutation)),
         watchdog: None,
         veto: None,
     })

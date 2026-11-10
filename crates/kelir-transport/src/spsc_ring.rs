@@ -65,7 +65,9 @@ pub struct OwnedSpscRing {
 }
 
 impl OwnedSpscRing {
+    // see: cans/01-architecture.md#Transport-engine-abstraction
     pub fn new(capacity: u32) -> Self {
+        let capacity = capacity.next_power_of_two();
         Self {
             backing: RingBacking::Owned {
                 header: Box::new(RingHeader {
@@ -85,10 +87,11 @@ impl OwnedSpscRing {
         if handle.host_ptr.is_null() || handle.size_bytes <= header_size {
             return None;
         }
-        let capacity = handle.size_bytes.saturating_sub(header_size) as u32;
-        if capacity == 0 {
+        let available = handle.size_bytes.saturating_sub(header_size) as u32;
+        if available == 0 {
             return None;
         }
+        let capacity = 1u32 << available.ilog2();
         let header = handle.host_ptr as *mut RingHeader;
         // SAFETY: the driver mapped size_bytes at host_ptr; the header occupies the first header_size bytes and the buffer follows it.
         let buffer = unsafe { handle.host_ptr.add(header_size) };
@@ -154,8 +157,8 @@ impl Transport for SpscRingTransport {
         }
         let count = (used as usize).min(buf.len());
         let capacity = header.capacity as usize;
-        let tail_offset = (tail as usize) % capacity;
-        // SAFETY: buffer maps capacity bytes once at setup; count <= used <= capacity keeps tail_offset..+count in-bounds with wraparound.
+        let tail_offset = (tail as usize) & (capacity - 1);
+        // SAFETY: buffer maps capacity bytes; capacity is a power of two, so masking the u32 tail counter with capacity-1 stays in-bounds and count <= used <= capacity.
         unsafe {
             if tail_offset + count <= capacity {
                 buf[..count].copy_from_slice(std::slice::from_raw_parts(
@@ -196,8 +199,8 @@ impl Transport for SpscRingTransport {
         }
         let count = (free as usize).min(buf.len());
         let capacity = header.capacity as usize;
-        let head_offset = (head as usize) % capacity;
-        // SAFETY: buffer maps capacity bytes once at setup; count <= free keeps head_offset..+count in-bounds with wraparound.
+        let head_offset = (head as usize) & (capacity - 1);
+        // SAFETY: buffer maps capacity bytes; capacity is a power of two, so masking the u32 head counter with capacity-1 stays in-bounds and count <= free.
         unsafe {
             if head_offset + count <= capacity {
                 std::slice::from_raw_parts_mut(self.buffer.add(head_offset), count)

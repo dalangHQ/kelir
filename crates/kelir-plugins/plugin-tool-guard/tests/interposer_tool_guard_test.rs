@@ -1,6 +1,8 @@
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+use kelir_interface::plugin_model::ConsoleInterposer;
 use kelir_interface::plugin_model::PluginError;
 use kelir_plugin_testkit::block_on;
+use plugin_tool_guard::ToolGuardPlugin;
 use plugin_tool_guard::service_tool_guard::{
     ToolRegistry, ToolRegistryService, ToolSchema, ToolsListResult,
 };
@@ -48,5 +50,38 @@ fn gt_02_immutable_schema_locking_esecurity() -> Result<(), String> {
         }
     }
     block_on(registry.ingest_tools_list(&advertised)).map_err(|err| format!("{err:?}"))?;
+    Ok(())
+}
+
+// see: cans/plugins/tool-guard.md#Total-tool-call-interposition
+#[test]
+fn tool_guard_unparsed_frame_fails_closed() -> Result<(), String> {
+    let plugin = ToolGuardPlugin::new();
+    let mut bytes = b"\x00not-a-json-rpc-frame".to_vec();
+    match block_on(plugin.on_console_input(0x0012, &mut bytes)) {
+        Err(PluginError::Halt(message)) => {
+            if !message.starts_with("EPERM:") {
+                return Err(format!(
+                    "unparsed frame must reject with EPERM, got {message}"
+                ));
+            }
+            if !message.contains("unparsed MCP frame fails closed") {
+                return Err(format!(
+                    "rejection must carry a concrete reason, got {message}"
+                ));
+            }
+        }
+        Err(err) => {
+            return Err(format!(
+                "unparsed frame must reject with EPERM, got {err:?}"
+            ));
+        }
+        Ok(()) => {
+            return Err(
+                "unparsed MCP frame passed through tool-guard; interposition must fail closed"
+                    .into(),
+            );
+        }
+    }
     Ok(())
 }

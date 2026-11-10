@@ -177,15 +177,13 @@ pub fn digest_exe(exe_path: &str) -> Result<[u8; 32], ShimError> {
 
 // see: cans/11-protocol.md#Wire-framing
 pub fn encode_trap_frame(event: &TrapEvent) -> Result<Vec<u8>, ShimError> {
-    let mut payload = (MsgType::Trap as u16).to_le_bytes().to_vec();
+    let mut payload = Vec::new();
     ciborium::ser::into_writer(event, &mut payload).map_err(|_| ShimError::TrapEncode)?;
-    let total = crate::codec_protocol::HEADER_LEN
-        .checked_add(payload.len())
-        .ok_or(ShimError::TrapEncode)?;
-    let mut frame = vec![0u8; total];
-    crate::codec_protocol::encode_frame(
+    let mut frame = Vec::new();
+    crate::codec_protocol::encode_msg_frame(
         u32::from(crate::trap_protocol::TRAP_CHANNEL),
         crate::codec_protocol::FLAG_DATA,
+        MsgType::Trap,
         &payload,
         &mut frame,
     )

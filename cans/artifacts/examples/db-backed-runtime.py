@@ -85,7 +85,6 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             # exposure.
             credentials=EphemeralCredentials(
                 placeholder="vault://pg/app_migrate",
-                resolve=lambda: pg_secret,
                 ttl_seconds=300,
             ),
             # SQLite over vsock: forwarded to a host service that opens

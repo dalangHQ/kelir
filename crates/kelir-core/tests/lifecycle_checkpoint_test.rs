@@ -29,7 +29,7 @@ fn restored_offset(restored: &SnapshotDescriptor) -> Result<u64, String> {
 #[test]
 fn lc_05_monotonic_clock_clamp_on_resume() -> Result<(), String> {
     let plane = CheckpointPlane::new();
-    let lineage = PidLineage::new(100);
+    let lineage = PidLineage::new_in_session(100, [0x05; 16]);
     let first = plane
         .create_step(lineage, descriptor(5_000_000_000))
         .map_err(|e| e.to_string())?;
@@ -60,7 +60,7 @@ fn lc_05_monotonic_clock_clamp_on_resume() -> Result<(), String> {
 #[test]
 fn lc_19_delta_chain_unbounded_compaction() -> Result<(), String> {
     let plane = CheckpointPlane::new();
-    let lineage = PidLineage::new(200);
+    let lineage = PidLineage::new_in_session(200, [0x19; 16]);
     let base = plane
         .create_step(lineage, descriptor(100))
         .map_err(|e| e.to_string())?;

@@ -40,7 +40,7 @@ use kelir::{
         storage_plane::{DynamicFile, SyntheticFile, IdmapConfig, MaskRule, ReadMaskEngine, SnoopHandler, SnoopRule, StorageConfig, WorkspaceEncapsulation},
         wire_plane::{L4Proxy, Mtls, SinkholeConfig, TapFilter, VaultEntry, WireConfig},
     },
-    protocol_wire::{PatchPayload, TrapEvent},
+    protocol_wire::{ExecveMutation, PatchPayload, TrapEvent},
     telemetry_attest::{CausalDelta, ExecutionReceipt},
 };
 
@@ -166,14 +166,15 @@ impl TrapInterposer for RepoPolicyPlugin {
         let new_branch = format!("agent/{:08x}", std::process::id());
         let mut argv = event.argv.clone();
         argv.push(format!("HEAD:refs/heads/{new_branch}"));
-        // ExecveMutation (plugins/tool-guard.md) as the Patch payload.
-        let mutation = serde_json::json!({
-            "new_binary": "/bin/git",
-            "new_argv": argv,
-            "set_env": { "KELIR_REWRITTEN": "1" },
-            "unset_env": [],
-        });
-        Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&mutation).unwrap())))
+        // ExecveMutation (plugins/tool-guard.md) as the typed Patch payload;
+        // serializes to CBOR on the wire (11-protocol.md#Wire-framing).
+        let mutation = ExecveMutation {
+            new_binary: Some("/bin/git".into()),
+            new_argv: Some(argv),
+            set_env: vec![("KELIR_REWRITTEN".into(), "1".into())],
+            unset_env: vec![],
+        };
+        Ok(Verdict::Patch(PatchPayload::ExecveMutation(mutation)))
     }
 }
 
@@ -432,13 +433,16 @@ async fn build_runtime(
         .trap(TrapFilter::binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), handler(|c: HandlerCtx| async move {
             c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
             // Env injection via Patch, not env.set + Pass (09: EINVALIDDECISION).
-            // SDK patch serializes to ExecveMutation.
-            Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&serde_json::json!({
-                "new_binary": c.trap.binary_path.clone(),
-                "new_argv": c.trap.argv.clone(),
-                "set_env": { "OTEL_TRACE_ID": format!("{:032x}", std::process::id()), "CI": "1" },
-                "unset_env": [],
-            })).unwrap())))
+            // SDK patch carries the typed ExecveMutation (CBOR on the wire).
+            Ok(Verdict::Patch(PatchPayload::ExecveMutation(ExecveMutation {
+                new_binary: Some(c.trap.binary_path.clone()),
+                new_argv: Some(c.trap.argv.clone()),
+                set_env: vec![
+                    ("OTEL_TRACE_ID".into(), format!("{:032x}", std::process::id())),
+                    ("CI".into(), "1".into()),
+                ],
+                unset_env: vec![],
+            })))
         }))
 
         // `--force` strip
@@ -446,12 +450,12 @@ async fn build_runtime(
             if c.trap.argv.iter().any(|a| a == "--force") {
                 let argv = c.trap.argv.iter()
                     .filter(|a| *a != "--force").cloned().collect();
-                return Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&serde_json::json!({
-                    "new_binary": "/bin/git",
-                    "new_argv": argv,
-                    "set_env": { "KELIR_DISARMED": "1" },
-                    "unset_env": [],
-                })).unwrap())));
+                return Ok(Verdict::Patch(PatchPayload::ExecveMutation(ExecveMutation {
+                    new_binary: Some("/bin/git".into()),
+                    new_argv: Some(argv),
+                    set_env: vec![("KELIR_DISARMED".into(), "1".into())],
+                    unset_env: vec![],
+                })));
             }
             Ok(Verdict::Pass)
         }))

@@ -1,4 +1,5 @@
 // see: cans/05-storage-plane.md#Host-inode-lock-broker
+use super::LockBrokerWiring;
 use async_trait::async_trait;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{FsInterposer, LockBrokerCoordination};
@@ -80,16 +81,28 @@ pub struct LockBroker {
     cache: RwLock<HostFdCache>,
     states: RwLock<HashMap<LockKey, LockState>>,
     namespace: [u8; 16],
+    wiring: LockBrokerWiring,
 }
 
 impl LockBroker {
     pub fn new(interposer: Arc<dyn FsInterposer>) -> Self {
+        Self::with_wiring(interposer, LockBrokerWiring::default())
+    }
+
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    pub fn with_wiring(interposer: Arc<dyn FsInterposer>, wiring: LockBrokerWiring) -> Self {
         Self {
             interposer,
             cache: RwLock::new(HostFdCache::default()),
             states: RwLock::new(HashMap::new()),
             namespace: [0; 16],
+            wiring,
         }
+    }
+
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    pub fn wiring(&self) -> &LockBrokerWiring {
+        &self.wiring
     }
 
     pub fn with_namespace(mut self, namespace: [u8; 16]) -> Self {
@@ -98,7 +111,9 @@ impl LockBroker {
     }
 
     pub fn acquire(&self, request: &LockRequest) -> Result<LockGrant, PluginError> {
-        let flock_cmd = match (request.kind, request.blocking) {
+        // TODO (L3): match request.host_path against wiring.scope_globs before mediation; undeclared paths deny with EPERM.
+        let blocking = request.blocking && !self.wiring.non_blocking;
+        let flock_cmd = match (request.kind, blocking) {
             // TODO (L3): flock LOCK_SH/LOCK_EX/LOCK_NB constants live in the enclave.
             (LockKind::Shared, true) => 1,
             (LockKind::Shared, false) => 5,

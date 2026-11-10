@@ -11,8 +11,10 @@ use napi_derive::napi;
 use tokio::sync::Mutex as AsyncMutex;
 
 pub mod fusion_plugin;
+pub mod storage_bridge;
 
 use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, convert_descriptor};
+use storage_bridge::storage_wiring;
 
 pub struct PluginRegistration {
     pub name: String,
@@ -811,12 +813,19 @@ impl NativeKelirBuilder {
             .iter()
             .map(|plugin| kelir_core::PluginRegistration::new(plugin.name.clone(), plugin.enabled))
             .collect();
-        let plane_wiring = self.plane_wiring();
+        let plane_wiring = self.plane_wiring()?;
+        let synthetic_files = self
+            .storage_cfg
+            .as_ref()
+            .map(storage_bridge::synthetic_files)
+            .transpose()?
+            .unwrap_or_default();
         let started = Instant::now();
         let session = Session::boot_with_plugins(
             self.config.clone(),
             &plugins,
             Some(descriptor),
+            synthetic_files,
             plane_wiring,
         )
         .map_err(halt)?;
@@ -838,7 +847,7 @@ impl Default for NativeKelirBuilder {
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 impl NativeKelirBuilder {
     // TODO (L3): token-shield clamps, prompt rules, snoop callbacks, and mtls injection ride threadsafe functions into the planes.
-    fn plane_wiring(&self) -> kelir_core::session_lifecycle::PlaneWiring {
+    fn plane_wiring(&self) -> Result<kelir_core::session_lifecycle::PlaneWiring> {
         let terminal =
             self.terminal_cfg
                 .as_ref()
@@ -877,18 +886,14 @@ impl NativeKelirBuilder {
                     .unwrap_or_default(),
                 allow_udp_proxied: cfg.tap_filter.as_deref() == Some("AllowUdpProxied"),
             });
-        let lock_broker = self.storage_cfg.as_ref().and_then(|cfg| {
-            cfg.lock_broker.filter(|enabled| *enabled).map(|_| {
-                kelir_core::planes::storage::LockBrokerWiring {
-                    scope_globs: cfg.shared_caches.clone().unwrap_or_default(),
-                    non_blocking: false,
-                }
-            })
-        });
-        kelir_core::session_lifecycle::PlaneWiring {
+        let storage = match &self.storage_cfg {
+            Some(cfg) => storage_wiring(cfg)?,
+            None => kelir_core::planes::storage::StorageWiring::default(),
+        };
+        Ok(kelir_core::session_lifecycle::PlaneWiring {
             terminal,
             wire,
-            lock_broker,
-        }
+            storage,
+        })
     }
 }

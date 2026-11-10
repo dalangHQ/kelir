@@ -10,6 +10,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList};
 
 pub mod fusion_plugin;
+pub mod storage_bridge;
 
 use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, convert_descriptor};
 use kelir_core::Session;
@@ -543,7 +544,7 @@ pub struct PyKelirBuilder {
     trampolines: TrampolineTable,
     terminal_wiring: Option<kelir_core::planes::terminal::TerminalWiring>,
     wire_wiring: Option<kelir_core::planes::wire::WireWiring>,
-    lock_broker_wiring: Option<kelir_core::planes::storage::LockBrokerWiring>,
+    storage_config: storage_bridge::PyStorageConfig,
 }
 
 #[pymethods]
@@ -578,7 +579,7 @@ impl PyKelirBuilder {
             trampolines: TrampolineTable::default(),
             terminal_wiring: None,
             wire_wiring: None,
-            lock_broker_wiring: None,
+            storage_config: storage_bridge::PyStorageConfig::default(),
         }
     }
 
@@ -627,37 +628,9 @@ impl PyKelirBuilder {
         Ok(())
     }
 
-    // see: cans/05-storage-plane.md#Workspace-commit
-    // TODO (L3): snoop on_write callbacks stay Python-side until the FFI callback bridge lands.
+    // see: cans/05-storage-plane.md#Storage-architecture
     fn set_storage_config(&mut self, cfg: &Bound<'_, PyDict>) -> PyResult<()> {
-        let mut wiring = kelir_core::planes::storage::LockBrokerWiring::default();
-        for (key, value) in cfg.iter() {
-            match key.to_string().as_str() {
-                "lock_broker" => {
-                    let enabled = value
-                        .extract::<bool>()
-                        .map_err(|_| PyValueError::new_err("storage lock_broker is not a bool"))?;
-                    if !enabled {
-                        return Ok(());
-                    }
-                }
-                "shared_caches" => {
-                    wiring.scope_globs = value.extract::<Vec<String>>().map_err(|_| {
-                        PyValueError::new_err("storage shared_caches is not a list of str")
-                    })?;
-                }
-                "idmap" | "synthetic_files" | "mask_read" | "snoops" | "encapsulation"
-                | "scan_engine" | "carryover_bytes" => {
-                    let _ = value;
-                }
-                other => {
-                    return Err(PyValueError::new_err(format!(
-                        "set_storage_config: unknown or non-bridged key `{other}`"
-                    )));
-                }
-            }
-        }
-        self.lock_broker_wiring = Some(wiring);
+        self.storage_config = storage_bridge::storage_config(cfg)?;
         Ok(())
     }
 
@@ -842,13 +815,14 @@ impl PyKelirBuilder {
         let plane_wiring = kelir_core::session_lifecycle::PlaneWiring {
             terminal: self.terminal_wiring,
             wire: self.wire_wiring.clone(),
-            lock_broker: self.lock_broker_wiring.clone(),
+            storage: self.storage_config.wiring.clone(),
         };
         let started = Instant::now();
         let session = Session::boot_with_plugins(
             self.config.clone(),
             &plugins,
             Some(descriptor),
+            self.storage_config.synthetic_files.clone(),
             plane_wiring,
         )
         .map_err(halt)?;

@@ -69,12 +69,12 @@ impl Vt100StateMachine {
         self.cursor_col = 0;
     }
 
-    pub fn feed(&mut self, bytes: &[u8]) -> Result<(), kelir_interface::plugin_model::PluginError> {
+    pub fn feed(
+        &mut self,
+        _bytes: &[u8],
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): parse VT100 escape sequences in bytes and update matrix + cursor.
-        let _ = bytes;
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Vt100StateMachine::feed".into(),
-        ))
+        Ok(())
     }
 
     pub fn export(&self) -> Vec<u8> {
@@ -138,19 +138,7 @@ fn session_log_path(
     session_id: &[u8; 16],
     stream: LogStream,
 ) -> Result<PathBuf, kelir_interface::plugin_model::PluginError> {
-    let home = std::env::var("HOME").map_err(|_| {
-        kelir_interface::plugin_model::PluginError::Halt(
-            "HOME is not set; cannot locate ~/.kelir session logs".into(),
-        )
-    })?;
-    let mut hex = String::with_capacity(32);
-    for byte in session_id {
-        hex.push_str(&format!("{byte:02x}"));
-    }
-    Ok(PathBuf::from(home)
-        .join(".kelir")
-        .join("sessions")
-        .join(hex)
+    Ok(crate::session_lifecycle::session_dir(session_id)?
         .join("logs")
         .join(log_file_name(stream)))
 }

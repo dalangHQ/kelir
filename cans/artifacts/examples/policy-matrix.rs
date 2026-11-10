@@ -62,7 +62,7 @@ use kelir::{
         PluginError, SystemTelemetryParticipant, TrapInterposer,
         VetoEvent, Verdict, WatchdogEvent, WatchdogVerdict,
     },
-    protocol_wire::{PatchPayload, SuspendUntil, TrapEvent},
+    protocol_wire::{ExecveMutation, PatchPayload, SuspendUntil, TrapEvent},
 };
 
 // ============================================================================
@@ -173,16 +173,14 @@ impl TrapInterposer for PolicyMatrixPlugin {
                 reason: "EPOLICY: policy-matrix denies this binary.".into(),
             }),
             // Row 3: Patch — env mutation ONLY through the ExecveMutation
-            // payload (plugins/tool-guard.md).
-            "policy-rewrite" => {
-                let mutation = serde_json::json!({
-                    "new_binary": "/bin/policy-allow",
-                    "new_argv": ["policy-allow", "--rewritten"],
-                    "set_env": { "KELIR_POLICY_REWRITE": "1" },
-                    "unset_env": [],
-                });
-                Ok(Verdict::Patch(PatchPayload::ExecveMutation(serde_json::to_vec(&mutation).unwrap())))
-            }
+            // payload (plugins/tool-guard.md); the typed struct serializes to
+            // CBOR on the wire (11-protocol.md#Wire-framing).
+            "policy-rewrite" => Ok(Verdict::Patch(PatchPayload::ExecveMutation(ExecveMutation {
+                new_binary: Some("/bin/policy-allow".into()),
+                new_argv: Some(vec!["policy-allow".into(), "--rewritten".into()]),
+                set_env: vec![("KELIR_POLICY_REWRITE".into(), "1".into())],
+                unset_env: vec![],
+            }))),
             // Row 4: Abort — pre-exec, hypervisor-level termination.
             // Abort drops exit_code, keeps reason only.
             "policy-abort" => Ok(Verdict::Abort {

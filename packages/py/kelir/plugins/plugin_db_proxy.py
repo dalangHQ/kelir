@@ -1,7 +1,6 @@
 # see: cans/plugins/db-proxy.md#Plugin-db-proxy
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from kelir.model_plugin import BasePlugin
@@ -33,8 +32,6 @@ class SqliteOverVsock:
 class EphemeralCredentials:
     placeholder: str = ""
     ttl_seconds: int = 0
-    # TODO (L3): resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md.
-    resolve: Callable[[], str] | None = None
 
 
 @dataclass

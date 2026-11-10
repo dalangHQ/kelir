@@ -108,6 +108,7 @@ pub enum SegmentOutcome {
 }
 
 // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+// TODO (L3): stand-in reassembler; replaced by WirePlane::divert_l4.
 #[derive(Default)]
 pub struct TcpStreamReassembler {
     next_seq: Option<u32>,
@@ -124,7 +125,6 @@ impl TcpStreamReassembler {
     }
 
     // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
-    // TODO (L3): converge on WirePlane::divert_l4 once L4 diversion lands.
     pub fn push_segment(
         &mut self,
         segment: &TcpSegmentView<'_>,

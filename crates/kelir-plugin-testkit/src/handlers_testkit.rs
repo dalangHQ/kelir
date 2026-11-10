@@ -3,13 +3,11 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use kelir_interface::driver_interface::{
-    BalloonConvergence, DriverCapabilities, DriverError, EntropyBackend, EntropyStreamPosition,
-    PmuSampler, SharedMemoryHandle, SnapshotDescriptor, Stream, SuspendReason, VmConfig, VmmDriver,
+    DriverCapabilities, DriverError, EntropyBackend, EntropyStreamPosition, VmConfig, VmmDriver,
     WatchdogAction, default_vm_config,
 };
 use kelir_interface::plugin_model::{HandlerCtx, LifecycleCtx, VetoList};
 use kelir_interface::protocol_wire::TrapEvent;
-use tokio::io::AsyncRead;
 
 pub fn handler_ctx(session_id: [u8; 16], pid: u32) -> HandlerCtx<(), ()> {
     HandlerCtx::restricted(session_id, pid)
@@ -60,123 +58,6 @@ impl VmmDriver for FixtureVmmDriver {
         Err(DriverError::Unsupported("fixture driver boot (L3)".into()))
     }
 
-    async fn fork(&self) -> Result<Box<dyn VmmDriver>, DriverError> {
-        Err(DriverError::Unsupported("fixture driver fork (L3)".into()))
-    }
-
-    async fn checkpoint(&mut self, _label: &str) -> Result<SnapshotDescriptor, DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver checkpoint (L3)".into(),
-        ))
-    }
-
-    async fn map_shared_region(
-        &mut self,
-        _tag: &str,
-        _size_bytes: usize,
-    ) -> Result<SharedMemoryHandle, DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver map_shared_region (L3)".into(),
-        ))
-    }
-
-    async fn export_snapshot(
-        &self,
-    ) -> Result<Box<dyn AsyncRead + Send + Sync + Unpin>, DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver export_snapshot (L3)".into(),
-        ))
-    }
-
-    async fn import_snapshot(
-        &mut self,
-        _reader: Box<dyn AsyncRead + Send + Sync + Unpin>,
-    ) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver import_snapshot (L3)".into(),
-        ))
-    }
-
-    async fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver rollback (L3)".into(),
-        ))
-    }
-
-    async fn suspend(
-        &mut self,
-        _reason: SuspendReason,
-        _output_path: &std::path::Path,
-    ) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver suspend (L3)".into(),
-        ))
-    }
-
-    async fn resume(&mut self, _image_path: &std::path::Path) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver resume (L3)".into(),
-        ))
-    }
-
-    async fn skew_clock(&mut self, _offset: Duration) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver skew_clock (L3)".into(),
-        ))
-    }
-
-    async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, DriverError> {
-        let _ = target_mb;
-        Err(DriverError::Unsupported(
-            "fixture driver adjust_balloon (L3)".into(),
-        ))
-    }
-
-    async fn freeze_vcpus(&mut self) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver freeze_vcpus (L3)".into(),
-        ))
-    }
-
-    async fn unfreeze_vcpus(&mut self) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver unfreeze_vcpus (L3)".into(),
-        ))
-    }
-
-    async fn drain_fuse(&mut self, _timeout: Duration) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver drain_fuse (L3)".into(),
-        ))
-    }
-
-    async fn commit_broker_upper(&mut self) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver commit_broker_upper (L3)".into(),
-        ))
-    }
-
-    async fn discard_broker_upper(&mut self) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver discard_broker_upper (L3)".into(),
-        ))
-    }
-
-    async fn step_clock_window(&mut self, _retired_instructions: u64) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver step_clock_window (L3)".into(),
-        ))
-    }
-
-    fn register_pmu_sampler(
-        &mut self,
-        _sampler: std::sync::Arc<dyn PmuSampler>,
-    ) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver register_pmu_sampler (L3)".into(),
-        ))
-    }
-
     async fn set_entropy_backend(&mut self, _backend: EntropyBackend) -> Result<(), DriverError> {
         Err(DriverError::Unsupported(
             "fixture driver set_entropy_backend (L3)".into(),
@@ -205,18 +86,6 @@ impl VmmDriver for FixtureVmmDriver {
     ) -> Result<(), DriverError> {
         self.armed_watchdog = Some((timeout, action));
         Ok(())
-    }
-
-    fn transport_connect(&self, _channel_id: u32) -> Result<Box<dyn Stream>, DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver transport_connect (L3)".into(),
-        ))
-    }
-
-    async fn terminate(&mut self) -> Result<(), DriverError> {
-        Err(DriverError::Unsupported(
-            "fixture driver terminate (L3)".into(),
-        ))
     }
 }
 

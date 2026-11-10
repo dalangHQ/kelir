@@ -444,7 +444,7 @@ export class KelirBuilder<Ctx = unknown> {
     }
     // TODO (L3): the params schema stays TypeScript-side; the native params model bridge lands with typed context threading.
     if (this.paramsSchema) {
-      // params schema recorded for the SDK session; nothing crosses yet.
+      // TODO (L3): forward the pinned params schema once the native params model bridge exists.
     }
     for (const registration of this.pluginRegistrations) {
       nativeBuilder.addPlugin(registration.name, registration.enabled);

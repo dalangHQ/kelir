@@ -50,7 +50,6 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             ),
             credentials=EphemeralCredentials(
                 placeholder="vault://pg/app_migrate",
-                resolve=lambda: pg_secret,
                 ttl_seconds=300,
             ),
             sqlite=SqliteOverVsock(

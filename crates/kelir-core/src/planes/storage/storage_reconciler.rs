@@ -193,9 +193,8 @@ impl Reconciler {
         &self,
         req: FsReconcileRequest,
     ) -> Result<CommitStats, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): detect -> classify -> stage -> commit orchestration; idempotent replay.
-        let _ = self.detect()?;
-        let _ = self.classify_tombstones()?;
+        // TODO (L3): detect -> classify -> stage -> commit orchestration for non-empty broker state; idempotent replay.
+        let entries = self.detect()?;
         let _ = (
             &self.broker_dir,
             &self.host_target,
@@ -204,8 +203,11 @@ impl Reconciler {
             req.atomic_staging,
             req.fsync,
         );
+        if entries.is_empty() {
+            return Ok(CommitStats::default());
+        }
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Reconciler::reconcile orchestration".into(),
+            "TODO (L3): Reconciler::reconcile orchestration for staged entries".into(),
         ))
     }
 

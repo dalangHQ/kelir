@@ -54,17 +54,64 @@ pub struct StoragePlane {
     reconciler: OnceLock<storage_reconciler::Reconciler>,
     lock_broker: OnceLock<Arc<lock_broker::LockBroker>>,
     lock_namespace: [u8; 16],
-    lock_broker_wiring: Option<LockBrokerWiring>,
+    wiring: StorageWiring,
     fuse_worker: OnceLock<Mutex<fuse_storage::FuseWorker>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     synthetic_files: Vec<storage_synthetic::SyntheticFile>,
 }
 
 // see: cans/05-storage-plane.md#Workspace-commit
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LockBrokerWiring {
     pub scope_globs: Vec<String>,
     pub non_blocking: bool,
+}
+
+// see: cans/05-storage-plane.md#Virtual-ID-remapping
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IdmapConfig {
+    pub guest_uid: u32,
+    pub host_uid: u32,
+}
+
+// see: cans/05-storage-plane.md#In-flight-read-masking
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaskReadRule {
+    pub glob: String,
+    pub patterns: Vec<(String, String)>,
+}
+
+// see: cans/05-storage-plane.md#In-flight-read-masking
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ReadMaskEngine {
+    #[default]
+    FastRegex,
+}
+
+// see: cans/05-storage-plane.md#In-flight-read-masking
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MaskReadConfig {
+    pub engine: ReadMaskEngine,
+    pub carryover_bytes: usize,
+    pub rules: Vec<MaskReadRule>,
+}
+
+// see: cans/05-storage-plane.md#Storage-architecture
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum WorkspaceEncapsulation {
+    #[default]
+    Locked,
+    Passthrough,
+}
+
+// see: cans/05-storage-plane.md#Storage-architecture
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StorageWiring {
+    pub shared_caches: Vec<PathBuf>,
+    pub lock_broker: Option<LockBrokerWiring>,
+    pub idmap: Option<IdmapConfig>,
+    pub mask_read: Option<MaskReadConfig>,
+    pub encapsulation: WorkspaceEncapsulation,
 }
 
 impl StoragePlane {
@@ -88,18 +135,23 @@ impl StoragePlane {
             reconciler: OnceLock::new(),
             lock_broker: OnceLock::new(),
             lock_namespace: [0; 16],
-            lock_broker_wiring: None,
+            wiring: StorageWiring::default(),
             fuse_worker: OnceLock::new(),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             synthetic_files: Vec::new(),
         }
     }
 
-    // see: cans/05-storage-plane.md#Workspace-commit
-    // TODO (L3): the lazily created LockBroker seeds its scope globs and non-blocking mode from this wiring.
-    pub fn with_lock_broker(mut self, wiring: LockBrokerWiring) -> Self {
-        self.lock_broker_wiring = Some(wiring);
+    // see: cans/05-storage-plane.md#Storage-architecture
+    // TODO (L3): plane engines consume wiring (idmap remap, mask-read scan, encapsulation chmod, shared-cache mounts) per cans/05.
+    pub fn with_wiring(mut self, wiring: StorageWiring) -> Self {
+        self.wiring = wiring;
         self
+    }
+
+    // see: cans/05-storage-plane.md#Storage-architecture
+    pub fn wiring(&self) -> &StorageWiring {
+        &self.wiring
     }
 
     pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>) -> Self {
@@ -167,8 +219,13 @@ impl StoragePlane {
         &self,
         interposer: Arc<dyn kelir_interface::plugin_model::FsInterposer>,
     ) -> &Arc<lock_broker::LockBroker> {
+        // see: cans/05-storage-plane.md#Host-inode-lock-broker
+        let wiring = self.wiring.lock_broker.clone().unwrap_or_default();
         self.lock_broker.get_or_init(|| {
-            Arc::new(lock_broker::LockBroker::new(interposer).with_namespace(self.lock_namespace))
+            Arc::new(
+                lock_broker::LockBroker::with_wiring(interposer, wiring)
+                    .with_namespace(self.lock_namespace),
+            )
         })
     }
 
@@ -186,7 +243,7 @@ impl StoragePlane {
         })
     }
 
-    // TODO (L3): wire boot to anchor the reconciler with the broker dir and traversal guard; no in-tree caller does, so this guard rejects every reconcile.
+    // see: cans/05-storage-plane.md#Workspace-commit
     pub fn reconcile(
         &self,
         req: storage_reconciler::FsReconcileRequest,
