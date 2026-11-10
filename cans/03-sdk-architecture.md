@@ -246,7 +246,8 @@
     - see: artifacts/examples/serverless-webhook.ts
     - see: artifacts/examples/db-backed-runtime.py
     - Position: integration examples, not "the" example
-      - Examples are canonical in cans/artifacts/examples; each plugin's own tests/ are canonical for that plugin's tests
+      - Examples are canonical in cans/artifacts/examples
+      - Each plugin's own tests/ are canonical for that plugin's tests
       - These three demonstrate composition across plugins and rings
       - The additional three demonstrate the primitives and plugins
         - that the SWE-bench family does not mount

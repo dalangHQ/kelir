@@ -675,7 +675,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             "[kelir] broker commit files={} deletes={} winner={id}",
             stats.files_changed, stats.tombstones_resolved,
         );
-        // TODO (L3): spawn npm test -- --runInBand, git commit the winning fix, and finalize the ledger receipt.
+        // TODO (L3): spawn npm test -- --runInBand, git commit the winning fix, and finalize the ledger receipt into a FinalReceipt via LedgerCtx::finalize.
         // TODO (L3): FinalizeRequest.include_delta is CausalDelta, not Option<CausalDelta>; guard the winning delta before finalizing.
 
         Ok(())
