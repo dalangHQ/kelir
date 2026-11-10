@@ -79,13 +79,18 @@ impl MetricRegistry {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    #[allow(deprecated)]
     pub fn exec_finished(&self) {
-        let _ = self.in_flight_execs.fetch_update(
-            std::sync::atomic::Ordering::Relaxed,
-            std::sync::atomic::Ordering::Relaxed,
-            |in_flight| Some(in_flight.saturating_sub(1)),
-        );
+        let relaxed = std::sync::atomic::Ordering::Relaxed;
+        let mut current = self.in_flight_execs.load(relaxed);
+        while current > 0 {
+            match self
+                .in_flight_execs
+                .compare_exchange_weak(current, current - 1, relaxed, relaxed)
+            {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
+        }
     }
 
     pub fn snapshot(&self) -> MetricSnapshot {

@@ -315,7 +315,7 @@ impl PipelineEngine {
             self.ffi_window_ops.store(1, Ordering::Release);
             return Ok(());
         }
-        // TODO (L3): exact token-bucket accounting; this native 1s window is the L2 pre-insertion rate gate.
+        // TODO (L3): exact token-bucket accounting; the 1s window below is the pre-insertion rate gate.
         let ops = self.ffi_window_ops.fetch_add(1, Ordering::AcqRel);
         if ops >= u64::from(self.ffi_rate_per_sec) {
             return Err(PluginError::Halt(format!(

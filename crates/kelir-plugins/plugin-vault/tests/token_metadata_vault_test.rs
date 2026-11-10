@@ -137,7 +137,7 @@ fn gv_09_metadata_non_vsock_peer_econnrefused() -> Result<(), String> {
         spiffe_id: None,
     };
     match block_on(plugin.on_connect(&foreign, Box::new(LoopbackStream::new(1)), &ctx)) {
-        Err(PluginError::Halt(message)) if message.starts_with("ECONNREFUSED:") => (),
+        Err(PluginError::Reject { errno, .. }) if errno == "ECONNREFUSED" => (),
         Err(err) => {
             return Err(format!(
                 "non-session peer must fail with ECONNREFUSED, got {err:?}"

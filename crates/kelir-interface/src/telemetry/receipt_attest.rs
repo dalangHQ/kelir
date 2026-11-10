@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TelemetryExtension {
+pub struct ReceiptExtension {
     pub namespace: String,
     pub payload: Vec<u8>,
 }
@@ -43,7 +43,7 @@ pub struct ExecutionReceipt {
     pub phase_timings: Option<PhaseTimings>,
     pub egress_bytes: u64,
     pub egress_dropped_bytes: u64,
-    pub extensions: Vec<TelemetryExtension>,
+    pub extensions: Vec<ReceiptExtension>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

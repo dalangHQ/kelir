@@ -20,7 +20,7 @@ const POLL_INTERVAL_MS: libc::c_int = 100;
 // TODO (L3): surface the exit reason to the host supervisor for attestation receipts (in-band Channel 0x0000 or early-boot UART scrape).
 fn main() -> Result<(), trap_protocol::ShimError> {
     let mut mux = multiplexer_protocol::Multiplexer::new();
-    // TODO (L3): SPSC ring primary carrier per cans/11-protocol.md#Wire-framing; the AF_VSOCK fallback carrier is wired below.
+    // TODO (L3): The AF_VSOCK carrier is wired below; the SPSC ring carrier per cans/11-protocol.md#Wire-framing replaces this transport once its ring allocation lands.
     let control_fd = connect_channel(trap_protocol::TRAP_CHANNEL)?;
     let data_fd = connect_channel(STREAM_CHANNEL)?;
     // TODO (L3): exchange the Control 0x0000 handshake (version 0x01 + capabilities) before frame traffic.

@@ -10,7 +10,7 @@ pub use kelir_core::planes::storage::storage_synthetic::{
 };
 // see: cans/05-storage-plane.md#Storage-architecture
 pub use kelir_core::planes::storage::{
-    IdmapConfig, MaskReadRule as MaskRule, ReadMaskEngine, WorkspaceEncapsulation,
+    IdmapConfig, MaskReadRule, ReadMaskEngine, WorkspaceEncapsulation,
 };
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
@@ -44,7 +44,7 @@ pub struct StorageConfig<Plugins = HNil, Params = NoParams> {
     pub shared_caches: Vec<String>,
     pub lock_broker: bool,
     pub synthetic_files: Vec<SyntheticFile>,
-    pub mask_read: Vec<MaskRule>,
+    pub mask_read: Vec<MaskReadRule>,
     pub snoops: Vec<SnoopRule<Plugins, Params>>,
     pub encapsulation: WorkspaceEncapsulation,
     pub scan_engine: ReadMaskEngine,

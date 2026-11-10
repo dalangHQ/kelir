@@ -53,10 +53,10 @@
 │    - Maps virtual guest inodes to host physical inodes to avoid collisions. │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 10. HOST STATE ROOT (~/.kelir/) + STORAGE CATALOG (06):                     │
-│    - catalog.db: embedded SQLite (WAL), 3 tables only: sessions,            │
-│      cas_leases, schema_version. No resident daemon; every process opens    │
-│      the file directly. WAL + busy_timeout 5000ms; writers serialize via    │
-│      busy handlers, readers proceed concurrently.                           │
+│    - catalog.db: embedded SQLite (WAL), 2 tables only: sessions,            │
+│      cas_leases. No resident daemon; every process opens the file directly. │
+│      WAL + busy_timeout 5000ms; writers serialize via busy handlers,        │
+│      readers proceed concurrently.                                          │
 │    - sessions: EVERY session registers a row (session_id, status,           │
 │      incarnation_id, boot_id, start_time_ns, pid, lease_kind,               │
 │      expires_at_unix). Ephemeral rows carry lease_kind='ephemeral' and      │

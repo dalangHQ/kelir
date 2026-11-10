@@ -9,7 +9,7 @@ import { EConfig } from "./errors.sdk.js";
 import type {
   CausalDelta,
   NativeCausalDeltaRecord,
-  NativeSnapshotRecord,
+  NativeSnapshotDescriptorRecord,
   SnapshotDescriptor,
   SpawnOptions,
   SpawnResult,
@@ -97,7 +97,7 @@ function withHome<T>(home: string | undefined, run: () => T): T {
   }
 }
 
-const NATIVE_SNAPSHOT: NativeSnapshotRecord = {
+const NATIVE_SNAPSHOT: NativeSnapshotDescriptorRecord = {
   id: "snap-0001",
   dirty_bytes: 4096,
   created_at_ns: 1_700_000_000_000_000_000,
@@ -176,7 +176,7 @@ function fakeNativeSession(options?: {
       yield 4 as unknown as Resp;
     },
     vm: {
-      checkpoint: async (name: string): Promise<NativeSnapshotRecord> => {
+      checkpoint: async (name: string): Promise<NativeSnapshotDescriptorRecord> => {
         record("vm.checkpoint", name);
         return { ...NATIVE_SNAPSHOT, id: `snap-${name}` };
       },
@@ -287,7 +287,7 @@ function fakeNativeSession(options?: {
       ? {}
       : {
           checkpoint: {
-            create: async (label: string): Promise<NativeSnapshotRecord> => {
+            create: async (label: string): Promise<NativeSnapshotDescriptorRecord> => {
               record("checkpoint.create", label);
               return NATIVE_SNAPSHOT;
             },

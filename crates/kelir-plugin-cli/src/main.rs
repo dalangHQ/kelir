@@ -54,8 +54,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "doctor" => doctor_cli::run(&args[2..])?,
         "attach" => attach_cli::run(&args[2..])?,
         "check" => check(&args[2..])?,
-        "check-layers" | "layers" => check_layers()?,
-        "check-budgets" | "budgets" => check_budgets(&args[2..])?,
+        "check-layers" => check_layers()?,
+        "check-budgets" => check_budgets(&args[2..])?,
         "parity" => parity_cli::run(&args[2..])?,
         "fixtures" => fixtures_cli::run(&args[2..])?,
         // TODO (L3): logs, manifest, registry, rings, and scaffold dispatch into skeleton subcommands that succeed silently.

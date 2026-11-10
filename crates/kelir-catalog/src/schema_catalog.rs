@@ -1,9 +1,6 @@
 // see: cans/06-storage-catalog.md#Entity-model
 
-pub const SCHEMA_V1_SQL: &str = "
-CREATE TABLE IF NOT EXISTS schema_version (
-    version INTEGER PRIMARY KEY
-);
+pub const SCHEMA_SQL: &str = "
 CREATE TABLE IF NOT EXISTS sessions (
     session_id BLOB PRIMARY KEY,
     incarnation_id BLOB NOT NULL,

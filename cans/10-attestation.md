@@ -19,7 +19,7 @@
       - Deterministic logical-trace attribution emitted per executed process
       - Emitted for every executed process at the trap/exit boundary
       - Receipts compare as values via canonical per-field structural assertions
-      - Receipts carry opaque TelemetryExtension payloads emitted by mounted plugins
+      - Receipts carry opaque ReceiptExtension payloads emitted by mounted plugins
       - Struct exhaustiveness tripwire
         - ExecutionReceipt and CausalDelta additions fail compilation everywhere
         - Merkle leaf hashing and OTel mappers must explicitly handle new fields

@@ -7,7 +7,7 @@ Do not edit by hand: CI runs `just check-scorecard`.
 
 | Total Invariants | Domains | Integration Tier | Unit Tier | E2E Tier |
 |---:|---:|---:|---:|---:|
-| 240 | 17 | 158 | 69 | 13 |
+| 245 | 17 | 159 | 73 | 13 |
 
 ## Domain Coverage Matrix
 
@@ -21,7 +21,7 @@ Do not edit by hand: CI runs `just check-scorecard`.
 | `governance_vault` | `gv` | 12 | pass | plugin-vault, metadata service (169.254.169.254), host keyring mlock, scoped short-lived token issuance, audience locking, zeroization on drop. |
 | `hypervisor_driver` | `hd` | 24 | pass | VmmDriver abstraction, KVM/HVF/WHP/AVF hardware virtualization, register/MMU rollback, CPUID synthetic filters, cold-boot budgets (<50ms). |
 | `lifecycle_checkpoint` | `lc` | 23 | pass | Hypervisor state machine, CoW fork (userfaultfd / Mach vm_copy), instant rollback (<8ms), suspend to NVMe (0MB RSS, <50ms), step evaluation loops. |
-| `plugin_engine` | `pe` | 16 | pass | KelirPlugin trait, segregated ring traits, unified Verdict / FilterAction evaluation, static dispatch tables, filter-before-FFI gate (<2µs). |
+| `plugin_engine` | `pe` | 21 | pass | KelirPlugin trait, segregated ring traits, unified Verdict / FilterAction evaluation, static dispatch tables, filter-before-FFI gate (<2µs). |
 | `protocol_mux` | `pm` | 14 | pass | Vsock port 5252, Control channel (0x0000), Stream Mux (0x0001), sub-lanes (EXEC, VFS, BULK), framing limits, window-update flow control. |
 | `relational_transaction` | `rt` | 12 | pass | plugin-db-proxy, plugin-transaction, L7 pgwire parsing, SQLite UDS bridge, multi-resource 2PC commit/abort coordination. |
 | `storage_plane` | `sp` | 22 | pass | VirtIO-FS host CoW broker, sparse upper file, tombstone tracking, atomic leaf commit, containment engine (openat2), synthetic FUSE inodes, quotas. |
@@ -54,7 +54,7 @@ Thresholds below come from perf/budgets.toml (enforce = true) where a key is dec
 
 ## Platform Executable Subset
 
-Host: linux/x86_64; hypervisors present: none. Executable on this host: 222 / 240 cases.
+Host: linux/x86_64; hypervisors present: none. Executable on this host: 227 / 245 cases.
 
 | Hypervisor | Cases | Executable Here |
 |---|---:|---:|
@@ -62,7 +62,7 @@ Host: linux/x86_64; hypervisors present: none. Executable on this host: 222 / 24
 | `emulated` | 4 | 2 |
 | `hvf` | 6 | 0 |
 | `kvm` | 4 | 0 |
-| `none` | 222 | 220 |
+| `none` | 227 | 225 |
 | `whp` | 2 | 0 |
 
 ## Anti-Slop Enforcement

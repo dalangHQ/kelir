@@ -3,7 +3,7 @@
 import type {
   CausalDelta,
   NativeCausalDeltaRecord,
-  NativeSnapshotRecord,
+  NativeSnapshotDescriptorRecord,
   SnapshotDescriptor,
   SpawnOptions,
   SpawnResult,
@@ -55,7 +55,7 @@ export interface NativeTerminalHandle {
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 export interface NativeCheckpointHandle {
-  create(label: string): Promise<NativeSnapshotRecord>;
+  create(label: string): Promise<NativeSnapshotDescriptorRecord>;
 }
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
@@ -66,7 +66,7 @@ export interface NativeHostHandle {
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 export interface NativeVmHandle {
-  checkpoint(name: string): Promise<NativeSnapshotRecord>;
+  checkpoint(name: string): Promise<NativeSnapshotDescriptorRecord>;
   rollback(snapshot: SnapshotDescriptor): Promise<void>;
   fork(): Promise<NativeSessionHandle>;
   suspend(path: string): Promise<void>;

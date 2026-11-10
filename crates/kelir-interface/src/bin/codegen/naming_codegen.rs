@@ -78,30 +78,3 @@ pub fn snake(name: &str) -> String {
         .collect::<Vec<_>>()
         .join("_")
 }
-
-// see: cans/03-sdk-architecture.md#TypeScript-SDK
-pub fn ts_sdk_name(rust_name: &str) -> String {
-    if rust_name == "TelemetryExtension" {
-        "ReceiptExtension".to_string()
-    } else {
-        rust_name.to_string()
-    }
-}
-
-// see: cans/03-sdk-architecture.md#Python-SDK
-pub fn py_sdk_name(rust_name: &str) -> String {
-    if rust_name == "TelemetryExtension" {
-        "ReceiptExtension".to_string()
-    } else {
-        rust_name.to_string()
-    }
-}
-
-// see: cans/03-sdk-architecture.md#TypeScript-SDK
-pub fn ts_native_record_name(rust_name: &str) -> String {
-    if rust_name == "SnapshotDescriptor" {
-        "NativeSnapshotRecord".to_string()
-    } else {
-        format!("Native{rust_name}Record")
-    }
-}

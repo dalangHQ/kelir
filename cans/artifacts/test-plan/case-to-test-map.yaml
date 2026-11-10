@@ -1981,3 +1981,7 @@ harness_tests:
     pid and EPERM, EFFIQUEUESATURATED with EBUSY, EAMBIGUOUSMUTATION, io errno, EConfig fallback,
     full-context JSON serialization the NAPI/PyO3 bridges forward); no dedicated plan case covers
     the envelope mapping yet (L2 wiring addition).
+- file: crates/kelir-interface/tests/causal_delta_hex_test.rs
+  reason: CausalDelta hex-serialization unit test per cans/10-attestation.md#Causal-delta (blake3
+    hashes serialize as hex strings and round-trip); no plan case covers the delta's wire
+    encoding (L2 wiring addition).

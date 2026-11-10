@@ -100,13 +100,13 @@ fn main() -> ExitCode {
     const ORDER: &[&str] = &[
         "GuestClock",
         "SnapshotDescriptor",
-        "TelemetryExtension",
+        "ReceiptExtension",
         "PhaseTimings",
         "ExitKind",
         "ExecutionReceipt",
         "CausalDelta",
     ];
-    const NATIVE_SKIP: &[&str] = &["TelemetryExtension"];
+    const NATIVE_SKIP: &[&str] = &["ReceiptExtension"];
 
     let ts_telemetry =
         ts_codegen::emit_telemetry(&model, ORDER, NATIVE_SKIP).unwrap_or_else(|e| die(&e));

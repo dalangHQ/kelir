@@ -8,7 +8,7 @@ use kelir_interface::codec_protocol::{
 use kelir_interface::protocol_wire::{CHANNELS, EXEC_STREAMS, MSG_TYPES, STREAM_KINDS};
 
 use crate::model_codegen::{EnumDef, Model, StructDef, Ty};
-use crate::naming_codegen::{camel, kebab, screaming, ts_native_record_name, ts_sdk_name};
+use crate::naming_codegen::{camel, kebab, screaming};
 
 pub const TS_SEE: &str = "// see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/15-operations.md#Multi-language-parity-gate
@@ -46,18 +46,18 @@ fn ts_type(ty: &Ty) -> String {
             Ty::U8 => "Uint8Array".to_string(),
             Ty::Str | Ty::PathBuf => "readonly string[]".to_string(),
             Ty::U32 => "readonly number[]".to_string(),
-            Ty::Custom(name) => format!("readonly {}[]", ts_sdk_name(name)),
+            Ty::Custom(name) => format!("readonly {}[]", name),
             other => format!("readonly {}[]", ts_type(other)),
         },
         Ty::ByteArray(_) => "string".to_string(),
-        Ty::Custom(name) => ts_sdk_name(name),
+        Ty::Custom(name) => name.clone(),
     }
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 fn ts_native_type(ty: &Ty) -> String {
     match ty {
-        Ty::Custom(name) => ts_native_record_name(name),
+        Ty::Custom(name) => format!("Native{name}Record"),
         Ty::Option(inner) => format!("{} | null", ts_native_type(inner)),
         other => ts_type(other),
     }
@@ -96,7 +96,7 @@ fn emit_struct_interface(def: &StructDef, name: &str, native: bool) -> String {
 fn ts_convert_expr(ty: &Ty, native_field: &str) -> String {
     match ty {
         Ty::Option(inner) => match &**inner {
-            Ty::Custom(name) if name != "TelemetryExtension" => {
+            Ty::Custom(name) if name != "ReceiptExtension" => {
                 format!("raw.{native_field} ? fromNative{name}(raw.{native_field}) : null")
             }
             _ => format!("raw.{native_field} ?? null"),
@@ -218,7 +218,7 @@ pub fn emit_telemetry(
             continue;
         }
         let def = model.struct_def(name)?;
-        out.push_str(&emit_struct_interface(def, &ts_sdk_name(name), false));
+        out.push_str(&emit_struct_interface(def, name, false));
     }
     for name in order {
         if *name == "ExitKind" {
@@ -232,7 +232,7 @@ pub fn emit_telemetry(
         let def = model.struct_def(name)?;
         out.push_str(&emit_struct_interface(
             def,
-            &ts_native_record_name(name),
+            &format!("Native{name}Record"),
             true,
         ));
     }
@@ -241,8 +241,8 @@ pub fn emit_telemetry(
             continue;
         }
         let def = model.struct_def(name)?;
-        let sdk_name = ts_sdk_name(name);
-        let native_name = ts_native_record_name(name);
+        let sdk_name = name.to_string();
+        let native_name = format!("Native{name}Record");
         let _ = writeln!(
             out,
             "export function fromNative{name}(raw: {native_name}): {sdk_name} {{"
