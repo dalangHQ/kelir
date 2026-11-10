@@ -1,155 +1,154 @@
-### 1. Cross-Language SDK Types & Serializers
-* **Files:** `packages/ts/core/src/types.ts`, `packages/py/kelir/__init__.py`, `crates/kelir-interface/src/telemetry/`, `crates/kelir-interface/src/protocol.rs`
-* **Current state:** Manual duplicate definitions of `ExecutionReceipt`, `SnapshotDescriptor`, `CausalDelta`, `ExitKind`, `PhaseTimings`, `GuestClock`. Over 100 lines of hand-written camelCase-to-snake_case converters (`fromNativeSnapshotDescriptor`, `fromNativeExecutionReceipt`, `fromNativeCausalDelta`).
-* **Fix:** Generate TypeScript interfaces and Pydantic models directly from `crates/kelir-interface` via `typeshare` or `specta`. Eliminate manual converters by configuring Serde `#[serde(rename_all = "camelCase")]` across FFI boundaries.
+# work-order.md
 
-### 2. Plugin SDK Projections (TypeScript & Python)
-* **Files:** `packages/ts/core/src/plugins.ts`, `packages/py/kelir/plugins/*.py`
-* **Current state:** 13 community plugin wrappers (classes, config interfaces, default args) written entirely by hand in TS and Python to mirror the Rust struct definitions in `crates/kelir-plugins/`.
-* **Fix:** Use AST-driven code generation (`kelir-plugin-cli manifest` or a build script) to parse the Rust plugin crates and emit the typed TS builder extensions and Python `@dataclass` modules automatically.
+## Deprecation & Diff-Apologetics Cleanup — Phase L1/L2
 
-### 3. Trampoline Ring Tables & Hook Bindings
-* **Files:** 
-  * `crates/kelir-interface/src/fusion.rs`
-  * `packages/ts/core/src/fusion.ts`
-  * `packages/py/kelir/fusion.py`
-  * `packages/py/kelir/plugin.py` (`HOOK_RINGS`)
-* **Current state:** Enums (`TrampolineRing`), string tags (`from_tag`/`as_tag`), validation rules (`validate_hook`), and hook-to-ring lookup dictionaries are manually re-implemented across all three languages.
-* **Fix:** Define ring events, hook stages, and lifecycle tags once in `crates/kelir-interface`. Auto-generate the TS enums and Python `Enum`/dictionaries via macro export or code generator.
+### Intent
+Remove every artifact that reads as a diff against a prior version of Kelir: `#[deprecated]`, serde aliases, `_V1` schema suffixes, SDK rename shims, "superseded"/"fallback"/"today" language, and `#[allow(deprecated)]` suppressions. Ship one canonical name and one canonical shape per concept. **This is a cleanup order, not a feature order.**
 
-### 4. Plugin Tiers, Dependency Enforcement, & Rosters
-* **Files:** `crates/kelir-plugin-cli/src/audit.rs`, `crates/kelir-core/src/plugin_registry.rs`
-* **Current state:** Hardcoded static arrays:
-  * `PLUGIN_TIERS = &[("plugin-mcp", 1, "mcp"), ...]`
-  * `FORBIDDEN_DEPS = &["kelir", "kelir-core", ...]`
-* **Fix:** Read `Cargo.toml` workspace metadata and package keywords/metadata sections (`[package.metadata.kelir.tier]`). Derive dependency trees and tier validation dynamically instead of editing static CLI arrays when adding or re-tiering plugins.
+### Phase constraint: L1/L2 only
+- **Do not implement any L3 TODO.** Every `// TODO (L3):` stays exactly as it is.
+- **Do not touch L3 code paths.** Wire protocol, FUSE worker, shim fast-path, driver boot, etc. remain untouched.
+- The only behavior changes allowed are the public-surface renames explicitly called out below (`TelemetryExtension` → `ReceiptExtension`, `NativeSnapshotRecord` → `NativeSnapshotDescriptorRecord`, `SCHEMA_V1_SQL` → `SCHEMA_SQL`). Everything else is a no-op cleanup that must keep `cargo test --workspace` green.
+- **Cross-hypervisor, cross-SDK, and CLI behavior must not change** — only the source spelling of names, derives, and comments.
 
-### 5. FUSE Opcodes and POSIX Errno Conversions
-* **Files:** `crates/kelir-core/src/planes/storage/fuse.rs`
-* **Current state:** Hand-rolled string-to-number errno parser (`drop_errno`: `"EPERM" => Ok(1)`, `"ENXIO" => Ok(6)`, etc.) and manual opcode matching (`FuseOpcode::from_u32`: `1 => Lookup, 15 => Read, 16 => Write`).
-* **Fix:** Bind directly to `libc` constants (`libc::EPERM`, `libc::ENXIO`) or generate the enum mapping table directly from Linux kernel UAPI FUSE headers (`linux/fuse.h`).
+### Global guardrails (all agents)
+- Never add a compatibility shim (`type X = Y`, `#[serde(alias)]`, `#[deprecated]`, dual `pub use`, dual CLI verb, dual field name) as the resolution.
+- Never write a `// TODO: delete once …` comment. If a type needs a derive, add the derive.
+- Do not add new public items to hide the rename; rename in place and update every caller.
+- Respect per-crate `[lints]` in `Cargo.toml` (e.g. `unwrap_used = "deny"`, `panic = "deny"`, `expect_used = "deny"`). The `fetch_update` replacement loops in Agent 3 must use `compare_exchange_weak` and must not `unwrap`.
+- Run `cargo check --workspace --all-features` and `cargo clippy --workspace --all-features` before declaring done.
+- Do not touch files outside your ownership map unless the work order says otherwise.
 
-### 6. Parity Verification JSON Parsing & Test Vectors
-* **Files:** `crates/kelir-plugin-cli/src/parity.rs`, `crates/kelir-plugin-testkit/src/fixtures.rs`
-* **Current state:** 
-  * `parity.rs` contains a 300-line hand-written recursive descent JSON parser (`JsonParser`).
-  * `fixtures.rs` contains a hardcoded array of 12 vector names (`canonical_vector_names`).
-* **Fix:** Replace the manual JSON parser with `serde_json` (already in workspace). Derive vector fixtures directly from serialized unit test runs in `kelir-plugin-testkit` rather than maintaining static string tables.
-
-### 7. Sandbox Config Serialization (TOML/YAML Parsers)
-* **Files:** `packages/ts/core/src/sandbox.ts`, `packages/py/kelir/sandbox.py`
-* **Current state:** Bespoke line-by-line scalar string parsers (`parseTomlProfile`, `parseYamlProfile`, `_dump_toml`) written to dodge standard parser imports.
-* **Fix:** Use standard runtime parsers (`@ltd/j-toml` / `smol-toml` in TS, built-in `tomllib` in Python 3.11+) and schema-driven serializers instead of homebrew text-munging algorithms.
-
-* ### 8. Test Manifest Case Counts & Domain Totals
-* **Files:** `crates/kelir-testkit/src/bin/check_manifest.rs`, `cans/artifacts/test-plan/manifest.yaml`
-* **Current state:** Manual double-accounting. `manifest.plan.total_cases` and `manifest.domains.<name>.case_count` are hand-keyed integers in YAML. Any added case requires manually incrementing two counters and updating file arrays.
-* **Fix:** Auto-derive total and per-domain case counts by walking `cans/artifacts/test-plan/cases/` at manifest compile-time. Treat the directory structure and individual case YAML headers as the SSOT.
-
-### 9. Scorecard Markdown Generation & Budget Sync
-* **Files:** `crates/kelir-testkit/src/bin/scorecard.rs`, `cans/artifacts/scorecard.md`, `perf/budgets.toml`
-* **Current state:** `render_scorecard()` hardcodes table formats, text columns, status strings (`"pass"`), rule definitions (`AS-01` to `AS-08`), and latency targets into Rust strings. Changes in `perf/budgets.toml` must be manually reflected in `scorecard.rs`.
-* **Fix:** Convert `scorecard.md` into a template populated directly from `perf/budgets.toml` and test execution results. The scorecard generator must consume the config file dynamically rather than embedding metric names and units in procedural code.
-
-### 10. L2–L4 Network Frame Parsing & Header Offsets
-* **Files:** `crates/kelir-core/src/planes/wire/mod.rs`, `crates/kelir-plugins/plugin-db-proxy/src/reassembler.rs`
-* **Current state:** Hardcoded raw byte slicing across network frames:
-  * `frame[12..14] == 0x0800` (EtherType)
-  * `ETH_HEADER_BYTES = 14`, `IPV4_MIN_HEADER_WORDS = 5`
-  * Magic offset slicing: `14 + 12`, `14 + 16`, `14 + 9 == 6` (TCP protocol check)
-* **Fix:** Eliminate manual byte-index arithmetic. Auto-generate zero-copy network header views using `smoltcp::wire` primitives or declare layouts using structured declarative byte-offset macros.
-
-### 11. ELF Header Parsing & Auxv Extraction
-* **Files:** `crates/kelir-shim/src/introspect.rs`
-* **Current state:** Bespoke ELF parser implementations (`parse_interp_64`, `parse_interp_32`) hardcoding field offsets (`0x20..0x28`, `0x36..0x38`, `0x1c..0x20`) and structure sizes (`phentsize < 56`, `phentsize < 32`).
-* **Fix:** Generate ELF header structures directly from Linux UAPI headers (`linux/elf.h`). Do not maintain manual binary offset reading logic inside the shim.
-
-### 12. Protocol Wire Codes, Channel IDs, & Stream Kinds
-* **Files:** 
-  * `crates/kelir-interface/src/protocol.rs`
-  * `crates/kelir-shim/src/codec.rs`
-  * `packages/ts/core/src/types.ts`
-  * `packages/py/kelir/__init__.py`
-* **Current state:** Numeric allocations are duplicated manually:
-  * Channels: `0x0000`, `0x0001`
-  * Sub-lanes: `0x00` (stdin), `0x01` (stdout), `0x02` (stderr), `0x03` (control)
-  * Core stream kinds: `0x0001` to `0x0006`
-  * Plugin stream kinds: `0x0010` to `0x0012`
-* **Fix:** Maintain a single canonical definition table (`protocol.yaml` or a dedicated macro module in `kelir-interface`). Generate the Rust enum representations, C header `#define`s for the musl shim, TypeScript constants, and Python `IntEnum` classes from that single file.
-
-### 13. Spec Heading Anchors & Law References
-* **Files:** `crates/kelir-testkit/src/bin/check_manifest.rs`, `cans/*.md`
-* **Current state:** `check_manifest.rs` runs a file-existence check (`repo_root.join(file).is_file()`) and defers anchor validation (`#Anchor`) with a `TODO (L2)` comment, leaving link breakage undetected until manual audits.
-* **Fix:** Write an anchor extraction step into the spec gate that scrapes headings and anchors from `cans/*.md` into an indexed JSON list (`anchors.json`). `check-manifest` must validate existence against this generated lookup index.
-
-### 14. Hardware Platform Detection & Capabilities
-* **Files:** `crates/kelir-testkit/src/bin/scorecard.rs`, `crates/kelir-plugin-cli/src/doctor.rs`
-* **Current state:** Duplicated target capability heuristics:
-  * `scorecard.rs`: `host_hypervisors()` manually matches `linux -> kvm`, `macos -> hvf, avf`, `windows -> whp`.
-  * `doctor.rs`: `probe_host()` contains a separate implementation of the exact same OS-to-hypervisor capability matrix.
-* **Fix:** Centralize hardware probe primitives in `kelir-core` / `kelir-drivers`. The testkit and developer CLI must share this single probe module rather than guessing platform capabilities with divergent `cfg` matches.
-
-### 15. Causal Delta Field Serialization & Merkle Leaves
-* **Files:** `crates/kelir-interface/src/telemetry/receipt.rs`, `crates/kelir-otlp/src/lib.rs`, `crates/kelir-plugins/plugin-ledger/src/wal.rs`
-* **Current state:** Manual byte packing in `ExecutionReceipt::leaf_hash()`, `WalRecord::pack()`, and OTLP record transforms (`OtlpReceiptRecord`, `OtlpCausalDeltaRecord`). Every struct change requires hand-editing raw byte concatenations and OTLP field mappings.
-* **Fix:** Use a procedural derive macro (`#[derive(MerkleLeaf)]`) that automatically packs fields in declaration order using RFC 6962 BLAKE3 leaf hashing. Field addition should automatically update serialization and fail compilation if Merkle serialization is omitted.
+### Verification gate (run by the merge lead after all 5 agents land)
+```sh
+cargo check --workspace --all-features
+cargo clippy --workspace --all-features
+cargo run -p kelir-interface --bin codegen      # must produce a clean tree
+cargo test --workspace
+grep -rn 'serde(alias' crates/                  # empty
+grep -rn 'TelemetryExtension' crates/ packages/ # empty
+grep -rn 'NativeSnapshotRecord' packages/       # empty
+grep -rn '\bMaskRule\b' crates/                 # only MaskReadRule hits
+grep -rn 'check-layers\|check-budgets' crates/  # empty
+grep -rn 'fallback carrier\|primary carrier' crates/  # empty
+grep -rn '#\[deprecated' crates/                # empty (except Agent 1's own PartialEq derives on WatchdogAction are fine; only #[deprecated] is banned)
+```
+If any grep produces output, the offending agent re-opens.
 
 ---
 
-## CI/CD Coherence Architecture
+## Ownership map
 
-Generating files without an enforcement gate guarantees drift. To keep the generated files, specifications, and code in sync, enforce this exact pipeline:
+| Agent | Owns |
+|---|---|
+| **A1** | `crates/kelir-interface/src/protocol_wire.rs`, `crates/kelir-interface/src/driver_interface.rs` |
+| **A2** | `crates/kelir-interface/src/telemetry/*`, `crates/kelir-interface/src/bin/codegen/*`, all `packages/py/kelir/generated/*`, all `packages/py/kelir/plugins/plugin_*.py`, all `packages/ts/core/src/generated/*`, `packages/ts/core/src/telemetry.attest.generated.ts`, `packages/ts/core/src/plugins.registry.ts`, `crates/kelir-otlp/src/records_otlp.rs`, `crates/kelir-plugins/plugin-ledger/src/wal_ledger/merkle_wal.rs` |
+| **A3** | `crates/kelir-otlp/src/registry_otlp.rs`, `crates/kelir-interface/src/plugin_model.rs`, `crates/kelir-plugins/plugin-replay/src/lib.rs`, `crates/kelir-plugin-testkit/src/vectors_testkit.rs` |
+| **A4** | `crates/kelir-core/src/planes/checkpoint/mod.rs`, `crates/kelir-core/src/session_lifecycle.rs`, `crates/kelir/src/planes/storage_plane.rs` + any callers found by grep |
+| **A5** | `crates/kelir-catalog/src/schema_catalog.rs`, `crates/kelir-catalog/src/lib.rs`, `crates/kelir-plugin-cli/src/main.rs`, `crates/kelir-plugin-cli/src/layers_cli.rs`, `crates/kelir-shim/src/main.rs`, `crates/kelir-drivers/driver-rustvmm/src/host_probe.rs`, `crates/kelir-core/src/dispatch_plugin.rs` |
 
-```
-[ cans/*.md + artifacts ] (SSOT)
-         │
-         ▼
-[ kelir-interface (Macros/Schemas) ]
-         │
-         ├───> Code Generation: TS Types / Py Types / Wire Codecs / Manifests
-         │
-         ▼
-[ CI Coherence Gate: `git diff --exit-code` ]
-         │
-         ├─── (Clean) ───> Compile (Cargo, TSC, Mypy) ───> Verification Gates
-         └─── (Dirty) ───> FAIL: "Generated code out of sync. Run `just codegen`"
-```
+**No two agents own the same file.** A1, A2, A3 all work inside `kelir-interface/src/` but never the same file. A4 and A5 both work inside `kelir-core/src/` but never the same file.
 
-### 1. The Hermetic Commit Invariant
-- **Rule:** Generated files (TypeScript stubs, Python models, generated manifests, scorecards) **must be checked into git**.
-- **Rationale:** Downstream users (npm/PyPI consumers, external plugin authors) must not need a code-generation toolchain or a Rust compiler installed just to read types or run unit tests.
+---
 
-### 2. The Verification Gate (`just check-codegen`)
-Every CI run must include a zero-drift verification step before running tests:
-```sh
-# Step 1: Run all code generators
-just codegen
+## A1 — Interface core types
 
-# Step 2: Ensure git tree is completely clean
-git status --porcelain
-git diff --exit-code
-```
-If an engineer updates a Rust struct in `kelir-interface` but fails to update the corresponding generated TypeScript or Python types, `git diff --exit-code` exits with status `1` and blocks the PR.
+**Scope:** `protocol_wire.rs`, `driver_interface.rs` only. Do not touch other files in `kelir-interface/src/` (A2, A3 own those).
 
-### 3. Pipeline Execution Topology
-Orchestrate local tools and CI tasks in this strict linear order in the `justfile`:
+**Findings to close:**
+- **Finding 2** — Remove `#[serde(alias = "binary")]`, `#[serde(alias = "argv")]`, `#[serde(default, alias = "env", ...)]` from `ExecveMutation`. Only `new_binary`, `new_argv`, `set_env`, `unset_env` are acceptable wire field names. Keep `#[serde(default)]` where it is semantically required (empty defaults), but drop every `alias`.
+- **Finding 12** — Remove `#[allow(clippy::derivable_impls)]` and either `#[derive(Default)]` on `StreamKind` with `#[default]` on `Exec`, or hand-write the impl without the lint suppression. Preferred: derive, because that's the canonical form. If the derive changes semantics (it doesn't — `Exec = 0x0001` is the current default), keep hand-written but drop the allow.
+- **Finding 7 prerequisite** — Add `#[derive(..., PartialEq, Eq)]` to `WatchdogAction` in `driver_interface.rs`. A3 consumes this; do not tell A3 to add it.
 
-1. **`just codegen`**:
-   - Scrapes `cans/*.md` anchors -> `anchors.json`.
-   - Generates TypeScript interfaces and Python models from `kelir-interface`.
-   - Updates `manifest.yaml` totals from disk cases.
-   - Generates wire channel/stream constants for `kelir-shim`.
-   - Renders `scorecard.md` using `perf/budgets.toml`.
-2. **`just check-hygiene`**:
-   - Validates comment laws (`see:`, `TODO:`, `SAFETY:`).
-   - Validates LOC bounds (<1000 LOC ceiling) and denies `#[cfg(test)]` in `src/`.
-3. **`just check-coherence`**:
-   - `git diff --exit-code` asserts zero drift between SSOT schemas and committed artifacts.
-4. **`just check-types`**:
-   - Compiles Rust: `cargo check --workspace --all-targets`
-   - Compiles TS: `pnpm -r exec tsc --noEmit`
-   - Checks Python: `uv run mypy packages/py`
-5. **`just check-gates`**:
-   - `check-manifest`: Validates case coverage and spec leaf links.
-   - `check-tests`: Executes anti-slop AST checks (no mock hypervisors in integration, no unseeded randoms).
-   - `check-scorecard`: Verifies physical hardware capabilities against budget limits.
+**Done when:** `grep -n 'serde(alias' crates/kelir-interface/src/protocol_wire.rs` is empty; `grep -n 'derivable_impls'` in `protocol_wire.rs` is empty; `WatchdogAction` derives `PartialEq, Eq`.
+
+---
+
+## A2 — Codegen SDK unification
+
+**Scope:** the `codegen/` directory, `telemetry/receipt_attest.rs`, `telemetry/mod.rs`, `telemetry/merkle_attest.rs`, and every file the codegen binary emits. **You are the only agent that runs codegen.**
+
+**Findings to close:**
+- **Finding 4** — Remove the rename shims in `naming_codegen.rs`:
+  - Delete `ts_sdk_name` and `py_sdk_name` special-casing for `TelemetryExtension`. Then **rename the Rust struct** `TelemetryExtension` → `ReceiptExtension` in `receipt_attest.rs` and `telemetry/mod.rs`. Rename every Rust usage in `kelir-interface` (`merkle_attest.rs` destructure) and every plugin that imports it (should be none; grep to confirm). Delete `py_sdk_name`/`ts_sdk_name` from `naming_codegen.rs` and inline `rust_name.to_string()` at their call sites (`py_codegen::py_type`, `ts_codegen::ts_type`, `sdk_py`/`sdk_ts` if used there).
+  - Delete `ts_native_record_name`'s `SnapshotDescriptor` special case so it returns `format!("Native{rust_name}Record")` uniformly. This makes the emitted TS type `NativeSnapshotDescriptorRecord`, which is the pattern-correct name; update `ts_codegen::ts_native_type` if it references the old literal.
+  - Update `ts_codegen::ts_convert_expr`'s `if name != "TelemetryExtension"` guard to `if name != "ReceiptExtension"`.
+  - Update any codegen header `// see:` lines only if they became false; otherwise leave them.
+- Run `cargo run -p kelir-interface --bin codegen` **twice** — the second run must show zero writes (`plugin sdk projections: N plugins ok` with no `wrote` lines on the second invocation). Commit every regenerated file.
+
+**Done when:** `grep -rn 'TelemetryExtension\|ts_sdk_name\|py_sdk_name\|ts_native_record_name' crates/ packages/` is empty; `grep -rn 'NativeSnapshotRecord\b' packages/` matches nothing (only `NativeSnapshotDescriptorRecord`); a second codegen run is a no-op.
+
+---
+
+## A3 — Suppression & shim removal
+
+**Scope:** `registry_otlp.rs`, `plugin_model.rs`, `plugin-replay/lib.rs`, `vectors_testkit.rs`. Do not touch `driver_interface.rs` (A1 owns it) — `WatchdogAction` will have `PartialEq` by the time you merge.
+
+**Findings to close:**
+- **Finding 11** — Replace every `#[allow(deprecated)]`-wrapped `fetch_update` with a `compare_exchange_weak` loop. Three call sites:
+  - `registry_otlp.rs::exec_finished` — `in_flight_execs` saturating-decrement, must not underflow to `u64::MAX`.
+  - `plugin_model.rs::FfiDispatchQueue::try_submit` — saturating-increment bounded by `capacity`, must return `Err(PluginError::FfiQueueSaturated { depth })` with the observed depth on failure (preserve current API).
+  - `plugin_model.rs::FfiDispatchQueue::complete` — saturating-decrement to zero.
+  - `plugin-replay/lib.rs::ReplayState::record_pmu_sample` — two `fetch_update` saturating-adds (`retired_total`, `window_retired`). Replace with the same loop shape.
+  - Each loop must handle `Err(actual) => current = actual;` and never `unwrap`.
+- **Finding 7** — In `vectors_testkit.rs`, delete the `watchdog_action_eq` helper (including its `// TODO (L3): delete once …` comment). Replace its single call site with `armed_action == event.action`. This compiles because A1 adds `PartialEq` to `WatchdogAction`.
+
+**Done when:** `grep -n 'allow(deprecated)' crates/kelir-otlp/src/registry_otlp.rs crates/kelir-interface/src/plugin_model.rs crates/kelir-plugins/plugin-replay/src/lib.rs` is empty; `grep -n 'watchdog_action_eq\|delete once' crates/kelir-plugin-testkit/src/vectors_testkit.rs` is empty; `cargo clippy -p kelir-otlp -p kelir-interface -p plugin-replay -p kelir-plugin-testkit` is clean.
+
+---
+
+## A4 — Core runtime & SDK façade
+
+**Scope:** `kelir-core/src/planes/checkpoint/mod.rs`, `kelir-core/src/session_lifecycle.rs`, `kelir/src/planes/storage_plane.rs`, plus any callers surfaced by grep.
+
+**Findings to close:**
+- **Finding 1** — Delete `PidLineage::new` (the `#[deprecated]` one) entirely. Grep the workspace for `PidLineage::new(` callers; migrate each to `PidLineage::new_in_session(root_pid, incarnation_id)` using the caller's available incarnation context. If a caller has no incarnation context, that caller is itself an L3 pending path — leave it as a TODO, do **not** re-add a shim. `Session::lineage` in `session_lifecycle.rs` already returns the safe form; leave it.
+- **Finding 5** — Delete `crates/kelir-core/src/session_lifecycle.rs::Session::from_parts` entirely, including the `// TODO (L2): from_parts is superseded …` comment and the `#[allow(clippy::too_many_arguments)]` attribute. Grep the workspace for `Session::from_parts` / `core::session_lifecycle::Session::from_parts` callers. `crates/kelir/src/session_lifecycle.rs::Session::from_parts` is a **different** function and is used by `builder_sdk.rs` — do not touch it.
+- **Finding 8** — In `crates/kelir/src/planes/storage_plane.rs`, change `pub use kelir_core::planes::storage::{..., MaskReadRule as MaskRule, ...}` to `pub use kelir_core::planes::storage::{..., MaskReadRule, ...}`. Grep `crates/` for `MaskRule` (with word boundary) — update each importer to `MaskReadRule`. If zero importers, nothing else to do.
+
+**Done when:** `grep -rn '#\[deprecated' crates/kelir-core crates/kelir` is empty; `grep -rn 'superseded' crates/kelir-core` is empty; `grep -rn 'MaskRule as\|::MaskRule\b' crates/` is empty; `cargo check --workspace` succeeds.
+
+---
+
+## A5 — CLI, shim, driver language & schema
+
+**Scope:** `kelir-catalog/*`, `kelir-plugin-cli/{main,layers_cli}.rs`, `kelir-shim/src/main.rs`, `kelir-drivers/driver-rustvmm/src/host_probe.rs`, `kelir-core/src/dispatch_plugin.rs`. **Comment-only edits in the last two; do not change code semantics.**
+
+**Findings to close:**
+- **Finding 3** — In `crates/kelir-catalog/src/schema_catalog.rs`:
+  - Rename `SCHEMA_V1_SQL` → `SCHEMA_SQL`. Update the sole caller in `kelir-catalog/src/lib.rs`.
+  - Remove the `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY);` statement from `SCHEMA_SQL`. Grep the workspace for `schema_version` (word boundary) first; if any query reads/writes it, abort and report to the merge lead — do not delete a live column.
+  - Do not add a replacement "schema version" table. L1/L2 has no migrations.
+- **Finding 6** — In `crates/kelir-plugin-cli/src/main.rs`, delete the alias match arms:
+  - `"check-layers" | "layers" => …` becomes `"check-layers" => …`. Only `check-layers` is the CLI verb.
+  - `"check-budgets" | "budgets" => …` becomes `"check-budgets" => …`.
+  - Check `README`, scripts, or test files for the removed aliases; if found, update those invocations to the canonical verb.
+- **Finding 9** — In `crates/kelir-shim/src/main.rs`, reword the `// TODO (L3): SPSC ring primary carrier …; the AF_VSOCK fallback carrier is wired below.` comment to describe what the code **is**: `// The AF_VSOCK carrier is wired below; the SPSC ring carrier per cans/11-protocol.md#Wire-framing replaces this transport once its ring allocation lands.` No "primary", no "fallback".
+- **Finding 10** — Reword the three "today"/"L2 … L3" comments to state what the code is or what is missing, without a before/after narrative:
+  - `host_probe.rs`: `// TODO (L3): gate every backend on a real capability probe; only kvm exposes a device node today.` → `// TODO (L3): gate every backend on a real capability probe; kvm is the only backend with a device-node surface.`
+  - `layers_cli.rs`: `// TODO (L3): …; the scan bans only core/driver/adapter prefixes today.` → `// TODO (L3): enforce the per-tier plugin-to-plugin rule per cans/02-plugin-model.md#Plugin-tiering; the scan bans core/driver/adapter prefixes only.`
+  - `dispatch_plugin.rs`: `// TODO (L3): exact token-bucket accounting; this native 1s window is the L2 pre-insertion rate gate.` → `// TODO (L3): exact token-bucket accounting; the 1s window below is the pre-insertion rate gate.`
+  - No code changes in these files beyond the reworded comments.
+
+**Done when:** `grep -rn 'SCHEMA_V1_SQL\|schema_version' crates/kelir-catalog` is empty; `grep -rn 'check-layers\|check-budgets' crates/kelir-plugin-cli` matches only the single-arm forms; `grep -rn 'today\|fallback carrier\|primary carrier\|L2 .* L3' crates/kelir-shim/src/main.rs crates/kelir-drivers/driver-rustvmm/src/host_probe.rs crates/kelir-plugin-cli/src/layers_cli.rs crates/kelir-core/src/dispatch_plugin.rs` is empty.
+
+---
+
+## Merge protocol
+
+1. **A1 and A4 may land first**, in either order. A1's `PartialEq` derive is a no-op for codegen; A4's deletions are dead-code. Run `cargo check --workspace` after each.
+2. **A5 lands next.** No codegen input is touched. `cargo check --workspace` must stay green.
+3. **A3 lands next.** It needs A1's `PartialEq` to compile `vectors_testkit.rs`. `cargo clippy --workspace --all-features` must stay green.
+4. **A2 lands last.** Run `cargo run -p kelir-interface --bin codegen`, inspect `git diff`, commit the regenerated files. Then rerun to confirm idempotence.
+5. **Merge lead runs the Verification gate** in full. Any grep producing output re-opens the offending agent.
+6. **Do not squash commits across agents.** Each agent's diff must be self-contained so a revert is surgical.
+
+---
+
+## What NOT to do
+
+- Do **not** add `#[deprecated]`, `#[allow(deprecated)]`, `#[serde(alias)]`, `type X = Y`, `pub use … as …`, or a dual CLI verb anywhere in the tree. Those are the exact smells this work order removes.
+- Do **not** implement any `// TODO (L3):`. The diff stays a cleanup.
+- Do **not** rename anything outside the two renames listed (ReceiptExtension, NativeSnapshotDescriptorRecord). In particular, `SnapshotDescriptor`, `TelemetryExtension` at the wire level if it exists, `MaskReadRule`, and the `StreamKind::Exec` default are unchanged in *meaning* — only in spelling/derive form as specified.
+- Do **not** touch the `#[non_exhaustive]` derives, `serde(rename_all = "camelCase")`, `Session::attach`, the `kelir/src/session_lifecycle.rs::Session::from_parts` (the used one), or `MaskReadRule`'s struct definition. The prior audit cleared those as forward-compat, not diff-apologetics.
+- Do **not** commit a codegen output that differs from a second run — if the second run writes anything, the emitter is non-deterministic; stop and report.
