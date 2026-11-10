@@ -53,8 +53,10 @@
       - sccache enabled via SCCACHE_GHA_ENABLED
       - Hard performance budget gate
         - Budgets in perf/budgets.toml enforced strictly with enforce = true
+        - Fast-boot mmap hydration budget: <500µs target (fallback <60ms)
+        - Idle memory contraction budget: <4MB RSS via madvise reclaim
         - Regressions in Gate 1, Gate 2 (<2µs), or Gate 3 abort CI run
-        - Cold-boot and RSS purge (<50ms) violations fail with exit code 1
+        - Cold-boot (<60ms) and RSS purge (<50ms) violations fail exit code 1
     - Per-plugin matrix: each plugin fails independently
     - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
     - External plugin CI: contract attestation via reusable workflow
@@ -161,6 +163,14 @@
       - Asserts monotonic clock does not regress across restore
       - Asserts CLOCK_MONOTONIC never produces negative deltas across fork branches
       - Enforcement: plugin-replay cell, CI test-plugins matrix
+    - --fast-boot-coverage
+      - Asserts base snapshot cache hit, miss, drift, and backend-change paths
+      - Case files: hd-fast-boot-hit, -miss, -drift, -backend-change
+      - Enforcement: Stage 2 (KVM), Stage 3 (HVF); WHP and AVF skip with notice
+    - --dax-coverage
+      - Asserts DAX available, DAX unavailable, and DAX window teardown
+      - Case files: sp-dax-available, sp-dax-fallback, sp-dax-teardown
+      - Enforcement: Stage 2 (KVM) and Stage 3 (HVF); Windows WHP skips
     - Flag-drift gate
       - CI calls `just check-spec`, not raw flags
       - Flag string lives only in the justfile
@@ -169,6 +179,7 @@
     - Manifest invariant
       - Every physical case file references exactly one normative spec anchor
       - Untracked test cases or unanchored assertions fail check-manifest
+      - Phase 6 additions: 4 fast-boot cases, 3 DAX cases, 2 snapshot cases
 
   - Per-plugin CI
     - Per-plugin specs

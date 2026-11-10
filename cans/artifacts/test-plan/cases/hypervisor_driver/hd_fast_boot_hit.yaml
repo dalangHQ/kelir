@@ -1,0 +1,77 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_fast_boot_hit"
+title: "Fast-boot cache hit hydrates base memory via mmap in under 500us; cold fallback under 60ms"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "kvm"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Boot-budget"
+  statement: "Warm boot mmaps the cached base snapshot (cas/blobs/blake3_<hash>) in <500us; cache miss, drift, or corruption falls back to standard cold boot in <60ms. Gap: the FastBootMode::Auto/Enabled driver boot path is a TODO (L3); mmap hydration and the cas_leases write are specified against cans/08-lifecycle.md#Autonomous-fast-boot-hydration, not a live driver path."
+  blast_radius_if_breached: "Warm starts degrade to cold-boot latency on every boot, breaking sub-500us serverless agent start."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts boot Ok without checking host stopwatch to first guest exec."
+  anti_slop_mitigation: "AS-02 asserts hydrated base bytes equal cached snapshot bytes with FastBootMode::Auto applied; AS-06 enforces the literal 500us warm-boot bound."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_fast_boot_hit"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      allow_emulated_fallback: false
+    fast_boot: "auto"
+    cache_state: "populated"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "builder.fast_boot(FastBootMode::Auto).boot().await with populated base snapshot cache"
+  input_params:
+    cache_key_inputs: "vmlinux || erofs || boot_params || driver_id"
+    warm_boot_budget_us: 500
+    cold_boot_budget_ms: 60
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.boot"
+    culprit: "none — warm boot hydrated base snapshot in under 500us"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "driver.boot_complete"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(fast_boot_mode, FastBootMode::Auto); assert_eq!(hydrated_base_bytes, cached_base_bytes);"
+  - rule: "AS-06"
+    verification: "assert!(warm_boot.elapsed() < Duration::from_micros(500)); assert!(cold_boot.elapsed() < Duration::from_millis(60));"

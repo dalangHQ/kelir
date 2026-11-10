@@ -36,6 +36,9 @@
         - Snapshots capture compute + disk, not distributed network state
         - Rollback closes session sockets; guests observe ECONNRESET
         - Lifecycle rollback boundary: see: 08-lifecycle.md#Rollback
+        - Base snapshots are engine-internal; never user-visible state
+        - User snapshots and CausalDelta chains ignore base snapshots
+        - see: 08-lifecycle.md#Autonomous-fast-boot-hydration
       - Strict hardware/kernel abstraction layer
         - Zero knowledge of prompts, evaluation loops, or orchestration logic
         - Operates strictly on physical primitives: pages, registers, descriptors, frames
@@ -176,7 +179,7 @@
         - Unconfigurable; profile cannot remove the device
     - Paravirtual Auxiliaries
       - virtio-blk: read-only EROFS rootfs block device
-      - virtio-shm: zero-copy shared memory regions with host memory barriers
+      - virtio-shm: zero-copy shared memory regions and DAX backing windows
       - virtio-wdt: hardware watchdog with structured diagnostic export
       - virtio-balloon: host dynamic memory reclamation
   - Shared memory channel
@@ -281,7 +284,9 @@
   - Guest VM anatomy
     - see: [5]
     - Boot budget
-      - Cold boot target: see: [6] (boot)
+      - Cold boot target: <60ms to first workload exec (unchanged)
+      - Fast-boot target: <500µs via autonomous base snapshot mmap
+      - Cold-boot fallback: <60ms; cache miss, drift, or corruption
       - Measurement: host-side stopwatch to first workload exec
       - ACPI + PCI probing alone is ~40ms; kernel is built without both
       - Every device below earns its millisecond against that budget

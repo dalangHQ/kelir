@@ -75,6 +75,14 @@ class ShimProfile(BaseModel):
     anti_toctou_cgroups: ProfileBool | None = None
 
 
+class DriverProfile(BaseModel):
+    fast_boot: str | None = None
+
+
+class StorageProfile(BaseModel):
+    dax_window: str | None = None
+
+
 class SessionProfile(BaseModel):
     id: str | None = None
     topology: str | None = None
@@ -85,6 +93,8 @@ class SessionProfile(BaseModel):
     devices: DevicesProfile | None = None
     artifacts: ArtifactsProfile | None = None
     shim: ShimProfile | None = None
+    driver: DriverProfile | None = None
+    storage: StorageProfile | None = None
 
 
 # TODO (L3): route non-session namespaces to their ConfigurablePlugin schema owners per cans/plugins/profile.md#Inversion-of-Control-configuration-router.

@@ -241,7 +241,21 @@ parity: build-ts
 # Fast static gates plus pure-memory unit tests only: zero
 # hypervisor calls. check-canon stays its own recipe (it runs
 # test-all and lives in CI); hardware lives in test-integration.
-pre-flight: check-manifest check-tests check-spec test-unit
+pre-flight: check-manifest check-tests check-spec check-fast-boot check-dax test-unit
+
+# --fast-boot-coverage: cache hit, miss, drift, backend-change paths.
+# --no-tests pass: the filter selects the 4 hd_fast_boot stubs in
+# kelir-integration/tests/full_pipeline_test.rs (#[ignore], run via test-red);
+# it must not fail the run when the stubs are absent. Scoped to
+# kelir-integration; -p kelir-core --lib is wrong here — the kelir-core
+# integration suite does not compile at base (E0063 in receipt_attest_test.rs,
+# pre-existing).
+check-fast-boot:
+    cargo nextest run -p kelir-integration -E 'test(hd_fast_boot)' --no-tests pass
+
+# --dax-coverage: DAX available, unavailable, teardown paths.
+check-dax:
+    cargo nextest run -p kelir-integration -E 'test(sp_dax)' --no-tests pass
 
 check-canon:
     ./scripts/check-canon.sh

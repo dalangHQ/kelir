@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_dax_teardown"
+title: "Session terminate with refcount zero unmaps Stage-2 and releases the host memfd; pages untouched"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "kvm"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#EROFS-DAX-execution"
+  statement: "Window teardown unmaps Stage-2 on session terminate; refcount zero releases the host memfd; host EROFS pages are untouched and rollback never touches the window. Gap: no DaxWindow type exists until L3; DaxWindowMode is a builder-only stub in crates/kelir/src/builder_sdk.rs, so teardown is specified against cans/05-storage-plane.md#EROFS-DAX-execution, not a live unmap path."
+  blast_radius_if_breached: "A leaked Stage-2 mapping or memfd pins host memory after terminate; a touched host page corrupts the shared read-only EROFS image for other sessions."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts terminate Ok without checking Stage-2 is unmapped and the memfd released."
+  anti_slop_mitigation: "AS-02 asserts refcount is 0, Stage-2 is unmapped, the host memfd is released, and host page writes observed are 0."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.broker"
+    agent_id: "agt_sp_dax_teardown"
+    trust: "reviewed"
+  initial_state:
+    workspace_file: "README.md"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Session boots with dax_window auto, forks once, then terminates; host EROFS pages observed across teardown"
+  input_params:
+    dax_window: "auto"
+    forks: 1
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "storage.dax_teardown"
+    culprit: "none — Stage-2 unmapped, host memfd released, pages untouched"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    window_refcount: 0
+    stage2_mapped: false
+    host_memfd_released: true
+    host_page_writes_observed: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "storage.dax_window_released"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(window.refcount(), 0); assert_eq!(window.stage2_mapped(), false); assert_eq!(window.memfd_released(), true); assert_eq!(host_pages.writes_observed(), 0);"

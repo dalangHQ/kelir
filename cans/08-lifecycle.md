@@ -35,6 +35,17 @@
       - Token injection and verification path: see: 01-architecture.md#Guest-VM-anatomy
       - Bare-metal executions lack the paravirtual token and abort immediately
       - Protects developers running harness scripts natively by mistake
+    - Autonomous fast-boot hydration
+      - Engine caches base memory snapshot on first clean VmReady transition
+      - Cache key: BLAKE3(vmlinux || erofs || boot_params || driver_id)
+      - Cache blob path: cas/blobs/blake3_<hash>; carries a cas_leases row
+      - Subsequent boots mmap(MAP_PRIVATE) base memory in <500µs
+      - Cache miss, command drift, or corruption triggers standard cold boot
+      - Capture happens after every on_vm_ready returns; before first spawn
+      - Driver id recorded at first boot; mismatch invalidates cache cleanly
+      - Infallible fallback: cache miss never errors, never changes SDK surface
+      - `enabled` mode errors with EFastBootUnavailable on cache miss
+      - `auto` mode falls back to cold boot on any miss; populates cache
   - CoW fork
     - Driver primitive: fork returns Box<dyn VmmDriver>
       - see: [1]

@@ -48,6 +48,10 @@ driver:
   # PermissiveAudit: Logs dynamic PROT_EXEC to ledger and allows continuation.
   wx_enforcement: Strict
 
+  # Fast-boot via autonomous base snapshot mmap hydration.
+  # off: always cold boot. auto: try cache, fall back to cold. enabled: require cache.
+  fast_boot: "off"
+
   # Foreign language FFI execution gate (NAPI / PyO3 trampoline isolation).
   ffi_boundary:
     worker_threads: 2
@@ -121,6 +125,14 @@ session:
     hide_pid: 2                       # Remounts /proc with hidepid=2 to conceal peer processes
     anti_toctou_cgroups: true         # Freezes task group via cgroup v2 during syscall traps
 
+  # Session-scoped driver boot knobs; mirror of top-level driver.fast_boot.
+  driver:
+    fast_boot: "off"
+
+  # Session-scoped storage boot knobs; mirror of top-level storage.dax_window.
+  storage:
+    dax_window: "off"
+
 # ==============================================================================
 # KELIR CANONICAL SPECIFICATION PROFILE: kelir.yaml
 # PART 2/4: STORAGE & WIRE ENGINE PLANES
@@ -137,6 +149,10 @@ storage:
   # Locked: Workspace directory chmod 000 on host SSD; only hypervisor fd has access.
   # Passthrough: Normal host permissions retained.
   encapsulation: Locked
+
+  # DAX window over virtio-shm for EROFS rootfs. off: no virtio-shm DAX region.
+  # auto: enable when host supports memfd + Stage-2 map. size_mb: exact window.
+  dax_window: "off"
 
   # VirtIO-FS Host Copy-on-Write (CoW) Broker (Zero in-guest OverlayFS).
   cow_broker:

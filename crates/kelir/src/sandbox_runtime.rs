@@ -43,6 +43,10 @@ pub struct SessionProfile {
     pub artifacts: Option<ArtifactsProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shim: Option<ShimProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub driver: Option<DriverProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage: Option<StorageProfile>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -153,6 +157,20 @@ pub struct ShimProfile {
     pub hide_pid: Option<u8>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anti_toctou_cgroups: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DriverProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fast_boot: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dax_window: Option<String>,
 }
 
 impl SandboxProfile {

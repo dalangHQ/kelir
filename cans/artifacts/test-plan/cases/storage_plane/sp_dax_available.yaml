@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_dax_available"
+title: "DAX window maps clean EROFS pages read-only via virtio-shm; guest RAM stays under 8MB"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "kvm"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#EROFS-DAX-execution"
+  statement: "DAX window maps clean EROFS pages via virtio-shm tag kelir.dax.erofs; host frames shared read-only, guest page cache bypassed, rootfs working set under 8MB. Gap: no DaxWindow type exists until L3; DaxWindowMode is a builder-only stub in crates/kelir/src/builder_sdk.rs, so the window is specified against cans/05-storage-plane.md#EROFS-DAX-execution, not a live map path."
+  blast_radius_if_breached: "Guest page cache duplicates host EROFS pages, rootfs working set returns to 64MB and warm-start density is lost."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts DAX Ok without checking host frames are shared read-only."
+  anti_slop_mitigation: "AS-02 asserts window tag is kelir.dax.erofs, frames are read-only, and guest RAM for the rootfs working set is under 8MB."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.broker"
+    agent_id: "agt_sp_dax_available"
+    trust: "reviewed"
+  initial_state:
+    workspace_file: "README.md"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Session boots with dax_window auto; guest reads clean EROFS pages from the rootfs working set"
+  input_params:
+    dax_window: "auto"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "storage.dax"
+    culprit: "none — DAX window maps host EROFS frames read-only"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    dax_window_mapped: true
+    guest_ram_mb: 7
+    host_frames_shared_read_only: true
+    guest_page_cache_bypassed: true
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "storage.dax_window_mapped"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(window.tag(), \"kelir.dax.erofs\"); assert!(window.frames_read_only()); assert!(window.guest_ram_mb() < 8);"

@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "sp_dax_fallback"
+title: "DAX window failure falls back to FUSE chunked reads serving identical bytes"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "kvm"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#EROFS-DAX-execution"
+  statement: "If the DAX window fails, reads fall back transparently to standard FUSE chunked reads serving bytes identical to the DAX path. Gap: no DaxWindow type exists until L3; DaxWindowMode is a builder-only stub in crates/kelir/src/builder_sdk.rs, so the fallback is specified against cans/05-storage-plane.md#EROFS-DAX-execution, not a live map path."
+  blast_radius_if_breached: "A failed DAX window surfaces as a guest read error instead of transparent fallback, breaking rootfs reads on hosts without memfd or Stage-2 map."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts fallback Ok without comparing fallback bytes to the DAX-path bytes."
+  anti_slop_mitigation: "AS-02 asserts the FUSE fallback chunk equals the DAX-path chunk byte for byte and the guest read still succeeds."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "storage.broker"
+    agent_id: "agt_sp_dax_fallback"
+    trust: "reviewed"
+  initial_state:
+    workspace_file: "README.md"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Session boots with dax_window auto on a host where the virtio-shm map fails; guest reads a clean EROFS page"
+  input_params:
+    dax_window: "auto"
+    window_map_fails: true
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "storage.dax_fallback"
+    culprit: "none — FUSE chunked reads serve identical bytes"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    dax_window_mapped: false
+    fallback_served_via: "fuse_chunked"
+    fallback_bytes: 4096
+    bytes_identical: true
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "storage.dax_fallback_served"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(fallback.chunk_len(), 4096); assert_eq!(fallback.bytes(), dax.bytes()); assert_eq!(fallback.served_via(), \"fuse_chunked\");"

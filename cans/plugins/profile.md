@@ -63,6 +63,8 @@
       - see: artifacts/examples/fixtures/kelir.yaml#invariants.inheritance_lattice
       - see: artifacts/examples/fixtures/kelir.yaml#invariants.memory_safety
       - Unsafe code is forbidden outside driver/transport enclaves
+      - fast_boot and dax_window default to off; absent keys allocate zero
+      - Flipping either default requires a spec change, not a release note
   - Driver engine schema (profile)
     - Driver semantics: see: 01-architecture.md#VmmDriver-trait
     - see: artifacts/examples/fixtures/kelir.yaml#driver.backend
@@ -77,6 +79,9 @@
       - driver.ffi_boundary.queue_capacity: TBD (no DriverPolicy field yet)
       - driver.ffi_boundary.max_buffer_bytes: TBD (no DriverPolicy field yet)
       - FFI keys map to DriverPolicy ffi_worker_threads, ffi_max_ops_per_sec
+      - driver.fast_boot: auto | enabled | off (default: off)
+      - driver.fast_boot routes to KelirBuilder::fast_boot at boot; no struct field
+      - driver.fast_boot: TBD (no DriverPolicy field yet; builder method only)
   - Session compute schema (profile)
     - Session compute semantics: see: artifacts/code/vmm-driver-trait.rs
     - Session identity (profile)
@@ -125,6 +130,9 @@
       - see: artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.tombstone_tracking
       - see: artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.rollback_purge
       - see: artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.dir_merge_cache
+      - storage.dax_window: auto | off | <size_mb> (default: off)
+      - storage.dax_window routes to KelirBuilder::dax_window at boot; no struct field
+      - storage.dax_window: TBD (no StorageConfig field yet; builder method only)
     - Storage reconciler (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#storage.reconciler.atomic_leaf_commit
       - see: artifacts/examples/fixtures/kelir.yaml#storage.reconciler.traversal_guard

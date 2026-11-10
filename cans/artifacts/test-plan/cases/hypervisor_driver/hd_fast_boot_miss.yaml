@@ -1,0 +1,75 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_fast_boot_miss"
+title: "Fast-boot cache miss falls through to cold boot with no error to the SDK caller"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "kvm"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Autonomous-fast-boot-hydration"
+  statement: "With fast_boot auto and an empty base snapshot cache, boot falls through to standard cold boot in <60ms; the miss never errors and never changes the SDK surface, and the cache is populated for the next boot. Gap: the FastBootMode driver boot path is a TODO (L3); the fallback is specified against cans/08-lifecycle.md#Autonomous-fast-boot-hydration, not a live driver path."
+  blast_radius_if_breached: "A cache miss surfaces as a boot failure instead of a silent cold boot, breaking first-boot and cache-evicted sessions."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts boot Ok without checking the boot path was cold and the SDK saw no error."
+  anti_slop_mitigation: "AS-02 asserts the boot path is cold with FastBootMode::Auto applied and no SDK error raised; AS-06 enforces the literal 60ms cold-boot bound."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_fast_boot_miss"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      allow_emulated_fallback: false
+    fast_boot: "auto"
+    cache_state: "empty"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "builder.fast_boot(FastBootMode::Auto).boot().await with empty base snapshot cache"
+  input_params:
+    cold_boot_budget_ms: 60
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.boot"
+    culprit: "none — cache miss fell through to cold boot"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "driver.boot_complete"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(fast_boot_mode, FastBootMode::Auto); assert!(sdk_error.is_none()); assert_eq!(boot_path, BootPath::Cold);"
+  - rule: "AS-06"
+    verification: "assert!(cold_boot.elapsed() < Duration::from_millis(60));"
