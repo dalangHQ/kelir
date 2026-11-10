@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_base_snapshot_lifecycle"
+title: "Base snapshot is engine-internal: absent from user lineage and export_snapshot"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "kvm"
+
+invariant:
+  law_reference: "cans/09-snapshots.md#Base-snapshot-(engine-internal)"
+  statement: "The autonomous base snapshot is engine-internal: stored under cas/blobs with parent_digest None, absent from CheckpointPlane::lineage(head), absent from Session::export_snapshot output, and excluded from user-visible CausalDelta chains. Gap: capture and hydration are L3 (Session::export_snapshot is a TODO (L3) stub in crates/kelir-core/src/session_lifecycle.rs), so the exclusion is specified against cans/09-snapshots.md#Base-snapshot-(engine-internal), not a live capture path."
+  blast_radius_if_breached: "Engine-internal base state leaks into user lineage or exported archives, breaking snapshot portability and polluting user CausalDelta chains with host-internal digests."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts export_snapshot Ok without checking the archive manifest for the base digest."
+  anti_slop_mitigation: "AS-02 asserts the base node id is absent from CheckpointPlane::lineage(head) and the exported manifest carries no base digest."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.manager"
+    agent_id: "agt_lc_base_snapshot_lifecycle"
+    trust: "reviewed"
+  initial_state:
+    fast_boot: "auto"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Boot with fast_boot auto; capture base snapshot at VmReady; query CheckpointPlane::lineage(head); call Session::export_snapshot"
+  input_params:
+    fast_boot: "auto"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "lifecycle.snapshot"
+    culprit: "none — base snapshot excluded from user-visible state"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "lifecycle.base_snapshot_excluded"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(checkpoint.lineage(head).map(|chain| chain.contains(&base_node_id)), Ok(false)); assert!(!exported_manifest.contains(base_digest));"

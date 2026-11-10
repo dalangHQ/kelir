@@ -1,0 +1,76 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_fast_boot_drift"
+title: "Command drift changes the BLAKE3 cache key, invalidates the base snapshot, and cold boots"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "kvm"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Autonomous-fast-boot-hydration"
+  statement: "When vmlinux, erofs, or boot_params change, the recomputed BLAKE3(vmlinux || erofs || boot_params || driver_id) key differs from the stored key, the cached base snapshot is invalidated, and boot proceeds as a standard cold boot in <60ms. Gap: the FastBootMode driver boot path is a TODO (L3); key recomputation is specified against cans/08-lifecycle.md#Autonomous-fast-boot-hydration, not a live driver path."
+  blast_radius_if_breached: "Stale base snapshots hydrate after a kernel or rootfs change, booting the wrong guest image."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts cold boot without checking the cache key actually changed."
+  anti_slop_mitigation: "AS-02 asserts the recomputed key differs from the stored key and the boot path is cold; AS-06 enforces the literal 60ms cold-boot bound."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "agent.runtime"
+    agent_id: "agt_hd_fast_boot_drift"
+    trust: "reviewed"
+  initial_state:
+    driver_policy:
+      backend: "auto"
+      allow_emulated_fallback: false
+    fast_boot: "auto"
+    cache_state: "populated"
+    changed_input: "boot_params"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "builder.fast_boot(FastBootMode::Auto).boot().await after boot_params change with populated cache"
+  input_params:
+    cold_boot_budget_ms: 60
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "driver.boot"
+    culprit: "none — drifted cache key invalidated snapshot, cold boot proceeded"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "driver.boot_complete"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_ne!(cache_key, stored_cache_key); assert_eq!(boot_path, BootPath::Cold);"
+  - rule: "AS-06"
+    verification: "assert!(cold_boot.elapsed() < Duration::from_millis(60));"

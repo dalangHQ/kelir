@@ -3,6 +3,8 @@
     - Storage plane attributes
       - see: artifacts/diagrams/storage-architecture.txt
       - Owner: kelir-core native storage subsystem (kelir-core::storage)
+      - DAX window lifecycle governed by boot config, not plugin state
+      - DAX window is not a stream kind; it is a host-side memory mapping
     - Single storage abstraction
       - VirtIO-FS only; no in-guest OverlayFS, no virtio-blk workspace disk
       - Host broker implements CoW layering, deletion tracking, quota, commit
@@ -24,6 +26,16 @@
     - Stripped base system pre-baked into read-only EROFS
     - Cold-mounted as virtio-blk block device in <2ms
     - Zero tarball decompression
+    - EROFS DAX execution
+      - Maps clean EROFS pages directly via virtio-shm window (tag: kelir.dax.erofs)
+      - Bypasses guest page cache; host physical frames shared read-only
+      - Cuts guest RAM for rootfs working set from 64MB to <8MB
+      - Sizing: dax_window bytes; absent key allocates zero virtio-shm regions
+      - Transparent fallback to standard FUSE chunked reads if DAX window fails
+      - Window teardown unmaps Stage-2 on session terminate; pages untouched
+      - Window refcount is per-EROFS-image; fork increments, terminate decrements
+      - Rollback does not touch the window; EROFS pages are immutable
+      - Refcount zero unmaps Stage-2 and releases the host memfd on terminate
   - Host CoW broker
     - Base workspace mounted strictly read-only as host broker lower layer
     - Writes land in per-session sparse upper file owned by the broker

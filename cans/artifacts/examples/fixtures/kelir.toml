@@ -17,6 +17,7 @@ require_hardware_vmm = true
 allow_emulated_fallback = false
 verify_hw_lockfile = true
 wx_enforcement = "Strict"
+fast_boot = "off"
 
 [driver.ffi_boundary]
 worker_threads = 2
@@ -70,6 +71,14 @@ kernel_boot_params = ["kptr_restrict=2", "dmesg_restrict=1", "panic_on_oops=1", 
 max_exec_slots = 4096
 hide_pid = 2
 anti_toctou_cgroups = true
+
+# Session-scoped driver boot knobs; mirror of top-level driver.fast_boot.
+[session.driver]
+fast_boot = "off"
+
+# Session-scoped storage boot knobs; mirror of top-level storage.dax_window.
+[session.storage]
+dax_window = "off"
 
 [plugins.ledger]
 enabled = true
@@ -245,6 +254,7 @@ exec_seconds = 300
 [storage]
 workspace_root = "/workspace/repo"
 encapsulation = "Locked"
+dax_window = "off"
 
 [storage.cow_broker]
 enabled = true

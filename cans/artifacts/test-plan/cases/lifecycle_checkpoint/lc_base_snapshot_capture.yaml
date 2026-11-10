@@ -1,0 +1,69 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_base_snapshot_capture"
+title: "Base snapshot capture runs after every on_vm_ready returns and before first spawn"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "linux"
+  arch: "x86_64"
+  hypervisor: "kvm"
+
+invariant:
+  law_reference: "cans/08-lifecycle.md#Autonomous-fast-boot-hydration"
+  statement: "Capture happens at the end of the builder.boot().await return edge, after every on_vm_ready handler has returned and VmReady has transitioned to Running, and before the first Session::spawn. Gap: the capture hook is L3 (finish_boot runs run_lifecycle_hook(LifecycleEvent::VmReady) in crates/kelir/src/builder_sdk.rs; no capture exists yet), so ordering is specified against cans/08-lifecycle.md#Autonomous-fast-boot-hydration, not a live capture path."
+  blast_radius_if_breached: "Capture before VmReady handlers return snapshots half-initialized guest state; capture after first spawn bakes workload side effects into every later fast boot."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts boot Ok without checking capture ordering against on_vm_ready return."
+  anti_slop_mitigation: "AS-02 asserts the capture sequence follows the last on_vm_ready return and precedes the first spawn."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "lifecycle.manager"
+    agent_id: "agt_lc_base_snapshot_capture"
+    trust: "reviewed"
+  initial_state:
+    fast_boot: "auto"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Register on_vm_ready handler; boot with fast_boot auto; record capture sequence; spawn first workload"
+  input_params:
+    fast_boot: "auto"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "lifecycle.fast_boot"
+    culprit: "none — capture ordered after VmReady handlers, before first spawn"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "lifecycle.base_snapshot_captured"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert!(capture_sequence > vm_ready_sequence); assert_eq!(spawns_before_capture, 0);"

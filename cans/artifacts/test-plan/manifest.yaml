@@ -5,7 +5,7 @@ plan:
   name: "kelir canonical test plan"
   structure_doc: "cans/artifacts/test-plan/test-plan-structure.md"
   matrix_doc: "cans/artifacts/test-plan/matrix.yaml"
-  total_cases: 245
+  total_cases: 254
   domains: 17
   crate_tier_convention:
     unit: "crates/kelir-core"
@@ -16,7 +16,7 @@ plan:
 domains:
   hypervisor_driver:
     prefix: "hd"
-    case_count: 24
+    case_count: 28
     description: "VmmDriver abstraction, KVM/HVF/WHP/AVF hardware virtualization, register/MMU rollback, CPUID synthetic filters, cold-boot budgets (<50ms)."
   virtio_rings:
     prefix: "vr"
@@ -28,7 +28,7 @@ domains:
     description: "VirtIO-console Port 0 PTY, line discipline, token shield, ANSI sanitizer (OSC 52/title drops), EXEC stream mux, append-only cursor stream replay."
   storage_plane:
     prefix: "sp"
-    case_count: 22
+    case_count: 25
     description: "VirtIO-FS host CoW broker, sparse upper file, tombstone tracking, atomic leaf commit, containment engine (openat2), synthetic FUSE inodes, quotas."
   wire_plane:
     prefix: "wp"
@@ -36,7 +36,7 @@ domains:
     description: "Embedded smoltcp netstack, default-deny ingress, L4 diversion, DNS policy filter, synthetic gateway (192.168.127.1:53), UDP NAT slab reaper."
   lifecycle_checkpoint:
     prefix: "lc"
-    case_count: 23
+    case_count: 25
     description: "Hypervisor state machine, CoW fork (userfaultfd / Mach vm_copy), instant rollback (<8ms), suspend to NVMe (0MB RSS, <50ms), step evaluation loops."
   attestation_receipts:
     prefix: "ar"
@@ -84,7 +84,7 @@ domains:
     description: "Python SDK bindings parity: boot-time EConfig on missing Pydantic v2 dependency, ./vectors.json frame/verdict equality, AOT hook fusion single FFI trampoline."
 
 cases:
-  # ── Domain 1: hypervisor_driver (hd) [24 cases] ───────────────
+  # ── Domain 1: hypervisor_driver (hd) [28 cases] ───────────────
   - case_id: "hd_01_nohardware_vmm_fatal_abort"
     file: "cases/hypervisor_driver/hd_01_nohardware_vmm_fatal_abort.yaml"
     domain: "hypervisor_driver"
@@ -253,6 +253,34 @@ cases:
     target_crate: "crates/kelir-drivers/driver-openvmm"
     quadrant: "true_positive"
     title: "OpenVmmDriver construction on Windows succeeds with the partition handle unset (0); WHP is touched only at boot"
+  - case_id: "hd_fast_boot_backend_change"
+    file: "cases/hypervisor_driver/hd_fast_boot_backend_change.yaml"
+    domain: "hypervisor_driver"
+    target_tier: "integration"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_positive"
+    title: "Backend change invalidates the base snapshot via the driver_id cache key component"
+  - case_id: "hd_fast_boot_drift"
+    file: "cases/hypervisor_driver/hd_fast_boot_drift.yaml"
+    domain: "hypervisor_driver"
+    target_tier: "integration"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_positive"
+    title: "Command drift changes the BLAKE3 cache key, invalidates the base snapshot, and cold boots"
+  - case_id: "hd_fast_boot_hit"
+    file: "cases/hypervisor_driver/hd_fast_boot_hit.yaml"
+    domain: "hypervisor_driver"
+    target_tier: "integration"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_positive"
+    title: "Fast-boot cache hit hydrates base memory via mmap in under 500us; cold fallback under 60ms"
+  - case_id: "hd_fast_boot_miss"
+    file: "cases/hypervisor_driver/hd_fast_boot_miss.yaml"
+    domain: "hypervisor_driver"
+    target_tier: "integration"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_positive"
+    title: "Fast-boot cache miss falls through to cold boot with no error to the SDK caller"
 
   # ── Domain 2: virtio_rings (vr) [15 cases] ────────────────────
   - case_id: "vr_01_spsc_ring_lockfree_transit"
@@ -468,7 +496,7 @@ cases:
     quadrant: "true_positive"
     title: "kelir-shim open_pty_slave returns a distinct master/slave fd pair with bytes flowing master to slave"
 
-  # ── Domain 4: storage_plane (sp) [22 cases] ───────────────────
+  # ── Domain 4: storage_plane (sp) [25 cases] ───────────────────
   - case_id: "sp_01_host_cow_upper_discard_on_rollback"
     file: "cases/storage_plane/sp_01_host_cow_upper_discard_on_rollback.yaml"
     domain: "storage_plane"
@@ -623,6 +651,27 @@ cases:
     target_crate: "crates/kelir-catalog"
     quadrant: "true_negative"
     title: "CatalogDb heartbeat_lease renews only the holder lease and disk_lock_handoff returns false on CAS mismatch"
+  - case_id: "sp_dax_available"
+    file: "cases/storage_plane/sp_dax_available.yaml"
+    domain: "storage_plane"
+    target_tier: "integration"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_positive"
+    title: "DAX window maps clean EROFS pages read-only via virtio-shm; guest RAM stays under 8MB"
+  - case_id: "sp_dax_fallback"
+    file: "cases/storage_plane/sp_dax_fallback.yaml"
+    domain: "storage_plane"
+    target_tier: "integration"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_positive"
+    title: "DAX window failure falls back to FUSE chunked reads serving identical bytes"
+  - case_id: "sp_dax_teardown"
+    file: "cases/storage_plane/sp_dax_teardown.yaml"
+    domain: "storage_plane"
+    target_tier: "integration"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_positive"
+    title: "Session terminate with refcount zero unmaps Stage-2 and releases the host memfd; pages untouched"
 
   # ── Domain 5: wire_plane (wp) [17 cases] ──────────────────────
   - case_id: "wp_01_default_deny_ingress_drop"
@@ -745,7 +794,7 @@ cases:
     quadrant: "true_positive"
     title: "IngressRoutingService park_connection parks an L4 forward frame and reports Parked while the session suspends"
 
-  # ── Domain 6: lifecycle_checkpoint (lc) [23 cases] ────────────
+  # ── Domain 6: lifecycle_checkpoint (lc) [25 cases] ────────────
   - case_id: "lc_01_cow_fork_warm_memory_sharing"
     file: "cases/lifecycle_checkpoint/lc_01_cow_fork_warm_memory_sharing.yaml"
     domain: "lifecycle_checkpoint"
@@ -907,6 +956,20 @@ cases:
     target_crate: "crates/kelir-plugins/plugin-replay"
     quadrant: "true_positive"
     title: "ReplayPlugin with a fixed deterministic RNG seed reproduces identical step windows across replays"
+  - case_id: "lc_base_snapshot_capture"
+    file: "cases/lifecycle_checkpoint/lc_base_snapshot_capture.yaml"
+    domain: "lifecycle_checkpoint"
+    target_tier: "integration"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_positive"
+    title: "Base snapshot capture runs after every on_vm_ready returns and before first spawn"
+  - case_id: "lc_base_snapshot_lifecycle"
+    file: "cases/lifecycle_checkpoint/lc_base_snapshot_lifecycle.yaml"
+    domain: "lifecycle_checkpoint"
+    target_tier: "integration"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_positive"
+    title: "Base snapshot is engine-internal: absent from user lineage and export_snapshot"
 
   # ── Domain 7: attestation_receipts (ar) [14 cases] ────────────
   - case_id: "ar_01_execution_receipt_blake3_binding"

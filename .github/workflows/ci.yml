@@ -23,10 +23,11 @@ env:
 # Corrections to the work-order, verified against the live tree:
 # - SDK parity vectors live at ./vectors.json (repo root); the
 #   work-order's tests/vectors/vectors.json does not exist.
-# - The invariant total is 240, not 208 (196 + 12 adapters_ingestion
+# - The invariant total is 254, not 208 (196 + 12 adapters_ingestion
 #   + 4 concurrency/fault-injection + 6 bindings + 22 coverage-gap
-#   cases); the aggregator asserts 240 against manifest truth.
-# - platform_target exists on all 240 cases, but no nextest tag maps
+#   + 5 pe_17-21 + 9 work-order-3 cases); the aggregator asserts 254
+#   against manifest truth.
+# - platform_target exists on all 254 cases, but no nextest tag maps
 #   cases to Rust tests, so the tier jobs run each platform's
 #   nextest invocation over crates with no test targets at base
 #   (see the per-job comments). Strict platform_target tag
@@ -166,6 +167,16 @@ jobs:
       - name: Integration tier (no kelir-integration tests at base)
         if: steps.kvm.outputs.available == 'true'
         run: cargo nextest run -p kelir-integration
+      # --no-tests pass: the filter selects the 9 work-order-3 stubs in
+      # kelir-integration/tests/full_pipeline_test.rs (#[ignore], run via
+      # test-red); it must not fail the run when the stubs are absent.
+      # Scoped to kelir-integration; -p kelir-core --lib is wrong here —
+      # the kelir-core integration suite does not compile at base
+      # (receipt_attest_test.rs E0063, pre-existing).
+      - name: Fast-boot and DAX coverage
+        run: cargo nextest run -p kelir-integration -E 'test(hd_fast_boot) | test(sp_dax) | test(lc_base_snapshot)' --no-tests pass
+      - name: Budgets gate
+        run: cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
       - name: Record tier result
         if: always()
         run: |
@@ -205,6 +216,15 @@ jobs:
       # have hypervisor entitlements; no driver-hvf tests at base)
       - name: Test native HVF driver (no tests at base)
         run: cargo nextest run -p driver-hvf -E 'not test(test_hw_)'
+      # Same --no-tests pass form as the linux-kvm-tier step, scoped to
+      # kelir-integration: selects the 9 work-order-3 stubs; no hypervisor
+      # needed (stubs are #[ignore]).
+      - name: Fast-boot and DAX coverage
+        if: runner.os == 'macOS'
+        run: cargo nextest run -p kelir-integration -E 'test(hd_fast_boot) | test(sp_dax) | test(lc_base_snapshot)' --no-tests pass
+      - name: Budgets gate
+        if: runner.os == 'macOS'
+        run: cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
       - name: Record tier result
         if: always()
         run: |
@@ -246,6 +266,8 @@ jobs:
         run: cargo nextest run -p kelir-transport
       - name: Windows driver tests (no driver-openvmm tests at base; excludes real-hardware paths)
         run: cargo nextest run -p driver-openvmm -E 'not test(test_hw_)'
+      - name: Fast-boot and DAX skip notice
+        run: echo "::notice::FAST-BOOT and DAX not supported on WHP; skipping"
       - name: Record tier result
         if: always()
         shell: bash
@@ -339,11 +361,11 @@ jobs:
   # ─── STAGE 6. SCORECARD AGGREGATOR ─────────────────────────
   # Runs ONLY after the platform jobs complete (needs:). Collects
   # the per-tier JUnit/JSON results and verifies every tier reported
-  # before writing scorecard.md; the 240 total is asserted against
+  # before writing scorecard.md; the 254 total is asserted against
   # manifest truth, not against executed tests (no nextest tag maps
   # cases to Rust tests). A tier that skipped for lack of hardware
   # reports skipped-no-kvm explicitly; a failed tier fails this job.
-  # NOTE: the 240 assertion matches manifest truth (total_cases: 240);
+  # NOTE: the 254 assertion matches manifest truth (total_cases: 254);
   # check-scorecard likewise gates on the committed scorecard.md
   # matching manifest truth.
   scorecard-aggregator:
@@ -360,7 +382,7 @@ jobs:
           pattern: test-results-*
           path: test-results
           merge-multiple: true
-      - name: Verify every tier reported (240 invariants)
+      - name: Verify every tier reported (254 invariants)
         run: |
           python3 - <<'EOF'
           import glob, json, sys
@@ -384,9 +406,9 @@ jobs:
                   print(f"::notice::Tier {t} skipped: no KVM on this runner; hardware cases not executed.")
           print("All collected tier results are success (or explicitly skipped-no-kvm).")
           EOF
-      - name: Assert invariant total is 240
+      - name: Assert invariant total is 254
         run: |
-          grep -q 'total_cases: 240' cans/artifacts/test-plan/manifest.yaml
+          grep -q 'total_cases: 254' cans/artifacts/test-plan/manifest.yaml
       - name: Verify scorecard matches manifest truth
         run: just check-scorecard
       - name: Write scorecard.md

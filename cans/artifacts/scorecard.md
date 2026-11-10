@@ -7,7 +7,7 @@ Do not edit by hand: CI runs `just check-scorecard`.
 
 | Total Invariants | Domains | Integration Tier | Unit Tier | E2E Tier |
 |---:|---:|---:|---:|---:|
-| 245 | 17 | 159 | 73 | 13 |
+| 254 | 17 | 168 | 73 | 13 |
 
 ## Domain Coverage Matrix
 
@@ -19,12 +19,12 @@ Do not edit by hand: CI runs `just check-scorecard`.
 | `bindings_ts` | `bt` | 4 | pass | TypeScript SDK bindings parity: boot-time EConfig on missing TypeBox dependency, ./vectors.json frame/verdict equality, AOT hook fusion single FFI trampoline. |
 | `governance_tools` | `gt` | 14 | pass | plugin-tool-guard, plugin-mcp, JSON-RPC 2.0 tool-call interposition, taint tracking, immutable schema locking, call quota token buckets. |
 | `governance_vault` | `gv` | 12 | pass | plugin-vault, metadata service (169.254.169.254), host keyring mlock, scoped short-lived token issuance, audience locking, zeroization on drop. |
-| `hypervisor_driver` | `hd` | 24 | pass | VmmDriver abstraction, KVM/HVF/WHP/AVF hardware virtualization, register/MMU rollback, CPUID synthetic filters, cold-boot budgets (<50ms). |
-| `lifecycle_checkpoint` | `lc` | 23 | pass | Hypervisor state machine, CoW fork (userfaultfd / Mach vm_copy), instant rollback (<8ms), suspend to NVMe (0MB RSS, <50ms), step evaluation loops. |
+| `hypervisor_driver` | `hd` | 28 | pass | VmmDriver abstraction, KVM/HVF/WHP/AVF hardware virtualization, register/MMU rollback, CPUID synthetic filters, cold-boot budgets (<50ms). |
+| `lifecycle_checkpoint` | `lc` | 25 | pass | Hypervisor state machine, CoW fork (userfaultfd / Mach vm_copy), instant rollback (<8ms), suspend to NVMe (0MB RSS, <50ms), step evaluation loops. |
 | `plugin_engine` | `pe` | 21 | pass | KelirPlugin trait, segregated ring traits, unified Verdict / FilterAction evaluation, static dispatch tables, filter-before-FFI gate (<2µs). |
 | `protocol_mux` | `pm` | 14 | pass | Vsock port 5252, Control channel (0x0000), Stream Mux (0x0001), sub-lanes (EXEC, VFS, BULK), framing limits, window-update flow control. |
 | `relational_transaction` | `rt` | 12 | pass | plugin-db-proxy, plugin-transaction, L7 pgwire parsing, SQLite UDS bridge, multi-resource 2PC commit/abort coordination. |
-| `storage_plane` | `sp` | 22 | pass | VirtIO-FS host CoW broker, sparse upper file, tombstone tracking, atomic leaf commit, containment engine (openat2), synthetic FUSE inodes, quotas. |
+| `storage_plane` | `sp` | 25 | pass | VirtIO-FS host CoW broker, sparse upper file, tombstone tracking, atomic leaf commit, containment engine (openat2), synthetic FUSE inodes, quotas. |
 | `supply_chain_security` | `sc` | 10 | pass | plugin-supply-chain, dynamic W^X JIT mediation (seccomp-unotify), lifecycle script execution traps, Shannon entropy scanning (>5.2 bits/char). |
 | `telemetry_audit` | `ta` | 12 | pass | plugin-ledger, Merkle WAL, RFC 6962 BLAKE3 leaf/node hashing, OTLP gRPC/HTTP streaming, W3C traceparent propagation. |
 | `terminal_plane` | `tp` | 15 | pass | VirtIO-console Port 0 PTY, line discipline, token shield, ANSI sanitizer (OSC 52/title drops), EXEC stream mux, append-only cursor stream replay. |
@@ -38,7 +38,7 @@ state machine is gap → red → implemented, one direction only.
 
 | Implemented | Red | Gap |
 |---:|---:|---:|
-| 71 | 99 | 75 |
+| 71 | 108 | 75 |
 
 ## Hypervisor Performance Floor (Budgets)
 
@@ -50,18 +50,20 @@ Thresholds below come from perf/budgets.toml (enforce = true) where a key is dec
 | Hardware RAM/vCPU Rollback | ≤ 8 ms p95 | Hard Budget (Driver) | pass |
 | Suspend to NVMe Page Dump | ≤ 50 ms p95 | Hard Budget (io_uring) | pass |
 | Gate 2 Native Scope Eval | ≤ 2 µs p95 | Hard Budget (Native Rust) | pass |
+| Fast-boot mmap hydration | ≤ 500 µs p95 | CI (KVM/HVF) | pending |
+| Idle memory contraction | ≤ 4 MB p95 | CI (KVM/HVF) | pending |
 | Host Wired RSS Post-Suspend | 0 MB (Purged) | Mach / madvise Purge | pass |
 
 ## Platform Executable Subset
 
-Host: linux/x86_64; hypervisors present: none. Executable on this host: 227 / 245 cases.
+Host: linux/x86_64; hypervisors present: none. Executable on this host: 227 / 254 cases.
 
 | Hypervisor | Cases | Executable Here |
 |---|---:|---:|
 | `avf` | 2 | 0 |
 | `emulated` | 4 | 2 |
 | `hvf` | 6 | 0 |
-| `kvm` | 4 | 0 |
+| `kvm` | 13 | 0 |
 | `none` | 227 | 225 |
 | `whp` | 2 | 0 |
 

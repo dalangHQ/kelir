@@ -8,6 +8,11 @@
         - Ancestors remain shareable by later restores; CoW page sharing
           - applies across all concurrent children of the same ancestor
         - Depth is unbounded
+    - Base snapshot (engine-internal)
+      - Stored under cas/blobs/ with parent_digest: None
+      - Not visible in session.lineage(); not exported by session.vm.export_snapshot
+      - Not included in user-visible CausalDelta chains
+      - Digest recorded in host-side cache manifest for audit; not in receipts
   - Archives and portability
     - Export format: single Content-Addressed .kelir-snap binary stream
       - Archive header: magic, format version, feature flags, entry table

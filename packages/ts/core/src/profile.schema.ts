@@ -83,6 +83,16 @@ const ProfileSchema = Type.Object({
           anti_toctou_cgroups: Type.Optional(Type.Boolean()),
         }),
       ),
+      driver: Type.Optional(
+        Type.Object({
+          fast_boot: Type.Optional(Type.String()),
+        }),
+      ),
+      storage: Type.Optional(
+        Type.Object({
+          dax_window: Type.Optional(Type.String()),
+        }),
+      ),
     }),
   ),
 });

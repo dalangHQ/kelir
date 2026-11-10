@@ -7,6 +7,8 @@ const REQUIRED_KEYS: &[&str] = &[
     "gate_3_us",
     "cold_boot_ms",
     "rss_purge_ms",
+    "fast_boot_hydration_us",
+    "idle_memory_rss_mb",
 ];
 
 pub fn check(path: &str) -> Result<(), Box<dyn std::error::Error>> {
