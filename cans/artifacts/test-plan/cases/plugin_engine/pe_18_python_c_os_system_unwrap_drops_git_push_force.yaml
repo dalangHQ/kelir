@@ -1,0 +1,72 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_18_python_c_os_system_unwrap_drops_git_push_force"
+title: "Trap for python -c os.system('git push --force') resolves through the interpreter payload to git push and Drops with EPERM"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Trap-fast-path"
+  statement: "A trap whose interpreter layer is python -c carrying an os.system call to git push --force returns Verdict::Drop { errno: Some(EPERM) } from a policy row denying git push --force. The -c string is inspected as code, never as one argv entry. Gap: no unwrapping exists yet (resolve_canonical returns CanonicalResolvePending), so the python binary never matches the git row."
+  blast_radius_if_breached: "Every interpreter-wrapped exec bypasses trap policy, so an agent routes any denied command through python -c, node -e, or perl -e and the git gate is decorative."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts Drop for a direct git push --force and calls the case done, or accepts Pass for the python -c form."
+  anti_slop_mitigation: "AS-03 mandates exact matching on Verdict::Drop with errno EPERM for the python -c form; AS-02 asserts the direct git push --force form Drops too."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "plugin.policy"
+    agent_id: "agt_pe_18"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "dispatch_trap(python -c 'os.system(\"git push --force\")') against a git push --force deny row; dispatch_trap(git push --force) as positive control"
+  input_params:
+    binary: "python"
+    shell_payload: "os.system(\"git push --force\")"
+    deny_row: "git push --force"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "plugin.policy"
+    culprit: "Interpreter payload unwraps to denied git push --force"
+    remedy: "Run the push without --force, or request approval"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "policy.trap_denied"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(dispatch_trap(python_c_event)?, Verdict::Drop { errno: Some(e), .. } if e == \"EPERM\");"
+  - rule: "AS-02"
+    verification: "assert_matches!(dispatch_trap(direct_git_event)?, Verdict::Drop { errno: Some(e), .. } if e == \"EPERM\");"

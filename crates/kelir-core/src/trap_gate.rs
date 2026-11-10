@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use kelir_interface::plugin_model::MountScope;
-use kelir_interface::protocol_wire::{TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{ResolvedBinary, TrapEvent, Verdict};
 
 // see: cans/11-protocol.md#Trap-fast-path
 pub const TRUSTED_PREFIXES: &[&str] = &["/usr/bin", "/bin", "/usr/lib"];
@@ -19,6 +19,8 @@ pub enum GateError {
     BpfLoadPending,
     #[error("gate-1 BPF program match pending (L3)")]
     BpfMatchPending,
+    #[error("canonical resolve pending (L3)")]
+    CanonicalResolvePending,
 }
 
 pub struct BpfProgram {
@@ -43,6 +45,13 @@ pub enum GateDecision {
     Allow,
     Deny(Verdict),
     FallThrough,
+}
+
+// see: cans/11-protocol.md#Trap-fast-path
+pub fn resolve_canonical(event: &TrapEvent) -> Result<ResolvedBinary, GateError> {
+    // TODO (L3): unwrap interpreters to the terminal binary; no resolver exists until then.
+    let _ = event;
+    Err(GateError::CanonicalResolvePending)
 }
 
 pub struct TrapGateEvaluator {

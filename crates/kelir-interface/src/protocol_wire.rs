@@ -212,6 +212,15 @@ pub struct TrappedSyscall {
     pub memfd_create_flags: Option<u32>,
 }
 
+// see: cans/artifacts/code/messages.rs#TrapEvent
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ResolvedBinary {
+    pub dev: u64,
+    pub ino: u64,
+    pub blake3: [u8; 32],
+    pub path: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TrapEvent {
     pub seq: u64,
@@ -228,6 +237,13 @@ pub struct TrapEvent {
     pub cwd: String,
     #[serde(default)]
     pub syscall: Option<TrappedSyscall>,
+    // see: cans/artifacts/code/messages.rs#TrapEvent
+    #[serde(default)]
+    pub resolved_binary: ResolvedBinary,
+    #[serde(default)]
+    pub interpreter_chain: Vec<ResolvedBinary>,
+    #[serde(default)]
+    pub shell_payload: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

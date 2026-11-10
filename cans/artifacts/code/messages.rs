@@ -18,6 +18,20 @@ use std::collections::HashMap;
 // Referenced by both wire enums and plugin hook signatures.
 // One definition, one place.
 
+/// Canonical exec identity: the terminal binary after interpreter
+/// unwrapping. Policy matches on this, never on binary_path or argv[0].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedBinary {
+    /// Physical filesystem device ID of the resolved executable inode.
+    pub dev: u64,
+    /// Inode number of the resolved executable binary.
+    pub ino: u64,
+    /// Raw 32-byte BLAKE3 digest of the resolved executable bytes.
+    pub blake3: [u8; 32],
+    /// Canonical resolved path of the terminal binary.
+    pub path: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrapEvent {
     pub seq: u64,
@@ -34,6 +48,13 @@ pub struct TrapEvent {
     pub argv: Vec<String>,
     pub envp: HashMap<String, String>,
     pub cwd: String,
+    /// Terminal binary after interpreter unwrapping; equals the requested
+    /// identity when no interpreter layer exists.
+    pub resolved_binary: ResolvedBinary,
+    /// Binaries traversed while unwrapping, requested first, terminal last.
+    pub interpreter_chain: Vec<ResolvedBinary>,
+    /// The -c/-e string when an interpreter layer carries one, else None.
+    pub shell_payload: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

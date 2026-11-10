@@ -285,6 +285,7 @@ fn trap_event(
         envp,
         cwd: "/workspace".to_string(),
         syscall: None,
+        ..Default::default()
     }
 }
 

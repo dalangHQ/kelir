@@ -1,0 +1,73 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_20_same_path_different_identity_never_matches"
+title: "Exec with the same binary_path string but different dev, ino, and BLAKE3 never matches the policy row for that path"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Trap-fast-path"
+  statement: "An exec whose binary_path string is /usr/bin/git but whose (st_dev, st_ino, binary_blake3) differs from the pinned git identity returns Verdict::Drop { errno: Some(EPERM) }; canonical identity decides, never the path string. Gap: TrapFilter::matches and MountScope::allows_binary compare the binary_path string only, so a bind-mounted or chroot-swapped binary with the same path string matches the git row."
+  blast_radius_if_breached: "Path-string policy lets an agent swap the binary behind a trusted path and run arbitrary code under the trusted identity."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts the pinned git identity Passes and calls the case done, or accepts Pass for the swapped identity."
+  anti_slop_mitigation: "AS-03 mandates exact matching on Verdict::Drop with errno EPERM for the swapped identity; AS-02 asserts the pinned identity still Passes its allow row."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "plugin.policy"
+    agent_id: "agt_pe_20"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "dispatch_trap(swapped git: same binary_path, different dev/ino/blake3) against the pinned git allow row; dispatch_trap(pinned git) as positive control"
+  input_params:
+    binary_path: "/usr/bin/git"
+    swapped_dev: 2050
+    swapped_ino: 900001
+    deny_row: "unlisted canonical identity"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "plugin.policy"
+    culprit: "Canonical identity does not match any listed identity"
+    remedy: "Re-pin the binary identity, or run the pinned binary"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "policy.trap_denied"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(dispatch_trap(swapped_event)?, Verdict::Drop { errno: Some(e), .. } if e == \"EPERM\");"
+  - rule: "AS-02"
+    verification: "assert_matches!(dispatch_trap(pinned_event)?, Verdict::Pass);"

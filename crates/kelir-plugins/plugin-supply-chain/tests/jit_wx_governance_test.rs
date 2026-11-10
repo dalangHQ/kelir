@@ -29,6 +29,7 @@ fn trap_event(
         envp: HashMap::new(),
         cwd: "/workspace".into(),
         syscall,
+        ..Default::default()
     }
 }
 

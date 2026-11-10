@@ -123,7 +123,22 @@
       - Script arguments targeting /workspace/** forfeit skip and traverse Gate 3
       - Gate 2 still evaluates; Allow proceeds without FFI crossing
       - Untrusted /workspace/** always traverses Gate 3
+      - Skip applies only after unwrapping resolves the terminal binary
+      - Unresolved unwrap forfeits the skip and traverses Gate 3
       - Compiler and test-suite fork/exec storms run at hardware speed
+    - Canonical exec identity
+      - Identity is (st_dev, st_ino, binary_blake3), never a path string
+      - argv[0] is untrusted input; it never identifies the binary
+      - binary_path is a display hint; policy never matches on it alone
+      - Resolved identity: see: artifacts/code/messages.rs
+    - Interpreter unwrapping
+      - Resolve shebang, PT_INTERP, and shell -c/-e payloads recursively
+      - env, xargs, and find -exec re-exec count as unwrap steps
+      - Depth cap: TBD (L3 sets the bound; overflow fails closed)
+      - Unreadable payload or cycle fails closed with Drop, never Pass
+      - The -c/-e string is inspected as code, never as one argv entry
+      - Terminal binary is the resolved identity; chain is audit only
+      - Shell payload and chain: see: artifacts/code/messages.rs
     - Cost rationale
       - A single trap-on-every-syscall design adds ~µs per fork/exec at
         - toolchain scale; the allowlist exists to pay that cost only where policy is possible

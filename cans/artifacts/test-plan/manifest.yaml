@@ -5,7 +5,7 @@ plan:
   name: "kelir canonical test plan"
   structure_doc: "cans/artifacts/test-plan/test-plan-structure.md"
   matrix_doc: "cans/artifacts/test-plan/matrix.yaml"
-  total_cases: 240
+  total_cases: 245
   domains: 17
   crate_tier_convention:
     unit: "crates/kelir-core"
@@ -48,7 +48,7 @@ domains:
     description: "Vsock port 5252, Control channel (0x0000), Stream Mux (0x0001), sub-lanes (EXEC, VFS, BULK), framing limits, window-update flow control."
   plugin_engine:
     prefix: "pe"
-    case_count: 16
+    case_count: 21
     description: "KelirPlugin trait, segregated ring traits, unified Verdict / FilterAction evaluation, static dispatch tables, filter-before-FFI gate (<2µs)."
   governance_vault:
     prefix: "gv"
@@ -1221,6 +1221,41 @@ cases:
     target_crate: "crates/kelir-plugins/plugin-chaos"
     quadrant: "true_negative"
     title: "ChaosPlugin with an RST rule drops a matching outbound frame with FilterAction Drop errno ECONNREFUSED"
+  - case_id: "pe_17_shell_c_command_unwrap_drops_git_push_force"
+    file: "cases/plugin_engine/pe_17_shell_c_command_unwrap_drops_git_push_force.yaml"
+    domain: "plugin_engine"
+    target_tier: "unit"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_negative"
+    title: "Trap for bash -c 'git push --force' resolves through the shell payload to git push and Drops with EPERM"
+  - case_id: "pe_18_python_c_os_system_unwrap_drops_git_push_force"
+    file: "cases/plugin_engine/pe_18_python_c_os_system_unwrap_drops_git_push_force.yaml"
+    domain: "plugin_engine"
+    target_tier: "unit"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_negative"
+    title: "Trap for python -c os.system('git push --force') resolves through the interpreter payload to git push and Drops with EPERM"
+  - case_id: "pe_19_env_xargs_reexec_unwrap_drops_git_push_force"
+    file: "cases/plugin_engine/pe_19_env_xargs_reexec_unwrap_drops_git_push_force.yaml"
+    domain: "plugin_engine"
+    target_tier: "unit"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_negative"
+    title: "Trap for env git push --force resolves through the re-exec wrapper to git push and Drops with EPERM"
+  - case_id: "pe_20_same_path_different_identity_never_matches"
+    file: "cases/plugin_engine/pe_20_same_path_different_identity_never_matches.yaml"
+    domain: "plugin_engine"
+    target_tier: "unit"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_negative"
+    title: "Exec with the same binary_path string but different dev, ino, and BLAKE3 never matches the policy row for that path"
+  - case_id: "pe_21_trap_pass_provisional_effect_hook_redecides"
+    file: "cases/plugin_engine/pe_21_trap_pass_provisional_effect_hook_redecides.yaml"
+    domain: "plugin_engine"
+    target_tier: "integration"
+    target_crate: "crates/kelir-core"
+    quadrant: "true_negative"
+    title: "Trap Pass for an exec whose effect writes outside MountScope Drops at on_fs_write and dirties zero host bytes"
 
   # ── Domain 10: governance_vault (gv) [12 cases] ───────────────
   - case_id: "gv_01_metadata_service_scoped_token"

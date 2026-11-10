@@ -206,6 +206,11 @@
     - Stage 1: Fast Filter (native BPF, inode mask, CIDR/port table)
     - Stage 2: Dispatcher evaluates MountScope; FFI gated here
     - Stage 3: Execution commits Verdict to hardware or VirtIO ring
+    - Effect-layer finality
+      - A trap Pass is provisional; it routes, it never enforces
+      - The final decision lands at the effect hook where the act commits
+      - No policy rests solely on trap binary or argv matching
+      - Canonical identity: see: 11-protocol.md#Trap-fast-path
     - Zero bespoke pipelines; zero per-ring verdict enums
     - Ring, Fast Filter, and Dispatcher are native Rust; only Stage 3
       - crosses FFI on scope match
@@ -216,6 +221,7 @@
     - VirtIO ring mask: unselected rings bypass plugin completely
     - Multi-port console partition: ports allocated dynamically at session configuration
     - Binary filter: in-kernel BPF drops traps for unlisted paths
+      - Unlisted means canonical identity absent; see: 11-protocol.md#Trap-fast-path
     - Path filter: FUSE layer bypasses VFS hooks outside declared subtrees
     - Network filter: ingress dispatcher bypasses net hooks outside declared CIDR/port rules
     - Scope cascade: see: [1]
@@ -233,6 +239,8 @@
     - Evaluates native compiled schema validators, CIDR, and path rules in Rust
     - Foreign runtimes skip FFI on non-matching events
     - FFI trampoline executes only when ring event satisfies scope match
+    - Gate 2 evaluates canonical identity; see: 11-protocol.md#Trap-fast-path
+    - binary_path and argv[0] never identify the binary
     - Trusted-prefix bypass: see: 11-protocol.md#Trap-fast-path
   - Latency ceiling
     - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs

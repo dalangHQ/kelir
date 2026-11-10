@@ -1,0 +1,72 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_17_shell_c_command_unwrap_drops_git_push_force"
+title: "Trap for bash -c 'git push --force' resolves through the shell payload to git push and Drops with EPERM"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-core"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/11-protocol.md#Trap-fast-path"
+  statement: "A trap whose terminal binary after interpreter unwrapping is git with argv push --force returns Verdict::Drop { errno: Some(EPERM) } from a policy row denying git push --force, even when the exec arrives as bash -c 'git push --force'. Gap: no unwrapping exists yet (resolve_canonical returns CanonicalResolvePending), and TrapFilter::matches compares the binary_path string and argv contains, so the bash binary never matches the git row."
+  blast_radius_if_breached: "Every shell-wrapped exec bypasses trap policy, so an agent routes any denied command through bash -c and the git gate is decorative."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts Drop for a direct git push --force and calls the case done, or accepts Pass for the bash -c form."
+  anti_slop_mitigation: "AS-03 mandates exact matching on Verdict::Drop with errno EPERM for the bash -c form; AS-02 asserts the direct git push --force form Drops too."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "plugin.policy"
+    agent_id: "agt_pe_17"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "dispatch_trap(bash -c 'git push --force') against a git push --force deny row; dispatch_trap(git push --force) as positive control"
+  input_params:
+    binary: "bash"
+    shell_payload: "git push --force"
+    deny_row: "git push --force"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "plugin.policy"
+    culprit: "Shell payload unwraps to denied git push --force"
+    remedy: "Run the push without --force, or request approval"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "policy.trap_denied"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(dispatch_trap(bash_c_event)?, Verdict::Drop { errno: Some(e), .. } if e == \"EPERM\");"
+  - rule: "AS-02"
+    verification: "assert_matches!(dispatch_trap(direct_git_event)?, Verdict::Drop { errno: Some(e), .. } if e == \"EPERM\");"

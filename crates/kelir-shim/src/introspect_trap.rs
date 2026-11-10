@@ -43,6 +43,7 @@ pub fn inspect_trap(trap: &SeccompTrap, seq: u64) -> Result<TrapInspection, Shim
     let interp = read_interp(&binary_path)?;
     let binary_blake3 = digest_exe(&binary_path)?;
     Ok(TrapInspection {
+        // TODO (L3): fill resolved_binary from interpreter unwrapping; zero identity until then.
         event: TrapEvent {
             seq,
             pid: trap.pid,
@@ -60,6 +61,7 @@ pub fn inspect_trap(trap: &SeccompTrap, seq: u64) -> Result<TrapInspection, Shim
                 mprotect_prot: None,
                 memfd_create_flags: None,
             }),
+            ..Default::default()
         },
         interp,
         execfn_present: auxv_value(&auxv, AT_EXECFN).is_some(),
