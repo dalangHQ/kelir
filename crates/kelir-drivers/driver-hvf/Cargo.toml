@@ -20,3 +20,6 @@ panic = "deny"
 unimplemented = "deny"
 todo = "deny"
 unreachable = "deny"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }

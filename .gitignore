@@ -88,3 +88,4 @@ tmp/
 
 # ── Generated bundles ────────────────────────────────────────
 repomix.md
+/uv.lock

@@ -10,6 +10,8 @@ async-trait = { workspace = true }
 
 [dev-dependencies]
 kelir-plugin-testkit = { path = "../../kelir-plugin-testkit" }
+driver-rustvmm = { path = "../../kelir-drivers/driver-rustvmm" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 [lints]
 workspace = true

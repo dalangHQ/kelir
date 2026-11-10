@@ -1,7 +1,7 @@
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_11_stream_replay_monotonic_cursor_read.yaml#case_id
 use std::path::PathBuf;
 
-use kelir_core::planes::terminal::{LogStream, TerminalPlane};
+use kelir_core::planes::terminal::{LogStream, TerminalPlane, TerminalWiring};
 
 fn session_dir(session_id: &[u8; 16]) -> Result<PathBuf, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
@@ -129,5 +129,104 @@ fn tp_14_window_resize_exec_control_propagation() -> Result<(), String> {
     plane.resize(80, 24).map_err(|e| e.to_string())?;
     let small = plane.export_screen_matrix().map_err(|e| e.to_string())?;
     assert_eq!(small.len(), 1944);
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/terminal_plane/tp_03_ansi_sanitizer_osc52_clipboard_drop.yaml#case_id
+#[test]
+#[ignore]
+fn tp_03_ansi_sanitizer_osc52_clipboard_drop() -> Result<(), String> {
+    let session_id = [0x75u8; 16];
+    drop_session_dir(&session_id);
+    let wiring = TerminalWiring {
+        cols: 80,
+        rows: 24,
+        drop_osc52: true,
+        strip_title: false,
+    };
+    let plane = TerminalPlane::new(session_id).with_wiring(&wiring);
+    plane
+        .record_output(
+            LogStream::Port(0),
+            b"echo '\x1b]52;c;ZXhwbG9pdA==\x07Normal Text'",
+        )
+        .map_err(|e| e.to_string())?;
+    let (bytes, _) = plane.read_from(0, 0).map_err(|e| e.to_string())?;
+    let text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+    assert!(
+        !text.contains("\x1b]52;"),
+        "OSC 52 clipboard payload must be purged before the log, got: {text:?}"
+    );
+    assert!(
+        text.contains("Normal Text"),
+        "the non-OSC payload must survive the strip, got: {text:?}"
+    );
+    drop_session_dir(&session_id);
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/terminal_plane/tp_04_ansi_sanitizer_title_spoof_strip.yaml#case_id
+#[test]
+#[ignore]
+fn tp_04_ansi_sanitizer_title_spoof_strip() -> Result<(), String> {
+    let session_id = [0x76u8; 16];
+    drop_session_dir(&session_id);
+    let wiring = TerminalWiring {
+        cols: 80,
+        rows: 24,
+        drop_osc52: false,
+        strip_title: true,
+    };
+    let plane = TerminalPlane::new(session_id).with_wiring(&wiring);
+    plane
+        .record_output(
+            LogStream::Port(0),
+            b"\x1b]0;root@host:~\x07Payload\x1b]2;fake_title\x1b\\Done",
+        )
+        .map_err(|e| e.to_string())?;
+    let (bytes, _) = plane.read_from(0, 0).map_err(|e| e.to_string())?;
+    let text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+    assert!(
+        !text.contains("\x1b]0;") && !text.contains("\x1b]2;"),
+        "OSC 0/2 title sequences (BEL and ST terminated) must be stripped, got: {text:?}"
+    );
+    assert!(
+        text.contains("Payload") && text.contains("Done"),
+        "the payload around the title sequences must survive, got: {text:?}"
+    );
+    drop_session_dir(&session_id);
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/terminal_plane/tp_06_placeholder_mask_carryover_window.yaml#case_id
+#[test]
+#[ignore]
+fn tp_06_placeholder_mask_carryover_window() -> Result<(), String> {
+    let session_id = [0x77u8; 16];
+    drop_session_dir(&session_id);
+    let wiring = TerminalWiring {
+        cols: 80,
+        rows: 24,
+        drop_osc52: false,
+        strip_title: false,
+    };
+    let plane = TerminalPlane::new(session_id).with_wiring(&wiring);
+    plane
+        .record_output(LogStream::Port(0), b"API key is sk-an")
+        .map_err(|e| e.to_string())?;
+    plane
+        .record_output(LogStream::Port(0), b"t-12345 confirmed")
+        .map_err(|e| e.to_string())?;
+    let (bytes, _) = plane.read_from(0, 0).map_err(|e| e.to_string())?;
+    let text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+    assert!(
+        !text.contains("sk-ant-12345"),
+        "secret split across chunk boundaries must be redacted, got: {text:?}"
+    );
+    assert!(
+        text.contains("[REDACTED]"),
+        "the split secret must surface as [REDACTED], got: {text:?}"
+    );
+    drop_session_dir(&session_id);
     Ok(())
 }

@@ -3,18 +3,21 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
+use kelir_core::PluginRegistration;
 use kelir_core::Session;
 use kelir_core::dispatch_plugin::PipelineEngine;
 use kelir_core::planes::checkpoint::{CheckpointPlane, PidLineage};
+use kelir_core::session_lifecycle::PlaneWiring;
 use kelir_interface::driver_interface::{SnapshotDescriptor, default_vm_config};
 use kelir_interface::fusion_plugin::{
     FusedTrampolineDescriptor, HookEntry, HookStage, RingChain, TrampolineRing, TrampolineTable,
 };
 use kelir_interface::plugin_model::{
-    ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, KelirPlugin, NetInterposer,
-    PipelineBinder, PluginError, TrapInterposer,
+    AnyPlugin, ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, KelirPlugin,
+    MountScope, NetInterposer, PipelineBinder, PluginError, TrapInterposer,
 };
 use kelir_interface::protocol_wire::{FilterAction, TrapEvent, Verdict};
+use std::sync::Mutex;
 
 fn trap_ctx() -> HandlerCtx<(), ()> {
     HandlerCtx::new([0u8; 16], 42, (), Vec::new())
@@ -553,6 +556,242 @@ async fn hydrate_step_without_checkpoint_plane_is_inert() -> Result<(), String> 
     match ctx.step.last() {
         None => {}
         Some(step) => return Err(format!("inert hydrate pushed a step: {}", step.id)),
+    }
+    Ok(())
+}
+
+#[derive(Clone)]
+struct ScopeMutator {
+    name: &'static str,
+    scope_paths: &'static [&'static str],
+}
+
+impl KelirPlugin for ScopeMutator {
+    type Context = ();
+    fn context(&self) -> Self::Context {}
+    fn name(&self) -> &'static str {
+        self.name
+    }
+    fn default_scope(&self) -> MountScope {
+        MountScope::default().with_paths(self.scope_paths.iter().copied())
+    }
+    fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
+        pipeline.bind_fs_scoped(Arc::new(MutatingFs), KelirPlugin::default_scope(self));
+    }
+}
+
+// see: cans/artifacts/test-plan/cases/plugin_engine/pe_03_overlapping_mutator_scope_eambiguous.yaml#case_id
+#[test]
+#[ignore]
+fn pe_03_overlapping_mutator_scope_eambiguous() -> Result<(), String> {
+    let mut session = Session::boot(boot_config()).map_err(|e| e.to_string())?;
+    session
+        .bind_plugin(&ScopeMutator {
+            name: "mutator-a",
+            scope_paths: &["/workspace/src"],
+        })
+        .map_err(|e| e.to_string())?;
+    match session.bind_plugin(&ScopeMutator {
+        name: "mutator-b",
+        scope_paths: &["/workspace/src/main.rs"],
+    }) {
+        Err(PluginError::AmbiguousMutation { resource, conflict }) => {
+            assert!(
+                resource.contains("main.rs") || conflict.contains("main.rs"),
+                "EAmbiguousMutation must name the overlapping target, got resource={resource:?} conflict={conflict:?}"
+            );
+        }
+        Err(e) => {
+            return Err(format!("overlapping mutator bind gave wrong error: {e:?}"));
+        }
+        Ok(()) => {
+            return Err(
+                "boot accepted overlapping mutator scopes on /workspace/src/main.rs; expected EAmbiguousMutation"
+                    .into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/plugin_engine/pe_02_cyclic_dependency_graph_abort.yaml#case_id
+#[test]
+#[ignore]
+fn pe_02_cyclic_dependency_graph_abort() -> Result<(), String> {
+    let registrations = [
+        PluginRegistration::new("plugin_a -> plugin_b", true),
+        PluginRegistration::new("plugin_b -> plugin_a", true),
+    ];
+    match Session::boot_with_plugins(
+        boot_config(),
+        &registrations,
+        None,
+        Vec::new(),
+        PlaneWiring::default(),
+    ) {
+        Err(PluginError::Halt(message)) => {
+            let lowered = message.to_lowercase();
+            assert!(
+                lowered.contains("cycle")
+                    && message.contains("plugin_a")
+                    && message.contains("plugin_b"),
+                "cyclic registration abort must name the cycle, got: {message}"
+            );
+        }
+        Err(e) => {
+            return Err(format!("cyclic registration abort gave wrong error: {e:?}"));
+        }
+        Ok(_) => {
+            return Err(
+                "Session::boot_with_plugins accepted the cyclic registration graph plugin_a -> plugin_b -> plugin_a"
+                    .into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+struct ChunkRecordingFs {
+    chunks: Arc<Mutex<Vec<usize>>>,
+}
+
+impl FsInterposer for ChunkRecordingFs {
+    fn on_fs_write(
+        &self,
+        _path: &std::path::Path,
+        data: &mut [u8],
+        _pid: u32,
+        _ctx: &HandlerCtx,
+    ) -> Result<FilterAction, PluginError> {
+        self.chunks
+            .lock()
+            .map_err(|_| PluginError::Halt("chunk log poisoned".into()))?
+            .push(data.len());
+        Ok(FilterAction::Forward)
+    }
+}
+
+// see: cans/artifacts/test-plan/cases/plugin_engine/pe_11_ffi_buffer_streaming_chunk_ceiling.yaml#case_id
+#[test]
+#[ignore]
+fn pe_11_ffi_buffer_streaming_chunk_ceiling() -> Result<(), String> {
+    let chunks = Arc::new(Mutex::new(Vec::new()));
+    let mut engine = PipelineEngine::new();
+    engine.bind_fs(Arc::new(ChunkRecordingFs {
+        chunks: Arc::clone(&chunks),
+    }));
+    let mut buf = vec![0u8; 1_048_576];
+    let ctx = trap_ctx();
+    engine
+        .dispatch_fs_write(
+            std::path::Path::new("/workspace/blob.bin"),
+            &mut buf,
+            42,
+            &ctx,
+        )
+        .map_err(|e| e.to_string())?;
+    let observed = match chunks.lock() {
+        Ok(guard) => guard,
+        Err(_) => return Err("chunk log poisoned".into()),
+    };
+    assert_eq!(
+        observed.len(),
+        16,
+        "1 MiB FUSE write must stream as exactly 16 chunks, got {observed:?}"
+    );
+    let max = observed.iter().copied().max().unwrap_or(0);
+    assert!(
+        max <= 65536,
+        "per-chunk FFI ceiling is 65536 bytes, observed max {max} in {observed:?}"
+    );
+    Ok(())
+}
+
+#[derive(Clone)]
+struct ForkProbe {
+    tag: &'static str,
+    log: Arc<Mutex<Vec<String>>>,
+}
+
+struct ForkProbeTrap {
+    tag: &'static str,
+    log: Arc<Mutex<Vec<String>>>,
+}
+
+#[async_trait]
+impl TrapInterposer for ForkProbeTrap {
+    async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+        self.log
+            .lock()
+            .map_err(|_| PluginError::Halt("probe log poisoned".into()))?
+            .push(format!("trap:{}", self.tag));
+        Ok(Verdict::Pass)
+    }
+}
+
+impl KelirPlugin for ForkProbe {
+    type Context = ();
+    fn context(&self) -> Self::Context {}
+    fn name(&self) -> &'static str {
+        "fork-probe"
+    }
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
+        Box::new(ForkProbe {
+            tag: "child",
+            log: Arc::clone(&self.log),
+        })
+    }
+    fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
+        pipeline.bind_trap(Arc::new(ForkProbeTrap {
+            tag: self.tag,
+            log: Arc::clone(&self.log),
+        }));
+    }
+}
+
+// see: cans/artifacts/test-plan/cases/plugin_engine/pe_13_fork_state_specialization_isolation.yaml#case_id
+#[tokio::test]
+#[ignore]
+async fn pe_13_fork_state_specialization_isolation() -> Result<(), String> {
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let mut parent = Session::boot(boot_config()).map_err(|e| e.to_string())?;
+    parent
+        .bind_plugin(&ForkProbe {
+            tag: "parent",
+            log: Arc::clone(&log),
+        })
+        .map_err(|e| e.to_string())?;
+    let event = trap_event();
+    let ctx = trap_ctx();
+    parent
+        .pipeline()
+        .dispatch_trap(&event, &ctx)
+        .await
+        .map_err(|e| e.to_string())?;
+    match log.lock() {
+        Ok(entries) => assert!(
+            entries.iter().any(|entry| entry == "trap:parent"),
+            "parent dispatch did not reach the probe: {entries:?}"
+        ),
+        Err(_) => return Err("probe log poisoned".into()),
+    }
+    let child = parent.fork().map_err(|e| e.to_string())?;
+    assert_ne!(
+        child.incarnation_id(),
+        parent.incarnation_id(),
+        "fork must mint a distinct incarnation"
+    );
+    child
+        .pipeline()
+        .dispatch_trap(&event, &ctx)
+        .await
+        .map_err(|e| e.to_string())?;
+    match log.lock() {
+        Ok(entries) => assert!(
+            entries.iter().any(|entry| entry == "trap:child"),
+            "child pipeline carried no fork_state-specialized plugin probe: {entries:?}"
+        ),
+        Err(_) => return Err("probe log poisoned".into()),
     }
     Ok(())
 }

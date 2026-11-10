@@ -477,6 +477,7 @@ version = "1.0.0"
 dependencies = [
  "async-trait",
  "ciborium",
+ "kelir-catalog",
  "kelir-core",
  "kelir-interface",
  "kelir-otlp",
@@ -587,6 +588,7 @@ version = "1.0.0"
 dependencies = [
  "blake3",
  "kelir-interface",
+ "sha2",
  "thiserror 2.0.21",
 ]
 
@@ -913,6 +915,7 @@ dependencies = [
  "async-trait",
  "kelir-interface",
  "kelir-plugin-testkit",
+ "tokio",
 ]
 
 [[package]]
@@ -920,8 +923,10 @@ name = "plugin-mesh"
 version = "1.0.0"
 dependencies = [
  "async-trait",
+ "ciborium",
  "kelir-interface",
  "kelir-plugin-testkit",
+ "tokio",
 ]
 
 [[package]]
@@ -942,8 +947,10 @@ name = "plugin-replay"
 version = "1.0.0"
 dependencies = [
  "async-trait",
+ "driver-rustvmm",
  "kelir-interface",
  "kelir-plugin-testkit",
+ "tokio",
 ]
 
 [[package]]

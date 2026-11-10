@@ -1,7 +1,19 @@
 // see: cans/artifacts/test-plan/cases/lifecycle_checkpoint/lc_05_monotonic_clock_clamp_on_resume.yaml#case_id
 use kelir_core::planes::checkpoint::{CheckpointPlane, PidLineage};
+use kelir_interface::driver_interface::default_vm_config;
 use kelir_interface::driver_interface::{GuestClock, SnapshotDescriptor};
 use kelir_interface::plugin_model::PluginError;
+
+fn boot_config() -> kelir_interface::driver_interface::VmConfig {
+    default_vm_config(
+        None,
+        None,
+        Some("kernel/vmlinux".to_string()),
+        Some("rootfs.erofs".to_string()),
+        None,
+        None,
+    )
+}
 
 fn descriptor(offset_ns: u64) -> SnapshotDescriptor {
     SnapshotDescriptor {
@@ -81,5 +93,58 @@ fn lc_19_delta_chain_unbounded_compaction() -> Result<(), String> {
     assert_eq!(chain[1], 0);
     let restored = plane.restore(compacted).map_err(|e| e.to_string())?;
     assert_eq!(restored_offset(&restored)?, 200);
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/lifecycle_checkpoint/lc_20_portable_snapshot_archive_export.yaml#case_id
+#[tokio::test]
+#[ignore]
+async fn lc_20_portable_snapshot_archive_export() -> Result<(), String> {
+    let mut session = kelir_core::Session::boot(boot_config()).map_err(|e| e.to_string())?;
+    let mut stream = match session.export_snapshot() {
+        Ok(stream) => stream,
+        Err(e) => return Err(format!("export_snapshot refused: {e}")),
+    };
+    let mut bytes = Vec::new();
+    let mut chunk = vec![0u8; 65536];
+    while bytes.len() < 64 * 1024 * 1024 {
+        let read = tokio::io::AsyncReadExt::read(&mut stream, &mut chunk)
+            .await
+            .map_err(|e| e.to_string())?;
+        if read == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&chunk[..read]);
+    }
+    for entry in [
+        "manifest.json",
+        "vmm_state.json",
+        "ram.zst",
+        "upperdir.tar.zst",
+        "guest_clock.json",
+        "attestation.jws",
+    ] {
+        if !bytes
+            .windows(entry.len())
+            .any(|window| window == entry.as_bytes())
+        {
+            return Err(format!("exported archive stream carries no {entry} entry"));
+        }
+    }
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/lifecycle_checkpoint/lc_21_detached_scm_rights_parent_sigkill_abort.yaml#case_id
+#[test]
+#[ignore]
+fn lc_21_detached_scm_rights_parent_sigkill_abort() -> Result<(), String> {
+    let session = kelir_core::Session::boot(boot_config()).map_err(|e| e.to_string())?;
+    let file = std::fs::File::open("/dev/null").map_err(|e| e.to_string())?;
+    let fd: std::os::fd::OwnedFd = file.into();
+    let handoff = kelir_transport::MemoryHandoff::new(fd, 4096);
+    match session.memory_handoff(handoff) {
+        Ok(()) => {}
+        Err(e) => return Err(format!("memory handoff refused: {e}")),
+    }
     Ok(())
 }

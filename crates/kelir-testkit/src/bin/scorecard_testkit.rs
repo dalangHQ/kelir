@@ -70,6 +70,16 @@ struct CaseFile {
 }
 
 #[derive(serde::Deserialize)]
+struct CoverageEntry {
+    status: String,
+}
+
+#[derive(serde::Deserialize)]
+struct CoverageMap {
+    cases: Vec<CoverageEntry>,
+}
+
+#[derive(serde::Deserialize)]
 struct PlatformTarget {
     os: String,
     arch: String,
@@ -93,6 +103,12 @@ struct PlatformSubset {
     executable: usize,
     total: usize,
     by_hypervisor: Vec<(String, usize, usize)>,
+}
+
+struct MapCounts {
+    implemented: usize,
+    red: usize,
+    gap: usize,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -129,7 +145,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let subset = platform_subset(&repo_root, &manifest)?;
 
-    let generated_md = render_scorecard(&manifest, &budgets, &subset);
+    let map_raw =
+        fs::read_to_string(repo_root.join("cans/artifacts/test-plan/case-to-test-map.yaml"))?;
+    let map: CoverageMap = serde_yaml::from_str(&map_raw)?;
+    let counts = MapCounts {
+        implemented: map
+            .cases
+            .iter()
+            .filter(|c| c.status == "implemented")
+            .count(),
+        red: map.cases.iter().filter(|c| c.status == "red").count(),
+        gap: map.cases.iter().filter(|c| c.status == "gap").count(),
+    };
+
+    let generated_md = render_scorecard(&manifest, &budgets, &subset, &counts);
 
     match mode {
         "generate" => {
@@ -246,7 +275,12 @@ fn floor_metric(
     }
 }
 
-fn render_scorecard(manifest: &Manifest, budgets: &Budgets, subset: &PlatformSubset) -> String {
+fn render_scorecard(
+    manifest: &Manifest,
+    budgets: &Budgets,
+    subset: &PlatformSubset,
+    counts: &MapCounts,
+) -> String {
     let mut out = String::new();
     out.push_str("# Kelir Platform Scorecard\n\n");
     out.push_str(
@@ -295,6 +329,17 @@ fn render_scorecard(manifest: &Manifest, budgets: &Budgets, subset: &PlatformSub
             name, domain.prefix, domain_cases, status, domain.description
         ));
     }
+
+    out.push_str("\n## Test Plan Coverage\n\n");
+    out.push_str(
+        "Status counts from `cans/artifacts/test-plan/case-to-test-map.yaml`;\nstate machine is gap → red → implemented, one direction only.\n\n",
+    );
+    out.push_str("| Implemented | Red | Gap |\n");
+    out.push_str("|---:|---:|---:|\n");
+    out.push_str(&format!(
+        "| {} | {} | {} |\n",
+        counts.implemented, counts.red, counts.gap
+    ));
 
     out.push_str("\n## Hypervisor Performance Floor (Budgets)\n\n");
     out.push_str("Thresholds below come from perf/budgets.toml (enforce = true) where a key is declared; rows without a declared key keep their spec-fixed floor.\n\n");

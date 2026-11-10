@@ -549,6 +549,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         listed_files.insert(harness.file.clone());
     }
     let mut map_implemented = 0;
+    let mut map_red = 0;
     let mut map_gap = 0;
     for entry in &map.cases {
         if !map_ids.insert(entry.case_id.as_str()) {
@@ -561,6 +562,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         match entry.status.as_str() {
             "implemented" => map_implemented += 1,
+            "red" => {
+                map_red += 1;
+                if entry.test_file.is_none() || entry.test_fn.is_none() {
+                    eprintln!(
+                        "ERROR: red entry {} requires test_file and test_fn",
+                        entry.case_id
+                    );
+                    errors += 1;
+                }
+                if entry.reason.as_deref().is_none_or(|r| r.is_empty()) {
+                    eprintln!(
+                        "ERROR: red entry {} carries no failure-signature reason",
+                        entry.case_id
+                    );
+                    errors += 1;
+                }
+            }
             "gap" if entry.reason.as_deref().is_none_or(|r| r.is_empty()) => {
                 map_gap += 1;
                 eprintln!("ERROR: gap entry {} carries no reason", entry.case_id);
@@ -578,15 +596,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !path.is_file() {
                 eprintln!("ERROR: map {}: test file missing: {file}", entry.case_id);
                 errors += 1;
-            } else if !fs::read_to_string(&path)
-                .map(|text| text.contains(&format!("fn {func}")))
-                .unwrap_or(false)
-            {
-                eprintln!(
-                    "ERROR: map {}: test fn {func} not found in {file}",
-                    entry.case_id
-                );
-                errors += 1;
+            } else {
+                let needle = if file.ends_with(".py") {
+                    format!("def {func}")
+                } else if file.ends_with(".ts") {
+                    format!("function {func}")
+                } else {
+                    format!("fn {func}")
+                };
+                if !fs::read_to_string(&path)
+                    .map(|text| text.contains(&needle))
+                    .unwrap_or(false)
+                {
+                    eprintln!(
+                        "ERROR: map {}: test fn {func} not found in {file}",
+                        entry.case_id
+                    );
+                    errors += 1;
+                }
             }
         } else if entry.test_file.is_some() || entry.test_fn.is_some() {
             eprintln!(
@@ -617,6 +644,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let mut red_by_language = [0usize; 3];
+    for entry in &map.cases {
+        if entry.status != "red" {
+            continue;
+        }
+        match entry.test_file.as_deref().unwrap_or_default() {
+            file if file.ends_with(".rs") => red_by_language[0] += 1,
+            file if file.ends_with(".ts") => red_by_language[1] += 1,
+            file if file.ends_with(".py") => red_by_language[2] += 1,
+            _ => {}
+        }
+    }
+
     if errors == 0 {
         println!(
             "Manifest verification passed: {}/{} cases synchronized with filesystem.",
@@ -628,7 +668,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             disk_total,
             disk_domain_counts.len()
         );
-        println!("Case-to-test map verified: {map_implemented} implemented / {map_gap} gap.");
+        println!(
+            "Case-to-test map verified: {map_implemented} implemented / {map_red} red / {map_gap} gap."
+        );
+        println!(
+            "Red by language: rust={} typescript={} python={}",
+            red_by_language[0], red_by_language[1], red_by_language[2]
+        );
         if warnings > 0 {
             println!(
                 "WARNING: {} case files lack platform_target; validated when present until Part 2 lands.",

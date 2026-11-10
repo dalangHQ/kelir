@@ -10,6 +10,7 @@ async-trait = { workspace = true }
 
 [dev-dependencies]
 kelir-plugin-testkit = { path = "../../kelir-plugin-testkit" }
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
 workspace = true
@@ -17,3 +18,4 @@ workspace = true
 [package.metadata.kelir.tier]
 level = 1
 name = "mcp"
+
