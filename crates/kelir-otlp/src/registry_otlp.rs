@@ -79,9 +79,8 @@ impl MetricRegistry {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    #[allow(deprecated)]
     pub fn exec_finished(&self) {
-        let _ = self.in_flight_execs.fetch_update(
+        let _ = self.in_flight_execs.try_update(
             std::sync::atomic::Ordering::Relaxed,
             std::sync::atomic::Ordering::Relaxed,
             |in_flight| Some(in_flight.saturating_sub(1)),

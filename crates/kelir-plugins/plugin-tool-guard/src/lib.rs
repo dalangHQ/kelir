@@ -10,10 +10,9 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    ConsoleInterposer, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
-    VirtioDevice,
+    ConsoleInterposer, KelirPlugin, MountScope, PipelineBinder, VirtioDevice,
 };
-use kelir_interface::protocol_wire::Verdict;
+use kelir_interface::protocol_wire::{StreamKind, Verdict};
 use plugin_mcp::McpEndpointService;
 
 use crate::service_tool_guard::{
@@ -57,6 +56,13 @@ pub struct ToolGuardPlugin {
 }
 
 impl ToolGuardPlugin {
+    // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
+    fn interposes_port(&self, port: u32) -> bool {
+        u16::try_from(port)
+            .ok()
+            .and_then(StreamKind::from_u16)
+            .is_some_and(|kind| self.default_scope().allows_stream_kind(kind))
+    }
     pub fn new() -> Self {
         Self {
             config: ToolGuardConfig::default(),
@@ -92,6 +98,18 @@ impl ToolGuardPlugin {
         // TODO (L3): token-bucket cadence clamp per tool per cans/plugins/tool-guard.md.
         quota.invocations = quota.invocations.saturating_add(1);
         Ok(true)
+    }
+
+    // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+    pub async fn ingest_advertisement(
+        &self,
+        advertisement: &ToolsListResult,
+    ) -> Result<(), PluginError> {
+        self.registry.ingest_tools_list(advertisement).await?;
+        if self.config.pin_schemas && self.registry.locked_digest()?.is_none() {
+            self.registry.lock_catalog().await?;
+        }
+        Ok(())
     }
 
     async fn guard_tool_call(
@@ -193,7 +211,10 @@ impl KelirPlugin for ToolGuardPlugin {
     }
     fn default_scope(&self) -> MountScope {
         // see: cans/11-protocol.md#Control-channel
-        MountScope::default().with_devices([VirtioDevice::Console, VirtioDevice::Vsock])
+        // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
+        MountScope::default()
+            .with_devices([VirtioDevice::Console, VirtioDevice::Vsock])
+            .with_stream_kinds([StreamKind::McpConsole])
     }
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
         // see: cans/plugins/tool-guard.md#Executes-upstream-of-plugin-mcp-on-the-MCP_CONSOLE-mux-stream
@@ -204,20 +225,12 @@ impl KelirPlugin for ToolGuardPlugin {
 }
 
 #[async_trait]
-impl LifecycleParticipant for ToolGuardPlugin {
-    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        // see: cans/plugins/tool-guard.md#Immutable-schema-locking
-        if self.config.pin_schemas {
-            return self.registry.lock_catalog().await;
-        }
-        Ok(())
-    }
-}
-
-#[async_trait]
 impl ConsoleInterposer for ToolGuardPlugin {
     async fn on_console_input(&self, port: u32, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
         // TODO (L3): trace quota eviction once the console surface grows a close hook per cans/plugins/tool-guard.md.
+        if !self.interposes_port(port) {
+            return Ok(());
+        }
         match self.guard_tool_call(port, bytes).await? {
             Verdict::Pass | Verdict::Patch(_) => Ok(()),
             Verdict::Drop { errno, reason } => Err(PluginError::reject(
@@ -235,7 +248,11 @@ impl ConsoleInterposer for ToolGuardPlugin {
         }
     }
 
-    async fn on_console_output(&self, _port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_output(&self, port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
+        // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
+        if !self.interposes_port(port) {
+            return Ok(());
+        }
         // see: cans/plugins/tool-guard.md#Immutable-schema-locking
         let frame = McpFrame::decode(chunk)?;
         if frame.method == McpMethod::ToolsList {
@@ -246,7 +263,7 @@ impl ConsoleInterposer for ToolGuardPlugin {
                 .iter()
                 .map(|schema| schema.name.clone())
                 .collect();
-            self.registry.ingest_tools_list(&advertisement).await?;
+            self.ingest_advertisement(&advertisement).await?;
             return self.mcp.advertise_tools(advertised);
         }
         self.scrub_tool_response(chunk).await

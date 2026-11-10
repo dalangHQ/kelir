@@ -87,6 +87,80 @@ fn tool_guard_unparsed_frame_fails_closed() -> Result<(), String> {
     Ok(())
 }
 
+// see: cans/plugins/tool-guard.md#Total-tool-call-interposition
+#[test]
+fn tool_guard_pty_port_0_not_interposed() -> Result<(), String> {
+    let plugin = ToolGuardPlugin::new();
+    let mut bytes = b"\x00not-a-json-rpc-frame".to_vec();
+    let before = bytes.clone();
+    block_on(plugin.on_console_input(0, &mut bytes)).map_err(|err| format!("{err:?}"))?;
+    if bytes != before {
+        return Err("tool-guard mutated PTY port 0 bytes; interposition must not reach it".into());
+    }
+    let mut chunk = b"\x00not-a-json-rpc-frame".to_vec();
+    let chunk_before = chunk.clone();
+    block_on(plugin.on_console_output(0, &mut chunk)).map_err(|err| format!("{err:?}"))?;
+    if chunk != chunk_before {
+        return Err("tool-guard mutated PTY port 0 output; interposition must not reach it".into());
+    }
+    Ok(())
+}
+
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+#[test]
+fn tool_guard_locks_after_first_advertisement() -> Result<(), String> {
+    let plugin = ToolGuardPlugin::new();
+    let registry = plugin.context().registry();
+    if registry
+        .locked_digest()
+        .map_err(|err| format!("{err:?}"))?
+        .is_some()
+    {
+        return Err(
+            "catalog locked before any advertisement; the boot-time lock must not fire".into(),
+        );
+    }
+    let schema = ToolSchema {
+        name: "execute_command".into(),
+        description: "run a command".into(),
+        input_schema: b"{}".to_vec(),
+        signature: vec![1, 2, 3],
+    };
+    let advertised = ToolsListResult {
+        tools: vec![schema.clone()],
+    };
+    block_on(plugin.ingest_advertisement(&advertised))
+        .map_err(|err| format!("first advertisement rejected: {err:?}"))?;
+    if registry
+        .locked_digest()
+        .map_err(|err| format!("{err:?}"))?
+        .is_none()
+    {
+        return Err("first advertisement did not lock the catalog".into());
+    }
+    let drifted = ToolSchema {
+        description: "run a command with extra parameters".into(),
+        ..schema
+    };
+    let drifted_list = ToolsListResult {
+        tools: vec![drifted],
+    };
+    match block_on(plugin.ingest_advertisement(&drifted_list)) {
+        Err(PluginError::Reject { errno, .. }) if errno == "ESecurityViolation" => (),
+        Err(err) => {
+            return Err(format!(
+                "post-lock drift must halt with ESecurityViolation, got {err:?}"
+            ));
+        }
+        Ok(()) => {
+            return Err("post-lock schema drift was accepted; the locked catalog must halt".into());
+        }
+    }
+    block_on(plugin.ingest_advertisement(&advertised))
+        .map_err(|err| format!("identical advertisement must stay accepted: {err:?}"))?;
+    Ok(())
+}
+
 fn tools_call_frame(name: &str, id: u64) -> Vec<u8> {
     format!(
         "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/call\",\"params\":{{\"name\":\"{name}\",\"arguments\":{{}}}}}}\n"

@@ -23,7 +23,7 @@ async fn vr_09_virtio_console_port0_pty_dedication() -> Result<(), String> {
         .boot()
         .await
         .map_err(|e| e.to_string())?;
-    let builder = session.spawn("ls");
+    let builder = session.spawn_builder("ls");
     if builder.stream_kind != StreamKind::Exec {
         return Err(format!(
             "programmatic exec bound to stream kind {:?} instead of EXEC 0x0001; Port 0 must stay reserved for the break-glass PTY",

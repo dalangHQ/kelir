@@ -14,7 +14,7 @@ __all__ = [
 @dataclass
 class ContainerConfig:
     runtime: str = "crun"
-    isolate_var_lib_containers: bool = True
+    isolate_var_lib_containers: bool = False
     pin_subuid_ranges: bool = True
     scratch_device: str | None = None
 

@@ -4,9 +4,7 @@
 // see: cans/11-protocol.md#Control-channel
 use std::collections::HashMap;
 
-use serde::de::{Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 // see: cans/11-protocol.md#Binary-exec-channel
 macro_rules! wire_consts {
@@ -81,46 +79,6 @@ wire_enum! { MsgType, MSG_TYPES, {
     Signal = 0x0005,
 }}
 
-struct EnvPairsVisitor;
-
-impl<'de> Visitor<'de> for EnvPairsVisitor {
-    type Value = Vec<(String, String)>;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a map or a sequence of key/value pairs")
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-    where
-        A: SeqAccess<'de>,
-    {
-        let mut pairs = Vec::new();
-        while let Some(pair) = seq.next_element::<(String, String)>()? {
-            pairs.push(pair);
-        }
-        Ok(pairs)
-    }
-
-    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-    where
-        A: MapAccess<'de>,
-    {
-        let mut pairs = Vec::new();
-        while let Some((key, value)) = map.next_entry::<String, String>()? {
-            pairs.push((key, value));
-        }
-        Ok(pairs)
-    }
-}
-
-// see: cans/plugins/tool-guard.md#Total-tool-call-interposition
-fn deserialize_env_pairs<'de, D>(deserializer: D) -> Result<Vec<(String, String)>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    deserializer.deserialize_any(EnvPairsVisitor)
-}
-
 // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecveMutation {
@@ -128,7 +86,7 @@ pub struct ExecveMutation {
     pub new_binary: Option<String>,
     #[serde(alias = "argv")]
     pub new_argv: Option<Vec<String>>,
-    #[serde(default, alias = "env", deserialize_with = "deserialize_env_pairs")]
+    #[serde(default, alias = "env")]
     pub set_env: Vec<(String, String)>,
     #[serde(default)]
     pub unset_env: Vec<String>,
@@ -212,11 +170,12 @@ pub struct TrappedSyscall {
     pub memfd_create_flags: Option<u32>,
 }
 
-// see: cans/artifacts/code/messages.rs#TrapEvent
+// see: cans/artifacts/code/messages.rs#ResolvedBinary
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ResolvedBinary {
     pub dev: u64,
     pub ino: u64,
+    #[serde(with = "crate::hex_codec::serde_hex_32")]
     pub blake3: [u8; 32],
     pub path: String,
 }
@@ -226,11 +185,14 @@ pub struct TrapEvent {
     pub seq: u64,
     pub pid: u32,
     pub ppid: u32,
+    // see: cans/artifacts/code/messages.rs#TrapEvent — on-the-wire field, consumed there
     pub task_id: u64,
     pub binary_path: String,
     pub binary_dev: u64,
     pub binary_ino: u64,
     // see: cans/artifacts/code/messages.rs#TrapEvent
+    // see: cans/11-protocol.md#Wire-framing
+    #[serde(with = "crate::hex_codec::serde_hex_32")]
     pub binary_blake3: [u8; 32],
     pub argv: Vec<String>,
     pub envp: HashMap<String, String>,
@@ -240,10 +202,25 @@ pub struct TrapEvent {
     // see: cans/artifacts/code/messages.rs#TrapEvent
     #[serde(default)]
     pub resolved_binary: ResolvedBinary,
+    // see: cans/11-protocol.md#Trap-fast-path — on-the-wire field, consumed there
     #[serde(default)]
     pub interpreter_chain: Vec<ResolvedBinary>,
+    // see: cans/11-protocol.md#Trap-fast-path — on-the-wire field, consumed there
     #[serde(default)]
     pub shell_payload: Option<String>,
+}
+
+// see: cans/artifacts/code/messages.rs#TrapEvent
+impl TrapEvent {
+    pub fn new(seq: u64, pid: u32, ppid: u32, binary_path: impl Into<String>) -> Self {
+        Self {
+            seq,
+            pid,
+            ppid,
+            binary_path: binary_path.into(),
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -295,7 +272,8 @@ pub enum HostToGuest {
     ChannelData { seq: u64, payload: Vec<u8> },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// see: cans/11-protocol.md#Trap-fast-path
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessLimits {
     pub max_as_bytes: Option<u64>,
     pub max_nofile: Option<u64>,

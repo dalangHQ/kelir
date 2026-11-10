@@ -54,13 +54,19 @@ fn lc_05_monotonic_clock_clamp_on_resume() -> Result<(), String> {
     assert_eq!(second, 1);
     let committed_second = plane.commit_step(lineage).map_err(|e| e.to_string())?;
     assert_eq!(committed_second, 1);
-    let restored_first = plane.restore(0).map_err(|e| e.to_string())?;
+    let restored_first = plane.restore(0, 0).map_err(|e| e.to_string())?;
     assert_eq!(restored_offset(&restored_first)?, 5_000_000_000);
     assert_eq!(plane.monotonic_watermark_ns(), 5_000_000_000);
-    let restored_second = plane.restore(1).map_err(|e| e.to_string())?;
+    let restored_second = plane.restore(1, 0).map_err(|e| e.to_string())?;
     assert_eq!(restored_offset(&restored_second)?, 5_000_000_000);
     assert_eq!(plane.monotonic_watermark_ns(), 5_000_000_000);
-    match plane.restore(999) {
+    let restored_live = plane.restore(0, 6_000_000_000).map_err(|e| e.to_string())?;
+    assert_eq!(restored_offset(&restored_live)?, 6_000_000_000);
+    assert_eq!(plane.monotonic_watermark_ns(), 6_000_000_000);
+    let restored_floor = plane.restore(1, 0).map_err(|e| e.to_string())?;
+    assert_eq!(restored_offset(&restored_floor)?, 6_000_000_000);
+    assert_eq!(plane.monotonic_watermark_ns(), 6_000_000_000);
+    match plane.restore(999, 0) {
         Err(PluginError::Halt(message)) => assert!(message.contains("not in manifest graph")),
         Err(e) => return Err(format!("unknown restore gave wrong error: {e}")),
         Ok(_) => return Err("unknown node restored".to_string()),
@@ -91,7 +97,7 @@ fn lc_19_delta_chain_unbounded_compaction() -> Result<(), String> {
     assert_eq!(chain.len(), 2);
     assert_eq!(chain[0], compacted);
     assert_eq!(chain[1], 0);
-    let restored = plane.restore(compacted).map_err(|e| e.to_string())?;
+    let restored = plane.restore(compacted, 0).map_err(|e| e.to_string())?;
     assert_eq!(restored_offset(&restored)?, 200);
     Ok(())
 }

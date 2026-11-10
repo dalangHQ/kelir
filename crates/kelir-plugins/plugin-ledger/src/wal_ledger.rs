@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::telemetry::CausalDelta;
 use kelir_otlp::OtlpExporter;
+use serde::{Deserialize, Serialize};
 
 use crate::OtelConfig;
 
@@ -16,13 +17,17 @@ pub trait LedgerSink: Send + Sync {
 pub const WAL_RECORD_LEN: usize = 8 + 32 + 32 + 32 + 8 + 64;
 
 // see: cans/plugins/ledger.md#Merkle-WAL-specification
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WalRecord {
     pub seq: u64,
+    #[serde(with = "kelir_interface::hex_codec::serde_hex_32")]
     pub prev_hash: [u8; 32],
+    #[serde(with = "kelir_interface::hex_codec::serde_hex_32")]
     pub receipt_blake3: [u8; 32],
+    #[serde(with = "kelir_interface::hex_codec::serde_hex_32")]
     pub delta_root: [u8; 32],
     pub timestamp_ns: u64,
+    #[serde(with = "kelir_interface::hex_codec::serde_hex_64")]
     pub signature: [u8; 64],
 }
 

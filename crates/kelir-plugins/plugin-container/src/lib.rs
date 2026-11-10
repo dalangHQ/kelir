@@ -64,6 +64,7 @@ struct SubidOwner {
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.container
+// see: cans/plugins/profile.md#Default-zero-capability-invariant
 #[derive(Debug, Clone)]
 pub struct ContainerConfig {
     pub runtime: String,
@@ -73,11 +74,12 @@ pub struct ContainerConfig {
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.container
+// see: cans/plugins/profile.md#Default-zero-capability-invariant
 impl Default for ContainerConfig {
     fn default() -> Self {
         Self {
             runtime: "crun".into(),
-            isolate_var_lib_containers: true,
+            isolate_var_lib_containers: false,
             pin_subuid_ranges: true,
             scratch_device: None,
         }
@@ -182,7 +184,7 @@ impl KelirPlugin for ContainerPlugin {
 
     // see: cans/plugins/container.md#UID/GID-mapping-isolation
     fn default_scope(&self) -> MountScope {
-        // TODO (L3): gate-2 binary matching must resolve these names against full trap binary paths.
+        // TODO (L3): gate-2 canonical (st_dev, st_ino, binary_blake3) identity per cans/11-protocol.md#Trap-fast-path
         MountScope::default().with_binaries([
             NEWUIDMAP,
             NEWGIDMAP,

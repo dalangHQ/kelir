@@ -26,7 +26,7 @@ impl OtlpReceiptRecord {
         Self {
             pid: receipt.pid,
             binary_path: receipt.binary_path.clone(),
-            binary_blake3: receipt.binary_blake3.clone(),
+            binary_blake3: kelir_interface::hex_codec::encode_hex(&receipt.binary_blake3),
             exit_code: receipt.exit_code,
             wall_clock_ns: receipt.wall_clock_ns,
             spans: crate::phase_spans(receipt.phase_timings.as_ref()),

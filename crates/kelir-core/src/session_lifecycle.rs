@@ -21,7 +21,7 @@ use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 pub struct PlaneWiring {
     pub terminal: Option<crate::planes::terminal::TerminalWiring>,
     pub wire: Option<crate::planes::wire::WireWiring>,
-    pub storage: crate::planes::storage::StorageWiring,
+    pub storage: crate::planes::storage::StorageConfig,
 }
 
 pub struct Session {
@@ -294,10 +294,17 @@ impl Session {
             workspace_root.join("broker"),
             crate::planes::storage::storage_reconciler::TraversalGuard::StrictResolveBeneath,
         );
-        let wire = match plane_wiring.wire {
-            Some(wiring) => crate::planes::wire::WirePlane::new().with_wiring(wiring),
-            None => crate::planes::wire::WirePlane::new(),
-        };
+        // see: cans/plugins/replay.md#Invariants-and-policy-(replay)
+        let wire = crate::planes::wire::WirePlane::new().with_wiring(match plane_wiring.wire {
+            Some(mut wiring) => {
+                wiring.sinkhole_drop_all |= config.network_off;
+                wiring
+            }
+            None => crate::planes::wire::WireWiring {
+                sinkhole_drop_all: config.network_off,
+                ..Default::default()
+            },
+        });
         if let Some(handler) = engine.vsock_service(VAULT_METADATA_VSOCK_PORT) {
             wire.bind_imds_sink(handler)?;
         }
@@ -319,16 +326,43 @@ impl Session {
             .with_checkpoint(Arc::clone(&session_checkpoint_plane));
         metrics.set_active_vcpus(u32::from(config.vcpus));
         // TODO (L3): DriverRouter probes KVM/HVF/AVF and completes the driver boot handshake; vm_handle stays unbound until a backend loads.
-        let driver = crate::vmm::DriverRouter::load_native_driver(
+        let driver = match crate::vmm::DriverRouter::load_native_driver(
             config.driver_policy.driver.as_deref(),
             matches!(
                 config.driver_policy.wx_enforcement,
                 kelir_interface::driver_interface::WxPolicy::Strict
             ),
             config.driver_policy.allow_emulated_fallback,
-        )
-        .ok()
-        .map(|loaded| Arc::new(tokio::sync::Mutex::new(loaded)));
+        ) {
+            Ok(loaded) => Some(Arc::new(tokio::sync::Mutex::new(loaded))),
+            Err(DriverError::Unsupported(_)) => {
+                // see: cans/01-architecture.md#Page-size-dynamic-boot-selection
+                // TODO (L3): consumed by driver-rustvmm/hvf kernel-fixture page-size selection.
+                if config.page_size_kb != 4 {
+                    tracing::warn!(
+                        "page_size_kb={} set but the driver backend returned Unsupported; unconsumed (L3)",
+                        config.page_size_kb
+                    );
+                }
+                // see: cans/08-lifecycle.md#Clock-invariants
+                // TODO (L3): consumed by driver-rustvmm kvm-clock boot-param injection.
+                if let Some(clocksource) = config.pinned_clocksource.as_deref() {
+                    tracing::warn!(
+                        "pinned_clocksource={clocksource} set but the driver backend returned Unsupported; unconsumed (L3)"
+                    );
+                }
+                // see: cans/08-lifecycle.md#Host-crash-reaper
+                // TODO (L3): consumed by the driver host-crash reaper preemption window.
+                if config.preemption_grace_ms != 0 {
+                    tracing::warn!(
+                        "preemption_grace_ms={} set but the driver backend returned Unsupported; unconsumed (L3)",
+                        config.preemption_grace_ms
+                    );
+                }
+                None
+            }
+            Err(_) => None,
+        };
         let mut session = Self {
             terminal,
             storage: storage.with_metrics(metrics.clone()),
@@ -574,7 +608,8 @@ impl Session {
                 "no checkpoint head for PID lineage".into(),
             )
         })?;
-        let snapshot = self.checkpoint.restore(node_id)?;
+        let guest_monotonic_ns = self.vm_handle().guest_monotonic_ns();
+        let snapshot = self.checkpoint.restore(node_id, guest_monotonic_ns)?;
         self.rollback_to(&snapshot).await
     }
 
@@ -587,7 +622,7 @@ impl Session {
         // see: cans/08-lifecycle.md#Rollback
         if let Some(revoker) = self.engine.token_revoker() {
             revoker
-                .revoke_session_tokens(&encode_hex(&self.incarnation_id))
+                .revoke_session_tokens(&encode_hex(&self.session_id))
                 .await?;
         }
         let Some(driver) = self.driver.as_ref() else {
@@ -647,16 +682,45 @@ impl Session {
         Ok(())
     }
 
-    pub fn suspend(
+    // see: cans/08-lifecycle.md#Hypervisor-primitives
+    // TODO (L3): backend drivers implement the suspend-image write; Session advances state only after driver success.
+    pub async fn suspend(
         &mut self,
         reason: kelir_interface::driver_interface::SuspendReason,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): suspend the driver to disk per reason.
+        let Some(driver) = self.driver.as_ref() else {
+            return Err(kelir_interface::plugin_model::PluginError::Halt(
+                "driver suspend is TODO (L3): no VMM driver loaded".into(),
+            ));
+        };
+        let path = session_dir(&self.session_id)?.join("suspend.img");
+        driver
+            .lock()
+            .await
+            .suspend(reason, &path)
+            .await
+            .map_err(|error| {
+                kelir_interface::plugin_model::PluginError::Halt(format!(
+                    "driver suspend is TODO (L3): {error}"
+                ))
+            })?;
         self.advance_lifecycle(LifecycleState::Suspended(reason))
     }
 
-    pub fn resume(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): resume the driver from the suspended image.
+    // see: cans/08-lifecycle.md#Hypervisor-primitives
+    // TODO (L3): backend drivers implement the suspended-image restore; Session advances state only after driver success.
+    pub async fn resume(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let Some(driver) = self.driver.as_ref() else {
+            return Err(kelir_interface::plugin_model::PluginError::Halt(
+                "driver resume is TODO (L3): no VMM driver loaded".into(),
+            ));
+        };
+        let path = session_dir(&self.session_id)?.join("suspend.img");
+        driver.lock().await.resume(&path).await.map_err(|error| {
+            kelir_interface::plugin_model::PluginError::Halt(format!(
+                "driver resume is TODO (L3): {error}"
+            ))
+        })?;
         self.advance_lifecycle(LifecycleState::Running)
     }
 
@@ -670,28 +734,56 @@ impl Session {
     }
 
     // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
+    // TODO (L3): a real policy plugin (plugin-*) arms the watchdog from on_vm_init; boot warns while none does.
     pub async fn run_lifecycle_hook(
         &mut self,
         event: LifecycleEvent,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let Some(callback) = self.engine.take_lifecycle_callback(event) else {
+            if matches!(event, LifecycleEvent::VmInit) && self.config.enable_watchdog {
+                tracing::warn!(
+                    "enable_watchdog=true reached on_vm_init with no callback registered to arm ctx.set_watchdog"
+                );
+            }
             return Ok(());
         };
         let session_id = encode_hex(&self.session_id);
-        match self.driver.as_ref() {
+        // see: cans/08-lifecycle.md#Watchdog
+        let watchdog_probe = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let result = match self.driver.as_ref() {
             Some(driver) => {
                 let mut guard = driver.lock().await;
-                let mut ctx =
-                    LifecycleCtx::new(&self.config, &session_id, &mut **guard, &mut self.vetoes);
+                let mut ctx = LifecycleCtx::new_with_watchdog_probe(
+                    &self.config,
+                    &session_id,
+                    &mut **guard,
+                    &mut self.vetoes,
+                    std::sync::Arc::clone(&watchdog_probe),
+                );
                 callback(&mut ctx).await
             }
             None => {
                 let mut driver = NullDriver;
-                let mut ctx =
-                    LifecycleCtx::new(&self.config, &session_id, &mut driver, &mut self.vetoes);
+                let mut ctx = LifecycleCtx::new_with_watchdog_probe(
+                    &self.config,
+                    &session_id,
+                    &mut driver,
+                    &mut self.vetoes,
+                    std::sync::Arc::clone(&watchdog_probe),
+                );
                 callback(&mut ctx).await
             }
+        };
+        result?;
+        if matches!(event, LifecycleEvent::VmInit)
+            && self.config.enable_watchdog
+            && !watchdog_probe.load(std::sync::atomic::Ordering::Acquire)
+        {
+            tracing::warn!(
+                "enable_watchdog=true finished on_vm_init without any callback arming ctx.set_watchdog"
+            );
         }
+        Ok(())
     }
 
     // see: cans/08-lifecycle.md#State-machine

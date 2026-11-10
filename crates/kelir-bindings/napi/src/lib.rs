@@ -14,12 +14,7 @@ pub mod fusion_plugin;
 pub mod storage_bridge;
 
 use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, convert_descriptor};
-use storage_bridge::storage_wiring;
-
-pub struct PluginRegistration {
-    pub name: String,
-    pub enabled: bool,
-}
+use storage_bridge::storage_config;
 
 use kelir_core::Session;
 use kelir_core::planes::storage::storage_reconciler::FsReconcileRequest;
@@ -28,7 +23,8 @@ use kelir_interface::driver_interface::{
 };
 use kelir_interface::error_envelope::ErrorEnvelope;
 use kelir_interface::handles_lifecycle::VmHandle as CoreVmHandle;
-use kelir_interface::plugin_model::PluginError;
+use kelir_interface::hex_codec::decode_hex_fixed;
+use kelir_interface::plugin_model::{PluginError, PluginRegistration};
 
 // see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
 fn halt(error: PluginError) -> Error {
@@ -46,6 +42,19 @@ fn envelope_error(envelope: &ErrorEnvelope) -> Error {
 // see: cans/03-sdk-architecture.md#Session-surfaces
 fn missing(reason: &str) -> Error {
     Error::new(Status::GenericFailure, reason.to_string())
+}
+
+// see: cans/08-lifecycle.md#Detached-lifecycle
+#[napi]
+pub fn relay_socket_path(session_id: String) -> Result<String> {
+    let id = decode_hex_fixed::<16>(&session_id).map_err(|_| {
+        missing(&format!(
+            "attach: session id `{session_id}` is not 32 hex chars"
+        ))
+    })?;
+    Session::relay_socket_path(&id)
+        .map_err(halt)
+        .map(|path| path.display().to_string())
 }
 
 // see: cans/03-sdk-architecture.md#Session-surfaces
@@ -808,11 +817,7 @@ impl NativeKelirBuilder {
             return Err(Error::new(Status::InvalidArg, reason.to_string()));
         }
         // TODO (L3): bind each fused ring chain to its single trampoline entry as one threadsafe closure and dispatch through the kelir-core pipeline.
-        let plugins: Vec<kelir_core::PluginRegistration> = self
-            .plugins
-            .iter()
-            .map(|plugin| kelir_core::PluginRegistration::new(plugin.name.clone(), plugin.enabled))
-            .collect();
+        let plugins: Vec<PluginRegistration> = self.plugins.clone();
         let plane_wiring = self.plane_wiring()?;
         let synthetic_files = self
             .storage_cfg
@@ -887,8 +892,8 @@ impl NativeKelirBuilder {
                 allow_udp_proxied: cfg.tap_filter.as_deref() == Some("AllowUdpProxied"),
             });
         let storage = match &self.storage_cfg {
-            Some(cfg) => storage_wiring(cfg)?,
-            None => kelir_core::planes::storage::StorageWiring::default(),
+            Some(cfg) => storage_config(cfg)?,
+            None => kelir_core::planes::storage::StorageConfig::default(),
         };
         Ok(kelir_core::session_lifecycle::PlaneWiring {
             terminal,

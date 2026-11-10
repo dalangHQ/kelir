@@ -32,16 +32,6 @@ impl UartRingBuffer {
         }
     }
 
-    pub fn read(&mut self, out: &mut [u8]) -> usize {
-        let count = out.len().min(self.len);
-        for (i, slot) in out.iter_mut().enumerate().take(count) {
-            *slot = self.buf[(self.read_cursor + i) % UART_RING_CAPACITY];
-        }
-        self.read_cursor = (self.read_cursor + count) % UART_RING_CAPACITY;
-        self.len -= count;
-        count
-    }
-
     pub fn len(&self) -> usize {
         self.len
     }
@@ -63,7 +53,7 @@ impl UartRingBuffer {
     }
 
     pub fn decode_exit_kind(&self) -> Option<ExitKind> {
-        decode_early_boot_exit(&self.snapshot())
+        decode_early_boot_exit(&self.snapshot(), None)
     }
 }
 
@@ -73,7 +63,10 @@ impl Default for UartRingBuffer {
     }
 }
 
-pub fn decode_early_boot_exit(bytes: &[u8]) -> Option<ExitKind> {
+pub fn decode_early_boot_exit(bytes: &[u8], hypervisor_fault: Option<&str>) -> Option<ExitKind> {
+    if let Some(fault) = hypervisor_fault {
+        return Some(ExitKind::HypervisorFault(fault.to_string()));
+    }
     let text = String::from_utf8_lossy(bytes);
     // TODO (L3): further kernel panic signatures beyond the canonical "Kernel panic" line.
     text.lines()

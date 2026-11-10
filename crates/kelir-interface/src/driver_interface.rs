@@ -221,15 +221,15 @@ pub struct VmConfig {
     pub memory_mb: u32,
     pub kernel_path: PathBuf,
     pub rootfs_erofs_path: PathBuf,
+    // TODO (L3): consumed by hardware-vmm drivers selecting the guest MMU leaf mapping (4/16KB) at boot.
     pub page_size_kb: u32,
     pub tsc_locked: bool,
-    pub entropy_seed: Option<u64>,
     pub driver_policy: DriverPolicy,
-    pub enable_gpu_passthrough: bool,
     pub enable_watchdog: bool,
     pub deterministic_clock: bool,
+    // TODO (L3): consumed by hardware-vmm kernel boot-arg injection (clocksource=... tsc=reliable nohpet).
     pub pinned_clocksource: Option<String>,
-    pub ns_per_instruction: Option<u32>,
+    // TODO (L3): consumed by the kelir-core host-crash reaper SIGTERM window (on_host_preempt hook).
     pub preemption_grace_ms: u64,
     pub network_off: bool,
 }
@@ -263,7 +263,6 @@ pub fn default_vm_config(
         rootfs_erofs_path: PathBuf::from(rootfs_erofs.unwrap_or_default()),
         page_size_kb: 4,
         tsc_locked: tsc_locked.unwrap_or(true),
-        entropy_seed: None,
         driver_policy: DriverPolicy {
             // see: cans/01-architecture.md#Driver-backends
             driver: None,
@@ -275,11 +274,9 @@ pub fn default_vm_config(
             ffi_worker_threads: 1,
             ffi_max_ops_per_sec: 0,
         },
-        enable_gpu_passthrough: false,
         enable_watchdog: enable_watchdog.unwrap_or(false),
         deterministic_clock: true,
         pinned_clocksource: None,
-        ns_per_instruction: None,
         preemption_grace_ms: 0,
         network_off: true,
     }
@@ -308,7 +305,7 @@ pub struct BalloonConvergence {
     pub converged: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WatchdogAction {
     Reboot,
     Terminate { emit_diagnostic: bool },

@@ -13,79 +13,91 @@ export type ProfileFormat = "toml" | "yaml";
 
 const primitive = Type.Union([Type.Boolean(), Type.Integer(), Type.String()]);
 
-const ProfileSchema = Type.Object({
-  version: Type.Optional(Type.Integer()),
-  session: Type.Optional(
-    Type.Object({
-      id: Type.Optional(Type.String()),
-      topology: Type.Optional(Type.String()),
-      compute: Type.Optional(
-        Type.Object({
-          vcpus: Type.Optional(Type.Integer()),
-          max_vcpus: Type.Optional(Type.Integer()),
-          memory_mb: Type.Optional(Type.Integer()),
-          page_size_kb: Type.Optional(Type.Integer()),
-        }),
-      ),
-      balloon: Type.Optional(
-        Type.Object({
-          enabled: Type.Optional(Type.Boolean()),
-          initial_mb: Type.Optional(Type.Integer()),
-          pressure_reclaim: Type.Optional(Type.Boolean()),
-          reclaim_strategy: Type.Optional(Type.String()),
-        }),
-      ),
-      clock: Type.Optional(
-        Type.Object({
-          tsc_locked: Type.Optional(Type.Boolean()),
-          pinned_clocksource: Type.Optional(Type.String()),
-          deterministic_clock: Type.Optional(Type.Boolean()),
-          preemption_grace_ms: Type.Optional(Type.Integer()),
-        }),
-      ),
-      watchdog: Type.Optional(
-        Type.Object({
-          enabled: Type.Optional(Type.Boolean()),
-          timeout_seconds: Type.Optional(Type.Integer()),
-          action: Type.Optional(Type.String()),
-          heartbeat_cadence_seconds: Type.Optional(Type.Integer()),
-        }),
-      ),
-      devices: Type.Optional(
-        Type.Object({
-          virtio_rng: Type.Optional(
-            Type.Object({
-              enabled: Type.Optional(Type.Boolean()),
-              source: Type.Optional(Type.String()),
-            }),
-          ),
-          virtio_shm: Type.Optional(
-            Type.Object({
-              enabled: Type.Optional(Type.Boolean()),
-              regions: Type.Optional(
-                Type.Array(Type.Record(Type.String(), primitive)),
-              ),
-            }),
-          ),
-        }),
-      ),
-      artifacts: Type.Optional(
-        Type.Object({
-          kernel_path: Type.Optional(Type.String()),
-          rootfs_erofs_path: Type.Optional(Type.String()),
-          kernel_boot_params: Type.Optional(Type.Array(Type.String())),
-        }),
-      ),
-      shim: Type.Optional(
-        Type.Object({
-          max_exec_slots: Type.Optional(Type.Integer()),
-          hide_pid: Type.Optional(Type.Integer()),
-          anti_toctou_cgroups: Type.Optional(Type.Boolean()),
-        }),
-      ),
-    }),
-  ),
-});
+const ProfileSchema = Type.Object(
+  {
+    version: Type.Optional(Type.Integer()),
+    invariants: Type.Optional(Type.Unknown()),
+    driver: Type.Optional(Type.Unknown()),
+    session: Type.Optional(
+      Type.Object({
+        id: Type.Optional(Type.String()),
+        topology: Type.Optional(Type.String()),
+        compute: Type.Optional(
+          Type.Object({
+            vcpus: Type.Optional(Type.Integer()),
+            max_vcpus: Type.Optional(Type.Integer()),
+            memory_mb: Type.Optional(Type.Integer()),
+            page_size_kb: Type.Optional(Type.Integer()),
+          }),
+        ),
+        balloon: Type.Optional(
+          Type.Object({
+            enabled: Type.Optional(Type.Boolean()),
+            initial_mb: Type.Optional(Type.Integer()),
+            pressure_reclaim: Type.Optional(Type.Boolean()),
+            reclaim_strategy: Type.Optional(Type.String()),
+          }),
+        ),
+        clock: Type.Optional(
+          Type.Object({
+            tsc_locked: Type.Optional(Type.Boolean()),
+            pinned_clocksource: Type.Optional(Type.String()),
+            deterministic_clock: Type.Optional(Type.Boolean()),
+            preemption_grace_ms: Type.Optional(Type.Integer()),
+          }),
+        ),
+        watchdog: Type.Optional(
+          Type.Object({
+            enabled: Type.Optional(Type.Boolean()),
+            timeout_seconds: Type.Optional(Type.Integer()),
+            action: Type.Optional(Type.String()),
+            heartbeat_cadence_seconds: Type.Optional(Type.Integer()),
+          }),
+        ),
+        devices: Type.Optional(
+          Type.Object({
+            virtio_rng: Type.Optional(
+              Type.Object({
+                enabled: Type.Optional(Type.Boolean()),
+                source: Type.Optional(Type.String()),
+              }),
+            ),
+            virtio_shm: Type.Optional(
+              Type.Object({
+                enabled: Type.Optional(Type.Boolean()),
+                regions: Type.Optional(
+                  Type.Array(Type.Record(Type.String(), primitive)),
+                ),
+              }),
+            ),
+          }),
+        ),
+        artifacts: Type.Optional(
+          Type.Object({
+            kernel_path: Type.Optional(Type.String()),
+            rootfs_erofs_path: Type.Optional(Type.String()),
+            kernel_boot_params: Type.Optional(Type.Array(Type.String())),
+          }),
+        ),
+        shim: Type.Optional(
+          Type.Object({
+            max_exec_slots: Type.Optional(Type.Integer()),
+            hide_pid: Type.Optional(Type.Integer()),
+            anti_toctou_cgroups: Type.Optional(Type.Boolean()),
+          }),
+        ),
+      }),
+    ),
+    storage: Type.Optional(Type.Unknown()),
+    wire: Type.Optional(Type.Unknown()),
+    terminal: Type.Optional(Type.Unknown()),
+    checkpoint: Type.Optional(Type.Unknown()),
+    host: Type.Optional(Type.Unknown()),
+    plugins: Type.Optional(Type.Unknown()),
+    attestation: Type.Optional(Type.Unknown()),
+  },
+  { additionalProperties: false },
+);
 
 export type ProfileSpec = Static<typeof ProfileSchema>;
 

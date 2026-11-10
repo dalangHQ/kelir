@@ -43,7 +43,7 @@ async fn ar_01_execution_receipt_blake3_binding() -> Result<(), String> {
         .boot()
         .await
         .map_err(|e| e.to_string())?;
-    match session.spawn("/bin/true").await {
+    match session.spawn("/bin/true", &[]).await {
         Ok(result) => {
             assert_eq!(result.exit_code, 0);
         }
@@ -65,7 +65,7 @@ async fn lc_04_draining_state_rejection_ebusy() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     session.drain(5000).map_err(|e| e.to_string())?;
-    match session.spawn("echo new_task").await {
+    match session.spawn("echo new_task", &[]).await {
         Err(PluginError::Halt(message)) => {
             assert!(
                 message.contains("EBUSY"),
@@ -158,6 +158,7 @@ async fn lc_02_suspend_zero_rss_purge() -> Result<(), String> {
         .suspend(SuspendReason::External(
             ExternalSuspendKind::HumanAuthorizationHold,
         ))
+        .await
         .map_err(|e| e.to_string())?;
     let after = match session.host.refresh_rss() {
         Some(bytes) => bytes,
@@ -311,7 +312,7 @@ async fn lc_15_detached_session_reconnect_relay() -> Result<(), String> {
     }
     std::os::unix::net::UnixStream::connect(&relay)
         .map_err(|e| format!("relay connect failed: {e}"))?;
-    match kelir::session_lifecycle::Session::attach(&id) {
+    match kelir::session_lifecycle::Session::attach(&id).await {
         Ok(_) => {}
         Err(e) => return Err(format!("reconnect attach failed: {e}")),
     }
@@ -326,13 +327,44 @@ async fn ar_05_erofs_trusted_prefix_fast_path() -> Result<(), String> {
         .boot()
         .await
         .map_err(|e| e.to_string())?;
-    match session.spawn("/usr/bin/env").await {
+    match session.spawn("/usr/bin/env", &[]).await {
         Ok(result) => assert_eq!(result.exit_code, 0),
         Err(e) => {
             return Err(format!(
                 "/usr/bin/env trusted-prefix resolution never completed (pre-computed BLAKE3 table in host RAM, zero disk reads): {e}"
             ));
         }
+    }
+    Ok(())
+}
+
+// see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
+#[tokio::test]
+async fn sandbox_facade_fails_closed_before_boot() -> Result<(), String> {
+    let mut sandbox = kelir::sandbox_runtime::Sandbox::create(
+        kelir::sandbox_runtime::SandboxOptions::new(builder_config()),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    match sandbox.resume("/tmp/snap").await {
+        Err(PluginError::Halt(message)) if message.contains("Sandbox::resume before boot") => {}
+        other => return Err(format!("resume before boot gave {other:?}")),
+    }
+    match sandbox.exec("/bin/true", &[]).await {
+        Err(PluginError::Halt(message)) if message.contains("Sandbox::exec before boot") => {}
+        other => return Err(format!("exec before boot gave {other:?}")),
+    }
+    match sandbox
+        .stop_with_timeout(std::time::Duration::from_secs(1))
+        .await
+    {
+        Err(PluginError::Halt(message))
+            if message.contains("Sandbox::stop_with_timeout before boot") => {}
+        other => return Err(format!("stop_with_timeout before boot gave {other:?}")),
+    }
+    match sandbox.terminate().await {
+        Err(PluginError::Halt(message)) if message.contains("Sandbox::terminate before boot") => {}
+        other => return Err(format!("terminate before boot gave {other:?}")),
     }
     Ok(())
 }

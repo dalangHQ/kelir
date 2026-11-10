@@ -3,7 +3,9 @@
 // see: cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)
 // see: cans/08-lifecycle.md#Zombie-reaping
 
-use kelir_interface::protocol_wire::{EXEC_STREAM_CONTROL, EXEC_STREAM_STDIN, MsgType};
+use kelir_interface::protocol_wire::{
+    EXEC_STREAM_CONTROL, EXEC_STREAM_STDIN, MsgType, ProcessLimits,
+};
 
 use crate::codec_protocol;
 use crate::trap_protocol::ShimError;
@@ -12,20 +14,11 @@ pub const SLAB_CHUNK: usize = 256;
 pub const MAX_EXEC_SLOTS: usize = 4096;
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Rlimits {
-    pub max_as_bytes: Option<u64>,
-    pub max_nofile: Option<u64>,
-    pub max_nproc: Option<u64>,
-    pub max_cpu_seconds: Option<u64>,
-}
-
-#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct ExecSpec {
     pub binary: String,
     pub argv: Vec<String>,
-    pub limits: Rlimits,
+    pub limits: ProcessLimits,
 }
 
 impl ExecSpec {

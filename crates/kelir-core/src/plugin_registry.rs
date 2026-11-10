@@ -3,21 +3,7 @@ use std::collections::BTreeMap;
 
 use kelir_interface::plugin_model::PluginError;
 
-// see: cans/02-plugin-model.md#Catalog-tiering
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginRegistration {
-    pub name: String,
-    pub enabled: bool,
-}
-
-impl PluginRegistration {
-    pub fn new(name: impl Into<String>, enabled: bool) -> Self {
-        Self {
-            name: name.into(),
-            enabled,
-        }
-    }
-}
+pub use kelir_interface::plugin_model::PluginRegistration;
 
 // see: cans/02-plugin-model.md#Catalog-tiering
 pub fn resolve_plugin_registrations(
@@ -35,6 +21,11 @@ pub fn resolve_plugin_registrations(
         }
         // TODO (L3): dynamic discovery resolves a registered name to its plugin entry point; the registry only validates shape and dedupes.
         if resolved.iter().any(|item| item.name == registration.name) {
+            // see: cans/02-plugin-model.md#Static-dispatch
+            tracing::warn!(
+                "registry: duplicate plugin registration `{}` deduplicated; deepest config wins",
+                registration.name
+            );
             continue;
         }
         resolved.push(registration.clone());

@@ -79,7 +79,10 @@ function callsOf(
   return native.calls.filter((call) => call.method === method);
 }
 
-function withHome<T>(home: string | undefined, run: () => T): T {
+async function withHomeAwaited<T>(
+  home: string | undefined,
+  run: () => Promise<T>,
+): Promise<T> {
   const previous = process.env.HOME;
   if (home === undefined) {
     delete process.env.HOME;
@@ -87,13 +90,23 @@ function withHome<T>(home: string | undefined, run: () => T): T {
     process.env.HOME = home;
   }
   try {
-    return run();
+    return await run();
   } finally {
     if (previous === undefined) {
       delete process.env.HOME;
     } else {
       process.env.HOME = previous;
     }
+  }
+}
+
+async function nativeRelayBridgeAvailable(): Promise<boolean> {
+  const specifier = "./native/kelir.node";
+  try {
+    await import(specifier);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -312,52 +325,52 @@ function fakeNativeSession(options?: {
 }
 
 // see: cans/08-lifecycle.md#Detached-lifecycle
-function relaySocketPathRejectsMalformedSessionIds(): void {
-  checkThrows(
-    () => relaySocketPath(""),
-    "not 32 hex chars",
-    "relaySocketPath rejects an empty session id",
-  );
-  checkThrows(
-    () => relaySocketPath("abc"),
-    "not 32 hex chars",
-    "relaySocketPath rejects a short session id",
-  );
-  checkThrows(
-    () => relaySocketPath("z".repeat(32)),
-    "not 32 hex chars",
-    "relaySocketPath rejects a non-hex session id",
-  );
-  checkThrows(
-    () => relaySocketPath("f".repeat(31)),
-    "not 32 hex chars",
-    "relaySocketPath rejects a 31-char session id",
-  );
-  checkThrows(
-    () => relaySocketPath("f".repeat(33)),
-    "not 32 hex chars",
-    "relaySocketPath rejects a 33-char session id",
-  );
-}
-
-// see: cans/08-lifecycle.md#Detached-lifecycle
-function relaySocketPathFormatsTheRelaySocket(): void {
-  withHome("/home/kelir", () => {
-    const path = relaySocketPath("ABCDEF0123456789ABCDEF0123456789");
+async function relaySocketPathDelegatesToTheNativeBridge(): Promise<void> {
+  if (!(await nativeRelayBridgeAvailable())) {
+    await checkRejects(
+      relaySocketPath("f".repeat(32)),
+      "NAPI addon is missing",
+      "relaySocketPath fails closed when the native bridge is absent",
+    );
+    return;
+  }
+  await withHomeAwaited("/home/kelir", async (): Promise<void> => {
     check(
-      path ===
+      (await relaySocketPath("ABCDEF0123456789ABCDEF0123456789")) ===
         "/home/kelir/.kelir/sessions/abcdef0123456789abcdef0123456789/relay.sock",
-      "relaySocketPath lowercases the id under ~/.kelir/sessions/<id>/relay.sock",
+      "relaySocketPath delegates the canonical id to the native bridge",
     );
   });
-}
-
-function relaySocketPathRequiresHome(): void {
-  withHome(undefined, () => {
-    checkThrows(
-      () => relaySocketPath("f".repeat(32)),
+  await checkRejects(
+    relaySocketPath(""),
+    "not 32 hex chars",
+    "relaySocketPath surfaces the native rejection of an empty session id",
+  );
+  await checkRejects(
+    relaySocketPath("abc"),
+    "not 32 hex chars",
+    "relaySocketPath surfaces the native rejection of a short session id",
+  );
+  await checkRejects(
+    relaySocketPath("z".repeat(32)),
+    "not 32 hex chars",
+    "relaySocketPath surfaces the native rejection of a non-hex session id",
+  );
+  await checkRejects(
+    relaySocketPath("f".repeat(31)),
+    "not 32 hex chars",
+    "relaySocketPath surfaces the native rejection of a 31-char session id",
+  );
+  await checkRejects(
+    relaySocketPath("f".repeat(33)),
+    "not 32 hex chars",
+    "relaySocketPath surfaces the native rejection of a 33-char session id",
+  );
+  await withHomeAwaited(undefined, async (): Promise<void> => {
+    await checkRejects(
+      relaySocketPath("f".repeat(32)),
       "HOME is not set",
-      "relaySocketPath rejects when HOME is unset",
+      "relaySocketPath surfaces the native HOME requirement",
     );
   });
 }
@@ -673,12 +686,20 @@ async function sessionDelegatesLifecycleCalls(): Promise<void> {
 
 // see: cans/08-lifecycle.md#Detached-lifecycle
 async function sessionAttachRejectsUntilL3(): Promise<void> {
+  if (!(await nativeRelayBridgeAvailable())) {
+    await checkRejects(
+      Session.attach("nope"),
+      "NAPI addon is missing",
+      "attach fails closed when the native bridge is absent",
+    );
+    return;
+  }
   await checkRejects(
     Session.attach("nope"),
     "not 32 hex chars",
     "attach rejects a malformed session id before any relay work",
   );
-  await withHome("/home/kelir", async (): Promise<void> => {
+  await withHomeAwaited("/home/kelir", async (): Promise<void> => {
     await checkRejects(
       Session.attach("f".repeat(32)),
       "TODO: Session.attach",
@@ -688,9 +709,7 @@ async function sessionAttachRejectsUntilL3(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  relaySocketPathRejectsMalformedSessionIds();
-  relaySocketPathFormatsTheRelaySocket();
-  relaySocketPathRequiresHome();
+  await relaySocketPathDelegatesToTheNativeBridge();
   sessionSurfacesNativePlanes();
   await sessionFallsBackOnMissingPlanes();
   await sessionConvertsCheckpointRecords();

@@ -204,7 +204,7 @@ impl PeerCoordination {
             return Ok(());
         }
         match self.require_sql_peer()? {
-            Some(peer) => peer.issue_commit().await,
+            Some(peer) => peer.service().issue_commit().await,
             None => Ok(()),
         }
     }
@@ -215,7 +215,7 @@ impl PeerCoordination {
             return Ok(());
         }
         match self.require_sql_peer()? {
-            Some(peer) => peer.issue_rollback().await,
+            Some(peer) => peer.service().issue_rollback().await,
             None => Ok(()),
         }
     }
@@ -280,7 +280,7 @@ impl PeerCoordination {
             return Ok(());
         }
         match self.require_sql_peer()? {
-            Some(peer) => peer.inject_savepoint(marker).await,
+            Some(peer) => peer.service().inject_savepoint(marker).await,
             None => Ok(()),
         }
     }

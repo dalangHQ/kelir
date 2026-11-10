@@ -88,7 +88,8 @@ impl ExecutionReceipt {
         hash_str(&mut hasher, "kelir-receipt-leaf-v1");
         hash_u64(&mut hasher, u64::from(*pid));
         hash_str(&mut hasher, binary_path);
-        hash_str(&mut hasher, binary_blake3);
+        hash_u64(&mut hasher, binary_blake3.len() as u64);
+        hasher.update(binary_blake3);
         hash_exit_kind(&mut hasher, exit_kind);
         hash_opt_str(&mut hasher, correlation_token);
         hash_u64(&mut hasher, *dirty_bytes);

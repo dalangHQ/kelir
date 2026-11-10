@@ -251,7 +251,12 @@ impl CheckpointPlane {
 
     // see: cans/09-snapshots.md#Restore-modes
     // see: cans/08-lifecycle.md#Clock-invariants
-    pub fn restore(&self, node_id: u64) -> Result<SnapshotDescriptor, PluginError> {
+    // TODO (L3): read the live guest CLOCK_MONOTONIC through the driver surface; the watermark is the in-tree proxy.
+    pub fn restore(
+        &self,
+        node_id: u64,
+        guest_monotonic_ns: u64,
+    ) -> Result<SnapshotDescriptor, PluginError> {
         let graph = self.read_graph()?;
         let Some(node) = graph.get(node_id) else {
             return Err(PluginError::Halt(
@@ -261,8 +266,10 @@ impl CheckpointPlane {
         let mut descriptor = node.descriptor.clone();
         drop(graph);
         if let Some(clock) = descriptor.guest_clock.as_mut() {
-            // TODO (L3): read the live guest CLOCK_MONOTONIC through the driver surface; the watermark is the in-tree proxy.
-            let current = self.monotonic_watermark_ns.load(Ordering::Acquire);
+            let current = self
+                .monotonic_watermark_ns
+                .load(Ordering::Acquire)
+                .max(guest_monotonic_ns);
             let clamped = clock.monotonic_offset_ns.max(current);
             clock.monotonic_offset_ns = clamped;
             self.monotonic_watermark_ns

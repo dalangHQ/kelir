@@ -445,7 +445,7 @@ impl WirePlane {
         };
         let action = action?;
         self.record_drop(&action);
-        Ok(action)
+        Ok(self.surface_action(action))
     }
 
     pub fn process_outbound_frame(
@@ -499,7 +499,22 @@ impl WirePlane {
         };
         let action = action?;
         self.record_drop(&action);
-        Ok(action)
+        Ok(self.surface_action(action))
+    }
+
+    // see: cans/07-wire-plane.md#Frame-drop-and-forward-semantics
+    // TODO (L3): vCPU loop must act on this
+    pub fn surface_action(
+        &self,
+        action: kelir_interface::protocol_wire::FilterAction,
+    ) -> kelir_interface::protocol_wire::FilterAction {
+        if matches!(
+            action,
+            kelir_interface::protocol_wire::FilterAction::Suspend { .. }
+        ) {
+            tracing::warn!("FilterAction::Suspend returned without consumer");
+        }
+        action
     }
 
     // see: cans/07-wire-plane.md#Pre-policy-drop-zones

@@ -9,16 +9,19 @@ use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::handles_lifecycle::VmHandle;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    KelirPlugin, LifecycleParticipant, MountScope, NetInterposer, ParkedConnectionReset,
-    PipelineBinder, VirtioDevice,
+    KelirPlugin, LifecycleParticipant, MountScope, ParkedConnectionReset, PipelineBinder,
+    VirtioDevice,
 };
-use kelir_interface::protocol_wire::{Channel, FilterAction, SuspendUntil};
+use kelir_interface::protocol_wire::{Channel, FilterAction, StreamKind, SuspendUntil};
 
 // see: cans/plugins/wire-ingress.md#Host-proxy-terminates-TCP-handshake-and-buffers-up-to-64KB-initial-request-data
 pub const MAX_PARKED_BYTES: usize = 64 * 1024;
 
 // see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
 pub const L4_FORWARD_HEADER_LEN: usize = 14;
+
+// see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
+pub const L4_FORWARD_STREAM_KIND: StreamKind = StreamKind::L4Forward;
 
 // see: cans/plugins/wire-ingress.md#Invariants-and-policy-(wire-ingress)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -347,6 +350,31 @@ impl WireIngressPlugin {
         Channel::from_u16(self.config.wake_on_packet.transport_channel)
     }
 
+    // see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
+    // TODO (L3): core dispatches L4_FORWARD mux streams into this handler; kelir-interface exposes no mux-kind binder yet.
+    pub fn on_l4_forward_frame(&self, payload: &mut [u8]) -> Result<FilterAction, PluginError> {
+        let Some((l4, initial)) = L4ForwardFrame::decode(payload) else {
+            return Ok(FilterAction::Drop {
+                errno: None,
+                reason:
+                    "wire-ingress: malformed L4_FORWARD frame header dropped at the ingress stream"
+                        .into(),
+            });
+        };
+        if !self.router.is_parking()? {
+            return Ok(FilterAction::Forward);
+        }
+        match self.router.park_connection(l4, initial)? {
+            ParkOutcome::Parked => Ok(FilterAction::Suspend {
+                until: SuspendUntil::Deadline(self.config.parking.idle_timeout_ms),
+            }),
+            ParkOutcome::Overflow => Ok(FilterAction::Drop {
+                errno: None,
+                reason: "wire-ingress backlog overflow: 503 + Retry-After: 1".into(),
+            }),
+        }
+    }
+
     pub fn reset_parked_connections(&self) -> Result<Vec<u64>, PluginError> {
         self.router.reset_parked_connections()
     }
@@ -382,37 +410,15 @@ impl KelirPlugin for WireIngressPlugin {
     }
     fn default_scope(&self) -> MountScope {
         // see: cans/11-protocol.md#Control-channel
-        MountScope::default().with_devices([VirtioDevice::Net, VirtioDevice::Vsock])
+        // see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
+        MountScope::default()
+            .with_devices([VirtioDevice::Vsock])
+            .with_stream_kinds([L4_FORWARD_STREAM_KIND])
     }
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
-        // see: cans/07-wire-plane.md#Raw-packet-interception-points
-        let net_stage: Arc<dyn NetInterposer> = Arc::new(self.clone());
-        pipeline.bind_net_scoped(net_stage, self.default_scope());
         // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
         pipeline.bind_parked_connection_reset(Arc::new(self.router.clone()));
     }
 }
 
 impl LifecycleParticipant for WireIngressPlugin {}
-
-// see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
-impl NetInterposer for WireIngressPlugin {
-    fn on_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        // TODO (L3): L2/L4 reassembly per cans/07-wire-plane.md before L4_FORWARD payloads reach this ring.
-        if !self.router.is_parking()? {
-            return Ok(FilterAction::Forward);
-        }
-        let Some((l4, initial)) = L4ForwardFrame::decode(frame) else {
-            return Ok(FilterAction::Forward);
-        };
-        match self.router.park_connection(l4, initial)? {
-            ParkOutcome::Parked => Ok(FilterAction::Suspend {
-                until: SuspendUntil::Deadline(self.config.parking.idle_timeout_ms),
-            }),
-            ParkOutcome::Overflow => Ok(FilterAction::Drop {
-                errno: None,
-                reason: "wire-ingress backlog overflow: 503 + Retry-After: 1".into(),
-            }),
-        }
-    }
-}

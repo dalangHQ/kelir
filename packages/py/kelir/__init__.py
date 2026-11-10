@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import importlib
-import os
 from dataclasses import dataclass, field
-from pathlib import Path
+from datetime import timedelta
 from types import TracebackType
 from typing import Any, Awaitable, Callable, Literal, Self
 
@@ -198,6 +197,9 @@ class Verdict:
     def pass_(cls) -> Verdict:
         return cls("pass")
 
+    # see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
+    Pass = pass_
+
     @classmethod
     def drop(cls, errno: str = "", reason: str = "") -> Verdict:
         return cls("drop", errno=errno, reason=reason)
@@ -310,9 +312,12 @@ class TrapFilter:
         return TrapFilterSnapshot(binary=self.binary_name, args=self.args)
 
 
+# see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
 @dataclass
 class SpawnResult:
     exit_code: int = 0
+    stdout: str | None = None
+    stderr: str | None = None
 
 
 @dataclass
@@ -470,10 +475,12 @@ class ClockHandle:
     def __init__(self, native: Any = None) -> None:
         self._native = native
 
-    async def skew(self, delta: Any) -> None:
+    # see: cans/08-lifecycle.md#Clock-skew
+    async def skew(self, delta: timedelta) -> None:
         native = _require_native(self._native, "vm clock skew")
-        seconds = delta.total_seconds() if hasattr(delta, "total_seconds") else float(delta)
-        native.clock_skew(seconds)
+        if not isinstance(delta, timedelta):
+            raise EConfig("clock skew expects a datetime.timedelta, not a number")
+        native.clock_skew(delta.total_seconds())
 
 
 class VmHandle:
@@ -642,19 +649,34 @@ class HandlerContext:
         # TODO (L3): fetch the trap's execution receipt via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: trap receipt (L3)")
 
+    # see: cans/02-plugin-model.md#Unified-verdict
+    def pass_(self) -> Verdict:
+        return Verdict.pass_()
+
+    # see: cans/02-plugin-model.md#Unified-verdict
+    def drop(self, errno: str = "", reason: str = "") -> Verdict:
+        return Verdict.drop(errno, reason)
+
+    # see: cans/02-plugin-model.md#Unified-verdict
+    def patch(self, *args: Any, **kwargs: Any) -> Verdict:
+        return Verdict.patch(*args, **kwargs)
+
+    # see: cans/02-plugin-model.md#Unified-verdict
+    def suspend(self, until: Any = None) -> Verdict:
+        return Verdict.suspend(until)
+
+    # see: cans/02-plugin-model.md#Unified-verdict
+    def abort(self, reason: str = "") -> Verdict:
+        return Verdict.abort(reason)
+
 
 # see: cans/08-lifecycle.md#Detached-lifecycle
 def relay_socket_path(session_id: str) -> str:
-    if len(session_id) != 32 or any(
-        c not in "0123456789abcdefABCDEF" for c in session_id
-    ):
-        raise EConfig(f"attach: session id `{session_id}` is not 32 hex chars")
-    home = os.environ.get("HOME")
-    if not home:
-        raise EConfig("HOME is not set; cannot locate ~/.kelir relay socket")
-    return str(
-        Path(home) / ".kelir" / "sessions" / session_id.lower() / "relay.sock"
-    )
+    bridge = _load_native_bridge()
+    try:
+        return str(bridge.relay_socket_path(session_id))
+    except Exception as exc:
+        raise EConfig(str(exc)) from exc
 
 
 class Session:

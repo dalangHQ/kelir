@@ -384,6 +384,65 @@ fn ssot_fixture_session_fields_deserialize_into_sandbox_profile()
     Ok(())
 }
 
+// see: cans/plugins/profile.md#Inversion-of-Control-configuration-router
+const PASS_THROUGH_SECTIONS: [&str; 9] = [
+    "invariants",
+    "driver",
+    "storage",
+    "wire",
+    "terminal",
+    "checkpoint",
+    "host",
+    "plugins",
+    "attestation",
+];
+
+fn yaml_root_keys(text: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let root: serde_yaml::Value = serde_yaml::from_str(text)?;
+    let serde_yaml::Value::Mapping(map) = root else {
+        return Err("profile root is not a mapping".into());
+    };
+    let mut keys = Vec::new();
+    for (key, _) in map {
+        if let Some(name) = key.as_str() {
+            keys.push(name.to_string());
+        }
+    }
+    Ok(keys)
+}
+
+#[tokio::test]
+async fn sandbox_profile_round_trips_every_kelir_yaml_section()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = repo_path("../../cans/artifacts/examples/fixtures/kelir.yaml");
+    let out = std::env::temp_dir().join(format!("kelir-b8-roundtrip-{}.yaml", std::process::id()));
+    let sandbox = kelir::sandbox_runtime::Sandbox::from_config(&fixture).await?;
+    sandbox.export_spec(&out).await?;
+    let original = fs::read_to_string(&fixture)?;
+    let exported = fs::read_to_string(&out)?;
+    let first: SandboxProfile = serde_yaml::from_str(&original)?;
+    let second: SandboxProfile = serde_yaml::from_str(&exported)?;
+    let once = serde_yaml::to_string(&first)?;
+    let twice = serde_yaml::to_string(&second)?;
+    assert_eq!(
+        once, twice,
+        "export_spec lost or reordered profile data across the kelir.yaml round-trip"
+    );
+    let fixture_keys = yaml_root_keys(&original)?;
+    let exported_keys = yaml_root_keys(&exported)?;
+    assert_eq!(
+        fixture_keys, exported_keys,
+        "export_spec dropped or reordered top-level sections of the kelir.yaml fixture"
+    );
+    assert_eq!(
+        fixture_keys.len(),
+        11,
+        "fixture grew new top-level sections"
+    );
+    let _ = fs::remove_file(&out);
+    Ok(())
+}
+
 #[test]
 fn ts_and_py_profile_fields_match_the_ssot_fixture() -> Result<(), Box<dyn std::error::Error>> {
     let yaml = fs::read_to_string(repo_path(
@@ -396,6 +455,9 @@ fn ts_and_py_profile_fields_match_the_ssot_fixture() -> Result<(), Box<dyn std::
     }
     if let Some(session) = root.get("session") {
         flatten_paths(session, "session", &mut expected);
+    }
+    for section in PASS_THROUGH_SECTIONS {
+        expected.insert(section.to_string());
     }
     let ts = fs::read_to_string(repo_path("../../packages/ts/core/src/profile.schema.ts"))?;
     assert_eq!(

@@ -28,7 +28,7 @@ async fn hd_02_wx_mmu_prot_exec_trap() -> Result<(), String> {
         .boot()
         .await
         .map_err(|e| e.to_string())?;
-    match session.spawn("/bin/exploit_jit").await {
+    match session.spawn("/bin/exploit_jit", &[]).await {
         Ok(result) => Err(format!(
             "anonymous PROT_EXEC exec completed with exit {} instead of the E_WX_VIOLATION Stage-2 fault",
             result.exit_code
@@ -54,7 +54,7 @@ async fn hd_10_proot_ptrace_trap_conformance() -> Result<(), String> {
         .boot()
         .await
         .map_err(|e| e.to_string())?;
-    match session.spawn("/bin/uname").await {
+    match session.spawn("/bin/uname", &[]).await {
         Ok(result) => {
             if result.exit_code == 0 {
                 Ok(())
@@ -78,7 +78,7 @@ async fn hd_14_guest_kernel_hardening_kptr_restrict() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     match session
-        .spawn("/bin/cat")
+        .spawn_builder("/bin/cat")
         .args(["/bin/cat", "/proc/kallsyms"])
         .await
     {
@@ -104,7 +104,7 @@ async fn hd_18_rosetta_binfmt_registration() -> Result<(), String> {
         .boot()
         .await
         .map_err(|e| e.to_string())?;
-    match session.spawn("/bin/x86_64_static_elf").await {
+    match session.spawn("/bin/x86_64_static_elf", &[]).await {
         Ok(result) => {
             if result.exit_code == 0 {
                 Ok(())

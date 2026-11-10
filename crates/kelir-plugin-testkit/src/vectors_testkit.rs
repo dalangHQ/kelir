@@ -272,21 +272,15 @@ fn trap_event(
     argv: Vec<String>,
     envp: HashMap<String, String>,
 ) -> TrapEvent {
-    TrapEvent {
-        seq,
-        pid,
-        ppid,
-        task_id: seq,
-        binary_path: binary_path.to_string(),
-        binary_dev: 2049,
-        binary_ino: 400_000 + seq * 7,
-        binary_blake3: [0x42; 32],
-        argv,
-        envp,
-        cwd: "/workspace".to_string(),
-        syscall: None,
-        ..Default::default()
-    }
+    let mut event = TrapEvent::new(seq, pid, ppid, binary_path);
+    event.task_id = seq;
+    event.binary_dev = 2049;
+    event.binary_ino = 400_000 + seq * 7;
+    event.binary_blake3 = [0x42; 32];
+    event.argv = argv;
+    event.envp = envp;
+    event.cwd = "/workspace".to_string();
+    event
 }
 
 fn trap_case(
@@ -432,22 +426,6 @@ fn poll_sync<F: Future>(future: F) -> Result<F::Output, VectorError> {
     }
 }
 
-// TODO (L3): delete once kelir-interface derives PartialEq on WatchdogAction.
-fn watchdog_action_eq(left: &WatchdogAction, right: &WatchdogAction) -> bool {
-    match (left, right) {
-        (WatchdogAction::Reboot, WatchdogAction::Reboot) => true,
-        (
-            WatchdogAction::Terminate {
-                emit_diagnostic: left_emit,
-            },
-            WatchdogAction::Terminate {
-                emit_diagnostic: right_emit,
-            },
-        ) => left_emit == right_emit,
-        _ => false,
-    }
-}
-
 // see: cans/08-lifecycle.md#Watchdog
 // see: cans/15-operations.md#Multi-language-parity-gate
 pub fn arm_watchdog_case(event: &WatchdogEvent) -> Result<(), VectorError> {
@@ -458,7 +436,7 @@ pub fn arm_watchdog_case(event: &WatchdogEvent) -> Result<(), VectorError> {
         .and_then(|result| result.map_err(|e| VectorError::Execution(e.to_string())))?;
     match fixture.armed_watchdog() {
         Some((armed_timeout, armed_action))
-            if armed_timeout == timeout && watchdog_action_eq(&armed_action, &event.action) =>
+            if armed_timeout == timeout && armed_action == event.action =>
         {
             Ok(())
         }

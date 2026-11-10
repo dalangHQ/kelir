@@ -12,6 +12,39 @@ fn l4_frame_bytes(target_port: u16, connection_id: u64, payload: &[u8]) -> Vec<u
     bytes
 }
 
+// see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
+#[test]
+fn wire_ingress_l4_forward_stream_handler_fires_on_stream_kind() -> Result<(), String> {
+    use kelir_interface::protocol_wire::{FilterAction, StreamKind};
+    let Some(kind) = StreamKind::from_u16(0x0005) else {
+        return Err("L4_FORWARD stream kind 0x0005 is unmapped".into());
+    };
+    if plugin_wire_ingress::L4_FORWARD_STREAM_KIND != kind {
+        return Err("wire-ingress must handle stream kind L4_FORWARD 0x0005".into());
+    }
+    let plugin = WireIngressPlugin::new();
+    let mut truncated = l4_frame_bytes(8443, 7, b"GET /");
+    truncated.truncate(9);
+    match plugin.on_l4_forward_frame(&mut truncated) {
+        Ok(FilterAction::Drop { reason, .. }) if reason.contains("L4_FORWARD") => (),
+        other => {
+            return Err(format!(
+                "malformed L4_FORWARD frame must drop closed, got {other:?}"
+            ));
+        }
+    }
+    let mut payload = l4_frame_bytes(8443, 9, b"GET / HTTP/1.1\r\n\r\n");
+    match plugin.on_l4_forward_frame(&mut payload) {
+        Ok(FilterAction::Forward) => (),
+        other => {
+            return Err(format!(
+                "well-formed L4_FORWARD frame outside parking must forward, got {other:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_17_wire_ingress_park_connection_suspends_session.yaml#case_id
 #[tokio::test]
 async fn wp_17_wire_ingress_park_connection_suspends_session() -> Result<(), String> {

@@ -4,7 +4,7 @@ use napi::{Error, Result};
 
 use kelir_core::planes::storage::storage_synthetic::SyntheticFile;
 use kelir_core::planes::storage::{
-    IdmapConfig, LockBrokerWiring, MaskReadConfig, MaskReadRule, ReadMaskEngine, StorageWiring,
+    IdmapConfig, LockBrokerWiring, MaskReadConfig, MaskReadRule, ReadMaskEngine, StorageConfig,
     WorkspaceEncapsulation,
 };
 
@@ -35,7 +35,7 @@ fn usize_of(value: f64, what: &str) -> Result<usize> {
 
 // see: cans/05-storage-plane.md#Storage-architecture
 // TODO (L3): NAPI lock-broker scope globs ride a dedicated native lock-broker config surface.
-pub fn storage_wiring(cfg: &NativeStorageConfig) -> Result<StorageWiring> {
+pub fn storage_config(cfg: &NativeStorageConfig) -> Result<StorageConfig> {
     let encapsulation = match cfg.encapsulation.as_deref() {
         None => WorkspaceEncapsulation::default(),
         Some("Locked") => WorkspaceEncapsulation::Locked,
@@ -75,7 +75,7 @@ pub fn storage_wiring(cfg: &NativeStorageConfig) -> Result<StorageWiring> {
                 .unwrap_or_default(),
         }),
     };
-    Ok(StorageWiring {
+    Ok(StorageConfig {
         shared_caches: cfg
             .shared_caches
             .clone()

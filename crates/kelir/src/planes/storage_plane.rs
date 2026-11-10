@@ -10,7 +10,7 @@ pub use kelir_core::planes::storage::storage_synthetic::{
 };
 // see: cans/05-storage-plane.md#Storage-architecture
 pub use kelir_core::planes::storage::{
-    IdmapConfig, MaskReadRule as MaskRule, ReadMaskEngine, WorkspaceEncapsulation,
+    IdmapConfig, MaskReadRule, ReadMaskEngine, WorkspaceEncapsulation,
 };
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
@@ -38,13 +38,14 @@ impl<Plugins, Params> std::fmt::Debug for SnoopRule<Plugins, Params> {
 }
 
 // see: cans/05-storage-plane.md#Storage-architecture
+// see: cans/03-sdk-architecture.md#Rust-SDK
 #[derive(Debug, Clone)]
-pub struct StorageConfig<Plugins = HNil, Params = NoParams> {
+pub struct StoragePlaneConfig<Plugins = HNil, Params = NoParams> {
     pub idmap: IdmapConfig,
     pub shared_caches: Vec<String>,
     pub lock_broker: bool,
     pub synthetic_files: Vec<SyntheticFile>,
-    pub mask_read: Vec<MaskRule>,
+    pub mask_read: Vec<MaskReadRule>,
     pub snoops: Vec<SnoopRule<Plugins, Params>>,
     pub encapsulation: WorkspaceEncapsulation,
     pub scan_engine: ReadMaskEngine,
@@ -93,13 +94,13 @@ where
     }
 }
 
-impl<Plugins, Params> StorageConfig<Plugins, Params>
+impl<Plugins, Params> StoragePlaneConfig<Plugins, Params>
 where
     Plugins: HList,
     Params: 'static,
 {
-    pub(crate) fn retag(self) -> StorageConfig<Plugins, NoParams> {
-        StorageConfig {
+    pub(crate) fn retag(self) -> StoragePlaneConfig<Plugins, NoParams> {
+        StoragePlaneConfig {
             idmap: self.idmap,
             shared_caches: self.shared_caches,
             lock_broker: self.lock_broker,
@@ -113,15 +114,15 @@ where
     }
 }
 
-impl<Plugins> StorageConfig<Plugins, NoParams>
+impl<Plugins> StoragePlaneConfig<Plugins, NoParams>
 where
     Plugins: HList,
 {
-    pub(crate) fn narrow<Head>(self) -> StorageConfig<HCons<Head, Plugins>, NoParams>
+    pub(crate) fn narrow<Head>(self) -> StoragePlaneConfig<HCons<Head, Plugins>, NoParams>
     where
         Head: Clone + Send + Sync + 'static,
     {
-        StorageConfig {
+        StoragePlaneConfig {
             idmap: self.idmap,
             shared_caches: self.shared_caches,
             lock_broker: self.lock_broker,

@@ -42,27 +42,22 @@ pub fn inspect_trap(trap: &SeccompTrap, seq: u64) -> Result<TrapInspection, Shim
     let auxv = read_auxv(trap.pid)?;
     let interp = read_interp(&binary_path)?;
     let binary_blake3 = digest_exe(&binary_path)?;
+    let mut event = TrapEvent::new(seq, trap.pid, ppid, binary_path);
+    event.task_id = u64::from(trap.pid);
+    event.binary_dev = binary_dev;
+    event.binary_ino = binary_ino;
+    event.binary_blake3 = binary_blake3;
+    event.argv = argv;
+    event.envp = envp;
+    event.cwd = cwd;
+    event.syscall = Some(TrappedSyscall {
+        nr: i64::from(trap.syscall_nr),
+        mprotect_prot: None,
+        memfd_create_flags: None,
+    });
     Ok(TrapInspection {
         // TODO (L3): fill resolved_binary from interpreter unwrapping; zero identity until then.
-        event: TrapEvent {
-            seq,
-            pid: trap.pid,
-            ppid,
-            task_id: u64::from(trap.pid),
-            binary_path,
-            binary_dev,
-            binary_ino,
-            binary_blake3,
-            argv,
-            envp,
-            cwd,
-            syscall: Some(TrappedSyscall {
-                nr: i64::from(trap.syscall_nr),
-                mprotect_prot: None,
-                memfd_create_flags: None,
-            }),
-            ..Default::default()
-        },
+        event,
         interp,
         execfn_present: auxv_value(&auxv, AT_EXECFN).is_some(),
         auxv,
