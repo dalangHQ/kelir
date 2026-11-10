@@ -182,14 +182,15 @@
       - Asserts monotonic clock does not regress across restore
       - Asserts CLOCK_MONOTONIC never produces negative deltas across fork branches
       - Enforcement: plugin-replay cell, CI test-plugins matrix
-    - --fast-boot-coverage
-      - Asserts base snapshot cache hit, miss, drift, and backend-change paths
-      - Case files: hd-fast-boot-hit, -miss, -drift, -backend-change
-      - Enforcement: Stage 2 (KVM), Stage 3 (HVF); WHP and AVF skip with notice
-    - --dax-coverage
-      - Asserts DAX available, DAX unavailable, and DAX window teardown
-      - Case files: sp-dax-available, sp-dax-fallback, sp-dax-teardown
-      - Enforcement: Stage 2 (KVM) and Stage 3 (HVF); Windows WHP skips
+    - Runtime density coverage
+      - --fast-boot-coverage
+        - Asserts base snapshot cache hit, miss, drift, and backend-change paths
+        - Case files: hd-fast-boot-hit, -miss, -drift, -backend-change
+        - Enforcement: Stage 2 (KVM), Stage 3 (HVF); WHP and AVF skip with notice
+      - --dax-coverage
+        - Asserts DAX available, DAX unavailable, and DAX window teardown
+        - Case files: sp-dax-available, sp-dax-fallback, sp-dax-teardown
+        - Enforcement: Stage 2 (KVM) and Stage 3 (HVF); Windows WHP skips
     - Flag-drift gate
       - CI calls `just check-spec`, not raw flags
       - Flag string lives only in the justfile

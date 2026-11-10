@@ -2751,6 +2751,7 @@
       "Reusable-workflow-sketch",
       "Rootfs-EROFS-image-cold-boot-budget",
       "Runs-only-where-KVM/HVF-is-available",
+      "Runtime-density-coverage",
       "Rust-macros-generate-typed-FFI-stubs:-napi-rs-for-TS,-pyo3-for-Python",
       "Rust-src:-<entity>-<domain>.rs;-lib.rs,-main.rs,-mod.rs-stay-conventional",
       "Rust:-dependency-failures-surface-at-compile-time",
