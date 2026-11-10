@@ -6,7 +6,7 @@ default:
 
 # ── Toolchain & setup ──
 bootstrap:
-    cargo install cargo-nextest sccache --locked
+    cargo install cargo-nextest cargo-sweep sccache --locked
     rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
     pnpm install --frozen-lockfile
     uv venv && uv pip install -e "packages/py[dev]"
@@ -29,6 +29,23 @@ build-ts:
 build-py:
     cargo build -p kelir-pyo3
     cp target/debug/libkelir_pyo3.so packages/py/kelir/_kelir.abi3.so
+
+# Disk-conscious default: one crate under the dev-min profile (incremental
+# off, debug symbols off). Never --workspace here; that is the 30G path.
+check-one crate:
+    cargo check --profile dev-min -p {{crate}}
+
+# Prune build artifacts older than 7 days. Full `cargo clean` is the last
+# resort, never routine: it wipes the whole cache for a full rebuild.
+clean-old:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if command -v cargo-sweep >/dev/null 2>&1; then
+        cargo sweep --time 7
+    else
+        echo "cargo-sweep not installed; run: cargo install cargo-sweep --locked" >&2
+        exit 1
+    fi
 
 # ── Audit & validation ──
 # check-spec is the spec gate only (refs + structure + redundancy).
@@ -88,7 +105,7 @@ check-hygiene:
     echo "OK: All files <= 1000 LOC; zero inline tests in src/."
 
 check-tiered:
-    cargo check --workspace --all-targets
+    cargo check --profile dev-min --workspace --all-targets
 
 check-graph:
     cargo run -p kelir-plugin-cli -- check --graph
@@ -241,7 +258,21 @@ parity: build-ts
 # Fast static gates plus pure-memory unit tests only: zero
 # hypervisor calls. check-canon stays its own recipe (it runs
 # test-all and lives in CI); hardware lives in test-integration.
-pre-flight: check-manifest check-tests check-spec test-unit
+pre-flight: check-manifest check-tests check-spec check-fast-boot check-dax test-unit
+
+# --fast-boot-coverage: cache hit, miss, drift, backend-change paths.
+# --no-tests pass: the filter selects the 4 hd_fast_boot stubs in
+# kelir-integration/tests/full_pipeline_test.rs (#[ignore], run via test-red);
+# it must not fail the run when the stubs are absent. Scoped to
+# kelir-integration; -p kelir-core --lib is wrong here — the kelir-core
+# integration suite does not compile at base (E0063 in receipt_attest_test.rs,
+# pre-existing).
+check-fast-boot:
+    cargo nextest run -p kelir-integration -E 'test(hd_fast_boot)' --no-tests pass
+
+# --dax-coverage: DAX available, unavailable, teardown paths.
+check-dax:
+    cargo nextest run -p kelir-integration -E 'test(sp_dax)' --no-tests pass
 
 check-canon:
     ./scripts/check-canon.sh

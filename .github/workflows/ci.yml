@@ -558,7 +558,9 @@ jobs:
   # ─── TIERED PLUGIN COMPILATION ─────────────────────────
   # Plugins compile against their explicit upstream dependencies
   # (see 02-plugin-model.md#Plugin-tiering). One workspace check
-  # covers every crate and target, plugins included.
+  # covers every crate and target, plugins included. Runs under the
+  # dev-min profile (incremental off, debug symbols off) to keep
+  # CI caches small; same code, no semantic difference.
   verify-tiered-compilation:
     needs: [lint-and-types]
     runs-on: ubuntu-latest
@@ -567,7 +569,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: mozilla-actions/sccache-action@v0.0.5
       - name: Verify Tiered Plugin Compilation
-        run: cargo check --workspace --all-targets
+        run: cargo check --profile dev-min --workspace --all-targets
 
   # ─── SHIM + DRIVER TESTS (NO TEST TARGETS AT BASE) ────────
   test-shim:

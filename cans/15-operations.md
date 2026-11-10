@@ -4,6 +4,8 @@
       - and artifacts/config/ci.yml (shim size)
     - Boot-budget target: see: [2]
     - Sub-minute local cycles via just
+    - Disk is the contributor bottleneck: target/ dominates
+      - the checkout, so the default workflow builds as little as possible
     - Zero-bloat crate boundary: tokio full banned; libc/sys-crates strictly scoped
     - Shim size invariant: see: [3] (build-guest-shim)
     - Shim crate invariant: zero external serialization or runtime crates
@@ -30,6 +32,21 @@
         - union of the three exclusions above plus physical code hygiene gates
     - `pre-flight` runs parity, plugin audit, tiered check before push
       - see: #Multi-language-parity-gate and #Developer-CLI
+    - Disk-conscious setup
+      - `dev-min`: incremental off, debug symbols off; the
+        - contributor default for check and clippy work
+      - `just check-one <crate>`: one crate under dev-min instead of
+        - the workspace; the biggest single disk saving
+      - Bare `cargo check` builds default members; excluded by
+        - default are driver-rustvmm (needs libclang), driver-hvf,
+        - driver-openvmm, driver-avf (platform drivers), kelir-integration
+        - (needs a hypervisor), and the napi/pyo3 bindings (need their
+        - own toolchains); each stays opt-in via -p
+      - `just clean-old`: cargo-sweep prunes artifacts older than 7 days;
+        - full `cargo clean` is the last resort, never routine
+      - Measured split at base: 30G checkout is 217M source and 29G
+        - target/ (19G debug, 7.8G incremental, 8.6G deps); the setup
+        - above brings a contributor to ~2-3G
   - CI matrix
     - see: [3]
     - Constraints
@@ -51,6 +68,8 @@
       - Concurrency cancelled per ref (cancel-in-progress)
       - Shim musl binary size gate: see: [3] (build-guest-shim)
       - sccache enabled via SCCACHE_GHA_ENABLED
+      - Tiered compilation runs under dev-min: incremental
+        - off, debug symbols off; same code, smaller CI caches
       - Hard performance budget gate
         - Budgets in perf/budgets.toml enforced strictly with enforce = true
         - Fast-boot mmap hydration budget: <500µs target (fallback <60ms)

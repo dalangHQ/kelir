@@ -8,7 +8,9 @@ SSOT: the justfile is `cans/artifacts/config/justfile`; the workflow is `cans/ar
 
 Requires: `just`, `cargo-nextest`, `mold` (Linux), `zig` (for the static shim), `pnpm`, `uv`.
 
-Local gates, all in the justfile: `check-spec` (spec gate, the only cans invocation; CI calls it, never raw flags), `check-spec-touched` (pull-request tier), `check-plugin-coverage`, `check-layers`, `check-graph`, `check-tiered` (`cargo check --workspace --all-targets`), `check-budgets`, `panic-hunt`, `parity`, `test-plugins` (one cell per community plugin), `test-drivers` (rustvmm, bwrap; openvmm/hvf run in platform jobs), `check-drivers` (compile-only avf, proot), `pre-flight` (the union gate before push).
+Local gates, all in the justfile: `check-spec` (spec gate, the only cans invocation; CI calls it, never raw flags), `check-spec-touched` (pull-request tier), `check-plugin-coverage`, `check-layers`, `check-graph`, `check-tiered` (`cargo check --profile dev-min --workspace --all-targets`), `check-budgets`, `panic-hunt`, `parity`, `test-plugins` (one cell per community plugin), `test-drivers` (rustvmm, bwrap; openvmm/hvf run in platform jobs), `check-drivers` (compile-only avf, proot), `pre-flight` (the union gate before push).
+
+Disk-conscious setup: the `dev-min` profile (incremental off, debug symbols off) is the contributor default — `just check-one <crate>` builds one crate under it instead of the workspace, bare `cargo check` builds default members only (heavy drivers, integration, and the napi/pyo3 bindings stay opt-in via `-p`), and `just clean-old` sweeps artifacts older than 7 days.
 
 ---
 

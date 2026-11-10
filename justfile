@@ -6,7 +6,7 @@ default:
 
 # ── Toolchain & setup ──
 bootstrap:
-    cargo install cargo-nextest sccache --locked
+    cargo install cargo-nextest cargo-sweep sccache --locked
     rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
     pnpm install --frozen-lockfile
     uv venv && uv pip install -e "packages/py[dev]"
@@ -29,6 +29,23 @@ build-ts:
 build-py:
     cargo build -p kelir-pyo3
     cp target/debug/libkelir_pyo3.so packages/py/kelir/_kelir.abi3.so
+
+# Disk-conscious default: one crate under the dev-min profile (incremental
+# off, debug symbols off). Never --workspace here; that is the 30G path.
+check-one crate:
+    cargo check --profile dev-min -p {{crate}}
+
+# Prune build artifacts older than 7 days. Full `cargo clean` is the last
+# resort, never routine: it wipes the whole cache for a full rebuild.
+clean-old:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if command -v cargo-sweep >/dev/null 2>&1; then
+        cargo sweep --time 7
+    else
+        echo "cargo-sweep not installed; run: cargo install cargo-sweep --locked" >&2
+        exit 1
+    fi
 
 # ── Audit & validation ──
 # check-spec is the spec gate only (refs + structure + redundancy).
@@ -88,7 +105,7 @@ check-hygiene:
     echo "OK: All files <= 1000 LOC; zero inline tests in src/."
 
 check-tiered:
-    cargo check --workspace --all-targets
+    cargo check --profile dev-min --workspace --all-targets
 
 check-graph:
     cargo run -p kelir-plugin-cli -- check --graph

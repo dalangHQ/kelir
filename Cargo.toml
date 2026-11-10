@@ -1,5 +1,34 @@
 [workspace]
 resolver = "2"
+default-members = [
+    "crates/kelir",
+    "crates/kelir-adapters/kelir-pack",
+    "crates/kelir-adapters/mcp-server",
+    "crates/kelir-catalog",
+    "crates/kelir-core",
+    "crates/kelir-drivers/driver-bwrap",
+    "crates/kelir-drivers/driver-proot",
+    "crates/kelir-interface",
+    "crates/kelir-otlp",
+    "crates/kelir-plugin-cli",
+    "crates/kelir-plugin-testkit",
+    "crates/kelir-plugins/plugin-chaos",
+    "crates/kelir-plugins/plugin-container",
+    "crates/kelir-plugins/plugin-db-proxy",
+    "crates/kelir-plugins/plugin-ledger",
+    "crates/kelir-plugins/plugin-mcp",
+    "crates/kelir-plugins/plugin-mesh",
+    "crates/kelir-plugins/plugin-profile",
+    "crates/kelir-plugins/plugin-replay",
+    "crates/kelir-plugins/plugin-supply-chain",
+    "crates/kelir-plugins/plugin-tool-guard",
+    "crates/kelir-plugins/plugin-transaction",
+    "crates/kelir-plugins/plugin-vault",
+    "crates/kelir-plugins/plugin-wire-ingress",
+    "crates/kelir-shim",
+    "crates/kelir-testkit",
+    "crates/kelir-transport",
+]
 members = [
     "crates/kelir",
     "crates/kelir-adapters/kelir-pack",
@@ -36,6 +65,11 @@ members = [
     "crates/kelir-testkit",
     "crates/kelir-transport",
 ]
+
+[profile.dev-min]
+inherits = "dev"
+incremental = false
+debug = 0
 
 [workspace.package]
 edition = "2024"
