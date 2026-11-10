@@ -183,6 +183,7 @@ impl SandboxProfile {
         if let Some(grace) = clock.and_then(|c| c.preemption_grace_ms) {
             config.preemption_grace_ms = grace;
         }
+        // TODO (L3): route driver.fast_boot and storage.dax_window through KelirBuilder.
         config
     }
 }

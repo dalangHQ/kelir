@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use kelir_interface::driver_interface::{Stream, VmConfig};
+use kelir_interface::driver_interface::{DaxWindowMode, FastBootMode, Stream, VmConfig};
 use kelir_interface::plugin_model::HandlerCtx;
 use kelir_interface::plugin_model::LifecycleCtx;
 use kelir_interface::plugin_model::PluginError;
@@ -320,6 +320,8 @@ where
     config: VmConfig,
     plugins: Plugins,
     registration: Registration<Plugins>,
+    fast_boot: FastBootMode,
+    dax_window: DaxWindowMode,
     seal: PhantomData<fn(SealState, Params)>,
 }
 
@@ -329,6 +331,8 @@ impl KelirBuilder<Unsealed, HNil, NoParams> {
             config,
             plugins: HNil,
             registration: Registration::default(),
+            fast_boot: FastBootMode::Off,
+            dax_window: DaxWindowMode::Off,
             seal: PhantomData,
         }
     }
@@ -342,6 +346,8 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
             config: self.config,
             plugins: self.plugins,
             registration: self.registration,
+            fast_boot: self.fast_boot,
+            dax_window: self.dax_window,
             seal: PhantomData,
         }
     }
@@ -361,6 +367,8 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
                 tail: self.plugins,
             },
             registration,
+            fast_boot: self.fast_boot,
+            dax_window: self.dax_window,
             seal: PhantomData,
         }
     }
@@ -394,6 +402,18 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
         self
     }
 
+    // see: cans/01-architecture.md#Boot-budget
+    pub fn fast_boot(mut self, mode: FastBootMode) -> Self {
+        self.fast_boot = mode;
+        self
+    }
+
+    // see: cans/05-storage-plane.md#EROFS-rootfs
+    pub fn dax_window(mut self, mode: DaxWindowMode) -> Self {
+        self.dax_window = mode;
+        self
+    }
+
     pub fn is_detached(&self) -> bool {
         self.registration.detached
     }
@@ -403,6 +423,8 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
             config: self.config,
             plugins: self.plugins,
             registration: self.registration,
+            fast_boot: self.fast_boot,
+            dax_window: self.dax_window,
             seal: PhantomData,
         }
     }
@@ -579,6 +601,8 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
 impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins, Params> {
     async fn finish_boot(self) -> Result<Session<Plugins, Params>, PluginError> {
         // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
+        // TODO (L3): plumb FastBootMode into DriverRouter::load_native_driver.
+        let _ = (self.fast_boot, self.dax_window);
         let storage = self.storage_wiring();
         let mut registration = self.registration;
         let plugins: Vec<kelir_core::PluginRegistration> = registration

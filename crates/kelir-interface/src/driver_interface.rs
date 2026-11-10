@@ -58,6 +58,24 @@ pub struct DriverPolicy {
     pub ffi_max_ops_per_sec: u32,
 }
 
+// see: cans/01-architecture.md#Boot-budget
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FastBootMode {
+    #[default]
+    Off,
+    Auto,
+    Enabled,
+}
+
+// see: cans/05-storage-plane.md#EROFS-rootfs
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DaxWindowMode {
+    #[default]
+    Off,
+    Auto,
+    Fixed(u32),
+}
+
 // see: cans/15-operations.md#Developer-CLI
 pub const HW_LOCKFILE_PATH: &str = "/etc/kelir/hw.lock";
 

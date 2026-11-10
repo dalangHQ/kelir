@@ -15,6 +15,23 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::io::AsyncRead;
 
+// normative mirror of crates/kelir-interface/src/driver_interface.rs
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FastBootMode {
+    #[default]
+    Off,
+    Auto,
+    Enabled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DaxWindowMode {
+    #[default]
+    Off,
+    Auto,
+    Fixed(u32),
+}
+
 /// Granular memory execution policy enforced by the hypervisor and guest trap loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WxPolicy {
