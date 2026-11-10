@@ -3,9 +3,10 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 
 use kelir_interface::plugin_model::NetInterposer;
 use kelir_interface::protocol_wire::FilterAction;
-use plugin_db_proxy::DbProxyPlugin;
 use plugin_db_proxy::pgwire_db_proxy::{PgFrameDescriptor, PgFrameKind};
 use plugin_db_proxy::reassembler_wire::FlowKey;
+use plugin_db_proxy::reassembler_wire::parse_tcp_segment;
+use plugin_db_proxy::{DbProxyConfig, DbProxyPlugin, PgWireRewrite};
 
 fn pgwire_query_frame(sql: &str) -> Vec<u8> {
     let mut frame = Vec::new();
@@ -96,5 +97,99 @@ fn rt_01_pgwire_port_5432_interposition() -> Result<(), String> {
     }
     let other_flows = other.net.lock_flows().map_err(|err| format!("{err:?}"))?;
     assert!(other_flows.is_empty());
+    Ok(())
+}
+
+fn tenant_rewrite_config() -> DbProxyConfig {
+    DbProxyConfig {
+        postgres: PgWireRewrite {
+            listen_port: 5432,
+            upstream: "10.0.0.2:5432".to_string(),
+            rewrite_rules: vec![(
+                "FROM users".to_string(),
+                "FROM tenant_123_users".to_string(),
+            )],
+            max_rewrites_per_conn: 3,
+        },
+        ..DbProxyConfig::default()
+    }
+}
+
+fn extract_pgwire_sql(frame: &[u8]) -> Option<&str> {
+    let payload = parse_tcp_segment(frame)?.payload;
+    if payload.len() < 6 || payload[0] != b'Q' {
+        return None;
+    }
+    let length = u32::from_be_bytes([payload[1], payload[2], payload[3], payload[4]]) as usize;
+    let sql_len = length.checked_sub(5)?;
+    if payload.len() < 6 + sql_len || payload[5 + sql_len] != 0 {
+        return None;
+    }
+    std::str::from_utf8(&payload[5..5 + sql_len]).ok()
+}
+
+// see: cans/artifacts/test-plan/cases/relational_transaction/rt_10_pgwire_frame_rewrite_in_place.yaml#case_id
+#[test]
+#[ignore]
+fn rt_10_pgwire_frame_rewrite_in_place() -> Result<(), String> {
+    let plugin = DbProxyPlugin::new().with_config(tenant_rewrite_config());
+    let mut frame = tcp_frame(5432, 1000, &pgwire_query_frame("SELECT * FROM users"));
+    match plugin
+        .on_net_outbound(&mut frame)
+        .map_err(|err| format!("{err:?}"))?
+    {
+        FilterAction::Forward => (),
+        action => {
+            return Err(format!(
+                "rewritten pgwire Query must forward, got {action:?}"
+            ));
+        }
+    }
+    let rewritten =
+        extract_pgwire_sql(&frame).ok_or("rewritten frame lost its pgwire Query header")?;
+    assert_eq!(
+        rewritten, "SELECT * FROM tenant_123_users",
+        "pgwire Query must be rewritten in place before upstream forward"
+    );
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/relational_transaction/rt_11_cyclic_query_rewrite_ecyclicrewrite.yaml#case_id
+#[test]
+#[ignore]
+fn rt_11_cyclic_query_rewrite_ecyclicrewrite() -> Result<(), String> {
+    let plugin = DbProxyPlugin::new().with_config(tenant_rewrite_config());
+    let query = pgwire_query_frame("SELECT * FROM users");
+    let mut seq = 1000u32;
+    for attempt in 1..=3u32 {
+        let mut frame = tcp_frame(5432, seq, &query);
+        seq = seq.wrapping_add(query.len() as u32);
+        match plugin
+            .on_net_outbound(&mut frame)
+            .map_err(|err| format!("rewrite {attempt} errored early: {err:?}"))?
+        {
+            FilterAction::Forward => (),
+            action => {
+                return Err(format!("rewrite {attempt} must forward, got {action:?}"));
+            }
+        }
+    }
+    let mut fourth = tcp_frame(5432, seq, &query);
+    match plugin.on_net_outbound(&mut fourth) {
+        Err(kelir_interface::plugin_model::PluginError::Halt(message)) => {
+            assert!(
+                message.contains("ECYCLICREWRITE"),
+                "4th rewrite must abort with ECYCLICREWRITE, got: {message}"
+            );
+        }
+        Err(err) => {
+            return Err(format!("4th rewrite gave the wrong error: {err:?}"));
+        }
+        Ok(action) => {
+            return Err(format!(
+                "4th rewrite on the same connection returned Ok({action:?}) instead of the ECYCLICREWRITE abort"
+            ));
+        }
+    }
     Ok(())
 }

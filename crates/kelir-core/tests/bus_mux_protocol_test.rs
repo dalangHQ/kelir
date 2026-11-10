@@ -1,14 +1,12 @@
 // see: cans/artifacts/test-plan/cases/protocol_mux/pm_04_plugin_stream_kind_dynamic_registration.yaml#case_id
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
 use kelir_core::bus::{BusDispatcher, OwnedBusDispatcher};
-use kelir_core::dispatch_plugin::PipelineEngine;
-use kelir_interface::codec_protocol::{FLAG_DATA, FLAG_OPEN, MAX_FRAME_PAYLOAD};
-use kelir_interface::driver_interface::Stream;
-use kelir_interface::plugin_model::{HandlerCtx, PipelineBinder, PluginError};
+use kelir_interface::codec_protocol::{
+    FLAG_CLOSE, FLAG_DATA, FLAG_OPEN, MAX_FRAME_PAYLOAD, decode_msg_type, encode_msg_frame,
+};
+use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::{MsgType, StreamKind};
-use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 use kelir_transport::Transport;
 use kelir_transport::spsc_ring::OwnedSpscRing;
 
@@ -39,20 +37,6 @@ impl kelir_core::bus::StreamFrameSink for RecordingSink {
             .lock()
             .map_err(|_| PluginError::Halt("sink lock poisoned".into()))?;
         calls.push((stream_id, kind, flags, payload.to_vec()));
-        Ok(())
-    }
-}
-
-struct NoopVsockHandler;
-
-#[async_trait]
-impl VsockServiceHandler for NoopVsockHandler {
-    async fn on_connect(
-        &self,
-        _peer: &VsockPeer,
-        _stream: Box<dyn Stream>,
-        _ctx: &HandlerCtx,
-    ) -> Result<(), PluginError> {
         Ok(())
     }
 }
@@ -111,31 +95,92 @@ fn pm_04_plugin_stream_kind_dynamic_registration() -> Result<(), String> {
     Ok(())
 }
 
-// see: cans/artifacts/test-plan/cases/protocol_mux/pm_05_stream_kind_conflict_ekindconflict.yaml#case_id
+// see: cans/artifacts/test-plan/cases/protocol_mux/pm_01_control_channel_0_lifecycle_priority.yaml#case_id
 #[test]
-fn pm_05_stream_kind_conflict_ekindconflict() -> Result<(), String> {
-    let mut engine = PipelineEngine::new();
-    engine.bind_vsock_service(
-        VsockServiceSpec {
-            port: 5252,
-            service: "first".to_string(),
-        },
-        Arc::new(NoopVsockHandler),
-    );
-    engine.bind_vsock_service(
-        VsockServiceSpec {
-            port: 5252,
-            service: "second".to_string(),
-        },
-        Arc::new(NoopVsockHandler),
-    );
-    match engine.seal() {
-        Err(PluginError::Halt(message)) => {
-            assert!(message.contains("vsock port already bound"));
-            assert!(message.contains("5252"));
+#[ignore]
+fn pm_01_control_channel_0_lifecycle_priority() -> Result<(), String> {
+    let mut control_ring = OwnedSpscRing::new(131072);
+    let mut control_writer = control_ring.transport();
+    let mut mux_ring = OwnedSpscRing::new(65536);
+    let mut mux_writer = mux_ring.transport();
+    let mut dispatcher = BusDispatcher::new(control_ring.transport(), mux_ring.transport());
+    let mut backlog = vec![0u8; 65527];
+    for (index, byte) in backlog.iter_mut().enumerate() {
+        *byte = (index % 251) as u8;
+    }
+    let saturated_mux = mux_frame(7, FLAG_DATA, &backlog);
+    let written_mux = mux_writer
+        .write(&saturated_mux)
+        .map_err(|e| e.to_string())?;
+    assert_eq!(written_mux, 65536);
+    let mut signal_body = Vec::new();
+    signal_body.extend_from_slice(&15u32.to_le_bytes());
+    signal_body.extend_from_slice(&100u64.to_le_bytes());
+    let mut signal_frame = Vec::new();
+    encode_msg_frame(
+        0,
+        FLAG_DATA,
+        MsgType::Signal,
+        &signal_body,
+        &mut signal_frame,
+    )
+    .map_err(|e| e.to_string())?;
+    control_writer
+        .write(&signal_frame)
+        .map_err(|e| e.to_string())?;
+    match dispatcher.poll_ingress().map_err(|e| e.to_string())? {
+        Some((stream_id, flags, payload)) => {
+            if stream_id != 0 {
+                return Err(format!(
+                    "channel-0 signal starved behind the saturated stream mux: first ingress delivered mux stream {stream_id} (flags {flags:#04x}) instead of the control signal"
+                ));
+            }
+            let (msg_type, body) = decode_msg_type(&payload).map_err(|e| e.to_string())?;
+            assert_eq!(msg_type, MsgType::Signal as u16);
+            assert_eq!(flags, FLAG_DATA);
+            assert_eq!(body, signal_body.as_slice());
         }
-        Err(e) => return Err(format!("duplicate bind gave wrong error: {e}")),
-        Ok(()) => return Err("duplicate bind sealed successfully".to_string()),
+        None => {
+            return Err(
+                "ingress poll found no frame while both channels carry pending data".to_string(),
+            );
+        }
+    }
+    assert_eq!(mux_writer.used(), 65536);
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/protocol_mux/pm_02_stream_mux_open_data_close_flags.yaml#case_id
+#[test]
+#[ignore]
+fn pm_02_stream_mux_open_data_close_flags() -> Result<(), String> {
+    let mut control_ring = OwnedSpscRing::new(4096);
+    let mut mux_ring = OwnedSpscRing::new(4096);
+    let mut mux_writer = mux_ring.transport();
+    let mut dispatcher = BusDispatcher::new(control_ring.transport(), mux_ring.transport());
+    let hostile = mux_frame(7, FLAG_OPEN | FLAG_CLOSE, &[0x10, 0x00]);
+    mux_writer.write(&hostile).map_err(|e| e.to_string())?;
+    match dispatcher.poll_ingress() {
+        Err(PluginError::Halt(message)) => assert!(
+            message.contains("EProtocol") || message.contains("flags"),
+            "mutually exclusive flags rejected with the wrong diagnostic: {message}"
+        ),
+        Err(e) => {
+            return Err(format!(
+                "mutually exclusive flags gave the wrong error: {e}"
+            ));
+        }
+        Ok(Some((stream_id, flags, _))) => {
+            return Err(format!(
+                "mutually exclusive OPEN|CLOSE frame (flags 0x05) was accepted and registered stream {stream_id} with flags {flags:#04x}"
+            ));
+        }
+        Ok(None) => {
+            return Err(
+                "mutually exclusive OPEN|CLOSE frame dropped silently without a protocol error"
+                    .to_string(),
+            );
+        }
     }
     Ok(())
 }

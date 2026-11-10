@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "kelir"
 version = "1.0.0"
 description = "Kelir MicroVM Hypervisor Microkernel — Python SDK"
-license = "FSL-1.1-Apache-2.0"
+license = { text = "FSL-1.1-Apache-2.0" }
 requires-python = ">=3.11"
 
 [tool.ruff]

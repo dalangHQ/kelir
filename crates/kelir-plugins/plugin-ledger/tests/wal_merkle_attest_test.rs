@@ -5,7 +5,7 @@ use kelir_interface::telemetry::CausalDelta;
 use kelir_otlp::registry_otlp::MetricRegistry;
 use kelir_plugin_testkit::block_on;
 use plugin_ledger::wal_ledger::{WalRecord, merkle_leaf, merkle_node, merkle_root};
-use plugin_ledger::{LedgerCtx, OtelConfig};
+use plugin_ledger::{LedgerCtx, LedgerPlugin, OtelConfig};
 
 // see: cans/artifacts/test-plan/cases/telemetry_audit/ta_01_merkle_wal_rf_6962_blake3_chain.yaml#case_id
 #[test]
@@ -48,6 +48,31 @@ fn node_of(left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
         .update(&right)
         .finalize()
         .as_bytes()
+}
+
+// see: cans/artifacts/test-plan/cases/telemetry_audit/ta_04_otlp_grpc_metric_export_streaming.yaml#case_id
+#[test]
+#[ignore]
+fn ta_04_otlp_grpc_metric_export_streaming() -> Result<(), String> {
+    let registry = Arc::new(MetricRegistry::new());
+    for _ in 0..100 {
+        registry.record_exec();
+    }
+    let plugin = LedgerPlugin::new(false)
+        .with_otel(OtelConfig::new("http://127.0.0.1:4317", "ta-04"))
+        .with_metrics(Arc::clone(&registry));
+    match plugin.export_metrics() {
+        Ok(payload) => {
+            assert!(!payload.is_empty());
+        }
+        Err(error) => {
+            return Err(format!(
+                "export_metrics must encode and stream the 100-exec snapshot over OTLP gRPC without local disk: {error:?}"
+            ));
+        }
+    }
+    assert!(!std::path::Path::new(".kelir/audit.merkle.db").exists());
+    Ok(())
 }
 
 // see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)

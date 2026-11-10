@@ -158,3 +158,69 @@ fn gv_09_metadata_non_vsock_peer_econnrefused() -> Result<(), String> {
         .map_err(|err| format!("{err:?}"))?;
     Ok(())
 }
+
+// see: cans/artifacts/test-plan/cases/governance_vault/gv_03_audience_locking_validation.yaml#case_id
+#[test]
+#[ignore]
+fn gv_03_audience_locking_validation() -> Result<(), String> {
+    let broker = bound_broker(vec![descriptor("openai_key", "api.openai.com")])?;
+    let endpoint = MetadataEndpoint::new(VaultConfig::default(), broker);
+    let response =
+        block_on(endpoint.serve(
+            b"GET /kelir/credentials/openai_key?audience=api.anthropic.com HTTP/1.1\r\n\r\n",
+        ));
+    let text = String::from_utf8(response).map_err(|err| format!("{err:?}"))?;
+    assert!(
+        text.starts_with("HTTP/1.1 403 Forbidden"),
+        "audience mismatch must reject with 403, got: {text}"
+    );
+    assert!(
+        text.contains("\"errno\":\"EACCES\""),
+        "audience mismatch must carry EACCES, got: {text}"
+    );
+    assert!(
+        !text.contains("\"token\":"),
+        "audience mismatch must leak zero token bytes, got: {text}"
+    );
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/governance_vault/gv_11_mtls_client_cert_bundle_issuance.yaml#case_id
+#[test]
+#[ignore]
+fn gv_11_mtls_client_cert_bundle_issuance() -> Result<(), String> {
+    let broker = bound_broker(vec![CredentialDescriptor {
+        name: "mtls_corp_cert".into(),
+        kind: CredentialKind::MtlsBundle,
+        audience: "internal.corp".into(),
+        placeholder: "vault://mtls_corp_cert".into(),
+    }])?;
+    let endpoint = MetadataEndpoint::new(VaultConfig::default(), broker);
+    let response =
+        block_on(endpoint.serve(b"GET /kelir/credentials/mtls_corp_cert HTTP/1.1\r\n\r\n"));
+    let text = String::from_utf8(response).map_err(|err| format!("{err:?}"))?;
+    assert!(
+        text.starts_with("HTTP/1.1 200 OK"),
+        "mTLS bundle issuance must succeed, got: {text}"
+    );
+    assert!(
+        text.contains("-----BEGIN CERTIFICATE-----"),
+        "MtlsBundle issuance must return a PEM cert bundle, got: {text}"
+    );
+    let ttl_marker = "\"ttl_seconds\":";
+    let Some(at) = text.find(ttl_marker) else {
+        return Err(format!("issued bundle carries no ttl_seconds, got: {text}"));
+    };
+    let digits: String = text[at + ttl_marker.len()..]
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect();
+    let ttl: u32 = digits
+        .parse()
+        .map_err(|err| format!("bad ttl {digits:?}: {err:?}"))?;
+    assert!(
+        ttl <= 900,
+        "mTLS bundle validity {ttl}s exceeds the 900s ceiling, got: {text}"
+    );
+    Ok(())
+}

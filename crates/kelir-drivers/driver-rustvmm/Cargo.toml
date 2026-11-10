@@ -14,5 +14,8 @@ libc = { workspace = true }
 kvm-ioctls = "0.19"
 userfaultfd = "0.8"
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+
 [lints]
 workspace = true

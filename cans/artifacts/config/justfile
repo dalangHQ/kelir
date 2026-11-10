@@ -113,7 +113,7 @@ lint:
 typecheck: build-ts
     pnpm -r exec tsc --noEmit
     pnpm --filter @kelir/core run typecheck
-    uv run mypy packages/py
+    uv run --no-project mypy packages/py
 
 # ── Testing ──
 # Core kernel + plugin-testkit
@@ -146,10 +146,71 @@ test-drivers-windows:
 test-drivers-macos:
     cargo nextest run -p driver-hvf -E 'not test(test_hw_)'
 
-# No SDK test suites at base (no pnpm test script, no pytest files): ForeignPluginProxy, memory pinning, unhandled freeze recovery
+# Expected-fail red suite (work-order Phase 0.2): every #[ignore]d red
+# test must fail with the signature recorded in the case-to-test map.
+# Green iff every language reports exactly its map red count and 0 passes:
+# Rust via nextest ignored-only, TypeScript via node --test over the
+# packages/ts/core/tests/red suite, Python via pytest over
+# packages/py/tests/red (both excluded from the default SDK runs).
+test-red:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    MAP=$(cargo run -q -p kelir-testkit --bin check-manifest)
+    RED=$(printf '%s\n' "$MAP" | grep -oE '[0-9]+ red' | grep -oE '[0-9]+' | head -1)
+    LANG_LINE=$(printf '%s\n' "$MAP" | grep -E '^Red by language: rust=[0-9]+ typescript=[0-9]+ python=[0-9]+$')
+    RED_RUST=$(printf '%s\n' "$LANG_LINE" | sed -E 's/^Red by language: rust=([0-9]+).*/\1/')
+    RED_TS=$(printf '%s\n' "$LANG_LINE" | sed -E 's/^.*typescript=([0-9]+).*/\1/')
+    RED_PY=$(printf '%s\n' "$LANG_LINE" | sed -E 's/^.*python=([0-9]+)$/\1/')
+    RED=${RED:-0}
+    if [ "$RED" -ne $((RED_RUST + RED_TS + RED_PY)) ]; then
+        echo "FAIL: map red count $RED disagrees with per-language rust=$RED_RUST typescript=$RED_TS python=$RED_PY." >&2
+        exit 1
+    fi
+    set +e
+    OUT=$(cargo nextest run --run-ignored ignored-only --no-fail-fast 2>&1)
+    set -e
+    printf '%s\n' "$OUT" | tail -15
+    RUST_FAILS=$(printf '%s\n' "$OUT" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | tail -1)
+    RUST_PASSES=$(printf '%s\n' "$OUT" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | tail -1)
+    RUST_FAILS=${RUST_FAILS:-0}
+    RUST_PASSES=${RUST_PASSES:-0}
+    TS_FAILS=0
+    TS_PASSES=0
+    if ls packages/ts/core/tests/red/*.test.ts >/dev/null 2>&1; then
+        pnpm -r build > /dev/null
+        set +e
+        TS_OUT=$(node --test --test-reporter=tap packages/ts/core/tests/red/*.test.ts 2>&1)
+        set -e
+        printf '%s\n' "$TS_OUT" | grep -E '^(not ok|# (tests|pass|fail))' | tail -15
+        TS_FAILS=$(printf '%s\n' "$TS_OUT" | grep -oE '^# fail [0-9]+' | grep -oE '[0-9]+' | tail -1)
+        TS_PASSES=$(printf '%s\n' "$TS_OUT" | grep -oE '^# pass [0-9]+' | grep -oE '[0-9]+' | tail -1)
+        TS_FAILS=${TS_FAILS:-0}
+        TS_PASSES=${TS_PASSES:-0}
+    fi
+    PY_FAILS=0
+    PY_PASSES=0
+    if ls packages/py/tests/red/test_*.py >/dev/null 2>&1; then
+        set +e
+        PY_OUT=$(uv run --no-project pytest packages/py/tests/red 2>&1)
+        set -e
+        printf '%s\n' "$PY_OUT" | tail -15
+        PY_FAILS=$(printf '%s\n' "$PY_OUT" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | tail -1)
+        PY_PASSES=$(printf '%s\n' "$PY_OUT" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | tail -1)
+        PY_FAILS=${PY_FAILS:-0}
+        PY_PASSES=${PY_PASSES:-0}
+    fi
+    if [ "$RUST_PASSES" -ne 0 ] || [ "$TS_PASSES" -ne 0 ] || [ "$PY_PASSES" -ne 0 ] \
+        || [ "$RUST_FAILS" -ne "$RED_RUST" ] || [ "$TS_FAILS" -ne "$RED_TS" ] || [ "$PY_FAILS" -ne "$RED_PY" ]; then
+        echo "FAIL: expected rust=$RED_RUST typescript=$RED_TS python=$RED_PY failures and 0 passes; observed rust=$RUST_FAILS/$RUST_PASSES typescript=$TS_FAILS/$TS_PASSES python=$PY_FAILS/$PY_PASSES (failures/passes)." >&2
+        exit 1
+    fi
+    echo "OK: $RED red tests failing exactly as specified (rust=$RUST_FAILS typescript=$TS_FAILS python=$PY_FAILS, 0 passes)."
+
+# SDK suites: TS node --test over compiled dist, Python pytest.
+# ForeignPluginProxy, memory pinning, unhandled freeze recovery
 test-sdks: build-ts
     pnpm -r test
-    uv run pytest packages/py
+    uv run --no-project pytest packages/py
 
 # Cross-plugin integration; requires real hypervisor (KVM/HVF)
 test-integration:

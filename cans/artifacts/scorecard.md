@@ -31,6 +31,15 @@ Do not edit by hand: CI runs `just check-scorecard`.
 | `virtio_rings` | `vr` | 15 | pass | Paravirtual VirtIO complex: SPSC shared memory rings, virtio-vsock, virtio-console, virtio-fs, virtio-net, virtio-rng, virtio-balloon. |
 | `wire_plane` | `wp` | 17 | pass | Embedded smoltcp netstack, default-deny ingress, L4 diversion, DNS policy filter, synthetic gateway (192.168.127.1:53), UDP NAT slab reaper. |
 
+## Test Plan Coverage
+
+Status counts from `cans/artifacts/test-plan/case-to-test-map.yaml`;
+state machine is gap → red → implemented, one direction only.
+
+| Implemented | Red | Gap |
+|---:|---:|---:|
+| 71 | 99 | 70 |
+
 ## Hypervisor Performance Floor (Budgets)
 
 Thresholds below come from perf/budgets.toml (enforce = true) where a key is declared; rows without a declared key keep their spec-fixed floor.

@@ -1,4 +1,5 @@
 // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+use kelir_interface::plugin_model::LifecycleParticipant;
 use kelir_interface::plugin_model::PluginError;
 use kelir_plugin_testkit::block_on;
 use plugin_transaction::{
@@ -85,5 +86,22 @@ fn rt_07_temporal_savepoint_rollback_restore() -> Result<(), String> {
         ctx.active_namespace().map_err(|err| format!("{err:?}"))?,
         None
     );
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/relational_transaction/rt_03_2pc_pre_commit_vcpu_pause_drain.yaml#case_id
+#[test]
+#[ignore]
+fn rt_03_2pc_pre_commit_vcpu_pause_drain() -> Result<(), String> {
+    let plugin = TransactionPlugin::new(TransactionConfig::default());
+    let mut ctx = plugin.ctx();
+    block_on(ctx.begin_scope(TransactionScope::default())).map_err(|err| format!("{err:?}"))?;
+    let mut fixture = kelir_plugin_testkit::handlers_testkit::LifecycleCtxFixture::new();
+    let mut lifecycle = fixture.ctx();
+    block_on(plugin.on_pre_commit(&mut lifecycle)).map_err(|err| {
+        format!(
+            "on_pre_commit must pause guest vCPUs and drain in-flight FUSE before prepare: {err:?}"
+        )
+    })?;
     Ok(())
 }

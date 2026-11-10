@@ -1,8 +1,14 @@
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_01_default_deny_ingress_drop.yaml#case_id
+use std::net::TcpListener;
+
+use kelir_core::Session;
 use kelir_core::planes::wire::{
     FrameDirection, LinkLocalRoute, WirePlane, classify_frame_directional, link_local_route,
 };
+use kelir_interface::driver_interface::SnapshotDescriptor;
+use kelir_interface::driver_interface::default_vm_config;
 use kelir_interface::protocol_wire::FilterAction;
+use kelir_interface::protocol_wire::StreamKind;
 
 fn ipv4_frame(dst: [u8; 4], proto: u8, dst_port: u16) -> Vec<u8> {
     let mut frame = Vec::with_capacity(42);
@@ -162,5 +168,97 @@ fn wp_15_port_forward_collision_abort() -> Result<(), String> {
         wire.forwarded_guest_port(9999).map_err(|e| e.to_string())?,
         Some(8080)
     );
+    Ok(())
+}
+
+fn rollback_vm_config() -> kelir_interface::driver_interface::VmConfig {
+    default_vm_config(
+        None,
+        None,
+        Some("kernel/vmlinux".to_string()),
+        Some("rootfs.erofs".to_string()),
+        None,
+        None,
+    )
+}
+
+// see: cans/artifacts/test-plan/cases/wire_plane/wp_03_rollback_socket_termination_econnreset.yaml#case_id
+#[tokio::test]
+#[ignore]
+async fn wp_03_rollback_socket_termination_econnreset() -> Result<(), String> {
+    let mut session = Session::boot(rollback_vm_config()).map_err(|e| e.to_string())?;
+    let snapshot = SnapshotDescriptor {
+        id: "wp_03".to_string(),
+        dirty_bytes: 0,
+        created_at_ns: 0,
+        parent_digest: None,
+        guest_clock: None,
+    };
+    session
+        .rollback_to(&snapshot)
+        .await
+        .map_err(|error| {
+            format!(
+                "rollback must tear down every host-side socket and emit RST so guest sends fail ECONNRESET: {error:?}"
+            )
+        })?;
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/wire_plane/wp_12_l4_diversion_passthrough_tls.yaml#case_id
+#[test]
+#[ignore]
+fn wp_12_l4_diversion_passthrough_tls() -> Result<(), String> {
+    let wire = WirePlane::new();
+    match wire.divert_l4(8443, "127.0.0.1:9443".to_string()) {
+        Ok(stream) => {
+            assert_eq!(stream.kind, StreamKind::L4Forward);
+            assert_eq!(stream.guest_port, 8443);
+            assert_eq!(stream.host_target, "127.0.0.1:9443");
+        }
+        Err(error) => {
+            return Err(format!(
+                "divert_l4 must open the raw duplex L4-only stream (0x0005, no TLS termination) instead of erroring: {error:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/wire_plane/wp_16_port_forward_so_linger_zero_release.yaml#case_id
+#[test]
+#[ignore]
+fn wp_16_port_forward_so_linger_zero_release() -> Result<(), String> {
+    let wire = WirePlane::new();
+    let published = wire
+        .forward_port(8080, Some(12345))
+        .map_err(|e| e.to_string())?;
+    assert_eq!(published, 12345);
+    match TcpListener::bind(("127.0.0.1", 12345)) {
+        Ok(listener) => {
+            drop(listener);
+            return Err(
+                "forward_port published 12345 without holding a live host listener; SO_LINGER=0 teardown is unobservable"
+                    .into(),
+            );
+        }
+        Err(error) => match error.kind() {
+            std::io::ErrorKind::AddrInUse => {}
+            _ => {
+                return Err(format!(
+                    "rebind while the forward is active gave wrong error: {error}"
+                ));
+            }
+        },
+    }
+    wire.quiesce().map_err(|e| e.to_string())?;
+    match TcpListener::bind(("127.0.0.1", 12345)) {
+        Ok(listener) => drop(listener),
+        Err(error) => {
+            return Err(format!(
+                "port 12345 must be instantly re-bindable after SO_LINGER=0 teardown: {error}"
+            ));
+        }
+    }
     Ok(())
 }

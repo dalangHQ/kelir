@@ -127,8 +127,9 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm -r exec tsc --noEmit
+          pnpm --filter @kelir/core run typecheck
           uv venv && uv pip install -e "packages/py[dev]"
-          uv run mypy packages/py
+          uv run --no-project mypy packages/py
 
       # Test-plan gates: manifest validation + AST anti-slop analysis.
       - name: Manifest validation (check-manifest)
@@ -290,10 +291,10 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm -r build
           uv venv && uv pip install -e "packages/py[dev]"
-      - name: Execute TypeScript SDK tests (none at base)
+      - name: Execute TypeScript SDK tests (node --test)
         run: pnpm -r test
-      - name: Execute Python SDK tests (none at base)
-        run: uv run pytest packages/py
+      - name: Execute Python SDK tests (pytest)
+        run: uv run --no-project pytest packages/py
       - name: Parity
         run: cargo run -p kelir-plugin-cli -- parity run
       - name: Record tier result
@@ -307,6 +308,33 @@ jobs:
         with:
           name: test-results-sdk-parity
           path: test-results/
+
+  # ─── EXPECTED-FAIL RED SUITE (work-order Phase 0.2) ────────
+  # Every red test must fail with the signature recorded in the
+  # case-to-test map: every language reports exactly its map red count
+  # and 0 passes (Rust nextest ignored-only, TS node --test over
+  # packages/ts/core/tests/red, Python pytest over packages/py/tests/red).
+  # A red test that passes, errors, or miscounts fails this stage.
+  test-red:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: astral-sh/setup-uv@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@just
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Install JS + Python SDK dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          uv venv && uv pip install -e "packages/py[dev]"
+      - name: Red suite fails exactly N per language (map red count)
+        run: just test-red
 
   # ─── STAGE 6. SCORECARD AGGREGATOR ─────────────────────────
   # Runs ONLY after the platform jobs complete (needs:). Collects
