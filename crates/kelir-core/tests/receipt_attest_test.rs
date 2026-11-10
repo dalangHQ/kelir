@@ -180,6 +180,9 @@ async fn ar_07_exit_code_patch_chain_divergence() -> Result<(), String> {
         envp: HashMap::new(),
         cwd: "/".to_string(),
         syscall: None,
+        resolved_binary: Default::default(),
+        interpreter_chain: Vec::new(),
+        shell_payload: None,
     };
     let ctx: HandlerCtx<(), ()> = HandlerCtx::new([0u8; 16], 42, (), Vec::new()).with_trap(trap);
     let receipt = ctx.receipt().await.map_err(|e| e.to_string())?;

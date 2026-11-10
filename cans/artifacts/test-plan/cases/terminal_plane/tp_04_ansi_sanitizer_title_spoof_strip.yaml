@@ -16,7 +16,7 @@ invariant:
 
 confusion_matrix:
   quadrant: "true_negative"
-  slop_risk: "Agent tests with incomplete escape sequences, missing BEL (\x07) and ST (\x1b\\) terminators."
+  slop_risk: "Agent tests with incomplete escape sequences, missing BEL (\\x07) and ST (\\x1b\\) terminators."
   anti_slop_mitigation: "AS-06 asserts both BEL and ST terminated title escape sequences are stripped."
 
 setup:
@@ -27,7 +27,7 @@ setup:
     agent_id: "agt_tp_04"
     trust: "reviewed"
   initial_state:
-    input_chunk: "\x1b]0;root@host:~\x07Payload\x1b]2;fake_title\x1b\\Done"
+    input_chunk: "\\x1b]0;root@host:~\\x07Payload\\x1b]2;fake_title\\x1b\\Done"
     tables: []
     vault_secrets: []
 

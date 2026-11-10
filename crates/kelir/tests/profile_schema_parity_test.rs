@@ -133,21 +133,21 @@ fn py_model_fields(source: &str) -> BTreeMap<String, Vec<(String, String)>> {
             classes.entry(name.clone()).or_default();
             current = Some(name);
         } else if line.starts_with(' ') && !line.trim().is_empty() {
-            if let Some(current) = &current
-                && let Some((field, annotation)) = line.trim().split_once(':')
-            {
-                let field = field.trim();
-                let annotation = annotation.trim();
-                let valid = !field.is_empty()
-                    && field
-                        .bytes()
-                        .all(|c| c.is_ascii_alphanumeric() || c == b'_')
-                    && !annotation.is_empty();
-                if valid {
-                    classes
-                        .entry(current.clone())
-                        .or_default()
-                        .push((field.to_string(), annotation.to_string()));
+            if let Some(current) = &current {
+                if let Some((field, annotation)) = line.trim().split_once(':') {
+                    let field = field.trim();
+                    let annotation = annotation.trim();
+                    let valid = !field.is_empty()
+                        && field
+                            .bytes()
+                            .all(|c| c.is_ascii_alphanumeric() || c == b'_')
+                        && !annotation.is_empty();
+                    if valid {
+                        classes
+                            .entry(current.clone())
+                            .or_default()
+                            .push((field.to_string(), annotation.to_string()));
+                    }
                 }
             }
         } else if !line.trim().is_empty() {

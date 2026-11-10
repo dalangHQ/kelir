@@ -17,7 +17,7 @@ invariant:
 confusion_matrix:
   quadrant: "true_negative"
   slop_risk: "Agent asserts sanitizer ran without checking that OSC 52 payload bytes were completely purged."
-  anti_slop_mitigation: "AS-06 asserts processed buffer contains zero occurrences of '\x1b]52;'."
+  anti_slop_mitigation: "AS-06 asserts processed buffer contains zero occurrences of '\\x1b]52;'."
 
 setup:
   env: "ci"
@@ -27,7 +27,7 @@ setup:
     agent_id: "agt_tp_03"
     trust: "reviewed"
   initial_state:
-    malicious_stream: "echo '\x1b]52;c;ZXhwbG9pdA==\x07Normal Text'"
+    malicious_stream: "echo '\\x1b]52;c;ZXhwbG9pdA==\\x07Normal Text'"
     tables: []
     vault_secrets: []
 
@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-06"
-    verification: "assert_eq!(sanitized_output, 'Normal Text'); assert!(!sanitized_output.contains('\x1b]52'));"
+    verification: "assert_eq!(sanitized_output, 'Normal Text'); assert!(!sanitized_output.contains('\\x1b]52'));"

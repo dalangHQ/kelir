@@ -273,6 +273,7 @@ pub struct Heartbeat {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[non_exhaustive]
+#[allow(clippy::large_enum_variant)]
 pub enum GuestToHost {
     TrapEvent(TrapEvent),
     ProcessExit(ProcessExit),
