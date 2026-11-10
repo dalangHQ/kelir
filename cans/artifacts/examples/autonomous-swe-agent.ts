@@ -3,7 +3,7 @@
 import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction,
          type Session, type SnapshotDescriptor, type ExecutionReceipt,
          type CausalDelta, type PluginContract,
-         type LedgerHandle, type PolicyHandle } from "@kelir/core";
+         type PolicyHandle } from "@kelir/core";
 import { chaos, ledger } from "@kelir/core";
 import crypto from "node:crypto";
 
@@ -33,53 +33,52 @@ const runtime = kelir({
   rootfsErofs: "./fixtures/rootfs-swebench.erofs",
   tscLocked: true, enableWatchdog: true,
 })
+  // 1. Plugins mount first; TPlugins accumulates ledger, chaos, policy
+  .use(ledger({
+    store: "sqlite://.kelir/audit.merkle.db",
+    merkleChain: true,
+    otel: { propagateW3cTraceparent: true, serviceName: "kelir-swe-agent" },
+    receipts: { includeDirtyBytes: true, includeBinaryBlake3: true, includeSyscallCount: true },
+  }))
+  .use(chaos({
+    network: [{ target: "api.stripe.com", baseMs: 150, jitterMs: 30, dropRate: 0.02 }],
+    fs: [{ targetPath: "/workspace/build/cache/*", simulateError: "ENOSPC", errorProbability: 0.05 }],
+  }))
+  .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024, protectedBranches: ["main", "master", "release/*"] }))
 
+  // 2. Planes and hooks mount next; c.ledger is statically inferred without manual generics
   .terminal({
     cols: 120, rows: 40,
     dropOsc52: true, stripTitle: true,
-    tokenShield: { maxBytesTotal: 128 * 1024, maxLinesTotal: 500,
-                   clampStrategy: "head-and-tail",
-                   onClamp: (s) => `\n⚠️ [SHIELD] -${s.droppedBytes}B / -${s.droppedLines}L\n` },
-    prompts: [{ match: /Overwrite production schema\? \[y\/N\]/i,
-                timeoutMs: 3000, verifyForeground: true,
+    tokenShield: { maxBytesTotal: 128 * 1024, maxLinesTotal: 500, clampStrategy: "head-and-tail" },
+    prompts: [{ match: /Overwrite production schema\? \[y\/N\]/i, timeoutMs: 3000, verifyForeground: true,
                 action: async (_p, stream) => { stream.write("y\n"); } }],
-    // see: cans/04-terminal-plane.md#Terminal-pipeline
     streamEngine: "StatelessRegex",
   })
 
-  .storage<{ ledger: LedgerHandle }>({
+  .storage({
     idmap: { guestUid: 0, hostUid: process.getuid!() },
     sharedCaches: ["~/.npm", "~/.cache/pip", "~/.cargo/registry"],
     lockBroker: true,
-    // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
     syntheticFiles: [
-      { path: "/workspace/.env.local",
-        content: "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n" },
-      { path: "/workspace/identity.jwt",
-        content: () => `Bearer ${crypto.randomBytes(32).toString("hex")}`, mode: 0o400 },
+      { path: "/workspace/.env.local", content: "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n" },
+      { path: "/workspace/identity.jwt", content: () => `Bearer ${crypto.randomBytes(32).toString("hex")}`, mode: 0o400 },
     ],
     maskRead: [
-      { glob: "**/secrets/**",
-        pattern: /sk_live_[0-9a-zA-Z]{24}/g, replace: "[STRIPE_VAULT_KEY]" },
-      { glob: "**/secrets/**",
-        pattern: /AKIA[0-9A-Z]{16}/g,       replace: "[AWS_IAM_REDACTED]" },
+      { glob: "**/secrets/**", pattern: /sk_live_[0-9a-zA-Z]{24}/g, replace: "[STRIPE_VAULT_KEY]" },
+      { glob: "**/secrets/**", pattern: /AKIA[0-9A-Z]{16}/g, replace: "[AWS_IAM_REDACTED]" },
     ],
-    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
     snoops: [
       { path: "~/.claude/sessions/*.json", sync: true,
         onWrite: async (path, raw, c) => {
           const evt = JSON.parse(raw.toString());
           if (evt.falsifiedResult) throw new Error("EPERM: harness hallucination detected.");
           const producerBlake3 = await c.ledger.blake3OfProducingProcess(path);
-          await oracle.ingestHarnessEvent({
-            path, event: evt, producerBlake3
-          });
+          await oracle.ingestHarnessEvent({ path, event: evt, producerBlake3 });
         } },
-      // see: cans/05-storage-plane.md#Exceeding-max-bytes-fails-synchronously-with-ENOSPC
       { path: "**/*.diff", sync: true,
         onWrite: async (_path, raw) => {
-          if (raw.byteLength > 64 * 1024)
-            throw new Error("ENOSPC: diff exceeds policy ceiling");
+          if (raw.byteLength > 64 * 1024) throw new Error("ENOSPC: diff exceeds policy ceiling");
         } },
     ],
   })
@@ -87,42 +86,10 @@ const runtime = kelir({
   .wire({
     sinkhole: { dnsExcept: ["api.stripe.com", "github.com", "*.internal.net"] },
     sshAgentBridge: true,
-    // see: cans/07-wire-plane.md#Vault-and-credential-flow
-    vaults: [{ name: "STRIPE_SECRET", kind: "bearer_token",
-               audience: "api.stripe.com", placeholder: "vault://stripe_key" }],
-    l4Proxies: [{ listenPort: 5432, destination: "pg.internal.net:5432",
-                  injectMtls: { certPath: "/etc/ssl/client.crt",
-                                keyPath:  "/etc/ssl/client.key" } }],
+    vaults: [{ name: "STRIPE_SECRET", kind: "bearer_token", audience: "api.stripe.com", placeholder: "vault://stripe_key" }],
+    l4Proxies: [{ listenPort: 5432, destination: "pg.internal.net:5432", injectMtls: { certPath: "/etc/ssl/client.crt", keyPath: "/etc/ssl/client.key" } }],
     tapFilter: "AllowUdpProxied",
   })
-
-  // see: cans/plugins/chaos.md#Network-chaos
-  // TODO: spec nests latency { baseMs, jitterMs } but live NetworkFaultRule is flat; flat baseMs/jitterMs used, see cans/plugins/chaos.md#Network-chaos
-  .use(chaos({
-    network: [{ target: "api.stripe.com",
-                baseMs: 150, jitterMs: 30, dropRate: 0.02 },
-              { target: "api.stripe.com",
-                baseMs: 150, jitterMs: 30, dropRate: 0.02,
-                direction: "inbound" },
-              { target: "api.stripe.com",
-                baseMs: 150, jitterMs: 30, dropRate: 0.02,
-                direction: "both" }],
-    fs: [{ targetPath: "/workspace/build/cache/*",
-           simulateError: "ENOSPC", errorProbability: 0.05 }],
-  }))
-
-  // see: cans/plugins/ledger.md#Merkle-WAL
-  // TODO: SSOT otel.traceParent matches no live field; spec name is propagate_w3c_traceparent, live TS field propagateW3cTraceparent used, see cans/plugins/ledger.md#OpenTelemetry
-  .use(ledger({
-    store: "sqlite://.kelir/audit.merkle.db",
-    merkleChain: true,
-    otel: { propagateW3cTraceparent: true, serviceName: "kelir-swe-agent" },
-    // see: cans/plugins/ledger.md#Receipts-(ledger)
-    receipts: { includeDirtyBytes: true, includeBinaryBlake3: true, includeSyscallCount: true },
-  }))
-
-  .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024,
-                          protectedBranches: ["main", "master", "release/*"] }))
 
   // see: cans/03-sdk-architecture.md#Params-typed-views
   .params(t.Object({

@@ -16,10 +16,10 @@
       - Inline closures: trap and lifecycle handlers are fully fork-blind
     - Prerequisite gating across languages
       - Rust: compile-time, via Has<T> trait bounds and typestate
-      - TypeScript: validates plugin dependencies at builder.boot() before vCPU launch
+      - TypeScript: compile-time, via generic accumulation and requires constraint
       - Python: inspects dependency registry at builder.boot() prior to vCPU start
-      - All three produce the same structured error code: EConfig
-      - Runtime check cost: O(plugins) at boot; <2µs; validated once
+      - Rust and TS fail at compile-time; Python raises boot-time EConfig
+      - Python runtime check cost: O(plugins) at boot; <2µs; validated once
     - Service lookup across languages
       - Rust: c.ctx::<T>() infallible, statically resolved
       - TypeScript: c.<pluginKey> typed by .use(plugin) overloads;
@@ -196,29 +196,22 @@
     - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
     - see: artifacts/code/typescript-accumulation.ts
-    - TypeScript builder: KelirBuilder maintains an ordered plugin list
-    - .use(plugin) appends to the registry; returns this (typed overload)
-      - The overload is generic in P extends KelirPlugin; the returned type
-      - exposes session.<pluginKey> for that plugin
-    - Prerequisite validation happens at builder.boot()
-      - Missing dependencies throw EConfig with an error envelope
-      - Diagnostic envelope identifies missing requirement and declarer
-      - No compile-time generic gymnastics; TS compiler stays fast
+    - TypeScript builder: KelirBuilder<TPlugins, TParams> accumulation monad
+    - .use(plugin) accumulates TPlugins & PContext, returning new KelirBuilder
+    - Prerequisite resolution enforced at compile-time via requires constraint
+    - Missing plugin dependency causes compilation error before builder.boot()
     - .trap(matcher, handler): pre-exec gate returning a Verdict
     - .trap(matcher, { pre, post }): dual pre/post gate
     - .intercept(ring, filter, handler): ring-level synchronous hot-path
     - .on(event, handler): lifecycle interceptors over LifecycleEvent values
     - .onTrap(handler): plugin-level trap interposer; returns a new plugin
-    - .params(schema) pins Params from the schema; handler c.params is typed
-      - from TypeBox's Static<> type, resolved once at build time
-    - Handlers receive HandlerContext<Params>; plugin surfaces are typed
-      - members (c.policy, c.ledger), resolved via .use() overloads
+    - .params(schema) pins TParams = Static<TSchema> onto builder monad
+    - Handlers receive HandlerContext<TPlugins, TParams> with static c.<plugin>
+    - Plugin ordering law: .use() must precede handler access to that plugin
     - Trap closures are fork-blind; active StepSlot forks state in core
-    - AOT hook fusion compiles all TS pipeline handlers into a single flat
-      - closure; exactly 1 NAPI trampoline per event regardless of depth
+    - AOT hook fusion compiles all TS pipeline handlers into a single closure
     - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
-    - Null-object pattern: use(plugin({ enabled: false })) yields a no-op
-      - plugin; .boot() still validates but skips registration
+    - Null-object pattern: use(plugin({ enabled: false })) returns same monad
   - Python SDK
     - see: artifacts/code/python-raii-pydantic.py
     - async with builder as session

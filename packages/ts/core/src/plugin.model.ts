@@ -31,8 +31,12 @@ export interface PluginContext<Ctx> {
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 export type PluginContextOf<P> =
-  P extends PluginContract<any, infer C, any> ? C
-    : P extends PluginContext<infer C> ? C
+  P extends PluginContract<infer Name, infer C, any>
+    ? (C extends Record<string, unknown>
+        ? (Name extends keyof C ? C : { readonly [K in Name]: C })
+        : { readonly [K in Name]: C })
+    : P extends PluginContext<infer C>
+      ? C
       : unknown;
 
 export interface CreatePluginOptions {
@@ -46,7 +50,7 @@ function unpack(event: unknown): readonly unknown[] {
 export class PluginContract<
   Name extends string = string,
   Ctx = unknown,
-  Deps extends string = string,
+  Deps extends string = never,
 > implements KelirPlugin {
   readonly name: Name;
   private readonly hooks: HookDescriptor[] = [];
@@ -59,6 +63,31 @@ export class PluginContract<
 
   hooksForFusion(): readonly HookDescriptor[] {
     return this.hooks;
+  }
+
+  // see: cans/03-sdk-architecture.md#TypeScript-SDK
+  requires<Req extends string | PluginContract<any, any, any>>(): PluginContract<
+    Name,
+    Ctx & (Req extends PluginContract<infer N, infer C, any>
+      ? (C extends Record<string, unknown> ? (N extends keyof C ? C : { readonly [K in N]: C }) : { readonly [K in N]: C })
+      : unknown),
+    Deps | (Req extends PluginContract<infer N, any, any> ? N : Req extends string ? Req : never)
+  > {
+    return this as unknown as PluginContract<
+      Name,
+      Ctx & (Req extends PluginContract<infer N, infer C, any>
+        ? (C extends Record<string, unknown> ? (N extends keyof C ? C : { readonly [K in N]: C }) : { readonly [K in N]: C })
+        : unknown),
+      Deps | (Req extends PluginContract<infer N, any, any> ? N : Req extends string ? Req : never)
+    >;
+  }
+
+  // see: cans/03-sdk-architecture.md#TypeScript-SDK
+  derive<NewCtx>(
+    fn: (c: Ctx) => NewCtx,
+  ): PluginContract<Name, Ctx & NewCtx, Deps> {
+    void fn;
+    return this as unknown as PluginContract<Name, Ctx & NewCtx, Deps>;
   }
 
   // see: cans/02-plugin-model.md#Foreign-plugin-proxy
@@ -109,7 +138,7 @@ export class PluginContract<
       path: string,
       buffer: Uint8Array,
       pid: number,
-      ctx: TrapContext,
+      ctx: TrapContext & Ctx,
     ) => FilterAction,
   ): PluginContract<Name, Ctx, Deps> {
     this.addHook(RingEvent.FsWrite, (event) => {
@@ -118,7 +147,7 @@ export class PluginContract<
         args[0] as string,
         args[1] as Uint8Array,
         args[2] as number,
-        args[3] as TrapContext,
+        args[3] as TrapContext & Ctx,
       );
     });
     return this;
@@ -209,12 +238,12 @@ export class PluginContract<
   onTrap(
     handler: (
       event: TrapInfo,
-      c: TrapContext,
+      c: TrapContext & Ctx,
     ) => Promise<Verdict | null> | Verdict | null,
   ): PluginContract<Name, Ctx, Deps> {
     this.addHook(RingEvent.Trap, (event) => {
       const args = unpack(event);
-      return handler(args[0] as TrapInfo, args[1] as TrapContext);
+      return handler(args[0] as TrapInfo, args[1] as TrapContext & Ctx);
     });
     return this;
   }
@@ -231,10 +260,11 @@ export class PluginContract<
   }
 }
 
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
 export function createPlugin<
   Name extends string,
-  Ctx = unknown,
-  Deps extends string = string,
->(name: Name, options?: CreatePluginOptions): PluginContract<Name, Ctx, Deps> {
-  return new PluginContract<Name, Ctx, Deps>(name, options);
+  Ctx = Record<string, unknown>,
+  Deps extends string = never,
+>(name: Name, options?: Ctx | CreatePluginOptions): PluginContract<Name, Ctx, Deps> {
+  return new PluginContract<Name, Ctx, Deps>(name);
 }
