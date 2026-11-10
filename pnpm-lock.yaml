@@ -26,6 +26,9 @@ importers:
       '@ltd/j-toml':
         specifier: ^1.38.0
         version: 1.38.0
+      '@sinclair/typebox':
+        specifier: ^0.34.52
+        version: 0.34.52
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -101,6 +104,9 @@ packages:
 
   '@ltd/j-toml@1.38.0':
     resolution: {integrity: sha512-lYtBcmvHustHQtg4X7TXUu1Xa/tbLC3p2wLvgQI+fWVySguVZJF60Snxijw5EiohumxZbR10kWYFFebh1zotiw==}
+
+  '@sinclair/typebox@0.34.52':
+    resolution: {integrity: sha512-XiMQh7qqVlxZzcVD+kkGMNGMzcTrDMLWI7S4x7z1MkCkbDPrekpZXEUK0eZqZFMuHQg2a2DZOcDIh9o5v3Gonw==}
 
   '@turbo/darwin-64@2.11.10':
     resolution: {integrity: sha512-By4idRap5+nLnMuRzLB4qkOPRlvNdyY1ne4VJYDyUoUB11H94k7uif9mbe3JT8JSNXs1D68uMcBj6hJ/jMQRvA==}
@@ -190,6 +196,8 @@ snapshots:
     optional: true
 
   '@ltd/j-toml@1.38.0': {}
+
+  '@sinclair/typebox@0.34.52': {}
 
   '@turbo/darwin-64@2.11.10':
     optional: true

@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
+from typing import Any, Awaitable, Callable, Literal, Self
 
 from kelir.generated.wire_protocol import Channel, ExecStream, MsgType, StreamKind
 from kelir.generated.attest_telemetry import (
@@ -30,9 +30,6 @@ from kelir.plugin_fusion import (
     TrapFilterSnapshot,
 )
 
-if TYPE_CHECKING:
-    from pydantic import BaseModel
-
 
 def _load_native_bridge() -> Any:
     # TODO (L3): bind the precompiled PyO3 _kelir extension once its boot entry point lands.
@@ -42,6 +39,61 @@ def _load_native_bridge() -> Any:
         raise EConfig(
             "kelir native PyO3 extension (_kelir) is missing: install the precompiled wheel (L3)"
         ) from exc
+
+
+# see: cans/03-sdk-architecture.md#Python-SDK
+def _bridge_safe_config(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
+    # TODO (L3): token shields, prompts, and snoop callbacks cross once the FFI callback bridge lands.
+    known = {
+        "terminal": {
+            "cols", "rows", "drop_osc52", "strip_title",
+            "token_shield", "prompts", "stream_engine",
+        },
+        "storage": {
+            "idmap", "shared_caches", "lock_broker", "synthetic_files",
+            "mask_read", "snoops", "encapsulation", "scan_engine",
+            "carryover_bytes",
+        },
+        "wire": {
+            "sinkhole", "ssh_agent_bridge", "vaults", "l4_proxies",
+            "tap_filter",
+        },
+    }[kind]
+    unknown = set(kwargs) - known
+    if unknown:
+        raise EConfig(
+            f"unknown {kind} plane config keys: {', '.join(sorted(unknown))}"
+        )
+    bridged: dict[str, Any] = {}
+    for key, value in kwargs.items():
+        if key in ("token_shield", "prompts", "snoops"):
+            continue
+        if key == "sinkhole" and value is not None:
+            bridged["sinkhole"] = {
+                "allowlist": list(value.allowlist),
+                "drop_all": bool(value.drop_all),
+            }
+        elif key == "vaults" and value is not None:
+            bridged["vaults"] = [
+                {
+                    "name": vault.name,
+                    "kind": str(vault.kind),
+                    "audience": vault.audience,
+                    "placeholder": vault.placeholder,
+                }
+                for vault in value
+            ]
+        elif key == "l4_proxies" and value is not None:
+            bridged["l4_proxies"] = [
+                {
+                    "listen_port": proxy.listen_port,
+                    "destination": proxy.destination,
+                }
+                for proxy in value
+            ]
+        else:
+            bridged[key] = value
+    return bridged
 
 
 # see: cans/11-protocol.md#Wire-messages
@@ -481,14 +533,13 @@ class HandlerContext:
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: trap receipt (L3)")
 
 
-
 # see: cans/08-lifecycle.md#Detached-lifecycle
 def relay_socket_path(session_id: str) -> str:
     if len(session_id) != 32 or any(
         c not in "0123456789abcdefABCDEF" for c in session_id
     ):
         raise EConfig(f"attach: session id `{session_id}` is not 32 hex chars")
-    home = os.path.expanduser("~")
+    home = os.environ.get("HOME")
     if not home:
         raise EConfig("HOME is not set; cannot locate ~/.kelir relay socket")
     return str(
@@ -579,6 +630,10 @@ class KelirBuilder:
         *,
         vcpus: int | None = None,
         memory_mb: int | None = None,
+        page_size_kb: int | None = None,
+        deterministic_clock: bool | None = None,
+        pinned_clocksource: str | None = None,
+        preemption_grace_ms: int | None = None,
         kernel: str | None = None,
         rootfs_erofs: str | None = None,
         tsc_locked: bool | None = None,
@@ -593,9 +648,14 @@ class KelirBuilder:
         self._vsock_services: list[VsockServiceEntry] = []
         self._next_ordinal: int = 0
         self._session: Session | None = None
+        self._params_model: type | None = None
         self._config: dict[str, Any] = {
             "vcpus": vcpus,
             "memory_mb": memory_mb,
+            "page_size_kb": page_size_kb,
+            "deterministic_clock": deterministic_clock,
+            "pinned_clocksource": pinned_clocksource,
+            "preemption_grace_ms": preemption_grace_ms,
             "kernel": kernel,
             "rootfs_erofs": rootfs_erofs,
             "tsc_locked": tsc_locked,
@@ -603,7 +663,6 @@ class KelirBuilder:
             "driver": driver,
             "detached": detached,
         }
-        self._params_model: type | None = None
 
     # see: cans/08-lifecycle.md#Detached-lifecycle
     def detached(self, detached: bool) -> Self:
@@ -612,6 +671,27 @@ class KelirBuilder:
 
     def is_detached(self) -> bool:
         return bool(self._config.get("detached", False))
+
+    # see: cans/04-terminal-plane.md#Terminal-pipeline
+    def terminal(self, **kwargs: Any) -> Self:
+        self._config["terminal"] = kwargs
+        return self
+
+    # see: cans/05-storage-plane.md#Workspace-commit
+    def storage(self, **kwargs: Any) -> Self:
+        self._config["storage"] = kwargs
+        return self
+
+    # see: cans/07-wire-plane.md#DNS-policy-filter
+    def wire(self, **kwargs: Any) -> Self:
+        self._config["wire"] = kwargs
+        return self
+
+    # see: cans/03-sdk-architecture.md#Python-SDK
+    def params(self, model: type) -> Self:
+        # TODO (L3): validated params models ride the native boot once the PyO3 binding awaits.
+        self._params_model = model
+        return self
 
     def use(self, plugin: object) -> Self:
         # TODO (L2): validate prerequisites at boot
@@ -629,21 +709,6 @@ class KelirBuilder:
 
     def plugin(self, plugin: object) -> Self:
         return self.use(plugin)
-
-    def terminal(self, **kwargs: Any) -> Self:
-        # TODO (L3): configure the terminal plane
-        self._config["terminal"] = kwargs
-        return self
-
-    def storage(self, **kwargs: Any) -> Self:
-        # TODO (L3): configure the storage plane
-        self._config["storage"] = kwargs
-        return self
-
-    def wire(self, **kwargs: Any) -> Self:
-        # TODO (L3): configure the wire plane
-        self._config["wire"] = kwargs
-        return self
 
     def trap(
         self,
@@ -792,10 +857,6 @@ class KelirBuilder:
     def on_post_commit(self) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
         return self._lifecycle_decorator("on_post_commit")
 
-    def params(self, model: "type[BaseModel]") -> Self:
-        self._params_model = model
-        return self
-
     @property
     def vsock_services(self) -> list[VsockServiceEntry]:
         return self._vsock_services
@@ -814,7 +875,21 @@ class KelirBuilder:
             rootfs_erofs=self._config["rootfs_erofs"],
             tsc_locked=self._config["tsc_locked"],
             enable_watchdog=self._config["enable_watchdog"],
+            driver=self._config["driver"],
         )
+        # TODO (L3): forward page_size_kb/deterministic_clock/pinned_clocksource/preemption_grace_ms once the PyO3 constructor accepts them.
+        if "terminal" in self._config:
+            # TODO (L3): token_shield and prompt callbacks stay Python-side until the FFI callback bridge lands.
+            native.set_terminal_config(
+                _bridge_safe_config("terminal", self._config["terminal"])
+            )
+        if "storage" in self._config:
+            # TODO (L3): snoop on_write callbacks stay Python-side until the FFI callback bridge lands.
+            native.set_storage_config(
+                _bridge_safe_config("storage", self._config["storage"])
+            )
+        if "wire" in self._config:
+            native.set_wire_config(_bridge_safe_config("wire", self._config["wire"]))
         for registration in self._plugin_registrations:
             native.use_plugin(registration.name, registration.enabled)
         native.fuse_hooks(descriptor)
@@ -844,6 +919,10 @@ def builder(
     *,
     vcpus: int | None = None,
     memory_mb: int | None = None,
+    page_size_kb: int | None = None,
+    deterministic_clock: bool | None = None,
+    pinned_clocksource: str | None = None,
+    preemption_grace_ms: int | None = None,
     kernel: str | None = None,
     rootfs_erofs: str | None = None,
     tsc_locked: bool | None = None,
@@ -854,6 +933,10 @@ def builder(
     return KelirBuilder(
         vcpus=vcpus,
         memory_mb=memory_mb,
+        page_size_kb=page_size_kb,
+        deterministic_clock=deterministic_clock,
+        pinned_clocksource=pinned_clocksource,
+        preemption_grace_ms=preemption_grace_ms,
         kernel=kernel,
         rootfs_erofs=rootfs_erofs,
         tsc_locked=tsc_locked,

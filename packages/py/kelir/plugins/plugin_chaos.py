@@ -9,8 +9,6 @@ from kelir.model_plugin import BasePlugin
 __all__ = [
     "ChaosConfig",
     "ChaosPlugin",
-    "FsChaos",
-    "NetworkChaos",
     "NetworkFaultRule",
     "StorageFaultRule",
 ]
@@ -38,12 +36,6 @@ class StorageFaultRule:
 class ChaosConfig:
     network: list[NetworkFaultRule] = field(default_factory=list)
     fs: list[StorageFaultRule] = field(default_factory=list)
-
-
-NetworkChaos = NetworkFaultRule
-
-
-FsChaos = StorageFaultRule
 
 
 class ChaosPlugin(BasePlugin):

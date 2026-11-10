@@ -100,6 +100,13 @@ impl ToolGuardPlugin {
         payload: &mut [u8],
     ) -> Result<Verdict, PluginError> {
         let frame = McpFrame::decode(payload)?;
+        // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
+        if frame.method == McpMethod::Unparsed {
+            return Ok(Verdict::Drop {
+                errno: Some("EPERM".into()),
+                reason: "unparsed MCP frame fails closed pending JSON-RPC 2.0 decode".into(),
+            });
+        }
         if frame.method != McpMethod::ToolsCall {
             return Ok(Verdict::Pass);
         }

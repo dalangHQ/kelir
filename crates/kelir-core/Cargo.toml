@@ -8,6 +8,7 @@ license = "FSL-1.1-Apache-2.0"
 kelir-interface = { path = "../kelir-interface" }
 kelir-transport = { path = "../kelir-transport" }
 kelir-otlp = { path = "../kelir-otlp" }
+kelir-catalog = { path = "../kelir-catalog" }
 serde = { workspace = true }
 toml = { workspace = true }
 ciborium = { workspace = true }

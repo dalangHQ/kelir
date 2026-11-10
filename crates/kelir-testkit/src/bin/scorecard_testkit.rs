@@ -101,6 +101,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(arg) => arg.as_str(),
         None => "generate",
     };
+    let in_place = args.iter().skip(2).any(|arg| arg == "--in-place");
+    if in_place && mode != "generate" {
+        return Err("--in-place applies to `generate` only.".into());
+    }
 
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -129,15 +133,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match mode {
         "generate" => {
-            let out_path = repo_root.join("target/scorecard.md");
+            let out_path = if in_place {
+                scorecard_path
+            } else {
+                repo_root.join("target/scorecard.md")
+            };
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent)?;
             }
             fs::write(&out_path, &generated_md)?;
-            println!(
-                "Scorecard rendered to {} (cans/artifacts/scorecard.md stays frozen; `scorecard -- check` gates the committed artifact).",
-                out_path.display()
-            );
+            if in_place {
+                println!(
+                    "Scorecard artifact updated in place: {} (gate with `scorecard -- check`).",
+                    out_path.display()
+                );
+            } else {
+                println!(
+                    "Scorecard rendered to {} (cans/artifacts/scorecard.md stays frozen; `scorecard -- check` gates the committed artifact; pass --in-place to update it).",
+                    out_path.display()
+                );
+            }
             Ok(())
         }
         "check" => {
@@ -154,7 +169,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         unknown => {
-            eprintln!("Unknown mode: {}. Use 'generate' or 'check'.", unknown);
+            eprintln!(
+                "Unknown mode: {}. Use 'generate [--in-place]' or 'check'.",
+                unknown
+            );
             std::process::exit(1)
         }
     }

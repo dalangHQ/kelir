@@ -29,7 +29,7 @@ fn tp_15_shim_openpty_returns_distinct_master_slave() -> Result<(), String> {
     // SAFETY: slave is a valid open fd; tio is a valid termios pointer.
     let rc = unsafe { libc::tcsetattr(slave, libc::TCSANOW, &tio) };
     assert_eq!(rc, 0);
-    let byte = [b'x'];
+    let byte = *b"x";
     // SAFETY: master is a valid open fd; byte points at one readable byte.
     let written = unsafe { libc::write(master, byte.as_ptr() as *const libc::c_void, 1) };
     assert_eq!(written, 1);

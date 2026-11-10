@@ -14,6 +14,10 @@ tokio = { workspace = true }
 syn = { version = "2", features = ["full", "visit"] }
 quote = "1"
 
+[dev-dependencies]
+serde_json = { workspace = true }
+libc = { workspace = true }
+
 [[bin]]
 name = "codegen"
 path = "src/bin/codegen/main.rs"

@@ -19,6 +19,13 @@
   mislocated erasure is a shape error to fix now.
 - **Where this order contradicts `cans/` + `cans/artifacts/`, the artifacts win**
   (AGENTS.md §1) and the decision is recorded, not silently resolved.
+- **Scope 23424 executed:** Phases 1–6 of Scope 23424 (wire/protocol, kernel/planes,
+  boundary/FFI, SDK/facade, plugins/telemetry, tooling/codegen) were executed and
+  squash-merged into scaffolding 2026-11-10; the order is kept at
+  `work-order-23424.md` (status EXECUTED). Verdicts below predate that merge —
+  overlapping items (notably §6b, `WireFrame::decode` now in
+  `kelir-interface/src/codec_protocol.rs`) are implemented in this tree, so the
+  verdicts need re-verification before reuse.
 
 ## 1. Blatant code & logic duplication — CONFIRMED in substance, 3 of 5 sub-claims corrected
 

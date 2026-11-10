@@ -3,9 +3,7 @@
 
 pub mod service_vault;
 
-use std::future::Future;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::task::{Context, Poll, Wake, Waker};
 use std::thread::JoinHandle;
 
 use async_trait::async_trait;
@@ -16,6 +14,7 @@ use kelir_interface::plugin_model::{
     HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
     TokenRevocation, VirtioDevice,
 };
+use kelir_interface::runtime_block::block_on;
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
@@ -315,33 +314,6 @@ fn serve_metadata_session(
     let request = read_metadata_request(stream.as_mut())?;
     let response = block_on(endpoint.serve(&request));
     write_metadata_response(stream.as_mut(), &response)
-}
-
-// see: cans/02-plugin-model.md#Latency-ceiling
-struct ThreadWaker(std::thread::Thread);
-
-impl Wake for ThreadWaker {
-    fn wake(self: Arc<Self>) {
-        self.0.unpark();
-    }
-
-    fn wake_by_ref(self: &Arc<Self>) {
-        self.0.unpark();
-    }
-}
-
-// see: cans/02-plugin-model.md#Latency-ceiling
-// TODO (L3): drive the broker issue on the async runtime once the transport exposes a runtime handle.
-fn block_on<F: Future>(future: F) -> F::Output {
-    let mut future = Box::pin(future);
-    let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
-    let mut cx = Context::from_waker(&waker);
-    loop {
-        match future.as_mut().poll(&mut cx) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => std::thread::park(),
-        }
-    }
 }
 
 // see: cans/plugins/vault.md#Metadata-service-(vault)

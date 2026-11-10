@@ -1,39 +1,16 @@
 // see: cans/plugins/vault.md#Out-of-band-credential-brokerage
-use std::future::Future;
 use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
 
 use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::vsock_mesh::VsockPeer;
 use kelir_plugin_testkit::LoopbackStream;
+use kelir_plugin_testkit::block_on;
 use kelir_plugin_testkit::handlers_testkit::handler_ctx;
 use plugin_vault::service_vault::{
     CredentialBroker, CredentialBrokerService, TokenRequest, VaultError,
 };
 use plugin_vault::{MetadataEndpoint, VaultConfig, VaultPlugin};
-
-// see: cans/15-operations.md#Local-velocity
-fn block_on<F: Future>(future: F) -> F::Output {
-    struct ThreadWaker(std::thread::Thread);
-    impl Wake for ThreadWaker {
-        fn wake(self: Arc<Self>) {
-            self.0.unpark();
-        }
-        fn wake_by_ref(self: &Arc<Self>) {
-            self.0.unpark();
-        }
-    }
-    let mut future = Box::pin(future);
-    let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
-    let mut cx = Context::from_waker(&waker);
-    loop {
-        match future.as_mut().poll(&mut cx) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => std::thread::park(),
-        }
-    }
-}
 
 fn descriptor(name: &str, audience: &str) -> CredentialDescriptor {
     CredentialDescriptor {

@@ -369,7 +369,8 @@ impl TerminalHandle {
     pub fn notice(&self, _msg: &str) {}
 }
 
-// TODO (L3): push SnapshotDescriptor slots on checkpoint create/restore; nothing populates them at L2, so last() always returns None.
+// see: cans/10-attestation.md#Step-evaluation-loop
+// TODO (L3): pop slots on checkpoint commit/rollback; dispatch-side pre-exec hydration pushes them.
 #[derive(Debug, Clone, Default)]
 pub struct StepStack {
     slots: Vec<SnapshotDescriptor>,
@@ -378,5 +379,10 @@ pub struct StepStack {
 impl StepStack {
     pub fn last(&self) -> Option<SnapshotDescriptor> {
         self.slots.last().cloned()
+    }
+
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    pub fn push(&mut self, descriptor: SnapshotDescriptor) {
+        self.slots.push(descriptor);
     }
 }

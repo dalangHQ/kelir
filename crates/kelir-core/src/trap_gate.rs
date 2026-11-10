@@ -98,14 +98,8 @@ impl TrapGateEvaluator {
             }
         }
         let trusted = self.is_trusted(event);
-        if !trusted {
-            if let Some(hook) = &self.entropy_hook {
-                if let Ok(entropy) = self.compute_shannon_entropy(&event.argv) {
-                    if let Some(decision) = hook(entropy, trusted) {
-                        return decision;
-                    }
-                }
-            }
+        if let Some(decision) = self.entropy_veto(event, trusted) {
+            return decision;
         }
         if self.gate_2_scope_match(event, scope) {
             if self.trusted_prefix_skip(event) {
@@ -114,6 +108,16 @@ impl TrapGateEvaluator {
             return GateDecision::FallThrough;
         }
         GateDecision::Allow
+    }
+
+    // see: cans/plugins/supply-chain.md#Entropy-analysis
+    fn entropy_veto(&self, event: &TrapEvent, trusted: bool) -> Option<GateDecision> {
+        if trusted {
+            return None;
+        }
+        let hook = self.entropy_hook.as_ref()?;
+        let entropy = self.compute_shannon_entropy(&event.argv).ok()?;
+        hook(entropy, trusted)
     }
 
     // see: cans/11-protocol.md#Trap-fast-path

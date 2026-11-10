@@ -1,4 +1,5 @@
 // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+use kelir_interface::handles_lifecycle::VmHandle;
 use kelir_interface::plugin_model::KelirPlugin;
 use plugin_wire_ingress::{L4ForwardFrame, MAX_PARKED_BYTES, ParkOutcome, WireIngressPlugin};
 
@@ -12,8 +13,8 @@ fn l4_frame_bytes(target_port: u16, connection_id: u64, payload: &[u8]) -> Vec<u
 }
 
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_17_wire_ingress_park_connection_suspends_session.yaml#case_id
-#[test]
-fn wp_17_wire_ingress_park_connection_suspends_session() -> Result<(), String> {
+#[tokio::test]
+async fn wp_17_wire_ingress_park_connection_suspends_session() -> Result<(), String> {
     assert_eq!(L4ForwardFrame::decode(&[0u8; 5]), None);
     let short = l4_frame_bytes(8443, 7, b"GET /");
     let mut truncated = short.clone();
@@ -67,5 +68,13 @@ fn wp_17_wire_ingress_park_connection_suspends_session() -> Result<(), String> {
             .map_err(|err| format!("{err:?}"))?,
         Vec::<u64>::new()
     );
+    assert!(!router.is_parking().map_err(|err| format!("{err:?}"))?);
+    let unbound = VmHandle::default();
+    assert!(!unbound.is_bound());
+    let drained = router
+        .resume_parked(&unbound, "suspend.img")
+        .await
+        .map_err(|err| format!("{err:?}"))?;
+    assert_eq!(drained, Vec::<plugin_wire_ingress::ParkedDrain>::new());
     Ok(())
 }

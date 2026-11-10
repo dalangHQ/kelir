@@ -8,20 +8,12 @@ pub use kelir_core::planes::storage::storage_reconciler::FsReconcileRequest;
 pub use kelir_core::planes::storage::storage_synthetic::{
     DynamicFile, DynamicFileGenerator, SyntheticFile,
 };
+// see: cans/05-storage-plane.md#Storage-architecture
+pub use kelir_core::planes::storage::{
+    IdmapConfig, MaskReadRule as MaskRule, ReadMaskEngine, WorkspaceEncapsulation,
+};
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IdmapConfig {
-    pub guest_uid: u32,
-    pub host_uid: u32,
-}
-
-#[derive(Debug, Clone)]
-pub struct MaskRule {
-    pub glob: String,
-    pub patterns: Vec<(String, String)>,
-}
 
 // see: cans/02-plugin-model.md#Shape-of-the-surface
 // see: cans/05-storage-plane.md#Interception-pipeline
@@ -45,16 +37,7 @@ impl<Plugins, Params> std::fmt::Debug for SnoopRule<Plugins, Params> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkspaceEncapsulation {
-    Passthrough,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReadMaskEngine {
-    FastRegex,
-}
-
+// see: cans/05-storage-plane.md#Storage-architecture
 #[derive(Debug, Clone)]
 pub struct StorageConfig<Plugins = HNil, Params = NoParams> {
     pub idmap: IdmapConfig,

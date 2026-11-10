@@ -285,6 +285,18 @@ pub struct WirePlane {
     stack: SmoltcpStack,
     imds_sink: Arc<RwLock<Option<Arc<dyn VsockServiceHandler>>>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
+    wiring: Option<WireWiring>,
+}
+
+// see: cans/07-wire-plane.md#DNS-policy-filter
+#[derive(Debug, Clone, Default)]
+pub struct WireWiring {
+    pub sinkhole_allowlist: Vec<String>,
+    pub sinkhole_drop_all: bool,
+    pub ssh_agent_bridge: bool,
+    pub vault_placeholders: Vec<String>,
+    pub l4_proxies: Vec<(u16, String)>,
+    pub allow_udp_proxied: bool,
 }
 
 impl Default for WirePlane {
@@ -303,6 +315,19 @@ impl WirePlane {
             stack: SmoltcpStack::new(),
             imds_sink: Arc::new(RwLock::new(None)),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
+            wiring: None,
+        }
+    }
+
+    // see: cans/07-wire-plane.md#DNS-policy-filter
+    // TODO (L3): the DNS resolver enforces sinkhole_drop_all, the ssh agent bridge mounts, vault placeholders hydrate, and l4 proxies open host listeners.
+    pub fn with_wiring(self, wiring: WireWiring) -> Self {
+        if let Ok(mut domains) = self.allowed_domains.write() {
+            *domains = wiring.sinkhole_allowlist.clone();
+        }
+        Self {
+            wiring: Some(wiring),
+            ..self
         }
     }
 
@@ -313,6 +338,11 @@ impl WirePlane {
 
     pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
         &self.metrics
+    }
+
+    // see: cans/07-wire-plane.md#DNS-policy-filter
+    pub fn wiring(&self) -> Option<&WireWiring> {
+        self.wiring.as_ref()
     }
 
     // see: cans/07-wire-plane.md#Pre-policy-drop-zones

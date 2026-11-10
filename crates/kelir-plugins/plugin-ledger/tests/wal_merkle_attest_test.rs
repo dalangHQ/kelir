@@ -1,6 +1,11 @@
 // see: cans/plugins/ledger.md#Merkle-WAL-specification
+use std::sync::Arc;
+
 use kelir_interface::telemetry::CausalDelta;
+use kelir_otlp::registry_otlp::MetricRegistry;
+use kelir_plugin_testkit::block_on;
 use plugin_ledger::wal_ledger::{WalRecord, merkle_leaf, merkle_node, merkle_root};
+use plugin_ledger::{LedgerCtx, OtelConfig};
 
 // see: cans/artifacts/test-plan/cases/telemetry_audit/ta_01_merkle_wal_rf_6962_blake3_chain.yaml#case_id
 #[test]
@@ -43,4 +48,18 @@ fn node_of(left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
         .update(&right)
         .finalize()
         .as_bytes()
+}
+
+// see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
+#[test]
+fn ledger_flush_export_failure_never_blocks() -> Result<(), String> {
+    let registry = Arc::new(MetricRegistry::new());
+    let valid_endpoint = LedgerCtx::new(
+        OtelConfig::new("http://127.0.0.1:4318", "flush-canary"),
+        Some(Arc::clone(&registry)),
+    );
+    block_on(valid_endpoint.flush()).map_err(|err| format!("{err:?}"))?;
+    let default_endpoint = LedgerCtx::new(OtelConfig::default(), Some(registry));
+    block_on(default_endpoint.flush()).map_err(|err| format!("{err:?}"))?;
+    Ok(())
 }

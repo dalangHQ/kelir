@@ -13,9 +13,9 @@ use kelir_interface::plugin_model::{
 use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
-use crate::planes::storage_plane::{LockBrokerConfig, StorageConfig};
+use crate::planes::storage_plane::{LockBrokerConfig, LockScope, StorageConfig};
 use crate::planes::terminal_plane::PtyConfig;
-use crate::planes::wire_plane::WireConfig;
+use crate::planes::wire_plane::{TapFilter, WireConfig};
 use crate::plugin_model::KelirPlugin;
 use crate::session_lifecycle::Session;
 
@@ -64,10 +64,12 @@ impl TrapFilter {
     }
 
     pub(crate) fn matches(&self, event: &TrapEvent) -> bool {
-        if let Some(binary) = &self.binary {
-            if binary != &event.binary_path {
-                return false;
-            }
+        if self
+            .binary
+            .as_ref()
+            .is_some_and(|binary| binary != &event.binary_path)
+        {
+            return false;
         }
         self.args.iter().all(|arg| event.argv.contains(arg))
     }
@@ -196,8 +198,8 @@ pub(crate) struct StreamKindServiceEntry {
 pub(crate) struct Registration<Plugins: HList> {
     pub(crate) instances: Vec<(Box<dyn AnyPlugin>, MountScope)>,
     pub(crate) traps: Vec<TrapEntry<Plugins>>,
-    pub(crate) terminal_cfg: Option<PtyConfig>,
     pub(crate) storage_cfg: Option<StorageConfig<Plugins, NoParams>>,
+    pub(crate) terminal_cfg: Option<PtyConfig>,
     pub(crate) wire_cfg: Option<WireConfig>,
     pub(crate) lock_broker_cfg: Option<LockBrokerConfig>,
     pub(crate) on_vm_init: Option<BoxedLifecycleCallback>,
@@ -216,8 +218,8 @@ impl<Plugins: HList> Default for Registration<Plugins> {
         Self {
             instances: Vec::new(),
             traps: Vec::new(),
-            terminal_cfg: None,
             storage_cfg: None,
+            terminal_cfg: None,
             wire_cfg: None,
             lock_broker_cfg: None,
             on_vm_init: None,
@@ -241,8 +243,8 @@ impl<Plugins: HList> Registration<Plugins> {
         Registration {
             instances: self.instances,
             traps: self.traps.into_iter().map(|entry| entry.narrow()).collect(),
-            terminal_cfg: self.terminal_cfg,
             storage_cfg: self.storage_cfg.map(|cfg| cfg.narrow()),
+            terminal_cfg: self.terminal_cfg,
             wire_cfg: self.wire_cfg,
             lock_broker_cfg: self.lock_broker_cfg,
             on_vm_init: self.on_vm_init,
@@ -311,21 +313,24 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
         }
     }
 
-    pub fn terminal(mut self, config: PtyConfig) -> Self {
-        self.registration.terminal_cfg = Some(config);
-        self
-    }
-
     pub fn storage(mut self, config: StorageConfig<Plugins, Params>) -> Self {
         self.registration.storage_cfg = Some(config.retag());
         self
     }
 
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    pub fn terminal(mut self, config: PtyConfig) -> Self {
+        self.registration.terminal_cfg = Some(config);
+        self
+    }
+
+    // see: cans/07-wire-plane.md#DNS-policy-filter
     pub fn wire(mut self, config: WireConfig) -> Self {
         self.registration.wire_cfg = Some(config);
         self
     }
 
+    // see: cans/05-storage-plane.md#Workspace-commit
     pub fn lock_broker(mut self, config: LockBrokerConfig) -> Self {
         self.registration.lock_broker_cfg = Some(config);
         self
@@ -522,6 +527,7 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
 impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins, Params> {
     async fn finish_boot(self) -> Result<Session<Plugins, Params>, PluginError> {
         // TODO (L3): register plugin instances, dispatch tables, and vetoes into the engine per cans/02-plugin-model.md#Static-dispatch before handing the session back.
+        // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
         let plugins: Vec<kelir_core::PluginRegistration> = self
             .registration
             .instances
@@ -548,16 +554,89 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
             .as_ref()
             .map(|cfg| cfg.synthetic_files.clone())
             .unwrap_or_default();
+        let plane_wiring = kelir_core::session_lifecycle::PlaneWiring {
+            terminal: self.registration.terminal_cfg.as_ref().map(|cfg| {
+                kelir_core::planes::terminal::TerminalWiring {
+                    cols: cfg.cols,
+                    rows: cfg.rows,
+                    drop_osc52: cfg.drop_osc52,
+                    strip_title: cfg.strip_title,
+                }
+            }),
+            wire: self.registration.wire_cfg.as_ref().map(|cfg| {
+                kelir_core::planes::wire::WireWiring {
+                    sinkhole_allowlist: cfg.sinkhole.allowlist.clone(),
+                    sinkhole_drop_all: cfg.sinkhole.drop_all,
+                    ssh_agent_bridge: cfg.ssh_agent_bridge,
+                    vault_placeholders: cfg
+                        .vaults
+                        .iter()
+                        .map(|vault| vault.placeholder.clone())
+                        .collect(),
+                    l4_proxies: cfg
+                        .l4_proxies
+                        .iter()
+                        .map(|proxy| (proxy.listen_port, proxy.destination.clone()))
+                        .collect(),
+                    allow_udp_proxied: matches!(cfg.tap_filter, TapFilter::AllowUdpProxied),
+                }
+            }),
+            storage: self.storage_wiring(),
+        };
         let core = kelir_core::Session::boot_with_engine(
             self.config,
             &plugins,
             engine,
             metrics,
             synthetic_files,
+            plane_wiring,
         )?;
         let mut core = core;
         core.set_detached(self.registration.detached);
         Ok(Session::from_parts(core, self.plugins, self.registration))
+    }
+
+    // see: cans/05-storage-plane.md#Storage-architecture
+    // TODO (L3): snoop on_write closures register as engine FsInterposer hooks at seal per cans/02-plugin-model.md#Unified-interposition-pipeline.
+    fn storage_wiring(&self) -> kelir_core::planes::storage::StorageWiring {
+        let Some(cfg) = self.registration.storage_cfg.as_ref() else {
+            return kelir_core::planes::storage::StorageWiring::default();
+        };
+        let lock_broker = self
+            .registration
+            .lock_broker_cfg
+            .as_ref()
+            .map(|broker| kelir_core::planes::storage::LockBrokerWiring {
+                scope_globs: match &broker.scope {
+                    LockScope::Globs(globs) => globs.clone(),
+                },
+                non_blocking: broker.non_blocking,
+            })
+            .or_else(|| {
+                cfg.lock_broker
+                    .then(|| kelir_core::planes::storage::LockBrokerWiring {
+                        scope_globs: Vec::new(),
+                        non_blocking: false,
+                    })
+            });
+        kelir_core::planes::storage::StorageWiring {
+            shared_caches: cfg
+                .shared_caches
+                .iter()
+                .map(std::path::PathBuf::from)
+                .collect(),
+            lock_broker,
+            idmap: Some(kelir_core::planes::storage::IdmapConfig {
+                guest_uid: cfg.idmap.guest_uid,
+                host_uid: cfg.idmap.host_uid,
+            }),
+            mask_read: Some(kelir_core::planes::storage::MaskReadConfig {
+                engine: cfg.scan_engine,
+                carryover_bytes: cfg.carryover_bytes,
+                rules: cfg.mask_read.clone(),
+            }),
+            encapsulation: cfg.encapsulation,
+        }
     }
 }
 

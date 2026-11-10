@@ -6,12 +6,12 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
-use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
-use kelir_interface::codec_protocol::{FLAG_DATA, MAX_FRAME_PAYLOAD, MAX_STREAM_ID};
+use kelir_interface::codec_protocol::{CodecError, FLAG_DATA};
 use kelir_interface::driver_interface::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
+use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::plugin_model::VetoEvent;
 use kelir_interface::protocol_wire::{
     Channel, ExecveMutation, GuestToHost, Heartbeat, MsgType, PatchPayload, SuspendUntil,
@@ -19,6 +19,9 @@ use kelir_interface::protocol_wire::{
 };
 
 use crate::handlers_testkit::LifecycleCtxFixture;
+
+// see: cans/11-protocol.md#Wire-framing
+pub use kelir_interface::codec_protocol::WireFrame;
 
 // see: cans/11-protocol.md#Wire-framing
 #[derive(Debug)]
@@ -50,44 +53,15 @@ impl fmt::Display for VectorError {
 impl Error for VectorError {}
 
 // see: cans/11-protocol.md#Wire-framing
-#[derive(Debug, Clone)]
-pub struct WireFrame {
-    pub transport: Channel,
-    pub stream_id: u32,
-    pub flags: u8,
-    pub msg_type: MsgType,
-    pub payload: Vec<u8>,
-}
-
-impl WireFrame {
-    // see: cans/artifacts/code/wire-protocol.rs#MuxFrameHeader
-    pub fn encode(&self) -> Result<Vec<u8>, VectorError> {
-        if self.stream_id > MAX_STREAM_ID {
-            return Err(VectorError::StreamIdOutOfRange {
-                stream_id: self.stream_id,
-            });
+impl From<CodecError> for VectorError {
+    fn from(err: CodecError) -> Self {
+        match err {
+            CodecError::FrameTooLarge { len } => VectorError::FrameTooLarge { len },
+            CodecError::StreamIdOutOfRange { stream_id } => {
+                VectorError::StreamIdOutOfRange { stream_id }
+            }
+            other => VectorError::Encode(other.to_string()),
         }
-        let body_len = self
-            .payload
-            .len()
-            .checked_add(2)
-            .ok_or(VectorError::FrameTooLarge { len: usize::MAX })?;
-        if body_len > MAX_FRAME_PAYLOAD {
-            return Err(VectorError::FrameTooLarge { len: body_len });
-        }
-        let len =
-            u32::try_from(body_len).map_err(|_| VectorError::FrameTooLarge { len: body_len })?;
-        let mut frame = Vec::with_capacity(
-            body_len
-                .checked_add(9)
-                .ok_or(VectorError::FrameTooLarge { len: usize::MAX })?,
-        );
-        frame.extend_from_slice(&self.stream_id.to_le_bytes());
-        frame.push(self.flags);
-        frame.extend_from_slice(&len.to_le_bytes());
-        frame.extend_from_slice(&(self.msg_type as u16).to_le_bytes());
-        frame.extend_from_slice(&self.payload);
-        Ok(frame)
     }
 }
 
@@ -128,8 +102,8 @@ impl VectorCase {
                 "stream_id": self.frame.stream_id,
                 "flags": self.frame.flags,
                 "msg_type": self.frame.msg_type as u16,
-                "payload_cbor_hex": hex(&self.frame.payload),
-                "frame_hex": hex(&frame),
+                "payload_cbor_hex": encode_hex(&self.frame.payload),
+                "frame_hex": encode_hex(&frame),
             },
             "event": serde_json::to_value(&self.event).map_err(|e| VectorError::Encode(e.to_string()))?,
             "expected_verdict": serde_json::to_value(&self.expected_verdict).map_err(|e| VectorError::Encode(e.to_string()))?,
@@ -290,14 +264,6 @@ fn cbor<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, VectorError> {
     Ok(out)
 }
 
-fn hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push_str(&format!("{byte:02x}"));
-    }
-    out
-}
-
 fn trap_event(
     seq: u64,
     pid: u32,
@@ -406,7 +372,6 @@ fn exec_rewrite_case() -> Result<VectorCase, VectorError> {
         set_env: vec![("KELIR_TAINT".to_string(), "1".to_string())],
         unset_env: vec!["KELIR_UNTRUSTED".to_string()],
     };
-    let mutation_cbor = cbor(&mutation)?;
     let event = GuestToHost::TrapEvent(trap_event(
         3,
         1300,
@@ -429,7 +394,7 @@ fn exec_rewrite_case() -> Result<VectorCase, VectorError> {
             payload: cbor(&event)?,
         },
         event: Some(event),
-        expected_verdict: Verdict::Patch(PatchPayload::ExecveMutation(mutation_cbor)),
+        expected_verdict: Verdict::Patch(PatchPayload::ExecveMutation(mutation)),
         watchdog: None,
         veto: None,
     })
@@ -455,15 +420,9 @@ fn heartbeat_case() -> Result<VectorCase, VectorError> {
 
 // see: cans/15-operations.md#Local-velocity
 fn poll_sync<F: Future>(future: F) -> Result<F::Output, VectorError> {
-    struct ReadyWake;
-
-    impl Wake for ReadyWake {
-        fn wake(self: Arc<Self>) {}
-    }
-
-    let waker = Waker::from(Arc::new(ReadyWake));
+    let waker = Waker::noop();
     let mut future = Box::pin(future);
-    let mut context = Context::from_waker(&waker);
+    let mut context = Context::from_waker(waker);
     match future.as_mut().poll(&mut context) {
         Poll::Ready(output) => Ok(output),
         Poll::Pending => Err(VectorError::Execution(

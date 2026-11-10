@@ -13,37 +13,6 @@ struct Default {
 }
 
 // see: cans/03-sdk-architecture.md#Python-SDK
-fn legacy_aliases(module: &str) -> Vec<(&'static str, &'static str)> {
-    match module {
-        "chaos" => vec![
-            ("NetworkFaultRule", "NetworkChaos"),
-            ("StorageFaultRule", "FsChaos"),
-        ],
-        _ => Vec::new(),
-    }
-}
-
-// see: cans/03-sdk-architecture.md#Python-SDK
-type LegacyField = (&'static str, &'static str, &'static str, &'static str);
-type LegacyFields = Vec<(&'static str, Vec<LegacyField>)>;
-
-// see: cans/03-sdk-architecture.md#Python-SDK
-fn legacy_fields(module: &str) -> LegacyFields {
-    match module {
-        "db_proxy" => vec![(
-            "EphemeralCredentials",
-            vec![(
-                "resolve",
-                "Callable[[], str] | None",
-                "None",
-                "TODO (L3): resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md.",
-            )],
-        )],
-        _ => Vec::new(),
-    }
-}
-
-// see: cans/03-sdk-architecture.md#Python-SDK
 fn py_quote(value: &str) -> String {
     let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
     format!("\"{escaped}\"")
@@ -405,13 +374,15 @@ fn eval_default(
                     proj.krate.dir_name
                 ));
             }
-            if let syn::Expr::Lit(lit) = &*call.receiver {
-                if let syn::Lit::Str(value) = &lit.lit {
-                    return Ok(Default {
-                        ctor: py_quote(&str_content(value)?),
-                        immutable: true,
-                    });
-                }
+            if let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(value),
+                ..
+            }) = &*call.receiver
+            {
+                return Ok(Default {
+                    ctor: py_quote(&str_content(value)?),
+                    immutable: true,
+                });
             }
             Err(format!(
                 "{}: unsupported default expr for {where_}",
@@ -589,8 +560,6 @@ fn py_type(proj: &Projection, ty: &Ty) -> Result<String, String> {
 // see: cans/03-sdk-architecture.md#Python-SDK
 pub fn emit_py_module(proj: &Projection) -> Result<String, String> {
     let krate = &proj.krate;
-    let aliases = legacy_aliases(&krate.module_name);
-    let legacy = legacy_fields(&krate.module_name);
     let mut needs_factory = false;
     for ps in &proj.structs {
         let defaults = resolve_struct_defaults(proj, ps)?;
@@ -599,16 +568,10 @@ pub fn emit_py_module(proj: &Projection) -> Result<String, String> {
         }
     }
     let uses_literal = !proj.enum_literals.is_empty();
-    let uses_callable = legacy
-        .iter()
-        .any(|(_, fields)| fields.iter().any(|lf| lf.1.contains("Callable")));
     let mut lines: Vec<String> = Vec::new();
     lines.push(format!("# see: {}", krate.see_ref));
     lines.push("from __future__ import annotations".to_string());
     lines.push(String::new());
-    if uses_callable {
-        lines.push("from collections.abc import Callable".to_string());
-    }
     let mut dc_import = "from dataclasses import dataclass".to_string();
     if needs_factory {
         dc_import.push_str(", field");
@@ -622,7 +585,6 @@ pub fn emit_py_module(proj: &Projection) -> Result<String, String> {
     lines.push(String::new());
     let mut public: Vec<String> = proj.structs.iter().map(|ps| ps.rust_name.clone()).collect();
     public.push(krate.plugin_class.clone());
-    public.extend(aliases.iter().map(|(_, alias)| alias.to_string()));
     lines.push("__all__ = [".to_string());
     let mut sorted_public = public.clone();
     sorted_public.sort();
@@ -636,12 +598,7 @@ pub fn emit_py_module(proj: &Projection) -> Result<String, String> {
         lines.push("@dataclass".to_string());
         lines.push(format!("class {}:", ps.rust_name));
         let defaults = resolve_struct_defaults(proj, ps)?;
-        let fields_legacy: Vec<(&str, &str, &str, &str)> = legacy
-            .iter()
-            .find(|(name, _)| name == &ps.rust_name)
-            .map(|(_, fields)| fields.clone())
-            .unwrap_or_default();
-        if ps.fields.is_empty() && fields_legacy.is_empty() {
+        if ps.fields.is_empty() {
             lines.push("    pass".to_string());
             continue;
         }
@@ -661,17 +618,6 @@ pub fn emit_py_module(proj: &Projection) -> Result<String, String> {
                 ));
             }
         }
-        for lf in &fields_legacy {
-            lines.push(format!("    # {}", lf.3));
-            lines.push(format!("    {}: {} = {}", lf.0, lf.1, lf.2));
-        }
-    }
-    let mut sorted_aliases = aliases.clone();
-    sorted_aliases.sort();
-    for (rust_name, alias) in &sorted_aliases {
-        lines.push(String::new());
-        lines.push(String::new());
-        lines.push(format!("{alias} = {rust_name}"));
     }
     lines.push(String::new());
     lines.push(String::new());

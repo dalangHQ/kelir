@@ -1,7 +1,7 @@
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_11_stream_replay_monotonic_cursor_read.yaml#case_id
 use std::path::PathBuf;
 
-use kelir_core::planes::terminal::TerminalPlane;
+use kelir_core::planes::terminal::{LogStream, TerminalPlane};
 
 fn session_dir(session_id: &[u8; 16]) -> Result<PathBuf, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
@@ -87,10 +87,34 @@ fn tp_13_exec_log_file_per_exec_isolation() -> Result<(), String> {
         .append_log_chunk(0, b"0123456789")
         .map_err(|e| e.to_string())?;
     assert_eq!(head, 10);
-    let index = session_dir(&session_id)?.join("logs").join("index.bin");
-    let metadata = std::fs::metadata(&index).map_err(|e| e.to_string())?;
-    assert_eq!(metadata.len(), 10);
-    assert!(index.exists());
+    plane
+        .append_stream_chunk(LogStream::Exec { id: 9, lane: 1 }, b"out")
+        .map_err(|e| e.to_string())?;
+    plane
+        .append_stream_chunk(LogStream::Exec { id: 9, lane: 2 }, b"stderr")
+        .map_err(|e| e.to_string())?;
+    let logs = session_dir(&session_id)?.join("logs");
+    let port_log = logs.join("port-0.log");
+    let stdout_log = logs.join("exec-9-1.log");
+    let stderr_log = logs.join("exec-9-2.log");
+    assert_eq!(
+        std::fs::metadata(&port_log)
+            .map_err(|e| e.to_string())?
+            .len(),
+        10
+    );
+    assert_eq!(
+        std::fs::metadata(&stdout_log)
+            .map_err(|e| e.to_string())?
+            .len(),
+        3
+    );
+    assert_eq!(
+        std::fs::metadata(&stderr_log)
+            .map_err(|e| e.to_string())?
+            .len(),
+        6
+    );
     drop_session_dir(&session_id);
     Ok(())
 }

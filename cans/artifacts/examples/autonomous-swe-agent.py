@@ -44,8 +44,8 @@ from kelir.wire_planes import (
 )
 from kelir.plugins.plugin_chaos import (
     ChaosConfig,
-    FsChaos,
-    NetworkChaos,
+    StorageFaultRule,
+    NetworkFaultRule,
     ChaosPlugin,
 )
 from kelir.plugins.plugin_ledger import (
@@ -394,20 +394,20 @@ async def build_runtime(
         # see: cans/plugins/chaos.md#Plugin-chaos
         .plugin(ChaosPlugin(ChaosConfig(
             network=[
-                NetworkChaos(
+                NetworkFaultRule(
                     target="api.stripe.com",
                     base_ms=150,
                     jitter_ms=30,
                     drop_rate=0.02,
                 ),
-                NetworkChaos(
+                NetworkFaultRule(
                     target="api.stripe.com",
                     base_ms=150,
                     jitter_ms=30,
                     drop_rate=0.02,
                     direction="inbound",
                 ),
-                NetworkChaos(
+                NetworkFaultRule(
                     target="api.stripe.com",
                     base_ms=150,
                     jitter_ms=30,
@@ -416,7 +416,7 @@ async def build_runtime(
                 ),
             ],
             fs=[
-                FsChaos(
+                StorageFaultRule(
                     target_path="/workspace/build/cache/*",
                     simulate_error="ENOSPC",
                     error_probability=0.05,

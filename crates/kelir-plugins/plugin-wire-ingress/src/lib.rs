@@ -141,8 +141,7 @@ pub struct ParkedDrain {
 struct IngressState {
     parked: Mutex<HashMap<u64, ParkedConnection>>,
     pending_wake: Mutex<bool>,
-    suspended: Mutex<bool>,
-    suspend_path: Mutex<Option<String>>,
+    parking: Mutex<bool>,
 }
 
 impl IngressState {
@@ -187,11 +186,7 @@ impl IngressState {
                 }
             }
         }
-        if *self
-            .suspended
-            .lock()
-            .map_err(|_| PluginError::Halt("wire-ingress suspend flag poisoned".into()))?
-        {
+        if self.is_parking()? {
             let mut pending_wake = self
                 .pending_wake
                 .lock()
@@ -201,23 +196,18 @@ impl IngressState {
         Ok(ParkOutcome::Parked)
     }
 
-    fn is_suspended(&self) -> Result<bool, PluginError> {
-        self.suspended
+    fn is_parking(&self) -> Result<bool, PluginError> {
+        self.parking
             .lock()
-            .map_err(|_| PluginError::Halt("wire-ingress suspend flag poisoned".into()))
+            .map_err(|_| PluginError::Halt("wire-ingress parking flag poisoned".into()))
             .map(|flag| *flag)
     }
 
-    fn begin_parking(&self, path: &str) -> Result<(), PluginError> {
+    fn begin_parking(&self) -> Result<(), PluginError> {
         *self
-            .suspended
+            .parking
             .lock()
-            .map_err(|_| PluginError::Halt("wire-ingress suspend flag poisoned".into()))? = true;
-        *self
-            .suspend_path
-            .lock()
-            .map_err(|_| PluginError::Halt("wire-ingress suspend path poisoned".into()))? =
-            Some(path.to_string());
+            .map_err(|_| PluginError::Halt("wire-ingress parking flag poisoned".into()))? = true;
         Ok(())
     }
 
@@ -229,17 +219,6 @@ impl IngressState {
         let requested = *pending_wake;
         *pending_wake = false;
         Ok(requested)
-    }
-
-    fn take_suspend_path(&self) -> Result<String, PluginError> {
-        self.suspend_path
-            .lock()
-            .map_err(|_| PluginError::Halt("wire-ingress suspend path poisoned".into()))
-            .and_then(|mut path| {
-                path.take().ok_or_else(|| {
-                    PluginError::Halt("wire-ingress wake without a parking suspend".into())
-                })
-            })
     }
 
     fn drain_parked(&self) -> Result<Vec<ParkedDrain>, PluginError> {
@@ -256,9 +235,9 @@ impl IngressState {
             })
             .collect();
         *self
-            .suspended
+            .parking
             .lock()
-            .map_err(|_| PluginError::Halt("wire-ingress suspend flag poisoned".into()))? = false;
+            .map_err(|_| PluginError::Halt("wire-ingress parking flag poisoned".into()))? = false;
         Ok(drained)
     }
 
@@ -307,8 +286,8 @@ impl IngressRoutingService {
         self.state.reset()
     }
 
-    pub fn is_suspended(&self) -> Result<bool, PluginError> {
-        self.state.is_suspended()
+    pub fn is_parking(&self) -> Result<bool, PluginError> {
+        self.state.is_parking()
     }
 
     // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
@@ -318,16 +297,19 @@ impl IngressRoutingService {
             path,
         )
         .await?;
-        self.state.begin_parking(path)
+        self.state.begin_parking()
     }
 
     // see: cans/plugins/wire-ingress.md#Wakes-target-microVM-via-SessionWakeHandle::resume
-    pub async fn resume_parked(&self, vm: &VmHandle) -> Result<Vec<ParkedDrain>, PluginError> {
+    pub async fn resume_parked(
+        &self,
+        vm: &VmHandle,
+        path: &str,
+    ) -> Result<Vec<ParkedDrain>, PluginError> {
         if !self.state.take_pending_wake()? {
             return Ok(Vec::new());
         }
-        let path = self.state.take_suspend_path()?;
-        vm.resume(&path).await?;
+        vm.resume(path).await?;
         self.state.drain_parked()
     }
 }
@@ -375,8 +357,12 @@ impl WireIngressPlugin {
     }
 
     // see: cans/plugins/wire-ingress.md#Wakes-target-microVM-via-SessionWakeHandle::resume
-    pub async fn resume_parked(&self, vm: &VmHandle) -> Result<Vec<ParkedDrain>, PluginError> {
-        self.router.resume_parked(vm).await
+    pub async fn resume_parked(
+        &self,
+        vm: &VmHandle,
+        path: &str,
+    ) -> Result<Vec<ParkedDrain>, PluginError> {
+        self.router.resume_parked(vm, path).await
     }
 }
 
@@ -413,7 +399,7 @@ impl LifecycleParticipant for WireIngressPlugin {}
 impl NetInterposer for WireIngressPlugin {
     fn on_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // TODO (L3): L2/L4 reassembly per cans/07-wire-plane.md before L4_FORWARD payloads reach this ring.
-        if !self.router.is_suspended()? {
+        if !self.router.is_parking()? {
             return Ok(FilterAction::Forward);
         }
         let Some((l4, initial)) = L4ForwardFrame::decode(frame) else {

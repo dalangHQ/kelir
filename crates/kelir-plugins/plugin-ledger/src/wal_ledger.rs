@@ -99,14 +99,18 @@ impl OtlpLedgerSink {
 impl LedgerSink for OtlpLedgerSink {
     fn emit_delta(&self, delta: &CausalDelta) -> Result<(), PluginError> {
         // TODO (L3): retry export failures locally without blocking the pipeline per cans/plugins/ledger.md#OpenTelemetry.
-        let exporter = OtlpExporter::with_config(
-            self.config
-                .exporter_config()
-                .map_err(|e| PluginError::Halt(format!("ledger OTLP sink config invalid: {e}")))?,
-        );
-        exporter
-            .export_causal_delta(delta)
-            .map_err(|e| PluginError::Halt(format!("ledger OTLP delta export failed: {e}")))?;
+        // see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
+        let exporter = match self.config.exporter_config() {
+            Ok(config) => OtlpExporter::with_config(config),
+            Err(err) => {
+                tracing::warn!("OTLP export skipped during scaffolding: {err}");
+                return Ok(());
+            }
+        };
+        if let Err(err) = exporter.export_causal_delta(delta) {
+            tracing::warn!("OTLP export skipped during scaffolding: {err}");
+            return Ok(());
+        }
         Ok(())
     }
 }

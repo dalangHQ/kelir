@@ -1,43 +1,26 @@
 // see: cans/08-lifecycle.md#Detached-lifecycle
-use std::path::PathBuf;
-
+use kelir_catalog::catalog_path;
 use kelir_catalog::schema_catalog::LeaseKind;
+use kelir_interface::hex_codec::{HexDecodeError, decode_hex_fixed};
 
-fn hex_val(byte: u8) -> Result<u8, Box<dyn std::error::Error>> {
-    match byte {
-        b'0'..=b'9' => Ok(byte - b'0'),
-        b'a'..=b'f' => Ok(byte - b'a' + 10),
-        b'A'..=b'F' => Ok(byte - b'A' + 10),
-        _ => Err(format!("attach: session id has non-hex byte {byte}").into()),
-    }
-}
-
+// see: cans/08-lifecycle.md#Detached-lifecycle
 fn parse_session_id(arg: &str) -> Result<[u8; 16], Box<dyn std::error::Error>> {
-    let bytes = arg.as_bytes();
-    if bytes.len() != 32 {
-        return Err(format!("attach: session id `{arg}` is not 32 hex chars").into());
-    }
-    let mut id = [0u8; 16];
-    for (i, chunk) in bytes.chunks(2).enumerate() {
-        id[i] = (hex_val(chunk[0])? << 4) | hex_val(chunk[1])?;
-    }
-    Ok(id)
-}
-
-fn catalog_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let home =
-        std::env::var("HOME").map_err(|_| "HOME is not set; cannot locate ~/.kelir/catalog.db")?;
-    Ok(PathBuf::from(home).join(".kelir").join("catalog.db"))
+    decode_hex_fixed::<16>(arg).map_err(|error| {
+        let message = match error {
+            HexDecodeError::InvalidDigit(byte) => {
+                format!("attach: session id has non-hex byte {byte}")
+            }
+            _ => format!("attach: session id `{arg}` is not 32 hex chars"),
+        };
+        message.into()
+    })
 }
 
 fn now_unix() -> i64 {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    match i64::try_from(secs) {
-        Ok(v) => v,
-        Err(_) => i64::MAX,
-    }
+    i64::try_from(secs).unwrap_or(i64::MAX)
 }
 
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {

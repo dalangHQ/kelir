@@ -2,85 +2,61 @@
 from __future__ import annotations
 
 import importlib
-import json
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any
 
+import tomli_w
+from pydantic import ValidationError
+
+from kelir.profile_config import ProfileConfig
 from kelir.sdk_errors import EConfig as EConfig
 
 if TYPE_CHECKING:
     from kelir import CommitStats, KelirBuilder, Session, SpawnResult
 
 
-class ProfileField(NamedTuple):
-    path: tuple[str, ...]
-    kind: str
-    kwarg: str | None
+def _builder_kwargs(model: ProfileConfig) -> dict[str, Any]:
+    session = model.session
+    if session is None:
+        return {}
+    kwargs: dict[str, Any] = {}
+    if session.compute is not None:
+        kwargs.update(
+            vcpus=session.compute.vcpus,
+            memory_mb=session.compute.memory_mb,
+            page_size_kb=session.compute.page_size_kb,
+        )
+    if session.clock is not None:
+        kwargs.update(
+            tsc_locked=session.clock.tsc_locked,
+            pinned_clocksource=session.clock.pinned_clocksource,
+            deterministic_clock=session.clock.deterministic_clock,
+            preemption_grace_ms=session.clock.preemption_grace_ms,
+        )
+    if session.watchdog is not None:
+        kwargs.update(enable_watchdog=session.watchdog.enabled)
+    if session.artifacts is not None:
+        kwargs.update(
+            kernel=session.artifacts.kernel_path,
+            rootfs_erofs=session.artifacts.rootfs_erofs_path,
+        )
+    return {key: value for key, value in kwargs.items() if value is not None}
 
 
-# see: cans/plugins/profile.md#Session-compute-schema-(profile)
-# see: cans/plugins/profile.md#Invariants-and-policy-(profile)
-PROFILE_FIELDS: tuple[ProfileField, ...] = (
-    ProfileField(("session", "id"), "string", None),
-    ProfileField(("session", "compute", "vcpus"), "integer", "vcpus"),
-    ProfileField(("session", "compute", "memory_mb"), "integer", "memory_mb"),
-    ProfileField(("session", "artifacts", "kernel_path"), "string", "kernel"),
-    ProfileField(
-        ("session", "artifacts", "rootfs_erofs_path"), "string", "rootfs_erofs"
-    ),
-    ProfileField(("session", "clock", "tsc_locked"), "boolean", "tsc_locked"),
-    ProfileField(("session", "watchdog", "enabled"), "boolean", "enable_watchdog"),
-)
-
-
-def _dig(profile: dict[str, Any], path: tuple[str, ...]) -> Any:
-    node: Any = profile
-    for key in path:
-        if not isinstance(node, dict):
-            return None
-        node = node.get(key)
-    return node
-
-
-def _matches(value: Any, kind: str) -> bool:
-    if kind == "boolean":
-        return isinstance(value, bool)
-    if kind == "integer":
-        return isinstance(value, int) and not isinstance(value, bool)
-    return isinstance(value, str)
-
-
-def _render_toml_value(kind: str, value: Any) -> str:
-    if kind == "boolean":
-        return "true" if value else "false"
-    if kind == "integer":
-        return str(value)
-    return json.dumps(value)
-
-
-def _render_toml(profile: dict[str, Any]) -> str:
-    lines: list[str] = []
-    section: str | None = None
-    for field in PROFILE_FIELDS:
-        value = _dig(profile, field.path)
-        if not _matches(value, field.kind):
-            continue
-        head = ".".join(field.path[:-1])
-        if head != section:
-            if lines:
-                lines.append("")
-            lines.append(f"[{head}]")
-            section = head
-        lines.append(f"{field.path[-1]} = {_render_toml_value(field.kind, value)}")
-    return "\n".join(lines) + ("\n" if lines else "")
+def _profile_text(model: ProfileConfig, path: str) -> str:
+    data = model.model_dump(exclude_none=True)
+    if path.endswith((".yaml", ".yml")):
+        yaml = importlib.import_module("yaml")
+        return str(yaml.safe_dump(data, sort_keys=False))
+    return tomli_w.dumps(data)
 
 
 class Sandbox:
     def __init__(
         self,
         builder: KelirBuilder,
-        profile: dict[str, Any],
+        profile: ProfileConfig,
         source_path: str,
     ) -> None:
         self._builder = builder
@@ -100,19 +76,19 @@ class Sandbox:
             raise EConfig(
                 f"Sandbox.from_config: unsupported profile extension for `{path}` (expected .toml, .yaml, or .yml)"
             )
-        profile = loaded if isinstance(loaded, dict) else {}
-        return cls.from_profile(profile, path)
+        return cls.from_profile(loaded, path)
 
     @classmethod
     def from_profile(cls, profile: dict[str, Any], source_path: str) -> Sandbox:
         from kelir import KelirBuilder
 
-        kwargs: dict[str, Any] = {}
-        for field in PROFILE_FIELDS:
-            value = _dig(profile, field.path)
-            if field.kwarg is not None and _matches(value, field.kind):
-                kwargs[field.kwarg] = value
-        return cls(KelirBuilder(**kwargs), profile, source_path)
+        try:
+            model = ProfileConfig.model_validate(profile)
+        except ValidationError as exc:
+            raise EConfig(
+                f"Sandbox.from_profile: invalid profile schema: {exc}"
+            ) from exc
+        return cls(KelirBuilder(**_builder_kwargs(model)), model, source_path)
 
     @classmethod
     async def create(
@@ -120,11 +96,14 @@ class Sandbox:
         *,
         vcpus: int | None = None,
         memory_mb: int | None = None,
+        page_size_kb: int | None = None,
+        deterministic_clock: bool | None = None,
+        pinned_clocksource: str | None = None,
+        preemption_grace_ms: int | None = None,
         kernel: str | None = None,
         rootfs_erofs: str | None = None,
         tsc_locked: bool | None = None,
         enable_watchdog: bool | None = None,
-        driver: str | None = None,
         detached: bool = False,
     ) -> Sandbox:
         from kelir import KelirBuilder
@@ -132,17 +111,20 @@ class Sandbox:
         builder = KelirBuilder(
             vcpus=vcpus,
             memory_mb=memory_mb,
+            page_size_kb=page_size_kb,
+            deterministic_clock=deterministic_clock,
+            pinned_clocksource=pinned_clocksource,
+            preemption_grace_ms=preemption_grace_ms,
             kernel=kernel,
             rootfs_erofs=rootfs_erofs,
             tsc_locked=tsc_locked,
             enable_watchdog=enable_watchdog,
-            driver=driver,
         ).detached(detached)
-        return cls(builder, {}, "")
+        return cls(builder, ProfileConfig(), "")
 
     @property
     def profile(self) -> dict[str, Any]:
-        return self._profile
+        return self._profile.model_dump(exclude_none=True)
 
     @property
     def source_path(self) -> str:
@@ -153,8 +135,8 @@ class Sandbox:
         return self._session
 
     def session_id(self) -> str | None:
-        value = _dig(self._profile, ("session", "id"))
-        return value if isinstance(value, str) else None
+        session = self._profile.session
+        return session.id if session is not None else None
 
     def is_detached(self) -> bool:
         return self._builder.is_detached()
@@ -198,8 +180,8 @@ class Sandbox:
         )
 
     async def export_spec(self, path: str) -> None:
-        # TODO (L3): full-fidelity round-trip of arbitrary profile sections via a declared TOML writer.
-        Path(path).write_text(_render_toml(self._profile), encoding="utf-8")
+        # TODO (L3): full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.
+        Path(path).write_text(_profile_text(self._profile, path), encoding="utf-8")
 
     async def stop(self) -> None:
         if self._session is None:

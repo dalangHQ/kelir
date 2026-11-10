@@ -18,16 +18,22 @@ pub mod setup_cli;
 pub mod spec_cli;
 pub mod vectors_cli;
 
+fn check_layers() -> Result<(), Box<dyn std::error::Error>> {
+    layers_cli::check()
+}
+
+fn check_budgets(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let path = args
+        .first()
+        .map(String::as_str)
+        .unwrap_or("perf/budgets.toml");
+    budgets_cli::check(path)
+}
+
 fn check(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     match args.first().map(String::as_str) {
-        Some("--layers") => layers_cli::check(),
-        Some("--budgets") => {
-            let path = args
-                .get(1)
-                .map(String::as_str)
-                .unwrap_or("perf/budgets.toml");
-            budgets_cli::check(path)
-        }
+        Some("--layers") => check_layers(),
+        Some("--budgets") => check_budgets(&args[1..]),
         Some("--graph") => graph_cli::check(),
         Some("-p") => audit_cli::run(&args[1..]),
         Some(other) => Err(format!(
@@ -48,24 +54,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "doctor" => doctor_cli::run(&args[2..])?,
         "attach" => attach_cli::run(&args[2..])?,
         "check" => check(&args[2..])?,
-        "check-layers" => layers_cli::check()?,
-        "check-budgets" => {
-            let path = match args.get(2) {
-                Some(p) => p.as_str(),
-                None => "perf/budgets.toml",
-            };
-            budgets_cli::check(path)?;
-        }
+        "check-layers" | "layers" => check_layers()?,
+        "check-budgets" | "budgets" => check_budgets(&args[2..])?,
         "parity" => parity_cli::run(&args[2..])?,
         "fixtures" => fixtures_cli::run(&args[2..])?,
-        "layers" => layers_cli::check()?,
-        "budgets" => {
-            let path = match args.get(2) {
-                Some(p) => p.as_str(),
-                None => "perf/budgets.toml",
-            };
-            budgets_cli::check(path)?;
-        }
         // TODO (L3): logs, manifest, registry, rings, and scaffold dispatch into skeleton subcommands that succeed silently.
         "logs" => logs_cli::run()?,
         "manifest" => manifest_cli::run()?,

@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 kelir-core = { path = "../../kelir-core" }
 kelir-interface = { path = "../../kelir-interface" }
 pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310"] }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

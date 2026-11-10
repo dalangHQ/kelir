@@ -666,6 +666,7 @@ impl FfiDispatchQueue {
         }
     }
 
+    #[allow(deprecated)]
     pub fn try_submit(&self) -> Result<(), PluginError> {
         match self
             .depth
@@ -681,6 +682,7 @@ impl FfiDispatchQueue {
         }
     }
 
+    #[allow(deprecated)]
     pub fn complete(&self) {
         let _ = self
             .depth

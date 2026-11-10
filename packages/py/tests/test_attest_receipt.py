@@ -5,25 +5,55 @@ from __future__ import annotations
 from kelir.generated.attest_telemetry import (
     CausalDelta,
     ExecutionReceipt,
-    ExitKind,
+    ExitKindDirtyShutdown,
+    ExitKindHardKilled,
+    ExitKindHypervisorFault,
+    ExitKindKernelPanic,
+    ExitKindNormal,
+    ExitKindSignal,
     GuestClock,
     PhaseTimings,
     ReceiptExtension,
     SnapshotDescriptor,
+    from_native_exit_kind,
 )
 
 
 def test_exit_kind_defaults_to_normal() -> None:
-    exit_kind = ExitKind()
+    exit_kind = ExitKindNormal()
     assert exit_kind.kind == "normal"
-    assert exit_kind.signal is None
-    assert exit_kind.message is None
-    assert exit_kind.model_dump() == {"kind": "normal", "signal": None, "message": None}
+    assert exit_kind.model_dump() == {"kind": "normal"}
 
 
 def test_exit_kind_signal_shape() -> None:
-    exit_kind = ExitKind(kind="signal", signal=9, message="SIGKILL")
-    assert exit_kind.model_dump() == {"kind": "signal", "signal": 9, "message": "SIGKILL"}
+    exit_kind = ExitKindSignal(signal=9)
+    assert exit_kind.model_dump() == {"kind": "signal", "signal": 9}
+
+
+def test_exit_kind_string_variants_carry_distinct_tags() -> None:
+    assert ExitKindKernelPanic(message="oops").model_dump() == {
+        "kind": "kernel-panic",
+        "message": "oops",
+    }
+    assert ExitKindHypervisorFault(message="hv").model_dump() == {
+        "kind": "hypervisor-fault",
+        "message": "hv",
+    }
+    assert ExitKindDirtyShutdown().model_dump() == {"kind": "dirty-shutdown"}
+    assert ExitKindHardKilled().model_dump() == {"kind": "hard-killed"}
+
+
+def test_from_native_exit_kind_maps_camel_case_records() -> None:
+    assert from_native_exit_kind("normal") == ExitKindNormal()
+    assert from_native_exit_kind("dirtyShutdown") == ExitKindDirtyShutdown()
+    assert from_native_exit_kind("hardKilled") == ExitKindHardKilled()
+    assert from_native_exit_kind({"signal": 9}) == ExitKindSignal(signal=9)
+    assert from_native_exit_kind({"kernelPanic": "oops"}) == ExitKindKernelPanic(
+        message="oops"
+    )
+    assert from_native_exit_kind({"hypervisorFault": "hv"}) == ExitKindHypervisorFault(
+        message="hv"
+    )
 
 
 def test_execution_receipt_defaults() -> None:
@@ -31,7 +61,7 @@ def test_execution_receipt_defaults() -> None:
     assert receipt.pid == 0
     assert receipt.binary_path == ""
     assert receipt.binary_blake3 == ""
-    assert receipt.exit_kind == ExitKind()
+    assert receipt.exit_kind == ExitKindNormal()
     assert receipt.correlation_token is None
     assert receipt.dirty_bytes == 0
     assert receipt.syscall_count is None
@@ -48,7 +78,7 @@ def test_execution_receipt_field_roundtrip() -> None:
         pid=4242,
         binary_path="/usr/bin/git",
         binary_blake3="af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
-        exit_kind=ExitKind(kind="signal", signal=9),
+        exit_kind=ExitKindSignal(signal=9),
         correlation_token="corr-001",
         dirty_bytes=4096,
         syscall_count=17,
@@ -59,10 +89,11 @@ def test_execution_receipt_field_roundtrip() -> None:
     )
     assert receipt.pid == 4242
     assert receipt.exit_code == 137
+    assert isinstance(receipt.exit_kind, ExitKindSignal)
     assert receipt.exit_kind.signal == 9
     dumped = receipt.model_dump()
     assert dumped["binary_path"] == "/usr/bin/git"
-    assert dumped["exit_kind"] == {"kind": "signal", "signal": 9, "message": None}
+    assert dumped["exit_kind"] == {"kind": "signal", "signal": 9}
     assert dumped["extensions"] == []
     assert dumped["phase_timings"] is None
 

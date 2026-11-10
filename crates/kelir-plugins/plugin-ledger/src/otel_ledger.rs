@@ -1,4 +1,5 @@
 // see: cans/plugins/ledger.md#OpenTelemetry
+use kelir_interface::hex_codec::{HexDecodeError, encode_hex};
 use kelir_interface::plugin_model::PluginError;
 
 // see: cans/plugins/ledger.md#OpenTelemetry
@@ -10,48 +11,13 @@ pub struct TraceParent {
 }
 
 // see: cans/plugins/ledger.md#OpenTelemetry
-const HEX: &[u8; 16] = b"0123456789abcdef";
-
-// see: cans/plugins/ledger.md#OpenTelemetry
-fn hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(HEX[usize::from(*byte >> 4)] as char);
-        out.push(HEX[usize::from(*byte & 0x0f)] as char);
-    }
-    out
-}
-
-// see: cans/plugins/ledger.md#OpenTelemetry
-fn hex_digit(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
-}
-
-// see: cans/plugins/ledger.md#OpenTelemetry
-fn decode_hex<const N: usize>(text: &str) -> Result<[u8; N], PluginError> {
-    let bytes = text.as_bytes();
-    if bytes.len() != N * 2 {
-        return Err(PluginError::Halt(format!(
-            "traceparent segment must be {} hex chars",
-            N * 2
-        )));
-    }
-    let mut out = [0u8; N];
-    for (index, slot) in out.iter_mut().enumerate() {
-        let high = hex_digit(bytes[index * 2]).ok_or_else(|| {
+fn trace_segment<const N: usize>(text: &str) -> Result<[u8; N], PluginError> {
+    kelir_interface::hex_codec::decode_hex_fixed::<N>(text).map_err(|error| match error {
+        HexDecodeError::InvalidDigit(_) => {
             PluginError::Halt("traceparent segment carries a non-hex char".into())
-        })?;
-        let low = hex_digit(bytes[index * 2 + 1]).ok_or_else(|| {
-            PluginError::Halt("traceparent segment carries a non-hex char".into())
-        })?;
-        *slot = (high << 4) | low;
-    }
-    Ok(out)
+        }
+        _ => PluginError::Halt(format!("traceparent segment must be {} hex chars", N * 2)),
+    })
 }
 
 impl TraceParent {
@@ -59,9 +25,9 @@ impl TraceParent {
     pub fn to_header(&self) -> String {
         format!(
             "00-{}-{}-{}",
-            hex(&self.trace_id),
-            hex(&self.parent_span_id),
-            hex(&[self.flags])
+            encode_hex(&self.trace_id),
+            encode_hex(&self.parent_span_id),
+            encode_hex(&[self.flags])
         )
     }
 
@@ -86,10 +52,10 @@ impl TraceParent {
                 "traceparent header must carry exactly four fields".into(),
             ));
         }
-        let flag_bytes = decode_hex::<1>(flags)?;
+        let flag_bytes = trace_segment::<1>(flags)?;
         Ok(Self {
-            trace_id: decode_hex(trace_id)?,
-            parent_span_id: decode_hex(parent_span_id)?,
+            trace_id: trace_segment(trace_id)?,
+            parent_span_id: trace_segment(parent_span_id)?,
             flags: flag_bytes[0],
         })
     }

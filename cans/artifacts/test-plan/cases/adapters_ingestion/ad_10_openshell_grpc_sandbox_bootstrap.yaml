@@ -66,4 +66,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-04A"
-    verification: "assert_eq!(guest_supervisor_processes(), 0);"
+    verification: "assert_eq!(guest_supervisor_processes(), 0); assert_eq!(session.lifecycle_state(), LifecycleState::Running);"

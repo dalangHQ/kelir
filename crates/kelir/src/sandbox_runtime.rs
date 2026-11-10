@@ -12,6 +12,7 @@ use crate::session_lifecycle::{Session, SpawnBuilder};
 use kelir_core::planes::storage::storage_reconciler::CommitStats;
 use plugin_profile::{ProfileCtx, ProfilePlugin};
 
+// see: cans/plugins/profile.md#Session-compute-schema-(profile)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SandboxProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -20,24 +21,37 @@ pub struct SandboxProfile {
     pub session: Option<SessionProfile>,
 }
 
+// see: cans/plugins/profile.md#Session-compute-schema-(profile)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SessionProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topology: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compute: Option<ComputeProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub artifacts: Option<ArtifactsProfile>,
+    pub balloon: Option<BalloonProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clock: Option<ClockProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watchdog: Option<WatchdogProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub devices: Option<DevicesProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<ArtifactsProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shim: Option<ShimProfile>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ComputeProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vcpus: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_vcpus: Option<u8>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_mb: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -45,14 +59,31 @@ pub struct ComputeProfile {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BalloonProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial_mb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pressure_reclaim: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reclaim_strategy: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactsProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kernel_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rootfs_erofs_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kernel_boot_params: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ClockProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tsc_locked: Option<bool>,
@@ -65,12 +96,67 @@ pub struct ClockProfile {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WatchdogProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heartbeat_cadence_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DevicesProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub virtio_rng: Option<VirtioRngProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub virtio_shm: Option<VirtioShmProfile>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VirtioRngProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VirtioShmProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regions: Option<Vec<VirtioShmRegionProfile>>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VirtioShmRegionProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShimProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_exec_slots: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hide_pid: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anti_toctou_cgroups: Option<bool>,
 }
 
 impl SandboxProfile {
+    // TODO (L3): consume topology, max_vcpus, balloon, devices, watchdog timeout/action/cadence, kernel_boot_params, and shim once VmConfig grows driver fields.
     pub fn to_vm_config(&self) -> VmConfig {
         let session = self.session.as_ref();
         let compute = session.and_then(|s| s.compute.as_ref());

@@ -5,6 +5,7 @@ import type { Session } from "./session.lifecycle.js";
 
 export * from "./types.core.js";
 export * from "./schema.config.js";
+export * from "./profile.schema.js";
 export * from "./verdict.protocol.js";
 export * from "./trap.protocol.js";
 export * from "./context.lifecycle.types.js";

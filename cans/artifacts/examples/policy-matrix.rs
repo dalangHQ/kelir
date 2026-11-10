@@ -5,8 +5,8 @@
 // see: cans/11-protocol.md#Control-channel
 
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
 };
 
 use async_trait::async_trait;
@@ -15,6 +15,7 @@ use kelir_interface::driver_interface::SuspendReason;
 use kelir_interface::plugin_model::HandlerCtx;
 
 use kelir::{
+    HCons, HNil, KelirBuilder, NoParams, PidLineage, SnapshotDescriptor, Unsealed, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     handler,
     plugin_model::{
@@ -22,8 +23,7 @@ use kelir::{
         SystemTelemetryParticipant, TrapInterposer, Verdict, VetoEvent, WatchdogEvent,
         WatchdogVerdict,
     },
-    protocol_wire::{PatchPayload, SuspendUntil, TrapEvent},
-    HCons, HNil, KelirBuilder, NoParams, PidLineage, SnapshotDescriptor, Unsealed, VmConfig,
+    protocol_wire::{ExecveMutation, PatchPayload, SuspendUntil, TrapEvent},
 };
 
 #[derive(Default)]
@@ -168,19 +168,19 @@ impl TrapInterposer for PolicyMatrixPlugin {
                 errno: Some("EPOLICY".into()),
                 reason: "EPOLICY: policy-matrix denies this binary.".into(),
             }),
-
-            "policy-rewrite" => {
-                let mutation = serde_json::json!({
-                    "new_binary": "/bin/policy-allow",
-                    "new_argv": ["policy-allow", "--rewritten"],
-                    "set_env": { "KELIR_POLICY_REWRITE": "1" },
-                    "unset_env": [],
-                });
-                Ok(Verdict::Patch(PatchPayload::ExecveMutation(
-                    serde_json::to_vec(&mutation).map_err(|e| PluginError::Halt(e.to_string()))?,
-                )))
-            }
-
+            // Row 3: Patch — env mutation ONLY through the ExecveMutation
+            // payload (plugins/tool-guard.md); the typed struct serializes to
+            // CBOR on the wire (11-protocol.md#Wire-framing).
+            "policy-rewrite" => Ok(Verdict::Patch(PatchPayload::ExecveMutation(
+                ExecveMutation {
+                    new_binary: Some("/bin/policy-allow".into()),
+                    new_argv: Some(vec!["policy-allow".into(), "--rewritten".into()]),
+                    set_env: vec![("KELIR_POLICY_REWRITE".into(), "1".into())],
+                    unset_env: vec![],
+                },
+            ))),
+            // Row 4: Abort — pre-exec, hypervisor-level termination.
+            // Abort drops exit_code, keeps reason only.
             "policy-abort" => Ok(Verdict::Abort {
                 reason: "EPOLICY: abort row".into(),
             }),

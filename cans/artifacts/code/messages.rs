@@ -135,15 +135,15 @@ pub enum SuspendUntil {
     Handshake,
 }
 
-/// Patch payload, registered per ring. The non-Custom variants carry the
-/// ring payload as CBOR bytes; no field layout is pinned here.
+/// Patch payload, registered per ring. The non-Custom variants carry
+/// typed payloads serialized as CBOR per 11-protocol.md Wire-framing.
 /// Custom carries name + CBOR; the handler name resolves at SDK
 /// registration (see 11-protocol.md Custom dispatch). Unknown names
 /// fail with EUnknownAction before the pipeline resumes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum PatchPayload {
-    ExecveMutation(Vec<u8>),
+    ExecveMutation(ExecveMutation),
     /// Served inode for on_fs_lookup: same fields as FsInodeAttr, carried
     /// on the wire so lookup serve is not confused with write mutation.
     FsInode { mode: u32, uid: u32, gid: u32, size: u64, content: Vec<u8> },

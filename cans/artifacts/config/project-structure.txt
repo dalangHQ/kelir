@@ -48,6 +48,8 @@ kelir/
 │   │       │   ├── terminal_plane.rs        # Terminal plane facade
 │   │       │   ├── storage_plane.rs         # Storage plane facade
 │   │       │   └── wire_plane.rs            # Wire plane facade
+│   │       └── tests/
+│   │           └── profile_schema_parity_test.rs
 │   │       └── plugins/
 │   │           ├── mod.rs
 │   │           ├── plugin_chaos.rs           # plugin-chaos facade
@@ -109,7 +111,9 @@ kelir/
 │   │       └── vmm/mod.rs             # Driver orchestration
 │   │   └── tests/                     # Integration suites (<entity>_<domain>_test.rs)
 │   │       ├── bus_mux_protocol_test.rs
+│   │       ├── driver_selection_config_test.rs
 │   │       ├── lifecycle_checkpoint_test.rs
+│   │       ├── lifecycle_state_test.rs
 │   │       ├── metrics_telemetry_test.rs
 │   │       ├── panic_hunt.rs          # Harness panic probe (map harness_tests exception)
 │   │       ├── receipt_attest_test.rs
@@ -143,13 +147,14 @@ kelir/
 │   │       └── exporter_otlp_test.rs
 │   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, async-trait, tokio, ciborium, serde, serde_json
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── mock_bus.rs            # MockBusDispatcher: records ring messages per plane
-│   │       ├── handlers_testkit.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
-│   │       ├── fixtures_testkit.rs            # Synthetic PTY streams, broker upper files, synthetic configs
-│   │       ├── assertions_testkit.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
-│   │       └── vectors_testkit.rs             # vectors.json fixture loading
+│   │   ├── src/
+│   │   │   ├── lib.rs
+│   │   │   ├── handlers_testkit.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
+│   │   │   ├── fixtures_testkit.rs            # Synthetic PTY streams, broker upper files, synthetic configs
+│   │   │   ├── assertions_testkit.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
+│   │   │   └── vectors_testkit.rs             # vectors.json fixture loading
+│   │   └── tests/
+│   │       └── wire_frame_decode_test.rs
 │   │
 │   ├── kelir-testkit/                 # Test plan verification harness; manifest, anti-slop, scorecard
 │   │   ├── Cargo.toml                 # Depends on serde, serde_yaml, toml, walkdir

@@ -2,16 +2,15 @@
 // see: cans/01-architecture.md#Foreign-runtime-embedding
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 #![forbid(unsafe_code)]
-use std::future::Future;
 use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
 use std::time::Instant;
 
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict};
+use pyo3::types::{PyBytes, PyDict, PyList};
 
 pub mod fusion_plugin;
+pub mod storage_bridge;
 
 use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, convert_descriptor};
 use kelir_core::Session;
@@ -19,17 +18,26 @@ use kelir_core::planes::storage::storage_reconciler::FsReconcileRequest;
 use kelir_interface::driver_interface::{
     ExternalSuspendKind, GuestClock, SnapshotDescriptor, SuspendReason, VmConfig, default_vm_config,
 };
+use kelir_interface::error_envelope::ErrorEnvelope;
 use kelir_interface::handles_lifecycle::VmHandle as CoreVmHandle;
 use kelir_interface::plugin_model::PluginError;
+use kelir_interface::runtime_block::block_on;
 
 pub struct PluginRegistration {
     pub name: String,
     pub enabled: bool,
 }
 
-// see: cans/03-sdk-architecture.md#Session-surfaces
+// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
 fn halt(error: PluginError) -> PyErr {
-    PyRuntimeError::new_err(error.to_string())
+    envelope_error(&ErrorEnvelope::from(error))
+}
+
+// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
+fn envelope_error(envelope: &ErrorEnvelope) -> PyErr {
+    PyRuntimeError::new_err(
+        serde_json::to_string(envelope).unwrap_or_else(|_| envelope.message.clone()),
+    )
 }
 
 // see: cans/03-sdk-architecture.md#Session-surfaces
@@ -48,33 +56,6 @@ fn u64_of(value: f64, what: &str) -> PyResult<u64> {
 // see: cans/08-lifecycle.md#Suspend-and-resume
 const SDK_SUSPEND_REASON: SuspendReason =
     SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold);
-
-// see: cans/02-plugin-model.md#Latency-ceiling
-struct ThreadWaker(std::thread::Thread);
-
-impl Wake for ThreadWaker {
-    fn wake(self: Arc<Self>) {
-        self.0.unpark();
-    }
-
-    fn wake_by_ref(self: &Arc<Self>) {
-        self.0.unpark();
-    }
-}
-
-// see: cans/02-plugin-model.md#Latency-ceiling
-// TODO (L3): drive the bridge futures on the async runtime once the transport exposes a runtime handle.
-fn block_on<F: Future>(future: F) -> F::Output {
-    let mut future = Box::pin(future);
-    let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
-    let mut cx = Context::from_waker(&waker);
-    loop {
-        match future.as_mut().poll(&mut cx) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => std::thread::park(),
-        }
-    }
-}
 
 // see: cans/09-snapshots.md#Archives-and-portability
 fn snapshot_dict(py: Python<'_>, descriptor: &SnapshotDescriptor) -> PyResult<Py<PyDict>> {
@@ -561,6 +542,9 @@ pub struct PyKelirBuilder {
     plugins: Vec<PluginRegistration>,
     fused: Option<FusedTrampolineDescriptor>,
     trampolines: TrampolineTable,
+    terminal_wiring: Option<kelir_core::planes::terminal::TerminalWiring>,
+    wire_wiring: Option<kelir_core::planes::wire::WireWiring>,
+    storage_config: storage_bridge::PyStorageConfig,
 }
 
 #[pymethods]
@@ -577,20 +561,176 @@ impl PyKelirBuilder {
         enable_watchdog: Option<bool>,
         driver: Option<String>,
     ) -> Self {
+        let mut config = default_vm_config(
+            vcpus,
+            memory_mb,
+            kernel,
+            rootfs_erofs,
+            tsc_locked,
+            enable_watchdog,
+        );
+        // see: cans/01-architecture.md#Driver-backends
+        config.driver_policy.driver = driver.clone();
         Self {
-            config: default_vm_config(
-                vcpus,
-                memory_mb,
-                kernel,
-                rootfs_erofs,
-                tsc_locked,
-                enable_watchdog,
-            ),
+            config,
             driver_name: driver.unwrap_or_else(|| "auto".to_string()),
             plugins: Vec::new(),
             fused: None,
             trampolines: TrampolineTable::default(),
+            terminal_wiring: None,
+            wire_wiring: None,
+            storage_config: storage_bridge::PyStorageConfig::default(),
         }
+    }
+
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    // TODO (L3): prompt rules and the token-shield clamp callback stay Python-side until the FFI callback bridge lands.
+    fn set_terminal_config(&mut self, cfg: &Bound<'_, PyDict>) -> PyResult<()> {
+        let mut wiring = kelir_core::planes::terminal::TerminalWiring::default();
+        for (key, value) in cfg.iter() {
+            match key.to_string().as_str() {
+                "cols" => {
+                    wiring.cols = value
+                        .extract::<u16>()
+                        .map_err(|_| PyValueError::new_err("terminal cols is not a u16"))?
+                }
+                "rows" => {
+                    wiring.rows = value
+                        .extract::<u16>()
+                        .map_err(|_| PyValueError::new_err("terminal rows is not a u16"))?
+                }
+                "drop_osc52" => {
+                    wiring.drop_osc52 = value
+                        .extract::<bool>()
+                        .map_err(|_| PyValueError::new_err("terminal drop_osc52 is not a bool"))?
+                }
+                "strip_title" => {
+                    wiring.strip_title = value
+                        .extract::<bool>()
+                        .map_err(|_| PyValueError::new_err("terminal strip_title is not a bool"))?
+                }
+                "stream_engine" => {
+                    let _ = value.extract::<String>().map_err(|_| {
+                        PyValueError::new_err("terminal stream_engine is not a str")
+                    })?;
+                }
+                "token_shield" | "prompts" => {
+                    let _ = value;
+                }
+                other => {
+                    return Err(PyValueError::new_err(format!(
+                        "set_terminal_config: unknown or non-bridged key `{other}`"
+                    )));
+                }
+            }
+        }
+        self.terminal_wiring = Some(wiring);
+        Ok(())
+    }
+
+    // see: cans/05-storage-plane.md#Storage-architecture
+    fn set_storage_config(&mut self, cfg: &Bound<'_, PyDict>) -> PyResult<()> {
+        self.storage_config = storage_bridge::storage_config(cfg)?;
+        Ok(())
+    }
+
+    // see: cans/07-wire-plane.md#DNS-policy-filter
+    fn set_wire_config(&mut self, cfg: &Bound<'_, PyDict>) -> PyResult<()> {
+        let mut wiring = kelir_core::planes::wire::WireWiring::default();
+        for (key, value) in cfg.iter() {
+            match key.to_string().as_str() {
+                "sinkhole" => {
+                    let sinkhole = value
+                        .downcast::<PyDict>()
+                        .map_err(|_| PyValueError::new_err("wire sinkhole is not a dict"))?;
+                    for (sub_key, sub_value) in sinkhole.iter() {
+                        match sub_key.to_string().as_str() {
+                            "allowlist" => {
+                                wiring.sinkhole_allowlist =
+                                    sub_value.extract::<Vec<String>>().map_err(|_| {
+                                        PyValueError::new_err(
+                                            "sinkhole allowlist is not a list of str",
+                                        )
+                                    })?
+                            }
+                            "drop_all" => {
+                                wiring.sinkhole_drop_all =
+                                    sub_value.extract::<bool>().map_err(|_| {
+                                        PyValueError::new_err("sinkhole drop_all is not a bool")
+                                    })?
+                            }
+                            other => {
+                                return Err(PyValueError::new_err(format!(
+                                    "set_wire_config: unknown sinkhole key `{other}`"
+                                )));
+                            }
+                        }
+                    }
+                }
+                "ssh_agent_bridge" => {
+                    wiring.ssh_agent_bridge = value
+                        .extract::<bool>()
+                        .map_err(|_| PyValueError::new_err("wire ssh_agent_bridge is not a bool"))?
+                }
+                "tap_filter" => {
+                    wiring.allow_udp_proxied = value
+                        .extract::<String>()
+                        .map_err(|_| PyValueError::new_err("wire tap_filter is not a str"))?
+                        == "AllowUdpProxied"
+                }
+                "vaults" => {
+                    let vaults = value
+                        .downcast::<PyList>()
+                        .map_err(|_| PyValueError::new_err("wire vaults is not a list of dicts"))?;
+                    for vault in vaults.iter() {
+                        let vault = vault.downcast::<PyDict>().map_err(|_| {
+                            PyValueError::new_err("wire vaults entries must be dicts")
+                        })?;
+                        if let Some(placeholder) = vault.get_item("placeholder")? {
+                            wiring.vault_placeholders.push(
+                                placeholder.extract::<String>().map_err(|_| {
+                                    PyValueError::new_err("vault placeholder is not a str")
+                                })?,
+                            );
+                        }
+                    }
+                }
+                "l4_proxies" => {
+                    let proxies = value.downcast::<PyList>().map_err(|_| {
+                        PyValueError::new_err("wire l4_proxies is not a list of dicts")
+                    })?;
+                    for proxy in proxies.iter() {
+                        let proxy = proxy.downcast::<PyDict>().map_err(|_| {
+                            PyValueError::new_err("wire l4_proxies entries must be dicts")
+                        })?;
+                        let listen_port = proxy
+                            .get_item("listen_port")
+                            .ok()
+                            .flatten()
+                            .and_then(|port| port.extract::<u16>().ok())
+                            .ok_or_else(|| {
+                                PyValueError::new_err("l4_proxy listen_port is not a u16")
+                            })?;
+                        let destination = proxy
+                            .get_item("destination")
+                            .ok()
+                            .flatten()
+                            .and_then(|dest| dest.extract::<String>().ok())
+                            .ok_or_else(|| {
+                                PyValueError::new_err("l4_proxy destination is not a str")
+                            })?;
+                        wiring.l4_proxies.push((listen_port, destination));
+                    }
+                }
+                other => {
+                    return Err(PyValueError::new_err(format!(
+                        "set_wire_config: unknown or non-bridged key `{other}`"
+                    )));
+                }
+            }
+        }
+        self.wire_wiring = Some(wiring);
+        Ok(())
     }
 
     #[pyo3(signature = (name, enabled=None))]
@@ -672,9 +812,20 @@ impl PyKelirBuilder {
             .iter()
             .map(|plugin| kelir_core::PluginRegistration::new(plugin.name.clone(), plugin.enabled))
             .collect();
+        let plane_wiring = kelir_core::session_lifecycle::PlaneWiring {
+            terminal: self.terminal_wiring,
+            wire: self.wire_wiring.clone(),
+            storage: self.storage_config.wiring.clone(),
+        };
         let started = Instant::now();
-        let session = Session::boot_with_plugins(self.config.clone(), &plugins)
-            .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
+        let session = Session::boot_with_plugins(
+            self.config.clone(),
+            &plugins,
+            Some(descriptor),
+            self.storage_config.synthetic_files.clone(),
+            plane_wiring,
+        )
+        .map_err(halt)?;
         // TODO (L3): re-source driver_name from the booted core session once it exposes the resolved driver.
         Ok(PySessionHandle::from_session(
             session,

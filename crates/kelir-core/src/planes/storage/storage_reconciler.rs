@@ -164,13 +164,11 @@ impl Reconciler {
             if ancestor == self.host_target.as_path() {
                 break;
             }
-            if let Ok(meta) = fs::symlink_metadata(ancestor) {
-                if meta.is_symlink() {
-                    return Err(kelir_interface::plugin_model::PluginError::reject(
-                        "EXDEV",
-                        format!("symlink component rejected: {ancestor:?}"),
-                    ));
-                }
+            if fs::symlink_metadata(ancestor).is_ok_and(|meta| meta.is_symlink()) {
+                return Err(kelir_interface::plugin_model::PluginError::reject(
+                    "EXDEV",
+                    format!("symlink component rejected: {ancestor:?}"),
+                ));
             }
         }
         // TODO (L3): openat2 RESOLVE_BENEATH via the platform root handle removes the resolve race.
@@ -195,9 +193,8 @@ impl Reconciler {
         &self,
         req: FsReconcileRequest,
     ) -> Result<CommitStats, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): detect -> classify -> stage -> commit orchestration; idempotent replay.
-        let _ = self.detect()?;
-        let _ = self.classify_tombstones()?;
+        // TODO (L3): detect -> classify -> stage -> commit orchestration for non-empty broker state; idempotent replay.
+        let entries = self.detect()?;
         let _ = (
             &self.broker_dir,
             &self.host_target,
@@ -206,8 +203,11 @@ impl Reconciler {
             req.atomic_staging,
             req.fsync,
         );
+        if entries.is_empty() {
+            return Ok(CommitStats::default());
+        }
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Reconciler::reconcile orchestration".into(),
+            "TODO (L3): Reconciler::reconcile orchestration for staged entries".into(),
         ))
     }
 

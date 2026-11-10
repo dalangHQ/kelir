@@ -144,17 +144,19 @@ impl ContainerPlugin {
             return reject_eperm("privileged container escape attempt");
         }
         for (index, arg) in event.argv.iter().enumerate() {
-            if arg == "--device" {
-                if let Some(device) = event.argv.get(index + 1) {
-                    if device.starts_with("/dev/") {
-                        return reject_eperm("raw device mount request");
-                    }
-                }
+            if arg == "--device"
+                && event
+                    .argv
+                    .get(index + 1)
+                    .is_some_and(|device| device.starts_with("/dev/"))
+            {
+                return reject_eperm("raw device mount request");
             }
-            if let Some(device) = arg.strip_prefix("--device=") {
-                if device.starts_with("/dev/") {
-                    return reject_eperm("raw device mount request");
-                }
+            if arg
+                .strip_prefix("--device=")
+                .is_some_and(|device| device.starts_with("/dev/"))
+            {
+                return reject_eperm("raw device mount request");
             }
         }
         // TODO (L3): mount policy table for the OCI runtime config path (capability sets, device allowlist).
@@ -345,10 +347,9 @@ fn passwd_name_for_uid(uid: u32) -> Option<String> {
     let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
     for line in passwd.lines() {
         let mut fields = line.split(':');
-        if let (Some(name), Some(passwd_uid)) = (fields.next(), fields.nth(1)) {
-            if passwd_uid.parse::<u32>() == Ok(uid) {
-                return Some(name.to_string());
-            }
+        let (name, passwd_uid) = (fields.next(), fields.nth(1));
+        if passwd_uid.is_some_and(|passwd_uid| passwd_uid.parse::<u32>() == Ok(uid)) {
+            return name.map(str::to_string);
         }
     }
     None

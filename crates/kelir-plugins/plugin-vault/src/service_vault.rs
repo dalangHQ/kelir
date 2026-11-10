@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
+use kelir_interface::hex_codec::encode_hex;
 
 pub use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
 
@@ -259,21 +260,10 @@ fn mint_token(nonce: u64) -> String {
     material[..8].copy_from_slice(&entropy_draw().to_le_bytes());
     material[8..16].copy_from_slice(&nonce.to_le_bytes());
     material[16..].copy_from_slice(&entropy_draw().to_le_bytes());
-    hex_encode(&material)
+    encode_hex(&material)
 }
 
 // see: cans/plugins/vault.md#Out-of-band-credential-brokerage
 fn entropy_draw() -> u64 {
     RandomState::new().build_hasher().finish()
-}
-
-// see: cans/plugins/vault.md#Out-of-band-credential-brokerage
-fn hex_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut encoded = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        encoded.push(HEX[usize::from(byte >> 4)] as char);
-        encoded.push(HEX[usize::from(byte & 0x0f)] as char);
-    }
-    encoded
 }

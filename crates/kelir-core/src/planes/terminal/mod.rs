@@ -69,12 +69,12 @@ impl Vt100StateMachine {
         self.cursor_col = 0;
     }
 
-    pub fn feed(&mut self, bytes: &[u8]) -> Result<(), kelir_interface::plugin_model::PluginError> {
+    pub fn feed(
+        &mut self,
+        _bytes: &[u8],
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): parse VT100 escape sequences in bytes and update matrix + cursor.
-        let _ = bytes;
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Vt100StateMachine::feed".into(),
-        ))
+        Ok(())
     }
 
     pub fn export(&self) -> Vec<u8> {
@@ -96,53 +96,68 @@ impl LogCursor {
     }
 }
 
+// see: cans/04-terminal-plane.md#Stream-replay
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LogStream {
+    Port(u32),
+    Exec { id: u64, lane: u8 },
+}
+
 pub struct LogSegment {
-    pub port: u32,
+    pub stream: LogStream,
     pub head: LogCursor,
     pub bytes: Vec<u8>,
-    pub index_path: PathBuf,
+    pub log_path: PathBuf,
 }
 
 impl LogSegment {
     pub fn new(
         session_id: [u8; 16],
-        port: u32,
+        stream: LogStream,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
         Ok(Self {
-            port,
+            stream,
             head: LogCursor::start(),
             bytes: Vec::new(),
-            index_path: session_log_path(&session_id)?,
+            log_path: session_log_path(&session_id, stream)?,
         })
     }
 }
 
 // see: cans/01-architecture.md#Host-state-root
+fn log_file_name(stream: LogStream) -> String {
+    match stream {
+        LogStream::Port(port) => format!("port-{port}.log"),
+        LogStream::Exec { id, lane } => format!("exec-{id}-{lane}.log"),
+    }
+}
+
+// see: cans/01-architecture.md#Host-state-root
+// TODO (L3): write the append-only index.bin chunk index beside the per-stream logs so cursors survive restarts.
 fn session_log_path(
     session_id: &[u8; 16],
+    stream: LogStream,
 ) -> Result<PathBuf, kelir_interface::plugin_model::PluginError> {
-    let home = std::env::var("HOME").map_err(|_| {
-        kelir_interface::plugin_model::PluginError::Halt(
-            "HOME is not set; cannot locate ~/.kelir session logs".into(),
-        )
-    })?;
-    let mut hex = String::with_capacity(32);
-    for byte in session_id {
-        hex.push_str(&format!("{byte:02x}"));
-    }
-    Ok(PathBuf::from(home)
-        .join(".kelir")
-        .join("sessions")
-        .join(hex)
+    Ok(crate::session_lifecycle::session_dir(session_id)?
         .join("logs")
-        .join("index.bin"))
+        .join(log_file_name(stream)))
 }
 
 pub struct TerminalPlane {
     session_id: [u8; 16],
     state: Mutex<Vt100StateMachine>,
-    segments: Mutex<HashMap<u32, LogSegment>>,
+    segments: Mutex<HashMap<LogStream, LogSegment>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
+    filters: (bool, bool),
+}
+
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TerminalWiring {
+    pub cols: u16,
+    pub rows: u16,
+    pub drop_osc52: bool,
+    pub strip_title: bool,
 }
 
 impl TerminalPlane {
@@ -153,6 +168,17 @@ impl TerminalPlane {
             state: Mutex::new(Vt100StateMachine::new()),
             segments: Mutex::new(HashMap::new()),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
+            filters: (false, false),
+        }
+    }
+
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    // TODO (L3): the host filter pipeline applies drop_osc52/strip_title to console output before VT100 feed.
+    pub fn with_wiring(self, wiring: &TerminalWiring) -> Self {
+        let _ = self.resize(wiring.cols, wiring.rows);
+        Self {
+            filters: (wiring.drop_osc52, wiring.strip_title),
+            ..self
         }
     }
 
@@ -163,6 +189,11 @@ impl TerminalPlane {
 
     pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
         &self.metrics
+    }
+
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    pub fn output_filters(&self) -> (bool, bool) {
+        self.filters
     }
 
     pub fn resize(
@@ -208,7 +239,7 @@ impl TerminalPlane {
         let segments = self.segments.lock().map_err(|_| {
             kelir_interface::plugin_model::PluginError::Halt("terminal log lock poisoned".into())
         })?;
-        let segment = segments.get(&port).ok_or_else(|| {
+        let segment = segments.get(&LogStream::Port(port)).ok_or_else(|| {
             kelir_interface::plugin_model::PluginError::Halt("no log segment for port".into())
         })?;
         if cursor > segment.head.0 {
@@ -227,13 +258,33 @@ impl TerminalPlane {
         port: u32,
         chunk: &[u8],
     ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
+        self.append_stream_chunk(LogStream::Port(port), chunk)
+    }
+
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    // see: cans/04-terminal-plane.md#Stream-replay
+    pub fn record_output(
+        &self,
+        stream: LogStream,
+        bytes: &[u8],
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        self.append_stream_chunk(stream, bytes)?;
+        self.feed(bytes)
+    }
+
+    // see: cans/04-terminal-plane.md#Stream-replay
+    pub fn append_stream_chunk(
+        &self,
+        stream: LogStream,
+        chunk: &[u8],
+    ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
         let mut segments = self.segments.lock().map_err(|_| {
             kelir_interface::plugin_model::PluginError::Halt("terminal log lock poisoned".into())
         })?;
-        if let std::collections::hash_map::Entry::Vacant(e) = segments.entry(port) {
-            e.insert(LogSegment::new(self.session_id, port)?);
+        if let std::collections::hash_map::Entry::Vacant(entry) = segments.entry(stream) {
+            entry.insert(LogSegment::new(self.session_id, stream)?);
         }
-        let segment = segments.get_mut(&port).ok_or_else(|| {
+        let segment = segments.get_mut(&stream).ok_or_else(|| {
             kelir_interface::plugin_model::PluginError::Halt(
                 "log segment missing after insert".into(),
             )
@@ -242,7 +293,7 @@ impl TerminalPlane {
             kelir_interface::plugin_model::PluginError::Halt("log chunk too large".into())
         })?;
         let new_head = segment.head.advance(len)?;
-        if let Some(parent) = segment.index_path.parent() {
+        if let Some(parent) = segment.log_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
                 kelir_interface::plugin_model::PluginError::Halt(format!(
                     "create session log dir: {e}"
@@ -252,12 +303,12 @@ impl TerminalPlane {
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(&segment.index_path)
+            .open(&segment.log_path)
             .map_err(|e| {
-                kelir_interface::plugin_model::PluginError::Halt(format!("open log index: {e}"))
+                kelir_interface::plugin_model::PluginError::Halt(format!("open stream log: {e}"))
             })?;
         file.write_all(chunk).map_err(|e| {
-            kelir_interface::plugin_model::PluginError::Halt(format!("append log index: {e}"))
+            kelir_interface::plugin_model::PluginError::Halt(format!("append stream log: {e}"))
         })?;
         segment.head = new_head;
         segment.bytes.extend_from_slice(chunk);

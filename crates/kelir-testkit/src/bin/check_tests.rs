@@ -667,12 +667,18 @@ fn lint_yaml_case(case: &YamlCase, violations: &mut Vec<String>) {
     }
 }
 
+// see: cans/artifacts/test-plan/matrix.yaml#anti_slop_laws.AS-01
+const AS_01_BANNED_DOUBLES: &[&str] = &["mockall", "FixtureVmmDriver", "LoopbackStream"];
+
+// see: cans/artifacts/test-plan/matrix.yaml#anti_slop_laws.AS-01
+fn as_01_double_present(content: &str) -> bool {
+    AS_01_BANNED_DOUBLES
+        .iter()
+        .any(|name| content.contains(name))
+}
+
 fn lint_snippet(path: &str, rule: &str, snippet: &str, violations: &mut Vec<String>) {
-    if snippet.contains("mockall")
-        || snippet.contains("MockVmmDriver")
-        || snippet.contains("MockHostInterposer")
-        || snippet.contains("MockBusDispatcher")
-    {
+    if as_01_double_present(snippet) {
         violations.push(format!(
             "{}: [AS-01] Mocking hypervisor interfaces in verification snippet.",
             path
@@ -712,11 +718,7 @@ fn lint_snippet(path: &str, rule: &str, snippet: &str, violations: &mut Vec<Stri
 fn lint_file(path: &Path, content: &str, violations: &mut Vec<String>) {
     let rel_path = path.display().to_string();
 
-    if rel_path.contains("/integration/")
-        && (content.contains("mockall")
-            || content.contains("MockVmmDriver")
-            || content.contains("MockHostInterposer"))
-    {
+    if rel_path.contains("/integration/") && as_01_double_present(content) {
         violations.push(format!(
             "{}: [AS-01] Mocking hypervisor interfaces in integration tier is prohibited.",
             rel_path

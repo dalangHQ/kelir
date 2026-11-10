@@ -6,10 +6,21 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kelir_interface::handles_lifecycle::{DriverVmControl, VmHandle};
+use kelir_interface::hex_codec::encode_hex;
+use kelir_interface::lifecycle_state::LifecycleState;
 use kelir_interface::plugin_model::PipelineBinder;
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
+
+// see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
+#[derive(Debug, Clone, Default)]
+pub struct PlaneWiring {
+    pub terminal: Option<crate::planes::terminal::TerminalWiring>,
+    pub wire: Option<crate::planes::wire::WireWiring>,
+    pub storage: crate::planes::storage::StorageWiring,
+}
+
 pub struct Session {
-    pub terminal: crate::planes::terminal::TerminalPlane,
+    pub terminal: Arc<crate::planes::terminal::TerminalPlane>,
     pub storage: crate::planes::storage::StoragePlane,
     pub wire: crate::planes::wire::WirePlane,
     pub checkpoint: crate::planes::checkpoint::CheckpointPlane,
@@ -23,21 +34,15 @@ pub struct Session {
     >,
     owned_bus: crate::bus::OwnedBusDispatcher,
     engine: crate::dispatch_plugin::PipelineEngine,
+    session_id: [u8; 16],
     incarnation_id: [u8; 16],
     plugins: Vec<crate::plugin_registry::PluginRegistration>,
     detached: bool,
+    state: LifecycleState,
 }
 
 // see: cans/08-lifecycle.md#Session-incarnation
-fn incarnation_hex(id: &[u8; 16]) -> String {
-    id.iter().fold(String::with_capacity(32), |mut hex, byte| {
-        hex.push_str(&format!("{byte:02x}"));
-        hex
-    })
-}
-
-// see: cans/08-lifecycle.md#Session-incarnation
-fn mint_incarnation_id() -> [u8; 16] {
+fn mint_uuid_v7() -> [u8; 16] {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let elapsed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -63,25 +68,42 @@ const DEFAULT_WORKSPACE_QUOTA_BYTES: u64 = 512 * 1024 * 1024;
 // see: cans/05-storage-plane.md#Storage-quotas
 const DEFAULT_WORKSPACE_QUOTA_INODES: u64 = 65_536;
 
+// see: cans/01-architecture.md#Host-state-root
+pub fn session_dir(
+    session_id: &[u8; 16],
+) -> Result<std::path::PathBuf, kelir_interface::plugin_model::PluginError> {
+    let home = std::env::var("HOME").map_err(|_| {
+        kelir_interface::plugin_model::PluginError::Halt(
+            "HOME is not set; cannot locate ~/.kelir session root".into(),
+        )
+    })?;
+    Ok(std::path::PathBuf::from(home)
+        .join(".kelir")
+        .join("sessions")
+        .join(encode_hex(session_id)))
+}
+
+// see: cans/01-architecture.md#Host-state-root
+// TODO (L3): the runtime child janitor sweeps orphaned session dirs on startup.
+pub fn reap_ephemeral_session_dir(
+    session_id: &[u8; 16],
+) -> Result<(), kelir_interface::plugin_model::PluginError> {
+    let dir = session_dir(session_id)?;
+    match std::fs::remove_dir_all(dir) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+            "reap session dir: {error}"
+        ))),
+    }
+}
+
 impl Session {
     // see: cans/08-lifecycle.md#Detached-lifecycle
     pub fn relay_socket_path(
         session_id: &[u8; 16],
     ) -> Result<std::path::PathBuf, kelir_interface::plugin_model::PluginError> {
-        let home = std::env::var("HOME").map_err(|_| {
-            kelir_interface::plugin_model::PluginError::Halt(
-                "HOME is not set; cannot locate ~/.kelir relay socket".into(),
-            )
-        })?;
-        let mut hex = String::with_capacity(32);
-        for byte in session_id {
-            hex.push_str(&format!("{byte:02x}"));
-        }
-        Ok(std::path::PathBuf::from(home)
-            .join(".kelir")
-            .join("sessions")
-            .join(hex)
-            .join("relay.sock"))
+        Ok(session_dir(session_id)?.join("relay.sock"))
     }
 
     // see: cans/08-lifecycle.md#Detached-lifecycle
@@ -100,8 +122,9 @@ impl Session {
         self.detached
     }
 
+    // see: cans/06-storage-catalog.md#Entity-model
     pub fn session_id(&self) -> [u8; 16] {
-        self.incarnation_id
+        self.session_id
     }
 
     pub fn set_detached(&mut self, detached: bool) {
@@ -125,29 +148,40 @@ impl Session {
     pub fn boot(
         config: kelir_interface::driver_interface::VmConfig,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
-        Self::boot_with_plugins(config, &[])
+        Self::boot_with_plugins(config, &[], None, Vec::new(), PlaneWiring::default())
     }
 
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
     pub fn boot_with_plugins(
         config: kelir_interface::driver_interface::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
+        trampoline: Option<&kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
+        synthetic_files: Vec<crate::planes::storage::storage_synthetic::SyntheticFile>,
+        plane_wiring: PlaneWiring,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
+        let mut engine = crate::dispatch_plugin::PipelineEngine::new();
+        if let Some(descriptor) = trampoline {
+            engine = engine.with_trampoline(descriptor.clone());
+        }
         Self::boot_with_engine(
             config,
             plugins,
-            crate::dispatch_plugin::PipelineEngine::new(),
+            engine,
             std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
-            Vec::new(),
+            synthetic_files,
+            plane_wiring,
         )
     }
 
     // see: cans/08-lifecycle.md#Hypervisor-primitives
+    #[allow(clippy::too_many_arguments)]
     pub fn boot_with_engine(
         config: kelir_interface::driver_interface::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
         engine: crate::dispatch_plugin::PipelineEngine,
         metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
         synthetic_files: Vec<crate::planes::storage::storage_synthetic::SyntheticFile>,
+        plane_wiring: PlaneWiring,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
         if let Some(reason) = config.missing_boot_path() {
             return Err(kelir_interface::plugin_model::PluginError::Halt(
@@ -155,27 +189,79 @@ impl Session {
             ));
         }
         let resolved = crate::plugin_registry::resolve_plugin_registrations(plugins)?;
-        let incarnation_id = mint_incarnation_id();
-        let session_hex = incarnation_hex(&incarnation_id);
-        let workspace_root = std::env::temp_dir()
-            .join("kelir")
-            .join(&session_hex)
-            .join("workspace");
+        let incarnation_id = mint_uuid_v7();
+        // see: cans/06-storage-catalog.md#Entity-model
+        let session_id = mint_uuid_v7();
+        let boot_id = encode_hex(&mint_uuid_v7());
+        let start_time_ns = i64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or_default(),
+        )
+        .unwrap_or(i64::MAX);
+        // TODO (L3): swap the minted boot_id and now-based start_time_ns for the OS host_boot_id and proc start_time per cans/08-lifecycle.md#Cross-platform-incarnation-proof.
+        // TODO (L3): detached boots upgrade the row to lease_kind='lease' with runner child pid and expires_at per cans/08-lifecycle.md#Detached-lifecycle.
+        let row = kelir_catalog::schema_catalog::SessionRow {
+            session_id,
+            incarnation_id: kelir_catalog::schema_catalog::IncarnationId::from_bytes(
+                incarnation_id,
+            ),
+            lease_kind: kelir_catalog::schema_catalog::LeaseKind::Ephemeral,
+            expires_at_unix: None,
+            runner_pid: i64::from(std::process::id()),
+            boot_id,
+            start_time_ns,
+        };
+        kelir_catalog::CatalogDb::open(kelir_catalog::catalog_path().map_err(|error| {
+            kelir_interface::plugin_model::PluginError::Halt(format!("{error}"))
+        })?)
+        .map_err(kelir_catalog::CatalogError::from)
+        .and_then(|catalog| catalog.register_session(&row))
+        .map_err(|error| {
+            kelir_interface::plugin_model::PluginError::Halt(format!(
+                "catalog session registration: {error}"
+            ))
+        })?;
+        // see: cans/01-architecture.md#Host-state-root
+        let workspace_root = session_dir(&session_id)?.join("workspace");
         let storage = crate::planes::storage::StoragePlane::new(
             workspace_root.clone(),
             workspace_root.join("upper.img"),
             DEFAULT_WORKSPACE_QUOTA_BYTES,
             DEFAULT_WORKSPACE_QUOTA_INODES,
         )
-        .with_synthetic_files(synthetic_files);
-        let wire = crate::planes::wire::WirePlane::new();
+        .with_synthetic_files(synthetic_files)
+        .with_wiring(plane_wiring.storage);
+        // TODO (L3): anchor derives broker_dir from the live host broker journal once the broker owns its layout.
+        // see: cans/05-storage-plane.md#Workspace-commit
+        storage.reconciler(
+            workspace_root.join("broker"),
+            crate::planes::storage::storage_reconciler::TraversalGuard::StrictResolveBeneath,
+        );
+        let wire = match plane_wiring.wire {
+            Some(wiring) => crate::planes::wire::WirePlane::new().with_wiring(wiring),
+            None => crate::planes::wire::WirePlane::new(),
+        };
         if let Some(handler) = engine.vsock_service(VAULT_METADATA_VSOCK_PORT) {
             wire.bind_imds_sink(handler)?;
         }
-        let engine = engine.with_metrics(metrics.clone());
+        let terminal = Arc::new(
+            match &plane_wiring.terminal {
+                Some(wiring) => {
+                    crate::planes::terminal::TerminalPlane::new(session_id).with_wiring(wiring)
+                }
+                None => crate::planes::terminal::TerminalPlane::new(session_id),
+            }
+            .with_metrics(metrics.clone()),
+        );
+        let engine = engine
+            .with_metrics(metrics.clone())
+            .with_terminal(Arc::clone(&terminal));
         metrics.set_active_vcpus(u32::from(config.vcpus));
         // TODO (L3): DriverRouter probes KVM/HVF/AVF and completes the driver boot handshake; vm_handle stays unbound until a backend loads.
         let driver = crate::vmm::DriverRouter::load_native_driver(
+            config.driver_policy.driver.as_deref(),
             matches!(
                 config.driver_policy.wx_enforcement,
                 kelir_interface::driver_interface::WxPolicy::Strict
@@ -184,9 +270,8 @@ impl Session {
         )
         .ok()
         .map(|loaded| Arc::new(tokio::sync::Mutex::new(loaded)));
-        Ok(Self {
-            terminal: crate::planes::terminal::TerminalPlane::new(incarnation_id)
-                .with_metrics(metrics.clone()),
+        let mut session = Self {
+            terminal,
             storage: storage.with_metrics(metrics.clone()),
             wire: wire.with_metrics(metrics.clone()),
             checkpoint: crate::planes::checkpoint::CheckpointPlane::new()
@@ -200,10 +285,14 @@ impl Session {
                 crate::bus::MUX_RING_CAPACITY,
             ),
             engine,
+            session_id,
             incarnation_id,
             plugins: resolved,
             detached: false,
-        })
+            state: LifecycleState::Initializing,
+        };
+        session.advance_lifecycle(LifecycleState::Running)?;
+        Ok(session)
     }
 
     pub fn plugins(&self) -> &[crate::plugin_registry::PluginRegistration] {
@@ -223,12 +312,17 @@ impl Session {
         >,
         owned_bus: crate::bus::OwnedBusDispatcher,
         engine: crate::dispatch_plugin::PipelineEngine,
+        session_id: [u8; 16],
         incarnation_id: [u8; 16],
         plugins: Vec<crate::plugin_registry::PluginRegistration>,
         metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     ) -> Self {
-        Self {
-            terminal: terminal.with_metrics(metrics.clone()),
+        let terminal = Arc::new(terminal.with_metrics(metrics.clone()));
+        let engine = engine
+            .with_metrics(metrics.clone())
+            .with_terminal(Arc::clone(&terminal));
+        let mut session = Self {
+            terminal,
             storage: storage.with_metrics(metrics.clone()),
             wire: wire.with_metrics(metrics.clone()),
             checkpoint: checkpoint.with_metrics(metrics.clone()),
@@ -237,11 +331,15 @@ impl Session {
             uart: crate::uart_terminal::UartRingBuffer::new(),
             driver: Some(driver),
             owned_bus,
-            engine: engine.with_metrics(metrics),
+            engine,
+            session_id,
             incarnation_id,
             plugins,
             detached: false,
-        }
+            state: LifecycleState::Initializing,
+        };
+        let _ = session.advance_lifecycle(LifecycleState::Running);
+        session
     }
 
     pub fn metrics(&self) -> &std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry> {
@@ -326,17 +424,16 @@ impl Session {
         &self.uart
     }
 
-    pub fn record_early_boot_output(
-        &mut self,
-        bytes: &[u8],
-    ) -> Option<kelir_interface::telemetry::ExitKind> {
+    // see: cans/01-architecture.md#Early-boot-diagnostics
+    pub fn record_early_boot_output(&mut self, bytes: &[u8]) {
         if self.uart.len().saturating_add(bytes.len()) > crate::uart_terminal::UART_RING_CAPACITY {
             self.metrics.record_drop();
         }
         self.uart.write(bytes);
-        self.uart.decode_exit_kind()
     }
 
+    // see: cans/01-architecture.md#Early-boot-diagnostics
+    // TODO (L3): the supervisor scrapes only when the boot budget expires without VmReady or on hypervisor fault transitions.
     pub fn early_boot_exit(&self) -> Option<kelir_interface::telemetry::ExitKind> {
         self.uart.decode_exit_kind()
     }
@@ -350,12 +447,51 @@ impl Session {
         crate::planes::checkpoint::PidLineage::new_in_session(root_pid, self.incarnation_id)
     }
 
+    // see: cans/08-lifecycle.md#CoW-fork
     pub fn fork(&self) -> Result<Self, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): fork driver, clone planes, mint a new incarnation_id for the child.
-        let _ = (&self.driver, &self.owned_bus, &self.incarnation_id);
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Session::fork".into(),
-        ))
+        // TODO (L3): native driver CoW fork via VmmDriver::fork; L2 shares the parent driver handle.
+        // TODO (L3): rebind the plugin graph, vsock channels, and wire wiring onto the child engine via fork_state.
+        let incarnation_id = mint_uuid_v7();
+        let workspace_root = session_dir(&self.session_id)?.join("workspace");
+        let storage = crate::planes::storage::StoragePlane::new(
+            workspace_root.clone(),
+            workspace_root.join("upper.img"),
+            DEFAULT_WORKSPACE_QUOTA_BYTES,
+            DEFAULT_WORKSPACE_QUOTA_INODES,
+        )
+        .with_wiring(self.storage.wiring().clone());
+        // TODO (L3): anchor derives broker_dir from the live host broker journal once the broker owns its layout.
+        // see: cans/05-storage-plane.md#Workspace-commit
+        storage.reconciler(
+            workspace_root.join("broker"),
+            crate::planes::storage::storage_reconciler::TraversalGuard::StrictResolveBeneath,
+        );
+        let engine = crate::dispatch_plugin::PipelineEngine::new()
+            .with_metrics(std::sync::Arc::clone(&self.metrics))
+            .with_terminal(std::sync::Arc::clone(&self.terminal));
+        Ok(Self {
+            terminal: std::sync::Arc::clone(&self.terminal),
+            storage: storage.with_metrics(std::sync::Arc::clone(&self.metrics)),
+            wire: crate::planes::wire::WirePlane::new()
+                .with_metrics(std::sync::Arc::clone(&self.metrics)),
+            checkpoint: crate::planes::checkpoint::CheckpointPlane::new()
+                .with_metrics(std::sync::Arc::clone(&self.metrics)),
+            host: crate::planes::host::HostPlane::new()
+                .with_metrics(std::sync::Arc::clone(&self.metrics)),
+            metrics: std::sync::Arc::clone(&self.metrics),
+            uart: crate::uart_terminal::UartRingBuffer::new(),
+            driver: self.driver.clone(),
+            owned_bus: crate::bus::OwnedBusDispatcher::new(
+                crate::bus::CONTROL_RING_CAPACITY,
+                crate::bus::MUX_RING_CAPACITY,
+            ),
+            engine,
+            session_id: self.session_id,
+            incarnation_id,
+            plugins: self.plugins.clone(),
+            detached: self.detached,
+            state: self.state,
+        })
     }
 
     // see: cans/08-lifecycle.md#Rollback
@@ -381,7 +517,7 @@ impl Session {
         // see: cans/08-lifecycle.md#Rollback
         if let Some(revoker) = self.engine.token_revoker() {
             revoker
-                .revoke_session_tokens(&incarnation_hex(&self.incarnation_id))
+                .revoke_session_tokens(&encode_hex(&self.incarnation_id))
                 .await?;
         }
         let Some(driver) = self.driver.as_ref() else {
@@ -425,22 +561,33 @@ impl Session {
         )
     }
 
+    // see: cans/08-lifecycle.md#State-machine
+    pub fn lifecycle_state(&self) -> LifecycleState {
+        self.state
+    }
+
+    // see: cans/08-lifecycle.md#State-machine
+    fn advance_lifecycle(
+        &mut self,
+        next: LifecycleState,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        self.state = self.state.transition(next).map_err(|error| {
+            kelir_interface::plugin_model::PluginError::Halt(format!("{error:?}"))
+        })?;
+        Ok(())
+    }
+
     pub fn suspend(
         &mut self,
         reason: kelir_interface::driver_interface::SuspendReason,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): suspend the driver to disk per reason.
-        let _ = reason;
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Session::suspend".into(),
-        ))
+        self.advance_lifecycle(LifecycleState::Suspended(reason))
     }
 
     pub fn resume(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): resume the driver from the suspended image.
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Session::resume".into(),
-        ))
+        self.advance_lifecycle(LifecycleState::Running)
     }
 
     pub fn drain(
@@ -449,16 +596,12 @@ impl Session {
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): drain in-flight frames until quiescent or timeout_ms elapses.
         let _ = timeout_ms;
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Session::drain".into(),
-        ))
+        self.advance_lifecycle(LifecycleState::Draining)
     }
 
     pub fn stop(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): graceful driver terminate after drain.
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Session::stop".into(),
-        ))
+        self.advance_lifecycle(LifecycleState::Terminated)
     }
 
     // see: cans/08-lifecycle.md#Pre-teardown-flush
@@ -468,16 +611,12 @@ impl Session {
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): graceful driver terminate after MSG_SHUTDOWN_ACK or timeout expiry.
         let _ = timeout;
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Session::stop_with_timeout".into(),
-        ))
+        self.advance_lifecycle(LifecycleState::Terminated)
     }
 
     pub fn kill(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): hard driver terminate without drain.
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Session::kill".into(),
-        ))
+        // TODO (L3): hard driver terminate without drain or flush.
+        self.advance_lifecycle(LifecycleState::Terminated)
     }
 
     // see: cans/09-snapshots.md#Archives-and-portability

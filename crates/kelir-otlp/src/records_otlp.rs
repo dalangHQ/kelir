@@ -2,17 +2,6 @@
 use kelir_interface::telemetry::{CausalDelta, ExecutionReceipt, PhaseTimings};
 
 // see: cans/14-observability.md#Metrics-pipeline
-fn hex_lower(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(HEX[usize::from(*byte >> 4)] as char);
-        out.push(HEX[usize::from(*byte & 0x0f)] as char);
-    }
-    out
-}
-
-// see: cans/14-observability.md#Metrics-pipeline
 fn paths_to_strings(paths: &[std::path::PathBuf]) -> Vec<String> {
     paths
         .iter()
@@ -85,8 +74,8 @@ impl OtlpCausalDeltaRecord {
             modified_inodes: paths_to_strings(&delta.modified_inodes),
             spawned_pids: delta.spawned_pids.clone(),
             egress_bytes: delta.egress_bytes,
-            storage_delta_root: hex_lower(&delta.storage_delta_root),
-            receipt_leaf_hash: hex_lower(&delta.receipt_leaf_hash),
+            storage_delta_root: kelir_interface::hex_codec::encode_hex(&delta.storage_delta_root),
+            receipt_leaf_hash: kelir_interface::hex_codec::encode_hex(&delta.receipt_leaf_hash),
         }
     }
 }

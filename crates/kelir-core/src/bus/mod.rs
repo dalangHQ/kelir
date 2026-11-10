@@ -4,25 +4,16 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+// see: cans/11-protocol.md#Wire-framing
+use kelir_interface::codec_protocol::CodecError;
+pub use kelir_interface::codec_protocol::{
+    FLAG_DATA, FLAG_OPEN, HEADER_LEN, MAX_FRAME_PAYLOAD, MAX_STREAM_ID, decode_header,
+    encode_msg_frame,
+};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::{MsgType, StreamKind};
 use kelir_transport::Transport;
 use kelir_transport::spsc_ring::OwnedSpscRing;
-
-// see: cans/11-protocol.md#Wire-framing
-pub const FRAME_HEADER_LEN: usize = 9;
-
-// see: cans/11-protocol.md#Wire-framing
-pub const MAX_FRAME_PAYLOAD: usize = 64 * 1024;
-
-// see: cans/11-protocol.md#Wire-framing
-pub const MAX_STREAM_ID: u32 = 0x00FF_FFFF;
-
-// see: cans/11-protocol.md#Stream-mux-framing
-pub const FLAG_OPEN: u8 = 0x01;
-
-// see: cans/11-protocol.md#Stream-mux-framing
-pub const FLAG_DATA: u8 = 0x02;
 
 // see: cans/01-architecture.md#Transport-engine-abstraction
 pub const CONTROL_RING_CAPACITY: u32 = 128 * 1024;
@@ -100,58 +91,23 @@ impl OwnedBusDispatcher {
 }
 
 // see: cans/11-protocol.md#Wire-framing
-fn encode_frame(
-    stream_id: u32,
-    flags: u8,
-    payload: &[u8],
-    out: &mut Vec<u8>,
-) -> Result<(), PluginError> {
-    if stream_id > MAX_STREAM_ID {
-        return Err(PluginError::Halt(format!(
-            "stream id {stream_id} exceeds 0x00FFFFFF"
-        )));
-    }
-    if payload.len() > MAX_FRAME_PAYLOAD {
-        return Err(PluginError::Halt(
-            "frame payload exceeds the 64KB budget".into(),
-        ));
-    }
-    out.extend_from_slice(&stream_id.to_le_bytes());
-    out.push(flags);
-    out.extend_from_slice(&(payload.len() as u32).to_le_bytes());
-    out.extend_from_slice(payload);
-    Ok(())
+fn codec_halt(err: CodecError) -> PluginError {
+    PluginError::Halt(err.to_string())
 }
 
 // see: cans/11-protocol.md#Wire-framing
 fn take_frame(rx: &mut Vec<u8>) -> Result<Option<(u32, u8, Vec<u8>)>, PluginError> {
-    if rx.len() < FRAME_HEADER_LEN {
+    if rx.len() < HEADER_LEN {
         return Ok(None);
     }
-    let stream_id = u32::from_le_bytes([rx[0], rx[1], rx[2], rx[3]]);
-    let flags = rx[4];
-    let payload_len = u32::from_le_bytes([rx[5], rx[6], rx[7], rx[8]]);
-    let payload_len = usize::try_from(payload_len)
-        .map_err(|_| PluginError::Halt("frame length overflows usize".into()))?;
-    if stream_id > MAX_STREAM_ID {
-        return Err(PluginError::Halt(format!(
-            "stream id {stream_id} exceeds 0x00FFFFFF"
-        )));
-    }
-    if payload_len > MAX_FRAME_PAYLOAD {
-        return Err(PluginError::Halt(
-            "frame payload exceeds the 64KB budget".into(),
-        ));
-    }
-    let total = FRAME_HEADER_LEN
-        .checked_add(payload_len)
-        .ok_or_else(|| PluginError::Halt("frame length overflow".into()))?;
+    let header = decode_header(&rx[..HEADER_LEN]).map_err(codec_halt)?;
+    let total = header.total_len().map_err(codec_halt)?;
     if rx.len() < total {
         return Ok(None);
     }
-    let payload = rx[FRAME_HEADER_LEN..total].to_vec();
+    let payload = rx[HEADER_LEN..total].to_vec();
     rx.drain(..total);
-    Ok(Some((stream_id, flags, payload)))
+    Ok(Some((header.stream_id, header.flags, payload)))
 }
 
 // see: cans/11-protocol.md#Wire-framing
@@ -273,20 +229,8 @@ impl BusDispatcher {
         msg_type: MsgType,
         payload: &[u8],
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        let body_len = payload
-            .len()
-            .checked_add(2)
-            .ok_or_else(|| PluginError::Halt("control payload length overflow".into()))?;
-        if body_len > MAX_FRAME_PAYLOAD {
-            return Err(PluginError::Halt(
-                "control payload exceeds the 64KB frame budget".into(),
-            ));
-        }
-        let mut body = Vec::with_capacity(body_len);
-        body.extend_from_slice(&(msg_type as u16).to_le_bytes());
-        body.extend_from_slice(payload);
-        let mut frame = Vec::with_capacity(FRAME_HEADER_LEN + body.len());
-        encode_frame(0, FLAG_DATA, &body, &mut frame)?;
+        let mut frame = Vec::new();
+        encode_msg_frame(0, FLAG_DATA, msg_type, payload, &mut frame).map_err(codec_halt)?;
         write_all_frame(&mut self.control_transport, &frame)
     }
 }

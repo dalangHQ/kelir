@@ -22,6 +22,10 @@ import {
 export interface KelirConfig {
   readonly vcpus?: number;
   readonly memoryMb?: number;
+  readonly pageSizeKb?: number;
+  readonly deterministicClock?: boolean;
+  readonly pinnedClocksource?: string;
+  readonly preemptionGraceMs?: number;
   readonly driver?: string;
   readonly kernel?: string;
   readonly rootfsErofs?: string;
@@ -30,10 +34,12 @@ export interface KelirConfig {
   readonly detached?: boolean;
 }
 
+// see: cans/04-terminal-plane.md#Terminal-pipeline
 export interface TerminalStream {
   write(data: string): void;
 }
 
+// see: cans/04-terminal-plane.md#Terminal-pipeline
 export interface TerminalConfig {
   readonly cols?: number;
   readonly rows?: number;
@@ -60,6 +66,7 @@ export interface TerminalConfig {
   readonly streamEngine?: string;
 }
 
+// see: cans/05-storage-plane.md#Workspace-commit
 export interface StorageConfig<Ctx = unknown> {
   readonly idmap?: { readonly guestUid: number; readonly hostUid: number };
   readonly sharedCaches?: readonly string[];
@@ -88,6 +95,7 @@ export interface StorageConfig<Ctx = unknown> {
   readonly carryoverBytes?: number;
 }
 
+// see: cans/07-wire-plane.md#DNS-policy-filter
 export interface WireConfig {
   readonly sinkhole?: { readonly dnsExcept: readonly string[] };
   readonly sshAgentBridge?: boolean;
@@ -142,10 +150,38 @@ export class KelirBuilder<Ctx = unknown> {
   readonly vsockServices: VsockServiceEntry[] = [];
   private nextOrdinal = 0;
   private detachedFlag: boolean;
+  private terminalCfg: TerminalConfig | undefined;
+  private storageCfg: StorageConfig<never> | undefined;
+  private wireCfg: WireConfig | undefined;
+  private paramsSchema: Schema<unknown> | undefined;
 
   constructor(config: KelirConfig = {}) {
     this.config = config;
     this.detachedFlag = config.detached ?? false;
+  }
+
+  // see: cans/04-terminal-plane.md#Terminal-pipeline
+  terminal(config: TerminalConfig): this {
+    this.terminalCfg = config;
+    return this;
+  }
+
+  // see: cans/05-storage-plane.md#Workspace-commit
+  storage<C>(_config: StorageConfig<C>): this {
+    this.storageCfg = _config as StorageConfig<never>;
+    return this;
+  }
+
+  // see: cans/07-wire-plane.md#DNS-policy-filter
+  wire(config: WireConfig): this {
+    this.wireCfg = config;
+    return this;
+  }
+
+  // see: cans/03-sdk-architecture.md#TypeScript-SDK
+  params(schema: Schema<unknown>): this {
+    this.paramsSchema = schema;
+    return this;
   }
 
   // see: cans/08-lifecycle.md#Detached-lifecycle
@@ -156,19 +192,6 @@ export class KelirBuilder<Ctx = unknown> {
 
   isDetached(): boolean {
     return this.detachedFlag;
-  }
-
-  // TODO (L3): record and apply the terminal/storage/wire plane and params schema configs through the native builder at boot.
-  terminal(_config: TerminalConfig): this {
-    return this;
-  }
-
-  storage<C>(_config: StorageConfig<C>): this {
-    return this;
-  }
-
-  wire(_config: WireConfig): this {
-    return this;
   }
 
   // see: cans/artifacts/code/typescript-accumulation.ts#runtime
@@ -186,10 +209,6 @@ export class KelirBuilder<Ctx = unknown> {
       }
     }
     return this as KelirBuilder<Ctx & PluginContextOf<P>>;
-  }
-
-  params(_schema: Schema<any>): this {
-    return this;
   }
 
   // see: cans/02-plugin-model.md#Foreign-plugin-proxy
@@ -370,7 +389,63 @@ export class KelirBuilder<Ctx = unknown> {
       this.config.rootfsErofs,
       this.config.tscLocked,
       this.config.enableWatchdog,
+      this.config.driver,
     );
+    // TODO (L3): forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.
+    if (this.terminalCfg) {
+      // TODO (L3): tokenShield.onClamp and prompt actions stay TypeScript-side until threadsafe-function bridging lands.
+      nativeBuilder.setTerminalConfig({
+        cols: this.terminalCfg.cols,
+        rows: this.terminalCfg.rows,
+        dropOsc52: this.terminalCfg.dropOsc52,
+        stripTitle: this.terminalCfg.stripTitle,
+        tokenShieldMaxBytesTotal: this.terminalCfg.tokenShield?.maxBytesTotal,
+        tokenShieldMaxLinesTotal: this.terminalCfg.tokenShield?.maxLinesTotal,
+        tokenShieldClampStrategy: this.terminalCfg.tokenShield?.clampStrategy,
+        streamEngine: this.terminalCfg.streamEngine,
+      });
+    }
+    if (this.storageCfg) {
+      // TODO (L3): snoop onWrite callbacks stay TypeScript-side until threadsafe-function bridging lands.
+      nativeBuilder.setStorageConfig({
+        idmapGuestUid: this.storageCfg.idmap?.guestUid,
+        idmapHostUid: this.storageCfg.idmap?.hostUid,
+        sharedCaches: this.storageCfg.sharedCaches as string[] | undefined,
+        lockBroker: this.storageCfg.lockBroker,
+        syntheticFiles: this.storageCfg.syntheticFiles?.map((file) => ({
+          path: file.path,
+          content: typeof file.content === "function" ? file.content() : file.content,
+          mode: file.mode,
+        })),
+        maskRead: this.storageCfg.maskRead?.map((rule) => ({
+          glob: rule.glob,
+          pattern: rule.pattern.source,
+          replace: rule.replace,
+        })),
+        encapsulation: this.storageCfg.encapsulation,
+        scanEngine: this.storageCfg.scanEngine,
+        carryoverBytes: this.storageCfg.carryoverBytes,
+      });
+    }
+    if (this.wireCfg) {
+      nativeBuilder.setWireConfig({
+        sinkholeDnsExcept: this.wireCfg.sinkhole?.dnsExcept as string[] | undefined,
+        sinkholeDropAll: this.wireCfg.sinkhole !== undefined ? true : undefined,
+        sshAgentBridge: this.wireCfg.sshAgentBridge,
+        vaults: this.wireCfg.vaults,
+        l4Proxies: this.wireCfg.l4Proxies?.map((proxy) => ({
+          listenPort: proxy.listenPort,
+          destination: proxy.destination,
+          injectMtlsCertPath: proxy.injectMtls?.certPath,
+          injectMtlsKeyPath: proxy.injectMtls?.keyPath,
+        })),
+        tapFilter: this.wireCfg.tapFilter,
+      });
+    }
+    // TODO (L3): the params schema stays TypeScript-side; the native params model bridge lands with typed context threading.
+    if (this.paramsSchema) {
+      // TODO (L3): forward the pinned params schema once the native params model bridge exists.
+    }
     for (const registration of this.pluginRegistrations) {
       nativeBuilder.addPlugin(registration.name, registration.enabled);
     }

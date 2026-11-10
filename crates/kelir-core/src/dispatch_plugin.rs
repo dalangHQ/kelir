@@ -7,15 +7,20 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use kelir_interface::fusion_plugin::TrampolineRing;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, FfiDispatchQueue, FsInterposer, HandlerCtx, HostInterposer,
     LockBrokerCoordination, MountScope, NetInterposer, ParkedConnectionReset, PipelineBinder,
     TokenRevocation, TrapInterposer, VirtioDevice,
 };
-use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{
+    EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, ProcessExit, TrapEvent, Verdict,
+};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
+use crate::planes::checkpoint::{CheckpointPlane, PidLineage};
+use crate::planes::terminal::LogStream;
 use crate::trap_gate::{GateDecision, TrapGateEvaluator};
 
 // see: cans/artifacts/code/plugin-trait.rs#PANIC_QUARANTINE_ENABLED
@@ -85,6 +90,17 @@ fn quarantine_sync<T>(run: impl FnOnce() -> T, on_panic: impl FnOnce() -> T) -> 
     }
 }
 
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
+struct FusedCrossing<'a> {
+    engine: &'a PipelineEngine,
+}
+
+impl Drop for FusedCrossing<'_> {
+    fn drop(&mut self) {
+        self.engine.foreign_submit_complete();
+    }
+}
+
 pub struct PipelineEngine {
     trap_interceptors: Vec<Arc<dyn TrapInterposer>>,
     trap_scopes: Vec<MountScope>,
@@ -95,6 +111,7 @@ pub struct PipelineEngine {
     net_scopes: Vec<MountScope>,
     console_interceptors: Vec<Arc<dyn ConsoleInterposer>>,
     console_scopes: Vec<MountScope>,
+    terminal: Option<Arc<crate::planes::terminal::TerminalPlane>>,
     host_interceptors: Vec<Arc<dyn HostInterposer>>,
     host_scopes: Vec<MountScope>,
     vsock_services: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>, MountScope)>,
@@ -102,6 +119,8 @@ pub struct PipelineEngine {
     parked_reset: Option<Arc<dyn ParkedConnectionReset>>,
     token_revoker: Option<Arc<dyn TokenRevocation>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
+    trampoline: Option<kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
+    checkpoint: Option<Arc<CheckpointPlane>>,
     foreign_queue: FfiDispatchQueue,
     ffi_rate_per_sec: u32,
     ffi_window_start_ms: AtomicU64,
@@ -203,6 +222,7 @@ impl PipelineEngine {
             net_scopes: Vec::new(),
             console_interceptors: Vec::new(),
             console_scopes: Vec::new(),
+            terminal: None,
             host_interceptors: Vec::new(),
             host_scopes: Vec::new(),
             vsock_services: Vec::new(),
@@ -210,6 +230,8 @@ impl PipelineEngine {
             parked_reset: None,
             token_revoker: None,
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
+            trampoline: None,
+            checkpoint: None,
             foreign_queue: FfiDispatchQueue::default(),
             ffi_rate_per_sec: 0,
             ffi_window_start_ms: AtomicU64::new(0),
@@ -270,8 +292,78 @@ impl PipelineEngine {
         self
     }
 
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    pub fn with_terminal(mut self, terminal: Arc<crate::planes::terminal::TerminalPlane>) -> Self {
+        self.terminal = Some(terminal);
+        self
+    }
+
     pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
         &self.metrics
+    }
+
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    pub fn with_trampoline(
+        mut self,
+        descriptor: kelir_interface::fusion_plugin::FusedTrampolineDescriptor,
+    ) -> Self {
+        self.trampoline = Some(descriptor);
+        self
+    }
+
+    pub fn trampoline(&self) -> Option<&kelir_interface::fusion_plugin::FusedTrampolineDescriptor> {
+        self.trampoline.as_ref()
+    }
+
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    pub fn with_checkpoint(mut self, plane: Arc<CheckpointPlane>) -> Self {
+        self.checkpoint = Some(plane);
+        self
+    }
+
+    pub fn checkpoint_plane(&self) -> Option<&Arc<CheckpointPlane>> {
+        self.checkpoint.as_ref()
+    }
+
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    // TODO (L3): resolve guest pid to its lineage root before lookup once the trap-stream ppid chain walk lands.
+    pub fn hydrate_step<Plugins, Params>(
+        &self,
+        ctx: &mut HandlerCtx<Plugins, Params>,
+        lineage: PidLineage,
+    ) -> Result<(), PluginError> {
+        let Some(plane) = self.checkpoint.as_ref() else {
+            return Ok(());
+        };
+        if let Some(descriptor) = plane.active_step(lineage)? {
+            ctx.step.push(descriptor);
+        }
+        Ok(())
+    }
+
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    // TODO (L3): fused descriptor ordinals bind 1:1 onto the native interposer chain; ring-level matching is the L2 handoff boundary.
+    fn fused_ring(&self, ring: TrampolineRing) -> bool {
+        self.trampoline.as_ref().is_some_and(|descriptor| {
+            descriptor
+                .rings
+                .iter()
+                .any(|chain| chain.ring == ring && !chain.hooks.is_empty())
+        })
+    }
+
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    // TODO (L3): the AOT-fused trampoline closure marshals the whole hook chain across this single crossing at the native-to-foreign boundary.
+    fn fused_crossing(
+        &self,
+        ring: TrampolineRing,
+    ) -> Result<Option<FusedCrossing<'_>>, PluginError> {
+        if self.fused_ring(ring) {
+            self.try_foreign_submit()?;
+            Ok(Some(FusedCrossing { engine: self }))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn vsock_service(&self, port: u32) -> Option<Arc<dyn VsockServiceHandler>> {
@@ -391,6 +483,8 @@ impl PipelineEngine {
         if event.syscall.is_some() {
             self.metrics.record_syscall();
         }
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::Trap)?;
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
             let fallback = MountScope::default();
             let scope = self.trap_scopes.get(index).unwrap_or(&fallback);
@@ -399,18 +493,22 @@ impl PipelineEngine {
                 GateDecision::Deny(verdict) => return Ok(verdict),
                 GateDecision::FallThrough => {}
             }
-            // see: cans/01-architecture.md#FFI-boundary-economics
-            // TODO (L3): AOT hook fusion collapses chained crossings into one trampoline per ring event.
-            self.try_foreign_submit()?;
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
             let verdict = {
                 let outcome = quarantine_verdict(interceptor.on_trap(event, ctx)).await;
-                self.foreign_submit_complete();
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
                 outcome?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }
         }
+        drop(fused);
         Ok(Verdict::Pass)
     }
 
@@ -422,6 +520,8 @@ impl PipelineEngine {
         self.metrics.record_exec();
         // TODO (L3): exec_started pairs with this finish once the L3 exec spawn path dispatches it.
         self.metrics.exec_finished();
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::ProcessExit)?;
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.trap_scopes, index);
             if !matches!(
@@ -430,8 +530,17 @@ impl PipelineEngine {
             ) {
                 continue;
             }
-            quarantine_unit(interceptor.on_process_exit(event, ctx)).await?;
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let outcome = quarantine_unit(interceptor.on_process_exit(event, ctx)).await;
+            if fused.is_none() {
+                self.foreign_submit_complete();
+            }
+            outcome?;
         }
+        drop(fused);
         Ok(())
     }
 
@@ -442,13 +551,17 @@ impl PipelineEngine {
         pid: u32,
         ctx: &HandlerCtx,
     ) -> Result<FilterAction, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::FsWrite)?;
         for (index, interceptor) in self.fs_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.fs_scopes, index);
             if !Self::fs_scope_allows(&scope, path, ctx) {
                 continue;
             }
-            // see: cans/01-architecture.md#FFI-boundary-economics
-            self.try_foreign_submit()?;
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
             let action = {
                 let outcome = quarantine_sync(
                     || interceptor.on_fs_write(path, data, pid, ctx),
@@ -458,25 +571,32 @@ impl PipelineEngine {
                         })
                     },
                 );
-                self.foreign_submit_complete();
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
                 outcome?
             };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }
         }
+        drop(fused);
         Ok(FilterAction::Forward)
     }
 
     // TODO (L3): CIDR/port scope rules need a frame parser; only the device mask is enforced here.
     pub fn dispatch_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::NetOutbound)?;
         for (index, interceptor) in self.net_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.net_scopes, index);
             if !scope.allows_device(VirtioDevice::Net) {
                 continue;
             }
-            // see: cans/01-architecture.md#FFI-boundary-economics
-            self.try_foreign_submit()?;
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
             let action = {
                 let outcome = quarantine_sync(
                     || interceptor.on_net_outbound(frame),
@@ -486,34 +606,50 @@ impl PipelineEngine {
                         })
                     },
                 );
-                self.foreign_submit_complete();
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
                 outcome?
             };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }
         }
+        drop(fused);
         Ok(FilterAction::Forward)
     }
 
     pub fn dispatch_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::NetInbound)?;
         for (index, interceptor) in self.net_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.net_scopes, index);
             if !scope.allows_device(VirtioDevice::Net) {
                 continue;
             }
-            let action = quarantine_sync(
-                || interceptor.on_net_inbound(frame),
-                || {
-                    Ok(FilterAction::Abort {
-                        reason: "Plugin panicked".into(),
-                    })
-                },
-            )?;
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let action = {
+                let outcome = quarantine_sync(
+                    || interceptor.on_net_inbound(frame),
+                    || {
+                        Ok(FilterAction::Abort {
+                            reason: "Plugin panicked".into(),
+                        })
+                    },
+                );
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
+                outcome?
+            };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }
         }
+        drop(fused);
         Ok(FilterAction::Forward)
     }
 
@@ -522,13 +658,24 @@ impl PipelineEngine {
         port: u32,
         bytes: &mut Vec<u8>,
     ) -> Result<(), PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::ConsoleInput)?;
         for (index, interceptor) in self.console_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.console_scopes, index);
             if !scope.allows_device(VirtioDevice::Console) {
                 continue;
             }
-            quarantine_unit(interceptor.on_console_input(port, bytes)).await?;
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let outcome = quarantine_unit(interceptor.on_console_input(port, bytes)).await;
+            if fused.is_none() {
+                self.foreign_submit_complete();
+            }
+            outcome?;
         }
+        drop(fused);
         Ok(())
     }
 
@@ -537,12 +684,27 @@ impl PipelineEngine {
         port: u32,
         chunk: &mut Vec<u8>,
     ) -> Result<(), PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::ConsoleOutput)?;
         for (index, interceptor) in self.console_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.console_scopes, index);
             if !scope.allows_device(VirtioDevice::Console) {
                 continue;
             }
-            quarantine_unit(interceptor.on_console_output(port, chunk)).await?;
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let outcome = quarantine_unit(interceptor.on_console_output(port, chunk)).await;
+            if fused.is_none() {
+                self.foreign_submit_complete();
+            }
+            outcome?;
+        }
+        drop(fused);
+        // see: cans/04-terminal-plane.md#Terminal-pipeline
+        if let Some(terminal) = &self.terminal {
+            terminal.record_output(LogStream::Port(port), chunk)?;
         }
         Ok(())
     }
@@ -553,12 +715,33 @@ impl PipelineEngine {
         exec_id: u64,
         chunk: &mut Vec<u8>,
     ) -> Result<(), PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::ExecStdout)?;
         for (index, interceptor) in self.console_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.console_scopes, index);
             if !scope.allows_device(VirtioDevice::Console) {
                 continue;
             }
-            quarantine_unit(interceptor.on_exec_stdout(pid, exec_id, chunk)).await?;
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let outcome = quarantine_unit(interceptor.on_exec_stdout(pid, exec_id, chunk)).await;
+            if fused.is_none() {
+                self.foreign_submit_complete();
+            }
+            outcome?;
+        }
+        drop(fused);
+        // see: cans/04-terminal-plane.md#Binary-exec-channel-(terminal-plane)
+        if let Some(terminal) = &self.terminal {
+            terminal.record_output(
+                LogStream::Exec {
+                    id: exec_id,
+                    lane: EXEC_STREAM_STDOUT,
+                },
+                chunk,
+            )?;
         }
         Ok(())
     }
@@ -569,17 +752,39 @@ impl PipelineEngine {
         exec_id: u64,
         chunk: &mut Vec<u8>,
     ) -> Result<(), PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::ExecStderr)?;
         for (index, interceptor) in self.console_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.console_scopes, index);
             if !scope.allows_device(VirtioDevice::Console) {
                 continue;
             }
-            quarantine_unit(interceptor.on_exec_stderr(pid, exec_id, chunk)).await?;
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let outcome = quarantine_unit(interceptor.on_exec_stderr(pid, exec_id, chunk)).await;
+            if fused.is_none() {
+                self.foreign_submit_complete();
+            }
+            outcome?;
+        }
+        drop(fused);
+        // see: cans/04-terminal-plane.md#Binary-exec-channel-(terminal-plane)
+        if let Some(terminal) = &self.terminal {
+            terminal.record_output(
+                LogStream::Exec {
+                    id: exec_id,
+                    lane: EXEC_STREAM_STDERR,
+                },
+                chunk,
+            )?;
         }
         Ok(())
     }
 
     // TODO (L3): host scope.devices has no VirtioDevice mapping; only the path filter is enforced here.
+    // TODO (L3): no TrampolineRing tag exists for host LSM hooks, so fused crossings cannot bind this ring yet.
     pub fn dispatch_host_lsm_exec(
         &self,
         path: &std::path::Path,
@@ -590,15 +795,21 @@ impl PipelineEngine {
             if !scope.allows_path(path) {
                 continue;
             }
-            let verdict = quarantine_sync(
-                || interceptor.on_host_lsm_exec(path, pid),
-                || {
-                    Ok(Verdict::Drop {
-                        errno: Some("EFAULT".into()),
-                        reason: "Plugin panicked".into(),
-                    })
-                },
-            )?;
+            // see: cans/01-architecture.md#FFI-boundary-economics
+            self.try_foreign_submit()?;
+            let verdict = {
+                let outcome = quarantine_sync(
+                    || interceptor.on_host_lsm_exec(path, pid),
+                    || {
+                        Ok(Verdict::Drop {
+                            errno: Some("EFAULT".into()),
+                            reason: "Plugin panicked".into(),
+                        })
+                    },
+                );
+                self.foreign_submit_complete();
+                outcome?
+            };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }

@@ -2,9 +2,9 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use kelir_core::bus::{BusDispatcher, FLAG_DATA, FLAG_OPEN, OwnedBusDispatcher};
+use kelir_core::bus::{BusDispatcher, OwnedBusDispatcher};
 use kelir_core::dispatch_plugin::PipelineEngine;
-use kelir_interface::codec_protocol::MAX_FRAME_PAYLOAD;
+use kelir_interface::codec_protocol::{FLAG_DATA, FLAG_OPEN, MAX_FRAME_PAYLOAD};
 use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::{HandlerCtx, PipelineBinder, PluginError};
 use kelir_interface::protocol_wire::{MsgType, StreamKind};
