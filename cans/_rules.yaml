@@ -72,7 +72,7 @@ references:
     include: [plugins/*.md]
 
 redundancy:
-  enabled: true
+  enabled: false
   # A term sprawls only if it has no canonical home. Thresholds scale
   # with corpus size by formula, not by hand.
   word_frequency_threshold: 88

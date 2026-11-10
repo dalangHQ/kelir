@@ -28,7 +28,10 @@
     }
   },
   "include": [
-    "cans/"
+        "AGENTS.md",
+     "cans/",
+       "crates",
+        "packages"
   ],
   "ignore": {
     "useGitignore": true,
@@ -42,12 +45,16 @@
       "cans/_adr",
       "cans/_collab",
       "cans/_tasks",
- //     "cans/AGENTS.md",
-      "cans/artifacts/code",
-      "cans/artifacts/config",
-      "cans/artifacts/diagrams",
-      "cans/artifacts/examples",
-        "cans/artifacts/taxonomy.html"
+      //"cans/AGENTS.md",
+  //    "cans/artifacts/code",
+  //    "cans/artifacts/config",
+  //    "cans/artifacts/diagrams",
+  //    "cans/artifacts/examples",
+        "cans/artifacts/taxonomy.html",
+            "**/tests/**",
+  //          "cans/artifacts/",
+            "crates/kelir-testkit/anchors.json",
+            "cans/artifacts/test-plan"
     ]
   },
   "security": {
