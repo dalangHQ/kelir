@@ -164,8 +164,9 @@
   diversion") says the plane "Exposes raw duplex stream to registered
   NetInterposer proxies" and "Interposer receives reassembled stream bytes; it
   never terminates TLS", with L7 interposition only when the builder mounts a
-  NetInterposer with an L7 scope — db-proxy declares no L7 scope (its
-  `default_scope` mounts only `VirtioDevice::Net`, lib.rs:232–236).
+  NetInterposer with an L7 scope — db-proxy declares none: its `default_scope`
+  mounts `[Vsock, Net]` (lib.rs:231–234), and `MountScope` has no L7 field at
+  all (`plugin_model.rs:96–100`), so no L7 scope exists to declare in code.
   `cans/plugins/db-proxy.md:7` says it "binds to native Wire Plane".
 - And there is no working L4 abstraction to bypass:
   `WirePlane::divert_l4` (`planes/wire/mod.rs:486-490`) is a `TODO (L3)` stub
