@@ -15,7 +15,7 @@ pub mod sandbox_runtime;
 pub mod session_lifecycle;
 pub mod telemetry_attest;
 
-pub use builder_sdk::{KelirBuilder, PostExecAction, Sealed, TrapFilter, Unsealed, handler};
+pub use builder_sdk::{KelirBuilder, PostExecAction, Sealed, TrapFilter, Unsealed};
 pub use hlist_sdk::{HCons, HList, HNil, NoParams};
 pub use kelir_core::planes::checkpoint::{PidLineage, StepSlot};
 pub use kelir_core::planes::storage::storage_reconciler::CommitStats;
@@ -26,8 +26,8 @@ pub use kelir_interface::protocol_wire::Verdict;
 pub use planes::storage_plane::{FsReconcileRequest, SyntheticFile};
 pub use sandbox_runtime::{Sandbox, SandboxOptions, SandboxProfile};
 pub use session_lifecycle::{
-    ClockHandle, ExecResult, FsHandle, Session, SpawnBuilder, StepStack, TerminalHandle, VmHandle,
-    VsockChannel, VsockHandle, WireHandle,
+    ClockHandle, FsHandle, Session, SpawnResult, StepStack, TerminalHandle, VmHandle, VsockChannel,
+    VsockHandle, WireHandle,
 };
 
 // see: cans/plugins/chaos.md#Plugin-chaos

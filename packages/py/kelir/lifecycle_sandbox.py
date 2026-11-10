@@ -188,5 +188,8 @@ class Sandbox:
             raise EConfig("Sandbox.stop before boot")
         await self._session.stop()
 
+    # see: cans/08-lifecycle.md#Pre-teardown-flush
     async def terminate(self) -> None:
-        await self.stop()
+        if self._session is None:
+            raise EConfig("Sandbox.terminate before boot")
+        await self._session.terminate()

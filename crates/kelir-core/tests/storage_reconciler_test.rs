@@ -13,7 +13,7 @@ use kelir_core::planes::storage::io_storage::{
 use kelir_core::planes::storage::storage_reconciler::{
     FsReconcileRequest, Reconciler, TraversalGuard,
 };
-use kelir_core::planes::storage::{StorageWiring, WorkspaceEncapsulation};
+use kelir_core::planes::storage::{StorageConfig, WorkspaceEncapsulation};
 use kelir_interface::plugin_model::{FsInterposer, HandlerCtx, PluginError};
 use kelir_interface::protocol_wire::{PatchPayload, Verdict};
 use std::os::unix::fs::PermissionsExt;
@@ -411,9 +411,9 @@ fn sp_12_workspace_encapsulation_mode_000() -> Result<(), String> {
         64 * 1024 * 1024,
         1024,
     )
-    .with_wiring(StorageWiring {
+    .with_wiring(StorageConfig {
         encapsulation: WorkspaceEncapsulation::Locked,
-        ..StorageWiring::default()
+        ..StorageConfig::default()
     });
     match std::fs::read_to_string(&lib) {
         Ok(content) => {

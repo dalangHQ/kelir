@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
+from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 import kelir
 from kelir import (
     Caps,
+    ClockHandle,
     Deadline,
     ExecveMutation,
     FilterAction,
@@ -39,6 +42,8 @@ def test_verdict_pass_is_empty() -> None:
     verdict = Verdict.pass_()
     assert verdict.kind == "pass"
     assert verdict.payload == {}
+    assert Verdict.Pass().kind == "pass"
+    assert Verdict.Pass().payload == {}
 
 
 def test_verdict_drop_carries_errno_and_reason() -> None:
@@ -168,23 +173,66 @@ def test_session_plane_handles_raise_econfig_without_native_bridge() -> None:
 
 
 def test_session_attach_requires_l3_bridge() -> None:
+    if not _native_bridge_built():
+        pytest.skip("native _kelir extension is not built; run just build-py")
     with pytest.raises(EConfig, match=r"not 32 hex chars"):
         asyncio.run(Session.attach("nothex"))
     with pytest.raises(EConfig, match=r"Session\.attach \(L3\)"):
         asyncio.run(Session.attach("0123456789abcdef0123456789abcdef"))
 
 
-def test_relay_socket_path_lowercases_hex_session_id() -> None:
-    session_id = "0123456789ABCDEF0123456789ABCDEF"
-    expected = str(Path.home() / ".kelir" / "sessions" / session_id.lower() / "relay.sock")
-    assert relay_socket_path(session_id) == expected
+# see: cans/08-lifecycle.md#Clock-skew
+def test_clock_skew_timedelta_days_equals_86400_seconds() -> None:
+    calls: list[float] = []
+
+    class _StubVm:
+        def clock_skew(self, seconds: float) -> None:
+            calls.append(seconds)
+
+    handle = ClockHandle(_StubVm())
+    asyncio.run(handle.skew(timedelta(days=1)))
+    assert calls == [86400.0]
+    with pytest.raises(EConfig, match=r"timedelta"):
+        asyncio.run(handle.skew(86400.0))
+    with pytest.raises(EConfig, match=r"timedelta"):
+        asyncio.run(handle.skew(86_400_000))
+
+
+def _native_bridge_built() -> bool:
+    return (
+        importlib.util.find_spec("kelir._kelir") is not None
+        or importlib.util.find_spec("_kelir") is not None
+    )
+
+
+def test_relay_socket_path_delegates_to_the_native_bridge() -> None:
+    if not _native_bridge_built():
+        pytest.skip("native _kelir extension is not built; run just build-py")
+    canonical = "ABCDEF0123456789ABCDEF0123456789"
+    expected = str(
+        Path.home() / ".kelir" / "sessions" / canonical.lower() / "relay.sock"
+    )
+    assert relay_socket_path(canonical) == expected
 
 
 def test_relay_socket_path_rejects_non_hex_ids() -> None:
+    if not _native_bridge_built():
+        pytest.skip("native _kelir extension is not built; run just build-py")
     with pytest.raises(EConfig, match=r"not 32 hex chars"):
         relay_socket_path("z" * 32)
     with pytest.raises(EConfig, match=r"not 32 hex chars"):
         relay_socket_path("abc")
+
+
+def test_relay_socket_path_fails_closed_without_the_native_bridge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _missing_bridge() -> Any:
+        raise EConfig("kelir native PyO3 extension (_kelir) is missing: install the precompiled wheel (L3)")
+
+    monkeypatch.setattr(kelir, "_load_native_bridge", _missing_bridge)
+    with pytest.raises(EConfig, match=r"_kelir\) is missing"):
+        relay_socket_path("f" * 32)
 
 
 def test_handler_context_shapes() -> None:
@@ -194,6 +242,101 @@ def test_handler_context_shapes() -> None:
     assert ctx.ctx is None
     with pytest.raises(EConfig, match=r"trap receipt"):
         asyncio.run(ctx.receipt())
+
+
+def test_handler_context_verdict_convenience_constructs_canonical_verdicts() -> None:
+    ctx = HandlerContext()
+    passed = ctx.pass_()
+    assert (passed.kind, passed.payload) == (Verdict.pass_().kind, Verdict.pass_().payload)
+    dropped = ctx.drop("EPERM", "denied here")
+    canonical_drop = Verdict.drop("EPERM", "denied here")
+    assert (dropped.kind, dropped.payload) == (canonical_drop.kind, canonical_drop.payload)
+    patched = ctx.patch(
+        binary="/bin/policy-allow",
+        argv=["policy-allow", "--rewritten"],
+        env={"KELIR_POLICY_REWRITE": "1"},
+    )
+    canonical_patch = Verdict.patch(
+        binary="/bin/policy-allow",
+        argv=["policy-allow", "--rewritten"],
+        env={"KELIR_POLICY_REWRITE": "1"},
+    )
+    assert patched.kind == canonical_patch.kind
+    assert patched.payload["binary"] == canonical_patch.payload["binary"]
+    assert patched.payload["argv"] == canonical_patch.payload["argv"]
+    assert patched.payload["env"] == canonical_patch.payload["env"]
+    assert patched.payload["mutation"].to_wire() == canonical_patch.payload["mutation"].to_wire()
+    suspended = ctx.suspend(Deadline(500))
+    canonical_suspend = Verdict.suspend(until=Deadline(500))
+    assert (suspended.kind, suspended.payload) == (
+        canonical_suspend.kind,
+        canonical_suspend.payload,
+    )
+    aborted = ctx.abort("EPOLICY: abort row")
+    canonical_abort = Verdict.abort("EPOLICY: abort row")
+    assert (aborted.kind, aborted.payload) == (canonical_abort.kind, canonical_abort.payload)
+
+
+# see: cans/02-plugin-model.md#Unified-verdict
+def _canonical_verdict_wire(verdict: Verdict) -> Any:
+    if verdict.kind == "pass":
+        return "Pass"
+    if verdict.kind == "drop":
+        return {
+            "Drop": {
+                "errno": verdict.payload["errno"],
+                "reason": verdict.payload["reason"],
+            }
+        }
+    if verdict.kind == "patch":
+        return {"Patch": {"ExecveMutation": verdict.payload["mutation"].to_wire()}}
+    if verdict.kind == "suspend":
+        until = verdict.payload["until"]
+        if isinstance(until, Deadline):
+            return {"Suspend": {"until": {"Deadline": until.value}}}
+        return {"Suspend": {"until": until}}
+    return {"Abort": {"reason": verdict.payload["reason"]}}
+
+
+def test_handler_context_verdict_convenience_matches_vectors_wire_literals() -> None:
+    ctx = HandlerContext()
+    built = {
+        "trap-git-commit-pass": _canonical_verdict_wire(ctx.pass_()),
+        "trap-git-push-deny-epolicy": _canonical_verdict_wire(
+            ctx.drop("EPERM", "EPOLICY: force push denied")
+        ),
+        "trap-pipe-install-rewrite-execve-mutation": _canonical_verdict_wire(
+            ctx.patch(
+                binary="/usr/local/bin/inspected-curl",
+                argv=["inspected-curl", "-fsS"],
+                env={"KELIR_TAINT": "1"},
+                unset_env=["KELIR_UNTRUSTED"],
+            )
+        ),
+        "trap-mutating-tool-suspend-approval": _canonical_verdict_wire(
+            ctx.suspend("Approval")
+        ),
+        "trap-clock-skew-deadline-suspend": _canonical_verdict_wire(
+            ctx.suspend(Deadline(60000))
+        ),
+        "trap-unverified-caller-abort-ewxviolation": _canonical_verdict_wire(
+            ctx.abort("EWXVIOLATION: unverified caller binary")
+        ),
+    }
+    vectors_path = Path(__file__).resolve().parents[3] / "vectors.json"
+    vectors = json.loads(vectors_path.read_text(encoding="utf-8"))["vectors"]
+    matched = 0
+    for vector in vectors:
+        name = vector["name"]
+        if name not in built:
+            continue
+        matched += 1
+        assert built[name] == vector["expected_verdict"], (
+            f"HandlerContext convenience verdict diverges from the {name} wire literal"
+        )
+    assert matched == len(built), (
+        f"vectors.json lacks the convenience-verdict vectors: matched {matched}"
+    )
 
 
 def test_caps_services_raise_econfig_without_native_bridge() -> None:
@@ -378,6 +521,33 @@ def test_sandbox_export_spec_renders_known_toml_fields(tmp_path: Path) -> None:
     )
 
 
+# see: cans/plugins/profile.md#Bidirectional-extraction
+def test_sandbox_export_spec_round_trips_every_fixture_section(tmp_path: Path) -> None:
+    yaml_module = pytest.importorskip("yaml")
+    fixture = (
+        Path(__file__).resolve().parents[3]
+        / "cans"
+        / "artifacts"
+        / "examples"
+        / "fixtures"
+        / "kelir.yaml"
+    )
+    loaded = yaml_module.safe_load(fixture.read_text(encoding="utf-8"))
+    sandbox = Sandbox.from_profile(loaded, str(fixture))
+    out = tmp_path / "export.yaml"
+    asyncio.run(sandbox.export_spec(str(out)))
+    exported = yaml_module.safe_load(out.read_text(encoding="utf-8"))
+    assert list(exported.keys()) == list(loaded.keys())
+    assert exported == loaded
+
+
+# see: cans/plugins/profile.md#Inversion-of-Control-configuration-router
+def test_sandbox_from_profile_rejects_unknown_root_sections() -> None:
+    profile = {"session": {}, "mystery_section": {"key": "value"}}
+    with pytest.raises(EConfig, match=r"invalid profile schema"):
+        Sandbox.from_profile(profile, "profile.toml")
+
+
 def test_sandbox_before_boot_raises_econfig() -> None:
     sandbox = Sandbox.from_profile({}, "profile.toml")
     with pytest.raises(EConfig, match=r"Sandbox\.exec before boot"):
@@ -392,6 +562,24 @@ def test_sandbox_before_boot_raises_econfig() -> None:
         asyncio.run(sandbox.reconcile())
     with pytest.raises(EConfig, match=r"Sandbox\.stop before boot"):
         asyncio.run(sandbox.stop())
+    with pytest.raises(EConfig, match=r"Sandbox\.terminate before boot"):
+        asyncio.run(sandbox.terminate())
+
+
+def test_sandbox_terminate_routes_to_abrupt_session_verb() -> None:
+    sandbox = Sandbox.from_profile({}, "profile.toml")
+    calls: list[str] = []
+
+    class _StubSession:
+        async def stop(self) -> None:
+            calls.append("stop")
+
+        async def terminate(self) -> None:
+            calls.append("terminate")
+
+    sandbox._session = cast(Any, _StubSession())
+    asyncio.run(sandbox.terminate())
+    assert calls == ["terminate"]
 
 
 def test_sandbox_boot_requires_native_bridge(monkeypatch: pytest.MonkeyPatch) -> None:

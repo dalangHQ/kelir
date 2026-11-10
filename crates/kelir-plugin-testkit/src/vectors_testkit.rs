@@ -272,21 +272,15 @@ fn trap_event(
     argv: Vec<String>,
     envp: HashMap<String, String>,
 ) -> TrapEvent {
-    TrapEvent {
-        seq,
-        pid,
-        ppid,
-        task_id: seq,
-        binary_path: binary_path.to_string(),
-        binary_dev: 2049,
-        binary_ino: 400_000 + seq * 7,
-        binary_blake3: [0x42; 32],
-        argv,
-        envp,
-        cwd: "/workspace".to_string(),
-        syscall: None,
-        ..Default::default()
-    }
+    let mut event = TrapEvent::new(seq, pid, ppid, binary_path);
+    event.task_id = seq;
+    event.binary_dev = 2049;
+    event.binary_ino = 400_000 + seq * 7;
+    event.binary_blake3 = [0x42; 32];
+    event.argv = argv;
+    event.envp = envp;
+    event.cwd = "/workspace".to_string();
+    event
 }
 
 fn trap_case(

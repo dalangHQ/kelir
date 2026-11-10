@@ -203,9 +203,10 @@ fn parse_crate(crate_dir: &Path, interface_consts: &Model) -> Result<Crate, Stri
         .strip_prefix("plugin-")
         .unwrap_or(&dir_name)
         .to_string();
+    // see: cans/15-operations.md#Multi-language-parity-gate
     let mut model = Model {
         structs: Vec::new(),
-        enums: Vec::new(),
+        enums: interface_consts.enums.clone(),
         consts: interface_consts.consts.clone(),
         defaults: Vec::new(),
         plugin_impls: Vec::new(),

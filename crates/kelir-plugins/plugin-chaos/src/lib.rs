@@ -11,16 +11,10 @@ use kelir_interface::plugin_model::{
 };
 use kelir_interface::protocol_wire::{FilterAction, SuspendUntil};
 
+pub use kelir_interface::chaos_types::FaultDirection;
+
 // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
 pub const RST_INJECTION_ERRNO: &str = "ECONNREFUSED";
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum FaultDirection {
-    #[default]
-    Outbound,
-    Inbound,
-    Both,
-}
 
 // see: cans/plugins/chaos.md#Network-chaos
 #[derive(Clone, Debug)]

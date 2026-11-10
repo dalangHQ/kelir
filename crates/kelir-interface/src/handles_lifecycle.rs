@@ -289,6 +289,12 @@ impl VmHandle {
         read_slot(&self.control)
     }
 
+    // see: cans/08-lifecycle.md#Clock-invariants
+    // TODO (L3): read the live guest CLOCK_MONOTONIC through the driver surface; zero defers the clamp to the plane watermark floor.
+    pub fn guest_monotonic_ns(&self) -> u64 {
+        0
+    }
+
     fn bound(&self, op: &str) -> Result<Arc<dyn VmControl>, PluginError> {
         match read_slot(&self.control)? {
             Some(control) => Ok(control),

@@ -377,6 +377,79 @@ fn ffi_queue_saturation_rejects_net_inbound_ring() -> Result<(), String> {
     Ok(())
 }
 
+// see: cans/11-protocol.md#Trap-fast-path
+#[tokio::test]
+async fn interpreter_dash_c_payload_forfeits_trusted_prefix_skip() -> Result<(), String> {
+    let mut engine = PipelineEngine::new();
+    let called = Arc::new(AtomicBool::new(false));
+    engine.bind_trap(Arc::new(CountingTrap {
+        called: Arc::clone(&called),
+    }));
+    let mut event = trap_event();
+    event.binary_path = "/bin/sh".to_string();
+    event.argv = vec![
+        "sh".to_string(),
+        "-c".to_string(),
+        "git push --force".to_string(),
+    ];
+    let ctx = trap_ctx();
+    engine
+        .dispatch_trap(&event, &ctx)
+        .await
+        .map_err(|e| e.to_string())?;
+    assert!(
+        called.load(Ordering::SeqCst),
+        "sh -c payload kept the trusted-prefix skip and never crossed Gate 3"
+    );
+    Ok(())
+}
+
+// see: cans/11-protocol.md#Trap-fast-path
+#[tokio::test]
+async fn interpreter_trusted_script_keeps_trusted_prefix_skip() -> Result<(), String> {
+    let mut engine = PipelineEngine::new();
+    let called = Arc::new(AtomicBool::new(false));
+    engine.bind_trap(Arc::new(CountingTrap {
+        called: Arc::clone(&called),
+    }));
+    let mut event = trap_event();
+    event.binary_path = "/bin/sh".to_string();
+    event.argv = vec!["sh".to_string(), "/usr/bin/ls".to_string()];
+    let ctx = trap_ctx();
+    engine
+        .dispatch_trap(&event, &ctx)
+        .await
+        .map_err(|e| e.to_string())?;
+    assert!(
+        !called.load(Ordering::SeqCst),
+        "sh /usr/bin/ls forfeited the trusted-prefix skip without an escaping argv entry"
+    );
+    Ok(())
+}
+
+// see: cans/11-protocol.md#Trap-fast-path
+#[tokio::test]
+async fn interpreter_relative_script_forfeits_trusted_prefix_skip() -> Result<(), String> {
+    let mut engine = PipelineEngine::new();
+    let called = Arc::new(AtomicBool::new(false));
+    engine.bind_trap(Arc::new(CountingTrap {
+        called: Arc::clone(&called),
+    }));
+    let mut event = trap_event();
+    event.binary_path = "/usr/bin/python3".to_string();
+    event.argv = vec!["python3".to_string(), "script.py".to_string()];
+    let ctx = trap_ctx();
+    engine
+        .dispatch_trap(&event, &ctx)
+        .await
+        .map_err(|e| e.to_string())?;
+    assert!(
+        called.load(Ordering::SeqCst),
+        "relative script argv kept the trusted-prefix skip without EROFS resolution"
+    );
+    Ok(())
+}
+
 #[test]
 fn ffi_queue_saturation_rejects_host_lsm_exec_ring() -> Result<(), String> {
     let mut engine = PipelineEngine::new();

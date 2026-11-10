@@ -8,14 +8,14 @@ use pyo3::types::{PyAny, PyDict, PyList};
 
 use kelir_core::planes::storage::storage_synthetic::SyntheticFile;
 use kelir_core::planes::storage::{
-    IdmapConfig, LockBrokerWiring, MaskReadConfig, MaskReadRule, ReadMaskEngine, StorageWiring,
+    IdmapConfig, LockBrokerWiring, MaskReadConfig, MaskReadRule, ReadMaskEngine, StorageConfig,
     WorkspaceEncapsulation,
 };
 
 // see: cans/05-storage-plane.md#Storage-architecture
 #[derive(Default)]
-pub struct PyStorageConfig {
-    pub wiring: StorageWiring,
+pub struct PyStorageProjection {
+    pub config: StorageConfig,
     pub synthetic_files: Vec<SyntheticFile>,
 }
 
@@ -48,8 +48,8 @@ fn field_u32(obj: &Bound<'_, PyAny>, name: &str, what: &str) -> PyResult<u32> {
 }
 
 // see: cans/05-storage-plane.md#Storage-architecture
-pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageConfig> {
-    let mut wiring = StorageWiring::default();
+pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageProjection> {
+    let mut config = StorageConfig::default();
     let mut synthetic_files = Vec::new();
     let mut shared_caches: Option<Vec<String>> = None;
     let mut lock_broker_flag: Option<bool> = None;
@@ -71,7 +71,7 @@ pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageConfig> {
                 })?);
             }
             "idmap" => {
-                wiring.idmap = Some(IdmapConfig {
+                config.idmap = Some(IdmapConfig {
                     guest_uid: field_u32(&value, "guest_uid", "idmap")?,
                     host_uid: field_u32(&value, "host_uid", "idmap")?,
                 });
@@ -99,7 +99,7 @@ pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageConfig> {
                 let raw = value
                     .extract::<String>()
                     .map_err(|_| PyValueError::new_err("storage encapsulation is not a str"))?;
-                wiring.encapsulation = match raw.as_str() {
+                config.encapsulation = match raw.as_str() {
                     "Locked" => WorkspaceEncapsulation::Locked,
                     "Passthrough" => WorkspaceEncapsulation::Passthrough,
                     other => {
@@ -155,25 +155,25 @@ pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageConfig> {
             }
         }
     }
-    wiring.shared_caches = shared_caches
+    config.shared_caches = shared_caches
         .as_ref()
         .map(|caches| caches.iter().map(PathBuf::from).collect())
         .unwrap_or_default();
     if lock_broker_flag == Some(true) {
-        wiring.lock_broker = Some(LockBrokerWiring {
+        config.lock_broker = Some(LockBrokerWiring {
             scope_globs: shared_caches.unwrap_or_default(),
             non_blocking: false,
         });
     }
     if mask_engine.is_some() || carryover_bytes.is_some() || !mask_rules.is_empty() {
-        wiring.mask_read = Some(MaskReadConfig {
+        config.mask_read = Some(MaskReadConfig {
             engine: mask_engine.unwrap_or_default(),
             carryover_bytes: carryover_bytes.unwrap_or(0),
             rules: mask_rules,
         });
     }
-    Ok(PyStorageConfig {
-        wiring,
+    Ok(PyStorageProjection {
+        config,
         synthetic_files,
     })
 }

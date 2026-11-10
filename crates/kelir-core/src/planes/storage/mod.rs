@@ -54,7 +54,7 @@ pub struct StoragePlane {
     reconciler: OnceLock<storage_reconciler::Reconciler>,
     lock_broker: OnceLock<Arc<lock_broker::LockBroker>>,
     lock_namespace: [u8; 16],
-    wiring: StorageWiring,
+    wiring: StorageConfig,
     fuse_worker: OnceLock<Mutex<fuse_storage::FuseWorker>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     synthetic_files: Vec<storage_synthetic::SyntheticFile>,
@@ -106,7 +106,7 @@ pub enum WorkspaceEncapsulation {
 
 // see: cans/05-storage-plane.md#Storage-architecture
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct StorageWiring {
+pub struct StorageConfig {
     pub shared_caches: Vec<PathBuf>,
     pub lock_broker: Option<LockBrokerWiring>,
     pub idmap: Option<IdmapConfig>,
@@ -135,7 +135,7 @@ impl StoragePlane {
             reconciler: OnceLock::new(),
             lock_broker: OnceLock::new(),
             lock_namespace: [0; 16],
-            wiring: StorageWiring::default(),
+            wiring: StorageConfig::default(),
             fuse_worker: OnceLock::new(),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             synthetic_files: Vec::new(),
@@ -144,13 +144,13 @@ impl StoragePlane {
 
     // see: cans/05-storage-plane.md#Storage-architecture
     // TODO (L3): plane engines consume wiring (idmap remap, mask-read scan, encapsulation chmod, shared-cache mounts) per cans/05.
-    pub fn with_wiring(mut self, wiring: StorageWiring) -> Self {
+    pub fn with_wiring(mut self, wiring: StorageConfig) -> Self {
         self.wiring = wiring;
         self
     }
 
     // see: cans/05-storage-plane.md#Storage-architecture
-    pub fn wiring(&self) -> &StorageWiring {
+    pub fn wiring(&self) -> &StorageConfig {
         &self.wiring
     }
 

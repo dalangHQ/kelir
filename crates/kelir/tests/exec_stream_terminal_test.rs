@@ -38,7 +38,7 @@ fn tp_09_exec_stream_sublane_stdio_fidelity() -> Result<(), String> {
     );
     let session = block_on(KelirBuilder::new(config).boot()).map_err(|e| e.to_string())?;
     let session_id = session.session_id();
-    let spawned = block_on(session.spawn("/bin/emit_raw_bytes"));
+    let spawned = block_on(session.spawn("/bin/emit_raw_bytes", &[]));
     let finished = match spawned {
         Ok(exec) => exec,
         Err(e) => {

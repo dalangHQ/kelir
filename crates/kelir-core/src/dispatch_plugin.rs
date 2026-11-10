@@ -174,52 +174,30 @@ impl Default for PipelineEngine {
 }
 
 impl PipelineBinder for PipelineEngine {
-    fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>) {
-        self.bind_fs_scoped(stage, MountScope::default());
-    }
     fn bind_fs_scoped(&mut self, stage: Arc<dyn FsInterposer>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.fs_interceptors.push(stage);
         self.fs_scopes.push(scope);
-    }
-    fn bind_net(&mut self, stage: Arc<dyn NetInterposer>) {
-        self.bind_net_scoped(stage, MountScope::default());
     }
     fn bind_net_scoped(&mut self, stage: Arc<dyn NetInterposer>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.net_interceptors.push(stage);
         self.net_scopes.push(scope);
     }
-    fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>) {
-        self.bind_trap_scoped(stage, MountScope::default());
-    }
     fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.trap_interceptors.push(stage);
         self.trap_scopes.push(scope);
-    }
-    fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>) {
-        self.bind_console_scoped(stage, MountScope::default());
     }
     fn bind_console_scoped(&mut self, stage: Arc<dyn ConsoleInterposer>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.console_interceptors.push(stage);
         self.console_scopes.push(scope);
     }
-    fn bind_host(&mut self, stage: Arc<dyn HostInterposer>) {
-        self.bind_host_scoped(stage, MountScope::default());
-    }
     fn bind_host_scoped(&mut self, stage: Arc<dyn HostInterposer>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.host_interceptors.push(stage);
         self.host_scopes.push(scope);
-    }
-    fn bind_vsock_service(
-        &mut self,
-        spec: VsockServiceSpec,
-        service: Arc<dyn VsockServiceHandler>,
-    ) {
-        self.bind_vsock_service_scoped(spec, service, MountScope::default());
     }
     fn bind_vsock_service_scoped(
         &mut self,
@@ -608,8 +586,12 @@ impl PipelineEngine {
         ctx: &HandlerCtx,
         session: Option<&Session>,
     ) -> Result<Verdict, PluginError> {
-        if event.syscall.is_some() {
+        if let Some(syscall) = &event.syscall {
             self.metrics.record_syscall();
+            // see: cans/14-observability.md#Metrics-pipeline
+            if syscall.nr == libc::SYS_execve || syscall.nr == libc::SYS_execveat {
+                self.metrics.exec_started();
+            }
         }
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::Trap)?;
@@ -651,7 +633,7 @@ impl PipelineEngine {
         ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
         self.metrics.record_exec();
-        // TODO (L3): exec_started pairs with this finish once the L3 exec spawn path dispatches it.
+        // TODO (L3): in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started.
         self.metrics.exec_finished();
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::ProcessExit)?;

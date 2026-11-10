@@ -78,3 +78,24 @@ pub mod serde_hex_32 {
         super::decode_hex_fixed::<32>(&text).map_err(D::Error::custom)
     }
 }
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+pub mod serde_hex_64 {
+    use serde::de::Error;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(bytes: &[u8; 64], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&super::encode_hex(bytes))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 64], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        super::decode_hex_fixed::<64>(&text).map_err(D::Error::custom)
+    }
+}

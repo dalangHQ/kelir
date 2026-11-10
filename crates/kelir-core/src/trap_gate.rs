@@ -154,10 +154,13 @@ impl TrapGateEvaluator {
     fn interpreter_argv_escapes(&self, event: &TrapEvent) -> bool {
         // TODO (L3): flag/value-aware argv parse (-c/-m payloads, relative script resolution against event.cwd).
         event.argv.iter().skip(1).any(|arg| {
-            let Some(path) = arg.strip_prefix('/') else {
-                return false;
-            };
-            !self.is_trusted_path(path)
+            if arg == "-c" || arg == "-e" {
+                return true;
+            }
+            if arg.starts_with('/') {
+                return !self.is_trusted_path(arg);
+            }
+            !arg.starts_with('-')
         })
     }
 

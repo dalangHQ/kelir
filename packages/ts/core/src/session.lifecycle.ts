@@ -24,22 +24,37 @@ import type {
 } from "./context.lifecycle.types.js";
 import { EConfig } from "./errors.sdk.js";
 
-declare const process: {
-  readonly env: Readonly<Record<string, string | undefined>>;
-};
+// see: cans/03-sdk-architecture.md#Cross-SDK-guarantees
+interface NativeRelayBridge {
+  readonly relaySocketPath: (sessionId: string) => string;
+}
 
-// see: cans/08-lifecycle.md#Detached-lifecycle
-export function relaySocketPath(sessionId: string): string {
-  if (!/^[0-9a-fA-F]{32}$/.test(sessionId)) {
+// see: cans/03-sdk-architecture.md#Cross-SDK-guarantees
+async function loadNativeRelayBridge(): Promise<NativeRelayBridge> {
+  const specifier = "./native/kelir.node";
+  try {
+    // TODO (L3): ship the precompiled NAPI addon next to the dist bundle and verify its ABI version.
+    const addon = (await import(specifier)) as unknown as {
+      readonly default?: NativeRelayBridge;
+    };
+    return (addon.default ?? addon) as NativeRelayBridge;
+  } catch {
     throw new EConfig(
-      `attach: session id \`${sessionId}\` is not 32 hex chars`,
+      "kelir native NAPI addon is missing: install the precompiled @kelir/core native build (L3)",
     );
   }
-  const home = process.env.HOME;
-  if (home === undefined || home === "") {
-    throw new EConfig("HOME is not set; cannot locate ~/.kelir relay socket");
+}
+
+// see: cans/08-lifecycle.md#Detached-lifecycle
+export async function relaySocketPath(sessionId: string): Promise<string> {
+  const bridge = await loadNativeRelayBridge();
+  try {
+    return bridge.relaySocketPath(sessionId);
+  } catch (error) {
+    throw new EConfig(
+      error instanceof Error ? error.message : String(error),
+    );
   }
-  return `${home}/.kelir/sessions/${sessionId.toLowerCase()}/relay.sock`;
 }
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
@@ -264,7 +279,7 @@ export class Session {
 
   // see: cans/08-lifecycle.md#Detached-lifecycle
   static async attach(sessionId: string): Promise<Session> {
-    const relay = relaySocketPath(sessionId);
+    const relay = await relaySocketPath(sessionId);
     void relay;
     // TODO (L3): connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.
     throw new EConfig("TODO: Session.attach (L3)");

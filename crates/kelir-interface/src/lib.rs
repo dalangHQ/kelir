@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3): tests/unit_codec.rs + tests/unit_traits.rs per cans/artifacts/config/project-structure.txt.
+pub mod chaos_types;
 pub mod codec_protocol;
 pub mod credential_vault;
 pub mod driver_interface;

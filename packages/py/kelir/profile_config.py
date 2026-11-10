@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 
 def _profile_int_guard(value: Any) -> Any:
@@ -99,5 +99,16 @@ class SessionProfile(BaseModel):
 
 # TODO (L3): route non-session namespaces to their ConfigurablePlugin schema owners per cans/plugins/profile.md#Inversion-of-Control-configuration-router.
 class ProfileConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     version: ProfileInt | None = None
+    invariants: dict[str, Any] | None = None
+    driver: dict[str, Any] | None = None
     session: SessionProfile | None = None
+    storage: dict[str, Any] | None = None
+    wire: dict[str, Any] | None = None
+    terminal: dict[str, Any] | None = None
+    checkpoint: dict[str, Any] | None = None
+    host: dict[str, Any] | None = None
+    plugins: dict[str, Any] | None = None
+    attestation: dict[str, Any] | None = None

@@ -54,8 +54,15 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         &self.core
     }
 
-    // see: cans/02-plugin-model.md#Static-dispatch
-    pub fn spawn(&self, binary: &str) -> SpawnBuilder {
+    // see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
+    pub async fn spawn(&self, binary: &str, argv: &[&str]) -> Result<SpawnResult, PluginError> {
+        let mut builder = self.spawn_builder(binary);
+        builder.args.extend(argv.iter().map(|arg| arg.to_string()));
+        builder.await
+    }
+
+    // see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
+    pub fn spawn_builder(&self, binary: &str) -> SpawnBuilder {
         SpawnBuilder::default()
             .args([binary])
             .bind(self.core.session_id(), StreamKind::Exec)
@@ -113,8 +120,8 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
 }
 
 impl Session<HNil, NoParams> {
-    // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn attach(session_id: &[u8; 16]) -> Result<Self, PluginError> {
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    pub async fn attach(session_id: &[u8; 16]) -> Result<Self, PluginError> {
         let core = kelir_core::Session::attach(session_id)?;
         Ok(Self::from_parts(core, HNil, Registration::default()))
     }
@@ -134,9 +141,12 @@ impl<Plugins: HList, Params> std::ops::DerefMut for Session<Plugins, Params> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ExecResult {
+// see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
+#[derive(Debug, Clone, Default)]
+pub struct SpawnResult {
     pub exit_code: i32,
+    pub stdout: Option<String>,
+    pub stderr: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -247,7 +257,7 @@ impl SpawnBuilder {
 }
 
 impl Future for SpawnBuilder {
-    type Output = Result<ExecResult, PluginError>;
+    type Output = Result<SpawnResult, PluginError>;
 
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         if self.session_id.is_none() {

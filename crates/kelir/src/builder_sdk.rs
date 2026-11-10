@@ -16,7 +16,7 @@ use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
-use crate::planes::storage_plane::{LockBrokerConfig, LockScope, StorageConfig};
+use crate::planes::storage_plane::{LockBrokerConfig, LockScope, StoragePlaneConfig};
 use crate::planes::terminal_plane::PtyConfig;
 use crate::planes::wire_plane::{TapFilter, WireConfig};
 use crate::plugin_model::KelirPlugin;
@@ -76,14 +76,6 @@ impl TrapFilter {
         }
         self.args.iter().all(|arg| event.argv.contains(arg))
     }
-}
-
-pub fn handler<F, Fut, A, O>(f: F) -> F
-where
-    F: Fn(A) -> Fut,
-    Fut: Future<Output = Result<O, Box<dyn std::error::Error + Send + Sync>>>,
-{
-    f
 }
 
 pub struct LifecycleMut<'a> {
@@ -250,7 +242,7 @@ impl VsockServiceHandler for BuilderVsockService {
 pub(crate) struct Registration<Plugins: HList> {
     pub(crate) instances: Vec<(Box<dyn AnyPlugin>, MountScope)>,
     pub(crate) traps: Vec<TrapEntry<Plugins>>,
-    pub(crate) storage_cfg: Option<StorageConfig<Plugins, NoParams>>,
+    pub(crate) storage_cfg: Option<StoragePlaneConfig<Plugins, NoParams>>,
     pub(crate) terminal_cfg: Option<PtyConfig>,
     pub(crate) wire_cfg: Option<WireConfig>,
     pub(crate) lock_broker_cfg: Option<LockBrokerConfig>,
@@ -373,7 +365,7 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
         }
     }
 
-    pub fn storage(mut self, config: StorageConfig<Plugins, Params>) -> Self {
+    pub fn storage(mut self, config: StoragePlaneConfig<Plugins, Params>) -> Self {
         self.registration.storage_cfg = Some(config.retag());
         self
     }
@@ -603,7 +595,7 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
         // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
         // TODO (L3): plumb FastBootMode into DriverRouter::load_native_driver.
         let _ = (self.fast_boot, self.dax_window);
-        let storage = self.storage_wiring();
+        let storage = self.storage_config();
         let mut registration = self.registration;
         let plugins: Vec<kelir_core::PluginRegistration> = registration
             .instances
@@ -703,9 +695,9 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
 
     // see: cans/05-storage-plane.md#Storage-architecture
     // TODO (L3): snoop on_write closures register as engine FsInterposer hooks at seal per cans/02-plugin-model.md#Unified-interposition-pipeline.
-    fn storage_wiring(&self) -> kelir_core::planes::storage::StorageWiring {
+    fn storage_config(&self) -> kelir_core::planes::storage::StorageConfig {
         let Some(cfg) = self.registration.storage_cfg.as_ref() else {
-            return kelir_core::planes::storage::StorageWiring::default();
+            return kelir_core::planes::storage::StorageConfig::default();
         };
         let lock_broker = self
             .registration
@@ -724,7 +716,7 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
                         non_blocking: false,
                     })
             });
-        kelir_core::planes::storage::StorageWiring {
+        kelir_core::planes::storage::StorageConfig {
             shared_caches: cfg
                 .shared_caches
                 .iter()

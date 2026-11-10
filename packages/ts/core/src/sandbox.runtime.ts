@@ -140,6 +140,14 @@ export class Sandbox {
     return this.booted.suspend(path);
   }
 
+  // see: cans/08-lifecycle.md#Suspend-and-resume
+  async resume(path: string): Promise<void> {
+    if (this.booted === null) {
+      throw new EConfig("Sandbox.resume before boot");
+    }
+    return this.booted.resume(path);
+  }
+
   async reconcile(options: {
     cwd: string;
     atomicStaging?: boolean;
@@ -163,7 +171,11 @@ export class Sandbox {
     return this.booted.stop();
   }
 
+  // see: cans/08-lifecycle.md#Pre-teardown-flush
   async terminate(): Promise<void> {
-    return this.stop();
+    if (this.booted === null) {
+      throw new EConfig("Sandbox.terminate before boot");
+    }
+    return this.booted.terminate();
   }
 }

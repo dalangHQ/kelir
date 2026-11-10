@@ -20,7 +20,7 @@ use crate::pgwire_db_proxy::PgFrameDescriptor;
 use crate::reassembler_wire::{
     FlowKey, NetDirection, NetPlaneState, SegmentOutcome, TCP_FLAG_RST, parse_tcp_segment,
 };
-use crate::service_db_proxy::{SqlDialect, SqlProxy, StatementHandle};
+use crate::service_db_proxy::{SqlDialect, SqlProxy};
 use crate::sqlite_db_proxy::SqliteBridge;
 
 // see: cans/artifacts/examples/db-backed-runtime.py#PgWireRewrite
@@ -185,36 +185,9 @@ pub struct SqlProxyCtx {
 }
 
 impl SqlProxyCtx {
-    pub fn proxy(&self) -> &Arc<SqlProxy> {
+    // see: cans/02-plugin-model.md#KelirPlugin-trait
+    pub fn service(&self) -> &Arc<SqlProxy> {
         &self.proxy
-    }
-}
-
-// see: cans/plugins/transaction.md#Crate-dependencies-(transaction)
-#[async_trait::async_trait]
-impl SqlProxyService for SqlProxyCtx {
-    async fn dialect(&self) -> Result<SqlDialect, PluginError> {
-        self.proxy.dialect().await
-    }
-
-    async fn register_statement(&self, sql: &str) -> Result<StatementHandle, PluginError> {
-        self.proxy.register_statement(sql).await
-    }
-
-    async fn lookup_statement(&self, handle: StatementHandle) -> Result<String, PluginError> {
-        self.proxy.lookup_statement(handle).await
-    }
-
-    async fn issue_commit(&self) -> Result<(), PluginError> {
-        self.proxy.issue_commit().await
-    }
-
-    async fn issue_rollback(&self) -> Result<(), PluginError> {
-        self.proxy.issue_rollback().await
-    }
-
-    async fn inject_savepoint(&self, marker: &str) -> Result<(), PluginError> {
-        self.proxy.inject_savepoint(marker).await
     }
 }
 

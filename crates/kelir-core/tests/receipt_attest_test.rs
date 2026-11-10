@@ -37,13 +37,15 @@ fn load_receipt(wall: u64, ffi: u64, dirty: u64) -> Result<ExecutionReceipt, Str
 // see: cans/artifacts/test-plan/cases/attestation_receipts/ar_06_exit_kind_kernel_panic_uart_scrape.yaml#case_id
 #[test]
 fn ar_06_exit_kind_kernel_panic_uart_scrape() -> Result<(), String> {
-    let clean = decode_early_boot_exit(b"early boot ok\nloading kernel\n");
+    let clean = decode_early_boot_exit(b"early boot ok\nloading kernel\n", None);
     match clean {
         None => {}
         Some(kind) => return Err(format!("clean output decoded as exit: {kind:?}")),
     }
-    let panicked =
-        decode_early_boot_exit(b"booting...\nKernel panic - not syncing: test_early_boot_oops\n");
+    let panicked = decode_early_boot_exit(
+        b"booting...\nKernel panic - not syncing: test_early_boot_oops\n",
+        None,
+    );
     match panicked {
         Some(ExitKind::KernelPanic(message)) => {
             assert!(message.contains("test_early_boot_oops"));
@@ -51,6 +53,31 @@ fn ar_06_exit_kind_kernel_panic_uart_scrape() -> Result<(), String> {
         other => {
             return Err(format!(
                 "panic line did not decode to KernelPanic: {other:?}"
+            ));
+        }
+    }
+    let faulted = decode_early_boot_exit(
+        b"booting...\nKernel panic - not syncing: test_early_boot_oops\n",
+        Some("kvm exit 0x80000021 (hypervisor fault)"),
+    );
+    match faulted {
+        Some(ExitKind::HypervisorFault(message)) => {
+            assert!(message.contains("kvm exit 0x80000021"));
+        }
+        other => {
+            return Err(format!(
+                "out-of-band hypervisor fault did not decode to HypervisorFault: {other:?}"
+            ));
+        }
+    }
+    let clean_fault = decode_early_boot_exit(b"early boot ok\n", Some("hvmm fault line"));
+    match clean_fault {
+        Some(ExitKind::HypervisorFault(message)) => {
+            assert!(message.contains("hvmm fault line"));
+        }
+        other => {
+            return Err(format!(
+                "hypervisor fault without ring panic did not decode to HypervisorFault: {other:?}"
             ));
         }
     }
@@ -94,7 +121,10 @@ fn ar_10_receipt_struct_exhaustiveness_lint() -> Result<(), String> {
     assert_eq!(receipt.binary_path, "/bin/true");
     assert_eq!(
         receipt.binary_blake3,
-        "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+        kelir_interface::hex_codec::decode_hex_fixed::<32>(
+            "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+        )
+        .map_err(|e| e.to_string())?
     );
     match &receipt.exit_kind {
         ExitKind::Normal => {}
@@ -184,7 +214,9 @@ async fn ar_07_exit_code_patch_chain_divergence() -> Result<(), String> {
     };
     let ctx: HandlerCtx<(), ()> = HandlerCtx::new([0u8; 16], 42, (), Vec::new()).with_trap(trap);
     let receipt = ctx.receipt().await.map_err(|e| e.to_string())?;
-    if receipt.binary_blake3 != AR07_FINAL_HEX {
+    let final_blake3 = kelir_interface::hex_codec::decode_hex_fixed::<32>(AR07_FINAL_HEX)
+        .map_err(|e| e.to_string())?;
+    if receipt.binary_blake3 != final_blake3 {
         return Err(format!(
             "receipt.binary_blake3 = {:?}; the receipt must record the FINAL binary of the rewrite chain {AR07_FINAL_HEX} while the frozen trap keeps the original {AR07_ORIGINAL_HEX}",
             receipt.binary_blake3

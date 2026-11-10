@@ -27,13 +27,16 @@ pub enum ExitKind {
     HardKilled,
 }
 
+// see: cans/10-attestation.md#Execution-receipts
+// see: cans/11-protocol.md#Wire-framing
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionReceipt {
     pub pid: u32,
     pub binary_path: String,
-    pub binary_blake3: String,
+    #[serde(with = "crate::hex_codec::serde_hex_32")]
+    pub binary_blake3: [u8; 32],
     pub exit_kind: ExitKind,
     pub correlation_token: Option<String>,
     pub dirty_bytes: u64,
@@ -46,6 +49,7 @@ pub struct ExecutionReceipt {
     pub extensions: Vec<ReceiptExtension>,
 }
 
+// TODO (L3): consumed by cans/10-attestation.md#Attestation-provenance-classification session-token verification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttestationToken {
     pub session_token: String,

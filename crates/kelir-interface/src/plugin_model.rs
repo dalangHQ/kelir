@@ -17,8 +17,26 @@ use crate::driver_interface::{
 pub use crate::handlers_plugin::{
     ConsoleContext, ExecContext, FsContext, HandlerCtx, Has, HostContext, NetContext,
 };
-use crate::protocol_wire::{FilterAction, ProcessExit, SuspendUntil, TrapEvent, Verdict};
+use crate::protocol_wire::{
+    FilterAction, ProcessExit, StreamKind, SuspendUntil, TrapEvent, Verdict,
+};
 use crate::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
+
+// see: cans/02-plugin-model.md#Plugin-ownership
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginRegistration {
+    pub name: String,
+    pub enabled: bool,
+}
+
+impl PluginRegistration {
+    pub fn new(name: impl Into<String>, enabled: bool) -> Self {
+        Self {
+            name: name.into(),
+            enabled,
+        }
+    }
+}
 
 // see: cans/artifacts/code/plugin-trait.rs#PluginError
 #[derive(Error, Debug)]
@@ -36,6 +54,53 @@ pub enum PluginError {
     #[error("Plugin halted: {0}")]
     Halt(String),
 }
+
+// see: cans/02-plugin-model.md#Declarative-error-mapping
+impl PartialEq for PluginError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::FfiQueueSaturated { depth: left }, Self::FfiQueueSaturated { depth: right }) => {
+                left == right
+            }
+            (
+                Self::WxViolation {
+                    pid: left_pid,
+                    operation: left_operation,
+                },
+                Self::WxViolation {
+                    pid: right_pid,
+                    operation: right_operation,
+                },
+            ) => left_pid == right_pid && left_operation == right_operation,
+            (
+                Self::AmbiguousMutation {
+                    resource: left_resource,
+                    conflict: left_conflict,
+                },
+                Self::AmbiguousMutation {
+                    resource: right_resource,
+                    conflict: right_conflict,
+                },
+            ) => left_resource == right_resource && left_conflict == right_conflict,
+            (
+                Self::Reject {
+                    errno: left_errno,
+                    reason: left_reason,
+                },
+                Self::Reject {
+                    errno: right_errno,
+                    reason: right_reason,
+                },
+            ) => left_errno == right_errno && left_reason == right_reason,
+            (Self::Io(left), Self::Io(right)) => left.kind() == right.kind(),
+            (Self::Halt(left), Self::Halt(right)) => left == right,
+            _ => false,
+        }
+    }
+}
+
+// see: cans/02-plugin-model.md#Declarative-error-mapping
+impl Eq for PluginError {}
 
 impl PluginError {
     pub fn ambiguous_mutation(resource: impl Into<String>, conflict: impl Into<String>) -> Self {
@@ -97,11 +162,13 @@ pub enum ExecutionTier {
 pub const PANIC_QUARANTINE_ENABLED: bool = true;
 
 // see: cans/artifacts/code/plugin-trait.rs#MountScope
+// see: cans/02-plugin-model.md#Mount-scoping
 #[derive(Debug, Clone, Default)]
 pub struct MountScope {
     pub devices: Option<Vec<VirtioDevice>>,
     pub binaries: Option<Vec<String>>,
     pub paths: Option<Vec<PathBuf>>,
+    pub stream_kinds: Option<Vec<StreamKind>>,
 }
 
 impl MountScope {
@@ -120,6 +187,12 @@ impl MountScope {
 
     pub fn with_paths<I: IntoIterator<Item = P>, P: Into<PathBuf>>(mut self, paths: I) -> Self {
         self.paths = Some(paths.into_iter().map(Into::into).collect());
+        self
+    }
+
+    // see: cans/02-plugin-model.md#Mount-scoping
+    pub fn with_stream_kinds<I: IntoIterator<Item = StreamKind>>(mut self, kinds: I) -> Self {
+        self.stream_kinds = Some(kinds.into_iter().collect());
         self
     }
 
@@ -143,13 +216,27 @@ impl MountScope {
                 (None, Some(b)) => Some(b.clone()),
                 (None, None) => None,
             },
+            stream_kinds: match (&self.stream_kinds, &parent.stream_kinds) {
+                (Some(a), Some(b)) => Some(a.iter().filter(|k| b.contains(k)).copied().collect()),
+                (Some(a), None) => Some(a.clone()),
+                (None, Some(b)) => Some(b.clone()),
+                (None, None) => None,
+            },
         }
     }
 
+    // TODO (L3): canonical (st_dev, st_ino, binary_blake3) — cans/11-protocol.md#Trap-fast-path
+    // see: cans/02-plugin-model.md#Filter-before-FFI-gate
     pub fn allows_binary(&self, binary: &str) -> bool {
         match &self.binaries {
             None => true,
-            Some(list) => list.is_empty() || list.iter().any(|item| item == binary),
+            Some(list) => {
+                list.is_empty()
+                    || Path::new(binary)
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| list.iter().any(|item| item == name))
+            }
         }
     }
 
@@ -164,6 +251,14 @@ impl MountScope {
         match &self.devices {
             None => true,
             Some(list) => list.is_empty() || list.contains(&device),
+        }
+    }
+
+    // see: cans/02-plugin-model.md#Mount-scoping
+    pub fn allows_stream_kind(&self, kind: StreamKind) -> bool {
+        match &self.stream_kinds {
+            None => true,
+            Some(list) => list.is_empty() || list.contains(&kind),
         }
     }
 }
@@ -225,6 +320,7 @@ pub struct LifecycleCtx<'a> {
     pub session_id: &'a str,
     driver: &'a mut dyn VmmDriver,
     vetoes: &'a mut VetoList,
+    watchdog_probe: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl<'a> LifecycleCtx<'a> {
@@ -239,6 +335,21 @@ impl<'a> LifecycleCtx<'a> {
             session_id,
             driver,
             vetoes,
+            watchdog_probe: None,
+        }
+    }
+
+    // see: cans/08-lifecycle.md#Watchdog
+    pub fn new_with_watchdog_probe(
+        config: &'a VmConfig,
+        session_id: &'a str,
+        driver: &'a mut dyn VmmDriver,
+        vetoes: &'a mut VetoList,
+        watchdog_probe: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        Self {
+            watchdog_probe: Some(watchdog_probe),
+            ..Self::new(config, session_id, driver, vetoes)
         }
     }
 
@@ -248,6 +359,9 @@ impl<'a> LifecycleCtx<'a> {
         timeout: Duration,
         action: WatchdogAction,
     ) -> Result<(), PluginError> {
+        if let Some(probe) = &self.watchdog_probe {
+            probe.store(true, std::sync::atomic::Ordering::Release);
+        }
         self.driver
             .set_watchdog(timeout, action)
             .await
@@ -406,41 +520,40 @@ where
 // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
 // see: cans/artifacts/code/plugin-trait.rs#PipelineBinder
 pub trait PipelineBinder {
-    fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>);
-    fn bind_fs_scoped(&mut self, stage: Arc<dyn FsInterposer>, scope: MountScope) {
-        let _ = scope;
-        self.bind_fs(stage);
+    // see: cans/02-plugin-model.md#Mount-scoping
+    fn bind_fs(&mut self, stage: Arc<dyn FsInterposer>) {
+        self.bind_fs_scoped(stage, MountScope::default());
     }
-    fn bind_net(&mut self, stage: Arc<dyn NetInterposer>);
-    fn bind_net_scoped(&mut self, stage: Arc<dyn NetInterposer>, scope: MountScope) {
-        let _ = scope;
-        self.bind_net(stage);
+    fn bind_fs_scoped(&mut self, stage: Arc<dyn FsInterposer>, scope: MountScope);
+    fn bind_net(&mut self, stage: Arc<dyn NetInterposer>) {
+        self.bind_net_scoped(stage, MountScope::default());
     }
-    fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>);
-    fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope) {
-        let _ = scope;
-        self.bind_trap(stage);
+    fn bind_net_scoped(&mut self, stage: Arc<dyn NetInterposer>, scope: MountScope);
+    fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>) {
+        self.bind_trap_scoped(stage, MountScope::default());
     }
-    fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>);
-    fn bind_console_scoped(&mut self, stage: Arc<dyn ConsoleInterposer>, scope: MountScope) {
-        let _ = scope;
-        self.bind_console(stage);
+    fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope);
+    fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>) {
+        self.bind_console_scoped(stage, MountScope::default());
     }
-    fn bind_host(&mut self, stage: Arc<dyn HostInterposer>);
-    fn bind_host_scoped(&mut self, stage: Arc<dyn HostInterposer>, scope: MountScope) {
-        let _ = scope;
-        self.bind_host(stage);
+    fn bind_console_scoped(&mut self, stage: Arc<dyn ConsoleInterposer>, scope: MountScope);
+    fn bind_host(&mut self, stage: Arc<dyn HostInterposer>) {
+        self.bind_host_scoped(stage, MountScope::default());
     }
-    fn bind_vsock_service(&mut self, spec: VsockServiceSpec, service: Arc<dyn VsockServiceHandler>);
+    fn bind_host_scoped(&mut self, stage: Arc<dyn HostInterposer>, scope: MountScope);
+    fn bind_vsock_service(
+        &mut self,
+        spec: VsockServiceSpec,
+        service: Arc<dyn VsockServiceHandler>,
+    ) {
+        self.bind_vsock_service_scoped(spec, service, MountScope::default());
+    }
     fn bind_vsock_service_scoped(
         &mut self,
         spec: VsockServiceSpec,
         service: Arc<dyn VsockServiceHandler>,
         scope: MountScope,
-    ) {
-        let _ = scope;
-        self.bind_vsock_service(spec, service);
-    }
+    );
     // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
     fn bind_parked_connection_reset(&mut self, reset: Arc<dyn ParkedConnectionReset>);
     // see: cans/08-lifecycle.md#Rollback

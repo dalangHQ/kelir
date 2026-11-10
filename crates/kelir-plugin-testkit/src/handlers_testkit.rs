@@ -144,8 +144,3 @@ pub fn lifecycle_ctx_with_watchdog(action: WatchdogAction) -> LifecycleCtxFixtur
     fixture.arm_watchdog(action);
     fixture
 }
-
-// see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
-pub fn lifecycle_ctx() -> LifecycleCtxFixture {
-    lifecycle_ctx_fixture()
-}

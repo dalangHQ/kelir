@@ -20,13 +20,9 @@ use kelir_interface::driver_interface::{
 };
 use kelir_interface::error_envelope::ErrorEnvelope;
 use kelir_interface::handles_lifecycle::VmHandle as CoreVmHandle;
-use kelir_interface::plugin_model::PluginError;
+use kelir_interface::hex_codec::decode_hex_fixed;
+use kelir_interface::plugin_model::{PluginError, PluginRegistration};
 use kelir_interface::runtime_block::block_on;
-
-pub struct PluginRegistration {
-    pub name: String,
-    pub enabled: bool,
-}
 
 // see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
 fn halt(error: PluginError) -> PyErr {
@@ -56,6 +52,19 @@ fn u64_of(value: f64, what: &str) -> PyResult<u64> {
 // see: cans/08-lifecycle.md#Suspend-and-resume
 const SDK_SUSPEND_REASON: SuspendReason =
     SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold);
+
+// see: cans/08-lifecycle.md#Detached-lifecycle
+#[pyfunction]
+fn relay_socket_path(session_id: String) -> PyResult<String> {
+    let id = decode_hex_fixed::<16>(&session_id).map_err(|_| {
+        missing(&format!(
+            "attach: session id `{session_id}` is not 32 hex chars"
+        ))
+    })?;
+    Session::relay_socket_path(&id)
+        .map_err(halt)
+        .map(|path| path.display().to_string())
+}
 
 // see: cans/09-snapshots.md#Archives-and-portability
 fn snapshot_dict(py: Python<'_>, descriptor: &SnapshotDescriptor) -> PyResult<Py<PyDict>> {
@@ -544,7 +553,7 @@ pub struct PyKelirBuilder {
     trampolines: TrampolineTable,
     terminal_wiring: Option<kelir_core::planes::terminal::TerminalWiring>,
     wire_wiring: Option<kelir_core::planes::wire::WireWiring>,
-    storage_config: storage_bridge::PyStorageConfig,
+    storage_config: storage_bridge::PyStorageProjection,
 }
 
 #[pymethods]
@@ -579,7 +588,7 @@ impl PyKelirBuilder {
             trampolines: TrampolineTable::default(),
             terminal_wiring: None,
             wire_wiring: None,
-            storage_config: storage_bridge::PyStorageConfig::default(),
+            storage_config: storage_bridge::PyStorageProjection::default(),
         }
     }
 
@@ -807,15 +816,11 @@ impl PyKelirBuilder {
             return Err(PyValueError::new_err(reason));
         }
         // TODO (L3): bind each fused ring chain to its single trampoline entry as one closure and dispatch through the kelir-core pipeline.
-        let plugins: Vec<kelir_core::PluginRegistration> = self
-            .plugins
-            .iter()
-            .map(|plugin| kelir_core::PluginRegistration::new(plugin.name.clone(), plugin.enabled))
-            .collect();
+        let plugins: Vec<PluginRegistration> = self.plugins.clone();
         let plane_wiring = kelir_core::session_lifecycle::PlaneWiring {
             terminal: self.terminal_wiring,
             wire: self.wire_wiring.clone(),
-            storage: self.storage_config.wiring.clone(),
+            storage: self.storage_config.config.clone(),
         };
         let started = Instant::now();
         let session = Session::boot_with_plugins(
@@ -837,6 +842,7 @@ impl PyKelirBuilder {
 
 #[pymodule]
 fn _kelir(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(relay_socket_path, m)?)?;
     m.add_class::<PyKelirBuilder>()?;
     m.add_class::<PySessionHandle>()?;
     m.add_class::<PyVmHandle>()?;

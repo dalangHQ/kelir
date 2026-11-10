@@ -8,17 +8,37 @@ use serde::{Deserialize, Serialize};
 use crate::builder_sdk::{KelirBuilder, Unsealed};
 use crate::hlist_sdk::{HCons, HNil, NoParams};
 use crate::planes::storage_plane::FsReconcileRequest;
-use crate::session_lifecycle::{Session, SpawnBuilder};
+use crate::session_lifecycle::{Session, SpawnResult};
 use kelir_core::planes::storage::storage_reconciler::CommitStats;
 use plugin_profile::{ProfileCtx, ProfilePlugin};
 
 // see: cans/plugins/profile.md#Session-compute-schema-(profile)
+// see: cans/plugins/profile.md#Inversion-of-Control-configuration-router
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SandboxProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invariants: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub driver: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<SessionProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wire: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugins: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attestation: Option<serde_json::Value>,
 }
 
 // see: cans/plugins/profile.md#Session-compute-schema-(profile)
@@ -313,11 +333,12 @@ impl Sandbox {
         Ok(self)
     }
 
-    pub fn exec(&mut self, binary: &str) -> SpawnBuilder {
-        match &self.session {
-            Some(session) => session.spawn(binary),
-            None => SpawnBuilder::default().args([binary]),
-        }
+    // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
+    pub async fn exec(&mut self, binary: &str, argv: &[&str]) -> Result<SpawnResult, PluginError> {
+        let Some(session) = self.session.as_ref() else {
+            return Err(PluginError::Halt("Sandbox::exec before boot".into()));
+        };
+        session.spawn(binary, argv).await
     }
 
     pub async fn rollback(&mut self, lineage: crate::PidLineage) -> Result<(), PluginError> {
@@ -327,14 +348,22 @@ impl Sandbox {
         session.rollback(lineage).await
     }
 
-    pub fn suspend(
+    pub async fn suspend(
         &mut self,
         reason: kelir_interface::driver_interface::SuspendReason,
     ) -> Result<(), PluginError> {
         let Some(session) = self.session.as_mut() else {
             return Err(PluginError::Halt("Sandbox::suspend before boot".into()));
         };
-        session.suspend(reason)
+        session.suspend(reason).await
+    }
+
+    // see: cans/08-lifecycle.md#Suspend-and-resume
+    pub async fn resume(&mut self, path: &str) -> Result<(), PluginError> {
+        let Some(session) = self.session.as_mut() else {
+            return Err(PluginError::Halt("Sandbox::resume before boot".into()));
+        };
+        session.vm_handle().resume(path).await
     }
 
     pub fn reconcile(&self, req: FsReconcileRequest) -> Result<CommitStats, PluginError> {
@@ -344,10 +373,17 @@ impl Sandbox {
         session.core().storage.reconcile(req)
     }
 
+    // see: cans/plugins/profile.md#Bidirectional-extraction
     pub async fn export_spec(&self, path: impl Into<PathBuf>) -> Result<(), PluginError> {
-        let text =
-            toml::to_string(&self.profile).map_err(|err| PluginError::Halt(err.to_string()))?;
-        tokio::fs::write(path.into(), text)
+        let path = path.into();
+        let text = match path.extension().and_then(|ext| ext.to_str()) {
+            Some("yaml") | Some("yml") => serde_yaml::to_string(&self.profile)
+                .map_err(|err| PluginError::Halt(err.to_string()))?,
+            _ => {
+                toml::to_string(&self.profile).map_err(|err| PluginError::Halt(err.to_string()))?
+            }
+        };
+        tokio::fs::write(path, text)
             .await
             .map_err(PluginError::Io)?;
         Ok(())
@@ -360,7 +396,24 @@ impl Sandbox {
         session.stop()
     }
 
+    // see: cans/08-lifecycle.md#Pre-teardown-flush
+    pub async fn stop_with_timeout(
+        &mut self,
+        timeout: std::time::Duration,
+    ) -> Result<(), PluginError> {
+        let Some(session) = self.session.as_mut() else {
+            return Err(PluginError::Halt(
+                "Sandbox::stop_with_timeout before boot".into(),
+            ));
+        };
+        session.stop_with_timeout(timeout)
+    }
+
+    // see: cans/08-lifecycle.md#Pre-teardown-flush
     pub async fn terminate(&mut self) -> Result<(), PluginError> {
-        self.stop().await
+        let Some(session) = self.session.as_mut() else {
+            return Err(PluginError::Halt("Sandbox::terminate before boot".into()));
+        };
+        session.kill()
     }
 }

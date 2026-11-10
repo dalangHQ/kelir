@@ -371,7 +371,10 @@ export class KelirBuilder<Ctx = unknown> {
     const specifier = "./native/kelir.node";
     try {
       // TODO (L3): ship the precompiled NAPI addon next to the dist bundle and verify its ABI version.
-      return (await import(specifier)) as NativeAddonBinding;
+      const addon = (await import(specifier)) as unknown as {
+        readonly default?: NativeAddonBinding;
+      };
+      return (addon.default ?? addon) as NativeAddonBinding;
     } catch {
       throw new EConfig(
         "kelir native NAPI addon is missing: install the precompiled @kelir/core native build (L3)",
