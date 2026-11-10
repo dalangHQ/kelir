@@ -12,10 +12,11 @@ function check(condition: boolean, label: string): void {
   }
 }
 
-const secretMask = createPlugin("secretMask", { maskActive: true });
+const secretMask = createPlugin("secretMask", { maskActive: true }).build();
 const secureWorkspace = createPlugin("secureWorkspace")
   .requires<typeof secretMask>()
-  .derive((c) => ({ workspaceSecured: c.secretMask.maskActive }));
+  .derive((c) => ({ workspaceSecured: c.secretMask.maskActive }))
+  .build();
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 type MissingDepGate = ValidateDeps<unknown, typeof secureWorkspace> extends {

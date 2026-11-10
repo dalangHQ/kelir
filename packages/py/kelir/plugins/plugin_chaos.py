@@ -43,3 +43,11 @@ class ChaosPlugin(BasePlugin):
 
     def __init__(self, config: ChaosConfig | None = None) -> None:
         self.config = config if config is not None else ChaosConfig()
+
+
+# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
+from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+
+
+def chaos_builder(config: ChaosConfig | None = None) -> _PluginWrapper:
+    return PluginBuilder("chaos").build()

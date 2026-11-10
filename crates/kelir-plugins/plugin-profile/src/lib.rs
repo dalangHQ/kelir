@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{KelirPlugin, LifecycleParticipant};
+use kelir_interface::plugin_model::{KelirPlugin, LifecycleParticipant, NoDeps, PluginDeps};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -653,6 +653,11 @@ impl KelirPlugin for ProfilePlugin {
     fn name(&self) -> &'static str {
         "profile"
     }
+}
+
+// see: cans/plugins/profile.md#Plugin-profile
+impl PluginDeps for ProfilePlugin {
+    type Deps = NoDeps;
 }
 
 impl LifecycleParticipant for ProfilePlugin {}

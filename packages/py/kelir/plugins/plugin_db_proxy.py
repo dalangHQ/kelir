@@ -46,3 +46,11 @@ class DbProxyPlugin(BasePlugin):
 
     def __init__(self, config: DbProxyConfig | None = None) -> None:
         self.config = config if config is not None else DbProxyConfig()
+
+
+# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
+from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+
+
+def db_proxy_builder(config: DbProxyConfig | None = None) -> _PluginWrapper:
+    return PluginBuilder("db-proxy").build()

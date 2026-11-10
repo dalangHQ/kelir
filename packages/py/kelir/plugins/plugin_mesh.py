@@ -39,3 +39,11 @@ class MeshPlugin(BasePlugin):
 
     def __init__(self, config: MeshConfig | None = None) -> None:
         self.config = config if config is not None else MeshConfig()
+
+
+# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
+from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+
+
+def mesh_builder(config: MeshConfig | None = None) -> _PluginWrapper:
+    return PluginBuilder("mesh").build()

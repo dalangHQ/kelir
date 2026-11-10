@@ -394,6 +394,81 @@
     - Type-level accumulation in Rust and TypeScript
       - Compile-time prerequisites in Rust (HList) and TS (generic monad)
       - Python enforces prerequisites at builder.boot() via EConfig
+  - Fluent plugin-creation builder
+    - One entry point per SDK
+      - Rust: kelir::plugin_builder::PluginBuilder::new(name)
+      - TypeScript: createPlugin(name); existing symbol, surface aligned
+      - Python: kelir.PluginBuilder(name); new symbol
+      - Direct impl KelirPlugin remains the advanced escape hatch
+      - Surface per SDK: see: 03-sdk-architecture.md#Fluent-plugin-surface
+    - Chainable verbs
+      - Verb set is closed to the ring traits plus lifecycle and vsock
+      - Context, prerequisite, scope, fork, and vsock service verbs
+      - Each verb returns the builder or a typed successor
+      - Each verb registers exactly one handler or capability
+      - .context(fn) in Rust and TypeScript; Python infers from overrides
+      - .require::<P>() in Rust; .requires<P>() in TypeScript; .require(P) in Python
+      - .scope(MountScope) in Rust; .scope(scope) in TypeScript and Python
+      - .fork_with(fn) in Rust and Python; .forkWith(fn) in TypeScript
+      - Ring verbs
+        - Trap: .on_trap, .on_process_exit
+        - Fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock
+        - Net: .on_net_outbound, .on_net_inbound
+        - Console: .on_console_input, .on_console_output, .on_exec_stdout, .on_exec_stderr
+        - Host: .on_host_lsm_exec, .on_host_pressure, .on_host_keyring_access
+        - Lifecycle init: .on_vm_init, .on_vm_ready, .on_vm_shutdown
+        - Lifecycle commit: .on_pre_commit, .on_post_commit, .on_host_preempt
+        - Telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
+        - Vsock: .vsock_service(spec, handler)
+          - Spec carries port, service, and schema
+      - Ring home: see: #Segregated-ring-traits
+      - Verb signatures: see: artifacts/code/rust-plugin-builder.rs
+      - Verb signatures: see: artifacts/code/typescript-plugin-builder.ts
+      - Verb signatures: see: artifacts/code/python-plugin-builder.py
+    - Terminal build
+      - .build() returns a KelirPlugin-conforming wrapper
+      - Wrapper holds Arc<dyn Trait> per bound ring
+      - register_interceptors calls pipeline.bind_<ring>_scoped per bound ring
+      - fork_state re-runs the .fork_with closure when provided
+      - Otherwise clone_box of the wrapper; state re-initialized
+      - Post-.build() behaviour is pinned per SDK
+      - Rust: builder is consumed; further calls are a compile error
+      - TypeScript: .build() returns a non-builder; verbs are method-not-found
+      - TypeScript: a verb after .build() throws TypeError at runtime
+      - Python: mutation after .build() raises EConfig
+      - Wrapper shape: see: artifacts/code/rust-plugin-builder.rs
+      - Wrapper shape: see: artifacts/code/typescript-plugin-builder.ts
+      - Wrapper shape: see: artifacts/code/python-plugin-builder.py
+    - Compile-time prerequisites
+      - Rust: PluginBuilder<Ctx, Deps: HList>; build() returns PluginWrapper<Ctx, Deps>
+      - Rust: builder.plugin(w) requires Plugins: Satisfies<P::Deps>
+      - Rust: a missing dependency is a compile error, never a runtime Result
+      - Rust: PluginDeps carries the Deps list; Satisfies is the HList check
+      - TypeScript: .requires<P>() accumulates a Deps union
+      - TypeScript: .use(plugin) rejects a Deps not in the caller Ctx
+      - TypeScript: a missing dependency is a compile error
+      - Python: .require(P) records the dependency
+      - Python: builder.boot() raises EConfig listing unsatisfied names
+      - ESecurityViolation is not a prerequisite failure trigger
+      - It is the errno a hook returns via Verdict::Drop on policy violation
+      - Rust carries it as PluginError::Reject { errno, reason }
+      - Prerequisite home: see: 03-sdk-architecture.md#Prerequisite-gating-across-languages
+    - Fused trampoline descriptor preserved
+      - The .build() wrapper joins PipelineEngine as a hand-written plugin does
+      - Same FusedTrampolineDescriptor shape and same ordinals
+      - Fusion home: see: #Foreign-plugin-proxy
+      - Descriptor shape is diffed by parity vectors
+      - Descriptor case shape: see: artifacts/code/plugin-builder-vectors.rs
+      - Vectors: see: 15-operations.md#Fluent-builder-parity-vectors
+    - Parity vectors extended
+      - vectors.json gains a plugin_builder case family
+      - Each case pins builder name, requires list, and ring set with ordinals
+      - Each case pins ordered event payloads and expected outcomes
+      - Outcomes are Verdict or FilterAction results per ring
+      - kelir-plugin-cli parity run builds the chain in Rust, TS, and Python
+      - Divergent outputs block CI
+      - Case schema: see: artifacts/code/plugin-builder-vectors.rs
+      - Gate: see: 15-operations.md#Fluent-builder-parity-vectors
 
 - [1]: artifacts/code/plugin-trait.rs
 - [2]: 03-sdk-architecture.md#Language-surfaces

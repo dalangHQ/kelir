@@ -11,11 +11,12 @@ use std::time::Duration;
 
 use kelir_interface::codec_protocol::{CodecError, FLAG_DATA};
 use kelir_interface::driver_interface::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
+use kelir_interface::fusion_plugin::TrampolineRing;
 use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::plugin_model::VetoEvent;
 use kelir_interface::protocol_wire::{
-    Channel, ExecveMutation, GuestToHost, Heartbeat, MsgType, PatchPayload, SuspendUntil,
-    TrapEvent, Verdict,
+    Channel, ExecveMutation, FilterAction, GuestToHost, Heartbeat, MsgType, PatchPayload,
+    SuspendUntil, TrapEvent, Verdict,
 };
 
 use crate::handlers_testkit::LifecycleCtxFixture;
@@ -81,6 +82,53 @@ pub struct VetoCase {
     pub callback_allows: bool,
 }
 
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/15-operations.md#Multi-language-parity-gate
+#[derive(Debug, Clone)]
+pub enum PluginBuilderOutcome {
+    Verdict(Verdict),
+    Filter(FilterAction),
+}
+
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/15-operations.md#Multi-language-parity-gate
+#[derive(Debug, Clone)]
+pub struct PluginBuilderCase {
+    pub name: String,
+    pub requires: Vec<String>,
+    pub rings: Vec<(TrampolineRing, u32)>,
+    pub events: Vec<serde_json::Value>,
+    pub expected_outcomes: Vec<PluginBuilderOutcome>,
+}
+
+impl PluginBuilderCase {
+    pub fn to_json(&self) -> Result<serde_json::Value, VectorError> {
+        let mut rings: Vec<serde_json::Value> = Vec::with_capacity(self.rings.len());
+        for (ring, ordinal) in &self.rings {
+            rings.push(serde_json::json!({"ring": ring.as_tag(), "ordinal": ordinal}));
+        }
+        let mut outcomes: Vec<serde_json::Value> = Vec::with_capacity(self.expected_outcomes.len());
+        for outcome in &self.expected_outcomes {
+            let value = match outcome {
+                PluginBuilderOutcome::Verdict(verdict) => {
+                    serde_json::json!({"Verdict": serde_json::to_value(verdict).map_err(|e| VectorError::Encode(e.to_string()))?})
+                }
+                PluginBuilderOutcome::Filter(action) => {
+                    serde_json::json!({"Filter": serde_json::to_value(action).map_err(|e| VectorError::Encode(e.to_string()))?})
+                }
+            };
+            outcomes.push(value);
+        }
+        Ok(serde_json::json!({
+            "name": self.name,
+            "requires": self.requires,
+            "rings": rings,
+            "events": self.events,
+            "expected_outcomes": outcomes,
+        }))
+    }
+}
+
 // see: cans/15-operations.md#Multi-language-parity-gate
 #[derive(Debug)]
 pub struct VectorCase {
@@ -90,6 +138,7 @@ pub struct VectorCase {
     pub expected_verdict: Verdict,
     pub watchdog: Option<WatchdogCase>,
     pub veto: Option<VetoCase>,
+    pub plugin_builder: Option<PluginBuilderCase>,
 }
 
 impl VectorCase {
@@ -124,6 +173,12 @@ impl VectorCase {
             });
             if let Some(object) = value.as_object_mut() {
                 object.insert("veto".to_string(), entry);
+            }
+        }
+        if let Some(builder) = &self.plugin_builder {
+            let entry = builder.to_json()?;
+            if let Some(object) = value.as_object_mut() {
+                object.insert("plugin_builder".to_string(), entry);
             }
         }
         Ok(value)
@@ -251,6 +306,8 @@ impl VectorSuite {
                 veto_case("veto-fork", VetoEvent::Fork, false)?,
                 veto_case("veto-suspend", VetoEvent::Suspend, false)?,
                 veto_case("veto-clock-skew", VetoEvent::ClockSkew, false)?,
+                plugin_builder_trap_case()?,
+                plugin_builder_fs_write_trap_case()?,
             ],
         })
     }
@@ -302,7 +359,66 @@ fn trap_case(
         expected_verdict,
         watchdog: None,
         veto: None,
+        plugin_builder: None,
     })
+}
+
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/15-operations.md#Multi-language-parity-gate
+fn plugin_builder_trap_case() -> Result<VectorCase, VectorError> {
+    let event = trap_event(
+        7,
+        1234,
+        100,
+        "/usr/bin/git",
+        vec!["git".to_string(), "commit".to_string()],
+        HashMap::new(),
+    );
+    let event_json = serde_json::to_value(GuestToHost::TrapEvent(event.clone()))
+        .map_err(|e| VectorError::Encode(e.to_string()))?;
+    let mut case = trap_case("plugin-builder-trap-only", event, Verdict::Pass)?;
+    case.plugin_builder = Some(PluginBuilderCase {
+        name: "plugin-builder-trap-only".to_string(),
+        requires: Vec::new(),
+        rings: vec![(TrampolineRing::Trap, 0)],
+        events: vec![event_json],
+        expected_outcomes: vec![PluginBuilderOutcome::Verdict(Verdict::Pass)],
+    });
+    Ok(case)
+}
+
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/15-operations.md#Multi-language-parity-gate
+fn plugin_builder_fs_write_trap_case() -> Result<VectorCase, VectorError> {
+    let event = trap_event(
+        8,
+        1300,
+        100,
+        "/bin/sh",
+        vec!["sh".to_string(), "-c".to_string(), "echo hi".to_string()],
+        HashMap::new(),
+    );
+    let event_json = serde_json::to_value(GuestToHost::TrapEvent(event.clone()))
+        .map_err(|e| VectorError::Encode(e.to_string()))?;
+    let mut case = trap_case("plugin-builder-fs-write-trap", event, Verdict::Pass)?;
+    case.plugin_builder = Some(PluginBuilderCase {
+        name: "plugin-builder-fs-write-trap".to_string(),
+        requires: vec!["ledger".to_string()],
+        rings: vec![(TrampolineRing::FsWrite, 0), (TrampolineRing::Trap, 1)],
+        events: vec![
+            serde_json::json!({
+                "kind": "fs-write",
+                "path": "/workspace/ledger/wal",
+                "pid": 1300,
+            }),
+            event_json,
+        ],
+        expected_outcomes: vec![
+            PluginBuilderOutcome::Filter(FilterAction::Forward),
+            PluginBuilderOutcome::Verdict(Verdict::Pass),
+        ],
+    });
+    Ok(case)
 }
 
 // see: cans/artifacts/examples/policy-matrix.rs#WatchdogSilencerPlugin
@@ -331,6 +447,7 @@ fn watchdog_case(
             expected_verdict,
         }),
         veto: None,
+        plugin_builder: None,
     })
 }
 
@@ -357,6 +474,7 @@ fn veto_case(
             event,
             callback_allows,
         }),
+        plugin_builder: None,
     })
 }
 
@@ -392,6 +510,7 @@ fn exec_rewrite_case() -> Result<VectorCase, VectorError> {
         expected_verdict: Verdict::Patch(PatchPayload::ExecveMutation(mutation)),
         watchdog: None,
         veto: None,
+        plugin_builder: None,
     })
 }
 
@@ -410,6 +529,7 @@ fn heartbeat_case() -> Result<VectorCase, VectorError> {
         expected_verdict: Verdict::Pass,
         watchdog: None,
         veto: None,
+        plugin_builder: None,
     })
 }
 

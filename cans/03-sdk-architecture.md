@@ -48,7 +48,8 @@
         - TypeScript: accumulation monad; plugin verbs accumulate via .use()
         - Python: builder chaining; plugin verbs are .use() overloads
         - Verbs are available after .use() in all languages (typed in Rust,
-          - accumulated in TS, returned by overload in Py)      - Typed dispatch and session extensions
+          - accumulated in TS, returned by overload in Py)
+        - Typed dispatch and session extensions
         - Typed event hooks
           - .on(LifecycleEvent.VmReady, handler) for lifecycle events
           - .intercept(Ring.NetOutbound, handler) for ring interception
@@ -109,7 +110,7 @@
           - Accepts optional ProcessLimits; see: 11-protocol.md#Trap-fast-path
           - Accepts optional allocPty flag; rides FLAG_ALLOC_PTY on EXEC_IO_SPEC
           - Signal cancellation targets exec_id, not raw guest pid
-      - Custom vsock RPC services: builder.register_vsock_service(port, schema, handler)
+      - Custom vsock RPC services: builder.register_vsock_service(port, service, schema, handler)
     - Cross-SDK guarantees
       - Three-tier binary distribution model
         - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
@@ -258,5 +259,27 @@
       - Rust: async-trait, JoinSet, Arc<Mutex<>> states
       - TypeScript: Promise.all fan-out, generic inference
       - Python: asyncio.gather, async with, Pydantic v2
+  - Fluent plugin surface
+    - Rust
+      - Entry: kelir::plugin_builder::PluginBuilder::new(name)
+      - PluginBuilder<Ctx, Deps: HList>; .build() returns PluginWrapper<Ctx, Deps>
+      - .plugin() requires Plugins: Satisfies<P::Deps>
+      - Post-.build(): self is consumed; further calls are a compile error
+      - Surface: see: artifacts/code/rust-plugin-builder.rs
+    - TypeScript
+      - Entry: createPlugin(name); existing symbol, surface aligned
+      - createPlugin returns PluginContract<Name, Ctx, Deps>
+      - .requires<P>() accumulates Deps; .build() returns KelirPlugin
+      - .use() accepts the post-.build() KelirPlugin only
+      - Post-.build(): non-builder; verbs are method-not-found at compile time
+      - Post-.build(): a verb call throws TypeError at runtime
+      - Surface: see: artifacts/code/typescript-plugin-builder.ts
+    - Python
+      - Entry: kelir.PluginBuilder(name); new symbol
+      - .require(P) records deps; .build() returns a _PluginWrapper
+      - .build() precedes .use(); boot() raises EConfig on unsatisfied deps
+      - Post-.build() mutation raises EConfig
+      - Surface: see: artifacts/code/python-plugin-builder.py
+    - Contract home: see: 02-plugin-model.md#Fluent-plugin-creation-builder
 
 - [1]: 01-architecture.md#Codebase-invariants

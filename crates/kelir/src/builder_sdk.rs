@@ -10,12 +10,13 @@ use kelir_interface::plugin_model::HandlerCtx;
 use kelir_interface::plugin_model::LifecycleCtx;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    AnyPlugin, CompositePlugin, LifecycleEvent, MountScope, PipelineBinder, VetoEvent, VetoList,
+    AnyPlugin, CompositePlugin, LifecycleEvent, MountScope, PipelineBinder, PluginDeps, VetoEvent,
+    VetoList,
 };
 use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
-use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
+use crate::hlist_sdk::{HCons, HList, HNil, NoParams, Satisfies};
 use crate::planes::storage_plane::{LockBrokerConfig, LockScope, StoragePlaneConfig};
 use crate::planes::terminal_plane::PtyConfig;
 use crate::planes::wire_plane::{TapFilter, WireConfig};
@@ -344,9 +345,12 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
         }
     }
 
+    // see: cans/03-sdk-architecture.md#Rust-SDK
     pub fn plugin<P>(self, plugin: P) -> KelirBuilder<Unsealed, HCons<P::Context, Plugins>, Params>
     where
         P: KelirPlugin + Clone + 'static,
+        P: PluginDeps,
+        Plugins: Satisfies<P::Deps>,
     {
         let context = plugin.context();
         let scope = KelirPlugin::default_scope(&plugin);

@@ -24,3 +24,11 @@ class ContainerPlugin(BasePlugin):
 
     def __init__(self, config: ContainerConfig | None = None) -> None:
         self.config = config if config is not None else ContainerConfig()
+
+
+# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
+from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+
+
+def container_builder(config: ContainerConfig | None = None) -> _PluginWrapper:
+    return PluginBuilder("container").build()

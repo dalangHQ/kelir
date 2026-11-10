@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from kelir.sdk_errors import EConfig
 from kelir.generated.fusion_tables import (
@@ -13,6 +13,10 @@ from kelir.generated.fusion_tables import (
     LifecycleTag as LifecycleTag,
     RingEvent as RingEvent,
 )
+
+if TYPE_CHECKING:
+    from kelir.model_plugin import BasePlugin
+    from kelir.plugin_builder import _PluginWrapper
 
 
 @dataclass(frozen=True)
@@ -75,9 +79,17 @@ class FusedTrampoline:
     chains: tuple[FusedRingChain, ...]
 
     @classmethod
-    def fuse(cls, hooks: list[HookDescriptor]) -> FusedTrampoline:
+    def fuse(
+        cls, hooks: list[HookDescriptor] | BasePlugin | _PluginWrapper
+    ) -> FusedTrampoline:
+        if isinstance(hooks, list):
+            descriptors: list[HookDescriptor] = hooks
+        else:
+            from kelir.model_plugin import hook_descriptors
+
+            descriptors = hook_descriptors(hooks)
         by_ring: dict[RingEvent, list[HookDescriptor]] = {}
-        for hook in hooks:
+        for hook in descriptors:
             _validate_hook(hook)
             by_ring.setdefault(hook.ring, []).append(hook)
         chains: list[FusedRingChain] = []

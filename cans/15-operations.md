@@ -103,6 +103,7 @@
     - Test plan domains
       - Domain plugin_engine: --plugin-coverage, --hook-coverage
       - Domain plugin_engine: --action-coverage, --panic-hunt-coverage
+      - Domain plugin_engine: --fluent-builder-coverage
       - Domain lifecycle_checkpoint: --lifecycle-coverage, --drain-coverage
       - Domain lifecycle_checkpoint: --veto-coverage, --watchdog-coverage
       - Domain lifecycle_checkpoint: --snapshot-depth-coverage
@@ -139,15 +140,23 @@
       - Validates downward-only crate dependencies via kelir-plugin-cli check --layers
       - Core and interface violations reject compilation before test run
       - Enforcement: just check-layers, CI layer-check job
-    - --hook-coverage
-      - Asserts every hook in the segregated traits is implemented by some
-        - custom plugin in cans/artifacts/examples
-      - Hook home: see: 02-plugin-model.md#Segregated-ring-traits
-      - hook-matrix enumerates the full hook surface; the CI parity job diffs its vectors
-    - --action-coverage
-      - Asserts every Verdict variant is used at least once in cans/artifacts/examples
-      - Action home: see: 11-protocol.md#Verdict-method-mapping
-      - The CI parity job diffs policy-matrix vectors against the Verdict lattice
+    - Verb and verdict coverage
+      - --hook-coverage
+        - Asserts every hook in the segregated traits is implemented by some
+          - custom plugin in cans/artifacts/examples
+        - Hook home: see: 02-plugin-model.md#Segregated-ring-traits
+        - hook-matrix enumerates the full hook surface; the CI parity job diffs its vectors
+      - --action-coverage
+        - Asserts every Verdict variant is used at least once in cans/artifacts/examples
+        - Action home: see: 11-protocol.md#Verdict-method-mapping
+        - The CI parity job diffs policy-matrix vectors against the Verdict lattice
+      - --fluent-builder-coverage
+        - Asserts every builder verb has a plugin_builder vector case
+        - Asserts every Verdict and FilterAction outcome appears in a case
+        - Verb home: see: 02-plugin-model.md#Chainable-verbs
+        - Vector family: see: #Fluent-builder-parity-vectors
+        - Enforcement: kelir-plugin-cli parity run; gate spec only
+        - Execution lands with Agent 2 codegen; unexecuted cases report not-executable
     - --veto-coverage
       - Asserts every VetoEvent is registered at least once in an example
       - Veto home: see: 08-lifecycle.md#Lifecycle-vetoes
@@ -280,6 +289,15 @@
       - Every kelir-core primitive exposed in FFI must have a parity test
       - Missing coverage blocks core and plugin releases immediately
     - Release gate: kelir-core release requires parity green
+    - Fluent-builder parity vectors
+      - vectors.json gains a plugin_builder case family
+      - Each case pins builder name, requires list, and ring set with ordinals
+      - Each case pins ordered event payloads and expected Verdict results
+      - FilterAction results are pinned for byte-transform rings
+      - kelir-plugin-cli parity run builds the equivalent chain per SDK
+      - Divergent outputs block CI; unexecuted verdicts report not-executable
+      - Case schema: see: artifacts/code/plugin-builder-vectors.rs
+      - Builder contract: see: 02-plugin-model.md#Parity-vectors-extended
   - Developer CLI
     - Scope rule: only what types cannot encode
       - Anything a compile error enforces is not shipped

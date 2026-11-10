@@ -21,6 +21,10 @@ kelir/
 │   ├── plugins/                       # 14 plugin specs (13 community + commercial.md)
 │   └── artifacts/                     # Terminal artifacts: code, diagrams, examples, config
 │       ├── code/                      # SSOT code signatures (wire protocol, traits, services)
+│       │   ├── rust-plugin-builder.rs # Fluent plugin-creation builder, Rust surface (illustrative)
+│       │   ├── typescript-plugin-builder.ts # Fluent plugin-creation builder, TS surface (illustrative)
+│       │   ├── python-plugin-builder.py # Fluent plugin-creation builder, Python surface (illustrative)
+│       │   └── plugin-builder-vectors.rs # plugin_builder parity vector case shape (illustrative)
 │       ├── diagrams/                  # ASCII architecture diagrams
 │       ├── examples/                  # Demonstrating examples (Rust/TS/Python)
 │       ├── config/                    # ci.yml, justfile, plugin-ci-reusable.yml, project-structure.txt
@@ -78,6 +82,7 @@ kelir/
 │   │   │   │   └── receipt_attest.rs         # ExecutionReceipt
 │   │   │   └── bin/
 │   │   │       └── codegen/           # Native codegen: TS/PY SDK types, fusion tables, wire consts, Merkle, OTLP
+│   │   │           └── plugin_builder_codegen.rs # Per-plugin fluent-builder wrapper factories (TS registry + Py modules)
 │   │   └── tests/
 │   │       └── clock_reject_interface_test.rs
 │   │

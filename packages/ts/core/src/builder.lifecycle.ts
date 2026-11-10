@@ -4,7 +4,7 @@
 
 import type { Schema, Infer } from "./schema.config.js";
 import type { TrapContext, LifecycleContext, HandlerContext } from "./context.lifecycle.types.js";
-import type { KelirPlugin, PluginContextOf, PluginContract } from "./plugin.model.js";
+import type { KelirPlugin, PluginContextOf, PluginContract, BuiltPlugin } from "./plugin.model.js";
 import type { PostExecAction, LifecycleEvent, Verdict } from "./verdict.protocol.js";
 import type { TrapDenyEvent } from "./types.core.js";
 import { Session } from "./session.lifecycle.js";
@@ -141,7 +141,15 @@ export interface VsockServiceEntry {
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-export type ValidateDeps<Ctx, P> = P extends PluginContract<any, any, infer Deps>
+export type ValidateDeps<Ctx, P> = P extends BuiltPlugin<any, any, infer Deps>
+  ? [Deps] extends [never]
+    ? unknown
+    : string extends Deps
+      ? unknown
+      : [Deps] extends [keyof Ctx]
+        ? unknown
+        : { readonly __missing_dependency: Deps }
+  : P extends PluginContract<any, any, infer Deps>
   ? [Deps] extends [never]
     ? unknown
     : string extends Deps
@@ -207,15 +215,23 @@ export class KelirBuilder<Ctx = unknown, Params = unknown> {
 
   // see: cans/artifacts/code/typescript-accumulation.ts#runtime
   use<P extends KelirPlugin>(
-    plugin: P & ValidateDeps<Ctx, P>,
+    plugin: P extends PluginContract<any, any, any>
+      ? { readonly __use_requires_build: "call .build() before .use()" }
+      : P & ValidateDeps<Ctx, P>,
   ): KelirBuilder<Ctx & PluginContextOf<P>, Params> {
-    const enabled = (plugin as { readonly enabled?: boolean }).enabled !== false;
-    this.pluginRegistrations.push({ name: plugin.name, enabled });
-    const contract = plugin as unknown as {
+    const asPlugin = plugin as unknown as KelirPlugin;
+    const enabled = asPlugin.enabled !== false;
+    this.pluginRegistrations.push({ name: asPlugin.name, enabled });
+    const built = plugin as unknown as {
+      registerInterceptors?: (bind: (hook: HookDescriptor) => void) => void;
       hooksForFusion?: () => readonly HookDescriptor[];
     };
-    if (typeof contract.hooksForFusion === "function" && enabled) {
-      for (const hook of contract.hooksForFusion()) {
+    if (typeof built.registerInterceptors === "function" && enabled) {
+      built.registerInterceptors((hook) => {
+        this.hooks.push(hook);
+      });
+    } else if (typeof built.hooksForFusion === "function" && enabled) {
+      for (const hook of built.hooksForFusion()) {
         this.hooks.push(hook);
       }
     }

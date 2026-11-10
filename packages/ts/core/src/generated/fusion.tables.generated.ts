@@ -64,3 +64,26 @@ export const HOOK_RINGS: readonly HookRingBinding[] = [
   { method: "onVmShutdown", ring: RingEvent.Lifecycle, lifecycleTag: "vm-shutdown" },
   { method: "onWatchdog", ring: RingEvent.Watchdog },
 ];
+
+export interface PluginBuilderVerb {
+  readonly verb: string;
+  readonly ring: RingEvent;
+}
+
+export const PLUGIN_BUILDER_VERBS: readonly PluginBuilderVerb[] = [
+  { verb: "onTrap", ring: RingEvent.Trap },
+  { verb: "onFsLookup", ring: RingEvent.FsLookup },
+  { verb: "onFsRead", ring: RingEvent.FsRead },
+  { verb: "onFsWrite", ring: RingEvent.FsWrite },
+  { verb: "onNetOutbound", ring: RingEvent.NetOutbound },
+  { verb: "onConsoleInput", ring: RingEvent.ConsoleInput },
+  { verb: "onConsoleOutput", ring: RingEvent.ConsoleOutput },
+  { verb: "onExecStdout", ring: RingEvent.ExecStdout },
+  { verb: "onExecStderr", ring: RingEvent.ExecStderr },
+  { verb: "onHeartbeat", ring: RingEvent.Heartbeat },
+  { verb: "onProcessExit", ring: RingEvent.ProcessExit },
+  { verb: "onVmInit", ring: RingEvent.Lifecycle },
+  { verb: "onVmReady", ring: RingEvent.Lifecycle },
+  { verb: "onVmShutdown", ring: RingEvent.Lifecycle },
+  { verb: "onWatchdog", ring: RingEvent.Watchdog },
+];

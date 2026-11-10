@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    FsInterposer, HandlerCtx, KelirPlugin, NetInterposer, PipelineBinder,
+    FsInterposer, HandlerCtx, KelirPlugin, NetInterposer, NoDeps, PipelineBinder, PluginDeps,
 };
 use kelir_interface::protocol_wire::{FilterAction, SuspendUntil};
 
@@ -197,6 +197,13 @@ impl KelirPlugin for ChaosPlugin {
         pipeline.bind_fs_scoped(Arc::new(self.clone()), self.default_scope());
     }
 }
+
+// see: cans/plugins/chaos.md#Plugin-chaos
+impl PluginDeps for ChaosPlugin {
+    type Deps = NoDeps;
+}
+
+// TODO (L3): construct ChaosPlugin via the fluent PluginBuilder in the kelir facade crate; a dependency on that crate here is a cargo cycle since the facade depends on plugin-chaos per cans/02-plugin-model.md#KelirPlugin-trait.
 
 // see: cans/plugins/chaos.md#Bidirectional-across-wire-plane
 impl NetInterposer for ChaosPlugin {

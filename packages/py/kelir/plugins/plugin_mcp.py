@@ -21,3 +21,11 @@ class McpPlugin(BasePlugin):
 
     def __init__(self, config: McpConfig | None = None) -> None:
         self.config = config if config is not None else McpConfig()
+
+
+# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
+from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+
+
+def mcp_builder(config: McpConfig | None = None) -> _PluginWrapper:
+    return PluginBuilder("mcp").build()

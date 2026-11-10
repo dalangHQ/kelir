@@ -24,6 +24,26 @@ export interface KelirPlugin {
   readonly config?: unknown;
 }
 
+// see: cans/artifacts/code/plugin-trait.rs#MountScope
+export interface MountScope {
+  readonly devices?: readonly string[];
+  readonly binaries?: readonly string[];
+  readonly paths?: readonly string[];
+}
+
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
+export interface BuiltPlugin<
+  Name extends string = string,
+  Ctx = unknown,
+  Deps extends string = never,
+> extends KelirPlugin {
+  readonly name: Name;
+  readonly scope?: MountScope;
+  hooksForFusion(): readonly HookDescriptor[];
+  registerInterceptors(bind: (hook: HookDescriptor) => void): void;
+  forkState(): BuiltPlugin<Name, Ctx, Deps>;
+}
+
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 export interface PluginContext<Ctx> {
   readonly pluginCtx?: Ctx;
@@ -31,7 +51,13 @@ export interface PluginContext<Ctx> {
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 export type PluginContextOf<P> =
-  P extends PluginContract<infer Name, infer C, any>
+  P extends BuiltPlugin<infer Name, infer C, any>
+    ? (C extends Record<string, unknown>
+        ? (string extends keyof C
+            ? { readonly [K in Name]: C }
+            : (Name extends keyof C ? C : { readonly [K in Name]: C }))
+        : { readonly [K in Name]: C })
+    : P extends PluginContract<infer Name, infer C, any>
     ? (C extends Record<string, unknown>
         ? (string extends keyof C
             ? { readonly [K in Name]: C }
@@ -53,14 +79,17 @@ export class PluginContract<
   Name extends string = string,
   Ctx = unknown,
   Deps extends string = never,
-> implements KelirPlugin {
+> {
   readonly name: Name;
   private readonly hooks: HookDescriptor[] = [];
   private nextOrdinal = 0;
+  private readonly storedOptions?: Ctx | CreatePluginOptions;
+  private scopeValue?: MountScope;
+  private forkFn?: () => PluginContract<Name, Ctx, Deps>;
 
-  constructor(name: Name, _options?: CreatePluginOptions) {
-    void _options;
+  constructor(name: Name, options?: Ctx | CreatePluginOptions) {
     this.name = name;
+    this.storedOptions = options;
   }
 
   hooksForFusion(): readonly HookDescriptor[] {
@@ -68,19 +97,23 @@ export class PluginContract<
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
-  requires<Req extends string | PluginContract<any, any, any>>(): PluginContract<
+  requires<Req extends string | PluginContract<any, any, any> | BuiltPlugin<any, any, any>>(): PluginContract<
     Name,
     Ctx & (Req extends PluginContract<infer N, infer C, any>
       ? (C extends Record<string, unknown> ? (string extends keyof C ? { readonly [K in N]: C } : (N extends keyof C ? C : { readonly [K in N]: C })) : { readonly [K in N]: C })
-      : unknown),
-    Deps | (Req extends PluginContract<infer N, any, any> ? N : Req extends string ? Req : never)
+      : Req extends BuiltPlugin<infer N, infer C, any>
+        ? (C extends Record<string, unknown> ? (string extends keyof C ? { readonly [K in N]: C } : (N extends keyof C ? C : { readonly [K in N]: C })) : { readonly [K in N]: C })
+        : unknown),
+    Deps | (Req extends PluginContract<infer N, any, any> ? N : Req extends BuiltPlugin<infer N, any, any> ? N : Req extends string ? Req : never)
   > {
     return this as unknown as PluginContract<
       Name,
       Ctx & (Req extends PluginContract<infer N, infer C, any>
         ? (C extends Record<string, unknown> ? (string extends keyof C ? { readonly [K in N]: C } : (N extends keyof C ? C : { readonly [K in N]: C })) : { readonly [K in N]: C })
-        : unknown),
-      Deps | (Req extends PluginContract<infer N, any, any> ? N : Req extends string ? Req : never)
+        : Req extends BuiltPlugin<infer N, infer C, any>
+          ? (C extends Record<string, unknown> ? (string extends keyof C ? { readonly [K in N]: C } : (N extends keyof C ? C : { readonly [K in N]: C })) : { readonly [K in N]: C })
+          : unknown),
+      Deps | (Req extends PluginContract<infer N, any, any> ? N : Req extends BuiltPlugin<infer N, any, any> ? N : Req extends string ? Req : never)
     >;
   }
 
@@ -90,6 +123,59 @@ export class PluginContract<
   ): PluginContract<Name, Ctx & NewCtx, Deps> {
     void fn;
     return this as unknown as PluginContract<Name, Ctx & NewCtx, Deps>;
+  }
+
+  // see: cans/03-sdk-architecture.md#TypeScript-SDK
+  context<NewCtx>(
+    fn: (c: Ctx) => NewCtx,
+  ): PluginContract<Name, Ctx & NewCtx, Deps> {
+    void fn;
+    return this as unknown as PluginContract<Name, Ctx & NewCtx, Deps>;
+  }
+
+  // see: cans/artifacts/code/plugin-trait.rs#MountScope
+  scope(scope: MountScope): PluginContract<Name, Ctx, Deps> {
+    this.scopeValue = scope;
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#KelirPlugin-trait
+  forkWith(
+    fn: () => PluginContract<Name, Ctx, Deps>,
+  ): PluginContract<Name, Ctx, Deps> {
+    this.forkFn = fn;
+    return this;
+  }
+
+  // see: cans/03-sdk-architecture.md#TypeScript-SDK
+  build(): BuiltPlugin<Name, Ctx, Deps> {
+    const hooks = Object.freeze([...this.hooks]);
+    const scope = this.scopeValue;
+    const forkFn = this.forkFn;
+    const contract = this;
+    const options = this.storedOptions as
+      | { readonly enabled?: boolean; readonly config?: unknown }
+      | undefined;
+    return Object.freeze({
+      name: this.name,
+      enabled: options?.enabled !== false,
+      config: options?.config,
+      scope,
+      hooksForFusion(): readonly HookDescriptor[] {
+        return hooks;
+      },
+      registerInterceptors(bind: (hook: HookDescriptor) => void): void {
+        for (const hook of hooks) {
+          bind(hook);
+        }
+      },
+      forkState(): BuiltPlugin<Name, Ctx, Deps> {
+        if (forkFn !== undefined) {
+          return forkFn().build();
+        }
+        return contract.build();
+      },
+    });
   }
 
   // see: cans/02-plugin-model.md#Foreign-plugin-proxy
@@ -268,5 +354,5 @@ export function createPlugin<
   Ctx = Record<string, unknown>,
   Deps extends string = never,
 >(name: Name, options?: Ctx | CreatePluginOptions): PluginContract<Name, Ctx, Deps> {
-  return new PluginContract<Name, Ctx, Deps>(name);
+  return new PluginContract<Name, Ctx, Deps>(name, options);
 }

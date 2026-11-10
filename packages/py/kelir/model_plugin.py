@@ -5,11 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from kelir import FilterAction, HandlerContext, Verdict
 from kelir.plugin_fusion import HookDescriptor, HookStage
 from kelir.generated.fusion_tables import HOOK_RINGS
+
+if TYPE_CHECKING:
+    from kelir.plugin_builder import PluginBuilder
 
 __all__ = [
     "BasePlugin",
@@ -87,26 +90,30 @@ class LifecycleCtx:
 # see: cans/02-plugin-model.md#Hook-context-restriction
 def hook_descriptors(plugin: object) -> list[HookDescriptor]:
     descriptors: list[HookDescriptor] = []
-    if not isinstance(plugin, BasePlugin):
-        return descriptors
-    name = getattr(plugin, "name", "") or type(plugin).__name__
-    ordinal = 0
-    for method_name, (ring, lifecycle_tag) in HOOK_RINGS.items():
-        overridden = getattr(type(plugin), method_name, None)
-        base = getattr(BasePlugin, method_name, None)
-        if overridden is None or overridden is base:
-            continue
-        descriptors.append(
-            HookDescriptor(
-                ring=ring,
-                stage=HookStage.SINGLE,
-                ordinal=ordinal,
-                plugin_name=name,
-                lifecycle_tag=lifecycle_tag,
-                run=getattr(plugin, method_name),
+    if isinstance(plugin, BasePlugin):
+        name = getattr(plugin, "name", "") or type(plugin).__name__
+        ordinal = 0
+        for method_name, (ring, lifecycle_tag) in HOOK_RINGS.items():
+            overridden = getattr(type(plugin), method_name, None)
+            base = getattr(BasePlugin, method_name, None)
+            if overridden is None or overridden is base:
+                continue
+            descriptors.append(
+                HookDescriptor(
+                    ring=ring,
+                    stage=HookStage.SINGLE,
+                    ordinal=ordinal,
+                    plugin_name=name,
+                    lifecycle_tag=lifecycle_tag,
+                    run=getattr(plugin, method_name),
+                )
             )
-        )
-        ordinal += 1
+            ordinal += 1
+        return descriptors
+    from kelir.plugin_builder import _PluginWrapper
+
+    if isinstance(plugin, _PluginWrapper):
+        return plugin.hook_descriptors()
     return descriptors
 
 
@@ -114,6 +121,21 @@ class BasePlugin:
 
     name: str = ""
     requires: tuple[str, ...] = ()
+
+    # see: cans/02-plugin-model.md#KelirPlugin-trait
+    def to_builder(self) -> PluginBuilder:
+        from kelir.plugin_builder import PluginBuilder
+
+        builder = PluginBuilder(self.name or type(self).__name__)
+        for required in self.requires:
+            builder.require(required)
+        for method_name in HOOK_RINGS:
+            overridden = getattr(type(self), method_name, None)
+            base = getattr(BasePlugin, method_name, None)
+            if overridden is None or overridden is base:
+                continue
+            getattr(builder, method_name)(getattr(self, method_name))
+        return builder
 
     async def on_trap(self, event: Any) -> Optional[Verdict]:
         # TODO (L3): dispatch trap event to the plugin

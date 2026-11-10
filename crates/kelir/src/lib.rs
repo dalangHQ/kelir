@@ -9,6 +9,7 @@ pub mod builder_sdk;
 pub mod driver_interface;
 pub mod hlist_sdk;
 pub mod planes;
+pub mod plugin_builder;
 pub mod plugin_model;
 pub mod protocol_wire;
 pub mod sandbox_runtime;
@@ -24,6 +25,7 @@ pub use kelir_interface::handlers_plugin::Has;
 pub use kelir_interface::plugin_model::HandlerCtx;
 pub use kelir_interface::protocol_wire::Verdict;
 pub use planes::storage_plane::{FsReconcileRequest, SyntheticFile};
+pub use plugin_builder::{PluginBuilder, PluginWrapper};
 pub use sandbox_runtime::{Sandbox, SandboxOptions, SandboxProfile};
 pub use session_lifecycle::{
     ClockHandle, FsHandle, Session, SpawnResult, StepStack, TerminalHandle, VmHandle, VsockChannel,

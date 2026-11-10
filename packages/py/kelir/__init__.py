@@ -6,7 +6,11 @@ import importlib
 from dataclasses import dataclass, field
 from datetime import timedelta
 from types import TracebackType
-from typing import Any, Awaitable, Callable, Literal, Self
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
+
+if TYPE_CHECKING:
+    from kelir.model_plugin import BasePlugin
+    from kelir.plugin_builder import _PluginWrapper
 
 from kelir.generated.wire_protocol import Channel, ExecStream, MsgType, StreamKind
 from kelir.generated.attest_telemetry import (
@@ -20,6 +24,7 @@ from kelir.generated.attest_telemetry import (
 )
 from kelir.sdk_errors import EConfig as EConfig
 from kelir.lifecycle_sandbox import Sandbox as Sandbox
+from kelir.plugin_builder import PluginBuilder as PluginBuilder
 from kelir.plugin_fusion import (
     FusedTrampoline,
     HookDescriptor,
@@ -846,7 +851,8 @@ class KelirBuilder:
         self._params_model = model
         return self
 
-    def use(self, plugin: object) -> Self:
+    # see: cans/02-plugin-model.md#KelirPlugin-trait
+    def use(self, plugin: BasePlugin | _PluginWrapper) -> Self:
         from kelir.model_plugin import hook_descriptors
 
         self._plugins.append(plugin)
@@ -859,7 +865,7 @@ class KelirBuilder:
             self._hooks.extend(hook_descriptors(plugin))
         return self
 
-    def plugin(self, plugin: object) -> Self:
+    def plugin(self, plugin: BasePlugin | _PluginWrapper) -> Self:
         return self.use(plugin)
 
     def trap(
@@ -1126,6 +1132,7 @@ __all__ = [
     "KelirBuilder",
     "MsgType",
     "PhaseTimings",
+    "PluginBuilder",
     "PostExecAction",
     "ReceiptExtension",
     "CommitStats",

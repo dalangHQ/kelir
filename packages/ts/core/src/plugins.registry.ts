@@ -286,3 +286,85 @@ export interface WireIngressConfig extends PluginEnablement {
 export function wireIngress(config: WireIngressConfig): KelirPlugin {
   return { name: "wire-ingress", enabled: config.enabled, config };
 }
+
+
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
+import { createPlugin } from "./plugin.model.js";
+
+
+export function mcpBuilder(config: McpConfig): KelirPlugin {
+  void config;
+  return createPlugin("mcp").build();
+}
+
+
+export function meshBuilder(config: MeshConfig): KelirPlugin {
+  void config;
+  return createPlugin("mesh").build();
+}
+
+
+export function containerBuilder(config: ContainerConfig): KelirPlugin {
+  void config;
+  return createPlugin("container").build();
+}
+
+
+export function dbProxyBuilder(config: DbProxyConfig): KelirPlugin {
+  void config;
+  return createPlugin("db-proxy").build();
+}
+
+
+export function replayBuilder(config: ReplayConfig): KelirPlugin {
+  void config;
+  return createPlugin("replay").build();
+}
+
+
+export function supplyChainBuilder(config: SupplyChainConfig): KelirPlugin {
+  void config;
+  return createPlugin("supply-chain").build();
+}
+
+
+export function toolGuardBuilder(config: ToolGuardConfig): KelirPlugin {
+  void config;
+  return createPlugin("tool-guard").build();
+}
+
+
+export function vaultBuilder(config: VaultConfig): KelirPlugin {
+  void config;
+  return createPlugin("vault").build();
+}
+
+
+export function wireIngressBuilder(config: WireIngressConfig): KelirPlugin {
+  void config;
+  return createPlugin("wire-ingress").build();
+}
+
+
+export function chaosBuilder(config: ChaosConfig): KelirPlugin {
+  void config;
+  return createPlugin("chaos").build();
+}
+
+
+export function ledgerBuilder(config: LedgerConfig): KelirPlugin {
+  void config;
+  return createPlugin("ledger").build();
+}
+
+
+export function profileBuilder(config: ProfileConfig): KelirPlugin {
+  void config;
+  return createPlugin("profile").build();
+}
+
+
+export function transactionBuilder(config: TransactionConfig): KelirPlugin {
+  void config;
+  return createPlugin("transaction").build();
+}

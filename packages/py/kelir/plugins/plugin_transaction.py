@@ -23,3 +23,11 @@ class TransactionPlugin(BasePlugin):
 
     def __init__(self, config: TransactionConfig | None = None) -> None:
         self.config = config if config is not None else TransactionConfig()
+
+
+# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
+from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+
+
+def transaction_builder(config: TransactionConfig | None = None) -> _PluginWrapper:
+    return PluginBuilder("transaction").build()

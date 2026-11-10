@@ -30,3 +30,11 @@ class ProfilePlugin(BasePlugin):
 
     def __init__(self, config: ProfileConfig | None = None) -> None:
         self.config = config if config is not None else ProfileConfig()
+
+
+# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
+from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+
+
+def profile_builder(config: ProfileConfig | None = None) -> _PluginWrapper:
+    return PluginBuilder("profile").build()

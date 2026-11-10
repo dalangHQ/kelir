@@ -68,3 +68,21 @@ HOOK_RINGS: dict[str, tuple[RingEvent, LifecycleTag | None]] = {
     "on_vm_shutdown": (RingEvent.LIFECYCLE, "vm-shutdown"),
     "on_watchdog": (RingEvent.WATCHDOG, None),
 }
+
+PLUGIN_BUILDER_VERBS: dict[str, RingEvent] = {
+    "on_trap": RingEvent.TRAP,
+    "on_fs_lookup": RingEvent.FS_LOOKUP,
+    "on_fs_read": RingEvent.FS_READ,
+    "on_fs_write": RingEvent.FS_WRITE,
+    "on_net_outbound": RingEvent.NET_OUTBOUND,
+    "on_console_input": RingEvent.CONSOLE_INPUT,
+    "on_console_output": RingEvent.CONSOLE_OUTPUT,
+    "on_exec_stdout": RingEvent.EXEC_STDOUT,
+    "on_exec_stderr": RingEvent.EXEC_STDERR,
+    "on_heartbeat": RingEvent.HEARTBEAT,
+    "on_process_exit": RingEvent.PROCESS_EXIT,
+    "on_vm_init": RingEvent.LIFECYCLE,
+    "on_vm_ready": RingEvent.LIFECYCLE,
+    "on_vm_shutdown": RingEvent.LIFECYCLE,
+    "on_watchdog": RingEvent.WATCHDOG,
+}

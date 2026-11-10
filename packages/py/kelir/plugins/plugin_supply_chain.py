@@ -46,3 +46,11 @@ class SupplyChainPlugin(BasePlugin):
 
     def __init__(self, config: SupplyChainConfig | None = None) -> None:
         self.config = config if config is not None else SupplyChainConfig()
+
+
+# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
+from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+
+
+def supply_chain_builder(config: SupplyChainConfig | None = None) -> _PluginWrapper:
+    return PluginBuilder("supply-chain").build()

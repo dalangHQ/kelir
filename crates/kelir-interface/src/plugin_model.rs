@@ -589,6 +589,14 @@ pub trait KelirPlugin: Send + Sync + PluginClone {
     fn register_subscribers(&self, _bus: &mut impl EventBusBinder) {}
 }
 
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+pub struct NoDeps;
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+pub trait PluginDeps {
+    type Deps;
+}
+
 #[async_trait]
 pub trait LifecycleParticipant: Send + Sync {
     async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {

@@ -22,3 +22,11 @@ class VaultPlugin(BasePlugin):
 
     def __init__(self, config: VaultConfig | None = None) -> None:
         self.config = config if config is not None else VaultConfig()
+
+
+# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
+from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+
+
+def vault_builder(config: VaultConfig | None = None) -> _PluginWrapper:
+    return PluginBuilder("vault").build()

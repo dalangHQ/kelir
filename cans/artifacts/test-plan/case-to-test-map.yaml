@@ -2057,3 +2057,9 @@ harness_tests:
   reason: CausalDelta serde-hex pin per cans/10-attestation.md#Causal-delta (artifact
     cans/artifacts/code/causal-delta.rs, added by b7e5346 without a map entry); pins
     storageDeltaRoot and receiptLeafHash as hex strings in JSON; not a case test.
+- file: crates/kelir/tests/fluent_builder_plugin_test.rs
+  reason: Compile-only fluent plugin-creation builder assertions per
+    cans/02-plugin-model.md#Fluent-plugin-creation-builder (PluginBuilder chain
+    compiles, .build() returns a PluginWrapper accepted by builder.plugin(),
+    chaos migrates via the builder); compile-only, no test fns, no plan case covers the
+    builder surface yet (L1/L2 wiring addition).

@@ -6,6 +6,7 @@ mod merkle_codegen;
 mod model_codegen;
 mod naming_codegen;
 mod otlp_codegen;
+mod plugin_builder_codegen;
 mod py_codegen;
 mod sdk_codegen;
 mod sdk_py;
@@ -119,7 +120,13 @@ fn main() -> ExitCode {
     let ts_fusion = fusion_codegen::emit_typescript(&fusion_model);
     let py_fusion = fusion_codegen::emit_python(&fusion_model);
     let projections = sdk_codegen::load_projections(&root).unwrap_or_else(|e| die(&e));
+    let builder_plugins = plugin_builder_codegen::load_builder_plugins(&root, &projections)
+        .unwrap_or_else(|e| die(&e));
     let ts_plugins = sdk_ts::emit_ts(&projections).unwrap_or_else(|e| die(&e));
+    let ts_plugins = format!(
+        "{ts_plugins}{}",
+        plugin_builder_codegen::emit_typescript(&builder_plugins)
+    );
 
     let writes: Vec<(PathBuf, String)> = vec![
         (
@@ -184,7 +191,17 @@ fn main() -> ExitCode {
     check_py_modules(&root, &expected_modules).unwrap_or_else(|e| die(&e));
     let mut module_writes: Vec<(PathBuf, String)> = Vec::new();
     for proj in &projections {
-        let content = sdk_py::emit_py_module(proj).unwrap_or_else(|e| die(&e));
+        let mut content = sdk_py::emit_py_module(proj).unwrap_or_else(|e| die(&e));
+        let Some(builder) = builder_plugins
+            .iter()
+            .find(|builder| builder.name == proj.krate.plugin_name)
+        else {
+            die(&format!(
+                "no builder factory for plugin {}",
+                proj.krate.plugin_name
+            ));
+        };
+        content.push_str(&plugin_builder_codegen::emit_python_factory(builder));
         module_writes.push((
             root.join(format!(
                 "packages/py/kelir/plugins/plugin_{}.py",

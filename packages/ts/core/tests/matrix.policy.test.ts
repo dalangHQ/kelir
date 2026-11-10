@@ -53,7 +53,8 @@ const policyPlugin = createPlugin("policy-matrix")
       return "mitigate";
     }
     return "execute-default";
-  });
+  })
+  .build();
 
 
 const watchdogSilencer = createPlugin("watchdog-silencer")
@@ -63,7 +64,8 @@ const watchdogSilencer = createPlugin("watchdog-silencer")
       return "suppress";
     }
     return "execute-default";
-  });
+  })
+  .build();
 
 
 const runtime = kelir({
