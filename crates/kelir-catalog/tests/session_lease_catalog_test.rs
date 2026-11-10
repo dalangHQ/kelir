@@ -65,6 +65,31 @@ fn sp_21_catalog_session_register_lookup_roundtrip() -> Result<(), String> {
     Ok(())
 }
 
+// see: cans/artifacts/test-plan/cases/storage_plane/sp_21_catalog_session_register_lookup_roundtrip.yaml#case_id
+#[test]
+fn catalog_session_unregister_roundtrip() -> Result<(), String> {
+    let db = open_clean("unreg")?;
+    let row = session_row([5u8; 16], 1001);
+    db.register_session(&row).map_err(|e| e.to_string())?;
+    assert!(
+        db.unregister_session(&row.session_id)
+            .map_err(|e| e.to_string())?
+    );
+    let found = db
+        .lookup_session(&row.session_id)
+        .map_err(|e| e.to_string())?;
+    match found {
+        None => {}
+        Some(_) => return Err("unregistered row still present".to_string()),
+    }
+    assert!(
+        !db.unregister_session(&row.session_id)
+            .map_err(|e| e.to_string())?
+    );
+    drop_db("unreg");
+    Ok(())
+}
+
 // see: cans/artifacts/test-plan/cases/storage_plane/sp_22_catalog_heartbeat_lease_cas_guards_handoff.yaml#case_id
 #[test]
 fn sp_22_catalog_heartbeat_lease_cas_guards_handoff() -> Result<(), String> {

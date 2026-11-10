@@ -4,9 +4,8 @@
 // see: cans/plugins/replay.md#Replay-mode-requires-network-isolation-for-determinism
 
 use kelir::{
+    KelirBuilder, PidLineage, ReplayConfig, ReplayPlugin, SnapshotDescriptor, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
-    plugins::plugin_replay::{ReplayConfig, ReplayPlugin},
-    KelirBuilder, PidLineage, SnapshotDescriptor, VmConfig,
 };
 
 #[tokio::main]

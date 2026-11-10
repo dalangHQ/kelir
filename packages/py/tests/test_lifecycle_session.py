@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+import kelir
 from kelir import (
     Caps,
     Deadline,
+    ExecveMutation,
     FilterAction,
     HandlerContext,
     KelirBuilder,
@@ -58,6 +62,14 @@ def test_verdict_patch_carries_mutation_payload() -> None:
     assert verdict.payload["name"] is None
     assert verdict.payload["cbor"] is None
     assert verdict.payload["attr"] is None
+    mutation = verdict.payload["mutation"]
+    assert isinstance(mutation, ExecveMutation)
+    assert mutation.to_wire() == {
+        "new_binary": "/bin/policy-allow",
+        "new_argv": ["policy-allow", "--rewritten"],
+        "set_env": [["KELIR_POLICY_REWRITE", "1"]],
+        "unset_env": [],
+    }
 
 
 def test_verdict_patch_positional_arg_binds_attr() -> None:
@@ -285,9 +297,37 @@ def test_builder_register_stream_kind_validates_u16_at_fuse() -> None:
         out_of_range.fuse()
 
 
-def test_builder_boot_requires_native_bridge() -> None:
+def test_builder_boot_requires_native_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _missing_bridge() -> Any:
+        raise EConfig("kelir native PyO3 extension (_kelir) is missing: install the precompiled wheel (L3)")
+
+    monkeypatch.setattr(kelir, "_load_native_bridge", _missing_bridge)
     with pytest.raises(EConfig, match=r"_kelir\) is missing"):
         asyncio.run(KelirBuilder().boot())
+
+
+def test_builder_boot_with_native_bridge(tmp_path: Path) -> None:
+    if (
+        importlib.util.find_spec("kelir._kelir") is None
+        and importlib.util.find_spec("_kelir") is None
+    ):
+        pytest.skip("native _kelir extension is not built; run just build-py")
+    kernel = tmp_path / "vmlinux"
+    rootfs = tmp_path / "rootfs.erofs"
+    kernel.write_bytes(b"")
+    rootfs.write_bytes(b"")
+    session = asyncio.run(
+        KelirBuilder(kernel=str(kernel), rootfs_erofs=str(rootfs)).boot()
+    )
+    assert session.driver_name == "auto"
+    assert session.boot_ms >= 0
+    child = asyncio.run(session.fork())
+    assert child.driver_name == "auto"
+    stats = asyncio.run(session.storage.reconcile())
+    assert stats.files_changed == 0
+    assert stats.tombstones_resolved == 0
+    asyncio.run(child.stop())
+    asyncio.run(session.stop())
 
 
 def test_sandbox_create_is_pure_builder_state() -> None:
@@ -354,7 +394,11 @@ def test_sandbox_before_boot_raises_econfig() -> None:
         asyncio.run(sandbox.stop())
 
 
-def test_sandbox_boot_requires_native_bridge() -> None:
+def test_sandbox_boot_requires_native_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _missing_bridge() -> Any:
+        raise EConfig("kelir native PyO3 extension (_kelir) is missing: install the precompiled wheel (L3)")
+
+    monkeypatch.setattr(kelir, "_load_native_bridge", _missing_bridge)
     sandbox = asyncio.run(Sandbox.create(vcpus=2))
     with pytest.raises(EConfig, match=r"_kelir\) is missing"):
         asyncio.run(sandbox.boot())

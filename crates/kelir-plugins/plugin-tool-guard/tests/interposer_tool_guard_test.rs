@@ -39,7 +39,7 @@ fn gt_02_immutable_schema_locking_esecurity() -> Result<(), String> {
         tools: vec![drifted],
     };
     match block_on(registry.ingest_tools_list(&drifted_list)) {
-        Err(PluginError::Halt(message)) if message.starts_with("ESecurityViolation:") => (),
+        Err(PluginError::Reject { errno, .. }) if errno == "ESecurityViolation" => (),
         Err(err) => {
             return Err(format!(
                 "post-lock drift must halt with ESecurityViolation, got {err:?}"
@@ -59,15 +59,15 @@ fn tool_guard_unparsed_frame_fails_closed() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
     let mut bytes = b"\x00not-a-json-rpc-frame".to_vec();
     match block_on(plugin.on_console_input(0x0012, &mut bytes)) {
-        Err(PluginError::Halt(message)) => {
-            if !message.starts_with("EPERM:") {
+        Err(PluginError::Reject { errno, reason }) => {
+            if errno != "EPERM" {
                 return Err(format!(
-                    "unparsed frame must reject with EPERM, got {message}"
+                    "unparsed frame must reject with EPERM, got {errno}"
                 ));
             }
-            if !message.contains("unparsed MCP frame fails closed") {
+            if !reason.contains("unparsed MCP frame fails closed") {
                 return Err(format!(
-                    "rejection must carry a concrete reason, got {message}"
+                    "rejection must carry a concrete reason, got {reason}"
                 ));
             }
         }

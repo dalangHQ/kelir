@@ -10,9 +10,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use kelir_interface::fusion_plugin::TrampolineRing;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    ConsoleInterposer, FfiDispatchQueue, FsInterposer, HandlerCtx, HostInterposer,
-    LockBrokerCoordination, MountScope, NetInterposer, ParkedConnectionReset, PipelineBinder,
-    TokenRevocation, TrapInterposer, VirtioDevice,
+    ConsoleInterposer, FfiDispatchQueue, FsInterposer, HandlerCtx, HostInterposer, LifecycleCtx,
+    LifecycleEvent, LockBrokerCoordination, MountScope, NetInterposer, ParkedConnectionReset,
+    PipelineBinder, TokenRevocation, TrapInterposer, VirtioDevice,
 };
 use kelir_interface::protocol_wire::{
     EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, ProcessExit, TrapEvent, Verdict,
@@ -21,6 +21,7 @@ use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::planes::checkpoint::{CheckpointPlane, PidLineage};
 use crate::planes::terminal::LogStream;
+use crate::session_lifecycle::Session;
 use crate::trap_gate::{GateDecision, TrapGateEvaluator};
 
 // see: cans/artifacts/code/plugin-trait.rs#PANIC_QUARANTINE_ENABLED
@@ -90,6 +91,38 @@ fn quarantine_sync<T>(run: impl FnOnce() -> T, on_panic: impl FnOnce() -> T) -> 
     }
 }
 
+// see: cans/03-sdk-architecture.md#Rust-SDK
+pub type LifecycleCallback = Box<
+    dyn for<'a> Fn(
+            &'a mut LifecycleCtx<'a>,
+        ) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
+        + Send
+        + Sync,
+>;
+
+// see: cans/03-sdk-architecture.md#Builder-consumption-model-across-languages
+pub type TrapDenyCallback = Box<
+    dyn Fn(&TrapEvent, &Session) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send>>
+        + Send
+        + Sync,
+>;
+
+// see: cans/03-sdk-architecture.md#Rust-SDK
+pub type CustomActionCallback = Box<
+    dyn Fn(
+            ciborium::value::Value,
+        ) -> Pin<
+            Box<dyn Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>,
+        > + Send
+        + Sync,
+>;
+
+// see: cans/03-sdk-architecture.md#Rust-SDK
+pub struct CustomActionBinding {
+    pub name: String,
+    pub handler: CustomActionCallback,
+}
+
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 struct FusedCrossing<'a> {
     engine: &'a PipelineEngine,
@@ -121,6 +154,11 @@ pub struct PipelineEngine {
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     trampoline: Option<kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
     checkpoint: Option<Arc<CheckpointPlane>>,
+    on_vm_init: Option<LifecycleCallback>,
+    on_vm_ready: Option<LifecycleCallback>,
+    on_vm_shutdown: Option<LifecycleCallback>,
+    on_trap_deny: Option<TrapDenyCallback>,
+    custom_actions: Vec<CustomActionBinding>,
     foreign_queue: FfiDispatchQueue,
     ffi_rate_per_sec: u32,
     ffi_window_start_ms: AtomicU64,
@@ -232,6 +270,11 @@ impl PipelineEngine {
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             trampoline: None,
             checkpoint: None,
+            on_vm_init: None,
+            on_vm_ready: None,
+            on_vm_shutdown: None,
+            on_trap_deny: None,
+            custom_actions: Vec::new(),
             foreign_queue: FfiDispatchQueue::default(),
             ffi_rate_per_sec: 0,
             ffi_window_start_ms: AtomicU64::new(0),
@@ -323,6 +366,60 @@ impl PipelineEngine {
 
     pub fn checkpoint_plane(&self) -> Option<&Arc<CheckpointPlane>> {
         self.checkpoint.as_ref()
+    }
+
+    // see: cans/03-sdk-architecture.md#Rust-SDK
+    pub fn set_on_vm_init(&mut self, callback: LifecycleCallback) {
+        self.on_vm_init = Some(callback);
+    }
+
+    // see: cans/03-sdk-architecture.md#Rust-SDK
+    pub fn set_on_vm_ready(&mut self, callback: LifecycleCallback) {
+        self.on_vm_ready = Some(callback);
+    }
+
+    // see: cans/03-sdk-architecture.md#Rust-SDK
+    pub fn set_on_vm_shutdown(&mut self, callback: LifecycleCallback) {
+        self.on_vm_shutdown = Some(callback);
+    }
+
+    // see: cans/03-sdk-architecture.md#Builder-consumption-model-across-languages
+    pub fn set_on_trap_deny(&mut self, callback: TrapDenyCallback) {
+        self.on_trap_deny = Some(callback);
+    }
+
+    // see: cans/03-sdk-architecture.md#Rust-SDK
+    pub fn take_lifecycle_callback(&mut self, event: LifecycleEvent) -> Option<LifecycleCallback> {
+        match event {
+            LifecycleEvent::VmInit => self.on_vm_init.take(),
+            LifecycleEvent::VmReady => self.on_vm_ready.take(),
+            LifecycleEvent::VmShutdown => self.on_vm_shutdown.take(),
+            LifecycleEvent::VmPreempt => None,
+        }
+    }
+
+    // see: cans/03-sdk-architecture.md#Rust-SDK
+    pub fn register_custom_action(&mut self, name: String, handler: CustomActionCallback) {
+        self.custom_actions
+            .push(CustomActionBinding { name, handler });
+    }
+
+    // see: cans/03-sdk-architecture.md#Rust-SDK
+    pub async fn dispatch_custom_action(
+        &self,
+        name: &str,
+        payload: ciborium::value::Value,
+    ) -> Result<(), PluginError> {
+        let Some(action) = self
+            .custom_actions
+            .iter()
+            .find(|action| action.name == name)
+        else {
+            return Err(PluginError::Halt(format!("unknown custom action: {name}")));
+        };
+        (action.handler)(payload)
+            .await
+            .map_err(|error| PluginError::Halt(format!("custom action {name} failed: {error}")))
     }
 
     // see: cans/10-attestation.md#Step-evaluation-loop
@@ -455,6 +552,17 @@ impl PipelineEngine {
     }
 
     // see: cans/02-plugin-model.md#Static-dispatch
+    pub async fn dispatch_trap_typed_with_session<Plugins, Params>(
+        &self,
+        event: &TrapEvent,
+        ctx: &HandlerCtx<Plugins, Params>,
+        session: &Session,
+    ) -> Result<Verdict, PluginError> {
+        self.dispatch_trap_inner(event, &ctx.erased(), Some(session))
+            .await
+    }
+
+    // see: cans/02-plugin-model.md#Static-dispatch
     pub async fn dispatch_process_exit_typed<Plugins, Params>(
         &self,
         event: &ProcessExit,
@@ -480,6 +588,26 @@ impl PipelineEngine {
         event: &TrapEvent,
         ctx: &HandlerCtx,
     ) -> Result<Verdict, PluginError> {
+        self.dispatch_trap_inner(event, ctx, None).await
+    }
+
+    // see: cans/artifacts/code/plugin-trait.rs#TrapInterposer
+    pub async fn dispatch_trap_with_session(
+        &self,
+        event: &TrapEvent,
+        ctx: &HandlerCtx,
+        session: &Session,
+    ) -> Result<Verdict, PluginError> {
+        self.dispatch_trap_inner(event, ctx, Some(session)).await
+    }
+
+    // see: cans/artifacts/code/plugin-trait.rs#TrapInterposer
+    async fn dispatch_trap_inner(
+        &self,
+        event: &TrapEvent,
+        ctx: &HandlerCtx,
+        session: Option<&Session>,
+    ) -> Result<Verdict, PluginError> {
         if event.syscall.is_some() {
             self.metrics.record_syscall();
         }
@@ -490,7 +618,12 @@ impl PipelineEngine {
             let scope = self.trap_scopes.get(index).unwrap_or(&fallback);
             match self.gate.evaluate(event, scope) {
                 GateDecision::Allow => continue,
-                GateDecision::Deny(verdict) => return Ok(verdict),
+                GateDecision::Deny(verdict) => {
+                    if let (Some(callback), Some(session)) = (&self.on_trap_deny, session) {
+                        callback(event, session).await?;
+                    }
+                    return Ok(verdict);
+                }
                 GateDecision::FallThrough => {}
             }
             if fused.is_none() {

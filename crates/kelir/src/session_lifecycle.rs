@@ -65,12 +65,14 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     pub async fn dispatch_trap<Params2>(
         &self,
         event: &TrapEvent,
-        ctx: &HandlerCtx<Plugins, Params2>,
+        ctx: &mut HandlerCtx<Plugins, Params2>,
     ) -> Result<TrapOutcome, PluginError>
     where
         Plugins: Clone,
         Params2: Clone,
     {
+        let lineage = self.core.lineage(ctx.pid);
+        self.core.pipeline().hydrate_step(&mut *ctx, lineage)?;
         for entry in &self.registration.traps {
             if !entry.filter.matches(event) {
                 continue;
@@ -84,8 +86,17 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
                 outcome => return Ok(outcome),
             }
         }
-        let verdict = self.core.pipeline().dispatch_trap_typed(event, ctx).await?;
+        let verdict = self
+            .core
+            .pipeline()
+            .dispatch_trap_typed_with_session(event, ctx, &self.core)
+            .await?;
         Ok(TrapOutcome::Verdict(verdict))
+    }
+
+    // see: cans/08-lifecycle.md#State-machine
+    pub async fn shutdown(&mut self) -> Result<(), PluginError> {
+        self.core.shutdown().await
     }
 
     // see: cans/03-sdk-architecture.md#Rust-SDK

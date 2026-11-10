@@ -53,10 +53,32 @@ fn io_failure_maps_to_errno_envelope() -> Result<(), String> {
 }
 
 #[test]
-fn halt_keeps_econfig_fallback_envelope() -> Result<(), String> {
+fn reject_maps_errno_to_envelope_code() -> Result<(), String> {
     let envelope = ErrorEnvelope::from(PluginError::reject("EACCES", "git push denied"));
+    assert_eq!(envelope.code, "EACCES");
+    assert_eq!(envelope.errno, Some("EACCES".to_string()));
+    assert_eq!(envelope.message, "git push denied");
+    assert_eq!(envelope.pid, None);
+    Ok(())
+}
+
+#[test]
+fn reject_econfig_still_maps_to_econfig_code() -> Result<(), String> {
+    let envelope = ErrorEnvelope::from(PluginError::reject(
+        "EConfig",
+        "profile JSON parse failed: bad syntax",
+    ));
     assert_eq!(envelope.code, ECONFIG_CODE);
-    assert!(envelope.message.contains("EACCES: git push denied"));
+    assert_eq!(envelope.errno, Some("EConfig".to_string()));
+    assert!(envelope.message.contains("profile JSON parse failed"));
+    Ok(())
+}
+
+#[test]
+fn halt_keeps_econfig_fallback_envelope() -> Result<(), String> {
+    let envelope = ErrorEnvelope::from(PluginError::Halt("checkpoint missing".to_string()));
+    assert_eq!(envelope.code, ECONFIG_CODE);
+    assert_eq!(envelope.message, "checkpoint missing");
     assert_eq!(envelope.pid, None);
     Ok(())
 }

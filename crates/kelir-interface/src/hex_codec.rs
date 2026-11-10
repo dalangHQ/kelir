@@ -58,3 +58,23 @@ pub fn decode_hex_fixed<const N: usize>(text: &str) -> Result<[u8; N], HexDecode
     }
     Ok(out)
 }
+
+pub mod serde_hex_32 {
+    use serde::de::Error;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(bytes: &[u8; 32], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&super::encode_hex(bytes))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        super::decode_hex_fixed::<32>(&text).map_err(D::Error::custom)
+    }
+}

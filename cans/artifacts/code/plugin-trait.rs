@@ -49,6 +49,8 @@ pub enum PluginError {
     /// Conflicting semantic mutations on overlapping resource targets.
     #[error("Ambiguous mutation detected across plugins on resource '{resource}': {conflict}")]
     AmbiguousMutation { resource: String, conflict: String },
+    #[error("{errno}: {reason}")]
+    Reject { errno: String, reason: String },
     #[error("Internal I/O failure: {0}")]
     Io(#[from] std::io::Error),
     /// Host-fatal error: the plugin cannot proceed and the pipeline
@@ -68,13 +70,13 @@ impl PluginError {
     }
 
     /// Policy rejection in a Result<(), PluginError> context, where no
-    /// Verdict is returnable. Carries errno + reason in the message;
+    /// Verdict is returnable. Carries errno + reason as structured fields;
     /// handlers that can return a Verdict use Verdict::Drop instead.
     pub fn reject(
         errno: impl Into<String>,
         reason: impl Into<String>,
     ) -> Self {
-        Self::Halt(format!("{}: {}", errno.into(), reason.into()))
+        Self::Reject { errno: errno.into(), reason: reason.into() }
     }
 }
 

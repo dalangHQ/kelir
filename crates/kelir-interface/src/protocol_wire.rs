@@ -4,7 +4,9 @@
 // see: cans/11-protocol.md#Control-channel
 use std::collections::HashMap;
 
+use serde::de::{Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 // see: cans/11-protocol.md#Binary-exec-channel
 macro_rules! wire_consts {
@@ -79,11 +81,56 @@ wire_enum! { MsgType, MSG_TYPES, {
     Signal = 0x0005,
 }}
 
+struct EnvPairsVisitor;
+
+impl<'de> Visitor<'de> for EnvPairsVisitor {
+    type Value = Vec<(String, String)>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a map or a sequence of key/value pairs")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut pairs = Vec::new();
+        while let Some(pair) = seq.next_element::<(String, String)>()? {
+            pairs.push(pair);
+        }
+        Ok(pairs)
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut pairs = Vec::new();
+        while let Some((key, value)) = map.next_entry::<String, String>()? {
+            pairs.push((key, value));
+        }
+        Ok(pairs)
+    }
+}
+
+// see: cans/plugins/tool-guard.md#Total-tool-call-interposition
+fn deserialize_env_pairs<'de, D>(deserializer: D) -> Result<Vec<(String, String)>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserializer.deserialize_any(EnvPairsVisitor)
+}
+
+// see: cans/plugins/tool-guard.md#Total-tool-call-interposition
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecveMutation {
+    #[serde(alias = "binary")]
     pub new_binary: Option<String>,
+    #[serde(alias = "argv")]
     pub new_argv: Option<Vec<String>>,
+    #[serde(default, alias = "env", deserialize_with = "deserialize_env_pairs")]
     pub set_env: Vec<(String, String)>,
+    #[serde(default)]
     pub unset_env: Vec<String>,
 }
 

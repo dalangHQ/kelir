@@ -96,6 +96,14 @@ impl CatalogDb {
         }))
     }
 
+    pub fn unregister_session(&self, session_id: &[u8; 16]) -> Result<bool, CatalogError> {
+        let count = self.pool.execute(
+            "DELETE FROM sessions WHERE session_id = ?1",
+            rusqlite::params![&session_id[..]],
+        )?;
+        Ok(count > 0)
+    }
+
     // see: cans/08-lifecycle.md#Detached-lifecycle
     pub fn disk_lock_handoff(
         &self,
@@ -130,6 +138,14 @@ impl CatalogDb {
     pub fn prune_cas_leases(&self) -> Result<u64, CatalogError> {
         let pruned = self.pool.execute(
             "DELETE FROM cas_leases WHERE expires_at_unix <= ?1",
+            params![now_unix()],
+        )?;
+        Ok(pruned as u64)
+    }
+
+    pub fn prune_expired_sessions(&self) -> Result<u64, CatalogError> {
+        let pruned = self.pool.execute(
+            "DELETE FROM sessions WHERE expires_at_unix <= ?1",
             params![now_unix()],
         )?;
         Ok(pruned as u64)

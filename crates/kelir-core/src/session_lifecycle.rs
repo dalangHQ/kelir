@@ -3,12 +3,17 @@
 // see: cans/14-observability.md#Metrics-pipeline
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use async_trait::async_trait;
+use kelir_interface::driver_interface::{
+    DriverCapabilities, DriverError, EntropyBackend, EntropyStreamPosition, VmConfig, VmmDriver,
+    WatchdogAction, default_vm_config,
+};
 use kelir_interface::handles_lifecycle::{DriverVmControl, VmHandle};
 use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::lifecycle_state::LifecycleState;
-use kelir_interface::plugin_model::PipelineBinder;
+use kelir_interface::plugin_model::{LifecycleCtx, LifecycleEvent, PipelineBinder, VetoList};
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
@@ -23,7 +28,7 @@ pub struct Session {
     pub terminal: Arc<crate::planes::terminal::TerminalPlane>,
     pub storage: crate::planes::storage::StoragePlane,
     pub wire: crate::planes::wire::WirePlane,
-    pub checkpoint: crate::planes::checkpoint::CheckpointPlane,
+    pub checkpoint: Arc<crate::planes::checkpoint::CheckpointPlane>,
     pub host: crate::planes::host::HostPlane,
     metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     uart: crate::uart_terminal::UartRingBuffer,
@@ -34,11 +39,57 @@ pub struct Session {
     >,
     owned_bus: crate::bus::OwnedBusDispatcher,
     engine: crate::dispatch_plugin::PipelineEngine,
+    config: VmConfig,
+    vetoes: VetoList,
     session_id: [u8; 16],
     incarnation_id: [u8; 16],
     plugins: Vec<crate::plugin_registry::PluginRegistration>,
     detached: bool,
     state: LifecycleState,
+}
+
+// see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
+struct NullDriver;
+
+#[async_trait]
+impl VmmDriver for NullDriver {
+    fn capabilities(&self) -> DriverCapabilities {
+        DriverCapabilities {
+            backend: "unbound",
+            cold_boot_budget_ms: 0,
+            rollback_budget_ms: 0,
+            fork_budget_ms: 0,
+            requires_hardware_vmm: false,
+            supports_cow_fork: false,
+        }
+    }
+
+    async fn boot(&mut self, _config: VmConfig) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported("no VMM driver bound (L2)".into()))
+    }
+
+    async fn set_entropy_backend(&mut self, _backend: EntropyBackend) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported("no VMM driver bound (L2)".into()))
+    }
+
+    async fn entropy_position(&self) -> Result<EntropyStreamPosition, DriverError> {
+        Err(DriverError::Unsupported("no VMM driver bound (L2)".into()))
+    }
+
+    async fn restore_entropy_position(
+        &mut self,
+        _position: EntropyStreamPosition,
+    ) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported("no VMM driver bound (L2)".into()))
+    }
+
+    async fn set_watchdog(
+        &mut self,
+        _timeout: Duration,
+        _action: WatchdogAction,
+    ) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported("no VMM driver bound (L2)".into()))
+    }
 }
 
 // see: cans/08-lifecycle.md#Session-incarnation
@@ -129,6 +180,10 @@ impl Session {
 
     pub fn set_detached(&mut self, detached: bool) {
         self.detached = detached;
+    }
+
+    pub fn set_vetoes(&mut self, vetoes: VetoList) {
+        self.vetoes = vetoes;
     }
 
     // see: cans/08-lifecycle.md#Detached-lifecycle
@@ -255,9 +310,13 @@ impl Session {
             }
             .with_metrics(metrics.clone()),
         );
+        let session_checkpoint_plane = Arc::new(
+            crate::planes::checkpoint::CheckpointPlane::new().with_metrics(metrics.clone()),
+        );
         let engine = engine
             .with_metrics(metrics.clone())
-            .with_terminal(Arc::clone(&terminal));
+            .with_terminal(Arc::clone(&terminal))
+            .with_checkpoint(Arc::clone(&session_checkpoint_plane));
         metrics.set_active_vcpus(u32::from(config.vcpus));
         // TODO (L3): DriverRouter probes KVM/HVF/AVF and completes the driver boot handshake; vm_handle stays unbound until a backend loads.
         let driver = crate::vmm::DriverRouter::load_native_driver(
@@ -274,8 +333,7 @@ impl Session {
             terminal,
             storage: storage.with_metrics(metrics.clone()),
             wire: wire.with_metrics(metrics.clone()),
-            checkpoint: crate::planes::checkpoint::CheckpointPlane::new()
-                .with_metrics(metrics.clone()),
+            checkpoint: session_checkpoint_plane,
             host: crate::planes::host::HostPlane::new().with_metrics(metrics.clone()),
             metrics,
             uart: crate::uart_terminal::UartRingBuffer::new(),
@@ -285,6 +343,8 @@ impl Session {
                 crate::bus::MUX_RING_CAPACITY,
             ),
             engine,
+            config,
+            vetoes: Vec::new(),
             session_id,
             incarnation_id,
             plugins: resolved,
@@ -318,20 +378,24 @@ impl Session {
         metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     ) -> Self {
         let terminal = Arc::new(terminal.with_metrics(metrics.clone()));
+        let checkpoint = Arc::new(checkpoint.with_metrics(metrics.clone()));
         let engine = engine
             .with_metrics(metrics.clone())
-            .with_terminal(Arc::clone(&terminal));
+            .with_terminal(Arc::clone(&terminal))
+            .with_checkpoint(Arc::clone(&checkpoint));
         let mut session = Self {
             terminal,
             storage: storage.with_metrics(metrics.clone()),
             wire: wire.with_metrics(metrics.clone()),
-            checkpoint: checkpoint.with_metrics(metrics.clone()),
+            checkpoint,
             host: host.with_metrics(metrics.clone()),
             metrics: metrics.clone(),
             uart: crate::uart_terminal::UartRingBuffer::new(),
             driver: Some(driver),
             owned_bus,
             engine,
+            config: default_vm_config(None, None, None, None, None, None),
+            vetoes: Vec::new(),
             session_id,
             incarnation_id,
             plugins,
@@ -466,16 +530,20 @@ impl Session {
             workspace_root.join("broker"),
             crate::planes::storage::storage_reconciler::TraversalGuard::StrictResolveBeneath,
         );
+        let checkpoint = Arc::new(
+            crate::planes::checkpoint::CheckpointPlane::new()
+                .with_metrics(std::sync::Arc::clone(&self.metrics)),
+        );
         let engine = crate::dispatch_plugin::PipelineEngine::new()
             .with_metrics(std::sync::Arc::clone(&self.metrics))
-            .with_terminal(std::sync::Arc::clone(&self.terminal));
+            .with_terminal(std::sync::Arc::clone(&self.terminal))
+            .with_checkpoint(Arc::clone(&checkpoint));
         Ok(Self {
             terminal: std::sync::Arc::clone(&self.terminal),
             storage: storage.with_metrics(std::sync::Arc::clone(&self.metrics)),
             wire: crate::planes::wire::WirePlane::new()
                 .with_metrics(std::sync::Arc::clone(&self.metrics)),
-            checkpoint: crate::planes::checkpoint::CheckpointPlane::new()
-                .with_metrics(std::sync::Arc::clone(&self.metrics)),
+            checkpoint,
             host: crate::planes::host::HostPlane::new()
                 .with_metrics(std::sync::Arc::clone(&self.metrics)),
             metrics: std::sync::Arc::clone(&self.metrics),
@@ -486,6 +554,8 @@ impl Session {
                 crate::bus::MUX_RING_CAPACITY,
             ),
             engine,
+            config: self.config.clone(),
+            vetoes: Vec::new(),
             session_id: self.session_id,
             incarnation_id,
             plugins: self.plugins.clone(),
@@ -599,9 +669,76 @@ impl Session {
         self.advance_lifecycle(LifecycleState::Draining)
     }
 
+    // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
+    pub async fn run_lifecycle_hook(
+        &mut self,
+        event: LifecycleEvent,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let Some(callback) = self.engine.take_lifecycle_callback(event) else {
+            return Ok(());
+        };
+        let session_id = encode_hex(&self.session_id);
+        match self.driver.as_ref() {
+            Some(driver) => {
+                let mut guard = driver.lock().await;
+                let mut ctx =
+                    LifecycleCtx::new(&self.config, &session_id, &mut **guard, &mut self.vetoes);
+                callback(&mut ctx).await
+            }
+            None => {
+                let mut driver = NullDriver;
+                let mut ctx =
+                    LifecycleCtx::new(&self.config, &session_id, &mut driver, &mut self.vetoes);
+                callback(&mut ctx).await
+            }
+        }
+    }
+
+    // see: cans/08-lifecycle.md#State-machine
+    pub async fn shutdown(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        self.run_lifecycle_hook(LifecycleEvent::VmShutdown).await?;
+        self.stop()
+    }
+
+    // see: cans/06-storage-catalog.md#Entity-model
+    fn teardown_catalog(&self) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let catalog =
+            kelir_catalog::CatalogDb::open(kelir_catalog::catalog_path().map_err(|error| {
+                kelir_interface::plugin_model::PluginError::Halt(format!("{error}"))
+            })?)
+            .map_err(|error| {
+                kelir_interface::plugin_model::PluginError::Halt(format!("catalog open: {error}"))
+            })?;
+        let owned = match catalog.lookup_session(&self.session_id) {
+            Ok(Some(row)) => {
+                row.lease_kind == kelir_catalog::schema_catalog::LeaseKind::Ephemeral
+                    && row.incarnation_id.0 == self.incarnation_id
+                    && row.runner_pid == i64::from(std::process::id())
+            }
+            Ok(None) => true,
+            Err(error) => {
+                return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                    "catalog lookup: {error}"
+                )));
+            }
+        };
+        if !owned {
+            return Ok(());
+        }
+        catalog
+            .unregister_session(&self.session_id)
+            .map_err(|error| {
+                kelir_interface::plugin_model::PluginError::Halt(format!(
+                    "catalog unregister: {error}"
+                ))
+            })?;
+        reap_ephemeral_session_dir(&self.session_id)
+    }
+
     pub fn stop(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): graceful driver terminate after drain.
-        self.advance_lifecycle(LifecycleState::Terminated)
+        self.advance_lifecycle(LifecycleState::Terminated)?;
+        self.teardown_catalog()
     }
 
     // see: cans/08-lifecycle.md#Pre-teardown-flush
@@ -611,12 +748,14 @@ impl Session {
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): graceful driver terminate after MSG_SHUTDOWN_ACK or timeout expiry.
         let _ = timeout;
-        self.advance_lifecycle(LifecycleState::Terminated)
+        self.advance_lifecycle(LifecycleState::Terminated)?;
+        self.teardown_catalog()
     }
 
     pub fn kill(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): hard driver terminate without drain or flush.
-        self.advance_lifecycle(LifecycleState::Terminated)
+        self.advance_lifecycle(LifecycleState::Terminated)?;
+        self.teardown_catalog()
     }
 
     // see: cans/09-snapshots.md#Archives-and-portability

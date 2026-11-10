@@ -16,8 +16,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use kelir::{
-    FsReconcileRequest, HCons, HNil, HandlerCtx, KelirBuilder, NoParams, PostExecAction,
-    SnapshotDescriptor, TrapFilter, Unsealed, Verdict, VmConfig,
+    ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, FsReconcileRequest, HCons,
+    HNil, HandlerCtx, KelirBuilder, LedgerConfig, LedgerCtx, LedgerPlugin, NetworkFaultRule,
+    NoParams, OtelConfig, PostExecAction, ReceiptConfig, SnapshotDescriptor, StorageFaultRule,
+    TrapFilter, Unsealed, Verdict, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     handler,
     planes::{
@@ -30,13 +32,6 @@ use kelir::{
     },
     plugin_model::{
         AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginError, TrapInterposer,
-    },
-    plugins::{
-        plugin_chaos::{
-            ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, NetworkFaultRule,
-            StorageFaultRule,
-        },
-        plugin_ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, OtelConfig, ReceiptConfig},
     },
     protocol_wire::{ExecveMutation, PatchPayload, TrapEvent},
     telemetry_attest::ExecutionReceipt,

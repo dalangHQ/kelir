@@ -81,6 +81,15 @@ impl From<PluginError> for ErrorEnvelope {
                 binary: None,
                 errno: io.raw_os_error().map(|errno| errno.to_string()),
             },
+            PluginError::Reject { errno, reason } => Self {
+                code: errno.clone(),
+                message: reason,
+                driver: None,
+                ring: None,
+                pid: None,
+                binary: None,
+                errno: Some(errno),
+            },
             PluginError::Halt(message) => Self::econfig(message),
         }
     }

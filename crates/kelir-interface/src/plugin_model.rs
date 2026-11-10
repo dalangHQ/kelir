@@ -29,6 +29,8 @@ pub enum PluginError {
     WxViolation { pid: u32, operation: String },
     #[error("Ambiguous mutation detected across plugins on resource '{resource}': {conflict}")]
     AmbiguousMutation { resource: String, conflict: String },
+    #[error("{errno}: {reason}")]
+    Reject { errno: String, reason: String },
     #[error("Internal I/O failure: {0}")]
     Io(#[from] std::io::Error),
     #[error("Plugin halted: {0}")]
@@ -44,7 +46,10 @@ impl PluginError {
     }
 
     pub fn reject(errno: impl Into<String>, reason: impl Into<String>) -> Self {
-        Self::Halt(format!("{}: {}", errno.into(), reason.into()))
+        Self::Reject {
+            errno: errno.into(),
+            reason: reason.into(),
+        }
     }
 }
 

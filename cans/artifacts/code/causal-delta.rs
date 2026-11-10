@@ -41,7 +41,9 @@ pub struct CausalDelta {
     /// Wire egress bytes between the two checkpoints
     pub egress_bytes: u64,
     /// BLAKE3 root of modified storage inodes (from StorageDelta)
+    #[serde(with = "crate::hex_codec::serde_hex_32")]
     pub storage_delta_root: [u8; 32],
     /// Merkle leaf hash of the associated ExecutionReceipt
+    #[serde(with = "crate::hex_codec::serde_hex_32")]
     pub receipt_leaf_hash: [u8; 32],
 }

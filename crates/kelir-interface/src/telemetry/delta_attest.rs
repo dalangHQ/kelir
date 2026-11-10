@@ -12,7 +12,9 @@ pub struct CausalDelta {
     pub modified_inodes: Vec<PathBuf>,
     pub spawned_pids: Vec<u32>,
     pub egress_bytes: u64,
+    #[serde(with = "crate::hex_codec::serde_hex_32")]
     pub storage_delta_root: [u8; 32],
+    #[serde(with = "crate::hex_codec::serde_hex_32")]
     pub receipt_leaf_hash: [u8; 32],
 }
 

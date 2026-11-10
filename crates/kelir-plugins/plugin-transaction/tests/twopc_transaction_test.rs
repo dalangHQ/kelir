@@ -42,7 +42,7 @@ fn rt_05_2pc_post_commit_false_rollback_sync() -> Result<(), String> {
         block_on(ctx.begin_scope(TransactionScope::default())).map_err(|err| format!("{err:?}"))?;
     assert_eq!(second.id, 1);
     match block_on(ctx.savepoint(&TransactionHandle { id: 99 })) {
-        Err(PluginError::Halt(message)) if message.starts_with("EINVAL:") => (),
+        Err(PluginError::Reject { errno, .. }) if errno == "EINVAL" => (),
         Err(err) => {
             return Err(format!(
                 "savepoint on a non-active handle must fail with EINVAL, got {err:?}"
@@ -70,7 +70,7 @@ fn rt_07_temporal_savepoint_rollback_restore() -> Result<(), String> {
     assert_eq!(savepoint.id, 0);
     block_on(ctx.rollback_to_savepoint(&handle, savepoint)).map_err(|err| format!("{err:?}"))?;
     match block_on(ctx.rollback_to_savepoint(&handle, Savepoint { id: 99 })) {
-        Err(PluginError::Halt(message)) if message.starts_with("EINVAL:") => (),
+        Err(PluginError::Reject { errno, .. }) if errno == "EINVAL" => (),
         Err(err) => {
             return Err(format!(
                 "rollback to an unregistered savepoint must fail with EINVAL, got {err:?}"

@@ -12,19 +12,13 @@ use serde::Deserialize;
 use tokio::task::JoinSet;
 
 use kelir::{
+    HCons, HNil, KelirBuilder, LedgerConfig, LedgerCtx, LedgerPlugin, MeshConfig, MeshCtx,
+    MeshPlugin, NoParams, PackageGuardConfig, PeerIdentity, PeerListener, ReceiptConfig, Session,
+    SnapshotDescriptor, SupplyChainConfig, SupplyChainCtx, SupplyChainPlugin,
+    TraceParentPropagation, Unsealed, VmConfig, WxJitConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     planes::storage_plane::{LockBrokerConfig, LockMode, LockScope},
     plugin_model::VetoEvent,
-    plugins::{
-        plugin_ledger::{LedgerConfig, LedgerCtx, LedgerPlugin, ReceiptConfig},
-        plugin_mesh::{
-            MeshConfig, MeshCtx, MeshPlugin, PeerIdentity, PeerListener, TraceParentPropagation,
-        },
-        supply_chain::{
-            PackageGuardConfig, SupplyChainConfig, SupplyChainCtx, SupplyChainPlugin, WxJitConfig,
-        },
-    },
-    HCons, HNil, KelirBuilder, NoParams, Session, SnapshotDescriptor, Unsealed, VmConfig,
 };
 
 type SwarmPlugins = HCons<LedgerCtx, HCons<SupplyChainCtx, HCons<MeshCtx, HNil>>>;

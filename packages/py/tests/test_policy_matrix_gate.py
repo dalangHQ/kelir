@@ -273,7 +273,11 @@ def test_build_runtime_fuses_policy_matrix() -> None:
     }
 
 
-def test_boot_gate_requires_native_bridge() -> None:
+def test_boot_gate_requires_native_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _missing_bridge() -> Any:
+        raise EConfig("kelir native PyO3 extension (_kelir) is missing: install the precompiled wheel (L3)")
+
+    monkeypatch.setattr(kelir, "_load_native_bridge", _missing_bridge)
     with pytest.raises(EConfig, match=r"_kelir\) is missing"):
         asyncio.run(build_runtime().boot())
 

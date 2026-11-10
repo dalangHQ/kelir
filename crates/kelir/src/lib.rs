@@ -10,7 +10,6 @@ pub mod driver_interface;
 pub mod hlist_sdk;
 pub mod planes;
 pub mod plugin_model;
-pub mod plugins;
 pub mod protocol_wire;
 pub mod sandbox_runtime;
 pub mod session_lifecycle;
@@ -31,23 +30,39 @@ pub use session_lifecycle::{
     VsockChannel, VsockHandle, WireHandle,
 };
 
+// see: cans/plugins/chaos.md#Plugin-chaos
 #[cfg(feature = "plugin-chaos")]
-pub use plugin_chaos::ChaosPlugin;
+pub use plugin_chaos::{
+    ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, NetworkFaultRule,
+    StorageFaultRule,
+};
 #[cfg(feature = "plugin-container")]
 pub use plugin_container::ContainerPlugin;
 #[cfg(feature = "plugin-db-proxy")]
 pub use plugin_db_proxy::DbProxyPlugin;
+// see: cans/plugins/ledger.md#Plugin-ledger
 #[cfg(feature = "plugin-ledger")]
-pub use plugin_ledger::LedgerPlugin;
+pub use plugin_ledger::{
+    FinalReceipt, FinalizeRequest, LedgerConfig, LedgerCtx, LedgerPlugin, LedgerSink, OtelConfig,
+    ReceiptConfig,
+};
 #[cfg(feature = "plugin-mcp")]
 pub use plugin_mcp::McpPlugin;
+// see: cans/plugins/mesh.md#Plugin-mesh
 #[cfg(feature = "plugin-mesh")]
-pub use plugin_mesh::MeshPlugin;
+pub use plugin_mesh::{
+    MeshConfig, MeshCtx, MeshPlugin, PeerIdentity, PeerListener, TraceParentPropagation,
+};
 pub use plugin_profile::ProfilePlugin;
+// see: cans/plugins/replay.md#Plugin-replay
 #[cfg(feature = "plugin-replay")]
-pub use plugin_replay::ReplayPlugin;
+pub use plugin_replay::{ReplayConfig, ReplayCtx, ReplayPlugin};
+// see: cans/plugins/supply-chain.md#Plugin-supply-chain
 #[cfg(feature = "plugin-supply-chain")]
-pub use plugin_supply_chain::SupplyChainPlugin;
+pub use plugin_supply_chain::{
+    AuthorizedJitEngine, JitValidationService, PackageGuardConfig, SupplyChainConfig,
+    SupplyChainCtx, SupplyChainPlugin, WxJitConfig,
+};
 #[cfg(feature = "plugin-tool-guard")]
 pub use plugin_tool_guard::ToolGuardPlugin;
 #[cfg(feature = "plugin-transaction")]

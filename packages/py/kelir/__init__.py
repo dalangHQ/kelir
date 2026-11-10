@@ -32,13 +32,64 @@ from kelir.plugin_fusion import (
 
 
 def _load_native_bridge() -> Any:
-    # TODO (L3): bind the precompiled PyO3 _kelir extension once its boot entry point lands.
+    # see: cans/03-sdk-architecture.md#Python-SDK
+    try:
+        return importlib.import_module("kelir._kelir")
+    except ImportError:
+        pass
     try:
         return importlib.import_module("_kelir")
     except ImportError as exc:
         raise EConfig(
             "kelir native PyO3 extension (_kelir) is missing: install the precompiled wheel (L3)"
         ) from exc
+
+
+# see: cans/03-sdk-architecture.md#Python-SDK
+def _require_native(native: Any, what: str) -> Any:
+    if native is None:
+        raise EConfig(f"kelir native PyO3 bridge (_kelir) is missing: {what} (L3)")
+    return native
+
+
+# see: cans/09-snapshots.md#Archives-and-portability
+def _snapshot_from_dict(record: dict[str, Any]) -> SnapshotDescriptor:
+    clock = record.get("guest_clock")
+    guest_clock = None
+    if isinstance(clock, dict):
+        guest_clock = GuestClock(
+            absolute_wall_clock_ns=int(clock.get("absolute_wall_clock_ns", 0)),
+            monotonic_offset_ns=int(clock.get("monotonic_offset_ns", 0)),
+            timezone=str(clock.get("timezone", "")),
+            boot_params=str(clock.get("boot_params", "")),
+        )
+    parent_digest = record.get("parent_digest")
+    return SnapshotDescriptor(
+        id=str(record.get("id", "")),
+        dirty_bytes=int(record.get("dirty_bytes", 0)),
+        created_at_ns=int(record.get("created_at_ns", 0)),
+        parent_digest=str(parent_digest) if isinstance(parent_digest, str) else None,
+        guest_clock=guest_clock,
+    )
+
+
+# see: cans/09-snapshots.md#Archives-and-portability
+def _snapshot_to_dict(snapshot: SnapshotDescriptor) -> dict[str, Any]:
+    clock = snapshot.guest_clock
+    return {
+        "id": snapshot.id,
+        "dirty_bytes": float(snapshot.dirty_bytes),
+        "created_at_ns": float(snapshot.created_at_ns),
+        "parent_digest": snapshot.parent_digest,
+        "guest_clock": None
+        if clock is None
+        else {
+            "absolute_wall_clock_ns": float(clock.absolute_wall_clock_ns),
+            "monotonic_offset_ns": float(clock.monotonic_offset_ns),
+            "timezone": clock.timezone,
+            "boot_params": clock.boot_params,
+        },
+    }
 
 
 # see: cans/03-sdk-architecture.md#Python-SDK
@@ -112,6 +163,31 @@ class Deadline:
     value: int = 0
 
 
+# see: cans/11-protocol.md#Wire-framing
+class ExecveMutation:
+
+    def __init__(
+        self,
+        binary: str | None = None,
+        argv: list[str] | None = None,
+        env: dict[str, str] | None = None,
+        unset_env: list[str] | None = None,
+    ) -> None:
+        self.binary = binary
+        self.argv = list(argv) if argv is not None else None
+        self.env = dict(env) if env is not None else {}
+        self.unset_env = list(unset_env) if unset_env is not None else []
+
+    # see: cans/11-protocol.md#Wire-framing
+    def to_wire(self) -> dict[str, Any]:
+        return {
+            "new_binary": self.binary,
+            "new_argv": self.argv,
+            "set_env": [[key, value] for key, value in self.env.items()],
+            "unset_env": self.unset_env,
+        }
+
+
 class Verdict:
 
     def __init__(self, kind: str, **payload: Any) -> None:
@@ -133,18 +209,26 @@ class Verdict:
         binary: str | None = None,
         argv: list[str] | None = None,
         env: dict[str, str] | None = None,
+        unset_env: list[str] | None = None,
         name: str | None = None,
         cbor: dict[str, Any] | None = None,
         attr: Any = None,
     ) -> Verdict:
-        # TODO (L3): serialize to ExecveMutation / FsInodeAttr / Custom payload
+        # TODO (L3): serialize to FsInodeAttr / Custom payload
         if args and attr is None:
             attr = args[0]
+        mutation = None
+        if binary is not None or argv is not None or env is not None or unset_env is not None:
+            mutation = ExecveMutation(
+                binary=binary, argv=argv, env=env, unset_env=unset_env
+            )
         return cls(
             "patch",
             binary=binary,
             argv=argv,
             env=env,
+            unset_env=unset_env,
+            mutation=mutation,
             name=name,
             cbor=cbor,
             attr=attr,
@@ -383,76 +467,92 @@ class Caps:
 
 
 class ClockHandle:
+    def __init__(self, native: Any = None) -> None:
+        self._native = native
+
     async def skew(self, delta: Any) -> None:
-        # TODO (L3): skew guest clock via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm clock skew (L3)")
+        native = _require_native(self._native, "vm clock skew")
+        seconds = delta.total_seconds() if hasattr(delta, "total_seconds") else float(delta)
+        native.clock_skew(seconds)
 
 
 class VmHandle:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, native: Any = None) -> None:
         self._session = session
-        self.clock = ClockHandle()
+        self._native = native
+        self.clock = ClockHandle(native)
 
     async def checkpoint(self, name: str) -> SnapshotDescriptor:
-        # TODO (L3): checkpoint VM state via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm checkpoint (L3)")
+        native = _require_native(self._native, "vm checkpoint")
+        return _snapshot_from_dict(native.checkpoint(name))
 
     async def rollback(self, snapshot: SnapshotDescriptor) -> None:
-        # TODO (L3): roll back VM state to snapshot via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm rollback (L3)")
+        native = _require_native(self._native, "vm rollback")
+        native.rollback(_snapshot_to_dict(snapshot))
 
     async def fork(self) -> Session:
-        # TODO (L3): CoW-fork the microVM via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm fork (L3)")
+        return await self._session.fork()
 
     async def suspend(self, path: str) -> None:
-        # TODO (L3): suspend VM to snapshot file via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm suspend (L3)")
+        native = _require_native(self._native, "vm suspend")
+        native.suspend(path)
 
     async def resume(self, path: str) -> None:
-        # TODO (L3): restore a suspended VM image via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm resume (L3)")
+        native = _require_native(self._native, "vm resume")
+        native.resume(path)
 
     async def adjust_balloon(self, target_mb: int) -> None:
-        # TODO (L3): adjust the guest RAM ceiling via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm adjust_balloon (L3)")
+        native = _require_native(self._native, "vm adjust_balloon")
+        native.adjust_balloon(target_mb)
 
     async def set_vcpus(self, count: int) -> None:
-        # TODO (L3): park/unpark host vCPU threads via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm set_vcpus (L3)")
+        native = _require_native(self._native, "vm set_vcpus")
+        native.set_vcpus(count)
 
     async def map_shared_region(self, tag: str, size_bytes: int) -> bytes:
         # TODO (L3): map a zero-copy host memory segment via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm map_shared_region (L3)")
 
     async def import_snapshot(self, data: bytes) -> None:
-        # TODO (L3): hydrate registers/dirty pages from snapshot bytes via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm import_snapshot (L3)")
+        native = _require_native(self._native, "vm import_snapshot")
+        native.import_snapshot(data)
 
     async def export_snapshot(self) -> bytes:
-        # TODO (L3): export snapshot bytes via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm export_snapshot (L3)")
+        native = _require_native(self._native, "vm export_snapshot")
+        return bytes(native.export_snapshot())
 
 
 class WireHandle:
+    def __init__(self, native: Any = None) -> None:
+        self._native = native
+
     async def forward_port(self, guest_port: int, host_port: int) -> int:
-        # TODO (L3): forward guest port to host port via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: wire forward_port (L3)")
+        native = _require_native(self._native, "wire forward_port")
+        return int(native.forward_port(guest_port, host_port))
 
 
 class StorageHandle:
+    def __init__(self, native: Any = None) -> None:
+        self._native = native
+
     async def reconcile(
         self,
         cwd: str | None = None,
         atomic_staging: bool = False,
         fsync: bool = False,
     ) -> CommitStats:
-        # TODO (L3): broker commit of the workspace via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: storage reconcile (L3)")
+        native = _require_native(self._native, "storage reconcile")
+        files_changed, tombstones_resolved = native.reconcile(
+            cwd if cwd is not None else "", atomic_staging, fsync
+        )
+        return CommitStats(
+            files_changed=int(files_changed),
+            tombstones_resolved=int(tombstones_resolved),
+        )
 
     async def discard(self) -> None:
-        # TODO (L3): drop the sparse upper file and tombstones via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: storage discard (L3)")
+        native = _require_native(self._native, "storage discard")
+        native.discard()
 
 
 class VsockChannel:
@@ -478,37 +578,47 @@ class FsHandle:
 
 
 class TerminalHandle:
+    def __init__(self, native: Any = None) -> None:
+        self._native = native
+
     def notice(self, text: str) -> None:
         # TODO (L3): publish TerminalNotice to the event bus via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: terminal notice (L3)")
 
     async def resize(self, cols: int, rows: int) -> None:
-        # TODO (L3): resize the guest terminal via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: terminal resize (L3)")
+        native = _require_native(self._native, "terminal resize")
+        native.resize(cols, rows)
 
     async def export_screen_matrix(self) -> bytes:
-        # TODO (L3): export the terminal screen matrix via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: terminal export_screen_matrix (L3)")
+        native = _require_native(self._native, "terminal export_screen_matrix")
+        return bytes(native.export_screen_matrix())
 
     async def read_from(self, port: int, offset: int) -> tuple[bytes, int]:
-        # TODO (L3): read terminal replay bytes from port at offset via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: terminal read_from (L3)")
+        native = _require_native(self._native, "terminal read_from")
+        data, next_offset = native.read_from(port, offset)
+        return bytes(data), int(next_offset)
 
 
 class CheckpointHandle:
+    def __init__(self, native: Any = None) -> None:
+        self._native = native
+
     async def create(self, label: str) -> SnapshotDescriptor:
-        # TODO (L3): create a checkpoint snapshot via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: checkpoint create (L3)")
+        native = _require_native(self._native, "checkpoint create")
+        return _snapshot_from_dict(native.create(label))
 
 
 class HostHandle:
+    def __init__(self, native: Any = None) -> None:
+        self._native = native
+
     async def lsm_status(self) -> bool:
-        # TODO (L3): read host LSM status via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: host lsm_status (L3)")
+        native = _require_native(self._native, "host lsm_status")
+        return bool(native.lsm_status())
 
     async def pressure_level(self) -> int:
-        # TODO (L3): read host memory-pressure level via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: host pressure_level (L3)")
+        native = _require_native(self._native, "host pressure_level")
+        return int(native.pressure_level())
 
 
 class StepHandle:
@@ -549,6 +659,7 @@ def relay_socket_path(session_id: str) -> str:
 
 class Session:
     def __init__(self) -> None:
+        self._native: Any = None
         self.driver_name: str = ""
         self.boot_ms: int = 0
         self.cap = Caps()
@@ -560,6 +671,25 @@ class Session:
         self.host = HostHandle()
         self.vsock = VsockHandle()
 
+    # see: cans/03-sdk-architecture.md#Python-SDK
+    @classmethod
+    def from_native(cls, handle: Any) -> Session:
+        session = cls()
+        session._native = handle
+        session.driver_name = str(handle.driver_name)
+        session.boot_ms = int(handle.boot_ms)
+        session.vm = VmHandle(session, handle.vm)
+        session.terminal = TerminalHandle(handle.terminal)
+        session.storage = StorageHandle(handle.storage)
+        session.wire = WireHandle(handle.wire)
+        session.checkpoint = CheckpointHandle(handle.checkpoint)
+        session.host = HostHandle(handle.host)
+        return session
+
+    async def fork(self) -> Session:
+        native = _require_native(self._native, "session fork")
+        return Session.from_native(native.fork())
+
     async def rollback(self, snapshot: SnapshotDescriptor | None = None) -> None:
         if snapshot is not None:
             await self.vm.rollback(snapshot)
@@ -568,12 +698,12 @@ class Session:
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session rollback (L3)")
 
     async def stop(self) -> None:
-        # TODO (L3): stop the microVM session via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session stop (L3)")
+        native = _require_native(self._native, "session stop")
+        native.stop()
 
     async def terminate(self) -> None:
-        # TODO (L3): terminate the microVM session via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session terminate (L3)")
+        native = _require_native(self._native, "session terminate")
+        native.terminate()
 
     async def spawn(
         self,
@@ -591,12 +721,12 @@ class Session:
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session exec_in_guest (L3)")
 
     async def suspend(self, path: str) -> None:
-        # TODO (L3): suspend session to snapshot file via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session suspend (L3)")
+        native = _require_native(self._native, "session suspend")
+        native.suspend(path)
 
     async def resume(self, path: str) -> None:
-        # TODO (L3): resume session from snapshot file via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session resume (L3)")
+        native = _require_native(self._native, "session resume")
+        native.resume(path)
 
     async def console(self) -> None:
         # TODO (L3): open the PTY console master via the PyO3 _kelir bridge.
@@ -893,8 +1023,8 @@ class KelirBuilder:
         for registration in self._plugin_registrations:
             native.use_plugin(registration.name, registration.enabled)
         native.fuse_hooks(descriptor)
-        # TODO (L3): await the native boot coroutine and wrap the PyO3 session handle into kelir.Session.
-        raise EConfig("kelir native PyO3 boot binding is not implemented (L3)")
+        native_handle = native.boot()
+        return Session.from_native(native_handle)
 
     async def __aenter__(self) -> Session:
         self._session = await self.boot()
@@ -953,6 +1083,7 @@ __all__ = [
     "CheckpointHandle",
     "Deadline",
     "ExecStream",
+    "ExecveMutation",
     "ExecutionReceipt",
     "ExitKind",
     "FilterAction",

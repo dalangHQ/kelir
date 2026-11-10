@@ -2,15 +2,18 @@
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::Arc;
 
-use kelir_interface::driver_interface::VmConfig;
+use async_trait::async_trait;
+use kelir_interface::driver_interface::{Stream, VmConfig};
 use kelir_interface::plugin_model::HandlerCtx;
 use kelir_interface::plugin_model::LifecycleCtx;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    AnyPlugin, CompositePlugin, MountScope, PipelineBinder, VetoEvent, VetoList,
+    AnyPlugin, CompositePlugin, LifecycleEvent, MountScope, PipelineBinder, VetoEvent, VetoList,
 };
 use kelir_interface::protocol_wire::{TrapEvent, Verdict};
+use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
 use crate::planes::storage_plane::{LockBrokerConfig, LockScope, StorageConfig};
@@ -165,7 +168,6 @@ type CustomActionFuture =
 
 type BoxedCustomAction = Box<dyn Fn(ciborium::value::Value) -> CustomActionFuture + Send + Sync>;
 
-// TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
 #[allow(dead_code)]
 pub(crate) struct CustomActionEntry {
     pub(crate) name: String,
@@ -178,7 +180,6 @@ type StreamServiceFuture =
 
 type BoxedStreamService = Box<dyn Fn(Vec<u8>) -> StreamServiceFuture + Send + Sync>;
 
-// TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
 #[allow(dead_code)]
 pub(crate) struct VsockServiceEntry {
     pub(crate) port: u32,
@@ -193,6 +194,57 @@ pub(crate) struct StreamKindServiceEntry {
     pub(crate) kind: u16,
     pub(crate) schema: serde_json::Value,
     pub(crate) handler: BoxedStreamService,
+}
+
+const MAX_VSOCK_REQUEST_BYTES: usize = 65_536;
+
+struct BuilderVsockService {
+    handler: BoxedStreamService,
+}
+
+// see: cans/11-protocol.md#Control-channel
+#[async_trait]
+impl VsockServiceHandler for BuilderVsockService {
+    async fn on_connect(
+        &self,
+        _peer: &VsockPeer,
+        mut stream: Box<dyn Stream>,
+        _ctx: &HandlerCtx,
+    ) -> Result<(), PluginError> {
+        let mut request = Vec::new();
+        let mut chunk = [0u8; 1024];
+        loop {
+            match stream.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) => {
+                    request.extend_from_slice(&chunk[..read]);
+                    if request.len() > MAX_VSOCK_REQUEST_BYTES {
+                        return Err(PluginError::reject(
+                            "EINVAL",
+                            "vsock request exceeds the 64KB frame budget",
+                        ));
+                    }
+                }
+                Err(error) => return Err(PluginError::Io(error)),
+            }
+        }
+        let response = (self.handler)(request)
+            .await
+            .map_err(|error| PluginError::Halt(format!("vsock service failed: {error}")))?;
+        let mut written = 0;
+        while written < response.len() {
+            match stream.write(&response[written..]) {
+                Ok(0) => {
+                    return Err(PluginError::Halt(
+                        "vsock service: stream closed while writing response".into(),
+                    ));
+                }
+                Ok(count) => written += count,
+                Err(error) => return Err(PluginError::Io(error)),
+            }
+        }
+        stream.flush().map_err(PluginError::Io)
+    }
 }
 
 pub(crate) struct Registration<Plugins: HList> {
@@ -526,10 +578,10 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
 
 impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins, Params> {
     async fn finish_boot(self) -> Result<Session<Plugins, Params>, PluginError> {
-        // TODO (L3): register plugin instances, dispatch tables, and vetoes into the engine per cans/02-plugin-model.md#Static-dispatch before handing the session back.
         // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
-        let plugins: Vec<kelir_core::PluginRegistration> = self
-            .registration
+        let storage = self.storage_wiring();
+        let mut registration = self.registration;
+        let plugins: Vec<kelir_core::PluginRegistration> = registration
             .instances
             .iter()
             .map(|(plugin, _)| {
@@ -537,25 +589,50 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
             })
             .collect();
         let mut engine = kelir_core::dispatch_plugin::PipelineEngine::new();
-        for (instance, scope) in &self.registration.instances {
+        for (instance, scope) in &registration.instances {
             if !instance.is_enabled() {
                 continue;
             }
             engine.set_active_scope(scope.clone());
             instance.register_interceptors(&mut engine);
         }
+        for entry in std::mem::take(&mut registration.vsock_services) {
+            engine.bind_vsock_service(
+                VsockServiceSpec {
+                    port: entry.port,
+                    service: entry.service,
+                },
+                Arc::new(BuilderVsockService {
+                    handler: entry.handler,
+                }),
+            );
+        }
+        for entry in std::mem::take(&mut registration.custom_actions) {
+            engine.register_custom_action(entry.name, entry.handler);
+        }
+        if let Some(callback) = registration.on_vm_init.take() {
+            engine.set_on_vm_init(callback);
+        }
+        if let Some(callback) = registration.on_vm_ready.take() {
+            engine.set_on_vm_ready(callback);
+        }
+        if let Some(callback) = registration.on_vm_shutdown.take() {
+            engine.set_on_vm_shutdown(callback);
+        }
+        if let Some(callback) = registration.on_trap_deny.take() {
+            engine.set_on_trap_deny(callback);
+        }
         engine.set_active_scope(MountScope::default());
         engine.seal()?;
         let metrics = std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
         let engine = engine.with_metrics(metrics.clone());
-        let synthetic_files = self
-            .registration
+        let synthetic_files = registration
             .storage_cfg
             .as_ref()
             .map(|cfg| cfg.synthetic_files.clone())
             .unwrap_or_default();
         let plane_wiring = kelir_core::session_lifecycle::PlaneWiring {
-            terminal: self.registration.terminal_cfg.as_ref().map(|cfg| {
+            terminal: registration.terminal_cfg.as_ref().map(|cfg| {
                 kelir_core::planes::terminal::TerminalWiring {
                     cols: cfg.cols,
                     rows: cfg.rows,
@@ -563,8 +640,10 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
                     strip_title: cfg.strip_title,
                 }
             }),
-            wire: self.registration.wire_cfg.as_ref().map(|cfg| {
-                kelir_core::planes::wire::WireWiring {
+            wire: registration
+                .wire_cfg
+                .as_ref()
+                .map(|cfg| kelir_core::planes::wire::WireWiring {
                     sinkhole_allowlist: cfg.sinkhole.allowlist.clone(),
                     sinkhole_drop_all: cfg.sinkhole.drop_all,
                     ssh_agent_bridge: cfg.ssh_agent_bridge,
@@ -579,9 +658,8 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
                         .map(|proxy| (proxy.listen_port, proxy.destination.clone()))
                         .collect(),
                     allow_udp_proxied: matches!(cfg.tap_filter, TapFilter::AllowUdpProxied),
-                }
-            }),
-            storage: self.storage_wiring(),
+                }),
+            storage,
         };
         let core = kelir_core::Session::boot_with_engine(
             self.config,
@@ -592,8 +670,11 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
             plane_wiring,
         )?;
         let mut core = core;
-        core.set_detached(self.registration.detached);
-        Ok(Session::from_parts(core, self.plugins, self.registration))
+        core.set_detached(registration.detached);
+        core.set_vetoes(std::mem::take(&mut registration.vetoes));
+        core.run_lifecycle_hook(LifecycleEvent::VmInit).await?;
+        core.run_lifecycle_hook(LifecycleEvent::VmReady).await?;
+        Ok(Session::from_parts(core, self.plugins, registration))
     }
 
     // see: cans/05-storage-plane.md#Storage-architecture

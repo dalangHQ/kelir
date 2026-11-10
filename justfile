@@ -25,6 +25,11 @@ build-shim target="aarch64-unknown-linux-musl":
 build-ts:
     pnpm -r build
 
+# Builds the PyO3 extension module into the Python package so KelirBuilder.boot() can load it.
+build-py:
+    cargo build -p kelir-pyo3
+    cp target/debug/libkelir_pyo3.so packages/py/kelir/_kelir.abi3.so
+
 # ── Audit & validation ──
 # check-spec is the spec gate only (refs + structure + redundancy).
 # Coverage gates live elsewhere; see 15-operations.md#Coverage-gates.
