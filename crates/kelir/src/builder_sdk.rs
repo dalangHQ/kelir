@@ -268,17 +268,28 @@ fn has_empty<T: AsRef<std::ffi::OsStr>>(values: &Option<Vec<T>>) -> bool {
         .is_some_and(|values| values.iter().any(|value| value.as_ref().is_empty()))
 }
 
+fn triple_failure(name: &str, failure: String) -> String {
+    if name.is_empty() {
+        failure
+    } else {
+        format!("{name}: {failure}")
+    }
+}
+
 fn validate_vsock_spec(name: &str, port: u32, service: &str) -> Result<(), PluginError> {
     if port == 0 || port > 65_535 {
         return Err(PluginError::reject(
             "EConfig",
-            format!("{name}: vsock service port {port} out of range 1..=65535"),
+            triple_failure(
+                name,
+                format!("vsock service port {port} out of range 1..=65535"),
+            ),
         ));
     }
     if service.is_empty() {
         return Err(PluginError::reject(
             "EConfig",
-            format!("{name}: vsock service name must not be empty"),
+            triple_failure(name, "vsock service name must not be empty".to_string()),
         ));
     }
     Ok(())
@@ -288,13 +299,13 @@ fn validate_scope(name: &str, scope: &MountScope) -> Result<(), PluginError> {
     if has_empty(&scope.binaries) {
         return Err(PluginError::reject(
             "EConfig",
-            format!("{name}: scope binary name must not be empty"),
+            triple_failure(name, "scope binary name must not be empty".to_string()),
         ));
     }
     if has_empty(&scope.paths) {
         return Err(PluginError::reject(
             "EConfig",
-            format!("{name}: scope path must not be empty"),
+            triple_failure(name, "scope path must not be empty".to_string()),
         ));
     }
     Ok(())
@@ -390,7 +401,8 @@ impl KelirBuilder<Host, Unsealed, (), HNil, HNil, NoParams> {
             registration: Registration::default(),
             fast_boot: FastBootMode::Off,
             dax_window: DaxWindowMode::Off,
-            name: "host",
+            // see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
+            name: "",
             context_factory: Arc::new(|| ()),
             scope: MountScope::default(),
             fork: None,

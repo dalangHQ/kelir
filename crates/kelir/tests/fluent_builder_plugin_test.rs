@@ -348,8 +348,8 @@ fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
     let text = error_text(host_bad);
     assert!(
         text.contains("EConfig")
-            && text.contains("host")
-            && text.contains("out of range 1..=65535"),
+            && text.contains("vsock service port 0 out of range 1..=65535")
+            && !text.contains("host"),
         "unexpected error: {text}"
     );
     let ok = test_builder()

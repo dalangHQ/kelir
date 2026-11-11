@@ -1,6 +1,7 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/01-architecture.md#Foreign-runtime-embedding
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+#![forbid(unsafe_code)]
 use std::sync::Arc;
 use std::time::Instant;
 

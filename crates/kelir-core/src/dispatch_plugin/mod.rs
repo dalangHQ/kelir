@@ -549,6 +549,41 @@ impl PipelineEngine {
         true
     }
 
+    // see: cans/02-plugin-model.md#Mount-scoping
+    fn net_scope_allows(scope: &MountScope, remote: Option<([u8; 4], u16)>) -> bool {
+        match remote {
+            Some((ip, port)) => scope.allows_net(ip, port),
+            None => scope.net_cidrs.is_none() && scope.net_ports.is_none(),
+        }
+    }
+
+    // see: cans/02-plugin-model.md#Mount-scoping
+    // see: cans/07-wire-plane.md#Userspace-network-stack
+    fn net_remote_endpoint(frame: &[u8], inbound: bool) -> Option<([u8; 4], u16)> {
+        use crate::planes::wire::layout_wire::{
+            ETH_HEADER_BYTES, ETHERTYPE_IPV4, EthView, IP_PROTO_TCP, IP_PROTO_UDP,
+            IPV4_MIN_HEADER_BYTES, Ipv4View, L4_PORT_PAIR_BYTES,
+        };
+        if frame.len() < ETH_HEADER_BYTES || EthView::new_unchecked(frame).etype() != ETHERTYPE_IPV4
+        {
+            return None;
+        }
+        let ip = Ipv4View::new_unchecked(&frame[ETH_HEADER_BYTES..]);
+        let ihl = ip.ihl_bytes_checked()?;
+        if ihl < IPV4_MIN_HEADER_BYTES
+            || frame.len() < ETH_HEADER_BYTES + ihl + L4_PORT_PAIR_BYTES
+            || !matches!(ip.proto(), IP_PROTO_TCP | IP_PROTO_UDP)
+        {
+            return None;
+        }
+        let l4 = &frame[ETH_HEADER_BYTES + ihl..];
+        if inbound {
+            Some((ip.src_checked()?, u16::from_be_bytes([l4[0], l4[1]])))
+        } else {
+            Some((ip.dst_checked()?, u16::from_be_bytes([l4[2], l4[3]])))
+        }
+    }
+
     pub fn seal(&mut self) -> Result<(), PluginError> {
         if self.sealed {
             return Err(PluginError::Halt("pipeline already sealed".into()));
@@ -749,13 +784,17 @@ impl PipelineEngine {
         Ok(FilterAction::Forward)
     }
 
-    // TODO (L3): CIDR/port scope rules need a frame parser; only the device mask is enforced here.
+    // see: cans/02-plugin-model.md#Mount-scoping
     pub fn dispatch_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::NetOutbound)?;
+        let remote = Self::net_remote_endpoint(frame, false);
         for (index, interceptor) in self.net_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.net_scopes, index);
             if !scope.allows_device(VirtioDevice::Net) {
+                continue;
+            }
+            if !Self::net_scope_allows(&scope, remote) {
                 continue;
             }
             if fused.is_none() {
@@ -784,12 +823,17 @@ impl PipelineEngine {
         Ok(FilterAction::Forward)
     }
 
+    // see: cans/02-plugin-model.md#Mount-scoping
     pub fn dispatch_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::NetInbound)?;
+        let remote = Self::net_remote_endpoint(frame, true);
         for (index, interceptor) in self.net_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.net_scopes, index);
             if !scope.allows_device(VirtioDevice::Net) {
+                continue;
+            }
+            if !Self::net_scope_allows(&scope, remote) {
                 continue;
             }
             if fused.is_none() {

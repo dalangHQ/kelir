@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/15-operations.md#Multi-language-parity-gate"
-  statement: "Parity is evaluated on identical wire frame inputs and outputs using ./vectors.json (repo root; the work-order path tests/vectors/vectors.json does not exist): the TypeScript suite consumes all 12 vectors and reproduces each frame_hex byte-for-byte with the identical expected_verdict. GAP: no receipt equality is asserted — ./vectors.json contains zero receipt fields and crates/kelir-plugin-cli/src/parity_cli.rs compares frame bytes plus verdict-lattice membership only, while cans/15-operations.md#Multi-language-parity-gate also requires CI to diff the observed ExecutionReceipt per chain; no TS-side parity runner exists in packages/ts (zero vectors.json references), so receipt-equality has no executable surface and is recorded here as a gap, not asserted."
+  statement: "Parity is evaluated on identical wire frame inputs and outputs using ./vectors.json (repo root; the work-order path tests/vectors/vectors.json does not exist): the TypeScript suite consumes all 58 vectors and reproduces each frame_hex byte-for-byte with the identical expected_verdict. GAP: no receipt equality is asserted — ./vectors.json contains zero receipt fields and crates/kelir-plugin-cli/src/parity_cli.rs compares frame bytes plus verdict-lattice membership only, while cans/15-operations.md#Multi-language-parity-gate also requires CI to diff the observed ExecutionReceipt per chain; no TS-side parity runner exists in packages/ts (zero vectors.json references), so receipt-equality has no executable surface and is recorded here as a gap, not asserted."
   blast_radius_if_breached: "TypeScript and Rust disagree on a wire frame or verdict, so the same trap input passes in one SDK and drops in the other."
 
 confusion_matrix:
@@ -28,7 +28,7 @@ setup:
     trust: "reviewed"
   initial_state:
     vectors_file: "./vectors.json"
-    vector_count: 12
+    vector_count: 58
     tables: []
     vault_secrets: []
 
@@ -43,7 +43,7 @@ expected_observations:
   state_modified: false
   diagnostic:
     domain: "sdk.typescript"
-    culprit: "none — all 12 vectors reproduce frame_hex and expected_verdict"
+    culprit: "none — all 58 vectors reproduce frame_hex and expected_verdict"
     remedy: "none required"
   database:
     row_count_delta: 0
@@ -67,4 +67,4 @@ expected_observations:
 
 anti_slop_assertions:
   - rule: "AS-06"
-    verification: "assert_eq!(parity_asserted_vectors(\"./vectors.json\"), 12); assert!(frame_hex_matches_literal(0));"
+    verification: "assert_eq!(parity_asserted_vectors(\"./vectors.json\"), 58); assert!(frame_hex_matches_literal(0));"

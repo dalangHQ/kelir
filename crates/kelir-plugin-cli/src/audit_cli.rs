@@ -14,6 +14,12 @@ use crate::rings_cli;
 const TESTKIT_CRATE: &str = "kelir-plugin-testkit";
 const INTERFACE_CRATE: &str = "kelir-interface";
 
+// see: cans/plugins/ledger.md#OpenTelemetry
+const ALLOWED_SUPPORT_CRATES: &[&str] = &["kelir-otlp"];
+
+// see: cans/15-operations.md#Integration-tier
+const ALLOWED_DEV_CRATES: &[&str] = &["driver-rustvmm"];
+
 // see: cans/02-plugin-model.md#Plugin-tiering
 const PLUGIN_DIR: &str = "crates/kelir-plugins";
 
@@ -79,7 +85,11 @@ fn forbidden_workspace_crates(
         let parsed: MemberToml = toml::from_str(&text)
             .map_err(|e| format!("check -p: {} is not valid TOML: {e}", manifest.display()))?;
         let name = parsed.package.name;
-        if plugins.contains(name.as_str()) || name == INTERFACE_CRATE || name == TESTKIT_CRATE {
+        if plugins.contains(name.as_str())
+            || name == INTERFACE_CRATE
+            || name == TESTKIT_CRATE
+            || ALLOWED_SUPPORT_CRATES.contains(&name.as_str())
+        {
             continue;
         }
         forbidden.insert(name);
@@ -133,6 +143,9 @@ fn check_dev_dep(
     forbidden: &BTreeSet<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if dep == TESTKIT_CRATE {
+        return Ok(());
+    }
+    if ALLOWED_DEV_CRATES.contains(&dep) {
         return Ok(());
     }
     if forbidden.contains(dep) {

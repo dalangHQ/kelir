@@ -1,3 +1,4 @@
+// see: cans/15-operations.md#Coverage-gates
 use std::fs;
 use std::path::{Path, PathBuf};
 

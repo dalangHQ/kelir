@@ -285,12 +285,13 @@ impl FuseDispatcher {
                         inode: request.guest_inode,
                         path: request.path.clone(),
                         journal: 0,
+                        offset: 0,
                     }),
                 )? {
                     // see: cans/05-storage-plane.md#FUSE-opcode-table
                     FilterAction::Forward => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
-                        reply: FuseReply::Written(request.data.len() as u64),
+                        reply: FuseReply::Written(request.size),
                     }),
                     // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
                     FilterAction::Drop { errno: None, .. } => Ok(FuseResponse {

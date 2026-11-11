@@ -36,6 +36,9 @@ pub fn catalog_path() -> Result<std::path::PathBuf, CatalogError> {
 
 impl CatalogDb {
     pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Self, rusqlite::Error> {
+        if let Some(parent) = path.as_ref().parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
         let pool = rusqlite::Connection::open(path)?;
         pool.execute_batch(SCHEMA_SQL)?;
         // see: cans/01-architecture.md#Host-state-root

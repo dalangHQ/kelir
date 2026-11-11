@@ -36,7 +36,7 @@ pub use builder_sdk::ToolGuardExt;
 pub use sandbox_runtime::{Sandbox, SandboxOptions, SandboxProfile};
 pub use session_lifecycle::{
     ClockHandle, FsHandle, Session, SpawnResult, StepStack, TerminalHandle, VmHandle, VsockChannel,
-    VsockHandle, WireHandle,
+    VsockHandle,
 };
 
 // see: cans/plugins/chaos.md#Plugin-chaos

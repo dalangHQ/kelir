@@ -3888,7 +3888,7 @@
       "new-argv:-Option<Vec<String>>-(replaces-execution-arguments)",
       "new-binary:-Option<String>-(overrides-target-ELF-path)",
       "post-boot-halts-with-ESecurityViolation",
-      "set-env:-HashMap<String,-String>-(injected-environment-variables)",
+      "set-env:-Vec<(String,-String)>-(ordered-injected-environment-pairs)",
       "strips-host-secrets-before-model-context-ingests-bytes",
       "unset-env:-Vec<String>-(stripped-environment-variables)",
       "vault://-placeholders-are-resolved-by-the-workload"

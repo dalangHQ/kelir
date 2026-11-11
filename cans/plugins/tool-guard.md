@@ -42,7 +42,7 @@
       - Verdict::Patch(ExecveMutation): serializes canonical mutation ABI:
         - new_binary: Option<String> (overrides target ELF path)
         - new_argv: Option<Vec<String>> (replaces execution arguments)
-        - set_env: HashMap<String, String> (injected environment variables)
+        - set_env: Vec<(String, String)> (ordered injected environment pairs)
         - unset_env: Vec<String> (stripped environment variables)
         - Guest shim decodes and applies atomically before trapped execve releases
       - Verdict::Drop { errno, reason }: JSON-RPC error response synthesized

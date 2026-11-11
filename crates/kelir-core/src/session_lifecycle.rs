@@ -269,16 +269,34 @@ impl Session {
             boot_id,
             start_time_ns,
         };
-        kelir_catalog::CatalogDb::open(kelir_catalog::catalog_path().map_err(|error| {
-            kelir_interface::plugin_model::PluginError::Halt(format!("{error}"))
-        })?)
-        .map_err(kelir_catalog::CatalogError::from)
-        .and_then(|catalog| catalog.register_session(&row))
-        .map_err(|error| {
-            kelir_interface::plugin_model::PluginError::Halt(format!(
-                "catalog session registration: {error}"
-            ))
-        })?;
+        let catalog =
+            kelir_catalog::CatalogDb::open(kelir_catalog::catalog_path().map_err(|error| {
+                kelir_interface::plugin_model::PluginError::Halt(format!("{error}"))
+            })?)
+            .map_err(|error| {
+                kelir_interface::plugin_model::PluginError::Halt(format!("catalog open: {error}"))
+            })?;
+        // see: cans/06-storage-catalog.md#Entity-model
+        let already_registered = catalog
+            .lookup_session(&session_id)
+            .map_err(|error| {
+                kelir_interface::plugin_model::PluginError::Halt(format!(
+                    "catalog session lookup: {error}"
+                ))
+            })?
+            .is_some();
+        if already_registered {
+            tracing::warn!(
+                "session {} already registered in the catalog; booting idempotently without a second insert",
+                encode_hex(&session_id)
+            );
+        } else {
+            catalog.register_session(&row).map_err(|error| {
+                kelir_interface::plugin_model::PluginError::Halt(format!(
+                    "catalog session registration: {error}"
+                ))
+            })?;
+        }
         // see: cans/01-architecture.md#Host-state-root
         let workspace_root = session_dir(&session_id)?.join("workspace");
         let storage = crate::planes::storage::StoragePlane::new(

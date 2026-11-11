@@ -558,7 +558,7 @@ impl ProfileState {
             PatchOp::Remove => {
                 remove_pointer(document, &remainder);
             }
-            // TODO (L3): Move/Copy leave the stored base stale; cross-path base update needs owner-state verification per cans/plugins/profile.md.
+            // TODO (L3): Move/Copy leave the stored base stale (Test is read-only); cross-path base update needs owner-state verification; see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching
             PatchOp::Move | PatchOp::Copy | PatchOp::Test => {}
         }
     }
