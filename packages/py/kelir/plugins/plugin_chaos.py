@@ -50,4 +50,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def chaos_builder(config: ChaosConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("chaos").build()
+    cfg = config if config is not None else ChaosConfig()
+    return PluginBuilder("chaos").context(lambda: cfg).build()

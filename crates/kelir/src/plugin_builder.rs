@@ -3,7 +3,6 @@
 use std::future::Future;
 use std::marker::PhantomData;
 use std::path::Path;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -17,6 +16,12 @@ use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdi
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::hlist_sdk::{HCons, HList, HNil, Satisfies};
+
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+pub use crate::plugin_builder_scopes::{
+    ConsoleScope, ExecScope, FsScope, HostScope, LifecycleScope, NetScope, TelemetryScope,
+    TrapScope,
+};
 
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
 #[cfg(feature = "plugin-tool-guard")]
@@ -263,14 +268,10 @@ where
 }
 
 #[async_trait]
-impl<F> LifecycleParticipant for LifecycleClosureAdapter<F, OnVmInit>
+impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnVmInit>
 where
-    F: for<'c, 'i> Fn(
-            &'c mut LifecycleCtx<'i>,
-        )
-            -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-        + Send
-        + Sync,
+    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
 {
     async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         (self.handler)(ctx).await
@@ -278,14 +279,10 @@ where
 }
 
 #[async_trait]
-impl<F> LifecycleParticipant for LifecycleClosureAdapter<F, OnVmReady>
+impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnVmReady>
 where
-    F: for<'c, 'i> Fn(
-            &'c mut LifecycleCtx<'i>,
-        )
-            -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-        + Send
-        + Sync,
+    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
 {
     async fn on_vm_ready(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         (self.handler)(ctx).await
@@ -293,14 +290,10 @@ where
 }
 
 #[async_trait]
-impl<F> LifecycleParticipant for LifecycleClosureAdapter<F, OnVmShutdown>
+impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnVmShutdown>
 where
-    F: for<'c, 'i> Fn(
-            &'c mut LifecycleCtx<'i>,
-        )
-            -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-        + Send
-        + Sync,
+    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
 {
     async fn on_vm_shutdown(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         (self.handler)(ctx).await
@@ -308,14 +301,10 @@ where
 }
 
 #[async_trait]
-impl<F> LifecycleParticipant for LifecycleClosureAdapter<F, OnPreCommit>
+impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnPreCommit>
 where
-    F: for<'c, 'i> Fn(
-            &'c mut LifecycleCtx<'i>,
-        )
-            -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-        + Send
-        + Sync,
+    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
 {
     async fn on_pre_commit(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         (self.handler)(ctx).await
@@ -323,15 +312,10 @@ where
 }
 
 #[async_trait]
-impl<F> LifecycleParticipant for LifecycleClosureAdapter<F, OnPostCommit>
+impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnPostCommit>
 where
-    F: for<'c, 'i> Fn(
-            &'c mut LifecycleCtx<'i>,
-            bool,
-        )
-            -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-        + Send
-        + Sync,
+    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>, bool) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
 {
     async fn on_post_commit(
         &self,
@@ -343,14 +327,10 @@ where
 }
 
 #[async_trait]
-impl<F> LifecycleParticipant for LifecycleClosureAdapter<F, OnHostPreempt>
+impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnHostPreempt>
 where
-    F: for<'c, 'i> Fn(
-            &'c mut LifecycleCtx<'i>,
-        )
-            -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-        + Send
-        + Sync,
+    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
 {
     async fn on_host_preempt(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         (self.handler)(ctx).await
@@ -384,14 +364,10 @@ where
 }
 
 #[async_trait]
-impl<F> SystemTelemetryParticipant for TelemetryClosureAdapter<F, OnWatchdog>
+impl<F, Fut> SystemTelemetryParticipant for TelemetryClosureAdapter<F, OnWatchdog>
 where
-    F: for<'a> Fn(
-            &'a WatchdogEvent,
-        ) -> Pin<
-            Box<dyn Future<Output = Result<WatchdogVerdict, PluginError>> + Send + 'a>,
-        > + Send
-        + Sync,
+    F: Fn(&WatchdogEvent) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<WatchdogVerdict, PluginError>> + Send + 'static,
 {
     async fn on_watchdog(&self, event: &WatchdogEvent) -> Result<WatchdogVerdict, PluginError> {
         (self.handler)(event).await
@@ -433,6 +409,12 @@ impl PluginBuilder<(), HNil> {
             deps: PhantomData,
         }
     }
+}
+
+fn has_empty<T: AsRef<std::ffi::OsStr>>(values: &Option<Vec<T>>) -> bool {
+    values
+        .as_ref()
+        .is_some_and(|values| values.iter().any(|value| value.as_ref().is_empty()))
 }
 
 impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
@@ -674,15 +656,10 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         self
     }
 
-    pub fn on_vm_init<F>(mut self, f: F) -> Self
+    pub fn on_vm_init<F, Fut>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(
-                &'c mut LifecycleCtx<'i>,
-            )
-                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-            + Send
-            + Sync
-            + 'static,
+        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
         self.lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnVmInit> {
@@ -692,15 +669,10 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         self
     }
 
-    pub fn on_vm_ready<F>(mut self, f: F) -> Self
+    pub fn on_vm_ready<F, Fut>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(
-                &'c mut LifecycleCtx<'i>,
-            )
-                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-            + Send
-            + Sync
-            + 'static,
+        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
         self.lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnVmReady> {
@@ -710,15 +682,10 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         self
     }
 
-    pub fn on_vm_shutdown<F>(mut self, f: F) -> Self
+    pub fn on_vm_shutdown<F, Fut>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(
-                &'c mut LifecycleCtx<'i>,
-            )
-                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-            + Send
-            + Sync
-            + 'static,
+        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
         self.lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnVmShutdown> {
@@ -728,15 +695,10 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         self
     }
 
-    pub fn on_pre_commit<F>(mut self, f: F) -> Self
+    pub fn on_pre_commit<F, Fut>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(
-                &'c mut LifecycleCtx<'i>,
-            )
-                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-            + Send
-            + Sync
-            + 'static,
+        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
         self.lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnPreCommit> {
@@ -746,16 +708,10 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         self
     }
 
-    pub fn on_post_commit<F>(mut self, f: F) -> Self
+    pub fn on_post_commit<F, Fut>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(
-                &'c mut LifecycleCtx<'i>,
-                bool,
-            )
-                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-            + Send
-            + Sync
-            + 'static,
+        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>, bool) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
         self.lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnPostCommit> {
@@ -765,15 +721,10 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         self
     }
 
-    pub fn on_host_preempt<F>(mut self, f: F) -> Self
+    pub fn on_host_preempt<F, Fut>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(
-                &'c mut LifecycleCtx<'i>,
-            )
-                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
-            + Send
-            + Sync
-            + 'static,
+        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
         self.lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnHostPreempt> {
@@ -809,15 +760,10 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         self
     }
 
-    pub fn on_watchdog<F>(mut self, f: F) -> Self
+    pub fn on_watchdog<F, Fut>(mut self, f: F) -> Self
     where
-        F: for<'a> Fn(
-                &'a WatchdogEvent,
-            ) -> Pin<
-                Box<dyn Future<Output = Result<WatchdogVerdict, PluginError>> + Send + 'a>,
-            > + Send
-            + Sync
-            + 'static,
+        F: Fn(&WatchdogEvent) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<WatchdogVerdict, PluginError>> + Send + 'static,
     {
         self.telemetry
             .push(Arc::new(TelemetryClosureAdapter::<_, OnWatchdog> {
@@ -827,8 +773,90 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         self
     }
 
-    pub fn build(self) -> PluginWrapper<Ctx, Deps> {
-        PluginWrapper {
+    pub fn trap<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(TrapScope<Ctx, Deps>) -> TrapScope<Ctx, Deps>,
+    {
+        configure(TrapScope { builder: self }).builder
+    }
+
+    pub fn fs<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(FsScope<Ctx, Deps>) -> FsScope<Ctx, Deps>,
+    {
+        configure(FsScope { builder: self }).builder
+    }
+
+    pub fn net<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(NetScope<Ctx, Deps>) -> NetScope<Ctx, Deps>,
+    {
+        configure(NetScope { builder: self }).builder
+    }
+
+    pub fn console<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(ConsoleScope<Ctx, Deps>) -> ConsoleScope<Ctx, Deps>,
+    {
+        configure(ConsoleScope { builder: self }).builder
+    }
+
+    pub fn exec<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(ExecScope<Ctx, Deps>) -> ExecScope<Ctx, Deps>,
+    {
+        configure(ExecScope { builder: self }).builder
+    }
+
+    pub fn host<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(HostScope<Ctx, Deps>) -> HostScope<Ctx, Deps>,
+    {
+        configure(HostScope { builder: self }).builder
+    }
+
+    pub fn lifecycle<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(LifecycleScope<Ctx, Deps>) -> LifecycleScope<Ctx, Deps>,
+    {
+        configure(LifecycleScope { builder: self }).builder
+    }
+
+    pub fn telemetry<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(TelemetryScope<Ctx, Deps>) -> TelemetryScope<Ctx, Deps>,
+    {
+        configure(TelemetryScope { builder: self }).builder
+    }
+
+    pub fn build(self) -> Result<PluginWrapper<Ctx, Deps>, PluginError> {
+        for (spec, _) in &self.vsock {
+            if spec.port == 0 || spec.port > 65_535 {
+                return Err(PluginError::reject(
+                    "EConfig",
+                    format!("vsock service port {} out of range 1..=65535", spec.port),
+                ));
+            }
+            if spec.service.is_empty() {
+                return Err(PluginError::reject(
+                    "EConfig",
+                    "vsock service name must not be empty",
+                ));
+            }
+        }
+        if has_empty(&self.scope.binaries) {
+            return Err(PluginError::reject(
+                "EConfig",
+                "scope binary name must not be empty",
+            ));
+        }
+        if has_empty(&self.scope.paths) {
+            return Err(PluginError::reject(
+                "EConfig",
+                "scope path must not be empty",
+            ));
+        }
+        Ok(PluginWrapper {
             name: self.name,
             context_factory: self.context_factory,
             scope: self.scope,
@@ -842,7 +870,7 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
             telemetry: self.telemetry,
             vsock: self.vsock,
             deps: PhantomData,
-        }
+        })
     }
 }
 

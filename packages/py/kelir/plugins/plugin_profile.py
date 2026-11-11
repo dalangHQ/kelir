@@ -37,4 +37,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def profile_builder(config: ProfileConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("profile").build()
+    cfg = config if config is not None else ProfileConfig()
+    return PluginBuilder("profile").context(lambda: cfg).build()

@@ -53,4 +53,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def supply_chain_builder(config: SupplyChainConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("supply-chain").build()
+    cfg = config if config is not None else SupplyChainConfig()
+    return PluginBuilder("supply-chain").context(lambda: cfg).build()

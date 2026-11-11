@@ -29,4 +29,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def tool_guard_builder(config: ToolGuardConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("tool-guard").build()
+    cfg = config if config is not None else ToolGuardConfig()
+    return PluginBuilder("tool-guard").context(lambda: cfg).build()

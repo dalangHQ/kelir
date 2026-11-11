@@ -166,7 +166,7 @@ kelir/
 │   │   ├── src/
 │   │   │   ├── lib.rs
 │   │   │   ├── spec_anchors.rs        # Spec heading/anchor extraction shared by the gates
-│   │   │   ├── scenarios.rs           # Scenario tier model shared by the gates: loading, plane map, composition
+│   │   │   ├── scenario_catalog.rs    # Scenario tier model shared by the gates: loading, plane map, composition
 │   │   │   ├── bin/
 │   │   │       ├── anchors_testkit.rs         # Spec anchor index generator (committed anchors.json)
 │   │   │       ├── check_manifest.rs  # Manifest-disk parity, law_reference and platform_target checks

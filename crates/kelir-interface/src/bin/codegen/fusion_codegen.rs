@@ -372,12 +372,17 @@ pub fn emit_typescript(model: &FusionModel) -> String {
     lines.push("export interface PluginBuilderVerb {".to_string());
     lines.push("  readonly verb: string;".to_string());
     lines.push("  readonly ring: RingEvent;".to_string());
+    lines.push("  readonly lifecycleTag?: LifecycleTag;".to_string());
     lines.push("}".to_string());
     lines.push(String::new());
     lines.push("export const PLUGIN_BUILDER_VERBS: readonly PluginBuilderVerb[] = [".to_string());
     for binding in &model.hook_rings {
+        let extra = match &binding.lifecycle_tag {
+            None => String::new(),
+            Some(tag) => format!(", lifecycleTag: \"{tag}\""),
+        };
         lines.push(format!(
-            "  {{ verb: \"{}\", ring: RingEvent.{} }},",
+            "  {{ verb: \"{}\", ring: RingEvent.{}{extra} }},",
             camel(&binding.method),
             binding.ring
         ));
@@ -433,16 +438,6 @@ pub fn emit_python(model: &FusionModel) -> String {
         };
         lines.push(format!(
             "    \"{}\": (RingEvent.{}, {tag}),",
-            binding.method,
-            py_member(&binding.ring)
-        ));
-    }
-    lines.push("}".to_string());
-    lines.push(String::new());
-    lines.push("PLUGIN_BUILDER_VERBS: dict[str, RingEvent] = {".to_string());
-    for binding in &model.hook_rings {
-        lines.push(format!(
-            "    \"{}\": RingEvent.{},",
             binding.method,
             py_member(&binding.ring)
         ));

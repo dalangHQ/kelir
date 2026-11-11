@@ -120,7 +120,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         // see: cans/08-lifecycle.md#CoW-fork
         let mut registration = Registration {
             instances: Vec::new(),
-            // see: cans/_collab/conflicts.md
+            // see: cans/08-lifecycle.md#CoW-fork
             traps: Vec::new(),
             storage_cfg: self.registration.storage_cfg.clone(),
             terminal_cfg: self.registration.terminal_cfg.clone(),

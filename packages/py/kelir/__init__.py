@@ -904,7 +904,7 @@ class KelirBuilder:
                 required_names = (required_names,)
             for required in required_names:
                 if required not in registered:
-                    raise EConfig(f"missing prerequisite '{required}' required by plugin '{name}'")
+                    raise EConfig(f"missing prerequisite: {required} required by {name}")
         descriptor = self.fuse().describe()
         bridge = _load_native_bridge()
         native = bridge.PyKelirBuilder(

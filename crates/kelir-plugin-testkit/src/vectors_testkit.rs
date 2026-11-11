@@ -204,111 +204,116 @@ impl VectorSuite {
     // see: cans/02-plugin-model.md#Plugin-testkit
     pub fn fixtures() -> Result<VectorSuite, VectorError> {
         Ok(VectorSuite {
-            vectors: vec![
-                trap_case(
-                    "trap-git-commit-pass",
-                    trap_event(
-                        1,
-                        1234,
-                        100,
-                        "/usr/bin/git",
-                        vec!["git".to_string(), "commit".to_string()],
-                        HashMap::from([
-                            ("KELIR_PARAMS".to_string(), "{}".to_string()),
-                            ("PATH".to_string(), "/usr/bin:/bin".to_string()),
-                        ]),
-                    ),
-                    Verdict::Pass,
-                )?,
-                trap_case(
-                    "trap-git-push-deny-epolicy",
-                    trap_event(
-                        2,
-                        1234,
-                        100,
-                        "/usr/bin/git",
-                        vec!["git".to_string(), "push".to_string(), "--force".to_string()],
-                        HashMap::new(),
-                    ),
-                    Verdict::Drop {
-                        errno: Some("EPERM".to_string()),
-                        reason: "EPOLICY: force push denied".to_string(),
-                    },
-                )?,
-                exec_rewrite_case()?,
-                trap_case(
-                    "trap-mutating-tool-suspend-approval",
-                    trap_event(
-                        4,
-                        2401,
-                        100,
-                        "/workspace/scripts/deploy.py",
-                        vec!["deploy.py".to_string(), "--migrate".to_string()],
-                        HashMap::new(),
-                    ),
-                    Verdict::Suspend {
-                        until: SuspendUntil::Approval,
-                    },
-                )?,
-                trap_case(
-                    "trap-clock-skew-deadline-suspend",
-                    trap_event(
-                        5,
-                        2402,
-                        1234,
-                        "/usr/bin/date",
-                        vec!["date".to_string()],
-                        HashMap::new(),
-                    ),
-                    Verdict::Suspend {
-                        until: SuspendUntil::Deadline(60_000),
-                    },
-                )?,
-                trap_case(
-                    "trap-unverified-caller-abort-ewxviolation",
-                    trap_event(
-                        6,
-                        2403,
-                        100,
-                        "/workspace/scratch/loader",
-                        vec!["loader".to_string()],
-                        HashMap::new(),
-                    ),
-                    Verdict::Abort {
-                        reason: "EWXVIOLATION: unverified caller binary".to_string(),
-                    },
-                )?,
-                heartbeat_case()?,
-                watchdog_case(
-                    "watchdog-reboot-suppress",
-                    WatchdogEvent {
-                        timeout_ms: 5_000,
-                        action: WatchdogAction::Reboot,
-                        fired_at_ns: 60_000_000_000,
-                        last_heartbeat_ms: 55_000,
-                        last_active_pid: None,
-                    },
-                    WatchdogVerdict::Suppress,
-                )?,
-                watchdog_case(
-                    "watchdog-terminate-mitigate",
-                    WatchdogEvent {
-                        timeout_ms: 5_000,
-                        action: WatchdogAction::Terminate {
-                            emit_diagnostic: true,
+            vectors: {
+                let mut vectors = vec![
+                    trap_case(
+                        "trap-git-commit-pass",
+                        trap_event(
+                            1,
+                            1234,
+                            100,
+                            "/usr/bin/git",
+                            vec!["git".to_string(), "commit".to_string()],
+                            HashMap::from([
+                                ("KELIR_PARAMS".to_string(), "{}".to_string()),
+                                ("PATH".to_string(), "/usr/bin:/bin".to_string()),
+                            ]),
+                        ),
+                        Verdict::Pass,
+                    )?,
+                    trap_case(
+                        "trap-git-push-deny-epolicy",
+                        trap_event(
+                            2,
+                            1234,
+                            100,
+                            "/usr/bin/git",
+                            vec!["git".to_string(), "push".to_string(), "--force".to_string()],
+                            HashMap::new(),
+                        ),
+                        Verdict::Drop {
+                            errno: Some("EPERM".to_string()),
+                            reason: "EPOLICY: force push denied".to_string(),
                         },
-                        fired_at_ns: 60_000_000_000,
-                        last_heartbeat_ms: 55_000,
-                        last_active_pid: Some(1234),
-                    },
-                    WatchdogVerdict::Mitigate,
-                )?,
-                veto_case("veto-fork", VetoEvent::Fork, false)?,
-                veto_case("veto-suspend", VetoEvent::Suspend, false)?,
-                veto_case("veto-clock-skew", VetoEvent::ClockSkew, false)?,
-                plugin_builder_trap_case()?,
-                plugin_builder_fs_write_trap_case()?,
-            ],
+                    )?,
+                    exec_rewrite_case()?,
+                    trap_case(
+                        "trap-mutating-tool-suspend-approval",
+                        trap_event(
+                            4,
+                            2401,
+                            100,
+                            "/workspace/scripts/deploy.py",
+                            vec!["deploy.py".to_string(), "--migrate".to_string()],
+                            HashMap::new(),
+                        ),
+                        Verdict::Suspend {
+                            until: SuspendUntil::Approval,
+                        },
+                    )?,
+                    trap_case(
+                        "trap-clock-skew-deadline-suspend",
+                        trap_event(
+                            5,
+                            2402,
+                            1234,
+                            "/usr/bin/date",
+                            vec!["date".to_string()],
+                            HashMap::new(),
+                        ),
+                        Verdict::Suspend {
+                            until: SuspendUntil::Deadline(60_000),
+                        },
+                    )?,
+                    trap_case(
+                        "trap-unverified-caller-abort-ewxviolation",
+                        trap_event(
+                            6,
+                            2403,
+                            100,
+                            "/workspace/scratch/loader",
+                            vec!["loader".to_string()],
+                            HashMap::new(),
+                        ),
+                        Verdict::Abort {
+                            reason: "EWXVIOLATION: unverified caller binary".to_string(),
+                        },
+                    )?,
+                    heartbeat_case()?,
+                    watchdog_case(
+                        "watchdog-reboot-suppress",
+                        WatchdogEvent {
+                            timeout_ms: 5_000,
+                            action: WatchdogAction::Reboot,
+                            fired_at_ns: 60_000_000_000,
+                            last_heartbeat_ms: 55_000,
+                            last_active_pid: None,
+                        },
+                        WatchdogVerdict::Suppress,
+                    )?,
+                    watchdog_case(
+                        "watchdog-terminate-mitigate",
+                        WatchdogEvent {
+                            timeout_ms: 5_000,
+                            action: WatchdogAction::Terminate {
+                                emit_diagnostic: true,
+                            },
+                            fired_at_ns: 60_000_000_000,
+                            last_heartbeat_ms: 55_000,
+                            last_active_pid: Some(1234),
+                        },
+                        WatchdogVerdict::Mitigate,
+                    )?,
+                    veto_case("veto-fork", VetoEvent::Fork, false)?,
+                    veto_case("veto-suspend", VetoEvent::Suspend, false)?,
+                    veto_case("veto-clock-skew", VetoEvent::ClockSkew, false)?,
+                    plugin_builder_trap_case()?,
+                    plugin_builder_fs_write_trap_case()?,
+                ];
+                vectors.extend(plugin_builder_verb_cases()?);
+                vectors.extend(plugin_builder_nested_cases()?);
+                vectors
+            },
         })
     }
 }
@@ -419,6 +424,311 @@ fn plugin_builder_fs_write_trap_case() -> Result<VectorCase, VectorError> {
         ],
     });
     Ok(case)
+}
+
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/15-operations.md#Multi-language-parity-gate
+fn plugin_builder_case(
+    name: &str,
+    seq: u64,
+    requires: Vec<String>,
+    rings: Vec<(TrampolineRing, u32)>,
+    events: Vec<serde_json::Value>,
+    expected_outcomes: Vec<PluginBuilderOutcome>,
+) -> Result<VectorCase, VectorError> {
+    let event = trap_event(
+        seq,
+        1234,
+        100,
+        "/usr/bin/git",
+        vec!["git".to_string(), "commit".to_string()],
+        HashMap::new(),
+    );
+    let mut case = trap_case(name, event, Verdict::Pass)?;
+    case.plugin_builder = Some(PluginBuilderCase {
+        name: name.to_string(),
+        requires,
+        rings,
+        events,
+        expected_outcomes,
+    });
+    Ok(case)
+}
+
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/15-operations.md#Multi-language-parity-gate
+fn plugin_builder_trap_json(seq: u64) -> Result<serde_json::Value, VectorError> {
+    let event = trap_event(
+        seq,
+        1234,
+        100,
+        "/usr/bin/git",
+        vec!["git".to_string(), "commit".to_string()],
+        HashMap::new(),
+    );
+    serde_json::to_value(GuestToHost::TrapEvent(event))
+        .map_err(|e| VectorError::Encode(e.to_string()))
+}
+
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/15-operations.md#Multi-language-parity-gate
+fn plugin_builder_verb_event(verb: &str, pid: u32) -> serde_json::Value {
+    match verb {
+        "process-exit" => serde_json::json!({"kind": verb, "pid": pid, "exit_code": 0}),
+        "fs-lookup" | "fs-read" | "fs-write" | "fs-lock" => {
+            serde_json::json!({"kind": verb, "path": "/workspace/ledger/wal", "pid": pid})
+        }
+        "net-outbound" | "net-inbound" => serde_json::json!({"kind": verb, "stream_id": 0}),
+        "console-input" | "console-output" => serde_json::json!({"kind": verb, "port": 1}),
+        "exec-stdout" | "exec-stderr" => {
+            serde_json::json!({"kind": verb, "pid": pid, "exec_id": 7})
+        }
+        "host-lsm-exec" => {
+            serde_json::json!({"kind": verb, "path": "/usr/bin/git", "pid": pid})
+        }
+        "host-pressure" => serde_json::json!({"kind": verb, "level": 2}),
+        "host-keyring-access" => serde_json::json!({"kind": verb, "key": "api-token"}),
+        "vm-init" | "vm-ready" | "vm-shutdown" | "pre-commit" | "post-commit" | "host-preempt" => {
+            serde_json::json!({"kind": verb})
+        }
+        "memory-pressure" => serde_json::json!({"kind": verb, "used": 512, "total": 1024}),
+        "heartbeat" => serde_json::json!({"kind": verb, "uptime_ms": 42000}),
+        "watchdog" => serde_json::json!({"kind": verb, "timeout_ms": 5000, "action": "Reboot"}),
+        _ => serde_json::json!({"kind": verb}),
+    }
+}
+
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/15-operations.md#Multi-language-parity-gate
+fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
+    let verbs: &[(&str, TrampolineRing, Option<PluginBuilderOutcome>)] = &[
+        ("process-exit", TrampolineRing::ProcessExit, None),
+        (
+            "fs-lookup",
+            TrampolineRing::FsLookup,
+            Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+        ),
+        ("fs-read", TrampolineRing::FsRead, None),
+        (
+            "fs-lock",
+            TrampolineRing::FsLock,
+            Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+        ),
+        (
+            "net-outbound",
+            TrampolineRing::NetOutbound,
+            Some(PluginBuilderOutcome::Filter(FilterAction::Forward)),
+        ),
+        (
+            "net-inbound",
+            TrampolineRing::NetInbound,
+            Some(PluginBuilderOutcome::Filter(FilterAction::Forward)),
+        ),
+        ("console-input", TrampolineRing::ConsoleInput, None),
+        ("console-output", TrampolineRing::ConsoleOutput, None),
+        ("exec-stdout", TrampolineRing::ExecStdout, None),
+        ("exec-stderr", TrampolineRing::ExecStderr, None),
+        (
+            "host-lsm-exec",
+            TrampolineRing::HostLsmExec,
+            Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+        ),
+        (
+            "host-pressure",
+            TrampolineRing::HostPressure,
+            Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+        ),
+        (
+            "host-keyring-access",
+            TrampolineRing::HostKeyringAccess,
+            Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+        ),
+        ("vm-init", TrampolineRing::Lifecycle, None),
+        ("vm-ready", TrampolineRing::Lifecycle, None),
+        ("vm-shutdown", TrampolineRing::Lifecycle, None),
+        ("pre-commit", TrampolineRing::Lifecycle, None),
+        ("post-commit", TrampolineRing::Lifecycle, None),
+        ("host-preempt", TrampolineRing::HostPreempt, None),
+        ("memory-pressure", TrampolineRing::MemoryPressure, None),
+        ("heartbeat", TrampolineRing::Heartbeat, None),
+        ("watchdog", TrampolineRing::Watchdog, None),
+    ];
+    let mut cases = Vec::with_capacity(verbs.len() + 6);
+    let mut seq = 9;
+    for (verb, ring, outcome) in verbs {
+        let outcomes = match outcome {
+            Some(outcome) => vec![outcome.clone()],
+            None => Vec::new(),
+        };
+        cases.push(plugin_builder_case(
+            &format!("plugin-builder-{verb}-only"),
+            seq,
+            Vec::new(),
+            vec![(*ring, 0)],
+            vec![plugin_builder_verb_event(verb, 1300)],
+            outcomes,
+        )?);
+        seq += 1;
+    }
+    type StructuralVerb = (&'static str, Vec<String>, Vec<(TrampolineRing, u32)>);
+    let structural: &[StructuralVerb] = &[
+        ("context", Vec::new(), Vec::new()),
+        ("require", vec!["ledger".to_string()], Vec::new()),
+        ("scope", Vec::new(), Vec::new()),
+        ("fork-with", Vec::new(), Vec::new()),
+        (
+            "vsock-service",
+            Vec::new(),
+            vec![(TrampolineRing::VsockService, 0)],
+        ),
+        ("build", Vec::new(), Vec::new()),
+    ];
+    for (verb, requires, rings) in structural {
+        cases.push(plugin_builder_case(
+            &format!("plugin-builder-{verb}-only"),
+            seq,
+            requires.clone(),
+            rings.clone(),
+            Vec::new(),
+            Vec::new(),
+        )?);
+        seq += 1;
+    }
+    Ok(cases)
+}
+
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/15-operations.md#Multi-language-parity-gate
+fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
+    type ScopeVerb = (&'static str, TrampolineRing, Option<PluginBuilderOutcome>);
+    let scopes: &[(&str, &[ScopeVerb])] = &[
+        (
+            "trap",
+            &[
+                (
+                    "trap",
+                    TrampolineRing::Trap,
+                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                ),
+                ("process-exit", TrampolineRing::ProcessExit, None),
+            ],
+        ),
+        (
+            "fs",
+            &[
+                (
+                    "fs-lookup",
+                    TrampolineRing::FsLookup,
+                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                ),
+                ("fs-read", TrampolineRing::FsRead, None),
+                (
+                    "fs-write",
+                    TrampolineRing::FsWrite,
+                    Some(PluginBuilderOutcome::Filter(FilterAction::Forward)),
+                ),
+                (
+                    "fs-lock",
+                    TrampolineRing::FsLock,
+                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                ),
+            ],
+        ),
+        (
+            "net",
+            &[
+                (
+                    "net-outbound",
+                    TrampolineRing::NetOutbound,
+                    Some(PluginBuilderOutcome::Filter(FilterAction::Forward)),
+                ),
+                (
+                    "net-inbound",
+                    TrampolineRing::NetInbound,
+                    Some(PluginBuilderOutcome::Filter(FilterAction::Forward)),
+                ),
+            ],
+        ),
+        (
+            "console",
+            &[
+                ("console-input", TrampolineRing::ConsoleInput, None),
+                ("console-output", TrampolineRing::ConsoleOutput, None),
+            ],
+        ),
+        (
+            "exec",
+            &[
+                ("exec-stdout", TrampolineRing::ExecStdout, None),
+                ("exec-stderr", TrampolineRing::ExecStderr, None),
+            ],
+        ),
+        (
+            "host",
+            &[
+                (
+                    "host-lsm-exec",
+                    TrampolineRing::HostLsmExec,
+                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                ),
+                (
+                    "host-pressure",
+                    TrampolineRing::HostPressure,
+                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                ),
+                (
+                    "host-keyring-access",
+                    TrampolineRing::HostKeyringAccess,
+                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                ),
+                ("host-preempt", TrampolineRing::HostPreempt, None),
+            ],
+        ),
+        (
+            "lifecycle",
+            &[
+                ("vm-init", TrampolineRing::Lifecycle, None),
+                ("vm-ready", TrampolineRing::Lifecycle, None),
+                ("vm-shutdown", TrampolineRing::Lifecycle, None),
+                ("pre-commit", TrampolineRing::Lifecycle, None),
+                ("post-commit", TrampolineRing::Lifecycle, None),
+            ],
+        ),
+        (
+            "telemetry",
+            &[
+                ("memory-pressure", TrampolineRing::MemoryPressure, None),
+                ("heartbeat", TrampolineRing::Heartbeat, None),
+                ("watchdog", TrampolineRing::Watchdog, None),
+            ],
+        ),
+    ];
+    let mut cases = Vec::with_capacity(scopes.len());
+    for (seq, (scope, verbs)) in (37..).zip(scopes.iter()) {
+        let mut rings = Vec::with_capacity(verbs.len());
+        let mut events = Vec::with_capacity(verbs.len());
+        let mut outcomes = Vec::new();
+        for (ordinal, (verb, ring, outcome)) in verbs.iter().enumerate() {
+            rings.push((*ring, ordinal as u32));
+            if *verb == "trap" {
+                events.push(plugin_builder_trap_json(seq)?);
+            } else {
+                events.push(plugin_builder_verb_event(verb, 1300));
+            }
+            if let Some(outcome) = outcome {
+                outcomes.push(outcome.clone());
+            }
+        }
+        cases.push(plugin_builder_case(
+            &format!("plugin-builder-nested-{scope}"),
+            seq,
+            Vec::new(),
+            rings,
+            events,
+            outcomes,
+        )?);
+    }
+    Ok(cases)
 }
 
 // see: cans/artifacts/examples/policy-matrix.rs#WatchdogSilencerPlugin

@@ -34,6 +34,7 @@ class ReceiptConfig:
 class LedgerConfig:
     store: str = ""
     merkle_chain: bool = False
+    suppress_local_db: bool = False
     otel: OtelConfig | None = None
     receipts: ReceiptConfig = field(default_factory=lambda: ReceiptConfig())
 
@@ -50,4 +51,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def ledger_builder(config: LedgerConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("ledger").build()
+    cfg = config if config is not None else LedgerConfig()
+    return PluginBuilder("ledger").context(lambda: cfg).build()

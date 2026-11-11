@@ -10,6 +10,7 @@ pub mod driver_interface;
 pub mod hlist_sdk;
 pub mod planes;
 pub mod plugin_builder;
+mod plugin_builder_scopes;
 pub mod plugin_model;
 pub mod protocol_wire;
 pub mod sandbox_runtime;
@@ -25,7 +26,10 @@ pub use kelir_interface::handlers_plugin::Has;
 pub use kelir_interface::plugin_model::HandlerCtx;
 pub use kelir_interface::protocol_wire::Verdict;
 pub use planes::storage_plane::{FsReconcileRequest, SyntheticFile};
-pub use plugin_builder::{PluginBuilder, PluginWrapper};
+pub use plugin_builder::{
+    ConsoleScope, ExecScope, FsScope, HostScope, LifecycleScope, NetScope, PluginBuilder,
+    PluginWrapper, TelemetryScope, TrapScope,
+};
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
 #[cfg(feature = "plugin-tool-guard")]
 pub use plugin_builder::ToolGuardExt;

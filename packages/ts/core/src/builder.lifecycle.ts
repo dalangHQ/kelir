@@ -4,7 +4,8 @@
 
 import type { Schema, Infer } from "./schema.config.js";
 import type { TrapContext, LifecycleContext, HandlerContext } from "./context.lifecycle.types.js";
-import type { KelirPlugin, PluginContextOf, PluginContract, BuiltPlugin } from "./plugin.model.js";
+import { PluginContract } from "./plugin.model.js";
+import type { KelirPlugin, PluginContextOf, BuiltPlugin } from "./plugin.model.js";
 import type { PostExecAction, LifecycleEvent, Verdict } from "./verdict.protocol.js";
 import type { TrapDenyEvent } from "./types.core.js";
 import { Session } from "./session.lifecycle.js";
@@ -219,20 +220,41 @@ export class KelirBuilder<Ctx = unknown, Params = unknown> {
       ? { readonly __use_requires_build: "call .build() before .use()" }
       : P & ValidateDeps<Ctx, P>,
   ): KelirBuilder<Ctx & PluginContextOf<P>, Params> {
+    if (plugin instanceof PluginContract) {
+      throw new EConfig(
+        `plugin ${(plugin as KelirPlugin).name} must be built before .use(): call .build()`,
+      );
+    }
     const asPlugin = plugin as unknown as KelirPlugin;
     const enabled = asPlugin.enabled !== false;
+    const built = plugin as unknown as BuiltPlugin<string, unknown, string>;
+    if (enabled) {
+      for (const dep of built.requiredDeps ?? []) {
+        if (
+          !this.pluginRegistrations.some(
+            (registration) => registration.name === dep,
+          )
+        ) {
+          throw new EConfig(
+            `missing prerequisite: ${dep} required by ${asPlugin.name}`,
+          );
+        }
+      }
+    }
     this.pluginRegistrations.push({ name: asPlugin.name, enabled });
-    const built = plugin as unknown as {
-      registerInterceptors?: (bind: (hook: HookDescriptor) => void) => void;
-      hooksForFusion?: () => readonly HookDescriptor[];
-    };
     if (typeof built.registerInterceptors === "function" && enabled) {
       built.registerInterceptors((hook) => {
         this.hooks.push(hook);
       });
-    } else if (typeof built.hooksForFusion === "function" && enabled) {
-      for (const hook of built.hooksForFusion()) {
-        this.hooks.push(hook);
+    }
+    if (enabled) {
+      for (const service of built.vsockServices ?? []) {
+        this.vsockServices.push({
+          port: service.port,
+          service: service.service,
+          schema: service.schema,
+          handler: service.handler,
+        });
       }
     }
     return this as unknown as KelirBuilder<Ctx & PluginContextOf<P>, Params>;

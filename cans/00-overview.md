@@ -57,14 +57,14 @@
     - Relational database governance: see: [6]
     - Supply chain package protection: see: [6]
     - Zero-copy high-throughput IPC: see: 01-architecture.md#Shared-memory-channel
-    - Cross-host portable snapshot bundles: see: [7]
+    - Cross-host portable snapshot bundles: see: 03-sdk-architecture.md#Session-surfaces
     - Flaky-API and disk-full resilience: see: [6]
     - Container builds without nested VMX: see: [6]
     - Human break-glass on agent loops: see: [8]
     - Low-memory SBC execution: see: 01-architecture.md#Embedded-profile
     - Idle scale-to-zero: see: [4]
     - Hydrate state from streaming snapshot bundle
-      - see: [7]
+      - see: 03-sdk-architecture.md#Session-surfaces
     - Zero-downtime connection parking
       - see: 07-wire-plane.md#Transparent-L4-stream-diversion
     - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends
@@ -78,7 +78,7 @@
     - Wire plane: see: 07-wire-plane.md (engine native)
     - Host plane: host OS hooks — see: 01-architecture.md#Host-plane-subsystem
     - Lifecycle: see: [5] (checkpoint engine)
-    - Snapshots & archives: see: 09-snapshots.md (portable state)
+    - Snapshots & archives: see: 03-sdk-architecture.md#Session-surfaces (portable state)
     - Attestation subsystem proofs: see: [3]
     - Protocol: see: 11-protocol.md (wire messages)
     - Host state engine: SQLite catalog, WAL — see 01-architecture.md#Host-state-root
@@ -98,5 +98,4 @@
 - [4]: 08-lifecycle.md#Suspend-and-resume
 - [5]: 08-lifecycle.md
 - [6]: 02-plugin-model.md#First-class-plugins
-- [7]: 09-snapshots.md#Archives-and-portability
 - [8]: 08-lifecycle.md#Break-glass

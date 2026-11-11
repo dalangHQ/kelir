@@ -53,4 +53,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def db_proxy_builder(config: DbProxyConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("db-proxy").build()
+    cfg = config if config is not None else DbProxyConfig()
+    return PluginBuilder("db-proxy").context(lambda: cfg).build()

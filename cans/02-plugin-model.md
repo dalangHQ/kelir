@@ -99,7 +99,8 @@
       - Core identity
         - KelirPlugin is mandatory; see: [1]
       - Ring traits
-        - LifecycleParticipant and SystemTelemetryParticipant are bound onto the pipeline via PipelineBinder::bind_lifecycle / bind_telemetry (scoped variants bind_lifecycle_scoped / bind_telemetry_scoped)
+        - LifecycleParticipant and SystemTelemetryParticipant bind via PipelineBinder
+          - bind_lifecycle / bind_telemetry; scoped variants take a MountScope
         - LifecycleParticipant: vm lifecycle, commit, host preempt
         - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
         - ConsoleInterposer: console input, console output, window resize, disclosure
@@ -407,10 +408,17 @@
       - Context, prerequisite, scope, fork, and vsock service verbs
       - Each verb returns the builder or a typed successor
       - Each verb registers exactly one handler or capability
-      - .context(fn) in Rust and TypeScript; Python infers from overrides
+      - Repeat calls append, never replace
+        - A second call to the same ring verb registers a second handler
+        - Handlers fire in registration order
+      - .context(fn) in Rust, TypeScript, and Python
       - .require::<P>() in Rust; .requires<P>() in TypeScript; .require(P) in Python
       - .scope(MountScope) in Rust; .scope(scope) in TypeScript and Python
       - .fork_with(fn) in Rust and Python; .forkWith(fn) in TypeScript
+      - .fork_with signatures are pinned per language, not divergent
+        - Rust: Fn(&str) -> Box<dyn AnyPlugin>
+        - TypeScript: () -> PluginContract
+        - Python: Fn(_PluginWrapper) -> _PluginWrapper
       - Ring verbs
         - Trap: .on_trap, .on_process_exit
         - Fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock
@@ -422,12 +430,46 @@
         - Telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
         - Vsock: .vsock_service(spec, handler)
           - Spec carries port, service, and schema
+          - Each call registers one service, plugin-level in all SDKs
+          - Multiple calls register multiple services
       - Ring home: see: #Segregated-ring-traits
       - Verb signatures: see: artifacts/code/rust-plugin-builder.rs
       - Verb signatures: see: artifacts/code/typescript-plugin-builder.ts
       - Verb signatures: see: artifacts/code/python-plugin-builder.py
+    - Nested scopes
+      - Eight scope entry points, one per ring group
+        - trap: .on_trap, .on_process_exit
+        - fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock
+        - net: .on_net_outbound, .on_net_inbound
+        - console: .on_console_input, .on_console_output
+        - exec: .on_exec_stdout, .on_exec_stderr
+        - host: .on_host_lsm_exec, .on_host_pressure
+          - .on_host_keyring_access, .on_host_preempt
+        - lifecycle: .on_vm_init, .on_vm_ready, .on_vm_shutdown
+          - .on_pre_commit, .on_post_commit
+        - telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
+      - Entry-point names are the group names in all three SDKs
+      - Each entry point takes a closure receiving a scope builder
+        - The closure returns the scope builder; there is no .end() verb
+        - Scope methods carry the same verb names as the flat chain
+        - The parent chain resumes after the closure returns
+      - Scope groups organise the chain only
+        - Ring membership and descriptors are unchanged by scope use
+        - A nested chain and the equivalent flat chain produce
+          - identical descriptors: same rings, same ordinals
+      - Scope shape: see: artifacts/code/rust-plugin-builder.rs
+      - Scope shape: see: artifacts/code/typescript-plugin-builder.ts
+      - Scope shape: see: artifacts/code/python-plugin-builder.py
     - Terminal build
       - .build() returns a KelirPlugin-conforming wrapper
+      - .build() validates before returning the wrapper
+        - Every registered verb resolves to a known ring
+        - Every vsock spec is valid: port 1..=65535, non-empty service
+        - Every scope value is well-formed
+        - An empty plugin, with no handlers, still builds
+        - Failure text is the same in all three SDKs
+        - Rust: .build() returns Result<PluginWrapper, PluginError>
+        - TypeScript and Python: .build() throws or raises EConfig
       - Wrapper holds Arc<dyn Trait> per bound ring
       - register_interceptors calls pipeline.bind_<ring>_scoped per bound ring
       - fork_state re-runs the .fork_with closure when provided
@@ -441,7 +483,8 @@
       - Wrapper shape: see: artifacts/code/typescript-plugin-builder.ts
       - Wrapper shape: see: artifacts/code/python-plugin-builder.py
     - Compile-time prerequisites
-      - Rust: PluginBuilder<Ctx, Deps: HList>; build() returns PluginWrapper<Ctx, Deps>
+      - Rust: PluginBuilder<Ctx, Deps: HList>
+      - Rust: build() returns Result<PluginWrapper<Ctx, Deps>, PluginError>
       - Rust: builder.plugin(w) requires Plugins: Satisfies<P::Deps>
       - Rust: a missing dependency is a compile error, never a runtime Result
       - Rust: PluginDeps carries the Deps list; Satisfies is the HList check
@@ -450,6 +493,12 @@
       - TypeScript: a missing dependency is a compile error
       - Python: .require(P) records the dependency
       - Python: builder.boot() raises EConfig listing unsatisfied names
+      - Attach verb and enforcement point differ per SDK
+        - Rust: KelirBuilder.plugin(w); Satisfies check at compile time
+        - TypeScript: KelirBuilder.use(p); type check plus runtime check
+        - Python: KelirBuilder.use(p), .plugin() alias; boot() backstop
+        - Missing prerequisite reports the same text in all SDKs
+          - missing prerequisite: <dep> required by <plugin>
       - ESecurityViolation is not a prerequisite failure trigger
       - It is the errno a hook returns via Verdict::Drop on policy violation
       - Rust carries it as PluginError::Reject { errno, reason }

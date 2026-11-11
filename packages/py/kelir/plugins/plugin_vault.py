@@ -29,4 +29,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def vault_builder(config: VaultConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("vault").build()
+    cfg = config if config is not None else VaultConfig()
+    return PluginBuilder("vault").context(lambda: cfg).build()

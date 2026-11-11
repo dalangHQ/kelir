@@ -30,4 +30,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def transaction_builder(config: TransactionConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("transaction").build()
+    cfg = config if config is not None else TransactionConfig()
+    return PluginBuilder("transaction").context(lambda: cfg).build()

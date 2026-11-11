@@ -20,6 +20,12 @@ export enum RingEvent {
   Watchdog = "watchdog",
   CustomAction = "custom-action",
   VsockService = "vsock-service",
+  FsLock = "fs-lock",
+  HostLsmExec = "host-lsm-exec",
+  HostPressure = "host-pressure",
+  HostKeyringAccess = "host-keyring-access",
+  HostPreempt = "host-preempt",
+  MemoryPressure = "memory-pressure",
 }
 
 export type HookStage = "pre" | "post" | "single";
@@ -63,11 +69,21 @@ export const HOOK_RINGS: readonly HookRingBinding[] = [
   { method: "onVmReady", ring: RingEvent.Lifecycle, lifecycleTag: "vm-ready" },
   { method: "onVmShutdown", ring: RingEvent.Lifecycle, lifecycleTag: "vm-shutdown" },
   { method: "onWatchdog", ring: RingEvent.Watchdog },
+  { method: "onFsLock", ring: RingEvent.FsLock },
+  { method: "onNetInbound", ring: RingEvent.NetInbound },
+  { method: "onHostLsmExec", ring: RingEvent.HostLsmExec },
+  { method: "onHostPressure", ring: RingEvent.HostPressure },
+  { method: "onHostKeyringAccess", ring: RingEvent.HostKeyringAccess },
+  { method: "onPreCommit", ring: RingEvent.Lifecycle, lifecycleTag: "pre-commit" },
+  { method: "onPostCommit", ring: RingEvent.Lifecycle, lifecycleTag: "post-commit" },
+  { method: "onHostPreempt", ring: RingEvent.HostPreempt },
+  { method: "onMemoryPressure", ring: RingEvent.MemoryPressure },
 ];
 
 export interface PluginBuilderVerb {
   readonly verb: string;
   readonly ring: RingEvent;
+  readonly lifecycleTag?: LifecycleTag;
 }
 
 export const PLUGIN_BUILDER_VERBS: readonly PluginBuilderVerb[] = [
@@ -82,8 +98,17 @@ export const PLUGIN_BUILDER_VERBS: readonly PluginBuilderVerb[] = [
   { verb: "onExecStderr", ring: RingEvent.ExecStderr },
   { verb: "onHeartbeat", ring: RingEvent.Heartbeat },
   { verb: "onProcessExit", ring: RingEvent.ProcessExit },
-  { verb: "onVmInit", ring: RingEvent.Lifecycle },
-  { verb: "onVmReady", ring: RingEvent.Lifecycle },
-  { verb: "onVmShutdown", ring: RingEvent.Lifecycle },
+  { verb: "onVmInit", ring: RingEvent.Lifecycle, lifecycleTag: "vm-init" },
+  { verb: "onVmReady", ring: RingEvent.Lifecycle, lifecycleTag: "vm-ready" },
+  { verb: "onVmShutdown", ring: RingEvent.Lifecycle, lifecycleTag: "vm-shutdown" },
   { verb: "onWatchdog", ring: RingEvent.Watchdog },
+  { verb: "onFsLock", ring: RingEvent.FsLock },
+  { verb: "onNetInbound", ring: RingEvent.NetInbound },
+  { verb: "onHostLsmExec", ring: RingEvent.HostLsmExec },
+  { verb: "onHostPressure", ring: RingEvent.HostPressure },
+  { verb: "onHostKeyringAccess", ring: RingEvent.HostKeyringAccess },
+  { verb: "onPreCommit", ring: RingEvent.Lifecycle, lifecycleTag: "pre-commit" },
+  { verb: "onPostCommit", ring: RingEvent.Lifecycle, lifecycleTag: "post-commit" },
+  { verb: "onHostPreempt", ring: RingEvent.HostPreempt },
+  { verb: "onMemoryPressure", ring: RingEvent.MemoryPressure },
 ];

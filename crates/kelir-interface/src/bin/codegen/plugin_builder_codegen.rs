@@ -121,12 +121,12 @@ fn scan_requires(src: &Path) -> Result<Vec<String>, String> {
             if in_deps {
                 if let Some(rhs) = trimmed.strip_prefix("type Deps =") {
                     let rhs = rhs.trim().trim_end_matches(';');
-                    for word in rhs.split(|ch: char| !ch.is_ascii_alphanumeric()) {
-                        if word.len() > "Plugin".len()
-                            && word.ends_with("Plugin")
-                            && let Some(peer) = kebab_plugin_type(word)
-                            && !requires.contains(&peer)
-                        {
+                    let peers: Vec<String> = rhs
+                        .split(|ch: char| !ch.is_ascii_alphanumeric())
+                        .filter_map(kebab_plugin_type)
+                        .collect();
+                    for peer in peers {
+                        if !requires.contains(&peer) {
                             requires.push(peer);
                         }
                     }
@@ -180,8 +180,7 @@ pub fn emit_typescript(plugins: &[BuilderPlugin]) -> String {
             "export function {factory}(config: {}): KelirPlugin {{",
             plugin.config_name
         ));
-        lines.push("  void config;".to_string());
-        let mut chain = format!("createPlugin(\"{}\")", plugin.name);
+        let mut chain = format!("createPlugin(\"{}\", {{ config }})", plugin.name);
         for peer in &plugin.requires {
             chain.push_str(&format!(".requires<\"{peer}\">()"));
         }
@@ -207,11 +206,15 @@ pub fn emit_python_factory(plugin: &BuilderPlugin) -> String {
             plugin.module_name, plugin.config_name
         ),
     ];
+    lines.push(format!(
+        "    cfg = config if config is not None else {}()",
+        plugin.config_name
+    ));
     let mut chain = format!("PluginBuilder(\"{}\")", plugin.name);
     for peer in &plugin.requires {
         chain.push_str(&format!(".require(\"{peer}\")"));
     }
-    chain.push_str(".build()");
+    chain.push_str(".context(lambda: cfg).build()");
     lines.push(format!("    return {chain}"));
     lines.push(String::new());
     lines.join("\n")

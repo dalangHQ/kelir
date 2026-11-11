@@ -46,4 +46,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def mesh_builder(config: MeshConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("mesh").build()
+    cfg = config if config is not None else MeshConfig()
+    return PluginBuilder("mesh").context(lambda: cfg).build()

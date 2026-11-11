@@ -28,4 +28,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def mcp_builder(config: McpConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("mcp").build()
+    cfg = config if config is not None else McpConfig()
+    return PluginBuilder("mcp").context(lambda: cfg).build()

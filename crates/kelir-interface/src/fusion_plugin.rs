@@ -49,6 +49,12 @@ tag_enum! {
         Watchdog => "watchdog",
         CustomAction => "custom-action",
         VsockService => "vsock-service",
+        FsLock => "fs-lock",
+        HostLsmExec => "host-lsm-exec",
+        HostPressure => "host-pressure",
+        HostKeyringAccess => "host-keyring-access",
+        HostPreempt => "host-preempt",
+        MemoryPressure => "memory-pressure",
     }
 }
 
@@ -226,6 +232,51 @@ pub const HOOK_RINGS: &[HookRingBinding] = &[
     HookRingBinding {
         method: "on_watchdog",
         ring: TrampolineRing::Watchdog,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_fs_lock",
+        ring: TrampolineRing::FsLock,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_net_inbound",
+        ring: TrampolineRing::NetInbound,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_host_lsm_exec",
+        ring: TrampolineRing::HostLsmExec,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_host_pressure",
+        ring: TrampolineRing::HostPressure,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_host_keyring_access",
+        ring: TrampolineRing::HostKeyringAccess,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_pre_commit",
+        ring: TrampolineRing::Lifecycle,
+        lifecycle_tag: Some("pre-commit"),
+    },
+    HookRingBinding {
+        method: "on_post_commit",
+        ring: TrampolineRing::Lifecycle,
+        lifecycle_tag: Some("post-commit"),
+    },
+    HookRingBinding {
+        method: "on_host_preempt",
+        ring: TrampolineRing::HostPreempt,
+        lifecycle_tag: None,
+    },
+    HookRingBinding {
+        method: "on_memory_pressure",
+        ring: TrampolineRing::MemoryPressure,
         lifecycle_tag: None,
     },
 ];

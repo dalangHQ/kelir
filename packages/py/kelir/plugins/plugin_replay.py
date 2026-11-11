@@ -31,4 +31,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def replay_builder(config: ReplayConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("replay").build()
+    cfg = config if config is not None else ReplayConfig()
+    return PluginBuilder("replay").context(lambda: cfg).build()

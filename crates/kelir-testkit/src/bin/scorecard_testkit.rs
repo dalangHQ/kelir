@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use kelir_testkit::scenarios::ScenarioTier;
+use kelir_testkit::scenario_catalog::ScenarioTier;
 
 #[derive(serde::Deserialize)]
 struct Manifest {
@@ -160,8 +160,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         gap: map.cases.iter().filter(|c| c.status == "gap").count(),
     };
 
-    let tier = kelir_testkit::scenarios::load_scenario_tier(&repo_root
-        .join("cans/artifacts/test-plan"))?;
+    let tier = kelir_testkit::scenario_catalog::load_scenario_tier(
+        &repo_root.join("cans/artifacts/test-plan"),
+    )?;
 
     let generated_md = render_scorecard(&manifest, &budgets, &subset, &counts, &tier);
 
@@ -345,7 +346,7 @@ fn render_scorecard(
     for ((family, actual), &(_, expected)) in tier
         .family_counts
         .iter()
-        .zip(kelir_testkit::scenarios::FAMILY_COUNTS)
+        .zip(kelir_testkit::scenario_catalog::FAMILY_COUNTS)
     {
         let status = if *actual == expected { "pass" } else { "drift" };
         out.push_str(&format!("| {family} | {actual} | {status} |\n"));

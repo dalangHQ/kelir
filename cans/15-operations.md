@@ -152,8 +152,11 @@
         - The CI parity job diffs policy-matrix vectors against the Verdict lattice
       - --fluent-builder-coverage
         - Asserts every builder verb has a plugin_builder vector case
+        - Asserts every nested scope has a plugin_builder-nested case
+        - 38 plugin_builder cases: one per verb (30) and one per scope (8)
         - Asserts every Verdict and FilterAction outcome appears in a case
         - Verb home: see: 02-plugin-model.md#Chainable-verbs
+        - Scope home: see: 02-plugin-model.md#Nested-scopes
         - Vector family: see: #Fluent-builder-parity-vectors
         - Enforcement: kelir-plugin-cli parity run; gate spec only
         - Execution lands with Agent 2 codegen; unexecuted cases report not-executable
@@ -294,6 +297,8 @@
       - Each case pins builder name, requires list, and ring set with ordinals
       - Each case pins ordered event payloads and expected Verdict results
       - FilterAction results are pinned for byte-transform rings
+      - One case per verb (30) and one per scope (8): 38 cases
+      - Nested-scope cases assert descriptors equal the flat chain
       - kelir-plugin-cli parity run builds the equivalent chain per SDK
       - Divergent outputs block CI; unexecuted verdicts report not-executable
       - Case schema: see: artifacts/code/plugin-builder-vectors.rs

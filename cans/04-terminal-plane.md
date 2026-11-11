@@ -1,6 +1,7 @@
 - Terminal plane
   - Terminal pipeline
-    - The Token Shield and prompt stages are part of the fixed pipeline; `TerminalWiring` must carry `token_shield` and `prompts` from the builder into the plane.
+    - Token Shield and prompt stages are part of the fixed pipeline
+    - `TerminalWiring` carries `token_shield` and `prompts` from the builder
     - Console filter pipeline: see: artifacts/diagrams/terminal-pipeline.txt
     - Terminal plane attributes
       - Owner: kelir-core native terminal subsystem (kelir-core::terminal)

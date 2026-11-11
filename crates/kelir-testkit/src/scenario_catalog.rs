@@ -166,7 +166,7 @@ pub fn scalar_str(value: &serde_yaml::Value) -> String {
         serde_yaml::Value::Bool(true) => "true".to_string(),
         serde_yaml::Value::Bool(false) => "false".to_string(),
         serde_yaml::Value::Number(number) => number.to_string(),
-        other => format!("{other}"),
+        other => format!("{other:?}"),
     }
 }
 
@@ -246,7 +246,10 @@ pub fn load_case_facts(tp_root: &Path) -> (BTreeMap<String, CaseFacts>, Vec<Stri
 pub fn load_scenario_files(tp_root: &Path) -> (Vec<ScenarioFile>, Vec<String>) {
     let scenarios_dir = tp_root.join("scenarios");
     let mut rels: Vec<String> = Vec::new();
-    for entry in WalkDir::new(&scenarios_dir).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(&scenarios_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if entry.depth() != 2 || !entry.path().extension().is_some_and(|ext| ext == "yaml") {
             continue;
         }
@@ -341,7 +344,12 @@ pub fn load_scenario_tier(tp_root: &Path) -> Result<ScenarioTier, String> {
     }
     let mut by_id: BTreeMap<&str, &ScenarioFile> = BTreeMap::new();
     for file in &files {
-        if let Some(sid) = file.scenario.scenario_id.as_deref().filter(|s| !s.is_empty()) {
+        if let Some(sid) = file
+            .scenario
+            .scenario_id
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        {
             by_id.insert(sid, file);
         }
     }

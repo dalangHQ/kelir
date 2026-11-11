@@ -1,5 +1,5 @@
 // see: cans/artifacts/test-plan/matrix.yaml#ci_gates
-use kelir_testkit::scenarios::{
+use kelir_testkit::scenario_catalog::{
     self, ADJACENT_PAIRS, CaseFacts, FAMILY_COUNTS, LANGUAGES, SCENARIO_MANIFEST_SCHEMA,
     SCENARIO_SCHEMA, ScenarioFile,
 };
@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 struct Manifest {
     plan: Option<ManifestPlan>,
     cases: Vec<ManifestCase>,
-    scenario_domains: Option<BTreeMap<String, scenarios::FamilyMeta>>,
+    scenario_domains: Option<BTreeMap<String, scenario_catalog::FamilyMeta>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -73,7 +73,9 @@ fn check_fixture(fixture: &Option<String>, rel: &str, tp_root: &Path, errors: &m
     if !fixture_dir.is_dir() {
         errors.push(format!("{rel}: fixture_ref dir does not exist: {fixture}"));
     } else if !fixture_dir.join("manifest.yaml").is_file() {
-        errors.push(format!("{rel}: fixture dir missing manifest.yaml: {fixture}"));
+        errors.push(format!(
+            "{rel}: fixture dir missing manifest.yaml: {fixture}"
+        ));
     }
 }
 
@@ -97,7 +99,10 @@ fn validate_scenario(
         ("family", file.scenario.family.is_some()),
         ("target_tier", file.scenario.target_tier.is_some()),
         ("steps", file.scenario.steps.is_some()),
-        ("anti_slop_assertions", file.scenario.anti_slop_assertions.is_some()),
+        (
+            "anti_slop_assertions",
+            file.scenario.anti_slop_assertions.is_some(),
+        ),
     ];
     for (field, present) in fields {
         if !present {
@@ -105,17 +110,24 @@ fn validate_scenario(
         }
     }
     if let Some(previous) = seen_ids.insert(sid.clone(), rel.to_string()) {
-        errors.push(format!("{rel}: duplicate scenario_id '{sid}' (also in {previous})"));
+        errors.push(format!(
+            "{rel}: duplicate scenario_id '{sid}' (also in {previous})"
+        ));
     }
     let fam = file.scenario.family.as_deref().unwrap_or("None");
-    if scenarios::family_expected(fam).is_none() {
+    if scenario_catalog::family_expected(fam).is_none() {
         errors.push(format!("{rel}: unknown family '{fam}'"));
     }
     if file.dir_family != fam {
-        errors.push(format!("{rel}: file sits in dir '{}' but family is '{fam}'", file.dir_family));
+        errors.push(format!(
+            "{rel}: file sits in dir '{}' but family is '{fam}'",
+            file.dir_family
+        ));
     }
     if !sid.starts_with(&format!("sc_{fam}_")) {
-        errors.push(format!("{rel}: scenario_id '{sid}' must start with 'sc_{fam}_'"));
+        errors.push(format!(
+            "{rel}: scenario_id '{sid}' must start with 'sc_{fam}_'"
+        ));
     }
     if file.scenario.target_tier.as_deref() != Some("e2e") {
         errors.push(format!("{rel}: target_tier must be 'e2e' (CDR-11)"));
@@ -123,7 +135,10 @@ fn validate_scenario(
     let langs = file.scenario.languages.as_deref().unwrap_or(&[]);
     let langs_ok = !langs.is_empty() && langs.iter().all(|lang| LANGUAGES.contains(&lang.as_str()));
     if !langs_ok {
-        let allowed = LANGUAGES.iter().map(|lang| format!("'{lang}'")).collect::<Vec<_>>();
+        let allowed = LANGUAGES
+            .iter()
+            .map(|lang| format!("'{lang}'"))
+            .collect::<Vec<_>>();
         errors.push(format!(
             "{rel}: languages must be a non-empty subset of [{}]",
             allowed.join(", ")
@@ -131,7 +146,9 @@ fn validate_scenario(
     }
     let needs_budget = fam == "smoke";
     if needs_budget && !file.scenario.budget.as_deref().is_some_and(budget_matches) {
-        errors.push(format!("{rel}: smoke scenario needs budget like '<10s'/'<15s'"));
+        errors.push(format!(
+            "{rel}: smoke scenario needs budget like '<10s'/'<15s'"
+        ));
     }
     if !needs_budget && file.scenario.budget.is_some() {
         errors.push(format!("{rel}: budget only allowed in smoke family"));
@@ -176,14 +193,14 @@ fn validate_scenario(
                 let verification = entry.verification.as_deref().unwrap_or_default();
                 if !as_rule_matches(rule) || verification.is_empty() {
                     errors.push(format!(
-                        "{rel}: bad anti_slop_assertions entry: {{'rule': '{rule}', 'verification': '{verification}'}}",
-                        rule,
-                        verification
+                        "{rel}: bad anti_slop_assertions entry: {{'rule': '{rule}', 'verification': '{verification}'}}"
                     ));
                 }
             }
         }
-        _ => errors.push(format!("{rel}: anti_slop_assertions must be a non-empty list")),
+        _ => errors.push(format!(
+            "{rel}: anti_slop_assertions must be a non-empty list"
+        )),
     }
 }
 
@@ -212,7 +229,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         index += 1;
     }
     if let Some(name) = &family {
-        if scenarios::family_expected(name).is_none() {
+        if scenario_catalog::family_expected(name).is_none() {
             let message = format!(
                 "unknown family '{name}'; expected one of lifecycle, agent, concurrency, recovery, pressure, network, parity, smoke"
             );
@@ -253,9 +270,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let (cases, case_errors) = scenarios::load_case_facts(&tp_root);
+    let (cases, case_errors) = scenario_catalog::load_case_facts(&tp_root);
     errors.extend(case_errors);
-    let (files, scenario_errors) = scenarios::load_scenario_files(&tp_root);
+    let (files, scenario_errors) = scenario_catalog::load_scenario_files(&tp_root);
     errors.extend(scenario_errors);
 
     let mut seen_ids: BTreeMap<String, String> = BTreeMap::new();
@@ -264,7 +281,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut coverage: Vec<Vec<String>> = ADJACENT_PAIRS.iter().map(|_| Vec::new()).collect();
 
     for file in &files {
-        let planes = scenarios::planes_of(&file.scenario, &cases);
+        let planes = scenario_catalog::planes_of(&file.scenario, &cases);
         let sid = file.scenario.scenario_id.clone();
         let sid = sid.unwrap_or_else(|| "<missing>".to_string());
         composition.insert(sid.clone(), planes.clone());
@@ -274,7 +291,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         if let Some(fam) = file.scenario.family.as_deref() {
-            if scenarios::family_expected(fam).is_some() {
+            if scenario_catalog::family_expected(fam).is_some() {
                 *all_family_counts.entry(fam.to_string()).or_insert(0) += 1;
             }
         }
@@ -293,10 +310,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match &family {
         Some(target) => {
-            let want = scenarios::family_expected(target).unwrap_or_default();
-            let got = files.iter().filter(|file| file.dir_family == *target).count();
+            let want = scenario_catalog::family_expected(target).unwrap_or_default();
+            let got = files
+                .iter()
+                .filter(|file| file.dir_family == *target)
+                .count();
             if got != want {
-                errors.push(format!("family '{target}': expected {want} scenarios, found {got}"));
+                errors.push(format!(
+                    "family '{target}': expected {want} scenarios, found {got}"
+                ));
             }
         }
         None => {
@@ -305,7 +327,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if got == 0 {
                     errors.push(format!("family '{fam}': no scenario files found"));
                 } else if got != want {
-                    errors.push(format!("family '{fam}': expected {want} scenarios, found {got}"));
+                    errors.push(format!(
+                        "family '{fam}': expected {want} scenarios, found {got}"
+                    ));
                 }
             }
         }
@@ -353,7 +377,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         names.sort();
         let head: Vec<String> = names.iter().take(3).cloned().collect();
         let count = coverage[pair_index].len();
-        println!("pair {first}x{second}: {count} scenarios ({}...)", head.join(", "));
+        println!(
+            "pair {first}x{second}: {count} scenarios ({}...)",
+            head.join(", ")
+        );
     }
 
     if errors.is_empty() {
@@ -379,7 +406,7 @@ fn check_scenarios_manifest(
     all_family_counts: &BTreeMap<String, usize>,
     errors: &mut Vec<String>,
 ) {
-    let sman = match scenarios::load_scenario_manifest(tp_root) {
+    let sman = match scenario_catalog::load_scenario_manifest(tp_root) {
         Ok(sman) => sman,
         Err(err) => {
             errors.push(err);
@@ -415,7 +442,7 @@ fn check_scenarios_manifest(
             ));
         }
     }
-    let mut idx: BTreeMap<&str, &scenarios::IndexEntry> = BTreeMap::new();
+    let mut idx: BTreeMap<&str, &scenario_catalog::IndexEntry> = BTreeMap::new();
     for entry in &sman.scenarios {
         idx.insert(entry.scenario_id.as_str(), entry);
     }
@@ -424,10 +451,16 @@ fn check_scenarios_manifest(
     let missing: Vec<&str> = seen.difference(&indexed).copied().collect();
     let extra: Vec<&str> = indexed.difference(&seen).copied().collect();
     if !missing.is_empty() {
-        errors.push(format!("scenarios.yaml missing entries: {}", py_list(missing)));
+        errors.push(format!(
+            "scenarios.yaml missing entries: {}",
+            py_list(missing)
+        ));
     }
     if !extra.is_empty() {
-        errors.push(format!("scenarios.yaml has unknown scenarios: {}", py_list(extra)));
+        errors.push(format!(
+            "scenarios.yaml has unknown scenarios: {}",
+            py_list(extra)
+        ));
     }
     for (sid, entry) in &idx {
         if !seen_ids.contains_key(*sid) {
@@ -435,7 +468,10 @@ fn check_scenarios_manifest(
         }
         let want_file = format!("scenarios/{}/{sid}.yaml", entry.family);
         if entry.file != want_file {
-            errors.push(format!("scenarios.yaml[{sid}]: file '{entry.file}' != '{want_file}'"));
+            errors.push(format!(
+                "scenarios.yaml[{sid}]: file '{0}' != '{want_file}'",
+                entry.file
+            ));
         }
         if entry.target_tier != "e2e" {
             errors.push(format!("scenarios.yaml[{sid}]: target_tier must be e2e"));

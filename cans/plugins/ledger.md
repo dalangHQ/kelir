@@ -20,7 +20,9 @@
       - Merkle WAL is selected explicitly via `ledger.merkle.enabled = true`
         - for regulated environments that require tamper-evident on-disk audit
       - External sink delegates persistence; no default local store is written
-      - LedgerConfig key suppress_local_db (default: false) skips any local sink — merkle and OTel both — to preserve host single SSOT; when true, LedgerPlugin::sink() returns a no-op sink
+      - LedgerConfig key suppress_local_db (default: false) skips any local sink
+      - merkle and OTel both skipped, preserving host single SSOT
+      - when true, LedgerPlugin::sink() returns a no-op sink
       - Host-isolated by construction
         - Store path resolved relative to consumer CWD; guest paths rejected
           - at plugin construction

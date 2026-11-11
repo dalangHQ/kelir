@@ -14,7 +14,8 @@ __all__ = [
 @dataclass
 class ContainerConfig:
     runtime: str = "crun"
-    isolate_var_lib_containers: bool = False
+    isolate_var_lib_containers: bool = True
+    allow_unsandboxed: bool = False
     pin_subuid_ranges: bool = True
     scratch_device: str | None = None
 
@@ -31,4 +32,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def container_builder(config: ContainerConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("container").build()
+    cfg = config if config is not None else ContainerConfig()
+    return PluginBuilder("container").context(lambda: cfg).build()

@@ -26,10 +26,9 @@
         - exposes typed plugin context objects without string lookups
       - Python: c.cap.<plugin_key> typed by .use(plugin) overloads;
         - maps capability attributes directly without dictionary indexing
-      - .use(plugin) populates c.cap (Python) / c.<pluginKey> (TS) at boot,
-        not before
-      - the capability struct is materialized from the plugin's Context
-        before the first handler invocation; it is not a stub
+      - .use(plugin) populates c.cap (Python) / c.<pluginKey> (TS) at boot, not before
+      - capability struct materializes from the plugin's Context at boot
+      - it is not a stub; it exists before the first handler invocation
       - No string-keyed service registry on any SDK
     - Authoring model
       - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
@@ -165,8 +164,8 @@
       - box.rollback() invokes driver rollback: see: artifacts/code/vmm-driver-trait.rs
       - box.reconcile() invokes storage reconciler to host workspace
       - box.suspend() delegates to session suspend: see: 08-lifecycle.md#Suspend-and-resume
-      - box.suspend() takes no argument; the suspend image path is derived from
-        session state, never user-supplied
+      - box.suspend() takes no argument
+      - the suspend image path derives from session state, never user-supplied
   - Params typed views
     - Host-side typed access on HandlerCtx
       - Rust: c.params::<T>() deserializes from validated buffer
@@ -266,9 +265,25 @@
       - TypeScript: Promise.all fan-out, generic inference
       - Python: asyncio.gather, async with, Pydantic v2
   - Fluent plugin surface
+    - Closed set: 30 verbs and 8 scopes in every SDK
+      - Verb home: see: 02-plugin-model.md#Fluent-plugin-creation-builder
+      - Scope home: see: 02-plugin-model.md#Nested-scopes
+    - Structural verbs, all three SDKs
+      - context, require(s), scope, fork_with, vsock_service, build
+      - fork_with keeps its pinned per-language signature
+        - Rust: Fn(&str) -> Box<dyn AnyPlugin>
+        - TypeScript: () -> PluginContract
+        - Python: Fn(_PluginWrapper) -> _PluginWrapper
+    - Ring verbs, all three SDKs
+      - 24 verbs: trap 2, fs 4, net 2, console 2, exec 2, host 4
+        - lifecycle 5, telemetry 3; names as in the verb home
+    - Scopes, all three SDKs
+      - trap, fs, net, console, exec, host, lifecycle, telemetry
+      - Entry-point names are the group names in every SDK
     - Rust
       - Entry: kelir::plugin_builder::PluginBuilder::new(name)
-      - PluginBuilder<Ctx, Deps: HList>; .build() returns PluginWrapper<Ctx, Deps>
+      - PluginBuilder<Ctx, Deps: HList>
+      - .build() returns Result<PluginWrapper<Ctx, Deps>, PluginError>
       - .plugin() requires Plugins: Satisfies<P::Deps>
       - Post-.build(): self is consumed; further calls are a compile error
       - Surface: see: artifacts/code/rust-plugin-builder.rs
@@ -276,14 +291,18 @@
       - Entry: createPlugin(name); existing symbol, surface aligned
       - createPlugin returns PluginContract<Name, Ctx, Deps>
       - .requires<P>() accumulates Deps; .build() returns KelirPlugin
+      - .build() throws EConfig on validation failure
       - .use() accepts the post-.build() KelirPlugin only
+      - .use() rejects an unbuilt contract at runtime
       - Post-.build(): non-builder; verbs are method-not-found at compile time
       - Post-.build(): a verb call throws TypeError at runtime
       - Surface: see: artifacts/code/typescript-plugin-builder.ts
     - Python
       - Entry: kelir.PluginBuilder(name); new symbol
       - .require(P) records deps; .build() returns a _PluginWrapper
+      - .build() raises EConfig on validation failure
       - .build() precedes .use(); boot() raises EConfig on unsatisfied deps
+      - .use() and .plugin() are aliases
       - Post-.build() mutation raises EConfig
       - Surface: see: artifacts/code/python-plugin-builder.py
     - Contract home: see: 02-plugin-model.md#Fluent-plugin-creation-builder

@@ -59,4 +59,5 @@ from kelir.plugin_builder import PluginBuilder, _PluginWrapper
 
 
 def wire_ingress_builder(config: WireIngressConfig | None = None) -> _PluginWrapper:
-    return PluginBuilder("wire-ingress").build()
+    cfg = config if config is not None else WireIngressConfig()
+    return PluginBuilder("wire-ingress").context(lambda: cfg).build()

@@ -43,6 +43,7 @@ export function chaos(
 export interface ContainerConfig extends PluginEnablement {
   readonly runtime?: string;
   readonly isolateVarLibContainers?: boolean;
+  readonly allowUnsandboxed?: boolean;
   readonly pinSubuidRanges?: boolean;
   readonly scratchDevice?: string;
 }
@@ -105,6 +106,7 @@ export interface ReceiptConfig {
 export interface LedgerConfig extends PluginEnablement {
   readonly store?: string;
   readonly merkleChain?: boolean;
+  readonly suppressLocalDb?: boolean;
   readonly otel?: OtelConfig;
   readonly receipts?: ReceiptConfig;
 }
@@ -293,78 +295,65 @@ import { createPlugin } from "./plugin.model.js";
 
 
 export function mcpBuilder(config: McpConfig): KelirPlugin {
-  void config;
-  return createPlugin("mcp").build();
+  return createPlugin("mcp", { config }).build();
 }
 
 
 export function meshBuilder(config: MeshConfig): KelirPlugin {
-  void config;
-  return createPlugin("mesh").build();
+  return createPlugin("mesh", { config }).build();
 }
 
 
 export function containerBuilder(config: ContainerConfig): KelirPlugin {
-  void config;
-  return createPlugin("container").build();
+  return createPlugin("container", { config }).build();
 }
 
 
 export function dbProxyBuilder(config: DbProxyConfig): KelirPlugin {
-  void config;
-  return createPlugin("db-proxy").build();
+  return createPlugin("db-proxy", { config }).build();
 }
 
 
 export function replayBuilder(config: ReplayConfig): KelirPlugin {
-  void config;
-  return createPlugin("replay").build();
+  return createPlugin("replay", { config }).build();
 }
 
 
 export function supplyChainBuilder(config: SupplyChainConfig): KelirPlugin {
-  void config;
-  return createPlugin("supply-chain").build();
+  return createPlugin("supply-chain", { config }).build();
 }
 
 
 export function toolGuardBuilder(config: ToolGuardConfig): KelirPlugin {
-  void config;
-  return createPlugin("tool-guard").build();
+  return createPlugin("tool-guard", { config }).build();
 }
 
 
 export function vaultBuilder(config: VaultConfig): KelirPlugin {
-  void config;
-  return createPlugin("vault").build();
+  return createPlugin("vault", { config }).build();
 }
 
 
 export function wireIngressBuilder(config: WireIngressConfig): KelirPlugin {
-  void config;
-  return createPlugin("wire-ingress").build();
+  return createPlugin("wire-ingress", { config }).build();
 }
 
 
 export function chaosBuilder(config: ChaosConfig): KelirPlugin {
-  void config;
-  return createPlugin("chaos").build();
+  return createPlugin("chaos", { config }).build();
 }
 
 
 export function ledgerBuilder(config: LedgerConfig): KelirPlugin {
-  void config;
-  return createPlugin("ledger").build();
+  return createPlugin("ledger", { config }).build();
 }
 
 
 export function profileBuilder(config: ProfileConfig): KelirPlugin {
-  void config;
-  return createPlugin("profile").build();
+  return createPlugin("profile", { config }).build();
 }
 
 
 export function transactionBuilder(config: TransactionConfig): KelirPlugin {
-  void config;
-  return createPlugin("transaction").build();
+  return createPlugin("transaction", { config }).build();
 }
