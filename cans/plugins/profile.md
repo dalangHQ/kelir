@@ -9,7 +9,7 @@
     - VirtIO device attachment (profile): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (profile): see: 08-lifecycle.md#Lifecycle-vetoes
     - Registers stream kind PROFILE_SYNC on the mux
-      - Kind 0x0010; see: 11-protocol.md#Control-channel
+      - see: 11-protocol.md#Control-channel
   - Invariants and policy (profile)
     - Profile schema fixture: see: artifacts/examples/fixtures/kelir.toml
     - Canonical profile artifact: see: [1]
@@ -76,12 +76,10 @@
     - Driver FFI boundary (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary.worker_threads
       - see: artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary.max_ops_per_second
-      - driver.ffi_boundary.queue_capacity: TBD (no DriverPolicy field yet)
-      - driver.ffi_boundary.max_buffer_bytes: TBD (no DriverPolicy field yet)
+      - driver.ffi_boundary.queue_capacity and max_buffer_bytes: TBD (no DriverPolicy fields yet)
       - FFI keys map to DriverPolicy ffi_worker_threads, ffi_max_ops_per_sec
       - driver.fast_boot: auto | enabled | off (default: off)
       - driver.fast_boot routes to KelirBuilder::fast_boot at boot; no struct field
-      - driver.fast_boot: TBD (no DriverPolicy field yet; builder method only)
   - Session compute schema (profile)
     - Session compute semantics: see: artifacts/code/vmm-driver-trait.rs
     - Session identity (profile)

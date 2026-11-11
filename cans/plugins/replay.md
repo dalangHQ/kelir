@@ -15,8 +15,10 @@
     - Cycle-exact instruction clock stepping
       - Decouples guest paravirtual clock from host physical TSC
       - Arms host PMU counters as a metrics drive for clock stepping
-      - Advances guest KVM_SET_CLOCK / CNTVOFF_EL2 on retired-instruction windows
+      - Clock advance mechanics: see: 08-lifecycle.md#Clock-skew
+        - In replay mode, advanced on retired-instruction windows
       - PMU values drive local stepping; never appear in receipts
+        - see: 10-attestation.md#Field-semantics
       - Eliminates host scheduling jitter and timer interrupt variance across runs
       - Replay mode requires network isolation for determinism
         - Deterministic replay cannot include live external network peers
@@ -26,7 +28,7 @@
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.replay.step_window_instructions
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.replay.deterministic_rng_seed
     - Kernel clocksource lockdown
-      - Injects kernel boot parameters: clocksource=kvm-clock tsc=reliable nohpet
+      - Pinned clocksource boot parameters: see: 08-lifecycle.md#Clock-skew
       - Intercepts clock_gettime and gettimeofday syscall traps to enforce monotonic progression
       - Restore clamp and monotonicity: see: 08-lifecycle.md#Hypervisor-primitives
     - Deterministic RNG

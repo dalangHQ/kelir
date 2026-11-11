@@ -5,12 +5,7 @@
     - Hardware abstraction: virtio-net bound host-side to embedded smoltcp TCP/IP stack
     - Hook points: on_net_outbound and on_net_inbound
     - Interceptor hooks receive NetContext containing raw Ethernet frames
-    - Rollback interaction
-      - session.rollback() closes every host-side socket for the session
-      - Guest TCP stack observes RST/FIN; subsequent sends fail ECONNRESET
-      - UDP NAT slab entries for the session are dropped; no port leak
-      - Sockets are not restored from snapshots; there is no socket state to restore
-      - rollback semantics: 08-lifecycle.md#Rollback
+    - Rollback interaction: see: 08-lifecycle.md#Rollback
   - Userspace network stack
     - Frame termination
       - Guest virtio-net Ethernet frames terminate directly in host process memory
@@ -81,7 +76,8 @@
       - Traffic to non-gateway resolvers redirected at ingress ring
     - Host-state resolution
       - Queries resolved host-side via live OS resolver state
-        - Linux: /etc/resolv.conf watched via inotify; nameservers reloaded on change
+        - Linux: /etc/resolv.conf nameservers parsed at wire-plane construction
+          - inotify reload-on-change: TBD (L3)
         - Search domain expansion: host search domains and ndots parsed from OS state
         - Single-label queries expand against host search candidates before policy eval
         - Bare hostnames in corporate VPN and internal split-horizon resolve transparently
@@ -118,8 +114,7 @@
     - Vault and credential flow
       - Default path: guest fetches scoped token from plugin-vault, presents it
       - No host-side TLS termination; no CA injection
-      - Optional external sidecar can be configured for L7 rewriting
-        - plugins/vault.md#Optional-external-egress-rewriting
+      - Optional sidecar: see: plugins/vault.md#Optional-external-egress-rewriting
     - Diverted endpoints configured via MountScope port and CIDR allowlists
   - Upstream dial transport    - Dial policy
       - Proxy chaining is first-class, not an afterthought

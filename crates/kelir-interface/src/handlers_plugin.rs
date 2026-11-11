@@ -9,7 +9,9 @@ use serde::de::DeserializeOwned;
 
 use crate::handles_lifecycle::{FsHandle, StepStack, TerminalHandle, VmHandle};
 use crate::plugin_model::PluginError;
-use crate::protocol_wire::{ProcessLimits, TrapEvent};
+use crate::protocol_wire::{
+    FilterAction, PatchPayload, ProcessLimits, SuspendUntil, TrapEvent, Verdict,
+};
 use crate::telemetry::{ExecutionReceipt, ExitKind};
 
 // see: cans/03-sdk-architecture.md#Rust-SDK
@@ -23,6 +25,8 @@ pub struct FsContext {
     pub inode: u64,
     pub path: PathBuf,
     pub journal: u64,
+    // TODO (L2): FUSE read dispatch plumbs the requested offset here — cans/05-storage-plane.md#In-flight-read-masking
+    pub offset: u64,
 }
 
 // see: cans/02-plugin-model.md#Core-context-keys
@@ -214,6 +218,40 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
     pub fn params<T: DeserializeOwned>(&self) -> Result<T, PluginError> {
         ciborium::from_reader(self.params_buffer.as_slice())
             .map_err(|e| PluginError::Halt(format!("EINVAL: params decode failed: {e}")))
+    }
+
+    // see: cans/03-sdk-architecture.md#Unified-verdict-surface
+    pub fn pass(&self) -> Verdict {
+        Verdict::Pass
+    }
+
+    pub fn patch(&self, payload: PatchPayload) -> Verdict {
+        Verdict::Patch(payload)
+    }
+
+    pub fn drop(&self, errno: Option<String>, reason: String) -> Verdict {
+        Verdict::Drop { errno, reason }
+    }
+
+    pub fn suspend(&self, until: SuspendUntil) -> Verdict {
+        Verdict::Suspend { until }
+    }
+
+    pub fn abort(&self, reason: String) -> Verdict {
+        Verdict::Abort { reason }
+    }
+
+    // see: cans/11-protocol.md#Verdict-method-mapping
+    pub fn forward(&self) -> FilterAction {
+        FilterAction::Forward
+    }
+
+    pub fn filter_drop(&self, errno: Option<String>, reason: String) -> FilterAction {
+        FilterAction::Drop { errno, reason }
+    }
+
+    pub fn filter_suspend(&self, until: SuspendUntil) -> FilterAction {
+        FilterAction::Suspend { until }
     }
 
     pub async fn receipt(&self) -> Result<ExecutionReceipt, PluginError> {

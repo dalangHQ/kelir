@@ -1,5 +1,8 @@
-// see: cans/15-operations.md#Developer-CLI
+// see: cans/15-operations.md#Plugin-registry
+// TODO (L3): render the registry index over the plugin tier roster.
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    // TODO (L3): Plugin registry subcommand skeleton.
-    Ok(())
+    Err(
+        "registry: not implemented (L3): plugin registry index rendering per cans/15-operations.md#Plugin-registry"
+            .into(),
+    )
 }

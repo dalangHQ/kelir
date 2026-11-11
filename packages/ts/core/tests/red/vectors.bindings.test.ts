@@ -20,9 +20,9 @@ async function bt_02_typescript_vectors_parity_frame_verdict_equality(): Promise
   const raw = JSON.parse(await readFile(vectorsUrl, "utf8")) as {
     vectors: readonly ParityVectorEntry[];
   };
-  if (raw.vectors.length !== 12) {
+  if (raw.vectors.length !== 58) {
     throw new Error(
-      `bt_02: vectors.json carries ${raw.vectors.length} vectors, expected 12`,
+      `bt_02: vectors.json carries ${raw.vectors.length} vectors, expected 58`,
     );
   }
   if (raw.vectors[0].name !== "trap-git-commit-pass") {
@@ -37,15 +37,15 @@ async function bt_02_typescript_vectors_parity_frame_verdict_equality(): Promise
   const consumer = mod.runParityVectors;
   if (typeof consumer !== "function") {
     throw new Error(
-      "bt_02: @kelir/core exports no parity vector consumer (runParityVectors), so the 12 vectors.json frames cannot be reproduced",
+      "bt_02: @kelir/core exports no parity vector consumer (runParityVectors), so the 58 vectors.json frames cannot be reproduced",
     );
   }
   const results = (await (
     consumer as (path: string) => Promise<readonly ParityVectorResult[]>
   )(vectorsUrl.pathname)) as readonly ParityVectorResult[];
-  if (results.length !== 12) {
+  if (results.length !== 58) {
     throw new Error(
-      `bt_02: the TS vector consumer asserted ${results.length} vectors, expected 12`,
+      `bt_02: the TS vector consumer asserted ${results.length} vectors, expected 58`,
     );
   }
   for (const [index, vector] of raw.vectors.entries()) {

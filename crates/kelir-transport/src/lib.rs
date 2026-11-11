@@ -2,6 +2,7 @@
 // see: cans/artifacts/diagrams/four-ring-bus.txt#virtio-shm
 // see: cans/artifacts/diagrams/wire-plane.txt#USERSPACE-SMOLTCP-INGRESS-RING
 pub mod fallback_transport;
+pub mod host_bind;
 pub mod spsc_ring;
 
 pub trait Transport {

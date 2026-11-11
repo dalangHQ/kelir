@@ -14,7 +14,7 @@ use kelir_interface::driver_interface::{
 use kelir_interface::handles_lifecycle::{DriverVmControl, VmHandle};
 use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::lifecycle_state::LifecycleState;
-use kelir_interface::plugin_model::{LifecycleCtx, LifecycleEvent, PipelineBinder, VetoList};
+use kelir_interface::plugin_model::{LifecycleCtx, LifecycleEvent, VetoList};
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
@@ -33,11 +33,7 @@ pub struct Session {
     pub host: crate::planes::host::HostPlane,
     metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     uart: crate::uart_terminal::UartRingBuffer,
-    driver: Option<
-        Arc<
-            tokio::sync::Mutex<Box<dyn kelir_interface::driver_interface::VmmDriver + Send + Sync>>,
-        >,
-    >,
+    driver: Option<Arc<tokio::sync::Mutex<Box<dyn kelir_interface::driver_interface::VmmDriver>>>>,
     owned_bus: crate::bus::OwnedBusDispatcher,
     engine: crate::dispatch_plugin::PipelineEngine,
     config: VmConfig,
@@ -150,6 +146,92 @@ pub fn reap_ephemeral_session_dir(
     }
 }
 
+// see: cans/01-architecture.md#Host-state-root
+fn ensure_workspace_root(
+    session_id: &[u8; 16],
+) -> Result<std::path::PathBuf, kelir_interface::plugin_model::PluginError> {
+    let workspace_root = session_dir(session_id)?.join("workspace");
+    std::fs::create_dir_all(&workspace_root)?;
+    Ok(workspace_root)
+}
+
+// see: cans/06-storage-catalog.md#Entity-model
+// TODO (L3): swap the minted boot_id and now-based start_time_ns for the OS host_boot_id and proc start_time per cans/08-lifecycle.md#Cross-platform-incarnation-proof.
+// TODO (L3): detached boots upgrade the row to lease_kind='lease' with runner child pid and expires_at per cans/08-lifecycle.md#Detached-lifecycle.
+fn register_catalog_row(
+    session_id: [u8; 16],
+    incarnation_id: [u8; 16],
+) -> Result<(), kelir_interface::plugin_model::PluginError> {
+    let row = kelir_catalog::schema_catalog::SessionRow {
+        session_id,
+        incarnation_id: kelir_catalog::schema_catalog::IncarnationId::from_bytes(incarnation_id),
+        lease_kind: kelir_catalog::schema_catalog::LeaseKind::Ephemeral,
+        expires_at_unix: None,
+        runner_pid: i64::from(std::process::id()),
+        boot_id: encode_hex(&mint_uuid_v7()),
+        start_time_ns: i64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or_default(),
+        )
+        .unwrap_or(i64::MAX),
+    };
+    let catalog =
+        kelir_catalog::CatalogDb::open(kelir_catalog::catalog_path().map_err(|error| {
+            kelir_interface::plugin_model::PluginError::Halt(format!("{error}"))
+        })?)
+        .map_err(|error| {
+            kelir_interface::plugin_model::PluginError::Halt(format!("catalog open: {error}"))
+        })?;
+    // see: cans/06-storage-catalog.md#Entity-model
+    let already_registered = catalog
+        .lookup_session(&session_id)
+        .map_err(|error| {
+            kelir_interface::plugin_model::PluginError::Halt(format!(
+                "catalog session lookup: {error}"
+            ))
+        })?
+        .is_some();
+    if already_registered {
+        tracing::warn!(
+            "session {} already registered in the catalog; booting idempotently without a second insert",
+            encode_hex(&session_id)
+        );
+        return Ok(());
+    }
+    catalog.register_session(&row).map_err(|error| {
+        kelir_interface::plugin_model::PluginError::Halt(format!(
+            "catalog session registration: {error}"
+        ))
+    })
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+#[derive(Debug, Clone)]
+pub struct PluginContextRecord {
+    pub name: String,
+    pub ctx: PluginContextSurface,
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+// TODO (L3): per-plugin ring/custom-action/stream-kind attribution lands when the engine tags bindings with the registering plugin.
+#[derive(Debug, Clone)]
+pub struct PluginContextSurface {
+    pub enabled: bool,
+}
+
+// see: cans/11-protocol.md#Kind-registration
+fn bind_engine_stream_sinks(
+    engine: &crate::dispatch_plugin::PipelineEngine,
+    bus: &crate::bus::BusDispatcher,
+) -> Result<(), kelir_interface::plugin_model::PluginError> {
+    for (kind, sink) in engine.stream_kind_services() {
+        bus.bind_stream_sink(kind, sink)?;
+    }
+    Ok(())
+}
+
 impl Session {
     // see: cans/08-lifecycle.md#Detached-lifecycle
     pub fn relay_socket_path(
@@ -177,6 +259,33 @@ impl Session {
     // see: cans/06-storage-catalog.md#Entity-model
     pub fn session_id(&self) -> [u8; 16] {
         self.session_id
+    }
+
+    // see: cans/01-architecture.md#Host-state-root
+    pub fn session_dir(
+        &self,
+    ) -> Result<std::path::PathBuf, kelir_interface::plugin_model::PluginError> {
+        session_dir(&self.session_id)
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    pub fn plugin_contexts(&self) -> Vec<PluginContextRecord> {
+        self.plugins
+            .iter()
+            .map(|registration| PluginContextRecord {
+                name: registration.name.clone(),
+                ctx: PluginContextSurface {
+                    enabled: registration.enabled,
+                },
+            })
+            .collect()
+    }
+
+    // see: cans/11-protocol.md#Kind-registration
+    pub fn bind_stream_kind_sinks(
+        &mut self,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        bind_engine_stream_sinks(&self.engine, self.owned_bus.dispatcher())
     }
 
     pub fn set_detached(&mut self, detached: bool) {
@@ -208,6 +317,7 @@ impl Session {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    // TODO (L3): fused descriptor hook dispatch lands with the trampoline ring binding per cans/02-plugin-model.md#Foreign-plugin-proxy; with_trampoline preserves the caller's engine state.
     pub fn boot_with_plugins(
         config: kelir_interface::driver_interface::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
@@ -219,14 +329,16 @@ impl Session {
         if let Some(descriptor) = trampoline {
             engine = engine.with_trampoline(descriptor.clone());
         }
-        Self::boot_with_engine(
+        let mut session = Self::boot_with_engine(
             config,
             plugins,
             engine,
             std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             synthetic_files,
             plane_wiring,
-        )
+        )?;
+        session.advance_lifecycle(LifecycleState::Running)?;
+        Ok(session)
     }
 
     // see: cans/08-lifecycle.md#Hypervisor-primitives
@@ -248,39 +360,9 @@ impl Session {
         let incarnation_id = mint_uuid_v7();
         // see: cans/06-storage-catalog.md#Entity-model
         let session_id = mint_uuid_v7();
-        let boot_id = encode_hex(&mint_uuid_v7());
-        let start_time_ns = i64::try_from(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|elapsed| elapsed.as_nanos())
-                .unwrap_or_default(),
-        )
-        .unwrap_or(i64::MAX);
-        // TODO (L3): swap the minted boot_id and now-based start_time_ns for the OS host_boot_id and proc start_time per cans/08-lifecycle.md#Cross-platform-incarnation-proof.
-        // TODO (L3): detached boots upgrade the row to lease_kind='lease' with runner child pid and expires_at per cans/08-lifecycle.md#Detached-lifecycle.
-        let row = kelir_catalog::schema_catalog::SessionRow {
-            session_id,
-            incarnation_id: kelir_catalog::schema_catalog::IncarnationId::from_bytes(
-                incarnation_id,
-            ),
-            lease_kind: kelir_catalog::schema_catalog::LeaseKind::Ephemeral,
-            expires_at_unix: None,
-            runner_pid: i64::from(std::process::id()),
-            boot_id,
-            start_time_ns,
-        };
-        kelir_catalog::CatalogDb::open(kelir_catalog::catalog_path().map_err(|error| {
-            kelir_interface::plugin_model::PluginError::Halt(format!("{error}"))
-        })?)
-        .map_err(kelir_catalog::CatalogError::from)
-        .and_then(|catalog| catalog.register_session(&row))
-        .map_err(|error| {
-            kelir_interface::plugin_model::PluginError::Halt(format!(
-                "catalog session registration: {error}"
-            ))
-        })?;
+        register_catalog_row(session_id, incarnation_id)?;
         // see: cans/01-architecture.md#Host-state-root
-        let workspace_root = session_dir(&session_id)?.join("workspace");
+        let workspace_root = ensure_workspace_root(&session_id)?;
         let storage = crate::planes::storage::StoragePlane::new(
             workspace_root.clone(),
             workspace_root.join("upper.img"),
@@ -362,7 +444,18 @@ impl Session {
                 }
                 None
             }
-            Err(_) => None,
+            // see: cans/01-architecture.md#Fallback-policy
+            Err(DriverError::NoHardwareVmm(reason)) => {
+                return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                    "E_NOHARDWAREVMM: boot aborted; no hardware virtualization: {reason}"
+                )));
+            }
+            // see: cans/01-architecture.md#Fallback-policy
+            Err(error) => {
+                return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                    "driver load failed; silent downgrade is fatal, boot aborted: {error}"
+                )));
+            }
         };
         let mut session = Self {
             terminal,
@@ -386,8 +479,14 @@ impl Session {
             detached: false,
             state: LifecycleState::Initializing,
         };
-        session.advance_lifecycle(LifecycleState::Running)?;
+        // see: cans/11-protocol.md#Kind-registration
+        session.bind_stream_kind_sinks()?;
         Ok(session)
+    }
+
+    // see: cans/08-lifecycle.md#State-machine
+    pub fn begin_running(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        self.advance_lifecycle(LifecycleState::Running)
     }
 
     pub fn plugins(&self) -> &[crate::plugin_registry::PluginRegistration] {
@@ -418,59 +517,6 @@ impl Session {
     // see: cans/03-sdk-architecture.md#Session-surfaces
     pub fn vm(&self) -> VmHandle {
         self.vm_handle()
-    }
-
-    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
-    pub fn bind_wire_imds_vault(
-        &mut self,
-    ) -> Result<bool, kelir_interface::plugin_model::PluginError> {
-        match self.engine.vsock_service(VAULT_METADATA_VSOCK_PORT) {
-            Some(handler) => {
-                self.wire.bind_imds_sink(handler)?;
-                Ok(true)
-            }
-            None => Ok(false),
-        }
-    }
-
-    pub fn bind_plugin(
-        &mut self,
-        plugin: &dyn kelir_interface::plugin_model::AnyPlugin,
-    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        if self.engine.is_sealed() {
-            return Err(kelir_interface::plugin_model::PluginError::Halt(
-                "pipeline already sealed".into(),
-            ));
-        }
-        if !plugin.is_enabled() {
-            return Ok(());
-        }
-        self.engine.set_active_scope(plugin.default_scope());
-        plugin.register_interceptors(&mut self.engine);
-        self.engine
-            .set_active_scope(kelir_interface::plugin_model::MountScope::default());
-        Ok(())
-    }
-
-    // TODO (L3): Session::boot calls register_storage_lock_broker before bind_plugin so the 2PC coordinator resolves the host broker.
-    pub fn register_storage_lock_broker(
-        &mut self,
-        interposer: Arc<dyn kelir_interface::plugin_model::FsInterposer>,
-    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        if self.engine.is_sealed() {
-            return Err(kelir_interface::plugin_model::PluginError::Halt(
-                "pipeline already sealed".into(),
-            ));
-        }
-        // see: cans/05-storage-plane.md#Host-inode-lock-broker
-        self.storage.set_lock_namespace(self.incarnation_id);
-        let coordination = self.storage.lock_broker_coordination(interposer);
-        self.engine.register_lock_broker(coordination);
-        Ok(())
-    }
-
-    pub fn seal_pipeline(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        self.engine.seal()
     }
 
     pub fn bus(&mut self) -> &mut crate::bus::BusDispatcher {
@@ -511,6 +557,7 @@ impl Session {
     ) -> impl Future<Output = Result<Self, kelir_interface::plugin_model::PluginError>> + Send {
         // TODO (L3): backend drivers implement the native CoW clone behind VmmDriver::fork.
         // TODO (L3): rebind vsock channels and wire wiring onto the child engine; the SDK layer rebinds the plugin graph via fork_state.
+        // TODO (L2): rehydrate the child engine's ring/vsock/lifecycle registration state; PipelineEngine exposes no accessor for the parent registration table (dispatch_plugin owns it).
         let incarnation_id = mint_uuid_v7();
         // see: cans/08-lifecycle.md#CoW-fork
         let parent_driver = self.driver.clone();
@@ -518,15 +565,15 @@ impl Session {
         let terminal = Arc::clone(&self.terminal);
         let storage_wiring = self.storage.wiring().clone();
         let config = self.config.clone();
-        let session_id = self.session_id;
+        // see: cans/06-storage-catalog.md#Entity-model
+        let session_id = mint_uuid_v7();
         let plugins = self.plugins.clone();
         let detached = self.detached;
-        let state = self.state;
         async move {
             // see: cans/08-lifecycle.md#CoW-fork
             let child_driver = match parent_driver {
                 Some(driver) => {
-                    let forked: Box<dyn VmmDriver + Send + Sync> =
+                    let forked: Box<dyn VmmDriver> =
                         driver.lock().await.fork().await.map_err(|error| {
                             kelir_interface::plugin_model::PluginError::Halt(format!(
                                 "driver fork: {error}"
@@ -536,7 +583,9 @@ impl Session {
                 }
                 None => None,
             };
-            let workspace_root = session_dir(&session_id)?.join("workspace");
+            register_catalog_row(session_id, incarnation_id)?;
+            // see: cans/01-architecture.md#Host-state-root
+            let workspace_root = ensure_workspace_root(&session_id)?;
             let storage = crate::planes::storage::StoragePlane::new(
                 workspace_root.clone(),
                 workspace_root.join("upper.img"),
@@ -578,7 +627,8 @@ impl Session {
                 incarnation_id,
                 plugins,
                 detached,
-                state,
+                // see: cans/08-lifecycle.md#CoW-fork
+                state: LifecycleState::Running,
             })
         }
     }
@@ -719,7 +769,7 @@ impl Session {
     }
 
     // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
-    // TODO (L3): a real policy plugin (plugin-*) arms the watchdog from on_vm_init; boot warns while none does.
+    // TODO (L3): a real policy plugin arms the watchdog from on_vm_init; boot warns while none does.
     pub async fn run_lifecycle_hook(
         &mut self,
         event: LifecycleEvent,
@@ -751,45 +801,13 @@ impl Session {
                 self.engine.dispatch_lifecycle(event, &mut ctx).await?;
             }
         }
-        let Some(callback) = self.engine.take_lifecycle_callback(event) else {
-            if matches!(event, LifecycleEvent::VmInit) && self.config.enable_watchdog {
-                tracing::warn!(
-                    "enable_watchdog=true reached on_vm_init with no callback registered to arm ctx.set_watchdog"
-                );
-            }
-            return Ok(());
-        };
-        let result = match self.driver.as_ref() {
-            Some(driver) => {
-                let mut guard = driver.lock().await;
-                let mut ctx = LifecycleCtx::new_with_watchdog_probe(
-                    &self.config,
-                    &session_id,
-                    &mut **guard,
-                    &mut self.vetoes,
-                    std::sync::Arc::clone(&watchdog_probe),
-                );
-                callback(&mut ctx).await
-            }
-            None => {
-                let mut driver = NullDriver;
-                let mut ctx = LifecycleCtx::new_with_watchdog_probe(
-                    &self.config,
-                    &session_id,
-                    &mut driver,
-                    &mut self.vetoes,
-                    std::sync::Arc::clone(&watchdog_probe),
-                );
-                callback(&mut ctx).await
-            }
-        };
-        result?;
         if matches!(event, LifecycleEvent::VmInit)
             && self.config.enable_watchdog
             && !watchdog_probe.load(std::sync::atomic::Ordering::Acquire)
         {
+            // see: cans/08-lifecycle.md#Watchdog
             tracing::warn!(
-                "enable_watchdog=true finished on_vm_init without any callback arming ctx.set_watchdog"
+                "enable_watchdog=true finished on_vm_init without any lifecycle participant arming ctx.set_watchdog"
             );
         }
         Ok(())
@@ -797,8 +815,7 @@ impl Session {
 
     // see: cans/08-lifecycle.md#State-machine
     pub async fn shutdown(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        self.run_lifecycle_hook(LifecycleEvent::VmShutdown).await?;
-        self.stop()
+        self.stop().await
     }
 
     // see: cans/06-storage-catalog.md#Entity-model
@@ -836,8 +853,10 @@ impl Session {
         reap_ephemeral_session_dir(&self.session_id)
     }
 
-    pub fn stop(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): graceful driver terminate after drain.
+    // see: cans/08-lifecycle.md#Pre-teardown-flush
+    pub async fn stop(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        // TODO (L3): MSG_SHUTDOWN_REQUEST{timeout_ms} on Control 0x0000 and the shim ACK gate before vCPU teardown per cans/08-lifecycle.md#Pre-teardown-flush.
+        self.run_lifecycle_hook(LifecycleEvent::VmShutdown).await?;
         self.flush_workspace_before_terminate()?;
         self.advance_lifecycle(LifecycleState::Terminated)?;
         self.teardown_catalog()
@@ -854,33 +873,22 @@ impl Session {
             atomic_staging: true,
             fsync: true,
         };
-        match self.storage.reconcile(request) {
-            Ok(_stats) => Ok(()),
-            Err(kelir_interface::plugin_model::PluginError::Halt(reason))
-                if reason.contains("needs the anchored reconciler") =>
-            {
-                tracing::warn!(
-                    "stop: storage reconciler not anchored; skipping the pre-teardown workspace flush"
-                );
-                Ok(())
-            }
-            Err(error) => Err(error),
-        }
+        self.storage.reconcile(request).map(|_| ())
     }
 
     // see: cans/08-lifecycle.md#Pre-teardown-flush
-    pub fn stop_with_timeout(
+    pub async fn stop_with_timeout(
         &mut self,
         timeout: std::time::Duration,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): graceful driver terminate after MSG_SHUTDOWN_ACK or timeout expiry.
         if timeout == Duration::ZERO {
             return self.kill();
         }
-        let _ = timeout;
-        self.flush_workspace_before_terminate()?;
-        self.advance_lifecycle(LifecycleState::Terminated)?;
-        self.teardown_catalog()
+        // TODO (L3): the bounded wait targets MSG_SHUTDOWN_ACK on Control 0x0000; it bounds the graceful hook path today per cans/08-lifecycle.md#Pre-teardown-flush.
+        match tokio::time::timeout(timeout, self.stop()).await {
+            Ok(result) => result,
+            Err(_expired) => self.kill(),
+        }
     }
 
     pub fn kill(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {

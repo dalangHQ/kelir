@@ -20,24 +20,70 @@ pub mod setup_cli;
 pub mod spec_cli;
 pub mod vectors_cli;
 
+// see: cans/15-operations.md#Local-velocity
+pub(crate) fn workspace_root() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .ok_or("kelir-plugin-cli: cannot locate the workspace root from the manifest dir".into())
+        .map(std::path::Path::to_path_buf)
+}
+
 fn check_layers() -> Result<(), Box<dyn std::error::Error>> {
     layers_cli::check()
 }
 
 fn check_budgets(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    let path = args
-        .first()
-        .map(String::as_str)
-        .unwrap_or("perf/budgets.toml");
-    budgets_cli::check(path)
+    let path = match args.first() {
+        None => workspace_root()?.join("perf/budgets.toml"),
+        Some(path) => std::path::PathBuf::from(path),
+    };
+    budgets_cli::check(&path)
+}
+
+fn expect_no_args(args: &[String], flag: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(arg) = args.first() {
+        return Err(format!(
+            "check: unknown argument `{arg}` after {flag} (expected --layers, --budgets, --graph, or -p <plugin>)"
+        )
+        .into());
+    }
+    Ok(())
 }
 
 fn check(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     match args.first().map(String::as_str) {
-        Some("--layers") => check_layers(),
-        Some("--budgets") => check_budgets(&args[1..]),
-        Some("--graph") => graph_cli::check(),
-        Some("-p") => audit_cli::run(&args[1..]),
+        Some("--layers") => {
+            expect_no_args(&args[1..], "--layers")?;
+            check_layers()
+        }
+        Some("--budgets") => {
+            let rest = &args[1..];
+            if rest.len() > 1 {
+                return Err("check: --budgets takes at most one budget file path".into());
+            }
+            for arg in rest {
+                if arg.starts_with('-') {
+                    return Err(format!(
+                        "check: unknown flag `{arg}` (expected --layers, --budgets, --graph, or -p <plugin>)"
+                    )
+                    .into());
+                }
+            }
+            check_budgets(rest)
+        }
+        Some("--graph") => {
+            expect_no_args(&args[1..], "--graph")?;
+            graph_cli::check()
+        }
+        Some("-p") => {
+            if args.len() != 2 {
+                return Err(
+                    "check: -p requires exactly one plugin name and no further flags".into(),
+                );
+            }
+            audit_cli::run(&args[1..])
+        }
         Some(other) => Err(format!(
             "check: unknown flag `{other}` (expected --layers, --budgets, --graph, or -p <plugin>)"
         )
@@ -49,8 +95,10 @@ fn check(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        println!("kelir-plugin-cli: missing subcommand");
-        return Ok(());
+        return Err(
+            "kelir-plugin-cli: missing subcommand (expected doctor|attach|attest|bump-core|check|parity|fixtures|logs|manifest|registry|rings|new|setup|spec|vectors)"
+                .into(),
+        );
     }
     match args[1].as_str() {
         "doctor" => doctor_cli::run(&args[2..])?,
@@ -58,11 +106,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "attest" => attest_cli::run(&args[2..])?,
         "bump-core" => bump_core_cli::run(&args[2..])?,
         "check" => check(&args[2..])?,
-        "check-layers" => check_layers()?,
-        "check-budgets" => check_budgets(&args[2..])?,
         "parity" => parity_cli::run(&args[2..])?,
         "fixtures" => fixtures_cli::run(&args[2..])?,
-        // TODO (L3): logs, manifest, registry, rings, and scaffold dispatch into skeleton subcommands that succeed silently.
         "logs" => logs_cli::run()?,
         "manifest" => manifest_cli::run()?,
         "registry" => registry_cli::run()?,

@@ -135,17 +135,6 @@ impl HostInterposer for CountingHostLsm {
     }
 }
 
-#[derive(Clone)]
-struct LatePlugin;
-
-impl KelirPlugin for LatePlugin {
-    type Context = ();
-    fn context(&self) -> Self::Context {}
-    fn name(&self) -> &'static str {
-        "late-plugin"
-    }
-}
-
 fn hook_entry(ordinal: u32) -> HookEntry {
     HookEntry {
         ordinal,
@@ -339,15 +328,14 @@ fn pe_10_immutable_dispatch_table_post_seal() -> Result<(), String> {
     }
     let mut session = Session::boot(boot_config()).map_err(|e| e.to_string())?;
     assert!(!session.pipeline().is_sealed());
-    session.seal_pipeline().map_err(|e| e.to_string())?;
+    session.pipeline_mut().seal().map_err(|e| e.to_string())?;
     assert!(session.pipeline().is_sealed());
-    let late = LatePlugin;
-    match session.bind_plugin(&late) {
+    match session.pipeline_mut().seal() {
         Err(kelir_interface::plugin_model::PluginError::Halt(message)) => {
             assert_eq!(message, "pipeline already sealed");
         }
-        Err(e) => return Err(format!("late bind gave wrong error: {e}")),
-        Ok(()) => return Err("late bind after seal succeeded".to_string()),
+        Err(e) => return Err(format!("late seal gave wrong error: {e:?}")),
+        Ok(()) => return Err("late seal after seal succeeded".to_string()),
     }
     Ok(())
 }
@@ -406,7 +394,8 @@ async fn interpreter_dash_c_payload_forfeits_trusted_prefix_skip() -> Result<(),
 
 // see: cans/11-protocol.md#Trap-fast-path
 #[tokio::test]
-async fn interpreter_trusted_script_keeps_trusted_prefix_skip() -> Result<(), String> {
+async fn interpreter_trusted_script_fails_closed_pending_canonical_identity() -> Result<(), String>
+{
     let mut engine = PipelineEngine::new();
     let called = Arc::new(AtomicBool::new(false));
     engine.bind_trap(Arc::new(CountingTrap {
@@ -421,8 +410,8 @@ async fn interpreter_trusted_script_keeps_trusted_prefix_skip() -> Result<(), St
         .await
         .map_err(|e| e.to_string())?;
     assert!(
-        !called.load(Ordering::SeqCst),
-        "sh /usr/bin/ls forfeited the trusted-prefix skip without an escaping argv entry"
+        called.load(Ordering::SeqCst),
+        "trusted-prefix skip stays inert until the canonical (st_dev, st_ino, binary_blake3) identity lands"
     );
     Ok(())
 }
@@ -657,17 +646,27 @@ impl KelirPlugin for ScopeMutator {
 #[test]
 #[ignore]
 fn pe_03_overlapping_mutator_scope_eambiguous() -> Result<(), String> {
-    let mut session = Session::boot(boot_config()).map_err(|e| e.to_string())?;
-    session
-        .bind_plugin(&ScopeMutator {
-            name: "mutator-a",
-            scope_paths: &["/workspace/src"],
-        })
-        .map_err(|e| e.to_string())?;
-    match session.bind_plugin(&ScopeMutator {
+    let mut engine = PipelineEngine::new();
+    let probe_a = ScopeMutator {
+        name: "mutator-a",
+        scope_paths: &["/workspace/src"],
+    };
+    KelirPlugin::register_interceptors(&probe_a, &mut engine);
+    let probe_b = ScopeMutator {
         name: "mutator-b",
         scope_paths: &["/workspace/src/main.rs"],
-    }) {
+    };
+    KelirPlugin::register_interceptors(&probe_b, &mut engine);
+    let mut session = Session::boot_with_engine(
+        boot_config(),
+        &[],
+        engine,
+        std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
+        Vec::new(),
+        PlaneWiring::default(),
+    )
+    .map_err(|e| e.to_string())?;
+    match session.pipeline_mut().seal() {
         Err(PluginError::AmbiguousMutation { resource, conflict }) => {
             assert!(
                 resource.contains("main.rs") || conflict.contains("main.rs"),
@@ -675,7 +674,7 @@ fn pe_03_overlapping_mutator_scope_eambiguous() -> Result<(), String> {
             );
         }
         Err(e) => {
-            return Err(format!("overlapping mutator bind gave wrong error: {e:?}"));
+            return Err(format!("overlapping mutator seal gave wrong error: {e:?}"));
         }
         Ok(()) => {
             return Err(
@@ -827,13 +826,21 @@ impl KelirPlugin for ForkProbe {
 #[ignore]
 async fn pe_13_fork_state_specialization_isolation() -> Result<(), String> {
     let log = Arc::new(Mutex::new(Vec::new()));
-    let mut parent = Session::boot(boot_config()).map_err(|e| e.to_string())?;
-    parent
-        .bind_plugin(&ForkProbe {
-            tag: "parent",
-            log: Arc::clone(&log),
-        })
-        .map_err(|e| e.to_string())?;
+    let mut engine = PipelineEngine::new();
+    let parent_probe = ForkProbe {
+        tag: "parent",
+        log: Arc::clone(&log),
+    };
+    KelirPlugin::register_interceptors(&parent_probe, &mut engine);
+    let parent = Session::boot_with_engine(
+        boot_config(),
+        &[PluginRegistration::new("fork-probe", true)],
+        engine,
+        std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
+        Vec::new(),
+        PlaneWiring::default(),
+    )
+    .map_err(|e| e.to_string())?;
     let event = trap_event();
     let ctx = trap_ctx();
     parent

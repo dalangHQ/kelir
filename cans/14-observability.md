@@ -6,7 +6,7 @@
       - Multiple concurrent readers fan out cleanly; no locks, no drops
       - stream delivery has its own e2e pair
       - attach_output proves capture during attach
-      - kelir logs follows the same convention; thin consumer of index.bin
+      - kelir logs: thin consumer of index.bin; see: 13-cli.md#Inspection-commands
     - Shutdown
       - Drain flushes logs before termination; see: 08-lifecycle.md#Hypervisor-primitives
       - Abrupt kill may leave logs truncated at last flushed chunk; the
@@ -18,15 +18,15 @@
       - Native gRPC and HTTP exporters via OpenTelemetry SDK
       - Metrics: counters (execs, syscalls, drops, backpressure events),
         - gauges (RSS, dirty pages, active vCPUs, in-flight execs)
-      - Traces: one span per receipt phase (trap_ingress, policy, ffi_hop,
+      - Traces: one span per receipt phase (trap_ingress, ffi_hop, policy,
         - verdict_egress); see: 10-attestation.md#Execution-receipts
       - Trace continuity across guest-originated requests via W3C traceparent
       - No local Merkle WAL is written by default
       - Local disk audit requires an explicit EventBus subscriber
     - PMU counters are gauges only
       - retired_instructions, cycle counts, cache misses emit as OTel gauges
-      - Never enter receipts, CausalDelta, or Merkle leaves
-      - Never compared across hosts; microarchitectural variance is expected
+      - Microarchitectural variance is expected across host types
+      - Exclusion and comparison rules: see: 10-attestation.md#Field-semantics
     - Host dashboards (Prometheus, Datadog, Grafana Alloy, OTel Collector)
       - consume without bespoke scrapers
   - Health signals

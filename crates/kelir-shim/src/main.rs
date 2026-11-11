@@ -25,7 +25,9 @@ fn main() -> Result<(), trap_protocol::ShimError> {
     let data_fd = connect_channel(STREAM_CHANNEL)?;
     // TODO (L3): exchange the Control 0x0000 handshake (version 0x01 + capabilities) before frame traffic.
     let unotify = trap_protocol::init_seccomp_unotify()?;
-    let (_pty_master, _pty_slave) = pty_terminal::open_pty_slave()?;
+    // TODO (L3): forward the PTY master to the terminal plane console; the slave stays bound for main's lifetime.
+    #[allow(unused_variables)]
+    let (pty_master, pty_slave) = pty_terminal::open_pty_slave()?;
     let mut trap_seq: u64 = 0;
     let mut header = [0u8; codec_protocol::HEADER_LEN];
     let mut payload = [0u8; codec_protocol::MAX_FRAME_PAYLOAD];

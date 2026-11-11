@@ -9,7 +9,7 @@
     - VirtIO device attachment (mcp): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mcp): see: 08-lifecycle.md#Lifecycle-vetoes
     - Registers stream kind MCP_CONSOLE on the mux
-      - Kind 0x0012; see: 11-protocol.md#Control-channel
+      - see: 11-protocol.md#Control-channel
       - Guest shim exposes /run/kelir/mcp.sock, bridged over MCP_CONSOLE
   - Service exports (mcp)
     - Exports McpEndpointService via PipelineBinder for JSON-RPC transport routing
@@ -35,7 +35,7 @@
     - MCP contract
       - Transport: JSON-RPC 2.0 over MCP_CONSOLE mux stream
       - Framing: JSON Lines; one object for each \n, no Content-Length
-      - Max frame: 64 KB; larger split via FLAG_CONTINUATION
+      - Max frame: 64 KB (see 11-protocol.md#Wire-framing); larger split via FLAG_CONTINUATION
   - Error and return semantics (mcp)
     - Hook signature (mcp): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (mcp)

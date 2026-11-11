@@ -8,7 +8,6 @@ pub use kelir_interface as interface;
 pub mod builder_plugin;
 pub mod builder_scopes;
 pub mod builder_sdk;
-pub mod driver_interface;
 pub mod hlist_sdk;
 pub mod planes;
 pub mod plugin_model;
@@ -36,7 +35,7 @@ pub use builder_sdk::ToolGuardExt;
 pub use sandbox_runtime::{Sandbox, SandboxOptions, SandboxProfile};
 pub use session_lifecycle::{
     ClockHandle, FsHandle, Session, SpawnResult, StepStack, TerminalHandle, VmHandle, VsockChannel,
-    VsockHandle, WireHandle,
+    VsockHandle,
 };
 
 // see: cans/plugins/chaos.md#Plugin-chaos

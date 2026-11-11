@@ -67,15 +67,18 @@
       - Rootfs EROFS image cold-boot budget: see: [2]
       - Concurrency cancelled per ref (cancel-in-progress)
       - Shim musl binary size gate: see: [3] (build-guest-shim)
+        - Size invariant: see: 01-architecture.md#Zero-workload-intrusion
       - sccache enabled via SCCACHE_GHA_ENABLED
       - Tiered compilation runs under dev-min: incremental
         - off, debug symbols off; same code, smaller CI caches
       - Hard performance budget gate
         - Budgets in perf/budgets.toml enforced strictly with enforce = true
-        - Fast-boot mmap hydration budget: <500µs target (fallback <60ms)
+        - Fast-boot mmap hydration budget: see: 01-architecture.md#Boot-budget
         - Idle memory contraction budget: <4MB RSS via madvise reclaim
-        - Regressions in Gate 1, Gate 2 (<2µs), or Gate 3 abort CI run
-        - Cold-boot (<60ms) and RSS purge (<50ms) violations fail exit code 1
+        - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
+        - RSS purge budget: see: 08-lifecycle.md#Suspend-and-resume
+        - Regressions in Gate 1, Gate 2, or Gate 3 abort CI run
+        - Cold-boot and RSS purge violations fail exit code 1
     - Per-plugin matrix: each plugin fails independently
     - Integration tier: KVM-detected, continue-on-error on GitHub-hosted
     - External plugin CI: contract attestation via reusable workflow
@@ -164,17 +167,8 @@
         - Enforcement: kelir-plugin-cli parity run; gate spec only
         - Execution lands with Agent 2 codegen; unexecuted cases report not-executable
       - --fluent-builder-coverage
-        - Superseded by the unified builder gate: see: #--unified-builder-coverage
-        - History, not a second gate: the DX-round counts live here
-        - Asserts every builder verb has a plugin_builder vector case
-        - Asserts every nested scope has a plugin_builder-nested case
-        - 38 plugin_builder cases: one per verb (30) and one per scope (8)
-        - Asserts every Verdict and FilterAction outcome appears in a case
-        - Verb home: see: 02-plugin-model.md#Chainable-verbs
-        - Scope home: see: 02-plugin-model.md#Nested-scopes
-        - Vector family: see: #Fluent-builder-parity-vectors
-        - Enforcement: kelir-plugin-cli parity run; gate spec only
-        - Execution lands with Agent 2 codegen; unexecuted cases report not-executable
+        - History, not a second gate: see: #--unified-builder-coverage
+        - Current count there: 46 builder cases, 58 vectors
     - --veto-coverage
       - Asserts every VetoEvent is registered at least once in an example
       - Veto home: see: 08-lifecycle.md#Lifecycle-vetoes
@@ -322,17 +316,7 @@
       - Builder contract: see: 02-plugin-model.md#Unified-builder
     - Fluent-builder parity vectors
       - Superseded by the unified builder vectors: see: #Unified-builder-parity-vectors
-      - History, not a second family: the DX-round cases live here
-      - vectors.json gains a plugin_builder case family
-      - Each case pins builder name, requires list, and ring set with ordinals
-      - Each case pins ordered event payloads and expected Verdict results
-      - FilterAction results are pinned for byte-transform rings
-      - One case per verb (30) and one per scope (8): 38 cases
-      - Nested-scope cases assert descriptors equal the flat chain
-      - kelir-plugin-cli parity run builds the equivalent chain per SDK
-      - Divergent outputs block CI; unexecuted verdicts report not-executable
-      - Case schema: see: artifacts/code/plugin-builder-vectors.rs
-      - Builder contract: see: 02-plugin-model.md#Parity-vectors-extended
+      - History: the DX round shipped a 38-case plugin_builder family
   - Developer CLI
     - Scope rule: only what types cannot encode
       - Anything a compile error enforces is not shipped
@@ -358,7 +342,7 @@
       - `kelir spec export`: Emits canonical kelir.toml or kelir.yaml
       - Granular flags: --install-shims, --attach-lsm, --quarantine-credentials
       - `kelir doctor --json`: structured for onboarding scripts
-      - `kelir logs <session_id>`: Tails session output using cursor index.bin
+      - `kelir logs <session_id>`: see: 13-cli.md#Inspection-commands
       - `plugin new`: scaffold crate, code trait stubs, empty vectors
       - `plugin manifest`: emits auto-generated manifest artifact from AST
       - `plugin check`: same audit as CI, <30s, no network

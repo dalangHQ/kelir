@@ -65,5 +65,6 @@ pub fn parse_attest_args(args: &[String]) -> Result<AttestPlan, AttestError> {
 
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let _plan = parse_attest_args(args)?;
-    Ok(())
+    // TODO (L3): attest --sign signs attestation.json for the plugin repo at the parsed path.
+    Err("attest: signing subcommand (L3)".into())
 }

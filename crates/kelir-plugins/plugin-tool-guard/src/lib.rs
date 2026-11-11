@@ -257,6 +257,7 @@ impl PluginDeps for ToolGuardPlugin {
 impl LifecycleParticipant for ToolGuardPlugin {
     async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+        // TODO (L3): boot-time tools/list fetch+lock halts here until route_request and decode_tools_list land; an empty-catalog boot would fake the spec-mandated lock.
         let response = self.mcp.route_request(TOOLS_LIST_QUERY).await?;
         let mut advertisement = decode_tools_list(&response)?;
         // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline

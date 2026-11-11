@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use pyo3::exceptions::{PyKeyError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList};
 
@@ -416,6 +416,33 @@ impl PySessionHandle {
         self.boot_ms
     }
 
+    // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
+    #[pyo3(signature = ())]
+    fn session_dir(&self) -> PyResult<String> {
+        lock_session(&self.session)?
+            .session_dir()
+            .map_err(halt)
+            .map(|path| path.display().to_string())
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    #[pyo3(signature = (name))]
+    fn get_plugin_context(&self, py: Python<'_>, name: String) -> PyResult<Py<PyDict>> {
+        let session = lock_session(&self.session)?;
+        let Some(record) = session
+            .plugin_contexts()
+            .into_iter()
+            .find(|record| record.name == name)
+        else {
+            return Err(PyKeyError::new_err(format!(
+                "plugin context `{name}` is not registered on this session"
+            )));
+        };
+        let dict = PyDict::new(py);
+        dict.set_item("enabled", record.ctx.enabled)?;
+        Ok(dict.into())
+    }
+
     #[getter]
     fn vm(&self) -> PyVmHandle {
         PyVmHandle {
@@ -515,7 +542,8 @@ impl PySessionHandle {
     }
 
     fn stop(&self) -> PyResult<()> {
-        lock_session(&self.session)?.stop().map_err(halt)
+        let mut session = lock_session(&self.session)?;
+        block_on(session.stop()).map_err(halt)
     }
 
     fn terminate(&self) -> PyResult<()> {

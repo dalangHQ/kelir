@@ -42,7 +42,7 @@ impl BpfProgram {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GateDecision {
-    Allow,
+    Skip,
     Deny(Verdict),
     FallThrough,
 }
@@ -101,9 +101,9 @@ impl TrapGateEvaluator {
     // see: cans/11-protocol.md#Trap-fast-path
     pub fn evaluate(&self, event: &TrapEvent, scope: &MountScope) -> GateDecision {
         if let Some(program) = &self.bpf_program {
-            // TODO (L3): gate-1 BPF match decides Allow here; no program is loaded until L3.
+            // TODO (L3): gate-1 BPF match decides Skip here; no program is loaded until L3.
             if matches!(program.matches(event), Ok(true)) {
-                return GateDecision::Allow;
+                return GateDecision::Skip;
             }
         }
         let trusted = self.is_trusted(event);
@@ -112,11 +112,11 @@ impl TrapGateEvaluator {
         }
         if self.gate_2_scope_match(event, scope) {
             if self.trusted_prefix_skip(event) {
-                return GateDecision::Allow;
+                return GateDecision::Skip;
             }
             return GateDecision::FallThrough;
         }
-        GateDecision::Allow
+        GateDecision::Skip
     }
 
     // see: cans/plugins/supply-chain.md#Entropy-analysis
@@ -125,7 +125,10 @@ impl TrapGateEvaluator {
             return None;
         }
         let hook = self.entropy_hook.as_ref()?;
-        let entropy = self.compute_shannon_entropy(&event.argv).ok()?;
+        // see: cans/plugins/supply-chain.md#Entropy-analysis
+        let entropy = self
+            .compute_shannon_entropy(event.argv.get(1..).unwrap_or(&[]))
+            .ok()?;
         hook(entropy, trusted)
     }
 
@@ -170,14 +173,16 @@ impl TrapGateEvaluator {
             .any(|prefix| path.starts_with(prefix.as_str()))
     }
 
-    fn is_trusted(&self, event: &TrapEvent) -> bool {
-        self.is_trusted_path(&event.binary_path)
+    // see: cans/11-protocol.md#Trap-fast-path
+    fn is_trusted(&self, _event: &TrapEvent) -> bool {
+        // TODO (L3): canonical (st_dev, st_ino, binary_blake3); path prefixes never establish trust.
+        false
     }
 
     pub fn eval_gate_1_bpf(&self, event: &TrapEvent) -> bool {
         matches!(
             self.evaluate(event, &MountScope::default()),
-            GateDecision::Allow
+            GateDecision::Skip
         )
     }
 

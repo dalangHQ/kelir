@@ -134,7 +134,8 @@ kelir/
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # Transport trait (read/write/flush)
 │   │   │   ├── spsc_ring.rs           # SpscRingTransport + OwnedSpscRing
-│   │   │   └── fallback_transport.rs            # VsockFallbackTransport + NamedPipeFallbackTransport
+│   │   │   ├── fallback_transport.rs            # VsockFallbackTransport + NamedPipeFallbackTransport
+│   │   │   └── host_bind.rs           # HostListener: SO_REUSEADDR|SO_REUSEPORT bind for the wire-plane port-forward registry
 │   │   └── tests/
 │   │       └── ring_spsc_transport_test.rs
 │   ├── kelir-catalog/                 # Supporting crate: SQLite schema, pool, migration helpers (used by core)

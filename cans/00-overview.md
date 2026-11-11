@@ -33,9 +33,8 @@
   - What it is not
     - Excludes container runtime wrappers
     - Standalone from external MCP server binaries
-    - Zero background daemon architecture
+    - Zero background daemon architecture: see: 01-architecture.md#In-process-microkernel
     - Excludes CLI runners (no kelir run): see: 15-operations.md#Developer-CLI
-    - Standalone from host daemon runtimes: see: 01-architecture.md#In-process-microkernel
   - Target audience
     - Audience matrix: see: artifacts/diagrams/target-audience.txt
     - Value and trigger per audience: in the matrix

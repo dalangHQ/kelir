@@ -130,7 +130,10 @@ fn wp_14_port_forward_ephemeral_allocation() -> Result<(), String> {
     let allocated = wire
         .forward_port(8080, Some(0))
         .map_err(|e| e.to_string())?;
-    assert_eq!(allocated, 49152);
+    assert!(
+        allocated > 1024,
+        "ephemeral host port must be kernel-allocated above 1024"
+    );
     assert_eq!(
         wire.forwarded_guest_port(allocated)
             .map_err(|e| e.to_string())?,
@@ -139,7 +142,14 @@ fn wp_14_port_forward_ephemeral_allocation() -> Result<(), String> {
     let second = wire
         .forward_port(9090, Some(0))
         .map_err(|e| e.to_string())?;
-    assert_eq!(second, 49153);
+    assert!(
+        second > 1024,
+        "ephemeral host port must be kernel-allocated above 1024"
+    );
+    assert_ne!(
+        second, allocated,
+        "kernel must not hand the same ephemeral port twice"
+    );
     assert_eq!(
         wire.forwarded_guest_port(second)
             .map_err(|e| e.to_string())?,
@@ -227,7 +237,6 @@ fn wp_12_l4_diversion_passthrough_tls() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_16_port_forward_so_linger_zero_release.yaml#case_id
 #[test]
-#[ignore]
 fn wp_16_port_forward_so_linger_zero_release() -> Result<(), String> {
     let wire = WirePlane::new();
     let published = wire

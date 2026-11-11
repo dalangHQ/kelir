@@ -20,15 +20,15 @@ use kelir::{
     HNil, HandlerCtx, KelirBuilder, LedgerConfig, LedgerCtx, LedgerPlugin, NetworkFaultRule,
     NoParams, OtelConfig, PostExecAction, ReceiptConfig, SnapshotDescriptor, StorageFaultRule,
     TrapFilter, Unsealed, Verdict, VmConfig,
-    driver_interface::{DriverPolicy, WxPolicy},
+    interface::driver_interface::{DriverPolicy, WxPolicy},
     handler,
     planes::{
         storage_plane::{
-            DynamicFile, IdmapConfig, MaskRule, ReadMaskEngine, SnoopHandler, SnoopRule,
-            StorageConfig, SyntheticFile, WorkspaceEncapsulation,
+            DynamicFile, IdmapConfig, MaskReadRule, ReadMaskEngine, StoragePlaneConfig,
+            SyntheticFile, WorkspaceEncapsulation,
         },
-        terminal_plane::{PromptRule, PtyConfig, TokenShield},
-        wire_plane::{L4Proxy, Mtls, SinkholeConfig, TapFilter, WireConfig},
+        terminal_plane::{PromptRule, PtyConfig, TokenShieldConfig},
+        wire_plane::{L4Proxy, SinkholeConfig, TapFilter, WireConfig},
     },
     plugin_model::{
         AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginError, TrapInterposer,
@@ -230,30 +230,6 @@ async fn build_runtime(
         protected_branches: vec!["main".into(), "master".into(), "release/*".into()],
     });
 
-    // see: cans/02-plugin-model.md#Shape-of-the-surface
-    let snoop_oracle = Arc::clone(&oracle);
-    let snoop: SnoopHandler = Arc::new(move |path: PathBuf, raw: Vec<u8>, _c: HandlerCtx<_, _>| {
-        let evt: serde_json::Value = serde_json::from_slice(&raw)
-            .map_err(|e| PluginError::Halt(format!("session is not JSON: {e}")))?;
-        if evt
-            .get("falsifiedResult")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
-        {
-            return Err(PluginError::reject(
-                "EPERM",
-                "harness hallucination detected",
-            ));
-        }
-        // TODO (L3): attribute via c.ctx::<LedgerCtx>().blake3_of_producing_process(&path).await once SnoopHandler carries the artifact async form.
-        let blake3 = String::new();
-
-        snoop_oracle
-            .ingest_harness_event(&path, &evt, &blake3)
-            .map_err(|e| PluginError::Halt(e.to_string()))?;
-        Ok(())
-    });
-
     let builder = KelirBuilder::new(VmConfig {
         vcpus: 4,
         memory_mb: 4096,
@@ -283,7 +259,7 @@ async fn build_runtime(
         rows: 40,
         drop_osc52: true,
         strip_title: true,
-        token_shield: Some(TokenShield {
+        token_shield: Some(TokenShieldConfig {
             max_bytes_total: 128 * 1024,
             max_lines_total: 500,
             clamp_strategy: "head-and-tail".into(),
@@ -303,7 +279,7 @@ async fn build_runtime(
 
         stream_engine: "StatelessRegex".into(),
     })
-    .storage(StorageConfig {
+    .storage(StoragePlaneConfig {
         idmap: IdmapConfig {
             guest_uid: 0,
             host_uid: unsafe { libc::getuid() },
@@ -326,7 +302,7 @@ async fn build_runtime(
                 })
             }),
         ],
-        mask_read: vec![MaskRule {
+        mask_read: vec![MaskReadRule {
             glob: "**/secrets/**".into(),
             patterns: vec![
                 (
@@ -335,11 +311,6 @@ async fn build_runtime(
                 ),
                 (r"AKIA[0-9A-Z]{16}".into(), "[AWS_IAM_REDACTED]".into()),
             ],
-        }],
-        snoops: vec![SnoopRule {
-            glob: "~/.claude/sessions/*.json".into(),
-            sync: true,
-            on_write: snoop,
         }],
         encapsulation: WorkspaceEncapsulation::Passthrough,
         scan_engine: ReadMaskEngine::FastRegex,
@@ -365,10 +336,7 @@ async fn build_runtime(
         l4_proxies: vec![L4Proxy {
             listen_port: 5432,
             destination: "pg.internal.net:5432".into(),
-            inject_mtls: Some(Mtls {
-                cert_path: pg_cert,
-                key_path: pg_key,
-            }),
+            // TODO (L3): mTLS injection at the host connection boundary per cans/07-wire-plane.md once the engine consumes it.
         }],
 
         tap_filter: TapFilter::AllowUdpProxied,

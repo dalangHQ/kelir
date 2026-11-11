@@ -299,20 +299,32 @@ class TrapEvent:
 
 class TrapFilter:
 
-    def __init__(self, binary: str | None = None, args: tuple[str, ...] = ()) -> None:
+    def __init__(
+        self,
+        binary: str | None = None,
+        args: tuple[str, ...] = (),
+        pattern: str | None = None,
+    ) -> None:
         self.binary_name = binary
         self.args = args
+        self.glob_pattern = pattern
 
     @classmethod
     def binary(cls, name: str) -> TrapFilter:
         return cls(binary=name)
 
+    @classmethod
+    def pattern(cls, glob: str) -> TrapFilter:
+        return cls(pattern=glob)
+
     def with_arg(self, arg: str) -> TrapFilter:
-        return TrapFilter(self.binary_name, (*self.args, arg))
+        return TrapFilter(self.binary_name, (*self.args, arg), self.glob_pattern)
 
     def snapshot(self) -> TrapFilterSnapshot:
         # see: cans/02-plugin-model.md#Filter-before-FFI-gate
-        return TrapFilterSnapshot(binary=self.binary_name, args=self.args)
+        return TrapFilterSnapshot(
+            binary=self.binary_name, args=self.args, pattern=self.glob_pattern
+        )
 
 
 # see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law

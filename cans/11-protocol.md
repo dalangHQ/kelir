@@ -28,7 +28,7 @@
       - Unregistered kind on OPEN aborts with EUnknownKind
       - Kinds are numbers; no per-kind spec edits required
     - Guest paravirtual micro-init boundary (kelir-shim)
-      - Shim runs as uninstrumented musl PID 1 (<50KB binary)
+      - Shim runs as uninstrumented musl PID 1: see: 01-architecture.md#Zero-workload-intrusion
       - Dynamic ExecSlot slab maps guest pid to exec_id
         - Backed by a chunked allocator; frees return chunks to the pool
         - Sized by min(guest RLIMIT_NPROC, host max_exec_slots)
@@ -61,7 +61,7 @@
       - Set: shim calls openpty() for the ExecSlot; workload binds slave PTY
       - Window resize rides stream 0x03 (stream control)
       - stdout and stderr remain raw over 0x01 and 0x02 regardless of PTY
-      - Port 0 console stays reserved for human break-glass attach only
+      - Port 0 console reserved for human attach: 04-terminal-plane.md#Terminal-pipeline
     - Slot saturation backpressure
       - Slab allocator returns MSG_EXEC_REJECT{reason: ENOMEM} when pool exhausted
       - No queue growth, no PID 1 termination on burst, no silent drop
@@ -75,7 +75,6 @@
         - process's file descriptor before guest socket buffers overflow
       - Host consumer slow or stalled → producer fd is paused, not dropped
       - No mid-flight frame loss; no guest kernel deadlock
-    - PTY (virtio-console Port 0) remains the interactive human TTY
     - Programmatic tooling uses stream kind EXEC (0x0001) exclusively; PTY bypassed
   - Control-plane VFS stream
     - Transport: mux 0x0001, stream kind VFS, framed CBOR

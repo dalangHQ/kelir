@@ -60,7 +60,8 @@
           - Linux: perf_event_open with exclude_host=1, exclude_hypervisor=1
           - macOS ARM64: hv_vcpu_get_sys_reg from PMCCNTR_EL0 / PMEVCNTR<n>_EL0
           - Sampled strictly during active KVM_RUN state
-          - Emitted to OTel as a gauge; excluded from receipts and Merkle roots
+          - Emitted to OTel as a gauge
+          - PMU samples never enter receipts, CausalDelta, or Merkle leaves
           - Never used to compare execution across hosts
         - exit_kind: ExitKind enum, always populated
           - Normal | Signal(u32) | KernelPanic(String) | HypervisorFault(String)
@@ -109,7 +110,7 @@
       - Memory: dirty bytes recorded by the checkpoint descriptor
       - Process: process tree edges and exit statuses
     - Merkle root chaining links granular receipts to state diffs
-    - No PMU samples appear in CausalDelta
+    - No PMU samples appear in CausalDelta: see: #Field-semantics
     - L7 protocol telemetry lives outside core structs, in extensions
     - Type ownership
       - Struct is a shared context type; defined in kelir-interface next to ExecutionReceipt

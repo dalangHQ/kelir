@@ -1,6 +1,8 @@
+// see: cans/15-operations.md#Coverage-gates
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use kelir_testkit::perf_budgets::{Budgets, ScorecardFloor, validate_scorecard_budgets};
 use kelir_testkit::scenario_catalog::ScenarioTier;
 
 #[derive(serde::Deserialize)]
@@ -32,38 +34,6 @@ struct CaseEntry {
     quadrant: String,
     title: String,
     file: String,
-}
-
-#[derive(serde::Deserialize)]
-struct Budgets {
-    enforce: bool,
-    latencies: std::collections::BTreeMap<String, u64>,
-    scorecard: ScorecardTables,
-}
-
-#[derive(serde::Deserialize)]
-struct ScorecardTables {
-    floors: Vec<ScorecardFloor>,
-    rules: Vec<ScorecardRule>,
-}
-
-#[derive(serde::Deserialize)]
-struct ScorecardFloor {
-    scenario: String,
-    budget: Option<String>,
-    value: Option<u64>,
-    unit: Option<String>,
-    target: Option<String>,
-    enforcement: String,
-    status: String,
-}
-
-#[derive(serde::Deserialize)]
-struct ScorecardRule {
-    id: String,
-    rule: String,
-    mechanism: String,
-    status: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -115,11 +85,12 @@ struct MapCounts {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    let mode = match args.get(1) {
+    let rest: Vec<&String> = args.iter().skip(1).collect();
+    let in_place = rest.iter().any(|arg| arg.as_str() == "--in-place");
+    let mode = match rest.iter().find(|arg| !arg.as_str().starts_with("--")) {
         Some(arg) => arg.as_str(),
         None => "generate",
     };
-    let in_place = args.iter().skip(2).any(|arg| arg == "--in-place");
     if in_place && mode != "generate" {
         return Err("--in-place applies to `generate` only.".into());
     }
@@ -211,51 +182,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1)
         }
     }
-}
-
-// see: cans/15-operations.md#Coverage-gates
-fn validate_scorecard_budgets(budgets: &Budgets) -> Result<(), String> {
-    if budgets.scorecard.floors.is_empty() {
-        return Err("budgets: [[scorecard.floors]] is empty".into());
-    }
-    for floor in &budgets.scorecard.floors {
-        let declared = usize::from(floor.budget.is_some())
-            + usize::from(floor.value.is_some())
-            + usize::from(floor.target.is_some());
-        if declared != 1 {
-            return Err(format!(
-                "budgets: floor `{}` must declare exactly one of budget, value, or target",
-                floor.scenario
-            ));
-        }
-        if floor.target.is_none() && floor.unit.as_deref().is_none_or(str::is_empty) {
-            return Err(format!(
-                "budgets: floor `{}` must declare a unit",
-                floor.scenario
-            ));
-        }
-        if let Some(key) = &floor.budget {
-            if !budgets.latencies.contains_key(key) {
-                return Err(format!(
-                    "budgets: floor `{}` references unknown [latencies] key `{}`",
-                    floor.scenario, key
-                ));
-            }
-        }
-    }
-    if budgets.scorecard.rules.is_empty() {
-        return Err("budgets: [[scorecard.rules]] is empty".into());
-    }
-    for rule in &budgets.scorecard.rules {
-        if rule.id.is_empty()
-            || rule.rule.is_empty()
-            || rule.mechanism.is_empty()
-            || rule.status.is_empty()
-        {
-            return Err(format!("budgets: rule `{}` has an empty field", rule.id));
-        }
-    }
-    Ok(())
 }
 
 // see: cans/15-operations.md#Coverage-gates

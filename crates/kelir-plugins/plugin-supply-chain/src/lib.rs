@@ -40,6 +40,7 @@ pub struct WxAllocToken {
 
 // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
 impl WxAllocToken {
+    // TODO (L3): cross-impl wire sync if a canonical token layout is pinned; see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
     pub const WIRE_LEN: usize = 16 + 8 + 32;
 
     // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation

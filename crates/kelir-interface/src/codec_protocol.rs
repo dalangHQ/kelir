@@ -31,6 +31,9 @@ pub const FLAG_CLOSE: u8 = 0x04;
 pub const FLAG_RST: u8 = 0x08;
 // see: cans/11-protocol.md#Stream-mux-framing
 pub const FLAG_WINDOW_UPDATE: u8 = 0x10;
+// see: cans/plugins/mcp.md#MCP-contract
+// see: cans/11-protocol.md#Stream-mux-framing
+pub const FLAG_CONTINUATION_RESERVED: u8 = 0x20;
 
 // see: cans/11-protocol.md#Wire-framing
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

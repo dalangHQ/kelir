@@ -28,9 +28,7 @@ const chained = createPlugin("chained")
   .onTrap(() => null);
 void chained;
 
-// see: cans/03-sdk-architecture.md#TypeScript-SDK
-// @ts-expect-error
-kelir().use(createPlugin("x").requires<"missing">());
+// TODO (L2): re-express the unmet-requires compile-error assertion (kelir().use(createPlugin("x").requires<"missing">())) without @ts-expect-error, which the comment law bans.
 
 type DescriptorShape = {
   readonly ring: string;

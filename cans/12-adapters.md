@@ -28,11 +28,11 @@
       - Thin SDK wrapper: E2B (no plugin, no binary) — see: #E2B-compatibility
     - Rule: the plugin owns translation and policy; the binary owns the wire
     - Process vs plugin boundary
-      - Shim process owns wire; kelir-pack owns image→EROFS translation
-      - plugin-oci-translator (commercial) owns containerd-shim-specific policy only
-      - Server process owns stdio wire; plugin-mcp owns JSON-RPC translation
-      - Driver process owns gRPC wire; plugin-profile owns policy
-      - SDK wrapper only: no process, no plugin
+      - containerd shim v2: wire = shim process; translation = kelir-pack
+      - containerd shim v2: policy = plugin-oci-translator (shim-specific only)
+      - MCP: wire = server process (stdio); translation = plugin-mcp (JSON-RPC)
+      - OpenShell: wire = driver process (gRPC); policy = plugin-profile
+      - E2B: SDK wrapper only; no process, no plugin
     - Tri-native SDKs are the fourth ingestion family; see: 03-sdk-architecture.md
     - Ingestion tiering and licensing
       - Community adapters: kelir-pack (OCI→EROFS compiler), mcp-server (stdio wire),
@@ -43,7 +43,7 @@
     - Architecture (mcp): see: [1]
     - Server binary crate: kelir-adapters/mcp-server
     - Server plugin: plugin-mcp (translates JSON-RPC to native terminal/storage planes)
-    - Binds mux stream kind MCP_CONSOLE (0x0012), not Port 0 PTY
+    - Binds mux stream kind MCP_CONSOLE, not Port 0 PTY: 11-protocol.md#Control-channel
   - Containerd shim v2
     - Architecture (containerd): see: [1]
     - Image translation (kelir-pack): see: #Ingestion-matrix
@@ -73,7 +73,8 @@
     - External translation shim mapping Sandbox abstractions to Kelir Session primitives
     - In-process SDK client wrapper
       - Consumes standard Kelir runtime without hypervisor modifications
-    - Process vs plugin boundary: thin client wrapper, no in-guest shims or daemons
+    - Process vs plugin boundary: thin client wrapper
+      - No in-guest shims or daemons: see: 01-architecture.md#Zero-workload-intrusion
     - Drop-in SDK parity: existing agent harnesses execute against Kelir unmodified
 
 - [1]: artifacts/diagrams/ingestion-adapters.txt

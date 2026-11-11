@@ -2,6 +2,7 @@
 use std::error::Error;
 use std::fmt;
 use std::fs;
+use std::path::Path;
 
 use sha2::Digest;
 
@@ -74,62 +75,37 @@ impl fmt::Display for FixtureError {
 
 impl Error for FixtureError {}
 
-fn strip_quotes(value: &str) -> Option<String> {
-    let value = value.trim();
-    if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
-        Some(value[1..value.len() - 1].to_string())
-    } else {
-        None
-    }
+// see: cans/15-operations.md#Developer-CLI
+#[derive(serde::Deserialize)]
+struct FixturesFile {
+    #[serde(default)]
+    fixtures: std::collections::BTreeMap<String, FixtureToml>,
 }
 
+// see: cans/15-operations.md#Developer-CLI
+#[derive(serde::Deserialize)]
+struct FixtureToml {
+    path: String,
+    #[serde(default)]
+    blake3: Option<String>,
+    #[serde(default)]
+    sha256: Option<String>,
+}
+
+// see: cans/15-operations.md#Developer-CLI
 pub fn parse_fixtures(text: &str) -> Result<Vec<FixtureEntry>, FixtureError> {
-    let mut entries: Vec<FixtureEntry> = Vec::new();
-    let mut current: Option<FixtureEntry> = None;
-    for raw_line in text.lines() {
-        let line = raw_line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if line.starts_with('[') && line.ends_with(']') {
-            if let Some(entry) = current.take() {
-                entries.push(entry);
-            }
-            let section = &line[1..line.len() - 1];
-            if let Some(name) = section.strip_prefix("fixtures.") {
-                if name.is_empty() || name.contains('.') {
-                    return Err(FixtureError::Parse(format!(
-                        "fixtures: bad section `{line}`"
-                    )));
-                }
-                current = Some(FixtureEntry {
-                    name: name.to_string(),
-                    path: String::new(),
-                    blake3: None,
-                    sha256: None,
-                });
-            }
-            continue;
-        }
-        let Some(entry) = current.as_mut() else {
-            continue;
-        };
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        let Some(value) = strip_quotes(value.trim()) else {
-            continue;
-        };
-        match key.trim() {
-            "path" => entry.path = value,
-            "blake3" => entry.blake3 = Some(value),
-            "sha256" => entry.sha256 = Some(value),
-            _ => {}
-        }
-    }
-    if let Some(entry) = current.take() {
-        entries.push(entry);
-    }
+    let file: FixturesFile =
+        toml::from_str(text).map_err(|e| FixtureError::Parse(format!("fixtures: {e}")))?;
+    let entries: Vec<FixtureEntry> = file
+        .fixtures
+        .into_iter()
+        .map(|(name, entry)| FixtureEntry {
+            name,
+            path: entry.path,
+            blake3: entry.blake3,
+            sha256: entry.sha256,
+        })
+        .collect();
     for entry in &entries {
         if entry.path.is_empty() {
             return Err(FixtureError::Parse(format!(
@@ -186,16 +162,22 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let text = fs::read_to_string(path)
                 .map_err(|e| FixtureError::Read(format!("fixtures: cannot read {path}: {e}")))?;
             let entries = parse_fixtures(&text)?;
-            if entries.is_empty() {
-                println!("fixtures: no fixtures pinned, nothing to fetch");
-                Ok(())
-            } else {
-                // TODO (L3): fetch each fixture, then verify its digest before mounting.
-                Err(FixtureError::HashUnavailable(
-                    "fixtures fetch (L3): fetching requires digest verification first".to_string(),
-                )
-                .into())
+            for entry in &entries {
+                if !Path::new(&entry.path).exists() {
+                    // TODO (L3): download the pinned fixture from its source registry, then verify its digest before mounting.
+                    return Err(FixtureError::HashUnavailable(format!(
+                        "fixtures fetch (L3): `{}` is absent at {}; network fetch pending",
+                        entry.name, entry.path
+                    ))
+                    .into());
+                }
+                verify_entry(entry)?;
             }
+            println!(
+                "fixtures: {} fixture(s) present and digest-verified in {path}",
+                entries.len()
+            );
+            Ok(())
         }
         Some(other) => {
             Err(format!("fixtures: unknown flag `{other}` (expected --verify or --fetch)").into())

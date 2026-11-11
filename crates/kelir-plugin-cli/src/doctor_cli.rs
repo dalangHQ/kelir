@@ -125,13 +125,78 @@ fn probe_kvm() -> ProbeOutcome {
 }
 
 fn probe_page_size() -> ProbeOutcome {
-    // TODO (L3): read the host page size via libc sysconf(_SC_PAGESIZE).
-    ProbeOutcome::NotImplemented("host page-size probe needs libc sysconf (L3)".to_string())
+    if !cfg!(target_os = "linux") {
+        // TODO (L3): read the host page size on non-Linux targets via the platform sysconf surface.
+        return ProbeOutcome::NotImplemented(
+            "host page-size probe needs the platform sysconf (L3)".to_string(),
+        );
+    }
+    match host_page_size_linux() {
+        Ok(size) => ProbeOutcome::Pass(format!("host page size is {size} bytes")),
+        Err(reason) => ProbeOutcome::Fail(reason),
+    }
+}
+
+// see: cans/15-operations.md#Developer-CLI
+fn host_page_size_linux() -> Result<u64, String> {
+    const AT_PAGESZ: u64 = 6;
+    let auxv =
+        std::fs::read("/proc/self/auxv").map_err(|e| format!("/proc/self/auxv unreadable: {e}"))?;
+    let entry_bytes = std::mem::size_of::<usize>() * 2;
+    for entry in auxv.chunks_exact(entry_bytes) {
+        let (a_type, a_val) = entry.split_at(entry_bytes / 2);
+        let a_type = u64::from_le_bytes(
+            a_type
+                .try_into()
+                .map_err(|_| "/proc/self/auxv entry is malformed".to_string())?,
+        );
+        if a_type == AT_PAGESZ {
+            let a_val = u64::from_le_bytes(
+                a_val
+                    .try_into()
+                    .map_err(|_| "/proc/self/auxv entry is malformed".to_string())?,
+            );
+            return Ok(a_val);
+        }
+    }
+    Err("/proc/self/auxv carries no AT_PAGESZ entry".to_string())
 }
 
 fn probe_pidfd() -> ProbeOutcome {
-    // TODO (L3): verify pidfd_open(2) and pidfd_send_signal(2) kernel support.
-    ProbeOutcome::NotImplemented("pidfd kernel probe needs a pidfd_open syscall (L3)".to_string())
+    if !cfg!(target_os = "linux") {
+        // TODO (L3): verify pidfd support on non-Linux targets.
+        return ProbeOutcome::NotImplemented(
+            "pidfd kernel probe needs a Linux pidfd_open syscall (L3)".to_string(),
+        );
+    }
+    match pidfd_kernel_support_linux() {
+        Ok((release, true)) => {
+            ProbeOutcome::Pass(format!("pidfd_open needs kernel >= 5.3; running {release}"))
+        }
+        Ok((release, false)) => {
+            ProbeOutcome::Fail(format!("pidfd_open needs kernel >= 5.3; running {release}"))
+        }
+        Err(reason) => ProbeOutcome::Fail(reason),
+    }
+}
+
+// see: cans/15-operations.md#Developer-CLI
+fn pidfd_kernel_support_linux() -> Result<(String, bool), String> {
+    let release = std::fs::read_to_string("/proc/sys/kernel/osrelease")
+        .map_err(|e| format!("/proc/sys/kernel/osrelease unreadable: {e}"))?;
+    let trimmed = release.trim();
+    let mut parts = trimmed.split('.');
+    let major: u32 = parts
+        .next()
+        .unwrap_or_default()
+        .parse()
+        .map_err(|_| format!("kernel release `{trimmed}` is malformed"))?;
+    let minor: u32 = parts
+        .next()
+        .unwrap_or_default()
+        .parse()
+        .map_err(|_| format!("kernel release `{trimmed}` is malformed"))?;
+    Ok((trimmed.to_string(), (major, minor) >= (5, 3)))
 }
 
 fn probe_hvf() -> ProbeOutcome {

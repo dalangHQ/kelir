@@ -2,6 +2,9 @@
 // see: cans/08-lifecycle.md#State-machine
 #![forbid(unsafe_code)]
 
+// see: cans/15-operations.md#Developer-CLI
+pub const KELIR_CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 // TODO (L3): vmm/router.rs + tests/unit_bus.rs, unit_dispatch.rs, unit_planes.rs per cans/artifacts/config/project-structure.txt.
 pub mod bus;
 pub mod dispatch_plugin;

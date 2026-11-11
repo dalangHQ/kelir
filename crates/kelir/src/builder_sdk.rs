@@ -5,14 +5,14 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use kelir_interface::driver_interface::{DaxWindowMode, FastBootMode, VmConfig};
-use kelir_interface::plugin_model::HandlerCtx;
+use kelir_interface::fusion_plugin::FilterSnapshot;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    AnyPlugin, ConsoleInterposer, FsInterposer, HostInterposer, LifecycleEvent,
-    LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps,
+    AnyPlugin, CompositePlugin, ConsoleInterposer, FsInterposer, HostInterposer, LifecycleEvent,
+    LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps, StreamFrameSink,
     SystemTelemetryParticipant, TrapInterposer, VetoEvent, VetoList,
 };
-use kelir_interface::protocol_wire::{TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{StreamKind, TrapEvent};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams, Satisfies};
@@ -46,10 +46,12 @@ pub struct Host;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Plugin;
 
+// see: cans/02-plugin-model.md#Filter-before-FFI-gate
 #[derive(Debug, Clone, Default)]
 pub struct TrapFilter {
     pub binary: Option<String>,
     pub args: Vec<String>,
+    pub pattern: Option<String>,
 }
 
 impl From<&str> for TrapFilter {
@@ -61,6 +63,7 @@ impl From<&str> for TrapFilter {
                 Some(value.to_string())
             },
             args: Vec::new(),
+            pattern: None,
         }
     }
 }
@@ -70,6 +73,16 @@ impl TrapFilter {
         Self {
             binary: Some(binary.to_string()),
             args: Vec::new(),
+            pattern: None,
+        }
+    }
+
+    // see: cans/02-plugin-model.md#Filter-before-FFI-gate
+    pub fn pattern(glob: &str) -> Self {
+        Self {
+            binary: None,
+            args: Vec::new(),
+            pattern: Some(glob.to_string()),
         }
     }
 
@@ -77,17 +90,30 @@ impl TrapFilter {
         self.args.push(arg.to_string());
         self
     }
+}
 
-    pub(crate) fn matches(&self, event: &TrapEvent) -> bool {
-        if self
-            .binary
-            .as_ref()
-            .is_some_and(|binary| binary != &event.binary_path)
-        {
-            return false;
+// see: cans/02-plugin-model.md#Filter-before-FFI-gate
+impl From<&TrapFilter> for FilterSnapshot {
+    fn from(filter: &TrapFilter) -> Self {
+        Self {
+            binary: filter.binary.clone(),
+            args: filter.args.clone(),
+            pattern: filter.pattern.clone(),
         }
-        self.args.iter().all(|arg| event.argv.contains(arg))
     }
+}
+
+// see: cans/02-plugin-model.md#Filter-before-FFI-gate
+// TODO (L3): pattern glob matching semantics per cans/02-plugin-model.md#Filter-before-FFI-gate.
+pub(crate) fn filter_matches(filter: &FilterSnapshot, event: &TrapEvent) -> bool {
+    if filter
+        .binary
+        .as_ref()
+        .is_some_and(|binary| binary != &event.binary_path)
+    {
+        return false;
+    }
+    filter.args.iter().all(|arg| event.argv.contains(arg))
 }
 
 pub struct LifecycleMut<'a> {
@@ -101,65 +127,6 @@ impl LifecycleMut<'_> {
         callback: Box<dyn Fn() -> bool + Send + Sync>,
     ) {
         self.vetoes.push((event, callback));
-    }
-}
-
-// see: cans/02-plugin-model.md#Unified-verdict
-pub enum TrapOutcome {
-    Verdict(Verdict),
-    PostExec(PostExecAction),
-}
-
-pub trait IntoTrapOutcome: Send + 'static {
-    fn into_outcome(self) -> TrapOutcome;
-}
-
-impl IntoTrapOutcome for Verdict {
-    fn into_outcome(self) -> TrapOutcome {
-        TrapOutcome::Verdict(self)
-    }
-}
-
-impl IntoTrapOutcome for PostExecAction {
-    fn into_outcome(self) -> TrapOutcome {
-        TrapOutcome::PostExec(self)
-    }
-}
-
-pub type TrapFuture = Pin<
-    Box<dyn Future<Output = Result<TrapOutcome, Box<dyn std::error::Error + Send + Sync>>> + Send>,
->;
-
-// see: cans/03-sdk-architecture.md#Rust-SDK
-pub type BoxedTrap<Plugins> =
-    Arc<dyn Fn(HandlerCtx<Plugins, NoParams>) -> TrapFuture + Send + Sync>;
-
-pub struct TrapEntry<Plugins: HList> {
-    pub(crate) filter: TrapFilter,
-    pub(crate) handler: BoxedTrap<Plugins>,
-}
-
-impl<Plugins: HList> Clone for TrapEntry<Plugins> {
-    fn clone(&self) -> Self {
-        Self {
-            filter: self.filter.clone(),
-            handler: Arc::clone(&self.handler),
-        }
-    }
-}
-
-impl<Plugins: HList> TrapEntry<Plugins> {
-    pub(crate) fn narrow<Head>(self) -> TrapEntry<HCons<Head, Plugins>>
-    where
-        Head: Clone + Send + Sync + 'static,
-    {
-        let handler = self.handler;
-        TrapEntry {
-            filter: self.filter,
-            handler: Arc::new(move |ctx: HandlerCtx<HCons<Head, Plugins>, NoParams>| {
-                (handler)(ctx.map_plugins(|plugins| plugins.tail_value()))
-            }),
-        }
     }
 }
 
@@ -186,12 +153,47 @@ type StreamServiceFuture =
 
 type BoxedStreamService = Box<dyn Fn(Vec<u8>) -> StreamServiceFuture + Send + Sync>;
 
-// TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
+// TODO (L3): the kind schema validates request payloads once stream dispatch consumes live frames.
 #[allow(dead_code)]
 pub(crate) struct StreamKindServiceEntry {
     pub(crate) kind: u16,
     pub(crate) schema: serde_json::Value,
     pub(crate) handler: BoxedStreamService,
+}
+
+// TODO (L3): the boxed service future awaits and replies on the stream mux once dispatch consumes live frames.
+#[allow(dead_code)]
+struct SdkStreamServiceSink {
+    handler: BoxedStreamService,
+}
+
+// see: cans/11-protocol.md#Kind-registration
+impl StreamFrameSink for SdkStreamServiceSink {
+    fn on_stream_frame(
+        &self,
+        _stream_id: u32,
+        _kind: StreamKind,
+        _flags: u8,
+        _payload: &[u8],
+    ) -> Result<(), PluginError> {
+        Err(PluginError::Halt(
+            "TODO (L3): stream kind service dispatch".into(),
+        ))
+    }
+}
+
+// see: cans/02-plugin-model.md#Composite-plugin-hierarchy
+pub struct CompositeBundle;
+
+// see: cans/02-plugin-model.md#Composite-plugin-hierarchy
+// TODO (L3): carries the nested plugin tree the profile facade flattens at boot.
+impl CompositePlugin for CompositeBundle {
+    fn unpack(
+        self: Box<Self>,
+        _parent_scope: &MountScope,
+    ) -> Vec<(Box<dyn AnyPlugin>, MountScope)> {
+        Vec::new()
+    }
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -268,17 +270,28 @@ fn has_empty<T: AsRef<std::ffi::OsStr>>(values: &Option<Vec<T>>) -> bool {
         .is_some_and(|values| values.iter().any(|value| value.as_ref().is_empty()))
 }
 
+fn triple_failure(name: &str, failure: String) -> String {
+    if name.is_empty() {
+        failure
+    } else {
+        format!("{name}: {failure}")
+    }
+}
+
 fn validate_vsock_spec(name: &str, port: u32, service: &str) -> Result<(), PluginError> {
     if port == 0 || port > 65_535 {
         return Err(PluginError::reject(
             "EConfig",
-            format!("{name}: vsock service port {port} out of range 1..=65535"),
+            triple_failure(
+                name,
+                format!("vsock service port {port} out of range 1..=65535"),
+            ),
         ));
     }
     if service.is_empty() {
         return Err(PluginError::reject(
             "EConfig",
-            format!("{name}: vsock service name must not be empty"),
+            triple_failure(name, "vsock service name must not be empty".to_string()),
         ));
     }
     Ok(())
@@ -288,23 +301,24 @@ fn validate_scope(name: &str, scope: &MountScope) -> Result<(), PluginError> {
     if has_empty(&scope.binaries) {
         return Err(PluginError::reject(
             "EConfig",
-            format!("{name}: scope binary name must not be empty"),
+            triple_failure(name, "scope binary name must not be empty".to_string()),
         ));
     }
     if has_empty(&scope.paths) {
         return Err(PluginError::reject(
             "EConfig",
-            format!("{name}: scope path must not be empty"),
+            triple_failure(name, "scope path must not be empty".to_string()),
         ));
     }
     Ok(())
 }
 
-pub(crate) struct Registration<Plugins: HList> {
+// see: cans/02-plugin-model.md#Unified-builder
+#[derive(Default)]
+pub(crate) struct Registration {
     pub(crate) instances: Vec<(Box<dyn AnyPlugin>, MountScope)>,
     pub(crate) mounted: Vec<MountedPlugin>,
-    pub(crate) traps: Vec<TrapEntry<Plugins>>,
-    pub(crate) storage_cfg: Option<StoragePlaneConfig<Plugins, NoParams>>,
+    pub(crate) storage_cfg: Option<StoragePlaneConfig>,
     pub(crate) terminal_cfg: Option<PtyConfig>,
     pub(crate) wire_cfg: Option<WireConfig>,
     pub(crate) lock_broker_cfg: Option<LockBrokerConfig>,
@@ -313,47 +327,6 @@ pub(crate) struct Registration<Plugins: HList> {
     pub(crate) stream_kind_services: Vec<StreamKindServiceEntry>,
     pub(crate) vetoes: VetoList,
     pub(crate) detached: bool,
-}
-
-impl<Plugins: HList> Default for Registration<Plugins> {
-    fn default() -> Self {
-        Self {
-            instances: Vec::new(),
-            mounted: Vec::new(),
-            traps: Vec::new(),
-            storage_cfg: None,
-            terminal_cfg: None,
-            wire_cfg: None,
-            lock_broker_cfg: None,
-            on_trap_deny: None,
-            custom_actions: Vec::new(),
-            stream_kind_services: Vec::new(),
-            vetoes: Vec::new(),
-            detached: false,
-        }
-    }
-}
-
-impl<Plugins: HList> Registration<Plugins> {
-    pub(crate) fn narrow<Head>(self) -> Registration<HCons<Head, Plugins>>
-    where
-        Head: Clone + Send + Sync + 'static,
-    {
-        Registration {
-            instances: self.instances,
-            mounted: self.mounted,
-            traps: self.traps.into_iter().map(|entry| entry.narrow()).collect(),
-            storage_cfg: self.storage_cfg.map(|cfg| cfg.narrow()),
-            terminal_cfg: self.terminal_cfg,
-            wire_cfg: self.wire_cfg,
-            lock_broker_cfg: self.lock_broker_cfg,
-            on_trap_deny: self.on_trap_deny,
-            custom_actions: self.custom_actions,
-            stream_kind_services: self.stream_kind_services,
-            vetoes: self.vetoes,
-            detached: self.detached,
-        }
-    }
 }
 
 pub struct KelirBuilder<
@@ -370,7 +343,7 @@ pub struct KelirBuilder<
 {
     pub(crate) config: Option<VmConfig>,
     pub(crate) plugins: Plugins,
-    pub(crate) registration: Registration<Plugins>,
+    pub(crate) registration: Registration,
     pub(crate) fast_boot: FastBootMode,
     pub(crate) dax_window: DaxWindowMode,
     pub(crate) name: &'static str,
@@ -390,7 +363,8 @@ impl KelirBuilder<Host, Unsealed, (), HNil, HNil, NoParams> {
             registration: Registration::default(),
             fast_boot: FastBootMode::Off,
             dax_window: DaxWindowMode::Off,
-            name: "host",
+            // see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
+            name: "",
             context_factory: Arc::new(|| ()),
             scope: MountScope::default(),
             fork: None,
@@ -491,7 +465,7 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
     {
         let context = plugin.context();
         let scope = KelirPlugin::default_scope(&plugin);
-        let mut registration = self.registration.narrow::<P::Context>();
+        let mut registration = self.registration;
         registration.instances.push((Box::new(plugin), scope));
         KelirBuilder {
             config: self.config,
@@ -512,8 +486,8 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         }
     }
 
-    pub fn storage(mut self, config: StoragePlaneConfig<Plugins, Params>) -> Self {
-        self.registration.storage_cfg = Some(config.retag());
+    pub fn storage(mut self, config: StoragePlaneConfig) -> Self {
+        self.registration.storage_cfg = Some(config);
         self
     }
 
@@ -572,24 +546,6 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
             seal: PhantomData,
             deps: PhantomData,
         }
-    }
-
-    pub fn trap<F, Fut, O>(mut self, filter: impl Into<TrapFilter>, f: F) -> Self
-    where
-        F: Fn(HandlerCtx<Plugins, Params>) -> Fut + Clone + Send + Sync + 'static,
-        Fut: Future<Output = Result<O, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
-        O: IntoTrapOutcome,
-    {
-        let boxed: BoxedTrap<Plugins> = Arc::new(move |ctx: HandlerCtx<Plugins, NoParams>| {
-            let f = f.clone();
-            let fut = f(ctx.retag::<Params>());
-            Box::pin(async move { fut.await.map(IntoTrapOutcome::into_outcome) })
-        });
-        self.registration.traps.push(TrapEntry {
-            filter: filter.into(),
-            handler: boxed,
-        });
-        self
     }
 
     pub fn on_trap_deny<F, Fut, T>(mut self, f: F) -> Self
@@ -713,6 +669,20 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
         for entry in std::mem::take(&mut registration.custom_actions) {
             engine.register_custom_action(entry.name, entry.handler);
         }
+        for entry in std::mem::take(&mut registration.stream_kind_services) {
+            let Some(kind) = StreamKind::from_u16(entry.kind) else {
+                return Err(PluginError::reject(
+                    "EUnknownKind",
+                    format!("stream kind 0x{:04x} is not registered", entry.kind),
+                ));
+            };
+            engine.register_stream_kind(
+                kind,
+                Arc::new(SdkStreamServiceSink {
+                    handler: entry.handler,
+                }),
+            );
+        }
         if let Some(callback) = registration.on_trap_deny.take() {
             engine.set_on_trap_deny(callback);
         }
@@ -732,14 +702,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                     rows: cfg.rows,
                     drop_osc52: cfg.drop_osc52,
                     strip_title: cfg.strip_title,
-                    token_shield: cfg.token_shield.as_ref().map(|shield| {
-                        kelir_core::planes::terminal::TokenShieldConfig {
-                            max_bytes_total: shield.max_bytes_total,
-                            max_lines_total: shield.max_lines_total,
-                            clamp_strategy: shield.clamp_strategy.clone(),
-                            notice: shield.notice.clone(),
-                        }
-                    }),
+                    token_shield: cfg.token_shield.clone(),
                     prompts: cfg
                         .prompts
                         .iter()
@@ -771,6 +734,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                         .iter()
                         .map(|vault| vault.placeholder.clone())
                         .collect(),
+                    // TODO (L3): wire mTLS injection at the host connection boundary per cans/07-wire-plane.md.
                     l4_proxies: cfg
                         .l4_proxies
                         .iter()
@@ -780,7 +744,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                 }),
             storage,
         };
-        let core = kelir_core::Session::boot_with_engine(
+        let mut core = kelir_core::Session::boot_with_engine(
             config,
             &plugins,
             engine,
@@ -788,11 +752,11 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
             synthetic_files,
             plane_wiring,
         )?;
-        let mut core = core;
         core.set_detached(registration.detached);
         core.set_vetoes(std::mem::take(&mut registration.vetoes));
         core.run_lifecycle_hook(LifecycleEvent::VmInit).await?;
         core.run_lifecycle_hook(LifecycleEvent::VmReady).await?;
+        core.begin_running()?;
         Ok(Session::from_parts(core, self.plugins, registration))
     }
 

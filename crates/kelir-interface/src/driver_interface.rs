@@ -308,6 +308,7 @@ pub struct GuestClock {
     pub boot_params: String,
 }
 
+// see: cans/09-snapshots.md#Archives-and-portability
 #[derive(Debug, Clone)]
 pub struct SnapshotDescriptor {
     pub id: String,

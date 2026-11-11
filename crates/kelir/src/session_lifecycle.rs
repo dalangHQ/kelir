@@ -2,21 +2,19 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
+use kelir_interface::handlers_plugin::Has;
 pub use kelir_interface::handles_lifecycle::{
     ClockHandle, FsHandle, StepStack, TerminalHandle, VmHandle,
 };
 use kelir_interface::hex_codec::encode_hex;
-use kelir_interface::plugin_model::{MountScope, PipelineBinder, PluginError};
+use kelir_interface::plugin_model::{LifecycleEvent, MountScope, PipelineBinder, PluginError};
 
-use kelir_interface::handlers_plugin::Has;
-
-use crate::builder_sdk::{Registration, TrapOutcome};
+use crate::builder_sdk::Registration;
 use crate::hlist_sdk::{HList, HNil, NoParams};
-use crate::planes::storage_plane::FsReconcileRequest;
-use kelir_core::planes::storage::storage_reconciler::CommitStats;
 use kelir_interface::plugin_model::HandlerCtx;
-use kelir_interface::protocol_wire::{StreamKind, TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{ProcessLimits, StreamKind, TrapEvent, Verdict};
 
 // see: cans/03-sdk-architecture.md#Rust-SDK
 pub struct Session<Plugins = HNil, Params = NoParams>
@@ -25,7 +23,7 @@ where
 {
     core: kelir_core::Session,
     plugins: Plugins,
-    registration: Registration<Plugins>,
+    registration: Registration,
     _params: PhantomData<fn() -> Params>,
 }
 
@@ -33,7 +31,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     pub(crate) fn from_parts(
         core: kelir_core::Session,
         plugins: Plugins,
-        registration: Registration<Plugins>,
+        registration: Registration,
     ) -> Self {
         Self {
             core,
@@ -62,9 +60,31 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
 
     // see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
     pub async fn spawn(&self, binary: &str, argv: &[&str]) -> Result<SpawnResult, PluginError> {
+        self.exec(binary, argv, None).await
+    }
+
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    pub fn exec(&self, binary: &str, argv: &[&str], limits: Option<ProcessLimits>) -> SpawnBuilder {
         let mut builder = self.spawn_builder(binary);
         builder.args.extend(argv.iter().map(|arg| arg.to_string()));
-        builder.await
+        builder.limits = limits;
+        builder
+    }
+
+    // see: cans/08-lifecycle.md#Clock-skew
+    pub async fn skew_clock(&self, delta: Duration) -> Result<(), PluginError> {
+        self.vm().clock.skew(delta).await
+    }
+
+    // see: cans/08-lifecycle.md#Rollback
+    pub async fn rollback_here(&mut self, pid: u32) -> Result<(), PluginError> {
+        let lineage = self.core.lineage(pid);
+        self.core.rollback(lineage).await
+    }
+
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    pub fn vsock(&self) -> VsockHandle {
+        VsockHandle
     }
 
     // see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
@@ -79,32 +99,17 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         &self,
         event: &TrapEvent,
         ctx: &mut HandlerCtx<Plugins, Params2>,
-    ) -> Result<TrapOutcome, PluginError>
+    ) -> Result<Verdict, PluginError>
     where
-        Plugins: Clone,
-        Params2: Clone,
+        Plugins: HList,
+        Params2: 'static,
     {
         let lineage = self.core.lineage(ctx.pid);
         self.core.pipeline().hydrate_step(&mut *ctx, lineage)?;
-        for entry in &self.registration.traps {
-            if !entry.filter.matches(event) {
-                continue;
-            }
-            let outcome = (entry.handler)(ctx.clone().retag::<NoParams>())
-                .await
-                .map_err(|e| PluginError::Halt(format!("trap handler failed: {e}")))?;
-            match outcome {
-                TrapOutcome::Verdict(Verdict::Pass) => continue,
-                TrapOutcome::PostExec(crate::builder_sdk::PostExecAction::Proceed) => continue,
-                outcome => return Ok(outcome),
-            }
-        }
-        let verdict = self
-            .core
+        self.core
             .pipeline()
             .dispatch_trap_typed_with_session(event, ctx, &self.core)
-            .await?;
-        Ok(TrapOutcome::Verdict(verdict))
+            .await
     }
 
     // see: cans/08-lifecycle.md#State-machine
@@ -118,11 +123,11 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         let mut child = self.core.fork().await?;
         let child_session_id = encode_hex(&child.session_id());
         // see: cans/08-lifecycle.md#CoW-fork
+        // TODO (L2): host on_trap_deny and custom-action callbacks are consumed into the parent engine at boot and are not Clone; child inheritance lands with the engine registration-state accessor (dispatch_plugin).
+        // TODO (L2): host stream-kind service entries are not forwarded into the engine at boot (builder_sdk §1.5) and their boxed handlers are not Clone; child routing re-registers through the engine and bus binding below.
         let mut registration = Registration {
             instances: Vec::new(),
             mounted: Vec::new(),
-            // see: cans/08-lifecycle.md#CoW-fork
-            traps: Vec::new(),
             storage_cfg: self.registration.storage_cfg.clone(),
             terminal_cfg: self.registration.terminal_cfg.clone(),
             wire_cfg: self.registration.wire_cfg.clone(),
@@ -130,6 +135,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
             on_trap_deny: None,
             custom_actions: Vec::new(),
             stream_kind_services: Vec::new(),
+            // see: cans/08-lifecycle.md#CoW-fork
             vetoes: Vec::new(),
             detached: self.registration.detached,
         };
@@ -160,6 +166,11 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         }
         child.pipeline_mut().set_active_scope(MountScope::default());
         child.pipeline_mut().seal()?;
+        // see: cans/11-protocol.md#Kind-registration
+        child.bind_stream_kind_sinks()?;
+        // see: cans/08-lifecycle.md#CoW-fork
+        // see: cans/08-lifecycle.md#Watchdog
+        child.run_lifecycle_hook(LifecycleEvent::VmInit).await?;
         Ok(Self {
             core: child,
             plugins: self.plugins.clone(),
@@ -197,30 +208,6 @@ pub struct SpawnResult {
     pub exit_code: i32,
     pub stdout: Option<String>,
     pub stderr: Option<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct WireHandle;
-
-impl WireHandle {
-    // TODO (L3): divert the guest TCP stream to the host socket per cans/07-wire-plane.md#Transparent-L4-stream-diversion.
-    pub async fn forward_port(&self, _guest: u16, _host: u16) -> Result<(), PluginError> {
-        Err(PluginError::Halt(
-            "TODO (L3): WireHandle::forward_port".into(),
-        ))
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct StorageHandle;
-
-impl StorageHandle {
-    // TODO (L3): replay the upper file and tombstones through the atomic commit reconciler per cans/05-storage-plane.md#Workspace-commit.
-    pub async fn reconcile(&self, _req: FsReconcileRequest) -> Result<CommitStats, PluginError> {
-        Err(PluginError::Halt(
-            "TODO (L3): StorageHandle::reconcile".into(),
-        ))
-    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -272,6 +259,7 @@ pub struct SpawnBuilder {
     pub cwd: Option<String>,
     pub session_id: Option<[u8; 16]>,
     pub stream_kind: StreamKind,
+    pub limits: Option<ProcessLimits>,
 }
 
 impl SpawnBuilder {
@@ -306,6 +294,13 @@ impl SpawnBuilder {
     }
 }
 
+// see: cans/11-protocol.md#Per-command-rlimits
+fn encode_exec_control_limits(limits: Option<&ProcessLimits>) -> Vec<u8> {
+    // TODO (L3): serialize the rlimit descriptor onto EXEC control sub-lane 0x03.
+    let _ = limits;
+    Vec::new()
+}
+
 impl Future for SpawnBuilder {
     type Output = Result<SpawnResult, PluginError>;
 
@@ -315,6 +310,7 @@ impl Future for SpawnBuilder {
                 "SpawnBuilder is unbound: spawn requires a booted session".into(),
             )));
         }
+        let _control = encode_exec_control_limits(self.limits.as_ref());
         // TODO (L3): encode the EXEC frame on the bound stream kind and dispatch it over the session transport.
         Poll::Ready(Err(PluginError::Halt("TODO (L3): guest exec".into())))
     }

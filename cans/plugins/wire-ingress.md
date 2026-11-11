@@ -21,7 +21,7 @@
     - Wakes target microVM via SessionWakeHandle::resume
       - ExternalSuspendKind::WireConnectionParking
     - Ingress stream framing on stream kind L4_FORWARD (mux 0x0001):
-      - Kind 0x0005; see: 11-protocol.md#Control-channel
+      - see: 11-protocol.md#Control-channel
       - Frame header: target_port: u16, connection_id: u64, payload_len: u32
       - Guest shim ingress forwarder connects to 127.0.0.1:target_port and splices duplex bytes
     - Zero-downtime webhook and interactive terminal connection continuity

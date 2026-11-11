@@ -1,43 +1,64 @@
 // see: cans/15-operations.md#Coverage-gates
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::path::Path;
 
-pub(crate) fn manifest_name(text: &str) -> Option<String> {
-    text.lines()
-        .map(str::trim)
-        .find_map(|line| line.strip_prefix("name = "))
-        .map(|value| value.trim().trim_matches('"').to_string())
+// see: cans/15-operations.md#Coverage-gates
+#[derive(serde::Deserialize)]
+struct PluginManifestToml {
+    package: PluginPackageToml,
+    #[serde(default)]
+    dependencies: BTreeMap<String, DepSpec>,
+    #[serde(default, rename = "dev-dependencies")]
+    dev_dependencies: BTreeMap<String, DepSpec>,
 }
 
-pub(crate) fn path_deps(text: &str) -> Vec<String> {
-    text.lines()
-        .map(str::trim)
-        .filter_map(|line| {
-            let (name, rest) = line.split_once('=')?;
-            let name = name.trim();
-            if rest.contains("path = ") {
-                Some(name.to_string())
-            } else {
-                None
+// see: cans/15-operations.md#Coverage-gates
+#[derive(serde::Deserialize)]
+struct PluginPackageToml {
+    name: String,
+}
+
+// see: cans/15-operations.md#Coverage-gates
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum DepSpec {
+    Table {
+        path: Option<String>,
+    },
+    #[expect(dead_code)]
+    Version(String),
+}
+
+// see: cans/15-operations.md#Coverage-gates
+fn parse_manifest(text: &str) -> Result<PluginManifestToml, Box<dyn std::error::Error>> {
+    toml::from_str(text).map_err(|e| format!("graph: manifest is not valid TOML: {e}").into())
+}
+
+// see: cans/15-operations.md#Coverage-gates
+fn path_deps(manifest: &PluginManifestToml) -> Vec<String> {
+    let mut deps = Vec::new();
+    for table in [&manifest.dependencies, &manifest.dev_dependencies] {
+        for (name, spec) in table {
+            if matches!(spec, DepSpec::Table { path: Some(_) }) {
+                deps.push(name.clone());
             }
-        })
-        .collect()
+        }
+    }
+    deps
 }
 
 pub fn plugin_graph() -> Result<HashMap<String, Vec<String>>, Box<dyn std::error::Error>> {
     let mut graph: HashMap<String, Vec<String>> = HashMap::new();
-    for entry in fs::read_dir(Path::new("crates/kelir-plugins"))? {
+    for entry in fs::read_dir(crate::workspace_root()?.join("crates/kelir-plugins"))? {
         let dir = entry?.path();
         if !dir.is_dir() {
             continue;
         }
         let manifest = dir.join("Cargo.toml");
         let text = fs::read_to_string(&manifest)?;
-        let Some(name) = manifest_name(&text) else {
-            continue;
-        };
-        graph.insert(name, path_deps(&text));
+        let parsed = parse_manifest(&text)?;
+        let deps = path_deps(&parsed);
+        graph.insert(parsed.package.name, deps);
     }
     Ok(graph)
 }

@@ -3,10 +3,8 @@
 use std::marker::PhantomData;
 
 use kelir_interface::handlers_plugin::Has;
-use kelir_interface::plugin_model::NoDeps;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct HNil;
+pub use kelir_interface::plugin_model::HNil;
 
 #[derive(Clone)]
 pub struct HCons<Head, Tail> {
@@ -45,8 +43,6 @@ where
 pub trait Satisfies<Other> {}
 
 // TODO (L3): order-insensitive subset check so a required dependency is accepted wherever it sits in Plugins per cans/03-sdk-architecture.md#Rust-SDK.
-impl<Plugins: HList> Satisfies<NoDeps> for Plugins {}
-
 impl<Plugins: HList> Satisfies<HNil> for Plugins {}
 
 impl<Head, Tail, OtherTail> Satisfies<HCons<Head, OtherTail>> for HCons<Head, Tail>

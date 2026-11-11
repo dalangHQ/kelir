@@ -19,7 +19,8 @@
       - TypeScript: compile-time, via generic accumulation and requires constraint
       - Python: inspects dependency registry at builder.boot() prior to vCPU start
       - Rust and TS fail at compile-time; Python raises boot-time EConfig
-      - Python runtime check cost: O(plugins) at boot; <2µs; validated once
+      - Python runtime check cost: O(plugins) at boot; validated once
+      - Python check budget: see: 02-plugin-model.md#Latency-ceiling
     - Service lookup across languages
       - Rust: c.ctx::<T>() infallible, statically resolved
       - TypeScript: c.<pluginKey> typed by accumulated Ctx from .use(plugin);
@@ -78,10 +79,10 @@
         - Inter-plugin capabilities resolve via c.ctx::<T>() (Rust),
           - c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
       - Unified verdict surface: see: 02-plugin-model.md#Unified-verdict
-        - Rust: c.pass() / c.patch(m) / c.drop(e,r) / c.suspend(u) / c.abort(r)
-        - TS: c.pass / c.patch / c.drop / c.suspend / c.abort
-        - Python: Verdict.pass_() / Verdict.patch / Verdict.drop
-          - Verdict.suspend / Verdict.abort
+        - Per-SDK spellings of the variants; naming deltas only, not semantics
+          - Rust: c.pass() / c.patch(m) / c.drop(e,r) / c.suspend(u) / c.abort(r)
+          - TS: c.pass / c.patch / c.drop / c.suspend / c.abort
+          - Python: Verdict.pass_() / .patch / .drop / .suspend / .abort
         - Console interposer signature (all SDKs)
           - on_console_input(port, bytes) / on_console_output(port, chunk)
           - port identifies the virtio-console port; bytes mutated in place
@@ -91,19 +92,23 @@
           - Python: Verdict.suspend(until=...)
           - No per-SDK aliases; one name across languages
       - Session surfaces
+        - One table over one surface; rows marked data | control
         - Session data operations
-          - Shared memory buffers: session.vm.map_shared_region(tag, size_bytes)
-          - Portable snapshots: session.vm.export_snapshot() and session.vm.import_snapshot()
+          - session.vm.map_shared_region(tag, size_bytes) | data
+            - see: 01-architecture.md#Shared-memory-channel
+          - session.vm.export_snapshot() / import_snapshot() | data
+            - see: 09-snapshots.md#Archives-and-portability
         - Session control surface
-          - Dynamic RAM ceiling: session.vm.adjust_balloon(target_mb)
-          - Dynamic vCPU roster: session.vm.set_vcpus(n)
-          - Hard vetoes: LifecycleCtx.register_veto(event, cb); see: 08-lifecycle.md#Lifecycle-vetoes
-          - Graceful drain: session.drain(ms); see: 08-lifecycle.md#Hypervisor-primitives
-          - Rollback semantics
-            - session.rollback() resets compute + disk
-            - Closes all session sockets; guest sees ECONNRESET
-            - No opt-in flag preserves sockets; rollback is total
-            - Hardware state reset mechanics: see: 08-lifecycle.md#Rollback
+          - session.vm.adjust_balloon(target_mb) | control
+            - see: 08-lifecycle.md#Balloon-convergence
+          - session.vm.set_vcpus(n) | control
+            - see: 08-lifecycle.md#Elastic-compute
+          - LifecycleCtx.register_veto(event, cb) | control
+            - see: 08-lifecycle.md#Lifecycle-vetoes
+          - session.drain(ms) | control
+            - see: 08-lifecycle.md#Hypervisor-primitives
+          - session.rollback() | control
+            - no socket-preserving flag; see: 08-lifecycle.md#Rollback
       - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
         - Stream kind registration: builder.register_stream_kind(kind, handler)
           - core kinds frozen; plugin kinds registered at boot
@@ -187,9 +192,9 @@
     - Plugin context may hold Arc<Mutex<_>>; that is userland, not engine state
     - Engine functional-core invariant: see: [1]
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
-    - .plugin() accepts core KelirPlugin plus only needed ring traits
-      - Stateless plugins implement KelirPlugin with zero fork_state boilerplate
-      - Example trait bounds follow the split; unneeded traits stay unimplemented
+      - Accepts core KelirPlugin plus only needed ring traits
+        - Stateless plugins implement KelirPlugin with zero fork_state boilerplate
+        - Example trait bounds follow the split; unneeded traits stay unimplemented
     - Ring traits: LifecycleParticipant, TrapInterposer, ConsoleInterposer
       - FsInterposer, NetInterposer, and HostInterposer are sync hot-path traits
     - AnyPlugin: identity marker for Clone KelirPlugin, without capability traits
@@ -284,7 +289,6 @@
         - lifecycle 5, telemetry 3; names as in the verb home
     - Scopes, all three SDKs, both modes
       - trap, fs, net, console, exec, host, lifecycle, telemetry
-      - Entry-point names are the group names in every SDK
     - Rust
       - Entry: KelirBuilder::new(config) is the host
       - Entry: KelirBuilder::named(name) is a plugin-mode builder
@@ -333,46 +337,22 @@
   - Fluent plugin surface
     - Superseded by the unified builder surface: see: #Unified-builder-surface
     - History, not a second surface: the DX-round shape lives here
-    - Closed set: 30 verbs and 8 scopes in every SDK
-      - Verb home: see: 02-plugin-model.md#Fluent-plugin-creation-builder
-      - Scope home: see: 02-plugin-model.md#Nested-scopes
-    - Structural verbs, all three SDKs
-      - context, require(s), scope, fork_with, vsock_service, build
-      - fork_with keeps its pinned per-language signature
-        - Rust: Fn(&str) -> Box<dyn AnyPlugin>
-        - TypeScript: () -> PluginContract
-        - Python: Fn(_PluginWrapper) -> _PluginWrapper
-    - Ring verbs, all three SDKs
-      - 24 verbs: trap 2, fs 4, net 2, console 2, exec 2, host 4
-        - lifecycle 5, telemetry 3; names as in the verb home
-    - Scopes, all three SDKs
-      - trap, fs, net, console, exec, host, lifecycle, telemetry
-      - Entry-point names are the group names in every SDK
-    - Rust
-      - Entry: kelir::plugin_builder::PluginBuilder::new(name)
-      - PluginBuilder<Ctx, Deps: HList>
+    - Shape: per-SDK entry point, chainable verbs, nested scopes, .build()
+    - Historical entry points
+      - Rust: kelir::plugin_builder::PluginBuilder::new(name)
+      - TypeScript: createPlugin(name); existing symbol, surface aligned
+      - Python: kelir.PluginBuilder(name); new symbol
+    - fork_with history: see: 02-plugin-model.md#Fluent-plugin-creation-builder
+    - Rust: PluginBuilder<Ctx, Deps: HList>
       - .build() returns Result<PluginWrapper<Ctx, Deps>, PluginError>
-      - .plugin() requires Plugins: Satisfies<P::Deps>
-      - Post-.build(): self is consumed; further calls are a compile error
-      - Surface: see: artifacts/code/rust-plugin-builder.rs
-    - TypeScript
-      - Entry: createPlugin(name); existing symbol, surface aligned
-      - createPlugin returns PluginContract<Name, Ctx, Deps>
-      - .requires<P>() accumulates Deps; .build() returns KelirPlugin
-      - .build() throws EConfig on validation failure
-      - .use() accepts the post-.build() KelirPlugin only
-      - .use() rejects an unbuilt contract at runtime
-      - Post-.build(): non-builder; verbs are method-not-found at compile time
-      - Post-.build(): a verb call throws TypeError at runtime
-      - Surface: see: artifacts/code/typescript-plugin-builder.ts
-    - Python
-      - Entry: kelir.PluginBuilder(name); new symbol
-      - .require(P) records deps; .build() returns a _PluginWrapper
-      - .build() raises EConfig on validation failure
-      - .build() precedes .use(); boot() raises EConfig on unsatisfied deps
-      - .use() and .plugin() are aliases
-      - Post-.build() mutation raises EConfig
-      - Surface: see: artifacts/code/python-plugin-builder.py
+    - TypeScript: createPlugin returns PluginContract<Name, Ctx, Deps>
+      - .use() accepts the post-.build() KelirPlugin only; rejects unbuilt
+    - Python: .use() and .plugin() are aliases; .build() precedes .use()
+    - Build and post-build semantics: see: 02-plugin-model.md#Terminal-build
+    - Prerequisites: see: 02-plugin-model.md#Compile-time-prerequisites
+    - Surface: see: artifacts/code/rust-plugin-builder.rs
+    - Surface: see: artifacts/code/typescript-plugin-builder.ts
+    - Surface: see: artifacts/code/python-plugin-builder.py
     - Contract home: see: 02-plugin-model.md#Fluent-plugin-creation-builder
 
 - [1]: 01-architecture.md#Codebase-invariants

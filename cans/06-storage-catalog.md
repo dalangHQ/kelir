@@ -14,7 +14,7 @@
       - Ephemeral rows are reaped on pidfd/kqueue/Job-Object death without lease wait
       - Detached rows are reaped on lease TTL expiry
       - janitor sweeps both kinds on runtime child startup
-    - No whiteout, overlay, or union-driver state is ever persisted
-      - Host CoW broker state lives under sessions/<id>/upper and /tombstones
-      - The broker's state is ephemeral by construction; catalog stores no rows
+    - Broker state
+      - Whiteout policy and state paths: see: 05-storage-plane.md#Host-CoW-broker
+      - Catalog stores no rows for broker state; ephemeral by construction
       - Commit reads broker state, writes to workspace, then unlinks broker state

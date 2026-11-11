@@ -97,15 +97,6 @@ fn quarantine_sync<T>(run: impl FnOnce() -> T, on_panic: impl FnOnce() -> T) -> 
     }
 }
 
-// see: cans/03-sdk-architecture.md#Rust-SDK
-pub type LifecycleCallback = Box<
-    dyn for<'a> Fn(
-            &'a mut LifecycleCtx<'a>,
-        ) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
-        + Send
-        + Sync,
->;
-
 // see: cans/03-sdk-architecture.md#Builder-consumption-model-across-languages
 pub type TrapDenyCallback = Box<
     dyn Fn(&TrapEvent, &Session) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send>>
@@ -165,9 +156,6 @@ pub struct PipelineEngine {
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     trampoline: Option<kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
     checkpoint: Option<Arc<CheckpointPlane>>,
-    on_vm_init: Option<LifecycleCallback>,
-    on_vm_ready: Option<LifecycleCallback>,
-    on_vm_shutdown: Option<LifecycleCallback>,
     on_trap_deny: Option<TrapDenyCallback>,
     custom_actions: Vec<CustomActionBinding>,
     foreign_queue: FfiDispatchQueue,
@@ -290,9 +278,6 @@ impl PipelineEngine {
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             trampoline: None,
             checkpoint: None,
-            on_vm_init: None,
-            on_vm_ready: None,
-            on_vm_shutdown: None,
             on_trap_deny: None,
             custom_actions: Vec::new(),
             foreign_queue: FfiDispatchQueue::default(),
@@ -388,40 +373,28 @@ impl PipelineEngine {
         self.checkpoint.as_ref()
     }
 
-    // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn set_on_vm_init(&mut self, callback: LifecycleCallback) {
-        self.on_vm_init = Some(callback);
-    }
-
-    // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn set_on_vm_ready(&mut self, callback: LifecycleCallback) {
-        self.on_vm_ready = Some(callback);
-    }
-
-    // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn set_on_vm_shutdown(&mut self, callback: LifecycleCallback) {
-        self.on_vm_shutdown = Some(callback);
-    }
-
     // see: cans/03-sdk-architecture.md#Builder-consumption-model-across-languages
     pub fn set_on_trap_deny(&mut self, callback: TrapDenyCallback) {
         self.on_trap_deny = Some(callback);
     }
 
     // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn take_lifecycle_callback(&mut self, event: LifecycleEvent) -> Option<LifecycleCallback> {
-        match event {
-            LifecycleEvent::VmInit => self.on_vm_init.take(),
-            LifecycleEvent::VmReady => self.on_vm_ready.take(),
-            LifecycleEvent::VmShutdown => self.on_vm_shutdown.take(),
-            LifecycleEvent::VmPreempt => None,
-        }
-    }
-
-    // see: cans/03-sdk-architecture.md#Rust-SDK
     pub fn register_custom_action(&mut self, name: String, handler: CustomActionCallback) {
         self.custom_actions
             .push(CustomActionBinding { name, handler });
+    }
+
+    // see: cans/11-protocol.md#Kind-registration
+    pub fn register_stream_kind(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>) {
+        self.stream_sinks.push((kind, sink, MountScope::default()));
+    }
+
+    // see: cans/11-protocol.md#Kind-registration
+    pub fn stream_kind_services(&self) -> Vec<(StreamKind, Arc<dyn StreamFrameSink>)> {
+        self.stream_sinks
+            .iter()
+            .map(|(kind, sink, _)| (*kind, Arc::clone(sink)))
+            .collect()
     }
 
     // see: cans/03-sdk-architecture.md#Rust-SDK
@@ -549,6 +522,41 @@ impl PipelineEngine {
         true
     }
 
+    // see: cans/02-plugin-model.md#Mount-scoping
+    fn net_scope_allows(scope: &MountScope, remote: Option<([u8; 4], u16)>) -> bool {
+        match remote {
+            Some((ip, port)) => scope.allows_net(ip, port),
+            None => scope.net_cidrs.is_none() && scope.net_ports.is_none(),
+        }
+    }
+
+    // see: cans/02-plugin-model.md#Mount-scoping
+    // see: cans/07-wire-plane.md#Userspace-network-stack
+    fn net_remote_endpoint(frame: &[u8], inbound: bool) -> Option<([u8; 4], u16)> {
+        use crate::planes::wire::layout_wire::{
+            ETH_HEADER_BYTES, ETHERTYPE_IPV4, EthView, IP_PROTO_TCP, IP_PROTO_UDP,
+            IPV4_MIN_HEADER_BYTES, Ipv4View, L4_PORT_PAIR_BYTES,
+        };
+        if frame.len() < ETH_HEADER_BYTES || EthView::new_unchecked(frame).etype() != ETHERTYPE_IPV4
+        {
+            return None;
+        }
+        let ip = Ipv4View::new_unchecked(&frame[ETH_HEADER_BYTES..]);
+        let ihl = ip.ihl_bytes_checked()?;
+        if ihl < IPV4_MIN_HEADER_BYTES
+            || frame.len() < ETH_HEADER_BYTES + ihl + L4_PORT_PAIR_BYTES
+            || !matches!(ip.proto(), IP_PROTO_TCP | IP_PROTO_UDP)
+        {
+            return None;
+        }
+        let l4 = &frame[ETH_HEADER_BYTES + ihl..];
+        if inbound {
+            Some((ip.src_checked()?, u16::from_be_bytes([l4[0], l4[1]])))
+        } else {
+            Some((ip.dst_checked()?, u16::from_be_bytes([l4[2], l4[3]])))
+        }
+    }
+
     pub fn seal(&mut self) -> Result<(), PluginError> {
         if self.sealed {
             return Err(PluginError::Halt("pipeline already sealed".into()));
@@ -649,7 +657,7 @@ impl PipelineEngine {
             let fallback = MountScope::default();
             let scope = self.trap_scopes.get(index).unwrap_or(&fallback);
             match self.gate.evaluate(event, scope) {
-                GateDecision::Allow => continue,
+                GateDecision::Skip => continue,
                 GateDecision::Deny(verdict) => {
                     if let (Some(callback), Some(session)) = (&self.on_trap_deny, session) {
                         callback(event, session).await?;
@@ -749,13 +757,17 @@ impl PipelineEngine {
         Ok(FilterAction::Forward)
     }
 
-    // TODO (L3): CIDR/port scope rules need a frame parser; only the device mask is enforced here.
+    // see: cans/02-plugin-model.md#Mount-scoping
     pub fn dispatch_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::NetOutbound)?;
+        let remote = Self::net_remote_endpoint(frame, false);
         for (index, interceptor) in self.net_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.net_scopes, index);
             if !scope.allows_device(VirtioDevice::Net) {
+                continue;
+            }
+            if !Self::net_scope_allows(&scope, remote) {
                 continue;
             }
             if fused.is_none() {
@@ -784,12 +796,17 @@ impl PipelineEngine {
         Ok(FilterAction::Forward)
     }
 
+    // see: cans/02-plugin-model.md#Mount-scoping
     pub fn dispatch_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::NetInbound)?;
+        let remote = Self::net_remote_endpoint(frame, true);
         for (index, interceptor) in self.net_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.net_scopes, index);
             if !scope.allows_device(VirtioDevice::Net) {
+                continue;
+            }
+            if !Self::net_scope_allows(&scope, remote) {
                 continue;
             }
             if fused.is_none() {
@@ -819,19 +836,22 @@ impl PipelineEngine {
     }
 
     // TODO (L3): host scope.devices has no VirtioDevice mapping; only the path filter is enforced here.
-    // TODO (L3): no TrampolineRing tag exists for host LSM hooks, so fused crossings cannot bind this ring yet.
     pub fn dispatch_host_lsm_exec(
         &self,
         path: &std::path::Path,
         pid: u32,
     ) -> Result<Verdict, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::HostLsmExec)?;
         for (index, interceptor) in self.host_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.host_scopes, index);
             if !scope.allows_path(path) {
                 continue;
             }
-            // see: cans/01-architecture.md#FFI-boundary-economics
-            self.try_foreign_submit()?;
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
             let verdict = {
                 let outcome = quarantine_sync(
                     || interceptor.on_host_lsm_exec(path, pid),
@@ -842,13 +862,16 @@ impl PipelineEngine {
                         })
                     },
                 );
-                self.foreign_submit_complete();
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
                 outcome?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }
         }
+        drop(fused);
         Ok(Verdict::Pass)
     }
 

@@ -1,25 +1,26 @@
 // see: cans/07-wire-plane.md#Wire-architecture
 // see: cans/07-wire-plane.md#Userspace-network-stack
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex, RwLock};
 
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::{FilterAction, StreamKind};
 use kelir_interface::vsock_mesh::{VAULT_METADATA_VSOCK_PORT, VsockServiceHandler};
 
-mod layout_wire;
+pub(crate) mod layout_wire;
 
 pub const SYNTHETIC_DNS_GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 127, 1);
 pub const SYNTHETIC_DNS_PORT: u16 = 53;
+
+// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+pub const RESOLV_CONF_PATH: &str = "/etc/resolv.conf";
 
 // see: cans/07-wire-plane.md#Port-forwarding
 #[derive(Debug, thiserror::Error)]
 pub enum WireError {
     #[error("host port {0} already forwarded (EADDRINUSE)")]
     PortOccupied(u16),
-    #[error("ephemeral host port range exhausted (EADDRINUSE)")]
-    EphemeralExhausted,
 }
 
 impl From<WireError> for PluginError {
@@ -60,6 +61,27 @@ pub enum DnsRcode {
     ServFail,
 }
 
+// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+// TODO (L3): reload nameservers via inotify when /etc/resolv.conf changes.
+fn host_resolver_nameservers() -> Vec<IpAddr> {
+    std::fs::read_to_string(RESOLV_CONF_PATH)
+        .map(|text| parse_resolv_conf_nameservers(&text))
+        .unwrap_or_default()
+}
+
+// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+fn parse_resolv_conf_nameservers(text: &str) -> Vec<IpAddr> {
+    text.lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            match (fields.next(), fields.next()) {
+                (Some("nameserver"), Some(addr)) => addr.parse().ok(),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 pub struct DnsQuery {
     pub name: String,
@@ -84,6 +106,14 @@ pub struct DnsResponse {
     pub wire_bytes: Vec<u8>,
     pub rcode: DnsRcode,
     pub edns_downgraded: bool,
+}
+
+impl DnsResponse {
+    // see: cans/07-wire-plane.md#EDNS0-downgrade
+    pub fn downgrade_edns0(&mut self) {
+        // TODO (L3): clear the AD flag bit and the OPT record DO bit inside wire_bytes.
+        self.edns_downgraded = true;
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -227,10 +257,21 @@ pub fn is_synthetic_dns(frame: &[u8], direction: FrameDirection) -> bool {
         return false;
     }
     let l4_start = layout_wire::ETH_HEADER_BYTES + ihl;
-    let tcp = layout_wire::TcpView::new_unchecked(&frame[l4_start..]);
-    let port = match direction {
-        FrameDirection::Inbound => tcp.src_port(),
-        FrameDirection::Outbound => tcp.dst_port(),
+    let port = match protocol {
+        layout_wire::IP_PROTO_TCP => {
+            let tcp = layout_wire::TcpView::new_unchecked(&frame[l4_start..]);
+            match direction {
+                FrameDirection::Inbound => tcp.src_port(),
+                FrameDirection::Outbound => tcp.dst_port(),
+            }
+        }
+        _ => {
+            let udp = layout_wire::UdpView::new_unchecked(&frame[l4_start..]);
+            match direction {
+                FrameDirection::Inbound => udp.src_port(),
+                FrameDirection::Outbound => udp.dst_port(),
+            }
+        }
     };
     port == SYNTHETIC_DNS_PORT
 }
@@ -263,6 +304,18 @@ pub fn dns_payload(frame: &[u8], direction: FrameDirection) -> Option<&[u8]> {
     }
 }
 
+// see: cans/07-wire-plane.md#DNS-policy-filter
+// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+fn domain_matches(domains: &[String], name: &str) -> bool {
+    domains.iter().any(|entry| {
+        entry == name
+            || entry == "*"
+            || name
+                .strip_suffix(entry.as_str())
+                .is_some_and(|head| head.ends_with('.'))
+    })
+}
+
 pub struct UdpNatEntry {
     guest_source_port: u16,
     last_active_unix: u64,
@@ -274,13 +327,13 @@ pub const UDP_NAT_SLAB_CAPACITY: usize = 1_024;
 // see: cans/07-wire-plane.md#UDP-socket-reaper
 pub const UDP_NAT_IDLE_TIMEOUT_SECS: u64 = 30;
 
-// see: cans/07-wire-plane.md#Port-forwarding
-const EPHEMERAL_PORT_MIN: u16 = 49_152;
-
 pub struct WirePlane {
     synthetic_dns_ip: Ipv4Addr,
+    resolver_nameservers: Vec<IpAddr>,
     udp_nat_slab: Arc<Mutex<Vec<Option<UdpNatEntry>>>>,
     port_forwards: Arc<Mutex<std::collections::HashMap<u16, u16>>>,
+    host_listeners:
+        Arc<Mutex<std::collections::HashMap<u16, kelir_transport::host_bind::HostListener>>>,
     allowed_domains: Arc<RwLock<Vec<String>>>,
     stack: SmoltcpStack,
     imds_sink: Arc<RwLock<Option<Arc<dyn VsockServiceHandler>>>>,
@@ -309,8 +362,10 @@ impl WirePlane {
     pub fn new() -> Self {
         Self {
             synthetic_dns_ip: SYNTHETIC_DNS_GATEWAY_IP,
+            resolver_nameservers: host_resolver_nameservers(),
             udp_nat_slab: Arc::new(Mutex::new(Vec::new())),
             port_forwards: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            host_listeners: Arc::new(Mutex::new(std::collections::HashMap::new())),
             allowed_domains: Arc::new(RwLock::new(Vec::new())),
             stack: SmoltcpStack::new(),
             imds_sink: Arc::new(RwLock::new(None)),
@@ -320,7 +375,7 @@ impl WirePlane {
     }
 
     // see: cans/07-wire-plane.md#DNS-policy-filter
-    // TODO (L3): the DNS resolver enforces sinkhole_drop_all, the ssh agent bridge mounts, vault placeholders hydrate, and l4 proxies open host listeners.
+    // TODO (L3): the ssh agent bridge mounts, vault placeholders hydrate, and l4 proxies open host listeners.
     pub fn with_wiring(self, wiring: WireWiring) -> Self {
         if let Ok(mut domains) = self.allowed_domains.write() {
             *domains = wiring.sinkhole_allowlist.clone();
@@ -385,20 +440,32 @@ impl WirePlane {
         let mut forwards = self.port_forwards.lock().map_err(|_| {
             kelir_interface::plugin_model::PluginError::Halt("port forward table poisoned".into())
         })?;
-        let Some(bind_port) = host_port.filter(|port| *port != 0) else {
-            let allocated = (EPHEMERAL_PORT_MIN..=u16::MAX)
-                .find(|port| !forwards.contains_key(port))
-                .ok_or(WireError::EphemeralExhausted)?;
-            // TODO (L3): bind host port 0 and let the host kernel allocate; publish only after the bind succeeds.
-            forwards.insert(allocated, guest_port);
-            return Ok(allocated);
+        let mut listeners = self.host_listeners.lock().map_err(|_| {
+            kelir_interface::plugin_model::PluginError::Halt("host listener table poisoned".into())
+        })?;
+        let bind_port = match host_port.filter(|port| *port != 0) {
+            Some(explicit) => {
+                if forwards.contains_key(&explicit) {
+                    return Err(WireError::PortOccupied(explicit).into());
+                }
+                explicit
+            }
+            None => 0,
         };
-        if forwards.contains_key(&bind_port) {
-            return Err(WireError::PortOccupied(bind_port).into());
-        }
-        // TODO (L3): bind the host listener with SO_REUSEADDR|SO_REUSEPORT; bootstrap bind failure aborts VM launch.
-        forwards.insert(bind_port, guest_port);
-        Ok(bind_port)
+        let listener =
+            kelir_transport::host_bind::bind_host_listener(bind_port).map_err(|error| {
+                if bind_port != 0 && error.kind() == std::io::ErrorKind::AddrInUse {
+                    WireError::PortOccupied(bind_port).into()
+                } else {
+                    kelir_interface::plugin_model::PluginError::Halt(format!(
+                        "host port {bind_port} bind: {error}"
+                    ))
+                }
+            })?;
+        let bound = listener.port();
+        forwards.insert(bound, guest_port);
+        listeners.insert(bound, listener);
+        Ok(bound)
     }
 
     // see: cans/07-wire-plane.md#Port-forwarding
@@ -471,18 +538,34 @@ impl WirePlane {
             kelir_interface::protocol_wire::FilterAction,
             kelir_interface::plugin_model::PluginError,
         > = match classify_frame_directional(frame, FrameDirection::Outbound) {
-            FrameClass::TooShort
-            | FrameClass::NonIp
-            | FrameClass::NonTcpUdp
-            | FrameClass::UdpOther => Ok(FilterAction::Drop {
-                errno: None,
-                reason: "non-TCP/UDP frame dropped at egress ring".into(),
-            }),
+            FrameClass::TooShort | FrameClass::NonIp | FrameClass::NonTcpUdp => {
+                Ok(FilterAction::Drop {
+                    errno: None,
+                    reason: "non-TCP/UDP frame dropped at egress ring".into(),
+                })
+            }
+            // see: cans/07-wire-plane.md#UDP-NAT-semantics
+            FrameClass::UdpOther => {
+                if self
+                    .wiring
+                    .as_ref()
+                    .is_some_and(|wiring| wiring.allow_udp_proxied)
+                {
+                    // TODO (L3): forward via the full-cone UDP NAT host socket per guest source port.
+                    let _ = self.stack.poll()?;
+                    Ok(FilterAction::Forward)
+                } else {
+                    Ok(FilterAction::Drop {
+                        errno: Some("ECONNREFUSED".into()),
+                        reason: "UDP egress denied: allow_udp_proxied not enabled".into(),
+                    })
+                }
+            }
             FrameClass::TcpDns | FrameClass::UdpDns => {
                 match dns_payload(frame, FrameDirection::Outbound) {
                     Some(payload) => {
-                        // TODO (L3): answer via resolve_synthetic_dns once the DNS wire parser lands.
-                        let _ = self.resolve_synthetic_dns(payload)?;
+                        // TODO (L3): synthesize the answer frame into the guest ingress ring once the DNS wire parser lands.
+                        self.resolve_synthetic_dns(payload)?;
                         Ok(FilterAction::Forward)
                     }
                     None => Ok(FilterAction::Drop {
@@ -549,17 +632,58 @@ impl WirePlane {
         ))
     }
 
+    // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+    // see: cans/07-wire-plane.md#DNS-policy-filter
+    pub fn resolve_query(
+        &self,
+        query: &mut DnsQuery,
+    ) -> Result<DnsResponse, kelir_interface::plugin_model::PluginError> {
+        let blocked = {
+            let allowed = self
+                .allowed_domains
+                .read()
+                .map_err(|_| PluginError::Halt("dns allowlist lock poisoned".into()))?;
+            self.wiring
+                .as_ref()
+                .is_some_and(|wiring| wiring.sinkhole_drop_all)
+                || (!allowed.is_empty() && !domain_matches(&allowed, &query.name))
+        };
+        if blocked {
+            // TODO (L3): serialize the synthetic NXDOMAIN answer into wire_bytes.
+            let mut response = DnsResponse {
+                wire_bytes: Vec::new(),
+                rcode: DnsRcode::NxDomain,
+                edns_downgraded: false,
+            };
+            response.downgrade_edns0();
+            return Ok(response);
+        }
+        // see: cans/07-wire-plane.md#EDNS0-downgrade
+        query.downgrade_edns0();
+        let mut response = DnsResponse {
+            wire_bytes: Vec::new(),
+            rcode: DnsRcode::ServFail,
+            edns_downgraded: false,
+        };
+        response.downgrade_edns0();
+        // TODO (L3): relay the query to the live upstream resolver; ServFail is the answer until the relay is wired.
+        Ok(response)
+    }
+
     pub fn resolve_synthetic_dns(
         &self,
         payload: &[u8],
     ) -> Result<DnsResponse, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): parse the query, apply the domain allowlist, answer from host resolver state via the synthetic gateway, EDNS0-downgrade the response.
+        // TODO (L3): parse the query, apply the domain allowlist, forward to the tracked nameservers, EDNS0-downgrade the response.
         let _ = (payload, &self.allowed_domains, &self.synthetic_dns_ip);
-        Ok(DnsResponse {
-            wire_bytes: Vec::new(),
-            rcode: DnsRcode::ServFail,
-            edns_downgraded: false,
-        })
+        if self.resolver_nameservers.is_empty() {
+            return Err(PluginError::Halt(
+                "DNS resolver pending (L3): no nameservers tracked from /etc/resolv.conf".into(),
+            ));
+        }
+        Err(PluginError::Halt(
+            "DNS resolver pending (L3): query parse and upstream forward".into(),
+        ))
     }
 
     // see: cans/07-wire-plane.md#UDP-socket-reaper
@@ -636,6 +760,7 @@ impl WirePlane {
 
     // see: cans/08-lifecycle.md#Rollback
     // see: cans/07-wire-plane.md#Rollback-interaction
+    // see: cans/07-wire-plane.md#Socket-lifecycle
     pub fn quiesce(&self) -> Result<(), PluginError> {
         // TODO (L3): close live host-side L4 sockets with SO_LINGER zero, emit RST to peers, drain splicing buffers.
         let mut slab = self
@@ -648,6 +773,11 @@ impl WirePlane {
             .lock()
             .map_err(|_| PluginError::Halt("port forward table poisoned".into()))?;
         forwards.clear();
+        let mut listeners = self
+            .host_listeners
+            .lock()
+            .map_err(|_| PluginError::Halt("host listener table poisoned".into()))?;
+        listeners.clear();
         Ok(())
     }
 }

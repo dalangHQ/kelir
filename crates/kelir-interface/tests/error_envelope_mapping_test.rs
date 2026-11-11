@@ -1,7 +1,7 @@
 // see: cans/02-plugin-model.md#Declarative-error-mapping
 // see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
 use kelir_interface::error_envelope::{
-    EAMBIGUOUSMUTATION_CODE, ECONFIG_CODE, EFFIQUEUESATURATED_CODE, EWXVIOLATION_CODE,
+    EAMBIGUOUSMUTATION_CODE, ECONFIG_CODE, EFFIQUEUESATURATED_CODE, EHALT_CODE, EWXVIOLATION_CODE,
     ErrorEnvelope,
 };
 use kelir_interface::plugin_model::PluginError;
@@ -75,11 +75,12 @@ fn reject_econfig_still_maps_to_econfig_code() -> Result<(), String> {
 }
 
 #[test]
-fn halt_keeps_econfig_fallback_envelope() -> Result<(), String> {
+fn halt_maps_to_ehalt_envelope() -> Result<(), String> {
     let envelope = ErrorEnvelope::from(PluginError::Halt("checkpoint missing".to_string()));
-    assert_eq!(envelope.code, ECONFIG_CODE);
+    assert_eq!(envelope.code, EHALT_CODE);
     assert_eq!(envelope.message, "checkpoint missing");
     assert_eq!(envelope.pid, None);
+    assert_eq!(envelope.errno, None);
     Ok(())
 }
 

@@ -24,15 +24,7 @@ pub const MUX_RING_CAPACITY: u32 = 256 * 1024;
 const POLL_SCRATCH_LEN: usize = 4096;
 
 // see: cans/11-protocol.md#Control-channel
-pub trait StreamFrameSink: Send + Sync {
-    fn on_stream_frame(
-        &self,
-        stream_id: u32,
-        kind: StreamKind,
-        flags: u8,
-        payload: &[u8],
-    ) -> Result<(), PluginError>;
-}
+pub use kelir_interface::plugin_model::StreamFrameSink;
 
 pub struct BusDispatcher {
     control_transport: kelir_transport::spsc_ring::SpscRingTransport,

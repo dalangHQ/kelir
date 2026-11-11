@@ -13,6 +13,8 @@ pub enum CatalogError {
     Sqlite(#[from] rusqlite::Error),
     #[error("HOME is not set; cannot locate ~/.kelir/catalog.db")]
     HomeUnset,
+    #[error("catalog host state root unavailable: {0}")]
+    HostRoot(#[from] std::io::Error),
 }
 
 fn now_unix() -> i64 {
@@ -29,13 +31,16 @@ pub struct CatalogDb {
 // see: cans/01-architecture.md#Host-state-root
 pub fn catalog_path() -> Result<std::path::PathBuf, CatalogError> {
     let home = std::env::var("HOME").map_err(|_| CatalogError::HomeUnset)?;
-    Ok(std::path::PathBuf::from(home)
-        .join(".kelir")
-        .join("catalog.db"))
+    let root = std::path::PathBuf::from(home).join(".kelir");
+    std::fs::create_dir_all(&root)?;
+    Ok(root.join("catalog.db"))
 }
 
 impl CatalogDb {
     pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Self, rusqlite::Error> {
+        if let Some(parent) = path.as_ref().parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
         let pool = rusqlite::Connection::open(path)?;
         pool.execute_batch(SCHEMA_SQL)?;
         // see: cans/01-architecture.md#Host-state-root

@@ -9,10 +9,13 @@ kelir-core = { path = "../kelir-core" }
 kelir-catalog = { path = "../kelir-catalog" }
 kelir-interface = { path = "../kelir-interface" }
 kelir-plugin-testkit = { path = "../kelir-plugin-testkit" }
+kelir-testkit = { path = "../kelir-testkit" }
 driver-rustvmm = { path = "../kelir-drivers/driver-rustvmm" }
 blake3 = { workspace = true }
+ciborium = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 toml = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
