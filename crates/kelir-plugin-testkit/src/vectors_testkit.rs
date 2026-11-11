@@ -82,26 +82,26 @@ pub struct VetoCase {
     pub callback_allows: bool,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// see: cans/15-operations.md#Multi-language-parity-gate
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
 #[derive(Debug, Clone)]
-pub enum PluginBuilderOutcome {
+pub enum UnifiedBuilderOutcome {
     Verdict(Verdict),
     Filter(FilterAction),
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// see: cans/15-operations.md#Multi-language-parity-gate
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
 #[derive(Debug, Clone)]
-pub struct PluginBuilderCase {
+pub struct UnifiedBuilderCase {
     pub name: String,
     pub requires: Vec<String>,
     pub rings: Vec<(TrampolineRing, u32)>,
     pub events: Vec<serde_json::Value>,
-    pub expected_outcomes: Vec<PluginBuilderOutcome>,
+    pub expected_outcomes: Vec<UnifiedBuilderOutcome>,
 }
 
-impl PluginBuilderCase {
+impl UnifiedBuilderCase {
     pub fn to_json(&self) -> Result<serde_json::Value, VectorError> {
         let mut rings: Vec<serde_json::Value> = Vec::with_capacity(self.rings.len());
         for (ring, ordinal) in &self.rings {
@@ -110,10 +110,10 @@ impl PluginBuilderCase {
         let mut outcomes: Vec<serde_json::Value> = Vec::with_capacity(self.expected_outcomes.len());
         for outcome in &self.expected_outcomes {
             let value = match outcome {
-                PluginBuilderOutcome::Verdict(verdict) => {
+                UnifiedBuilderOutcome::Verdict(verdict) => {
                     serde_json::json!({"Verdict": serde_json::to_value(verdict).map_err(|e| VectorError::Encode(e.to_string()))?})
                 }
-                PluginBuilderOutcome::Filter(action) => {
+                UnifiedBuilderOutcome::Filter(action) => {
                     serde_json::json!({"Filter": serde_json::to_value(action).map_err(|e| VectorError::Encode(e.to_string()))?})
                 }
             };
@@ -138,7 +138,7 @@ pub struct VectorCase {
     pub expected_verdict: Verdict,
     pub watchdog: Option<WatchdogCase>,
     pub veto: Option<VetoCase>,
-    pub plugin_builder: Option<PluginBuilderCase>,
+    pub plugin_builder: Option<UnifiedBuilderCase>,
 }
 
 impl VectorCase {
@@ -312,6 +312,7 @@ impl VectorSuite {
                 ];
                 vectors.extend(plugin_builder_verb_cases()?);
                 vectors.extend(plugin_builder_nested_cases()?);
+                vectors.extend(plugin_builder_merge_cases()?);
                 vectors
             },
         })
@@ -368,8 +369,8 @@ fn trap_case(
     })
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// see: cans/15-operations.md#Multi-language-parity-gate
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
 fn plugin_builder_trap_case() -> Result<VectorCase, VectorError> {
     let event = trap_event(
         7,
@@ -382,18 +383,18 @@ fn plugin_builder_trap_case() -> Result<VectorCase, VectorError> {
     let event_json = serde_json::to_value(GuestToHost::TrapEvent(event.clone()))
         .map_err(|e| VectorError::Encode(e.to_string()))?;
     let mut case = trap_case("plugin-builder-trap-only", event, Verdict::Pass)?;
-    case.plugin_builder = Some(PluginBuilderCase {
+    case.plugin_builder = Some(UnifiedBuilderCase {
         name: "plugin-builder-trap-only".to_string(),
         requires: Vec::new(),
         rings: vec![(TrampolineRing::Trap, 0)],
         events: vec![event_json],
-        expected_outcomes: vec![PluginBuilderOutcome::Verdict(Verdict::Pass)],
+        expected_outcomes: vec![UnifiedBuilderOutcome::Verdict(Verdict::Pass)],
     });
     Ok(case)
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// see: cans/15-operations.md#Multi-language-parity-gate
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
 fn plugin_builder_fs_write_trap_case() -> Result<VectorCase, VectorError> {
     let event = trap_event(
         8,
@@ -406,7 +407,7 @@ fn plugin_builder_fs_write_trap_case() -> Result<VectorCase, VectorError> {
     let event_json = serde_json::to_value(GuestToHost::TrapEvent(event.clone()))
         .map_err(|e| VectorError::Encode(e.to_string()))?;
     let mut case = trap_case("plugin-builder-fs-write-trap", event, Verdict::Pass)?;
-    case.plugin_builder = Some(PluginBuilderCase {
+    case.plugin_builder = Some(UnifiedBuilderCase {
         name: "plugin-builder-fs-write-trap".to_string(),
         requires: vec!["ledger".to_string()],
         rings: vec![(TrampolineRing::FsWrite, 0), (TrampolineRing::Trap, 1)],
@@ -419,22 +420,22 @@ fn plugin_builder_fs_write_trap_case() -> Result<VectorCase, VectorError> {
             event_json,
         ],
         expected_outcomes: vec![
-            PluginBuilderOutcome::Filter(FilterAction::Forward),
-            PluginBuilderOutcome::Verdict(Verdict::Pass),
+            UnifiedBuilderOutcome::Filter(FilterAction::Forward),
+            UnifiedBuilderOutcome::Verdict(Verdict::Pass),
         ],
     });
     Ok(case)
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// see: cans/15-operations.md#Multi-language-parity-gate
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
 fn plugin_builder_case(
     name: &str,
     seq: u64,
     requires: Vec<String>,
     rings: Vec<(TrampolineRing, u32)>,
     events: Vec<serde_json::Value>,
-    expected_outcomes: Vec<PluginBuilderOutcome>,
+    expected_outcomes: Vec<UnifiedBuilderOutcome>,
 ) -> Result<VectorCase, VectorError> {
     let event = trap_event(
         seq,
@@ -445,7 +446,7 @@ fn plugin_builder_case(
         HashMap::new(),
     );
     let mut case = trap_case(name, event, Verdict::Pass)?;
-    case.plugin_builder = Some(PluginBuilderCase {
+    case.plugin_builder = Some(UnifiedBuilderCase {
         name: name.to_string(),
         requires,
         rings,
@@ -455,8 +456,8 @@ fn plugin_builder_case(
     Ok(case)
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// see: cans/15-operations.md#Multi-language-parity-gate
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
 fn plugin_builder_trap_json(seq: u64) -> Result<serde_json::Value, VectorError> {
     let event = trap_event(
         seq,
@@ -470,8 +471,8 @@ fn plugin_builder_trap_json(seq: u64) -> Result<serde_json::Value, VectorError> 
         .map_err(|e| VectorError::Encode(e.to_string()))
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// see: cans/15-operations.md#Multi-language-parity-gate
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
 fn plugin_builder_verb_event(verb: &str, pid: u32) -> serde_json::Value {
     match verb {
         "process-exit" => serde_json::json!({"kind": verb, "pid": pid, "exit_code": 0}),
@@ -498,31 +499,31 @@ fn plugin_builder_verb_event(verb: &str, pid: u32) -> serde_json::Value {
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// see: cans/15-operations.md#Multi-language-parity-gate
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
 fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
-    let verbs: &[(&str, TrampolineRing, Option<PluginBuilderOutcome>)] = &[
+    let verbs: &[(&str, TrampolineRing, Option<UnifiedBuilderOutcome>)] = &[
         ("process-exit", TrampolineRing::ProcessExit, None),
         (
             "fs-lookup",
             TrampolineRing::FsLookup,
-            Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+            Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
         ),
         ("fs-read", TrampolineRing::FsRead, None),
         (
             "fs-lock",
             TrampolineRing::FsLock,
-            Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+            Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
         ),
         (
             "net-outbound",
             TrampolineRing::NetOutbound,
-            Some(PluginBuilderOutcome::Filter(FilterAction::Forward)),
+            Some(UnifiedBuilderOutcome::Filter(FilterAction::Forward)),
         ),
         (
             "net-inbound",
             TrampolineRing::NetInbound,
-            Some(PluginBuilderOutcome::Filter(FilterAction::Forward)),
+            Some(UnifiedBuilderOutcome::Filter(FilterAction::Forward)),
         ),
         ("console-input", TrampolineRing::ConsoleInput, None),
         ("console-output", TrampolineRing::ConsoleOutput, None),
@@ -531,17 +532,17 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
         (
             "host-lsm-exec",
             TrampolineRing::HostLsmExec,
-            Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+            Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
         ),
         (
             "host-pressure",
             TrampolineRing::HostPressure,
-            Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+            Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
         ),
         (
             "host-keyring-access",
             TrampolineRing::HostKeyringAccess,
-            Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+            Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
         ),
         ("vm-init", TrampolineRing::Lifecycle, None),
         ("vm-ready", TrampolineRing::Lifecycle, None),
@@ -581,7 +582,7 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
             Vec::new(),
             vec![(TrampolineRing::VsockService, 0)],
         ),
-        ("build", Vec::new(), Vec::new()),
+        ("seal", Vec::new(), Vec::new()),
     ];
     for (verb, requires, rings) in structural {
         cases.push(plugin_builder_case(
@@ -597,10 +598,19 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
     Ok(cases)
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// see: cans/15-operations.md#Multi-language-parity-gate
-fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
-    type ScopeVerb = (&'static str, TrampolineRing, Option<PluginBuilderOutcome>);
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
+// One scope table, two constructions: the nested cases mount the scope's
+// verbs through the scope entry points on a plugin-mode builder; the
+// merge cases mount the same plugin-mode builder onto a host-mode
+// builder and assert the host descriptors include them with the
+// plugin's scope. Same rings, same events, same outcomes; only the
+// construction (the case name) differs.
+fn plugin_builder_scope_cases(
+    prefix: &str,
+    seq_start: u64,
+) -> Result<Vec<VectorCase>, VectorError> {
+    type ScopeVerb = (&'static str, TrampolineRing, Option<UnifiedBuilderOutcome>);
     let scopes: &[(&str, &[ScopeVerb])] = &[
         (
             "trap",
@@ -608,7 +618,7 @@ fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
                 (
                     "trap",
                     TrampolineRing::Trap,
-                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                    Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
                 ),
                 ("process-exit", TrampolineRing::ProcessExit, None),
             ],
@@ -619,18 +629,18 @@ fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
                 (
                     "fs-lookup",
                     TrampolineRing::FsLookup,
-                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                    Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
                 ),
                 ("fs-read", TrampolineRing::FsRead, None),
                 (
                     "fs-write",
                     TrampolineRing::FsWrite,
-                    Some(PluginBuilderOutcome::Filter(FilterAction::Forward)),
+                    Some(UnifiedBuilderOutcome::Filter(FilterAction::Forward)),
                 ),
                 (
                     "fs-lock",
                     TrampolineRing::FsLock,
-                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                    Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
                 ),
             ],
         ),
@@ -640,12 +650,12 @@ fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
                 (
                     "net-outbound",
                     TrampolineRing::NetOutbound,
-                    Some(PluginBuilderOutcome::Filter(FilterAction::Forward)),
+                    Some(UnifiedBuilderOutcome::Filter(FilterAction::Forward)),
                 ),
                 (
                     "net-inbound",
                     TrampolineRing::NetInbound,
-                    Some(PluginBuilderOutcome::Filter(FilterAction::Forward)),
+                    Some(UnifiedBuilderOutcome::Filter(FilterAction::Forward)),
                 ),
             ],
         ),
@@ -669,17 +679,17 @@ fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
                 (
                     "host-lsm-exec",
                     TrampolineRing::HostLsmExec,
-                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                    Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
                 ),
                 (
                     "host-pressure",
                     TrampolineRing::HostPressure,
-                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                    Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
                 ),
                 (
                     "host-keyring-access",
                     TrampolineRing::HostKeyringAccess,
-                    Some(PluginBuilderOutcome::Verdict(Verdict::Pass)),
+                    Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
                 ),
                 ("host-preempt", TrampolineRing::HostPreempt, None),
             ],
@@ -704,7 +714,7 @@ fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
         ),
     ];
     let mut cases = Vec::with_capacity(scopes.len());
-    for (seq, (scope, verbs)) in (37..).zip(scopes.iter()) {
+    for (seq, (scope, verbs)) in (seq_start..).zip(scopes.iter()) {
         let mut rings = Vec::with_capacity(verbs.len());
         let mut events = Vec::with_capacity(verbs.len());
         let mut outcomes = Vec::new();
@@ -720,7 +730,7 @@ fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
             }
         }
         cases.push(plugin_builder_case(
-            &format!("plugin-builder-nested-{scope}"),
+            &format!("{prefix}-{scope}"),
             seq,
             Vec::new(),
             rings,
@@ -729,6 +739,18 @@ fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
         )?);
     }
     Ok(cases)
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
+fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
+    plugin_builder_scope_cases("plugin-builder-nested", 37)
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
+fn plugin_builder_merge_cases() -> Result<Vec<VectorCase>, VectorError> {
+    plugin_builder_scope_cases("plugin-merge", 45)
 }
 
 // see: cans/artifacts/examples/policy-matrix.rs#WatchdogSilencerPlugin

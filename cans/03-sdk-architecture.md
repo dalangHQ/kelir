@@ -113,7 +113,7 @@
           - Accepts optional ProcessLimits; see: 11-protocol.md#Trap-fast-path
           - Accepts optional allocPty flag; rides FLAG_ALLOC_PTY on EXEC_IO_SPEC
           - Signal cancellation targets exec_id, not raw guest pid
-      - Custom vsock RPC services: builder.register_vsock_service(port, service, schema, handler)
+      - Custom vsock RPC services: builder.vsock_service(spec, handler)
     - Cross-SDK guarantees
       - Three-tier binary distribution model
         - Dynamic runtimes (TS/Python): Zero Rust compilation by end user; ships precompiled
@@ -173,9 +173,10 @@
       - Python: params typed by Pydantic BaseModel
     - Zero-allocation validation: operates on zero-copy guest memory
   - Rust SDK
+    - Superseded by the unified builder surface: see: #Unified-builder-surface
     - see: artifacts/code/rust-handle-injection.rs
-    - Typestate transitions: KelirBuilder<Unsealed, Plugins, Params> to
-      - KelirBuilder<Sealed, Plugins, Params> to Session<Plugins, Params>
+    - Typestate transitions: KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params> to
+      - KelirBuilder<Host, Sealed, Ctx, Deps, Plugins, Params> to Session<Plugins, Params>
     - Every verb consumes self by value: .plugin(), .params(), .trap(), .boot()
     - .detached(true) spawns unowned runtime child registered in SQLite sessions
     - Relay endpoint binds to ~/.kelir/sessions/<id>/relay.sock
@@ -201,6 +202,7 @@
     - Composite bundles flatten into builder via CompositePlugin trait
     - Scope constraint via MountOptions: rings, binaries, paths
   - TypeScript SDK
+    - Superseded by the unified builder surface: see: #Unified-builder-surface
     - see: artifacts/code/typescript-accumulation.ts
     - TypeScript builder: KelirBuilder<TPlugins, TParams> accumulation monad
     - .use(plugin) accumulates TPlugins & PContext, returning new KelirBuilder
@@ -219,6 +221,7 @@
     - Wraps async TS handlers in ForeignPluginProxy at NAPI boundary
     - Null-object pattern: use(plugin({ enabled: false })) returns same monad
   - Python SDK
+    - Superseded by the unified builder surface: see: #Unified-builder-surface
     - see: artifacts/code/python-raii-pydantic.py
     - async with builder as session
       - __aenter__ boots microVM
@@ -264,7 +267,72 @@
       - Rust: async-trait, JoinSet, Arc<Mutex<>> states
       - TypeScript: Promise.all fan-out, generic inference
       - Python: asyncio.gather, async with, Pydantic v2
+  - Unified builder surface
+    - One builder per SDK; creation, mount, host-only list, validation
+      - Surface home: see: 02-plugin-model.md#Unified-builder
+    - Closed set: 30 verbs and 8 scopes in every SDK, both modes
+      - Verb home: see: 02-plugin-model.md#Chainable-verbs
+      - Scope home: see: 02-plugin-model.md#Nested-scopes
+    - Structural verbs, all three SDKs, both modes
+      - context, require(s), scope, fork_with, vsock_service
+      - fork_with keeps its pinned per-language signature shape
+        - Rust: Fn(&str) -> Box<dyn AnyPlugin>
+        - TypeScript: () -> KelirBuilder
+        - Python: Fn(KelirBuilder) -> KelirBuilder
+    - Ring verbs, all three SDKs, both modes
+      - 24 verbs: trap 2, fs 4, net 2, console 2, exec 2, host 4
+        - lifecycle 5, telemetry 3; names as in the verb home
+    - Scopes, all three SDKs, both modes
+      - trap, fs, net, console, exec, host, lifecycle, telemetry
+      - Entry-point names are the group names in every SDK
+    - Rust
+      - Entry: KelirBuilder::new(config) is the host
+      - Entry: KelirBuilder::named(name) is a plugin-mode builder
+      - KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
+      - Mount: host.plugin(builder) moves the registry by value
+      - Mount: host.plugin_instance(P) for trait plugins
+      - Mount requires Plugins: Satisfies<Deps> at compile time
+      - Already-mounted name is EConfig: plugin already mounted: <name>
+      - seal() validates host hooks and mounted plugins; returns Result
+      - Host-only: storage, terminal, wire, lock_broker, detached
+      - Host-only: fast_boot, dax_window, seal, params, plugin, plugin_instance
+      - Host-only: trap, on_trap_deny, register_custom_action
+      - Host-only: register_stream_kind, lifecycle_mut
+      - register_vsock_service deletes; vsock_service is the one verb
+      - Surface: see: artifacts/code/rust-plugin-builder.rs
+    - TypeScript
+      - Entry: new KelirBuilder(config) is the host
+      - Entry: createPlugin(name, options?) returns a plugin-mode KelirBuilder
+      - Mount: host.use(builder) merges the registry
+      - Mount rejects an already-mounted name with EConfig
+      - Mount rejects host-only verbs on a plugin-mode builder with EConfig
+      - Mount checks missing prerequisites; same text as Rust
+      - Validation runs at boot() and fuse() entry; EConfig on failure
+      - Host-only: terminal, wire, detached, boot, fuse, use
+      - Host-only: trap, on, onTrapDeny, registerStreamKind
+      - registerVsockService deletes; vsockService is the one verb
+      - build(), PluginContract, BuiltPlugin delete
+      - Surface: see: artifacts/code/typescript-plugin-builder.ts
+    - Python
+      - Entry: KelirBuilder(...) with VmConfig kwargs is the host
+      - Entry: KelirBuilder.plugin(name) classmethod is a plugin-mode builder
+      - Mount: host.use(builder) merges the registry
+      - Mount rejects an already-mounted name with EConfig
+      - Mount rejects host-only verbs on a plugin-mode builder with EConfig
+      - Missing prerequisites raise EConfig at mount, not boot
+      - Validation runs at boot(); EConfig on failure
+      - Host-only: storage, terminal, wire, detached, params, boot, fuse, use
+      - Host-only: trap, register_custom_action, register_stream_kind
+      - Host-only: on_trap_deny
+      - register_vsock_service deletes; vsock_service is the one verb
+      - build(), PluginBuilder, _PluginWrapper, _Scope delete
+      - Host decorator forms on_vm_init, on_vm_ready, on_vm_shutdown delete
+      - Host decorator forms on_pre_commit, on_post_commit delete
+      - Surface: see: artifacts/code/python-plugin-builder.py
+    - Contract home: see: 02-plugin-model.md#Unified-builder
   - Fluent plugin surface
+    - Superseded by the unified builder surface: see: #Unified-builder-surface
+    - History, not a second surface: the DX-round shape lives here
     - Closed set: 30 verbs and 8 scopes in every SDK
       - Verb home: see: 02-plugin-model.md#Fluent-plugin-creation-builder
       - Scope home: see: 02-plugin-model.md#Nested-scopes

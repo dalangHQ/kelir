@@ -5,19 +5,23 @@
 pub use kelir_core::*;
 pub use kelir_interface as interface;
 
+pub mod builder_plugin;
+pub mod builder_scopes;
 pub mod builder_sdk;
 pub mod driver_interface;
 pub mod hlist_sdk;
 pub mod planes;
-pub mod plugin_builder;
-mod plugin_builder_scopes;
 pub mod plugin_model;
 pub mod protocol_wire;
 pub mod sandbox_runtime;
 pub mod session_lifecycle;
 pub mod telemetry_attest;
 
-pub use builder_sdk::{KelirBuilder, PostExecAction, Sealed, TrapFilter, Unsealed};
+pub use builder_scopes::{
+    ConsoleScope, ExecScope, FsScope, HostScope, LifecycleScope, NetScope, TelemetryScope,
+    TrapScope,
+};
+pub use builder_sdk::{Host, KelirBuilder, Plugin, PostExecAction, Sealed, TrapFilter, Unsealed};
 pub use hlist_sdk::{HCons, HList, HNil, NoParams};
 pub use kelir_core::planes::checkpoint::{PidLineage, StepSlot};
 pub use kelir_core::planes::storage::storage_reconciler::CommitStats;
@@ -26,13 +30,9 @@ pub use kelir_interface::handlers_plugin::Has;
 pub use kelir_interface::plugin_model::HandlerCtx;
 pub use kelir_interface::protocol_wire::Verdict;
 pub use planes::storage_plane::{FsReconcileRequest, SyntheticFile};
-pub use plugin_builder::{
-    ConsoleScope, ExecScope, FsScope, HostScope, LifecycleScope, NetScope, PluginBuilder,
-    PluginWrapper, TelemetryScope, TrapScope,
-};
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
 #[cfg(feature = "plugin-tool-guard")]
-pub use plugin_builder::ToolGuardExt;
+pub use builder_sdk::ToolGuardExt;
 pub use sandbox_runtime::{Sandbox, SandboxOptions, SandboxProfile};
 pub use session_lifecycle::{
     ClockHandle, FsHandle, Session, SpawnResult, StepStack, TerminalHandle, VmHandle, VsockChannel,

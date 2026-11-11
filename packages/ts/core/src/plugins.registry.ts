@@ -290,70 +290,71 @@ export function wireIngress(config: WireIngressConfig): KelirPlugin {
 }
 
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
+// see: cans/02-plugin-model.md#Unified-builder 
 import { createPlugin } from "./plugin.model.js";
+import type { KelirBuilder } from "./plugin.model.js";
 
 
-export function mcpBuilder(config: McpConfig): KelirPlugin {
-  return createPlugin("mcp", { config }).build();
+export function mcpBuilder(config: McpConfig): KelirBuilder {
+  return createPlugin("mcp", { config });
 }
 
 
-export function meshBuilder(config: MeshConfig): KelirPlugin {
-  return createPlugin("mesh", { config }).build();
+export function meshBuilder(config: MeshConfig): KelirBuilder {
+  return createPlugin("mesh", { config });
 }
 
 
-export function containerBuilder(config: ContainerConfig): KelirPlugin {
-  return createPlugin("container", { config }).build();
+export function containerBuilder(config: ContainerConfig): KelirBuilder {
+  return createPlugin("container", { config });
 }
 
 
-export function dbProxyBuilder(config: DbProxyConfig): KelirPlugin {
-  return createPlugin("db-proxy", { config }).build();
+export function dbProxyBuilder(config: DbProxyConfig): KelirBuilder {
+  return createPlugin("db-proxy", { config });
 }
 
 
-export function replayBuilder(config: ReplayConfig): KelirPlugin {
-  return createPlugin("replay", { config }).build();
+export function replayBuilder(config: ReplayConfig): KelirBuilder {
+  return createPlugin("replay", { config });
 }
 
 
-export function supplyChainBuilder(config: SupplyChainConfig): KelirPlugin {
-  return createPlugin("supply-chain", { config }).build();
+export function supplyChainBuilder(config: SupplyChainConfig): KelirBuilder {
+  return createPlugin("supply-chain", { config });
 }
 
 
-export function toolGuardBuilder(config: ToolGuardConfig): KelirPlugin {
-  return createPlugin("tool-guard", { config }).build();
+export function toolGuardBuilder(config: ToolGuardConfig): KelirBuilder {
+  return createPlugin("tool-guard", { config });
 }
 
 
-export function vaultBuilder(config: VaultConfig): KelirPlugin {
-  return createPlugin("vault", { config }).build();
+export function vaultBuilder(config: VaultConfig): KelirBuilder {
+  return createPlugin("vault", { config });
 }
 
 
-export function wireIngressBuilder(config: WireIngressConfig): KelirPlugin {
-  return createPlugin("wire-ingress", { config }).build();
+export function wireIngressBuilder(config: WireIngressConfig): KelirBuilder {
+  return createPlugin("wire-ingress", { config });
 }
 
 
-export function chaosBuilder(config: ChaosConfig): KelirPlugin {
-  return createPlugin("chaos", { config }).build();
+export function chaosBuilder(config: ChaosConfig): KelirBuilder {
+  return createPlugin("chaos", { config });
 }
 
 
-export function ledgerBuilder(config: LedgerConfig): KelirPlugin {
-  return createPlugin("ledger", { config }).build();
+export function ledgerBuilder(config: LedgerConfig): KelirBuilder {
+  return createPlugin("ledger", { config });
 }
 
 
-export function profileBuilder(config: ProfileConfig): KelirPlugin {
-  return createPlugin("profile", { config }).build();
+export function profileBuilder(config: ProfileConfig): KelirBuilder {
+  return createPlugin("profile", { config });
 }
 
 
-export function transactionBuilder(config: TransactionConfig): KelirPlugin {
-  return createPlugin("transaction", { config }).build();
+export function transactionBuilder(config: TransactionConfig): KelirBuilder {
+  return createPlugin("transaction", { config });
 }

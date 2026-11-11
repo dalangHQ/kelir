@@ -12,7 +12,7 @@ from kelir.plugin_fusion import HookDescriptor, HookStage
 from kelir.generated.fusion_tables import HOOK_RINGS
 
 if TYPE_CHECKING:
-    from kelir.plugin_builder import PluginBuilder
+    from kelir import KelirBuilder
 
 __all__ = [
     "BasePlugin",
@@ -110,9 +110,9 @@ def hook_descriptors(plugin: object) -> list[HookDescriptor]:
             )
             ordinal += 1
         return descriptors
-    from kelir.plugin_builder import _PluginWrapper
+    from kelir import KelirBuilder
 
-    if isinstance(plugin, _PluginWrapper):
+    if isinstance(plugin, KelirBuilder):
         return plugin.hook_descriptors()
     return descriptors
 
@@ -123,10 +123,10 @@ class BasePlugin:
     requires: tuple[str, ...] = ()
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
-    def to_builder(self) -> PluginBuilder:
-        from kelir.plugin_builder import PluginBuilder
+    def to_builder(self) -> KelirBuilder:
+        from kelir import KelirBuilder
 
-        builder = PluginBuilder(self.name or type(self).__name__)
+        builder = KelirBuilder.plugin(self.name or type(self).__name__)
         for required in self.requires:
             builder.require(required)
         for method_name in HOOK_RINGS:

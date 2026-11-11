@@ -80,8 +80,7 @@ const runtime = kelir({
       policyState.quarantinedPids.push(payload.pid);
     })
 
-  // TODO: SSOT registerVsockService(0x0013, schema, handler) per spec; live TS registerVsockService takes 4 args (builder.lifecycle.ts:306), so kind-based registerStreamKind used instead, see cans/03-sdk-architecture.md#Custom-vsock-RPC-services:-builder.register-vsock-service(port,-schema,-handler)
-  .registerStreamKind(0x0013, t.Object({}),
+  .vsockService(0x0013, "echo", t.Object({}),
     async (request) => request)
 
   // see: cans/08-lifecycle.md#Lifecycle-vetoes

@@ -369,13 +369,13 @@ pub fn emit_typescript(model: &FusionModel) -> String {
     }
     lines.push("];".to_string());
     lines.push(String::new());
-    lines.push("export interface PluginBuilderVerb {".to_string());
+    lines.push("export interface UnifiedBuilderVerb {".to_string());
     lines.push("  readonly verb: string;".to_string());
     lines.push("  readonly ring: RingEvent;".to_string());
     lines.push("  readonly lifecycleTag?: LifecycleTag;".to_string());
     lines.push("}".to_string());
     lines.push(String::new());
-    lines.push("export const PLUGIN_BUILDER_VERBS: readonly PluginBuilderVerb[] = [".to_string());
+    lines.push("export const UNIFIED_BUILDER_VERBS: readonly UnifiedBuilderVerb[] = [".to_string());
     for binding in &model.hook_rings {
         let extra = match &binding.lifecycle_tag {
             None => String::new(),

@@ -48,10 +48,10 @@ class SupplyChainPlugin(BasePlugin):
         self.config = config if config is not None else SupplyChainConfig()
 
 
-# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
-from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+# see: cans/02-plugin-model.md#Unified-builder 
+from kelir import KelirBuilder
 
 
-def supply_chain_builder(config: SupplyChainConfig | None = None) -> _PluginWrapper:
+def supply_chain_builder(config: SupplyChainConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else SupplyChainConfig()
-    return PluginBuilder("supply-chain").context(lambda: cfg).build()
+    return KelirBuilder.plugin("supply-chain").context(lambda: cfg)

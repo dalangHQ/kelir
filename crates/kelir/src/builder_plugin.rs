@@ -6,7 +6,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
+use kelir_interface::driver_interface::{
+    DaxWindowMode, FastBootMode, WatchdogEvent, WatchdogVerdict,
+};
 use kelir_interface::plugin_model::{
     AnyPlugin, ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, KelirPlugin,
     LifecycleCtx, LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginClone,
@@ -15,23 +17,12 @@ use kelir_interface::plugin_model::{
 use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdict};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
-use crate::hlist_sdk::{HCons, HList, HNil, Satisfies};
-
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-pub use crate::plugin_builder_scopes::{
+use crate::builder_scopes::{
     ConsoleScope, ExecScope, FsScope, HostScope, LifecycleScope, NetScope, TelemetryScope,
     TrapScope,
 };
-
-// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-#[cfg(feature = "plugin-tool-guard")]
-use crate::builder_sdk::{KelirBuilder, Unsealed};
-#[cfg(feature = "plugin-tool-guard")]
-use kelir_interface::plugin_model::CompositePlugin;
-#[cfg(feature = "plugin-tool-guard")]
-use plugin_tool_guard::{ToolGuardPlugin, ToolSpec};
-
-type ForkFn = Arc<dyn Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync>;
+use crate::builder_sdk::{KelirBuilder, Plugin, Registration, Unsealed};
+use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
 
 struct OnTrap;
 struct OnProcessExit;
@@ -374,87 +365,53 @@ where
     }
 }
 
-// see: cans/02-plugin-model.md#KelirPlugin-trait
-pub struct PluginBuilder<Ctx, Deps: HList> {
-    name: &'static str,
-    context_factory: Arc<dyn Fn() -> Ctx + Send + Sync>,
-    scope: MountScope,
-    fork: Option<ForkFn>,
-    trap: Vec<Arc<dyn TrapInterposer>>,
-    fs: Vec<Arc<dyn FsInterposer>>,
-    net: Vec<Arc<dyn NetInterposer>>,
-    console: Vec<Arc<dyn ConsoleInterposer>>,
-    host: Vec<Arc<dyn HostInterposer>>,
-    lifecycle: Vec<Arc<dyn LifecycleParticipant>>,
-    telemetry: Vec<Arc<dyn SystemTelemetryParticipant>>,
-    vsock: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>)>,
-    deps: PhantomData<fn() -> Deps>,
-}
-
-impl PluginBuilder<(), HNil> {
-    pub fn new(name: &'static str) -> Self {
-        Self {
-            name,
-            context_factory: Arc::new(|| ()),
-            scope: MountScope::default(),
-            fork: None,
-            trap: Vec::new(),
-            fs: Vec::new(),
-            net: Vec::new(),
-            console: Vec::new(),
-            host: Vec::new(),
-            lifecycle: Vec::new(),
-            telemetry: Vec::new(),
-            vsock: Vec::new(),
-            deps: PhantomData,
-        }
-    }
-}
-
-fn has_empty<T: AsRef<std::ffi::OsStr>>(values: &Option<Vec<T>>) -> bool {
-    values
-        .as_ref()
-        .is_some_and(|values| values.iter().any(|value| value.as_ref().is_empty()))
-}
-
-impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
-    fn rebuild<NextCtx, NextDeps: HList>(
-        self,
-        context_factory: Arc<dyn Fn() -> NextCtx + Send + Sync>,
-    ) -> PluginBuilder<NextCtx, NextDeps> {
-        PluginBuilder {
-            name: self.name,
-            context_factory,
-            scope: self.scope,
-            fork: self.fork,
-            trap: self.trap,
-            fs: self.fs,
-            net: self.net,
-            console: self.console,
-            host: self.host,
-            lifecycle: self.lifecycle,
-            telemetry: self.telemetry,
-            vsock: self.vsock,
-            deps: PhantomData,
-        }
-    }
-
+// see: cans/02-plugin-model.md#Unified-builder
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>
+{
     pub fn context<NextCtx>(
         self,
         factory: impl Fn() -> NextCtx + Send + Sync + 'static,
-    ) -> PluginBuilder<NextCtx, Deps>
+    ) -> KelirBuilder<Mode, Unsealed, NextCtx, Deps, Plugins, Params>
     where
         NextCtx: Clone + Send + Sync + 'static,
     {
-        self.rebuild(Arc::new(factory))
+        KelirBuilder {
+            config: self.config,
+            plugins: self.plugins,
+            registration: self.registration,
+            fast_boot: self.fast_boot,
+            dax_window: self.dax_window,
+            name: self.name,
+            context_factory: Arc::new(factory),
+            scope: self.scope,
+            fork: self.fork,
+            registry: self.registry,
+            seal: PhantomData,
+            deps: PhantomData,
+        }
     }
 
-    pub fn require<P>(self) -> PluginBuilder<Ctx, HCons<P::Context, Deps>>
+    pub fn require<P>(
+        self,
+    ) -> KelirBuilder<Mode, Unsealed, Ctx, HCons<P::Context, Deps>, Plugins, Params>
     where
         P: KelirPlugin,
     {
-        let factory = Arc::clone(&self.context_factory);
-        self.rebuild(factory)
+        KelirBuilder {
+            config: self.config,
+            plugins: self.plugins,
+            registration: self.registration,
+            fast_boot: self.fast_boot,
+            dax_window: self.dax_window,
+            name: self.name,
+            context_factory: self.context_factory,
+            scope: self.scope,
+            fork: self.fork,
+            registry: self.registry,
+            seal: PhantomData,
+            deps: PhantomData,
+        }
     }
 
     pub fn scope(mut self, scope: MountScope) -> Self {
@@ -474,7 +431,7 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         H: VsockServiceHandler + 'static,
     {
-        self.vsock.push((spec, Arc::new(handler)));
+        self.registry.vsock.push((spec, Arc::new(handler)));
         self
     }
 
@@ -482,10 +439,12 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(&TrapEvent, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
-        self.trap.push(Arc::new(TrapClosureAdapter::<_, OnTrap> {
-            handler: f,
-            verb: PhantomData,
-        }));
+        self.registry
+            .trap
+            .push(Arc::new(TrapClosureAdapter::<_, OnTrap> {
+                handler: f,
+                verb: PhantomData,
+            }));
         self
     }
 
@@ -493,7 +452,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(&ProcessExit, &HandlerCtx) -> Result<(), PluginError> + Send + Sync + 'static,
     {
-        self.trap
+        self.registry
+            .trap
             .push(Arc::new(TrapClosureAdapter::<_, OnProcessExit> {
                 handler: f,
                 verb: PhantomData,
@@ -505,10 +465,12 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(&Path) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
-        self.fs.push(Arc::new(FsClosureAdapter::<_, OnFsLookup> {
-            handler: f,
-            verb: PhantomData,
-        }));
+        self.registry
+            .fs
+            .push(Arc::new(FsClosureAdapter::<_, OnFsLookup> {
+                handler: f,
+                verb: PhantomData,
+            }));
         self
     }
 
@@ -516,10 +478,12 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(&Path, &mut [u8]) -> Result<(), PluginError> + Send + Sync + 'static,
     {
-        self.fs.push(Arc::new(FsClosureAdapter::<_, OnFsRead> {
-            handler: f,
-            verb: PhantomData,
-        }));
+        self.registry
+            .fs
+            .push(Arc::new(FsClosureAdapter::<_, OnFsRead> {
+                handler: f,
+                verb: PhantomData,
+            }));
         self
     }
 
@@ -530,10 +494,12 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
             + Sync
             + 'static,
     {
-        self.fs.push(Arc::new(FsClosureAdapter::<_, OnFsWrite> {
-            handler: f,
-            verb: PhantomData,
-        }));
+        self.registry
+            .fs
+            .push(Arc::new(FsClosureAdapter::<_, OnFsWrite> {
+                handler: f,
+                verb: PhantomData,
+            }));
         self
     }
 
@@ -541,10 +507,12 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(&Path, i32, i16, u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
-        self.fs.push(Arc::new(FsClosureAdapter::<_, OnFsLock> {
-            handler: f,
-            verb: PhantomData,
-        }));
+        self.registry
+            .fs
+            .push(Arc::new(FsClosureAdapter::<_, OnFsLock> {
+                handler: f,
+                verb: PhantomData,
+            }));
         self
     }
 
@@ -552,7 +520,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(&mut [u8]) -> Result<FilterAction, PluginError> + Send + Sync + 'static,
     {
-        self.net
+        self.registry
+            .net
             .push(Arc::new(NetClosureAdapter::<_, OnNetOutbound> {
                 handler: f,
                 verb: PhantomData,
@@ -564,7 +533,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(&mut [u8]) -> Result<FilterAction, PluginError> + Send + Sync + 'static,
     {
-        self.net
+        self.registry
+            .net
             .push(Arc::new(NetClosureAdapter::<_, OnNetInbound> {
                 handler: f,
                 verb: PhantomData,
@@ -576,7 +546,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(u32, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
     {
-        self.console
+        self.registry
+            .console
             .push(Arc::new(ConsoleClosureAdapter::<_, OnConsoleInput> {
                 handler: f,
                 verb: PhantomData,
@@ -588,7 +559,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(u32, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
     {
-        self.console
+        self.registry
+            .console
             .push(Arc::new(ConsoleClosureAdapter::<_, OnConsoleOutput> {
                 handler: f,
                 verb: PhantomData,
@@ -600,7 +572,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(u32, u64, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
     {
-        self.console
+        self.registry
+            .console
             .push(Arc::new(ConsoleClosureAdapter::<_, OnExecStdout> {
                 handler: f,
                 verb: PhantomData,
@@ -612,7 +585,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(u32, u64, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
     {
-        self.console
+        self.registry
+            .console
             .push(Arc::new(ConsoleClosureAdapter::<_, OnExecStderr> {
                 handler: f,
                 verb: PhantomData,
@@ -624,7 +598,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(&Path, u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
-        self.host
+        self.registry
+            .host
             .push(Arc::new(HostClosureAdapter::<_, OnHostLsmExec> {
                 handler: f,
                 verb: PhantomData,
@@ -636,7 +611,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
-        self.host
+        self.registry
+            .host
             .push(Arc::new(HostClosureAdapter::<_, OnHostPressure> {
                 handler: f,
                 verb: PhantomData,
@@ -648,7 +624,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
     where
         F: Fn(&str) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
-        self.host
+        self.registry
+            .host
             .push(Arc::new(HostClosureAdapter::<_, OnHostKeyringAccess> {
                 handler: f,
                 verb: PhantomData,
@@ -661,7 +638,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
-        self.lifecycle
+        self.registry
+            .lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnVmInit> {
                 handler: f,
                 verb: PhantomData,
@@ -674,7 +652,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
-        self.lifecycle
+        self.registry
+            .lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnVmReady> {
                 handler: f,
                 verb: PhantomData,
@@ -687,7 +666,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
-        self.lifecycle
+        self.registry
+            .lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnVmShutdown> {
                 handler: f,
                 verb: PhantomData,
@@ -700,7 +680,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
-        self.lifecycle
+        self.registry
+            .lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnPreCommit> {
                 handler: f,
                 verb: PhantomData,
@@ -713,7 +694,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>, bool) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
-        self.lifecycle
+        self.registry
+            .lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnPostCommit> {
                 handler: f,
                 verb: PhantomData,
@@ -726,7 +708,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
-        self.lifecycle
+        self.registry
+            .lifecycle
             .push(Arc::new(LifecycleClosureAdapter::<_, OnHostPreempt> {
                 handler: f,
                 verb: PhantomData,
@@ -739,7 +722,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         F: Fn(u32, u32) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
-        self.telemetry
+        self.registry
+            .telemetry
             .push(Arc::new(TelemetryClosureAdapter::<_, OnMemoryPressure> {
                 handler: f,
                 verb: PhantomData,
@@ -752,7 +736,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         F: Fn(u64) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
-        self.telemetry
+        self.registry
+            .telemetry
             .push(Arc::new(TelemetryClosureAdapter::<_, OnHeartbeat> {
                 handler: f,
                 verb: PhantomData,
@@ -765,7 +750,8 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         F: Fn(&WatchdogEvent) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<WatchdogVerdict, PluginError>> + Send + 'static,
     {
-        self.telemetry
+        self.registry
+            .telemetry
             .push(Arc::new(TelemetryClosureAdapter::<_, OnWatchdog> {
                 handler: f,
                 verb: PhantomData,
@@ -773,126 +759,87 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         self
     }
 
-    pub fn trap<F>(self, configure: F) -> Self
-    where
-        F: FnOnce(TrapScope<Ctx, Deps>) -> TrapScope<Ctx, Deps>,
-    {
-        configure(TrapScope { builder: self }).builder
-    }
-
     pub fn fs<F>(self, configure: F) -> Self
     where
-        F: FnOnce(FsScope<Ctx, Deps>) -> FsScope<Ctx, Deps>,
+        F: FnOnce(
+            FsScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> FsScope<Plugins, Params, Mode, Ctx, Deps>,
     {
         configure(FsScope { builder: self }).builder
     }
 
     pub fn net<F>(self, configure: F) -> Self
     where
-        F: FnOnce(NetScope<Ctx, Deps>) -> NetScope<Ctx, Deps>,
+        F: FnOnce(
+            NetScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> NetScope<Plugins, Params, Mode, Ctx, Deps>,
     {
         configure(NetScope { builder: self }).builder
     }
 
     pub fn console<F>(self, configure: F) -> Self
     where
-        F: FnOnce(ConsoleScope<Ctx, Deps>) -> ConsoleScope<Ctx, Deps>,
+        F: FnOnce(
+            ConsoleScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> ConsoleScope<Plugins, Params, Mode, Ctx, Deps>,
     {
         configure(ConsoleScope { builder: self }).builder
     }
 
     pub fn exec<F>(self, configure: F) -> Self
     where
-        F: FnOnce(ExecScope<Ctx, Deps>) -> ExecScope<Ctx, Deps>,
+        F: FnOnce(
+            ExecScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> ExecScope<Plugins, Params, Mode, Ctx, Deps>,
     {
         configure(ExecScope { builder: self }).builder
     }
 
     pub fn host<F>(self, configure: F) -> Self
     where
-        F: FnOnce(HostScope<Ctx, Deps>) -> HostScope<Ctx, Deps>,
+        F: FnOnce(
+            HostScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> HostScope<Plugins, Params, Mode, Ctx, Deps>,
     {
         configure(HostScope { builder: self }).builder
     }
 
     pub fn lifecycle<F>(self, configure: F) -> Self
     where
-        F: FnOnce(LifecycleScope<Ctx, Deps>) -> LifecycleScope<Ctx, Deps>,
+        F: FnOnce(
+            LifecycleScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> LifecycleScope<Plugins, Params, Mode, Ctx, Deps>,
     {
         configure(LifecycleScope { builder: self }).builder
     }
 
     pub fn telemetry<F>(self, configure: F) -> Self
     where
-        F: FnOnce(TelemetryScope<Ctx, Deps>) -> TelemetryScope<Ctx, Deps>,
+        F: FnOnce(
+            TelemetryScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> TelemetryScope<Plugins, Params, Mode, Ctx, Deps>,
     {
         configure(TelemetryScope { builder: self }).builder
     }
+}
 
-    pub fn build(self) -> Result<PluginWrapper<Ctx, Deps>, PluginError> {
-        for (spec, _) in &self.vsock {
-            if spec.port == 0 || spec.port > 65_535 {
-                return Err(PluginError::reject(
-                    "EConfig",
-                    format!("vsock service port {} out of range 1..=65535", spec.port),
-                ));
-            }
-            if spec.service.is_empty() {
-                return Err(PluginError::reject(
-                    "EConfig",
-                    "vsock service name must not be empty",
-                ));
-            }
-        }
-        if has_empty(&self.scope.binaries) {
-            return Err(PluginError::reject(
-                "EConfig",
-                "scope binary name must not be empty",
-            ));
-        }
-        if has_empty(&self.scope.paths) {
-            return Err(PluginError::reject(
-                "EConfig",
-                "scope path must not be empty",
-            ));
-        }
-        Ok(PluginWrapper {
-            name: self.name,
-            context_factory: self.context_factory,
-            scope: self.scope,
-            fork: self.fork,
-            trap: self.trap,
-            fs: self.fs,
-            net: self.net,
-            console: self.console,
-            host: self.host,
-            lifecycle: self.lifecycle,
-            telemetry: self.telemetry,
-            vsock: self.vsock,
-            deps: PhantomData,
-        })
+// see: cans/02-plugin-model.md#Unified-builder
+impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
+    KelirBuilder<Plugin, Unsealed, Ctx, Deps, Plugins, Params>
+{
+    pub fn trap<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(
+            TrapScope<Plugins, Params, Plugin, Ctx, Deps>,
+        ) -> TrapScope<Plugins, Params, Plugin, Ctx, Deps>,
+    {
+        configure(TrapScope { builder: self }).builder
     }
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-#[derive(Clone)]
-pub struct PluginWrapper<Ctx, Deps: HList> {
-    name: &'static str,
-    context_factory: Arc<dyn Fn() -> Ctx + Send + Sync>,
-    scope: MountScope,
-    fork: Option<ForkFn>,
-    trap: Vec<Arc<dyn TrapInterposer>>,
-    fs: Vec<Arc<dyn FsInterposer>>,
-    net: Vec<Arc<dyn NetInterposer>>,
-    console: Vec<Arc<dyn ConsoleInterposer>>,
-    host: Vec<Arc<dyn HostInterposer>>,
-    lifecycle: Vec<Arc<dyn LifecycleParticipant>>,
-    telemetry: Vec<Arc<dyn SystemTelemetryParticipant>>,
-    vsock: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>)>,
-    deps: PhantomData<fn() -> Deps>,
-}
-
-impl<Ctx, Deps: HList> KelirPlugin for PluginWrapper<Ctx, Deps>
+impl<SealState, Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> KelirPlugin
+    for KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
 where
     Ctx: Clone + Send + Sync + 'static,
 {
@@ -918,80 +865,65 @@ where
     }
 
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
-        for stage in &self.trap {
-            pipeline.bind_trap_scoped(Arc::clone(stage), self.scope.clone());
-        }
-        for stage in &self.fs {
-            pipeline.bind_fs_scoped(Arc::clone(stage), self.scope.clone());
-        }
-        for stage in &self.net {
-            pipeline.bind_net_scoped(Arc::clone(stage), self.scope.clone());
-        }
-        for stage in &self.console {
-            pipeline.bind_console_scoped(Arc::clone(stage), self.scope.clone());
-        }
-        for stage in &self.host {
-            pipeline.bind_host_scoped(Arc::clone(stage), self.scope.clone());
-        }
-        for (spec, service) in &self.vsock {
-            pipeline.bind_vsock_service_scoped(
-                spec.clone(),
-                Arc::clone(service),
-                self.scope.clone(),
-            );
-        }
-        for stage in &self.lifecycle {
-            pipeline.bind_lifecycle_scoped(Arc::clone(stage), self.scope.clone());
-        }
-        for stage in &self.telemetry {
-            pipeline.bind_telemetry_scoped(Arc::clone(stage), self.scope.clone());
-        }
+        self.bind_registry(pipeline);
     }
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl<Ctx, Deps: HList> PluginDeps for PluginWrapper<Ctx, Deps> {
-    type Deps = Deps;
-}
-
-// see: cans/02-plugin-model.md#Compile-time-prerequisites
-impl<Plugins: HList> Satisfies<kelir_interface::plugin_model::HNil> for Plugins {}
-
-// see: cans/02-plugin-model.md#Compile-time-prerequisites
-impl<Head, Tail, OtherTail> Satisfies<kelir_interface::plugin_model::HCons<Head, OtherTail>>
-    for HCons<Head, Tail>
+impl<SealState, Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> PluginClone
+    for KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
 where
-    Head: Clone + Send + Sync + 'static,
-    Tail: HList + Satisfies<OtherTail>,
+    Ctx: Clone + Send + Sync + 'static,
 {
-}
-
-// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-#[cfg(feature = "plugin-tool-guard")]
-pub trait ToolGuardExt: Sized {
-    fn tool(self, spec: ToolSpec) -> Self;
-}
-
-// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-#[cfg(feature = "plugin-tool-guard")]
-struct ToolGuardBundle {
-    plugin: ToolGuardPlugin,
-}
-
-// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-#[cfg(feature = "plugin-tool-guard")]
-impl CompositePlugin for ToolGuardBundle {
-    fn unpack(self: Box<Self>, parent_scope: &MountScope) -> Vec<(Box<dyn AnyPlugin>, MountScope)> {
-        vec![(Box::new(self.plugin), parent_scope.clone())]
+    fn clone_box(&self) -> Box<dyn AnyPlugin> {
+        let cloned: KelirBuilder<Plugin, Unsealed, Ctx, Deps, HNil, NoParams> = KelirBuilder {
+            config: None,
+            plugins: HNil,
+            registration: Registration::default(),
+            fast_boot: FastBootMode::Off,
+            dax_window: DaxWindowMode::Off,
+            name: self.name,
+            context_factory: Arc::clone(&self.context_factory),
+            scope: self.scope.clone(),
+            fork: self.fork.clone(),
+            registry: self.registry.clone(),
+            seal: PhantomData,
+            deps: PhantomData,
+        };
+        Box::new(cloned)
     }
 }
 
-// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-#[cfg(feature = "plugin-tool-guard")]
-impl<Plugins: HList, Params: 'static> ToolGuardExt for KelirBuilder<Unsealed, Plugins, Params> {
-    fn tool(self, spec: ToolSpec) -> Self {
-        let plugin = ToolGuardPlugin::new().tool(spec);
-        let scope = KelirPlugin::default_scope(&plugin);
-        self.with_composite(ToolGuardBundle { plugin }, scope)
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl<SealState, Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> AnyPlugin
+    for KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
+where
+    Ctx: Clone + Send + Sync + 'static,
+{
+    fn name(&self) -> &'static str {
+        KelirPlugin::name(self)
     }
+
+    fn fork_state(&self, child_session_id: &str) -> Box<dyn AnyPlugin> {
+        KelirPlugin::fork_state(self, child_session_id)
+    }
+
+    fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
+        KelirPlugin::register_interceptors(self, pipeline)
+    }
+
+    fn default_scope(&self) -> MountScope {
+        KelirPlugin::default_scope(self)
+    }
+
+    fn is_enabled(&self) -> bool {
+        true
+    }
+}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl<SealState, Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> PluginDeps
+    for KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
+{
+    type Deps = Deps;
 }

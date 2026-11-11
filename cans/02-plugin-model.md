@@ -168,14 +168,14 @@
       - on_fs_lookup → Verdict::Pass = fall through; Patch(attr) = serve
       - on_fs_write / on_net_outbound / on_net_inbound / on_host_exec → Verdict
       - Trap hooks → Verdict; ring-specific defaults documented per plane
-  - Declarative error mapping
-    - Host exceptions map directly to POSIX errnos via builder error registry
-    - Unmapped exceptions convert cleanly to Verdict::Drop or hypervisor abort
-    - Preserves guest POSIX semantics without manual try-catch in hook bodies
   - Declarative plugin macros
     - Plugins expose declarative DSL attributes expanding at assembly time
     - Macros expand to static MountScope masks and binary trap registrations
     - Eliminates procedural condition checks inside userland hook bodies
+    - Declarative error mapping
+      - Host exceptions map directly to POSIX errnos via builder error registry
+      - Unmapped exceptions convert cleanly to Verdict::Drop or hypervisor abort
+      - Preserves guest POSIX semantics without manual try-catch in hook bodies
   - Static dispatch
     - Dispatch compilation: direct Cargo linkage resolves plugin order at build time
     - Pipeline tables index linear interceptor chains per VirtIO ring
@@ -396,7 +396,105 @@
     - Type-level accumulation in Rust and TypeScript
       - Compile-time prerequisites in Rust (HList) and TS (generic monad)
       - Python enforces prerequisites at builder.boot() via EConfig
+  - Unified builder
+    - One builder type, one chain; a plugin IS a builder instance
+    - Host creation is KelirBuilder::new(VmConfig) in Rust
+    - Plugin creation is KelirBuilder::named(name) in Rust
+    - Mount is merging: host.plugin(plugin) moves the registry by value
+    - No wrapper type, no build-then-mount, no trait round-trip on mount
+    - Mount and surface per SDK: see: 03-sdk-architecture.md#Unified-builder-surface
+    - Rust generic arity (pinned; the contract A3 implements)
+      - KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
+      - Mode is HostMode or PluginMode; no other modes exist
+      - SealState is Unsealed or Sealed; plugin mode is always Unsealed
+      - Ctx is the context type of the builder's own handlers
+      - Deps is the HList of contexts the builder requires
+      - Plugins is the HList of mounted plugin contexts (host only)
+      - Params is the host typed-params type; plugin mode is NoParams
+      - Defaults: HostMode, Unsealed, (), HNil, HNil, NoParams
+      - One Satisfies: the hlist_sdk.rs impls; the duplicate deletes
+      - Arity home: see: artifacts/code/rust-plugin-builder.rs
+    - Creation forms
+      - Rust host: KelirBuilder::new(config) with all defaults
+      - Rust plugin: KelirBuilder::named(name) with all defaults
+      - TypeScript host: new KelirBuilder(config)
+      - TypeScript plugin: createPlugin(name, options?) returns KelirBuilder
+      - Python host: KelirBuilder(...) with VmConfig kwargs
+      - Python plugin: KelirBuilder.plugin(name) classmethod
+    - Verbs in both modes
+      - 24 ring verbs and 8 scopes exist in host mode and plugin mode
+      - Rust: the trap scope entry exists in plugin mode only; the host's trap(filter, f) occupies the name (E0592)
+      - Same signatures as the DX-round plugin builder; the host gains them
+      - context, require, scope, vsock_service, fork_with exist in both modes
+      - Verb names: see: #Chainable-verbs
+      - Scope names: see: #Nested-scopes
+      - Verb signatures: see: artifacts/code/rust-plugin-builder.rs
+      - Verb signatures: see: artifacts/code/typescript-plugin-builder.ts
+      - Verb signatures: see: artifacts/code/python-plugin-builder.py
+    - Host-only verbs (Mode-gated; a plugin-mode builder must not call them)
+      - Rust: storage, terminal, wire, lock_broker, detached, fast_boot
+      - Rust: dax_window, seal, params, plugin, plugin_instance
+      - Rust trap surface stays host-only: trap, on_trap_deny
+      - Rust: register_custom_action, register_stream_kind, lifecycle_mut
+      - TypeScript: terminal, wire, detached, boot, fuse, use
+      - TypeScript trap surface stays host-only: trap, on, onTrapDeny
+      - TypeScript: registerStreamKind stays host-only
+      - Python: storage, terminal, wire, detached, params, boot, fuse, use
+      - Python trap surface stays host-only: trap, on_trap_deny
+      - Python: register_custom_action, register_stream_kind
+      - register_vsock_service deletes in all SDKs; vsock_service is the one verb
+      - Rust rejection is a compile error: no method on PluginMode
+      - TypeScript and Python rejection is EConfig at mount
+      - Host-only list: see: 03-sdk-architecture.md#Unified-builder-surface
+    - Mount is a merge
+      - host.plugin(plugin) takes the plugin-mode builder by value
+      - Hook registry, vsock list, and deps move into the host Registration
+      - Append, in mount order; duplicate hooks from two plugins both kept
+      - Mounting a name twice is EConfig: plugin already mounted: <name>
+      - Rust mount requires Plugins: Satisfies<Deps> at compile time
+      - Mount does not validate; validation is a seal and boot concern
+      - Mount form per SDK: see: 03-sdk-architecture.md#Unified-builder-surface
+    - Trait plugins mount separately
+      - host.plugin_instance(P) where P: KelirPlugin + PluginDeps + Clone
+      - Satisfies check at compile time, same bound as .plugin()
+      - The 13 plugin crates keep their trait impls and keep mounting
+      - Trait home: see: artifacts/code/plugin-trait.rs
+    - One validation, at seal and boot
+      - Rust: seal() runs the triple over host hooks and mounted plugins
+      - Rust: seal() is fallible; it returns Result<_, PluginError>
+      - Rust: seal() yields KelirBuilder<HostMode, Sealed, Ctx, Deps, Plugins, Params>
+      - Rust: seal() carries Plugins: Satisfies<Deps> for host requires
+      - Triple: every verb resolves to a known ring
+      - Triple: every vsock spec is valid: port 1..=65535, non-empty service
+      - Triple: every scope value is well-formed
+      - Plugin failure text names the plugin: <plugin>: <triple failure>
+      - Host failure text is the bare triple text; the host has no name
+      - TypeScript validation runs at boot() and fuse() entry
+      - Python validation runs at boot()
+      - Empty host still seals and boots
+      - Validation home: see: 03-sdk-architecture.md#Unified-builder-surface
+    - One descriptor table
+      - Host descriptors are host hooks first, then mounted plugins
+      - Plugins in mount order; registration order within a plugin
+      - Same rings, same ordinals, one code path per SDK
+      - Descriptor table: see: 15-operations.md#Unified-builder-parity-vectors
+    - KelirPlugin stays underneath
+      - The unified builder implements KelirPlugin for compat only
+      - register_interceptors binds the builder's own registry
+      - It is not the mount path; mount is the merge above
+      - fork_state re-runs .fork_with when provided, else clone_box
+      - Trait home: see: artifacts/code/plugin-trait.rs
+    - Deleted shapes
+      - Rust: PluginBuilder, PluginWrapper, plugin_builder_scopes delete
+      - Rust: the plugin_builder.rs Satisfies duplicate deletes
+      - TypeScript: PluginContract, BuiltPlugin, build() delete
+      - Python: PluginBuilder, _PluginWrapper, _Scope, build() delete
+      - Zero references remain in crates, packages, and artifacts code
+      - with_composite() deletes; mount a scoped plugin-mode builder instead
   - Fluent plugin-creation builder
+    - Superseded by the unified builder: see: #Unified-builder
+    - History, not a second surface: the DX-round shape lives here
+    - Verb and scope names below stay current; the rest is history
     - One entry point per SDK
       - Rust: kelir::plugin_builder::PluginBuilder::new(name)
       - TypeScript: createPlugin(name); existing symbol, surface aligned

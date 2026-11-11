@@ -15,8 +15,8 @@ from kelir.generated.fusion_tables import (
 )
 
 if TYPE_CHECKING:
+    from kelir import KelirBuilder
     from kelir.model_plugin import BasePlugin
-    from kelir.plugin_builder import _PluginWrapper
 
 
 @dataclass(frozen=True)
@@ -80,7 +80,7 @@ class FusedTrampoline:
 
     @classmethod
     def fuse(
-        cls, hooks: list[HookDescriptor] | BasePlugin | _PluginWrapper
+        cls, hooks: list[HookDescriptor] | BasePlugin | KelirBuilder
     ) -> FusedTrampoline:
         if isinstance(hooks, list):
             descriptors: list[HookDescriptor] = hooks

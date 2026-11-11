@@ -46,10 +46,10 @@ class LedgerPlugin(BasePlugin):
         self.config = config if config is not None else LedgerConfig()
 
 
-# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
-from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+# see: cans/02-plugin-model.md#Unified-builder 
+from kelir import KelirBuilder
 
 
-def ledger_builder(config: LedgerConfig | None = None) -> _PluginWrapper:
+def ledger_builder(config: LedgerConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else LedgerConfig()
-    return PluginBuilder("ledger").context(lambda: cfg).build()
+    return KelirBuilder.plugin("ledger").context(lambda: cfg)

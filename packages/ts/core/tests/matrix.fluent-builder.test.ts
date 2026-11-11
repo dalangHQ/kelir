@@ -11,11 +11,13 @@ import {
   kelir,
   createPlugin,
   t,
+  KelirBuilder,
   type KelirPlugin,
+  type HookDescriptor,
 } from "../dist/index.js";
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-const p: KelirPlugin = createPlugin("x").build();
+const p: KelirPlugin = createPlugin("x");
 void p;
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
@@ -23,13 +25,12 @@ const chained = createPlugin("chained")
   .context(() => ({ ready: true }))
   .requires<"ledger">()
   .scope({ binaries: ["git"] })
-  .onTrap(() => null)
-  .build();
+  .onTrap(() => null);
 void chained;
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // @ts-expect-error
-kelir().use(createPlugin("x").requires<"missing">().build());
+kelir().use(createPlugin("x").requires<"missing">());
 
 type DescriptorShape = {
   readonly ring: string;
@@ -37,17 +38,35 @@ type DescriptorShape = {
   readonly ordinal: number;
 };
 
+type MergedDescriptorShape = DescriptorShape & {
+  readonly pluginName: string | undefined;
+};
+
 function descriptors(
-  plugin: ReturnType<typeof createPlugin>,
+  builder: KelirBuilder<any, any, any, any>,
 ): DescriptorShape[] {
-  return plugin
-    .build()
-    .hooksForFusion()
-    .map((hook) => ({
-      ring: hook.ring as string,
-      lifecycleTag: hook.lifecycleTag,
-      ordinal: hook.ordinal,
-    }));
+  return mergedDescriptors(builder).map((hook) => ({
+    ring: hook.ring,
+    lifecycleTag: hook.lifecycleTag,
+    ordinal: hook.ordinal,
+  }));
+}
+
+function mergedDescriptors(
+  builder: KelirBuilder<any, any, any, any>,
+): MergedDescriptorShape[] {
+  return builder
+    .fuse()
+    .describe()
+    .rings.flatMap((ring) =>
+      ring.hooks.map((hook) => ({
+        ring: ring.ring as string,
+        lifecycleTag: hook.lifecycleTag,
+        ordinal: hook.ordinal,
+        pluginName: hook.pluginName,
+      })),
+    )
+    .sort((a, b) => a.ordinal - b.ordinal);
 }
 
 function allVerbsFlat(): ReturnType<typeof createPlugin> {
@@ -140,71 +159,75 @@ function chaosPlugin(): ReturnType<typeof createPlugin> {
     );
 }
 
-test("build returns a frozen plugin", () => {
-  const plugin = createPlugin("frozen").onTrap(() => null).build();
-  assert.equal(Object.isFrozen(plugin), true);
-  assert.equal(Object.isFrozen(plugin.hooksForFusion()), true);
-  assert.equal(plugin.name, "frozen");
-  assert.equal(plugin.enabled, true);
-  assert.equal(plugin.hooksForFusion().length, 1);
+test("createPlugin returns a KelirBuilder with no build step", () => {
+  const plugin = createPlugin("x");
+  assert.equal(plugin instanceof KelirBuilder, true);
+  assert.equal(
+    (plugin as unknown as Record<string, unknown>).build,
+    undefined,
+  );
+  assert.equal(plugin.name, "x");
 });
 
-test("build snapshots hooks and post-build verbs throw EConfig", () => {
-  const contract = createPlugin("snap").onTrap(() => null);
-  const built = contract.build();
-  assert.throws(() => contract.onTrap(() => null), EConfig);
-  assert.equal(built.hooksForFusion().length, 1);
-});
-
-test("built plugin registers interceptors into a builder", () => {
-  const plugin = createPlugin("wired").onTrap(() => null).build();
+test("plugin mounts directly and merges hooks into the host", () => {
+  const plugin = createPlugin("wired").onTrap(() => null);
   const builder = kelir().use(plugin);
   assert.equal(builder.fuse().hookCount(RingEvent.Trap), 1);
 });
 
-test("scope survives build", () => {
-  const plugin = createPlugin("scoped").scope({ binaries: ["git"] }).build();
-  assert.deepEqual(plugin.scope, { binaries: ["git"] });
+test("mounting the same plugin twice throws EConfig", () => {
+  const plugin = createPlugin("wired").onTrap(() => null);
+  const builder = kelir().use(plugin);
+  assert.throws(
+    () => builder.use(plugin),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message === "plugin already mounted: wired",
+  );
+});
+
+test("verbs on a mounted plugin throw EConfig", () => {
+  const plugin = createPlugin("wired").onTrap(() => null);
+  kelir().use(plugin);
+  assert.throws(() => plugin.onTrap(() => null), EConfig);
+  assert.throws(
+    () => plugin.trap((scope) => scope.onTrap(() => null)),
+    EConfig,
+  );
+  assert.throws(() => plugin.requires("ledger"), EConfig);
+  assert.throws(() => plugin.scope({ binaries: ["git"] }), EConfig);
+});
+
+test("scope survives mount", () => {
+  const plugin = createPlugin("scoped").scope({ binaries: ["git"] });
+  kelir().use(plugin);
+  assert.deepEqual(plugin.getScope(), { binaries: ["git"] });
 });
 
 test("forkWith re-runs the fork closure", () => {
-  const plugin = createPlugin("forked")
-    .forkWith(() => createPlugin("forked").onTrap(() => null))
-    .build();
-  assert.equal(plugin.hooksForFusion().length, 0);
+  const plugin = createPlugin("forked").forkWith(() =>
+    createPlugin("forked").onTrap(() => null),
+  );
+  assert.equal(plugin.fuse().hookCount(RingEvent.Trap), 0);
   const forked = plugin.forkState();
   assert.equal(forked.name, "forked");
-  assert.equal(forked.hooksForFusion().length, 1);
-  assert.equal(Object.isFrozen(forked), true);
-});
-
-test("forkState without forkWith clones the wrapper", () => {
-  const plugin = createPlugin("cloned").onTrap(() => null).build();
-  const forked = plugin.forkState();
-  assert.equal(forked.name, "cloned");
-  assert.equal(forked.hooksForFusion().length, 1);
+  assert.equal(forked.fuse().hookCount(RingEvent.Trap), 1);
   assert.notEqual(forked, plugin);
 });
 
-test("any verb after build throws EConfig", () => {
-  const contract = createPlugin("x").onTrap(() => null);
-  contract.build();
-  assert.throws(() => contract.onTrap(() => null), EConfig);
-  assert.throws(
-    () => contract.trap((scope) => scope.onTrap(() => null)),
-    EConfig,
-  );
-  assert.throws(() => contract.requires("ledger"), EConfig);
-  assert.throws(() => contract.scope({ binaries: ["git"] }), EConfig);
-  assert.throws(() => contract.build(), EConfig);
+test("forkState without forkWith clones the builder", () => {
+  const plugin = createPlugin("cloned").onTrap(() => null);
+  const forked = plugin.forkState();
+  assert.equal(forked.name, "cloned");
+  assert.equal(forked.fuse().hookCount(RingEvent.Trap), 1);
+  assert.notEqual(forked, plugin);
 });
 
 test("all 24 ring verbs present", () => {
-  const built = allVerbsFlat().build();
-  const hooks = built.hooksForFusion();
+  const hooks = descriptors(allVerbsFlat());
   assert.equal(hooks.length, 24);
   assert.deepEqual(
-    hooks.map((hook) => hook.ring as string),
+    hooks.map((hook) => hook.ring),
     [
       RingEvent.Trap,
       RingEvent.ProcessExit,
@@ -244,7 +267,7 @@ test("nested scopes equal flat descriptors", () => {
   assert.deepEqual(descriptors(allVerbsNested()), descriptors(allVerbsFlat()));
 });
 
-test("build rejects an invalid vsock spec", () => {
+test("fuse rejects an invalid vsock spec", () => {
   assert.throws(
     () =>
       createPlugin("bad-port")
@@ -254,7 +277,7 @@ test("build rejects an invalid vsock spec", () => {
           t.Object({ ping: t.String() }),
           (request) => request,
         )
-        .build(),
+        .fuse(),
     EConfig,
   );
   assert.throws(
@@ -266,7 +289,7 @@ test("build rejects an invalid vsock spec", () => {
           t.Object({ ping: t.String() }),
           (request) => request,
         )
-        .build(),
+        .fuse(),
     EConfig,
   );
   assert.throws(
@@ -278,66 +301,66 @@ test("build rejects an invalid vsock spec", () => {
           t.Object({ ping: t.String() }),
           (request) => request,
         )
-        .build(),
+        .fuse(),
     EConfig,
   );
 });
 
-test("build rejects a malformed scope", () => {
+test("fuse rejects a malformed scope", () => {
   assert.throws(
     () =>
       createPlugin("bad-scope")
         .scope({ binaries: "git" } as unknown as { binaries: string[] })
-        .build(),
+        .fuse(),
     EConfig,
   );
   assert.throws(
     () =>
       createPlugin("bad-scope")
         .scope({ unknown: [] } as unknown as { binaries: string[] })
-        .build(),
+        .fuse(),
     EConfig,
   );
 });
 
-test("use rejects an unbuilt contract", () => {
-  const contract = createPlugin("unbuilt").onTrap(() => null);
+test("use rejects a host-mode builder as a plugin", () => {
   assert.throws(
-    () => kelir().use(contract as unknown as KelirPlugin),
-    EConfig,
+    () => kelir().use(kelir() as unknown as KelirPlugin),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message === "cannot mount a host-mode builder as a plugin",
   );
 });
 
 test("use reports a missing prerequisite", () => {
-  const chaos = chaosPlugin().build();
+  const chaos = chaosPlugin();
   assert.throws(
     () => kelir().use(chaos),
     (error: unknown) =>
       error instanceof EConfig &&
       error.message === "missing prerequisite: ledger required by chaos",
   );
-  const ledger = createPlugin("ledger").build();
+  const ledger = createPlugin("ledger");
   const builder = kelir().use(ledger).use(chaos);
   assert.equal(builder.fuse().hookCount(RingEvent.FsWrite), 1);
   assert.equal(builder.fuse().hookCount(RingEvent.NetOutbound), 1);
 });
 
 test("canonical chaos plugin", () => {
-  const plugin = chaosPlugin().build();
+  const plugin = chaosPlugin();
   assert.equal(plugin.name, "chaos");
-  assert.deepEqual(plugin.scope, { paths: ["/workspace"] });
+  assert.deepEqual(plugin.getScope(), { paths: ["/workspace"] });
   assert.deepEqual(plugin.requiredDeps, ["ledger"]);
   assert.deepEqual(
-    plugin.hooksForFusion().map((hook) => hook.ring),
+    descriptors(plugin).map((hook) => hook.ring),
     [RingEvent.FsWrite, RingEvent.NetOutbound],
   );
 });
 
-test("derive and context fns are stored on the built plugin", () => {
+test("derive and context fns are stored on the builder", () => {
   const plugin = createPlugin("stored")
     .derive(() => ({ ready: true }))
-    .context(() => ({ mode: "guest" }))
-    .build();
+    .context(() => ({ mode: "guest" }));
   assert.equal(plugin.deriveFns.length, 1);
   assert.equal(plugin.contextFns.length, 1);
   assert.deepEqual(plugin.deriveFns[0]({}), { ready: true });
@@ -345,15 +368,108 @@ test("derive and context fns are stored on the built plugin", () => {
 });
 
 test("plugin-level vsockService forwards through use", () => {
-  const plugin = createPlugin("pinged")
-    .vsockService(1024, "ping", t.Object({ ping: t.String() }), (request) => ({
-      pong: request.ping,
-    }))
-    .build();
+  const plugin = createPlugin("pinged").vsockService(
+    1024,
+    "ping",
+    t.Object({ ping: t.String() }),
+    (request) => ({ pong: request.ping }),
+  );
   assert.equal(plugin.vsockServices.length, 1);
   assert.equal(plugin.vsockServices[0].port, 1024);
   assert.equal(plugin.vsockServices[0].service, "ping");
   const builder = kelir().use(plugin);
   assert.equal(builder.vsockServices.length, 1);
   assert.equal(builder.vsockServices[0].port, 1024);
+});
+
+test("host-only verbs on a plugin-mode builder fail at mount", () => {
+  const terminalPlugin = createPlugin("term").terminal({ cols: 80 });
+  assert.throws(
+    () => kelir().use(terminalPlugin),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message === "plugin term called host-only verb .terminal",
+  );
+  const detachedPlugin = createPlugin("det").detached(true);
+  assert.throws(
+    () => kelir().use(detachedPlugin),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message === "plugin det called host-only verb .detached",
+  );
+});
+
+test("host gains the 24 verbs", () => {
+  const builder = kelir()
+    .onTrap(() => null)
+    .onFsWrite(() => FilterAction.Forward)
+    .onNetOutbound(() => FilterAction.Forward)
+    .onVmInit(() => {});
+  assert.equal(builder.fuse().hookCount(RingEvent.Trap), 1);
+  assert.equal(builder.fuse().hookCount(RingEvent.FsWrite), 1);
+  assert.equal(builder.fuse().hookCount(RingEvent.NetOutbound), 1);
+  assert.equal(builder.fuse().hookCount(RingEvent.Lifecycle), 1);
+});
+
+test("mount merges descriptors: host hooks first, then plugin in mount order", () => {
+  const builder = kelir().onTrap(() => null);
+  const chaos = chaosPlugin();
+  builder.use(createPlugin("ledger"));
+  builder.use(chaos);
+  assert.deepEqual(mergedDescriptors(builder), [
+    {
+      ring: RingEvent.Trap,
+      lifecycleTag: undefined,
+      ordinal: 0,
+      pluginName: undefined,
+    },
+    {
+      ring: RingEvent.FsWrite,
+      lifecycleTag: undefined,
+      ordinal: 1,
+      pluginName: "chaos",
+    },
+    {
+      ring: RingEvent.NetOutbound,
+      lifecycleTag: undefined,
+      ordinal: 2,
+      pluginName: "chaos",
+    },
+  ]);
+});
+
+test("fuse rejects a mounted plugin with a bad vsock spec", () => {
+  const plugin = createPlugin("bad-port").vsockService(
+    0,
+    "ping",
+    t.Object({ ping: t.String() }),
+    (request) => request,
+  );
+  const builder = kelir().use(plugin);
+  assert.throws(
+    () => builder.fuse(),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message.includes("bad-port"),
+  );
+});
+
+test("plain KelirPlugin objects still mount via use", () => {
+  const plain: KelirPlugin = { name: "plain", enabled: true, config: {} };
+  const builder = kelir().use(plain);
+  assert.equal(builder.fuse().hookCount(RingEvent.Trap), 0);
+  const trait = {
+    name: "plain-hooks",
+    registerInterceptors(bind: (hook: HookDescriptor) => void): void {
+      bind({
+        ring: RingEvent.Trap,
+        stage: "single",
+        pluginName: "plain-hooks",
+        ordinal: 0,
+        run: () => null,
+      });
+    },
+  };
+  const wired = kelir().use(trait as unknown as KelirPlugin);
+  assert.equal(wired.fuse().hookCount(RingEvent.Trap), 1);
 });

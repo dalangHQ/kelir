@@ -80,13 +80,13 @@ export const HOOK_RINGS: readonly HookRingBinding[] = [
   { method: "onMemoryPressure", ring: RingEvent.MemoryPressure },
 ];
 
-export interface PluginBuilderVerb {
+export interface UnifiedBuilderVerb {
   readonly verb: string;
   readonly ring: RingEvent;
   readonly lifecycleTag?: LifecycleTag;
 }
 
-export const PLUGIN_BUILDER_VERBS: readonly PluginBuilderVerb[] = [
+export const UNIFIED_BUILDER_VERBS: readonly UnifiedBuilderVerb[] = [
   { verb: "onTrap", ring: RingEvent.Trap },
   { verb: "onFsLookup", ring: RingEvent.FsLookup },
   { verb: "onFsRead", ring: RingEvent.FsRead },

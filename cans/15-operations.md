@@ -103,7 +103,7 @@
     - Test plan domains
       - Domain plugin_engine: --plugin-coverage, --hook-coverage
       - Domain plugin_engine: --action-coverage, --panic-hunt-coverage
-      - Domain plugin_engine: --fluent-builder-coverage
+      - Domain plugin_engine: --unified-builder-coverage
       - Domain lifecycle_checkpoint: --lifecycle-coverage, --drain-coverage
       - Domain lifecycle_checkpoint: --veto-coverage, --watchdog-coverage
       - Domain lifecycle_checkpoint: --snapshot-depth-coverage
@@ -150,7 +150,22 @@
         - Asserts every Verdict variant is used at least once in cans/artifacts/examples
         - Action home: see: 11-protocol.md#Verdict-method-mapping
         - The CI parity job diffs policy-matrix vectors against the Verdict lattice
+      - --unified-builder-coverage
+        - Asserts every builder verb exists on host mode and plugin mode
+        - Asserts every nested scope exists on host mode and plugin mode
+        - Asserts every mount merges: host descriptors include plugin hooks
+        - 46 builder cases: one per verb (30), one per scope (8), one per merge (8)
+        - 58 vectors total: 46 builder cases plus the 12 other cases
+        - Asserts every Verdict and FilterAction outcome appears in a case
+        - Verb home: see: 02-plugin-model.md#Chainable-verbs
+        - Scope home: see: 02-plugin-model.md#Nested-scopes
+        - Mount home: see: 02-plugin-model.md#Unified-builder
+        - Vector family: see: #Unified-builder-parity-vectors
+        - Enforcement: kelir-plugin-cli parity run; gate spec only
+        - Execution lands with Agent 2 codegen; unexecuted cases report not-executable
       - --fluent-builder-coverage
+        - Superseded by the unified builder gate: see: #--unified-builder-coverage
+        - History, not a second gate: the DX-round counts live here
         - Asserts every builder verb has a plugin_builder vector case
         - Asserts every nested scope has a plugin_builder-nested case
         - 38 plugin_builder cases: one per verb (30) and one per scope (8)
@@ -292,7 +307,22 @@
       - Every kelir-core primitive exposed in FFI must have a parity test
       - Missing coverage blocks core and plugin releases immediately
     - Release gate: kelir-core release requires parity green
+    - Unified-builder parity vectors
+      - vectors.json gains a plugin-merge case family
+      - Builder cases: 30 verb, 8 scope, 8 merge; 58 vectors total
+      - Each case pins builder name, requires list, and ring set with ordinals
+      - Each case pins ordered event payloads and expected Verdict results
+      - FilterAction results are pinned for byte-transform rings
+      - Merge cases pin host descriptors: host hooks first, then plugin hooks
+      - Merge cases pin the plugin scope on the merged descriptors
+      - Nested-scope cases assert descriptors equal the flat chain
+      - kelir-plugin-cli parity run builds the equivalent chain per SDK
+      - Divergent outputs block CI; unexecuted verdicts report not-executable
+      - Case schema: see: artifacts/code/plugin-builder-vectors.rs
+      - Builder contract: see: 02-plugin-model.md#Unified-builder
     - Fluent-builder parity vectors
+      - Superseded by the unified builder vectors: see: #Unified-builder-parity-vectors
+      - History, not a second family: the DX-round cases live here
       - vectors.json gains a plugin_builder case family
       - Each case pins builder name, requires list, and ring set with ordinals
       - Each case pins ordered event payloads and expected Verdict results

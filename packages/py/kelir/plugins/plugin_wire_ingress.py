@@ -54,10 +54,10 @@ class WireIngressPlugin(BasePlugin):
         self.config = config if config is not None else WireIngressConfig()
 
 
-# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
-from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+# see: cans/02-plugin-model.md#Unified-builder 
+from kelir import KelirBuilder
 
 
-def wire_ingress_builder(config: WireIngressConfig | None = None) -> _PluginWrapper:
+def wire_ingress_builder(config: WireIngressConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else WireIngressConfig()
-    return PluginBuilder("wire-ingress").context(lambda: cfg).build()
+    return KelirBuilder.plugin("wire-ingress").context(lambda: cfg)

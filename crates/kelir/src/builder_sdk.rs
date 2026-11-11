@@ -4,17 +4,16 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use kelir_interface::driver_interface::{DaxWindowMode, FastBootMode, Stream, VmConfig};
+use kelir_interface::driver_interface::{DaxWindowMode, FastBootMode, VmConfig};
 use kelir_interface::plugin_model::HandlerCtx;
-use kelir_interface::plugin_model::LifecycleCtx;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    AnyPlugin, CompositePlugin, LifecycleEvent, MountScope, PipelineBinder, PluginDeps, VetoEvent,
-    VetoList,
+    AnyPlugin, ConsoleInterposer, FsInterposer, HostInterposer, LifecycleEvent,
+    LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps,
+    SystemTelemetryParticipant, TrapInterposer, VetoEvent, VetoList,
 };
 use kelir_interface::protocol_wire::{TrapEvent, Verdict};
-use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
+use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams, Satisfies};
 use crate::planes::storage_plane::{LockBrokerConfig, LockScope, StoragePlaneConfig};
@@ -22,6 +21,10 @@ use crate::planes::terminal_plane::PtyConfig;
 use crate::planes::wire_plane::{TapFilter, WireConfig};
 use crate::plugin_model::KelirPlugin;
 use crate::session_lifecycle::Session;
+
+// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+#[cfg(feature = "plugin-tool-guard")]
+use plugin_tool_guard::{ToolGuardPlugin, ToolSpec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PostExecAction {
@@ -34,6 +37,14 @@ pub struct Unsealed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sealed;
+
+// see: cans/02-plugin-model.md#Unified-builder
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Host;
+
+// see: cans/02-plugin-model.md#Unified-builder
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Plugin;
 
 #[derive(Debug, Clone, Default)]
 pub struct TrapFilter {
@@ -154,14 +165,6 @@ impl<Plugins: HList> TrapEntry<Plugins> {
 
 type BoxFutureResult = Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send>>;
 
-type BoxedLifecycleCallback = Box<
-    dyn for<'a> Fn(
-            &'a mut LifecycleCtx<'a>,
-        ) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
-        + Send
-        + Sync,
->;
-
 // see: cans/03-sdk-architecture.md#Builder-consumption-model-across-languages
 type BoxedTrapDenyCallback =
     Box<dyn Fn(&TrapEvent, &kelir_core::Session) -> BoxFutureResult + Send + Sync>;
@@ -183,14 +186,6 @@ type StreamServiceFuture =
 
 type BoxedStreamService = Box<dyn Fn(Vec<u8>) -> StreamServiceFuture + Send + Sync>;
 
-#[allow(dead_code)]
-pub(crate) struct VsockServiceEntry {
-    pub(crate) port: u32,
-    pub(crate) service: String,
-    pub(crate) schema: serde_json::Value,
-    pub(crate) handler: BoxedStreamService,
-}
-
 // TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
 #[allow(dead_code)]
 pub(crate) struct StreamKindServiceEntry {
@@ -199,70 +194,122 @@ pub(crate) struct StreamKindServiceEntry {
     pub(crate) handler: BoxedStreamService,
 }
 
-const MAX_VSOCK_REQUEST_BYTES: usize = 65_536;
+// see: cans/02-plugin-model.md#Unified-builder
+pub(crate) type ForkFn = Arc<dyn Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync>;
 
-struct BuilderVsockService {
-    handler: BoxedStreamService,
+// see: cans/02-plugin-model.md#Unified-builder
+#[derive(Clone, Default)]
+pub(crate) struct HookRegistry {
+    pub(crate) trap: Vec<Arc<dyn TrapInterposer>>,
+    pub(crate) fs: Vec<Arc<dyn FsInterposer>>,
+    pub(crate) net: Vec<Arc<dyn NetInterposer>>,
+    pub(crate) console: Vec<Arc<dyn ConsoleInterposer>>,
+    pub(crate) host: Vec<Arc<dyn HostInterposer>>,
+    pub(crate) lifecycle: Vec<Arc<dyn LifecycleParticipant>>,
+    pub(crate) telemetry: Vec<Arc<dyn SystemTelemetryParticipant>>,
+    pub(crate) vsock: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>)>,
 }
 
-// see: cans/11-protocol.md#Control-channel
-#[async_trait]
-impl VsockServiceHandler for BuilderVsockService {
-    async fn on_connect(
-        &self,
-        _peer: &VsockPeer,
-        mut stream: Box<dyn Stream>,
-        _ctx: &HandlerCtx,
-    ) -> Result<(), PluginError> {
-        let mut request = Vec::new();
-        let mut chunk = [0u8; 1024];
-        loop {
-            match stream.read(&mut chunk) {
-                Ok(0) => break,
-                Ok(read) => {
-                    request.extend_from_slice(&chunk[..read]);
-                    if request.len() > MAX_VSOCK_REQUEST_BYTES {
-                        return Err(PluginError::reject(
-                            "EINVAL",
-                            "vsock request exceeds the 64KB frame budget",
-                        ));
-                    }
-                }
-                Err(error) => return Err(PluginError::Io(error)),
-            }
+impl HookRegistry {
+    // see: cans/02-plugin-model.md#Unified-builder
+    pub(crate) fn bind(&self, pipeline: &mut dyn PipelineBinder, scope: &MountScope) {
+        for stage in &self.trap {
+            pipeline.bind_trap_scoped(Arc::clone(stage), scope.clone());
         }
-        let response = (self.handler)(request)
-            .await
-            .map_err(|error| PluginError::Halt(format!("vsock service failed: {error}")))?;
-        let mut written = 0;
-        while written < response.len() {
-            match stream.write(&response[written..]) {
-                Ok(0) => {
-                    return Err(PluginError::Halt(
-                        "vsock service: stream closed while writing response".into(),
-                    ));
-                }
-                Ok(count) => written += count,
-                Err(error) => return Err(PluginError::Io(error)),
-            }
+        for stage in &self.fs {
+            pipeline.bind_fs_scoped(Arc::clone(stage), scope.clone());
         }
-        stream.flush().map_err(PluginError::Io)
+        for stage in &self.net {
+            pipeline.bind_net_scoped(Arc::clone(stage), scope.clone());
+        }
+        for stage in &self.console {
+            pipeline.bind_console_scoped(Arc::clone(stage), scope.clone());
+        }
+        for stage in &self.host {
+            pipeline.bind_host_scoped(Arc::clone(stage), scope.clone());
+        }
+        for (spec, service) in &self.vsock {
+            pipeline.bind_vsock_service_scoped(spec.clone(), Arc::clone(service), scope.clone());
+        }
+        for stage in &self.lifecycle {
+            pipeline.bind_lifecycle_scoped(Arc::clone(stage), scope.clone());
+        }
+        for stage in &self.telemetry {
+            pipeline.bind_telemetry_scoped(Arc::clone(stage), scope.clone());
+        }
     }
+
+    pub(crate) fn validate_vsock(&self, name: &str) -> Result<(), PluginError> {
+        for (spec, _) in &self.vsock {
+            validate_vsock_spec(name, spec.port, &spec.service)?;
+        }
+        Ok(())
+    }
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+#[derive(Clone)]
+pub(crate) struct MountedPlugin {
+    pub(crate) name: &'static str,
+    pub(crate) scope: MountScope,
+    pub(crate) fork: Option<ForkFn>,
+    pub(crate) registry: HookRegistry,
+}
+
+impl MountedPlugin {
+    pub(crate) fn bind(&self, pipeline: &mut dyn PipelineBinder) {
+        self.registry.bind(pipeline, &self.scope);
+    }
+}
+
+fn has_empty<T: AsRef<std::ffi::OsStr>>(values: &Option<Vec<T>>) -> bool {
+    values
+        .as_ref()
+        .is_some_and(|values| values.iter().any(|value| value.as_ref().is_empty()))
+}
+
+fn validate_vsock_spec(name: &str, port: u32, service: &str) -> Result<(), PluginError> {
+    if port == 0 || port > 65_535 {
+        return Err(PluginError::reject(
+            "EConfig",
+            format!("{name}: vsock service port {port} out of range 1..=65535"),
+        ));
+    }
+    if service.is_empty() {
+        return Err(PluginError::reject(
+            "EConfig",
+            format!("{name}: vsock service name must not be empty"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_scope(name: &str, scope: &MountScope) -> Result<(), PluginError> {
+    if has_empty(&scope.binaries) {
+        return Err(PluginError::reject(
+            "EConfig",
+            format!("{name}: scope binary name must not be empty"),
+        ));
+    }
+    if has_empty(&scope.paths) {
+        return Err(PluginError::reject(
+            "EConfig",
+            format!("{name}: scope path must not be empty"),
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) struct Registration<Plugins: HList> {
     pub(crate) instances: Vec<(Box<dyn AnyPlugin>, MountScope)>,
+    pub(crate) mounted: Vec<MountedPlugin>,
     pub(crate) traps: Vec<TrapEntry<Plugins>>,
     pub(crate) storage_cfg: Option<StoragePlaneConfig<Plugins, NoParams>>,
     pub(crate) terminal_cfg: Option<PtyConfig>,
     pub(crate) wire_cfg: Option<WireConfig>,
     pub(crate) lock_broker_cfg: Option<LockBrokerConfig>,
-    pub(crate) on_vm_init: Option<BoxedLifecycleCallback>,
-    pub(crate) on_vm_ready: Option<BoxedLifecycleCallback>,
-    pub(crate) on_vm_shutdown: Option<BoxedLifecycleCallback>,
     pub(crate) on_trap_deny: Option<BoxedTrapDenyCallback>,
     pub(crate) custom_actions: Vec<CustomActionEntry>,
-    pub(crate) vsock_services: Vec<VsockServiceEntry>,
     pub(crate) stream_kind_services: Vec<StreamKindServiceEntry>,
     pub(crate) vetoes: VetoList,
     pub(crate) detached: bool,
@@ -272,17 +319,14 @@ impl<Plugins: HList> Default for Registration<Plugins> {
     fn default() -> Self {
         Self {
             instances: Vec::new(),
+            mounted: Vec::new(),
             traps: Vec::new(),
             storage_cfg: None,
             terminal_cfg: None,
             wire_cfg: None,
             lock_broker_cfg: None,
-            on_vm_init: None,
-            on_vm_ready: None,
-            on_vm_shutdown: None,
             on_trap_deny: None,
             custom_actions: Vec::new(),
-            vsock_services: Vec::new(),
             stream_kind_services: Vec::new(),
             vetoes: Vec::new(),
             detached: false,
@@ -297,17 +341,14 @@ impl<Plugins: HList> Registration<Plugins> {
     {
         Registration {
             instances: self.instances,
+            mounted: self.mounted,
             traps: self.traps.into_iter().map(|entry| entry.narrow()).collect(),
             storage_cfg: self.storage_cfg.map(|cfg| cfg.narrow()),
             terminal_cfg: self.terminal_cfg,
             wire_cfg: self.wire_cfg,
             lock_broker_cfg: self.lock_broker_cfg,
-            on_vm_init: self.on_vm_init,
-            on_vm_ready: self.on_vm_ready,
-            on_vm_shutdown: self.on_vm_shutdown,
             on_trap_deny: self.on_trap_deny,
             custom_actions: self.custom_actions,
-            vsock_services: self.vsock_services,
             stream_kind_services: self.stream_kind_services,
             vetoes: self.vetoes,
             detached: self.detached,
@@ -315,48 +356,134 @@ impl<Plugins: HList> Registration<Plugins> {
     }
 }
 
-pub struct KelirBuilder<SealState = Unsealed, Plugins = HNil, Params = NoParams>
-where
+pub struct KelirBuilder<
+    Mode = Host,
+    SealState = Unsealed,
+    Ctx = (),
+    Deps = HNil,
+    Plugins = HNil,
+    Params = NoParams,
+> where
     Plugins: HList,
     Params: 'static,
+    Deps: HList,
 {
-    config: VmConfig,
-    plugins: Plugins,
-    registration: Registration<Plugins>,
-    fast_boot: FastBootMode,
-    dax_window: DaxWindowMode,
-    seal: PhantomData<fn(SealState, Params)>,
+    pub(crate) config: Option<VmConfig>,
+    pub(crate) plugins: Plugins,
+    pub(crate) registration: Registration<Plugins>,
+    pub(crate) fast_boot: FastBootMode,
+    pub(crate) dax_window: DaxWindowMode,
+    pub(crate) name: &'static str,
+    pub(crate) context_factory: Arc<dyn Fn() -> Ctx + Send + Sync>,
+    pub(crate) scope: MountScope,
+    pub(crate) fork: Option<ForkFn>,
+    pub(crate) registry: HookRegistry,
+    pub(crate) seal: PhantomData<fn(SealState, Params, Mode)>,
+    pub(crate) deps: PhantomData<fn() -> Deps>,
 }
 
-impl KelirBuilder<Unsealed, HNil, NoParams> {
+impl KelirBuilder<Host, Unsealed, (), HNil, HNil, NoParams> {
     pub fn new(config: VmConfig) -> Self {
         Self {
-            config,
+            config: Some(config),
             plugins: HNil,
             registration: Registration::default(),
             fast_boot: FastBootMode::Off,
             dax_window: DaxWindowMode::Off,
+            name: "host",
+            context_factory: Arc::new(|| ()),
+            scope: MountScope::default(),
+            fork: None,
+            registry: HookRegistry::default(),
             seal: PhantomData,
+            deps: PhantomData,
+        }
+    }
+}
+
+impl KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
+    pub fn named(name: &'static str) -> Self {
+        Self {
+            config: None,
+            plugins: HNil,
+            registration: Registration::default(),
+            fast_boot: FastBootMode::Off,
+            dax_window: DaxWindowMode::Off,
+            name,
+            context_factory: Arc::new(|| ()),
+            scope: MountScope::default(),
+            fork: None,
+            registry: HookRegistry::default(),
+            seal: PhantomData,
+            deps: PhantomData,
         }
     }
 }
 
 // see: cans/03-sdk-architecture.md#Rust-SDK
-impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
+impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
+    KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>
+{
     // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn seal(self) -> KelirBuilder<Sealed, Plugins, Params> {
-        KelirBuilder {
+    pub fn seal(
+        self,
+    ) -> Result<KelirBuilder<Host, Sealed, Ctx, Deps, Plugins, Params>, PluginError> {
+        self.registry.validate_vsock(self.name)?;
+        validate_scope(self.name, &self.scope)?;
+        for mounted in &self.registration.mounted {
+            mounted.registry.validate_vsock(mounted.name)?;
+            validate_scope(mounted.name, &mounted.scope)?;
+        }
+        Ok(KelirBuilder {
             config: self.config,
             plugins: self.plugins,
             registration: self.registration,
             fast_boot: self.fast_boot,
             dax_window: self.dax_window,
+            name: self.name,
+            context_factory: self.context_factory,
+            scope: self.scope,
+            fork: self.fork,
+            registry: self.registry,
             seal: PhantomData,
+            deps: PhantomData,
+        })
+    }
+
+    // see: cans/02-plugin-model.md#Unified-builder
+    pub fn plugin<PCtx, PDeps>(
+        mut self,
+        plugin: KelirBuilder<Plugin, Unsealed, PCtx, PDeps, HNil, NoParams>,
+    ) -> Result<Self, PluginError>
+    where
+        PDeps: HList,
+        Plugins: Satisfies<PDeps>,
+    {
+        if self
+            .registration
+            .mounted
+            .iter()
+            .any(|mounted| mounted.name == plugin.name)
+        {
+            return Err(PluginError::reject(
+                "EConfig",
+                format!("plugin already mounted: {}", plugin.name),
+            ));
         }
+        self.registration.mounted.push(MountedPlugin {
+            name: plugin.name,
+            scope: plugin.scope,
+            fork: plugin.fork,
+            registry: plugin.registry,
+        });
+        Ok(self)
     }
 
     // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn plugin<P>(self, plugin: P) -> KelirBuilder<Unsealed, HCons<P::Context, Plugins>, Params>
+    pub fn plugin_instance<P>(
+        self,
+        plugin: P,
+    ) -> KelirBuilder<Host, Unsealed, Ctx, Deps, HCons<P::Context, Plugins>, Params>
     where
         P: KelirPlugin + Clone + 'static,
         P: PluginDeps,
@@ -375,7 +502,13 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
             registration,
             fast_boot: self.fast_boot,
             dax_window: self.dax_window,
+            name: self.name,
+            context_factory: self.context_factory,
+            scope: self.scope,
+            fork: self.fork,
+            registry: self.registry,
             seal: PhantomData,
+            deps: PhantomData,
         }
     }
 
@@ -424,14 +557,20 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
         self.registration.detached
     }
 
-    pub fn params<T>(self) -> KelirBuilder<Unsealed, Plugins, T> {
+    pub fn params<T>(self) -> KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, T> {
         KelirBuilder {
             config: self.config,
             plugins: self.plugins,
             registration: self.registration,
             fast_boot: self.fast_boot,
             dax_window: self.dax_window,
+            name: self.name,
+            context_factory: self.context_factory,
+            scope: self.scope,
+            fork: self.fork,
+            registry: self.registry,
             seal: PhantomData,
+            deps: PhantomData,
         }
     }
 
@@ -450,51 +589,6 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
             filter: filter.into(),
             handler: boxed,
         });
-        self
-    }
-
-    pub fn on_vm_init<F>(mut self, f: F) -> Self
-    where
-        F: for<'a> Fn(
-                &'a mut LifecycleCtx<'a>,
-            )
-                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
-    {
-        self.registration.on_vm_init = Some(Box::new(f));
-        self
-    }
-
-    pub fn on_vm_ready<F>(mut self, f: F) -> Self
-    where
-        F: for<'a> Fn(
-                &'a mut LifecycleCtx<'a>,
-            )
-                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
-    {
-        self.registration.on_vm_ready = Some(Box::new(f));
-        self
-    }
-
-    pub fn on_vm_shutdown<F>(mut self, f: F) -> Self
-    where
-        F: for<'a> Fn(
-                &'a mut LifecycleCtx<'a>,
-            )
-                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
-    {
-        self.registration.on_vm_shutdown = Some(Box::new(f));
         self
     }
 
@@ -533,32 +627,6 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
         self
     }
 
-    // see: cans/11-protocol.md#Control-channel
-    pub fn register_vsock_service<F, Fut>(
-        mut self,
-        port: u32,
-        service: &str,
-        schema: serde_json::Value,
-        f: F,
-    ) -> Self
-    where
-        F: Fn(Vec<u8>) -> Fut + Clone + Send + Sync + 'static,
-        Fut: Future<Output = Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>>
-            + Send
-            + 'static,
-    {
-        self.registration.vsock_services.push(VsockServiceEntry {
-            port,
-            service: service.to_string(),
-            schema,
-            handler: Box::new(move |request: Vec<u8>| {
-                let fut = f.clone()(request);
-                Box::pin(fut)
-            }),
-        });
-        self
-    }
-
     // TODO (L3): core-kind re-registration aborts EKindReserved and unregistered kinds abort EUnknownKind on OPEN at dispatch/seal per cans/11-protocol.md#Control-channel.
     // see: cans/11-protocol.md#Control-channel
     pub fn register_stream_kind<F, Fut>(
@@ -591,34 +659,50 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
             vetoes: &mut self.registration.vetoes,
         }
     }
+}
 
-    pub fn with_composite<C>(mut self, bundle: C, scope: MountScope) -> Self
-    where
-        C: CompositePlugin + 'static,
-    {
-        // TODO (L3): flatten composite children into typed capability mounts once interface AnyPlugin carries KelirPlugin per cans/artifacts/code/plugin-trait.rs.
-        for (plugin, child_scope) in CompositePlugin::unpack(Box::new(bundle), &scope) {
-            self.registration.instances.push((plugin, child_scope));
+impl<SealState, Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
+{
+    // see: cans/02-plugin-model.md#Unified-builder
+    pub(crate) fn bind_registry(&self, pipeline: &mut dyn PipelineBinder) {
+        self.registry.bind(pipeline, &self.scope);
+        for mounted in &self.registration.mounted {
+            mounted.bind(pipeline);
         }
-        self
     }
 }
 
-impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins, Params> {
-    async fn finish_boot(self) -> Result<Session<Plugins, Params>, PluginError> {
+impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
+    KelirBuilder<Host, SealState, Ctx, Deps, Plugins, Params>
+{
+    async fn finish_boot(mut self) -> Result<Session<Plugins, Params>, PluginError> {
         // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
         // TODO (L3): plumb FastBootMode into DriverRouter::load_native_driver.
         let _ = (self.fast_boot, self.dax_window);
         let storage = self.storage_config();
+        let Some(config) = self.config.take() else {
+            return Err(PluginError::reject(
+                "EConfig",
+                "host builder has no VmConfig",
+            ));
+        };
+        let mut engine = kelir_core::dispatch_plugin::PipelineEngine::new();
+        self.bind_registry(&mut engine);
         let mut registration = self.registration;
-        let plugins: Vec<kelir_core::PluginRegistration> = registration
+        let mut plugins: Vec<kelir_core::PluginRegistration> = registration
             .instances
             .iter()
             .map(|(plugin, _)| {
                 kelir_core::PluginRegistration::new(plugin.name(), plugin.is_enabled())
             })
             .collect();
-        let mut engine = kelir_core::dispatch_plugin::PipelineEngine::new();
+        plugins.extend(
+            registration
+                .mounted
+                .iter()
+                .map(|mounted| kelir_core::PluginRegistration::new(mounted.name, true)),
+        );
         for (instance, scope) in &registration.instances {
             if !instance.is_enabled() {
                 continue;
@@ -626,28 +710,8 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
             engine.set_active_scope(scope.clone());
             instance.register_interceptors(&mut engine);
         }
-        for entry in std::mem::take(&mut registration.vsock_services) {
-            engine.bind_vsock_service(
-                VsockServiceSpec {
-                    port: entry.port,
-                    service: entry.service,
-                },
-                Arc::new(BuilderVsockService {
-                    handler: entry.handler,
-                }),
-            );
-        }
         for entry in std::mem::take(&mut registration.custom_actions) {
             engine.register_custom_action(entry.name, entry.handler);
-        }
-        if let Some(callback) = registration.on_vm_init.take() {
-            engine.set_on_vm_init(callback);
-        }
-        if let Some(callback) = registration.on_vm_ready.take() {
-            engine.set_on_vm_ready(callback);
-        }
-        if let Some(callback) = registration.on_vm_shutdown.take() {
-            engine.set_on_vm_shutdown(callback);
         }
         if let Some(callback) = registration.on_trap_deny.take() {
             engine.set_on_trap_deny(callback);
@@ -717,7 +781,7 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
             storage,
         };
         let core = kelir_core::Session::boot_with_engine(
-            self.config,
+            config,
             &plugins,
             engine,
             metrics,
@@ -776,16 +840,39 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
     }
 }
 
-impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
+impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
+    KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>
+{
     // see: cans/03-sdk-architecture.md#Rust-SDK
     pub async fn boot(self) -> Result<Session<Plugins, Params>, PluginError> {
-        self.seal().finish_boot().await
+        self.seal()?.finish_boot().await
     }
 }
 
-impl<Plugins: HList, Params: 'static> KelirBuilder<Sealed, Plugins, Params> {
+impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
+    KelirBuilder<Host, Sealed, Ctx, Deps, Plugins, Params>
+{
     // see: cans/03-sdk-architecture.md#Rust-SDK
     pub async fn boot(self) -> Result<Session<Plugins, Params>, PluginError> {
         self.finish_boot().await
+    }
+}
+
+// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+#[cfg(feature = "plugin-tool-guard")]
+pub trait ToolGuardExt: Sized {
+    fn tool(self, spec: ToolSpec) -> Self;
+}
+
+// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+#[cfg(feature = "plugin-tool-guard")]
+impl<Plugins: HList, Params: 'static, Ctx, Deps: HList> ToolGuardExt
+    for KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>
+{
+    fn tool(mut self, spec: ToolSpec) -> Self {
+        let plugin = ToolGuardPlugin::new().tool(spec);
+        let scope = KelirPlugin::default_scope(&plugin);
+        self.registration.instances.push((Box::new(plugin), scope));
+        self
     }
 }

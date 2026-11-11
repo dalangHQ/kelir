@@ -27,6 +27,7 @@ from kelir import (
     TrapEvent,
     TrapFilter,
     Verdict,
+    VsockServiceEntry,
     relay_socket_path,
 )
 from kelir.sdk_errors import EConfig
@@ -435,22 +436,27 @@ def test_builder_lifecycle_decorator_registers_single_hook() -> None:
     assert hook.lifecycle_tag == "vm-ready"
 
 
-def test_builder_register_vsock_service_validates_u32_port() -> None:
+def test_builder_vsock_service_validates_u32_port() -> None:
     async def handler(request: bytes) -> bytes:
         return request
 
     builder = KelirBuilder()
-    assert builder.register_vsock_service(0, "echo", {}, handler) is builder
-    assert builder.register_vsock_service(0xFFFFFFFF, "echo", {}, handler) is builder
+    entry = VsockServiceEntry(port=0, service="echo", schema={}, handler=handler)
+    assert builder.vsock_service(entry, handler) is builder
+    entry = VsockServiceEntry(port=0xFFFFFFFF, service="echo", schema={}, handler=handler)
+    assert builder.vsock_service(entry, handler) is builder
     assert len(builder.vsock_services) == 2
     assert builder.vsock_services[0].port == 0
     assert builder.vsock_services[1].port == 0xFFFFFFFF
     with pytest.raises(EConfig, match=r"outside u32"):
-        builder.register_vsock_service(-1, "echo", {}, handler)
+        entry = VsockServiceEntry(port=-1, service="echo", schema={}, handler=handler)
+        builder.vsock_service(entry, handler)
     with pytest.raises(EConfig, match=r"outside u32"):
-        builder.register_vsock_service(0x100000000, "echo", {}, handler)
+        entry = VsockServiceEntry(port=0x100000000, service="echo", schema={}, handler=handler)
+        builder.vsock_service(entry, handler)
     with pytest.raises(EConfig, match=r"outside u32"):
-        builder.register_vsock_service(True, "echo", {}, handler)
+        entry = VsockServiceEntry(port=True, service="echo", schema={}, handler=handler)
+        builder.vsock_service(entry, handler)
 
 
 def test_builder_register_stream_kind_validates_u16_at_fuse() -> None:

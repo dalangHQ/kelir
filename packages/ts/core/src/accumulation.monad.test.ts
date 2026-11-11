@@ -1,7 +1,7 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 import { kelir } from "./builder.lifecycle.js";
 import type { ValidateDeps } from "./builder.lifecycle.js";
-import { createPlugin } from "./plugin.model.js";
+import { createPlugin } from "./builder.lifecycle.js";
 import { t } from "./schema.config.js";
 import type { LedgerHandle } from "./context.lifecycle.types.js";
 import { RingEvent } from "./fusion.plugin.js";
@@ -12,11 +12,10 @@ function check(condition: boolean, label: string): void {
   }
 }
 
-const secretMask = createPlugin("secretMask", { maskActive: true }).build();
+const secretMask = createPlugin("secretMask", { maskActive: true });
 const secureWorkspace = createPlugin("secureWorkspace")
   .requires<typeof secretMask>()
-  .derive((c) => ({ workspaceSecured: c.secretMask.maskActive }))
-  .build();
+  .derive((c) => ({ workspaceSecured: c.secretMask.maskActive }));
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 type MissingDepGate = ValidateDeps<unknown, typeof secureWorkspace> extends {
@@ -60,7 +59,7 @@ const streamed = kelir({ vcpus: 4, memoryMb: 4096 })
   .registerStreamKind(7, t.Object({ ping: t.String() }), (request) => ({ pong: request.ping }));
 
 const vsock = kelir({ vcpus: 4, memoryMb: 4096 })
-  .registerVsockService(1024, "ping", t.Object({ ping: t.String() }), (request) => ({ pong: request.ping }));
+  .vsockService(1024, "ping", t.Object({ ping: t.String() }), (request) => ({ pong: request.ping }));
 
 const denied = kelir({ vcpus: 4, memoryMb: 4096 })
   .use(secretMask)

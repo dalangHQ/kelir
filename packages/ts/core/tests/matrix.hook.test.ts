@@ -171,7 +171,6 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     hookState.exits += 1;
     if (event.exitCode !== 0) hookState.failures += 1;
   })
-  .build();
 
 
 const runtime = kelir({

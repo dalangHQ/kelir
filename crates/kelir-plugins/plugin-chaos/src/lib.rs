@@ -203,7 +203,7 @@ impl PluginDeps for ChaosPlugin {
     type Deps = NoDeps;
 }
 
-// TODO (L3): construct ChaosPlugin via the fluent PluginBuilder in the kelir facade crate; a dependency on that crate here is a cargo cycle since the facade depends on plugin-chaos per cans/02-plugin-model.md#KelirPlugin-trait.
+// TODO (L3): construct ChaosPlugin via KelirBuilder::named in the kelir facade crate; a dependency on that crate here is a cargo cycle since the facade depends on plugin-chaos per cans/02-plugin-model.md#KelirPlugin-trait.
 
 // see: cans/plugins/chaos.md#Bidirectional-across-wire-plane
 impl NetInterposer for ChaosPlugin {

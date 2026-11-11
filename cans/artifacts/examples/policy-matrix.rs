@@ -12,7 +12,9 @@ use std::sync::{
 use async_trait::async_trait;
 use ciborium::value::Value as CborValue;
 use kelir_interface::driver_interface::SuspendReason;
+use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::HandlerCtx;
+use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 use kelir::{
     HCons, HNil, KelirBuilder, NoParams, PidLineage, SnapshotDescriptor, Unsealed, VmConfig,
@@ -268,6 +270,42 @@ type PolicyPlugins = HCons<(), HCons<(), HNil>>;
 type PolicyBuilder = KelirBuilder<Unsealed, PolicyPlugins, NoParams>;
 
 fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + Sync>> {
+    struct EchoVsock;
+
+    #[async_trait]
+    impl VsockServiceHandler for EchoVsock {
+        async fn on_connect(
+            &self,
+            _peer: &VsockPeer,
+            mut stream: Box<dyn Stream>,
+            _ctx: &HandlerCtx,
+        ) -> Result<(), PluginError> {
+            let mut request = Vec::new();
+            let mut chunk = [0u8; 1024];
+            loop {
+                match stream.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(read) => request.extend_from_slice(&chunk[..read]),
+                    Err(error) => return Err(PluginError::Io(error)),
+                }
+            }
+            let mut written = 0;
+            while written < request.len() {
+                match stream.write(&request[written..]) {
+                    Ok(0) => {
+                        return Err(PluginError::Halt(
+                            "vsock service: stream closed while writing response".into(),
+                        ));
+                    }
+                    Ok(count) => written += count,
+                    Err(error) => return Err(PluginError::Io(error)),
+                }
+            }
+            stream.flush().map_err(PluginError::Io)
+        }
+    }
+
+
     let policy = PolicyMatrixPlugin::new();
     let shared = Arc::clone(&policy.state);
 
@@ -328,12 +366,13 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
             }
         }),
     )
-    .register_vsock_service(
-        0x0013,
-        serde_json::json!({ "type": "object", "properties": {} }),
-        handler(|request: Vec<u8>| async move { Ok(request) }),
+    .vsock_service(
+        VsockServiceSpec {
+            port: 0x0013,
+            service: "echo".to_string(),
+        },
+        EchoVsock,
     );
-    // TODO: live register_vsock_service takes 4 args (port, service, schema, f) at crates/kelir/src/builder_sdk.rs:452; SSOT 3-arg form kept per cans/03-sdk-architecture.md#Custom-vsock-RPC-services:-builder.register-vsock-service(port,-schema,-handler).
 
     Ok(builder)
 }

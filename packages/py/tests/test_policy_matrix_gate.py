@@ -119,8 +119,8 @@ def build_runtime() -> KelirBuilder:
         enable_watchdog=True,
     )
 
-    builder = builder.plugin(PolicyMatrixPlugin())
-    builder = builder.plugin(WatchdogSilencerPlugin())
+    builder = builder.use(PolicyMatrixPlugin())
+    builder = builder.use(WatchdogSilencerPlugin())
 
     async def quarantine(payload: dict[str, Any]) -> None:
         POLICY_STATE.quarantined_pids.append(payload["pid"])

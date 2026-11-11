@@ -26,10 +26,10 @@ class ReplayPlugin(BasePlugin):
         self.config = config if config is not None else ReplayConfig()
 
 
-# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
-from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+# see: cans/02-plugin-model.md#Unified-builder 
+from kelir import KelirBuilder
 
 
-def replay_builder(config: ReplayConfig | None = None) -> _PluginWrapper:
+def replay_builder(config: ReplayConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else ReplayConfig()
-    return PluginBuilder("replay").context(lambda: cfg).build()
+    return KelirBuilder.plugin("replay").context(lambda: cfg)

@@ -14,9 +14,7 @@ use kelir::interface::plugin_model::{
 use kelir::interface::protocol_wire::{StreamKind, Verdict};
 use kelir::interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 use kelir::plugin_model::FilterAction;
-use kelir::{
-    HList, HNil, KelirBuilder, NoParams, PluginBuilder, PluginWrapper, ProfilePlugin, Unsealed,
-};
+use kelir::{HNil, Host, KelirBuilder, NoParams, ProfilePlugin, Unsealed};
 
 #[cfg(feature = "plugin-ledger")]
 use kelir::LedgerPlugin;
@@ -100,14 +98,14 @@ impl PipelineBinder for RecordingBinder {
     fn bind_token_revoker(&mut self, _revoker: Arc<dyn TokenRevocation>) {}
 }
 
-fn error_text<Ctx, Deps: HList>(result: Result<PluginWrapper<Ctx, Deps>, PluginError>) -> String {
+fn error_text<T>(result: Result<T, PluginError>) -> String {
     match result {
         Err(error) => error.to_string(),
         Ok(_) => String::new(),
     }
 }
 
-fn test_builder() -> KelirBuilder<Unsealed, HNil, NoParams> {
+fn test_builder() -> KelirBuilder<Host, Unsealed, (), HNil, HNil, NoParams> {
     KelirBuilder::new(default_vm_config(
         None,
         None,
@@ -121,8 +119,7 @@ fn test_builder() -> KelirBuilder<Unsealed, HNil, NoParams> {
 // see: cans/02-plugin-model.md#KelirPlugin-trait
 #[test]
 fn full_flat_chain_builds_and_binds() -> Result<(), PluginError> {
-    let builder = test_builder().plugin(ProfilePlugin::new());
-    let wrapper = PluginBuilder::new("plain")
+    let plain = KelirBuilder::named("plain")
         .require::<ProfilePlugin>()
         .context(|| ())
         .scope(MountScope::default())
@@ -159,10 +156,9 @@ fn full_flat_chain_builds_and_binds() -> Result<(), PluginError> {
                 service: "plain".to_string(),
             },
             _NullVsock,
-        )
-        .build()?;
+        );
     let mut binder = RecordingBinder::default();
-    wrapper.register_interceptors(&mut binder);
+    plain.register_interceptors(&mut binder);
     assert_eq!(
         binder.binds,
         vec![
@@ -193,14 +189,16 @@ fn full_flat_chain_builds_and_binds() -> Result<(), PluginError> {
             "telemetry".to_string(),
         ]
     );
-    let _builder = builder.plugin(wrapper);
+    let _builder = test_builder()
+        .plugin_instance(ProfilePlugin::new())
+        .plugin(plain)?;
     Ok(())
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 #[test]
-fn nested_scopes_match_flat_descriptors() -> Result<(), PluginError> {
-    let flat = PluginBuilder::new("flat")
+fn nested_scopes_match_flat_descriptors() {
+    let flat = KelirBuilder::named("flat")
         .on_trap(|_event, _ctx| Ok(Verdict::Pass))
         .on_process_exit(|_event, _ctx| Ok(()))
         .on_fs_lookup(|_path| Ok(Verdict::Pass))
@@ -226,9 +224,8 @@ fn nested_scopes_match_flat_descriptors() -> Result<(), PluginError> {
         .on_heartbeat(|_uptime| async move { Ok::<(), PluginError>(()) })
         .on_watchdog(|_event| async move {
             Ok::<WatchdogVerdict, PluginError>(WatchdogVerdict::ExecuteDefault)
-        })
-        .build()?;
-    let nested = PluginBuilder::new("nested")
+        });
+    let nested = KelirBuilder::named("nested")
         .trap(|t| {
             t.on_trap(|_event, _ctx| Ok(Verdict::Pass))
                 .on_process_exit(|_event, _ctx| Ok(()))
@@ -270,31 +267,76 @@ fn nested_scopes_match_flat_descriptors() -> Result<(), PluginError> {
                 .on_watchdog(|_event| async move {
                     Ok::<WatchdogVerdict, PluginError>(WatchdogVerdict::ExecuteDefault)
                 })
-        })
-        .build()?;
+        });
     let mut flat_binder = RecordingBinder::default();
     flat.register_interceptors(&mut flat_binder);
     let mut nested_binder = RecordingBinder::default();
     nested.register_interceptors(&mut nested_binder);
     assert_eq!(nested_binder.binds, flat_binder.binds);
-    let mixed = PluginBuilder::new("mixed")
+    let mixed = KelirBuilder::named("mixed")
         .on_trap(|_event, _ctx| Ok(Verdict::Pass))
         .trap(|t| t.on_process_exit(|_event, _ctx| Ok(())))
-        .on_trap(|_event, _ctx| Ok(Verdict::Pass))
-        .build()?;
+        .on_trap(|_event, _ctx| Ok(Verdict::Pass));
     let mut mixed_binder = RecordingBinder::default();
     mixed.register_interceptors(&mut mixed_binder);
     assert_eq!(
         mixed_binder.binds,
         vec!["trap".to_string(), "trap".to_string(), "trap".to_string(),]
     );
-    Ok(())
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 #[test]
-fn build_rejects_bad_vsock_spec() {
-    let port_zero = PluginBuilder::new("bad-port")
+fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
+    let port_zero = test_builder()
+        .plugin(KelirBuilder::named("bad-port").vsock_service(
+            VsockServiceSpec {
+                port: 0,
+                service: "plain".to_string(),
+            },
+            _NullVsock,
+        ))?
+        .seal();
+    let text = error_text(port_zero);
+    assert!(
+        text.contains("EConfig")
+            && text.contains("bad-port")
+            && text.contains("out of range 1..=65535"),
+        "unexpected error: {text}"
+    );
+    let port_high = test_builder()
+        .plugin(KelirBuilder::named("bad-port").vsock_service(
+            VsockServiceSpec {
+                port: 65_536,
+                service: "plain".to_string(),
+            },
+            _NullVsock,
+        ))?
+        .seal();
+    let text = error_text(port_high);
+    assert!(
+        text.contains("EConfig")
+            && text.contains("bad-port")
+            && text.contains("out of range 1..=65535"),
+        "unexpected error: {text}"
+    );
+    let empty_service = test_builder()
+        .plugin(KelirBuilder::named("bad-service").vsock_service(
+            VsockServiceSpec {
+                port: 5252,
+                service: String::new(),
+            },
+            _NullVsock,
+        ))?
+        .seal();
+    let text = error_text(empty_service);
+    assert!(
+        text.contains("EConfig")
+            && text.contains("bad-service")
+            && text.contains("service name must not be empty"),
+        "unexpected error: {text}"
+    );
+    let host_bad = test_builder()
         .vsock_service(
             VsockServiceSpec {
                 port: 0,
@@ -302,81 +344,61 @@ fn build_rejects_bad_vsock_spec() {
             },
             _NullVsock,
         )
-        .build();
-    let text = error_text(port_zero);
+        .seal();
+    let text = error_text(host_bad);
     assert!(
-        text.contains("EConfig") && text.contains("out of range 1..=65535"),
+        text.contains("EConfig")
+            && text.contains("host")
+            && text.contains("out of range 1..=65535"),
         "unexpected error: {text}"
     );
-    let port_high = PluginBuilder::new("bad-port")
-        .vsock_service(
-            VsockServiceSpec {
-                port: 65_536,
-                service: "plain".to_string(),
-            },
-            _NullVsock,
-        )
-        .build();
-    let text = error_text(port_high);
-    assert!(
-        text.contains("EConfig") && text.contains("out of range 1..=65535"),
-        "unexpected error: {text}"
-    );
-    let empty_service = PluginBuilder::new("bad-service")
-        .vsock_service(
-            VsockServiceSpec {
-                port: 5252,
-                service: String::new(),
-            },
-            _NullVsock,
-        )
-        .build();
-    let text = error_text(empty_service);
-    assert!(
-        text.contains("EConfig") && text.contains("service name must not be empty"),
-        "unexpected error: {text}"
-    );
-    let ok = PluginBuilder::new("ok")
-        .vsock_service(
+    let ok = test_builder()
+        .plugin(KelirBuilder::named("ok").vsock_service(
             VsockServiceSpec {
                 port: 65_535,
                 service: "plain".to_string(),
             },
             _NullVsock,
-        )
-        .build();
+        ))?
+        .seal();
     assert!(ok.is_ok());
+    Ok(())
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 #[test]
-fn build_rejects_ill_formed_scope() {
-    let empty_binary = PluginBuilder::new("bad-scope")
-        .scope(MountScope::default().with_binaries([""]))
-        .build();
+fn seal_rejects_ill_formed_scope() -> Result<(), PluginError> {
+    let empty_binary = test_builder()
+        .plugin(KelirBuilder::named("bad-scope").scope(MountScope::default().with_binaries([""])))?
+        .seal();
     let text = error_text(empty_binary);
     assert!(
-        text.contains("EConfig") && text.contains("binary name must not be empty"),
+        text.contains("EConfig")
+            && text.contains("bad-scope")
+            && text.contains("binary name must not be empty"),
         "unexpected error: {text}"
     );
-    let empty_path = PluginBuilder::new("bad-scope")
-        .scope(MountScope::default().with_paths([""]))
-        .build();
+    let empty_path = test_builder()
+        .plugin(KelirBuilder::named("bad-scope").scope(MountScope::default().with_paths([""])))?
+        .seal();
     let text = error_text(empty_path);
     assert!(
-        text.contains("EConfig") && text.contains("path must not be empty"),
+        text.contains("EConfig")
+            && text.contains("bad-scope")
+            && text.contains("path must not be empty"),
         "unexpected error: {text}"
     );
-    let ok = PluginBuilder::new("ok")
-        .scope(MountScope::default().with_paths(["/workspace"]))
-        .build();
+    let ok = test_builder()
+        .plugin(KelirBuilder::named("ok").scope(MountScope::default().with_paths(["/workspace"])))?
+        .seal();
     assert!(ok.is_ok());
+    Ok(())
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 #[test]
-fn duplicate_handlers_append_in_order() -> Result<(), PluginError> {
-    let wrapper = PluginBuilder::new("dup")
+fn duplicate_handlers_append_in_order() {
+    let plugin = KelirBuilder::named("dup")
         .on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
         .on_fs_write(|_path, _data, _pid, _ctx| {
             Ok(FilterAction::Drop {
@@ -385,10 +407,9 @@ fn duplicate_handlers_append_in_order() -> Result<(), PluginError> {
             })
         })
         .on_trap(|_event, _ctx| Ok(Verdict::Pass))
-        .on_trap(|_event, _ctx| Ok(Verdict::Pass))
-        .build()?;
+        .on_trap(|_event, _ctx| Ok(Verdict::Pass));
     let mut binder = RecordingBinder::default();
-    wrapper.register_interceptors(&mut binder);
+    plugin.register_interceptors(&mut binder);
     assert_eq!(
         binder.binds,
         vec![
@@ -405,13 +426,12 @@ fn duplicate_handlers_append_in_order() -> Result<(), PluginError> {
     assert!(matches!(first, Ok(FilterAction::Forward)));
     let second = binder.fs_stages[1].on_fs_write(Path::new("/workspace/x"), &mut data, 1, &ctx);
     assert!(matches!(second, Ok(FilterAction::Drop { .. })));
-    Ok(())
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 #[test]
-fn multi_vsock_registers_in_order() -> Result<(), PluginError> {
-    let wrapper = PluginBuilder::new("multi-vsock")
+fn multi_vsock_registers_in_order() {
+    let plugin = KelirBuilder::named("multi-vsock")
         .vsock_service(
             VsockServiceSpec {
                 port: 1111,
@@ -432,10 +452,9 @@ fn multi_vsock_registers_in_order() -> Result<(), PluginError> {
                 service: "three".to_string(),
             },
             _NullVsock,
-        )
-        .build()?;
+        );
     let mut binder = RecordingBinder::default();
-    wrapper.register_interceptors(&mut binder);
+    plugin.register_interceptors(&mut binder);
     assert_eq!(
         binder.binds,
         vec![
@@ -444,45 +463,85 @@ fn multi_vsock_registers_in_order() -> Result<(), PluginError> {
             "vsock:3333:three".to_string(),
         ]
     );
-    Ok(())
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 #[cfg(feature = "plugin-ledger")]
 #[test]
 fn canonical_chaos_shape() -> Result<(), PluginError> {
-    let wrapper = PluginBuilder::new("chaos")
+    let chaos = KelirBuilder::named("chaos")
         .require::<LedgerPlugin>()
         .scope(MountScope::default().with_paths(["/workspace"]))
         .fs(|f| f.on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward)))
-        .net(|n| n.on_net_outbound(|_frame| Ok(FilterAction::Forward)))
-        .build()?;
-    let scope = KelirPlugin::default_scope(&wrapper);
+        .net(|n| n.on_net_outbound(|_frame| Ok(FilterAction::Forward)));
+    let scope = KelirPlugin::default_scope(&chaos);
     assert_eq!(scope.paths, Some(vec![PathBuf::from("/workspace")]));
+    let builder = test_builder()
+        .plugin_instance(LedgerPlugin::new(false))
+        .plugin(chaos)?;
     let mut binder = RecordingBinder::default();
-    wrapper.register_interceptors(&mut binder);
+    builder.register_interceptors(&mut binder);
     assert_eq!(binder.binds, vec!["fs".to_string(), "net".to_string()]);
-    let builder = test_builder().plugin(LedgerPlugin::new(false));
-    let _builder = builder.plugin(wrapper);
     Ok(())
 }
 
 // see: cans/plugins/chaos.md#Plugin-chaos
 #[cfg(feature = "plugin-chaos")]
 #[test]
-fn chaos_plugin_wraps_into_builder() -> Result<(), PluginError> {
+fn chaos_plugin_wraps_into_builder() {
     let plugin = ChaosPlugin::new(ChaosConfig::default());
     let context_plugin = plugin.clone();
     let net_plugin = plugin.clone();
     let fs_plugin = plugin.clone();
-    let wrapper = PluginBuilder::new("chaos")
+    let chaos = KelirBuilder::named("chaos")
         .context(move || context_plugin.context())
         .scope(MountScope::default())
         .on_net_outbound(move |frame| net_plugin.on_net_outbound(frame))
-        .on_fs_write(move |path, data, pid, ctx| fs_plugin.on_fs_write(path, data, pid, ctx))
-        .build()?;
+        .on_fs_write(move |path, data, pid, ctx| fs_plugin.on_fs_write(path, data, pid, ctx));
     let mut binder = RecordingBinder::default();
-    wrapper.register_interceptors(&mut binder);
+    chaos.register_interceptors(&mut binder);
     assert_eq!(binder.binds, vec!["fs".to_string(), "net".to_string()]);
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+#[test]
+fn host_ring_verbs_bind_before_mounted() -> Result<(), PluginError> {
+    let plugin =
+        KelirBuilder::named("net-plugin").on_net_outbound(|_frame| Ok(FilterAction::Forward));
+    let host = test_builder()
+        .on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
+        .on_vm_shutdown(|_ctx| async move { Ok::<(), PluginError>(()) })
+        .plugin(plugin)?;
+    let mut binder = RecordingBinder::default();
+    host.register_interceptors(&mut binder);
+    assert_eq!(
+        binder.binds,
+        vec!["fs".to_string(), "lifecycle".to_string(), "net".to_string(),]
+    );
     Ok(())
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+#[test]
+fn mount_rejects_already_mounted() -> Result<(), PluginError> {
+    let host = test_builder().plugin(KelirBuilder::named("dup"))?;
+    let text = error_text(host.plugin(KelirBuilder::named("dup")));
+    assert!(
+        text.contains("EConfig") && text.contains("plugin already mounted: dup"),
+        "unexpected error: {text}"
+    );
+    Ok(())
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+#[test]
+fn empty_host_seals() {
+    assert!(test_builder().seal().is_ok());
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+#[test]
+fn trait_plugin_still_mounts() {
+    let host = test_builder().plugin_instance(ProfilePlugin::new());
+    assert!(host.seal().is_ok());
 }

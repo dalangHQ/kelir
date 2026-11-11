@@ -24,10 +24,10 @@ class ToolGuardPlugin(BasePlugin):
         self.config = config if config is not None else ToolGuardConfig()
 
 
-# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder 
-from kelir.plugin_builder import PluginBuilder, _PluginWrapper
+# see: cans/02-plugin-model.md#Unified-builder 
+from kelir import KelirBuilder
 
 
-def tool_guard_builder(config: ToolGuardConfig | None = None) -> _PluginWrapper:
+def tool_guard_builder(config: ToolGuardConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else ToolGuardConfig()
-    return PluginBuilder("tool-guard").context(lambda: cfg).build()
+    return KelirBuilder.plugin("tool-guard").context(lambda: cfg)

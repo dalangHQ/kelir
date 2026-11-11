@@ -1,26 +1,39 @@
 // ILLUSTRATIVE, NON-STANDALONE — do not compile this file directly.
-// It pins the fluent plugin-creation builder surface; the live shape is
-// crates/kelir/src/plugin_builder.rs (Agent 3) and the normative contract is
-// cans/02-plugin-model.md#Fluent-plugin-creation-builder (Agent 1).
+// It pins the unified builder surface; the live shape is
+// crates/kelir/src/builder_sdk.rs (Agent 3) and the normative contract is
+// cans/02-plugin-model.md#Unified-builder (Agent 1).
 //
-// Target shape: the 30-verb closed set (6 structural + 24 ring), the 8
-// closure-scoped entry points, and the validating build. The scope entry
-// points and the Result build are the A3 contract (DX-3): they do not exist
-// on the live builder yet. Flat verbs stay; a nested chain and the
-// equivalent flat chain produce identical descriptors (same rings, same
-// ordinals). Post-.build() calls are type errors: build consumes self and
-// returns PluginWrapper, which exposes no verb methods.
+// Target shape: ONE struct KelirBuilder. KelirBuilder::new(VmConfig) is
+// the host; KelirBuilder::named(name) is a plugin-mode builder. The 24
+// ring verbs + 8 closure scopes + context / require / scope / vsock /
+// fork exist in BOTH modes with the same signatures as the DX-round
+// plugin builder (the host gains them; the plugin keeps them). Mount is
+// merge by value: host.plugin(builder) appends the plugin's hooks after
+// the host's own hooks; host.plugin_instance(trait plugin) keeps the
+// live trait path. Validation happens once, in seal(), over the host +
+// mounted plugins together. There is no build(): a plugin-mode builder
+// is mounted as-is, and a verb after seal is a type error (seal consumes
+// self). PluginBuilder / PluginWrapper / with_composite are deleted.
 //
-// Owned by: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// see: cans/03-sdk-architecture.md#Fluent-plugin-surface
+// Generic arity: pinned by cans/02-plugin-model.md#Unified-builder (A1).
+// This artifact names the type parameters (Ctx, Deps, Plugins, Params,
+// SealState) but does not fix their list or order; method signatures
+// below return Self where the arity would otherwise be spelled. The
+// host-only verbs record their use on a plugin-mode builder and seal()
+// rejects them; params() is host-only by type (the arity pin).
+//
+// Owned by: cans/02-plugin-model.md#Unified-builder
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/03-sdk-architecture.md#Unified-builder-surface
 
 use std::future::Future;
 use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::Arc;
 
-use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
+use kelir_interface::driver_interface::{
+    DaxWindowMode, FastBootMode, VmConfig, WatchdogEvent, WatchdogVerdict,
+};
 use kelir_interface::plugin_model::{
     AnyPlugin, ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, KelirPlugin,
     LifecycleCtx, LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps,
@@ -29,7 +42,10 @@ use kelir_interface::plugin_model::{
 use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdict};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
-use crate::hlist_sdk::{HCons, HList, HNil};
+use crate::hlist_sdk::{HCons, HNil, NoParams};
+use crate::planes::storage_plane::{LockBrokerConfig, StoragePlaneConfig};
+use crate::planes::terminal_plane::PtyConfig;
+use crate::planes::wire_plane::WireConfig;
 
 type ForkFn = Arc<dyn Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync>;
 
@@ -100,27 +116,26 @@ pub struct TelemetryClosureAdapter<F, Verb> {
     verb: PhantomData<fn() -> Verb>,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-pub struct PluginBuilder<Ctx, Deps: HList> {
-    name: &'static str,
-    context_factory: Arc<dyn Fn() -> Ctx + Send + Sync>,
-    scope: MountScope,
-    fork: Option<ForkFn>,
-    trap: Vec<Arc<dyn TrapInterposer>>,
-    fs: Vec<Arc<dyn FsInterposer>>,
-    net: Vec<Arc<dyn NetInterposer>>,
-    console: Vec<Arc<dyn ConsoleInterposer>>,
-    host: Vec<Arc<dyn HostInterposer>>,
-    lifecycle: Vec<Arc<dyn LifecycleParticipant>>,
-    telemetry: Vec<Arc<dyn SystemTelemetryParticipant>>,
-    vsock: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>)>,
-    deps: PhantomData<fn() -> Deps>,
-}
-
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
+// One struct, two modes. new() is the host (config Some); named() is a
+// plugin-mode builder (config None, name Some). The seven vecs are the
+// single hook registry for both faces: the host face's ring verbs append
+// here, exactly like the plugin face's. Registration keeps plane config
+// and host-only registrations only; its former on_vm_init / on_vm_ready
+// / on_vm_shutdown single-handler fields are superseded by the lifecycle
+// vec and delete. Registration, TrapFilter, TrapEntry, BoxedTrap,
+// IntoTrapOutcome, CustomActionEntry,
+// StreamKindServiceEntry, and LifecycleMut are defined in builder_sdk.rs
+// alongside the builder. VmConfig has no Default live, so the host config
+// is Option: Some on the host face, None on the plugin face.
 #[derive(Clone)]
-pub struct PluginWrapper<Ctx, Deps: HList> {
-    name: &'static str,
+pub struct KelirBuilder {
+    config: Option<VmConfig>,
+    plugins: Plugins,
+    registration: Registration,
+    fast_boot: FastBootMode,
+    dax_window: DaxWindowMode,
+    name: Option<&'static str>,
     context_factory: Arc<dyn Fn() -> Ctx + Send + Sync>,
     scope: MountScope,
     fork: Option<ForkFn>,
@@ -132,51 +147,60 @@ pub struct PluginWrapper<Ctx, Deps: HList> {
     lifecycle: Vec<Arc<dyn LifecycleParticipant>>,
     telemetry: Vec<Arc<dyn SystemTelemetryParticipant>>,
     vsock: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>)>,
+    mounted: Vec<MountedPlugin>,
     deps: PhantomData<fn() -> Deps>,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
+struct MountedPlugin {
+    name: &'static str,
+    host_only_verbs: Vec<&'static str>,
+    vsock: Vec<VsockServiceSpec>,
+    scope: MountScope,
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
 pub struct TrapScope<'a> {
     trap: &'a mut Vec<Arc<dyn TrapInterposer>>,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 pub struct FsScope<'a> {
     fs: &'a mut Vec<Arc<dyn FsInterposer>>,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 pub struct NetScope<'a> {
     net: &'a mut Vec<Arc<dyn NetInterposer>>,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 pub struct ConsoleScope<'a> {
     console: &'a mut Vec<Arc<dyn ConsoleInterposer>>,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 pub struct ExecScope<'a> {
     console: &'a mut Vec<Arc<dyn ConsoleInterposer>>,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 pub struct HostScope<'a> {
     host: &'a mut Vec<Arc<dyn HostInterposer>>,
     lifecycle: &'a mut Vec<Arc<dyn LifecycleParticipant>>,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 pub struct LifecycleScope<'a> {
     lifecycle: &'a mut Vec<Arc<dyn LifecycleParticipant>>,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 pub struct TelemetryScope<'a> {
     telemetry: &'a mut Vec<Arc<dyn SystemTelemetryParticipant>>,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 impl<'a> TrapScope<'a> {
     pub fn on_trap<F>(mut self, f: F) -> Self
     where
@@ -201,7 +225,7 @@ impl<'a> TrapScope<'a> {
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 impl<'a> FsScope<'a> {
     pub fn on_fs_lookup<F>(mut self, f: F) -> Self
     where
@@ -251,7 +275,7 @@ impl<'a> FsScope<'a> {
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 impl<'a> NetScope<'a> {
     pub fn on_net_outbound<F>(mut self, f: F) -> Self
     where
@@ -276,7 +300,7 @@ impl<'a> NetScope<'a> {
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 impl<'a> ConsoleScope<'a> {
     pub fn on_console_input<F>(mut self, f: F) -> Self
     where
@@ -301,7 +325,7 @@ impl<'a> ConsoleScope<'a> {
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 impl<'a> ExecScope<'a> {
     pub fn on_exec_stdout<F>(mut self, f: F) -> Self
     where
@@ -326,7 +350,7 @@ impl<'a> ExecScope<'a> {
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 // on_host_preempt is reachable via .host() but binds the lifecycle ring:
 // its adapter is a LifecycleParticipant, so HostScope carries both vecs.
 impl<'a> HostScope<'a> {
@@ -376,7 +400,7 @@ impl<'a> HostScope<'a> {
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 impl<'a> LifecycleScope<'a> {
     pub fn on_vm_init<F, Fut>(mut self, f: F) -> Self
     where
@@ -439,7 +463,7 @@ impl<'a> LifecycleScope<'a> {
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 impl<'a> TelemetryScope<'a> {
     pub fn on_memory_pressure<F, Fut>(mut self, f: F) -> Self
     where
@@ -478,10 +502,23 @@ impl<'a> TelemetryScope<'a> {
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-impl PluginBuilder<(), HNil> {
-    pub fn new(name: &'static str) -> Self {
+// see: cans/02-plugin-model.md#Unified-builder
+impl KelirBuilder {
+    pub fn new(config: VmConfig) -> Self {
+        Self::with_config(Some(config), None)
+    }
+
+    pub fn named(name: &'static str) -> Self {
+        Self::with_config(None, Some(name))
+    }
+
+    fn with_config(config: Option<VmConfig>, name: Option<&'static str>) -> Self {
         Self {
+            config,
+            plugins: HNil,
+            registration: Registration::default(),
+            fast_boot: FastBootMode::Off,
+            dax_window: DaxWindowMode::Off,
             name,
             context_factory: Arc::new(|| ()),
             scope: MountScope::default(),
@@ -494,18 +531,21 @@ impl PluginBuilder<(), HNil> {
             lifecycle: Vec::new(),
             telemetry: Vec::new(),
             vsock: Vec::new(),
+            mounted: Vec::new(),
             deps: PhantomData,
         }
     }
-}
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
-    fn rebuild<NextCtx, NextDeps: HList>(
+    fn rebuild<NextCtx>(
         self,
         context_factory: Arc<dyn Fn() -> NextCtx + Send + Sync>,
-    ) -> PluginBuilder<NextCtx, NextDeps> {
-        PluginBuilder {
+    ) -> Self {
+        Self {
+            config: self.config,
+            plugins: self.plugins,
+            registration: self.registration,
+            fast_boot: self.fast_boot,
+            dax_window: self.dax_window,
             name: self.name,
             context_factory,
             scope: self.scope,
@@ -518,21 +558,25 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
             lifecycle: self.lifecycle,
             telemetry: self.telemetry,
             vsock: self.vsock,
+            mounted: self.mounted,
             deps: PhantomData,
         }
     }
 
+    // see: cans/02-plugin-model.md#Unified-builder
+    // Type-level: context() swaps Ctx, require() prepends P::Context to
+    // Deps; the exact spelling is the spec arity pin (A1).
     pub fn context<NextCtx>(
         self,
         factory: impl Fn() -> NextCtx + Send + Sync + 'static,
-    ) -> PluginBuilder<NextCtx, Deps>
+    ) -> Self
     where
         NextCtx: Clone + Send + Sync + 'static,
     {
         self.rebuild(Arc::new(factory))
     }
 
-    pub fn require<P>(self) -> PluginBuilder<Ctx, HCons<P::Context, Deps>>
+    pub fn require<P>(self) -> Self
     where
         P: KelirPlugin,
     {
@@ -815,8 +859,277 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
         });
         self
     }
+}
 
-    pub fn build(self) -> Result<PluginWrapper<Ctx, Deps>, PluginError> {
+// see: cans/02-plugin-model.md#Unified-builder
+// Mount. plugin() merges a plugin-mode builder by value: its hook vecs
+// append after the host's own hooks (host hooks first, then plugins in
+// mount order; within a plugin, registration order), its vsock services
+// append after the host's, and its mounted records flatten into the
+// host's (plugin-into-plugin mount composes the same way). plugin() and
+// plugin_instance() return Result: mounting the same plugin twice is
+// an error. The live plugin() was infallible; the duplicate check is
+// runtime, so the unified mount returns Result.
+impl KelirBuilder {
+    pub fn plugin(mut self, plugin: Self) -> Result<Self, PluginError> {
+        let name = match plugin.name {
+            Some(name) => name,
+            None => {
+                return Err(PluginError::reject(
+                    "EINVAL",
+                    "plugin() mounts a plugin-mode builder: use named()",
+                ));
+            }
+        };
+        if self.mounted.iter().any(|mounted| mounted.name == name) {
+            return Err(PluginError::reject(
+                "EINVAL",
+                &format!("plugin already mounted: {name}"),
+            ));
+        }
+        let mut host_only_verbs: Vec<&'static str> = Vec::new();
+        if plugin.registration.storage_cfg.is_some() {
+            host_only_verbs.push("storage");
+        }
+        if plugin.registration.terminal_cfg.is_some() {
+            host_only_verbs.push("terminal");
+        }
+        if plugin.registration.wire_cfg.is_some() {
+            host_only_verbs.push("wire");
+        }
+        if plugin.registration.lock_broker_cfg.is_some() {
+            host_only_verbs.push("lock_broker");
+        }
+        if plugin.registration.detached {
+            host_only_verbs.push("detached");
+        }
+        if !matches!(plugin.fast_boot, FastBootMode::Off) {
+            host_only_verbs.push("fast_boot");
+        }
+        if !matches!(plugin.dax_window, DaxWindowMode::Off) {
+            host_only_verbs.push("dax_window");
+        }
+        if !plugin.registration.traps.is_empty() {
+            host_only_verbs.push("trap");
+        }
+        if plugin.registration.on_trap_deny.is_some() {
+            host_only_verbs.push("on_trap_deny");
+        }
+        if !plugin.registration.custom_actions.is_empty() {
+            host_only_verbs.push("register_custom_action");
+        }
+        if !plugin.registration.stream_kind_services.is_empty() {
+            host_only_verbs.push("register_stream_kind");
+        }
+        if !plugin.registration.vetoes.is_empty() {
+            host_only_verbs.push("lifecycle_mut");
+        }
+        let vsock_specs: Vec<VsockServiceSpec> = plugin
+            .vsock
+            .iter()
+            .map(|(spec, _)| spec.clone())
+            .collect();
+        let scope = plugin.scope.clone();
+        self.trap.extend(plugin.trap);
+        self.fs.extend(plugin.fs);
+        self.net.extend(plugin.net);
+        self.console.extend(plugin.console);
+        self.host.extend(plugin.host);
+        self.lifecycle.extend(plugin.lifecycle);
+        self.telemetry.extend(plugin.telemetry);
+        self.vsock.extend(plugin.vsock);
+        self.mounted.push(MountedPlugin {
+            name,
+            host_only_verbs,
+            vsock: vsock_specs,
+            scope,
+        });
+        self.mounted.extend(plugin.mounted);
+        Ok(self)
+    }
+
+    pub fn plugin_instance<P>(mut self, plugin: P) -> Result<Self, PluginError>
+    where
+        P: KelirPlugin + PluginDeps + Clone + 'static,
+    {
+        let name = plugin.name();
+        if self.mounted.iter().any(|mounted| mounted.name == name) {
+            return Err(PluginError::reject(
+                "EINVAL",
+                &format!("plugin already mounted: {name}"),
+            ));
+        }
+        let context = plugin.context();
+        let scope = plugin.default_scope();
+        let mut registration = self.registration.narrow::<P::Context>();
+        registration.instances.push((Box::new(plugin), scope.clone()));
+        self.plugins = HCons {
+            head: context,
+            tail: self.plugins,
+        };
+        self.registration = registration;
+        self.mounted.push(MountedPlugin {
+            name,
+            host_only_verbs: Vec::new(),
+            vsock: Vec::new(),
+            scope,
+        });
+        Ok(self)
+    }
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+// Host-only verbs. They exist on the one struct (like Elysia .listen())
+// and are simply not called on a plugin-mode builder; a call on one is
+// recorded in its registration and seal() rejects it with the plugin
+// named. params() is host-only by type (the arity pin). The live host's
+// on_vm_init / on_vm_ready / on_vm_shutdown single-handler methods are
+// superseded by the ring verbs above (append, plain async fn) and delete;
+// on_trap_deny stays: it is not one of the 24 rings.
+impl KelirBuilder {
+    pub fn storage(mut self, config: StoragePlaneConfig<Plugins, Params>) -> Self {
+        self.registration.storage_cfg = Some(config.retag());
+        self
+    }
+
+    pub fn terminal(mut self, config: PtyConfig) -> Self {
+        self.registration.terminal_cfg = Some(config);
+        self
+    }
+
+    pub fn wire(mut self, config: WireConfig) -> Self {
+        self.registration.wire_cfg = Some(config);
+        self
+    }
+
+    pub fn lock_broker(mut self, config: LockBrokerConfig) -> Self {
+        self.registration.lock_broker_cfg = Some(config);
+        self
+    }
+
+    pub fn detached(mut self, detached: bool) -> Self {
+        self.registration.detached = detached;
+        self
+    }
+
+    pub fn fast_boot(mut self, mode: FastBootMode) -> Self {
+        self.fast_boot = mode;
+        self
+    }
+
+    pub fn dax_window(mut self, mode: DaxWindowMode) -> Self {
+        self.dax_window = mode;
+        self
+    }
+
+    pub fn is_detached(&self) -> bool {
+        self.registration.detached
+    }
+
+    pub fn params<T>(self) -> Self {
+        self
+    }
+
+    pub fn trap<F, Fut, O>(mut self, filter: impl Into<TrapFilter>, f: F) -> Self
+    where
+        F: Fn(HandlerCtx<Plugins, Params>) -> Fut + Clone + Send + Sync + 'static,
+        Fut: Future<Output = Result<O, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
+        O: IntoTrapOutcome,
+    {
+        let boxed: BoxedTrap<Plugins> = Arc::new(move |ctx: HandlerCtx<Plugins, NoParams>| {
+            let f = f.clone();
+            let fut = f(ctx.retag::<Params>());
+            Box::pin(async move { fut.await.map(IntoTrapOutcome::into_outcome) })
+        });
+        self.registration.traps.push(TrapEntry {
+            filter: filter.into(),
+            handler: boxed,
+        });
+        self
+    }
+
+    pub fn on_trap_deny<F, Fut, T>(mut self, f: F) -> Self
+    where
+        F: Fn(&TrapEvent, &kelir_core::Session) -> Fut + Clone + Send + Sync + 'static,
+        Fut: Future<Output = Result<T, PluginError>> + Send + 'static,
+    {
+        self.registration.on_trap_deny = Some(Box::new(
+            move |event: &TrapEvent, session: &kelir_core::Session| {
+                let fut = f.clone()(event, session);
+                Box::pin(async move { fut.await.map(drop) })
+            },
+        ));
+        self
+    }
+
+    pub fn register_custom_action<F, Fut>(
+        mut self,
+        name: &str,
+        schema: serde_json::Value,
+        f: F,
+    ) -> Self
+    where
+        F: Fn(ciborium::value::Value) -> Fut + Clone + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
+    {
+        self.registration.custom_actions.push(CustomActionEntry {
+            name: name.to_string(),
+            schema,
+            handler: Box::new(move |payload: ciborium::value::Value| {
+                let fut = f.clone()(payload);
+                Box::pin(fut)
+            }),
+        });
+        self
+    }
+
+    pub fn register_stream_kind<F, Fut>(
+        mut self,
+        kind: u16,
+        schema: serde_json::Value,
+        f: F,
+    ) -> Self
+    where
+        F: Fn(Vec<u8>) -> Fut + Clone + Send + Sync + 'static,
+        Fut: Future<Output = Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>>
+            + Send
+            + 'static,
+    {
+        self.registration
+            .stream_kind_services
+            .push(StreamKindServiceEntry {
+                kind,
+                schema,
+                handler: Box::new(move |request: Vec<u8>| {
+                    let fut = f.clone()(request);
+                    Box::pin(fut)
+                }),
+            });
+        self
+    }
+
+    pub fn lifecycle_mut(&mut self) -> LifecycleMut<'_> {
+        LifecycleMut {
+            vetoes: &mut self.registration.vetoes,
+        }
+    }
+
+    // see: cans/02-plugin-model.md#Unified-builder
+    // The one validation. The live seal() was infallible; the unified
+    // seal() validates and returns Result. (a) vsock triple and (b) scope
+    // triple over the host's own registrations and every mounted
+    // plugin's, with the plugin named on failure. (c) deps: enforced at
+    // mount by the Satisfies bound on plugin() / plugin_instance(); there
+    // is no runtime deps check in Rust, the uniform message is the
+    // TS/Python runtime form. (d) host-only verbs recorded on a
+    // plugin-mode builder, rejected here with the plugin named.
+    pub fn seal(self) -> Result<Self, PluginError> {
+        if self.config.is_none() {
+            return Err(PluginError::reject(
+                "EINVAL",
+                "seal requires a host-mode builder",
+            ));
+        }
         for (spec, _) in &self.vsock {
             if spec.port == 0 || spec.port > 65535 {
                 return Err(PluginError::reject(
@@ -841,26 +1154,60 @@ impl<Ctx, Deps: HList> PluginBuilder<Ctx, Deps> {
                 }
             }
         }
-        Ok(PluginWrapper {
-            name: self.name,
-            context_factory: self.context_factory,
-            scope: self.scope,
-            fork: self.fork,
-            trap: self.trap,
-            fs: self.fs,
-            net: self.net,
-            console: self.console,
-            host: self.host,
-            lifecycle: self.lifecycle,
-            telemetry: self.telemetry,
-            vsock: self.vsock,
-            deps: PhantomData,
-        })
+        for mounted in &self.mounted {
+            for spec in &mounted.vsock {
+                if spec.port == 0 || spec.port > 65535 {
+                    return Err(PluginError::reject(
+                        "EINVAL",
+                        &format!(
+                            "{}: vsock service port outside 1..=65535",
+                            mounted.name
+                        ),
+                    ));
+                }
+                if spec.service.is_empty() {
+                    return Err(PluginError::reject(
+                        "EINVAL",
+                        &format!(
+                            "{}: vsock service declares an empty service name",
+                            mounted.name
+                        ),
+                    ));
+                }
+            }
+            if let Some(paths) = &mounted.scope.paths {
+                for path in paths {
+                    if path.as_os_str().is_empty() {
+                        return Err(PluginError::reject(
+                            "EINVAL",
+                            &format!("{}: mount scope declares an empty path", mounted.name),
+                        ));
+                    }
+                }
+            }
+            if let Some(verb) = mounted.host_only_verbs.first() {
+                return Err(PluginError::reject(
+                    "EINVAL",
+                    &format!(
+                        "{}: host-only verb '{verb}' used on a plugin-mode builder",
+                        mounted.name
+                    ),
+                ));
+            }
+        }
+        Ok(self)
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-impl<Ctx, Deps: HList> KelirPlugin for PluginWrapper<Ctx, Deps>
+// see: cans/02-plugin-model.md#Unified-builder
+// A plugin-mode builder IS a KelirPlugin: the trait stays underneath as
+// the low-level interface, and mounting via plugin_instance() takes any
+// KelirPlugin. register_interceptors binds the seven vecs and the vsock
+// services with the builder's scope, exactly as the deleted PluginWrapper
+// did. Trait-object plugins mounted via plugin_instance() validate
+// vsock/scope at bind time through the binder, not at seal(): their specs
+// are only visible inside register_interceptors.
+impl KelirPlugin for KelirBuilder
 where
     Ctx: Clone + Send + Sync + 'static,
 {
@@ -871,7 +1218,7 @@ where
     }
 
     fn name(&self) -> &'static str {
-        self.name
+        self.name.unwrap_or("")
     }
 
     fn default_scope(&self) -> MountScope {
@@ -917,16 +1264,27 @@ where
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-impl<Ctx, Deps: HList> PluginDeps for PluginWrapper<Ctx, Deps> {
+// see: cans/02-plugin-model.md#Unified-builder
+impl PluginDeps for KelirBuilder {
     type Deps = Deps;
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-// Ring resolution at .build() holds by construction: every verb is typed,
-// so no registered verb can name an unknown ring. The missing-prerequisite
-// check stays at KelirBuilder::plugin() (Satisfies<P::Deps>), reported as
-// `missing prerequisite: <dep> required by <plugin>`. An empty plugin (no
-// handlers) still builds. VsockServiceSpec is (port: u32, service: String);
-// it carries no schema field live, so the (port, service, schema) spec is
-// plugin-level in TS/Python and (port, service) in Rust.
+// see: cans/02-plugin-model.md#Unified-builder
+// Deleted shapes: PluginBuilder, PluginWrapper, plugin_builder_scopes,
+// the duplicated Satisfies (one Satisfies lives in hlist_sdk.rs),
+// build(), with_composite(). Nothing is documented as an alternative:
+// the old shapes are gone, not deprecated.
+// Ring resolution holds by construction: every verb is typed, so no
+// registered verb can name an unknown ring. An empty builder (no
+// handlers) still seals. VsockServiceSpec is (port: u32, service:
+// String); it carries no schema field live, so the (port, service,
+// schema) spec is plugin-level in TS/Python and (port, service) in Rust.
+// Descriptors: host hooks first, then mounted plugins in mount order;
+// within a plugin, registration order. The host's fuse()/describe()
+// reads the merged vecs through this one path.
+// Seal-time messages name the plugin on mounted-plugin failures:
+// `<plugin>: <triple failure>`. Host-level failures use the bare triple
+// message. The duplicate-mount message is `plugin already mounted:
+// <name>`; the missing-prerequisite message is `missing prerequisite:
+// <dep> required by <plugin>` (runtime form in TS/Python; Satisfies
+// bound in Rust).

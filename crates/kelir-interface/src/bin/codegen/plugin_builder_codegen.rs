@@ -1,4 +1,4 @@
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/03-sdk-architecture.md#Python-SDK
 use std::fs;
@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use crate::sdk_codegen::{Projection, sdk_camel};
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 pub struct BuilderPlugin {
     pub name: String,
     pub module_name: String,
@@ -15,7 +15,7 @@ pub struct BuilderPlugin {
     pub requires: Vec<String>,
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 fn tier_value(text: &str, key: &str) -> Option<String> {
     let mut in_tier = false;
     for line in text.lines() {
@@ -37,7 +37,7 @@ fn tier_value(text: &str, key: &str) -> Option<String> {
     None
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 fn parse_tier(dir: &Path, name: &str) -> Result<u32, String> {
     let manifest = dir.join("Cargo.toml");
     let text = fs::read_to_string(&manifest)
@@ -72,7 +72,7 @@ fn parse_tier(dir: &Path, name: &str) -> Result<u32, String> {
     Ok(level)
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 fn kebab_plugin_type(name: &str) -> Option<String> {
     let stem = name.strip_suffix("Plugin")?;
     if stem.is_empty() {
@@ -88,7 +88,7 @@ fn kebab_plugin_type(name: &str) -> Option<String> {
     Some(out)
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 fn scan_requires(src: &Path) -> Result<Vec<String>, String> {
     let mut requires: Vec<String> = Vec::new();
     let mut entries: Vec<PathBuf> = Vec::new();
@@ -141,7 +141,7 @@ fn scan_requires(src: &Path) -> Result<Vec<String>, String> {
     Ok(requires)
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Unified-builder
 pub fn load_builder_plugins(
     root: &Path,
     projections: &[Projection],
@@ -169,22 +169,22 @@ pub fn emit_typescript(plugins: &[BuilderPlugin]) -> String {
     let mut lines: Vec<String> = vec![
         String::new(),
         String::new(),
-        "// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder ".to_string(),
+        "// see: cans/02-plugin-model.md#Unified-builder ".to_string(),
         "import { createPlugin } from \"./plugin.model.js\";".to_string(),
+        "import type { KelirBuilder } from \"./plugin.model.js\";".to_string(),
     ];
     for plugin in plugins {
         let factory = format!("{}Builder", sdk_camel(&plugin.name));
         lines.push(String::new());
         lines.push(String::new());
         lines.push(format!(
-            "export function {factory}(config: {}): KelirPlugin {{",
+            "export function {factory}(config: {}): KelirBuilder {{",
             plugin.config_name
         ));
         let mut chain = format!("createPlugin(\"{}\", {{ config }})", plugin.name);
         for peer in &plugin.requires {
             chain.push_str(&format!(".requires<\"{peer}\">()"));
         }
-        chain.push_str(".build()");
         lines.push(format!("  return {chain};"));
         lines.push("}".to_string());
     }
@@ -197,12 +197,12 @@ pub fn emit_python_factory(plugin: &BuilderPlugin) -> String {
     let mut lines: Vec<String> = vec![
         String::new(),
         String::new(),
-        "# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder ".to_string(),
-        "from kelir.plugin_builder import PluginBuilder, _PluginWrapper".to_string(),
+        "# see: cans/02-plugin-model.md#Unified-builder ".to_string(),
+        "from kelir import KelirBuilder".to_string(),
         String::new(),
         String::new(),
         format!(
-            "def {}_builder(config: {} | None = None) -> _PluginWrapper:",
+            "def {}_builder(config: {} | None = None) -> KelirBuilder:",
             plugin.module_name, plugin.config_name
         ),
     ];
@@ -210,11 +210,11 @@ pub fn emit_python_factory(plugin: &BuilderPlugin) -> String {
         "    cfg = config if config is not None else {}()",
         plugin.config_name
     ));
-    let mut chain = format!("PluginBuilder(\"{}\")", plugin.name);
+    let mut chain = format!("KelirBuilder.plugin(\"{}\")", plugin.name);
     for peer in &plugin.requires {
         chain.push_str(&format!(".require(\"{peer}\")"));
     }
-    chain.push_str(".context(lambda: cfg).build()");
+    chain.push_str(".context(lambda: cfg)");
     lines.push(format!("    return {chain}"));
     lines.push(String::new());
     lines.join("\n")

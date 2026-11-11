@@ -12,7 +12,7 @@ export * from "./context.lifecycle.types.js";
 export * from "./errors.sdk.js";
 export * from "./session.lifecycle.js";
 export * from "./sandbox.runtime.js";
-export * from "./plugin.model.js";
+export * from "./hook.registry.js";
 export * from "./builder.lifecycle.js";
 export * from "./plugins.registry.js";
 export * from "./fusion.plugin.js";

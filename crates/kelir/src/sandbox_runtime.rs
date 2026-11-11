@@ -5,7 +5,7 @@ use kelir_interface::driver_interface::{VmConfig, default_vm_config};
 use kelir_interface::plugin_model::PluginError;
 use serde::{Deserialize, Serialize};
 
-use crate::builder_sdk::{KelirBuilder, Unsealed};
+use crate::builder_sdk::{Host, KelirBuilder, Unsealed};
 use crate::hlist_sdk::{HCons, HNil, NoParams};
 use crate::planes::storage_plane::FsReconcileRequest;
 use crate::session_lifecycle::{Session, SpawnResult};
@@ -246,8 +246,11 @@ impl SandboxOptions {
     }
 }
 
+// see: cans/02-plugin-model.md#Unified-builder
+type ProfileHostBuilder = KelirBuilder<Host, Unsealed, (), HNil, HCons<ProfileCtx, HNil>, NoParams>;
+
 pub struct Sandbox {
-    builder: Option<KelirBuilder<Unsealed, HCons<ProfileCtx, HNil>, NoParams>>,
+    builder: Option<ProfileHostBuilder>,
     session: Option<Session<HCons<ProfileCtx, HNil>, NoParams>>,
     profile: SandboxProfile,
     source_path: PathBuf,
@@ -265,7 +268,7 @@ impl Sandbox {
 
     pub async fn create(opts: SandboxOptions) -> Result<Self, PluginError> {
         let builder = KelirBuilder::new(opts.config)
-            .plugin(ProfilePlugin::new())
+            .plugin_instance(ProfilePlugin::new())
             .detached(opts.detached);
         Ok(Self {
             builder: Some(builder),
@@ -293,7 +296,7 @@ impl Sandbox {
 
     fn from_profile(profile: SandboxProfile, path: PathBuf) -> Result<Self, PluginError> {
         let config = profile.to_vm_config();
-        let builder = KelirBuilder::new(config).plugin(ProfilePlugin::new());
+        let builder = KelirBuilder::new(config).plugin_instance(ProfilePlugin::new());
         Ok(Self {
             builder: Some(builder),
             session: None,

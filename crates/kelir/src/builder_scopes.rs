@@ -6,15 +6,17 @@ use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
 use kelir_interface::plugin_model::{HandlerCtx, LifecycleCtx, PluginError};
 use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdict};
 
+use crate::builder_sdk::{KelirBuilder, Unsealed};
 use crate::hlist_sdk::HList;
-use crate::plugin_builder::PluginBuilder;
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-pub struct TrapScope<Ctx, Deps: HList> {
-    pub(crate) builder: PluginBuilder<Ctx, Deps>,
+pub struct TrapScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
 
-impl<Ctx, Deps: HList> TrapScope<Ctx, Deps> {
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    TrapScope<Plugins, Params, Mode, Ctx, Deps>
+{
     pub fn on_trap<F>(mut self, f: F) -> Self
     where
         F: Fn(&TrapEvent, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
@@ -33,11 +35,13 @@ impl<Ctx, Deps: HList> TrapScope<Ctx, Deps> {
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-pub struct FsScope<Ctx, Deps: HList> {
-    pub(crate) builder: PluginBuilder<Ctx, Deps>,
+pub struct FsScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
 
-impl<Ctx, Deps: HList> FsScope<Ctx, Deps> {
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    FsScope<Plugins, Params, Mode, Ctx, Deps>
+{
     pub fn on_fs_lookup<F>(mut self, f: F) -> Self
     where
         F: Fn(&Path) -> Result<Verdict, PluginError> + Send + Sync + 'static,
@@ -75,11 +79,13 @@ impl<Ctx, Deps: HList> FsScope<Ctx, Deps> {
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-pub struct NetScope<Ctx, Deps: HList> {
-    pub(crate) builder: PluginBuilder<Ctx, Deps>,
+pub struct NetScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
 
-impl<Ctx, Deps: HList> NetScope<Ctx, Deps> {
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    NetScope<Plugins, Params, Mode, Ctx, Deps>
+{
     pub fn on_net_outbound<F>(mut self, f: F) -> Self
     where
         F: Fn(&mut [u8]) -> Result<FilterAction, PluginError> + Send + Sync + 'static,
@@ -98,11 +104,13 @@ impl<Ctx, Deps: HList> NetScope<Ctx, Deps> {
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-pub struct ConsoleScope<Ctx, Deps: HList> {
-    pub(crate) builder: PluginBuilder<Ctx, Deps>,
+pub struct ConsoleScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
 
-impl<Ctx, Deps: HList> ConsoleScope<Ctx, Deps> {
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    ConsoleScope<Plugins, Params, Mode, Ctx, Deps>
+{
     pub fn on_console_input<F>(mut self, f: F) -> Self
     where
         F: Fn(u32, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
@@ -121,11 +129,13 @@ impl<Ctx, Deps: HList> ConsoleScope<Ctx, Deps> {
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-pub struct ExecScope<Ctx, Deps: HList> {
-    pub(crate) builder: PluginBuilder<Ctx, Deps>,
+pub struct ExecScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
 
-impl<Ctx, Deps: HList> ExecScope<Ctx, Deps> {
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    ExecScope<Plugins, Params, Mode, Ctx, Deps>
+{
     pub fn on_exec_stdout<F>(mut self, f: F) -> Self
     where
         F: Fn(u32, u64, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
@@ -144,11 +154,13 @@ impl<Ctx, Deps: HList> ExecScope<Ctx, Deps> {
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-pub struct HostScope<Ctx, Deps: HList> {
-    pub(crate) builder: PluginBuilder<Ctx, Deps>,
+pub struct HostScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
 
-impl<Ctx, Deps: HList> HostScope<Ctx, Deps> {
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    HostScope<Plugins, Params, Mode, Ctx, Deps>
+{
     pub fn on_host_lsm_exec<F>(mut self, f: F) -> Self
     where
         F: Fn(&Path, u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
@@ -184,11 +196,13 @@ impl<Ctx, Deps: HList> HostScope<Ctx, Deps> {
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-pub struct LifecycleScope<Ctx, Deps: HList> {
-    pub(crate) builder: PluginBuilder<Ctx, Deps>,
+pub struct LifecycleScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
 
-impl<Ctx, Deps: HList> LifecycleScope<Ctx, Deps> {
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    LifecycleScope<Plugins, Params, Mode, Ctx, Deps>
+{
     pub fn on_vm_init<F, Fut>(mut self, f: F) -> Self
     where
         F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
@@ -236,11 +250,13 @@ impl<Ctx, Deps: HList> LifecycleScope<Ctx, Deps> {
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-pub struct TelemetryScope<Ctx, Deps: HList> {
-    pub(crate) builder: PluginBuilder<Ctx, Deps>,
+pub struct TelemetryScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
 
-impl<Ctx, Deps: HList> TelemetryScope<Ctx, Deps> {
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    TelemetryScope<Plugins, Params, Mode, Ctx, Deps>
+{
     pub fn on_memory_pressure<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(u32, u32) -> Fut + Send + Sync + 'static,

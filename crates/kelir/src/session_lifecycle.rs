@@ -120,18 +120,15 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         // see: cans/08-lifecycle.md#CoW-fork
         let mut registration = Registration {
             instances: Vec::new(),
+            mounted: Vec::new(),
             // see: cans/08-lifecycle.md#CoW-fork
             traps: Vec::new(),
             storage_cfg: self.registration.storage_cfg.clone(),
             terminal_cfg: self.registration.terminal_cfg.clone(),
             wire_cfg: self.registration.wire_cfg.clone(),
             lock_broker_cfg: self.registration.lock_broker_cfg.clone(),
-            on_vm_init: None,
-            on_vm_ready: None,
-            on_vm_shutdown: None,
             on_trap_deny: None,
             custom_actions: Vec::new(),
-            vsock_services: Vec::new(),
             stream_kind_services: Vec::new(),
             vetoes: Vec::new(),
             detached: self.registration.detached,
@@ -143,6 +140,23 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
                 forked.register_interceptors(child.pipeline_mut());
             }
             registration.instances.push((forked, scope.clone()));
+        }
+        for mounted in &self.registration.mounted {
+            match &mounted.fork {
+                Some(fork) => {
+                    let forked = fork(&child_session_id);
+                    if forked.is_enabled() {
+                        child.pipeline_mut().set_active_scope(mounted.scope.clone());
+                        forked.register_interceptors(child.pipeline_mut());
+                    }
+                    registration.instances.push((forked, mounted.scope.clone()));
+                }
+                None => {
+                    child.pipeline_mut().set_active_scope(mounted.scope.clone());
+                    mounted.bind(child.pipeline_mut());
+                    registration.mounted.push(mounted.clone());
+                }
+            }
         }
         child.pipeline_mut().set_active_scope(MountScope::default());
         child.pipeline_mut().seal()?;

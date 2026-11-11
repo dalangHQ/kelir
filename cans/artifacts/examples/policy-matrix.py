@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
 import kelir
-from kelir import Approval, Deadline, HandlerContext, KelirBuilder, TrapFilter, Verdict
+from kelir import Approval, Deadline, HandlerContext, KelirBuilder, TrapFilter, Verdict, VsockServiceEntry
 from kelir.model_plugin import (
     BasePlugin,
     VetoEvent,
@@ -135,8 +135,15 @@ def build_runtime() -> KelirBuilder:
         return request
 
     # see: cans/11-protocol.md#Control-channel
-    # TODO: live register_vsock_service takes 4 args (port, service, schema, handler) at packages/py/kelir/__init__.py:704; SSOT 3-arg form kept per cans/03-sdk-architecture.md:112.
-    builder.register_vsock_service(0x0013, {"type": "object", "properties": {}}, echo)
+    builder.vsock_service(
+        VsockServiceEntry(
+            port=0x0013,
+            service="echo",
+            schema={"type": "object", "properties": {}},
+            handler=echo,
+        ),
+        echo,
+    )
 
     # see: cans/02-plugin-model.md#Full-Verdict-lattice
     builder.trap(TrapFilter.binary("policy-allow"), pre=row_allow)

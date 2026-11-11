@@ -54,7 +54,6 @@ const policyPlugin = createPlugin("policy-matrix")
     }
     return "execute-default";
   })
-  .build();
 
 
 const watchdogSilencer = createPlugin("watchdog-silencer")
@@ -65,7 +64,6 @@ const watchdogSilencer = createPlugin("watchdog-silencer")
     }
     return "execute-default";
   })
-  .build();
 
 
 const runtime = kelir({
