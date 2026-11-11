@@ -255,6 +255,28 @@ def test_relay_socket_path_fails_closed_without_the_native_bridge(
         relay_socket_path("f" * 32)
 
 
+def test_load_native_bridge_raises_econfig_when_import_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_import: Any = importlib.import_module
+
+    def _no_bridge(name: str) -> Any:
+        if name in ("kelir._kelir", "_kelir"):
+            raise ImportError(f"No module named {name!r}")
+        return real_import(name)
+
+    monkeypatch.setattr(importlib, "import_module", _no_bridge)
+    with pytest.raises(EConfig, match=r"_kelir\) is missing"):
+        kelir._load_native_bridge()
+
+
+def test_load_native_bridge_raises_econfig_when_module_absent() -> None:
+    if _native_bridge_built():
+        pytest.skip("native _kelir extension is present; the missing path cannot fire")
+    with pytest.raises(EConfig, match=r"_kelir\) is missing"):
+        kelir._load_native_bridge()
+
+
 def test_handler_context_shapes() -> None:
     ctx = HandlerContext()
     assert ctx.trap == TrapEvent()
