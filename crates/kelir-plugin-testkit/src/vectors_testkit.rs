@@ -5,8 +5,6 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::future::Future;
-use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
 use kelir_interface::codec_protocol::{CodecError, FLAG_DATA};
@@ -15,8 +13,8 @@ use kelir_interface::fusion_plugin::TrampolineRing;
 use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::plugin_model::VetoEvent;
 use kelir_interface::protocol_wire::{
-    Channel, ExecveMutation, FilterAction, GuestToHost, Heartbeat, MsgType, PatchPayload,
-    SuspendUntil, TrapEvent, Verdict,
+    Channel, ExecveMutation, FilterAction, GuestToHost, Heartbeat, MemoryPressureWarning, MsgType,
+    PatchPayload, ProcessExit, SuspendUntil, TrapEvent, Verdict,
 };
 
 use crate::handlers_testkit::LifecycleCtxFixture;
@@ -92,11 +90,22 @@ pub enum UnifiedBuilderOutcome {
 
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
+// see: cans/artifacts/examples/policy-matrix.rs#PolicyMatrixPlugin
+#[derive(Debug, Clone)]
+pub struct UnifiedBuilderScope {
+    pub binaries: Option<Vec<String>>,
+    pub paths: Option<Vec<String>>,
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/15-operations.md#Unified-builder-parity-vectors
 #[derive(Debug, Clone)]
 pub struct UnifiedBuilderCase {
     pub name: String,
     pub requires: Vec<String>,
     pub rings: Vec<(TrampolineRing, u32)>,
+    pub host_rings: Vec<(TrampolineRing, u32)>,
+    pub scope: Option<UnifiedBuilderScope>,
     pub events: Vec<serde_json::Value>,
     pub expected_outcomes: Vec<UnifiedBuilderOutcome>,
 }
@@ -119,10 +128,23 @@ impl UnifiedBuilderCase {
             };
             outcomes.push(value);
         }
+        let mut host_rings: Vec<serde_json::Value> = Vec::with_capacity(self.host_rings.len());
+        for (ring, ordinal) in &self.host_rings {
+            host_rings.push(serde_json::json!({"ring": ring.as_tag(), "ordinal": ordinal}));
+        }
+        let scope = match &self.scope {
+            Some(scope) => serde_json::json!({
+                "binaries": scope.binaries,
+                "paths": scope.paths,
+            }),
+            None => serde_json::Value::Null,
+        };
         Ok(serde_json::json!({
             "name": self.name,
             "requires": self.requires,
             "rings": rings,
+            "host_rings": host_rings,
+            "scope": scope,
             "events": self.events,
             "expected_outcomes": outcomes,
         }))
@@ -327,6 +349,17 @@ fn cbor<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, VectorError> {
     Ok(out)
 }
 
+fn policy_matrix_trap_event(seq: u64, binary: &str) -> TrapEvent {
+    let mut event = TrapEvent::new(seq, 1234, 100, binary);
+    event.task_id = seq;
+    event.binary_dev = 2049;
+    event.binary_ino = 400_000 + seq * 7;
+    event.binary_blake3 = [0x42; 32];
+    event.argv = vec![binary.to_string()];
+    event.cwd = "/workspace".to_string();
+    event
+}
+
 fn trap_event(
     seq: u64,
     pid: u32,
@@ -371,57 +404,70 @@ fn trap_case(
 
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
+// see: cans/artifacts/examples/policy-matrix.rs#PolicyMatrixPlugin
 fn plugin_builder_trap_case() -> Result<VectorCase, VectorError> {
-    let event = trap_event(
-        7,
-        1234,
-        100,
-        "/usr/bin/git",
-        vec!["git".to_string(), "commit".to_string()],
-        HashMap::new(),
-    );
-    let event_json = serde_json::to_value(GuestToHost::TrapEvent(event.clone()))
-        .map_err(|e| VectorError::Encode(e.to_string()))?;
-    let mut case = trap_case("plugin-builder-trap-only", event, Verdict::Pass)?;
+    let allow = policy_matrix_trap_event(7, "policy-allow");
+    let deny = policy_matrix_trap_event(8, "policy-deny");
+    let abort = policy_matrix_trap_event(9, "policy-abort");
+    let mut events = Vec::with_capacity(3);
+    for event in [&allow, &deny, &abort] {
+        events.push(
+            serde_json::to_value(GuestToHost::TrapEvent(event.clone()))
+                .map_err(|e| VectorError::Encode(e.to_string()))?,
+        );
+    }
+    let mut case = trap_case("plugin-builder-trap-only", allow, Verdict::Pass)?;
     case.plugin_builder = Some(UnifiedBuilderCase {
         name: "plugin-builder-trap-only".to_string(),
         requires: Vec::new(),
-        rings: vec![(TrampolineRing::Trap, 0)],
-        events: vec![event_json],
-        expected_outcomes: vec![UnifiedBuilderOutcome::Verdict(Verdict::Pass)],
+        rings: vec![
+            (TrampolineRing::Trap, 0),
+            (TrampolineRing::Trap, 1),
+            (TrampolineRing::Trap, 2),
+        ],
+        host_rings: Vec::new(),
+        scope: None,
+        events,
+        expected_outcomes: vec![
+            UnifiedBuilderOutcome::Verdict(Verdict::Pass),
+            UnifiedBuilderOutcome::Verdict(Verdict::Drop {
+                errno: Some("EPOLICY".to_string()),
+                reason: "EPOLICY: policy-matrix denies this binary.".to_string(),
+            }),
+            UnifiedBuilderOutcome::Verdict(Verdict::Abort {
+                reason: "EPOLICY: abort row".to_string(),
+            }),
+        ],
     });
     Ok(case)
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
+// see: cans/artifacts/examples/policy-matrix.rs#PolicyMatrixPlugin
 fn plugin_builder_fs_write_trap_case() -> Result<VectorCase, VectorError> {
-    let event = trap_event(
-        8,
-        1300,
-        100,
-        "/bin/sh",
-        vec!["sh".to_string(), "-c".to_string(), "echo hi".to_string()],
-        HashMap::new(),
-    );
+    let event = policy_matrix_trap_event(10, "policy-yield");
     let event_json = serde_json::to_value(GuestToHost::TrapEvent(event.clone()))
         .map_err(|e| VectorError::Encode(e.to_string()))?;
-    let mut case = trap_case("plugin-builder-fs-write-trap", event, Verdict::Pass)?;
+    let mut case = trap_case(
+        "plugin-builder-fs-write-trap",
+        event,
+        Verdict::Suspend {
+            until: SuspendUntil::Approval,
+        },
+    )?;
     case.plugin_builder = Some(UnifiedBuilderCase {
         name: "plugin-builder-fs-write-trap".to_string(),
         requires: vec!["ledger".to_string()],
         rings: vec![(TrampolineRing::FsWrite, 0), (TrampolineRing::Trap, 1)],
-        events: vec![
-            serde_json::json!({
-                "kind": "fs-write",
-                "path": "/workspace/ledger/wal",
-                "pid": 1300,
-            }),
-            event_json,
-        ],
+        host_rings: Vec::new(),
+        scope: None,
+        events: vec![event_json],
         expected_outcomes: vec![
             UnifiedBuilderOutcome::Filter(FilterAction::Forward),
-            UnifiedBuilderOutcome::Verdict(Verdict::Pass),
+            UnifiedBuilderOutcome::Verdict(Verdict::Suspend {
+                until: SuspendUntil::Approval,
+            }),
         ],
     });
     Ok(case)
@@ -429,11 +475,14 @@ fn plugin_builder_fs_write_trap_case() -> Result<VectorCase, VectorError> {
 
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
+#[allow(clippy::too_many_arguments)]
 fn plugin_builder_case(
     name: &str,
     seq: u64,
     requires: Vec<String>,
     rings: Vec<(TrampolineRing, u32)>,
+    host_rings: Vec<(TrampolineRing, u32)>,
+    scope: Option<UnifiedBuilderScope>,
     events: Vec<serde_json::Value>,
     expected_outcomes: Vec<UnifiedBuilderOutcome>,
 ) -> Result<VectorCase, VectorError> {
@@ -450,6 +499,8 @@ fn plugin_builder_case(
         name: name.to_string(),
         requires,
         rings,
+        host_rings,
+        scope,
         events,
         expected_outcomes,
     });
@@ -458,45 +509,35 @@ fn plugin_builder_case(
 
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
-fn plugin_builder_trap_json(seq: u64) -> Result<serde_json::Value, VectorError> {
-    let event = trap_event(
-        seq,
-        1234,
-        100,
-        "/usr/bin/git",
-        vec!["git".to_string(), "commit".to_string()],
-        HashMap::new(),
-    );
+fn plugin_builder_trap_json(seq: u64, binary: &str) -> Result<serde_json::Value, VectorError> {
+    let event = policy_matrix_trap_event(seq, binary);
     serde_json::to_value(GuestToHost::TrapEvent(event))
         .map_err(|e| VectorError::Encode(e.to_string()))
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
-fn plugin_builder_verb_event(verb: &str, pid: u32) -> serde_json::Value {
-    match verb {
-        "process-exit" => serde_json::json!({"kind": verb, "pid": pid, "exit_code": 0}),
-        "fs-lookup" | "fs-read" | "fs-write" | "fs-lock" => {
-            serde_json::json!({"kind": verb, "path": "/workspace/ledger/wal", "pid": pid})
-        }
-        "net-outbound" | "net-inbound" => serde_json::json!({"kind": verb, "stream_id": 0}),
-        "console-input" | "console-output" => serde_json::json!({"kind": verb, "port": 1}),
-        "exec-stdout" | "exec-stderr" => {
-            serde_json::json!({"kind": verb, "pid": pid, "exec_id": 7})
-        }
-        "host-lsm-exec" => {
-            serde_json::json!({"kind": verb, "path": "/usr/bin/git", "pid": pid})
-        }
-        "host-pressure" => serde_json::json!({"kind": verb, "level": 2}),
-        "host-keyring-access" => serde_json::json!({"kind": verb, "key": "api-token"}),
-        "vm-init" | "vm-ready" | "vm-shutdown" | "pre-commit" | "post-commit" | "host-preempt" => {
-            serde_json::json!({"kind": verb})
-        }
-        "memory-pressure" => serde_json::json!({"kind": verb, "used": 512, "total": 1024}),
-        "heartbeat" => serde_json::json!({"kind": verb, "uptime_ms": 42000}),
-        "watchdog" => serde_json::json!({"kind": verb, "timeout_ms": 5000, "action": "Reboot"}),
-        _ => serde_json::json!({"kind": verb}),
-    }
+// see: cans/artifacts/code/messages.rs#GuestToHost
+fn plugin_builder_verb_event(
+    verb: &str,
+    pid: u32,
+) -> Result<Option<serde_json::Value>, VectorError> {
+    let event = match verb {
+        "process-exit" => GuestToHost::ProcessExit(ProcessExit {
+            pid,
+            exit_code: 0,
+            wall_clock_ns: 60_000_000_000,
+        }),
+        "memory-pressure" => GuestToHost::MemoryPressureWarning(MemoryPressureWarning {
+            available_mb: 512,
+            total_mb: 1024,
+        }),
+        "heartbeat" => GuestToHost::Heartbeat(Heartbeat { uptime_ms: 42_000 }),
+        _ => return Ok(None),
+    };
+    serde_json::to_value(event)
+        .map(Some)
+        .map_err(|e| VectorError::Encode(e.to_string()))
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -555,18 +596,23 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
         ("watchdog", TrampolineRing::Watchdog, None),
     ];
     let mut cases = Vec::with_capacity(verbs.len() + 6);
-    let mut seq = 9;
+    let mut seq = 11;
     for (verb, ring, outcome) in verbs {
         let outcomes = match outcome {
             Some(outcome) => vec![outcome.clone()],
             None => Vec::new(),
         };
+        let events = plugin_builder_verb_event(verb, 1300)?
+            .into_iter()
+            .collect::<Vec<serde_json::Value>>();
         cases.push(plugin_builder_case(
             &format!("plugin-builder-{verb}-only"),
             seq,
             Vec::new(),
             vec![(*ring, 0)],
-            vec![plugin_builder_verb_event(verb, 1300)],
+            Vec::new(),
+            None,
+            events,
             outcomes,
         )?);
         seq += 1;
@@ -582,7 +628,7 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
             Vec::new(),
             vec![(TrampolineRing::VsockService, 0)],
         ),
-        ("seal", Vec::new(), Vec::new()),
+        ("build", Vec::new(), Vec::new()),
     ];
     for (verb, requires, rings) in structural {
         cases.push(plugin_builder_case(
@@ -590,6 +636,8 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
             seq,
             requires.clone(),
             rings.clone(),
+            Vec::new(),
+            None,
             Vec::new(),
             Vec::new(),
         )?);
@@ -600,15 +648,11 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
 
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
-// One scope table, two constructions: the nested cases mount the scope's
-// verbs through the scope entry points on a plugin-mode builder; the
-// merge cases mount the same plugin-mode builder onto a host-mode
-// builder and assert the host descriptors include them with the
-// plugin's scope. Same rings, same events, same outcomes; only the
-// construction (the case name) differs.
+// see: cans/artifacts/examples/policy-matrix.rs#PolicyMatrixPlugin
 fn plugin_builder_scope_cases(
     prefix: &str,
     seq_start: u64,
+    merge: bool,
 ) -> Result<Vec<VectorCase>, VectorError> {
     type ScopeVerb = (&'static str, TrampolineRing, Option<UnifiedBuilderOutcome>);
     let scopes: &[(&str, &[ScopeVerb])] = &[
@@ -716,24 +760,63 @@ fn plugin_builder_scope_cases(
     let mut cases = Vec::with_capacity(scopes.len());
     for (seq, (scope, verbs)) in (seq_start..).zip(scopes.iter()) {
         let mut rings = Vec::with_capacity(verbs.len());
-        let mut events = Vec::with_capacity(verbs.len());
+        let mut events = Vec::new();
         let mut outcomes = Vec::new();
+        let host_ring = verbs.first().map(|(_, ring, _)| *ring);
         for (ordinal, (verb, ring, outcome)) in verbs.iter().enumerate() {
-            rings.push((*ring, ordinal as u32));
-            if *verb == "trap" {
-                events.push(plugin_builder_trap_json(seq)?);
+            let ordinal = if merge {
+                ordinal as u32 + 1
             } else {
-                events.push(plugin_builder_verb_event(verb, 1300));
+                ordinal as u32
+            };
+            rings.push((*ring, ordinal));
+            let event = if *verb == "trap" {
+                if merge {
+                    Some(plugin_builder_trap_json(seq, "policy-rewrite")?)
+                } else {
+                    Some(plugin_builder_trap_json(seq, "policy-allow")?)
+                }
+            } else {
+                plugin_builder_verb_event(verb, 1300)?
+            };
+            if let Some(event) = event {
+                events.push(event);
             }
+            let outcome = if merge && *verb == "trap" {
+                Some(UnifiedBuilderOutcome::Verdict(Verdict::Patch(
+                    PatchPayload::ExecveMutation(ExecveMutation {
+                        new_binary: Some("/bin/policy-allow".to_string()),
+                        new_argv: Some(vec!["policy-allow".to_string(), "--rewritten".to_string()]),
+                        set_env: vec![("KELIR_POLICY_REWRITE".to_string(), "1".to_string())],
+                        unset_env: Vec::new(),
+                    }),
+                )))
+            } else {
+                outcome.clone()
+            };
             if let Some(outcome) = outcome {
-                outcomes.push(outcome.clone());
+                outcomes.push(outcome);
             }
         }
+        let host_rings = match (merge, host_ring) {
+            (true, Some(ring)) => vec![(ring, 0)],
+            _ => Vec::new(),
+        };
+        let scope_pin = if merge {
+            Some(UnifiedBuilderScope {
+                binaries: None,
+                paths: Some(vec!["/workspace".to_string()]),
+            })
+        } else {
+            None
+        };
         cases.push(plugin_builder_case(
             &format!("{prefix}-{scope}"),
             seq,
             Vec::new(),
             rings,
+            host_rings,
+            scope_pin,
             events,
             outcomes,
         )?);
@@ -744,13 +827,13 @@ fn plugin_builder_scope_cases(
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
 fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
-    plugin_builder_scope_cases("plugin-builder-nested", 37)
+    plugin_builder_scope_cases("plugin-builder-nested", 39, false)
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
 fn plugin_builder_merge_cases() -> Result<Vec<VectorCase>, VectorError> {
-    plugin_builder_scope_cases("plugin-merge", 45)
+    plugin_builder_scope_cases("plugin-merge", 47, true)
 }
 
 // see: cans/artifacts/examples/policy-matrix.rs#WatchdogSilencerPlugin
@@ -865,27 +948,14 @@ fn heartbeat_case() -> Result<VectorCase, VectorError> {
     })
 }
 
-// see: cans/15-operations.md#Local-velocity
-fn poll_sync<F: Future>(future: F) -> Result<F::Output, VectorError> {
-    let waker = Waker::noop();
-    let mut future = Box::pin(future);
-    let mut context = Context::from_waker(waker);
-    match future.as_mut().poll(&mut context) {
-        Poll::Ready(output) => Ok(output),
-        Poll::Pending => Err(VectorError::Execution(
-            "fixture future suspended; the L2 fixture driver must complete in one poll".to_string(),
-        )),
-    }
-}
-
 // see: cans/08-lifecycle.md#Watchdog
 // see: cans/15-operations.md#Multi-language-parity-gate
 pub fn arm_watchdog_case(event: &WatchdogEvent) -> Result<(), VectorError> {
     let mut fixture = LifecycleCtxFixture::new();
     let timeout = Duration::from_millis(event.timeout_ms);
     let action = event.action.clone();
-    poll_sync(fixture.ctx().set_watchdog(timeout, action))
-        .and_then(|result| result.map_err(|e| VectorError::Execution(e.to_string())))?;
+    crate::block_on(fixture.ctx().set_watchdog(timeout, action))
+        .map_err(|e| VectorError::Execution(e.to_string()))?;
     match fixture.armed_watchdog() {
         Some((armed_timeout, armed_action))
             if armed_timeout == timeout && armed_action == event.action =>

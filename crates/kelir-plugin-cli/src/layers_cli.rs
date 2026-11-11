@@ -11,6 +11,15 @@ const RULES: &[(&str, &[&str])] = &[
     ("crates/kelir-drivers", &["kelir_plugins::", "kelir_core::"]),
 ];
 
+pub fn check() -> Result<(), Box<dyn std::error::Error>> {
+    // TODO (L3): enforce the per-tier plugin-to-plugin rule per cans/02-plugin-model.md#Plugin-tiering; the scan bans core/driver/adapter prefixes only.
+    let root = crate::workspace_root()?;
+    for (path, forbidden) in RULES {
+        check_dir(&root.join(path), forbidden)?;
+    }
+    Ok(())
+}
+
 pub fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
@@ -41,14 +50,6 @@ pub fn check_dir(dir: &Path, forbidden: &[&str]) -> Result<(), Box<dyn std::erro
                 }
             }
         }
-    }
-    Ok(())
-}
-
-pub fn check() -> Result<(), Box<dyn std::error::Error>> {
-    // TODO (L3): enforce the per-tier plugin-to-plugin rule per cans/02-plugin-model.md#Plugin-tiering; the scan bans core/driver/adapter prefixes only.
-    for (root, forbidden) in RULES {
-        check_dir(Path::new(root), forbidden)?;
     }
     Ok(())
 }

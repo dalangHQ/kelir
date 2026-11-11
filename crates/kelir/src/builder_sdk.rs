@@ -8,11 +8,11 @@ use kelir_interface::driver_interface::{DaxWindowMode, FastBootMode, VmConfig};
 use kelir_interface::plugin_model::HandlerCtx;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    AnyPlugin, ConsoleInterposer, FsInterposer, HostInterposer, LifecycleEvent,
-    LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps,
+    AnyPlugin, CompositePlugin, ConsoleInterposer, FsInterposer, HostInterposer, LifecycleEvent,
+    LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps, StreamFrameSink,
     SystemTelemetryParticipant, TrapInterposer, VetoEvent, VetoList,
 };
-use kelir_interface::protocol_wire::{TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{StreamKind, TrapEvent, Verdict};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams, Satisfies};
@@ -78,12 +78,10 @@ impl TrapFilter {
         self
     }
 
+    // see: cans/11-protocol.md#Trap-fast-path
+    // TODO (L3): canonical (st_dev, st_ino, binary_blake3); binary_path never identifies the binary.
     pub(crate) fn matches(&self, event: &TrapEvent) -> bool {
-        if self
-            .binary
-            .as_ref()
-            .is_some_and(|binary| binary != &event.binary_path)
-        {
+        if self.binary.is_some() {
             return false;
         }
         self.args.iter().all(|arg| event.argv.contains(arg))
@@ -186,12 +184,47 @@ type StreamServiceFuture =
 
 type BoxedStreamService = Box<dyn Fn(Vec<u8>) -> StreamServiceFuture + Send + Sync>;
 
-// TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
+// TODO (L3): the kind schema validates request payloads once stream dispatch consumes live frames.
 #[allow(dead_code)]
 pub(crate) struct StreamKindServiceEntry {
     pub(crate) kind: u16,
     pub(crate) schema: serde_json::Value,
     pub(crate) handler: BoxedStreamService,
+}
+
+// TODO (L3): the boxed service future awaits and replies on the stream mux once dispatch consumes live frames.
+#[allow(dead_code)]
+struct SdkStreamServiceSink {
+    handler: BoxedStreamService,
+}
+
+// see: cans/11-protocol.md#Kind-registration
+impl StreamFrameSink for SdkStreamServiceSink {
+    fn on_stream_frame(
+        &self,
+        _stream_id: u32,
+        _kind: StreamKind,
+        _flags: u8,
+        _payload: &[u8],
+    ) -> Result<(), PluginError> {
+        Err(PluginError::Halt(
+            "TODO (L3): stream kind service dispatch".into(),
+        ))
+    }
+}
+
+// see: cans/02-plugin-model.md#Composite-plugin-hierarchy
+pub struct CompositeBundle;
+
+// see: cans/02-plugin-model.md#Composite-plugin-hierarchy
+// TODO (L3): carries the nested plugin tree the profile facade flattens at boot.
+impl CompositePlugin for CompositeBundle {
+    fn unpack(
+        self: Box<Self>,
+        _parent_scope: &MountScope,
+    ) -> Vec<(Box<dyn AnyPlugin>, MountScope)> {
+        Vec::new()
+    }
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -712,6 +745,20 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
         }
         for entry in std::mem::take(&mut registration.custom_actions) {
             engine.register_custom_action(entry.name, entry.handler);
+        }
+        for entry in std::mem::take(&mut registration.stream_kind_services) {
+            let Some(kind) = StreamKind::from_u16(entry.kind) else {
+                return Err(PluginError::reject(
+                    "EUnknownKind",
+                    format!("stream kind 0x{:04x} is not registered", entry.kind),
+                ));
+            };
+            engine.register_stream_kind(
+                kind,
+                Arc::new(SdkStreamServiceSink {
+                    handler: entry.handler,
+                }),
+            );
         }
         if let Some(callback) = registration.on_trap_deny.take() {
             engine.set_on_trap_deny(callback);

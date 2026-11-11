@@ -81,7 +81,8 @@
       - Traffic to non-gateway resolvers redirected at ingress ring
     - Host-state resolution
       - Queries resolved host-side via live OS resolver state
-        - Linux: /etc/resolv.conf watched via inotify; nameservers reloaded on change
+        - Linux: /etc/resolv.conf nameservers parsed at wire-plane construction
+          - inotify reload-on-change: TBD (L3)
         - Search domain expansion: host search domains and ndots parsed from OS state
         - Single-label queries expand against host search candidates before policy eval
         - Bare hostnames in corporate VPN and internal split-horizon resolve transparently

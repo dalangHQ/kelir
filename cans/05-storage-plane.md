@@ -56,8 +56,11 @@
     - Sparse upper file bytes counted toward the session quota
   - FUSE opcode table
     - Broker data ops: `lookup`, `getattr`, `read`, `write`, `readdir`
+      - getattr and readdir replies: TBD (L3 broker stat and dir merge)
     - Broker mutation ops: `unlink`, `mkdir`, `rename`
+      - Mutation replies: TBD (L3 broker tombstone, upper create, move)
     - Mediation ops: `statfs`, `setlk`, `setlkw`
+      - statfs quota reply and setlk flock grants: TBD (L3)
     - Opcode numbers mirror the kernel FUSE UAPI
     - lookup=1, getattr=3, read=15, write=16, readdir=28, unlink=10
     - mkdir=9, rename=12, statfs=17, setlk=32, setlkw=33
@@ -90,7 +93,7 @@
     - In-guest root cannot mint setuid host binaries
   - Synthetic FUSE inodes
     - Injects RAM-only configuration files (.env, .gitconfig) into guest VFS
-    - Lookups return synthetic FsInodeAttr (mode: 0o400 honored strictly)
+    - Lookups return synthetic FsInodeAttr (declared mode honored; 0o400 default)
     - Served directly from host supervisor memory; physically absent on host SSD
     - Synthetic inodes layer onto the host CoW broker namespace at lookup
   - In-flight read masking

@@ -168,9 +168,23 @@ impl VaultPlugin {
     }
 
     // see: cans/plugins/vault.md#Metadata-service-(vault)
+    // TODO (L3): no L2 boot identity carries a vsock guest CID (VmConfig and LifecycleCtx lack it); core binds it once the vsock transport lands.
     fn is_session_peer(&self, peer: &VsockPeer) -> bool {
-        // TODO (L3): core binds the session guest CID at boot; fail closed until that wire-up lands per cans/plugins/vault.md.
         self.session_guest_cid.is_some_and(|cid| cid == peer.cid)
+    }
+
+    // see: cans/plugins/vault.md#Error-and-return-semantics-(vault)
+    fn reject_peer(&self) -> PluginError {
+        match self.session_guest_cid {
+            None => PluginError::Halt(
+                "metadata service: session guest CID unbound at boot; core vsock CID wiring pending (L3)"
+                    .into(),
+            ),
+            Some(_) => PluginError::reject(
+                "ECONNREFUSED",
+                "metadata service: non-session vsock peer",
+            ),
+        }
     }
 
     // see: cans/02-plugin-model.md#Latency-ceiling
@@ -296,10 +310,7 @@ impl VsockServiceHandler for VaultPlugin {
         let _ = ctx;
         // see: cans/plugins/vault.md#Error-and-return-semantics-(vault)
         if !self.is_session_peer(peer) && peer.cid != WIRE_PLANE_BRIDGE_CID {
-            return Err(PluginError::reject(
-                "ECONNREFUSED",
-                "metadata service: non-session vsock peer",
-            ));
+            return Err(self.reject_peer());
         }
         self.serve_peer_off_worker(peer, stream)
     }

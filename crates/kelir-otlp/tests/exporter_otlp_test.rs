@@ -26,11 +26,11 @@ fn ta_11_otlp_exporter_encodes_execution_receipt() -> Result<(), String> {
     assert_eq!(record.spans[0].name, "trap_ingress");
     assert_eq!(record.spans[0].start_ns, 0);
     assert_eq!(record.spans[0].end_ns, 10);
-    assert_eq!(record.spans[1].name, "policy");
+    assert_eq!(record.spans[1].name, "ffi_hop");
     assert_eq!(record.spans[1].start_ns, 10);
-    assert_eq!(record.spans[1].end_ns, 40);
-    assert_eq!(record.spans[2].name, "ffi_hop");
-    assert_eq!(record.spans[2].start_ns, 40);
+    assert_eq!(record.spans[1].end_ns, 30);
+    assert_eq!(record.spans[2].name, "policy");
+    assert_eq!(record.spans[2].start_ns, 30);
     assert_eq!(record.spans[2].end_ns, 60);
     assert_eq!(record.spans[3].name, "verdict_egress");
     assert_eq!(record.spans[3].start_ns, 60);

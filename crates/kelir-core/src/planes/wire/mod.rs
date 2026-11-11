@@ -1,7 +1,7 @@
 // see: cans/07-wire-plane.md#Wire-architecture
 // see: cans/07-wire-plane.md#Userspace-network-stack
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex, RwLock};
 
 use kelir_interface::plugin_model::PluginError;
@@ -12,6 +12,9 @@ mod layout_wire;
 
 pub const SYNTHETIC_DNS_GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 127, 1);
 pub const SYNTHETIC_DNS_PORT: u16 = 53;
+
+// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+pub const RESOLV_CONF_PATH: &str = "/etc/resolv.conf";
 
 // see: cans/07-wire-plane.md#Port-forwarding
 #[derive(Debug, thiserror::Error)]
@@ -58,6 +61,27 @@ pub enum DnsRcode {
     NoError,
     NxDomain,
     ServFail,
+}
+
+// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+// TODO (L3): reload nameservers via inotify when /etc/resolv.conf changes.
+fn host_resolver_nameservers() -> Vec<IpAddr> {
+    std::fs::read_to_string(RESOLV_CONF_PATH)
+        .map(|text| parse_resolv_conf_nameservers(&text))
+        .unwrap_or_default()
+}
+
+// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+fn parse_resolv_conf_nameservers(text: &str) -> Vec<IpAddr> {
+    text.lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            match (fields.next(), fields.next()) {
+                (Some("nameserver"), Some(addr)) => addr.parse().ok(),
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -227,10 +251,21 @@ pub fn is_synthetic_dns(frame: &[u8], direction: FrameDirection) -> bool {
         return false;
     }
     let l4_start = layout_wire::ETH_HEADER_BYTES + ihl;
-    let tcp = layout_wire::TcpView::new_unchecked(&frame[l4_start..]);
-    let port = match direction {
-        FrameDirection::Inbound => tcp.src_port(),
-        FrameDirection::Outbound => tcp.dst_port(),
+    let port = match protocol {
+        layout_wire::IP_PROTO_TCP => {
+            let tcp = layout_wire::TcpView::new_unchecked(&frame[l4_start..]);
+            match direction {
+                FrameDirection::Inbound => tcp.src_port(),
+                FrameDirection::Outbound => tcp.dst_port(),
+            }
+        }
+        _ => {
+            let udp = layout_wire::UdpView::new_unchecked(&frame[l4_start..]);
+            match direction {
+                FrameDirection::Inbound => udp.src_port(),
+                FrameDirection::Outbound => udp.dst_port(),
+            }
+        }
     };
     port == SYNTHETIC_DNS_PORT
 }
@@ -279,6 +314,7 @@ const EPHEMERAL_PORT_MIN: u16 = 49_152;
 
 pub struct WirePlane {
     synthetic_dns_ip: Ipv4Addr,
+    resolver_nameservers: Vec<IpAddr>,
     udp_nat_slab: Arc<Mutex<Vec<Option<UdpNatEntry>>>>,
     port_forwards: Arc<Mutex<std::collections::HashMap<u16, u16>>>,
     allowed_domains: Arc<RwLock<Vec<String>>>,
@@ -309,6 +345,7 @@ impl WirePlane {
     pub fn new() -> Self {
         Self {
             synthetic_dns_ip: SYNTHETIC_DNS_GATEWAY_IP,
+            resolver_nameservers: host_resolver_nameservers(),
             udp_nat_slab: Arc::new(Mutex::new(Vec::new())),
             port_forwards: Arc::new(Mutex::new(std::collections::HashMap::new())),
             allowed_domains: Arc::new(RwLock::new(Vec::new())),
@@ -471,18 +508,34 @@ impl WirePlane {
             kelir_interface::protocol_wire::FilterAction,
             kelir_interface::plugin_model::PluginError,
         > = match classify_frame_directional(frame, FrameDirection::Outbound) {
-            FrameClass::TooShort
-            | FrameClass::NonIp
-            | FrameClass::NonTcpUdp
-            | FrameClass::UdpOther => Ok(FilterAction::Drop {
-                errno: None,
-                reason: "non-TCP/UDP frame dropped at egress ring".into(),
-            }),
+            FrameClass::TooShort | FrameClass::NonIp | FrameClass::NonTcpUdp => {
+                Ok(FilterAction::Drop {
+                    errno: None,
+                    reason: "non-TCP/UDP frame dropped at egress ring".into(),
+                })
+            }
+            FrameClass::UdpOther => {
+                // see: cans/07-wire-plane.md#UDP-NAT-semantics
+                if self
+                    .wiring
+                    .as_ref()
+                    .is_some_and(|wiring| wiring.allow_udp_proxied)
+                {
+                    // TODO (L3): forward via the full-cone UDP NAT host socket per guest source port.
+                    let _ = self.stack.poll()?;
+                    Ok(FilterAction::Forward)
+                } else {
+                    Ok(FilterAction::Drop {
+                        errno: Some("ECONNREFUSED".into()),
+                        reason: "UDP egress denied: allow_udp_proxied not enabled".into(),
+                    })
+                }
+            }
             FrameClass::TcpDns | FrameClass::UdpDns => {
                 match dns_payload(frame, FrameDirection::Outbound) {
                     Some(payload) => {
-                        // TODO (L3): answer via resolve_synthetic_dns once the DNS wire parser lands.
-                        let _ = self.resolve_synthetic_dns(payload)?;
+                        // TODO (L3): synthesize the answer frame into the guest ingress ring once the DNS wire parser lands.
+                        self.resolve_synthetic_dns(payload)?;
                         Ok(FilterAction::Forward)
                     }
                     None => Ok(FilterAction::Drop {
@@ -553,13 +606,16 @@ impl WirePlane {
         &self,
         payload: &[u8],
     ) -> Result<DnsResponse, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): parse the query, apply the domain allowlist, answer from host resolver state via the synthetic gateway, EDNS0-downgrade the response.
+        // TODO (L3): parse the query, apply the domain allowlist, forward to the tracked nameservers, EDNS0-downgrade the response.
         let _ = (payload, &self.allowed_domains, &self.synthetic_dns_ip);
-        Ok(DnsResponse {
-            wire_bytes: Vec::new(),
-            rcode: DnsRcode::ServFail,
-            edns_downgraded: false,
-        })
+        if self.resolver_nameservers.is_empty() {
+            return Err(PluginError::Halt(
+                "DNS resolver pending (L3): no nameservers tracked from /etc/resolv.conf".into(),
+            ));
+        }
+        Err(PluginError::Halt(
+            "DNS resolver pending (L3): query parse and upstream forward".into(),
+        ))
     }
 
     // see: cans/07-wire-plane.md#UDP-socket-reaper

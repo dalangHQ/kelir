@@ -424,6 +424,19 @@ impl PipelineEngine {
             .push(CustomActionBinding { name, handler });
     }
 
+    // see: cans/11-protocol.md#Kind-registration
+    pub fn register_stream_kind(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>) {
+        self.stream_sinks.push((kind, sink, MountScope::default()));
+    }
+
+    // see: cans/11-protocol.md#Kind-registration
+    pub fn stream_kind_services(&self) -> Vec<(StreamKind, Arc<dyn StreamFrameSink>)> {
+        self.stream_sinks
+            .iter()
+            .map(|(kind, sink, _)| (*kind, Arc::clone(sink)))
+            .collect()
+    }
+
     // see: cans/03-sdk-architecture.md#Rust-SDK
     pub async fn dispatch_custom_action(
         &self,
@@ -649,7 +662,7 @@ impl PipelineEngine {
             let fallback = MountScope::default();
             let scope = self.trap_scopes.get(index).unwrap_or(&fallback);
             match self.gate.evaluate(event, scope) {
-                GateDecision::Allow => continue,
+                GateDecision::Skip => continue,
                 GateDecision::Deny(verdict) => {
                     if let (Some(callback), Some(session)) = (&self.on_trap_deny, session) {
                         callback(event, session).await?;
@@ -819,19 +832,22 @@ impl PipelineEngine {
     }
 
     // TODO (L3): host scope.devices has no VirtioDevice mapping; only the path filter is enforced here.
-    // TODO (L3): no TrampolineRing tag exists for host LSM hooks, so fused crossings cannot bind this ring yet.
     pub fn dispatch_host_lsm_exec(
         &self,
         path: &std::path::Path,
         pid: u32,
     ) -> Result<Verdict, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::HostLsmExec)?;
         for (index, interceptor) in self.host_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.host_scopes, index);
             if !scope.allows_path(path) {
                 continue;
             }
-            // see: cans/01-architecture.md#FFI-boundary-economics
-            self.try_foreign_submit()?;
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
             let verdict = {
                 let outcome = quarantine_sync(
                     || interceptor.on_host_lsm_exec(path, pid),
@@ -842,13 +858,16 @@ impl PipelineEngine {
                         })
                     },
                 );
-                self.foreign_submit_complete();
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
                 outcome?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }
         }
+        drop(fused);
         Ok(Verdict::Pass)
     }
 

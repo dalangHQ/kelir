@@ -2,10 +2,18 @@
 use std::collections::BTreeMap;
 use std::fs;
 
+use kelir_core::dispatch_plugin::PipelineEngine;
+use kelir_core::plugin_registry::resolve_plugin_registrations;
+use kelir_interface::codec_protocol::WireFrame;
 use kelir_interface::driver_interface::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
+use kelir_interface::fusion_plugin::{
+    FusedTrampolineDescriptor, HookEntry, HookStage, RingChain, TrampolineRing, TrampolineTable,
+};
 use kelir_interface::hex_codec::{decode_hex, encode_hex};
-use kelir_interface::plugin_model::VetoEvent;
-use kelir_interface::protocol_wire::Channel;
+use kelir_interface::plugin_model::{PluginRegistration, VetoEvent};
+use kelir_interface::protocol_wire::{Channel, FilterAction, GuestToHost, Verdict};
+use kelir_plugin_testkit::block_on;
+use kelir_plugin_testkit::handlers_testkit::handler_ctx_for_trap;
 use kelir_plugin_testkit::vectors_testkit::{VetoCase, arm_watchdog_case, register_veto_case};
 use serde_json::Value;
 
@@ -20,9 +28,11 @@ pub struct ParityVector {
     pub payload_hex: String,
     pub frame_hex: String,
     pub event_kind: Option<String>,
+    pub event: Option<Value>,
     pub expected_verdict_kind: String,
     pub watchdog: Option<ParityWatchdog>,
     pub veto: Option<ParityVeto>,
+    pub plugin_builder: Option<ParityBuilderCase>,
 }
 
 // see: cans/08-lifecycle.md#Watchdog
@@ -37,6 +47,32 @@ pub struct ParityWatchdog {
 pub struct ParityVeto {
     pub event: VetoEvent,
     pub callback_allows: Option<bool>,
+}
+
+// see: cans/02-plugin-model.md#Mount-scoping
+#[derive(Debug, Clone)]
+pub struct ParityBuilderScope {
+    pub binaries: Option<Vec<String>>,
+    pub paths: Option<Vec<String>>,
+}
+
+// see: cans/02-plugin-model.md#Unified-verdict
+#[derive(Debug, Clone)]
+pub enum ParityOutcome {
+    Verdict(Verdict),
+    Filter(FilterAction),
+}
+
+// see: cans/15-operations.md#Unified-builder-parity-vectors
+#[derive(Debug, Clone)]
+pub struct ParityBuilderCase {
+    pub name: String,
+    pub requires: Vec<String>,
+    pub rings: Vec<(TrampolineRing, u32)>,
+    pub host_rings: Vec<(TrampolineRing, u32)>,
+    pub scope: Option<ParityBuilderScope>,
+    pub events: Vec<Value>,
+    pub expected_outcomes: Vec<ParityOutcome>,
 }
 
 // see: cans/02-plugin-model.md#Unified-verdict
@@ -170,6 +206,139 @@ fn parse_veto_event(event: &str, index: usize) -> Result<VetoEvent, String> {
     }
 }
 
+// see: cans/15-operations.md#Unified-builder-parity-vectors
+fn parse_ring_entries(
+    value: Option<&Value>,
+    index: usize,
+    field: &str,
+) -> Result<Vec<(TrampolineRing, u32)>, String> {
+    let mut entries = Vec::new();
+    for entry in value.and_then(Value::as_array).into_iter().flatten() {
+        let tag = entry.get("ring").and_then(Value::as_str).ok_or(format!(
+            "parity: vector {index} plugin_builder `{field}` entry has no string `ring`"
+        ))?;
+        let ring = TrampolineRing::from_tag(tag).ok_or(format!(
+            "parity: vector {index} plugin_builder `{field}` ring `{tag}` is not a TrampolineRing"
+        ))?;
+        let ordinal = entry
+            .get("ordinal")
+            .and_then(Value::as_u64)
+            .and_then(|ordinal| u32::try_from(ordinal).ok())
+            .ok_or(format!(
+                "parity: vector {index} plugin_builder `{field}` entry has no u32 `ordinal`"
+            ))?;
+        entries.push((ring, ordinal));
+    }
+    Ok(entries)
+}
+
+// see: cans/15-operations.md#Unified-builder-parity-vectors
+fn parse_builder_outcome(value: &Value, index: usize) -> Result<ParityOutcome, String> {
+    let Value::Object(entries) = value else {
+        return Err(format!(
+            "parity: vector {index} plugin_builder outcome is not a tagged variant"
+        ));
+    };
+    if entries.len() != 1 {
+        return Err(format!(
+            "parity: vector {index} plugin_builder outcome must carry exactly one variant"
+        ));
+    }
+    let Some((kind, payload)) = entries.iter().next() else {
+        return Err(format!(
+            "parity: vector {index} plugin_builder outcome must carry exactly one variant"
+        ));
+    };
+    match kind.as_str() {
+        "Verdict" => {
+            let verdict: Verdict = serde_json::from_value(payload.clone()).map_err(|e| {
+                format!("parity: vector {index} plugin_builder Verdict outcome is malformed: {e}")
+            })?;
+            Ok(ParityOutcome::Verdict(verdict))
+        }
+        "Filter" => {
+            let action: FilterAction = serde_json::from_value(payload.clone()).map_err(|e| {
+                format!("parity: vector {index} plugin_builder Filter outcome is malformed: {e}")
+            })?;
+            Ok(ParityOutcome::Filter(action))
+        }
+        other => Err(format!(
+            "parity: vector {index} plugin_builder outcome `{other}` is neither Verdict nor Filter"
+        )),
+    }
+}
+
+// see: cans/15-operations.md#Unified-builder-parity-vectors
+fn parse_plugin_builder(value: &Value, index: usize) -> Result<Option<ParityBuilderCase>, String> {
+    let Value::Object(entries) = value else {
+        return Err(format!(
+            "parity: vector {index} plugin_builder must be an object"
+        ));
+    };
+    let name = entries
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or(format!(
+            "parity: vector {index} plugin_builder has no string `name`"
+        ))?
+        .to_string();
+    let requires = entries
+        .get("requires")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    let rings = parse_ring_entries(entries.get("rings"), index, "rings")?;
+    let host_rings = parse_ring_entries(entries.get("host_rings"), index, "host_rings")?;
+    let scope = match entries.get("scope") {
+        None | Some(Value::Null) => None,
+        Some(scope) => Some(ParityBuilderScope {
+            binaries: scope
+                .get("binaries")
+                .and_then(Value::as_array)
+                .map(|binaries| {
+                    binaries
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                }),
+            paths: scope.get("paths").and_then(Value::as_array).map(|paths| {
+                paths
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            }),
+        }),
+    };
+    let events = entries
+        .get("events")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .cloned()
+        .collect();
+    let expected_outcomes = entries
+        .get("expected_outcomes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|outcome| parse_builder_outcome(outcome, index))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(ParityBuilderCase {
+        name,
+        requires,
+        rings,
+        host_rings,
+        scope,
+        events,
+        expected_outcomes,
+    }))
+}
+
 pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
     let root: Value = serde_json::from_str(text)
         .map_err(|e| format!("parity: vectors.json is not valid JSON: {e}"))?;
@@ -225,8 +394,12 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
             .and_then(Value::as_str)
             .ok_or(format!("parity: vector {index} frame has no `frame_hex`"))?
             .to_string();
-        let event_kind = match item.get("event") {
-            None | Some(Value::Null) => None,
+        let event = item
+            .get("event")
+            .cloned()
+            .filter(|event| !matches!(event, Value::Null));
+        let event_kind = match &event {
+            None => None,
             Some(Value::Object(entries)) if entries.len() == 1 => {
                 entries.iter().next().map(|(kind, _)| kind.clone())
             }
@@ -278,6 +451,10 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
                 })
             }
         };
+        let plugin_builder = match item.get("plugin_builder") {
+            None | Some(Value::Null) => None,
+            Some(builder) => parse_plugin_builder(builder, index)?,
+        };
         out.push(ParityVector {
             name,
             transport,
@@ -287,9 +464,11 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
             payload_hex,
             frame_hex,
             event_kind,
+            event,
             expected_verdict_kind: verdict_kind(expected_verdict, index)?,
             watchdog,
             veto,
+            plugin_builder,
         });
     }
     Ok(out)
@@ -297,18 +476,14 @@ pub fn parse_vectors(text: &str) -> Result<Vec<ParityVector>, String> {
 
 // see: cans/artifacts/code/wire-protocol.rs#MuxFrameHeader
 fn assert_frame_shape(vector: &ParityVector) -> Result<(), String> {
-    if Channel::from_u16(vector.transport).is_none() {
-        return Err(format!(
-            "parity: vector `{}` transport {} is not a registered transport",
-            vector.name, vector.transport
-        ));
-    }
-    if kelir_interface::protocol_wire::MsgType::from_u16(vector.msg_type).is_none() {
-        return Err(format!(
-            "parity: vector `{}` msg_type {:#06x} is not a core message type",
-            vector.name, vector.msg_type
-        ));
-    }
+    let transport = Channel::from_u16(vector.transport).ok_or(format!(
+        "parity: vector `{}` transport {} is not a registered transport",
+        vector.name, vector.transport
+    ))?;
+    kelir_interface::protocol_wire::MsgType::from_u16(vector.msg_type).ok_or(format!(
+        "parity: vector `{}` msg_type {:#06x} is not a core message type",
+        vector.name, vector.msg_type
+    ))?;
     if vector.stream_id > kelir_interface::codec_protocol::MAX_STREAM_ID {
         return Err(format!(
             "parity: vector `{}` stream_id {} exceeds MAX_STREAM_ID",
@@ -328,48 +503,129 @@ fn assert_frame_shape(vector: &ParityVector) -> Result<(), String> {
             frame.len()
         ));
     }
-    let stream_id = u32::from_le_bytes([frame[0], frame[1], frame[2], frame[3]]);
-    if stream_id != vector.stream_id {
+    let decoded = WireFrame::decode(transport, &frame).map_err(|e| {
+        format!(
+            "parity: vector `{}` frame does not decode: {e}",
+            vector.name
+        )
+    })?;
+    if decoded.stream_id != vector.stream_id
+        || decoded.flags != vector.flags
+        || decoded.msg_type as u16 != vector.msg_type
+        || encode_hex(&decoded.payload) != vector.payload_hex
+    {
         return Err(format!(
-            "parity: vector `{}` frame header stream_id {stream_id} differs from declared {}",
-            vector.name, vector.stream_id
-        ));
-    }
-    if frame[4] != vector.flags {
-        return Err(format!(
-            "parity: vector `{}` frame header flags {} differs from declared {}",
-            vector.name, frame[4], vector.flags
-        ));
-    }
-    let len = u32::from_le_bytes([frame[5], frame[6], frame[7], frame[8]]);
-    let body = frame.len() - 9;
-    if len as usize != body {
-        return Err(format!(
-            "parity: vector `{}` frame header len {len} differs from {} body bytes",
-            vector.name, body
-        ));
-    }
-    if body > kelir_interface::codec_protocol::MAX_FRAME_PAYLOAD {
-        return Err(format!(
-            "parity: vector `{}` body {body} exceeds MAX_FRAME_PAYLOAD",
+            "parity: vector `{}` decoded frame fields diverge from the declared frame",
             vector.name
         ));
     }
-    let msg_type = u16::from_le_bytes([frame[9], frame[10]]);
-    if msg_type != vector.msg_type {
+    let encoded = decoded
+        .encode()
+        .map_err(|e| format!("parity: vector `{}` re-encode failed: {e}", vector.name))?;
+    if encode_hex(&encoded) != vector.frame_hex {
         return Err(format!(
-            "parity: vector `{}` frame msg_type {msg_type:#06x} differs from declared {:#06x}",
-            vector.name, vector.msg_type
-        ));
-    }
-    let payload = &frame[11..];
-    if encode_hex(payload) != vector.payload_hex {
-        return Err(format!(
-            "parity: vector `{}` payload_cbor_hex does not match the frame body",
+            "parity: vector `{}` frame round-trip diverges: the codec re-encode is not byte-identical",
             vector.name
         ));
     }
     Ok(())
+}
+
+// see: cans/15-operations.md#Multi-language-parity-gate
+fn assert_event_round_trip(vector: &ParityVector) -> Result<(), String> {
+    if vector.watchdog.is_some() || vector.veto.is_some() {
+        return Ok(());
+    }
+    let Some(event_json) = &vector.event else {
+        return Ok(());
+    };
+    let payload = decode_hex(&vector.payload_hex).map_err(|e| {
+        format!(
+            "parity: vector `{}` payload_cbor_hex is not valid hex: {e}",
+            vector.name
+        )
+    })?;
+    let decoded: GuestToHost = ciborium::de::from_reader(payload.as_slice()).map_err(|e| {
+        format!(
+            "parity: vector `{}` payload does not decode as a GuestToHost event: {e}",
+            vector.name
+        )
+    })?;
+    let encoded_event = serde_json::to_value(&decoded).map_err(|e| {
+        format!(
+            "parity: vector `{}` decoded event does not serialize: {e}",
+            vector.name
+        )
+    })?;
+    if &encoded_event != event_json {
+        return Err(format!(
+            "parity: vector `{}` event JSON diverges from the wire payload decode",
+            vector.name
+        ));
+    }
+    Ok(())
+}
+
+// see: cans/15-operations.md#Unified-builder-parity-vectors
+// see: cans/artifacts/code/plugin-builder-vectors.rs#plugin_builder_fs_write_trap_case
+fn assert_builder_ordinals(case: &ParityBuilderCase, name: &str) -> Result<(), String> {
+    let host_len = case.host_rings.len();
+    for (index, (_, ordinal)) in case.host_rings.iter().enumerate() {
+        if *ordinal != index as u32 {
+            return Err(format!(
+                "parity: vector `{name}` host hook {index} declares ordinal {ordinal}; host hooks occupy chain positions 0..{host_len}"
+            ));
+        }
+    }
+    for (index, (_, ordinal)) in case.rings.iter().enumerate() {
+        let expected = (host_len + index) as u32;
+        if *ordinal != expected {
+            return Err(format!(
+                "parity: vector `{name}` plugin hook {index} declares ordinal {ordinal}; the chain continues at {expected} after {host_len} host hook(s)"
+            ));
+        }
+    }
+    Ok(())
+}
+
+// see: cans/15-operations.md#Unified-builder-parity-vectors
+fn builder_descriptor(case: &ParityBuilderCase) -> FusedTrampolineDescriptor {
+    let mut chains: Vec<RingChain> = Vec::new();
+    let mut push_hook =
+        |ring: TrampolineRing, ordinal: u32, plugin_name: Option<String>| match chains
+            .iter_mut()
+            .find(|chain| chain.ring == ring)
+        {
+            Some(chain) => chain.hooks.push(HookEntry {
+                ordinal,
+                stage: HookStage::Single,
+                plugin_name,
+                filter: None,
+                lifecycle_tag: None,
+                custom_action_name: None,
+                vsock_kind: None,
+            }),
+            None => chains.push(RingChain {
+                ring,
+                hooks: vec![HookEntry {
+                    ordinal,
+                    stage: HookStage::Single,
+                    plugin_name,
+                    filter: None,
+                    lifecycle_tag: None,
+                    custom_action_name: None,
+                    vsock_kind: None,
+                }],
+            }),
+        };
+    for (ring, ordinal) in &case.host_rings {
+        push_hook(*ring, *ordinal, None);
+    }
+    for (ring, ordinal) in &case.rings {
+        let plugin_name = Some(case.name.clone());
+        push_hook(*ring, *ordinal, plugin_name);
+    }
+    FusedTrampolineDescriptor { rings: chains }
 }
 
 // see: cans/15-operations.md#Coverage-gates
@@ -382,6 +638,21 @@ pub struct ParityReport {
     pub verdicts_executed: usize,
     pub verdicts_not_executable: Vec<(String, &'static str)>,
 }
+
+// see: cans/15-operations.md#Multi-language-parity-gate
+const POLICY_PENDING: &str = "trap verdict evaluation needs the SDK-side policy handler (L3 codegen); the L2 engine dispatch returned Pass for the handler-less chain";
+
+// see: cans/15-operations.md#Multi-language-parity-gate
+const WATCHDOG_PENDING: &str =
+    "watchdog verdict evaluation needs the SDK-side policy handler (L3 codegen)";
+
+// see: cans/15-operations.md#Multi-language-parity-gate
+const VETO_PENDING: &str =
+    "veto firing evaluation needs the lifecycle consult (L3); registration and callback executed";
+
+// see: cans/15-operations.md#Multi-language-parity-gate
+const HEARTBEAT_PENDING: &str =
+    "heartbeat observation evaluation needs the telemetry dispatch loop (L3)";
 
 pub fn assert_vectors(vectors: &[ParityVector]) -> Result<ParityReport, String> {
     if vectors.is_empty() {
@@ -401,6 +672,7 @@ pub fn assert_vectors(vectors: &[ParityVector]) -> Result<ParityReport, String> 
         }
         assert_frame_shape(vector)?;
         report.frame_validated += 1;
+        assert_event_round_trip(vector)?;
         if let Some(watchdog) = &vector.watchdog {
             arm_watchdog_case(&watchdog.event).map_err(|e| {
                 format!(
@@ -423,19 +695,155 @@ pub fn assert_vectors(vectors: &[ParityVector]) -> Result<ParityReport, String> 
             })?;
             report.veto_registered += 1;
         }
-        // TODO (L3): dispatch each trap/watchdog/veto chain through the engine and compare the observed verdict against expected_verdict typed; until engine dispatch lands, every verdict evaluation is reported not-executable, never a green pass.
-        let reason = if vector.veto.is_some() {
-            "veto firing evaluation pending engine dispatch (L3)"
-        } else if vector.watchdog.is_some() {
-            "watchdog verdict evaluation pending engine dispatch (L3)"
-        } else if vector.event_kind.as_deref() == Some("Heartbeat") {
-            "heartbeat observation evaluation pending engine dispatch (L3)"
-        } else {
-            "trap verdict evaluation pending engine dispatch (L3)"
+        if let Some(builder) = &vector.plugin_builder {
+            assert_builder_ordinals(builder, &vector.name)?;
+            if builder.scope.is_some() != !builder.host_rings.is_empty() {
+                return Err(format!(
+                    "parity: vector `{}` merge pin is inconsistent: a scope requires host hooks and host hooks require a scope",
+                    vector.name
+                ));
+            }
+            let mounts = builder
+                .requires
+                .iter()
+                .map(|dep| PluginRegistration {
+                    name: dep.clone(),
+                    enabled: true,
+                })
+                .collect::<Vec<_>>();
+            resolve_plugin_registrations(&mounts).map_err(|e| {
+                format!(
+                    "parity: vector `{}` prerequisite mount failed: {e}",
+                    vector.name
+                )
+            })?;
+            let descriptor = builder_descriptor(builder);
+            TrampolineTable::from_descriptor(&descriptor).map_err(|e| {
+                format!(
+                    "parity: vector `{}` fused descriptor rejected: {e}",
+                    vector.name
+                )
+            })?;
+            let engine = PipelineEngine::new().with_trampoline(descriptor);
+            let verdicts = builder
+                .expected_outcomes
+                .iter()
+                .filter_map(|outcome| match outcome {
+                    ParityOutcome::Verdict(verdict) => Some(verdict.clone()),
+                    ParityOutcome::Filter(_) => None,
+                })
+                .collect::<Vec<_>>();
+            let mut trap_events = 0;
+            for event_json in &builder.events {
+                let event: GuestToHost =
+                    serde_json::from_value(event_json.clone()).map_err(|e| {
+                        format!(
+                            "parity: vector `{}` event is not a wire event: {e}",
+                            vector.name
+                        )
+                    })?;
+                match event {
+                    GuestToHost::TrapEvent(trap) => {
+                        let ctx = handler_ctx_for_trap([0u8; 16], &trap);
+                        let observed =
+                            block_on(engine.dispatch_trap(&trap, &ctx)).map_err(|e| {
+                                format!(
+                                    "parity: vector `{}` engine dispatch failed: {e}",
+                                    vector.name
+                                )
+                            })?;
+                        let expected = verdicts.get(trap_events);
+                        trap_events += 1;
+                        if expected.is_some_and(|expected| *expected == observed) {
+                            report.verdicts_executed += 1;
+                        } else {
+                            report
+                                .verdicts_not_executable
+                                .push((vector.name.clone(), POLICY_PENDING));
+                        }
+                    }
+                    GuestToHost::ProcessExit(process_exit) => {
+                        let ctx = kelir_plugin_testkit::handlers_testkit::handler_ctx(
+                            [0u8; 16],
+                            process_exit.pid,
+                        );
+                        block_on(engine.dispatch_process_exit(&process_exit, &ctx)).map_err(
+                            |e| {
+                                format!(
+                                    "parity: vector `{}` engine dispatch failed: {e}",
+                                    vector.name
+                                )
+                            },
+                        )?;
+                        report
+                            .verdicts_not_executable
+                            .push((vector.name.clone(), PROCESS_EXIT_PENDING));
+                    }
+                    _ => {
+                        report.verdicts_not_executable.push((
+                            vector.name.clone(),
+                            "wire event has no L2 engine dispatch; ring wiring executed only",
+                        ));
+                    }
+                }
+            }
+            if builder.events.is_empty() {
+                report
+                    .verdicts_not_executable
+                    .push((vector.name.clone(), STRUCTURAL_ONLY));
+            }
+            continue;
+        }
+        let Some(event) = &vector.event else {
+            let reason = if vector.veto.is_some() {
+                VETO_PENDING
+            } else if vector.watchdog.is_some() {
+                WATCHDOG_PENDING
+            } else {
+                HEARTBEAT_PENDING
+            };
+            report
+                .verdicts_not_executable
+                .push((vector.name.clone(), reason));
+            continue;
         };
-        report
-            .verdicts_not_executable
-            .push((vector.name.to_string(), reason));
+        let event: GuestToHost = serde_json::from_value(event.clone()).map_err(|e| {
+            format!(
+                "parity: vector `{}` event does not decode: {e}",
+                vector.name
+            )
+        })?;
+        match event {
+            GuestToHost::TrapEvent(trap) => {
+                let ctx = handler_ctx_for_trap([0u8; 16], &trap);
+                let observed =
+                    block_on(PipelineEngine::new().dispatch_trap(&trap, &ctx)).map_err(|e| {
+                        format!(
+                            "parity: vector `{}` engine dispatch failed: {e}",
+                            vector.name
+                        )
+                    })?;
+                if matches!(observed, Verdict::Pass) && vector.expected_verdict_kind == "Pass" {
+                    report.verdicts_executed += 1;
+                } else {
+                    report
+                        .verdicts_not_executable
+                        .push((vector.name.clone(), POLICY_PENDING));
+                }
+            }
+            _ => {
+                let reason = if vector.veto.is_some() {
+                    VETO_PENDING
+                } else if vector.watchdog.is_some() {
+                    WATCHDOG_PENDING
+                } else {
+                    HEARTBEAT_PENDING
+                };
+                report
+                    .verdicts_not_executable
+                    .push((vector.name.clone(), reason));
+            }
+        }
     }
     for verdict in WATCHDOG_VERDICTS {
         if !vectors.iter().any(|vector| {
@@ -461,6 +869,14 @@ pub fn assert_vectors(vectors: &[ParityVector]) -> Result<ParityReport, String> 
     }
     Ok(report)
 }
+
+// see: cans/15-operations.md#Multi-language-parity-gate
+const PROCESS_EXIT_PENDING: &str =
+    "process-exit observation has no Verdict outcome; the engine dispatch executed";
+
+// see: cans/15-operations.md#Multi-language-parity-gate
+const STRUCTURAL_ONLY: &str =
+    "no wire event on this chain; descriptor construction and prerequisite mounts executed only";
 
 // see: cans/15-operations.md#Multi-language-parity-gate
 fn assert_canonical_roster(vectors: &[ParityVector]) -> Result<(), String> {

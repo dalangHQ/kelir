@@ -1,7 +1,6 @@
 // see: cans/15-operations.md#Coverage-gates
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
 
 pub(crate) fn manifest_name(text: &str) -> Option<String> {
     text.lines()
@@ -27,7 +26,7 @@ pub(crate) fn path_deps(text: &str) -> Vec<String> {
 
 pub fn plugin_graph() -> Result<HashMap<String, Vec<String>>, Box<dyn std::error::Error>> {
     let mut graph: HashMap<String, Vec<String>> = HashMap::new();
-    for entry in fs::read_dir(Path::new("crates/kelir-plugins"))? {
+    for entry in fs::read_dir(crate::workspace_root()?.join("crates/kelir-plugins"))? {
         let dir = entry?.path();
         if !dir.is_dir() {
             continue;

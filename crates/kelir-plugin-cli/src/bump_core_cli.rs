@@ -117,7 +117,10 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         BumpCoreError::MissingChannel("bump-core: requires --channel <released|main>".to_string())
     })?;
     let pin = resolve_pin(channel);
-    write_pin(&pin, Path::new(".kelir/core-channel.json"))?;
+    write_pin(
+        &pin,
+        &crate::workspace_root()?.join(".kelir/core-channel.json"),
+    )?;
     println!(
         "bump-core: pinned channel {} at kelir {}",
         pin.channel.as_str(),

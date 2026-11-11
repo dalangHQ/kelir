@@ -3,7 +3,7 @@
 pub struct DriverRouter {
     // see: cans/01-architecture.md#Driver-backends
     #[allow(dead_code)]
-    active_driver: Box<dyn kelir_interface::driver_interface::VmmDriver + Send + Sync>,
+    active_driver: Box<dyn kelir_interface::driver_interface::VmmDriver>,
 }
 
 impl DriverRouter {
@@ -13,7 +13,7 @@ impl DriverRouter {
         policy_wx: bool,
         allow_emulated: bool,
     ) -> Result<
-        Box<dyn kelir_interface::driver_interface::VmmDriver + Send + Sync>,
+        Box<dyn kelir_interface::driver_interface::VmmDriver>,
         kelir_interface::driver_interface::VmmError,
     > {
         use kelir_interface::driver_interface::VmmError;
@@ -37,9 +37,7 @@ impl DriverRouter {
         ))
     }
 
-    pub fn new(
-        driver: Box<dyn kelir_interface::driver_interface::VmmDriver + Send + Sync>,
-    ) -> Self {
+    pub fn new(driver: Box<dyn kelir_interface::driver_interface::VmmDriver>) -> Self {
         Self {
             active_driver: driver,
         }

@@ -17,6 +17,9 @@ pub const EFFIQUEUESATURATED_CODE: &str = "EFFIQUEUESATURATED";
 pub const EAMBIGUOUSMUTATION_CODE: &str = "EAMBIGUOUSMUTATION";
 
 // see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
+pub const EHALT_CODE: &str = "EHALT";
+
+// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ErrorEnvelope {
@@ -90,7 +93,7 @@ impl From<PluginError> for ErrorEnvelope {
                 binary: None,
                 errno: Some(errno),
             },
-            PluginError::Halt(message) => Self::econfig(message),
+            PluginError::Halt(message) => Self::mapped(EHALT_CODE, message, None, None),
         }
     }
 }

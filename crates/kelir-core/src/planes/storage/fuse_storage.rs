@@ -261,10 +261,10 @@ impl FuseDispatcher {
                 "TODO (L3): FUSE RENAME needs the broker upper-file move".into(),
             )),
             // TODO (L3): statfs replies remaining broker quota from the plane atomics.
-            FuseOpcode::Statfs => Ok(FuseResponse {
-                guest_inode: request.guest_inode,
-                reply: FuseReply::Errno(-libc::ENOSYS),
-            }),
+            FuseOpcode::Statfs => Err(PluginError::Halt(
+                "TODO (L3): FUSE STATFS needs the remaining-quota reply from the plane atomics"
+                    .into(),
+            )),
             FuseOpcode::Write => {
                 // see: cans/05-storage-plane.md#Storage-quotas
                 if self
@@ -328,12 +328,7 @@ impl FuseDispatcher {
                     blocking: matches!(request.opcode, FuseOpcode::Setlkw),
                     pid: request.pid,
                 };
-                if self.lock_broker.acquire(&lock_request).is_err() {
-                    return Ok(FuseResponse {
-                        guest_inode: request.guest_inode,
-                        reply: FuseReply::Errno(-libc::EWOULDBLOCK),
-                    });
-                }
+                self.lock_broker.acquire(&lock_request)?;
                 let flock_cmd = match request.opcode {
                     // TODO (L3): flock LOCK_EX/LOCK_NB constants live in the enclave.
                     FuseOpcode::Setlk => 6,
@@ -346,7 +341,7 @@ impl FuseDispatcher {
                 {
                     Verdict::Pass => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
-                        // TODO (L3): fill lock payload from host flock grant.
+                        // TODO (L3): fill lock payload from host flock grant; conflicts reply EWOULDBLOCK.
                         reply: FuseReply::Payload(Vec::new()),
                     }),
                     Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(

@@ -68,19 +68,19 @@ fn unbound_error(op: &str) -> PluginError {
 
 // see: cans/08-lifecycle.md#Hypervisor-primitives
 pub struct DriverVmControl {
-    driver: Arc<AsyncMutex<Box<dyn VmmDriver + Send + Sync>>>,
+    driver: Arc<AsyncMutex<Box<dyn VmmDriver>>>,
 }
 
 impl DriverVmControl {
-    pub fn new(driver: Box<dyn VmmDriver + Send + Sync>) -> Self {
+    pub fn new(driver: Box<dyn VmmDriver>) -> Self {
         Self::from_shared(Arc::new(AsyncMutex::new(driver)))
     }
 
-    pub fn from_shared(driver: Arc<AsyncMutex<Box<dyn VmmDriver + Send + Sync>>>) -> Self {
+    pub fn from_shared(driver: Arc<AsyncMutex<Box<dyn VmmDriver>>>) -> Self {
         Self { driver }
     }
 
-    pub fn shared(driver: &Arc<AsyncMutex<Box<dyn VmmDriver + Send + Sync>>>) -> Arc<Self> {
+    pub fn shared(driver: &Arc<AsyncMutex<Box<dyn VmmDriver>>>) -> Arc<Self> {
         Arc::new(Self::from_shared(Arc::clone(driver)))
     }
 }

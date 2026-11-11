@@ -603,6 +603,7 @@ name = "kelir-plugin-cli"
 version = "1.0.0"
 dependencies = [
  "blake3",
+ "ciborium",
  "driver-rustvmm",
  "kelir-catalog",
  "kelir-core",
@@ -610,6 +611,7 @@ dependencies = [
  "kelir-plugin-testkit",
  "serde",
  "serde_json",
+ "serde_yaml",
  "sha2",
  "thiserror 2.0.21",
  "toml",

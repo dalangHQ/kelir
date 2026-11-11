@@ -1,5 +1,9 @@
 // see: cans/15-operations.md#CI-matrix
+use std::collections::BTreeMap;
 use std::fs;
+use std::path::Path;
+
+use serde::Deserialize;
 
 const REQUIRED_KEYS: &[&str] = &[
     "gate_1_us",
@@ -11,39 +15,52 @@ const REQUIRED_KEYS: &[&str] = &[
     "idle_memory_rss_mb",
 ];
 
-pub fn check(path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let text = fs::read_to_string(path).map_err(|e| format!("budgets: cannot read {path}: {e}"))?;
-    let mut enforce = false;
-    let mut found: Vec<&str> = Vec::new();
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with('[') {
-            continue;
-        }
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        let key = key.trim();
-        let value = value.trim();
-        if key == "enforce" {
-            if value != "true" {
-                return Err("budgets: `enforce` must be true".into());
-            }
-            enforce = true;
-        } else if REQUIRED_KEYS.contains(&key) {
-            value.parse::<i64>().map_err(|_| {
-                format!("budgets: `{key}` must have an integer value, found `{value}`")
-            })?;
-            found.push(key);
-        }
-    }
-    if !enforce {
-        return Err("budgets: missing `enforce = true`".into());
+// see: cans/15-operations.md#CI-matrix
+const SPEC_CEILINGS: &[(&str, i64)] = &[
+    ("gate_2_us", 2),
+    ("cold_boot_ms", 60),
+    ("rss_purge_ms", 50),
+    ("fast_boot_hydration_us", 500),
+    ("idle_memory_rss_mb", 4),
+];
+
+#[derive(Deserialize)]
+struct BudgetsToml {
+    enforce: bool,
+    latencies: BTreeMap<String, i64>,
+}
+
+pub fn check(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let text = fs::read_to_string(path)
+        .map_err(|e| format!("budgets: cannot read {}: {e}", path.display()))?;
+    let budgets: BudgetsToml = toml::from_str(&text).map_err(|e| {
+        format!(
+            "budgets: {} is not a valid budgets file: {e}",
+            path.display()
+        )
+    })?;
+    if !budgets.enforce {
+        return Err("budgets: `enforce` must be true".into());
     }
     for key in REQUIRED_KEYS {
-        if !found.contains(key) {
+        let Some(value) = budgets.latencies.get(*key) else {
             return Err(format!("budgets: missing required key `{key}`").into());
+        };
+        if let Some((_, ceiling)) = SPEC_CEILINGS.iter().find(|(spec_key, _)| spec_key == key)
+            && *value > *ceiling
+        {
+            return Err(format!(
+                "budgets: `{key}` = {value} exceeds the spec ceiling {ceiling} (cans/15-operations.md#CI-matrix)"
+            )
+            .into());
         }
     }
+    // TODO (L3): measured p95 enforcement rides the benchmark suites per cans/15-operations.md#CI-matrix.
+    println!(
+        "budgets: {} enforce=true, {} required key(s) present, {} spec ceiling(s) hold",
+        path.display(),
+        REQUIRED_KEYS.len(),
+        SPEC_CEILINGS.len()
+    );
     Ok(())
 }

@@ -115,11 +115,12 @@ struct MapCounts {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    let mode = match args.get(1) {
+    let rest: Vec<&String> = args.iter().skip(1).collect();
+    let in_place = rest.iter().any(|arg| arg.as_str() == "--in-place");
+    let mode = match rest.iter().find(|arg| !arg.as_str().starts_with("--")) {
         Some(arg) => arg.as_str(),
         None => "generate",
     };
-    let in_place = args.iter().skip(2).any(|arg| arg == "--in-place");
     if in_place && mode != "generate" {
         return Err("--in-place applies to `generate` only.".into());
     }

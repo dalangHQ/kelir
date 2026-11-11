@@ -18,7 +18,7 @@
       - Native gRPC and HTTP exporters via OpenTelemetry SDK
       - Metrics: counters (execs, syscalls, drops, backpressure events),
         - gauges (RSS, dirty pages, active vCPUs, in-flight execs)
-      - Traces: one span per receipt phase (trap_ingress, policy, ffi_hop,
+      - Traces: one span per receipt phase (trap_ingress, ffi_hop, policy,
         - verdict_egress); see: 10-attestation.md#Execution-receipts
       - Trace continuity across guest-originated requests via W3C traceparent
       - No local Merkle WAL is written by default

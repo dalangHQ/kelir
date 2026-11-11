@@ -2,7 +2,7 @@
 // see: cans/02-plugin-model.md#Plugin-tiering
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 
 use kelir_core::plugin_registry::{PluginManifest, PluginTier, parse_plugin_manifest};
 
@@ -15,10 +15,14 @@ const TESTKIT_CRATE: &str = "kelir-plugin-testkit";
 const INTERFACE_CRATE: &str = "kelir-interface";
 
 // see: cans/02-plugin-model.md#Plugin-tiering
-const PLUGIN_DIR: &str = "crates/kelir-plugins";
+fn plugin_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    Ok(crate::workspace_root()?.join("crates/kelir-plugins"))
+}
 
 // see: cans/02-plugin-model.md#Plugin-ownership
-const WORKSPACE_MANIFEST: &str = "Cargo.toml";
+fn workspace_manifest() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    Ok(crate::workspace_root()?.join("Cargo.toml"))
+}
 
 #[derive(serde::Deserialize)]
 struct WorkspaceRootToml {
@@ -43,7 +47,7 @@ struct MemberPackageToml {
 // see: cans/02-plugin-model.md#Plugin-tiering
 fn tier_roster() -> Result<Vec<PluginManifest>, Box<dyn std::error::Error>> {
     let mut roster: Vec<PluginManifest> = Vec::new();
-    for entry in fs::read_dir(PLUGIN_DIR)? {
+    for entry in fs::read_dir(plugin_dir()?)? {
         let dir = entry?.path();
         if !dir.is_dir() {
             continue;
@@ -58,7 +62,11 @@ fn tier_roster() -> Result<Vec<PluginManifest>, Box<dyn std::error::Error>> {
         roster.push(parsed);
     }
     if roster.is_empty() {
-        return Err(format!("check -p: no plugin manifests found under {PLUGIN_DIR}").into());
+        return Err(format!(
+            "check -p: no plugin manifests found under {}",
+            plugin_dir()?.display()
+        )
+        .into());
     }
     roster.sort_by(|a, b| a.tier.crate_name.cmp(&b.tier.crate_name));
     Ok(roster)
@@ -68,11 +76,17 @@ fn tier_roster() -> Result<Vec<PluginManifest>, Box<dyn std::error::Error>> {
 fn forbidden_workspace_crates(
     plugins: &BTreeSet<&str>,
 ) -> Result<BTreeSet<String>, Box<dyn std::error::Error>> {
-    let root: WorkspaceRootToml = toml::from_str(&fs::read_to_string(WORKSPACE_MANIFEST)?)
-        .map_err(|e| format!("check -p: {WORKSPACE_MANIFEST} is not valid TOML: {e}"))?;
+    let manifest_path = workspace_manifest()?;
+    let root: WorkspaceRootToml =
+        toml::from_str(&fs::read_to_string(&manifest_path)?).map_err(|e| {
+            format!(
+                "check -p: {} is not valid TOML: {e}",
+                manifest_path.display()
+            )
+        })?;
     let mut forbidden: BTreeSet<String> = BTreeSet::new();
     for member in &root.workspace.members {
-        let manifest = Path::new(member).join("Cargo.toml");
+        let manifest = crate::workspace_root()?.join(member).join("Cargo.toml");
         let text = fs::read_to_string(&manifest).map_err(|e| {
             format!("check -p: workspace member {member} has no readable Cargo.toml: {e}")
         })?;
@@ -191,7 +205,10 @@ pub fn run_plugin(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     }
     let graph = graph_cli::plugin_graph()?;
     graph_cli::assert_acyclic(&graph)?;
-    let src = Path::new("crates/kelir-plugins").join(name).join("src");
+    let src = crate::workspace_root()?
+        .join("crates/kelir-plugins")
+        .join(name)
+        .join("src");
     layers_cli::check_dir(&src, &["kelir_core::", "kelir_drivers::", "kelir::"])?;
     let mask = rings_cli::declared_ring_mask(&src)?;
     if !mask.contains("KelirPlugin") {

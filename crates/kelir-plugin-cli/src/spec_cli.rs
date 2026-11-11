@@ -16,8 +16,6 @@ pub struct AotReport {
     pub path: PathBuf,
     pub source: ProfileSource,
     pub syntax_ok: bool,
-    pub acyclic: bool,
-    pub monotonic_limits: bool,
 }
 
 // see: cans/15-operations.md#Developer-CLI
@@ -25,7 +23,7 @@ pub struct AotReport {
 pub enum SpecError {
     MissingFile(String),
     UnsupportedExtension(String),
-    NotImplemented(String),
+    Parse(String),
 }
 
 impl fmt::Display for SpecError {
@@ -33,7 +31,7 @@ impl fmt::Display for SpecError {
         match self {
             SpecError::MissingFile(message)
             | SpecError::UnsupportedExtension(message)
-            | SpecError::NotImplemented(message) => write!(f, "{message}"),
+            | SpecError::Parse(message) => write!(f, "{message}"),
         }
     }
 }
@@ -60,19 +58,39 @@ pub fn validate_profile_aot(path: &str) -> Result<AotReport, SpecError> {
             "spec: profile not found at {path}"
         )));
     }
-    let _source = profile_source(&path_buf)?;
-    // TODO (L3): validate TypeBox/Serde schema, acyclic extends, and monotonic limits without compiling code.
-    Err(SpecError::NotImplemented(
-        "spec check AOT validation (L3)".to_string(),
-    ))
+    let source = profile_source(&path_buf)?;
+    let text = std::fs::read_to_string(&path_buf)
+        .map_err(|e| SpecError::Parse(format!("spec: cannot read {path}: {e}")))?;
+    match source {
+        ProfileSource::Toml => {
+            toml::from_str::<toml::Value>(&text)
+                .map_err(|e| SpecError::Parse(format!("spec: {path} is not valid TOML: {e}")))?;
+        }
+        ProfileSource::Yaml => {
+            serde_yaml::from_str::<serde_yaml::Value>(&text)
+                .map_err(|e| SpecError::Parse(format!("spec: {path} is not valid YAML: {e}")))?;
+        }
+    }
+    // TODO (L3): validate the TypeBox/Serde schema, acyclic extends, and monotonic limits without compiling code.
+    Ok(AotReport {
+        path: path_buf,
+        source,
+        syntax_ok: true,
+    })
 }
 
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     match args.first().map(String::as_str) {
         Some("check") => {
             let path = args.get(1).map(String::as_str).unwrap_or("kelir.toml");
-            let _report = validate_profile_aot(path)?;
-            println!("spec: {path} AOT validation passed");
+            let report = validate_profile_aot(path)?;
+            let source = match report.source {
+                ProfileSource::Toml => "TOML",
+                ProfileSource::Yaml => "YAML",
+            };
+            println!(
+                "spec: {path} {source} syntax valid; schema, acyclic extends, and monotonic limits pending (L3)"
+            );
             Ok(())
         }
         Some("export") => {

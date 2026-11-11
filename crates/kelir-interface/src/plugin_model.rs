@@ -228,30 +228,21 @@ impl MountScope {
 
     // TODO (L3): canonical (st_dev, st_ino, binary_blake3) — cans/11-protocol.md#Trap-fast-path
     // see: cans/02-plugin-model.md#Filter-before-FFI-gate
-    pub fn allows_binary(&self, binary: &str) -> bool {
-        match &self.binaries {
-            None => true,
-            Some(list) => {
-                list.is_empty()
-                    || Path::new(binary)
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .is_some_and(|name| list.iter().any(|item| item == name))
-            }
-        }
+    pub fn allows_binary(&self, _binary: &str) -> bool {
+        self.binaries.is_none()
     }
 
     pub fn allows_path(&self, path: &Path) -> bool {
         match &self.paths {
             None => true,
-            Some(list) => list.is_empty() || list.iter().any(|item| path.starts_with(item)),
+            Some(list) => list.iter().any(|item| path.starts_with(item)),
         }
     }
 
     pub fn allows_device(&self, device: VirtioDevice) -> bool {
         match &self.devices {
             None => true,
-            Some(list) => list.is_empty() || list.contains(&device),
+            Some(list) => list.contains(&device),
         }
     }
 
@@ -259,7 +250,7 @@ impl MountScope {
     pub fn allows_stream_kind(&self, kind: StreamKind) -> bool {
         match &self.stream_kinds {
             None => true,
-            Some(list) => list.is_empty() || list.contains(&kind),
+            Some(list) => list.contains(&kind),
         }
     }
 }
@@ -387,12 +378,6 @@ impl<'a> LifecycleCtx<'a> {
         callback: Box<dyn Fn() -> bool + Send + Sync>,
     ) {
         self.vetoes.push((event, callback));
-    }
-
-    // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
-    // TODO (L3): atomically swap the compiled hook pipeline via ArcSwap as documented on LifecycleCtx in cans/artifacts/code/plugin-trait.rs#LifecycleCtx; the new dispatch handle is discarded at L2.
-    pub fn update_dispatch(&mut self, _new_dispatch: Arc<()>) -> Result<(), PluginError> {
-        Ok(())
     }
 
     // see: cans/10-attestation.md#Lifecycle-bridge
@@ -677,7 +662,7 @@ pub trait KelirPlugin: Send + Sync + PluginClone {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-pub struct NoDeps;
+pub type NoDeps = HNil;
 
 // see: cans/02-plugin-model.md#Compile-time-prerequisites
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

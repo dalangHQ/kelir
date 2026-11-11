@@ -69,6 +69,10 @@ fn quoted_literal(line: &str) -> Option<String> {
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    // TODO (L3): VirtIO ring inspection subcommand skeleton.
-    Ok(())
+    // see: cans/15-operations.md#Subcommands
+    // TODO (L3): render the --show ring-mask report over declared_ring_mask.
+    Err(
+        "rings: not implemented (L3): --show ring-mask rendering per cans/15-operations.md#Subcommands"
+            .into(),
+    )
 }

@@ -3,13 +3,12 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use kelir_interface::handlers_plugin::Has;
 pub use kelir_interface::handles_lifecycle::{
     ClockHandle, FsHandle, StepStack, TerminalHandle, VmHandle,
 };
 use kelir_interface::hex_codec::encode_hex;
-use kelir_interface::plugin_model::{MountScope, PipelineBinder, PluginError};
-
-use kelir_interface::handlers_plugin::Has;
+use kelir_interface::plugin_model::{LifecycleEvent, MountScope, PipelineBinder, PluginError};
 
 use crate::builder_sdk::{Registration, TrapOutcome};
 use crate::hlist_sdk::{HList, HNil, NoParams};
@@ -118,11 +117,13 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         let mut child = self.core.fork().await?;
         let child_session_id = encode_hex(&child.session_id());
         // see: cans/08-lifecycle.md#CoW-fork
+        // TODO (L2): host on_trap_deny and custom-action callbacks are consumed into the parent engine at boot and are not Clone; child inheritance lands with the engine registration-state accessor (dispatch_plugin).
+        // TODO (L2): host stream-kind service entries are not forwarded into the engine at boot (builder_sdk §1.5) and their boxed handlers are not Clone; child routing re-registers through the engine and bus binding below.
         let mut registration = Registration {
             instances: Vec::new(),
             mounted: Vec::new(),
             // see: cans/08-lifecycle.md#CoW-fork
-            traps: Vec::new(),
+            traps: self.registration.traps.clone(),
             storage_cfg: self.registration.storage_cfg.clone(),
             terminal_cfg: self.registration.terminal_cfg.clone(),
             wire_cfg: self.registration.wire_cfg.clone(),
@@ -130,6 +131,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
             on_trap_deny: None,
             custom_actions: Vec::new(),
             stream_kind_services: Vec::new(),
+            // see: cans/08-lifecycle.md#CoW-fork
             vetoes: Vec::new(),
             detached: self.registration.detached,
         };
@@ -160,6 +162,11 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         }
         child.pipeline_mut().set_active_scope(MountScope::default());
         child.pipeline_mut().seal()?;
+        // see: cans/11-protocol.md#Kind-registration
+        child.bind_stream_kind_sinks()?;
+        // see: cans/08-lifecycle.md#CoW-fork
+        // see: cans/08-lifecycle.md#Watchdog
+        child.run_lifecycle_hook(LifecycleEvent::VmInit).await?;
         Ok(Self {
             core: child,
             plugins: self.plugins.clone(),
@@ -228,40 +235,8 @@ pub struct VsockHandle;
 
 impl VsockHandle {
     // TODO (L3): open the multiplexed vsock channel for the stream kind per cans/03-sdk-architecture.md#Session-surfaces.
-    pub async fn channel(&self, _kind: u16) -> Result<VsockChannel, PluginError> {
+    pub async fn channel(&self, _kind: u16) -> Result<(), PluginError> {
         Err(PluginError::Halt("TODO (L3): VsockHandle::channel".into()))
-    }
-}
-
-pub struct VsockChannel {
-    inner: tokio::io::DuplexStream,
-}
-
-impl tokio::io::AsyncRead for VsockChannel {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.get_mut().inner).poll_read(cx, buf)
-    }
-}
-
-impl tokio::io::AsyncWrite for VsockChannel {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.get_mut().inner).poll_write(cx, buf)
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.get_mut().inner).poll_flush(cx)
-    }
-
-    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
     }
 }
 

@@ -2,6 +2,7 @@
 use std::error::Error;
 use std::fmt;
 use std::fs;
+use std::path::Path;
 
 use sha2::Digest;
 
@@ -186,16 +187,22 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let text = fs::read_to_string(path)
                 .map_err(|e| FixtureError::Read(format!("fixtures: cannot read {path}: {e}")))?;
             let entries = parse_fixtures(&text)?;
-            if entries.is_empty() {
-                println!("fixtures: no fixtures pinned, nothing to fetch");
-                Ok(())
-            } else {
-                // TODO (L3): fetch each fixture, then verify its digest before mounting.
-                Err(FixtureError::HashUnavailable(
-                    "fixtures fetch (L3): fetching requires digest verification first".to_string(),
-                )
-                .into())
+            for entry in &entries {
+                if !Path::new(&entry.path).exists() {
+                    // TODO (L3): download the pinned fixture from its source registry, then verify its digest before mounting.
+                    return Err(FixtureError::HashUnavailable(format!(
+                        "fixtures fetch (L3): `{}` is absent at {}; network fetch pending",
+                        entry.name, entry.path
+                    ))
+                    .into());
+                }
+                verify_entry(entry)?;
             }
+            println!(
+                "fixtures: {} fixture(s) present and digest-verified in {path}",
+                entries.len()
+            );
+            Ok(())
         }
         Some(other) => {
             Err(format!("fixtures: unknown flag `{other}` (expected --verify or --fetch)").into())

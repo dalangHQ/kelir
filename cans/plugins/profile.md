@@ -81,7 +81,6 @@
       - FFI keys map to DriverPolicy ffi_worker_threads, ffi_max_ops_per_sec
       - driver.fast_boot: auto | enabled | off (default: off)
       - driver.fast_boot routes to KelirBuilder::fast_boot at boot; no struct field
-      - driver.fast_boot: TBD (no DriverPolicy field yet; builder method only)
   - Session compute schema (profile)
     - Session compute semantics: see: artifacts/code/vmm-driver-trait.rs
     - Session identity (profile)

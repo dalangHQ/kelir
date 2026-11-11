@@ -195,6 +195,7 @@ async fn lc_09_graceful_shutdown_syncfs_flushed() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     session
         .stop_with_timeout(std::time::Duration::from_secs(5))
+        .await
         .map_err(|e| e.to_string())?;
     if !fired.load(Ordering::SeqCst) {
         return Err(

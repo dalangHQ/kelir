@@ -396,7 +396,7 @@ impl Sandbox {
         let Some(session) = self.session.as_mut() else {
             return Err(PluginError::Halt("Sandbox::stop before boot".into()));
         };
-        session.stop()
+        session.stop().await
     }
 
     // see: cans/08-lifecycle.md#Pre-teardown-flush
@@ -409,7 +409,7 @@ impl Sandbox {
                 "Sandbox::stop_with_timeout before boot".into(),
             ));
         };
-        session.stop_with_timeout(timeout)
+        session.stop_with_timeout(timeout).await
     }
 
     // see: cans/08-lifecycle.md#Pre-teardown-flush

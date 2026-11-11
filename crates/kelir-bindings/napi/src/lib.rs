@@ -78,6 +78,21 @@ pub struct NativeGuestClockRecord {
     pub boot_params: String,
 }
 
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+#[napi(object)]
+#[derive(Clone)]
+pub struct NativePluginContextRecord {
+    pub name: String,
+    pub ctx: NativePluginContextSurface,
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+#[napi(object)]
+#[derive(Clone)]
+pub struct NativePluginContextSurface {
+    pub enabled: bool,
+}
+
 // see: cans/09-snapshots.md#Archives-and-portability
 #[napi(object)]
 pub struct NativeSnapshotDescriptorRecord {
@@ -433,18 +448,34 @@ pub struct NativeSessionHandle {
     driver_name: String,
     boot_ms: f64,
     vm: CoreVmHandle,
+    session_dir: String,
+    plugin_contexts: Vec<NativePluginContextRecord>,
 }
 
 impl NativeSessionHandle {
     // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
-    fn from_session(session: Session, driver_name: String, boot_ms: f64) -> Self {
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    fn from_session(session: Session, driver_name: String, boot_ms: f64) -> Result<Self> {
+        let session_dir = session.session_dir().map_err(halt)?.display().to_string();
+        let plugin_contexts = session
+            .plugin_contexts()
+            .into_iter()
+            .map(|record| NativePluginContextRecord {
+                name: record.name,
+                ctx: NativePluginContextSurface {
+                    enabled: record.ctx.enabled,
+                },
+            })
+            .collect();
         let vm = session.vm_handle();
-        Self {
+        Ok(Self {
             session: Arc::new(AsyncMutex::new(session)),
             driver_name,
             boot_ms,
             vm,
-        }
+            session_dir,
+            plugin_contexts,
+        })
     }
 }
 
@@ -458,6 +489,18 @@ impl NativeSessionHandle {
     #[napi(getter)]
     pub fn boot_ms(&self) -> f64 {
         self.boot_ms
+    }
+
+    // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
+    #[napi(getter)]
+    pub fn session_dir(&self) -> String {
+        self.session_dir.clone()
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    #[napi(getter)]
+    pub fn plugin_contexts(&self) -> Vec<NativePluginContextRecord> {
+        self.plugin_contexts.clone()
     }
 
     #[napi(getter)]
@@ -519,11 +562,11 @@ impl NativeSessionHandle {
             let session = self.session.lock().await;
             session.fork().await.map_err(halt)?
         };
-        Ok(Self::from_session(
+        Self::from_session(
             child,
             self.driver_name.clone(),
             started.elapsed().as_secs_f64() * 1000.0,
-        ))
+        )
     }
 
     #[napi]
@@ -566,7 +609,7 @@ impl NativeSessionHandle {
     #[napi]
     pub async fn stop(&self) -> Result<()> {
         let mut session = self.session.lock().await;
-        session.stop().map_err(halt)
+        session.stop().await.map_err(halt)
     }
 
     #[napi]
@@ -835,11 +878,11 @@ impl NativeKelirBuilder {
         )
         .map_err(halt)?;
         // TODO (L3): re-source driver_name from the booted core session once it exposes the resolved driver.
-        Ok(NativeSessionHandle::from_session(
+        NativeSessionHandle::from_session(
             session,
             self.driver_name.clone(),
             started.elapsed().as_secs_f64() * 1000.0,
-        ))
+        )
     }
 }
 
