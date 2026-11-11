@@ -1,0 +1,24 @@
+- agent-c report — TS/Py SDK projections lane (worktree kelir-c, branch temp/agent-c)
+  - scope: handwritten TS/Py only; verified generated-file boundary from crates/kelir-interface/src/bin/codegen/main.rs emitters (generated: packages/ts/core/src/{generated/**,telemetry.attest.generated.ts,plugins.registry.ts}, packages/py/kelir/{generated/**,plugins/plugin_*.py,plugins/__init__.py}; untouched)
+  - Fix 7 (Py TrapFilter pattern): DONE — packages/py/kelir/__init__.py TrapFilter now stores pattern as a string glob (self.glob_pattern), adds .pattern(glob) classmethod, with_arg preserves it, snapshot() forwards TrapFilterSnapshot.pattern; trap() string shorthand already wrote TrapFilterSnapshot(pattern=...) so the wire flow was pre-wired; TrapFilterSnapshot.pattern already existed in plugin_fusion.py — no edit needed there; matching semantics stay store+forward (TS defers no matching engine, so no TODO (L3) added, mirroring the TS reference exactly)
+  - Fix 7 (TS-side check): VERIFIED, NO EDIT — TS reference shape lives in packages/ts/core/src/trap.protocol.ts (globPattern string, static pattern(glob), snapshot pattern); pattern flows into TrapFilterSnapshot via snapshot() (trap.protocol.ts:33-39), the .trap("git",...) shorthand flows via builder.lifecycle.ts:411 TrapFilter.pattern(filterOrFn).snapshot() into HookDescriptor.filter and FusedTrampoline.describe; audit's citations stale — builder.lifecycle.ts:107 is StorageConfig.maskRead pattern: RegExp and :852 is the maskRead wire mapping, both unrelated to TrapFilter
+  - Missing-bridge L2 tests: DONE both languages, both pass WITHOUT any native addon present
+    - Python (packages/py/tests/test_lifecycle_session.py): test_load_native_bridge_raises_econfig_when_import_fails (monkeypatches importlib.import_module so kelir._kelir/_kelir raise ImportError, asserts EConfig) + test_load_native_bridge_raises_econfig_when_module_absent (unmocked; skips only if _kelir is actually built)
+    - TypeScript (packages/ts/core/tests/napi.missing-addon.test.ts): kelir().boot() asserts EConfig /NAPI addon is missing/ with a t.skip guard if dist/native/kelir.node ever ships; imports dist/builder.lifecycle.js + dist/errors.sdk.js directly because dist/index.js re-exports the broken generated plugins.registry.js
+  - pattern parity tests added alongside (decision): packages/py/tests/test_lifecycle_session.py test_trap_filter_pattern_snapshot + test_builder_trap_trapfilter_pattern_snapshot — mirrors existing test_builder_trap_pattern_snapshot conventions; guards the new constructor→snapshot→hook filter wiring
+  - gates run (baseline → after)
+    - pnpm install --frozen-lockfile: OK (lockfile present at repo root)
+    - pnpm -r exec tsc --noEmit: 3 errors both before and after, all pre-existing TS2307 in GENERATED src/plugins.registry.ts (imports ./plugin.model.js which no codegen emitter writes) — not mine to fix, unchanged by my edits
+    - pnpm --filter @kelir/core run typecheck (tsconfig.check.json incl. tests/): same 3 pre-existing errors only; my new test file typechecks clean
+    - uv venv + uv pip install -e "packages/py[dev]": OK (network fine; mypy 2.4.1, pytest available)
+    - uv run --no-project mypy packages/py: clean before and after (39 files, 0 issues)
+    - python3 -m compileall packages/py: OK
+    - pytest packages/py/tests/test_lifecycle_session.py -q: 40 pass/4 skip baseline → 44 pass/4 skip after (skips = native _kelir absent, expected); adjacent fusion/policy/fluent files: 100 pass/4 skip total
+    - node --test packages/ts/core/tests/napi.missing-addon.test.ts: 1 pass, 0 fail
+    - comment-law greps on touched files: clean; repo-wide: one pre-existing // @ts-expect-error in matrix.fluent-builder.test.ts (compiler directive, untouched)
+  - deferred (out of scope per work-order): Verdict::Patch shape unification (Rust/TS/Py), Session::attach completion, any L3 work, any generated-file edit, any Rust edit
+  - merge-lead must know
+    - dist/index.js is unimportable at runtime (MODULE_NOT_FOUND ./plugin.model.js from generated plugins.registry.js) — blocks every ../dist/index.js-importing TS test incl. red bt_01; fix belongs to the codegen owner
+    - Rust TrapFilter (crates/kelir/src/builder_sdk.rs:50) still binary/args only in this worktree; agent-a's parallel Rust pattern work closes the tri-SDK filter parity, Py+TS now both store+forward pattern on the wire
+    - handoffs appended to cans/_collab/conflicts.md
+  - commits (all pushed to origin temp/agent-c): 31ad9e5 py TrapFilter pattern parity + snapshot flow (L1/L2); bb1bbf1 py missing native bridge EConfig L2 tests (L1/L2); e6e3e09 ts missing NAPI addon boot EConfig L2 test (L1/L2); final report+conflicts commit follows
