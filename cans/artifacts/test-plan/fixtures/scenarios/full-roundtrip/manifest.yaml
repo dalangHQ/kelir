@@ -1,0 +1,6 @@
+$schema: "test-plan/fixture/v1"
+name: "full-roundtrip"
+description: "Shared EROFS rootfs, kernel, and session config inputs for full lifecycle round-trip scenarios."
+inputs:
+  - file: "kelir.yaml"
+    role: "Minimal session profile: kernel/rootfs EROFS artifact paths, one workspace mount, and DNS policy reference."

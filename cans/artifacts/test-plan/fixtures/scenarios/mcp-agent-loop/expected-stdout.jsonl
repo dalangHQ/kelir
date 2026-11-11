@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"mcp","version":"1.0.0"}}}
+{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"execute_command"},{"name":"read_file"},{"name":"write_file"}]}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"root\n"}]}}
+{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"\u0000\u00ff\u000a\u001b[0m"}]}}

@@ -1,0 +1,23 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_lifecycle_fork_from_mid_chain"
+title: "CoW fork from a mid-chain checkpoint isolates fork state and receipts"
+family: "lifecycle"
+target_tier: "e2e"
+languages: [rust, typescript, python]
+fixture_ref: "fixtures/scenarios/full-roundtrip/"
+steps:
+  - ref: "lc_01_cow_fork_warm_memory_sharing"
+    assert: "host RAM dirtied only on child write"
+  - ref: "lc_19_delta_chain_unbounded_compaction"
+    assert: "flattens ancestor deltas in a single-pass block copy on export"
+  - ref: "pe_13_fork_state_specialization_isolation"
+    assert: "isolates plugin state per branch"
+  - ref: "ar_01_execution_receipt_blake3_binding"
+    assert: "raw BLAKE3 of binary_path"
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "the fork step proves child dirty_pages == 0 immediately after fork() and the parent plugin counter stays at 10 while the child reaches 11"
+  - rule: "AS-03"
+    verification: "parent and child receipts unpack to ExitKind::Normal with exit_code 0 — no receipt field left unexamined"
+  - rule: "AS-06"
+    verification: "the receipt BLAKE3 literals are pinned constants captured from the fixture rootfs, never computed by running the subject binary inside the test"

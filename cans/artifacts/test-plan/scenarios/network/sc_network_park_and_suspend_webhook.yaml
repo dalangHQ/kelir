@@ -1,0 +1,19 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_network_park_and_suspend_webhook"
+title: "Wire ingress park suspends session and webhook resumes it"
+family: "network"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/network-policy/"
+steps:
+  - ref: "wp_17_wire_ingress_park_connection_suspends_session"
+    assert: "returns ParkOutcome::Parked and the session suspends for parking"
+  - ref: "lc_02_suspend_zero_rss_purge"
+    assert: "host RSS drops to 0 MB in <50ms"
+  - ref: "lc_06_hvf_chunked_page_promoter_2mb"
+    assert: "eagerly promotes 2MB contiguous blocks via Mach vm_copy"
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "park step matches typed ParkOutcome::Parked; resume proves bytes replayed exactly once"
+  - rule: "AS-02"
+    verification: "suspend step proves 0 MB host RSS and zero dirtied upper bytes"

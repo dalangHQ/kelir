@@ -1,0 +1,20 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_concurrency_concurrent_catalog_writes"
+title: "Concurrent catalog writes serialize through CAS guards"
+family: "concurrency"
+target_tier: "e2e"
+languages: [rust]
+steps:
+  - ref: "sp_21_catalog_session_register_lookup_roundtrip"
+    assert: "returns the same session_id, incarnation_id, lease_kind, and start_time_ns"
+  - ref: "sp_22_catalog_heartbeat_lease_cas_guards_handoff"
+    assert: "returns false without moving the lock"
+  - ref: "lc_22_sqlite_wal_busy_timeout_recovery"
+    assert: "a second writer contending for the sessions table waits and commits instead of failing with SQLITE_BUSY"
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "each writer's row is compared field-by-field against what it registered — session_id, incarnation_id, lease_kind, start_time_ns — with no output-derived expectations"
+  - rule: "AS-03"
+    verification: "the stale handoff's Ok(false) is asserted as a CAS mismatch outcome, never treated as success"
+  - rule: "AS-04B"
+    verification: "the contending writer commits inside the physical 5000ms busy timeout with zero SQLITE_BUSY escapes"

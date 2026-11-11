@@ -67,8 +67,24 @@ jobs:
           git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" > /tmp/touched
           just check-spec-touched
 
-  # ─── 1b. FAST STATIC GATE (<90s) ────────────────────────────
+  # ─── 1b. SMOKE SCENARIO PRE-GATE (<60s) ─────────────────────────
+  # Fast scenario-tier gate: validates scenarios/smoke/ before the
+  # full manifest job runs. 60-second wall budget on the validation
+  # run, enforced by timeout(1); build time is outside the budget.
+  smoke-scenarios:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Smoke tier gate (scenarios/smoke/, 60s wall budget)
+        run: |
+          cargo build -p kelir-testkit --bin check-scenarios
+          timeout 60 cargo run -p kelir-testkit --bin check-scenarios -- --family smoke
+
+  # ─── 1c. FAST STATIC GATE (<90s) ────────────────────────────
   lint-and-types:
+    needs: smoke-scenarios
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -132,11 +148,13 @@ jobs:
           uv venv && uv pip install -e "packages/py[dev]"
           uv run --no-project mypy packages/py
 
-      # Test-plan gates: manifest validation + AST anti-slop analysis.
+      # Test-plan gates: manifest validation + AST anti-slop + scenario tier.
       - name: Manifest validation (check-manifest)
         run: just check-manifest
       - name: AST anti-slop analysis (check-tests)
         run: just check-tests
+      - name: Scenario tier validation (check-scenarios)
+        run: just check-scenarios
 
   # ─── STAGE 2. LINUX KVM TIER (Linux x86) ────────────────────
   # Cases with platform_target.hypervisor: kvm, via cargo nextest.

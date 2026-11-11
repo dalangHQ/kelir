@@ -1,0 +1,22 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_parity_full_roundtrip"
+title: "Full round-trip journey identical across Rust, TS, Python"
+family: "parity"
+target_tier: "e2e"
+languages: [rust, typescript, python]
+steps:
+  - ref: "tp_09_exec_stream_sublane_stdio_fidelity"
+    assert: "stdout and stderr retain bitwise fidelity"
+  - ref: "sp_04_storage_quota_enforcement_enospc"
+    assert: "Exceeding max_bytes fails synchronously with ENOSPC"
+  - ref: "wp_02_synthetic_dns_nxdomain_enforcement"
+    assert: "synthetic NXDOMAIN before upstream forward"
+  - ref: "lc_02_suspend_zero_rss_purge"
+    assert: "host RSS drops to 0 MB in <50ms"
+  - ref: "lc_09_graceful_shutdown_syncfs_flushed"
+    assert: "shim issues syncfs(2), sends SIGTERM, reaps children"
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "expected literals (stdout bytes, ENOSPC, 0 MB RSS) hardcoded and diffed byte-for-byte across the three SDKs"
+  - rule: "AS-03"
+    verification: "every step matches the same typed verdict and receipt in Rust, TypeScript, and Python"

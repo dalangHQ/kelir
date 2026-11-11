@@ -85,6 +85,8 @@ tmp/
 .tmp/
 *.pid
 *.sock
+# Scenario fixtures are committed test inputs, not runtime scratch (work-order-2).
+!cans/artifacts/test-plan/fixtures/**/*.pid
 
 # ── Generated bundles ────────────────────────────────────────
 repomix.md

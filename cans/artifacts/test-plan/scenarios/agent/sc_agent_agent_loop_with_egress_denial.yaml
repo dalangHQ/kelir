@@ -1,0 +1,19 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_agent_agent_loop_with_egress_denial"
+title: "Agent loop continues coherently when egress is denied"
+family: "agent"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/mcp-agent-loop/"
+steps:
+  - ref: "wp_02_synthetic_dns_nxdomain_enforcement"
+    assert: "return synthetic NXDOMAIN before upstream forward"
+  - ref: "gt_03_taint_tracking_mutation_suspend"
+    assert: "host approval binds to canonical payload hash"
+  - ref: "ta_04_otlp_grpc_metric_export_streaming"
+    assert: "metrics and traces flow to host's existing OTel Collector without local disk overhead"
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "each denied egress and suspended mutation surfaces as a typed outcome the loop branches on — rcode 3 NXDOMAIN and Verdict::Suspend, never a raw Result check"
+  - rule: "AS-08"
+    verification: "loop completion leaves zero leaked host sockets and zero locally written metric files despite the repeated denials"

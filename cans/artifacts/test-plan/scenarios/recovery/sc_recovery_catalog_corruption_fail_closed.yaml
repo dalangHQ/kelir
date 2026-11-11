@@ -1,0 +1,17 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_recovery_catalog_corruption_fail_closed"
+title: "Catalog corruption fails closed"
+family: "recovery"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/crash-recovery/"
+steps:
+  - ref: "lc_22_sqlite_wal_busy_timeout_recovery"
+    assert: "The catalog opens SQLite with PRAGMA journal_mode=WAL and PRAGMA busy_timeout=5000"
+  - ref: "sp_21_catalog_session_register_lookup_roundtrip"
+    assert: "lookup of an unregistered id returns None"
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "corruption outcomes are proven at row level — unknown ids return None and no phantom row survives WAL recovery"
+  - rule: "AS-03"
+    verification: "every corrupted-catalog access fails closed with a typed error, never a silent empty result or .is_ok()"

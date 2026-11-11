@@ -1,0 +1,19 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_lifecycle_suspend_resume_clock_snap"
+title: "Suspend/resume preserves monotonic clock clamp and resync snap"
+family: "lifecycle"
+target_tier: "e2e"
+languages: [rust, typescript, python]
+fixture_ref: "fixtures/scenarios/full-roundtrip/"
+steps:
+  - ref: "lc_02_suspend_zero_rss_purge"
+    assert: "Freezes vCPU; flushes compressed pages to local NVMe"
+  - ref: "lc_05_monotonic_clock_clamp_on_resume"
+    assert: "CLOCK_MONOTONIC never regresses across restore"
+  - ref: "lc_11_lid_sleep_clock_resync_snap"
+    assert: "guest time snaps to host wall-clock"
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "clock checks compare guest CLOCK_MONOTONIC against the pinned 5000000000ns snapshot — zero host wall-clock sampling in the scenario"
+  - rule: "AS-08"
+    verification: "suspend leaves host RSS under the 15MB floor with zero dangling session descriptors before any resume is attempted"

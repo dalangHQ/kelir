@@ -1,0 +1,19 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_agent_mcp_taint_blocks_mutation"
+title: "Tainted tool output blocks subsequent mutations and resumes only via approval"
+family: "agent"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/mcp-agent-loop/"
+steps:
+  - ref: "gt_03_taint_tracking_mutation_suspend"
+    assert: "Mutating tools under tainted state require Verdict::Suspend for approval"
+  - ref: "gt_12_model_controlled_flag_taint_override"
+    assert: "Model-controlled flags cannot bypass approval gates"
+  - ref: "gt_11_out_of_band_human_approval_resume"
+    assert: "host waits for out-of-band authorization via Channel 0; cycle-exact resume"
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "the mutating call matches Verdict::Suspend { until: SuspendUntil::Approval } and stays suspended under override arguments — no .is_ok()"
+  - rule: "AS-08"
+    verification: "the awaiting-approval vCPU thread is parked with zero CPU spin and deploy.sh never appears in the guest filesystem"

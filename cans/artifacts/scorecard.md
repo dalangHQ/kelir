@@ -1,6 +1,6 @@
 # Kelir Platform Scorecard
 
-Compiled by `kelir-testkit scorecard` from `cans/artifacts/test-plan/manifest.yaml`.
+Compiled by `kelir-testkit scorecard` from `cans/artifacts/test-plan/manifest.yaml` + `scenarios.yaml`.
 Do not edit by hand: CI runs `just check-scorecard`.
 
 ## Invariant Test Inventory
@@ -30,6 +30,64 @@ Do not edit by hand: CI runs `just check-scorecard`.
 | `terminal_plane` | `tp` | 15 | pass | VirtIO-console Port 0 PTY, line discipline, token shield, ANSI sanitizer (OSC 52/title drops), EXEC stream mux, append-only cursor stream replay. |
 | `virtio_rings` | `vr` | 15 | pass | Paravirtual VirtIO complex: SPSC shared memory rings, virtio-vsock, virtio-console, virtio-fs, virtio-net, virtio-rng, virtio-balloon. |
 | `wire_plane` | `wp` | 17 | pass | Embedded smoltcp netstack, default-deny ingress, L4 diversion, DNS policy filter, synthetic gateway (192.168.127.1:53), UDP NAT slab reaper. |
+
+## Scenario Tier
+
+Composition scenarios from `cans/artifacts/test-plan/scenarios.yaml`;
+each step references a domain case_id (non-redundancy contract, CDR-09..CDR-12).
+
+| Scenario Tier | Count | Status |
+|---|---:|---|
+| lifecycle | 5 | pass |
+| agent | 5 | pass |
+| concurrency | 5 | pass |
+| recovery | 4 | pass |
+| pressure | 4 | pass |
+| network | 4 | pass |
+| parity | 4 | pass |
+| smoke | 4 | pass |
+
+## Scenario Coverage Composition
+
+Per-scenario plane composition (domain → plane map; adjacent pairs enforced by check-scenarios).
+
+| Scenario | Planes Composed |
+|---|---|
+| sc_lifecycle_full_roundtrip | terminal, storage, wire, checkpoint |
+| sc_lifecycle_fork_from_mid_chain | checkpoint |
+| sc_lifecycle_rollback_recovers_state | storage, wire, checkpoint |
+| sc_lifecycle_suspend_resume_clock_snap | checkpoint |
+| sc_lifecycle_graceful_vs_abrupt_shutdown | checkpoint |
+| sc_agent_mcp_tool_call_roundtrip | terminal |
+| sc_agent_mcp_taint_blocks_mutation | — |
+| sc_agent_mcp_schema_drift_halts | — |
+| sc_agent_mcp_tool_quota_exhaustion | — |
+| sc_agent_agent_loop_with_egress_denial | wire |
+| sc_concurrency_n_sessions_isolation | storage, wire, checkpoint |
+| sc_concurrency_shared_workspace_lock_contention | storage |
+| sc_concurrency_concurrent_catalog_writes | storage, checkpoint |
+| sc_concurrency_port_forward_no_collision | wire |
+| sc_concurrency_balloon_pressure_under_n_sessions | host |
+| sc_recovery_host_crash_reattach | checkpoint |
+| sc_recovery_detached_lease_expiry_sweep | storage, checkpoint |
+| sc_recovery_catalog_corruption_fail_closed | storage, checkpoint |
+| sc_recovery_partial_scm_rights_abort | checkpoint |
+| sc_pressure_sustained_memory_pressure_converges | checkpoint, host |
+| sc_pressure_sustained_disk_pressure_quota_holds | storage |
+| sc_pressure_sustained_wal_growth_rotates | — |
+| sc_pressure_sustained_wire_udp_reaper | wire |
+| sc_network_allow_deny_matrix | wire |
+| sc_network_dns_split_horizon_under_policy | wire |
+| sc_network_l4_diversion_with_rollback | wire |
+| sc_network_park_and_suspend_webhook | wire, checkpoint |
+| sc_parity_full_roundtrip | terminal, storage, wire, checkpoint |
+| sc_parity_error_surface | — |
+| sc_parity_session_lifecycle_verbs | checkpoint |
+| sc_parity_plugin_mount_surface | — |
+| sc_smoke_boot_exec_shutdown | terminal, checkpoint |
+| sc_smoke_mcp_roundtrip | — |
+| sc_smoke_rollback_clean | storage, wire |
+| sc_smoke_catalog_reattach | checkpoint |
 
 ## Test Plan Coverage
 

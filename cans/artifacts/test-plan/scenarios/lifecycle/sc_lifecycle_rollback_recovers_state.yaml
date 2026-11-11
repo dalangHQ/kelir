@@ -1,0 +1,21 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_lifecycle_rollback_recovers_state"
+title: "Rollback to checkpoint restores storage, wire, and credential state cleanly"
+family: "lifecycle"
+target_tier: "e2e"
+languages: [rust, typescript, python]
+fixture_ref: "fixtures/scenarios/full-roundtrip/"
+steps:
+  - ref: "sp_01_host_cow_upper_discard_on_rollback"
+    assert: "broker drops upper file and tombstones"
+  - ref: "wp_03_rollback_socket_termination_econnreset"
+    assert: "closes every host-side socket for the session"
+  - ref: "gv_06_rollback_credential_revocation"
+    assert: "revokes all outstanding tokens"
+  - ref: "lc_08_rollback_trap_held_precondition"
+    assert: "held trap released (Verdict::Drop{EFAULT}) before rollback"
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "the rollback step inspects the host broker directly — sparse_upper_blocks() == 0, tombstone_count() == 0, host_active_session_sockets() == 0"
+  - rule: "AS-03"
+    verification: "the held-trap release matches Verdict::Drop{EFAULT} exactly and post-rollback token validation returns false — no Ok-treated-as-proof"

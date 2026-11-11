@@ -1,0 +1,13 @@
+version: 1
+session:
+  id: "ses_full_roundtrip"
+  artifacts:
+    kernel_path: "./fixtures/vmlinux-6.6-kelir"
+    rootfs_erofs_path: "./fixtures/rootfs-swebench.erofs"
+storage:
+  workspace_root: "/workspace/repo"
+wire:
+  dns:
+    synthetic_gateway: "192.168.127.1:53"
+    allowlist:
+      - "api.github.com"

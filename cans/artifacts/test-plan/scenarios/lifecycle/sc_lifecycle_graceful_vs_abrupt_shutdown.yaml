@@ -1,0 +1,19 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_lifecycle_graceful_vs_abrupt_shutdown"
+title: "Graceful shutdown flushes syncfs; abrupt kill yields dirty-shutdown receipt"
+family: "lifecycle"
+target_tier: "e2e"
+languages: [rust, typescript, python]
+fixture_ref: "fixtures/scenarios/full-roundtrip/"
+steps:
+  - ref: "lc_09_graceful_shutdown_syncfs_flushed"
+    assert: "Host issues MSG_SHUTDOWN_REQUEST"
+  - ref: "lc_10_abrupt_kill_dirty_shutdown_receipt"
+    assert: "records ExitKind::HardKilled in ExecutionReceipt"
+  - ref: "ta_03_merkle_wal_survives_guest_rollback"
+    assert: "no guest operation can rewrite or duplicate it"
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "the two shutdown legs match exact enum variants — ExitKind::Normal with shutdown_ack_received vs ExitKind::HardKilled with exit_code 137 — never .is_ok()"
+  - rule: "AS-05"
+    verification: "audit chain integrity is proven across both legs — WAL record count stays constant and the BLAKE3 chain validates, not merely events_emitted"

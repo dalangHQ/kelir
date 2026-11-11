@@ -1,0 +1,20 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_concurrency_n_sessions_isolation"
+title: "N concurrent sessions share host resources with zero cross-talk"
+family: "concurrency"
+target_tier: "e2e"
+languages: [rust]
+steps:
+  - ref: "sp_12_workspace_encapsulation_mode_000"
+    assert: "native toolchains outside Kelir observe EACCES"
+  - ref: "wp_01_default_deny_ingress_drop"
+    assert: "All non-TCP L2/L3 frames dropped at ingress ring"
+  - ref: "lc_16_session_incarnation_cas_guard"
+    assert: "CAS mismatch aborts E_STALE_INCARNATION"
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "the N sessions are co-timed via instruction stepping under the pinned clock — zero wall-clock sleeps separating the cross-talk probes"
+  - rule: "AS-03"
+    verification: "every stale-incarnation rejection across all N sessions matches E_STALE_INCARNATION exactly"
+  - rule: "AS-08"
+    verification: "teardown of all N sessions leaves zero flock leases, zero relay sockets, and zero scratch paths on the host"

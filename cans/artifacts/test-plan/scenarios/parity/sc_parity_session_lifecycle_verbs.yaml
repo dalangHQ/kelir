@@ -1,0 +1,18 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_parity_session_lifecycle_verbs"
+title: "Session lifecycle verbs timing-independent and identical across languages"
+family: "parity"
+target_tier: "e2e"
+languages: [rust, typescript, python]
+steps:
+  - ref: "lc_09_graceful_shutdown_syncfs_flushed"
+    assert: "shim issues syncfs(2), sends SIGTERM, reaps children"
+  - ref: "lc_10_abrupt_kill_dirty_shutdown_receipt"
+    assert: "records ExitKind::HardKilled in ExecutionReceipt"
+  - ref: "lc_16_session_incarnation_cas_guard"
+    assert: "CAS mismatch aborts E_STALE_INCARNATION"
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "verb sequences compared by event ordering and receipts, never by wall-clock timing"
+  - rule: "AS-06"
+    verification: "ExitKind::HardKilled and E_STALE_INCARNATION literals hardcoded identically across languages"

@@ -1,0 +1,20 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_parity_error_surface"
+title: "Error surfaces identical (typed errors) across Rust, TS, Python"
+family: "parity"
+target_tier: "e2e"
+languages: [rust, typescript, python]
+steps:
+  - ref: "pe_12_declarative_error_mapping_posix_errno"
+    assert: "Host exceptions map directly to POSIX errnos"
+  - ref: "gt_09_verdict_drop_jsonrpc_error_synthesis"
+    assert: "code = -32000 - errno_number"
+  - ref: "gv_02_out_of_scope_credential_denial"
+    assert: "Token requests cannot widen MountScope permissions"
+  - ref: "gv_03_audience_locking_validation"
+    assert: "Audience is destination host pattern"
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "errno and code literals (EACCES, -32001) hardcoded identical across all three languages"
+  - rule: "AS-03"
+    verification: "errors matched as typed error objects, never substring-scraped prose"

@@ -1,0 +1,19 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_recovery_detached_lease_expiry_sweep"
+title: "Detached lease expiry sweeps stale sessions"
+family: "recovery"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/crash-recovery/"
+steps:
+  - ref: "lc_14_detached_session_lease_heartbeat"
+    assert: "expired lease triggers cleanup"
+  - ref: "lc_21_detached_scm_rights_parent_sigkill_abort"
+    assert: "parent killed before handoff ack; child aborted"
+  - ref: "sp_22_catalog_heartbeat_lease_cas_guards_handoff"
+    assert: "returns true only for the holding runner_pid"
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "the sweep is proven in catalog.db rows — expires_at advanced while live, stale rows removed, zero orphans remaining"
+  - rule: "AS-08"
+    verification: "post-sweep host inventory holds zero leaked SCM_RIGHTS descriptors and zero held flock leases"

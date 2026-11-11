@@ -1,0 +1,19 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_network_l4_diversion_with_rollback"
+title: "L4 diversion survives rollback cleanly"
+family: "network"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/network-policy/"
+steps:
+  - ref: "wp_12_l4_diversion_passthrough_tls"
+    assert: "TLS between guest and peer passes through byte-for-byte"
+  - ref: "wp_03_rollback_socket_termination_econnreset"
+    assert: "closes every host-side socket for the session"
+  - ref: "wp_16_port_forward_so_linger_zero_release"
+    assert: "SO_LINGER zero forces instant TCP RST"
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "rollback step proves zero host sockets remain and the upper file stays hole-punched"
+  - rule: "AS-08"
+    verification: "post-rollback teardown leaves zero dangling sockets and zero TIME_WAIT entries"

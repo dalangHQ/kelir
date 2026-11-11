@@ -1,0 +1,16 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_pressure_sustained_wire_udp_reaper"
+title: "Sustained wire UDP load stays within reaper slab limits"
+family: "pressure"
+target_tier: "e2e"
+languages: [rust]
+steps:
+  - ref: "wp_06_udp_socket_reaper_slab_limit"
+    assert: "indexed slab with 1,024-entry hard cap"
+  - ref: "wp_14_port_forward_ephemeral_allocation"
+    assert: "zero collision probability"
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "sustained UDP bursts co-timed via instruction stepping, never sleep-paced"
+  - rule: "AS-08"
+    verification: "scenario ends with zero leaked slab entries and zero open host sockets"

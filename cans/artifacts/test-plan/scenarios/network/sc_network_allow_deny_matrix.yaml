@@ -1,0 +1,21 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_network_allow_deny_matrix"
+title: "Single guest runs the full allow/deny policy matrix"
+family: "network"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/network-policy/"
+steps:
+  - ref: "wp_01_default_deny_ingress_drop"
+    assert: "All non-TCP L2/L3 frames dropped at ingress ring"
+  - ref: "wp_02_synthetic_dns_nxdomain_enforcement"
+    assert: "synthetic NXDOMAIN before upstream forward"
+  - ref: "wp_07_link_local_quarantine_drop"
+    assert: "169.254.0.0/16 and fe80::/10 dropped before policy"
+  - ref: "wp_08_imds_cloud_metadata_quarantine"
+    assert: "Cloud metadata IMDS endpoints except 169.254.169.254 dropped at L3 ingress"
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "each matrix cell matched against its typed wire.* audit event, never a bare success boolean"
+  - rule: "AS-02"
+    verification: "denied cells prove zero outbound frames and zero dirtied host bytes"

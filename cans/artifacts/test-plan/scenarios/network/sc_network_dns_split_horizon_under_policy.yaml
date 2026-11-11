@@ -1,0 +1,19 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_network_dns_split_horizon_under_policy"
+title: "DNS split-horizon resolves per policy"
+family: "network"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/network-policy/"
+steps:
+  - ref: "wp_09_dns_gateway_host_state_tracking"
+    assert: "nameservers reloaded on change without VM restart"
+  - ref: "wp_10_dns_edns0_downgrade_bit_strip"
+    assert: "interceptor strips DO; synthesized response clears AD bit"
+  - ref: "wp_11_socks5h_synthetic_pool_allocation"
+    assert: "remote proxy DNS maps domains to 198.18.0.0/15"
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "expected synthetic answers hardcoded from the allowlist fixture, never derived from resolver output"
+  - rule: "AS-03"
+    verification: "each resolution path matched as its typed wire.dns_* / wire.socks5h_mapped event"

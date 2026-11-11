@@ -118,3 +118,36 @@ anti_slop_assertions:
   - rule: "AS-0x"
     verification: "<Literal code-level proof required>"
 ```
+
+## 5. Scenario Discipline
+
+Scenarios are the composition tier under `scenarios/`; they compose domain cases into user journeys and never re-assert physical facts owned by domain cases. Four rules extend the Case Discipline Rules of section 2 — CDR-09 through CDR-12 — to this tier.
+
+* **CDR-09: Reference-Only Composition**: A scenario may only reference `case_id`s; every `assert:` is a *reference* to a fact owned by the referenced domain case (a verbatim substring of its `statement` or `expected_observations`), never a new physical assertion. A needed new physical fact goes into the domain case first; the scenario then references it.
+* **CDR-10: No Free-Form Steps**: Every step is a `ref:` to an existing `case_id` in `manifest.yaml`; fixture setup is allowed, free-form step bodies are banned.
+* **CDR-11: E2E Tier Only**: Scenarios are `target_tier: "e2e"` and cannot satisfy unit or integration coverage.
+* **CDR-12: Composition Budget**: At most 40 scenarios total; a 41st must justify itself by composing a plane pair no other scenario covers. Scenario runtimes never enter the per-domain scorecard pass counts; they render in their own Scenario Tier table.
+
+Every file under `scenarios/{family}/{scenario_id}.yaml` must validate against the following structural layout (CDR-10 `ref:`-only steps, CDR-11 tier pin):
+
+```yaml
+$schema: "test-plan/scenario/v1"
+scenario_id: "<sc_family_snake_case>"
+title: "<user journey>"
+family: "<lifecycle|agent|concurrency|recovery|pressure|network|parity|smoke>"
+target_tier: "e2e"
+languages: [rust] | [rust, typescript, python]
+budget: "<Ns>"                      # smoke family only
+fixture_ref: "fixtures/scenarios/<name>/"   # optional
+steps:
+  - ref: "<case_id>"
+    assert: "<verbatim substring of the referenced case's statement or expected_observations>"
+anti_slop_assertions:
+  - rule: "AS-0x"
+    verification: "<literal proof required>"
+```
+
+* `scenarios.yaml` is the scenario index manifest (`$schema: "kelir-test-plan/scenario-manifest/v1"`); it mirrors the `manifest.yaml` shape, is validated by `check-scenarios`, and its family totals obey the CDR-12 composition budget.
+* Fixtures are read-only test inputs under `cans/artifacts/test-plan/fixtures/scenarios/`; a fixture is a test input, not a spec artifact, so it lives under `cans/artifacts/` and never among the spec nodes in `cans/` — each directory is declared by a `test-plan/fixture/v1` manifest and forms the CDR-10-permitted setup surface.
+* AS-04A applies unchanged: scenario steps use StepVerdict/instruction counts, never wall-clock sampling; smoke `budget:` values are CI job wall budgets, not test-internal assertions.
+* The `ci_gates.check_scenarios` gate (see matrix.yaml) rejects a scenario whose `ref:` does not resolve or whose `assert:` is not a substring of the referenced case (CDR-09); `--scenario-coverage` asserts every adjacent plane pair (terminal×storage, storage×wire, wire×checkpoint, checkpoint×host) is composed by at least one scenario.

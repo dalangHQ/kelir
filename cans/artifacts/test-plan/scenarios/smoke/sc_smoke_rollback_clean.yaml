@@ -1,0 +1,18 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_smoke_rollback_clean"
+title: "Rollback clean fast gate"
+family: "smoke"
+target_tier: "e2e"
+languages: [rust]
+budget: "<10s"
+fixture_ref: "fixtures/scenarios/full-roundtrip/"
+steps:
+  - ref: "sp_01_host_cow_upper_discard_on_rollback"
+    assert: "Rollback: broker drops upper file and tombstones"
+  - ref: "wp_03_rollback_socket_termination_econnreset"
+    assert: "closes every host-side socket for the session"
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "rollback proves the upper file punched to zero blocks and zero host sockets after teardown"
+  - rule: "AS-04B"
+    verification: "the <10s budget is a declared CI gate floor; no step samples the host clock"
