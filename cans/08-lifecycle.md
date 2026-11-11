@@ -48,6 +48,8 @@
       - `auto` mode falls back to cold boot on any miss; populates cache
   - CoW fork
     - Driver primitive: fork returns Box<dyn VmmDriver>
+      - Child driver handle must come from driver.fork() itself, never from
+        - an Arc clone of the parent handle; a shared handle defeats CoW isolation
       - see: [1]
     - KVM path: userfaultfd + KVM memory cloning
     - HVF path: Stage-2 translation write protection via hv_vm_protect
@@ -142,6 +144,8 @@
   - Pre-teardown flush
     - Termination has two modes: graceful (default) and abrupt (kill)
     - Graceful path
+      - Host flush precedes the request: session.storage.reconcile() through
+        - the anchored reconciler first; see: 05-storage-plane.md#Workspace-commit
       - Host issues MSG_SHUTDOWN_REQUEST{timeout_ms} on Control 0x0000
         - Default timeout: 10s; caller-tunable
         - timeout_ms=0 skips graceful and jumps to abrupt

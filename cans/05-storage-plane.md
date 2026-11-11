@@ -42,6 +42,8 @@
     - Deletions recorded as explicit tombstones in broker state (no whiteouts)
     - Guest observes a normal writable mount; no union driver inside microVM
     - Broker exposes lookup/read/write/getattr/readdir/unlink/mkdir/rename
+    - Host I/O is expressed through `StorageIo`
+    - Broker write primitive is `StorageIo::write(path, offset, data)`
     - Dir merges (base + upper + tombstones) computed host-side during each readdir
     - Per-directory merge result cached; invalidated on broker mutation of that subtree
     - Caching bounds repeated readdir cost during inode-heavy build storms
@@ -52,6 +54,15 @@
     - No guest kernel OOM on large writes (npm install, pip install torch)
     - Host memory footprint independent of guest write volume
     - Sparse upper file bytes counted toward the session quota
+  - FUSE opcode table
+    - Broker data ops: `lookup`, `getattr`, `read`, `write`, `readdir`
+    - Broker mutation ops: `unlink`, `mkdir`, `rename`
+    - Mediation ops: `statfs`, `setlk`, `setlkw`
+    - Opcode numbers mirror the kernel FUSE UAPI
+    - lookup=1, getattr=3, read=15, write=16, readdir=28, unlink=10
+    - mkdir=9, rename=12, statfs=17, setlk=32, setlkw=33
+    - FUSE `WRITE` reply size is the requested chunk size (`fuse_write_out.size`)
+    - The reply never echoes the payload bytes
   - Ephemeral scratch device
     - Dedicated virtio-blk sparse scratch disk mounted at /tmp and /var/cache
     - Isolates high-churn dependencies from workspace git diffs
@@ -92,12 +103,16 @@
     - Maps virtual guest inode to physical host inode via virtio-fs mount
     - Delegates acquisition directly to host OS advisory locks (flock)
     - Conflicting lock returns EWOULDBLOCK without host thread latency
+    - `SETLK` and `SETLKW` dispatch calls `LockBroker::acquire` before the interposer
+    - Lock denial replies `FuseReply::Errno(EWOULDBLOCK)`
   - Storage quotas
     - Tracked state
       - Host broker maintains allocated_bytes and allocated_inodes atomics
       - Counters track sparse upper file bytes + tombstone count + new inodes
     - Enforcement
       - on_fs_write and FUSE mknod/create/mkdir gate against MountScope budget
+      - Every `FUSE WRITE`, `MKNOD`, `CREATE`, `MKDIR` dispatch calls `StoragePlane::check_quota`
+      - The quota check runs before the payload reaches the upper file
       - statfs reporting: returns remaining broker quota in O(1) time
     - Isolation semantics
       - Quota isolation: quotas evaluate exclusively against broker delta state

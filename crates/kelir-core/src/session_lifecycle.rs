@@ -1,6 +1,7 @@
 // see: cans/08-lifecycle.md#Session-and-context-handles
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 // see: cans/14-observability.md#Metrics-pipeline
+use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -414,6 +415,11 @@ impl Session {
         }
     }
 
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    pub fn vm(&self) -> VmHandle {
+        self.vm_handle()
+    }
+
     // see: cans/07-wire-plane.md#Pre-policy-drop-zones
     pub fn bind_wire_imds_vault(
         &mut self,
@@ -499,56 +505,82 @@ impl Session {
     }
 
     // see: cans/08-lifecycle.md#CoW-fork
-    pub fn fork(&self) -> Result<Self, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): native driver CoW fork via VmmDriver::fork; L2 shares the parent driver handle.
-        // TODO (L3): rebind the plugin graph, vsock channels, and wire wiring onto the child engine via fork_state.
+    // SAFETY: the wrapper copies every parent field it needs before the first await so the returned future never borrows the !Sync parent.
+    pub fn fork(
+        &self,
+    ) -> impl Future<Output = Result<Self, kelir_interface::plugin_model::PluginError>> + Send {
+        // TODO (L3): backend drivers implement the native CoW clone behind VmmDriver::fork.
+        // TODO (L3): rebind vsock channels and wire wiring onto the child engine; the SDK layer rebinds the plugin graph via fork_state.
         let incarnation_id = mint_uuid_v7();
-        let workspace_root = session_dir(&self.session_id)?.join("workspace");
-        let storage = crate::planes::storage::StoragePlane::new(
-            workspace_root.clone(),
-            workspace_root.join("upper.img"),
-            DEFAULT_WORKSPACE_QUOTA_BYTES,
-            DEFAULT_WORKSPACE_QUOTA_INODES,
-        )
-        .with_wiring(self.storage.wiring().clone());
-        // TODO (L3): anchor derives broker_dir from the live host broker journal once the broker owns its layout.
-        // see: cans/05-storage-plane.md#Workspace-commit
-        storage.reconciler(
-            workspace_root.join("broker"),
-            crate::planes::storage::storage_reconciler::TraversalGuard::StrictResolveBeneath,
-        );
-        let checkpoint = Arc::new(
-            crate::planes::checkpoint::CheckpointPlane::new()
-                .with_metrics(std::sync::Arc::clone(&self.metrics)),
-        );
-        let engine = crate::dispatch_plugin::PipelineEngine::new()
-            .with_metrics(std::sync::Arc::clone(&self.metrics))
-            .with_terminal(std::sync::Arc::clone(&self.terminal))
-            .with_checkpoint(Arc::clone(&checkpoint));
-        Ok(Self {
-            terminal: std::sync::Arc::clone(&self.terminal),
-            storage: storage.with_metrics(std::sync::Arc::clone(&self.metrics)),
-            wire: crate::planes::wire::WirePlane::new()
-                .with_metrics(std::sync::Arc::clone(&self.metrics)),
-            checkpoint,
-            host: crate::planes::host::HostPlane::new()
-                .with_metrics(std::sync::Arc::clone(&self.metrics)),
-            metrics: std::sync::Arc::clone(&self.metrics),
-            uart: crate::uart_terminal::UartRingBuffer::new(),
-            driver: self.driver.clone(),
-            owned_bus: crate::bus::OwnedBusDispatcher::new(
-                crate::bus::CONTROL_RING_CAPACITY,
-                crate::bus::MUX_RING_CAPACITY,
-            ),
-            engine,
-            config: self.config.clone(),
-            vetoes: Vec::new(),
-            session_id: self.session_id,
-            incarnation_id,
-            plugins: self.plugins.clone(),
-            detached: self.detached,
-            state: self.state,
-        })
+        // see: cans/08-lifecycle.md#CoW-fork
+        let parent_driver = self.driver.clone();
+        let metrics = Arc::clone(&self.metrics);
+        let terminal = Arc::clone(&self.terminal);
+        let storage_wiring = self.storage.wiring().clone();
+        let config = self.config.clone();
+        let session_id = self.session_id;
+        let plugins = self.plugins.clone();
+        let detached = self.detached;
+        let state = self.state;
+        async move {
+            // see: cans/08-lifecycle.md#CoW-fork
+            let child_driver = match parent_driver {
+                Some(driver) => {
+                    let forked: Box<dyn VmmDriver + Send + Sync> =
+                        driver.lock().await.fork().await.map_err(|error| {
+                            kelir_interface::plugin_model::PluginError::Halt(format!(
+                                "driver fork: {error}"
+                            ))
+                        })?;
+                    Some(Arc::new(tokio::sync::Mutex::new(forked)))
+                }
+                None => None,
+            };
+            let workspace_root = session_dir(&session_id)?.join("workspace");
+            let storage = crate::planes::storage::StoragePlane::new(
+                workspace_root.clone(),
+                workspace_root.join("upper.img"),
+                DEFAULT_WORKSPACE_QUOTA_BYTES,
+                DEFAULT_WORKSPACE_QUOTA_INODES,
+            )
+            .with_wiring(storage_wiring);
+            // TODO (L3): anchor derives broker_dir from the live host broker journal once the broker owns its layout.
+            // see: cans/05-storage-plane.md#Workspace-commit
+            storage.reconciler(
+                workspace_root.join("broker"),
+                crate::planes::storage::storage_reconciler::TraversalGuard::StrictResolveBeneath,
+            );
+            let checkpoint = Arc::new(
+                crate::planes::checkpoint::CheckpointPlane::new()
+                    .with_metrics(Arc::clone(&metrics)),
+            );
+            let engine = crate::dispatch_plugin::PipelineEngine::new()
+                .with_metrics(Arc::clone(&metrics))
+                .with_terminal(Arc::clone(&terminal))
+                .with_checkpoint(Arc::clone(&checkpoint));
+            Ok(Self {
+                terminal,
+                storage: storage.with_metrics(Arc::clone(&metrics)),
+                wire: crate::planes::wire::WirePlane::new().with_metrics(Arc::clone(&metrics)),
+                checkpoint,
+                host: crate::planes::host::HostPlane::new().with_metrics(Arc::clone(&metrics)),
+                metrics,
+                uart: crate::uart_terminal::UartRingBuffer::new(),
+                driver: child_driver,
+                owned_bus: crate::bus::OwnedBusDispatcher::new(
+                    crate::bus::CONTROL_RING_CAPACITY,
+                    crate::bus::MUX_RING_CAPACITY,
+                ),
+                engine,
+                config,
+                vetoes: Vec::new(),
+                session_id,
+                incarnation_id,
+                plugins,
+                detached,
+                state,
+            })
+        }
     }
 
     // see: cans/08-lifecycle.md#Rollback
@@ -692,6 +724,33 @@ impl Session {
         &mut self,
         event: LifecycleEvent,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let session_id = encode_hex(&self.session_id);
+        // see: cans/08-lifecycle.md#Watchdog
+        let watchdog_probe = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        match self.driver.as_ref() {
+            Some(driver) => {
+                let mut guard = driver.lock().await;
+                let mut ctx = LifecycleCtx::new_with_watchdog_probe(
+                    &self.config,
+                    &session_id,
+                    &mut **guard,
+                    &mut self.vetoes,
+                    std::sync::Arc::clone(&watchdog_probe),
+                );
+                self.engine.dispatch_lifecycle(event, &mut ctx).await?;
+            }
+            None => {
+                let mut driver = NullDriver;
+                let mut ctx = LifecycleCtx::new_with_watchdog_probe(
+                    &self.config,
+                    &session_id,
+                    &mut driver,
+                    &mut self.vetoes,
+                    std::sync::Arc::clone(&watchdog_probe),
+                );
+                self.engine.dispatch_lifecycle(event, &mut ctx).await?;
+            }
+        }
         let Some(callback) = self.engine.take_lifecycle_callback(event) else {
             if matches!(event, LifecycleEvent::VmInit) && self.config.enable_watchdog {
                 tracing::warn!(
@@ -700,9 +759,6 @@ impl Session {
             }
             return Ok(());
         };
-        let session_id = encode_hex(&self.session_id);
-        // see: cans/08-lifecycle.md#Watchdog
-        let watchdog_probe = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let result = match self.driver.as_ref() {
             Some(driver) => {
                 let mut guard = driver.lock().await;
@@ -782,8 +838,34 @@ impl Session {
 
     pub fn stop(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): graceful driver terminate after drain.
+        self.flush_workspace_before_terminate()?;
         self.advance_lifecycle(LifecycleState::Terminated)?;
         self.teardown_catalog()
+    }
+
+    // see: cans/08-lifecycle.md#Pre-teardown-flush
+    // see: cans/05-storage-plane.md#Workspace-commit
+    fn flush_workspace_before_terminate(
+        &self,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let workspace_root = session_dir(&self.session_id)?.join("workspace");
+        let request = crate::planes::storage::storage_reconciler::FsReconcileRequest {
+            cwd: workspace_root.display().to_string(),
+            atomic_staging: true,
+            fsync: true,
+        };
+        match self.storage.reconcile(request) {
+            Ok(_stats) => Ok(()),
+            Err(kelir_interface::plugin_model::PluginError::Halt(reason))
+                if reason.contains("needs the anchored reconciler") =>
+            {
+                tracing::warn!(
+                    "stop: storage reconciler not anchored; skipping the pre-teardown workspace flush"
+                );
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
     }
 
     // see: cans/08-lifecycle.md#Pre-teardown-flush
@@ -792,7 +874,11 @@ impl Session {
         timeout: std::time::Duration,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // TODO (L3): graceful driver terminate after MSG_SHUTDOWN_ACK or timeout expiry.
+        if timeout == Duration::ZERO {
+            return self.kill();
+        }
         let _ = timeout;
+        self.flush_workspace_before_terminate()?;
         self.advance_lifecycle(LifecycleState::Terminated)?;
         self.teardown_catalog()
     }

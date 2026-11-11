@@ -110,6 +110,11 @@ impl LockBroker {
         self
     }
 
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    pub fn namespace(&self) -> [u8; 16] {
+        self.namespace
+    }
+
     pub fn acquire(&self, request: &LockRequest) -> Result<LockGrant, PluginError> {
         // TODO (L3): match request.host_path against wiring.scope_globs before mediation; undeclared paths deny with EPERM.
         let blocking = request.blocking && !self.wiring.non_blocking;

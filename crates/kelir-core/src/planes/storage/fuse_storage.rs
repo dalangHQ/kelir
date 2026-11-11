@@ -13,17 +13,24 @@ use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
+use super::StorageQuota;
+use super::lock_broker::{LockBroker, LockKind, LockRequest};
 use super::storage_synthetic::SyntheticFile;
 
 mod uapi_fuse;
 
-// see: cans/05-storage-plane.md#Host-CoW-broker
-// TODO (L3): add the remaining broker opcodes (getattr, readdir, unlink, mkdir, rename, statfs); statfs replies remaining broker quota from the plane atomics.
+// see: cans/05-storage-plane.md#FUSE-opcode-table
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FuseOpcode {
     Lookup,
+    Getattr,
     Read,
     Write,
+    Readdir,
+    Unlink,
+    Mkdir,
+    Rename,
+    Statfs,
     Setlk,
     Setlkw,
 }
@@ -33,8 +40,14 @@ impl FuseOpcode {
         // TODO (L3): validate opcode numbers against the virtio-fs queue parser.
         match value {
             uapi_fuse::FUSE_LOOKUP => Ok(FuseOpcode::Lookup),
+            uapi_fuse::FUSE_GETATTR => Ok(FuseOpcode::Getattr),
             uapi_fuse::FUSE_READ => Ok(FuseOpcode::Read),
             uapi_fuse::FUSE_WRITE => Ok(FuseOpcode::Write),
+            uapi_fuse::FUSE_READDIR => Ok(FuseOpcode::Readdir),
+            uapi_fuse::FUSE_UNLINK => Ok(FuseOpcode::Unlink),
+            uapi_fuse::FUSE_MKDIR => Ok(FuseOpcode::Mkdir),
+            uapi_fuse::FUSE_RENAME => Ok(FuseOpcode::Rename),
+            uapi_fuse::FUSE_STATFS => Ok(FuseOpcode::Statfs),
             uapi_fuse::FUSE_SETLK => Ok(FuseOpcode::Setlk),
             uapi_fuse::FUSE_SETLKW => Ok(FuseOpcode::Setlkw),
             _ => Err(PluginError::Halt(format!("unknown FUSE opcode {value}"))),
@@ -63,8 +76,19 @@ pub enum FuseReply {
     Payload(Vec<u8>),
     // see: cans/02-plugin-model.md#FsInodeAttr-carries-full-mode,-uid,-gid,-size,-content
     Inode(FsInodeAttr),
+    // see: cans/05-storage-plane.md#FUSE-opcode-table
+    Written(u64),
+    // see: cans/05-storage-plane.md#FUSE-opcode-table
+    Entries(Vec<FuseDirEntry>),
     // see: cans/05-storage-plane.md#Write-gating
     Errno(i32),
+}
+
+// see: cans/05-storage-plane.md#FUSE-opcode-table
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FuseDirEntry {
+    pub guest_inode: u64,
+    pub name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -79,16 +103,32 @@ pub struct FuseDispatcher {
     synthetic_files: Vec<SyntheticFile>,
     virtual_inodes: RwLock<HashMap<PathBuf, u64>>,
     next_virtual_inode: AtomicU64,
+    quota: Arc<StorageQuota>,
+    lock_broker: Arc<LockBroker>,
 }
 
 impl FuseDispatcher {
     pub fn new(interposer: Arc<dyn FsInterposer>) -> Self {
         Self {
-            interposer,
+            interposer: interposer.clone(),
             synthetic_files: Vec::new(),
             virtual_inodes: RwLock::new(HashMap::new()),
             next_virtual_inode: AtomicU64::new(2),
+            quota: Arc::new(StorageQuota::unbounded()),
+            lock_broker: Arc::new(LockBroker::new(interposer)),
         }
+    }
+
+    // see: cans/05-storage-plane.md#Storage-quotas
+    pub fn with_quota(mut self, quota: Arc<StorageQuota>) -> Self {
+        self.quota = quota;
+        self
+    }
+
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    pub fn with_lock_broker(mut self, lock_broker: Arc<LockBroker>) -> Self {
+        self.lock_broker = lock_broker;
+        self
     }
 
     pub fn with_synthetic_files(mut self, files: Vec<SyntheticFile>) -> Self {
@@ -186,48 +226,114 @@ impl FuseDispatcher {
                     reply: FuseReply::Payload(Vec::new()),
                 })
             }
-            FuseOpcode::Write => match self.interposer.on_fs_write(
-                request.path.as_path(),
-                &mut request.data,
-                request.pid,
-                &ctx.clone().with_fs_ctx(FsContext {
-                    inode: request.guest_inode,
-                    path: request.path.clone(),
-                    journal: 0,
-                }),
-            )? {
-                FilterAction::Forward => Ok(FuseResponse {
-                    guest_inode: request.guest_inode,
-                    // TODO (L3): fill write payload with bytes committed to upper.
-                    reply: FuseReply::Payload(Vec::new()),
-                }),
-                // see: cans/02-plugin-model.md#Unified-verdict
-                FilterAction::Drop { errno: None, .. } => Ok(FuseResponse {
-                    guest_inode: request.guest_inode,
-                    // TODO (L3): reply the requested chunk size so the blackholed write stays silent.
-                    reply: FuseReply::Payload(Vec::new()),
-                }),
-                // see: cans/05-storage-plane.md#Write-gating
-                FilterAction::Drop {
-                    errno: Some(errno), ..
-                } => {
-                    let errno = drop_errno(&errno)?;
-                    Ok(FuseResponse {
-                        guest_inode: request.guest_inode,
-                        reply: FuseReply::Errno(-errno),
-                    })
+            FuseOpcode::Getattr => {
+                for file in &self.synthetic_files {
+                    if let Some(attr) = file.lookup_attr(&request.path)? {
+                        return Ok(FuseResponse {
+                            guest_inode: self.virtual_inode(&request.path)?,
+                            reply: FuseReply::Inode(attr),
+                        });
+                    }
                 }
-                FilterAction::Suspend { .. } => Err(PluginError::Halt(
-                    "FUSE WRITE interposer returned Suspend, unsupported for write".into(),
-                )),
-                FilterAction::Abort { reason } => Err(PluginError::Halt(format!(
-                    "FUSE WRITE aborted by interposer: {reason}"
-                ))),
-                _ => Err(PluginError::Halt(
-                    "FUSE WRITE interposer returned a filter action outside the known FilterAction variants".into(),
-                )),
-            },
+                Err(PluginError::Halt(
+                    "TODO (L3): FUSE GETATTR needs the broker stat across lower, upper, and tombstones".into(),
+                ))
+            }
+            FuseOpcode::Readdir => Err(PluginError::Halt(
+                "TODO (L3): FUSE READDIR needs the host-side dir merge of base, upper, and tombstones".into(),
+            )),
+            FuseOpcode::Unlink => Err(PluginError::Halt(
+                "TODO (L3): FUSE UNLINK needs the broker tombstone write".into(),
+            )),
+            FuseOpcode::Mkdir => {
+                // see: cans/05-storage-plane.md#Storage-quotas
+                if self.quota.check_quota(0, 1).is_err() {
+                    return Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        reply: FuseReply::Errno(-libc::ENOSPC),
+                    });
+                }
+                Err(PluginError::Halt(
+                    "TODO (L3): FUSE MKDIR needs the broker upper-directory create".into(),
+                ))
+            }
+            FuseOpcode::Rename => Err(PluginError::Halt(
+                "TODO (L3): FUSE RENAME needs the broker upper-file move".into(),
+            )),
+            // TODO (L3): statfs replies remaining broker quota from the plane atomics.
+            FuseOpcode::Statfs => Ok(FuseResponse {
+                guest_inode: request.guest_inode,
+                reply: FuseReply::Errno(-libc::ENOSYS),
+            }),
+            FuseOpcode::Write => {
+                // see: cans/05-storage-plane.md#Storage-quotas
+                if self
+                    .quota
+                    .check_quota(request.data.len() as u64, 0)
+                    .is_err()
+                {
+                    return Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        reply: FuseReply::Errno(-libc::ENOSPC),
+                    });
+                }
+                match self.interposer.on_fs_write(
+                    request.path.as_path(),
+                    &mut request.data,
+                    request.pid,
+                    &ctx.clone().with_fs_ctx(FsContext {
+                        inode: request.guest_inode,
+                        path: request.path.clone(),
+                        journal: 0,
+                    }),
+                )? {
+                    // see: cans/05-storage-plane.md#FUSE-opcode-table
+                    FilterAction::Forward => Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        reply: FuseReply::Written(request.data.len() as u64),
+                    }),
+                    // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
+                    FilterAction::Drop { errno: None, .. } => Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        reply: FuseReply::Written(request.size),
+                    }),
+                    // see: cans/05-storage-plane.md#Write-gating
+                    FilterAction::Drop {
+                        errno: Some(errno), ..
+                    } => {
+                        let errno = drop_errno(&errno)?;
+                        Ok(FuseResponse {
+                            guest_inode: request.guest_inode,
+                            reply: FuseReply::Errno(-errno),
+                        })
+                    }
+                    FilterAction::Suspend { .. } => Err(PluginError::Halt(
+                        "FUSE WRITE interposer returned Suspend, unsupported for write".into(),
+                    )),
+                    FilterAction::Abort { reason } => Err(PluginError::Halt(format!(
+                        "FUSE WRITE aborted by interposer: {reason}"
+                    ))),
+                    _ => Err(PluginError::Halt(
+                        "FUSE WRITE interposer returned a filter action outside the known FilterAction variants".into(),
+                    )),
+                }
+            }
             FuseOpcode::Setlk | FuseOpcode::Setlkw => {
+                // see: cans/05-storage-plane.md#Host-inode-lock-broker
+                let lock_request = LockRequest {
+                    namespace: self.lock_broker.namespace(),
+                    guest_inode: request.guest_inode,
+                    host_path: request.path.clone(),
+                    kind: LockKind::Exclusive,
+                    blocking: matches!(request.opcode, FuseOpcode::Setlkw),
+                    pid: request.pid,
+                };
+                if self.lock_broker.acquire(&lock_request).is_err() {
+                    return Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        reply: FuseReply::Errno(-libc::EWOULDBLOCK),
+                    });
+                }
                 let flock_cmd = match request.opcode {
                     // TODO (L3): flock LOCK_EX/LOCK_NB constants live in the enclave.
                     FuseOpcode::Setlk => 6,
@@ -298,11 +404,15 @@ impl FuseWorker {
     pub fn new(
         receiver: Receiver<FuseRequest>,
         interposer: Arc<dyn FsInterposer>,
+        lock_broker: Arc<LockBroker>,
+        quota: Arc<StorageQuota>,
         session_id: [u8; 16],
     ) -> Self {
         Self {
             receiver,
-            dispatcher: FuseDispatcher::new(interposer),
+            dispatcher: FuseDispatcher::new(interposer)
+                .with_lock_broker(lock_broker)
+                .with_quota(quota),
             session_id,
         }
     }

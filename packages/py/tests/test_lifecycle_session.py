@@ -7,6 +7,7 @@ import importlib.util
 import json
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -30,6 +31,7 @@ from kelir import (
 )
 from kelir.sdk_errors import EConfig
 from kelir.plugin_fusion import FusedTrampoline, HookStage, RingEvent, TrapFilterSnapshot
+from kelir.plugins import LedgerPlugin
 from kelir.storage_planes import MaskRule, SyntheticFile
 
 
@@ -140,8 +142,8 @@ def test_session_surface_shapes() -> None:
     assert session.driver_name == ""
     assert session.boot_ms == 0
     assert isinstance(session.cap, Caps)
-    assert session.cap.db.rewrite_target == "migrate_schema."
-    assert session.cap.policy.violations == 0
+    assert not hasattr(session.cap, "db")
+    assert not hasattr(session.cap, "policy")
 
 
 def test_session_native_calls_raise_econfig() -> None:
@@ -193,9 +195,9 @@ def test_clock_skew_timedelta_days_equals_86400_seconds() -> None:
     asyncio.run(handle.skew(timedelta(days=1)))
     assert calls == [86400.0]
     with pytest.raises(EConfig, match=r"timedelta"):
-        asyncio.run(handle.skew(86400.0))
+        asyncio.run(handle.skew(cast(Any, 86400.0)))
     with pytest.raises(EConfig, match=r"timedelta"):
-        asyncio.run(handle.skew(86_400_000))
+        asyncio.run(handle.skew(cast(Any, 86_400_000)))
 
 
 def _native_bridge_built() -> bool:
@@ -339,16 +341,40 @@ def test_handler_context_verdict_convenience_matches_vectors_wire_literals() -> 
     )
 
 
-def test_caps_services_raise_econfig_without_native_bridge() -> None:
-    caps = Caps()
-    with pytest.raises(EConfig, match=r"ledger flush"):
-        asyncio.run(caps.ledger.flush())
-    with pytest.raises(EConfig, match=r"ledger count_denials"):
-        asyncio.run(caps.ledger.count_denials(1))
-    with pytest.raises(EConfig, match=r"ledger finalize"):
-        asyncio.run(caps.ledger.finalize())
-    with pytest.raises(EConfig, match=r"transaction begin_scope"):
-        asyncio.run(caps.transaction.begin_scope("blast-radius"))
+def test_boot_requires_native_plugin_contexts_for_caps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _StubHandle:
+        driver_name = "auto"
+        boot_ms = 0.0
+        vm = None
+        terminal = None
+        storage = None
+        wire = None
+        checkpoint = None
+        host = None
+
+    class _StubNativeBuilder:
+        def __init__(self, **kwargs: Any) -> None:
+            return None
+
+        def use_plugin(self, name: str, enabled: bool) -> None:
+            return None
+
+        def fuse_hooks(self, descriptor: dict[str, Any]) -> None:
+            return None
+
+        def boot(self) -> _StubHandle:
+            return _StubHandle()
+
+    monkeypatch.setattr(
+        kelir,
+        "_load_native_bridge",
+        lambda: SimpleNamespace(PyKelirBuilder=_StubNativeBuilder),
+    )
+    builder = KelirBuilder().use(LedgerPlugin())
+    with pytest.raises(EConfig, match=r"get_plugin_context"):
+        asyncio.run(builder.boot())
 
 
 def test_builder_defaults_and_detached_flag() -> None:
@@ -555,7 +581,7 @@ def test_sandbox_before_boot_raises_econfig() -> None:
     with pytest.raises(EConfig, match=r"Sandbox\.rollback before boot"):
         asyncio.run(sandbox.rollback())
     with pytest.raises(EConfig, match=r"Sandbox\.suspend before boot"):
-        asyncio.run(sandbox.suspend("/tmp/snap"))
+        asyncio.run(sandbox.suspend())
     with pytest.raises(EConfig, match=r"Sandbox\.resume before boot"):
         asyncio.run(sandbox.resume("/tmp/snap"))
     with pytest.raises(EConfig, match=r"Sandbox\.reconcile before boot"):

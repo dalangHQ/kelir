@@ -6,7 +6,8 @@ use std::task::{Context, Poll};
 pub use kelir_interface::handles_lifecycle::{
     ClockHandle, FsHandle, StepStack, TerminalHandle, VmHandle,
 };
-use kelir_interface::plugin_model::PluginError;
+use kelir_interface::hex_codec::encode_hex;
+use kelir_interface::plugin_model::{MountScope, PipelineBinder, PluginError};
 
 use kelir_interface::handlers_plugin::Has;
 
@@ -52,6 +53,11 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
 
     pub fn core(&self) -> &kelir_core::Session {
         &self.core
+    }
+
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    pub fn vm(&self) -> VmHandle {
+        self.core.vm()
     }
 
     // see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
@@ -107,13 +113,43 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     }
 
     // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn fork(&self) -> Result<Session<Plugins, Params>, PluginError> {
-        // TODO (L3): fork the engine session, clone the capability list, and rebuild the child registration via fork_state.
-        let child = self.core.fork()?;
+    // see: cans/08-lifecycle.md#CoW-fork
+    pub async fn fork(&self) -> Result<Session<Plugins, Params>, PluginError> {
+        let mut child = self.core.fork().await?;
+        let child_session_id = encode_hex(&child.session_id());
+        // see: cans/08-lifecycle.md#CoW-fork
+        let mut registration = Registration {
+            instances: Vec::new(),
+            // see: cans/_collab/conflicts.md
+            traps: Vec::new(),
+            storage_cfg: self.registration.storage_cfg.clone(),
+            terminal_cfg: self.registration.terminal_cfg.clone(),
+            wire_cfg: self.registration.wire_cfg.clone(),
+            lock_broker_cfg: self.registration.lock_broker_cfg.clone(),
+            on_vm_init: None,
+            on_vm_ready: None,
+            on_vm_shutdown: None,
+            on_trap_deny: None,
+            custom_actions: Vec::new(),
+            vsock_services: Vec::new(),
+            stream_kind_services: Vec::new(),
+            vetoes: Vec::new(),
+            detached: self.registration.detached,
+        };
+        for (plugin, scope) in &self.registration.instances {
+            let forked = plugin.fork_state(&child_session_id);
+            if forked.is_enabled() {
+                child.pipeline_mut().set_active_scope(scope.clone());
+                forked.register_interceptors(child.pipeline_mut());
+            }
+            registration.instances.push((forked, scope.clone()));
+        }
+        child.pipeline_mut().set_active_scope(MountScope::default());
+        child.pipeline_mut().seal()?;
         Ok(Self {
             core: child,
             plugins: self.plugins.clone(),
-            registration: Registration::default(),
+            registration,
             _params: PhantomData,
         })
     }

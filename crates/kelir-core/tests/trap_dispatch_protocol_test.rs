@@ -848,7 +848,7 @@ async fn pe_13_fork_state_specialization_isolation() -> Result<(), String> {
         ),
         Err(_) => return Err("probe log poisoned".into()),
     }
-    let child = parent.fork().map_err(|e| e.to_string())?;
+    let child = parent.fork().await.map_err(|e| e.to_string())?;
     assert_ne!(
         child.incarnation_id(),
         parent.incarnation_id(),

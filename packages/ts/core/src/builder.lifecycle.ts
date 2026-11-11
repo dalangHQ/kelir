@@ -486,8 +486,19 @@ export class KelirBuilder<Ctx = unknown, Params = unknown> {
       );
     }
     // TODO (L3): bind each fused ring chain to its single trampoline entry as one threadsafe closure.
-    // TODO (L3): bind the mounted plugins' capability members onto the booted session.
-    return new Session(await nativeBuilder.boot()) as Session & Ctx;
+    const nativeSession = await nativeBuilder.boot();
+    const session = new Session(nativeSession);
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    const pluginContexts = nativeSession.pluginContexts;
+    if (pluginContexts === undefined && this.pluginRegistrations.length > 0) {
+      throw new EConfig(
+        "kelir native bridge is missing the pluginContexts member: mounted plugin capability structs cannot be materialized at boot (B13)",
+      );
+    }
+    for (const { name, ctx } of pluginContexts ?? []) {
+      (session as unknown as Record<string, unknown>)[name] = ctx;
+    }
+    return session as Session & Ctx;
   }
 }
 

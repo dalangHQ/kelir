@@ -6,7 +6,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{KelirPlugin, LifecycleParticipant, NoDeps, PluginDeps};
+use kelir_interface::plugin_model::{
+    KelirPlugin, LifecycleParticipant, MountScope, NoDeps, PipelineBinder, PluginDeps,
+    StreamFrameSink,
+};
+use kelir_interface::protocol_wire::StreamKind;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -643,6 +647,29 @@ impl ProfileCtx {
     }
 }
 
+// see: cans/plugins/profile.md#Registers-stream-kind-PROFILE_SYNC-on-the-mux
+// see: cans/11-protocol.md#Kind-registration
+struct ProfileCtxStreamSink {
+    ctx: ProfileCtx,
+}
+
+// see: cans/11-protocol.md#Kind-registration
+impl StreamFrameSink for ProfileCtxStreamSink {
+    fn on_stream_frame(
+        &self,
+        _stream_id: u32,
+        kind: StreamKind,
+        _flags: u8,
+        payload: &[u8],
+    ) -> Result<(), PluginError> {
+        if kind != StreamKind::ProfileSync {
+            return Ok(());
+        }
+        self.ctx.dispatch_profile_sync(payload)?;
+        Ok(())
+    }
+}
+
 impl KelirPlugin for ProfilePlugin {
     type Context = ProfileCtx;
     fn context(&self) -> ProfileCtx {
@@ -652,6 +679,17 @@ impl KelirPlugin for ProfilePlugin {
     }
     fn name(&self) -> &'static str {
         "profile"
+    }
+    fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
+        // see: cans/11-protocol.md#Kind-registration
+        let sink: Arc<dyn StreamFrameSink> = Arc::new(ProfileCtxStreamSink {
+            ctx: self.context(),
+        });
+        pipeline.bind_stream_kind_scoped(
+            StreamKind::ProfileSync,
+            sink,
+            MountScope::default().with_stream_kinds([StreamKind::ProfileSync]),
+        );
     }
 }
 

@@ -22,6 +22,7 @@
       - 0x8000-0xFFFF: reserved
     - Kind registration
       - builder.register_stream_kind(kind, handler) binds a handler
+      - Plugin-owned sinks register per kind via PipelineBinder::bind_stream_kind (bind_stream_kind_scoped carries the MountScope); the sink receives every mux frame of that kind
       - Core kinds abort re-registration with EKindReserved
       - Unregistered kind on OPEN aborts with EUnknownKind
       - Kinds are numbers; no per-kind spec edits required

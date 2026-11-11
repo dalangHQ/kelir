@@ -20,7 +20,10 @@
 // -> Contain (strict root containment, EXDEV on escape).
 // Host I/O on this plane is mandatory non-blocking: descriptors open
 // with O_NONBLOCK, FIFO/socket lookups fail with ENXIO, and zero guest
-// syscalls may sleep host ring workers.
+// syscalls may sleep host ring workers. Host I/O is expressed through
+// the StorageIo trait; the broker write primitive is
+// StorageIo::write(path, offset, data) — the std::fs calls below are
+// the artifact-level sketch of that surface.
 //
 // Canonical spec home: cans/05-storage-plane.md#Workspace-commit
 

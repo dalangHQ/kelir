@@ -36,6 +36,47 @@ pub trait StorageIo: Send + Sync {
         path: &Path,
     ) -> Result<(), kelir_interface::plugin_model::PluginError>;
     fn remove_file(&self, path: &Path) -> Result<(), kelir_interface::plugin_model::PluginError>;
+    // see: cans/05-storage-plane.md#Host-CoW-broker
+    fn write(
+        &self,
+        path: &Path,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
+        let _ = (path, offset, data);
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "TODO (L3): StorageIo::write needs the driver/transport enclave".into(),
+        ))
+    }
+    // see: cans/05-storage-plane.md#Host-CoW-broker
+    fn mkdir(
+        &self,
+        path: &Path,
+        mode: u32,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let _ = (path, mode);
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "TODO (L3): StorageIo::mkdir needs the driver/transport enclave".into(),
+        ))
+    }
+    // see: cans/05-storage-plane.md#Host-CoW-broker
+    fn unlink(&self, path: &Path) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let _ = path;
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "TODO (L3): StorageIo::unlink needs the driver/transport enclave".into(),
+        ))
+    }
+    // see: cans/05-storage-plane.md#Host-CoW-broker
+    fn rename(
+        &self,
+        from: &Path,
+        to: &Path,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let _ = (from, to);
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "TODO (L3): StorageIo::rename needs the driver/transport enclave".into(),
+        ))
+    }
 }
 
 pub struct UnimplementedStorageIo;

@@ -555,6 +555,34 @@ jobs:
       - name: Contract audit
         run: cargo run -p kelir-plugin-cli -- check -p plugin-${{ matrix.plugin }}
 
+  # ─── CORE CHANNEL PIN + PLUGIN ATTESTATION (PLACEHOLDER) ──
+  # Exercises the bump-core and attest subcommands
+  # (15-operations.md#Developer-CLI). External plugin repos run the
+  # same invocations via plugin-ci-reusable.yml; signing itself is L3.
+  bump-core:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [released, main]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Pin core channel
+        run: cargo run -p kelir-plugin-cli -- bump-core --channel ${{ matrix.channel }}
+
+  attest:
+    needs: [bump-core]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Sign attestation (placeholder)
+        run: cargo run -p kelir-plugin-cli -- attest --sign --plugin-path crates/kelir-plugins/plugin-chaos
+
   # ─── TIERED PLUGIN COMPILATION ─────────────────────────
   # Plugins compile against their explicit upstream dependencies
   # (see 02-plugin-model.md#Plugin-tiering). One workspace check

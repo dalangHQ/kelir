@@ -15,6 +15,8 @@
     - Non-nested OCI container execution
       - Configures rootless Podman and crun runtime environments inside microVM
       - Mounts ephemeral scratch device for /var/lib/containers to isolate storage diffs
+      - isolate_var_lib_containers defaults to true and cannot be silently disabled:
+        a false value without allow_unsandboxed: true rejects on_vm_ready with ESecurityViolation
       - Constructs synthetic cgroup v2 delegation hierarchy at on_vm_ready
     - UID/GID mapping isolation
       - Intercepts newuidmap and newgidmap allocations through trap filters

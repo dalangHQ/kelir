@@ -110,6 +110,10 @@ check-tiered:
 check-graph:
     cargo run -p kelir-plugin-cli -- check --graph
 
+# Both kelir-plugin-cli structural gates in one recipe: layering + plugin DAG.
+check-cli:
+    cargo run -p kelir-plugin-cli -- check --layers && cargo run -p kelir-plugin-cli -- check --graph
+
 check-plugin plugin:
     cargo run -p kelir-plugin-cli -- check -p plugin-{{plugin}}
 

@@ -9,9 +9,10 @@ use async_trait::async_trait;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, FsInterposer, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant,
-    MountScope, PipelineBinder, TrapInterposer, VirtioDevice,
+    MountScope, NoDeps, PipelineBinder, PluginDeps, StreamFrameSink, TrapInterposer, VirtioDevice,
 };
-use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{FilterAction, ProcessExit, StreamKind, TrapEvent, Verdict};
+use kelir_interface::runtime_block::block_on;
 
 // see: cans/plugins/mcp.md#Crate-dependencies-(mcp)
 pub const MCP_SOCKET_PATH: &str = "/run/kelir/mcp.sock";
@@ -78,6 +79,29 @@ impl McpCtx {
     }
 }
 
+// see: cans/11-protocol.md#Kind-registration
+// see: cans/plugins/mcp.md#MCP-contract
+struct McpCtxStreamSink {
+    service: McpEndpointService,
+}
+
+// see: cans/11-protocol.md#Kind-registration
+impl StreamFrameSink for McpCtxStreamSink {
+    fn on_stream_frame(
+        &self,
+        _stream_id: u32,
+        kind: StreamKind,
+        _flags: u8,
+        payload: &[u8],
+    ) -> Result<(), PluginError> {
+        if kind != StreamKind::McpConsole {
+            return Ok(());
+        }
+        block_on(self.service.route_request(payload))?;
+        Ok(())
+    }
+}
+
 // see: cans/plugins/mcp.md#Plugin-mcp
 #[derive(Clone)]
 pub struct McpPlugin {
@@ -124,7 +148,21 @@ impl KelirPlugin for McpPlugin {
         pipeline.bind_fs_scoped(fs_stage, self.default_scope());
         let trap_stage: Arc<dyn TrapInterposer> = Arc::new(self.clone());
         pipeline.bind_trap_scoped(trap_stage, self.default_scope());
+        // see: cans/11-protocol.md#Kind-registration
+        let sink: Arc<dyn StreamFrameSink> = Arc::new(McpCtxStreamSink {
+            service: self.service.clone(),
+        });
+        pipeline.bind_stream_kind_scoped(
+            StreamKind::McpConsole,
+            sink,
+            MountScope::default().with_stream_kinds([StreamKind::McpConsole]),
+        );
     }
+}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl PluginDeps for McpPlugin {
+    type Deps = NoDeps;
 }
 
 #[async_trait]

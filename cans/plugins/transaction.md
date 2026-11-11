@@ -16,6 +16,8 @@
     - Multi-resource 2PC coordination
       - Synchronizes commit/abort across host CoW broker, db-proxy, and lock broker
       - Coordinates with hypervisor lifecycle: pauses vCPUs during commit evaluation
+      - flush_fuse_before_commit defaults to true and cannot be silently disabled:
+        a false value rejects on_pre_commit with ESecurityViolation
       - on_pre_commit pauses guest vCPUs and drains FUSE in-flight ops
       - on_post_commit(true) invokes broker commit: replay upper + tombstones
         - and issues SQL COMMIT across active proxy connections

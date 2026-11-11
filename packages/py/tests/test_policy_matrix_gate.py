@@ -289,6 +289,6 @@ def test_session_flows_require_native_bridge() -> None:
     with pytest.raises(EConfig, match=r"session spawn"):
         asyncio.run(session.spawn("policy-allow", ["--policy-matrix"]))
     with pytest.raises(EConfig, match=r"session suspend"):
-        asyncio.run(session.suspend("/tmp/policy-matrix.snap"))
+        asyncio.run(session.suspend())
     with pytest.raises(EConfig, match=r"session resume"):
         asyncio.run(session.resume("/tmp/policy-matrix.snap"))

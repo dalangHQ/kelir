@@ -10,15 +10,19 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    ConsoleInterposer, KelirPlugin, MountScope, PipelineBinder, VirtioDevice,
+    ConsoleInterposer, HCons, HNil, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope,
+    PipelineBinder, PluginDeps, VirtioDevice,
 };
 use kelir_interface::protocol_wire::{StreamKind, Verdict};
-use plugin_mcp::McpEndpointService;
+use plugin_mcp::{McpCtx, McpEndpointService};
 
 use crate::service_tool_guard::{
     McpFrame, McpMethod, ToolRegistry, ToolRegistryService, ToolSchema, ToolsListResult,
     decode_tools_list,
 };
+
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+const TOOLS_LIST_QUERY: &[u8] = b"{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"tools/list\"}";
 
 // see: cans/plugins/tool-guard.md#Call-quota
 #[derive(Clone, Debug)]
@@ -34,6 +38,14 @@ impl Default for ToolGuardConfig {
             pin_schemas: true,
         }
     }
+}
+
+// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+#[derive(Clone, Debug, Default)]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+    pub input_schema: Vec<u8>,
 }
 
 // see: cans/plugins/tool-guard.md#Call-quota
@@ -53,6 +65,7 @@ pub struct ToolGuardPlugin {
     registry: Arc<ToolRegistry>,
     state: Arc<ToolGuardState>,
     mcp: McpEndpointService,
+    host_specs: Vec<ToolSpec>,
 }
 
 impl ToolGuardPlugin {
@@ -71,6 +84,7 @@ impl ToolGuardPlugin {
                 traces: Mutex::new(HashMap::new()),
             }),
             mcp: McpEndpointService::new(),
+            host_specs: Vec::new(),
         }
     }
 
@@ -82,6 +96,12 @@ impl ToolGuardPlugin {
 
     pub fn with_config(mut self, config: ToolGuardConfig) -> Self {
         self.config = config;
+        self
+    }
+
+    // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+    pub fn tool(mut self, spec: ToolSpec) -> Self {
+        self.host_specs.push(spec);
         self
     }
 
@@ -221,6 +241,40 @@ impl KelirPlugin for ToolGuardPlugin {
         // see: cans/02-plugin-model.md#Segregated-ring-traits
         let console_stage: Arc<dyn ConsoleInterposer> = Arc::new(self.clone());
         pipeline.bind_console_scoped(console_stage, self.default_scope());
+        // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+        let lifecycle_stage: Arc<dyn LifecycleParticipant> = Arc::new(self.clone());
+        pipeline.bind_lifecycle_scoped(lifecycle_stage, self.default_scope());
+    }
+}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl PluginDeps for ToolGuardPlugin {
+    type Deps = HCons<McpCtx, HNil>;
+}
+
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+#[async_trait]
+impl LifecycleParticipant for ToolGuardPlugin {
+    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
+        // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+        let response = self.mcp.route_request(TOOLS_LIST_QUERY).await?;
+        let mut advertisement = decode_tools_list(&response)?;
+        // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+        for spec in &self.host_specs {
+            advertisement.tools.push(ToolSchema {
+                name: spec.name.clone(),
+                description: spec.description.clone(),
+                input_schema: spec.input_schema.clone(),
+                signature: Vec::new(),
+            });
+        }
+        let advertised: Vec<String> = advertisement
+            .tools
+            .iter()
+            .map(|schema| schema.name.clone())
+            .collect();
+        self.ingest_advertisement(&advertisement).await?;
+        self.mcp.advertise_tools(advertised)
     }
 }
 
@@ -256,15 +310,9 @@ impl ConsoleInterposer for ToolGuardPlugin {
         // see: cans/plugins/tool-guard.md#Immutable-schema-locking
         let frame = McpFrame::decode(chunk)?;
         if frame.method == McpMethod::ToolsList {
+            // see: cans/plugins/tool-guard.md#Immutable-schema-locking
             let advertisement: ToolsListResult = decode_tools_list(chunk)?;
-            // see: cans/plugins/tool-guard.md#Executes-upstream-of-plugin-mcp-on-the-MCP_CONSOLE-mux-stream
-            let advertised: Vec<String> = advertisement
-                .tools
-                .iter()
-                .map(|schema| schema.name.clone())
-                .collect();
-            self.ingest_advertisement(&advertisement).await?;
-            return self.mcp.advertise_tools(advertised);
+            return self.ingest_advertisement(&advertisement).await;
         }
         self.scrub_tool_response(chunk).await
     }

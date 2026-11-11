@@ -517,7 +517,7 @@ impl NativeSessionHandle {
         let started = Instant::now();
         let child = {
             let session = self.session.lock().await;
-            session.fork().map_err(halt)?
+            session.fork().await.map_err(halt)?
         };
         Ok(Self::from_session(
             child,
@@ -861,6 +861,8 @@ impl NativeKelirBuilder {
                     rows: cfg.rows.unwrap_or(24),
                     drop_osc52: cfg.drop_osc52.unwrap_or(false),
                     strip_title: cfg.strip_title.unwrap_or(false),
+                    token_shield: None,
+                    prompts: Vec::new(),
                 });
         let wire = self
             .wire_cfg

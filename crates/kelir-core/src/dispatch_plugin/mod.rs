@@ -1,5 +1,8 @@
 // see: cans/02-plugin-model.md#Static-dispatch
 // see: cans/02-plugin-model.md#Unified-interposition-pipeline
+mod console_dispatch;
+mod lifecycle_dispatch;
+
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -7,15 +10,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
 use kelir_interface::fusion_plugin::TrampolineRing;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, FfiDispatchQueue, FsInterposer, HandlerCtx, HostInterposer, LifecycleCtx,
-    LifecycleEvent, LockBrokerCoordination, MountScope, NetInterposer, ParkedConnectionReset,
-    PipelineBinder, TokenRevocation, TrapInterposer, VirtioDevice,
+    LifecycleEvent, LifecycleParticipant, LockBrokerCoordination, MountScope, NetInterposer,
+    ParkedConnectionReset, PipelineBinder, StreamFrameSink, SystemTelemetryParticipant,
+    TokenRevocation, TrapInterposer, VirtioDevice,
 };
 use kelir_interface::protocol_wire::{
-    EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, ProcessExit, TrapEvent, Verdict,
+    EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, ProcessExit, StreamKind, TrapEvent,
+    Verdict,
 };
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
@@ -148,6 +154,11 @@ pub struct PipelineEngine {
     host_interceptors: Vec<Arc<dyn HostInterposer>>,
     host_scopes: Vec<MountScope>,
     vsock_services: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>, MountScope)>,
+    lifecycle_interceptors: Vec<Arc<dyn LifecycleParticipant>>,
+    lifecycle_scopes: Vec<MountScope>,
+    telemetry_interceptors: Vec<Arc<dyn SystemTelemetryParticipant>>,
+    telemetry_scopes: Vec<MountScope>,
+    stream_sinks: Vec<(StreamKind, Arc<dyn StreamFrameSink>, MountScope)>,
     lock_broker: Option<Arc<dyn LockBrokerCoordination>>,
     parked_reset: Option<Arc<dyn ParkedConnectionReset>>,
     token_revoker: Option<Arc<dyn TokenRevocation>>,
@@ -209,6 +220,32 @@ impl PipelineBinder for PipelineEngine {
         let scope = self.effective_scope(scope);
         self.vsock_services.push((spec, service, scope));
     }
+    // see: cans/02-plugin-model.md#Segregated-ring-traits
+    // TODO (L3): scopes are stored; dispatch-time enforcement for the lifecycle and telemetry rings lands with the veto gate.
+    fn bind_lifecycle_scoped(&mut self, stage: Arc<dyn LifecycleParticipant>, scope: MountScope) {
+        let scope = self.effective_scope(scope);
+        self.lifecycle_interceptors.push(stage);
+        self.lifecycle_scopes.push(scope);
+    }
+    fn bind_telemetry_scoped(
+        &mut self,
+        stage: Arc<dyn SystemTelemetryParticipant>,
+        scope: MountScope,
+    ) {
+        let scope = self.effective_scope(scope);
+        self.telemetry_interceptors.push(stage);
+        self.telemetry_scopes.push(scope);
+    }
+    // see: cans/11-protocol.md#Kind-registration
+    fn bind_stream_kind_scoped(
+        &mut self,
+        kind: StreamKind,
+        sink: Arc<dyn StreamFrameSink>,
+        scope: MountScope,
+    ) {
+        let scope = self.effective_scope(scope);
+        self.stream_sinks.push((kind, sink, scope));
+    }
     fn bind_parked_connection_reset(&mut self, reset: Arc<dyn ParkedConnectionReset>) {
         self.parked_reset = Some(reset);
     }
@@ -242,6 +279,11 @@ impl PipelineEngine {
             host_interceptors: Vec::new(),
             host_scopes: Vec::new(),
             vsock_services: Vec::new(),
+            lifecycle_interceptors: Vec::new(),
+            lifecycle_scopes: Vec::new(),
+            telemetry_interceptors: Vec::new(),
+            telemetry_scopes: Vec::new(),
+            stream_sinks: Vec::new(),
             lock_broker: None,
             parked_reset: None,
             token_revoker: None,
@@ -446,6 +488,14 @@ impl PipelineEngine {
             .iter()
             .find(|(spec, _, _)| spec.port == port)
             .map(|(_, handler, _)| Arc::clone(handler))
+    }
+
+    // see: cans/11-protocol.md#Kind-registration
+    pub fn stream_sink(&self, kind: StreamKind) -> Option<Arc<dyn StreamFrameSink>> {
+        self.stream_sinks
+            .iter()
+            .find(|(bound, _, _)| *bound == kind)
+            .map(|(_, sink, _)| Arc::clone(sink))
     }
 
     // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
@@ -766,136 +816,6 @@ impl PipelineEngine {
         }
         drop(fused);
         Ok(FilterAction::Forward)
-    }
-
-    pub async fn dispatch_console_input(
-        &self,
-        port: u32,
-        bytes: &mut Vec<u8>,
-    ) -> Result<(), PluginError> {
-        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-        let fused = self.fused_crossing(TrampolineRing::ConsoleInput)?;
-        for (index, interceptor) in self.console_interceptors.iter().enumerate() {
-            let scope = Self::scope_at(&self.console_scopes, index);
-            if !scope.allows_device(VirtioDevice::Console) {
-                continue;
-            }
-            if fused.is_none() {
-                // see: cans/01-architecture.md#FFI-boundary-economics
-                self.try_foreign_submit()?;
-            }
-            let outcome = quarantine_unit(interceptor.on_console_input(port, bytes)).await;
-            if fused.is_none() {
-                self.foreign_submit_complete();
-            }
-            outcome?;
-        }
-        drop(fused);
-        Ok(())
-    }
-
-    pub async fn dispatch_console_output(
-        &self,
-        port: u32,
-        chunk: &mut Vec<u8>,
-    ) -> Result<(), PluginError> {
-        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-        let fused = self.fused_crossing(TrampolineRing::ConsoleOutput)?;
-        for (index, interceptor) in self.console_interceptors.iter().enumerate() {
-            let scope = Self::scope_at(&self.console_scopes, index);
-            if !scope.allows_device(VirtioDevice::Console) {
-                continue;
-            }
-            if fused.is_none() {
-                // see: cans/01-architecture.md#FFI-boundary-economics
-                self.try_foreign_submit()?;
-            }
-            let outcome = quarantine_unit(interceptor.on_console_output(port, chunk)).await;
-            if fused.is_none() {
-                self.foreign_submit_complete();
-            }
-            outcome?;
-        }
-        drop(fused);
-        // see: cans/04-terminal-plane.md#Terminal-pipeline
-        if let Some(terminal) = &self.terminal {
-            terminal.record_output(LogStream::Port(port), chunk)?;
-        }
-        Ok(())
-    }
-
-    pub async fn dispatch_exec_stdout(
-        &self,
-        pid: u32,
-        exec_id: u64,
-        chunk: &mut Vec<u8>,
-    ) -> Result<(), PluginError> {
-        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-        let fused = self.fused_crossing(TrampolineRing::ExecStdout)?;
-        for (index, interceptor) in self.console_interceptors.iter().enumerate() {
-            let scope = Self::scope_at(&self.console_scopes, index);
-            if !scope.allows_device(VirtioDevice::Console) {
-                continue;
-            }
-            if fused.is_none() {
-                // see: cans/01-architecture.md#FFI-boundary-economics
-                self.try_foreign_submit()?;
-            }
-            let outcome = quarantine_unit(interceptor.on_exec_stdout(pid, exec_id, chunk)).await;
-            if fused.is_none() {
-                self.foreign_submit_complete();
-            }
-            outcome?;
-        }
-        drop(fused);
-        // see: cans/04-terminal-plane.md#Binary-exec-channel-(terminal-plane)
-        if let Some(terminal) = &self.terminal {
-            terminal.record_output(
-                LogStream::Exec {
-                    id: exec_id,
-                    lane: EXEC_STREAM_STDOUT,
-                },
-                chunk,
-            )?;
-        }
-        Ok(())
-    }
-
-    pub async fn dispatch_exec_stderr(
-        &self,
-        pid: u32,
-        exec_id: u64,
-        chunk: &mut Vec<u8>,
-    ) -> Result<(), PluginError> {
-        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-        let fused = self.fused_crossing(TrampolineRing::ExecStderr)?;
-        for (index, interceptor) in self.console_interceptors.iter().enumerate() {
-            let scope = Self::scope_at(&self.console_scopes, index);
-            if !scope.allows_device(VirtioDevice::Console) {
-                continue;
-            }
-            if fused.is_none() {
-                // see: cans/01-architecture.md#FFI-boundary-economics
-                self.try_foreign_submit()?;
-            }
-            let outcome = quarantine_unit(interceptor.on_exec_stderr(pid, exec_id, chunk)).await;
-            if fused.is_none() {
-                self.foreign_submit_complete();
-            }
-            outcome?;
-        }
-        drop(fused);
-        // see: cans/04-terminal-plane.md#Binary-exec-channel-(terminal-plane)
-        if let Some(terminal) = &self.terminal {
-            terminal.record_output(
-                LogStream::Exec {
-                    id: exec_id,
-                    lane: EXEC_STREAM_STDERR,
-                },
-                chunk,
-            )?;
-        }
-        Ok(())
     }
 
     // TODO (L3): host scope.devices has no VirtioDevice mapping; only the path filter is enforced here.

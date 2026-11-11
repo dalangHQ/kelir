@@ -11,8 +11,8 @@ use kelir_interface::credential_vault::CredentialDescriptor;
 use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
-    TokenRevocation, VirtioDevice,
+    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, NoDeps,
+    PipelineBinder, PluginDeps, TokenRevocation, VirtioDevice,
 };
 use kelir_interface::runtime_block::block_on;
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
@@ -416,4 +416,9 @@ fn json_string(value: &str) -> String {
         }
     }
     escaped
+}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl PluginDeps for VaultPlugin {
+    type Deps = NoDeps;
 }

@@ -15,6 +15,8 @@
       - Digest recorded in host-side cache manifest for audit; not in receipts
   - Archives and portability
     - Export format: single Content-Addressed .kelir-snap binary stream
+      - SDK accessor: session.vm().export_snapshot() through the Session::vm()
+        - thin alias over vm_handle(); see: 03-sdk-architecture.md#Session-surfaces
       - Archive header: magic, format version, feature flags, entry table
       - Stream contents: manifest.json, vmm_state.json, ram.zst, upperdir.tar.zst,
         - guest_clock.json, attestation.jws

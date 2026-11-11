@@ -122,12 +122,12 @@ fn scan_requires(src: &Path) -> Result<Vec<String>, String> {
                 if let Some(rhs) = trimmed.strip_prefix("type Deps =") {
                     let rhs = rhs.trim().trim_end_matches(';');
                     for word in rhs.split(|ch: char| !ch.is_ascii_alphanumeric()) {
-                        if word.len() > "Plugin".len() && word.ends_with("Plugin") {
-                            if let Some(peer) = kebab_plugin_type(word) {
-                                if !requires.contains(&peer) {
-                                    requires.push(peer);
-                                }
-                            }
+                        if word.len() > "Plugin".len()
+                            && word.ends_with("Plugin")
+                            && let Some(peer) = kebab_plugin_type(word)
+                            && !requires.contains(&peer)
+                        {
+                            requires.push(peer);
                         }
                     }
                 }

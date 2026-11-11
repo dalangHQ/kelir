@@ -133,11 +133,12 @@ export class Sandbox {
     return this.booted.rollback();
   }
 
-  async suspend(path: string): Promise<void> {
+  // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
+  async suspend(): Promise<void> {
     if (this.booted === null) {
       throw new EConfig("Sandbox.suspend before boot");
     }
-    return this.booted.suspend(path);
+    return this.booted.suspend(`${this.booted.sessionDir}/suspend.img`);
   }
 
   // see: cans/08-lifecycle.md#Suspend-and-resume

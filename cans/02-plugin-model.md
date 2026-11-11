@@ -99,6 +99,7 @@
       - Core identity
         - KelirPlugin is mandatory; see: [1]
       - Ring traits
+        - LifecycleParticipant and SystemTelemetryParticipant are bound onto the pipeline via PipelineBinder::bind_lifecycle / bind_telemetry (scoped variants bind_lifecycle_scoped / bind_telemetry_scoped)
         - LifecycleParticipant: vm lifecycle, commit, host preempt
         - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
         - ConsoleInterposer: console input, console output, window resize, disclosure
