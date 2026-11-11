@@ -138,6 +138,23 @@ def test_trap_filter_empty_snapshot() -> None:
     assert snapshot.pattern is None
 
 
+def test_trap_filter_pattern_snapshot() -> None:
+    snapshot = TrapFilter.pattern("policy-*").snapshot()
+    assert snapshot == TrapFilterSnapshot(pattern="policy-*")
+    combined = TrapFilter.pattern("git-*").with_arg("--status").snapshot()
+    assert combined == TrapFilterSnapshot(args=("--status",), pattern="git-*")
+
+
+def test_builder_trap_trapfilter_pattern_snapshot() -> None:
+    async def pre(ctx: object) -> None:
+        return None
+
+    builder = KelirBuilder()
+    builder.trap(TrapFilter.pattern("policy-*"), pre=pre)
+    chain = builder.fuse().chains[0]
+    assert chain.hooks[0].filter == TrapFilterSnapshot(pattern="policy-*")
+
+
 def test_session_surface_shapes() -> None:
     session = Session()
     assert session.driver_name == ""
