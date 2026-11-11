@@ -63,11 +63,11 @@ impl fmt::Display for BumpCoreError {
 impl Error for BumpCoreError {}
 
 // see: cans/15-operations.md#Developer-CLI
-pub fn resolve_pin(channel: CoreChannel) -> ChannelPin {
-    ChannelPin {
+pub fn resolve_pin(channel: CoreChannel) -> Result<ChannelPin, BumpCoreError> {
+    Ok(ChannelPin {
         channel,
-        kelir_version: env!("CARGO_PKG_VERSION").to_string(),
-    }
+        kelir_version: kelir_core::KELIR_CORE_VERSION.into(),
+    })
 }
 
 // see: cans/15-operations.md#Developer-CLI
@@ -116,7 +116,7 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let channel = channel.ok_or_else(|| {
         BumpCoreError::MissingChannel("bump-core: requires --channel <released|main>".to_string())
     })?;
-    let pin = resolve_pin(channel);
+    let pin = resolve_pin(channel)?;
     write_pin(&pin, Path::new(".kelir/core-channel.json"))?;
     println!(
         "bump-core: pinned channel {} at kelir {}",

@@ -14,7 +14,7 @@ use kelir::interface::plugin_model::{
 use kelir::interface::protocol_wire::{StreamKind, Verdict};
 use kelir::interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 use kelir::plugin_model::FilterAction;
-use kelir::{HNil, Host, KelirBuilder, NoParams, ProfilePlugin, Unsealed};
+use kelir::{HNil, Host, KelirBuilder, NoParams, ProfilePlugin, TrapFilter, Unsealed};
 
 #[cfg(feature = "plugin-ledger")]
 use kelir::LedgerPlugin;
@@ -537,6 +537,30 @@ fn mount_rejects_already_mounted() -> Result<(), PluginError> {
 #[test]
 fn empty_host_seals() {
     assert!(test_builder().seal().is_ok());
+}
+
+// see: cans/02-plugin-model.md#Filter-before-FFI-gate
+#[test]
+fn host_trap_filter_registers_on_engine_ring() -> Result<(), PluginError> {
+    let host = test_builder().trap("git", |_event, _ctx| Ok(Verdict::Pass))?;
+    let mut binder = RecordingBinder::default();
+    host.register_interceptors(&mut binder);
+    assert_eq!(binder.binds, vec!["trap".to_string()]);
+    let empty_binary = test_builder().trap("", |_event, _ctx| Ok(Verdict::Pass));
+    let text = error_text(empty_binary);
+    assert!(
+        text.contains("EConfig") && text.contains("trap filter binary must not be empty"),
+        "unexpected error: {text}"
+    );
+    let empty_arg = test_builder().trap(TrapFilter::binary("git").with_arg(""), |_event, _ctx| {
+        Ok(Verdict::Pass)
+    });
+    let text = error_text(empty_arg);
+    assert!(
+        text.contains("EConfig") && text.contains("trap filter arg must not be empty"),
+        "unexpected error: {text}"
+    );
+    Ok(())
 }
 
 // see: cans/02-plugin-model.md#Unified-builder

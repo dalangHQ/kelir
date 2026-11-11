@@ -1,3 +1,4 @@
+use kelir_testkit::CaseMap;
 use kelir_testkit::spec_anchors::{self, AnchorIndex};
 use std::collections::HashSet;
 use std::fs;
@@ -59,29 +60,6 @@ struct PlatformTarget {
 #[derive(serde::Deserialize)]
 struct Execution {
     trigger: Option<String>,
-}
-
-#[derive(serde::Deserialize)]
-struct CaseMap {
-    cases: Vec<MapEntry>,
-    #[serde(default)]
-    harness_tests: Vec<HarnessTest>,
-}
-
-// see: cans/artifacts/test-plan/case-to-test-map.yaml#harness_tests
-#[derive(serde::Deserialize)]
-struct HarnessTest {
-    file: String,
-    reason: String,
-}
-
-#[derive(serde::Deserialize)]
-struct MapEntry {
-    case_id: String,
-    status: String,
-    test_file: Option<String>,
-    test_fn: Option<String>,
-    reason: Option<String>,
 }
 
 #[derive(serde::Deserialize)]

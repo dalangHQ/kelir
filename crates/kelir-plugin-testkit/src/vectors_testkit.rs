@@ -31,6 +31,7 @@ pub enum VectorError {
     StreamIdOutOfRange { stream_id: u32 },
     Encode(String),
     Execution(String),
+    Parse(String),
 }
 
 impl fmt::Display for VectorError {
@@ -47,6 +48,7 @@ impl fmt::Display for VectorError {
             }
             VectorError::Encode(message) => write!(f, "vector encode failure: {message}"),
             VectorError::Execution(message) => write!(f, "vector execution failure: {message}"),
+            VectorError::Parse(message) => write!(f, "vector parse failure: {message}"),
         }
     }
 }
@@ -582,7 +584,7 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
             Vec::new(),
             vec![(TrampolineRing::VsockService, 0)],
         ),
-        ("seal", Vec::new(), Vec::new()),
+        ("build", Vec::new(), Vec::new()),
     ];
     for (verb, requires, rings) in structural {
         cases.push(plugin_builder_case(
@@ -599,13 +601,7 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-// see: cans/15-operations.md#Unified-builder-parity-vectors
-// One scope table, two constructions: the nested cases mount the scope's
-// verbs through the scope entry points on a plugin-mode builder; the
-// merge cases mount the same plugin-mode builder onto a host-mode
-// builder and assert the host descriptors include them with the
-// plugin's scope. Same rings, same events, same outcomes; only the
-// construction (the case name) differs.
+// see: cans/03-sdk-architecture.md#Unified-builder-surface
 fn plugin_builder_scope_cases(
     prefix: &str,
     seq_start: u64,

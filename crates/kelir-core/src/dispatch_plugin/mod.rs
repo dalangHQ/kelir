@@ -97,15 +97,6 @@ fn quarantine_sync<T>(run: impl FnOnce() -> T, on_panic: impl FnOnce() -> T) -> 
     }
 }
 
-// see: cans/03-sdk-architecture.md#Rust-SDK
-pub type LifecycleCallback = Box<
-    dyn for<'a> Fn(
-            &'a mut LifecycleCtx<'a>,
-        ) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'a>>
-        + Send
-        + Sync,
->;
-
 // see: cans/03-sdk-architecture.md#Builder-consumption-model-across-languages
 pub type TrapDenyCallback = Box<
     dyn Fn(&TrapEvent, &Session) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send>>
@@ -165,9 +156,6 @@ pub struct PipelineEngine {
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     trampoline: Option<kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
     checkpoint: Option<Arc<CheckpointPlane>>,
-    on_vm_init: Option<LifecycleCallback>,
-    on_vm_ready: Option<LifecycleCallback>,
-    on_vm_shutdown: Option<LifecycleCallback>,
     on_trap_deny: Option<TrapDenyCallback>,
     custom_actions: Vec<CustomActionBinding>,
     foreign_queue: FfiDispatchQueue,
@@ -290,9 +278,6 @@ impl PipelineEngine {
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             trampoline: None,
             checkpoint: None,
-            on_vm_init: None,
-            on_vm_ready: None,
-            on_vm_shutdown: None,
             on_trap_deny: None,
             custom_actions: Vec::new(),
             foreign_queue: FfiDispatchQueue::default(),
@@ -388,34 +373,9 @@ impl PipelineEngine {
         self.checkpoint.as_ref()
     }
 
-    // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn set_on_vm_init(&mut self, callback: LifecycleCallback) {
-        self.on_vm_init = Some(callback);
-    }
-
-    // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn set_on_vm_ready(&mut self, callback: LifecycleCallback) {
-        self.on_vm_ready = Some(callback);
-    }
-
-    // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn set_on_vm_shutdown(&mut self, callback: LifecycleCallback) {
-        self.on_vm_shutdown = Some(callback);
-    }
-
     // see: cans/03-sdk-architecture.md#Builder-consumption-model-across-languages
     pub fn set_on_trap_deny(&mut self, callback: TrapDenyCallback) {
         self.on_trap_deny = Some(callback);
-    }
-
-    // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn take_lifecycle_callback(&mut self, event: LifecycleEvent) -> Option<LifecycleCallback> {
-        match event {
-            LifecycleEvent::VmInit => self.on_vm_init.take(),
-            LifecycleEvent::VmReady => self.on_vm_ready.take(),
-            LifecycleEvent::VmShutdown => self.on_vm_shutdown.take(),
-            LifecycleEvent::VmPreempt => None,
-        }
     }
 
     // see: cans/03-sdk-architecture.md#Rust-SDK

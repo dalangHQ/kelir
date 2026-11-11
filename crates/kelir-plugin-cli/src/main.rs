@@ -58,11 +58,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "attest" => attest_cli::run(&args[2..])?,
         "bump-core" => bump_core_cli::run(&args[2..])?,
         "check" => check(&args[2..])?,
-        "check-layers" => check_layers()?,
-        "check-budgets" => check_budgets(&args[2..])?,
         "parity" => parity_cli::run(&args[2..])?,
         "fixtures" => fixtures_cli::run(&args[2..])?,
-        // TODO (L3): logs, manifest, registry, rings, and scaffold dispatch into skeleton subcommands that succeed silently.
+        // TODO (L3): logs, manifest, registry, rings, and scaffold subcommands fail with E_NOT_IMPLEMENTED until their L3 implementations land.
         "logs" => logs_cli::run()?,
         "manifest" => manifest_cli::run()?,
         "registry" => registry_cli::run()?,

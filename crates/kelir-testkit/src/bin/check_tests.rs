@@ -1,3 +1,4 @@
+use kelir_testkit::CaseMap;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -178,27 +179,19 @@ fn is_tautology(snippet: &str) -> bool {
 
 // see: cans/artifacts/test-plan/case-to-test-map.yaml#harness_tests
 fn harness_exempt_files(repo_root: &Path) -> HashSet<String> {
-    let mut exempt = HashSet::new();
     let map_path = repo_root.join("cans/artifacts/test-plan/case-to-test-map.yaml");
     let Ok(raw) = fs::read_to_string(&map_path) else {
-        return exempt;
+        return HashSet::new();
     };
-    let mut in_harness = false;
-    for line in raw.lines() {
-        if line.starts_with("harness_tests:") {
-            in_harness = true;
-        } else if in_harness {
-            if let Some(rest) = line.strip_prefix("- file:") {
-                let file = rest.trim().trim_matches('"');
-                if !file.is_empty() {
-                    exempt.insert(file.to_string());
-                }
-            } else if !line.starts_with(' ') && !line.starts_with('-') {
-                in_harness = false;
-            }
-        }
-    }
-    exempt
+    // TODO (L3): fail closed when the typed map parse fails; check-manifest gates the file today.
+    let Ok(map) = serde_yaml::from_str::<CaseMap>(&raw) else {
+        return HashSet::new();
+    };
+    map.harness_tests
+        .into_iter()
+        .filter(|test| !test.file.is_empty())
+        .map(|test| test.file)
+        .collect()
 }
 
 fn is_vendor_entry(entry: &walkdir::DirEntry) -> bool {

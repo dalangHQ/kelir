@@ -6,6 +6,9 @@ use std::time::Duration;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::TrapEvent;
 
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+pub use kelir_core::planes::terminal::TokenShieldConfig;
+
 #[derive(Debug, Clone, Default)]
 pub struct PromptStream;
 
@@ -14,14 +17,6 @@ impl PromptStream {
     pub async fn write(&self, _data: &[u8]) -> Result<usize, PluginError> {
         Ok(0)
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct TokenShield {
-    pub max_bytes_total: usize,
-    pub max_lines_total: usize,
-    pub clamp_strategy: String,
-    pub notice: String,
 }
 
 pub type PromptAction = Arc<
@@ -57,7 +52,7 @@ pub struct PtyConfig {
     pub rows: u16,
     pub drop_osc52: bool,
     pub strip_title: bool,
-    pub token_shield: Option<TokenShield>,
+    pub token_shield: Option<TokenShieldConfig>,
     pub prompts: Vec<PromptRule>,
     pub stream_engine: String,
 }

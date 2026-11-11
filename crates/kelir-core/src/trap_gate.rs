@@ -125,7 +125,10 @@ impl TrapGateEvaluator {
             return None;
         }
         let hook = self.entropy_hook.as_ref()?;
-        let entropy = self.compute_shannon_entropy(&event.argv).ok()?;
+        // see: cans/plugins/supply-chain.md#Entropy-analysis
+        let entropy = self
+            .compute_shannon_entropy(event.argv.get(1..).unwrap_or(&[]))
+            .ok()?;
         hook(entropy, trusted)
     }
 

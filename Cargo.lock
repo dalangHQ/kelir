@@ -608,6 +608,7 @@ dependencies = [
  "kelir-core",
  "kelir-interface",
  "kelir-plugin-testkit",
+ "kelir-testkit",
  "serde",
  "serde_json",
  "sha2",

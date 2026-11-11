@@ -16,8 +16,8 @@ use kelir::{
     MeshPlugin, NoParams, PackageGuardConfig, PeerIdentity, PeerListener, ReceiptConfig, Session,
     SnapshotDescriptor, SupplyChainConfig, SupplyChainCtx, SupplyChainPlugin,
     TraceParentPropagation, Unsealed, VmConfig, WxJitConfig,
-    driver_interface::{DriverPolicy, WxPolicy},
-    planes::storage_plane::{LockBrokerConfig, LockMode, LockScope},
+    interface::driver_interface::{DriverPolicy, WxPolicy},
+    planes::storage_plane::{LockBrokerConfig, LockScope},
     plugin_model::VetoEvent,
 };
 
@@ -65,7 +65,6 @@ fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
     })
     .lock_broker(LockBrokerConfig {
         scope: LockScope::Globs(vec!["**/Cargo.lock".into(), "**/package-lock.json".into()]),
-        default_mode: LockMode::Exclusive,
         non_blocking: true,
     })
     // see: cans/plugins/mesh.md#Plugin-mesh

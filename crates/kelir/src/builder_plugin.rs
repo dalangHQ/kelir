@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use kelir_interface::driver_interface::{
     DaxWindowMode, FastBootMode, WatchdogEvent, WatchdogVerdict,
 };
+use kelir_interface::fusion_plugin::FilterSnapshot;
 use kelir_interface::plugin_model::{
     AnyPlugin, ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, KelirPlugin,
     LifecycleCtx, LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginClone,
@@ -21,7 +22,9 @@ use crate::builder_scopes::{
     ConsoleScope, ExecScope, FsScope, HostScope, LifecycleScope, NetScope, TelemetryScope,
     TrapScope,
 };
-use crate::builder_sdk::{KelirBuilder, Plugin, Registration, Unsealed};
+use crate::builder_sdk::{
+    Host, KelirBuilder, Plugin, Registration, TrapFilter, Unsealed, filter_matches,
+};
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
 
 struct OnTrap;
@@ -821,6 +824,49 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     {
         configure(TelemetryScope { builder: self }).builder
     }
+}
+
+// see: cans/02-plugin-model.md#Filter-before-FFI-gate
+impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
+    KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>
+{
+    pub fn trap<F>(mut self, filter: impl Into<TrapFilter>, f: F) -> Result<Self, PluginError>
+    where
+        F: Fn(&TrapEvent, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        let filter: TrapFilter = filter.into();
+        validate_trap_filter("host", &filter)?;
+        let snapshot = FilterSnapshot::from(&filter);
+        self.registry
+            .trap
+            .push(Arc::new(TrapClosureAdapter::<_, OnTrap> {
+                handler: move |event: &TrapEvent, ctx: &HandlerCtx| {
+                    if !filter_matches(&snapshot, event) {
+                        return Ok(Verdict::Pass);
+                    }
+                    f(event, ctx)
+                },
+                verb: PhantomData,
+            }));
+        Ok(self)
+    }
+}
+
+// see: cans/02-plugin-model.md#Filter-before-FFI-gate
+fn validate_trap_filter(name: &str, filter: &TrapFilter) -> Result<(), PluginError> {
+    if filter.binary.as_deref() == Some("") {
+        return Err(PluginError::reject(
+            "EConfig",
+            format!("{name}: trap filter binary must not be empty"),
+        ));
+    }
+    if filter.args.iter().any(|arg| arg.is_empty()) {
+        return Err(PluginError::reject(
+            "EConfig",
+            format!("{name}: trap filter arg must not be empty"),
+        ));
+    }
+    Ok(())
 }
 
 // see: cans/02-plugin-model.md#Unified-builder

@@ -4,6 +4,7 @@
 pub mod assertions_testkit;
 pub mod fixtures_testkit;
 pub mod handlers_testkit;
+pub mod vectors_parse;
 pub mod vectors_testkit;
 
 pub use kelir_interface::runtime_block::block_on;

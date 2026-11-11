@@ -8,7 +8,6 @@ pub use kelir_interface as interface;
 pub mod builder_plugin;
 pub mod builder_scopes;
 pub mod builder_sdk;
-pub mod driver_interface;
 pub mod hlist_sdk;
 pub mod planes;
 pub mod plugin_model;

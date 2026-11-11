@@ -9,6 +9,7 @@ kelir-core = { path = "../kelir-core" }
 kelir-catalog = { path = "../kelir-catalog" }
 kelir-interface = { path = "../kelir-interface" }
 kelir-plugin-testkit = { path = "../kelir-plugin-testkit" }
+kelir-testkit = { path = "../kelir-testkit" }
 driver-rustvmm = { path = "../kelir-drivers/driver-rustvmm" }
 blake3 = { workspace = true }
 serde = { workspace = true }

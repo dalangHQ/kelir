@@ -69,6 +69,6 @@ fn quoted_literal(line: &str) -> Option<String> {
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    // TODO (L3): VirtIO ring inspection subcommand skeleton.
-    Ok(())
+    // TODO (L3): VirtIO ring inspection subcommand (plugin rings --show) reads live per-ring occupancy.
+    Err("rings: ring inspection subcommand (L3)".into())
 }

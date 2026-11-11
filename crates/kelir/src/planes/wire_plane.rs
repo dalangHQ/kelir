@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use kelir_interface::credential_vault::CredentialDescriptor;
 
 #[derive(Debug, Clone)]
@@ -9,16 +7,9 @@ pub struct SinkholeConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct Mtls {
-    pub cert_path: PathBuf,
-    pub key_path: PathBuf,
-}
-
-#[derive(Debug, Clone)]
 pub struct L4Proxy {
     pub listen_port: u16,
     pub destination: String,
-    pub inject_mtls: Option<Mtls>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

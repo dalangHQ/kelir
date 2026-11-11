@@ -219,14 +219,16 @@ impl Session {
         if let Some(descriptor) = trampoline {
             engine = engine.with_trampoline(descriptor.clone());
         }
-        Self::boot_with_engine(
+        let mut session = Self::boot_with_engine(
             config,
             plugins,
             engine,
             std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             synthetic_files,
             plane_wiring,
-        )
+        )?;
+        session.advance_lifecycle(LifecycleState::Running)?;
+        Ok(session)
     }
 
     // see: cans/08-lifecycle.md#Hypervisor-primitives
@@ -364,7 +366,7 @@ impl Session {
             }
             Err(_) => None,
         };
-        let mut session = Self {
+        let session = Self {
             terminal,
             storage: storage.with_metrics(metrics.clone()),
             wire: wire.with_metrics(metrics.clone()),
@@ -386,8 +388,12 @@ impl Session {
             detached: false,
             state: LifecycleState::Initializing,
         };
-        session.advance_lifecycle(LifecycleState::Running)?;
         Ok(session)
+    }
+
+    // see: cans/08-lifecycle.md#State-machine
+    pub fn begin_running(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        self.advance_lifecycle(LifecycleState::Running)
     }
 
     pub fn plugins(&self) -> &[crate::plugin_registry::PluginRegistration] {
@@ -719,7 +725,7 @@ impl Session {
     }
 
     // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
-    // TODO (L3): a real policy plugin (plugin-*) arms the watchdog from on_vm_init; boot warns while none does.
+    // TODO (L3): a real policy plugin arms the watchdog from on_vm_init; boot warns while none does.
     pub async fn run_lifecycle_hook(
         &mut self,
         event: LifecycleEvent,
@@ -751,45 +757,13 @@ impl Session {
                 self.engine.dispatch_lifecycle(event, &mut ctx).await?;
             }
         }
-        let Some(callback) = self.engine.take_lifecycle_callback(event) else {
-            if matches!(event, LifecycleEvent::VmInit) && self.config.enable_watchdog {
-                tracing::warn!(
-                    "enable_watchdog=true reached on_vm_init with no callback registered to arm ctx.set_watchdog"
-                );
-            }
-            return Ok(());
-        };
-        let result = match self.driver.as_ref() {
-            Some(driver) => {
-                let mut guard = driver.lock().await;
-                let mut ctx = LifecycleCtx::new_with_watchdog_probe(
-                    &self.config,
-                    &session_id,
-                    &mut **guard,
-                    &mut self.vetoes,
-                    std::sync::Arc::clone(&watchdog_probe),
-                );
-                callback(&mut ctx).await
-            }
-            None => {
-                let mut driver = NullDriver;
-                let mut ctx = LifecycleCtx::new_with_watchdog_probe(
-                    &self.config,
-                    &session_id,
-                    &mut driver,
-                    &mut self.vetoes,
-                    std::sync::Arc::clone(&watchdog_probe),
-                );
-                callback(&mut ctx).await
-            }
-        };
-        result?;
         if matches!(event, LifecycleEvent::VmInit)
             && self.config.enable_watchdog
             && !watchdog_probe.load(std::sync::atomic::Ordering::Acquire)
         {
+            // see: cans/08-lifecycle.md#Watchdog
             tracing::warn!(
-                "enable_watchdog=true finished on_vm_init without any callback arming ctx.set_watchdog"
+                "enable_watchdog=true finished on_vm_init without any lifecycle participant arming ctx.set_watchdog"
             );
         }
         Ok(())

@@ -1,7 +1,7 @@
 // ILLUSTRATIVE, NON-STANDALONE — do not compile this file directly.
 // It pins the unified builder surface; the live shape is
-// crates/kelir/src/builder_sdk.rs (Agent 3) and the normative contract is
-// cans/02-plugin-model.md#Unified-builder (Agent 1).
+// crates/kelir/src/builder_sdk.rs + crates/kelir/src/builder_plugin.rs
+// and the normative contract is cans/02-plugin-model.md#Unified-builder.
 //
 // Target shape: ONE struct KelirBuilder. KelirBuilder::new(VmConfig) is
 // the host; KelirBuilder::named(name) is a plugin-mode builder. The 24
@@ -123,16 +123,19 @@ pub struct TelemetryClosureAdapter<F, Verb> {
 // here, exactly like the plugin face's. Registration keeps plane config
 // and host-only registrations only; its former on_vm_init / on_vm_ready
 // / on_vm_shutdown single-handler fields are superseded by the lifecycle
-// vec and delete. Registration, TrapFilter, TrapEntry, BoxedTrap,
-// IntoTrapOutcome, CustomActionEntry,
+// vec and delete. Registration, TrapFilter, CustomActionEntry,
 // StreamKindServiceEntry, and LifecycleMut are defined in builder_sdk.rs
-// alongside the builder. VmConfig has no Default live, so the host config
+// alongside the builder; the trap-closure adapter (TrapClosureAdapter) and
+// its OnTrap/OnProcessExit verbs live in builder_plugin.rs and register on
+// the HookRegistry vec — one trap path, one engine dispatch point.
+// VmConfig has no Default live, so the host config
 // is Option: Some on the host face, None on the plugin face.
 #[derive(Clone)]
 pub struct KelirBuilder {
     config: Option<VmConfig>,
     plugins: Plugins,
     registration: Registration,
+    registry: HookRegistry,
     fast_boot: FastBootMode,
     dax_window: DaxWindowMode,
     name: Option<&'static str>,
@@ -517,6 +520,7 @@ impl KelirBuilder {
             config,
             plugins: HNil,
             registration: Registration::default(),
+            registry: HookRegistry::default(),
             fast_boot: FastBootMode::Off,
             dax_window: DaxWindowMode::Off,
             name,
@@ -909,9 +913,9 @@ impl KelirBuilder {
         if !matches!(plugin.dax_window, DaxWindowMode::Off) {
             host_only_verbs.push("dax_window");
         }
-        if !plugin.registration.traps.is_empty() {
-            host_only_verbs.push("trap");
-        }
+        // trap(filter, handler) is host-only by impl block: the plugin-mode
+        // builder exposes trap(|scope| ...) instead, so the compiler (E0592)
+        // pins the split — no runtime check, no Registration.traps field.
         if plugin.registration.on_trap_deny.is_some() {
             host_only_verbs.push("on_trap_deny");
         }
@@ -1030,22 +1034,25 @@ impl KelirBuilder {
         self
     }
 
-    pub fn trap<F, Fut, O>(mut self, filter: impl Into<TrapFilter>, f: F) -> Self
+    pub fn trap<F>(mut self, filter: impl Into<TrapFilter>, f: F) -> Result<Self, PluginError>
     where
-        F: Fn(HandlerCtx<Plugins, Params>) -> Fut + Clone + Send + Sync + 'static,
-        Fut: Future<Output = Result<O, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
-        O: IntoTrapOutcome,
+        F: Fn(&TrapEvent, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
-        let boxed: BoxedTrap<Plugins> = Arc::new(move |ctx: HandlerCtx<Plugins, NoParams>| {
-            let f = f.clone();
-            let fut = f(ctx.retag::<Params>());
-            Box::pin(async move { fut.await.map(IntoTrapOutcome::into_outcome) })
-        });
-        self.registration.traps.push(TrapEntry {
-            filter: filter.into(),
-            handler: boxed,
-        });
-        self
+        let filter: TrapFilter = filter.into();
+        validate_trap_filter("host", &filter)?;
+        let snapshot = FilterSnapshot::from(&filter);
+        self.registry
+            .trap
+            .push(Arc::new(TrapClosureAdapter::<_, OnTrap> {
+                handler: move |event: &TrapEvent, ctx: &HandlerCtx| {
+                    if !filter_matches(&snapshot, event) {
+                        return Ok(Verdict::Pass);
+                    }
+                    f(event, ctx)
+                },
+                verb: PhantomData,
+            }));
+        Ok(self)
     }
 
     pub fn on_trap_deny<F, Fut, T>(mut self, f: F) -> Self
