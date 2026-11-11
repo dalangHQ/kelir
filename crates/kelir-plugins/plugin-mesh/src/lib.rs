@@ -10,7 +10,8 @@ use kelir_interface::codec_protocol::MAX_FRAME_PAYLOAD;
 use kelir_interface::driver_interface::{SharedMemoryHandle, Stream};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, PipelineBinder,
+    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PipelineBinder,
+    PluginDeps,
 };
 use kelir_interface::vsock_mesh::{
     PeerSessionHandshake, SpiffeId, SpiffeSvid, VsockPeer, VsockServiceHandler, VsockServiceSpec,
@@ -311,6 +312,11 @@ impl LifecycleParticipant for MeshPlugin {
         let svid = self.issue_session_svid()?;
         self.state.set_svid(svid)
     }
+}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl PluginDeps for MeshPlugin {
+    type Deps = NoDeps;
 }
 
 // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)

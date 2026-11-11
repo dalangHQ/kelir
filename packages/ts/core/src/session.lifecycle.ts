@@ -129,6 +129,13 @@ export interface NativeSessionHandle {
   terminate(): Promise<void>;
   console(): Promise<void>;
   getCausalDeltaFromParent(): Promise<NativeCausalDeltaRecord>;
+  // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
+  readonly sessionDir?: string;
+  // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+  readonly pluginContexts?: readonly {
+    readonly name: string;
+    readonly ctx: unknown;
+  }[];
   handleIngress<Req, Resp>(options: {
     cwd?: string;
     handler: (req: Req) => Promise<Resp>;
@@ -240,6 +247,17 @@ export class Session {
     options?: SpawnOptions,
   ): Promise<SpawnResult> {
     return this.native.spawn(binary, argv, options);
+  }
+
+  // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
+  get sessionDir(): string {
+    const sessionDir = this.native.sessionDir;
+    if (sessionDir === undefined) {
+      throw new EConfig(
+        "kelir native bridge is missing the sessionDir member on the session handle (A11)",
+      );
+    }
+    return sessionDir;
   }
 
   async execInGuest(

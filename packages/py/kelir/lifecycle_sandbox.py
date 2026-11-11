@@ -157,10 +157,11 @@ class Sandbox:
             raise EConfig("Sandbox.rollback before boot")
         await self._session.rollback()
 
-    async def suspend(self, path: str) -> None:
+    # see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
+    async def suspend(self) -> None:
         if self._session is None:
             raise EConfig("Sandbox.suspend before boot")
-        await self._session.suspend(path)
+        await self._session.suspend()
 
     async def resume(self, path: str) -> None:
         if self._session is None:

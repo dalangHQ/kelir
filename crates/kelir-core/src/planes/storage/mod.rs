@@ -18,6 +18,39 @@ pub struct StorageQuota {
     max_inodes: u64,
 }
 
+impl StorageQuota {
+    // see: cans/05-storage-plane.md#Storage-quotas
+    pub fn unbounded() -> Self {
+        Self {
+            allocated_bytes: AtomicU64::new(0),
+            allocated_inodes: AtomicU64::new(0),
+            max_bytes: u64::MAX,
+            max_inodes: u64::MAX,
+        }
+    }
+
+    // see: cans/05-storage-plane.md#Storage-quotas
+    pub fn check_quota(
+        &self,
+        bytes_to_write: u64,
+        new_inodes: u64,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        accrue_quota(
+            &self.allocated_bytes,
+            bytes_to_write,
+            self.max_bytes,
+            "byte",
+        )?;
+        if let Err(err) = accrue_quota(&self.allocated_inodes, new_inodes, self.max_inodes, "inode")
+        {
+            self.allocated_bytes
+                .fetch_sub(bytes_to_write, Ordering::SeqCst);
+            return Err(err);
+        }
+        Ok(())
+    }
+}
+
 // see: cans/05-storage-plane.md#Storage-quotas
 fn accrue_quota(
     counter: &AtomicU64,
@@ -49,7 +82,7 @@ pub struct StoragePlane {
     workspace_root: PathBuf,
     sparse_upper_path: PathBuf,
     tombstones: Arc<RwLock<HashSet<PathBuf>>>,
-    quota: StorageQuota,
+    quota: Arc<StorageQuota>,
     io: Arc<dyn io_storage::StorageIo>,
     reconciler: OnceLock<storage_reconciler::Reconciler>,
     lock_broker: OnceLock<Arc<lock_broker::LockBroker>>,
@@ -125,12 +158,12 @@ impl StoragePlane {
             workspace_root,
             sparse_upper_path: sparse_upper,
             tombstones: Arc::new(RwLock::new(HashSet::new())),
-            quota: StorageQuota {
+            quota: Arc::new(StorageQuota {
                 allocated_bytes: AtomicU64::new(0),
                 allocated_inodes: AtomicU64::new(0),
                 max_bytes,
                 max_inodes,
-            },
+            }),
             io: Arc::new(io_storage::UnimplementedStorageIo),
             reconciler: OnceLock::new(),
             lock_broker: OnceLock::new(),
@@ -229,6 +262,11 @@ impl StoragePlane {
         })
     }
 
+    // see: cans/05-storage-plane.md#Storage-quotas
+    pub fn quota(&self) -> Arc<StorageQuota> {
+        Arc::clone(&self.quota)
+    }
+
     pub fn fuse_worker(
         &self,
         receiver: std::sync::mpsc::Receiver<fuse_storage::FuseRequest>,
@@ -236,9 +274,16 @@ impl StoragePlane {
         session_id: [u8; 16],
     ) -> &Mutex<fuse_storage::FuseWorker> {
         self.fuse_worker.get_or_init(|| {
+            let lock_broker = Arc::clone(self.lock_broker_arc(Arc::clone(&interposer)));
             Mutex::new(
-                fuse_storage::FuseWorker::new(receiver, interposer, session_id)
-                    .with_synthetic_files(self.synthetic_files.clone()),
+                fuse_storage::FuseWorker::new(
+                    receiver,
+                    interposer,
+                    lock_broker,
+                    Arc::clone(&self.quota),
+                    session_id,
+                )
+                .with_synthetic_files(self.synthetic_files.clone()),
             )
         })
     }
@@ -283,25 +328,8 @@ impl StoragePlane {
         bytes_to_write: u64,
         new_inodes: u64,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        if let Err(err) = accrue_quota(
-            &self.quota.allocated_bytes,
-            bytes_to_write,
-            self.quota.max_bytes,
-            "byte",
-        ) {
+        if let Err(err) = self.quota.check_quota(bytes_to_write, new_inodes) {
             self.metrics.record_backpressure();
-            return Err(err);
-        }
-        if let Err(err) = accrue_quota(
-            &self.quota.allocated_inodes,
-            new_inodes,
-            self.quota.max_inodes,
-            "inode",
-        ) {
-            self.metrics.record_backpressure();
-            self.quota
-                .allocated_bytes
-                .fetch_sub(bytes_to_write, Ordering::SeqCst);
             return Err(err);
         }
         self.metrics.add_dirty_pages(bytes_to_write.div_ceil(4096));

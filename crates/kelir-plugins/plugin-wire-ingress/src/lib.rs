@@ -9,8 +9,8 @@ use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::handles_lifecycle::VmHandle;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    KelirPlugin, LifecycleParticipant, MountScope, ParkedConnectionReset, PipelineBinder,
-    VirtioDevice,
+    KelirPlugin, LifecycleParticipant, MountScope, NoDeps, ParkedConnectionReset, PipelineBinder,
+    PluginDeps, VirtioDevice,
 };
 use kelir_interface::protocol_wire::{Channel, FilterAction, StreamKind, SuspendUntil};
 
@@ -422,3 +422,8 @@ impl KelirPlugin for WireIngressPlugin {
 }
 
 impl LifecycleParticipant for WireIngressPlugin {}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl PluginDeps for WireIngressPlugin {
+    type Deps = NoDeps;
+}

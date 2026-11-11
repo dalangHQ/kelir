@@ -92,7 +92,7 @@ async fn lc_07_cow_fork_uncloned_descriptor_veto() -> Result<(), String> {
         .lifecycle_mut()
         .register_veto(kelir::plugin_model::VetoEvent::Fork, Box::new(|| false));
     let session = builder.boot().await.map_err(|e| e.to_string())?;
-    match session.fork() {
+    match session.fork().await {
         Err(PluginError::Halt(message)) => {
             assert!(
                 message.contains("ESessionVeto"),
@@ -128,7 +128,7 @@ async fn lc_01_cow_fork_warm_memory_sharing() -> Result<(), String> {
         .checkpoint
         .commit_step(lineage)
         .map_err(|e| e.to_string())?;
-    let child = parent.fork().map_err(|e| e.to_string())?;
+    let child = parent.fork().await.map_err(|e| e.to_string())?;
     match child.checkpoint.head(lineage) {
         Some(head) => assert_eq!(head, base),
         None => {

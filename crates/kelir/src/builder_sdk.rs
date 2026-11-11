@@ -119,12 +119,22 @@ pub type TrapFuture = Pin<
     Box<dyn Future<Output = Result<TrapOutcome, Box<dyn std::error::Error + Send + Sync>>> + Send>,
 >;
 
+// see: cans/03-sdk-architecture.md#Rust-SDK
 pub type BoxedTrap<Plugins> =
-    Box<dyn Fn(HandlerCtx<Plugins, NoParams>) -> TrapFuture + Send + Sync>;
+    Arc<dyn Fn(HandlerCtx<Plugins, NoParams>) -> TrapFuture + Send + Sync>;
 
 pub struct TrapEntry<Plugins: HList> {
     pub(crate) filter: TrapFilter,
     pub(crate) handler: BoxedTrap<Plugins>,
+}
+
+impl<Plugins: HList> Clone for TrapEntry<Plugins> {
+    fn clone(&self) -> Self {
+        Self {
+            filter: self.filter.clone(),
+            handler: Arc::clone(&self.handler),
+        }
+    }
 }
 
 impl<Plugins: HList> TrapEntry<Plugins> {
@@ -135,7 +145,7 @@ impl<Plugins: HList> TrapEntry<Plugins> {
         let handler = self.handler;
         TrapEntry {
             filter: self.filter,
-            handler: Box::new(move |ctx: HandlerCtx<HCons<Head, Plugins>, NoParams>| {
+            handler: Arc::new(move |ctx: HandlerCtx<HCons<Head, Plugins>, NoParams>| {
                 (handler)(ctx.map_plugins(|plugins| plugins.tail_value()))
             }),
         }
@@ -431,7 +441,7 @@ impl<Plugins: HList, Params: 'static> KelirBuilder<Unsealed, Plugins, Params> {
         Fut: Future<Output = Result<O, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
         O: IntoTrapOutcome,
     {
-        let boxed: BoxedTrap<Plugins> = Box::new(move |ctx: HandlerCtx<Plugins, NoParams>| {
+        let boxed: BoxedTrap<Plugins> = Arc::new(move |ctx: HandlerCtx<Plugins, NoParams>| {
             let f = f.clone();
             let fut = f(ctx.retag::<Params>());
             Box::pin(async move { fut.await.map(IntoTrapOutcome::into_outcome) })
@@ -658,6 +668,31 @@ impl<SealState, Plugins: HList, Params: 'static> KelirBuilder<SealState, Plugins
                     rows: cfg.rows,
                     drop_osc52: cfg.drop_osc52,
                     strip_title: cfg.strip_title,
+                    token_shield: cfg.token_shield.as_ref().map(|shield| {
+                        kelir_core::planes::terminal::TokenShieldConfig {
+                            max_bytes_total: shield.max_bytes_total,
+                            max_lines_total: shield.max_lines_total,
+                            clamp_strategy: shield.clamp_strategy.clone(),
+                            notice: shield.notice.clone(),
+                        }
+                    }),
+                    prompts: cfg
+                        .prompts
+                        .iter()
+                        .map(|rule| kelir_core::planes::terminal::PromptRuleConfig {
+                            pattern: rule.pattern.clone(),
+                            timeout: rule.timeout,
+                            verify_foreground: rule.verify_foreground,
+                            action: {
+                                let action = Arc::clone(&rule.action);
+                                Arc::new(
+                                    move |event: &kelir_interface::protocol_wire::TrapEvent| {
+                                        action(event, crate::planes::terminal_plane::PromptStream)
+                                    },
+                                )
+                            },
+                        })
+                        .collect(),
                 }
             }),
             wire: registration

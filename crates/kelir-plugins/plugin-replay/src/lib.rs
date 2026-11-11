@@ -9,7 +9,9 @@ use kelir_interface::driver_interface::{
     EntropyBackend, EntropyStreamPosition, PmuSample, PmuSampler, VmmError,
 };
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{KelirPlugin, LifecycleCtx, LifecycleParticipant};
+use kelir_interface::plugin_model::{
+    KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PluginDeps,
+};
 
 // see: cans/plugins/replay.md#Error-and-return-semantics-(replay)
 const ECLOCKREGRESS: &str = "EClockRegress";
@@ -382,4 +384,9 @@ fn is_capability_unsupported(err: &PluginError) -> bool {
         .get_ref()
         .and_then(|source| source.downcast_ref::<VmmError>())
         .is_some_and(|vmm| matches!(vmm, VmmError::Unsupported(_)))
+}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl PluginDeps for ReplayPlugin {
+    type Deps = NoDeps;
 }

@@ -12,9 +12,10 @@ use std::sync::Arc;
 
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    KelirPlugin, MountScope, NetInterposer, PipelineBinder, VirtioDevice,
+    KelirPlugin, MountScope, NetInterposer, NoDeps, PipelineBinder, PluginDeps, StreamFrameSink,
+    VirtioDevice,
 };
-use kelir_interface::protocol_wire::FilterAction;
+use kelir_interface::protocol_wire::{FilterAction, StreamKind, Verdict};
 
 use crate::pgwire_db_proxy::PgFrameDescriptor;
 use crate::reassembler_wire::{
@@ -191,6 +192,39 @@ impl SqlProxyCtx {
     }
 }
 
+// see: cans/plugins/db-proxy.md#SQLite-UDS-bridge-mechanics:
+// see: cans/11-protocol.md#Kind-registration
+struct DbSqliteStreamSink {
+    bridge: SqliteBridge,
+}
+
+// see: cans/11-protocol.md#Kind-registration
+impl StreamFrameSink for DbSqliteStreamSink {
+    fn on_stream_frame(
+        &self,
+        stream_id: u32,
+        kind: StreamKind,
+        _flags: u8,
+        payload: &[u8],
+    ) -> Result<(), PluginError> {
+        if kind != StreamKind::DbSqlite {
+            return Ok(());
+        }
+        let mut frame = payload.to_vec();
+        match self.bridge.on_client_bytes(stream_id, &mut frame)? {
+            Verdict::Pass => Ok(()),
+            Verdict::Drop { errno, reason } => Err(PluginError::reject(
+                errno.unwrap_or_else(|| "EPERM".into()),
+                reason,
+            )),
+            Verdict::Abort { reason } => Err(PluginError::Halt(reason)),
+            _ => Err(PluginError::Halt(
+                "db-proxy stream suspend/patch verdict pending (L3)".into(),
+            )),
+        }
+    }
+}
+
 impl KelirPlugin for DbProxyPlugin {
     type Context = SqlProxyCtx;
     fn context(&self) -> Self::Context {
@@ -206,10 +240,24 @@ impl KelirPlugin for DbProxyPlugin {
         MountScope::default().with_devices([VirtioDevice::Vsock, VirtioDevice::Net])
     }
     // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+    // see: cans/11-protocol.md#Kind-registration
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
         let net_stage: Arc<dyn NetInterposer> = Arc::new(self.clone());
         pipeline.bind_net_scoped(net_stage, self.default_scope());
+        let sink: Arc<dyn StreamFrameSink> = Arc::new(DbSqliteStreamSink {
+            bridge: self.sqlite_bridge(),
+        });
+        pipeline.bind_stream_kind_scoped(
+            StreamKind::DbSqlite,
+            sink,
+            MountScope::default().with_stream_kinds([StreamKind::DbSqlite]),
+        );
     }
+}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl PluginDeps for DbProxyPlugin {
+    type Deps = NoDeps;
 }
 
 // see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit

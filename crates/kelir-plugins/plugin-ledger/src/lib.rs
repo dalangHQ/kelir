@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{KelirPlugin, LifecycleParticipant};
+use kelir_interface::plugin_model::{KelirPlugin, LifecycleParticipant, NoDeps, PluginDeps};
 use kelir_interface::telemetry::CausalDelta;
 use kelir_otlp::registry_otlp::{MetricRegistry, MetricSnapshot};
 use kelir_otlp::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfig};
@@ -60,6 +60,7 @@ pub struct ReceiptConfig {
 pub struct LedgerConfig {
     pub store: String,
     pub merkle_chain: bool,
+    pub suppress_local_db: bool,
     pub otel: Option<OtelConfig>,
     pub receipts: ReceiptConfig,
 }
@@ -69,9 +70,19 @@ impl LedgerConfig {
         Self {
             store: store.into(),
             merkle_chain,
+            suppress_local_db: false,
             otel: None,
             receipts: ReceiptConfig::default(),
         }
+    }
+}
+
+// see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
+struct NoopLedgerSink;
+
+impl LedgerSink for NoopLedgerSink {
+    fn emit_delta(&self, _delta: &CausalDelta) -> Result<(), PluginError> {
+        Ok(())
     }
 }
 
@@ -201,6 +212,9 @@ impl LedgerPlugin {
 
     // see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
     pub fn sink(&self) -> Arc<dyn LedgerSink> {
+        if self.config.suppress_local_db {
+            return Arc::new(NoopLedgerSink);
+        }
         if self.config.merkle_chain {
             Arc::new(LocalMerkleDbSink::new(self.config.store.clone()))
         } else {
@@ -235,3 +249,8 @@ impl KelirPlugin for LedgerPlugin {
 }
 
 impl LifecycleParticipant for LedgerPlugin {}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl PluginDeps for LedgerPlugin {
+    type Deps = NoDeps;
+}

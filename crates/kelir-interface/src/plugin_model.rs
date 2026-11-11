@@ -1,6 +1,7 @@
 // see: cans/02-plugin-model.md#KelirPlugin-trait
 // see: cans/02-plugin-model.md#Segregated-ring-traits
-use std::any::Any;
+use std::any::{Any, TypeId};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -554,6 +555,30 @@ pub trait PipelineBinder {
         service: Arc<dyn VsockServiceHandler>,
         scope: MountScope,
     );
+    // see: cans/02-plugin-model.md#Segregated-ring-traits
+    fn bind_lifecycle(&mut self, stage: Arc<dyn LifecycleParticipant>) {
+        self.bind_lifecycle_scoped(stage, MountScope::default());
+    }
+    fn bind_lifecycle_scoped(&mut self, stage: Arc<dyn LifecycleParticipant>, scope: MountScope);
+    // see: cans/02-plugin-model.md#Segregated-ring-traits
+    fn bind_telemetry(&mut self, stage: Arc<dyn SystemTelemetryParticipant>) {
+        self.bind_telemetry_scoped(stage, MountScope::default());
+    }
+    fn bind_telemetry_scoped(
+        &mut self,
+        stage: Arc<dyn SystemTelemetryParticipant>,
+        scope: MountScope,
+    );
+    // see: cans/11-protocol.md#Kind-registration
+    fn bind_stream_kind(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>) {
+        self.bind_stream_kind_scoped(kind, sink, MountScope::default());
+    }
+    fn bind_stream_kind_scoped(
+        &mut self,
+        kind: StreamKind,
+        sink: Arc<dyn StreamFrameSink>,
+        scope: MountScope,
+    );
     // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
     fn bind_parked_connection_reset(&mut self, reset: Arc<dyn ParkedConnectionReset>);
     // see: cans/08-lifecycle.md#Rollback
@@ -562,8 +587,71 @@ pub trait PipelineBinder {
     fn set_active_scope(&mut self, _scope: MountScope) {}
 }
 
+pub trait StreamFrameSink: Send + Sync {
+    fn on_stream_frame(
+        &self,
+        stream_id: u32,
+        kind: StreamKind,
+        flags: u8,
+        payload: &[u8],
+    ) -> Result<(), PluginError>;
+}
+
+// see: cans/artifacts/code/plugin-trait.rs#EventBusBinder
+pub type ErasedEventHandler = Box<dyn Fn(&dyn Any) + Send + Sync>;
+
+// see: cans/artifacts/code/plugin-trait.rs#EventBusBinder
 pub trait EventBusBinder {
+    fn subscribe_erased(&mut self, event: TypeId, handler: ErasedEventHandler);
+}
+
+// see: cans/artifacts/code/plugin-trait.rs#EventBusSubscribe
+pub trait EventBusSubscribe: EventBusBinder {
     fn subscribe<E: Any + Send + Sync + 'static>(&mut self, handler: Box<dyn Fn(&E) + Send + Sync>);
+}
+
+impl<B: EventBusBinder + ?Sized> EventBusSubscribe for B {
+    fn subscribe<E: Any + Send + Sync + 'static>(
+        &mut self,
+        handler: Box<dyn Fn(&E) + Send + Sync>,
+    ) {
+        self.subscribe_erased(
+            TypeId::of::<E>(),
+            Box::new(move |any: &dyn Any| {
+                if let Some(event) = any.downcast_ref::<E>() {
+                    handler(event);
+                }
+            }),
+        );
+    }
+}
+
+// see: cans/02-plugin-model.md#Reactive-event-bus-plane
+#[derive(Default)]
+pub struct EventBus {
+    handlers: HashMap<TypeId, Vec<ErasedEventHandler>>,
+}
+
+impl EventBus {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // see: cans/02-plugin-model.md#Reactive-event-bus-plane
+    pub fn publish<E: Any + Send + Sync>(&self, event: &E) {
+        let Some(handlers) = self.handlers.get(&TypeId::of::<E>()) else {
+            return;
+        };
+        for handler in handlers {
+            handler(event as &dyn Any);
+        }
+    }
+}
+
+impl EventBusBinder for EventBus {
+    fn subscribe_erased(&mut self, event: TypeId, handler: ErasedEventHandler) {
+        self.handlers.entry(event).or_default().push(handler);
+    }
 }
 
 pub trait CompositePlugin: Send + Sync {
@@ -571,7 +659,6 @@ pub trait CompositePlugin: Send + Sync {
 }
 
 // see: cans/artifacts/code/plugin-trait.rs#KelirPlugin
-// TODO (L3): cans/artifacts/code/plugin-trait.rs writes &mut dyn EventBusBinder, but subscribe is generic so the trait is not object-safe; &mut impl is the compiling form.
 pub trait KelirPlugin: Send + Sync + PluginClone {
     type Context: Send + Sync + Clone + 'static;
     fn context(&self) -> Self::Context;
@@ -586,11 +673,22 @@ pub trait KelirPlugin: Send + Sync + PluginClone {
         self.clone_box()
     }
     fn register_interceptors(&self, _pipeline: &mut dyn PipelineBinder) {}
-    fn register_subscribers(&self, _bus: &mut impl EventBusBinder) {}
+    fn register_subscribers(&self, _bus: &mut dyn EventBusBinder) {}
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
 pub struct NoDeps;
+
+// see: cans/02-plugin-model.md#Compile-time-prerequisites
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HNil;
+
+// see: cans/02-plugin-model.md#Compile-time-prerequisites
+#[derive(Clone, Debug)]
+pub struct HCons<Head, Tail> {
+    pub head: Head,
+    pub tail: Tail,
+}
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
 pub trait PluginDeps {
@@ -760,7 +858,7 @@ pub trait HostInterposer: Send + Sync {
 }
 
 // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
-// TODO (L3): MCP_CONSOLE re-binding guidance for stream-bound plugins lands with the ring traits per cans/02-plugin-model.md#Segregated-ring-traits.
+// see: cans/11-protocol.md#Kind-registration
 
 pub trait ForeignPluginBridge: KelirPlugin {
     fn mount_scope(&self) -> &MountScope;

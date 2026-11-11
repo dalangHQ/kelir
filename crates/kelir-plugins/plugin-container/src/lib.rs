@@ -8,8 +8,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
-    TrapInterposer,
+    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, NoDeps,
+    PipelineBinder, PluginDeps, TrapInterposer,
 };
 use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 
@@ -69,6 +69,7 @@ struct SubidOwner {
 pub struct ContainerConfig {
     pub runtime: String,
     pub isolate_var_lib_containers: bool,
+    pub allow_unsandboxed: bool,
     pub pin_subuid_ranges: bool,
     pub scratch_device: Option<PathBuf>,
 }
@@ -79,7 +80,8 @@ impl Default for ContainerConfig {
     fn default() -> Self {
         Self {
             runtime: "crun".into(),
-            isolate_var_lib_containers: false,
+            isolate_var_lib_containers: true,
+            allow_unsandboxed: false,
             pin_subuid_ranges: true,
             scratch_device: None,
         }
@@ -205,13 +207,28 @@ impl KelirPlugin for ContainerPlugin {
     // see: cans/plugins/container.md#Service-exports-(container)
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
         pipeline.bind_trap(Arc::new(self.clone()));
+        // see: cans/plugins/container.md#Non-nested-OCI-container-execution
+        let lifecycle_stage: Arc<dyn LifecycleParticipant> = Arc::new(self.clone());
+        pipeline.bind_lifecycle_scoped(lifecycle_stage, self.default_scope());
     }
+}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl PluginDeps for ContainerPlugin {
+    type Deps = NoDeps;
 }
 
 // see: cans/plugins/container.md#Non-nested-OCI-container-execution
 #[async_trait]
 impl LifecycleParticipant for ContainerPlugin {
     async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
+        // see: cans/plugins/container.md#Non-nested-OCI-container-execution
+        if !self.config.isolate_var_lib_containers && !self.config.allow_unsandboxed {
+            return Err(PluginError::reject(
+                "ESecurityViolation",
+                "isolate_var_lib_containers is required; set allow_unsandboxed to opt out explicitly",
+            ));
+        }
         self.service.configure_rootless_runtime().await?;
         if self.config.isolate_var_lib_containers {
             let scratch = self.config.scratch_device.as_deref().ok_or_else(|| {

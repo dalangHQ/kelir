@@ -9,7 +9,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 use kelir_interface::plugin_model::LockBrokerCoordination;
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{KelirPlugin, LifecycleCtx, LifecycleParticipant};
+use kelir_interface::plugin_model::{
+    HCons, HNil, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
+    PluginDeps,
+};
 use plugin_db_proxy::{SqlProxyCtx, SqlProxyService};
 
 pub mod service_transaction;
@@ -383,6 +386,15 @@ impl KelirPlugin for TransactionPlugin {
     fn name(&self) -> &'static str {
         "transaction"
     }
+    fn default_scope(&self) -> MountScope {
+        // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+        MountScope::default()
+    }
+    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
+        let lifecycle_stage: Arc<dyn LifecycleParticipant> = Arc::new(self.clone());
+        pipeline.bind_lifecycle_scoped(lifecycle_stage, self.default_scope());
+    }
     // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
     fn fork_state(
         &self,
@@ -398,12 +410,17 @@ impl KelirPlugin for TransactionPlugin {
 impl LifecycleParticipant for TransactionPlugin {
     // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
     async fn on_pre_commit(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        if self.config.flush_fuse_before_commit {
-            // see: cans/08-lifecycle.md#Hypervisor-primitives
-            ctx.freeze_vcpus().await?;
-            ctx.drain_fuse(Duration::from_millis(self.config.timeout_ms))
-                .await?;
+        // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+        if !self.config.flush_fuse_before_commit {
+            return Err(PluginError::reject(
+                "ESecurityViolation",
+                "flush_fuse_before_commit is required; disabling the pre-commit FUSE drain forfeits 2PC atomicity",
+            ));
         }
+        // see: cans/08-lifecycle.md#Hypervisor-primitives
+        ctx.freeze_vcpus().await?;
+        ctx.drain_fuse(Duration::from_millis(self.config.timeout_ms))
+            .await?;
         self.coordination.prepare_participants().await?;
         Ok(())
     }
@@ -427,4 +444,9 @@ impl LifecycleParticipant for TransactionPlugin {
         }
         Ok(())
     }
+}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl PluginDeps for TransactionPlugin {
+    type Deps = HCons<SqlProxyCtx, HNil>;
 }

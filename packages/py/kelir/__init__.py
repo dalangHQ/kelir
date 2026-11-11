@@ -5,7 +5,8 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass, field
 from datetime import timedelta
-from types import TracebackType
+from pathlib import Path
+from types import SimpleNamespace, TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
 
 if TYPE_CHECKING:
@@ -331,149 +332,9 @@ class CommitStats:
     tombstones_resolved: int = 0
 
 
-@dataclass
-class FinalReceipt:
-    merkle_root: str = ""
-    signed_jws: str = ""
-
-
-
-class LedgerService:
-    async def flush(self) -> None:
-        # TODO (L3): flush host ledger via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger flush (L3)")
-
-    async def count_denials(self, ppid: int) -> int:
-        # TODO (L3): count denials for ppid in host ledger via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger count_denials (L3)")
-
-    async def finalize(
-        self,
-        include_delta: CausalDelta | None = None,
-        include_merkle_root: bool = False,
-    ) -> FinalReceipt:
-        # TODO (L3): finalize signed Merkle receipt via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger finalize (L3)")
-
-    async def get_causal_delta_from_parent(self) -> CausalDelta:
-        # TODO (L3): fetch causal delta from parent session via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger get_causal_delta_from_parent (L3)")
-
-    async def blake3_of_producing_process(self, path: Any) -> str:
-        # TODO (L3): resolve producing-process digest via ledger and the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ledger blake3_of_producing_process (L3)")
-
-
-class DbService:
-    def __init__(self) -> None:
-        self.rewrite_target: str = "migrate_schema."
-
-
-class PolicyCap:
-    def __init__(self) -> None:
-        self.violations: int = 0
-
-
-class TransactionScope:
-
-    def __init__(
-        self,
-        name: str,
-        service: TransactionService | None = None,
-        paths: list[str] | None = None,
-        schemas: list[str] | None = None,
-    ) -> None:
-        self.name = name
-        self._service = service
-        self.paths: list[str] = list(paths) if paths is not None else []
-        self.schemas: list[str] = list(schemas) if schemas is not None else []
-        self._handle: str | None = None
-
-    async def __aenter__(self) -> TransactionScope:
-        if self._service is None:
-            # TODO (L3): begin 2PC scope via the PyO3 _kelir bridge.
-            raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction scope begin (L3)")
-        self._handle = await self._service.begin_scope(
-            self.name, self.paths, self.schemas
-        )
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        if self._handle is None:
-            return None
-        if self._service is None:
-            # TODO (L3): abort the begun 2PC scope via the PyO3 _kelir bridge.
-            raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction scope abort (L3)")
-        handle = self._handle
-        self._handle = None
-        if exc_type is None:
-            await self._service.commit(handle)
-        else:
-            await self._service.abort(handle)
-        return None
-
-    async def savepoint(self) -> str:
-        if self._handle is None or self._service is None:
-            # TODO (L3): create savepoint via the PyO3 _kelir bridge.
-            raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction savepoint (L3)")
-        return await self._service.savepoint(self._handle)
-
-    async def rollback_to_savepoint(self, savepoint: str) -> None:
-        if self._handle is None or self._service is None:
-            # TODO (L3): roll back to savepoint via the PyO3 _kelir bridge.
-            raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction rollback_to_savepoint (L3)")
-        await self._service.rollback_to_savepoint(self._handle, savepoint)
-
-
-class TransactionService:
-    async def begin_scope(
-        self,
-        name: str,
-        paths: list[str] | None = None,
-        schemas: list[str] | None = None,
-    ) -> str:
-        # TODO (L3): open a 2PC scope declaring the blast radius via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction begin_scope (L3)")
-
-    async def commit(self, handle: str) -> None:
-        # TODO (L3): run _pre_commit (FUSE drain) then broker + SQL commit via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction commit (L3)")
-
-    async def abort(self, handle: str) -> None:
-        # TODO (L3): run _post_commit(False) (unlink staging, drop broker upper) then SQL rollback via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction abort (L3)")
-
-    async def savepoint(self, handle: str) -> str:
-        # TODO (L3): create savepoint via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction savepoint (L3)")
-
-    async def rollback_to_savepoint(self, handle: str, savepoint: str) -> None:
-        # TODO (L3): roll back to savepoint via the PyO3 _kelir bridge.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: transaction rollback_to_savepoint (L3)")
-
-    def scope(
-        self,
-        name: str,
-        paths: list[str] | None = None,
-        schemas: list[str] | None = None,
-    ) -> TransactionScope:
-        return TransactionScope(name, self, paths, schemas)
-
-
 # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 class Caps:
-
-    def __init__(self) -> None:
-        self.ledger = LedgerService()
-        self.db = DbService()
-        self.policy = PolicyCap()
-        self.transaction = TransactionService()
-
+    pass
 
 
 class ClockHandle:
@@ -641,14 +502,14 @@ class StepHandle:
 
 
 class HandlerContext:
-    def __init__(self, trap: TrapEvent | None = None) -> None:
+    def __init__(self, trap: TrapEvent | None = None, cap: Caps | None = None) -> None:
         self.trap: TrapEvent = trap if trap is not None else TrapEvent()
         self.vm = VmHandle(Session())
         self.fs = FsHandle()
         self.terminal = TerminalHandle()
         self.ctx: Any = None
         self.step = StepHandle()
-        self.cap = Caps()
+        self.cap = cap if cap is not None else Caps()
         self.params: Any = None
 
     async def receipt(self) -> ExecutionReceipt:
@@ -748,13 +609,23 @@ class Session:
         # TODO (L3): exec binary in the guest via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session exec_in_guest (L3)")
 
-    async def suspend(self, path: str) -> None:
+    async def suspend(self) -> None:
         native = _require_native(self._native, "session suspend")
-        native.suspend(path)
+        native.suspend(str(self.session_dir() / "suspend.img"))
 
     async def resume(self, path: str) -> None:
         native = _require_native(self._native, "session resume")
         native.resume(path)
+
+    # see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
+    def session_dir(self) -> Path:
+        native = _require_native(self._native, "session session_dir")
+        member = getattr(native, "session_dir", None)
+        if member is None:
+            raise EConfig(
+                "kelir native PyO3 bridge (_kelir) is missing: session handle session_dir() (A11)"
+            )
+        return Path(str(member()))
 
     async def console(self) -> None:
         # TODO (L3): open the PTY console master via the PyO3 _kelir bridge.
@@ -1062,7 +933,25 @@ class KelirBuilder:
             native.use_plugin(registration.name, registration.enabled)
         native.fuse_hooks(descriptor)
         native_handle = native.boot()
-        return Session.from_native(native_handle)
+        session = Session.from_native(native_handle)
+        # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+        get_plugin_context = getattr(native_handle, "get_plugin_context", None)
+        if get_plugin_context is None:
+            if self._plugin_registrations:
+                raise EConfig(
+                    "kelir native PyO3 bridge (_kelir) is missing: session handle get_plugin_context(name) (B13)"
+                )
+        else:
+            for registration in self._plugin_registrations:
+                if not registration.enabled:
+                    continue
+                record = get_plugin_context(registration.name)
+                if not isinstance(record, dict):
+                    raise EConfig(
+                        f"plugin '{registration.name}' context is not a mapping; capability struct cannot be materialized (B13)"
+                    )
+                setattr(session.cap, registration.name, SimpleNamespace(**record))
+        return session
 
     async def __aenter__(self) -> Session:
         self._session = await self.boot()
@@ -1075,7 +964,7 @@ class KelirBuilder:
         exc_tb: TracebackType | None,
     ) -> None:
         if self._session is not None:
-            await self._session.stop()
+            await self._session.terminate()
             self._session = None
 
 
@@ -1136,7 +1025,6 @@ __all__ = [
     "PostExecAction",
     "ReceiptExtension",
     "CommitStats",
-    "FinalReceipt",
     "Sandbox",
     "Session",
     "SnapshotDescriptor",

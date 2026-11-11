@@ -16,7 +16,15 @@ use kelir_interface::plugin_model::{
 use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdict};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
-use crate::hlist_sdk::{HCons, HList, HNil};
+use crate::hlist_sdk::{HCons, HList, HNil, Satisfies};
+
+// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+#[cfg(feature = "plugin-tool-guard")]
+use crate::builder_sdk::{KelirBuilder, Unsealed};
+#[cfg(feature = "plugin-tool-guard")]
+use kelir_interface::plugin_model::CompositePlugin;
+#[cfg(feature = "plugin-tool-guard")]
+use plugin_tool_guard::{ToolGuardPlugin, ToolSpec};
 
 type ForkFn = Arc<dyn Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync>;
 
@@ -904,12 +912,58 @@ where
                 self.scope.clone(),
             );
         }
-        // TODO (L3): PipelineBinder carries no bind for LifecycleParticipant or SystemTelemetryParticipant per cans/02-plugin-model.md#Segregated-ring-traits.
-        let _ = (&self.lifecycle, &self.telemetry);
+        for stage in &self.lifecycle {
+            pipeline.bind_lifecycle_scoped(Arc::clone(stage), self.scope.clone());
+        }
+        for stage in &self.telemetry {
+            pipeline.bind_telemetry_scoped(Arc::clone(stage), self.scope.clone());
+        }
     }
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
 impl<Ctx, Deps: HList> PluginDeps for PluginWrapper<Ctx, Deps> {
     type Deps = Deps;
+}
+
+// see: cans/02-plugin-model.md#Compile-time-prerequisites
+impl<Plugins: HList> Satisfies<kelir_interface::plugin_model::HNil> for Plugins {}
+
+// see: cans/02-plugin-model.md#Compile-time-prerequisites
+impl<Head, Tail, OtherTail> Satisfies<kelir_interface::plugin_model::HCons<Head, OtherTail>>
+    for HCons<Head, Tail>
+where
+    Head: Clone + Send + Sync + 'static,
+    Tail: HList + Satisfies<OtherTail>,
+{
+}
+
+// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+#[cfg(feature = "plugin-tool-guard")]
+pub trait ToolGuardExt: Sized {
+    fn tool(self, spec: ToolSpec) -> Self;
+}
+
+// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+#[cfg(feature = "plugin-tool-guard")]
+struct ToolGuardBundle {
+    plugin: ToolGuardPlugin,
+}
+
+// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+#[cfg(feature = "plugin-tool-guard")]
+impl CompositePlugin for ToolGuardBundle {
+    fn unpack(self: Box<Self>, parent_scope: &MountScope) -> Vec<(Box<dyn AnyPlugin>, MountScope)> {
+        vec![(Box::new(self.plugin), parent_scope.clone())]
+    }
+}
+
+// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+#[cfg(feature = "plugin-tool-guard")]
+impl<Plugins: HList, Params: 'static> ToolGuardExt for KelirBuilder<Unsealed, Plugins, Params> {
+    fn tool(self, spec: ToolSpec) -> Self {
+        let plugin = ToolGuardPlugin::new().tool(spec);
+        let scope = KelirPlugin::default_scope(&plugin);
+        self.with_composite(ToolGuardBundle { plugin }, scope)
+    }
 }

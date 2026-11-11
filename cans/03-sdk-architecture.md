@@ -26,6 +26,10 @@
         - exposes typed plugin context objects without string lookups
       - Python: c.cap.<plugin_key> typed by .use(plugin) overloads;
         - maps capability attributes directly without dictionary indexing
+      - .use(plugin) populates c.cap (Python) / c.<pluginKey> (TS) at boot,
+        not before
+      - the capability struct is materialized from the plugin's Context
+        before the first handler invocation; it is not a stub
       - No string-keyed service registry on any SDK
     - Authoring model
       - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
@@ -161,6 +165,8 @@
       - box.rollback() invokes driver rollback: see: artifacts/code/vmm-driver-trait.rs
       - box.reconcile() invokes storage reconciler to host workspace
       - box.suspend() delegates to session suspend: see: 08-lifecycle.md#Suspend-and-resume
+      - box.suspend() takes no argument; the suspend image path is derived from
+        session state, never user-supplied
   - Params typed views
     - Host-side typed access on HandlerCtx
       - Rust: c.params::<T>() deserializes from validated buffer

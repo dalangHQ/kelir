@@ -124,7 +124,7 @@ pub fn read_ppid(pid: u32) -> Result<u32, ShimError> {
 pub fn read_auxv(pid: u32) -> Result<Vec<(u64, u64)>, ShimError> {
     let bytes = read_proc_bytes(pid, "auxv")?;
     let mut pairs = Vec::new();
-    for pair in bytes.chunks_exact(16) {
+    for pair in bytes.as_chunks::<16>().0 {
         let key = read_u64_ne(&pair[0..8]).ok_or(ShimError::ProcRead { pid, field: "auxv" })?;
         let value = read_u64_ne(&pair[8..16]).ok_or(ShimError::ProcRead { pid, field: "auxv" })?;
         if key == AT_NULL {

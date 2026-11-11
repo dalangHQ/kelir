@@ -26,7 +26,10 @@ policy = RepoPolicyPlugin()
 # 2. Flat builder chain: .use() appends and returns self
 builder = kelir.builder(vcpus=4, memory_mb=4096).use(policy)
 
-# 3. Handler reads typed plugin state from c.cap, statically projected
+# 3. Handler reads typed plugin state from c.cap, statically projected.
+# c.cap.policy is populated by .use(policy) at builder.boot(), not before:
+# the capability struct is materialized from the plugin's Context before
+# the first handler invocation; it is not a stub.
 # Verdict methods: pass_() / patch() / drop(errno, reason) /
 # suspend(until) / abort(reason). Drop errno None = silent blackhole,
 # chaos loss only; a policy denial carries an errno (EPERM used here
@@ -42,7 +45,8 @@ async def commit_gate(c: HandlerContext) -> Verdict:
 builder.trap(TrapFilter.binary("git").with_arg("commit"), commit_gate)
 
 
-# 3. RAII Execution: __aenter__ boots microVM; __aexit__ guarantees termination
+# 3. RAII Execution: __aenter__ boots microVM; __aexit__ calls
+# session.terminate() on any exception
 async with builder as session:
     # Native engine planes directly exposed on session
     await session.terminal.resize(120, 40)

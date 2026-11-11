@@ -472,7 +472,7 @@ impl PySessionHandle {
         let started = Instant::now();
         let child = {
             let session = lock_session(&self.session)?;
-            session.fork().map_err(halt)?
+            block_on(session.fork()).map_err(halt)?
         };
         Ok(PySessionHandle::from_session(
             child,
@@ -818,7 +818,7 @@ impl PyKelirBuilder {
         // TODO (L3): bind each fused ring chain to its single trampoline entry as one closure and dispatch through the kelir-core pipeline.
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
         let plane_wiring = kelir_core::session_lifecycle::PlaneWiring {
-            terminal: self.terminal_wiring,
+            terminal: self.terminal_wiring.clone(),
             wire: self.wire_wiring.clone(),
             storage: self.storage_config.config.clone(),
         };

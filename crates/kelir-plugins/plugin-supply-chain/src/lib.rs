@@ -8,7 +8,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{HandlerCtx, KelirPlugin, PipelineBinder, TrapInterposer};
+use kelir_interface::plugin_model::{
+    HandlerCtx, KelirPlugin, NoDeps, PipelineBinder, PluginDeps, TrapInterposer,
+};
 use kelir_interface::protocol_wire::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
@@ -428,4 +430,9 @@ impl TrapInterposer for SupplyChainPlugin {
             Some(syscall) => self.mediate_memory_syscall(event, syscall),
         }
     }
+}
+
+// see: cans/02-plugin-model.md#KelirPlugin-trait
+impl PluginDeps for SupplyChainPlugin {
+    type Deps = NoDeps;
 }

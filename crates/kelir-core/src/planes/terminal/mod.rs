@@ -2,9 +2,12 @@
 // see: cans/04-terminal-plane.md#Stream-replay
 use std::collections::HashMap;
 use std::fs::OpenOptions;
+use std::future::Future;
 use std::io::Write;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Default)]
 pub struct Cell {
@@ -149,15 +152,57 @@ pub struct TerminalPlane {
     segments: Mutex<HashMap<LogStream, LogSegment>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     filters: (bool, bool),
+    token_shield: Option<TokenShieldConfig>,
+    prompts: Vec<PromptRuleConfig>,
 }
 
 // see: cans/04-terminal-plane.md#Terminal-pipeline
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone)]
+pub struct TokenShieldConfig {
+    pub max_bytes_total: usize,
+    pub max_lines_total: usize,
+    pub clamp_strategy: String,
+    pub notice: String,
+}
+
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+pub type PromptAction = Arc<
+    dyn Fn(
+            &kelir_interface::protocol_wire::TrapEvent,
+        ) -> Pin<
+            Box<dyn Future<Output = Result<(), kelir_interface::plugin_model::PluginError>> + Send>,
+        > + Send
+        + Sync,
+>;
+
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+#[derive(Clone)]
+pub struct PromptRuleConfig {
+    pub pattern: String,
+    pub timeout: Duration,
+    pub verify_foreground: bool,
+    pub action: PromptAction,
+}
+
+impl std::fmt::Debug for PromptRuleConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PromptRuleConfig")
+            .field("pattern", &self.pattern)
+            .field("timeout", &self.timeout)
+            .field("verify_foreground", &self.verify_foreground)
+            .finish_non_exhaustive()
+    }
+}
+
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+#[derive(Debug, Clone, Default)]
 pub struct TerminalWiring {
     pub cols: u16,
     pub rows: u16,
     pub drop_osc52: bool,
     pub strip_title: bool,
+    pub token_shield: Option<TokenShieldConfig>,
+    pub prompts: Vec<PromptRuleConfig>,
 }
 
 impl TerminalPlane {
@@ -169,6 +214,8 @@ impl TerminalPlane {
             segments: Mutex::new(HashMap::new()),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             filters: (false, false),
+            token_shield: None,
+            prompts: Vec::new(),
         }
     }
 
@@ -178,6 +225,8 @@ impl TerminalPlane {
         let _ = self.resize(wiring.cols, wiring.rows);
         Self {
             filters: (wiring.drop_osc52, wiring.strip_title),
+            token_shield: wiring.token_shield.clone(),
+            prompts: wiring.prompts.clone(),
             ..self
         }
     }
@@ -194,6 +243,16 @@ impl TerminalPlane {
     // see: cans/04-terminal-plane.md#Terminal-pipeline
     pub fn output_filters(&self) -> (bool, bool) {
         self.filters
+    }
+
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    pub fn token_shield(&self) -> Option<&TokenShieldConfig> {
+        self.token_shield.as_ref()
+    }
+
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    pub fn prompts(&self) -> &[PromptRuleConfig] {
+        &self.prompts
     }
 
     pub fn resize(
@@ -223,10 +282,14 @@ impl TerminalPlane {
         let state = self.state.lock().map_err(|_| {
             kelir_interface::plugin_model::PluginError::Halt("terminal state lock poisoned".into())
         })?;
+        let (max_lines, max_bytes) = match self.token_shield.as_ref() {
+            Some(shield) => (shield.max_lines_total, shield.max_bytes_total),
+            None => (usize::MAX, usize::MAX),
+        };
         Ok(apply_token_shield(
             &filter_ansi_shadow(&state.export()),
-            usize::MAX,
-            usize::MAX,
+            max_lines,
+            max_bytes,
         ))
     }
 

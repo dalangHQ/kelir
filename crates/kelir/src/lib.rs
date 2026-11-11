@@ -26,6 +26,9 @@ pub use kelir_interface::plugin_model::HandlerCtx;
 pub use kelir_interface::protocol_wire::Verdict;
 pub use planes::storage_plane::{FsReconcileRequest, SyntheticFile};
 pub use plugin_builder::{PluginBuilder, PluginWrapper};
+// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+#[cfg(feature = "plugin-tool-guard")]
+pub use plugin_builder::ToolGuardExt;
 pub use sandbox_runtime::{Sandbox, SandboxOptions, SandboxProfile};
 pub use session_lifecycle::{
     ClockHandle, FsHandle, Session, SpawnResult, StepStack, TerminalHandle, VmHandle, VsockChannel,
@@ -39,9 +42,9 @@ pub use plugin_chaos::{
     StorageFaultRule,
 };
 #[cfg(feature = "plugin-container")]
-pub use plugin_container::ContainerPlugin;
+pub use plugin_container::{ContainerConfig, ContainerCtx, ContainerPlugin};
 #[cfg(feature = "plugin-db-proxy")]
-pub use plugin_db_proxy::DbProxyPlugin;
+pub use plugin_db_proxy::{DbProxyConfig, DbProxyPlugin, SqlProxyCtx};
 // see: cans/plugins/ledger.md#Plugin-ledger
 #[cfg(feature = "plugin-ledger")]
 pub use plugin_ledger::{
@@ -49,13 +52,13 @@ pub use plugin_ledger::{
     ReceiptConfig,
 };
 #[cfg(feature = "plugin-mcp")]
-pub use plugin_mcp::McpPlugin;
+pub use plugin_mcp::{McpCtx, McpEndpointService, McpPlugin};
 // see: cans/plugins/mesh.md#Plugin-mesh
 #[cfg(feature = "plugin-mesh")]
 pub use plugin_mesh::{
     MeshConfig, MeshCtx, MeshPlugin, PeerIdentity, PeerListener, TraceParentPropagation,
 };
-pub use plugin_profile::ProfilePlugin;
+pub use plugin_profile::{ProfileConfig, ProfileCtx, ProfilePlugin};
 // see: cans/plugins/replay.md#Plugin-replay
 #[cfg(feature = "plugin-replay")]
 pub use plugin_replay::{ReplayConfig, ReplayCtx, ReplayPlugin};
@@ -66,10 +69,10 @@ pub use plugin_supply_chain::{
     SupplyChainCtx, SupplyChainPlugin, WxJitConfig,
 };
 #[cfg(feature = "plugin-tool-guard")]
-pub use plugin_tool_guard::ToolGuardPlugin;
+pub use plugin_tool_guard::{ToolGuardConfig, ToolGuardCtx, ToolGuardPlugin, ToolSpec};
 #[cfg(feature = "plugin-transaction")]
-pub use plugin_transaction::TransactionPlugin;
+pub use plugin_transaction::{TransactionConfig, TransactionCtx, TransactionPlugin};
 #[cfg(feature = "plugin-vault")]
-pub use plugin_vault::VaultPlugin;
+pub use plugin_vault::{CredentialBrokerCtx, VaultConfig, VaultPlugin};
 #[cfg(feature = "plugin-wire-ingress")]
-pub use plugin_wire_ingress::WireIngressPlugin;
+pub use plugin_wire_ingress::{IngressRoutingService, WireIngressConfig, WireIngressPlugin};

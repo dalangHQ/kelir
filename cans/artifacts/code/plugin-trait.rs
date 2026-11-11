@@ -14,7 +14,7 @@ use std::time::Duration;
 use std::any::{Any, TypeId};
 use std::sync::Arc;
 use crate::handlers::HandlerCtx;
-use crate::protocol::messages::{ProcessExit, Verdict, FilterAction, TrapEvent};
+use crate::protocol::messages::{ProcessExit, Verdict, FilterAction, StreamKind, TrapEvent};
 use crate::vmm::driver::{BalloonConvergence, VmmDriver, VmConfig, WatchdogAction};
 
 /// Structured payloads carried over the stream mux (PTY_CONTROL kind
@@ -193,11 +193,66 @@ pub trait PipelineBinder {
     fn bind_trap(&mut self, stage: Arc<dyn TrapInterposer>);
     fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>);
     fn bind_host(&mut self, stage: Arc<dyn HostInterposer>);
+    /// Lifecycle and system-telemetry participants ride dedicated rings:
+    /// they are not interposers and never join the five VirtIO arrays.
+    fn bind_lifecycle(&mut self, stage: Arc<dyn LifecycleParticipant>) {
+        self.bind_lifecycle_scoped(stage, MountScope::default());
+    }
+    fn bind_lifecycle_scoped(&mut self, stage: Arc<dyn LifecycleParticipant>, scope: MountScope);
+    fn bind_telemetry(&mut self, stage: Arc<dyn SystemTelemetryParticipant>) {
+        self.bind_telemetry_scoped(stage, MountScope::default());
+    }
+    fn bind_telemetry_scoped(&mut self, stage: Arc<dyn SystemTelemetryParticipant>, scope: MountScope);
+    /// Binds a sink to one stream kind on the generic stream mux
+    /// (channel 0x0001); the sink receives every mux frame of that kind.
+    fn bind_stream_kind(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>) {
+        self.bind_stream_kind_scoped(kind, sink, MountScope::default());
+    }
+    fn bind_stream_kind_scoped(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>, scope: MountScope);
+}
+
+/// Stream-mux frame sink: one bound sink per StreamKind receives every
+/// mux frame (stream_id-keyed) of that kind. Synchronous like the other
+/// hot-path hooks; slow work yields through the ring trampolines.
+pub trait StreamFrameSink: Send + Sync {
+    fn on_stream_frame(
+        &self,
+        stream_id: u32,
+        kind: StreamKind,
+        flags: u8,
+        payload: &[u8],
+    ) -> Result<(), PluginError>;
 }
 
 /// Binds non-blocking observers to the immutable telemetry bus.
+/// Object-safe: registration is TypeId-keyed on the erased handler; the
+/// typed subscribe<E> surface rides the EventBusSubscribe extension trait
+/// so `&mut dyn EventBusBinder` is a valid receiver.
 pub trait EventBusBinder {
+    fn subscribe_erased(
+        &mut self,
+        event: TypeId,
+        handler: Box<dyn Fn(&dyn Any) + Send + Sync>,
+    );
+}
+
+/// Typed subscribe surface available on every EventBusBinder, including
+/// the dyn object (blanket-implemented over subscribe_erased).
+pub trait EventBusSubscribe: EventBusBinder {
     fn subscribe<E: Any + Send + Sync + 'static>(&mut self, handler: Box<dyn Fn(&E) + Send + Sync>);
+}
+
+impl<B: EventBusBinder + ?Sized> EventBusSubscribe for B {
+    fn subscribe<E: Any + Send + Sync + 'static>(&mut self, handler: Box<dyn Fn(&E) + Send + Sync>) {
+        self.subscribe_erased(
+            TypeId::of::<E>(),
+            Box::new(move |any: &dyn Any| {
+                if let Some(event) = any.downcast_ref::<E>() {
+                    handler(event);
+                }
+            }),
+        );
+    }
 }
 
 /// Assembly-time composite plugin tree unpacked into flat dispatch entries before boot.

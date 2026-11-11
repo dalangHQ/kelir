@@ -42,5 +42,8 @@ const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
     return c.pass();
   });
 
+// boot() materializes each .use()'d plugin Context onto the session
+// (c['repo-policy'], c.secretMask, ...) before the first handler runs;
+// the capability members are not stubs and not populated before boot.
 const session = await runtime.boot();
 await session.terminal.resize(120, 40);

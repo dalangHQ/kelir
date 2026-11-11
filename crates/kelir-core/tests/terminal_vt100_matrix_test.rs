@@ -143,6 +143,8 @@ fn tp_03_ansi_sanitizer_osc52_clipboard_drop() -> Result<(), String> {
         rows: 24,
         drop_osc52: true,
         strip_title: false,
+        token_shield: None,
+        prompts: Vec::new(),
     };
     let plane = TerminalPlane::new(session_id).with_wiring(&wiring);
     plane
@@ -176,6 +178,8 @@ fn tp_04_ansi_sanitizer_title_spoof_strip() -> Result<(), String> {
         rows: 24,
         drop_osc52: false,
         strip_title: true,
+        token_shield: None,
+        prompts: Vec::new(),
     };
     let plane = TerminalPlane::new(session_id).with_wiring(&wiring);
     plane
@@ -209,6 +213,8 @@ fn tp_06_placeholder_mask_carryover_window() -> Result<(), String> {
         rows: 24,
         drop_osc52: false,
         strip_title: false,
+        token_shield: None,
+        prompts: Vec::new(),
     };
     let plane = TerminalPlane::new(session_id).with_wiring(&wiring);
     plane
