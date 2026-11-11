@@ -1,362 +1,387 @@
-# work-order.md — Fluent plugin-builder DX: nested cohesiveness + tri-SDK parity
+# work-order.md — Unified builder: host builder IS the plugin builder
 
 ```markdown
-# Work Order: Ideal DX for the fluent plugin-creation builder (5 parallel agents)
+# Work Order: Unify the host builder and the plugin builder (5 parallel agents)
 
-Base: scaffolding @ 340b48d (23b962a + WO2 scenario tier + CANS L1/L2 alignment).
+Base: scaffolding @ 9d75fe5 (fluent plugin-builder DX squash, 57 files).
 Phase: L1/L2 only. No L3. No handler ever executes; no engine work; no
 plugin-chaos Rust migration (cargo cycle stands, `// TODO (L3)` stays).
-Verdict this order closes: DX audit 2026-11-11 — good core, NOT ideal/amazing.
-Flat chain everywhere, no nested cohesiveness, TS 12/24 verbs, Python 6 verbs
-raise at `.build()`, parity surface-level only. This order fixes exactly that.
+Verdict this order closes: the comparison 2026-11-11 — host builder and
+plugin builder are two builders doing the same job with different machinery.
+The ideals, concurred by the user: one builder, one chain; a plugin IS a
+builder instance; mounting is merging, not converting; one validation; one
+deps system, one scope system, one descriptor table; host-only verbs are just
+methods the plugin does not call; the KelirPlugin trait stays underneath;
+nothing removed, ~30% less code, every line cut adapter or duplicate
+validation, never a capability. Model: ElysiaJS, where a plugin is the same
+Elysia instance and `.use()` merges it.
 
 ## 0. Frozen decisions (decided, not to be re-litigated)
 
-Decided by the integrator from the audit; agents execute, they do not re-decide.
-Where this order contradicts `cans/` + `cans/artifacts/`, follow the artifacts
-and record the decision in the commit message (repo AGENTS.md §1).
+Decided by the integrator from the comparison; agents execute, they do not
+re-decide. Where this order contradicts `cans/` + `cans/artifacts/`, follow
+the artifacts and record the decision in the commit message (repo AGENTS.md
+§1). Deletion over addition (AGENTS.md rule 11); break cleanly, no
+backward-compatibility adapters for the deleted builder types (rule 5.1).
 
-1. **Nested shape: closure-scoped sub-builders, additive.** Flat verbs stay
-   (they are the landed API; removing them breaks tests/vectors). Each SDK
-   gains 8 scope entry points taking a closure that receives a scope builder
-   and returns it; the parent chain resumes after the closure:
-   `trap` (on_trap, on_process_exit), `fs` (on_fs_lookup/read/write/lock),
-   `net` (on_net_outbound/inbound), `console` (on_console_input/output),
-   `exec` (on_exec_stdout/stderr), `host` (on_host_lsm_exec,
-   on_host_pressure, on_host_keyring_access, on_host_preempt),
-   `lifecycle` (on_vm_init/ready/shutdown, on_pre_commit, on_post_commit),
-   `telemetry` (on_memory_pressure, on_heartbeat, on_watchdog).
-   Scope methods carry the SAME verb names as the flat chain (`on_trap`,
-   etc.). A nested chain and the equivalent flat chain MUST produce
-   identical descriptors (same rings, same ordinals) — tested in every SDK.
-   The existing `.scope(MountScope)` verb is untouched; scope entry points
-   are named by ring group (`trap`/`fs`/`net`/...) so there is no clash.
-2. **Attach verb stays per-language.** Rust `.plugin()`, TS/Python `.use()`
-   (+ Python `.plugin()` alias). Rust `use` is a keyword; renaming is not
-   the fix. The fix is uniform enforcement reporting: a missing prerequisite
-   is reported in every SDK as `missing prerequisite: <dep> required by
-   <plugin>` — Rust at compile time (Satisfies), TS at `.use()` (type +
-   runtime), Python at `boot()` (backstop, unchanged point) with the same
-   message text.
-3. **Repeat semantics: append, everywhere.** Rust/TS already append; Python
-   changes its per-verb dict to an ordered list. A second `.on_trap`
-   fires after the first; it never silently replaces it.
-4. **Vsock: multi, everywhere, plugin-level.** Python single slot becomes a
-   list; TS gains plugin-level `vsock_service` (sandbox-level
-   `registerVsockService` stays). Same spec `(port, service, schema)`.
-5. **`.build()` validates the same three things in all SDKs** and fails with
-   the same message text: (a) every registered verb resolves to a known ring
-   (backstop for future drift), (b) vsock spec valid (port 1..=65535,
-   non-empty service), (c) scope value well-formed. Error type per language:
-   Rust `PluginError` (build becomes `-> Result<PluginWrapper, PluginError>`),
-   TS/Python `EConfig`. An empty plugin (no handlers) still builds.
-6. **No doc comments, ever.** Repo comment law (AGENTS.md §3): one-liner
-   `// see:` / `// TODO:` / `// SAFETY:` only; `///`, `//!`, prose comments,
-   Python docstrings are banned. Discoverability comes from names,
-   signatures, and the canonical example — not from prose in code.
-7. **No L3, no inline tests.** Tests live in `tests/` only, never
-   `#[cfg(test)]` in `src/`. Tests assert L1/L2 wiring only (descriptors,
-   ordinals, validation errors, freeze/built-flag behaviour) — never
-   handler execution.
+0. **One builder type per SDK. No second builder.**
+    - Rust: `KelirBuilder` is the one type. `PluginBuilder`, `PluginWrapper`,
+      `plugin_builder_scopes` module, and the duplicated `Satisfies` impls
+      (today in both `hlist_sdk.rs` and `plugin_builder.rs`) DELETE.
+    - TypeScript: one class `KelirBuilder`. `PluginContract` / `BuiltPlugin`
+      types DELETE. `createPlugin(name, options?)` stays as a factory
+      function and returns a `KelirBuilder` in plugin mode.
+    - Python: one class `KelirBuilder`. `PluginBuilder`, `_PluginWrapper`,
+      `_Scope` DELETE (no alias). Factories use `KelirBuilder.plugin(name)`.
+    - A1 pins the exact Rust generic arity in spec (§4 A1); A3 implements
+      exactly what A1 pins. Constraints on that shape: ONE struct; host
+      creation `KelirBuilder::new(VmConfig)`; plugin creation
+      `KelirBuilder::named(name)` (the `plugin` name stays with the mount
+      method — see §0.2); host-only verbs exist only in Host mode; the 24
+      ring verbs + 8 scopes + `context` / `require` / `scope` / `vsock` /
+      `fork` exist in BOTH modes. A4/A5 own their file layout within the
+      same constraints (one class, one verb definition, ≤1000 LOC/file).
 
-## 1. Hard rules (all agents)
+1. **Mount = merge, not convert.** `.plugin()` takes a plugin-mode builder
+   BY VALUE and moves its hook registry + vsock list + deps straight into
+   the host's `Registration`. No wrapper type, no `build()`-then-mount, no
+   `Box<dyn AnyPlugin>` round-trip, no `register_interceptors` in the mount
+   path. The mount method name stays `.plugin()` in Rust (it is the landed
+   host API); TS/Py keep `.use()` (`.plugin()` alias stays in Python).
+   - Rust: `KelirBuilder::named(name)` creates a plugin-mode builder;
+     `host.plugin(plugin_builder)` mounts it.
+   - TS: `createPlugin(name)` returns a plugin-mode `KelirBuilder`;
+     `host.use(plugin_builder)` mounts it.
+   - Python: `KelirBuilder.plugin(name)` classmethod creates a plugin-mode
+     builder; `host.use(plugin_builder)` mounts it.
+2. **One validation, at seal/boot, over host + mounted plugins together.**
+   The DX-round triple (a: every verb resolves to a known ring; b: vsock
+   spec valid, port 1..=65535, non-empty service; c: scope well-formed) runs
+   once, plus (d: host-only verbs rejected on a plugin-mode builder —
+   Rust compile-time, TS/Python `EConfig` at mount). Rust: validation in
+   `seal()` (today `seal()` validates nothing — that is the gap this order
+   closes). TS/Python: validation in `boot()` / `fuse()` entry. Empty host
+   still seals/boots. A plugin-mode builder that fails validation fails the
+   HOST seal/boot with the same message text, naming the plugin.
+3. **One deps system, one scope system, one descriptor table.**
+   - One `Satisfies` (Rust), one `requires()` recording (TS), one
+     `require()` (Python). Missing-prerequisite message stays uniform:
+     `missing prerequisite: <dep> required by <plugin>`, raised at mount
+     in TS/Python (Rust compile-time; the mount path must not silently
+     accept an unsatisfied plugin).
+   - One `MountScope` story: plugin-mode `scope()` sets the plugin's scope;
+     mount applies it. `with_composite()` DELETES (its composite-bundle case
+     is mounting a plugin-mode builder with a scope). Host `scope()` on a
+     plugin-mode builder and host-side scope application are the same
+     mechanism, not two.
+   - One descriptor table: plugin `_descriptors()` and host
+     `fuse().describe()` become the same code path (host descriptors =
+     host hooks + mounted plugin hooks, same rings, same ordinals).
+4. **Host-only verbs are just methods the plugin does not call.**
+   `storage` / `terminal` / `wire` / `lock_broker` / `detached` /
+   `fast_boot` / `dax_window` / `seal` / `boot` / `params` live on the one
+   type and only the host calls them — Elysia `.listen()`. A plugin-mode
+   builder that calls one is an error per §0.2(d), never a silent no-op.
+5. **The `KelirPlugin` trait stays underneath.** It is the low-level
+   interface, not the authoring surface. The 13 plugin crates keep their
+   `impl KelirPlugin` and keep mounting — via a separate
+   `.plugin_instance(P: KelirPlugin + PluginDeps + Clone)` method (new name;
+   the trait path stays alive without overloading `.plugin()`). The unified
+   builder ALSO implements `KelirPlugin` (compat only: code that takes
+   `Box<dyn AnyPlugin>` — `fork_state`, composite children — keeps working);
+   its `register_interceptors` binds its own registry, but it is NOT the
+   mount path. No hand-written plugin changes behavior in this order.
+6. **No doc comments ever** (comment law, AGENTS.md §3). No L3, no inline
+   tests; tests assert L1/L2 wiring only (merge = descriptor union, mount
+   rejects bad plugins, host verbs rejected on plugin-mode builders,
+   validation triple at seal/boot, trait plugins still mount).
 
-1. **Exclusive ownership.** Edit only files in your "Owns" section. A needed
-   edit elsewhere goes through `_collab/handoffs.md` or a frozen contract
-   in §3. Do not touch another agent's files to make your gates green.
-2. **Spec → artifacts → code, in that order.** A change updating only one
-   layer is incomplete. Artifacts own field layouts, schemas, signatures.
-3. **Verify every audit claim against the live tree before editing.**
-   Audits re-raise fixed items with stale line numbers. The audit's TS
-   "zero examples" claim was wrong (`cans/artifacts/examples/hook-matrix.ts`
-   and `policy-matrix.ts` use `createPlugin`); the gap is that no ONE
-   example plugin is identical across all three languages.
-4. **Never loosen a spec gate to ease code.** If the only green path edits
-   `cans/`, the fix belongs upstream / in `_collab/conflicts.md`, not in a
-   push. Never edit `cans/_rules.yaml` thresholds.
-5. **Scaffolding constraints:** ≤1000 LOC/file (target 500); no
-   `unwrap()` / `expect()` / `panic!` / `todo!()` / `unimplemented!()` /
-   `unreachable!()`; `#![forbid(unsafe_code)]` except driver/transport/shim
-   enclaves; Rust MSRV 1.85.
-6. **No push from any agent.** Agents commit on their own branch only.
-   Convergence (squash-merge + re-gate + push) is integrator work.
-7. **Commit message** records the work-order clause (e.g. `DX-2`, `DX-5`)
-   and, where a decision from §0 was applied against a live-tree
-   contradiction, the decision number.
+## 1. Repo rules (binding, read AGENTS.md first)
 
-## 2. Ownership matrix
+- L1/L2 only, no L3, no inline tests (tests in `tests/` only, no
+  `#[cfg(test)]` in `src/`).
+- Comment law (hard): one-liners only, exactly `// see:` / `// TODO:` /
+  `// SAFETY:` (Python `#`); `///`, `//!`, prose comments, docstrings
+  BANNED. Discoverability via names/signatures/examples, not docs.
+- ≤1000 LOC/file (target 500); no `unwrap()/expect()/panic!()/todo!()/
+  unimplemented!()/unreachable!()`; `#![forbid(unsafe_code)]` except
+  driver/transport/shim; Rust MSRV 1.85.
+- Mandatory order: `cans/*.md` → `cans/artifacts/*` → code. Where
+  work-order contradicts cans/artifacts, follow artifacts, record the
+  decision in the commit message.
+- Gates: `cargo check/clippy -D warnings/fmt/test --workspace`,
+  `pnpm -r exec tsc --noEmit`, `mypy packages/py` (or
+  `python3 -m compileall` if `uv` absent), `just check-hygiene`,
+  `just check-spec` (cans 0.21.0), `just check-manifest check-tests
+  check-scorecard`, `just codegen`.
+- Parallel discipline: one agent per worktree/branch, exclusive scope,
+  **no push from agents**; converge by squash-merge into one commit,
+  re-gate after; never force-push a divergent head.
+- Env notes: `cans` 0.21.0 via `npm install -g cans-spec@0.21.0` if binary
+  gone; `pnpm` 9.0.0 via npm; `uv` absent → `python3 -m`;
+  `LIBCLANG_PATH=~/.local/lib/python3.12/site-packages/clang/native` for
+  testkit gates; per-agent `CARGO_TARGET_DIR`. Default toolchain is 1.85;
+  workspace check/clippy/test and `kelir-plugin-cli` need `+stable`
+  (1.99.1) — kelir-shim `as_chunks` and `bump_core_cli.rs` let-chain are
+  pre-existing 1.85 failures, repo practice is `+stable`.
+- Pre-existing baseline at `9d75fe5`: `just check-spec` exit 1 (0 errors,
+  1 deliberate warning — profile TBD 11/10, ruling 2026-11-10, do NOT
+  resolve); `just check-plugin-all` exit 1 (pre-existing, untouched);
+  `just codegen` re-corrupts `uapi_fuse.rs` on this host (drops 6 FUSE_*
+  consts — revert, never commit); vectors regen flips
+  `trap-git-commit-pass` envp order run-to-run (known defect, never
+  silently commit a re-flipping diff). `plugin_builder.rs` 997/1000 LOC,
+  `plugin.model.ts` 991/1000 LOC — both DELETE in this order, freeing the
+  headroom. TODO (L3) set at base: 538 (must stay identical).
 
-| Agent | Owns (code) | Owns (spec/artifacts) |
-|---|---|---|
-| **A1 — Spec** | none | `cans/02-plugin-model.md` (#Fluent-plugin-creation-builder), `cans/03-sdk-architecture.md` (#Fluent-plugin-surface), `cans/15-operations.md` (#--fluent-builder-coverage, #Fluent-builder-parity-vectors) |
-| **A2 — Artifacts, codegen, vectors, canonical example** | `crates/kelir-plugin-testkit/src/vectors_testkit.rs`, `vectors.json`, codegen inputs for fusion tables + plugin factories (verify live paths first) | `cans/artifacts/code/{rust,typescript,python}-plugin-builder.{rs,ts,py}`, `cans/artifacts/examples/fluent-builder-chaos.{rs,ts,py}` (new, one plugin, three files) |
-| **A3 — Rust** | `crates/kelir/src/plugin_builder.rs`, `crates/kelir/src/builder_sdk.rs` (attach + scope plumbing only), `crates/kelir/src/lib.rs` (re-exports only), `crates/kelir/tests/fluent_builder_plugin_test.rs` | none |
-| **A4 — TypeScript** | `packages/ts/core/src/plugin.model.ts`, `packages/ts/core/src/builder.lifecycle.ts` (`.use()` runtime check only), `packages/ts/core/tests/matrix.fluent-builder.test.ts` | none |
-| **A5 — Python** | `packages/py/kelir/plugin_builder.py`, `packages/py/kelir/generated/fusion_tables.py` (+ its generator, if generated — verify live), `packages/py/kelir/plugins/plugin_*.py` (factories only), `packages/py/kelir/__init__.py` (`.use()`/`.plugin()` message text only), `packages/py/tests/test_plugin_fluent_builder.py` | none |
+## 2. Ownership (exclusive — do not touch another agent's files)
 
-**Untouched by all:** `cans/_rules.yaml`, `AGENTS.md`, `crates/kelir-plugins/`
-(Rust chaos migration stays blocked on the cargo cycle), `justfile`, CI.
+- **A1 Spec** — `cans/02-plugin-model.md` (#Unified-builder,
+  #Fluent-plugin-creation-builder), `cans/03-sdk-architecture.md`
+  (#Unified-builder-surface), `cans/15-operations.md`
+  (#--unified-builder-coverage, #Unified-builder-parity-vectors). No code.
+- **A2 Artifacts/codegen/vectors/example** —
+  `cans/artifacts/code/{rust,typescript,python}-plugin-builder.*` (rewrite
+  to the unified surface; the three files are renamed in place if the
+  artifact set renames — record it), `cans/artifacts/examples/
+  fluent-builder-chaos.{rs,ts,py}` (rewrite to the unified shape),
+  `crates/kelir-plugin-testkit/src/vectors_testkit.rs`, `vectors.json`,
+  codegen inputs for fusion tables + plugin factories.
+- **A3 Rust** — `crates/kelir/src/builder_sdk.rs`,
+  `crates/kelir/src/plugin_builder.rs` (DELETE),
+  `crates/kelir/src/plugin_builder_scopes.rs` (DELETE),
+  `crates/kelir/src/lib.rs` (re-exports only),
+  `crates/kelir/src/session_lifecycle.rs` (only the `traps: Vec::new()`
+  see: pointer if the merge changes it — otherwise untouched),
+  `crates/kelir/tests/fluent_builder_plugin_test.rs` (rewrite to the
+  unified shape; rename the file ONLY if the test-plan map requires it —
+  check `cans/artifacts/test-plan/cases/case-to-test-map.yaml` first).
+- **A4 TypeScript** — `packages/ts/core/src/plugin.model.ts` (DELETE or
+  become the one class file — A4 decides the layout, records it),
+  `packages/ts/core/src/builder.lifecycle.ts` (the one class lives here
+  unless A4 records otherwise), `packages/ts/core/tests/
+  matrix.fluent-builder.test.ts` (rewrite to the unified shape).
+- **A5 Python** — `packages/py/kelir/plugin_builder.py` (DELETE),
+  `packages/py/kelir/__init__.py` (KelirBuilder unification only),
+  `packages/py/kelir/plugins/plugin_*.py` (factories only),
+  `packages/py/tests/test_plugin_fluent_builder.py` (rewrite to the
+  unified shape).
+- **Untouched by all:** `cans/_rules.yaml`, `AGENTS.md`,
+  `crates/kelir-plugins/` (13 crates keep their trait impls; A3's
+  `.plugin_instance()` path must not change their behavior),
+  `crates/kelir-interface/` (except codegen bins A2 owns),
+  `crates/kelir-testkit/src/scenario_catalog.rs`, `justfile`, CI.
 
-## 3. Frozen cross-agent contracts
+## 3. Contracts (frozen — agents implement, do not redesign)
 
-Signatures below are the interface. Do not change without a
-`_collab/conflicts.md` entry. Verify field/type names against the live tree;
-if a name here contradicts the tree, the tree wins and the agent records it.
+### 3.1 One builder (§0.0)
+- Rust: ONE struct `KelirBuilder`. `KelirBuilder::new(VmConfig)` = host;
+  `KelirBuilder::named(name)` = plugin mode. The 24 ring verbs + 8 scopes
+  + `context` / `require` / `scope` / `vsock` / `fork` exist in BOTH
+  modes with the SAME signatures as the DX-round plugin builder (the host
+  gains them; the plugin keeps them). Host-only verbs exist only in Host
+  mode. `PluginBuilder` / `PluginWrapper` / `plugin_builder_scopes` /
+  duplicated `Satisfies` delete; zero references remain in
+  `crates/` + `packages/` + `cans/artifacts/code/` (grep gate in §6).
+- TypeScript: ONE class `KelirBuilder`. `new KelirBuilder(config)` =
+  host; `createPlugin(name, options?)` returns a plugin-mode
+  `KelirBuilder`. Same 24 verbs + 8 scopes on both. `PluginContract` /
+  `BuiltPlugin` delete; `build()` deletes (a plugin-mode builder mounts
+  directly — there is no build step).
+- Python: ONE class `KelirBuilder`. `KelirBuilder(...)` with VmConfig
+  kwargs = host; `KelirBuilder.plugin(name)` classmethod = plugin mode.
+  Same 24 verbs + 8 scopes on both. `PluginBuilder` / `_PluginWrapper` /
+  `_Scope` delete; `build()` deletes (mount directly via `.use()`).
 
-### 3.1 Nested scopes (all SDKs, same 8 groups, same verb names)
+### 3.2 Mount = merge (§0.1)
+- Rust `host.plugin(plugin_builder)`: moves the plugin's hook registry +
+  vsock list + deps into the host's `Registration` (append, in registration
+  order; duplicate hooks from two plugins both kept — append semantics,
+  per the DX round). Mounting the same plugin-mode builder twice is an
+  error (`EConfig`, "plugin already mounted: <name>").
+- TS `host.use(plugin_builder)` / Python `host.use(plugin_builder)`:
+  same merge, same duplicate rule, same already-mounted error.
+- Trait plugins mount via `.plugin_instance(P)` (Rust) /
+  `.use(plugin)` (TS/Python — the existing trait-plugin path is unchanged
+  there). Behavior of the 13 trait plugins is unchanged; A3/A4/A5 prove it
+  with the existing plugin tests, not new ones.
+- `fork_with` / `forkState` / `fork_state`: the plugin-mode builder's fork
+  fn moves into the host registration on mount; host `fork()` behavior
+  unchanged. The three `fork_with` signatures stay pinned as
+  language-idiomatic (DX round), NOT a gap.
 
-```rust
-// Rust — scope structs collect into the parent's Vecs, in closure order.
-PluginBuilder::new("x")
-    .trap(|t| t.on_trap(|_, _| Ok(Verdict::Pass)))
-    .fs(|f| f.on_fs_write(|_, _, _, _| Ok(FilterAction::Forward)))
-    .build() // -> Result<PluginWrapper, PluginError>
-```
+### 3.3 One validation (§0.2)
+- Seal/boot runs the DX-round triple (ring resolution, vsock spec, scope
+  shape) over the host AND every mounted plugin, plus (d) host-only verbs
+  rejected on plugin-mode builders. Same message text in all SDKs; the
+  message names the plugin that failed (`<plugin>: <triple failure>`).
+- Rust: validation lives in `seal()`. TS: `boot()` / `fuse()` entry.
+  Python: `boot()`. Empty host still seals/boots. A plugin that fails
+  validation fails the HOST seal/boot — mounting alone does not validate
+  (mount is a merge; validation is a seal/boot concern).
 
-```ts
-// TS — scope interfaces, same shape; build() throws EConfig on DX-5 failure.
-createPlugin("x")
-    .trap((t) => t.onTrap((e, c) => c.pass()))
-    .fs((f) => f.onFsWrite((p, b, pid, c) => c.pass()))
-    .build()
-```
+### 3.4 One descriptor table (§0.3)
+- Host descriptors = host hooks + mounted plugin hooks, same rings, same
+  ordinals (host hooks first, then plugins in mount order; within a plugin,
+  registration order). One code path in each SDK; the old plugin-only
+  `_descriptors()` / `describe()` split deletes.
 
-```python
-# Python — scope classes, same shape; build() raises EConfig on DX-5 failure.
-PluginBuilder("x") \
-    .trap(lambda t: t.on_trap(lambda e, c: Verdict.PASS)) \
-    .fs(lambda f: f.on_fs_write(lambda p, b, pid, c: FilterAction.FORWARD)) \
-    .build()
-```
+### 3.5 Canonical example (§3.6 of the DX round, unified)
+- One `chaos` plugin, identical behavior in all three languages, built
+  with the UNIFIED shape: Rust `KelirBuilder::named("chaos")`, TS
+  `createPlugin("chaos")` (returns `KelirBuilder`), Python
+  `KelirBuilder.plugin("chaos")`; requires `ledger`, mount scope
+  `/workspace`, `.fs(on_fs_write)` + `.net(on_net_outbound)`, pass/forward
+  handlers. Lives as `cans/artifacts/examples/fluent-builder-chaos.
+  {rs,ts,py}` (rewritten, not new files) and is the copy-paste starting
+  point in each SDK's test file.
 
-Scope entry points take a closure/lambda receiving the scope builder and
-returning it. No `.end()` / `.done()` verb. Nested == flat in descriptors.
-
-### 3.2 Closed verb set (30: 6 structural + 24 ring)
-
-`context`, `require(s)`, `scope`, `fork_with`/`forkWith`, `vsock_service`,
-`build` + the 24 ring verbs from `cans/02-plugin-model.md:398`. Every SDK
-exposes all 30 by the end of this order. `fork_with` keeps its per-language
-signature (Rust `Fn(&str) -> Box<dyn AnyPlugin>`, TS `() -> PluginContract`,
-Python `Fn(_PluginWrapper) -> _PluginWrapper`); the three signatures are
-pinned in spec as language-idiomatic, not a gap.
-
-### 3.3 Canonical example plugin (A2 owns, A3/A4/A5 mirror in tests)
-
-One plugin, identical behaviour in all three languages, named `chaos`:
-requires `ledger`, mount scope restricted to `/workspace` (MountScope fields
-as live in-tree), `.fs(|f| f.on_fs_write(...))` + `.net(|n| n.on_net_outbound(...))`,
-handlers return the pass/forward policy (L1/L2: descriptors only, no
-execution). Lives as `cans/artifacts/examples/fluent-builder-chaos.{rs,ts,py}`
-and is the copy-paste starting point in each SDK's test file. The three
-existing divergent "chaos" shapes (Rust test chain, TS artifact
-`buildChaosPlugin`, Python `plugin_chaos.py`) are replaced by this one shape.
-
-### 3.4 Vector cases (A2 owns)
-
-`vectors.json` 14 → 50: the 2 existing `plugin-builder-*` cases stay; add
-28 `plugin-builder-<verb>-only` cases (one per verb not yet covered) and 8
-`plugin-builder-nested-<scope>` cases (one per §3.1 scope, asserting
-nested == flat descriptors). Cases are descriptors (L1/L2); `parity run`
-reports them not-executable per `cans/15-operations.md` — that is the
-specified outcome, not a failure.
+### 3.6 Vectors
+- `vectors.json` 50 → **58**: 8 new `plugin-merge-<scope>` cases (one per
+  scope: mount a plugin-mode builder built with that scope's verbs, assert
+  the host descriptors include them with the plugin's scope). Descriptors
+  only; parity run reports not-executable per `cans/15` (L1/L2). The 50
+  existing cases stay byte-identical except the plugin-builder cases whose
+  construction changes to the unified shape (record the rename in the
+  commit if case names change — prefer keeping names).
 
 ## 4. Per-agent task lists
 
-### A1 — Spec: pin the nested shape + the gates
+### A1 — Spec (UB-1)
+- Pin the Rust generic arity in `cans/02` #Unified-builder (ONE struct,
+  Mode-gated host-only verbs, `named()` creation, `.plugin()` merge,
+  `.plugin_instance()` trait path) — this is the contract A3 implements;
+  A2/A3/A4/A5 build against it as written, they do not wait for A1 but
+  they do not redesign it either: if A1's pinned shape contradicts §3,
+  §3 wins and A1 records the contradiction.
+- Update `cans/02` #Fluent-plugin-creation-builder to point at
+  #Unified-builder (the fluent builder IS the unified builder now; the
+  old node stays as history, not as a second surface).
+- Per-SDK surface table in `cans/03` #Unified-builder-surface: one builder
+  per SDK, creation forms, mount forms, host-only verb list, validation
+  point (seal vs boot), error forms (Rust `Result`, TS/Python `EConfig`).
+- Update `cans/15` #--unified-builder-coverage +
+  #Unified-builder-parity-vectors: 30 verbs + 8 scopes on host AND plugin
+  mode, 8 merge cases, one vector case per verb + one per scope + one per
+  merge scope (58 total).
+- Gate text must match what A2 lands. `cans check` refs-only + full: 0
+  errors (the deliberate profile TBD 11/10 warning stays). Anchors regen
+  clean. DoD: spec only, no code.
 
-- DX-1: `cans/02-plugin-model.md#Fluent-plugin-creation-builder` — add the
-  §3.1 nested-scope shape (8 groups, closure entry points, nested == flat
-  descriptors), the §0.5 build-validation triple, append repeat semantics,
-  multi-vsock, and the per-language attach-verb + enforcement table (§0.2).
-  Point at artifacts with bare `see:` refs; do not re-list artifact content.
-- DX-1: `cans/03-sdk-architecture.md#Fluent-plugin-surface` — per-SDK
-  surface table for all 30 verbs + 8 scopes; note Rust `build()` returns
-  `Result`, TS/Python throw/raise `EConfig`; note `fork_with`'s three
-  signatures as pinned, not divergent.
-- DX-1: `cans/15-operations.md` — `--fluent-builder-coverage` covers 30
-  verbs + 8 scopes; `#Fluent-builder-parity-vectors` asserts one vector
-  case per verb + one per scope (38 cases, §3.4). Gate text must match what
-  A2 lands; if the current "every verb has a case" text already says it,
-  keep it and cite the case count.
-- **DoD:** `cans check --refs-only` + full `cans check` green (A2's
-  artifacts may be stubbed temporarily to prove refs; A1's gates read red
-  only on missing artifact files, never on spec errors). Anchors regen
-  clean, no diff beyond the new nodes.
+### A2 — Artifacts / codegen / vectors / example (UB-2)
+- Rewrite the three plugin-builder artifacts to the unified surface
+  (one builder per SDK; creation + mount + host-only list; the old
+  PluginBuilder/PluginContract shapes are gone, not documented as
+  alternatives).
+- Codegen: TS factories emit `createPlugin(name, { config })` returning
+  `KelirBuilder`; Py factories emit `KelirBuilder.plugin(name)` + config
+  mapping (`.context(lambda: cfg)` — the DX-round emitter fix stays);
+  Rust factories (if any) emit `KelirBuilder::named(name)`. The factory
+  template is the SSOT for the generated files — hand edits to generated
+  factories are wiped by regen by design; if a factory needs a hand case,
+  fix the template, never the file.
+- Vectors 50 → 58 (§3.6) via the real path (`kelir-plugin-cli vectors`,
+  `+stable` — the `cargo run -p kelir-plugin-testkit --bin vectors` path
+  does not exist). `just codegen` clean + byte-stable on re-run except the
+  known `uapi_fuse.rs` host corruption (revert, never commit) and the
+  known `trap-git-commit-pass` envp flip (record, never silently commit a
+  re-flipping diff).
+- Rewrite the canonical chaos example to the unified shape (§3.5); verify
+  placement live for `.rs` / `.py` files and record it.
+- DoD: `just codegen` clean + byte-stable (modulo the two known defects),
+  `just check-manifest check-tests check-scorecard` green, vectors load via
+  the testkit, `cans check --refs-only` 0 errors.
 
-### A2 — Artifacts, codegen, vectors, canonical example
+### A3 — Rust (UB-3)
+- Delete `plugin_builder.rs` + `plugin_builder_scopes.rs`; extend
+  `builder_sdk.rs` with the 24 verbs + 8 scopes + `context` / `require` /
+  `scope` / `vsock` / `fork` (same signatures as the DX-round plugin
+  builder); `KelirBuilder::named(name)`; `.plugin()` merge;
+  `.plugin_instance(P)` trait path; validation in `seal()` (§3.3).
+- `lib.rs` re-exports only. `PluginBuilder` / `PluginWrapper` /
+  `plugin_builder_scopes` / duplicated `Satisfies` — zero references
+  remain in `crates/` (grep gate).
+- The unified builder implements `KelirPlugin` (compat only, §0.5); its
+  `register_interceptors` binds its own registry. The 13 plugin crates are
+  untouched; prove their mount path with the existing plugin tests.
+- Tests: rewrite `fluent_builder_plugin_test.rs` to the unified shape
+  (host verbs, plugin-mode verbs, merge = descriptor union, mount rejects
+  already-mounted + host-only verbs on plugin-mode builders, seal
+  validation errors naming the plugin, trait plugin still mounts,
+  canonical §3.5 chaos shape). No execution, no engine, no L3.
+- DoD: `cargo check/clippy -D warnings/fmt/test` (workspace, `+stable`
+  where the repo needs it) green; `just check-hygiene` green.
 
-- DX-2: rewrite the three plugin-builder artifacts to the full §3.2 surface:
-  fix the TS artifact's false `.onFsLock / .onNetInbound / .onVmInit`
-  claims against live TS (they do not exist until A4 lands them — artifact
-  shows the target shape, marked as the A4 contract); fix the Py artifact's
-  3-verb sketch to all 30 verbs; fix the Rust artifact's `fork_with`
-  signature drift (`Fn(&Ctx) -> Ctx` in the artifact vs live
-  `Fn(&str) -> Box<dyn AnyPlugin>` — artifact follows the live code).
-- DX-2: codegen — fix the generator(s) so regen emits the §3.2 surface:
-  TS `PLUGIN_BUILDER_VERBS` / `HOOK_RINGS` must match the live builder
-  (today they claim `onVmInit` the class lacks); Python `PLUGIN_BUILDER_VERBS`
-  (15 verbs, never consulted) is either wired into `plugin_builder.py` or
-  deleted — decide from the tree, do not leave a dead table beside a live
-  one. Factories: codegen emits `.requires()` + config mapping for all 13
-  plugins (no more empty `PluginBuilder("<name>").build()` shells).
-- DX-2: `vectors.json` + `vectors_testkit.rs` — add the 36 cases from §3.4
-  (28 verb + 8 nested). Regen path is `kelir-plugin-cli vectors` (verify
-  live); the `cargo run -p kelir-plugin-testkit --bin vectors` path does
-  not exist — do not use it, do not invent it.
-- DX-2: canonical example — write
-  `cans/artifacts/examples/fluent-builder-chaos.{rs,ts,py}` per §3.3.
-  Verify placement live: if `cans/artifacts/examples/` takes only TS today,
-  place the `.rs`/`.py` where the tree puts that language's examples and
-  record the placement in the commit message.
-- **DoD:** `just codegen` clean + byte-stable on re-run (if regen flips
-  ordering run-to-run, fix the ordering or record it as a known defect in
-  the commit message — do not silently commit a diff that re-flips);
-  `just check-manifest check-tests check-scorecard` green; vectors load via
-  the testkit; `cans check --refs-only` green.
+### A4 — TypeScript (UB-4)
+- One class `KelirBuilder`: `new KelirBuilder(config)` = host,
+  `createPlugin(name, options?)` returns a plugin-mode `KelirBuilder`.
+  Same 24 verbs + 8 scopes on both; `.use()` merges (runtime
+  already-mounted + host-only-verb rejection, `EConfig`); `build()`
+  DELETES (mount directly); `PluginContract` / `BuiltPlugin` delete.
+  `derive()` / `context()` stored on the builder (same as the DX round);
+  `requires()` records deps at runtime; missing-prerequisite message
+  uniform (§0.3).
+- Host gains the 24 verbs: the host's existing `trap()` / `on()` /
+  `onTrapDeny()` stay as the host's trap surface; the 24 ring verbs are
+  the same methods the plugin had (same names, same handler signatures —
+  verify each against the live Rust verb types, as in the DX round).
+- Tests: rewrite `matrix.fluent-builder.test.ts` to the unified shape
+  (same assertions as A3, TS form; canonical §3.5 chaos shape).
+- DoD: `pnpm -r exec tsc --noEmit` green; `pnpm -r test` green;
+  `just check-hygiene` green.
 
-### A3 — Rust: nested scopes + validating build + async ergonomics
+### A5 — Python (UB-5)
+- One class `KelirBuilder`: `KelirBuilder(...)` with VmConfig kwargs =
+  host; `KelirBuilder.plugin(name)` classmethod = plugin mode. Same 24
+  verbs + 8 scopes on both; `.use()` merges (already-mounted +
+  host-only-verb rejection, `EConfig` at mount); `build()` DELETES
+  (mount directly; the `_check_open` built-flag machinery deletes with
+  it — mount-time validation replaces it). `PluginBuilder` /
+  `_PluginWrapper` / `_Scope` delete (no alias). `require()` keeps
+  dedupe-by-name; missing-prerequisite message uniform, raised at mount
+  (Python moves from boot-time to mount-time — record the change).
+  Arity check stays (registration-time, `inspect.signature` → `EConfig`).
+  `RingEvent` + `HOOK_RINGS` untouched (already complete from the DX
+  round); `_descriptors()` becomes the one descriptor table (§3.4).
+- Factories: all 13 `*_builder()` use `KelirBuilder.plugin(name)` +
+  `.context(lambda: cfg)` (A2 owns the generator; handoff via
+  `_collab/handoffs.md` if the template needs a change).
+- Tests: rewrite `test_plugin_fluent_builder.py` to the unified shape
+  (same assertions as A3, Python form; canonical §3.5 chaos shape).
+- DoD: full Py suite no worse than baseline (101 passed, 4 skipped at
+  `9d75fe5`); `mypy packages/py` no NEW errors; `python3 -m compileall`
+  green; `just check-hygiene` green.
 
-- DX-3: implement §3.1 — 8 scope structs + 8 entry points on
-  `PluginBuilder<Ctx, Deps>`; scopes append into the parent's existing
-  `Vec` fields in closure order; nested == flat descriptors (test it).
-- DX-3: `build()` becomes `-> Result<PluginWrapper<Ctx, Deps>, PluginError>`
-  implementing the §0.5 triple (ring resolution, vsock spec, scope shape).
-  Update the existing call sites in-tree (test file + any `builder_sdk.rs`
-  use). `Satisfies` prefix-order check stays at `KelirBuilder::plugin()`;
-  the missing-prerequisite message becomes
-  `missing prerequisite: <dep> required by <plugin>` (§0.2).
-- DX-3: async ergonomics — all 9 async verbs (`on_vm_init`, `on_vm_ready`,
-  `on_vm_shutdown`, `on_pre_commit`, `on_post_commit`, `on_host_preempt`,
-  `on_watchdog`, `on_memory_pressure`, `on_heartbeat`) accept a plain
-  `async fn` (the `on_memory_pressure`/`on_heartbeat` form); the 7 that
-  demand hand-written `Pin<Box<dyn Future>>` lose that requirement.
-  Keep the 24 flat verbs; keep `PluginWrapper`'s zero public methods
-  (consumption-only, no post-build mutation surface).
-- DX-3: tests (`crates/kelir/tests/fluent_builder_plugin_test.rs`) —
-  convert the never-called `_compiles` / `_chaos_migrates` fns into real
-  `#[test]` fns asserting L1/L2 wiring: nested == flat descriptors, build
-  validation errors (bad vsock port, unresolvable ring if constructible),
-  append order of duplicate handlers, multi-vsock registration, canonical
-  §3.3 chaos shape. No execution, no engine.
-- **DoD:** `cargo check --workspace --all-targets`, `cargo clippy
-  --workspace --all-targets -- -D warnings`, `cargo fmt --all -- --check`,
-  `cargo test -p kelir` green; `just check-hygiene` green.
+## 5. Merge order and push
 
-### A4 — TypeScript: the missing 13 verbs + real enforcement
+- A1 → A2 → A3/A4/A5 (rebase onto 1+2). Integrator converges, re-gates,
+  squash-merges into `scaffolding` as a single commit, verifies tree
+  byte-identical to the converge tip.
+- **Push only when the user supplies a token in that turn** (AGENTS.md
+  §0). No token in the turn: commit locally and stop; say so once. Token
+  use is transient only, never stored; restore the remote to plain HTTPS
+  after; rotation stays advised until confirmed.
 
-- DX-4: add the 12 missing ring verbs (`onFsLock`, `onNetInbound`,
-  `onHostLsmExec`, `onHostPressure`, `onHostKeyringAccess`, `onVmInit`,
-  `onVmReady`, `onVmShutdown`, `onPreCommit`, `onPostCommit`,
-  `onHostPreempt`, `onMemoryPressure`) + plugin-level `vsockService`
-  (same `(port, service, schema)` spec; sandbox `registerVsockService`
-  stays). Handler signatures follow the live Rust verb types; verify each
-  against `plugin_builder.rs` + the fusion tables (the rings already exist
-  in `generated/fusion.tables.generated.ts`).
-- DX-4: implement §3.1 — 8 scope entry points + scope interfaces on
-  `PluginContract`, delegating to the existing `addHook` store.
-- DX-4: enforcement, no longer type-only — `requires()` records dep names
-  at runtime (in addition to the type-level `requires<Req>`); `derive()` /
-  `context()` store their fn on the built plugin instead of `void fn`
-  discarding it (stored, not executed — no engine at L1/L2); `build()`
-  implements the §0.5 triple and throws `EConfig`; the contract gains a
-  built flag so any verb after `.build()` throws (Python already does this;
-  TS's silent post-build divergence ends); `.use()` rejects an unbuilt
-  contract at runtime (remove the `hooksForFusion()` fallback for unbuilt
-  contracts; `hooksForFusion` stays public only on `BuiltPlugin`).
-- DX-4: tests (`matrix.fluent-builder.test.ts`) — nested == flat
-  descriptors, all 24 verbs present, build validation errors, post-build
-  mutation throws, `.use(unbuilt)` throws, canonical §3.3 chaos shape.
-- **DoD:** `pnpm -r exec tsc --noEmit` green; `just check-hygiene` green.
+## 6. DoD gates (all green on the merged tree, or the work is not done)
 
-### A5 — Python: the 6 broken verbs + enforcement + factories
-
-- DX-5: add the 6 missing `RingEvent` members (`fs-lock`,
-  `host-lsm-exec`, `host-pressure`, `host-keyring-access`, `host-preempt`,
-  `memory-pressure`) to `generated/fusion_tables.py` — fix at the generator
-  and regen if the file is generated (verify live); hand-edit only if the
-  file is committed-by-hand. All 24 verbs must resolve at `.build()`;
-  the `test_unmapped_ring_raises_econfig_at_build` test is updated to
-  assert resolution, not failure. `_descriptors()` keeps the `EConfig`
-  backstop for future unmapped rings (§0.5a).
-- DX-5: implement §3.1 — 8 scope entry points + scope classes delegating
-  to the existing `_on()` store; change the per-verb store from dict
-  (last-wins) to ordered list (append, §0.3); vsock single slot becomes a
-  list (multi, §0.4).
-- DX-5: registration-time arity check — each `on_*` verifies the handler
-  arity via `inspect.signature` and raises `EConfig` at registration on
-  mismatch (wrong-arity handlers fail fast, not at `boot()`). `require()`
-  keeps its dedupe-by-name; the missing-prerequisite message becomes
-  `missing prerequisite: <dep> required by <plugin>` (§0.2, still raised
-  at `boot()`). `scope()` validates the value against the live MountScope
-  shape (unknown keys → `EConfig` at `.build()`); `context()` stays stored.
-- DX-5: factories — all 13 `*_builder()` factories in
-  `packages/py/kelir/plugins/` emit `.require()` for their real deps +
-  map their config (chaos + ledger first, template fixed so regen keeps
-  them; verify the codegen path live — A2 owns the generator, A5 owns the
-  factory bodies and requests the template change via `_collab/handoffs.md`
-  if the generator is A2's).
-- DX-5: tests (`test_plugin_fluent_builder.py`) — nested == flat
-  descriptors, all 24 verbs build, append order, multi-vsock, arity
-  `EConfig`, canonical §3.3 chaos shape, post-build `EConfig` (already
-  covered — keep).
-- **DoD:** `pytest packages/py/tests/test_plugin_fluent_builder.py` green;
-  full Py suite no worse than baseline (94 passed, 4 skipped at 23b962a);
-  `mypy packages/py` no new errors (the 2 pre-existing errors in
-  `test_lifecycle_session.py` stay, do not fix them here); `python3 -m
-  compileall packages/py` green if `uv` is absent; `just check-hygiene`
-  green.
-
-## 5. Coordination and handoffs
-
-`_collab/handoffs.md`, one line each:
-
+- `cargo check --workspace --all-targets` (+stable), `cargo clippy
+  --workspace --all-targets -- -D warnings` (+stable), `cargo fmt --all
+  -- --check`, `cargo test --workspace` (+stable; 124 passed / 0 failed /
+  100 ignored at base — no worse), `pnpm -r exec tsc --noEmit`,
+  `pnpm -r test`, `pytest packages/py/` (101 passed / 4 skipped at base —
+  no worse), `mypy packages/py` (0 issues at base — no new errors),
+  `just check-hygiene`, `just check-manifest check-tests check-scorecard`,
+  `cans check --refs-only` 0 errors, `cans check` 0 errors + the 1
+  deliberate profile TBD warning, `just codegen` byte-stable (modulo the
+  two known defects), `just check-scenarios` OK, parity run 58/58
+  frame-validated 0/58 executed (not-executable, L1/L2).
+- New grep gates (run on the merged tree, must print nothing):
+  `grep -rn "PluginBuilder\|PluginWrapper" crates/ packages/ --include=
+  '*.rs' --include='*.ts' --include='*.py'` (except the test-plan map if
+  it must name the old test file, and `_collab/` history);
+  `grep -rn "PluginContract\|BuiltPlugin" packages/ts/`;
+  `grep -rn "plugin_builder" crates/kelir/src/ packages/py/kelir/`.
+- TODO (L3) set identical to base (538). Comment law greps clean.
+  `plugin_builder.rs` (997 LOC) and `plugin.model.ts` (991 LOC) delete —
+  the LOC pressure they carried goes with them.
 ```
-- from: agent-<id> | to: agent-<id> | file: <path> | request: <one-line ask> | blocking: yes|no
-```
-
-Pre-agreed handoffs (no file edit needed):
-- A1 provides §3.1/§3.2/§3.3/§3.4 text — A2/A3/A4/A5 consume it. A1 lands
-  first; others rebase onto A1 before starting code.
-- A2 provides the codegen template change for factories — A5 consumes it.
-- A2 provides the canonical §3.3 example — A3/A4/A5 mirror it in tests.
-- A3/A4/A5 provide their nested-scope descriptor shape to A2 only if it
-  differs from §3.1 (it must not — report a conflict instead).
-
-## 6. Merge order
-
-1. A1 (spec) — everything else builds on it.
-2. A2 (artifacts/codegen/vectors/example) — A3/A4/A5 reference it.
-3. A3 + A4 + A5 in parallel (independent files; rebase onto 1+2 first).
-4. Integrator converges: rebase each onto the previous, single squash
-   commit, full DoD gates, push on a supplied token only.
-
-## 7. Definition of done for the work order (all agents)
-
-- All 30 verbs + 8 scopes exist in Rust, TS, Python with identical
-  descriptors for nested vs flat chains (tested in each SDK).
-- `.build()` validates the §0.5 triple in all three SDKs; Python's 6
-  broken verbs build; TS's 13 missing verbs exist.
-- `vectors.json` has 50 vectors (14 + 28 verb + 8 nested); `parity run`
-  reports the builder family not-executable (specified L1/L2 outcome).
-- One canonical `chaos` example, identical in all three languages.
-- Full gates on the merged tree: `cargo check --workspace --all-targets`,
-  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt
-  --all -- --check`, `cargo test --workspace`, `pnpm -r exec tsc --noEmit`,
-  `mypy packages/py`, `just check-hygiene`, `just check-spec` (refs-only +
-  full), `just check-manifest check-tests check-scorecard`, `just codegen`
-  clean + byte-stable.
-- No file exceeds 1000 LOC. No new `// TODO (L3)` beyond the pre-existing
-  set. No `cans/` edit made only to ease code. No agent pushed.
-```
-
----
-
-**Environment notes (from the last run, verify live):** `cans` 0.21.0 via
-`npm install -g cans-spec@0.21.0` if the binary is gone after a reboot;
-`pnpm` 9.0.0 via npm; `uv` absent — Py gates run under `python3 -m`;
-`LIBCLANG_PATH` must point at `~/.local/lib/python3.12/site-packages/clang/native`
-for the testkit gates. Worktrees `~/workspace/kelir-fb2-a1` … `a5`,
-branches `wo-fb2-a1` … `wo-fb2-a5`, converge worktree
-`~/workspace/kelir-fb2-converge` on `wo-fb2-converge`. Each agent uses its
-own `CARGO_TARGET_DIR` to avoid build-lock contention.
