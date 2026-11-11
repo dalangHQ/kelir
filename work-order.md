@@ -1,404 +1,362 @@
-# work-order.md — Parallel CANS alignment for kelir
+# work-order.md — Fluent plugin-builder DX: nested cohesiveness + tri-SDK parity
 
 ```markdown
-# Work Order: Spec → Artifact → Code Alignment (5 parallel agents)
+# Work Order: Ideal DX for the fluent plugin-creation builder (5 parallel agents)
 
-Phase: L1/L2 only. No L3 implementations. Deferred work is a `// TODO (L3):` comment.
-Merge owner: one human reviewer. Agents push to isolated branches; no direct push to main.
+Base: scaffolding @ 340b48d (23b962a + WO2 scenario tier + CANS L1/L2 alignment).
+Phase: L1/L2 only. No L3. No handler ever executes; no engine work; no
+plugin-chaos Rust migration (cargo cycle stands, `// TODO (L3)` stays).
+Verdict this order closes: DX audit 2026-11-11 — good core, NOT ideal/amazing.
+Flat chain everywhere, no nested cohesiveness, TS 12/24 verbs, Python 6 verbs
+raise at `.build()`, parity surface-level only. This order fixes exactly that.
 
-## 0. Scope
+## 0. Frozen decisions (decided, not to be re-litigated)
 
-All L1 type-contract violations (A-series) and L2 wiring gaps (B-series) identified in the
-prior audit. L3 TODOs are explicitly out of scope. Every change follows the mandatory order:
+Decided by the integrator from the audit; agents execute, they do not re-decide.
+Where this order contradicts `cans/` + `cans/artifacts/`, follow the artifacts
+and record the decision in the commit message (repo AGENTS.md §1).
 
-    cans/*.md            (spec)
-    cans/artifacts/*     (canonical content: code sketches, diagrams, fixtures)
-    crates/*, packages/* (code)
-
-A change that updates only one layer is incomplete.
+1. **Nested shape: closure-scoped sub-builders, additive.** Flat verbs stay
+   (they are the landed API; removing them breaks tests/vectors). Each SDK
+   gains 8 scope entry points taking a closure that receives a scope builder
+   and returns it; the parent chain resumes after the closure:
+   `trap` (on_trap, on_process_exit), `fs` (on_fs_lookup/read/write/lock),
+   `net` (on_net_outbound/inbound), `console` (on_console_input/output),
+   `exec` (on_exec_stdout/stderr), `host` (on_host_lsm_exec,
+   on_host_pressure, on_host_keyring_access, on_host_preempt),
+   `lifecycle` (on_vm_init/ready/shutdown, on_pre_commit, on_post_commit),
+   `telemetry` (on_memory_pressure, on_heartbeat, on_watchdog).
+   Scope methods carry the SAME verb names as the flat chain (`on_trap`,
+   etc.). A nested chain and the equivalent flat chain MUST produce
+   identical descriptors (same rings, same ordinals) — tested in every SDK.
+   The existing `.scope(MountScope)` verb is untouched; scope entry points
+   are named by ring group (`trap`/`fs`/`net`/...) so there is no clash.
+2. **Attach verb stays per-language.** Rust `.plugin()`, TS/Python `.use()`
+   (+ Python `.plugin()` alias). Rust `use` is a keyword; renaming is not
+   the fix. The fix is uniform enforcement reporting: a missing prerequisite
+   is reported in every SDK as `missing prerequisite: <dep> required by
+   <plugin>` — Rust at compile time (Satisfies), TS at `.use()` (type +
+   runtime), Python at `boot()` (backstop, unchanged point) with the same
+   message text.
+3. **Repeat semantics: append, everywhere.** Rust/TS already append; Python
+   changes its per-verb dict to an ordered list. A second `.on_trap`
+   fires after the first; it never silently replaces it.
+4. **Vsock: multi, everywhere, plugin-level.** Python single slot becomes a
+   list; TS gains plugin-level `vsock_service` (sandbox-level
+   `registerVsockService` stays). Same spec `(port, service, schema)`.
+5. **`.build()` validates the same three things in all SDKs** and fails with
+   the same message text: (a) every registered verb resolves to a known ring
+   (backstop for future drift), (b) vsock spec valid (port 1..=65535,
+   non-empty service), (c) scope value well-formed. Error type per language:
+   Rust `PluginError` (build becomes `-> Result<PluginWrapper, PluginError>`),
+   TS/Python `EConfig`. An empty plugin (no handlers) still builds.
+6. **No doc comments, ever.** Repo comment law (AGENTS.md §3): one-liner
+   `// see:` / `// TODO:` / `// SAFETY:` only; `///`, `//!`, prose comments,
+   Python docstrings are banned. Discoverability comes from names,
+   signatures, and the canonical example — not from prose in code.
+7. **No L3, no inline tests.** Tests live in `tests/` only, never
+   `#[cfg(test)]` in `src/`. Tests assert L1/L2 wiring only (descriptors,
+   ordinals, validation errors, freeze/built-flag behaviour) — never
+   handler execution.
 
 ## 1. Hard rules (all agents)
 
-1. **File ownership is exclusive.** An agent edits only files listed under its "Owns"
-   section. Any needed edit to a file owned by another agent goes through a
-   `_collab/handoffs.md` entry (see §6) or the pre-agreed contract in §3.
-2. **Preserve real identifiers exactly** (AGENTS.md §Writing): `Session::vm_handle`,
-   `MCP_CONSOLE`, `PROFILE_SYNC`, `DB_SQLITE`, `SuspendReason::External`, etc.
-3. **No silent spec drift.** If spec and code disagree and the agent cannot tell which is
-   canonical, add a `_collab/conflicts.md` entry (one line per conflict; format in §6) and
-   do not overwrite either side.
-4. **`cans check --refs-only` must pass** after every spec edit. `cans budget write` gates
-   touched files; the agent's touched-file set must equal its "Owns" set.
-5. **Pre-flight gates that apply to every agent:** `cargo check --workspace --all-targets`,
-   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all -- --check`,
-   `pnpm -r exec tsc --noEmit` (agent 5 only), `mypy packages/py` (agent 5 only),
-   `just check-hygiene`, `just check-spec`, `just check-manifest`.
-6. **No new `// TODO (L3)` beyond what already exists.** If a fix requires L3 work, note it
-   in the PR body and leave the existing L3 TODO in place.
-7. **Commit message** records the rule number (e.g. `A1`, `B3`) and, if any conflict was
-   resolved by precedent, the precedent used.
-8. **Parallel discipline:** each agent works on its own worktree `target/agent-<id>` with
-   `CARGO_TARGET_DIR=target/agent-<id>` to avoid build-lock contention.
+1. **Exclusive ownership.** Edit only files in your "Owns" section. A needed
+   edit elsewhere goes through `_collab/handoffs.md` or a frozen contract
+   in §3. Do not touch another agent's files to make your gates green.
+2. **Spec → artifacts → code, in that order.** A change updating only one
+   layer is incomplete. Artifacts own field layouts, schemas, signatures.
+3. **Verify every audit claim against the live tree before editing.**
+   Audits re-raise fixed items with stale line numbers. The audit's TS
+   "zero examples" claim was wrong (`cans/artifacts/examples/hook-matrix.ts`
+   and `policy-matrix.ts` use `createPlugin`); the gap is that no ONE
+   example plugin is identical across all three languages.
+4. **Never loosen a spec gate to ease code.** If the only green path edits
+   `cans/`, the fix belongs upstream / in `_collab/conflicts.md`, not in a
+   push. Never edit `cans/_rules.yaml` thresholds.
+5. **Scaffolding constraints:** ≤1000 LOC/file (target 500); no
+   `unwrap()` / `expect()` / `panic!` / `todo!()` / `unimplemented!()` /
+   `unreachable!()`; `#![forbid(unsafe_code)]` except driver/transport/shim
+   enclaves; Rust MSRV 1.85.
+6. **No push from any agent.** Agents commit on their own branch only.
+   Convergence (squash-merge + re-gate + push) is integrator work.
+7. **Commit message** records the work-order clause (e.g. `DX-2`, `DX-5`)
+   and, where a decision from §0 was applied against a live-tree
+   contradiction, the decision number.
 
 ## 2. Ownership matrix
 
 | Agent | Owns (code) | Owns (spec/artifacts) |
 |---|---|---|
-| **Agent 1** — Plugin contract | `crates/kelir-interface/src/plugin_model.rs`, `crates/kelir/src/plugin_builder.rs`, `crates/kelir/src/lib.rs`, `crates/kelir-core/src/dispatch_plugin.rs`, all 13 `crates/kelir-plugins/*/src/lib.rs` | `cans/02-plugin-model.md`, `cans/11-protocol.md`, all `cans/plugins/*.md`, `cans/artifacts/code/plugin-trait.rs`, `cans/artifacts/code/plugin-builder-vectors.rs` |
-| **Agent 2** — Session lifecycle | `crates/kelir-core/src/session_lifecycle.rs`, `crates/kelir/src/session_lifecycle.rs`, `crates/kelir/src/sandbox_runtime.rs` | `cans/08-lifecycle.md`, `cans/09-snapshots.md` |
-| **Agent 3** — Storage FUSE | `crates/kelir-core/src/planes/storage/{fuse_storage,io_storage,lock_broker,mod}.rs` | `cans/05-storage-plane.md`, `cans/artifacts/code/reconciler.rs` |
-| **Agent 4** — Driver + terminal + CLI | `crates/kelir-interface/src/driver_interface.rs`, `crates/kelir-core/src/planes/terminal/mod.rs`, `crates/kelir/src/builder_sdk.rs`, `crates/kelir-plugin-cli/src/{main.rs, bump_core_cli.rs, attest_cli.rs}` | `cans/04-terminal-plane.md`, `cans/15-operations.md`, `cans/artifacts/code/vmm-driver-trait.rs`, `cans/artifacts/config/{justfile,ci.yml}` |
-| **Agent 5** — SDK parity | `packages/py/kelir/{__init__.py, lifecycle_sandbox.py}`, `packages/ts/core/src/{builder.lifecycle.ts, sandbox.runtime.ts, session.lifecycle.ts}` | `cans/03-sdk-architecture.md`, `cans/artifacts/code/{typescript-accumulation.ts, python-raii-pydantic.py}` |
+| **A1 — Spec** | none | `cans/02-plugin-model.md` (#Fluent-plugin-creation-builder), `cans/03-sdk-architecture.md` (#Fluent-plugin-surface), `cans/15-operations.md` (#--fluent-builder-coverage, #Fluent-builder-parity-vectors) |
+| **A2 — Artifacts, codegen, vectors, canonical example** | `crates/kelir-plugin-testkit/src/vectors_testkit.rs`, `vectors.json`, codegen inputs for fusion tables + plugin factories (verify live paths first) | `cans/artifacts/code/{rust,typescript,python}-plugin-builder.{rs,ts,py}`, `cans/artifacts/examples/fluent-builder-chaos.{rs,ts,py}` (new, one plugin, three files) |
+| **A3 — Rust** | `crates/kelir/src/plugin_builder.rs`, `crates/kelir/src/builder_sdk.rs` (attach + scope plumbing only), `crates/kelir/src/lib.rs` (re-exports only), `crates/kelir/tests/fluent_builder_plugin_test.rs` | none |
+| **A4 — TypeScript** | `packages/ts/core/src/plugin.model.ts`, `packages/ts/core/src/builder.lifecycle.ts` (`.use()` runtime check only), `packages/ts/core/tests/matrix.fluent-builder.test.ts` | none |
+| **A5 — Python** | `packages/py/kelir/plugin_builder.py`, `packages/py/kelir/generated/fusion_tables.py` (+ its generator, if generated — verify live), `packages/py/kelir/plugins/plugin_*.py` (factories only), `packages/py/kelir/__init__.py` (`.use()`/`.plugin()` message text only), `packages/py/tests/test_plugin_fluent_builder.py` | none |
 
-**Untouched by all agents:** `cans/artifacts/examples/fixtures/kelir.yaml` (fixtures already correct; if a fixture edit is required, request it via `_collab/handoffs.md` — the reviewer applies it), `cans/_rules.yaml`, `AGENTS.md`.
+**Untouched by all:** `cans/_rules.yaml`, `AGENTS.md`, `crates/kelir-plugins/`
+(Rust chaos migration stays blocked on the cargo cycle), `justfile`, CI.
 
-**No agent touches a file outside its column.** If two agents need the same file, §3 pins the interface.
+## 3. Frozen cross-agent contracts
 
-## 3. Cross-agent contracts (pre-agreed, frozen)
+Signatures below are the interface. Do not change without a
+`_collab/conflicts.md` entry. Verify field/type names against the live tree;
+if a name here contradicts the tree, the tree wins and the agent records it.
 
-These signatures are added by the owning agent and consumed by others. Do not change without a `_collab/conflicts.md` entry.
-
-### 3.1 `PipelineBinder` additions (Agent 1 → Agent 2 consumes)
-
-Added to `crates/kelir-interface/src/plugin_model.rs`:
-
-```rust
-fn bind_lifecycle(&mut self, stage: Arc<dyn LifecycleParticipant>) {
-    self.bind_lifecycle_scoped(stage, MountScope::default());
-}
-fn bind_lifecycle_scoped(&mut self, stage: Arc<dyn LifecycleParticipant>, scope: MountScope);
-
-fn bind_telemetry(&mut self, stage: Arc<dyn SystemTelemetryParticipant>) {
-    self.bind_telemetry_scoped(stage, MountScope::default());
-}
-fn bind_telemetry_scoped(&mut self, stage: Arc<dyn SystemTelemetryParticipant>, scope: MountScope);
-
-fn bind_stream_kind(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>) {
-    self.bind_stream_kind_scoped(kind, sink, MountScope::default());
-}
-fn bind_stream_kind_scoped(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>, scope: MountScope);
-```
-
-`StreamFrameSink` trait is added in the same file:
+### 3.1 Nested scopes (all SDKs, same 8 groups, same verb names)
 
 ```rust
-pub trait StreamFrameSink: Send + Sync {
-    fn on_stream_frame(
-        &self,
-        stream_id: u32,
-        kind: StreamKind,
-        flags: u8,
-        payload: &[u8],
-    ) -> Result<(), PluginError>;
-}
+// Rust — scope structs collect into the parent's Vecs, in closure order.
+PluginBuilder::new("x")
+    .trap(|t| t.on_trap(|_, _| Ok(Verdict::Pass)))
+    .fs(|f| f.on_fs_write(|_, _, _, _| Ok(FilterAction::Forward)))
+    .build() // -> Result<PluginWrapper, PluginError>
 ```
 
-### 3.2 `PipelineEngine` lifecycle dispatch (Agent 1 → Agent 2 callsite)
-
-Added to `crates/kelir-core/src/dispatch_plugin.rs`:
-
-```rust
-impl PipelineEngine {
-    pub async fn dispatch_lifecycle(
-        &self,
-        event: LifecycleEvent,
-        ctx: &mut LifecycleCtx<'_>,
-    ) -> Result<(), PluginError>;
-
-    pub async fn dispatch_memory_pressure(
-        &self,
-        available_mb: u32,
-        total_mb: u32,
-    ) -> Result<(), PluginError>;
-
-    pub async fn dispatch_heartbeat(&self, uptime_ms: u64) -> Result<(), PluginError>;
-
-    pub async fn dispatch_watchdog(
-        &self,
-        event: &WatchdogEvent,
-    ) -> Result<WatchdogVerdict, PluginError>;
-}
+```ts
+// TS — scope interfaces, same shape; build() throws EConfig on DX-5 failure.
+createPlugin("x")
+    .trap((t) => t.onTrap((e, c) => c.pass()))
+    .fs((f) => f.onFsWrite((p, b, pid, c) => c.pass()))
+    .build()
 ```
 
-**Agent 2 must call these four from `crates/kelir-core/src/session_lifecycle.rs::run_lifecycle_hook` and `Session::shutdown` / `Session::stop`.** Agent 2 does not implement them.
+```python
+# Python — scope classes, same shape; build() raises EConfig on DX-5 failure.
+PluginBuilder("x") \
+    .trap(lambda t: t.on_trap(lambda e, c: Verdict.PASS)) \
+    .fs(lambda f: f.on_fs_write(lambda p, b, pid, c: FilterAction.FORWARD)) \
+    .build()
+```
 
-### 3.3 `Session::vm_handle` remains (Agent 2 → Agent 1 does not touch)
+Scope entry points take a closure/lambda receiving the scope builder and
+returning it. No `.end()` / `.done()` verb. Nested == flat in descriptors.
 
-Agent 1's `crates/kelir/src/lib.rs` re-exports do **not** add a `vm` field or method — that is Agent 2's work (A10). Agent 1 re-exports only plugin config and context types.
+### 3.2 Closed verb set (30: 6 structural + 24 ring)
 
-### 3.4 `EventBusBinder` object-safety (Agent 1 only)
+`context`, `require(s)`, `scope`, `fork_with`/`forkWith`, `vsock_service`,
+`build` + the 24 ring verbs from `cans/02-plugin-model.md:398`. Every SDK
+exposes all 30 by the end of this order. `fork_with` keeps its per-language
+signature (Rust `Fn(&str) -> Box<dyn AnyPlugin>`, TS `() -> PluginContract`,
+Python `Fn(_PluginWrapper) -> _PluginWrapper`); the three signatures are
+pinned in spec as language-idiomatic, not a gap.
 
-Fix in `crates/kelir-interface/src/plugin_model.rs`. `KelirPlugin::register_subscribers(&self, _bus: &mut impl EventBusBinder)` becomes `&mut dyn EventBusBinder` once object-safe. If no workable design lands in 30 minutes, leave the current `impl` form and add a `_collab/conflicts.md` entry. Do not invent a workaround that changes `subscribe` behavior.
+### 3.3 Canonical example plugin (A2 owns, A3/A4/A5 mirror in tests)
+
+One plugin, identical behaviour in all three languages, named `chaos`:
+requires `ledger`, mount scope restricted to `/workspace` (MountScope fields
+as live in-tree), `.fs(|f| f.on_fs_write(...))` + `.net(|n| n.on_net_outbound(...))`,
+handlers return the pass/forward policy (L1/L2: descriptors only, no
+execution). Lives as `cans/artifacts/examples/fluent-builder-chaos.{rs,ts,py}`
+and is the copy-paste starting point in each SDK's test file. The three
+existing divergent "chaos" shapes (Rust test chain, TS artifact
+`buildChaosPlugin`, Python `plugin_chaos.py`) are replaced by this one shape.
+
+### 3.4 Vector cases (A2 owns)
+
+`vectors.json` 14 → 50: the 2 existing `plugin-builder-*` cases stay; add
+28 `plugin-builder-<verb>-only` cases (one per verb not yet covered) and 8
+`plugin-builder-nested-<scope>` cases (one per §3.1 scope, asserting
+nested == flat descriptors). Cases are descriptors (L1/L2); `parity run`
+reports them not-executable per `cans/15-operations.md` — that is the
+specified outcome, not a failure.
 
 ## 4. Per-agent task lists
 
-Each task cites its issue ID from the prior audit. Do spec first, artifact next, code last.
+### A1 — Spec: pin the nested shape + the gates
 
-### Agent 1 — Plugin contract, binder, engine
+- DX-1: `cans/02-plugin-model.md#Fluent-plugin-creation-builder` — add the
+  §3.1 nested-scope shape (8 groups, closure entry points, nested == flat
+  descriptors), the §0.5 build-validation triple, append repeat semantics,
+  multi-vsock, and the per-language attach-verb + enforcement table (§0.2).
+  Point at artifacts with bare `see:` refs; do not re-list artifact content.
+- DX-1: `cans/03-sdk-architecture.md#Fluent-plugin-surface` — per-SDK
+  surface table for all 30 verbs + 8 scopes; note Rust `build()` returns
+  `Result`, TS/Python throw/raise `EConfig`; note `fork_with`'s three
+  signatures as pinned, not divergent.
+- DX-1: `cans/15-operations.md` — `--fluent-builder-coverage` covers 30
+  verbs + 8 scopes; `#Fluent-builder-parity-vectors` asserts one vector
+  case per verb + one per scope (38 cases, §3.4). Gate text must match what
+  A2 lands; if the current "every verb has a case" text already says it,
+  keep it and cite the case count.
+- **DoD:** `cans check --refs-only` + full `cans check` green (A2's
+  artifacts may be stubbed temporarily to prove refs; A1's gates read red
+  only on missing artifact files, never on spec errors). Anchors regen
+  clean, no diff beyond the new nodes.
 
-**Spec edits** (`cans/02-plugin-model.md`, `cans/11-protocol.md`, `cans/plugins/*.md`):
-- A2: in `02-plugin-model.md#Segregated-ring-traits`, add one line under "Ring traits" noting `LifecycleParticipant` and `SystemTelemetryParticipant` are bound via `bind_lifecycle` / `bind_telemetry` on `PipelineBinder`. Add one line under `11-protocol.md#Kind-registration` noting `bind_stream_kind`.
-- A1: in each `cans/plugins/<name>.md#Crate-dependencies-(<name>)`, ensure the `Depends on:` line matches the real cross-crate dependency the plugin will encode: tool-guard → `kelir-interface, plugin-mcp`; transaction → `kelir-interface, plugin-db-proxy`; supply-chain → `kelir-interface and Tier 1 crates`; profile → `kelir-interface, Tier 1 and Tier 2 crates`. If spec and code disagree because spec is stale, edit spec; if because code is stale, edit code (both under Agent 1's control).
-- A7: add `suppress_local_db` to `cans/plugins/ledger.md#Invariants-and-policy-(ledger)` as an explicit key, and to the bullet list under `LedgerConfig`.
-- A9: in `cans/plugins/tool-guard.md#Host-extensible-hook-pipeline`, keep the `ToolGuardExt` mention; no spec edit needed if the trait is added to code — but verify spec syntax references an existing method.
-- B11: in `cans/plugins/container.md#Non-nested-OCI-container-execution` and `cans/plugins/transaction.md#Multi-resource-2PC-coordination`, tighten "required" language so the corresponding config flag defaults to `true` and cannot be silently disabled without an explicit `ESecurityViolation` opt-out. If spec already says invariant, no edit; add a `_collab/conflicts.md` entry instead.
+### A2 — Artifacts, codegen, vectors, canonical example
 
-**Artifact edits**:
-- `cans/artifacts/code/plugin-trait.rs`: add `StreamFrameSink` trait; add `bind_lifecycle` / `bind_telemetry` / `bind_stream_kind` to `PipelineBinder`; change `register_subscribers` to `&mut dyn EventBusBinder` if the object-safe design lands.
-- `cans/artifacts/code/plugin-builder-vectors.rs`: no change unless new hooks are added.
+- DX-2: rewrite the three plugin-builder artifacts to the full §3.2 surface:
+  fix the TS artifact's false `.onFsLock / .onNetInbound / .onVmInit`
+  claims against live TS (they do not exist until A4 lands them — artifact
+  shows the target shape, marked as the A4 contract); fix the Py artifact's
+  3-verb sketch to all 30 verbs; fix the Rust artifact's `fork_with`
+  signature drift (`Fn(&Ctx) -> Ctx` in the artifact vs live
+  `Fn(&str) -> Box<dyn AnyPlugin>` — artifact follows the live code).
+- DX-2: codegen — fix the generator(s) so regen emits the §3.2 surface:
+  TS `PLUGIN_BUILDER_VERBS` / `HOOK_RINGS` must match the live builder
+  (today they claim `onVmInit` the class lacks); Python `PLUGIN_BUILDER_VERBS`
+  (15 verbs, never consulted) is either wired into `plugin_builder.py` or
+  deleted — decide from the tree, do not leave a dead table beside a live
+  one. Factories: codegen emits `.requires()` + config mapping for all 13
+  plugins (no more empty `PluginBuilder("<name>").build()` shells).
+- DX-2: `vectors.json` + `vectors_testkit.rs` — add the 36 cases from §3.4
+  (28 verb + 8 nested). Regen path is `kelir-plugin-cli vectors` (verify
+  live); the `cargo run -p kelir-plugin-testkit --bin vectors` path does
+  not exist — do not use it, do not invent it.
+- DX-2: canonical example — write
+  `cans/artifacts/examples/fluent-builder-chaos.{rs,ts,py}` per §3.3.
+  Verify placement live: if `cans/artifacts/examples/` takes only TS today,
+  place the `.rs`/`.py` where the tree puts that language's examples and
+  record the placement in the commit message.
+- **DoD:** `just codegen` clean + byte-stable on re-run (if regen flips
+  ordering run-to-run, fix the ordering or record it as a known defect in
+  the commit message — do not silently commit a diff that re-flips);
+  `just check-manifest check-tests check-scorecard` green; vectors load via
+  the testkit; `cans check --refs-only` green.
 
-**Code edits**:
-- A2: `kelir-interface/src/plugin_model.rs` — add `bind_lifecycle_scoped`, `bind_telemetry_scoped`, `bind_stream_kind_scoped`, `StreamFrameSink` trait.
-- A2/B1: `kelir-core/src/dispatch_plugin.rs` — implement the four dispatch methods in §3.2; store `Arc<dyn LifecycleParticipant>` and `Arc<dyn SystemTelemetryParticipant>` vectors plus stream-kind sinks; wire them in `PipelineBinder` impl.
-- A2/B12: `kelir/src/plugin_builder.rs` — `PluginWrapper::register_interceptors` calls the new bind methods for each collected `LifecycleParticipant` and `SystemTelemetryParticipant`; drop the `let _ = (&self.lifecycle, &self.telemetry);` line.
-- A1: all 13 `kelir-plugins/*/src/lib.rs` — add `impl PluginDeps for <Plugin> { type Deps = ...; }` with the real dependency graph: `chaos → NoDeps`, `profile → NoDeps` (Agent 1 may tighten to real deps if the DAG is easy; else keep `NoDeps` and note), `tool-guard → HCons<McpCtx, HNil>`, `transaction → HCons<SqlProxyCtx, HNil>`, `supply-chain → NoDeps` for now, others `NoDeps`.
-- A1 (per plugin dep verification): `plugin-tool-guard/Cargo.toml` and `plugin-transaction/Cargo.toml` already declare the crate deps; ensure `Deps` type matches the crate dep.
-- B2: `plugin-mcp/src/lib.rs` — add `bind_stream_kind_scoped(StreamKind::McpConsole, Arc::new(McpCtxStreamSink { service }), scope)` in `register_interceptors`; the sink impls `StreamFrameSink` and calls `McpEndpointService::route_request`.
-- B2: `plugin-profile/src/lib.rs` — impl `register_interceptors`; bind `StreamKind::ProfileSync` to a `ProfileCtxStreamSink` that calls `ProfileCtx::dispatch_profile_sync`.
-- B2: `plugin-db-proxy/src/lib.rs` — bind `StreamKind::DbSqlite` to a `SqliteBridge`-backed `StreamFrameSink`.
-- A7: `plugin-ledger/src/lib.rs` — add `pub suppress_local_db: bool` to `LedgerConfig`; `LedgerPlugin::sink()` returns a no-op `LedgerSink` when `suppress_local_db` is `true`.
-- A9: `plugin-tool-guard/src/lib.rs` — add `pub trait ToolGuardExt { fn tool(self, spec: ToolSpec) -> Self; }` and blanket-impl for `KelirBuilder`. If the blanket-impl requires `kelir::` and creates a cargo cycle, add the trait to `crates/kelir/src/plugin_builder.rs` and re-export from `plugin-tool-guard` — note in PR.
-- B10: `plugin-tool-guard/src/lib.rs` — move the `McpMethod::ToolsList` interception from `on_console_output` to a new `impl LifecycleParticipant for ToolGuardPlugin { async fn on_vm_ready(...) }` that issues an explicit `tools/list` query through `self.mcp.route_request` and locks the catalog. `on_console_output` keeps schema drift detection only.
-- B11: `plugin-container/src/lib.rs` — default `isolate_var_lib_containers` to `true`; return `PluginError::reject("ESecurityViolation", ...)` when `false` AND the caller has not set an explicit opt-out field (add `allow_unsandboxed: bool` defaulting to `false`).
-- B11: `plugin-transaction/src/lib.rs` — `flush_fuse_before_commit` defaults to `true`; if `false`, `on_pre_commit` returns `PluginError::reject("ESecurityViolation", ...)`.
-- A12: `kelir/src/lib.rs` — re-export every plugin's `Config` and `Ctx` type: `pub use plugin_mcp::{McpConfig, McpCtx}`, `pub use plugin_tool_guard::{ToolGuardConfig, ToolGuardCtx}`, etc. Mirror the pattern used for `plugin-ledger`.
-- A4: `kelir-interface/src/plugin_model.rs` — if a workable object-safe `EventBusBinder` design exists (e.g. `subscribe<F: for<'a> Fn(&'a dyn Any) + Send + Sync + 'static>` with a `TypeId`-keyed dispatcher), implement it. Otherwise `_collab/conflicts.md`.
+### A3 — Rust: nested scopes + validating build + async ergonomics
 
-**Definition of done:** All 13 plugins impl `PluginDeps`; `plugin-mcp`, `plugin-profile`, `plugin-db-proxy` bind their stream kinds; `PipelineEngine` has four new dispatch methods; `PluginBuilder` routes lifecycle/telemetry; `kelir::*` re-exports every plugin's config and context; A7, A9, B10, B11 landed. `cargo check --workspace` green.
+- DX-3: implement §3.1 — 8 scope structs + 8 entry points on
+  `PluginBuilder<Ctx, Deps>`; scopes append into the parent's existing
+  `Vec` fields in closure order; nested == flat descriptors (test it).
+- DX-3: `build()` becomes `-> Result<PluginWrapper<Ctx, Deps>, PluginError>`
+  implementing the §0.5 triple (ring resolution, vsock spec, scope shape).
+  Update the existing call sites in-tree (test file + any `builder_sdk.rs`
+  use). `Satisfies` prefix-order check stays at `KelirBuilder::plugin()`;
+  the missing-prerequisite message becomes
+  `missing prerequisite: <dep> required by <plugin>` (§0.2).
+- DX-3: async ergonomics — all 9 async verbs (`on_vm_init`, `on_vm_ready`,
+  `on_vm_shutdown`, `on_pre_commit`, `on_post_commit`, `on_host_preempt`,
+  `on_watchdog`, `on_memory_pressure`, `on_heartbeat`) accept a plain
+  `async fn` (the `on_memory_pressure`/`on_heartbeat` form); the 7 that
+  demand hand-written `Pin<Box<dyn Future>>` lose that requirement.
+  Keep the 24 flat verbs; keep `PluginWrapper`'s zero public methods
+  (consumption-only, no post-build mutation surface).
+- DX-3: tests (`crates/kelir/tests/fluent_builder_plugin_test.rs`) —
+  convert the never-called `_compiles` / `_chaos_migrates` fns into real
+  `#[test]` fns asserting L1/L2 wiring: nested == flat descriptors, build
+  validation errors (bad vsock port, unresolvable ring if constructible),
+  append order of duplicate handlers, multi-vsock registration, canonical
+  §3.3 chaos shape. No execution, no engine.
+- **DoD:** `cargo check --workspace --all-targets`, `cargo clippy
+  --workspace --all-targets -- -D warnings`, `cargo fmt --all -- --check`,
+  `cargo test -p kelir` green; `just check-hygiene` green.
 
----
+### A4 — TypeScript: the missing 13 verbs + real enforcement
 
-### Agent 2 — Session lifecycle, CoW fork, teardown, storage flush
+- DX-4: add the 12 missing ring verbs (`onFsLock`, `onNetInbound`,
+  `onHostLsmExec`, `onHostPressure`, `onHostKeyringAccess`, `onVmInit`,
+  `onVmReady`, `onVmShutdown`, `onPreCommit`, `onPostCommit`,
+  `onHostPreempt`, `onMemoryPressure`) + plugin-level `vsockService`
+  (same `(port, service, schema)` spec; sandbox `registerVsockService`
+  stays). Handler signatures follow the live Rust verb types; verify each
+  against `plugin_builder.rs` + the fusion tables (the rings already exist
+  in `generated/fusion.tables.generated.ts`).
+- DX-4: implement §3.1 — 8 scope entry points + scope interfaces on
+  `PluginContract`, delegating to the existing `addHook` store.
+- DX-4: enforcement, no longer type-only — `requires()` records dep names
+  at runtime (in addition to the type-level `requires<Req>`); `derive()` /
+  `context()` store their fn on the built plugin instead of `void fn`
+  discarding it (stored, not executed — no engine at L1/L2); `build()`
+  implements the §0.5 triple and throws `EConfig`; the contract gains a
+  built flag so any verb after `.build()` throws (Python already does this;
+  TS's silent post-build divergence ends); `.use()` rejects an unbuilt
+  contract at runtime (remove the `hooksForFusion()` fallback for unbuilt
+  contracts; `hooksForFusion` stays public only on `BuiltPlugin`).
+- DX-4: tests (`matrix.fluent-builder.test.ts`) — nested == flat
+  descriptors, all 24 verbs present, build validation errors, post-build
+  mutation throws, `.use(unbuilt)` throws, canonical §3.3 chaos shape.
+- **DoD:** `pnpm -r exec tsc --noEmit` green; `just check-hygiene` green.
 
-**Spec edits** (`cans/08-lifecycle.md`, `cans/09-snapshots.md`):
-- B3: in `08-lifecycle.md#CoW-fork`, tighten "Driver primitive: `fork` returns `Box<dyn VmmDriver>`" to require the child's driver handle come from `driver.fork()`, not from an `Arc` clone of the parent.
-- B5: in `08-lifecycle.md#Pre-teardown-flush`, confirm the graceful path requires `session.storage.reconcile()` (through the anchored reconciler) before `MSG_SHUTDOWN_REQUEST`, and `stop_with_timeout(0)` explicitly follows the abrupt path (`session.kill()`). If spec says otherwise, note in `_collab/conflicts.md`.
-- A10: in `09-snapshots.md#Archives-and-portability`, only if the spec mentions the accessor; otherwise no change.
+### A5 — Python: the 6 broken verbs + enforcement + factories
 
-**Artifact edits**:
-- `cans/artifacts/code/vmm-driver-trait.rs`: add `fork` as a documented primitive (already present — verify); no other change.
-
-**Code edits**:
-- A10: `kelir-core/src/session_lifecycle.rs` — add `pub fn vm(&self) -> VmHandle` returning `self.vm_handle()` (thin alias), so `session.vm.checkpoint(...)` compiles on the Rust SDK. Update `crates/kelir/src/session_lifecycle.rs:Session` to forward `pub fn vm(&self) -> VmHandle { self.core.vm() }`.
-- B1: `kelir-core/src/session_lifecycle.rs::run_lifecycle_hook` — replace the current builder-callback-only body with:
-  1. Call `self.engine.dispatch_lifecycle(event, &mut ctx).await?` for plugin participants, using a `LifecycleCtx` built from the live driver.
-  2. Then call the builder-supplied `on_vm_init` / `on_vm_ready` / `on_vm_shutdown` callback (existing code) if present.
-  Both must run; if either fails, propagate.
-- B3: `kelir-core/src/session_lifecycle.rs::fork` — replace `driver: self.driver.clone()` with:
-  ```rust
-  let child_driver = match &self.driver {
-      Some(d) => Some(Arc::new(AsyncMutex::new(d.lock().await.fork().await.map_err(...)?))),
-      None => None,
-  };
-  ```
-  Then pass `child_driver` into the child `Session`. `session.fork()` must build a fresh `OwnedBusDispatcher`, fresh `WirePlane`, fresh `CheckpointPlane` per the spec, and call `plugin.fork_state()` on each plugin (Agent 1 provides `AnyPlugin::fork_state`; Agent 2 calls it).
-- B4: `kelir/src/session_lifecycle.rs::fork` — propagate `Registration`:
-  - `traps`: clone the `Vec<TrapEntry<Plugins>>` — handlers are `Box<dyn Fn>` requiring `Clone`, which `TrapEntry` does not currently derive. Add `#[derive(Clone)]` to `TrapEntry` in `builder_sdk.rs`? **That file is Agent 4's.** Coordinate: Agent 4 adds `impl Clone for TrapEntry` (or `#[derive(Clone)]`); Agent 2 uses `.traps.clone()`.
-  - `storage_cfg`, `terminal_cfg`, `wire_cfg`, `lock_broker_cfg`: `Clone` — already `Clone` on their config types.
-  - `on_vm_init` / `on_vm_ready` / `on_vm_shutdown` / `on_trap_deny`: `Arc` clone.
-  - `custom_actions`, `vsock_services`, `stream_kind_services`, `vetoes`, `detached`: clone.
-  - Child `Registration` is a full clone, not `Registration::default()`.
-- B5: `kelir-core/src/session_lifecycle.rs::stop` — before `advance_lifecycle(Terminated)`:
-  ```rust
-  let stats = self.storage.reconcile(FsReconcileRequest {
-      cwd: self.storage.workspace_root().display().to_string(),
-      atomic_staging: true,
-      fsync: true,
-  })?;
-  ```
-  If `Reconciler` is not anchored (L2 default), skip silently and log a warning; if anchored, reconcile. `stop_with_timeout(timeout)`: if `timeout == Duration::ZERO`, skip reconcile and call `kill()` semantics. Otherwise reconcile with `timeout`.
-- B5: `kelir/src/sandbox_runtime.rs::Sandbox::stop` and `stop_with_timeout` — forward to `Session::stop` / `stop_with_timeout` (which now reconcile).
-
-**Definition of done:** `session.vm.checkpoint(...)` compiles on `kelir::Session`; `session.fork()` returns a child with its own driver handle and full Registration; `session.stop()` reconciles storage when a reconciler is anchored; plugin lifecycle hooks fire through `PipelineEngine::dispatch_lifecycle`. `cargo check --workspace` green; `just check-hygiene` green.
-
----
-
-### Agent 3 — Storage FUSE, IO, lock broker
-
-**Spec edits** (`cans/05-storage-plane.md`):
-- A5: in `#Host-CoW-broker` (or a new sibling node `#FUSE-opcode-table`), list the eight required opcodes explicitly: `lookup`, `getattr`, `read`, `write`, `readdir`, `unlink`, `mkdir`, `rename`, plus `statfs`, `setlk`, `setlkw`. This is the canonical home.
-- A6: in `#Host-CoW-broker`, add one line: "Host I/O is expressed through `StorageIo`; the broker write primitive is `StorageIo::write(path, offset, data)`."
-- B6: in `#Storage-quotas`, add "Every `FUSE WRITE`, `MKNOD`, `CREATE`, and `MKDIR` dispatch calls `StoragePlane::check_quota` before the payload reaches the upper file."
-- B7: in `#Host-inode-lock-broker`, add "`SETLK` and `SETLKW` dispatch calls `LockBroker::acquire` before the interposer; a denial replies `FuseReply::Errno(EWOULDBLOCK)`."
-- B8: in `#Host-CoW-broker` or the new FUSE-opcode node, add "FUSE `WRITE` reply carries the requested chunk size (`fuse_write_out.size`), not the payload bytes."
-
-**Artifact edits**:
-- `cans/artifacts/code/reconciler.rs`: add a `StorageIo::write` sketch comment if the file touches it; no structural change unless the spec edit demands.
-
-**Code edits**:
-- A5: `kelir-core/src/planes/storage/fuse_storage.rs` — extend `FuseOpcode` to:
-  ```rust
-  pub enum FuseOpcode {
-      Lookup, Getattr, Read, Write, Readdir,
-      Unlink, Mkdir, Rename, Statfs,
-      Setlk, Setlkw,
-  }
-  ```
-  Update `from_u32` with the UAPI numbers (getattr 3, readdir 28, unlink 10, mkdir 9, rename 12, statfs 17). Add `FuseReply::Attr(FsInodeAttr)` for getattr and `FuseReply::Entries(Vec<...>)` for readdir; return `ENOSYS` for statfs until L3 fills quota reporting. All non-L3 opcodes return a typed response shape now.
-- A6: `kelir-core/src/planes/storage/io_storage.rs` — add to `StorageIo` trait:
-  ```rust
-  fn write(&self, path: &Path, offset: u64, data: &[u8]) -> Result<u64, PluginError>;
-  fn mkdir(&self, path: &Path, mode: u32) -> Result<(), PluginError>;
-  fn unlink(&self, path: &Path) -> Result<(), PluginError>;
-  fn rename(&self, from: &Path, to: &Path) -> Result<(), PluginError>;
-  ```
-  Implement each as `Err(PluginError::Halt("TODO (L3): ..."))` — the interface addition is L1, the bodies are L3 deferred.
-- B6: `fuse_storage.rs::FuseDispatcher::dispatch` — in the `Write` arm, call `self.quota.check_quota(...)` before the interposer (add a `quota: Arc<StorageQuota>` field to `FuseDispatcher`; plumb it through `FuseWorker::new`). Return `Ok(FuseResponse { reply: FuseReply::Errno(-ENOSPC) })` on quota rejection. Same for `Mknod`, `Create`, `Mkdir` arms (once A5 adds them).
-- B7: `fuse_storage.rs::FuseDispatcher::dispatch` — in `Setlk`/`Setlkw` arms, call `self.lock_broker.acquire(&LockRequest { ... })`. On error, `Ok(FuseResponse { reply: FuseReply::Errno(-EWOULDBLOCK) })` — **not** `Err(PluginError::Halt)`. Plumb `Arc<LockBroker>` into `FuseDispatcher`.
-- B8: `fuse_storage.rs::FuseDispatcher::dispatch` — in the `Write` arm:
-  - `FilterAction::Forward` → `reply: FuseReply::Written(request.data.len() as u64)` (add a new `FuseReply::Written(u64)` variant or reuse `Payload` with an explicit wire framing — choose `Written(u64)` for clarity).
-  - `FilterAction::Drop { errno: None, .. }` (silent blackhole per `cans/plugins/chaos.md`) → same `Written` with `request.size`.
-  - `FilterAction::Drop { errno: Some(...) }` → `Errno(-posix_errno)` (already implemented).
-- B8b: `kelir-core/src/planes/storage/mod.rs` — expose `StoragePlane::quota() -> Arc<StorageQuota>` so `FuseWorker::new` can take it.
-
-**Definition of done:** `FuseOpcode` has 11 variants; `StorageIo` has the four new methods; quota and lock-broker are on the write and lock dispatch paths; write reply carries `size`. `cargo check --workspace` green; `cargo test -p kelir-core` still passes for existing tests (none at L2 in this file — verify).
-
----
-
-### Agent 4 — Driver interface, terminal wiring, CLI
-
-**Spec edits** (`cans/04-terminal-plane.md`, `cans/15-operations.md`):
-- A8: in `04-terminal-plane.md#Terminal-pipeline`, add explicit bullet: "The Token Shield and prompt stages are part of the fixed pipeline; `TerminalWiring` must carry `token_shield` and `prompts` from the builder into the plane."
-- A13: in `15-operations.md#Subcommands`, add `kelir-plugin-cli bump-core --channel <released|main>` and `kelir-plugin-cli attest --sign` as first-class subcommands (matching the existing `plugin new|manifest|check|vectors|rings --show` block).
-- A3: **do not edit `cans/08-lifecycle.md`.** Add a `_collab/conflicts.md` entry: `- status: unresolved | file: cans/08-lifecycle.md | issue: spec declares SuspendReason::External(u32); code and cans/artifacts/code/vmm-driver-trait.rs declare External(ExternalSuspendKind). Which is canonical?` Align code to spec only if the reviewer resolves.
-
-**Artifact edits**:
-- `cans/artifacts/code/vmm-driver-trait.rs`: only if the reviewer resolves A3 in favor of `External(u32)` — then update the artifact's `SuspendReason` enum to `External(u32)` and remove `ExternalSuspendKind`. Otherwise leave the artifact as is and note the conflict.
-- `cans/artifacts/config/justfile`: add `check-cli` target: `kelir-plugin-cli check --layers && kelir-plugin-cli check --graph`.
-- `cans/artifacts/config/ci.yml`: add a `bump-core` and `attest` job placeholder with the actual `kelir-plugin-cli` invocation.
-
-**Code edits**:
-- A8: `kelir-core/src/planes/terminal/mod.rs::TerminalWiring` — extend to:
-  ```rust
-  pub struct TerminalWiring {
-      pub cols: u16,
-      pub rows: u16,
-      pub drop_osc52: bool,
-      pub strip_title: bool,
-      pub token_shield: Option<kelir_interface::plugin_model::TokenShieldConfig>,
-      pub prompts: Vec<kelir_interface::plugin_model::PromptRuleConfig>,
-  }
-  ```
-  Add the two new config structs to `kelir-interface/src/plugin_model.rs`? **That file is Agent 1's.** Coordinate: Agent 4 adds the structs to `kelir-core/src/planes/terminal/mod.rs` (owns the file); Agent 1's `plugin_model.rs` is not touched.
-- A8: `kelir/src/builder_sdk.rs::finish_boot` — build `TerminalWiring` from the full `PtyConfig`; no fields dropped. Any L3 gap (e.g. `prompts` action closures) becomes `// TODO (L3):` inside `TerminalPlane::with_wiring`.
-- A3: `kelir-interface/src/driver_interface.rs` — align `SuspendReason` with the resolver's decision. If unresolved, leave as is and note in `_collab/conflicts.md`.
-- A13: `kelir-plugin-cli/src/main.rs` — add `"bump-core" => bump_core_cli::run(&args[2..])?` and `"attest" => attest_cli::run(&args[2..])?`. Also change `"scaffold"` to `"new"` and keep `"scaffold"` as a hidden alias.
-- A13: `kelir-plugin-cli/src/bump_core_cli.rs` (new) — parse `--channel <released|main>`, resolve to the pinned kelir-version string, write `.kelir/core-channel.json`, exit `Ok(())` on success. Body may be `// TODO (L3):` for the actual pin resolution, but the flag parser is real.
-- A13: `kelir-plugin-cli/src/attest_cli.rs` (new) — parse `--sign`, require a `--plugin-path` flag, exit `Ok(())`. Signing is L3.
-
-**Definition of done:** `TerminalWiring` carries `token_shield` and `prompts`; `builder_sdk::finish_boot` no longer silently drops them; `kelir-plugin-cli` parses `bump-core` and `attest` flags; A3 either resolved (with the artifact updated) or filed in `_collab/conflicts.md`. `cargo check --workspace` green; `just check-hygiene` green.
-
----
-
-### Agent 5 — Python + TypeScript SDK parity
-
-**Spec edits** (`cans/03-sdk-architecture.md`):
-- A11: in `#Sandbox-high-level-facade`, pin the `suspend()` signature explicitly:
-  ```
-  - box.suspend() takes no argument; the suspend image path is derived from
-    session state, never user-supplied
-  ```
-  (Confirm this matches the intended semantics — the current spec example `box.suspend()` supports this reading.)
-- B13: in `#Service-lookup-across-languages`, add:
-  ```
-  - .use(plugin) populates c.cap (Python) / c.<pluginKey> (TS) at boot,
-    not before
-  - the capability struct is materialized from the plugin's Context
-    before the first handler invocation; it is not a stub
-  ```
-- B9: in `#Python-SDK`, keep "`__aexit__` guarantees `session.terminate()` on any exception" as is; no spec change needed, code fix only.
-
-**Artifact edits**:
-- `cans/artifacts/code/typescript-accumulation.ts`: if the file shows `.use()` binding a `Session & Ctx` that is not materialized, add a note that the pattern requires the plugin context to be bound at `boot()`. Small, illustrative.
-- `cans/artifacts/code/python-raii-pydantic.py`: same, `__aexit__` calls `terminate()`.
-
-**Code edits**:
-- A11 + B9: `packages/py/kelir/__init__.py`:
-  - `Session.__aexit__` → `await self._session.terminate()`.
-  - `Sandbox.suspend` in `lifecycle_sandbox.py` → drop the `path` parameter; derive from `session.session_dir() / "suspend.img"` (call into native `session.suspend()` which uses that path).
-- A11: `packages/ts/core/src/sandbox.runtime.ts::Sandbox.suspend` → drop the `path` parameter; call `this.booted.suspend(path)` with a path derived from `sessionDir`. Mirror the Rust behavior Agent 2 lands.
-- B13 (Python): `packages/py/kelir/__init__.py` — `KelirBuilder.use(plugin)` collects the plugin; `KelirBuilder.boot()` after `native.boot()` calls `native.get_plugin_context(name)` for each registered plugin (new method on the PyO3 bridge — **Agent 1 owns the plugin side; Agent 5 owns the Python side and requests the PyO3 method via `_collab/handoffs.md`**). Capability structs are constructed from the returned dict and assigned to `session.cap` — no more stub classes.
-- B13 (TypeScript): `packages/ts/core/src/builder.lifecycle.ts::KelirBuilder.boot()` — replace the cast:
-  ```ts
-  return new Session(await nativeBuilder.boot()) as Session & Ctx;
-  ```
-  with a loop that reads `nativeSession.pluginContexts` (a new object the NAPI addon must expose) and assigns each onto the `Session` instance:
-  ```ts
-  const nativeSession = await nativeBuilder.boot();
-  const session = new Session(nativeSession);
-  for (const { name, ctx } of nativeSession.pluginContexts ?? []) {
-      (session as unknown as Record<string, unknown>)[name] = ctx;
-  }
-  return session as Session & Ctx;
-  ```
-  The NAPI `pluginContexts` is a `_collab/handoffs.md` request to Agent 1 (plugin side).
-
-**Definition of done:** `Sandbox.suspend()` takes no argument in Rust, Python, TS; `__aexit__` calls `terminate()`; both non-Rust SDKs materialize plugin capability structs at boot (or, if the NAPI/PyO3 additions slip, the handler context throws `EConfig` with a specific "native bridge missing" message instead of returning undefined/stub — that is an acceptable intermediate but must be marked as such). `pnpm -r exec tsc --noEmit` green; `mypy packages/py` green.
+- DX-5: add the 6 missing `RingEvent` members (`fs-lock`,
+  `host-lsm-exec`, `host-pressure`, `host-keyring-access`, `host-preempt`,
+  `memory-pressure`) to `generated/fusion_tables.py` — fix at the generator
+  and regen if the file is generated (verify live); hand-edit only if the
+  file is committed-by-hand. All 24 verbs must resolve at `.build()`;
+  the `test_unmapped_ring_raises_econfig_at_build` test is updated to
+  assert resolution, not failure. `_descriptors()` keeps the `EConfig`
+  backstop for future unmapped rings (§0.5a).
+- DX-5: implement §3.1 — 8 scope entry points + scope classes delegating
+  to the existing `_on()` store; change the per-verb store from dict
+  (last-wins) to ordered list (append, §0.3); vsock single slot becomes a
+  list (multi, §0.4).
+- DX-5: registration-time arity check — each `on_*` verifies the handler
+  arity via `inspect.signature` and raises `EConfig` at registration on
+  mismatch (wrong-arity handlers fail fast, not at `boot()`). `require()`
+  keeps its dedupe-by-name; the missing-prerequisite message becomes
+  `missing prerequisite: <dep> required by <plugin>` (§0.2, still raised
+  at `boot()`). `scope()` validates the value against the live MountScope
+  shape (unknown keys → `EConfig` at `.build()`); `context()` stays stored.
+- DX-5: factories — all 13 `*_builder()` factories in
+  `packages/py/kelir/plugins/` emit `.require()` for their real deps +
+  map their config (chaos + ledger first, template fixed so regen keeps
+  them; verify the codegen path live — A2 owns the generator, A5 owns the
+  factory bodies and requests the template change via `_collab/handoffs.md`
+  if the generator is A2's).
+- DX-5: tests (`test_plugin_fluent_builder.py`) — nested == flat
+  descriptors, all 24 verbs build, append order, multi-vsock, arity
+  `EConfig`, canonical §3.3 chaos shape, post-build `EConfig` (already
+  covered — keep).
+- **DoD:** `pytest packages/py/tests/test_plugin_fluent_builder.py` green;
+  full Py suite no worse than baseline (94 passed, 4 skipped at 23b962a);
+  `mypy packages/py` no new errors (the 2 pre-existing errors in
+  `test_lifecycle_session.py` stay, do not fix them here); `python3 -m
+  compileall packages/py` green if `uv` is absent; `just check-hygiene`
+  green.
 
 ## 5. Coordination and handoffs
 
-Agents use `_collab/handoffs.md` (one line each, format below):
+`_collab/handoffs.md`, one line each:
 
 ```
 - from: agent-<id> | to: agent-<id> | file: <path> | request: <one-line ask> | blocking: yes|no
 ```
 
-Pre-agreed handoffs in this work order (no file edit needed):
-- Agent 1 provides `PipelineEngine::dispatch_lifecycle`, `dispatch_memory_pressure`, `dispatch_heartbeat`, `dispatch_watchdog` — Agent 2 calls them.
-- Agent 1 provides `impl Clone for TrapEntry` in `builder_sdk.rs`? **No** — that file is Agent 4's. Agent 4 adds it; Agent 2 uses it.
-- Agent 1 provides `pluginContexts` on the NAPI/PyO3 native session handle; Agent 5 consumes it.
-- Agent 3 provides `StoragePlane::quota()`; only Agent 3 uses it (`FuseWorker::new` lives in the same crate — Agent 3 owns both).
+Pre-agreed handoffs (no file edit needed):
+- A1 provides §3.1/§3.2/§3.3/§3.4 text — A2/A3/A4/A5 consume it. A1 lands
+  first; others rebase onto A1 before starting code.
+- A2 provides the codegen template change for factories — A5 consumes it.
+- A2 provides the canonical §3.3 example — A3/A4/A5 mirror it in tests.
+- A3/A4/A5 provide their nested-scope descriptor shape to A2 only if it
+  differs from §3.1 (it must not — report a conflict instead).
 
-Any other cross-agent need: `_collab/handoffs.md`, then proceed on the non-blocked portion.
+## 6. Merge order
 
-## 6. Conflict log format
+1. A1 (spec) — everything else builds on it.
+2. A2 (artifacts/codegen/vectors/example) — A3/A4/A5 reference it.
+3. A3 + A4 + A5 in parallel (independent files; rebase onto 1+2 first).
+4. Integrator converges: rebase each onto the previous, single squash
+   commit, full DoD gates, push on a supplied token only.
 
-`_collab/conflicts.md`, one line per entry:
+## 7. Definition of done for the work order (all agents)
 
-```
-- status: unresolved | file: <path> | issue: <one-line description of the conflict>
-- status: resolved-by-precedent | file: <path> | issue: <desc> | precedent: <pointer to canonical home>
-```
-
-Reviewer resolves unresolved entries. Agents never overwrite one side to make the other pass.
-
-## 7. Merge order (if merging sequentially is required)
-
-If the reviewer merges branches one at a time (to re-run gates after each), use this order to minimize re-work:
-
-1. Agent 1 (interface + plugins) — largest blast radius; everything else builds on it.
-2. Agent 3 (storage FUSE) — independent of Agent 1 and Agent 2.
-3. Agent 4 (driver + terminal + CLI) — independent of Agent 1 and Agent 3.
-4. Agent 2 (session lifecycle) — depends on Agent 1's dispatch methods and Agent 4's `Clone for TrapEntry`.
-5. Agent 5 (SDK parity) — depends on Agent 1's NAPI/PyO3 `pluginContexts` and Agent 2's `Sandbox::suspend` shape.
-
-If merged in parallel (recommended), the reviewer resolves conflicts in the order above during the rebase of each branch.
-
-## 8. Definition of done for the work order (all agents)
-
-- Every A-series and B-series item from the audit is landed (code + spec + artifact) or deferred to `_collab/conflicts.md` with a reviewer action.
-- `just pre-flight` green on the merged branch.
-- `cans check` full (not just `--refs-only`) green.
-- `kelir-plugin-cli parity run vectors.json` still passes for the plugin_builder case family (Agent 1 must extend `vectors.json` if new plugin contexts change hook chains).
-- `cargo test --workspace` green.
-- `pnpm -r exec tsc --noEmit` green.
-- `mypy packages/py` green.
-- No file in `crates/*/src` or `packages/*/src` exceeds 1000 LOC (`just check-hygiene` asserts this).
-- No new `// TODO (L3)` beyond the pre-existing set (count is machine-checkable: `grep -c '// TODO (L3)' crates packages | diff` against the baseline commit's counts).
-
----
-
-## Appendix: issue ID → agent map
-
-| Issue | Agent |
-|---|---|
-| A1, A2, A4, A7, A9, A12, B1 (engine side), B2, B10, B11 (plugin config), B12 | Agent 1 |
-| A10, B1 (callsite), B3, B4, B5 | Agent 2 |
-| A5, A6, B6, B7, B8 | Agent 3 |
-| A3, A8, A13 | Agent 4 |
-| A11, B9, B13 | Agent 5 |
+- All 30 verbs + 8 scopes exist in Rust, TS, Python with identical
+  descriptors for nested vs flat chains (tested in each SDK).
+- `.build()` validates the §0.5 triple in all three SDKs; Python's 6
+  broken verbs build; TS's 13 missing verbs exist.
+- `vectors.json` has 50 vectors (14 + 28 verb + 8 nested); `parity run`
+  reports the builder family not-executable (specified L1/L2 outcome).
+- One canonical `chaos` example, identical in all three languages.
+- Full gates on the merged tree: `cargo check --workspace --all-targets`,
+  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt
+  --all -- --check`, `cargo test --workspace`, `pnpm -r exec tsc --noEmit`,
+  `mypy packages/py`, `just check-hygiene`, `just check-spec` (refs-only +
+  full), `just check-manifest check-tests check-scorecard`, `just codegen`
+  clean + byte-stable.
+- No file exceeds 1000 LOC. No new `// TODO (L3)` beyond the pre-existing
+  set. No `cans/` edit made only to ease code. No agent pushed.
 ```
 
 ---
 
-**Note on the A3 conflict:** `SuspendReason::External` is the one place where I did not pre-decide the canonical shape. The audit shows spec says `External(u32)`, code says `External(ExternalSuspendKind)`, and the artifact `cans/artifacts/code/vmm-driver-trait.rs` is the tiebreaker — but since the artifact wasn't fully visible in the input, Agent 4 reads it first and either aligns code to artifact (no spec edit) or files the conflict. This is the AGENTS.md "Never silently resolve conflicts" rule applied to the one genuinely ambiguous case.
+**Environment notes (from the last run, verify live):** `cans` 0.21.0 via
+`npm install -g cans-spec@0.21.0` if the binary is gone after a reboot;
+`pnpm` 9.0.0 via npm; `uv` absent — Py gates run under `python3 -m`;
+`LIBCLANG_PATH` must point at `~/.local/lib/python3.12/site-packages/clang/native`
+for the testkit gates. Worktrees `~/workspace/kelir-fb2-a1` … `a5`,
+branches `wo-fb2-a1` … `wo-fb2-a5`, converge worktree
+`~/workspace/kelir-fb2-converge` on `wo-fb2-converge`. Each agent uses its
+own `CARGO_TARGET_DIR` to avoid build-lock contention.
