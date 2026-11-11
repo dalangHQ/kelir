@@ -5,4 +5,4 @@
     - logs tails guest output with cursor based replay
       - Cursors resume a tail from an earlier point
       - History survives sandbox restarts
-      - Stream guarantee: see: 04-terminal-plane.md#Stream-replay
+      - Stream guarantee: 04-terminal-plane.md#Stream-replay

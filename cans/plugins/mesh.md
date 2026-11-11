@@ -23,7 +23,7 @@
     - Return errno and rejection behavior (mesh)
       - mTLS validation failure
         - Err(Reject { errno: ECONNREFUSED })
-        - Guest observes ECONNREFUSED: see: 07-wire-plane.md#Frame-drop-and-forward-semantics
+        - see: 07-wire-plane.md#Frame-drop-and-forward-semantics
         - Ledger records peer fingerprint
       - Peer identity
         - SPIFFE SVID issued by host at on_vm_ready

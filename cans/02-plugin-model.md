@@ -59,7 +59,7 @@
   - Dual-plane execution architecture
     - Interceptor pipeline plane
       - Synchronous or bounded latency inline processors
-      - Evaluates unified verdicts strictly by monotonic order: see: #Unified-verdict
+      - Evaluates unified verdicts in monotonic order: see: #Unified-verdict
       - Single mutator owns target byte slice at any stage
       - Trait dispatch: see: #Static-dispatch
       - Compiled into contiguous zero-cost dispatch tables
@@ -78,7 +78,7 @@
     - AOT hook fusion compiles chained host hooks into a single flat closure
     - Exactly one FFI trampoline crossing per ring event regardless of hook count
     - Marshals ring events across threadsafe boundaries on match
-    - Non-blocking trap returns: Pass, Patch, Drop, Suspend, Abort
+    - Non-blocking trap returns: see: #Unified-verdict
   - Composite plugin hierarchy
     - see: [1]
     - Assembly-time tree flattens into contiguous C-speed dispatch array
@@ -120,6 +120,7 @@
       - Every interposer hook returns the same engine-level `Verdict`
       - Verdict covers decision hooks: Trap (execve), Fs lookup, Host, MCP
         - A Verdict prescribes an outcome: different exec, serve-alternate, deny, abort
+      - Monotonic order: downstream stages cannot widen upstream denial
       - FilterAction covers in-place byte-transform hooks:
         - Rings: Fs write, Net outbound, Net inbound, pgwire
         - A FilterAction mutates the payload in place, then forwards or gates
@@ -180,7 +181,7 @@
     - Dispatch compilation: direct Cargo linkage resolves plugin order at build time
     - Pipeline tables index linear interceptor chains per VirtIO ring
     - Core verifies plugin crate graph: cycles and missing deps halt boot
-    - Monotonic decisions: downstream stages cannot widen upstream denial
+    - Monotonic decisions: see: #Unified-verdict
     - Fail-closed mutation collisions: overlapping writes raise EAmbiguousMutation
     - Deduplication: identical name() instances merge; deepest config wins
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
@@ -205,19 +206,18 @@
   - Unified interposition pipeline
     - Single engine for every guest-to-host interaction
     - Guest Ring Event (Syscall | NetFrame | FsOp | Msg) enters one path
-    - Stage 1: Fast Filter (native BPF, inode mask, CIDR/port table)
-    - Stage 2: Dispatcher evaluates MountScope; FFI gated here
-    - Stage 3: Execution commits Verdict to hardware or VirtIO ring
+    - Gate 1: Fast Filter (native BPF, inode mask, CIDR/port table)
+    - Gate 2: Dispatcher evaluates MountScope; FFI gated here
+    - Gate 3: Execution commits Verdict to hardware or VirtIO ring
     - Effect-layer finality
       - A trap Pass is provisional; it routes, it never enforces
       - The final decision lands at the effect hook where the act commits
       - No policy rests solely on trap binary or argv matching
       - Canonical identity: see: 11-protocol.md#Trap-fast-path
     - Zero bespoke pipelines; zero per-ring verdict enums
-    - Ring, Fast Filter, and Dispatcher are native Rust; only Stage 3
+    - Ring, Fast Filter, and Dispatcher are native Rust; only Gate 3
       - crosses FFI on scope match
-    - Fast Filter budget: <2µs; Dispatcher budget: <1µs
-    - See: #Latency-ceiling for FFI cross budget
+    - Gate budgets: see: #Latency-ceiling
   - Mount scoping
     - Mount-level filters restrict blast radius before dispatch evaluation
     - VirtIO ring mask: unselected rings bypass plugin completely
@@ -247,6 +247,7 @@
   - Latency ceiling
     - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs
     - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs
+    - Gate 2 dispatcher budget: the Dispatcher evaluates in <1µs
     - Gate 3: Foreign FFI trampolines (V8/Python) dispatch out-of-band in 50-150µs
     - Gate 3 skip: EROFS trusted binary and payload paths bypass foreign FFI
     - Sync hot-paths require native filters or Verdict::Suspend
@@ -290,7 +291,7 @@
         - oci-translator, openshell-coordinator
         - Implementation is proprietary; not in this repo
         - egress-sidecar is an out-of-process commercial daemon outside the plugin count
-    - Coverage matrix (community plugins -> demonstrating example)
+    - Coverage matrix (plugin -> demonstrating example)
       - chaos, ledger: autonomous-swe-agent.{rs,ts,py}
       - vault: autonomous-swe-agent.{rs,ts,py} via wire-plane vaults only
       - mesh: multi-vm-swarm.rs
@@ -299,9 +300,8 @@
       - wire-ingress, mcp, tool-guard: serverless-webhook.ts
       - replay: replay.rs
       - profile: profile.rs
-    - Userland SDK policy demonstrations
-      - db-proxy: db-backed-runtime.py
-      - supply-chain: multi-vm-swarm.rs
+      - db-proxy: db-backed-runtime.py (userland SDK policy)
+      - supply-chain: multi-vm-swarm.rs (userland SDK policy)
     - Non-plugin surface examples
       - Exercises raw traits or SDK surfaces; no catalog plugin
       - Terminal and trap interposition: see: artifacts/examples/git-gate.rs
@@ -423,7 +423,8 @@
       - Python plugin: KelirBuilder.plugin(name) classmethod
     - Verbs in both modes
       - 24 ring verbs and 8 scopes exist in host mode and plugin mode
-      - Rust: the trap scope entry exists in plugin mode only; the host's trap(filter, f) occupies the name (E0592)
+      - Rust: the trap scope entry exists in plugin mode only
+      - Rust: the host's trap(filter, f) occupies the name (E0592)
       - Same signatures as the DX-round plugin builder; the host gains them
       - context, require, scope, vsock_service, fork_with exist in both modes
       - Verb names: see: #Chainable-verbs
@@ -431,6 +432,58 @@
       - Verb signatures: see: artifacts/code/rust-plugin-builder.rs
       - Verb signatures: see: artifacts/code/typescript-plugin-builder.ts
       - Verb signatures: see: artifacts/code/python-plugin-builder.py
+    - Chainable verbs
+      - Verb set is closed to the ring traits plus lifecycle and vsock
+      - Each verb returns the builder or a typed successor
+      - Each verb registers exactly one handler or capability
+      - Repeat calls append, never replace
+        - A second call to the same ring verb registers a second handler
+        - Handlers fire in registration order
+      - .context(fn) in Rust, TypeScript, and Python
+      - .require::<P>() in Rust; .requires<P>() in TypeScript; .require(P) in Python
+      - .scope(MountScope) in Rust; .scope(scope) in TypeScript and Python
+      - .fork_with(fn) in Rust and Python; .forkWith(fn) in TypeScript
+      - Ring verbs
+        - Trap: .on_trap, .on_process_exit
+        - Fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock
+        - Net: .on_net_outbound, .on_net_inbound
+        - Console: .on_console_input, .on_console_output, .on_exec_stdout, .on_exec_stderr
+        - Host: .on_host_lsm_exec, .on_host_pressure, .on_host_keyring_access
+        - Lifecycle init: .on_vm_init, .on_vm_ready, .on_vm_shutdown
+        - Lifecycle commit: .on_pre_commit, .on_post_commit, .on_host_preempt
+        - Telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
+        - Vsock: .vsock_service(spec, handler)
+          - Spec carries port, service, and schema
+          - Each call registers one service, plugin-level in all SDKs
+          - Multiple calls register multiple services
+      - Ring home: see: #Segregated-ring-traits
+      - Verb signatures: see: artifacts/code/rust-plugin-builder.rs
+      - Verb signatures: see: artifacts/code/typescript-plugin-builder.ts
+      - Verb signatures: see: artifacts/code/python-plugin-builder.py
+    - Nested scopes
+      - Eight scope entry points, one per ring group
+        - trap: .on_trap, .on_process_exit
+        - fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock
+        - net: .on_net_outbound, .on_net_inbound
+        - console: .on_console_input, .on_console_output
+        - exec: .on_exec_stdout, .on_exec_stderr
+        - host: .on_host_lsm_exec, .on_host_pressure
+          - .on_host_keyring_access, .on_host_preempt
+        - lifecycle: .on_vm_init, .on_vm_ready, .on_vm_shutdown
+          - .on_pre_commit, .on_post_commit
+        - telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
+      - Entry-point names are the group names in all three SDKs
+      - Each entry point takes a closure receiving a scope builder
+        - The closure returns the scope builder; there is no .end() verb
+        - Scope methods carry the same verb names as the flat chain
+        - The parent chain resumes after the closure returns
+      - Scope groups organise the chain only
+        - Ring membership and descriptors are unchanged by scope use
+        - A nested chain and the equivalent flat chain produce
+          - identical descriptors: same rings, same ordinals
+      - Scope shape: see: artifacts/code/rust-plugin-builder.rs
+      - Scope shape: see: artifacts/code/typescript-plugin-builder.ts
+      - Scope shape: see: artifacts/code/python-plugin-builder.py
     - Host-only verbs (Mode-gated; a plugin-mode builder must not call them)
       - Rust: storage, terminal, wire, lock_broker, detached, fast_boot
       - Rust: dax_window, seal, params, plugin, plugin_instance
@@ -494,70 +547,16 @@
   - Fluent plugin-creation builder
     - Superseded by the unified builder: see: #Unified-builder
     - History, not a second surface: the DX-round shape lives here
-    - Verb and scope names below stay current; the rest is history
-    - One entry point per SDK
+    - Shape: per-SDK entry point, chainable verbs, nested scopes, .build()
+    - Historical entry points
       - Rust: kelir::plugin_builder::PluginBuilder::new(name)
       - TypeScript: createPlugin(name); existing symbol, surface aligned
       - Python: kelir.PluginBuilder(name); new symbol
       - Direct impl KelirPlugin remains the advanced escape hatch
-      - Surface per SDK: see: 03-sdk-architecture.md#Fluent-plugin-surface
-    - Chainable verbs
-      - Verb set is closed to the ring traits plus lifecycle and vsock
-      - Context, prerequisite, scope, fork, and vsock service verbs
-      - Each verb returns the builder or a typed successor
-      - Each verb registers exactly one handler or capability
-      - Repeat calls append, never replace
-        - A second call to the same ring verb registers a second handler
-        - Handlers fire in registration order
-      - .context(fn) in Rust, TypeScript, and Python
-      - .require::<P>() in Rust; .requires<P>() in TypeScript; .require(P) in Python
-      - .scope(MountScope) in Rust; .scope(scope) in TypeScript and Python
-      - .fork_with(fn) in Rust and Python; .forkWith(fn) in TypeScript
-      - .fork_with signatures are pinned per language, not divergent
-        - Rust: Fn(&str) -> Box<dyn AnyPlugin>
-        - TypeScript: () -> PluginContract
-        - Python: Fn(_PluginWrapper) -> _PluginWrapper
-      - Ring verbs
-        - Trap: .on_trap, .on_process_exit
-        - Fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock
-        - Net: .on_net_outbound, .on_net_inbound
-        - Console: .on_console_input, .on_console_output, .on_exec_stdout, .on_exec_stderr
-        - Host: .on_host_lsm_exec, .on_host_pressure, .on_host_keyring_access
-        - Lifecycle init: .on_vm_init, .on_vm_ready, .on_vm_shutdown
-        - Lifecycle commit: .on_pre_commit, .on_post_commit, .on_host_preempt
-        - Telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
-        - Vsock: .vsock_service(spec, handler)
-          - Spec carries port, service, and schema
-          - Each call registers one service, plugin-level in all SDKs
-          - Multiple calls register multiple services
-      - Ring home: see: #Segregated-ring-traits
-      - Verb signatures: see: artifacts/code/rust-plugin-builder.rs
-      - Verb signatures: see: artifacts/code/typescript-plugin-builder.ts
-      - Verb signatures: see: artifacts/code/python-plugin-builder.py
-    - Nested scopes
-      - Eight scope entry points, one per ring group
-        - trap: .on_trap, .on_process_exit
-        - fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock
-        - net: .on_net_outbound, .on_net_inbound
-        - console: .on_console_input, .on_console_output
-        - exec: .on_exec_stdout, .on_exec_stderr
-        - host: .on_host_lsm_exec, .on_host_pressure
-          - .on_host_keyring_access, .on_host_preempt
-        - lifecycle: .on_vm_init, .on_vm_ready, .on_vm_shutdown
-          - .on_pre_commit, .on_post_commit
-        - telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
-      - Entry-point names are the group names in all three SDKs
-      - Each entry point takes a closure receiving a scope builder
-        - The closure returns the scope builder; there is no .end() verb
-        - Scope methods carry the same verb names as the flat chain
-        - The parent chain resumes after the closure returns
-      - Scope groups organise the chain only
-        - Ring membership and descriptors are unchanged by scope use
-        - A nested chain and the equivalent flat chain produce
-          - identical descriptors: same rings, same ordinals
-      - Scope shape: see: artifacts/code/rust-plugin-builder.rs
-      - Scope shape: see: artifacts/code/typescript-plugin-builder.ts
-      - Scope shape: see: artifacts/code/python-plugin-builder.py
+    - Historical fork_with signatures that differ from the unified builder
+      - TypeScript: () -> PluginContract
+      - Python: Fn(_PluginWrapper) -> _PluginWrapper
+      - Rust matches the unified shape: see: 03-sdk-architecture.md#Unified-builder-surface
     - Terminal build
       - .build() returns a KelirPlugin-conforming wrapper
       - .build() validates before returning the wrapper

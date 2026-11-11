@@ -39,12 +39,9 @@
     - Unified verdict surface (tool-guard)
       - Returns engine-level Verdict from 02-plugin-model.md#Unified-verdict
       - Verdict::Pass: forwards frame untouched
-      - Verdict::Patch(ExecveMutation): serializes canonical mutation ABI:
-        - new_binary: Option<String> (overrides target ELF path)
-        - new_argv: Option<Vec<String>> (replaces execution arguments)
-        - set_env: HashMap<String, String> (injected environment variables)
-        - unset_env: Vec<String> (stripped environment variables)
-        - Guest shim decodes and applies atomically before trapped execve releases
+      - Verdict::Patch(ExecveMutation): serializes the canonical mutation ABI
+        - Field layout owned by crates/kelir-interface/src/protocol_wire.rs
+      - Guest shim decodes and applies atomically before trapped execve releases
       - Verdict::Drop { errno, reason }: JSON-RPC error response synthesized
       - Verdict::Suspend { until: Approval }: hypervisor external suspend
         - Host waits for human out-of-band authorization via vsock Channel 0

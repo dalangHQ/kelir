@@ -25,7 +25,7 @@
           - Ring-buffered async channels decouple host UI/IO from microVM vCPU loops
         - FFI boundary economics
           - Rate limits evaluated in native memory before FFI queue insertion
-          - Filter-before-FFI boundary stops thrash: native rules evaluate in <2µs
+          - Filter-before-FFI stops thrash; budget: see: 02-plugin-model.md#Latency-ceiling
           - Foreign async handlers (V8/Python) evaluate out-of-band; synchronous hot-paths
             - execute native Rust interposers or require explicit YieldToHost
         - Isolation mechanics
@@ -34,11 +34,9 @@
           - Hardware memory protection keys (MPK on x86_64) isolate in-process heap
       - Snapshot and rollback scope
         - Snapshots capture compute + disk, not distributed network state
-        - Rollback closes session sockets; guests observe ECONNRESET
-        - Lifecycle rollback boundary: see: 08-lifecycle.md#Rollback
-        - Base snapshots are engine-internal; never user-visible state
-        - User snapshots and CausalDelta chains ignore base snapshots
-        - see: 08-lifecycle.md#Autonomous-fast-boot-hydration
+        - Rollback boundary: see: 08-lifecycle.md#Rollback
+        - Base snapshots: see: 09-snapshots.md#Snapshot-taxonomy
+        - Fast-boot cache: see: 08-lifecycle.md#Autonomous-fast-boot-hydration
       - Strict hardware/kernel abstraction layer
         - Zero knowledge of prompts, evaluation loops, or orchestration logic
         - Operates strictly on physical primitives: pages, registers, descriptors, frames
@@ -116,7 +114,7 @@
         - Workload reads parameters from mounted read-only configuration block
       - Standard POSIX consumption
         - Guest reads KELIR_PARAMS like any other environment variable
-        - No guest-side SDKs, CLI shims, or agents
+        - No guest-side SDKs: see: #Zero-workload-intrusion
   - Capability taxonomy
     - Every capability falls into exactly one category
     - Core primitive
@@ -130,13 +128,7 @@
       - Examples: containerd-shim-v2, MCP stdio
       - Adapter implementations: see: 12-adapters.md#Ingestion-matrix
       - Translation logic delegated to domain plugin
-    - Plugin
-      - Optional domain extensions (13 catalog plugins)
-      - Declares typed lifecycle and interposer traits: see: [1]
-      - Native: systems-grade engine plugin compiled in Rust
-      - Foreign: userland policy plugin written in host language
-      - Dual-plane execution details: see: 02-plugin-model.md#Dual-plane-execution-architecture
-      - Owns crate, tests, fixtures, examples: see: 02-plugin-model.md#Plugin-ownership
+    - Plugin: see: 02-plugin-model.md#Plugin-tiering
     - Boundary decision test
       - Core plane (Terminal, Storage, Wire, Checkpoint, Host)? → engine primitive
       - Backend driver contract? → interface
@@ -148,7 +140,7 @@
     - Interposition verdict model: see: 02-plugin-model.md#Unified-verdict
     - Trait definitions
       - Low-footprint preset contract: see: #Embedded-profile
-      - Trait contract: see: [1]
+      - Trait contract: see: 02-plugin-model.md#KelirPlugin-trait
       - Tiered dependency contract: see: 02-plugin-model.md#Plugin-tiering
       - VmmDriver trait definition: see: #VmmDriver-trait
     - Context types: see: 11-protocol.md#Wire-messages
@@ -166,8 +158,8 @@
     - Core routes paravirtual devices; plugins provide domain interpretation
     - Zero protocol domain logic lives in core
     - Channel 0 carries hypervisor control
-    - Channel allocation is frozen
-      - see [3]    - Primary VirtIO Bus
+    - Channel allocation: see: [3]
+    - Primary VirtIO Bus
       - virtio-vsock: multiplexed syscall traps and binary control channels
       - virtio-console: multi-port character streams
       - virtio-fs: FUSE filesystem operations and virtual inode dispatch
@@ -215,7 +207,7 @@
     - Owner: kelir-core native host subsystem (kelir-core::host)
     - Physical anchor: host kernel boundaries (eBPF/LSM, cgroup v2, keyrings)
     - HostInterposer pipeline executes synchronous native checks before ring transit
-    - Gate budget: HostInterposer evaluation bounded to <2µs in native memory
+    - HostInterposer gate budget: see: 02-plugin-model.md#Latency-ceiling
     - Security boundary: zero ambient host privilege expansion permitted
     - Physicality invariant: decorative or non-enforceable host hooks reject at boot
   - Trust boundaries
@@ -223,8 +215,7 @@
       - Host does not terminate TLS by default
       - Credentials are issued as scoped short-lived tokens by plugin-vault
       - Workload presents tokens itself; no in-flight substitution
-    - Optional external sidecar can terminate TLS if the workload cannot
-      - see: [4]
+    - Optional external sidecar: see: [4]
       - Host never sees plaintext request bodies for credential-bound traffic
     - Upstream certificate validation is the workload's responsibility
       - System CA bundles ship inside the EROFS rootfs as normal
@@ -233,7 +224,7 @@
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
     - Host memory preservation: see: 08-lifecycle.md#Suspend-and-resume
   - Host memory pressure watcher
-    - Active balloon inflation/deflation loop in kelir-core
+    - Balloon convergence loop: see: 08-lifecycle.md#Balloon-convergence
     - Linux: subscribe to cgroup v2 memory.pressure via io_uring/epoll
     - Linux reclaim: madvise(MADV_DONTNEED) releases physical frames immediately
     - macOS reclaim: stage-2 hv_vm_unmap unbinds guest physical frames
@@ -243,7 +234,6 @@
     - macOS: register DISPATCH_SOURCE_TYPE_MEMORYPRESSURE kernel listener
     - Pressure signal inflates virtio-balloon queue
     - Guest kswapd evicts clean page caches into balloon
-    - Host madvise(MADV_DONTNEED) reclaims physical frames immediately
     - Zero manual tuning; zero guest cooperation beyond standard kernel
   - Host runtime
     - see: artifacts/diagrams/host-runtime.txt
@@ -256,7 +246,7 @@
   - Host state root
     - Content-addressed root: ~/.kelir/
       - catalog.db: embedded SQLite ledger tracking all session lifecycles
-      - Lease schema and row kinds
+      - Lease schema and row kinds: see: 06-storage-catalog.md#Entity-model
       - OS-native liveness primitives are proof-of-life, not SSOT
         - Linux: pidfd_open + pidfd_send_signal
         - macOS: kqueue(EVFILT_PROC, NOTE_EXIT)
@@ -275,10 +265,6 @@
       - Kernel releases advisory state on process death; runtime janitor reclaims orphaned rows
     - Session ownership and leases
       - sessions/<id>/owner.pid records the runtime process
-      - catalog sessions row carries the liveness lease proof with explicit expiry
-      - catalog sessions row carries (incarnation_id, boot_id, start_time_ns, pid)
-      - ephemeral records declare lease_kind='ephemeral' with null expiry
-      - detached rows use lease_kind='lease' and update expires_at every 30s
       - Incarnation proof semantics: see: 08-lifecycle.md#Session-incarnation
       - Orphaned relay.sock, sparse backing file, staging trees reclaimed by runtime child janitor
   - Guest VM anatomy
@@ -343,7 +329,7 @@
       - kelir-shim remounts /proc with hidepid=2 during early init
       - /proc/kallsyms, /sys/firmware, /proc/version leak signatures suppressed
       - Untrusted scripts cannot probe kernel pointers or peer processes
-    - Workload contract: no guest-side SDK, shim, or agent
+    - Workload contract: see: #Zero-workload-intrusion
   - VmmDriver trait
     - see: [6]
     - Primitive list and signatures: see: [6]
@@ -377,7 +363,6 @@
       - driver-proot: Termux ptrace emulation; requires allow_emulated_fallback=true
       - Attempting to boot emulated tier without flag throws E_NOHARDWAREVMM
 
-- [1]: 02-plugin-model.md#KelirPlugin-trait
 - [2]: 10-attestation.md#Execution-receipts
 - [3]: 11-protocol.md#Control-channel
 - [4]: plugins/vault.md#Optional-external-egress-rewriting

@@ -7,6 +7,7 @@
       - Owner: kelir-core native terminal subsystem (kelir-core::terminal)
       - Hardware abstraction: virtio-console paravirtual character bus
       - Port 0 allocated to standard console IO; Ports 1-16 dynamically allocated
+      - Port 0 is the sole in-process break-glass surface; human attach only
       - Transport: Raw byte-stream rings mapped to host supervisor memory
       - Zero-copy ringbuffer backpressure and queue management
     - HostTerminalGuard (RAII)
@@ -41,14 +42,14 @@
     - Disclosures render inline on workload TTY without corrupting cursor state
   - Binary exec channel (terminal plane)
     - Carries programmatic execution streams on stream kind EXEC (mux 0x0001)
-    - Sub-lane framing defined on EXEC stream kind
+    - Sub-lane framing: see: 11-protocol.md#Binary-exec-channel
     - stdout and stderr retain bitwise fidelity; zero terminal escape pollution
     - Programmatic commands bypass PTY entirely; PTY (Port 0) is reserved for human attach
     - Per-exec PTY opt-in
       - FLAG_ALLOC_PTY on EXEC_IO_SPEC allocates a private slave PTY per ExecSlot
       - isatty(3) semantics satisfied for language REPLs, git, and build runners
       - Concurrent interactive execs run without Port 0 serialization
-      - Port 0 remains the sole human break-glass console
+      - Port 0 remains the sole human break-glass console: see: #Terminal-pipeline
   - Stream replay
     - Each console port emits an append-only log
       - stdout, stderr, and (when attached) PTY output are separate logs

@@ -8,7 +8,7 @@
     - Exposes: SqlProxyService
     - VirtIO Ring attachment: virtio-net (port 5432)
     - Registers stream kind DB_SQLITE on the mux
-      - Kind 0x0011; see: 11-protocol.md#Control-channel
+      - see: 11-protocol.md#Control-channel
     - Lifecycle attachment (db-proxy): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (db-proxy)
     - Exports SqlProxyService via PipelineBinder for statement and dialect queries
@@ -26,8 +26,7 @@
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.schema_rewrites
     - SQLite host path (db-proxy)
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.sqlite.host_path
-    - Verdict execution: engine Verdict (Pass | Patch | Drop)
-      - see: 02-plugin-model.md#Unified-verdict
+    - Verdict execution: see: 02-plugin-model.md#Unified-verdict
     - Protocol proxying
       - PostgreSQL on 5432, Redis on 6379
       - Ephemeral credentials injected at host connection boundary
@@ -35,11 +34,11 @@
   - Error and return semantics (db-proxy)
     - Hook signature (db-proxy): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (db-proxy)
+      - Drop/forward wire rules: see: 07-wire-plane.md#Frame-drop-and-forward-semantics
       - FilterAction::Drop
         - pgwire ErrorResponse frame precedes connection close
         - SQLSTATE derived from errno (EPERM→42501, ENOENT→42P01)
         - Unmapped errno → SQLSTATE XX000 (internal_error)
       - FilterAction::Forward after in-place Q/P frame rewrite
-        - Frame bytes mutated in place before upstream forward
         - Server sees rewritten frame as if client sent it
         - Each connection's rewrites tallied; >3 aborts ECYCLICREWRITE

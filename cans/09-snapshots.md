@@ -9,7 +9,8 @@
           - applies across all concurrent children of the same ancestor
         - Depth is unbounded
     - Base snapshot (engine-internal)
-      - Stored under cas/blobs/ with parent_digest: None
+      - Format: parent_digest: None
+      - Cache path and lease row: see: 08-lifecycle.md#Autonomous-fast-boot-hydration
       - Not visible in session.lineage(); not exported by session.vm.export_snapshot
       - Not included in user-visible CausalDelta chains
       - Digest recorded in host-side cache manifest for audit; not in receipts
@@ -23,12 +24,12 @@
       - No TLS CA material is snapshotted; no host CA exists
       - Socket state, TCP sequence numbers, and connection metadata
         - are omitted from snapshots; snapshots capture compute + disk only
-      - upperdir.tar.zst is broker state: sparse upper file + tombstones
+      - upperdir.tar.zst is broker state: see: 05-storage-plane.md#Host-CoW-broker
       - No whiteouts, no overlay metadata, no union driver artifacts
       - Verification: trailer carries manifest digest for end-to-end integrity
     - Restore semantics
       - Import materializes compute and disk only
-      - Workloads that had live sockets observe them gone on first access
+      - Sockets gone on first access after import: see: 08-lifecycle.md#Rollback
     - Serialization exhaustiveness tripwire
       - Snapshot format structs fail compilation on unhandled schema additions
       - Struct fields in kelir-interface mandate explicit serde default tags
