@@ -1,0 +1,119 @@
+# see: cans/03-sdk-architecture.md#Python-SDK
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from kelir.generated.attest_telemetry import CausalDelta, SnapshotDescriptor
+from kelir.sdk_errors import EConfig
+import kelir
+
+from kelir import (
+    Caps,
+    CheckpointHandle,
+    HostHandle,
+    SpawnResult,
+    StorageHandle,
+    TerminalHandle,
+    VmHandle,
+    VsockHandle,
+    WireHandle,
+)
+
+
+class Session:
+    def __init__(self) -> None:
+        self._native: Any = None
+        self.driver_name: str = ""
+        self.boot_ms: int = 0
+        self.cap = Caps()
+        self.vm = VmHandle(self)
+        self.terminal = TerminalHandle()
+        self.storage = StorageHandle()
+        self.wire = WireHandle()
+        self.checkpoint = CheckpointHandle()
+        self.host = HostHandle()
+        self.vsock = VsockHandle()
+
+    # see: cans/03-sdk-architecture.md#Python-SDK
+    @classmethod
+    def from_native(cls, handle: Any) -> Session:
+        session = cls()
+        session._native = handle
+        session.driver_name = str(handle.driver_name)
+        session.boot_ms = int(handle.boot_ms)
+        session.vm = VmHandle(session, handle.vm)
+        session.terminal = TerminalHandle(handle.terminal)
+        session.storage = StorageHandle(handle.storage)
+        session.wire = WireHandle(handle.wire)
+        session.checkpoint = CheckpointHandle(handle.checkpoint)
+        session.host = HostHandle(handle.host)
+        return session
+
+    async def fork(self) -> Session:
+        native = kelir._require_native(self._native, "session fork")
+        return Session.from_native(native.fork())
+
+    async def rollback(self, snapshot: SnapshotDescriptor | None = None) -> None:
+        if snapshot is not None:
+            await self.vm.rollback(snapshot)
+            return
+        # TODO (L3): call native driver rollback via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session rollback (L3)")
+
+    async def stop(self) -> None:
+        native = kelir._require_native(self._native, "session stop")
+        native.stop()
+
+    async def terminate(self) -> None:
+        native = kelir._require_native(self._native, "session terminate")
+        native.terminate()
+
+    async def spawn(
+        self,
+        binary: str,
+        argv: list[str] | None = None,
+        *,
+        cwd: str | None = None,
+        params: Any = None,
+    ) -> SpawnResult:
+        # TODO (L3): spawn binary in the guest via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session spawn (L3)")
+
+    async def exec_in_guest(self, binary: str, argv: list[str]) -> SpawnResult:
+        # TODO (L3): exec binary in the guest via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session exec_in_guest (L3)")
+
+    async def suspend(self) -> None:
+        native = kelir._require_native(self._native, "session suspend")
+        native.suspend(str(self.session_dir() / "suspend.img"))
+
+    async def resume(self, path: str) -> None:
+        native = kelir._require_native(self._native, "session resume")
+        native.resume(path)
+
+    # see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
+    def session_dir(self) -> Path:
+        native = kelir._require_native(self._native, "session session_dir")
+        member = getattr(native, "session_dir", None)
+        if member is None:
+            raise EConfig(
+                "kelir native PyO3 bridge (_kelir) is missing: session handle session_dir() (A11)"
+            )
+        return Path(str(member()))
+
+    async def console(self) -> None:
+        # TODO (L3): open the PTY console master via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session console (L3)")
+
+    # see: cans/08-lifecycle.md#Detached-lifecycle
+    @classmethod
+    async def attach(cls, session_id: str) -> Session:
+        relay = kelir.relay_socket_path(session_id)
+        _ = relay
+        # TODO (L3): connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.
+        raise EConfig("TODO: Session.attach (L3)")
+
+    async def get_causal_delta_from_parent(self) -> CausalDelta:
+        # TODO (L3): fetch causal delta from parent session via the PyO3 _kelir bridge.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session get_causal_delta_from_parent (L3)")
