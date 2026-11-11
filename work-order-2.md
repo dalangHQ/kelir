@@ -1,154 +1,250 @@
-# work-order.md
+# What to steal from microsandbox's test discipline for kelir
 
-## Deprecation & Diff-Apologetics Cleanup — Phase L1/L2
+## 1. Diagnosis: what kelir's plan already gets right, and where it structurally plateaus
 
-### Intent
-Remove every artifact that reads as a diff against a prior version of Kelir: `#[deprecated]`, serde aliases, `_V1` schema suffixes, SDK rename shims, "superseded"/"fallback"/"today" language, and `#[allow(deprecated)]` suppressions. Ship one canonical name and one canonical shape per concept. **This is a cleanup order, not a feature order.**
+Kelir's current plan is **physical-invariant-first**: 254 cases across 17 domains, each pinned to a host-level physical observable (a punch-holed sparse extent, an `st_blocks == 0`, a typed `Verdict::Drop`, a BLAKE3 literal). The Anti-Slop Laws (AS-01..AS-08) and Case Discipline Rules (CDR-01..CDR-08) are stronger than anything microsandbox ships — do not dilute them.
 
-### Phase constraint: L1/L2 only
-- **Do not implement any L3 TODO.** Every `// TODO (L3):` stays exactly as it is.
-- **Do not touch L3 code paths.** Wire protocol, FUSE worker, shim fast-path, driver boot, etc. remain untouched.
-- The only behavior changes allowed are the public-surface renames explicitly called out below (`TelemetryExtension` → `ReceiptExtension`, `NativeSnapshotRecord` → `NativeSnapshotDescriptorRecord`, `SCHEMA_V1_SQL` → `SCHEMA_SQL`). Everything else is a no-op cleanup that must keep `cargo test --workspace` green.
-- **Cross-hypervisor, cross-SDK, and CLI behavior must not change** — only the source spelling of names, derives, and comments.
+What the plan structurally **cannot** express today, and what microsandbox's suite does express naturally:
 
-### Global guardrails (all agents)
-- Never add a compatibility shim (`type X = Y`, `#[serde(alias)]`, `#[deprecated]`, dual `pub use`, dual CLI verb, dual field name) as the resolution.
-- Never write a `// TODO: delete once …` comment. If a type needs a derive, add the derive.
-- Do not add new public items to hide the rename; rename in place and update every caller.
-- Respect per-crate `[lints]` in `Cargo.toml` (e.g. `unwrap_used = "deny"`, `panic = "deny"`, `expect_used = "deny"`). The `fetch_update` replacement loops in Agent 3 must use `compare_exchange_weak` and must not `unwrap`.
-- Run `cargo check --workspace --all-features` and `cargo clippy --workspace --all-features` before declaring done.
-- Do not touch files outside your ownership map unless the work order says otherwise.
-
-### Verification gate (run by the merge lead after all 5 agents land)
-```sh
-cargo check --workspace --all-features
-cargo clippy --workspace --all-features
-cargo run -p kelir-interface --bin codegen      # must produce a clean tree
-cargo test --workspace
-grep -rn 'serde(alias' crates/                  # empty
-grep -rn 'TelemetryExtension' crates/ packages/ # empty
-grep -rn 'NativeSnapshotRecord' packages/       # empty
-grep -rn '\bMaskRule\b' crates/                 # only MaskReadRule hits
-grep -rn 'check-layers\|check-budgets' crates/  # empty
-grep -rn 'fallback carrier\|primary carrier' crates/  # empty
-grep -rn '#\[deprecated' crates/                # empty (except Agent 1's own PartialEq derives on WatchdogAction are fine; only #[deprecated] is banned)
-```
-If any grep produces output, the offending agent re-opens.
-
----
-
-## Ownership map
-
-| Agent | Owns |
+| Kelir has | Kelir lacks (microsandbox-shaped) |
 |---|---|
-| **A1** | `crates/kelir-interface/src/protocol_wire.rs`, `crates/kelir-interface/src/driver_interface.rs` |
-| **A2** | `crates/kelir-interface/src/telemetry/*`, `crates/kelir-interface/src/bin/codegen/*`, all `packages/py/kelir/generated/*`, all `packages/py/kelir/plugins/plugin_*.py`, all `packages/ts/core/src/generated/*`, `packages/ts/core/src/telemetry.attest.generated.ts`, `packages/ts/core/src/plugins.registry.ts`, `crates/kelir-otlp/src/records_otlp.rs`, `crates/kelir-plugins/plugin-ledger/src/wal_ledger/merkle_wal.rs` |
-| **A3** | `crates/kelir-otlp/src/registry_otlp.rs`, `crates/kelir-interface/src/plugin_model.rs`, `crates/kelir-plugins/plugin-replay/src/lib.rs`, `crates/kelir-plugin-testkit/src/vectors_testkit.rs` |
-| **A4** | `crates/kelir-core/src/planes/checkpoint/mod.rs`, `crates/kelir-core/src/session_lifecycle.rs`, `crates/kelir/src/planes/storage_plane.rs` + any callers found by grep |
-| **A5** | `crates/kelir-catalog/src/schema_catalog.rs`, `crates/kelir-catalog/src/lib.rs`, `crates/kelir-plugin-cli/src/main.rs`, `crates/kelir-plugin-cli/src/layers_cli.rs`, `crates/kelir-shim/src/main.rs`, `crates/kelir-drivers/driver-rustvmm/src/host_probe.rs`, `crates/kelir-core/src/dispatch_plugin.rs` |
+| Per-subsystem invariants (one plane each) | **Composition**: one user journey asserting 4 planes together |
+| Single-session tests | **Concurrency**: N sessions contending for host resources |
+| Steady-state tests | **Recovery**: host crash → reaper → catalog state → reattach |
+| One-shot executions | **Sustained pressure**: balloon/disk quota over minutes |
+| Binding parity via `vectors.json` frames | **Full E2E SDK journeys** across all 3 languages |
+| Tool-guard interception unit/red tests | **MCP protocol conformance** (full JSON-RPC round-trip) |
+| Red/gap map with 75 gaps | **Smoke tier**: a fast “does the whole stack still boot” gate |
 
-**No two agents own the same file.** A1, A2, A3 all work inside `kelir-interface/src/` but never the same file. A4 and A5 both work inside `kelir-core/src/` but never the same file.
-
----
-
-## A1 — Interface core types
-
-**Scope:** `protocol_wire.rs`, `driver_interface.rs` only. Do not touch other files in `kelir-interface/src/` (A2, A3 own those).
-
-**Findings to close:**
-- **Finding 2** — Remove `#[serde(alias = "binary")]`, `#[serde(alias = "argv")]`, `#[serde(default, alias = "env", ...)]` from `ExecveMutation`. Only `new_binary`, `new_argv`, `set_env`, `unset_env` are acceptable wire field names. Keep `#[serde(default)]` where it is semantically required (empty defaults), but drop every `alias`.
-- **Finding 12** — Remove `#[allow(clippy::derivable_impls)]` and either `#[derive(Default)]` on `StreamKind` with `#[default]` on `Exec`, or hand-write the impl without the lint suppression. Preferred: derive, because that's the canonical form. If the derive changes semantics (it doesn't — `Exec = 0x0001` is the current default), keep hand-written but drop the allow.
-- **Finding 7 prerequisite** — Add `#[derive(..., PartialEq, Eq)]` to `WatchdogAction` in `driver_interface.rs`. A3 consumes this; do not tell A3 to add it.
-
-**Done when:** `grep -n 'serde(alias' crates/kelir-interface/src/protocol_wire.rs` is empty; `grep -n 'derivable_impls'` in `protocol_wire.rs` is empty; `WatchdogAction` derives `PartialEq, Eq`.
+The whole point of the answer below: **add a scenario tier that composes domain invariants** — kelir's equivalent of microsandbox's `tests/integration/python/test_sandbox.py` — without re-asserting a single physical fact that a domain case already owns.
 
 ---
 
-## A2 — Codegen SDK unification
+## 2. Structure to steal: a `scenarios/` tier that composes, never re-asserts
 
-**Scope:** the `codegen/` directory, `telemetry/receipt_attest.rs`, `telemetry/mod.rs`, `telemetry/merkle_attest.rs`, and every file the codegen binary emits. **You are the only agent that runs codegen.**
+Microsandbox's biggest structural asset is that its top-level test files are **user journeys**, not subsystems. Steal the shape, not the file names.
 
-**Findings to close:**
-- **Finding 4** — Remove the rename shims in `naming_codegen.rs`:
-  - Delete `ts_sdk_name` and `py_sdk_name` special-casing for `TelemetryExtension`. Then **rename the Rust struct** `TelemetryExtension` → `ReceiptExtension` in `receipt_attest.rs` and `telemetry/mod.rs`. Rename every Rust usage in `kelir-interface` (`merkle_attest.rs` destructure) and every plugin that imports it (should be none; grep to confirm). Delete `py_sdk_name`/`ts_sdk_name` from `naming_codegen.rs` and inline `rust_name.to_string()` at their call sites (`py_codegen::py_type`, `ts_codegen::ts_type`, `sdk_py`/`sdk_ts` if used there).
-  - Delete `ts_native_record_name`'s `SnapshotDescriptor` special case so it returns `format!("Native{rust_name}Record")` uniformly. This makes the emitted TS type `NativeSnapshotDescriptorRecord`, which is the pattern-correct name; update `ts_codegen::ts_native_type` if it references the old literal.
-  - Update `ts_codegen::ts_convert_expr`'s `if name != "TelemetryExtension"` guard to `if name != "ReceiptExtension"`.
-  - Update any codegen header `// see:` lines only if they became false; otherwise leave them.
-- Run `cargo run -p kelir-interface --bin codegen` **twice** — the second run must show zero writes (`plugin sdk projections: N plugins ok` with no `wrote` lines on the second invocation). Commit every regenerated file.
+### 2.1 New tier, new schema, same anti-slop laws
 
-**Done when:** `grep -rn 'TelemetryExtension\|ts_sdk_name\|py_sdk_name\|ts_native_record_name' crates/ packages/` is empty; `grep -rn 'NativeSnapshotRecord\b' packages/` matches nothing (only `NativeSnapshotDescriptorRecord`); a second codegen run is a no-op.
+```
+cans/artifacts/test-plan/
+  cases/                    ← existing 254 domain cases (unchanged)
+  scenarios/                ← NEW: composition tier
+    lifecycle/
+    agent/
+    concurrency/
+    recovery/
+    pressure/
+    network/
+    parity/
+  scenarios.yaml            ← NEW manifest (mirrors manifest.yaml shape)
+  test-plan-structure.md    ← extend with §5 Scenario Discipline
+```
 
----
+Every scenario file uses a **new schema `test-plan/scenario/v1`** whose body is *an ordered chain of `case_id` references with per-step assertions*. Example:
 
-## A3 — Suppression & shim removal
+```yaml
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_lifecycle_full_roundtrip"
+title: "Boot → exec → write file → egress → checkpoint → rollback → resume → stop"
+target_tier: e2e
+languages: [rust, typescript, python]   # parity matrix, not one language
+fixture_ref: fixtures/scenarios/full-roundtrip/   # EROFS + kernel + config
+steps:
+  - ref: tp_09_exec_stream_sublane_stdio_fidelity
+    assert: "stdout carries literal bytes [0x48,0x65,0x6c,0x6c,0x6f]"
+  - ref: sp_04_storage_quota_enforcement_enospc
+    assert: "upper.img st_blocks stays 0"
+  - ref: wp_02_synthetic_dns_nxdomain_enforcement
+    assert: "guest observes NXDOMAIN for undeclared host"
+  - ref: lc_02_suspend_zero_rss_purge
+    assert: "host RSS == 0MB after suspend"
+  - ref: lc_09_graceful_shutdown_syncfs_flushed
+    assert: "on_vm_shutdown fired; ExitKind::Normal"
+anti_slop_assertions:
+  - rule: AS-03
+    verification: "no .is_ok() — each step matches a typed Verdict/FilterAction"
+  - rule: AS-02
+    verification: "rollback step asserts st_blocks==0 on upper.img"
+```
 
-**Scope:** `registry_otlp.rs`, `plugin_model.rs`, `plugin-replay/lib.rs`, `vectors_testkit.rs`. Do not touch `driver_interface.rs` (A1 owns it) — `WatchdogAction` will have `PartialEq` by the time you merge.
+Key invariants — these are what make it **cohesive and non-redundant**:
 
-**Findings to close:**
-- **Finding 11** — Replace every `#[allow(deprecated)]`-wrapped `fetch_update` with a `compare_exchange_weak` loop. Three call sites:
-  - `registry_otlp.rs::exec_finished` — `in_flight_execs` saturating-decrement, must not underflow to `u64::MAX`.
-  - `plugin_model.rs::FfiDispatchQueue::try_submit` — saturating-increment bounded by `capacity`, must return `Err(PluginError::FfiQueueSaturated { depth })` with the observed depth on failure (preserve current API).
-  - `plugin_model.rs::FfiDispatchQueue::complete` — saturating-decrement to zero.
-  - `plugin-replay/lib.rs::ReplayState::record_pmu_sample` — two `fetch_update` saturating-adds (`retired_total`, `window_retired`). Replace with the same loop shape.
-  - Each loop must handle `Err(actual) => current = actual;` and never `unwrap`.
-- **Finding 7** — In `vectors_testkit.rs`, delete the `watchdog_action_eq` helper (including its `// TODO (L3): delete once …` comment). Replace its single call site with `armed_action == event.action`. This compiles because A1 adds `PartialEq` to `WatchdogAction`.
+- **A scenario may only reference `case_id`s, never invent physical assertions.** If you need a new physical fact, it goes in the domain case first, then the scenario references it. This closes the loop: scenario failures localize to a single domain case.
+- **Each scenario step carries one assertion only** (the composition contract), which is the `assert:` string. The domain case owns the *full* proof.
+- **`ci_gates.check_manifest` extended**: every `ref:` in `scenarios/` must resolve to a `case_id` in `manifest.yaml`; the scenario tier cannot drift.
+- **AS-04A applies unchanged**: no wall-clock sampling in scenarios; use `StepVerdict` / instruction counts.
 
-**Done when:** `grep -n 'allow(deprecated)' crates/kelir-otlp/src/registry_otlp.rs crates/kelir-interface/src/plugin_model.rs crates/kelir-plugins/plugin-replay/src/lib.rs` is empty; `grep -n 'watchdog_action_eq\|delete once' crates/kelir-plugin-testkit/src/vectors_testkit.rs` is empty; `cargo clippy -p kelir-otlp -p kelir-interface -p plugin-replay -p kelir-plugin-testkit` is clean.
+Microsandbox proves a scenario-level fixture sharing model (`tests/fixtures/` reused across languages). Adopt it explicitly:
 
----
+```
+cans/artifacts/test-plan/fixtures/scenarios/
+  full-roundtrip/         EROFS + kernel + kelir.yaml
+  mcp-agent-loop/         MCP client stdin + expected stdout fixtures
+  network-policy/         CIDR/domain allowlist JSON
+  crash-recovery/         pidfile + catalog seed row
+```
 
-## A4 — Core runtime & SDK façade
-
-**Scope:** `kelir-core/src/planes/checkpoint/mod.rs`, `kelir-core/src/session_lifecycle.rs`, `kelir/src/planes/storage_plane.rs`, plus any callers surfaced by grep.
-
-**Findings to close:**
-- **Finding 1** — Delete `PidLineage::new` (the `#[deprecated]` one) entirely. Grep the workspace for `PidLineage::new(` callers; migrate each to `PidLineage::new_in_session(root_pid, incarnation_id)` using the caller's available incarnation context. If a caller has no incarnation context, that caller is itself an L3 pending path — leave it as a TODO, do **not** re-add a shim. `Session::lineage` in `session_lifecycle.rs` already returns the safe form; leave it.
-- **Finding 5** — Delete `crates/kelir-core/src/session_lifecycle.rs::Session::from_parts` entirely, including the `// TODO (L2): from_parts is superseded …` comment and the `#[allow(clippy::too_many_arguments)]` attribute. Grep the workspace for `Session::from_parts` / `core::session_lifecycle::Session::from_parts` callers. `crates/kelir/src/session_lifecycle.rs::Session::from_parts` is a **different** function and is used by `builder_sdk.rs` — do not touch it.
-- **Finding 8** — In `crates/kelir/src/planes/storage_plane.rs`, change `pub use kelir_core::planes::storage::{..., MaskReadRule as MaskRule, ...}` to `pub use kelir_core::planes::storage::{..., MaskReadRule, ...}`. Grep `crates/` for `MaskRule` (with word boundary) — update each importer to `MaskReadRule`. If zero importers, nothing else to do.
-
-**Done when:** `grep -rn '#\[deprecated' crates/kelir-core crates/kelir` is empty; `grep -rn 'superseded' crates/kelir-core` is empty; `grep -rn 'MaskRule as\|::MaskRule\b' crates/` is empty; `cargo check --workspace` succeeds.
-
----
-
-## A5 — CLI, shim, driver language & schema
-
-**Scope:** `kelir-catalog/*`, `kelir-plugin-cli/{main,layers_cli}.rs`, `kelir-shim/src/main.rs`, `kelir-drivers/driver-rustvmm/src/host_probe.rs`, `kelir-core/src/dispatch_plugin.rs`. **Comment-only edits in the last two; do not change code semantics.**
-
-**Findings to close:**
-- **Finding 3** — In `crates/kelir-catalog/src/schema_catalog.rs`:
-  - Rename `SCHEMA_V1_SQL` → `SCHEMA_SQL`. Update the sole caller in `kelir-catalog/src/lib.rs`.
-  - Remove the `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY);` statement from `SCHEMA_SQL`. Grep the workspace for `schema_version` (word boundary) first; if any query reads/writes it, abort and report to the merge lead — do not delete a live column.
-  - Do not add a replacement "schema version" table. L1/L2 has no migrations.
-- **Finding 6** — In `crates/kelir-plugin-cli/src/main.rs`, delete the alias match arms:
-  - `"check-layers" | "layers" => …` becomes `"check-layers" => …`. Only `check-layers` is the CLI verb.
-  - `"check-budgets" | "budgets" => …` becomes `"check-budgets" => …`.
-  - Check `README`, scripts, or test files for the removed aliases; if found, update those invocations to the canonical verb.
-- **Finding 9** — In `crates/kelir-shim/src/main.rs`, reword the `// TODO (L3): SPSC ring primary carrier …; the AF_VSOCK fallback carrier is wired below.` comment to describe what the code **is**: `// The AF_VSOCK carrier is wired below; the SPSC ring carrier per cans/11-protocol.md#Wire-framing replaces this transport once its ring allocation lands.` No "primary", no "fallback".
-- **Finding 10** — Reword the three "today"/"L2 … L3" comments to state what the code is or what is missing, without a before/after narrative:
-  - `host_probe.rs`: `// TODO (L3): gate every backend on a real capability probe; only kvm exposes a device node today.` → `// TODO (L3): gate every backend on a real capability probe; kvm is the only backend with a device-node surface.`
-  - `layers_cli.rs`: `// TODO (L3): …; the scan bans only core/driver/adapter prefixes today.` → `// TODO (L3): enforce the per-tier plugin-to-plugin rule per cans/02-plugin-model.md#Plugin-tiering; the scan bans core/driver/adapter prefixes only.`
-  - `dispatch_plugin.rs`: `// TODO (L3): exact token-bucket accounting; this native 1s window is the L2 pre-insertion rate gate.` → `// TODO (L3): exact token-bucket accounting; the 1s window below is the pre-insertion rate gate.`
-  - No code changes in these files beyond the reworded comments.
-
-**Done when:** `grep -rn 'SCHEMA_V1_SQL\|schema_version' crates/kelir-catalog` is empty; `grep -rn 'check-layers\|check-budgets' crates/kelir-plugin-cli` matches only the single-arm forms; `grep -rn 'today\|fallback carrier\|primary carrier\|L2 .* L3' crates/kelir-shim/src/main.rs crates/kelir-drivers/driver-rustvmm/src/host_probe.rs crates/kelir-plugin-cli/src/layers_cli.rs crates/kelir-core/src/dispatch_plugin.rs` is empty.
-
----
-
-## Merge protocol
-
-1. **A1 and A4 may land first**, in either order. A1's `PartialEq` derive is a no-op for codegen; A4's deletions are dead-code. Run `cargo check --workspace` after each.
-2. **A5 lands next.** No codegen input is touched. `cargo check --workspace` must stay green.
-3. **A3 lands next.** It needs A1's `PartialEq` to compile `vectors_testkit.rs`. `cargo clippy --workspace --all-features` must stay green.
-4. **A2 lands last.** Run `cargo run -p kelir-interface --bin codegen`, inspect `git diff`, commit the regenerated files. Then rerun to confirm idempotence.
-5. **Merge lead runs the Verification gate** in full. Any grep producing output re-opens the offending agent.
-6. **Do not squash commits across agents.** Each agent's diff must be self-contained so a revert is surgical.
+Fixtures are **read-only from kelir's POV** (a fixture is a test input, not a spec artifact). They live under `cans/artifacts/test-plan/`, not under `cans/`, matching the artifact SSOT split.
 
 ---
 
-## What NOT to do
+## 3. Cases to steal, mapped to existing domains
 
-- Do **not** add `#[deprecated]`, `#[allow(deprecated)]`, `#[serde(alias)]`, `type X = Y`, `pub use … as …`, or a dual CLI verb anywhere in the tree. Those are the exact smells this work order removes.
-- Do **not** implement any `// TODO (L3):`. The diff stays a cleanup.
-- Do **not** rename anything outside the two renames listed (ReceiptExtension, NativeSnapshotDescriptorRecord). In particular, `SnapshotDescriptor`, `TelemetryExtension` at the wire level if it exists, `MaskReadRule`, and the `StreamKind::Exec` default are unchanged in *meaning* — only in spelling/derive form as specified.
-- Do **not** touch the `#[non_exhaustive]` derives, `serde(rename_all = "camelCase")`, `Session::attach`, the `kelir/src/session_lifecycle.rs::Session::from_parts` (the used one), or `MaskReadRule`'s struct definition. The prior audit cleared those as forward-compat, not diff-apologetics.
-- Do **not** commit a codegen output that differs from a second run — if the second run writes anything, the emitter is non-deterministic; stop and report.
+Below are microsandbox-style scenarios grouped by what they add. Each bullet names the existing kelir domain cases it composes. **None of these is a new physical invariant** — they are user-journey compositions, so they cannot duplicate a domain case.
+
+### 3.1 `scenarios/lifecycle/` — full lifecycle round-trips (fills the biggest gap)
+
+Microsandbox's `test_sandbox_lifecycle` runs boot → exec → files → network → suspend → stop in one pass. Kelir has every step isolated but never together.
+
+| Scenario | Composes |
+|---|---|
+| `full_roundtrip` | `tp_09`, `sp_04`, `wp_02`, `lc_02`, `lc_09` |
+| `fork_from_mid_chain` | `lc_01`, `lc_19`, `pe_13`, `ar_01` |
+| `rollback_recovers_state` | `sp_01`, `wp_03`, `gv_06`, `lc_08` |
+| `suspend_resume_clock_snap` | `lc_02`, `lc_05`, `lc_11` |
+| `graceful_vs_abrupt_shutdown` | `lc_09`, `lc_10`, `ta_03` |
+
+### 3.2 `scenarios/agent/` — MCP end-to-end (microsandbox's core strength)
+
+Kelir has `gt_01..gt_12` for tool-guard and `ad_08/ad_09` for MCP framing, but no **end-to-end MCP round-trip** from a real client. Microsandbox runs this as the primary E2E.
+
+| Scenario | Composes |
+|---|---|
+| `mcp_tool_call_roundtrip` | `gt_01`, `gt_07`, `ad_08`, `ad_09`, `tp_09` |
+| `mcp_taint_blocks_mutation` | `gt_03`, `gt_12`, `gt_11` |
+| `mcp_schema_drift_halts` | `gt_02`, `gt_08` |
+| `mcp_tool_quota_exhaustion` | `gt_04`, `gt_10` |
+| `agent_loop_with_egress_denial` | `wp_02`, `gt_03`, `ta_04` |
+
+### 3.3 `scenarios/concurrency/` — the largest true gap
+
+Microsandbox tests multiple sandboxes sharing host resources. Kelir's plan has **zero multi-session cases**.
+
+| Scenario | Composes |
+|---|---|
+| `n_sessions_isolation` | `sp_12`, `wp_01`, `lc_16` (all N times, asserting no cross-talk) |
+| `shared_workspace_lock_contention` | `sp_15`, `sp_19` (two sessions, one flock) |
+| `concurrent_catalog_writes` | `sp_21`, `sp_22`, `lc_22` |
+| `port_forward_no_collision` | `wp_14`, `wp_15` (parallel binds) |
+| `balloon_pressure_under_n_sessions` | `hd_16`, `hd_17` (co-timed via instruction stepping, not sleep) |
+
+### 3.4 `scenarios/recovery/` — crash and reattach (kelir's detached path is under-tested)
+
+Microsandbox tests server restart with running sandboxes. Kelir has `lc_12`, `lc_13`, `lc_14`, `lc_15`, `lc_21` in isolation, never chained.
+
+| Scenario | Composes |
+|---|---|
+| `host_crash_reattach` | `lc_12`/`lc_13`, `lc_15`, `lc_16` |
+| `detached_lease_expiry_sweep` | `lc_14`, `lc_21`, `sp_22` |
+| `catalog_corruption_fail_closed` | `lc_22`, `sp_21` |
+| `partial_scm_rights_abort` | `lc_21`, `lc_16` |
+
+### 3.5 `scenarios/pressure/` — sustained resource behavior
+
+Microsandbox soaks. Kelir's plan asserts quota denial, never sustained pressure recovery.
+
+| Scenario | Composes |
+|---|---|
+| `sustained_memory_pressure_converges` | `hd_16`, `hd_17`, `lc_05` |
+| `sustained_disk_pressure_quota_holds` | `sp_04`, `sp_05`, `ta_07` |
+| `sustained_wal_growth_rotates` | `ta_01`, `ta_06`, `ta_07` |
+| `sustained_wire_udp_reaper` | `wp_06`, `wp_14` |
+
+### 3.6 `scenarios/network/` — full policy matrix (microsandbox's network tests are more complete)
+
+Kelir tests each wire mechanism in isolation (`wp_01..wp_17`), but never the **policy matrix** — a single guest making N calls of each class.
+
+| Scenario | Composes |
+|---|---|
+| `allow_deny_matrix` | `wp_01`, `wp_02`, `wp_07`, `wp_08` |
+| `dns_split_horizon_under_policy` | `wp_09`, `wp_10`, `wp_11` |
+| `l4_diversion_with_rollback` | `wp_12`, `wp_03`, `wp_16` |
+| `park_and_suspend_webhook` | `wp_17`, `lc_02`, `lc_06` |
+
+### 3.7 `scenarios/parity/` — full SDK journeys, not binding vectors
+
+This is the **highest-value steal**. Kelir's `bt_*`/`bp_*` prove binding-level frame parity. Microsandbox proves the *whole journey* is identical across Python/TS/Rust. Extend this idea.
+
+| Scenario (each run in all 3 languages) | Composes |
+|---|---|
+| `parity_full_roundtrip` | same as `full_roundtrip` above, ×3 languages |
+| `parity_error_surface` | `pe_12`, `gt_09`, `gv_02`, `gv_03` (assert exact error strings identical) |
+| `parity_session_lifecycle_verbs` | `lc_09`, `lc_10`, `lc_16` (identical timing-independent behavior) |
+| `parity_plugin_mount_surface` | `pe_07`, `bt_03`, `bp_03` (identical fused descriptor) |
+
+Microsandbox's error-surface consistency test (`test_error_handling_consistency`) is exactly the shape kelir's AST surface manifest diff should have: **for every error path, the user sees the same typed error across languages**. Add it as `parity_error_surface` and gate it in CI.
+
+### 3.8 Smoke tier — the missing fast gate
+
+Microsandbox has a **smoke suite** (a handful of E2E tests that run in <2 min and catch ~90% of integration breakage). Kelir's plan has no smoke tier — every check is either a domain case or a full manifest CI gate.
+
+Add `scenarios/smoke/` with exactly four scenarios:
+
+| Smoke | Composes | Budget |
+|---|---|---|
+| `smoke_boot_exec_shutdown` | `tp_09`, `lc_09` | <10s |
+| `smoke_mcp_roundtrip` | `gt_01`, `ad_08` | <15s |
+| `smoke_rollback_clean` | `sp_01`, `wp_03` | <10s |
+| `smoke_catalog_reattach` | `lc_14`, `lc_15` | <10s |
+
+CI runs `scenarios/smoke/` on every PR before the full manifest job. This catches breakage early without spending CI minutes on 254 cases.
+
+---
+
+## 4. Non-redundancy rules (the cohesion contract)
+
+Codify these in `test-plan-structure.md` §5 (new scenario discipline) so nobody slides into duplication:
+
+1. **No scenario may assert a physical fact absent from a domain case.** If a scenario wants `upper.img st_blocks == 0`, that fact is owned by `sp_01`. The scenario's `assert:` is a *reference* to the fact, not a re-definition. `ci_gates.check_manifest` rejects a scenario whose assertion string does not appear (verbatim or as a typed reference) in its referenced domain case.
+
+2. **Every scenario step must be a `ref:` to an existing `case_id`.** Scenarios cannot have free-form setup. (Fixture setup is allowed; step bodies are not.)
+
+3. **Scenarios are tier-`e2e` only.** They cannot satisfy unit or integration coverage.
+
+4. **Scenario count budget:** one scenario per user journey, per language where applicable, per plane-composition. Target **≤ 40 scenarios total** across all domains. This is the non-redundancy ceiling; a 41st scenario must justify itself by composing a pair of planes no other scenario does.
+
+5. **Scenario runtimes do not enter the scorecard's per-domain `pass` counts.** They get their own table:
+
+```
+| Scenario Tier | Count | Status |
+| lifecycle | 5 | pass |
+| agent | 5 | pass |
+| concurrency | 5 | pass |
+| recovery | 4 | pass |
+| pressure | 4 | pass |
+| network | 4 | pass |
+| parity | 4 | pass |
+| smoke | 4 | pass |
+```
+
+---
+
+## 5. What *not* to steal
+
+Be explicit so nobody over-copies:
+
+| Microsandbox pattern | Why not |
+|---|---|
+| Docker-container-based test environment | Kelir's physical boundaries are hardware; mock driver banned by AS-01 |
+| `test_cli_*` suite | Kelir ships no runner CLI by design (`15-operations.md#Developer-CLI`) |
+| Pool/scale-out tests | Kelir has no pool concept; sessions, not pools |
+| `test_sandbox_performance` wall-clock thresholds | AS-04A bans wall-clock; budgets live in `perf/budgets.toml` via AS-04B |
+| Per-image `test_oci_*` | `ad_01..ad_05` already own kelir-pack ingestion |
+| Python-first test ordering | Kelir is symmetric: `scenarios/parity/` runs all 3 languages in lockstep |
+
+---
+
+## 6. Implementation path (concrete)
+
+1. **Add `scenarios/` directories** with the 8 scenario families above (~35 files).
+2. **Extend `test-plan-structure.md`** with §5 “Scenario Discipline” (CDR-09 through CDR-12: the four non-redundancy rules above) and the new `test-plan/scenario/v1` schema.
+3. **Extend `manifest.yaml`** with a `scenario_domains:` block mirroring `domains:` but for composition.
+4. **Add `ci_gates.check_scenarios`** to `matrix.yaml`:
+   - Verifies every scenario `ref:` resolves to a live `case_id`.
+   - Verifies every scenario `assert:` string is a substring of the referenced case's `statement` or `expected_observations` — this is the hard non-redundancy gate.
+5. **Add `scenarios/smoke/` to the pre-PR CI job** with a 60-second wall budget.
+6. **Update `scorecard.md`** with the new “Scenario Tier” table and a “Coverage composition matrix” showing which planes each scenario composes.
+7. **Add a `--scenario-coverage` gate** (kelir-only flag) asserting that every pair of adjacent planes (terminal×storage, storage×wire, wire×checkpoint, checkpoint×host) is exercised by at least one scenario.
+
+That last gate is the *cohesive* enforcement: it makes “no two planes are tested together” a CI failure, which is exactly the structural hole microsandbox would fill if kelir were derived from it.
