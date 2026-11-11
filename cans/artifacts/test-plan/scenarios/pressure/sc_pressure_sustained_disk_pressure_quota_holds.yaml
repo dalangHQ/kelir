@@ -1,0 +1,18 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_pressure_sustained_disk_pressure_quota_holds"
+title: "Sustained disk pressure holds quota denial"
+family: "pressure"
+target_tier: "e2e"
+languages: [rust]
+steps:
+  - ref: "sp_04_storage_quota_enforcement_enospc"
+    assert: "Exceeding max_bytes fails synchronously with ENOSPC"
+  - ref: "sp_05_storage_inode_quota_enospc"
+    assert: "Exceeding max_inodes fails synchronously with ENOSPC"
+  - ref: "ta_07_wal_disk_full_resource_pressure"
+    assert: "disk-full on WAL partition triggers Session::suspend(SuspendReason::ResourcePressure)"
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "sustained write pressure is paced by instruction counts, never wall-clock sleeps between writes"
+  - rule: "AS-03"
+    verification: "denials matched as typed ENOSPC errno and SuspendReason::ResourcePressure receipt, never .is_err()"

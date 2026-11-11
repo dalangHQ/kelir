@@ -28,7 +28,7 @@ kelir/
 │       ├── diagrams/                  # ASCII architecture diagrams
 │       ├── examples/                  # Demonstrating examples (Rust/TS/Python)
 │       ├── config/                    # ci.yml, justfile, plugin-ci-reusable.yml, project-structure.txt
-│       ├── test-plan/                 # Canonical test plan: manifest.yaml, matrix.yaml, structure doc, cases/
+│       ├── test-plan/                 # Canonical test plan: manifest.yaml, scenarios.yaml, matrix.yaml, structure doc, cases/, scenarios/, fixtures/
 │       ├── README.md                  # SSOT contract for artifacts
 │       ├── scorecard.md               # Generated scorecard (just scorecard / check-scorecard)
 │       └── taxonomy.html              # Capability taxonomy
@@ -166,10 +166,12 @@ kelir/
 │   │   ├── src/
 │   │   │   ├── lib.rs
 │   │   │   ├── spec_anchors.rs        # Spec heading/anchor extraction shared by the gates
-│   │   │   └── bin/
+│   │   │   ├── scenarios.rs           # Scenario tier model shared by the gates: loading, plane map, composition
+│   │   │   ├── bin/
 │   │   │       ├── anchors_testkit.rs         # Spec anchor index generator (committed anchors.json)
 │   │   │       ├── check_manifest.rs  # Manifest-disk parity, law_reference and platform_target checks
 │   │   │       ├── check_tests.rs     # Anti-slop AST linter: AS-01..AS-08 + filename grammar NG-01..03
+│   │   │       ├── check_scenarios.rs # Scenario tier gate: ref resolution, assert substrings, plane-pair coverage
 │   │   │       └── scorecard_testkit.rs       # Scorecard generator and verification gate
 │   │
 │   ├── kelir-shim/                    # Guest Paravirtual Micro-Init (<50KB musl PID 1)

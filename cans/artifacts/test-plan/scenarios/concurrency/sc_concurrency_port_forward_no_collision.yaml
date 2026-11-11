@@ -1,0 +1,16 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_concurrency_port_forward_no_collision"
+title: "Parallel port-forward binds never collide"
+family: "concurrency"
+target_tier: "e2e"
+languages: [rust]
+steps:
+  - ref: "wp_14_port_forward_ephemeral_allocation"
+    assert: "host_port = 0 binds ephemeral port 0; bound port returned immediately; zero collision probability"
+  - ref: "wp_15_port_forward_collision_abort"
+    assert: "no silent fallback to ephemeral port"
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "every allocated port is checked > 1024 and equal to host_listener_local_port(); the occupied-port leg matches WireError::PortOccupied exactly"
+  - rule: "AS-08"
+    verification: "teardown closes every parallel listener — zero dangling host sockets remain after the run"

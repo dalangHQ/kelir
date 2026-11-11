@@ -1,0 +1,17 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_recovery_partial_scm_rights_abort"
+title: "Partial SCM rights hand-off aborts without leaks"
+family: "recovery"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/crash-recovery/"
+steps:
+  - ref: "lc_21_detached_scm_rights_parent_sigkill_abort"
+    assert: "the shared-memory descriptor passes via SCM_RIGHTS with the parent end closed after the handoff ack"
+  - ref: "lc_16_session_incarnation_cas_guard"
+    assert: "CAS mismatch aborts E_STALE_INCARNATION"
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "the abort is observed deterministically — child_aborted() true, descriptor_leaked() false, orphan rows 0 — with no timing-based inference"
+  - rule: "AS-08"
+    verification: "the aborted hand-off leaves zero dangling PTY masters, sockets, or shared-memory descriptors on the host"

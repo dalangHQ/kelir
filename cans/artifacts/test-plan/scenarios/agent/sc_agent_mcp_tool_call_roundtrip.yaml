@@ -1,0 +1,23 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_agent_mcp_tool_call_roundtrip"
+title: "Full MCP JSON-RPC tool call round-trip from a real client"
+family: "agent"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/mcp-agent-loop/"
+steps:
+  - ref: "gt_01_jsonrpc_tool_call_interposition"
+    assert: "Intercepts JSON-RPC 2.0 frames on MCP_CONSOLE matching 'tools/call'"
+  - ref: "gt_07_tool_guard_mcp_console_upstream"
+    assert: "no tool invocation reaches guest without passing tool-guard"
+  - ref: "ad_08_mcp_server_stdio_mux_bridge"
+    assert: "bound to mux stream kind MCP_CONSOLE (0x0012), not Port 0 PTY"
+  - ref: "ad_09_mcp_console_framing_continuation"
+    assert: "split via FLAG_CONTINUATION and reassembled byte-exact"
+  - ref: "tp_09_exec_stream_sublane_stdio_fidelity"
+    assert: "zero terminal escape pollution"
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "the round-trip runs against the real mux stream and VirtIO rings from a real MCP client — no mocked VmmDriver or transport anywhere in the path"
+  - rule: "AS-03"
+    verification: "the tool call verdict matches a typed Verdict variant and the client-visible stdout compares bitwise against the pinned fixture bytes"

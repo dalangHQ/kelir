@@ -5,7 +5,7 @@ edition = "2024"
 license = "FSL-1.1-Apache-2.0"
 authors = ["Kelir Contributors"]
 rust-version = "1.85"
-description = "Test plan verification harness: manifest parity checker, anti-slop linter, scorecard generator."
+description = "Test plan verification harness: manifest parity checker, anti-slop linter, scenario tier validator, scorecard generator."
 autobins = false
 
 [[bin]]
@@ -19,6 +19,10 @@ path = "src/bin/anchors_testkit.rs"
 [[bin]]
 name = "check-tests"
 path = "src/bin/check_tests.rs"
+
+[[bin]]
+name = "check-scenarios"
+path = "src/bin/check_scenarios.rs"
 
 [[bin]]
 name = "scorecard"

@@ -1,0 +1,17 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_agent_mcp_schema_drift_halts"
+title: "Schema drift halts tool calls with method-not-found"
+family: "agent"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/mcp-agent-loop/"
+steps:
+  - ref: "gt_02_immutable_schema_locking_esecurity"
+    assert: "post-boot schema mutation halts with ESecurityViolation"
+  - ref: "gt_08_schema_drift_method_not_found"
+    assert: "Schema drift or unpinned tool tampering returns -32601 (Method not found)"
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "drift responses match exact literals — JSON-RPC error.code == -32601 and PluginError::Halt carrying ESecurityViolation with an immediate VM halt"
+  - rule: "AS-06"
+    verification: "the pinned schema BLAKE3 digest is a hardcoded constant captured at test-authoring time, never derived from live tools/list output"

@@ -125,3 +125,6 @@ ci_gates:
   - id: "gate_check_scorecard"
     command: "just check-scorecard"
     description: "Byte-for-byte verification between physical evidence and scorecard.md."
+  - id: "gate_check_scenarios"
+    command: "cargo run -p kelir-testkit --bin check-scenarios"
+    description: "Scenario tier gates: scenario/case ref resolution, assert-substring non-redundancy (CDR-09), family parity with scenarios.yaml + manifest scenario_domains, and --scenario-coverage adjacent-plane composition."

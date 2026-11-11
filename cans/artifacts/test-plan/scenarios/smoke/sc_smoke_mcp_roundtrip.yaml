@@ -1,0 +1,18 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_smoke_mcp_roundtrip"
+title: "MCP round-trip fast gate"
+family: "smoke"
+target_tier: "e2e"
+languages: [rust]
+budget: "<15s"
+fixture_ref: "fixtures/scenarios/mcp-agent-loop/"
+steps:
+  - ref: "gt_01_jsonrpc_tool_call_interposition"
+    assert: "Intercepts JSON-RPC 2.0 frames on MCP_CONSOLE matching 'tools/call'"
+  - ref: "ad_08_mcp_server_stdio_mux_bridge"
+    assert: "bound to mux stream kind MCP_CONSOLE (0x0012), not Port 0 PTY"
+anti_slop_assertions:
+  - rule: "AS-04B"
+    verification: "the <15s budget is a declared CI gate floor; steps assert framed results, not timing"
+  - rule: "AS-03"
+    verification: "round-trip matched as typed JSON-RPC result plus tool_guard.tool_call_intercepted event"

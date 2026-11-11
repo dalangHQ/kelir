@@ -298,6 +298,11 @@ check-scorecard:
 check-manifest:
     cargo run -p kelir-testkit --bin check-manifest
 
+# Validate the scenario composition tier (work-order-2): case refs resolve,
+# asserts are substrings of referenced cases, plane pairs composed.
+check-scenarios:
+    cargo run -p kelir-testkit --bin check-scenarios
+
 # Run static AST linter enforcing Anti-Slop Laws AS-01 to AS-08
 check-tests:
     cargo run -p kelir-testkit --bin check-tests
@@ -347,4 +352,4 @@ check-types:
     uv run mypy packages/py
 
 # Test-plan gates in one recipe (work-order-2 section 3).
-check-gates: check-manifest check-tests check-scorecard
+check-gates: check-manifest check-tests check-scenarios check-scorecard

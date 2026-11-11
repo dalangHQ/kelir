@@ -1,0 +1,18 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_smoke_catalog_reattach"
+title: "Catalog reattach fast gate"
+family: "smoke"
+target_tier: "e2e"
+languages: [rust]
+budget: "<10s"
+fixture_ref: "fixtures/scenarios/crash-recovery/"
+steps:
+  - ref: "lc_14_detached_session_lease_heartbeat"
+    assert: "detached rows use lease_kind='lease'"
+  - ref: "lc_15_detached_session_reconnect_relay"
+    assert: "connects to ~/.kelir/sessions/<id>/relay.sock"
+anti_slop_assertions:
+  - rule: "AS-04B"
+    verification: "the <10s budget is a declared CI gate floor; no step samples the host clock"
+  - rule: "AS-03"
+    verification: "reattach proven by ping/pong round-trip over relay.sock with a typed receipt, not connect() success alone"

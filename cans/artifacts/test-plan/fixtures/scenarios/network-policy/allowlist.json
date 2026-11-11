@@ -1,0 +1,4 @@
+{
+  "cidrs": ["192.168.127.0/24", "198.18.0.0/15"],
+  "domains": ["api.github.com", "*.internal.net"]
+}

@@ -1,0 +1,8 @@
+$schema: "test-plan/fixture/v1"
+name: "mcp-agent-loop"
+description: "MCP client stdin frames and expected stdout responses for JSON-RPC tool-call round-trip scenarios."
+inputs:
+  - file: "stdin.jsonl"
+    role: "JSON Lines JSON-RPC 2.0 requests: initialize, tools/list, and tools/call frames."
+  - file: "expected-stdout.jsonl"
+    role: "Matching JSON Lines responses with typed result objects in request order."

@@ -1,0 +1,18 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_concurrency_balloon_pressure_under_n_sessions"
+title: "Balloon pressure converges under N sessions via instruction stepping"
+family: "concurrency"
+target_tier: "e2e"
+languages: [rust]
+steps:
+  - ref: "hd_16_virtio_balloon_pressure_reclaim"
+    assert: "host madvise(MADV_DONTNEED) reclaims physical frames immediately"
+  - ref: "hd_17_mach_vm_deallocate_footprint_purge"
+    assert: "mach_vm_deallocate purges host wired footprints"
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "reclaim runs on the real driver — madvise(MADV_DONTNEED) on Linux, mach_vm_deallocate on macOS where madvise-alone is banned"
+  - rule: "AS-04A"
+    verification: "the N-session pressure spike is co-timed via instruction stepping — no sleep-based pressure waits anywhere in the soak"
+  - rule: "AS-08"
+    verification: "host RSS drops by at least the balloon target per session and no reclaimed frame stays mapped after convergence"

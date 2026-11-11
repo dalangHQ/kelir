@@ -1,0 +1,18 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_pressure_sustained_memory_pressure_converges"
+title: "Sustained memory pressure converges back to floor"
+family: "pressure"
+target_tier: "e2e"
+languages: [rust]
+steps:
+  - ref: "hd_16_virtio_balloon_pressure_reclaim"
+    assert: "host madvise(MADV_DONTNEED) reclaims physical frames"
+  - ref: "hd_17_mach_vm_deallocate_footprint_purge"
+    assert: "mach_vm_deallocate purges host wired footprints"
+  - ref: "lc_05_monotonic_clock_clamp_on_resume"
+    assert: "clamps to max(current_monotonic, snapshot_monotonic)"
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "sustained guest allocation loop is driven by pinned instruction counts, never host wall-clock sleeps"
+  - rule: "AS-03"
+    verification: "each reclaim step matches the typed driver.balloon_reclaimed / driver.mach_deallocate events, never a bare is_ok()"

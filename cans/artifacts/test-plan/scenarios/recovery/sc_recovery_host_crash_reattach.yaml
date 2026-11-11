@@ -1,0 +1,23 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_recovery_host_crash_reattach"
+title: "Host crash → reaper → catalog state → reattach"
+family: "recovery"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/crash-recovery/"
+steps:
+  - ref: "lc_12_host_reaper_pdeathsig_enforcement"
+    assert: "hypervisor children must not survive as orphaned CPU spinners"
+  - ref: "lc_13_host_reaper_kqueue_proc_exit"
+    assert: "kqueue(EVFILT_PROC, NOTE_EXIT) watcher on host PID terminates hypervisor"
+  - ref: "lc_15_detached_session_reconnect_relay"
+    assert: "verifies lease is live, and connects to ~/.kelir/sessions/<id>/relay.sock"
+  - ref: "lc_16_session_incarnation_cas_guard"
+    assert: "Destructive lifecycle verbs accept expected incarnation_id"
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "reattach proves a typed exec receipt round-trip over relay.sock — connection alone is not success"
+  - rule: "AS-07"
+    verification: "the kqueue reaper leg executes on real macOS hardware; claiming it from a Linux run is a CI failure"
+  - rule: "AS-08"
+    verification: "after the crash, every orphaned hypervisor PID is dead and zero descriptors survive the parent kill"

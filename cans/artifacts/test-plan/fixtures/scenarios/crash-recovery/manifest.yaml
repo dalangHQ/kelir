@@ -1,0 +1,8 @@
+$schema: "test-plan/fixture/v1"
+name: "crash-recovery"
+description: "Crashed runner pidfile and catalog seed row inputs for host-crash reattach scenarios."
+inputs:
+  - file: "kelir.pid"
+    role: "Pidfile of the crashed detached runner process holding the catalog lease."
+  - file: "catalog-seed.yaml"
+    role: "Seeded catalog session row: lease kind, expiry deadline, and incarnation identity."

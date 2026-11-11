@@ -1,0 +1,18 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_concurrency_shared_workspace_lock_contention"
+title: "Two sessions contend on one workspace flock without corruption"
+family: "concurrency"
+target_tier: "e2e"
+languages: [rust]
+steps:
+  - ref: "sp_15_host_inode_lock_broker_flock_bridge"
+    assert: "delegates acquisition directly to host flock"
+  - ref: "sp_19_host_inode_flock_contention_ewouldblock"
+    assert: "flock(LOCK_EX | LOCK_NB) on the same host inode it receives EWOULDBLOCK"
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "contention is proven against the physical host flock — no in-memory lock table or mocked broker satisfies the scenario"
+  - rule: "AS-04A"
+    verification: "the contender's EWOULDBLOCK is observed under the pinned deterministic clock, not inferred after a timed retry"
+  - rule: "AS-08"
+    verification: "after both sessions release, the host holds zero residual flock leases on the workspace inode"

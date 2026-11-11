@@ -1,0 +1,6 @@
+$schema: "test-plan/fixture/v1"
+name: "network-policy"
+description: "CIDR and domain allowlist inputs driving the single-guest wire policy matrix scenarios."
+inputs:
+  - file: "allowlist.json"
+    role: "Egress allowlist: synthetic gateway and SOCKS5h pool CIDRs plus declared DNS domains."

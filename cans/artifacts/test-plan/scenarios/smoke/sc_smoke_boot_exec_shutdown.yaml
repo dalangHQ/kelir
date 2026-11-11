@@ -1,0 +1,20 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_smoke_boot_exec_shutdown"
+title: "Boot → exec → shutdown fast gate"
+family: "smoke"
+target_tier: "e2e"
+languages: [rust]
+budget: "<10s"
+fixture_ref: "fixtures/scenarios/full-roundtrip/"
+steps:
+  - ref: "tp_09_exec_stream_sublane_stdio_fidelity"
+    assert: "stdout and stderr retain bitwise fidelity"
+  - ref: "lc_09_graceful_shutdown_syncfs_flushed"
+    assert: "shim issues syncfs(2), sends SIGTERM, reaps children"
+anti_slop_assertions:
+  - rule: "AS-04B"
+    verification: "the <10s budget is a declared CI gate floor; no step asserts on host wall-clock internally"
+  - rule: "AS-03"
+    verification: "boot, exec, and shutdown matched via typed receipts and ExitKind::Normal, not exit-code scraping"
+  - rule: "AS-08"
+    verification: "gate exits with zero leaked FDs, tmpfs mounts, or flock locks"

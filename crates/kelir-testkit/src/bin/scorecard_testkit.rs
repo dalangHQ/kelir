@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use kelir_testkit::scenarios::ScenarioTier;
+
 #[derive(serde::Deserialize)]
 struct Manifest {
     plan: PlanMeta,
@@ -158,7 +160,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         gap: map.cases.iter().filter(|c| c.status == "gap").count(),
     };
 
-    let generated_md = render_scorecard(&manifest, &budgets, &subset, &counts);
+    let tier = kelir_testkit::scenarios::load_scenario_tier(&repo_root
+        .join("cans/artifacts/test-plan"))?;
+
+    let generated_md = render_scorecard(&manifest, &budgets, &subset, &counts, &tier);
 
     match mode {
         "generate" => {
@@ -280,11 +285,12 @@ fn render_scorecard(
     budgets: &Budgets,
     subset: &PlatformSubset,
     counts: &MapCounts,
+    tier: &ScenarioTier,
 ) -> String {
     let mut out = String::new();
     out.push_str("# Kelir Platform Scorecard\n\n");
     out.push_str(
-        "Compiled by `kelir-testkit scorecard` from `cans/artifacts/test-plan/manifest.yaml`.\n",
+        "Compiled by `kelir-testkit scorecard` from `cans/artifacts/test-plan/manifest.yaml` + `scenarios.yaml`.\n",
     );
     out.push_str("Do not edit by hand: CI runs `just check-scorecard`.\n\n");
 
@@ -328,6 +334,36 @@ fn render_scorecard(
             "| `{}` | `{}` | {} | {} | {} |\n",
             name, domain.prefix, domain_cases, status, domain.description
         ));
+    }
+
+    out.push_str("\n## Scenario Tier\n\n");
+    out.push_str(
+        "Composition scenarios from `cans/artifacts/test-plan/scenarios.yaml`;\neach step references a domain case_id (non-redundancy contract, CDR-09..CDR-12).\n\n",
+    );
+    out.push_str("| Scenario Tier | Count | Status |\n");
+    out.push_str("|---|---:|---|\n");
+    for ((family, actual), &(_, expected)) in tier
+        .family_counts
+        .iter()
+        .zip(kelir_testkit::scenarios::FAMILY_COUNTS)
+    {
+        let status = if *actual == expected { "pass" } else { "drift" };
+        out.push_str(&format!("| {family} | {actual} | {status} |\n"));
+    }
+
+    out.push_str("\n## Scenario Coverage Composition\n\n");
+    out.push_str(
+        "Per-scenario plane composition (domain → plane map; adjacent pairs enforced by check-scenarios).\n\n",
+    );
+    out.push_str("| Scenario | Planes Composed |\n");
+    out.push_str("|---|---|\n");
+    for (sid, planes) in &tier.composition {
+        let joined = if planes.is_empty() {
+            "—".to_string()
+        } else {
+            planes.join(", ")
+        };
+        out.push_str(&format!("| {sid} | {joined} |\n"));
     }
 
     out.push_str("\n## Test Plan Coverage\n\n");

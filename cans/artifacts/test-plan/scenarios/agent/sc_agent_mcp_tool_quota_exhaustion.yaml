@@ -1,0 +1,17 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_agent_mcp_tool_quota_exhaustion"
+title: "Tool quota exhaustion surfaces the typed quota verdict"
+family: "agent"
+target_tier: "e2e"
+languages: [rust]
+fixture_ref: "fixtures/scenarios/mcp-agent-loop/"
+steps:
+  - ref: "gt_04_token_bucket_call_quota_etoolquota"
+    assert: "retries exceeding quota reject immediately with ETOOLQUOTA"
+  - ref: "gt_10_tool_call_depth_recursion_ceiling"
+    assert: "the 51st invocation in a trace rejects with ETOOLQUOTA via charge_quota"
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "both exhaustion paths match Verdict::Drop carrying errno ETOOLQUOTA exactly — the bucket burst and the 51st trace call, no .is_err() shortcut"
+  - rule: "AS-04A"
+    verification: "the 6-call burst and the 51-call trace execute under the pinned deterministic clock — no sleep-based token refill waits"

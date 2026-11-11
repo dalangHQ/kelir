@@ -7,6 +7,8 @@ plan:
   matrix_doc: "cans/artifacts/test-plan/matrix.yaml"
   total_cases: 254
   domains: 17
+  total_scenarios: 35
+  scenario_families: 8
   crate_tier_convention:
     unit: "crates/kelir-core"
     integration: "crates/kelir-core"
@@ -82,6 +84,32 @@ domains:
     prefix: "bp"
     case_count: 4
     description: "Python SDK bindings parity: boot-time EConfig on missing Pydantic v2 dependency, ./vectors.json frame/verdict equality, AOT hook fusion single FFI trampoline."
+
+scenario_domains:
+  lifecycle:
+    scenario_count: 5
+    description: "Full lifecycle round-trips composing terminal, storage, wire, and checkpoint cases into single journeys."
+  agent:
+    scenario_count: 5
+    description: "End-to-end MCP JSON-RPC journeys from a real client through tool-guard interposition."
+  concurrency:
+    scenario_count: 5
+    description: "N contending sessions sharing host resources: isolation, flock contention, catalog CAS, port collisions, balloon pressure."
+  recovery:
+    scenario_count: 4
+    description: "Host crash, reaper, lease expiry, catalog corruption, and partial SCM rights aborts chained into reattach journeys."
+  pressure:
+    scenario_count: 4
+    description: "Sustained memory, disk, WAL, and wire pressure converging without quota or slab escape."
+  network:
+    scenario_count: 4
+    description: "Full wire policy matrix: allow/deny, DNS split-horizon, L4 diversion with rollback, park-and-suspend."
+  parity:
+    scenario_count: 4
+    description: "Identical SDK journeys across Rust, TypeScript, and Python: round-trip, error surface, lifecycle verbs, plugin mount."
+  smoke:
+    scenario_count: 4
+    description: "Fast pre-PR boot gates under CI wall budgets (≤15s) composing the highest-signal case pairs."
 
 cases:
   # ── Domain 1: hypervisor_driver (hd) [28 cases] ───────────────

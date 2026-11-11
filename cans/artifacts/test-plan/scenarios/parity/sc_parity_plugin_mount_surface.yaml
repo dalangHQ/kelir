@@ -1,0 +1,18 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_parity_plugin_mount_surface"
+title: "Fused plugin mount descriptor identical across languages"
+family: "parity"
+target_tier: "e2e"
+languages: [rust, typescript, python]
+steps:
+  - ref: "pe_07_aot_hook_fusion_single_trampoline"
+    assert: "exactly one FFI trampoline crossing per event"
+  - ref: "bt_03_typescript_fused_trampoline_single_crossing_chained_hooks"
+    assert: "exactly one FFI trampoline crossing per ring event regardless of hook count"
+  - ref: "bp_03_python_fused_trampoline_single_crossing_chained_hooks"
+    assert: "compiles chained host hooks into a single flat closure"
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "descriptor literals (one crossing per ring event, entries equal to ring count) hardcoded and diffed across all three languages"
+  - rule: "AS-03"
+    verification: "mount surface compared as typed descriptor equality, not serialized-string eyeballing"

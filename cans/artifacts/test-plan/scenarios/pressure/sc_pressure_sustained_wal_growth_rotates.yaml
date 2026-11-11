@@ -1,0 +1,18 @@
+$schema: "test-plan/scenario/v1"
+scenario_id: "sc_pressure_sustained_wal_growth_rotates"
+title: "Sustained WAL growth rotates cleanly under pressure"
+family: "pressure"
+target_tier: "e2e"
+languages: [rust]
+steps:
+  - ref: "ta_01_merkle_wal_rf_6962_blake3_chain"
+    assert: "Leaf: BLAKE3(0x00 || bytes); Node: BLAKE3(0x01 || left || right)"
+  - ref: "ta_06_merkle_wal_opt_in_suppression"
+    assert: "when off, receipts flow to OTLP alone"
+  - ref: "ta_07_wal_disk_full_resource_pressure"
+    assert: "never blocks inline execution"
+anti_slop_assertions:
+  - rule: "AS-04A"
+    verification: "rotation observed at instruction-count boundaries, never by sleeping between WAL appends"
+  - rule: "AS-05"
+    verification: "every sustained append proves the RFC 6962 BLAKE3 leaf/node chain updated before claiming commit"
