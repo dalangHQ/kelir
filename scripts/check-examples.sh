@@ -5,9 +5,10 @@
 # (path deps on the workspace crates, Cargo.lock copied for version pins);
 # each bin is checked separately because cargo stops scheduling new units
 # after a failure, which would hide errors in later bins. Python is gated on
-# py_compile (mypy strict over the examples reports only packaging noise:
-# kelir ships no py.typed marker, so every import resolves to Any and no
-# SSOT drift is visible; see the gate report). TypeScript runs through the
+# syntax (compile) plus an import check against the live SDK: syntax alone
+# cannot see a renamed or deleted SDK name. mypy strict is not used: kelir
+# ships no py.typed marker, so every import resolves to Any and no SSOT
+# drift is visible. TypeScript runs through the
 # fixed packages/ts/core/tsconfig.check.json, which includes the cans
 # examples; the @kelir/core dist build runs first because the tests import
 # ../dist/index.js.
@@ -84,17 +85,56 @@ rs_check() {
     return "$rs_fail"
 }
 
-# --- Python: syntax-check cans/artifacts/examples/*.py ----------------------
+# --- Python: syntax-check + import-check cans/artifacts/examples/*.py ------
 # Builtin compile() only parses: no bytecode is written, so no __pycache__
 # lands next to the examples. (py_compile refuses cfile=/dev/null and
-# writes __pycache__ by default.)
+# writes __pycache__ by default.) Syntax alone cannot see a renamed or
+# deleted SDK name, so each example is then imported as a module against
+# the live SDK (PYTHONPATH=packages/py, venv python when present).
+# Examples are import-safe: only defs/classes/imports at top level, real
+# execution behind if __name__ == "__main__".
 py_check() {
-    if python3 -c 'import sys; [compile(open(f).read(), f, "exec") for f in sys.argv[1:]]' "$ROOT"/cans/artifacts/examples/*.py; then
-        echo "OK: python examples compile"
-        return 0
+    if ! python3 -c 'import sys; [compile(open(f).read(), f, "exec") for f in sys.argv[1:]]' "$ROOT"/cans/artifacts/examples/*.py; then
+        echo "FAIL: python examples do not compile"
+        return 1
     fi
-    echo "FAIL: python examples do not compile"
-    return 1
+    echo "OK: python examples compile"
+    # Pick the first interpreter that can actually import kelir: the venv
+    # python when it has the editable install, else system python3. A
+    # stale .venv with nothing installed must fall through, not fail.
+    local py=""
+    local candidate
+    for candidate in "$ROOT/.venv/bin/python" python3; do
+        if PYTHONPATH="$ROOT/packages/py" "$candidate" -c 'import kelir' 2>/dev/null; then
+            py="$candidate"
+            break
+        fi
+    done
+    if [ -z "$py" ]; then
+        echo "FAIL: python examples cannot be import-checked: kelir not importable (run: uv venv && uv pip install -e \"packages/py[dev]\")"
+        return 1
+    fi
+    PYTHONPATH="$ROOT/packages/py" "$py" - "$ROOT" <<'PYEOF' || { echo "FAIL: python examples do not import"; return 1; }
+import glob
+import importlib.util
+import sys
+
+root = sys.argv[1]
+failed = False
+for path in sorted(glob.glob(root + "/cans/artifacts/examples/*.py")):
+    name = "check_examples_" + path.rsplit("/", 1)[-1][:-3].replace("-", "_")
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        print(f"FAIL: python example does not import: {path}: {type(exc).__name__}: {exc}")
+        failed = True
+raise SystemExit(1 if failed else 0)
+PYEOF
+    echo "OK: python examples import"
+    return 0
 }
 
 # --- TypeScript: typecheck the cans examples via tsconfig.check.json -------

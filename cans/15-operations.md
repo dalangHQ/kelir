@@ -85,6 +85,7 @@
     - External plugin CI: contract attestation via reusable workflow
     - Parity release gate: see: #Multi-language-parity-gate
     - Spec gate: cans-check; see: #Spec-gate
+    - Examples compile tier: examples-compile; see: #Examples-compile
     - Plugin audit tier: plugin-audit; see: #Per-plugin-CI
     - Tiered compilation tier: verify-tiered-compilation; see: #Tiered-compilation
     - Code hygiene gate: check-hygiene enforces 1,000 LOC ceiling and bans
@@ -100,6 +101,15 @@
     - Local mirror: `just check-spec` invokes the identical flags
     - Invariant: every rule in _rules.yaml maps to a step here, or the rule
       - is dead and gets removed
+  - Examples compile
+    - Job: examples-compile
+    - Runs `just check-examples`: the canonical examples in
+      - cans/artifacts/examples/ compile/typecheck in all three languages
+      - Rust: cargo check per example bin; Python: syntax plus import
+      - against the live SDK; TypeScript: tsc over tsconfig.check.json
+      - after the @kelir/core build
+    - No path filter: an SDK change anywhere can break an example
+    - Local mirror: `just check-examples`, also in `just check-all`
   - Coverage-gates
     - Coverage gates are gate names, distinct from cans check flags
       - cans check has no --*-coverage flags; each gate names its enforcement below

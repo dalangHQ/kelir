@@ -69,6 +69,35 @@ jobs:
           git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" > /tmp/touched
           just check-spec-touched
 
+  # ─── EXAMPLES COMPILE (Stage 1, merge-blocking, path-filter-free) ─
+  # Canonical SSOT examples in cans/artifacts/examples/ must compile /
+  # typecheck in all three languages: a broken example is a lying spec,
+  # users copy these. No path filter: an SDK change anywhere can break
+  # an example, so this runs on every push/PR. Runs just check-examples,
+  # which checks each language and does not stop at the first failure.
+  # A dedicated job, not a cans-check step: cans-check has only Rust +
+  # just + cans, and this gate needs Node/pnpm and uv as well.
+  examples-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: astral-sh/setup-uv@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - uses: taiki-e/install-action@just
+      - name: Install JS + Python SDK dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          uv venv && uv pip install -e "packages/py[dev]"
+      - name: Examples compile / typecheck (Rust + Python + TypeScript)
+        run: just check-examples
+
   # ─── 1b. SMOKE SCENARIO PRE-GATE (<60s) ─────────────────────────
   # Fast scenario-tier gate: validates scenarios/smoke/ before the
   # full manifest job runs. 60-second wall budget on the validation
