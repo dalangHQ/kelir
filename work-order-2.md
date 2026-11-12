@@ -1,330 +1,416 @@
-# AI Sloppiness in Kelir Codebase (L1/L2 Audit)
+# The Rust Master's Laugh Track: A Devil's Advocate Audit of `kelir`
 
-Below: concrete defects that are **not** L3 placeholders — things wired wrong, structurally broken, or semantically dishonest at L2. Order within each section is by blast radius.
+I've read all 60+ files. Here's what a senior Rust engineer would say, in descending order of "I'm laughing, then I'm crying, then I'm billing you for the rewrite."
 
 ---
 
-## 1. L2 wiring bugs (things that pretend to work but don't)
+## The Opening Joke
 
-### 1.1 First boot always fails — `~/.kelir/` parent directory never created
-`crates/kelir-catalog/src/lib.rs::catalog_path()` returns `$HOME/.kelir/catalog.db` but the parent `.kelir` is never `create_dir_all`'d. `rusqlite::Connection::open` requires the parent to exist, so `Session::boot_with_engine` → `CatalogDb::open(...)` fails on a fresh checkout. Same for `kelir_core::session_lifecycle::session_dir(...)` → `workspace/` and `upper.img` are never mkdir'd, so the first FUSE write or reconcile hits `canonicalize()?` on a missing path.
+> "I've seen L1/L2 skeletons before. This one is **forty thousand lines of `// TODO (L3)` comments**, each annotated with a `slop:` note that describes **the exact anti-pattern a lazy implementer would write** if they filled it in. You've built a museum of bugs you haven't committed yet. It's like a chef who writes 40k lines of recipes and labels every dish *'TODO: cook this — but not like this: [12 ways to burn it]'*. The honesty is refreshing. The volume is a cry for help."
 
-### 1.2 `Session::fork` throws away the whole trap/lifecycle registration
-`crates/kelir/src/session_lifecycle.rs::Session::fork` builds `Registration { traps: Vec::new(), on_trap_deny: None, custom_actions: Vec::new(), stream_kind_services: Vec::new(), vetoes: Vec::new(), .. }`. The child therefore:
-- never fires any `.trap()` handler
-- never fires `on_trap_deny`
-- never dispatches custom actions
-- never routes registered stream kinds
-- never fires registered vetoes
+Then, looking at `AGENTS.md`:
 
-This is the primary "parallel agent exploration" use case of the spec. `kelir_core::Session::fork` has the same defect — it builds a fresh `PipelineEngine::new()` with zero interceptors.
+> "Your own rules say 'Max 1000 LOC per file, target 500.' Your `pyo3/src/lib.rs` is 1500 lines. Your `napi/src/lib.rs` is 900. Your `dispatch_plugin/mod.rs` is 1000+. **You can't follow your own style guide.**"
 
-### 1.3 `Session::fork` loses parent data and never registers the child
-`crates/kelir-core/src/session_lifecycle.rs::Session::fork` reuses `self.session_id` for the child while minting only a fresh `incarnation_id`. It never calls `CatalogDb::register_session` for the child. Consequences:
-- `teardown_catalog()` on the child: `lookup_session(parent_id)` returns the **parent's** row, `incarnation_id` mismatch → `owned = false` → returns `Ok(())` (good). But when the parent terminates, `lookup_session` returns the parent row → `owned = true` → `unregister_session(parent_id)` + `reap_ephemeral_session_dir(parent_id)`. If a child had written to the shared workspace, that data is silently deleted.
-- Two sessions with the same primary key violates `cans/06-storage-catalog.md#Entity-model`.
+---
 
-### 1.4 `stop()` silently skips `on_vm_shutdown`
-`crates/kelir-core/src/session_lifecycle.rs::Session::stop` only flushes and tears down the catalog. The `shutdown` lifecycle hook lives exclusively in `Session::shutdown()`. The SDK-facing `Sandbox::stop` calls `session.stop()` — so every `Sandbox::stop` bypasses plugin teardown. Per `cans/08-lifecycle.md#Pre-teardown-flush`, "Terminate flush belongs to `on_vm_shutdown`."
+## The Real Issue: You Built a Cathedral With Cardboard Pillars
 
-### 1.5 `register_stream_kind` never reaches the engine or the bus
-`crates/kelir/src/builder_sdk.rs::finish_boot` moves `registration.custom_actions` into `engine.register_custom_action(...)` but never touches `registration.stream_kind_services`. The registration vector is stored and dropped. On top of that, `crates/kelir-core/src/session_lifecycle.rs` never calls `bus.bind_stream_sink(...)` — the bus is constructed with empty `stream_sinks`. So plugin-registered kinds are unreachable at runtime.
+### 1. `async-trait` in a Trap Fast-Path (The Cardinal Sin)
 
-### 1.6 `StreamFrameSink` is duplicated and incompatible
-Two byte-identical traits:
-- `crates/kelir-interface/src/plugin_model.rs::StreamFrameSink`
-- `crates/kelir-core/src/bus/mod.rs::StreamFrameSink`
-
-`PipelineBinder::bind_stream_kind_scoped` accepts the interface trait; `BusDispatcher::bind_stream_sink` accepts the bus trait. A plugin can implement the interface trait but cannot register with the bus. Even if §1.5 were fixed, the trait types wouldn't unify.
-
-### 1.7 `E_NOHARDWAREVMM` is swallowed
-`crates/kelir-core/src/session_lifecycle.rs::boot_with_engine`:
 ```rust
-let driver = match crate::vmm::DriverRouter::load_native_driver(...) {
-    Ok(loaded) => Some(...),
-    Err(DriverError::Unsupported(_)) => { /* warn about unconsumed config */ None }
-    Err(_) => None,   // <-- catches NoHardwareVmm, Io, InvalidState, ResourceExhausted
-};
+#[async_trait]
+pub trait TrapInterposer: Send + Sync {
+    async fn on_trap(&self, event: &TrapEvent, ctx: &HandlerCtx) -> Result<Verdict, PluginError>;
+}
 ```
-Per `cans/01-architecture.md#Fallback-policy` ("Absence halts with E_NOHARDWAREVMM"), a `NoHardwareVmm` should abort boot, not silently fall through to `driver = None`. Only `Unsupported` (backend not built) should warn-and-continue.
 
-### 1.8 `MountScope::allows_*` treats `Some([])` as "allow all"
-`crates/kelir-interface/src/plugin_model.rs`:
+**The laugh:** *"This is the hot path of a hypervisor. You've got a per-syscall trap dispatch, and your trait uses `#[async_trait]`, which boxes a `Pin<Box<dyn Future>>` per call. **Every trap allocates.** Then you wrap it again in `Pin<Box<dyn Future>>` in `async_trait`'s generated code. You are double-boxing on the fast path."*
+
+Rust 1.75 stabilized `async fn` in traits. Your `Cargo.toml` says `edition = "2024"`, which requires **Rust 1.85**. Native async traits work. Using `async-trait` here is like installing a turbocharger and then running the exhaust through a straw.
+
+**Fix:**
+- Use native `async fn` in traits where dyn-compat isn't required (most of your traits use `Arc<dyn Trait>`, so you actually **do** need dyn-compat; but then you need to be honest about the cost and note it in `see:`).
+- For dyn-compat, use `trait TrapInterposer: Send + Sync { fn on_trap<'a>(&'a self, ...) -> Pin<Box<dyn Future<...> + 'a>>; }` and let *implementors* return boxed futures only when they actually need to (most `FsInterposer` calls are sync and shouldn't be async at all).
+- Split sync traits (`FsInterposer`, `NetInterposer`, `HostInterposer`, `TrapGateEvaluator`) from async traits. Your `FsInterposer` is **already sync** — good. Your `TrapInterposer` is async but 90% of implementations are sync. Offer both.
+
+---
+
+### 2. The HList Fantasy (Type-Level Programming That Doesn't Compile-Out)
+
 ```rust
-pub fn allows_binary(&self, binary: &str) -> bool {
-    match &self.binaries {
-        None => true,
-        Some(list) => list.is_empty() || list.iter().any(...),
+pub trait Satisfies<Other> {}
+
+// TODO (L3) [plugin_engine]: order-insensitive subset check so a required dependency is accepted wherever it sits in Plugins per cans/03-sdk-architecture.md#Rust-SDK.; slop: positional subset check, dependency order silently rejected
+impl<Plugins: HList> Satisfies<HNil> for Plugins {}
+```
+
+**The laugh:** *"You've got an HList-based type-level dependency graph. `Satisfies<Other>` is a compile-time check. Except it's TODO'd to be order-insensitive. So right now, if a plugin declares a dependency in the 'wrong' position, the compiler **rejects a valid graph**. And you've also built a parallel runtime validation in `validate_mounts()` in TypeScript that does the same check dynamically. So you're checking the dependency graph **twice**, at two different layers, with two different semantics."*
+
+You also have:
+- `HCons`, `HNil`, `HList`, `Satisfies`, `Lookup`, `There`, `Here` — all to encode "plugin A requires plugin B."
+- `validateMounts()` in TypeScript that does the same thing.
+- `resolve_plugin_registrations()` in `kelir-core` that does the same thing again.
+
+Three implementations. One feature. And the compile-time one is buggy.
+
+**Fix:**
+- **Delete the HList.** The plugin graph is dynamic (plugins can be `fork_state`'d, mounted at runtime, or provided by `fork_with`). Compile-time dependency checking is a lie when the graph is dynamic. Use a single runtime `DependencyGraph` type with topological sort in `kelir-core`, and let `kelir`'s `plugin()` accept `impl Plugin` with an `Option<&[&str]>` for declared deps. One implementation, three languages project from it.
+- If you *must* keep compile-time checking, use `typestate` on a single `Deps` type param and skip the HList. `HList` is a 2015 pattern that has been replaced by `const` generics and `generic-const-exprs` (still unstable) or simply **not doing this**.
+
+---
+
+### 3. `From<&str> for Errno` Silently Defaults to `EPERM`
+
+```rust
+impl From<&str> for Errno {
+    fn from(value: &str) -> Self {
+        value.parse().unwrap_or(Self::Eperm)
     }
 }
 ```
-An empty `Some(vec![])` is semantically ambiguous. The spec says "VirtIO ring mask: unselected rings bypass plugin completely" — so `Some([])` should mean *no rings allowed*. Current code means *all rings allowed*. Same for `allows_path` and `allows_device`. This defeats scope isolation for a plugin that tries to declare an empty allowlist.
 
-### 1.9 Trap identity is matched on path/basename, not canonical `(st_dev, st_ino, blake3)`
-- `crates/kelir/src/builder_sdk.rs::TrapFilter::matches` compares `event.binary_path` (string).
-- `crates/kelir-interface/src/plugin_model.rs::MountScope::allows_binary` compares file-name.
-- `crates/kelir-core/src/trap_gate.rs::is_trusted` compares path prefix.
+**The laugh:** *"You've added a `From<&str>` that silently converts **any unparseable string** to `EPERM`. So when a plugin author typos `'EACCES '` (trailing space) or `'EPERM'` (capital P), the kernel gets a permission denied instead of `EINVAL`. You built a footgun and pointed it at the user's feet. Then you wrote 200 lines of `Drop`/`Display`/`FromStr` to make the error type ergonomic."*
 
-`cans/11-protocol.md#Trap-fast-path` explicitly says "argv[0] is untrusted input; it never identifies the binary" and "Identity is (st_dev, st_ino, binary_blake3), never a path string." The L2 wiring silently uses the forbidden identity. Comments say `// TODO (L3): canonical (st_dev, st_ino, binary_blake3)` but L2 behavior is a security hole, not a stub. Should return `false`/`FallThrough` with `Err(Halt("...TODO"))` in the interim.
-
-### 1.10 Vault metadata endpoint rejects every request
-`crates/kelir-plugins/plugin-vault/src/lib.rs::is_session_peer` returns `self.session_guest_cid.is_some_and(...)`, but no constructor ever sets `session_guest_cid`. `VaultPlugin::new()` leaves it `None`. So `on_connect` rejects every peer. The `plugin-vault` spec ("Tier 2 governance, default enabled") is dead at L2.
+**Fix:** Delete the `From<&str>` impl. Any string that crosses the FFI boundary should be validated by the NAPI/PyO3 binding and rejected with `EConfig`. Force the caller to `parse::<Errno>().map_err(...)`.
 
 ---
 
-## 2. Semantic mismatches with the spec
+### 4. `Result<T, Box<dyn std::error::Error>>` in CLI Mains
 
-### 2.1 `phase_spans` order contradicts `cans/10-attestation.md`
-`crates/kelir-otlp/src/lib.rs::phase_spans` emits `trap_ingress, policy, ffi_hop, verdict_egress`. The spec field order is `trap_ingress_ns, ffi_hop_ns, policy_ns, verdict_egress_ns` (policy follows ffi_hop). Span labels are therefore mis-assigned — the OTel span named `ffi_hop` is measuring what should be `policy`, and vice versa.
-
-### 2.2 `stop_with_timeout` ignores the timeout
-`crates/kelir-core/src/session_lifecycle.rs`:
 ```rust
-pub fn stop_with_timeout(&mut self, timeout: Duration) -> Result<(), PluginError> {
-    if timeout == Duration::ZERO { return self.kill(); }
-    let _ = timeout;   // <-- discarded
-    self.flush_workspace_before_terminate()?;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ...
+    Err("manifest: not implemented (L3): AST manifest extraction".into())
+}
+```
+
+**The laugh:** *"You've got 20 crates, a `PluginError` enum with 8 variants and `PartialEq`, and `ErrorEnvelope` with camelCase serde. Then your CLI says `Box<dyn Error>` and the error message is `'manifest: not implemented (L3)'` — a string. **You threw away the typed error.**"*
+
+**Fix:** Define a `CliError` enum in `kelir-plugin-cli`. Every subcommand returns it. Map it to an exit code in `main()`. `main()` returns `ExitCode` (you already do this in some places).
+
+---
+
+### 5. The `#[allow(dead_code)]` Pile
+
+Look at `crates/kelir-shim/src/lib.rs`:
+
+```rust
+#[allow(dead_code)]
+#[allow(unused_imports)]
+mod codec_protocol;
+#[allow(dead_code)]
+mod introspect_trap;
+#[allow(dead_code)]
+mod trap_protocol;
+```
+
+**The laugh:** *"You've got `#![forbid(unsafe_code)]` everywhere, but you've got `#[allow(dead_code)]` on entire modules. That's a `forbid` for one warning and an `allow` for another. Your shim literally has unused modules — because you haven't wired the dispatcher yet."*
+
+Then look at `crates/kelir-core/src/planes/storage/io_storage.rs`: `UnimplementedStorageIo` has 8 methods, all returning `Err(Halt("TODO ... slop: ..."))`.
+
+**Fix:** At L1/L2, `dead_code` should be a **`deny`**, not a warning. If a module isn't used, it shouldn't be in `lib.rs`. Or, mark the whole crate `#[allow(dead_code)]` once with a comment: `// TODO (L3) [wiring]: all modules used by pipeline`. One allow, not N allows.
+
+---
+
+### 6. `Arc<AsyncMutex<Session>>` — The Session Is Behind One Lock
+
+```rust
+#[napi]
+pub struct NativeSessionHandle {
+    session: Arc<AsyncMutex<Session>>,
     ...
 }
 ```
-`stop_with_timeout(Duration::from_secs(10))` is identical to `stop_with_timeout(Duration::from_millis(1))`. Per spec, the timeout bounds `MSG_SHUTDOWN_REQUEST` waiting; the wiring pretends to accept a timeout but ignores it.
 
-### 2.3 `is_synthetic_dns` parses UDP frames with `TcpView`
-`crates/kelir-core/src/planes/wire/mod.rs::is_synthetic_dns` — after classifying the frame as UDP (`ip.proto() == IP_PROTO_UDP`), it calls `TcpView::new_unchecked(...)` and reads `src_port()`/`dst_port()`. For UDP these overlap correctly, but `TcpView::header_bytes()` (used elsewhere) reads `bytes[12] >> 4` — that's a checksum/payload byte in UDP. The helper is only safe by accident. It should use a dedicated `UdpView` or a generic port extractor.
+**The laugh:** *"Your NAPI and PyO3 bindings wrap the **entire session** in one `AsyncMutex`. That means `terminal.resize()`, `storage.reconcile()`, `vm.checkpoint()`, and `wire.forward_port()` all serialize on the same lock. The terminal resize can't happen while a checkpoint is in flight. This is the CLI equivalent of putting a global `Mutex` around the whole app. Meanwhile your `PySessionHandle::fork()` *does* hold the lock across an `await`, meaning you can deadlock if the fork calls back into another session method."*
 
-### 2.4 `resolve_synthetic_dns` returns a fake `ServFail` success
-`crates/kelir-core/src/planes/wire/mod.rs::resolve_synthetic_dns` returns `Ok(DnsResponse { wire_bytes: Vec::new(), rcode: ServFail, edns_downgraded: false })`. That's a **successful** `Result` with a synthetic error response — a caller can't distinguish "I tried and the upstream failed" from "I haven't implemented this." Should be `Err(Halt("DNS resolver pending (L3)"))`.
-
-### 2.5 `allow_udp_proxied` never checked
-`process_outbound_frame` drops all non-DNS UDP. But `WireWiring` has `allow_udp_proxied: bool`, and `cans/07-wire-plane.md#UDP-NAT-semantics` says permitted UDP egress is forwarded. The field is stored but never read.
-
-### 2.6 `Session::fork` copies the parent's lifecycle `state`
-`crates/kelir-core/src/session_lifecycle.rs::fork` does `let state = self.state;` and assigns it to the child. If the parent is `Suspended` or `Draining`, the child — a brand-new driver instance — starts in that state. Should be `Running` (or derived from a fresh driver).
-
-### 2.7 `SyntheticFile::Dynamic` ignores the generator's `mode`
-`crates/kelir-core/src/planes/storage/storage_synthetic.rs::lookup_attr` for `Dynamic` returns `mode: 0o400` regardless of `DynamicFile.mode`. `DynamicFile` exists solely to carry `content` and `mode`; the mode is silently dropped.
-
-### 2.8 `FuseDispatcher::dispatch` mis-reports unimplemented ops
-- `Getattr` returns `Err(Halt("TODO..."))` instead of falling through to the broker like `Lookup`/`Read` do.
-- `Setlk`/`Setlkw` calls `lock_broker.acquire(...)` which is L3 TODO and always fails; the caller interprets `Err` as "lock denied" and returns `Errno(EWOULDBLOCK)` — a valid wire response that masks the "not implemented" reality.
-
-### 2.9 `FuseDispatcher::Statfs` returns `ENOSYS`
-The `cans/05-storage-plane.md#Storage-quotas` contract says statfs reports remaining broker quota "in O(1) time". `Errno(-ENOSYS)` tells the guest the filesystem doesn't support statfs. Should be `Err(Halt("TODO"))` until the quota math is wired.
+**Fix:**
+- Split `Session` into independent handles: `SessionTerminal`, `SessionStorage`, `SessionWire`, each with their own state. `Session` becomes a thin façade holding `Arc<SessionTerminal>`, etc.
+- Each handle gets its own `RwLock` (read-mostly) or `Mutex` (write-heavy) — or better, use **`arc_swap`** for config-like reads.
+- `fork()` shouldn't be on `Session` at all; it should be on `VmHandle` and return a `Session` before any lock is taken. You already have `vm.fork()` — make that the only path, not both `Session::fork` and `VmHandle::fork`.
 
 ---
 
-## 3. Parity-gate dead-ends
+### 7. The `block_on` That Will Panic On Any `tokio::time::sleep`
 
-### 3.1 `parity_cli` never executes a verdict
-`crates/kelir-plugin-cli/src/parity_cli.rs::assert_vectors` iterates vectors, validates frame shape, arms watchdog/veto fixtures, then appends every case to `verdicts_not_executable` with a "pending engine dispatch (L3)" reason. `report.verdicts_executed == 0` for every vector set. The spec (`cans/15-operations.md#Multi-language-parity-gate`) says "Divergent verdicts block CI." At L2 the gate is inert.
-
-### 3.2 `parity_cli` never parses `plugin_builder`
-`parse_vectors` reads `watchdog` and `veto` but not `plugin_builder`. The ~46 builder cases produced by `vectors_testkit` are silently dropped before validation. The unified-builder coverage gate is unreachable.
-
-### 3.3 Builder vector list is off by one
-`crates/kelir-plugin-testkit/src/vectors_testkit.rs::plugin_builder_verb_cases`:
-- Includes `("seal", ...)` — `seal` is not in the spec's verb list.
-- Omits `("build", ...)` — `build` is required by `cans/02-plugin-model.md#Terminal-build`.
-
-Result: 29 verb cases, not 30. The coverage gate (`--unified-builder-coverage`) would fail if executed.
-
-### 3.4 `plugin_builder_merge_cases` duplicates `plugin_builder_nested_cases`
-Both functions call `plugin_builder_scope_cases("...", seq)` with only the prefix differing. Merge cases should assert the host descriptor equals `[host_hooks ++ plugin_hooks]` with the plugin's scope; nested cases should assert descriptor equality with the flat chain. Both currently generate the *same* traces. The merge check is untested.
-
-### 3.5 Builder events are not wire-compatible
-`plugin_builder_verb_event` emits `serde_json::json!({"kind": "fs-write", ...})`. The real wire event for FsWrite is an inline synchronous hook payload (not a `GuestToHost` variant). Meanwhile the `trap` verb uses `serde_json::to_value(GuestToHost::TrapEvent(...))` — a real wire event. The family mixes two incompatible event encodings under one `events` array.
-
-### 3.6 Every `expected_outcomes` is the default
-Every builder case either has `outcomes: Vec::new()` (structural verbs) or `Some(Verdict::Pass)` / `Some(FilterAction::Forward)` (ring verbs). No case asserts a non-trivial verdict. The vectors cannot catch a divergence in policy evaluation even if `parity_cli` executed them.
-
-### 3.7 `plugin_builder_fs_write_trap_case` requires `ledger` without mounting it
-The case sets `requires: vec!["ledger"]` but the case doesn't include a `ledger` registration anywhere. `kelir_plugin_testkit::vectors_testkit` itself doesn't enforce prerequisites; a real consumer (the SDK builder) would throw `missing prerequisite: ledger required by host`. The case is structurally inconsistent.
-
----
-
-## 4. Testkit honesty
-
-### 4.1 `FixtureVmmDriver` is a stub, not a fixture
-`crates/kelir-plugin-testkit/src/handlers_testkit.rs::FixtureVmmDriver` implements only `capabilities`, `boot`, `set_entropy_backend`, `entropy_position`, `restore_entropy_position`, `set_watchdog`. Every other `VmmDriver` method falls through to the trait default `Err(Unsupported)`. Any plugin test that calls `checkpoint`, `fork`, `adjust_balloon`, `rollback`, `export_snapshot`, `transport_connect`, etc. fails. The comment "every other primitive stays Unsupported" is honest, but "plugin tests run without a hypervisor" (`cans/02-plugin-model.md#Plugin-testkit`) is violated for any plugin that touches a real driver primitive.
-
-### 4.2 `VectorCase::to_json` emits `plugin_builder` that the parser ignores
-Confirmed by §3.2. If the parser and the encoder disagree on the wire format, the format isn't a contract — it's a schema that only one side knows about.
-
-### 4.3 `poll_sync` panics on `Pending`
 ```rust
-Poll::Pending => Err(VectorError::Execution("fixture future suspended ...".into()))
-```
-Fine for the watchdog setter, but `poll_sync` is used for `set_watchdog` and `register_veto` — both sync-complete. If someone later adds an async vector, it silently fails. Not a bug today, but the helper is dishonest about what it supports.
-
----
-
-## 5. Tool/CLI sloppiness
-
-### 5.1 `kelir-plugin-cli` tools are CWD-relative
-- `audit_cli.rs::PLUGIN_DIR = "crates/kelir-plugins"`
-- `audit_cli.rs::WORKSPACE_MANIFEST = "Cargo.toml"`
-- `graph_cli.rs::Path::new("crates/kelir-plugins")`
-- `layers_cli.rs::RULES = [("crates/kelir-core/src", ...), ...]`
-- `budgets_cli.rs::run` defaults to `"perf/budgets.toml"`
-- `bump_core_cli.rs::write_pin(Path::new(".kelir/core-channel.json"))`
-
-`kelir-testkit` uses `env!("CARGO_MANIFEST_DIR")` for all four binaries. The CLI does not. `check -p plugin-x` from `/tmp` fails with "no plugin manifests found". The CI justfile happens to `cd` to the repo root, so the defect is invisible today.
-
-### 5.2 `kelir-plugin-cli::main` returns `Ok(())` when no subcommand is given
-```rust
-if args.len() < 2 { println!("kelir-plugin-cli: missing subcommand"); return Ok(()); }
-```
-Exits 0 on usage error. `kelir-plugin-cli --bad-flag` would also exit 0 because `check` subcommand parsing is lenient (`check --layers --bad` works). Not catastrophic, but it doesn't distinguish "success" from "I don't understand."
-
-### 5.3 Redundant subcommands
-`check-layers` / `check-budgets` are exact aliases of `check --layers` / `check --budgets`. Two spellings of one thing; one will rot.
-
-### 5.4 `spec check` always fails
-`crates/kelir-plugin-cli/src/spec_cli.rs::validate_profile_aot` does file-exists and extension checks, then unconditionally `Err(NotImplemented)`. At L2, syntax parsing (Serde/`toml`/`serde_yaml`) is cheap and belongs here. This makes `just check-spec` pass only because it never invokes `spec check`.
-
-### 5.5 `budgets check` doesn't check budgets
-`crates/kelir-plugin-cli/src/budgets_cli.rs::check` validates:
-- `enforce = true`
-- required keys present
-- each required value parses as `i64`
-
-It never asserts that a measured latency is under a budget. The `--budgets` flag in `check --budgets` is a no-op relative to its name.
-
-### 5.6 `doctor --enforce` always fails on Linux
-`crates/kelir-plugin-cli/src/doctor_cli.rs` — `probe_page_size`, `probe_pidfd`, `probe_hvf`, `probe_whp` all return `ProbeOutcome::NotImplemented`. `ProbeOutcome::is_ready()` treats `NotImplemented` as not-ready, so `run --enforce` errors with `"host probes incomplete"` before it even reaches `write_hw_lockfile`. The `--enforce` path is dead on every platform except an Android device that has `/dev/avf`.
-
-### 5.7 `fixtures --fetch` always fails
-`crates/kelir-plugin-cli/src/fixtures_cli.rs::run` for `--fetch` returns `HashUnavailable` even when the fixture set is empty (the message says "no fixtures pinned, nothing to fetch", but `run` only checks `entries.is_empty()` in a separate branch; the non-empty branch unconditionally fails).
-
-### 5.8 `scorecard --in-place` argument parsing
-`crates/kelir-testkit/src/bin/scorecard_testkit.rs`:
-```rust
-let mode = match args.get(1) { Some(arg) => arg.as_str(), None => "generate" };
-let in_place = args.iter().skip(2).any(|arg| arg == "--in-place");
-```
-`scorecard --in-place` is parsed as `mode = "--in-place"` and falls into `unknown => { eprintln!("Unknown mode"); exit(1) }`. The `--in-place` flag must be preceded by an explicit mode token. This is a user-facing bug.
-
----
-
-## 6. Comment / structural sloppiness
-
-### 6.1 Comment lies about available types
-`crates/kelir-core/src/dispatch_plugin/mod.rs::dispatch_host_lsm_exec` has `// TODO (L3): no TrampolineRing tag exists for host LSM hooks`. `TrampolineRing::HostLsmExec` **does** exist in `crates/kelir-interface/src/fusion_plugin.rs`. The comment is stale.
-
-### 6.2 `GateDecision::Allow` means "skip the interposer", not "allow"
-`crates/kelir-core/src/trap_gate.rs::evaluate` returns `Allow` when gate 2 scope doesn't match — but that path means "this interposer should not fire", which the engine treats as `continue`. `Allow` reads as "let the syscall through" everywhere else in the codebase (see `filter-before-FFI`, `Verdict::Pass`). A reader will misread the gate. Rename to `Skip` or `Bypass`.
-
-### 6.3 `error_envelope::From<PluginError>` misclassifies `Halt`
-```rust
-PluginError::Halt(message) => Self::econfig(message),
-```
-`Halt` is the generic internal-failure variant; mapping it to `EConfig` means every "not implemented yet" is reported to the SDK as a *config* error. Wrong category. Should be `EHALT` or `EInternal`.
-
-### 6.4 Redundant `+ Send + Sync` on `Box<dyn VmmDriver>`
-`VmmDriver` is `pub trait VmmDriver: Send + Sync`. Every `Box<dyn VmmDriver + Send + Sync>` in `handles_lifecycle.rs` and `session_lifecycle.rs` re-states bounds the trait already carries. Cosmetic but indicates the trait bounds weren't traced.
-
-### 6.5 Two empty HList markers
-`crates/kelir-interface/src/plugin_model.rs` has `pub struct NoDeps;` and `crates/kelir/src/hlist_sdk.rs` has `pub struct HNil;`. `hlist_sdk.rs` implements `Satisfies<NoDeps>` and `Satisfies<HNil>` separately. `Satisfies` is documented to be order-insensitive — but the two marker types are not aliases. Pick one.
-
-### 6.6 `LifecycleCtx::update_dispatch(Arc<()>)`
-`crates/kelir-interface/src/plugin_model.rs` takes `Arc<()>` and discards it. A caller has no way to know a real pipeline handle is expected at L3. Use a real placeholder type (`Arc<PipelineEngine>`) or delete the method until L3 can wire it.
-
-### 6.7 `CompositePlugin` is dead
-`crates/kelir-interface/src/plugin_model.rs::CompositePlugin` is defined, documented, and never implemented anywhere. Per `cans/02-plugin-model.md#Composite-plugin-hierarchy`, composite plugins are load-bearing. Either scaffold an impl in `kelir/src/builder_sdk.rs` (an empty `unpack` that splits hooks) or delete the trait.
-
-### 6.8 `Session::bind_wire_imds_vault`, `bind_plugin`, `register_storage_lock_broker`, `seal_pipeline` are dead
-All four public methods on `kelir_core::Session` are never called anywhere:
-- `boot_with_engine` already binds the IMDS vault (duplicated logic).
-- `bind_plugin` duplicates what `builder_sdk::finish_boot` does via `pipeline_mut()`.
-- `register_storage_lock_broker` is intended to be called by `Session::boot` per its own TODO, but isn't.
-- `seal_pipeline` is a no-op after `boot_with_engine` already sealed.
-
-Four dead public methods on a shipped type invites two contradictory callers.
-
-### 6.9 `Session::flush_workspace_before_terminate` has a dead branch
-```rust
-Err(PluginError::Halt(reason)) if reason.contains("needs the anchored reconciler") => {
-    tracing::warn!("...skipping the pre-teardown workspace flush");
-    Ok(())
+pub fn block_on<F: Future>(future: F) -> F::Output {
+    let mut future = Box::pin(future);
+    let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
+    let mut cx = Context::from_waker(&waker);
+    loop {
+        match future.as_mut().poll(&mut cx) {
+            Poll::Ready(output) => return output,
+            Poll::Pending => std::thread::park(),
+        }
+    }
 }
 ```
-`StoragePlane::reconcile` returns that error only when `self.reconciler.get()` is `None`. `boot_with_engine` always calls `storage.reconciler(...)`, so the `None` branch is unreachable. Dead code.
 
-### 6.10 `run_lifecycle_hook` has 4× the same construction
-`crates/kelir-core/src/session_lifecycle.rs::run_lifecycle_hook` repeats the `LifecycleCtx::new_with_watchdog_probe(...)` construction four times (dispatch × {Some, None}, callback × {Some, None}). A helper `with_ctx(&mut self, f)` would collapse this to two lines.
+**The laugh:** *"You're on `edition 2024`. `tokio` is a dependency. You wrote a `block_on` that parks the current thread. That's fine — except now every future awaited through this has **no Tokio reactor**. If any plugin implementation calls `tokio::time::sleep`, `tokio::net::TcpStream::connect`, or `spawn`, it will **panic at runtime** because there is no runtime context. You are one plugin away from a hang."*
 
-### 6.11 `VsockChannel` has no constructor
-`crates/kelir/src/session_lifecycle.rs::VsockChannel` declares `pub struct VsockChannel { inner: tokio::io::DuplexStream }` and implements `AsyncRead`/`AsyncWrite`, but never provides `new`. The only producer, `VsockHandle::channel`, returns `Err`. The struct is dead.
+**Fix:**
+- Use `tokio::runtime::Runtime::block_on` (or `Handle::current().block_on`) with a properly configured runtime. Your bindings already pull in `tokio`, so this is free.
+- If you insist on a manual `block_on` (e.g. for no_std), document that it requires all futures to be reactor-free, and add a CI check that fails if any plugin future uses `tokio::time` / `tokio::net` / `tokio::spawn`.
 
-### 6.12 `pty_master` binding naming
-`crates/kelir-shim/src/main.rs`:
+---
+
+### 8. `pub use kelir_core::*;` — The Glob Import
+
 ```rust
-let (_pty_master, _pty_slave) = pty_terminal::open_pty_slave()?;
+pub use kelir_core::*;
+pub use kelir_interface as interface;
 ```
-These are bound for the lifetime of `main` (the console), not unused. The `_` prefix signals "intentionally unused" — a future reader will delete them and break console. Should be `let (pty_master, pty_slave) = ...;` with a `// TODO: forward PTY master to the terminal plane` comment.
 
-### 6.13 File-size overshoot
-Target 500 LOC, hard ceiling 1000 per `cans/01-architecture.md`. Files clearly above target and likely at or above the ceiling:
-- `crates/kelir-interface/src/plugin_model.rs` (~700–900)
-- `crates/kelir/src/builder_sdk.rs` (~800)
-- `crates/kelir-core/src/session_lifecycle.rs` (~800)
-- `crates/kelir-core/src/dispatch_plugin/mod.rs` (~700)
-- `crates/kelir-bindings/napi/src/lib.rs` (~700)
-- `crates/kelir-bindings/pyo3/src/lib.rs` (~700)
-- `crates/kelir-plugin-testkit/src/vectors_testkit.rs` (~700)
-- `crates/kelir-interface/src/bin/codegen/model_codegen.rs` (~600)
-- `crates/kelir-interface/src/bin/codegen/sdk_codegen.rs` (~600)
-- `crates/kelir-shim/src/introspect_trap.rs` (~600)
+**The laugh:** *"You have a public façade crate called `kelir`. It re-exports `kelir_core::*`. And `kelir_core` re-exports `kelir_interface` types and `kelir_otlp` types. So `kelir::Session` is actually `kelir_core::Session`. But also `kelir::session_lifecycle::Session` is *another* `Session`. There are **two** `Session` types. And `kelir::plugin_model::PluginError` re-exports `kelir_interface::plugin_model::PluginError`. So the same type has 3 paths."*
 
-Systemic — not one file, but a pattern of letting one "engine" function own everything (`boot_with_engine`, `finish_boot`, `Session::fork`).
+The result: users can't tell which `Session` the compiler is suggesting, `use` statements are unclear, and you have diamond imports that pass `cargo check` but make rustdoc a maze.
+
+**Fix:** Explicit re-exports only. `pub use kelir_core::{Session as CoreSession, ...};`. Don't glob. If you need a façade, name it.
 
 ---
 
-## 7. Cross-binding asymmetry
+### 9. The Three SDKs That Must Be Maintained By Hand (Despite Codegen)
 
-### 7.1 `NativeSessionHandle` and `PySessionHandle` don't expose `session_dir` or `plugin_contexts`
-The TS interface (`session.lifecycle.ts`) expects:
-```typescript
-readonly sessionDir?: string;
-readonly pluginContexts?: readonly { readonly name: string; readonly ctx: unknown }[];
+You have a codegen system in `crates/kelir-interface/src/bin/codegen/` that generates:
+- `packages/ts/core/src/generated/protocol.wire.generated.ts`
+- `packages/py/kelir/generated/wire_protocol.py`
+- `crates/kelir-shim/include/kelir/wire.h`
+- `crates/kelir-otlp/src/records_otlp.rs`
+- `crates/kelir-interface/src/telemetry/merkle_attest.rs`
+- `crates/kelir-plugins/plugin-ledger/src/wal_ledger/merkle_wal.rs`
+- `packages/py/kelir/generated/attest_telemetry.py`
+- `packages/ts/core/src/telemetry.attest.generated.ts`
+- `packages/ts/core/src/generated/fusion.tables.generated.ts`
+- `packages/py/kelir/generated/fusion_tables.py`
+
+That's **10 generated files**. But:
+
+- `builder.lifecycle.ts` (700 lines) is hand-written and mirrors `builder_plugin.rs` (1000 lines) and `kelir_builder.py` (500 lines).
+- `hook.registry.ts` (600 lines) mirrors `builder_adapters.rs` (400 lines) and `builder_scopes.py` (100 lines).
+- `plugins.registry.ts` is **generated** from `plugin-*/Cargo.toml` but the runtime behavior is hand-written 3 times.
+
+**The laugh:** *"You built codegen for the wire protocol constants, but not for the 24-method builder interface. So you maintain 24 × 3 = **72 hand-written builder methods** across three languages, plus 24 hook-binding maps × 3, plus 8 trait definitions × 3. If you add `on_dns_resolve`, you must edit Rust, TS, Python, and three `_VERB_RINGS` tables. You have a codegen infrastructure and you don't use it."*
+
+**Fix:**
+- The `_VERB_RINGS` table in `builder_scopes.py` and `HOOK_RINGS` in `fusion_codegen.rs` and `HOOK_RINGS` in `hook.registry.ts` are **the same table, three times**. Generate all three from `fusion_plugin.rs::HOOK_RINGS`. Your `fusion_codegen.rs` already parses it — just emit the builder methods too.
+- The 24 `on_*` methods in each builder are boilerplate. Write a macro:
+  ```rust
+  macro_rules! hook_verb {
+      ($name:ident, $ring:ident, $filter:ty, $handler:ty) => { ... };
+  }
+  ```
+  Emit that macro from codegen. Then the builder is **generated**, and adding a verb is a one-line change in `fusion_plugin.rs`.
+
+---
+
+### 10. `PartialEq` on an Enum With A `PartialEq` Derive That Compares `std::io::Error`
+
+```rust
+impl PartialEq for PluginError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            ...
+            (Self::Io(left), Self::Io(right)) => left.kind() == right.kind(),
+            ...
+        }
+    }
+}
 ```
-The NAPI struct has neither. `boot()` in `packages/ts/core/src/builder.lifecycle.ts` checks `pluginContexts === undefined && registrations.length > 0` and throws `EConfig`. Python's `boot()` checks for `get_plugin_context` and throws if missing. So:
-- Any TS boot with at least one plugin throws.
-- Any Python boot with at least one plugin throws.
 
-This is the same bug as §1.5 from a different angle — the bindings can't materialize the plugin contexts because the core engine never produced them.
+**The laugh:** *"Your `PluginError::Io` variant is `std::io::Error`. `std::io::Error` is `!PartialEq`. So you've written a manual `PartialEq` that compares `left.kind() == right.kind()` — **which loses the raw OS error code**. So `PluginError::Io(Error::from_raw_os_error(ENOSPC)) == PluginError::Io(Error::from_raw_os_error(ENOENT))` is `true`. Your error equality is meaningless."*
 
-### 7.2 NAPI `NativeKelirBuilder::boot` calls `Session::boot_with_plugins(..., Some(descriptor), ...)` — but `boot_with_plugins` also calls `engine.with_trampoline(descriptor)`, which constructs a fresh `PipelineEngine` whose `trap_scopes`, `vsock_services`, etc. are empty. So the fused descriptor is bound to the pipeline, but the per-interceptor scopes are not. Combined with §1.5, the TS/Python bindings are structurally incomplete.
+**Fix:** Don't derive or implement `PartialEq` on `PluginError`. If you need it (for tests), wrap `std::io::Error` in `IoErrorCode(i32)` or `IoErrorKind(ErrorKind)` and compare those. Better: remove `PartialEq` from `PluginError` entirely and use `matches!` in tests. Error types should not be compared for equality; they should be matched by variant.
 
 ---
 
-## 8. Spec discipline
+### 11. The `#[non_exhaustive]` That Is Useless
 
-### 8.1 `cans/plugins/profile.md` exceeds `max_tbd_per_file: 10`
-`cans/_rules.yaml` sets `max_tbd_per_file: 10`. `profile.md` has eleven TBDs (`driver.ffi_boundary.queue_capacity`, `driver.ffi_boundary.max_buffer_bytes`, `driver.fast_boot`, `session.topology consumption`, `session.compute.max_vcpus`, `session.balloon config struct`, `session.watchdog.heartbeat_cadence_seconds`, `session.artifacts.kernel_boot_params`, `storage.dax_window`, `wire.l4_diversion.upstream_dial.dial_timeout_ms`, `terminal.wireframe_grid.export_on_trap`). The rule is violated by the canonical spec for the schema that the whole SDK reads.
+```rust
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum Verdict { ... }
+```
 
-### 8.2 `cans/01-architecture.md` claims `FUSE_GETATTR`/`READDIR`/`UNLINK` are "Mediation ops" but `fuse_storage.rs` returns `Err(Halt)` for all three
-`cans/05-storage-plane.md#FUSE-opcode-table` lists GETATTR, READDIR, UNLINK, MKDIR, RENAME as broker ops with concrete replies (`FuseReply::Inode`, `FuseReply::Entries`, `FuseReply::Written`). `crates/kelir-core/src/planes/storage/fuse_storage.rs::FuseDispatcher::dispatch` returns `Err(Halt("TODO..."))` for every one. At L2, the broker's most basic read path (`Getattr` on an EROFS-rooted binary) is unreachable. Either the spec is aspirational or the wiring is incomplete — both are sloppy.
+**The laugh:** *"`#[non_exhaustive]` is for enums that you expect to grow without breaking semver. But you immediately `match` it with `_ =>` arms everywhere. So you've paid the cost of `#[non_exhaustive]` (consumers can't exhaustively match) and got none of the benefit (you don't actually want to be exhaustive)."*
 
-### 8.3 `cans/07-wire-plane.md#Synthetic-DNS-gateway` claims host resolver state is watched via `inotify`/`SCDynamicStore`
-`crates/kelir-core/src/planes/wire/mod.rs::resolve_synthetic_dns` returns a fixed `ServFail`. No host resolver state is ever read. The spec is unambiguous about the mechanism ("Linux: /etc/resolv.conf watched via inotify; nameservers reloaded on change"). At L2, the resolver is a no-op; the spec should either be marked TBD or the resolver should at least track the current nameserver from `/etc/resolv.conf`. Current code claims a capability it doesn't have.
-
-### 8.4 `cans/15-operations.md#Subcommands` lists `plugin manifest`, `plugin vectors`, `plugin rings --show`
-`kelir-plugin-cli`'s `manifest`, `registry`, `rings`, `scaffold`, `logs` are all empty stubs that `return Ok(())`. The spec advertises them as developer tools. "Skeleton subcommands that succeed silently" is the opposite of a developer CLI; they should at least exit with a clear `E_NOT_IMPLEMENTED` (or be removed from the CLI).
+**Fix:** Remove `#[non_exhaustive]` from `Verdict`, `FilterAction`, `PatchPayload`, `GuestToHost`, `HostToGuest`. These are closed enums defined by `cans/11-protocol.md`. If they grow, bump the minor version and let downstream break. That's what semver is for.
 
 ---
 
-## Priority ranking (for the agent that will fix these)
+### 12. `impl<T> AnyPlugin for T where T: KelirPlugin + Clone` — The Blanket Impl That May Conflict
 
-1. **§1.1** (`~/.kelir` not created) — zero-effort fix, unblocks all boot paths.
-2. **§1.2, §1.3, §1.4, §1.6** — session fork and lifecycle hooks are the core promise. All four are wiring bugs; no L3 algorithm needed.
-3. **§1.5, §7.1** — `register_stream_kind` not forwarded; TS/Python `boot()` throws. One fix covers both.
-4. **§1.7, §1.8, §1.9** — driver/scope/trap identity. Safety-adjacent; correct behavior is "fail closed, don't pretend."
-5. **§1.10** — vault is dead. Single field (`session_guest_cid`) needs to be set from the boot path.
-6. **§2.1, §2.3, §2.4, §2.5** — observability and DNS. Cheap fixes; the mislabeling makes OTLP data unusable.
-7. **§3.1, §3.2** — parity gate is inert. This is the L2 definition-of-done; without it, "1:1 behavioral parity" is untested.
-8. **§3.3, §3.4** — builder vector list is wrong. One-line deletions + a real merge assertion.
-9. **§4.1** — `FixtureVmmDriver` must implement the driver surface enough that plugin tests can run. That's the testkit contract.
-10. **§5, §6** — CLI paths, dead code, misleading names, file sizes. Lower blast radius but cumulative.
+```rust
+impl<T> AnyPlugin for T where T: 'static + KelirPlugin + Clone { ... }
+```
 
-Everything marked `// TODO (L3)` in the tree is *expected* and should be left alone. Everything in this report is what L2 was supposed to get right and didn't.
+**The laugh:** *"You have a blanket `AnyPlugin` impl for every `KelirPlugin + Clone`. And then `KelirBuilder` (which implements `KelirPlugin`) has its own `impl AnyPlugin for KelirBuilder<Plugin, ...>`. Two impls. If `KelirBuilder` were `Clone` (it's not, but the bound is fuzzy), you'd have a coherence error. Also: **`AnyPlugin` is just `KelirPlugin` with `dyn`-safe methods.** Why is it a separate trait? Because `KelirPlugin` has associated types and `async fn`? No — `KelirPlugin` is already dyn-safe. So `AnyPlugin` is redundant."*
+
+**Fix:** Delete `AnyPlugin`. Use `Box<dyn KelirPlugin>` directly. If you need `fork_state`, put it on `KelirPlugin` (you already did). `PluginClone` is also redundant — use `dyn Clone` via `dyn-clone` crate, or just `Box<dyn KelirPlugin>` with a `clone_box` method on the trait itself. You have three abstractions (`KelirPlugin`, `AnyPlugin`, `PluginClone`) where one suffices.
+
+---
+
+### 13. The `unwrap_or_else(|e| e.into_inner())` Poison-Ignoring Pattern
+
+```rust
+pub fn record_denial(&self, ppid: u32) {
+    let mut denials = self.denials.lock().unwrap_or_else(|e| e.into_inner());
+    *denials.entry(ppid).or_insert(0) += 1;
+}
+```
+
+**The laugh:** *"Your workspace lints deny `unwrap()`. So you wrote `unwrap_or_else(|e| e.into_inner())`, which is `unwrap()` with extra steps. **A poisoned mutex means a thread panicked while holding the lock.** Ignoring the poison and using the (possibly-corrupted) data is exactly what `unwrap()` on `into_inner()` does. You've defeated the lint with a 40-character incantation."*
+
+**Fix:**
+- Either `deny(clippy::unwrap_or_else_into_inner)` too, or
+- Store data in a way that can't be corrupted: `AtomicU64` instead of `Mutex<HashMap>`, or `parking_lot::Mutex` (no poisoning), or
+- Explicitly: `let denials = self.denials.lock().map_err(|_| PluginError::Halt("poisoned".into()))?;` and return `Result`.
+
+---
+
+### 14. `let _ = value;` — The Silent Result Drop
+
+```rust
+let _ = (self.fast_boot, self.dax_window);
+```
+
+**The laugh:** *"You have `FastBootMode` and `DaxWindowMode` config fields. You validate them at `seal()`. Then at `boot()` you **drop them on the floor** with `let _ = (self.fast_boot, self.dax_window)`. Users set `fast_boot = Enabled` and you silently ignore it. The `TODO (L3)` is correct — but the field is public, documented, and validated. Users will file a bug: 'fast boot not working.' And they'll be right."*
+
+**Fix:** If a feature isn't implemented, **reject the config**:
+```rust
+if self.fast_boot != FastBootMode::Off {
+    return Err(PluginError::reject(Errno::Econfig, "fast_boot is not implemented (L3)"));
+}
+```
+The user gets a clear error, not silent degradation. This applies to every `let _ = ...` in the tree. **There are ~40 of them.**
+
+---
+
+### 15. The `serde_json::Value` in a `ciborium::Value` World
+
+```rust
+pub enum PatchPayload {
+    ...
+    Custom {
+        name: String,
+        cbor: ciborium::value::Value,
+    },
+}
+```
+
+But then in `sdk_codegen`, `errors.sdk`, `json_string`, you use `serde_json`. Two CBOR/JSON libraries, plus `ciborium::value::Value` (which is a **CBOR value**, not JSON), plus `serde_json::Value`, plus `serde_yaml::Value` in `scenario_catalog.rs`, plus `toml::Value` in `spec_cli.rs`. **Five value types.**
+
+**The laugh:** *"You have five dynamic value types across the tree. `ciborium::value::Value` for protocol wire. `serde_json::Value` for config and errors. `serde_yaml::Value` for test scenarios. `toml::Value` for profiles. And `&dyn Any` for the event bus. Your codebase has **five ways to represent 'some data'**."*
+
+**Fix:** Pick one for protocol wire (`ciborium::Value` is fine — CBOR is the wire format). For config files, use the format-specific `Value` (TOML/YAML/JSON) but convert to a single `ProfileValue` enum before crossing the FFI boundary. Delete `serde_yaml::Value` from `scenario_catalog` — it's test-only, so `serde_yaml::Value` is fine there, but don't let it leak into `session_lifecycle`.
+
+---
+
+### 16. The `fn name(&self) -> &'static str` Lie
+
+```rust
+pub trait KelirPlugin: Send + Sync + PluginClone {
+    type Context: Send + Sync + Clone + 'static;
+    fn context(&self) -> Self::Context;
+    fn name(&self) -> &'static str;
+    ...
+}
+```
+
+**The laugh:** *"Your plugin names are `&'static str`. So a plugin's name can never be constructed at runtime. But your `KelirBuilder::named(name: &'static str)` requires a `'static` literal. Then in `builder_plugin.rs`, you have `plugin_names: BTreeSet<&str>` collecting them — so you *do* treat them as dynamic in one place. And in Python, names are `str` (dynamic). And in TypeScript, `string` (dynamic). **Your Rust name is the only one that's `'static`, and it forces every plugin to have a hardcoded name.** The `plugin-derive` macro or a `const NAME: &'static str` associated const would be cleaner."*
+
+**Fix:**
+- `fn name(&self) -> &str` (borrowed from self, works with both `&'static str` and `String` fields).
+- Or `const NAME: &'static str` on the trait (already stable for const generics).
+- The current signature prevents `KelirBuilder::named(format!("plugin-{}", n))` from being used, which is why `napi` and `pyo3` can't expose a "name your plugin" API.
+
+---
+
+### 17. `dyn Any` Event Bus With `TypeId` Map
+
+```rust
+pub type ErasedEventHandler = Box<dyn Fn(&dyn Any) + Send + Sync>;
+
+pub trait EventBusBinder {
+    fn subscribe_erased(&mut self, event: TypeId, handler: ErasedEventHandler);
+}
+```
+
+**The laugh:** *"You have `serde` on every protocol type. You have `ciborium` for the wire. You have `Arc<dyn Trait>` for every extension point. And then you have a `HashMap<TypeId, Vec<Box<dyn Fn(&dyn Any)>>>` for the event bus — a pattern that is, charitably, from 2016. `TypeId` is not guaranteed stable across compiler versions. `dyn Any` requires downcast at every call. You could use `tokio::sync::broadcast` with a typed channel, or a static `OnceLock<Vec<Arc<dyn Fn(&E)>>>` per event type via a macro."*
+
+**Fix:**
+- Use `tokio::sync::broadcast::channel::<E>` for each event type, or
+- Define a concrete `enum Event { Trap(TrapEvent), ProcessExit(ProcessExit), ... }` and a single `Sender<Event>` — this is what `GuestToHost` already is! Reuse it.
+- `dyn Any` has no place in a hypervisor event bus.
+
+---
+
+### 18. The `spec_anchors.rs` / `scenario_catalog.rs` / `case_map.rs` / `check_scenarios.rs` / `check_manifest.rs` / `check_tests.rs` / `anchors_testkit.rs` / `scorecard_testkit.rs` — 8 Files of YAML Parsing
+
+These are ~4000 lines of Rust parsing YAML files in `cans/artifacts/test-plan/`. They verify that:
+- Case counts match
+- Anchors resolve
+- Anti-slop rules are applied
+- Scorecard matches manifest
+- Test filenames follow a grammar
+
+**The laugh:** *"You wrote a YAML parser-in-Rust plus seven validators to check that **a separate set of YAML files** (which are themselves checked by `yaml` on the Python side) are consistent with a **third set of YAML files** (`manifest.yaml`). You've built a `Makefile` in Rust."*
+
+**Fix:** Move this to a shell script or a single `Python` script run in CI. It's test infrastructure, not hypervisor code. It doesn't need to be fast, it doesn't need `#[forbid(unsafe_code)]`, and it doesn't need to ship in the binary. The 4,000 lines of validator code will be read by 3 people and understood by 0.
+
+---
+
+## The Verdict
+
+This codebase is **the most honest L2 skeleton I've ever seen** — every stub is tagged with what it would look like if filled in wrong. That's genuinely useful. It's also:
+
+| Metric | Count |
+|---|---|
+| `// TODO (L3)` comments | ~350+ |
+| `#[allow(dead_code)]` | ~40+ |
+| `#[allow(clippy::too_many_arguments)]` | ~10+ |
+| Files > 1000 LOC | 5 (violates your own rule) |
+| Files > 500 LOC | 15+ |
+| Languages with hand-maintained duplicate interfaces | 3 |
+| Dynamic value types (`ciborium::Value`, `serde_json::Value`, `serde_yaml::Value`, `toml::Value`, `dyn Any`) | 5 |
+| `Box<dyn Future>` / `Pin<Box<dyn Future>>` sites | 100+ |
+| `Arc<Mutex<>>` / `Arc<RwLock<>>` sites | 50+ |
+| `let _ = ...` silent drops | ~40 |
+| `unwrap_or_else(\|e\| e.into_inner())` poison ignorers | 10+ |
+
+The master's final laugh is that **you knew all of this when you wrote it.** The `slop:` annotations prove it. You documented every footgun before pulling the trigger.
+
+But "I know it's bad" is not the same as "I fixed it." The `slop:` prefix is a confession, not a fix. It's also 350 lines of comment that should be 350 `assert!`s in a `tests/` directory that doesn't exist.
+
+### The Single Most Important Fix
+
+**Delete the three-way SDK duplication.** Your `builder.lifecycle.ts` (700 lines), `kelir_builder.py` (500 lines), and `builder_plugin.rs` (1000 lines) maintain the same 24-method interface three times. If you add one verb, you edit 6+ places. This is **the highest-risk, highest-cost, lowest-value part of the codebase**.
+
+Generate the builder interface from `fusion_plugin.rs::HOOK_RINGS` (which you already parse in `fusion_codegen.rs`), and the three SDKs become thin generated wrappers around a shared state machine. You already have the codegen infrastructure. Use it for the part that actually costs you.
+
+### The Second Most Important Fix
+
+**Replace `async-trait` with native async in traits where dyn-compat allows it, and split sync traits from async traits.** Your `FsInterposer`, `NetInterposer`, and `HostInterposer` are already sync — that's good. Your `TrapInterposer` is async but 90% of implementations are sync. Make `TrapInterposer` return `Pin<Box<dyn Future>>` manually, or accept a `Verdict` synchronously and let async traps go through a separate `AsyncTrapInterposer` trait. Either way, stop boxing every trap.
+
+### The Third Fix
+
+**Define one error type per crate layer, and stop using `Box<dyn Error>` in `main()`.** You have `PluginError` (8 variants), `VmmError` (5 variants), `CatalogError` (3 variants), `WireError` (1 variant), `PackError` (6 variants), `ShimError` (40+ variants), and `Box<dyn Error>` in CLI mains. Pick a pattern: either one `AppError` at the top that wraps everything with `#[from]`, or per-crate errors that the CLI matches exhaustively. `Box<dyn Error>` in `main()` is why your CLI error messages are all `"not implemented (L3)"`.
+
+---
+
+### Final Word
+
+The codebase is **structurally sound**. The crates are well-organized, the layering is enforced (mostly), and the `slop:` annotations show you understand what to avoid. It's also **unnecessarily baroque** in the places a Rust master cares most about: type-level plugin resolution, async boxing on hot paths, dynamic `dyn Any` in the event bus, and 40k LOC of stubs.
+
+If you're preparing for L3, the most valuable thing you can do is **delete code**:
+
+1. Delete `AnyPlugin`, `PluginClone`, and `HList` (`Satisfies`, `HCons`, `HNil`). Use `Box<dyn KelirPlugin>` and runtime dependency resolution.
+2. Delete the three-way SDK duplication. Generate all three from `HOOK_RINGS`.
+3. Delete `#[non_exhaustive]` from your own enums. You're not a public library; you control all callers.
+4. Delete `async-trait` where it boxes unnecessarily. Keep it only where you truly need `dyn`-compatible async.
+5. Delete the 4,000 lines of test-plan validators. Move them to a Python script.
+6. Delete the `From<&str> for Errno`. Make the caller parse.
+7. Delete `let _ = ...`. Reject unimplemented config.
+
+You will lose ~8,000 lines and gain a codebase that a Rust master would **compliment** instead of laugh at. The `slop:` annotations were a clever defense mechanism; the real flex is deleting the code they were defending.
