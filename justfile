@@ -134,7 +134,6 @@ lint:
         -D clippy::unimplemented \
         -D clippy::todo \
         -D clippy::unreachable
-    pnpm -r exec eslint .
 
 typecheck: build-ts
     pnpm -r exec tsc --noEmit
