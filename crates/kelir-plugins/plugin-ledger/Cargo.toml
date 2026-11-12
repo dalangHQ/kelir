@@ -10,6 +10,7 @@ kelir-interface = { path = "../../kelir-interface" }
 kelir-otlp = { path = "../../kelir-otlp" }
 serde = { workspace = true }
 tracing = { workspace = true }
+ed25519-dalek = { workspace = true }
 
 [dev-dependencies]
 kelir-plugin-testkit = { path = "../../kelir-plugin-testkit" }

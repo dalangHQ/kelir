@@ -1,8 +1,6 @@
 // see: cans/plugins/vault.md#Plugin-vault
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service
 use std::collections::HashMap;
-use std::collections::hash_map::RandomState;
-use std::hash::{BuildHasher, Hasher};
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -10,6 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use kelir_interface::hex_codec::encode_hex;
+use subtle::ConstantTimeEq;
+use zeroize::Zeroize;
 
 pub use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
 
@@ -55,10 +55,7 @@ impl Drop for IssuedToken {
 
 // see: cans/plugins/vault.md#Memory-isolation-and-zeroization
 fn zeroize_token(token: &mut String) {
-    let len = token.len();
-    token.clear();
-    token.push_str(&"\0".repeat(len));
-    token.clear();
+    token.zeroize();
 }
 
 // see: cans/plugins/vault.md#Revocation
@@ -178,7 +175,7 @@ impl CredentialBroker {
         let outstanding = self.lock_outstanding()?;
         Ok(outstanding.values().any(|entry| {
             entry.session_id == session_id
-                && entry.token_digest == digest
+                && bool::from(entry.token_digest[..].ct_eq(&digest[..]))
                 && entry.expires_at_unix > now_unix
         }))
     }
@@ -216,7 +213,7 @@ impl CredentialBrokerService for CredentialBroker {
         let nonce = self.issuance_nonce.fetch_add(1, Ordering::AcqRel);
         // TODO (L3): MountScope confinement (EPERM) and audience locking (EACCES); scope derives from the builder MountScope per cans/plugins/vault.md.
         let token = IssuedToken {
-            token: mint_token(nonce),
+            token: mint_token(nonce)?,
             ttl_seconds: request.ttl_seconds,
             scope: descriptor.placeholder.clone(),
             audience: descriptor.audience.clone(),
@@ -254,16 +251,18 @@ fn unix_now() -> Result<u64, VaultError> {
 }
 
 // see: cans/plugins/vault.md#Out-of-band-credential-brokerage
-// TODO (L3): swap the std hashmap entropy draw for the host keyring CSPRNG mint per cans/plugins/vault.md#Memory-isolation-and-zeroization.
-fn mint_token(nonce: u64) -> String {
+fn mint_token(nonce: u64) -> Result<String, VaultError> {
     let mut material = [0u8; 24];
-    material[..8].copy_from_slice(&entropy_draw().to_le_bytes());
+    material[..8].copy_from_slice(&entropy_draw()?.to_le_bytes());
     material[8..16].copy_from_slice(&nonce.to_le_bytes());
-    material[16..].copy_from_slice(&entropy_draw().to_le_bytes());
-    encode_hex(&material)
+    material[16..].copy_from_slice(&entropy_draw()?.to_le_bytes());
+    Ok(encode_hex(&material))
 }
 
-// see: cans/plugins/vault.md#Out-of-band-credential-brokerage
-fn entropy_draw() -> u64 {
-    RandomState::new().build_hasher().finish()
+// see: cans/plugins/vault.md#Memory-isolation-and-zeroization
+fn entropy_draw() -> Result<u64, VaultError> {
+    let mut bytes = [0u8; 8];
+    getrandom::fill(&mut bytes)
+        .map_err(|_| VaultError::Eperm("CSPRNG entropy draw failed".into()))?;
+    Ok(u64::from_le_bytes(bytes))
 }

@@ -9,6 +9,9 @@ blake3 = { workspace = true }
 ciborium = { workspace = true }
 kelir-interface = { path = "../kelir-interface" }
 libc = { workspace = true }
+rustix = { workspace = true }
+seccompiler = { workspace = true }
+vsock = { workspace = true }
 
 [profile.release]
 opt-level = "z"

@@ -13,6 +13,7 @@ async-trait = { workspace = true }
 tokio = { workspace = true }
 syn = { version = "2", features = ["full", "visit"] }
 quote = "1"
+globset = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
