@@ -105,24 +105,27 @@ fn emit_ts_group(proj: &Projection) -> Result<Vec<String>, String> {
     lines.push(String::new());
     lines.push(String::new());
     let factory = sdk_camel(&proj.krate.plugin_name);
+    let name = &proj.krate.plugin_class_name;
+    let config = &proj.root.rust_name;
     match context_handle(&proj.krate.plugin_name) {
-        None => lines.push(format!(
-            "export function {factory}(config: {}): KelirPlugin {{",
-            proj.root.rust_name
-        )),
+        None => {
+            lines.push(format!(
+                "export function {factory}<P = unknown>(config: {config}): KelirBuilder<\"{name}\", unknown, never, P> {{"
+            ));
+            lines.push(format!(
+                "  return createPlugin<\"{name}\", unknown, {config}, never, P>(\"{name}\", {{ enabled: config.enabled, config }});"
+            ));
+        }
         Some((context_key, handle_type)) => {
             lines.push(SERVICE_LOOKUP_SEE.trim_end().to_string());
-            lines.push(format!("export function {factory}("));
-            lines.push(format!("  config: {},", proj.root.rust_name));
             lines.push(format!(
-                "): KelirPlugin & PluginContext<{{ {context_key}: {handle_type} }}> {{"
+                "export function {factory}<P = unknown>(config: {config}): KelirBuilder<\"{name}\", {{ {context_key}: {handle_type} }}, never, P> {{"
+            ));
+            lines.push(format!(
+                "  return createPlugin<\"{name}\", {{ {context_key}: {handle_type} }}, {config}, never, P>(\"{name}\", {{ enabled: config.enabled, config }});"
             ));
         }
     }
-    lines.push(format!(
-        "  return {{ name: \"{}\", enabled: config.enabled, config }};",
-        proj.krate.plugin_class_name
-    ));
     lines.push("}".to_string());
     Ok(lines)
 }
@@ -140,12 +143,9 @@ pub fn emit_ts(projections: &[Projection]) -> Result<String, String> {
             "import type {{ {} }} from \"./context.lifecycle.types.js\";",
             handle_types.join(", ")
         ));
-        lines.push(
-            "import type { KelirPlugin, PluginContext } from \"./hook.registry.js\";".to_string(),
-        );
-    } else {
-        lines.push("import type { KelirPlugin } from \"./hook.registry.js\";".to_string());
     }
+    lines.push("import { createPlugin } from \"./builder.lifecycle.js\";".to_string());
+    lines.push("import type { KelirBuilder } from \"./builder.lifecycle.js\";".to_string());
     lines.push(String::new());
     lines.push("export interface PluginEnablement {".to_string());
     lines.push("  readonly enabled?: boolean;".to_string());

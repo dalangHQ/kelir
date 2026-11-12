@@ -70,8 +70,8 @@ const runtime = kelir({
   rootfsErofs: "./fixtures/rootfs-policy.erofs",
   tscLocked: true, enableWatchdog: true,
 })
-  .plugin(policyPlugin)
-  .plugin(watchdogSilencer)
+  .use(policyPlugin)
+  .use(watchdogSilencer)
 
   // see: cans/11-protocol.md#Unknown-name-at-trap-time-fails-with-EUnknownAction
   .registerCustomAction("quarantine",
@@ -91,6 +91,7 @@ const runtime = kelir({
   .on(LifecycleEvent.VmReady, async () => { policyState.ready = true; });
 
 async function main() {
+  runtime.seal();
   const session: Session = await runtime.boot();
   console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
 

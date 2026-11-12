@@ -47,6 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         deterministic_rng_seed: 0x5EED,
         network_isolation: true,
     }))
+    .seal()?
     .boot()
     .await?;
 

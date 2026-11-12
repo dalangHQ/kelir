@@ -41,17 +41,19 @@ def test_plugin_class_receiver_creates_plugin_builder() -> None:
     assert plugin.name == "chaos"
 
 
-def test_plugin_instance_receiver_mounts_plugin() -> None:
+def test_use_mounts_plugin_instance() -> None:
     host = KelirBuilder()
-    assert host.plugin(LedgerPlugin()) is host
+    assert host.use(LedgerPlugin()) is host
     assert [r.name for r in host._plugin_registrations] == ["ledger"]
 
 
-def test_plugin_dispatch_rejects_wrong_receiver_arg() -> None:
+def test_plugin_rejects_non_name_and_instance_plugin() -> None:
     with pytest.raises(EConfig, match=r"non-empty plugin name"):
         KelirBuilder.plugin(LedgerPlugin())
-    with pytest.raises(EConfig, match=r"expected a BasePlugin"):
+    with pytest.raises(EConfig, match=r"mount a plugin with \.use\(plugin\)"):
         KelirBuilder().plugin("ledger")
+    with pytest.raises(EConfig, match=r"mount a plugin with \.use\(plugin\)"):
+        KelirBuilder().plugin(LedgerPlugin())
 
 
 def test_caps_have_typed_service_skeletons() -> None:

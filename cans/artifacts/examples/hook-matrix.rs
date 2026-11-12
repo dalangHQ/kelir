@@ -311,6 +311,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         entropy_seed: None,
     })
     .plugin_instance(plugin)
+    .seal()?
     .boot()
     .await?;
     session.terminal.resize(120, 40)?;

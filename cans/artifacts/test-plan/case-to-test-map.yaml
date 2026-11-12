@@ -2067,6 +2067,13 @@ harness_tests:
     compiles, .build() returns a PluginWrapper accepted by builder.plugin(),
     chaos migrates via the builder); compile-only, no test fns, no plan case covers the
     builder surface yet (L1/L2 wiring addition).
+- file: crates/kelir/tests/builder_chain_test.rs
+  reason: Unbreakable builder-chain pins per
+    cans/02-plugin-model.md#Chain-decisions (host chain seals without `?`,
+    LifecycleMut chains and returns the builder, plugin mode has both trap
+    forms, seal rejects duplicate mounts and empty trap filters, guard
+    applies only when enabled); 6 tests, no plan case covers the chain
+    surface yet (L1/L2 wiring addition).
 - file: crates/kelir-core/tests/wire_scope_test.rs
   reason: Mount-scope net-filter dispatch test per cans/02-plugin-model.md#Mount-scoping
     (WO3-C6); outbound and inbound net hooks gated by MountScope net_cidrs/net_ports via

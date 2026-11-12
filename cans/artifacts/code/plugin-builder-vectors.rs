@@ -28,6 +28,79 @@ pub enum PluginBuilderOutcome {
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// Chain cases (chain fix): one case per new chain verb, so the parity
+// run builds each fixed chain in Rust, TS, and Python as one expression.
+// plugin-builder-seal pins seal() then boot(); plugin-builder-trap-filter
+// pins the host trap(filter, handler) form; plugin-builder-trap-scope
+// pins the trap_scope closure form; plugin-builder-lock-broker pins the
+// lock_broker() verb (Rust) and the storage lock-broker flag (TS/Py).
+// Each case still pins rings, ordinals, events, and outcomes; the case
+// name pins which chain verb the parity run must exercise.
+pub fn plugin_builder_seal_case() -> PluginBuilderCase {
+    let trap = TrapEvent::new(7, 1300, 100, "/bin/sh");
+    PluginBuilderCase {
+        name: "plugin-builder-seal".to_string(),
+        requires: vec![],
+        rings: vec![(TrampolineRing::Trap, 0)],
+        events: vec![
+            match serde_json::to_value(GuestToHost::TrapEvent(trap)) {
+                Ok(value) => value,
+                Err(_) => serde_json::Value::Null,
+            },
+        ],
+        expected_outcomes: vec![PluginBuilderOutcome::Verdict(Verdict::Pass)],
+    }
+}
+
+pub fn plugin_builder_trap_filter_case() -> PluginBuilderCase {
+    let trap = TrapEvent::new(7, 1300, 100, "/bin/sh");
+    PluginBuilderCase {
+        name: "plugin-builder-trap-filter".to_string(),
+        requires: vec![],
+        rings: vec![(TrampolineRing::Trap, 0)],
+        events: vec![
+            match serde_json::to_value(GuestToHost::TrapEvent(trap)) {
+                Ok(value) => value,
+                Err(_) => serde_json::Value::Null,
+            },
+        ],
+        expected_outcomes: vec![PluginBuilderOutcome::Verdict(Verdict::Pass)],
+    }
+}
+
+pub fn plugin_builder_trap_scope_case() -> PluginBuilderCase {
+    let trap = TrapEvent::new(7, 1300, 100, "/bin/sh");
+    PluginBuilderCase {
+        name: "plugin-builder-trap-scope".to_string(),
+        requires: vec![],
+        rings: vec![(TrampolineRing::Trap, 0)],
+        events: vec![
+            match serde_json::to_value(GuestToHost::TrapEvent(trap)) {
+                Ok(value) => value,
+                Err(_) => serde_json::Value::Null,
+            },
+        ],
+        expected_outcomes: vec![PluginBuilderOutcome::Verdict(Verdict::Pass)],
+    }
+}
+
+pub fn plugin_builder_lock_broker_case() -> PluginBuilderCase {
+    let trap = TrapEvent::new(7, 1300, 100, "/bin/sh");
+    PluginBuilderCase {
+        name: "plugin-builder-lock-broker".to_string(),
+        requires: vec![],
+        rings: vec![(TrampolineRing::Trap, 0)],
+        events: vec![
+            match serde_json::to_value(GuestToHost::TrapEvent(trap)) {
+                Ok(value) => value,
+                Err(_) => serde_json::Value::Null,
+            },
+        ],
+        expected_outcomes: vec![PluginBuilderOutcome::Verdict(Verdict::Pass)],
+    }
+}
+
+// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 // One case, as it lands in vectors.json under the vector's "plugin_builder"
 // key. The ring ordinal is the hook's position in the .on_* call order of
 // the builder chain (chain order, not ring declaration order): the fs_write

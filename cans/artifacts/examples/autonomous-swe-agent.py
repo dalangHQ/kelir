@@ -292,7 +292,25 @@ async def build_runtime(
         max_diff_bytes=64 * 1024,
         protected_branches=["main", "master", "release/*"],
     )
-    builder = (
+    # see: cans/08-lifecycle.md#Watchdog
+    async def _init(ctx: LifecycleCtx) -> None:
+        ctx.set_watchdog(timeout=timedelta(minutes=5), action="reboot")
+
+    # TODO: SSOT npm-ci via session.exec_in_guest dropped; live on_vm_ready delivers LifecycleCtx only, see cans/08-lifecycle.md#Session-and-context-handles
+    async def _ready(_ctx: LifecycleCtx | None) -> None:
+        return None
+
+    # TODO: SSOT ledger.flush on shutdown dropped; live on_vm_shutdown delivers LifecycleCtx only, see cans/08-lifecycle.md#Session-and-context-handles
+    async def _shutdown(_ctx: LifecycleCtx | None) -> None:
+        return None
+
+    # see: cans/08-lifecycle.md#Break-glass
+    async def _deny(event: TrapEvent, session: Session) -> None:
+        if await session.cap.ledger.count_denials(event.ppid) > 5:
+            await session.vm.suspend("./.kelir/quarantine.snap")
+            await session.console()
+
+    return (
         kelir.builder(
             vcpus=4,
             memory_mb=4096,
@@ -394,7 +412,7 @@ async def build_runtime(
         )
 
         # see: cans/plugins/chaos.md#Plugin-chaos
-        .plugin(ChaosPlugin(ChaosConfig(
+        .use(ChaosPlugin(ChaosConfig(
             network=[
                 NetworkFaultRule(
                     target="api.stripe.com",
@@ -427,7 +445,7 @@ async def build_runtime(
         )))
 
         # see: cans/plugins/ledger.md#Merkle-WAL
-        .plugin(LedgerPlugin(LedgerConfig(
+        .use(LedgerPlugin(LedgerConfig(
             store="sqlite://.kelir/audit.merkle.db",
             merkle_chain=True,
             otel=OtelConfig(
@@ -439,40 +457,21 @@ async def build_runtime(
                 include_syscall_count=True,
             ),
         )))
+        .use(policy_plugin)
+        # see: cans/02-plugin-model.md#Full-Verdict-lattice
+        .trap("*", pre=make_universal_step(oracle), post=make_verify_receipt(oracle))
+        .trap(TrapFilter.binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), pre=make_warm_caches(oracle))
+        .trap(TrapFilter.binary("git").with_arg("push"), pre=make_force_strip())
+        .trap(TrapFilter.binary("git").with_arg("commit").with_arg("-m"), pre=make_commit_gate())
+        .trap(TrapFilter.binary("git").with_arg("commit"), post=make_zero_byte_check())
+        # see: cans/08-lifecycle.md#Watchdog
+        .on_vm_init(_init)
+        .on_vm_ready(_ready)
+        .on_vm_shutdown(_shutdown)
+        # see: cans/08-lifecycle.md#Break-glass
+        .on_trap_deny(_deny)
+        .seal()
     )
-
-    builder = builder.plugin(policy_plugin)
-
-    # see: cans/02-plugin-model.md#Full-Verdict-lattice
-    builder.trap("*", pre=make_universal_step(oracle), post=make_verify_receipt(oracle))
-    builder.trap(TrapFilter.binary("npm").with_arg("test").with_arg("--").with_arg("--runInBand"), pre=make_warm_caches(oracle))
-    builder.trap(TrapFilter.binary("git").with_arg("push"), pre=make_force_strip())
-    builder.trap(TrapFilter.binary("git").with_arg("commit").with_arg("-m"), pre=make_commit_gate())
-    builder.trap(TrapFilter.binary("git").with_arg("commit"), post=make_zero_byte_check())
-
-    # see: cans/08-lifecycle.md#Watchdog
-    @builder.on_vm_init
-    async def _init(ctx: LifecycleCtx) -> None:
-        ctx.set_watchdog(timeout=timedelta(minutes=5), action="reboot")
-
-    # TODO: SSOT npm-ci via session.exec_in_guest dropped; live on_vm_ready delivers LifecycleCtx only, see cans/08-lifecycle.md#Session-and-context-handles
-    @builder.on_vm_ready
-    async def _ready(_ctx: LifecycleCtx | None) -> None:
-        return None
-
-    # TODO: SSOT ledger.flush on shutdown dropped; live on_vm_shutdown delivers LifecycleCtx only, see cans/08-lifecycle.md#Session-and-context-handles
-    @builder.on_vm_shutdown
-    async def _shutdown(_ctx: LifecycleCtx | None) -> None:
-        return None
-
-    # see: cans/08-lifecycle.md#Break-glass
-    @builder.on_trap_deny
-    async def _deny(event: TrapEvent, session: Session) -> None:
-        if await session.cap.ledger.count_denials(event.ppid) > 5:
-            await session.vm.suspend("./.kelir/quarantine.snap")
-            await session.console()
-
-    return builder
 
 
 # see: cans/08-lifecycle.md#CoW-fork

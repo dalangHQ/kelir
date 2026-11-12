@@ -23,7 +23,8 @@ pub use builder_scopes::{
     TrapScope,
 };
 pub use builder_sdk::{
-    Host, KelirBuilder, Plugin, PostExecAction, Sealed, StepVerdict, TrapFilter, Unsealed,
+    Host, KelirBuilder, LifecycleMut, Plugin, PostExecAction, Sealed, StepVerdict, TrapFilter,
+    Unsealed,
 };
 pub use hlist_sdk::{HCons, HList, HNil, NoParams};
 pub use kelir_core::planes::checkpoint::{PidLineage, StepSlot};

@@ -110,9 +110,10 @@ const runtime = kelir({
   kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
   rootfsErofs: "./fixtures/rootfs-hooks.erofs",
   tscLocked: true, enableWatchdog: true,
-}).plugin(hookMatrixPlugin);
+}).use(hookMatrixPlugin);
 
 async function main() {
+  runtime.seal();
   const session: Session = await runtime.boot();
   console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
 

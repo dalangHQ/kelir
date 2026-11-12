@@ -363,45 +363,71 @@
       - Entry: KelirBuilder::new(config) is the host
       - Entry: KelirBuilder::named(name) is a plugin-mode builder
       - KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
+      - Every chain verb returns Self; seal() is the only fallible chain step
+      - Config after seal() is a compile error: config verbs live on Unsealed only
+      - trap(filter, handler) and trap_scope(closure) exist in both modes
+      - trap_async and post_exec are host-only and return Self; filter validation runs at seal()
       - Mount: host.plugin(builder) moves the registry by value
       - Mount: host.plugin_instance(P) for trait plugins
       - Mount requires Plugins: Satisfies<Deps> at compile time
-      - Already-mounted name is EConfig: plugin already mounted: <name>
+      - Mount returns Self; an already-mounted name is EConfig at seal()
+        - plugin already mounted: <name>
       - seal() validates host hooks and mounted plugins; returns Result
+      - boot() on Sealed is the single terminal; boot() on Unsealed does not exist
       - Host-only: storage, terminal, wire, lock_broker, detached
       - Host-only: fast_boot, dax_window, seal, params, plugin, plugin_instance
-      - Host-only: trap, on_trap_deny, register_custom_action
+      - Host-only: trap_async, post_exec, on_trap_deny, register_custom_action
       - Host-only: register_stream_kind, lifecycle_mut
+      - No plugin() on a plugin-mode builder: plugin-of-plugin is a compile error
       - register_vsock_service deletes; vsock_service is the one verb
       - Surface: see: artifacts/code/rust-plugin-builder.rs
     - TypeScript
       - Entry: new KelirBuilder(config) is the host
       - Entry: createPlugin(name, options?) returns a plugin-mode KelirBuilder
-      - Mount: host.use(builder) merges the registry
-      - Mount rejects an already-mounted name with EConfig
-      - Mount rejects host-only verbs on a plugin-mode builder with EConfig
-      - Mount checks missing prerequisites; same text as Rust
-      - Validation runs at boot() and fuse() entry; EConfig on failure
-      - Host-only: terminal, wire, detached, boot, fuse, use
-      - Host-only: trap, on, onTrapDeny, registerStreamKind
+      - Every chain verb returns this; seal() is the only validation step
+      - seal(): this sets a sealed flag; any verb after seal() throws EConfig
+      - fuse() is internal, not a chain verb and not a terminal; boot() is the single terminal
+        - boot() seals implicitly when the builder is not sealed yet
+      - trap(filter, handler) and trap(closure) are both modes under one overloaded name
+      - forkState() is a factory, not a chain verb; it returns a fresh plugin-mode builder
+      - Mount: host.use(builder) merges the registry; host.plugin(builder) is the same verb
+      - Mount returns this; duplicate mount and missing prerequisite checks run at mount time
+        - Mount time means at .use(), not at seal()
+        - Host-only verbs throw EConfig at the call site on a plugin-mode builder
+      - seal() validates mounted plugins and the hook registry
+      - Missing prerequisites use the same text as Rust at mount time
+      - Host-only: terminal, wire, detached, boot, seal, use
+      - Host-only: on, onTrapDeny, registerStreamKind
+      - lockBroker(config) is a host-only verb
+        - Only lockBroker: true reaches the native addon; globs/nonBlocking forwarding is L3
       - registerVsockService deletes; vsockService is the one verb
       - build(), PluginContract, BuiltPlugin delete
       - Surface: see: artifacts/code/typescript-plugin-builder.ts
     - Python
       - Entry: KelirBuilder(...) with VmConfig kwargs is the host
       - Entry: KelirBuilder.plugin(name) classmethod is a plugin-mode builder
-      - Mount: host.use(builder) merges the registry
-      - Mount rejects an already-mounted name with EConfig
-      - Mount rejects host-only verbs on a plugin-mode builder with EConfig
-      - Missing prerequisites raise EConfig at mount, not boot
-      - Validation runs at boot(); EConfig on failure
-      - Host-only: storage, terminal, wire, detached, params, boot, fuse, use
-      - Host-only: trap, register_custom_action, register_stream_kind
-      - Host-only: on_trap_deny
+      - Every chain verb returns Self; seal() is the only validation step
+      - seal() -> Self raises EConfig on validation failure; any verb after seal() raises EConfig
+      - fuse() is internal, not a chain verb and not a terminal; boot() is the single terminal
+        - boot() seals implicitly when the builder is not sealed yet
+      - trap(filter, pre, post) and trap(closure) are both modes under one name
+      - fork_state() is a factory, not a chain verb; it returns a fresh plugin-mode builder
+      - context() raises EConfig on host mode; it is plugin-mode only
+      - Mount: host.use(builder) merges the registry; the instance .plugin() mount alias deletes
+      - Mount returns Self; duplicate mount and missing prerequisite checks run at mount time
+        - Mount time means at .use(), not at seal()
+        - Host-only verbs raise EConfig at the call site when mode is plugin
+      - seal() validates host requirements and mounted plugin shapes
+      - Missing prerequisites raise EConfig at mount time (.use())
+        - seal() re-checks host requirements
+      - Host-only: storage, terminal, wire, detached, params, boot, seal, use
+      - Host-only: on_trap_deny, register_custom_action, register_stream_kind
+      - lock_broker(enabled=True) is a host-only verb
+        - Only the boolean reaches the PyO3 bridge; scope/non_blocking forwarding needs bridge work
       - register_vsock_service deletes; vsock_service is the one verb
       - build(), PluginBuilder, _PluginWrapper, _Scope delete
-      - Host decorator forms on_vm_init, on_vm_ready, on_vm_shutdown delete
-      - Host decorator forms on_pre_commit, on_post_commit delete
+      - Host decorator forms delete: on_vm_init, on_vm_ready, on_vm_shutdown
+        - on_pre_commit, on_post_commit
       - Surface: see: artifacts/code/python-plugin-builder.py
     - Contract home: see: 02-plugin-model.md#Unified-builder
   - Fluent plugin surface

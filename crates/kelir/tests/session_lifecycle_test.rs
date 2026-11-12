@@ -40,6 +40,8 @@ fn step_descriptor(offset_ns: u64) -> SnapshotDescriptor {
 #[ignore]
 async fn ar_01_execution_receipt_blake3_binding() -> Result<(), String> {
     let session = KelirBuilder::new(builder_config())
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -61,6 +63,8 @@ async fn ar_01_execution_receipt_blake3_binding() -> Result<(), String> {
 #[ignore]
 async fn lc_04_draining_state_rejection_ebusy() -> Result<(), String> {
     let mut session = KelirBuilder::new(builder_config())
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -91,7 +95,12 @@ async fn lc_07_cow_fork_uncloned_descriptor_veto() -> Result<(), String> {
     builder
         .lifecycle_mut()
         .register_veto(kelir::plugin_model::VetoEvent::Fork, Box::new(|| false));
-    let session = builder.boot().await.map_err(|e| e.to_string())?;
+    let session = builder
+        .seal()
+        .map_err(|e| e.to_string())?
+        .boot()
+        .await
+        .map_err(|e| e.to_string())?;
     match session.fork().await {
         Err(PluginError::Halt(message)) => {
             assert!(
@@ -115,6 +124,8 @@ async fn lc_07_cow_fork_uncloned_descriptor_veto() -> Result<(), String> {
 #[ignore]
 async fn lc_01_cow_fork_warm_memory_sharing() -> Result<(), String> {
     let parent = KelirBuilder::new(builder_config())
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -147,6 +158,8 @@ async fn lc_01_cow_fork_warm_memory_sharing() -> Result<(), String> {
 #[ignore]
 async fn lc_02_suspend_zero_rss_purge() -> Result<(), String> {
     let mut session = KelirBuilder::new(builder_config())
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -189,6 +202,8 @@ async fn lc_09_graceful_shutdown_syncfs_flushed() -> Result<(), String> {
                 Ok(())
             })
         })
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -219,6 +234,8 @@ async fn lc_10_abrupt_kill_dirty_shutdown_receipt() -> Result<(), String> {
                 Ok(())
             })
         })
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -237,6 +254,8 @@ async fn lc_10_abrupt_kill_dirty_shutdown_receipt() -> Result<(), String> {
 #[ignore]
 async fn lc_12_host_reaper_pdeathsig_enforcement() -> Result<(), String> {
     let session = KelirBuilder::new(builder_config())
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -266,6 +285,8 @@ async fn lc_12_host_reaper_pdeathsig_enforcement() -> Result<(), String> {
 async fn lc_14_detached_session_lease_heartbeat() -> Result<(), String> {
     let session = KelirBuilder::new(builder_config())
         .detached(true)
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -299,6 +320,8 @@ async fn lc_14_detached_session_lease_heartbeat() -> Result<(), String> {
 async fn lc_15_detached_session_reconnect_relay() -> Result<(), String> {
     let session = KelirBuilder::new(builder_config())
         .detached(true)
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -324,6 +347,8 @@ async fn lc_15_detached_session_reconnect_relay() -> Result<(), String> {
 #[ignore]
 async fn ar_05_erofs_trusted_prefix_fast_path() -> Result<(), String> {
     let session = KelirBuilder::new(builder_config())
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;

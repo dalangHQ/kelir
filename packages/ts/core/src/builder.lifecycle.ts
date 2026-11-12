@@ -44,6 +44,7 @@ import {
   type FusedTrampolineDescriptor,
   type HookDescriptor,
   type NativeAddonBinding,
+  type TrapFilterSnapshot,
 } from "./fusion.plugin.js";
 
 export interface KelirConfig {
@@ -143,6 +144,12 @@ export interface WireConfig {
   readonly tapFilter?: string;
 }
 
+// see: cans/05-storage-plane.md#Host-inode-lock-broker
+export interface LockBrokerConfig {
+  readonly globs: readonly string[];
+  readonly nonBlocking?: boolean;
+}
+
 export type TrapHandlerResult = Verdict | PostExecAction;
 
 export type TrapHandler<Ctx, Params> = (
@@ -162,6 +169,8 @@ interface PluginRegistration {
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 export interface CreatePluginOptions<Opts = unknown> {
   readonly opts?: Opts;
+  readonly enabled?: boolean;
+  readonly config?: Opts;
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
@@ -198,6 +207,8 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   private mounted: HookRegistry<Ctx>[] = [];
   private pluginRegistrations: PluginRegistration[] = [];
   private mountedFlag = false;
+  private sealedFlag = false;
+  private lockBrokerCfg: LockBrokerConfig | undefined;
   private forkFn?: () => KelirBuilder<Name, Ctx, Deps, Params>;
   private detachedFlag: boolean;
   private terminalCfg: TerminalConfig | undefined;
@@ -248,51 +259,59 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     return this.registry.getScope();
   }
 
-  private checkMounted(verb: string): void {
-    if (this.mountedFlag) {
-      throw new EConfig(`plugin ${this.name} is already mounted: ${verb} after .use()`);
-    }
+  private checkVerb(verb: string): void {
+    if (this.sealedFlag) throw new EConfig(`builder is sealed: ${verb} after .seal()`);
+    if (this.mountedFlag) throw new EConfig(`plugin ${this.name} is already mounted: ${verb} after .use()`);
   }
 
-  private hostOnlyRejected(verb: string): boolean {
-    if (this.mode === "plugin") {
-      this.registry.recordHostOnly(verb);
-      return true;
-    }
-    return false;
+  private rejectHostOnly(verb: string): never {
+    throw new EConfig(`plugin ${this.name} called host-only verb ${verb}`);
   }
 
   // see: cans/04-terminal-plane.md#Terminal-pipeline
   terminal(config: TerminalConfig): this {
-    if (this.hostOnlyRejected(".terminal")) return this;
+    this.checkVerb(".terminal");
+    if (this.mode === "plugin") this.rejectHostOnly(".terminal");
     this.terminalCfg = config;
     return this;
   }
 
   // see: cans/05-storage-plane.md#Workspace-commit
   storage<C = Ctx>(config: StorageConfig<C>): KelirBuilder<Name, Ctx & C, Deps, Params> {
-    if (this.hostOnlyRejected(".storage")) return this as unknown as KelirBuilder<Name, Ctx & C, Deps, Params>;
+    this.checkVerb(".storage");
+    if (this.mode === "plugin") this.rejectHostOnly(".storage");
     this.storageCfg = config as StorageConfig<any>;
     return this as unknown as KelirBuilder<Name, Ctx & C, Deps, Params>;
   }
 
   // see: cans/07-wire-plane.md#DNS-policy-filter
   wire(config: WireConfig): this {
-    if (this.hostOnlyRejected(".wire")) return this;
+    this.checkVerb(".wire");
+    if (this.mode === "plugin") this.rejectHostOnly(".wire");
     this.wireCfg = config;
+    return this;
+  }
+
+  // see: cans/05-storage-plane.md#Host-inode-lock-broker
+  lockBroker(config: LockBrokerConfig): this {
+    this.checkVerb(".lockBroker");
+    if (this.mode === "plugin") this.rejectHostOnly(".lockBroker");
+    this.lockBrokerCfg = config;
     return this;
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
   params<S extends Schema<any>>(schema: S): KelirBuilder<Name, Ctx, Deps, Infer<S>> {
-    if (this.hostOnlyRejected(".params")) return this as unknown as KelirBuilder<Name, Ctx, Deps, Infer<S>>;
+    this.checkVerb(".params");
+    if (this.mode === "plugin") this.rejectHostOnly(".params");
     this.paramsSchema = schema;
     return this as unknown as KelirBuilder<Name, Ctx, Deps, Infer<S>>;
   }
 
   // see: cans/08-lifecycle.md#Detached-lifecycle
   detached(detached: boolean): this {
-    if (this.hostOnlyRejected(".detached")) return this;
+    this.checkVerb(".detached");
+    if (this.mode === "plugin") this.rejectHostOnly(".detached");
     this.detachedFlag = detached;
     return this;
   }
@@ -305,7 +324,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   use<P extends KelirBuilder<any, any, any, any> | KelirPlugin>(
     plugin: P & ValidateDeps<Ctx, P>,
   ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params> {
-    this.checkMounted(".use");
+    this.checkVerb(".use");
     if (plugin instanceof KelirBuilder) {
       if (plugin.mode === "host") {
         throw new EConfig("cannot mount a host-mode builder as a plugin");
@@ -317,12 +336,6 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         )
       ) {
         throw new EConfig(`plugin already mounted: ${plugin.name}`);
-      }
-      const hostOnly = plugin.registry.hostOnlyCalls[0];
-      if (hostOnly !== undefined) {
-        throw new EConfig(
-          `plugin ${plugin.name} called host-only verb ${hostOnly}`,
-        );
       }
       const options = plugin.storedOptions as
         | { readonly enabled?: boolean; readonly config?: unknown }
@@ -396,6 +409,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   plugin<P extends KelirBuilder<any, any, any, any> | KelirPlugin>(
     plugin: P & ValidateDeps<Ctx, P>,
   ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params> {
+    this.checkVerb(".plugin");
     return this.use(plugin);
   }
 
@@ -425,18 +439,23 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     handler: TrapHandler<Ctx, Params> | TrapHandlers<Ctx, Params>,
   ): this;
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  trap(fn: (scope: TrapScope<Ctx>) => TrapScope<Ctx>): this;
+  trap(fn: (scope: TrapScope<Ctx, this>) => TrapScope<Ctx, this> | void): this;
+  // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+  trap(handlers: TrapHandlers<Ctx, Params>): this;
   trap(
-    filterOrFn: string | TrapFilter | ((scope: TrapScope<Ctx>) => TrapScope<Ctx>),
+    filterOrFnOrHandlers: string | TrapFilter | TrapHandlers<Ctx, Params> | ((scope: TrapScope<Ctx, this>) => TrapScope<Ctx, this> | void),
     handler?: TrapHandler<Ctx, Params> | TrapHandlers<Ctx, Params>,
   ): this {
-    this.checkMounted(".trap");
-    if (typeof filterOrFn === "function") {
-      this.registry.trap(filterOrFn);
+    this.checkVerb(".trap");
+    if (typeof filterOrFnOrHandlers === "function") {
+      this.registry.trap(filterOrFnOrHandlers, () => this);
       return this;
     }
+    if (typeof filterOrFnOrHandlers === "object" && filterOrFnOrHandlers !== null && typeof (filterOrFnOrHandlers as TrapFilter).snapshot !== "function") {
+      return this.registerTrapHandlers(filterOrFnOrHandlers as TrapHandlers<Ctx, Params>, undefined);
+    }
     const filterSnapshot =
-      typeof filterOrFn === "string" ? TrapFilter.pattern(filterOrFn).snapshot() : filterOrFn.snapshot();
+      typeof filterOrFnOrHandlers === "string" ? TrapFilter.pattern(filterOrFnOrHandlers).snapshot() : (filterOrFnOrHandlers as TrapFilter).snapshot();
     if (handler === undefined) {
       return this;
     }
@@ -450,23 +469,17 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       });
       return this;
     }
-    if (handler.pre !== undefined) {
-      const pre = handler.pre;
-      this.registry.addHook({
-        ring: RingEvent.Trap,
-        stage: "pre",
-        filter: filterSnapshot,
-        run: (event: unknown): unknown => pre(this.checkedTrapContext(event)),
-      });
+    return this.registerTrapHandlers(handler, filterSnapshot);
+  }
+
+  private registerTrapHandlers(handlers: TrapHandlers<Ctx, Params>, filter: TrapFilterSnapshot | undefined): this {
+    if (handlers.pre !== undefined) {
+      const pre = handlers.pre;
+      this.registry.addHook({ ring: RingEvent.Trap, stage: "pre", filter, run: (event: unknown): unknown => pre(this.checkedTrapContext(event)) });
     }
-    if (handler.post !== undefined) {
-      const post = handler.post;
-      this.registry.addHook({
-        ring: RingEvent.Trap,
-        stage: "post",
-        filter: filterSnapshot,
-        run: (event: unknown): unknown => post(this.checkedTrapContext(event)),
-      });
+    if (handlers.post !== undefined) {
+      const post = handlers.post;
+      this.registry.addHook({ ring: RingEvent.Trap, stage: "post", filter, run: (event: unknown): unknown => post(this.checkedTrapContext(event)) });
     }
     return this;
   }
@@ -483,6 +496,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     event: LifecycleEvent,
     handler: (ctx: LifecycleContext) => Promise<void> | void,
   ): this {
+    this.checkVerb(".on");
     this.registry.addHook({
       ring: RingEvent.Lifecycle,
       stage: "single",
@@ -499,6 +513,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       session: Session & Ctx,
     ) => Promise<void> | void,
   ): this {
+    this.checkVerb(".onTrapDeny");
     this.registry.addHook({
       ring: RingEvent.Lifecycle,
       stage: "single",
@@ -521,6 +536,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     schema: Schema<P>,
     handler: (payload: P) => Promise<void> | void,
   ): this {
+    this.checkVerb(".registerCustomAction");
     this.registry.addHook({
       ring: RingEvent.CustomAction,
       stage: "single",
@@ -537,6 +553,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     schema: Schema<Req>,
     handler: (request: Req) => Promise<Resp> | Resp,
   ): this {
+    this.checkVerb(".registerStreamKind");
     this.registry.addHook({
       ring: RingEvent.VsockService,
       stage: "single",
@@ -548,148 +565,148 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  fs(fn: (scope: FsScope<Ctx>) => FsScope<Ctx>): this {
-    this.checkMounted(".fs");
-    this.registry.fs(fn);
+  fs(fn: (scope: FsScope<Ctx, this>) => FsScope<Ctx, this> | void): this {
+    this.checkVerb(".fs");
+    this.registry.fs(fn, () => this);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  net(fn: (scope: NetScope<Ctx>) => NetScope<Ctx>): this {
-    this.checkMounted(".net");
-    this.registry.net(fn);
+  net(fn: (scope: NetScope<Ctx, this>) => NetScope<Ctx, this> | void): this {
+    this.checkVerb(".net");
+    this.registry.net(fn, () => this);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  console(fn: (scope: ConsoleScope<Ctx>) => ConsoleScope<Ctx>): this {
-    this.checkMounted(".console");
-    this.registry.console(fn);
+  console(fn: (scope: ConsoleScope<Ctx, this>) => ConsoleScope<Ctx, this> | void): this {
+    this.checkVerb(".console");
+    this.registry.console(fn, () => this);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  exec(fn: (scope: ExecScope<Ctx>) => ExecScope<Ctx>): this {
-    this.checkMounted(".exec");
-    this.registry.exec(fn);
+  exec(fn: (scope: ExecScope<Ctx, this>) => ExecScope<Ctx, this> | void): this {
+    this.checkVerb(".exec");
+    this.registry.exec(fn, () => this);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  host(fn: (scope: HostScope<Ctx>) => HostScope<Ctx>): this {
-    this.checkMounted(".host");
-    this.registry.host(fn);
+  host(fn: (scope: HostScope<Ctx, this>) => HostScope<Ctx, this> | void): this {
+    this.checkVerb(".host");
+    this.registry.host(fn, () => this);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  lifecycle(fn: (scope: LifecycleScope<Ctx>) => LifecycleScope<Ctx>): this {
-    this.checkMounted(".lifecycle");
-    this.registry.lifecycle(fn);
+  lifecycle(fn: (scope: LifecycleScope<Ctx, this>) => LifecycleScope<Ctx, this> | void): this {
+    this.checkVerb(".lifecycle");
+    this.registry.lifecycle(fn, () => this);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  telemetry(fn: (scope: TelemetryScope<Ctx>) => TelemetryScope<Ctx>): this {
-    this.checkMounted(".telemetry");
-    this.registry.telemetry(fn);
+  telemetry(fn: (scope: TelemetryScope<Ctx, this>) => TelemetryScope<Ctx, this> | void): this {
+    this.checkVerb(".telemetry");
+    this.registry.telemetry(fn, () => this);
     return this;
   }
 
   onNetOutbound(handler: (frame: Uint8Array) => FilterAction): this {
-    this.checkMounted(".onNetOutbound"); this.registry.onNetOutbound(handler); return this;
+    this.checkVerb(".onNetOutbound"); this.registry.onNetOutbound(handler); return this;
   }
 
   onNetInbound(handler: (frame: Uint8Array) => FilterAction): this {
-    this.checkMounted(".onNetInbound"); this.registry.onNetInbound(handler); return this;
+    this.checkVerb(".onNetInbound"); this.registry.onNetInbound(handler); return this;
   }
 
   onFsLookup(handler: (path: string) => Verdict): this {
-    this.checkMounted(".onFsLookup"); this.registry.onFsLookup(handler); return this;
+    this.checkVerb(".onFsLookup"); this.registry.onFsLookup(handler); return this;
   }
 
   onFsRead(handler: (path: string, buffer: Uint8Array) => Uint8Array): this {
-    this.checkMounted(".onFsRead"); this.registry.onFsRead(handler); return this;
+    this.checkVerb(".onFsRead"); this.registry.onFsRead(handler); return this;
   }
 
   onFsWrite(handler: (path: string, buffer: Uint8Array, pid: number, ctx: TrapContext & Ctx) => FilterAction): this {
-    this.checkMounted(".onFsWrite"); this.registry.onFsWrite(handler); return this;
+    this.checkVerb(".onFsWrite"); this.registry.onFsWrite(handler); return this;
   }
 
   onFsLock(handler: (path: string, flockCmd: number, flockType: number, pid: number) => Verdict): this {
-    this.checkMounted(".onFsLock"); this.registry.onFsLock(handler); return this;
+    this.checkVerb(".onFsLock"); this.registry.onFsLock(handler); return this;
   }
 
   onConsoleInput(handler: (port: number, bytes: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
-    this.checkMounted(".onConsoleInput"); this.registry.onConsoleInput(handler); return this;
+    this.checkVerb(".onConsoleInput"); this.registry.onConsoleInput(handler); return this;
   }
 
   onConsoleOutput(handler: (port: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
-    this.checkMounted(".onConsoleOutput"); this.registry.onConsoleOutput(handler); return this;
+    this.checkVerb(".onConsoleOutput"); this.registry.onConsoleOutput(handler); return this;
   }
 
   onExecStdout(handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
-    this.checkMounted(".onExecStdout"); this.registry.onExecStdout(handler); return this;
+    this.checkVerb(".onExecStdout"); this.registry.onExecStdout(handler); return this;
   }
 
   onExecStderr(handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
-    this.checkMounted(".onExecStderr"); this.registry.onExecStderr(handler); return this;
+    this.checkVerb(".onExecStderr"); this.registry.onExecStderr(handler); return this;
   }
 
   onHeartbeat(handler: (event: HeartbeatEvent) => Promise<void> | void): this {
-    this.checkMounted(".onHeartbeat"); this.registry.onHeartbeat(handler); return this;
+    this.checkVerb(".onHeartbeat"); this.registry.onHeartbeat(handler); return this;
   }
 
   onProcessExit(handler: (event: ProcessExitEvent) => Promise<void> | void): this {
-    this.checkMounted(".onProcessExit"); this.registry.onProcessExit(handler); return this;
+    this.checkVerb(".onProcessExit"); this.registry.onProcessExit(handler); return this;
   }
 
   onTrap(handler: (event: TrapInfo, c: TrapContext & Ctx) => Promise<Verdict> | Verdict): this {
-    this.checkMounted(".onTrap"); this.registry.onTrap(handler); return this;
+    this.checkVerb(".onTrap"); this.registry.onTrap(handler); return this;
   }
 
   onWatchdog(handler: (event: WatchdogEvent) => Promise<WatchdogVerdict> | WatchdogVerdict): this {
-    this.checkMounted(".onWatchdog"); this.registry.onWatchdog(handler); return this;
+    this.checkVerb(".onWatchdog"); this.registry.onWatchdog(handler); return this;
   }
 
   onHostLsmExec(handler: (path: string, pid: number) => Verdict): this {
-    this.checkMounted(".onHostLsmExec"); this.registry.onHostLsmExec(handler); return this;
+    this.checkVerb(".onHostLsmExec"); this.registry.onHostLsmExec(handler); return this;
   }
 
   onHostPressure(handler: (level: number) => Verdict): this {
-    this.checkMounted(".onHostPressure"); this.registry.onHostPressure(handler); return this;
+    this.checkVerb(".onHostPressure"); this.registry.onHostPressure(handler); return this;
   }
 
   onHostKeyringAccess(handler: (key: string) => Verdict): this {
-    this.checkMounted(".onHostKeyringAccess"); this.registry.onHostKeyringAccess(handler); return this;
+    this.checkVerb(".onHostKeyringAccess"); this.registry.onHostKeyringAccess(handler); return this;
   }
 
   onVmInit(handler: (ctx: LifecycleContext) => Promise<void> | void): this {
-    this.checkMounted(".onVmInit"); this.registry.onVmInit(handler); return this;
+    this.checkVerb(".onVmInit"); this.registry.onVmInit(handler); return this;
   }
 
   onVmReady(handler: (ctx: LifecycleContext) => Promise<void> | void): this {
-    this.checkMounted(".onVmReady"); this.registry.onVmReady(handler); return this;
+    this.checkVerb(".onVmReady"); this.registry.onVmReady(handler); return this;
   }
 
   onVmShutdown(handler: (ctx: LifecycleContext) => Promise<void> | void): this {
-    this.checkMounted(".onVmShutdown"); this.registry.onVmShutdown(handler); return this;
+    this.checkVerb(".onVmShutdown"); this.registry.onVmShutdown(handler); return this;
   }
 
   onPreCommit(handler: (ctx: LifecycleContext) => Promise<void> | void): this {
-    this.checkMounted(".onPreCommit"); this.registry.onPreCommit(handler); return this;
+    this.checkVerb(".onPreCommit"); this.registry.onPreCommit(handler); return this;
   }
 
   onPostCommit(handler: (ctx: LifecycleContext, committed: boolean) => Promise<void> | void): this {
-    this.checkMounted(".onPostCommit"); this.registry.onPostCommit(handler); return this;
+    this.checkVerb(".onPostCommit"); this.registry.onPostCommit(handler); return this;
   }
 
   onHostPreempt(handler: (ctx: LifecycleContext) => Promise<void> | void): this {
-    this.checkMounted(".onHostPreempt"); this.registry.onHostPreempt(handler); return this;
+    this.checkVerb(".onHostPreempt"); this.registry.onHostPreempt(handler); return this;
   }
 
   onMemoryPressure(handler: (availableMb: number, totalMb: number) => Promise<void> | void): this {
-    this.checkMounted(".onMemoryPressure"); this.registry.onMemoryPressure(handler); return this;
+    this.checkVerb(".onMemoryPressure"); this.registry.onMemoryPressure(handler); return this;
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
@@ -714,7 +731,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     Deps | (Req extends KelirBuilder<infer N, any, any, any> ? N : Req extends string ? Req : never),
     Params
   > {
-    this.checkMounted(".requires");
+    this.checkVerb(".requires");
     if (typeof name === "string") {
       if (!this.registry.requiredDeps.includes(name)) {
         this.registry.requiredDeps.push(name);
@@ -738,7 +755,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   derive<NewCtx>(
     fn: (c: Ctx) => NewCtx,
   ): KelirBuilder<Name, Ctx & NewCtx, Deps, Params> {
-    this.checkMounted(".derive");
+    this.checkVerb(".derive");
     this.registry.deriveFns.push(fn as (c: unknown) => unknown);
     return this as unknown as KelirBuilder<Name, Ctx & NewCtx, Deps, Params>;
   }
@@ -747,15 +764,23 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   context<NewCtx>(
     fn: (c: Ctx) => NewCtx,
   ): KelirBuilder<Name, Ctx & NewCtx, Deps, Params> {
-    this.checkMounted(".context");
+    this.checkVerb(".context");
     this.registry.contextFns.push(fn as (c: unknown) => unknown);
     return this as unknown as KelirBuilder<Name, Ctx & NewCtx, Deps, Params>;
   }
 
   // see: cans/artifacts/code/plugin-trait.rs#MountScope
   scope(scope: MountScope): this {
-    this.checkMounted(".scope");
+    this.checkVerb(".scope");
     this.registry.setScope(scope);
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+  group(fn: (builder: this) => this | void): this {
+    this.checkVerb(".group");
+    const result = fn(this);
+    if (result !== undefined && result !== this) throw new EConfig("group() must return the builder it receives");
     return this;
   }
 
@@ -763,7 +788,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   forkWith(
     fn: () => KelirBuilder<Name, Ctx, Deps, Params>,
   ): this {
-    this.checkMounted(".forkWith");
+    this.checkVerb(".forkWith");
     this.forkFn = fn;
     return this;
   }
@@ -786,6 +811,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     copy.terminalCfg = this.terminalCfg;
     copy.storageCfg = this.storageCfg;
     copy.wireCfg = this.wireCfg;
+    copy.lockBrokerCfg = this.lockBrokerCfg;
     copy.paramsSchema = this.paramsSchema;
     copy.forkFn = this.forkFn;
     return copy;
@@ -801,7 +827,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     if (!Number.isInteger(port) || port < 0 || port > 0xffffffff) {
       throw new EConfig(`vsock service port ${String(port)} outside u32`);
     }
-    this.checkMounted(".vsockService");
+    this.checkVerb(".vsockService");
     this.registry.vsockEntries.push({
       port,
       service,
@@ -819,9 +845,20 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     this.registry.validate();
   }
 
+  // see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
+  seal(): this {
+    if (!this.sealedFlag) { this.validate(); this.sealedFlag = true; }
+    return this;
+  }
+
+  hooksForFusion(): FusedTrampolineDescriptor {
+    this.validate();
+    return FusedTrampoline.fuse(this.registry.hooks).describe();
+  }
+
   // see: cans/02-plugin-model.md#Foreign-plugin-proxy
   fuse(): FusedTrampoline {
-    this.validate();
+    this.seal();
     return FusedTrampoline.fuse(this.registry.hooks);
   }
 
@@ -875,26 +912,27 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         streamEngine: this.terminalCfg.streamEngine,
       });
     }
-    if (this.storageCfg) {
+    if (this.storageCfg !== undefined || this.lockBrokerCfg !== undefined) {
       // TODO (L3): snoop onWrite callbacks stay TypeScript-side until threadsafe-function bridging lands.
+      // TODO (L3): forward lockBroker globs/nonBlocking once the native setter exists.
       nativeBuilder.setStorageConfig({
-        idmapGuestUid: this.storageCfg.idmap?.guestUid,
-        idmapHostUid: this.storageCfg.idmap?.hostUid,
-        sharedCaches: this.storageCfg.sharedCaches as string[] | undefined,
-        lockBroker: this.storageCfg.lockBroker,
-        syntheticFiles: this.storageCfg.syntheticFiles?.map((file) => ({
+        idmapGuestUid: this.storageCfg?.idmap?.guestUid,
+        idmapHostUid: this.storageCfg?.idmap?.hostUid,
+        sharedCaches: this.storageCfg?.sharedCaches as string[] | undefined,
+        lockBroker: this.storageCfg?.lockBroker ?? this.lockBrokerCfg !== undefined,
+        syntheticFiles: this.storageCfg?.syntheticFiles?.map((file) => ({
           path: file.path,
           content: typeof file.content === "function" ? file.content() : file.content,
           mode: file.mode,
         })),
-        maskRead: this.storageCfg.maskRead?.map((rule) => ({
+        maskRead: this.storageCfg?.maskRead?.map((rule) => ({
           glob: rule.glob,
           pattern: rule.pattern.source,
           replace: rule.replace,
         })),
-        encapsulation: this.storageCfg.encapsulation,
-        scanEngine: this.storageCfg.scanEngine,
-        carryoverBytes: this.storageCfg.carryoverBytes,
+        encapsulation: this.storageCfg?.encapsulation,
+        scanEngine: this.storageCfg?.scanEngine,
+        carryoverBytes: this.storageCfg?.carryoverBytes,
       });
     }
     if (this.wireCfg) {
@@ -947,11 +985,8 @@ export function kelir(config: KelirConfig = {}): KelirBuilder {
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-export function createPlugin<
-  Name extends string,
-  Ctx = unknown,
-  Opts = unknown,
-  Deps extends string = never,
->(name: Name, options?: CreatePluginOptions<Opts> | Ctx): KelirBuilder<Name, Ctx, Deps, unknown> {
-  return new KelirBuilder<Name, Ctx, Deps, unknown>(name, options);
+export function createPlugin<Name extends string, Ctx = unknown, Opts = unknown, Deps extends string = never, Params = unknown>(
+  name: Name, options?: CreatePluginOptions<Opts> | Ctx,
+): KelirBuilder<Name, Ctx, Deps, Params> {
+  return new KelirBuilder<Name, Ctx, Deps, Params>(name, options);
 }

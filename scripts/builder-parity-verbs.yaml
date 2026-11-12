@@ -1,0 +1,441 @@
+# see: cans/02-plugin-model.md#Unified-builder
+# see: cans/03-sdk-architecture.md#Rust-SDK
+# see: cans/03-sdk-architecture.md#TypeScript-SDK
+# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+# see: scripts/check-builder-parity.sh
+schema:
+  placement: flat on the builder, both flat and inside a scope, or registry for TS HookRegistry only
+  scope: scope the verb lives in or opens, empty otherwise
+  return: builder Self-this-KelirBuilder, sealed Rust Result Sealed else builder, terminal boot only, scope the scope type, registry HookRegistry this
+  sdks: sdks the verb is required in, absence outside the list is not a failure
+  status: fixed true pre-fix, target FIXED target differing pre-fix, pin A1 must pin the target
+  cans_home: cans/artifacts/test-plan/builder-parity-verbs.yaml
+verbs:
+  plugin:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: mount by value; Py plugin is a creation-only descriptor, mount is use()
+  plugin_instance:
+    placement: flat
+    return: builder
+    sdks: rust
+    status: fixed
+    note: Rust-only trait-plugin mount; TS/Py mount trait plugins through use()
+  seal:
+    placement: flat
+    return: sealed
+    sdks: rust,ts,py
+    status: fixed
+    note: validation gate, not a mid-chain verb; in all three SDKs since the chain fix
+  terminal:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: pty config verb, not the terminal of the chain
+  storage:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: storage plane config verb
+  wire:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: wire plane config verb
+  params:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: params model verb; rust and ts retype the builder, py returns Self
+  detached:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: detached session flag verb
+  lock_broker:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: standalone host-only verb in all three SDKs since the chain fix
+  fast_boot:
+    placement: flat
+    return: builder
+    sdks: rust
+    status: fixed
+    note: Rust-only host verb; TS/Py have no fast_boot
+  dax_window:
+    placement: flat
+    return: builder
+    sdks: rust
+    status: fixed
+    note: Rust-only host verb; TS/Py have no dax_window
+  context:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: context factory verb; rust and ts retype the builder, py returns Self
+  require:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: dependency requirement verb; ts spells it requires
+  scope:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: mount scope verb
+  fork_with:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: forkWith in TS, fork_with in Rust/Py
+  vsock_service:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: vsockService in TS, vsock_service in Rust/Py
+  on_trap_deny:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: trap deny hook verb
+  register_custom_action:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: target
+    note: pre-fix missing in ts (A5 added py register_custom_action)
+  register_stream_kind:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: target
+    note: pre-fix missing in ts (A5 added py register_stream_kind)
+  register_veto:
+    placement: flat
+    return: builder
+    sdks: rust
+    status: fixed
+    note: Rust-only, on LifecycleMut (reached via lifecycle_mut); returns Self; TS/Py have no register_veto
+  trap:
+    placement: flat
+    scope: trap
+    return: builder
+    sdks: rust,ts,py
+    status: target
+    note: flat filter form and scope-closure form are one verb; pre-fix rust flat form returns Result<Self
+  trap_scope:
+    placement: flat
+    return: builder
+    sdks: rust
+    status: fixed
+    note: Rust-only name for the scope form; TS/Py cover it with the overloaded trap
+  group:
+    placement: flat
+    return: builder
+    sdks: rust,ts
+    status: fixed
+    note: named block of chain steps; Python has no group()
+  guard:
+    placement: flat
+    return: builder
+    sdks: rust
+    status: fixed
+    note: Rust-only boolean conditional group
+  fork_state:
+    placement: flat
+    return: builder
+    sdks: ts,py
+    status: fixed
+    note: factory, not a chain verb; Rust fork_state is a KelirPlugin trait method, not a builder verb
+  trap_async:
+    placement: flat
+    return: builder
+    sdks: rust
+    status: fixed
+    note: Rust-only async trap form; returns Self since the chain fix
+  post_exec:
+    placement: flat
+    return: builder
+    sdks: rust
+    status: fixed
+    note: Rust-only post-exec gate; returns Self since the chain fix
+  on:
+    placement: flat
+    return: builder
+    sdks: ts
+    status: pin
+    note: ts-only generic lifecycle dispatcher; A1 to pin whether rust and py gain it
+  derive:
+    placement: flat
+    return: builder
+    sdks: ts
+    status: pin
+    note: ts-only context derivation verb; A1 to pin whether rust and py gain it
+  use:
+    placement: flat
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: mount verb in all three SDKs (Rust spells it r#use)
+  fs:
+    placement: flat
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: opens the fs scope
+  net:
+    placement: flat
+    scope: net
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: opens the net scope
+  console:
+    placement: flat
+    scope: console
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: opens the console scope
+  exec:
+    placement: flat
+    scope: exec
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: opens the exec scope
+  host:
+    placement: flat
+    scope: host
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: opens the host scope
+  lifecycle:
+    placement: flat
+    scope: lifecycle
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: opens the lifecycle scope
+  telemetry:
+    placement: flat
+    scope: telemetry
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: opens the telemetry scope
+  on_trap:
+    placement: both
+    scope: trap
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in TrapScope; scoped return is the scope itself
+  on_process_exit:
+    placement: both
+    scope: trap
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in TrapScope; scoped return is the scope itself
+  on_fs_lookup:
+    placement: both
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in FsScope; scoped return is the scope itself
+  on_fs_read:
+    placement: both
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in FsScope; scoped return is the scope itself
+  on_fs_write:
+    placement: both
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in FsScope; scoped return is the scope itself
+  on_fs_lock:
+    placement: both
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in FsScope; scoped return is the scope itself
+  on_net_outbound:
+    placement: both
+    scope: net
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in NetScope; scoped return is the scope itself
+  on_net_inbound:
+    placement: both
+    scope: net
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in NetScope; scoped return is the scope itself
+  on_console_input:
+    placement: both
+    scope: console
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in ConsoleScope; scoped return is the scope itself
+  on_console_output:
+    placement: both
+    scope: console
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in ConsoleScope; scoped return is the scope itself
+  on_exec_stdout:
+    placement: both
+    scope: exec
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in ExecScope; scoped return is the scope itself
+  on_exec_stderr:
+    placement: both
+    scope: exec
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in ExecScope; scoped return is the scope itself
+  on_host_lsm_exec:
+    placement: both
+    scope: host
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in HostScope; scoped return is the scope itself
+  on_host_pressure:
+    placement: both
+    scope: host
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in HostScope; scoped return is the scope itself
+  on_host_keyring_access:
+    placement: both
+    scope: host
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in HostScope; scoped return is the scope itself
+  on_host_preempt:
+    placement: both
+    scope: host
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in HostScope; scoped return is the scope itself
+  on_vm_init:
+    placement: both
+    scope: lifecycle
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in LifecycleScope; scoped return is the scope itself
+  on_vm_ready:
+    placement: both
+    scope: lifecycle
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in LifecycleScope; scoped return is the scope itself
+  on_vm_shutdown:
+    placement: both
+    scope: lifecycle
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in LifecycleScope; scoped return is the scope itself
+  on_pre_commit:
+    placement: both
+    scope: lifecycle
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in LifecycleScope; scoped return is the scope itself
+  on_post_commit:
+    placement: both
+    scope: lifecycle
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in LifecycleScope; scoped return is the scope itself
+  on_memory_pressure:
+    placement: both
+    scope: telemetry
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in TelemetryScope; scoped return is the scope itself
+  on_heartbeat:
+    placement: both
+    scope: telemetry
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in TelemetryScope; scoped return is the scope itself
+  on_watchdog:
+    placement: both
+    scope: telemetry
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: flat on the builder, scoped in TelemetryScope; scoped return is the scope itself
+  boot:
+    placement: flat
+    return: terminal
+    sdks: rust,ts,py
+    status: fixed
+    note: the one terminal; rust has one verb in two state impls (Unsealed and Sealed)
+  setScope:
+    placement: registry
+    return: registry
+    sdks: ts
+    status: target
+    note: TS HookRegistry mutator; pre-fix returns void
+  addHook:
+    placement: registry
+    return: registry
+    sdks: ts
+    status: target
+    note: TS HookRegistry mutator; pre-fix returns void
+  adoptHook:
+    placement: registry
+    return: registry
+    sdks: ts
+    status: target
+    note: TS HookRegistry mutator; pre-fix returns void
+  validate:
+    placement: registry
+    return: registry
+    sdks: ts
+    status: target
+    note: TS HookRegistry validator; pre-fix returns void

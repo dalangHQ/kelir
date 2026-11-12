@@ -25,6 +25,8 @@ fn wx_config(driver: Option<&str>, allow_emulated: bool) -> VmConfig {
 #[ignore]
 async fn hd_02_wx_mmu_prot_exec_trap() -> Result<(), String> {
     let session = KelirBuilder::new(wx_config(None, false))
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -51,6 +53,8 @@ async fn hd_02_wx_mmu_prot_exec_trap() -> Result<(), String> {
 #[ignore]
 async fn hd_10_proot_ptrace_trap_conformance() -> Result<(), String> {
     let session = KelirBuilder::new(wx_config(Some("proot"), true))
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -74,6 +78,8 @@ async fn hd_10_proot_ptrace_trap_conformance() -> Result<(), String> {
 #[ignore]
 async fn hd_14_guest_kernel_hardening_kptr_restrict() -> Result<(), String> {
     let session = KelirBuilder::new(wx_config(None, false))
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;
@@ -101,6 +107,8 @@ async fn hd_14_guest_kernel_hardening_kptr_restrict() -> Result<(), String> {
 #[ignore]
 async fn hd_18_rosetta_binfmt_registration() -> Result<(), String> {
     let session = KelirBuilder::new(wx_config(None, false))
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;

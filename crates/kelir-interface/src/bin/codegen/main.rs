@@ -123,10 +123,6 @@ fn main() -> ExitCode {
     let builder_plugins = plugin_builder_codegen::load_builder_plugins(&root, &projections)
         .unwrap_or_else(|e| die(&e));
     let ts_plugins = sdk_ts::emit_ts(&projections).unwrap_or_else(|e| die(&e));
-    let ts_plugins = format!(
-        "{ts_plugins}{}",
-        plugin_builder_codegen::emit_typescript(&builder_plugins)
-    );
 
     let writes: Vec<(PathBuf, String)> = vec![
         (

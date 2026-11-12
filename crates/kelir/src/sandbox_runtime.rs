@@ -341,7 +341,7 @@ impl Sandbox {
         let Some(builder) = self.builder.take() else {
             return Err(PluginError::Halt("Sandbox::boot called twice".into()));
         };
-        let session = builder.boot().await?;
+        let session = builder.seal()?.boot().await?;
         self.session = Some(session);
         Ok(self)
     }

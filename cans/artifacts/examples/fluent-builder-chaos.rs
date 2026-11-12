@@ -18,6 +18,6 @@ pub fn build_chaos_plugin(
     KelirBuilder::named("chaos")
         .require::<LedgerPlugin>()
         .scope(MountScope::default().with_paths(["/workspace"]))
-        .fs(|f| f.on_fs_write(|_, _, _, _| Ok(FilterAction::Forward)))
-        .net(|n| n.on_net_outbound(|_| Ok(FilterAction::Forward)))
+        .fs(|f| f.on_fs_write(|_, _, _, _| Ok(FilterAction::Forward)).end())
+        .net(|n| n.on_net_outbound(|_| Ok(FilterAction::Forward)).end())
 }

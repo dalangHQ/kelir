@@ -9,10 +9,12 @@
 // The 24 ring verbs + 8 closure scopes + context / requires / scope /
 // forkWith / vsockService exist in BOTH modes. Mount is merge by value:
 // host.use(plugin) appends the plugin's hooksForFusion after the host's
-// own hooks. Validation happens once, in fuse(), over the host +
-// mounted plugins together. There is no build(): a plugin-mode builder
-// is mounted as-is, and a verb after fuse is a runtime EConfig (the
-// builder is sealed). PluginContract / BuiltPlugin are deleted.
+// own hooks. Validation happens once, in seal(), over the host +
+// mounted plugins together; boot() seals implicitly when the builder is
+// not sealed yet. There is no build(): a plugin-mode builder is mounted
+// as-is, and a verb after seal() throws EConfig (the builder is sealed).
+// fuse() is internal, not a chain verb and not a terminal; boot() is the
+// single terminal. PluginContract / BuiltPlugin are deleted.
 //
 // Owned by: cans/02-plugin-model.md#Unified-builder
 // see: cans/02-plugin-model.md#Unified-builder
@@ -38,9 +40,11 @@ import type {
   KelirConfig,
   StorageConfig,
   TerminalConfig,
+  TrapHandler,
   TrapHandlers,
   WireConfig,
 } from "./builder.lifecycle.js";
+import type { TrapFilter } from "./trap.protocol.js";
 import type { FusedTrampoline, HookDescriptor } from "./fusion.plugin.js";
 import type { Session } from "./session.lifecycle.js";
 import type { TrapDenyEvent } from "./types.core.js";
@@ -65,6 +69,7 @@ export interface TrapScope<Name extends string, Ctx, Deps extends string> {
   onProcessExit(
     handler: (event: ProcessExitEvent) => Promise<void> | void,
   ): TrapScope<Name, Ctx, Deps>;
+  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -89,12 +94,14 @@ export interface FsScope<Name extends string, Ctx, Deps extends string> {
       pid: number,
     ) => Verdict,
   ): FsScope<Name, Ctx, Deps>;
+  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
 export interface NetScope<Name extends string, Ctx, Deps extends string> {
   onNetOutbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Name, Ctx, Deps>;
   onNetInbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Name, Ctx, Deps>;
+  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -105,6 +112,7 @@ export interface ConsoleScope<Name extends string, Ctx, Deps extends string> {
   onConsoleOutput(
     handler: (port: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array,
   ): ConsoleScope<Name, Ctx, Deps>;
+  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -123,6 +131,7 @@ export interface ExecScope<Name extends string, Ctx, Deps extends string> {
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
   ): ExecScope<Name, Ctx, Deps>;
+  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -135,6 +144,7 @@ export interface HostScope<Name extends string, Ctx, Deps extends string> {
   onHostPreempt(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
   ): HostScope<Name, Ctx, Deps>;
+  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -154,6 +164,7 @@ export interface LifecycleScope<Name extends string, Ctx, Deps extends string> {
   onPostCommit(
     handler: (ctx: LifecycleContext, committed: boolean) => Promise<void> | void,
   ): LifecycleScope<Name, Ctx, Deps>;
+  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -167,20 +178,22 @@ export interface TelemetryScope<Name extends string, Ctx, Deps extends string> {
   onWatchdog(
     handler: (event: WatchdogEvent) => Promise<WatchdogVerdict> | WatchdogVerdict,
   ): TelemetryScope<Name, Ctx, Deps>;
+  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
 // Target surface. Structural verbs: context, derive, requires, scope,
-// forkWith, vsockService. Ring verbs: the 24 on* methods. Scope entry
-// points take a closure receiving the scope builder and returning it;
-// there is no .end() / .done() verb. Host-only verbs (terminal,
-// storage, wire, params, detached, trap, on, onTrapDeny,
-// registerCustomAction, registerStreamKind, fuse,
-// use) exist on the one class and are simply not called on a
-// plugin-mode builder; a call on one is recorded and fuse() rejects it
-// with the plugin named. The canonical chaos plugin is not built here:
-// it lives in cans/artifacts/examples/fluent-builder-chaos.ts, the one
-// shape shared by all three SDKs.
+// forkWith, vsockService, group. Ring verbs: the 24 on* methods. Scope entry
+// points take a closure receiving the scope builder and returning it or
+// void; every scope has .end() returning the builder. Host-only verbs (terminal,
+// storage, wire, params, detached, seal, on, onTrapDeny,
+// registerCustomAction, registerStreamKind, lockBroker,
+// use) throw EConfig at the call site on a
+// plugin-mode builder. trap(filter, handler) and trap(closure) are
+// both modes under one overloaded name. The canonical chaos plugin is
+// not built here: it lives in
+// cans/artifacts/examples/fluent-builder-chaos.ts, the one shape shared
+// by all three SDKs.
 export declare class KelirBuilder<
   Name extends string = string,
   Ctx = unknown,
@@ -281,6 +294,10 @@ export declare class KelirBuilder<
     handler: (event: WatchdogEvent) => Promise<WatchdogVerdict> | WatchdogVerdict,
   ): KelirBuilder<Name, Ctx, Deps, Params>;
   trap(fn: (scope: TrapScope<Name, Ctx, Deps>) => TrapScope<Name, Ctx, Deps>): KelirBuilder<Name, Ctx, Deps, Params>;
+  trap(
+    filter: string | TrapFilter,
+    handler: TrapHandler<Ctx, Params> | TrapHandlers<Ctx, Params>,
+  ): KelirBuilder<Name, Ctx, Deps, Params>;
   fs(fn: (scope: FsScope<Name, Ctx, Deps>) => FsScope<Name, Ctx, Deps>): KelirBuilder<Name, Ctx, Deps, Params>;
   net(fn: (scope: NetScope<Name, Ctx, Deps>) => NetScope<Name, Ctx, Deps>): KelirBuilder<Name, Ctx, Deps, Params>;
   console(fn: (scope: ConsoleScope<Name, Ctx, Deps>) => ConsoleScope<Name, Ctx, Deps>): KelirBuilder<Name, Ctx, Deps, Params>;
@@ -288,6 +305,7 @@ export declare class KelirBuilder<
   host(fn: (scope: HostScope<Name, Ctx, Deps>) => HostScope<Name, Ctx, Deps>): KelirBuilder<Name, Ctx, Deps, Params>;
   lifecycle(fn: (scope: LifecycleScope<Name, Ctx, Deps>) => LifecycleScope<Name, Ctx, Deps>): KelirBuilder<Name, Ctx, Deps, Params>;
   telemetry(fn: (scope: TelemetryScope<Name, Ctx, Deps>) => TelemetryScope<Name, Ctx, Deps>): KelirBuilder<Name, Ctx, Deps, Params>;
+  group(fn: (builder: this) => this | void): this;
 
   hooksForFusion(): readonly HookDescriptor[];
 
@@ -300,8 +318,8 @@ export declare class KelirBuilder<
   wire(config: WireConfig): this;
   params<S extends Schema<any>>(schema: S): KelirBuilder<Name, Ctx, Deps, Infer<S>>;
   detached(detached: boolean): this;
+  lockBroker(config: { readonly globs: readonly string[]; readonly nonBlocking?: boolean }): this;
   isDetached(): boolean;
-  trap(handlers: TrapHandlers<Ctx, Params>): this;
   on(
     event: LifecycleEvent.VmInit,
     handler: (ctx: LifecycleContext) => Promise<void> | void,
@@ -330,7 +348,10 @@ export declare class KelirBuilder<
     schema: Schema<Req>,
     handler: (request: Req) => Promise<Resp> | Resp,
   ): this;
-  fuse(): FusedTrampoline;
+  // see: cans/02-plugin-model.md#Unified-builder
+  // seal() is the one validation; fuse() is internal, not a chain verb.
+  seal(): this;
+  boot(): Promise<Session & Ctx>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -349,19 +370,24 @@ export declare function createPlugin<Name extends string>(
 // registration order). fuse() sorts each ring by ordinal and throws on
 // a duplicate ordinal, so use() re-ordinals the mounted plugin's hooks
 // into the host's sequence as it merges them; the plugin builder's own
-// ordinals are untouched. Mounting the same plugin twice throws EConfig
-// `plugin already mounted: <name>`. A missing prerequisite throws
-// EConfig at use() with `missing prerequisite: <dep> required by
-// <plugin>`; the type-level ValidateDeps above rejects it at compile
-// time when the dep is statically known. fuse() is the one validation:
-// the vsock triple (port 1..=65535, non-empty service) applies to
-// host-registered and plugin services alike (vsockService keeps
-// its live u32 call-site check as the type-range guard), the scope
-// triple (non-empty paths), and host-only verbs recorded on a
-// plugin-mode builder, rejected with `<plugin>: host-only verb '<verb>'
-// used on a plugin-mode builder`. An empty builder (no handlers) still
-// fuses. fuse().describe() is the one descriptor path. trap() has two
-// overloads on the one class: the scope entry point taking a closure,
-// and the host-only trap handlers object; they resolve by argument type.
-// The vsock spec is (port, service, schema) in TS: the schema field is plugin-level in
-// TS/Python and absent in Rust.
+// ordinals are untouched. Mounting the same plugin twice throws EConfig at
+// use() with `plugin already mounted:
+// <name>`. A missing prerequisite throws EConfig at use() with
+// `missing prerequisite: <dep> required by <plugin>`; the type-level
+// ValidateDeps above rejects it at compile time when the dep is
+// statically known. seal() is the one validation: the vsock triple
+// (port 1..=65535, non-empty service) applies to host-registered and
+// plugin services alike (vsockService keeps its live u32 call-site
+// check as the type-range guard) and the scope triple (non-empty paths).
+// Host-only verbs on a plugin-mode builder throw EConfig at the call site.
+// An empty builder (no handlers) still seals. fuse() is internal:
+// fuse().describe() is the one descriptor path, called inside seal()
+// and boot(), never by the caller. trap() has two overloads on the one
+// class: the scope entry point taking a closure, and the filter form
+// taking (filter, handler); they resolve by argument type, in both
+// modes. forkState() is a factory, not a chain verb: it returns a fresh
+// plugin-mode builder. group(fn) runs fn on the same builder; there is
+// no guard() in TS. The vsock spec is (port, service, schema) in TS: the
+// schema field is plugin-level in TS/Python and absent in Rust.
+// lockBroker(config) is a host-only verb; only lockBroker: true reaches
+// the native addon, globs/nonBlocking forwarding is L3.

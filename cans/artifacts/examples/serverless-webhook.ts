@@ -27,7 +27,7 @@ const runtime = kelir({
 
   // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
   // see: cans/plugins/wire-ingress.md#On-rollback:-parked-connections-get-TCP-RST-(post-handshake:-503-close)
-  .plugin(wireIngress({
+  .use(wireIngress({
     listen: { port: 8443, protocol: "https" },
     parking: { maxBufferedBytes: 64 * 1024, idleTimeoutMs: 30_000 },
     // see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
@@ -37,9 +37,9 @@ const runtime = kelir({
   }))
 
   // see: cans/plugins/mcp.md#Stream-kind-MCP-CONSOLE-routes-directly-to-MCP-client-without-PTY-conflict
-  .plugin(mcp({}))
+  .use(mcp({}))
 
-  .plugin(toolGuard({
+  .use(toolGuard({
     // see: cans/plugins/tool-guard.md#Immutable-schema-locking
     pinSchemas: true,
     // see: cans/plugins/tool-guard.md#Call-quota
@@ -47,7 +47,7 @@ const runtime = kelir({
   }))
 
   // see: cans/plugins/ledger.md#Merkle-WAL
-  .plugin(ledger({
+  .use(ledger({
     store: "sqlite://.kelir/webhook.merkle.db",
     merkleChain: true,
     otel: { propagateW3cTraceparent: true, serviceName: "kelir-webhook" },
@@ -73,6 +73,7 @@ const runtime = kelir({
 
 // TODO: SSOT .on(VmReady) balloon shrink to 384 and .on(VmShutdown) ledger.flush dropped; live .on delivers LifecycleContext only, see cans/08-lifecycle.md#Session-and-context-handles
 async function main() {
+  runtime.seal();
   const session = await runtime.boot();
   try {
     let served = 0;

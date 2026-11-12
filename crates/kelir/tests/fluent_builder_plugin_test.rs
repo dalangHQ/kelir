@@ -196,7 +196,7 @@ fn full_flat_chain_builds_and_binds() -> Result<(), PluginError> {
     );
     let _builder = test_builder()
         .plugin_instance(ProfilePlugin::new())
-        .plugin(plain)?;
+        .plugin(plain);
     Ok(())
 }
 
@@ -231,33 +231,39 @@ fn nested_scopes_match_flat_descriptors() {
             Ok::<WatchdogVerdict, PluginError>(WatchdogVerdict::ExecuteDefault)
         });
     let nested = KelirBuilder::named("nested")
-        .trap(|t| {
+        .trap_scope(|t| {
             t.on_trap(|_event, _ctx| Ok(Verdict::Pass))
                 .on_process_exit(|_event, _ctx| Ok(()))
+                .end()
         })
         .fs(|f| {
             f.on_fs_lookup(|_path| Ok(Verdict::Pass))
                 .on_fs_read(|_path, buffer| Ok(buffer.to_vec()))
                 .on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
                 .on_fs_lock(|_path, _cmd, _kind, _pid| Ok(Verdict::Pass))
+                .end()
         })
         .net(|n| {
             n.on_net_outbound(|_frame| Ok(FilterAction::Forward))
                 .on_net_inbound(|_frame| Ok(FilterAction::Forward))
+                .end()
         })
         .console(|c| {
             c.on_console_input(|_port, bytes| Ok(bytes.to_vec()))
                 .on_console_output(|_port, chunk| Ok(chunk.to_vec()))
+                .end()
         })
         .exec(|e| {
             e.on_exec_stdout(|_pid, _exec_id, chunk| Ok(chunk.to_vec()))
                 .on_exec_stderr(|_pid, _exec_id, chunk| Ok(chunk.to_vec()))
+                .end()
         })
         .host(|h| {
             h.on_host_lsm_exec(|_path, _pid| Ok(Verdict::Pass))
                 .on_host_pressure(|_level| Ok(Verdict::Pass))
                 .on_host_keyring_access(|_key| Ok(Verdict::Pass))
                 .on_host_preempt(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .end()
         })
         .lifecycle(|l| {
             l.on_vm_init(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
@@ -267,6 +273,7 @@ fn nested_scopes_match_flat_descriptors() {
                 .on_post_commit(|_ctx, _committed| {
                     Box::pin(async move { Ok::<(), PluginError>(()) })
                 })
+                .end()
         })
         .telemetry(|t| {
             t.on_memory_pressure(|_available, _total| async move { Ok::<(), PluginError>(()) })
@@ -274,6 +281,7 @@ fn nested_scopes_match_flat_descriptors() {
                 .on_watchdog(|_event| async move {
                     Ok::<WatchdogVerdict, PluginError>(WatchdogVerdict::ExecuteDefault)
                 })
+                .end()
         });
     let mut flat_binder = RecordingBinder::default();
     flat.register_interceptors(&mut flat_binder);
@@ -282,7 +290,7 @@ fn nested_scopes_match_flat_descriptors() {
     assert_eq!(nested_binder.binds, flat_binder.binds);
     let mixed = KelirBuilder::named("mixed")
         .on_trap(|_event, _ctx| Ok(Verdict::Pass))
-        .trap(|t| t.on_process_exit(|_event, _ctx| Ok(())))
+        .trap_scope(|t| t.on_process_exit(|_event, _ctx| Ok(())).end())
         .on_trap(|_event, _ctx| Ok(Verdict::Pass));
     let mut mixed_binder = RecordingBinder::default();
     mixed.register_interceptors(&mut mixed_binder);
@@ -303,7 +311,7 @@ fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
                 schema: None,
             },
             _NullVsock,
-        ))?
+        ))
         .seal();
     let text = error_text(port_zero);
     assert!(
@@ -320,7 +328,7 @@ fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
                 schema: None,
             },
             _NullVsock,
-        ))?
+        ))
         .seal();
     let text = error_text(port_high);
     assert!(
@@ -337,7 +345,7 @@ fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
                 schema: None,
             },
             _NullVsock,
-        ))?
+        ))
         .seal();
     let text = error_text(empty_service);
     assert!(
@@ -371,7 +379,7 @@ fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
                 schema: None,
             },
             _NullVsock,
-        ))?
+        ))
         .seal();
     assert!(ok.is_ok());
     Ok(())
@@ -381,7 +389,7 @@ fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
 #[test]
 fn seal_rejects_ill_formed_scope() -> Result<(), PluginError> {
     let empty_binary = test_builder()
-        .plugin(KelirBuilder::named("bad-scope").scope(MountScope::default().with_binaries([""])))?
+        .plugin(KelirBuilder::named("bad-scope").scope(MountScope::default().with_binaries([""])))
         .seal();
     let text = error_text(empty_binary);
     assert!(
@@ -391,7 +399,7 @@ fn seal_rejects_ill_formed_scope() -> Result<(), PluginError> {
         "unexpected error: {text}"
     );
     let empty_path = test_builder()
-        .plugin(KelirBuilder::named("bad-scope").scope(MountScope::default().with_paths([""])))?
+        .plugin(KelirBuilder::named("bad-scope").scope(MountScope::default().with_paths([""])))
         .seal();
     let text = error_text(empty_path);
     assert!(
@@ -401,7 +409,7 @@ fn seal_rejects_ill_formed_scope() -> Result<(), PluginError> {
         "unexpected error: {text}"
     );
     let ok = test_builder()
-        .plugin(KelirBuilder::named("ok").scope(MountScope::default().with_paths(["/workspace"])))?
+        .plugin(KelirBuilder::named("ok").scope(MountScope::default().with_paths(["/workspace"])))
         .seal();
     assert!(ok.is_ok());
     Ok(())
@@ -487,13 +495,16 @@ fn canonical_chaos_shape() -> Result<(), PluginError> {
     let chaos = KelirBuilder::named("chaos")
         .require::<LedgerPlugin>()
         .scope(MountScope::default().with_paths(["/workspace"]))
-        .fs(|f| f.on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward)))
-        .net(|n| n.on_net_outbound(|_frame| Ok(FilterAction::Forward)));
+        .fs(|f| {
+            f.on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
+                .end()
+        })
+        .net(|n| n.on_net_outbound(|_frame| Ok(FilterAction::Forward)).end());
     let scope = KelirPlugin::default_scope(&chaos);
     assert_eq!(scope.paths, Some(vec![PathBuf::from("/workspace")]));
     let builder = test_builder()
         .plugin_instance(LedgerPlugin::new(false))
-        .plugin(chaos)?;
+        .plugin(chaos);
     let mut binder = RecordingBinder::default();
     builder.register_interceptors(&mut binder);
     assert_eq!(binder.binds, vec!["fs".to_string(), "net".to_string()]);
@@ -526,7 +537,7 @@ fn host_ring_verbs_bind_before_mounted() -> Result<(), PluginError> {
     let host = test_builder()
         .on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
         .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .plugin(plugin)?;
+        .plugin(plugin);
     let mut binder = RecordingBinder::default();
     host.register_interceptors(&mut binder);
     assert_eq!(
@@ -539,8 +550,8 @@ fn host_ring_verbs_bind_before_mounted() -> Result<(), PluginError> {
 // see: cans/02-plugin-model.md#Unified-builder
 #[test]
 fn mount_rejects_already_mounted() -> Result<(), PluginError> {
-    let host = test_builder().plugin(KelirBuilder::named("dup"))?;
-    let text = error_text(host.plugin(KelirBuilder::named("dup")));
+    let host = test_builder().plugin(KelirBuilder::named("dup"));
+    let text = error_text(host.plugin(KelirBuilder::named("dup")).seal());
     assert!(
         text.contains("EConfig") && text.contains("plugin already mounted: dup"),
         "unexpected error: {text}"
@@ -557,19 +568,23 @@ fn empty_host_seals() {
 // see: cans/02-plugin-model.md#Filter-before-FFI-gate
 #[test]
 fn host_trap_filter_registers_on_engine_ring() -> Result<(), PluginError> {
-    let host = test_builder().trap("git", |_event, _ctx| Ok(Verdict::Pass))?;
+    let host = test_builder().trap("git", |_event, _ctx| Ok(Verdict::Pass));
     let mut binder = RecordingBinder::default();
     host.register_interceptors(&mut binder);
     assert_eq!(binder.binds, vec!["trap".to_string()]);
-    let empty_binary = test_builder().trap("", |_event, _ctx| Ok(Verdict::Pass));
+    let empty_binary = test_builder()
+        .trap("", |_event, _ctx| Ok(Verdict::Pass))
+        .seal();
     let text = error_text(empty_binary);
     assert!(
         text.contains("EConfig") && text.contains("trap filter binary must not be empty"),
         "unexpected error: {text}"
     );
-    let empty_arg = test_builder().trap(TrapFilter::binary("git").with_arg(""), |_event, _ctx| {
-        Ok(Verdict::Pass)
-    });
+    let empty_arg = test_builder()
+        .trap(TrapFilter::binary("git").with_arg(""), |_event, _ctx| {
+            Ok(Verdict::Pass)
+        })
+        .seal();
     let text = error_text(empty_arg);
     assert!(
         text.contains("EConfig") && text.contains("trap filter arg must not be empty"),

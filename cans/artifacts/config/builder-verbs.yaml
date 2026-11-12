@@ -1,0 +1,734 @@
+# builder-verbs.yaml — machine-readable SSOT of the unified builder verb set.
+#
+# Owned by: cans/02-plugin-model.md#Unified-builder
+# see: cans/02-plugin-model.md#Unified-builder
+# see: cans/02-plugin-model.md#Chain-decisions
+# see: cans/03-sdk-architecture.md#Unified-builder-surface
+#
+# Consumed by: scripts/check-builder-parity.sh (A6 CI gate). The gate reads
+# this file, not the prose pin: every verb the gate checks must be listed
+# here, and every verb listed here must exist in the named SDKs.
+#
+# Fields per verb:
+#   name: canonical snake_case id (the Rust spelling, unless noted).
+#   rust / typescript / python: the verb name per SDK; null means the SDK
+#     has no such verb (use the note for the per-SDK equivalent, if any).
+#   placement: flat (a direct method on the builder) | scoped-entry (the
+#     scope entry point itself) | both (a flat verb also exposed in a scope).
+#   scope: the scope entry name that also exposes a flat verb; null when
+#     the verb has no scope form.
+#   returns: builder (Self / this, the chain continues) | sealed-builder
+#     (seal: Rust Result<Sealed>, TS this + sealed flag, Py Self) |
+#     session (boot, the single terminal) | fresh-builder (a factory
+#     returns a new plugin-mode builder) | bool | fused-trampoline |
+#     lifecycle-guard (lifecycle_mut returns &mut LifecycleMut, not the
+#     builder — the one verb that does not return the builder).
+#   modes: both (host and plugin mode) | host (host-only).
+#   kind: ring | structural | mount | validation | terminal | factory |
+#     host-only | internal | reader.
+#   status: per SDK — live | changed (live, but the chain fix changes its
+#     shape) | new (does not exist live; the chain fix adds it) |
+#     deleted (existed; the chain fix deletes it) | n/a (no such verb in
+#     that SDK) | open-gap (pinned as not existing anywhere).
+#   note: one line, only when the row needs it.
+#
+# Chain law (see: cans/02-plugin-model.md#Unbreakable-chain-contract):
+# every verb with returns: builder returns the builder, never Result,
+# void, or (); seal() is the only fallible chain step; boot() on Sealed
+# is the single terminal; Rust has no boot() on Unsealed, TS/Py boot()
+# seals implicitly.
+#
+# Closed set (spec): 30 chain verbs + 8 scopes in every SDK. This file
+# lists 54 verbs because it also covers the host-only, mount,
+# validation, terminal, factory, internal, and reader entries, so the
+# gate can check the whole surface, not just the closed chain set.
+
+schema: kelir-builder-verbs/v1
+
+entries:
+  - name: host-entry
+    rust: KelirBuilder::new(config)
+    typescript: new KelirBuilder(config)
+    python: KelirBuilder(...)
+    returns: builder
+    note: TS also has the kelir(config) factory; Py also has kelir.builder(...).
+  - name: plugin-entry
+    rust: KelirBuilder::named(name)
+    typescript: createPlugin(name, options?)
+    python: KelirBuilder.plugin(name)
+    returns: builder
+    note: The plugin-mode factory. Py KelirBuilder.plugin(name) is the factory, not the deleted instance mount alias.
+
+verbs:
+  - name: on_trap
+    rust: on_trap
+    typescript: onTrap
+    python: on_trap
+    placement: flat
+    scope: trap
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_process_exit
+    rust: on_process_exit
+    typescript: onProcessExit
+    python: on_process_exit
+    placement: flat
+    scope: trap
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_fs_lookup
+    rust: on_fs_lookup
+    typescript: onFsLookup
+    python: on_fs_lookup
+    placement: flat
+    scope: fs
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_fs_read
+    rust: on_fs_read
+    typescript: onFsRead
+    python: on_fs_read
+    placement: flat
+    scope: fs
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_fs_write
+    rust: on_fs_write
+    typescript: onFsWrite
+    python: on_fs_write
+    placement: flat
+    scope: fs
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_fs_lock
+    rust: on_fs_lock
+    typescript: onFsLock
+    python: on_fs_lock
+    placement: flat
+    scope: fs
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_net_outbound
+    rust: on_net_outbound
+    typescript: onNetOutbound
+    python: on_net_outbound
+    placement: flat
+    scope: net
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_net_inbound
+    rust: on_net_inbound
+    typescript: onNetInbound
+    python: on_net_inbound
+    placement: flat
+    scope: net
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_console_input
+    rust: on_console_input
+    typescript: onConsoleInput
+    python: on_console_input
+    placement: flat
+    scope: console
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_console_output
+    rust: on_console_output
+    typescript: onConsoleOutput
+    python: on_console_output
+    placement: flat
+    scope: console
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_exec_stdout
+    rust: on_exec_stdout
+    typescript: onExecStdout
+    python: on_exec_stdout
+    placement: flat
+    scope: exec
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_exec_stderr
+    rust: on_exec_stderr
+    typescript: onExecStderr
+    python: on_exec_stderr
+    placement: flat
+    scope: exec
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_host_lsm_exec
+    rust: on_host_lsm_exec
+    typescript: onHostLsmExec
+    python: on_host_lsm_exec
+    placement: flat
+    scope: host
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_host_pressure
+    rust: on_host_pressure
+    typescript: onHostPressure
+    python: on_host_pressure
+    placement: flat
+    scope: host
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_host_keyring_access
+    rust: on_host_keyring_access
+    typescript: onHostKeyringAccess
+    python: on_host_keyring_access
+    placement: flat
+    scope: host
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_host_preempt
+    rust: on_host_preempt
+    typescript: onHostPreempt
+    python: on_host_preempt
+    placement: flat
+    scope: host
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+    note: Binds the lifecycle ring; reachable via the host scope.
+  - name: on_vm_init
+    rust: on_vm_init
+    typescript: onVmInit
+    python: on_vm_init
+    placement: flat
+    scope: lifecycle
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_vm_ready
+    rust: on_vm_ready
+    typescript: onVmReady
+    python: on_vm_ready
+    placement: flat
+    scope: lifecycle
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_vm_shutdown
+    rust: on_vm_shutdown
+    typescript: onVmShutdown
+    python: on_vm_shutdown
+    placement: flat
+    scope: lifecycle
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_pre_commit
+    rust: on_pre_commit
+    typescript: onPreCommit
+    python: on_pre_commit
+    placement: flat
+    scope: lifecycle
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_post_commit
+    rust: on_post_commit
+    typescript: onPostCommit
+    python: on_post_commit
+    placement: flat
+    scope: lifecycle
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_memory_pressure
+    rust: on_memory_pressure
+    typescript: onMemoryPressure
+    python: on_memory_pressure
+    placement: flat
+    scope: telemetry
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_heartbeat
+    rust: on_heartbeat
+    typescript: onHeartbeat
+    python: on_heartbeat
+    placement: flat
+    scope: telemetry
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: on_watchdog
+    rust: on_watchdog
+    typescript: onWatchdog
+    python: on_watchdog
+    placement: flat
+    scope: telemetry
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: live, typescript: live, python: live }
+  - name: context
+    rust: context
+    typescript: context
+    python: context
+    placement: flat
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: live, typescript: live, python: live }
+    note: Py host-mode context() raises EConfig; plugin-mode only in Py/Rust.
+  - name: derive
+    rust: null
+    typescript: derive
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: n/a, typescript: live, python: n/a }
+    note: TS-only context derivation; Rust/Py use context().
+  - name: require
+    rust: require
+    typescript: requires
+    python: require
+    placement: flat
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: live, typescript: live, python: live }
+  - name: scope
+    rust: scope
+    typescript: scope
+    python: scope
+    placement: flat
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: live, typescript: live, python: live }
+  - name: fork_with
+    rust: fork_with
+    typescript: forkWith
+    python: fork_with
+    placement: flat
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: live, typescript: live, python: live }
+  - name: vsock_service
+    rust: vsock_service
+    typescript: vsockService
+    python: vsock_service
+    placement: flat
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: live, typescript: live, python: live }
+  - name: trap
+    rust: trap
+    typescript: trap
+    python: trap
+    placement: both
+    scope: trap
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: changed, typescript: live, python: changed }
+    note: Filter form trap(filter, handler) in both modes; scope form is trap_scope in Rust, the same overloaded trap in TS/Py.
+  - name: trap_scope
+    rust: trap_scope
+    typescript: trap
+    python: trap
+    placement: scoped-entry
+    scope: trap
+    returns: builder
+    modes: both
+    kind: ring
+    status: { rust: changed, typescript: live, python: live }
+    note: Rust renames the plugin-mode scope form from trap to trap_scope; both modes gain both forms.
+  - name: plugin
+    rust: plugin
+    typescript: use
+    python: use
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: mount
+    status: { rust: changed, typescript: live, python: live }
+    note: Rust mount verb is plugin(); TS mount verb is use() with a kept plugin() alias; Py mount verb is use() only, the instance plugin() alias deletes.
+  - name: plugin_instance
+    rust: plugin_instance
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: mount
+    status: { rust: changed, typescript: n/a, python: n/a }
+    note: Rust-only trait-plugin mount; TS/Py mount trait plugins through use().
+  - name: seal
+    rust: seal
+    typescript: seal
+    python: seal
+    placement: flat
+    scope: null
+    returns: sealed-builder
+    modes: host
+    kind: validation
+    status: { rust: live, typescript: new, python: new }
+    note: The one validation; Rust returns Result<Sealed>, TS returns this + sealed flag, Py returns Self raising EConfig.
+  - name: boot
+    rust: boot
+    typescript: boot
+    python: boot
+    placement: flat
+    scope: null
+    returns: session
+    modes: host
+    kind: terminal
+    status: { rust: live, typescript: live, python: live }
+    note: The single terminal; Rust: no boot() on Unsealed, seal()?.boot() only; TS/Py: boot() seals implicitly.
+  - name: fork_state
+    rust: fork_state
+    typescript: forkState
+    python: fork_state
+    placement: flat
+    scope: null
+    returns: fresh-builder
+    modes: both
+    kind: factory
+    status: { rust: live, typescript: live, python: live }
+    note: Factory, not a chain verb; plugin-mode only in intent, host forks via Session.fork().
+  - name: fuse
+    rust: fuse
+    typescript: fuse
+    python: fuse
+    placement: flat
+    scope: null
+    returns: fused-trampoline
+    modes: host
+    kind: internal
+    status: { rust: live, typescript: changed, python: changed }
+    note: Internal, not a chain verb and not a terminal; seal() and boot() call it.
+  - name: storage
+    rust: storage
+    typescript: storage
+    python: storage
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: live, python: live }
+  - name: terminal
+    rust: terminal
+    typescript: terminal
+    python: terminal
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: live, python: live }
+  - name: wire
+    rust: wire
+    typescript: wire
+    python: wire
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: live, python: live }
+  - name: lock_broker
+    rust: lock_broker
+    typescript: lockBroker
+    python: lock_broker
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: new, python: new }
+    note: Standalone host-only verb in all three SDKs; only the boolean reaches the native bridge in TS/Py, globs/non_blocking forwarding is L3.
+  - name: detached
+    rust: detached
+    typescript: detached
+    python: detached
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: live, python: live }
+  - name: fast_boot
+    rust: fast_boot
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: n/a, python: n/a }
+  - name: dax_window
+    rust: dax_window
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: n/a, python: n/a }
+  - name: params
+    rust: params
+    typescript: params
+    python: params
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: live, python: live }
+  - name: on_trap_deny
+    rust: on_trap_deny
+    typescript: onTrapDeny
+    python: on_trap_deny
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: live, python: live }
+    note: Not one of the 24 rings.
+  - name: register_custom_action
+    rust: register_custom_action
+    typescript: registerCustomAction
+    python: register_custom_action
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: live, python: live }
+  - name: register_stream_kind
+    rust: register_stream_kind
+    typescript: registerStreamKind
+    python: register_stream_kind
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: live, python: live }
+  - name: lifecycle_mut
+    rust: lifecycle_mut
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: lifecycle-guard
+    modes: host
+    kind: host-only
+    status: { rust: live, typescript: n/a, python: n/a }
+    note: Takes &mut self; the one verb that does not return the builder.
+  - name: trap_async
+    rust: trap_async
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: changed, typescript: n/a, python: n/a }
+    note: Rust-only async trap form; live returns Result, target returns Self with filter validation at seal().
+  - name: post_exec
+    rust: post_exec
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: changed, typescript: n/a, python: n/a }
+    note: Rust-only post-exec gate; live returns Result, target returns Self with filter validation at seal().
+  - name: on
+    rust: null
+    typescript: on
+    python: null
+    placement: flat
+    scope: lifecycle
+    returns: builder
+    modes: host
+    kind: host-only
+    status: { rust: n/a, typescript: live, python: n/a }
+    note: TS spelling of the lifecycle ring verbs; Rust/Py use on_vm_init and friends.
+  - name: is_detached
+    rust: is_detached
+    typescript: isDetached
+    python: is_detached
+    placement: flat
+    scope: null
+    returns: bool
+    modes: host
+    kind: reader
+    status: { rust: live, typescript: live, python: live }
+    note: Predicate, not a chain verb; reads the detached flag.
+
+scopes:
+  - name: trap
+    rust: trap_scope
+    typescript: trap
+    python: trap
+    methods: [on_trap, on_process_exit]
+    returns: builder
+    modes: both
+    status: { rust: changed, typescript: live, python: live }
+  - name: fs
+    rust: fs
+    typescript: fs
+    python: fs
+    methods: [on_fs_lookup, on_fs_read, on_fs_write, on_fs_lock]
+    returns: builder
+    modes: both
+    status: { rust: live, typescript: live, python: live }
+  - name: net
+    rust: net
+    typescript: net
+    python: net
+    methods: [on_net_outbound, on_net_inbound]
+    returns: builder
+    modes: both
+    status: { rust: live, typescript: live, python: live }
+  - name: console
+    rust: console
+    typescript: console
+    python: console
+    methods: [on_console_input, on_console_output]
+    returns: builder
+    modes: both
+    status: { rust: live, typescript: live, python: live }
+  - name: exec
+    rust: exec
+    typescript: exec
+    python: exec
+    methods: [on_exec_stdout, on_exec_stderr]
+    returns: builder
+    modes: both
+    status: { rust: live, typescript: live, python: live }
+  - name: host
+    rust: host
+    typescript: host
+    python: host
+    methods: [on_host_lsm_exec, on_host_pressure, on_host_keyring_access, on_host_preempt]
+    returns: builder
+    modes: both
+    status: { rust: live, typescript: live, python: live }
+  - name: lifecycle
+    rust: lifecycle
+    typescript: lifecycle
+    python: lifecycle
+    methods: [on_vm_init, on_vm_ready, on_vm_shutdown, on_pre_commit, on_post_commit]
+    returns: builder
+    modes: both
+    status: { rust: live, typescript: live, python: live }
+  - name: telemetry
+    rust: telemetry
+    typescript: telemetry
+    python: telemetry
+    methods: [on_memory_pressure, on_heartbeat, on_watchdog]
+    returns: builder
+    modes: both
+    status: { rust: live, typescript: live, python: live }
+
+  - name: group
+    rust: group
+    typescript: group
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: new, typescript: new, python: open-gap }
+    note: Named block of chain steps; Python does not have it.
+  - name: guard
+    rust: guard
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: new, typescript: open-gap, python: open-gap }
+    note: Boolean conditional group; Rust only.
+  - name: end
+    rust: end
+    typescript: end
+    python: end
+    placement: scoped-entry
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: new, typescript: new, python: new }
+    note: Closes a scope and returns the builder; one per scope type.
+
+open_gaps:
+  - name: group
+    rust: group
+    typescript: group
+    python: null
+    status: { rust: live, typescript: live, python: open-gap }
+    note: Elysia-style grouping verb; Python does not have it.
+  - name: guard
+    rust: guard
+    typescript: null
+    python: null
+    status: { rust: live, typescript: open-gap, python: open-gap }
+    note: Boolean conditional group; Rust only.

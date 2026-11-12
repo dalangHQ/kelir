@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   EConfig,
   FilterAction,
+  LifecycleEvent,
   RingEvent,
   Verdict,
   kelir,
@@ -194,6 +195,16 @@ test("verbs on a mounted plugin throw EConfig", () => {
   );
   assert.throws(() => plugin.requires("ledger"), EConfig);
   assert.throws(() => plugin.scope({ binaries: ["git"] }), EConfig);
+  assert.throws(() => plugin.on(LifecycleEvent.VmInit, () => {}), EConfig);
+  assert.throws(() => plugin.onTrapDeny(() => {}), EConfig);
+  assert.throws(
+    () => plugin.registerCustomAction("act", t.Object({}), () => {}),
+    EConfig,
+  );
+  assert.throws(
+    () => plugin.registerStreamKind(7, t.Object({}), () => ({})),
+    EConfig,
+  );
 });
 
 test("scope survives mount", () => {
@@ -380,20 +391,48 @@ test("plugin-level vsockService forwards through use", () => {
   assert.equal(builder.vsockServices[0].port, 1024);
 });
 
-test("host-only verbs on a plugin-mode builder fail at mount", () => {
-  const terminalPlugin = createPlugin<"term", Record<string, never>>("term").terminal({ cols: 80 });
+test("host-only verbs on a plugin-mode builder throw EConfig at the call site", () => {
   assert.throws(
-    () => kelir().use(terminalPlugin),
+    () => createPlugin<"term", Record<string, never>>("term").terminal({ cols: 80 }),
     (error: unknown) =>
       error instanceof EConfig &&
       error.message === "plugin term called host-only verb .terminal",
   );
-  const detachedPlugin = createPlugin<"det", Record<string, never>>("det").detached(true);
   assert.throws(
-    () => kelir().use(detachedPlugin),
+    () => createPlugin<"det", Record<string, never>>("det").detached(true),
     (error: unknown) =>
       error instanceof EConfig &&
       error.message === "plugin det called host-only verb .detached",
+  );
+  assert.throws(
+    () => createPlugin<"stor", Record<string, never>>("stor").storage({}),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message === "plugin stor called host-only verb .storage",
+  );
+  assert.throws(
+    () => createPlugin<"wir", Record<string, never>>("wir").wire({}),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message === "plugin wir called host-only verb .wire",
+  );
+  assert.throws(
+    () =>
+      createPlugin<"par", Record<string, never>>("par").params(
+        t.Object({ ping: t.String() }),
+      ),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message === "plugin par called host-only verb .params",
+  );
+  assert.throws(
+    () =>
+      createPlugin<"lock", Record<string, never>>("lock").lockBroker({
+        globs: ["/workspace/**"],
+      }),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message === "plugin lock called host-only verb .lockBroker",
   );
 });
 

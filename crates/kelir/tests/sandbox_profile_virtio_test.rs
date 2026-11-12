@@ -16,7 +16,7 @@ async fn vr_04_virtio_rng_profile_immutable() -> Result<(), String> {
         toml::from_str(rng_disabled_profile_toml()).map_err(|e| e.to_string())?;
     let config = profile.to_vm_config();
     let builder = KelirBuilder::new(config).plugin_instance(ProfilePlugin::new());
-    match builder.boot().await {
+    match builder.seal().map_err(|e| e.to_string())?.boot().await {
         Err(PluginError::Halt(message)) => {
             assert!(
                 message.contains("EConfig") && message.contains("virtio-rng"),

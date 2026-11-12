@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::sdk_codegen::{Projection, sdk_camel};
+use crate::sdk_codegen::Projection;
 
 // see: cans/02-plugin-model.md#Unified-builder
 pub struct BuilderPlugin {
@@ -162,37 +162,6 @@ pub fn load_builder_plugins(
     }
     plugins.sort_by(|a, b| (a.level, &a.name).cmp(&(b.level, &b.name)));
     Ok(plugins)
-}
-
-// see: cans/03-sdk-architecture.md#TypeScript-SDK
-const UNIFIED_BUILDER_SEE: &str = "// see: cans/02-plugin-model.md#Unified-builder
-";
-
-pub fn emit_typescript(plugins: &[BuilderPlugin]) -> String {
-    let mut lines: Vec<String> = vec![
-        String::new(),
-        String::new(),
-        UNIFIED_BUILDER_SEE.trim_end().to_string(),
-        "import { createPlugin } from \"./builder.lifecycle.js\";".to_string(),
-        "import type { KelirBuilder } from \"./builder.lifecycle.js\";".to_string(),
-    ];
-    for plugin in plugins {
-        let factory = format!("{}Builder", sdk_camel(&plugin.name));
-        lines.push(String::new());
-        lines.push(String::new());
-        lines.push(format!(
-            "export function {factory}(config: {}): KelirBuilder {{",
-            plugin.config_name
-        ));
-        let mut chain = format!("createPlugin(\"{}\", {{ config }})", plugin.name);
-        for peer in &plugin.requires {
-            chain.push_str(&format!(".requires<\"{peer}\">()"));
-        }
-        lines.push(format!("  return {chain};"));
-        lines.push("}".to_string());
-    }
-    lines.push(String::new());
-    lines.join("\n")
 }
 
 // see: cans/03-sdk-architecture.md#Python-SDK

@@ -20,6 +20,8 @@ fn builder_config() -> VmConfig {
 #[ignore]
 async fn vr_09_virtio_console_port0_pty_dedication() -> Result<(), String> {
     let session = KelirBuilder::new(builder_config())
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;

@@ -81,6 +81,8 @@
     - Non-blocking trap returns: see: #Unified-verdict
   - Composite plugin hierarchy
     - see: [1]
+    - Mount verb: none; a CompositeBundle has no mount verb and mounting one is unsupported
+      - The type stays for the profile facade's unpack path: see: #Chain-decisions
     - Assembly-time tree flattens into contiguous C-speed dispatch array
     - Declarative profile hydration maps schema sections to child plugins
     - Profile root schema: see: plugins/profile.md
@@ -431,6 +433,68 @@
     - Mount is merging: host.plugin(plugin) moves the registry by value
     - No wrapper type, no build-then-mount, no trait round-trip on mount
     - Mount and surface per SDK: see: 03-sdk-architecture.md#Unified-builder-surface
+    - Unbreakable chain contract
+      - Every chain verb returns the builder, never Result, void, or ()
+        - A chain reads as one expression; no reassignment, no ? mid-chain
+        - The only fallible steps are seal() and the terminal boot()
+      - Rust: seal() returns Result<_, PluginError>
+        - The Ok value is KelirBuilder<Host, Sealed, Ctx, Deps, Plugins, Params>
+        - Config after seal() is a compile error: config verbs live on Unsealed only
+        - boot() on Sealed is the single terminal
+        - boot() on Unsealed does not exist; seal()?.boot() is the only route
+      - TypeScript: seal(): this sets a sealed flag; any verb after seal() throws EConfig
+        - fuse() is internal, not a chain verb and not a terminal; boot() is the single terminal
+        - boot() seals implicitly when the builder is not sealed yet
+      - Python: seal() -> Self raises EConfig on validation failure
+        - Any verb after seal() raises EConfig
+        - fuse() is internal, not a chain verb and not a terminal; boot() is the single terminal
+        - boot() seals implicitly when the builder is not sealed yet
+      - Seal validates once, over the host plus mounted plugins together
+        - Duplicate mount: Rust at seal(), TS/Py at mount
+        - Missing prerequisite: Rust at seal(), TS/Py at mount
+        - Host-only verb on a plugin-mode builder
+          - Rust: a compile error; TS/Py: EConfig at the call site
+        - Vsock triple, scope triple, trap-filter triple
+      - Machine-readable verb set: see: artifacts/config/builder-verbs.yaml
+      - Chain decisions: see: #Chain-decisions
+    - Chain decisions (chain fix)
+      - (a) trap: both modes have both forms, under two names
+        - trap(filter, handler) is the filter form, in host mode and plugin mode
+        - trap_scope(closure) is the scope form, in host mode and plugin mode
+        - Rust renames the plugin-mode scope form from trap to trap_scope
+        - TypeScript and Python keep the one overloaded trap name for both forms
+      - (b) seal is the one validation gate; the boot entry differs per SDK
+        - Rust: boot() on Unsealed does not exist; seal()?.boot() is the only route
+        - TypeScript and Python: boot() seals implicitly (TS via fuse(), Py via seal())
+        - The validation path is one: seal() runs once, over host plus mounted plugins
+      - (c) TypeScript fuse() is internal, not a second terminal
+        - boot() is the single terminal
+        - fuse().describe() stays the one descriptor path, inside seal() and boot()
+        - Python fuse() is internal the same way
+      - (d) forkState() / fork_state() are factories, not chain verbs
+        - They return a fresh plugin-mode builder; they never continue the chain
+        - Host-mode builders fork via Session.fork(), not the builder factory
+        - Live host-mode consequence stays per SDK
+        - Python raises EConfig; Rust and TypeScript return a clone
+      - (e) group() / guard() / .end(): landed per SDK, gaps named, not faked
+        - group(): Rust and TypeScript have it; Python does not (open gap)
+        - guard(enabled, f): Rust only, a boolean conditional group; TS/Py open gap
+        - .end() closes a scope and returns the builder, in all three SDKs
+        - Rust scope closures must return the builder via .end()
+        - TS/Py closures may return the scope or void
+        - CompositeBundle has no mount verb: mounting it is unsupported, the type stays
+      - (f) Python host-mode .context() raises EConfig
+        - boot() never reads a host context and the bridge takes no host-context param
+        - context() is plugin-mode only in Python and Rust
+      - (g) Plugin-of-plugin composition is a known limitation
+        - Rust: no plugin() on a plugin-mode builder
+        - Mounting a plugin into a plugin is a compile error
+        - TypeScript and Python: mounting into a plugin-mode builder merges
+        - The host flattens the nested mount
+        - No generics redesign is attempted for this round
+      - (h) Session / Sandbox post-boot operations are out of scope
+        - Promise<void> / None-returning post-boot operations are not chain verbs
+        - They are not touched here
     - Rust generic arity (pinned; the contract A3 implements)
       - KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
       - Mode is HostMode or PluginMode; no other modes exist
@@ -451,8 +515,9 @@
       - Python plugin: KelirBuilder.plugin(name) classmethod
     - Verbs in both modes
       - 24 ring verbs and 8 scopes exist in host mode and plugin mode
-      - Rust: the trap scope entry exists in plugin mode only
-      - Rust: the host's trap(filter, f) occupies the name (E0592)
+      - trap(filter, handler) and trap_scope(closure) exist in both modes
+      - Rust: the scope form is trap_scope; the filter form is trap
+      - TypeScript and Python: one overloaded trap name carries both forms
       - Same signatures as the DX-round plugin builder; the host gains them
       - context, require, scope, vsock_service, fork_with exist in both modes
       - Verb names: see: #Chainable-verbs
@@ -463,6 +528,9 @@
     - Chainable verbs
       - Verb set is closed to the ring traits plus lifecycle and vsock
       - Each verb returns the builder or a typed successor
+      - Every chain verb returns the builder (Self / this), never Result, void, or ()
+        - No ? mid-chain on plugin(), trap(), trap_async(), post_exec(), or any ring verb
+        - Validation is deferred to seal(); seal() is the only fallible chain step
       - Each verb registers exactly one handler or capability
       - Repeat calls append, never replace
         - A second call to the same ring verb registers a second handler
@@ -508,7 +576,9 @@
         - telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
       - Entry-point names are the group names in all three SDKs
       - Each entry point takes a closure receiving a scope builder
-        - The closure returns the scope builder; there is no .end() verb
+        - The closure returns the builder via .end() in Rust
+        - In TS/Py it may return the scope or void
+        - .end() closes the scope; the parent chain resumes after it: see: #Chain-decisions
         - Scope methods carry the same verb names as the flat chain
         - The parent chain resumes after the closure returns
       - Scope groups organise the chain only
@@ -521,25 +591,34 @@
     - Host-only verbs (Mode-gated; a plugin-mode builder must not call them)
       - Rust: storage, terminal, wire, lock_broker, detached, fast_boot
       - Rust: dax_window, seal, params, plugin, plugin_instance
-      - Rust trap surface stays host-only: trap, on_trap_deny
+      - Rust: trap_async and post_exec stay host-only; trap(filter, handler) is both modes
+      - Rust: on_trap_deny stays host-only
       - Rust: register_custom_action, register_stream_kind, lifecycle_mut
-      - TypeScript: terminal, wire, detached, boot, fuse, use
-      - TypeScript trap surface stays host-only: trap, on, onTrapDeny
+      - TypeScript: terminal, wire, detached, boot, seal, use
+      - TypeScript: on and onTrapDeny stay host-only
+        - trap(filter, handler) and trap(closure) are both modes
       - TypeScript: registerStreamKind stays host-only
-      - Python: storage, terminal, wire, detached, params, boot, fuse, use
-      - Python trap surface stays host-only: trap, on_trap_deny
+      - TypeScript: no standalone lockBroker verb; the lock broker is a storage config flag
+      - Python: storage, terminal, wire, detached, params, boot, seal, use
+      - Python: on_trap_deny stays host-only
+        - trap(filter, pre, post) and trap(closure) are both modes
       - Python: register_custom_action, register_stream_kind
+      - Python: no standalone lock_broker verb; the lock broker rides storage(lock_broker=...)
       - register_vsock_service deletes in all SDKs; vsock_service is the one verb
       - Rust rejection is a compile error: no method on PluginMode
-      - TypeScript and Python rejection is EConfig at mount
+      - TypeScript and Python rejection is EConfig at seal, not at mount
+        - Mount records the call; seal() rejects it with the plugin named
+        - Live TypeScript and Python still reject at mount; A4/A5 move the check to seal()
       - Host-only list: see: 03-sdk-architecture.md#Unified-builder-surface
     - Mount is a merge
       - host.plugin(plugin) takes the plugin-mode builder by value
       - Hook registry, vsock list, and deps move into the host Registration
       - Append, in mount order; duplicate hooks from two plugins both kept
       - Mounting a name twice is EConfig: plugin already mounted: <name>
+        - The duplicate is recorded at mount; seal() rejects it
       - Rust mount requires Plugins: Satisfies<Deps> at compile time
       - Mount does not validate; validation is a seal and boot concern
+      - Plugin-of-plugin: see: #Chain-decisions
       - Mount form per SDK: see: 03-sdk-architecture.md#Unified-builder-surface
     - Trait plugins mount separately
       - host.plugin_instance(P) where P: KelirPlugin + PluginDeps + Clone
@@ -555,10 +634,12 @@
       - Triple: every vsock spec is valid: port 1..=65535
         - Non-empty service, non-empty schema
       - Triple: every scope value is well-formed
+      - Triple: every trap filter is well-formed: non-empty binary, non-empty args
+      - Triple: no mounted plugin name appears twice
       - Plugin failure text names the plugin: <plugin>: <triple failure>
       - Host failure text is the bare triple text; the host has no name
-      - TypeScript validation runs at boot() and fuse() entry
-      - Python validation runs at boot()
+      - TypeScript validation runs at seal(); boot() seals implicitly; fuse() is internal
+      - Python validation runs at seal(); boot() seals implicitly; fuse() is internal
       - Empty host still seals and boots
       - Validation home: see: 03-sdk-architecture.md#Unified-builder-surface
     - One descriptor table
@@ -571,6 +652,7 @@
       - register_interceptors binds the builder's own registry
       - It is not the mount path; mount is the merge above
       - fork_state re-runs .fork_with when provided, else clone_box
+      - fork_state is a factory, not a chain verb: see: #Chain-decisions
       - Trait home: see: artifacts/code/plugin-trait.rs
     - Deleted shapes
       - Rust: PluginBuilder, PluginWrapper, plugin_builder_scopes delete

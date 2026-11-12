@@ -113,17 +113,24 @@ pub(crate) fn filter_matches(filter: &FilterSnapshot, event: &TrapEvent) -> bool
     filter.args.iter().all(|arg| event.argv.contains(arg))
 }
 
-pub struct LifecycleMut<'a> {
-    vetoes: &'a mut VetoList,
+pub struct LifecycleMut<'a, Plugins: HList, Params: 'static, Ctx, Deps: HList> {
+    builder: &'a mut KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>,
 }
 
-impl LifecycleMut<'_> {
+impl<'a, Plugins: HList, Params: 'static, Ctx, Deps: HList>
+    LifecycleMut<'a, Plugins, Params, Ctx, Deps>
+{
     pub fn register_veto(
-        &mut self,
+        self,
         event: VetoEvent,
         callback: Box<dyn Fn() -> bool + Send + Sync>,
-    ) {
-        self.vetoes.push((event, callback));
+    ) -> Self {
+        self.builder.registration.vetoes.push((event, callback));
+        self
+    }
+
+    pub fn end(self) -> &'a mut KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
     }
 }
 
@@ -208,6 +215,7 @@ pub(crate) struct HookRegistry {
     pub(crate) telemetry: Vec<Arc<dyn SystemTelemetryParticipant>>,
     pub(crate) vsock: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>)>,
     pub(crate) post_exec: Vec<Arc<dyn PostExecGate>>,
+    pub(crate) trap_filters: Vec<TrapFilter>,
 }
 
 impl HookRegistry {
@@ -314,6 +322,23 @@ fn validate_scope(name: &str, scope: &MountScope) -> Result<(), PluginError> {
     Ok(())
 }
 
+// see: cans/02-plugin-model.md#Filter-before-FFI-gate
+pub(crate) fn validate_trap_filter(name: &str, filter: &TrapFilter) -> Result<(), PluginError> {
+    if filter.binary.as_deref() == Some("") {
+        return Err(PluginError::reject(
+            Errno::Econfig,
+            format!("{name}: trap filter binary must not be empty"),
+        ));
+    }
+    if filter.args.iter().any(|arg| arg.is_empty()) {
+        return Err(PluginError::reject(
+            Errno::Econfig,
+            format!("{name}: trap filter arg must not be empty"),
+        ));
+    }
+    Ok(())
+}
+
 // see: cans/02-plugin-model.md#Unified-builder
 #[derive(Default)]
 pub(crate) struct Registration {
@@ -405,9 +430,23 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
     ) -> Result<KelirBuilder<Host, Sealed, Ctx, Deps, Plugins, Params>, PluginError> {
         self.registry.validate_vsock(self.name)?;
         validate_scope(self.name, &self.scope)?;
+        for filter in &self.registry.trap_filters {
+            validate_trap_filter("host", filter)?;
+        }
+        let mut seen: Vec<&'static str> = Vec::new();
         for mounted in &self.registration.mounted {
+            if seen.contains(&mounted.name) {
+                return Err(PluginError::reject(
+                    Errno::Econfig,
+                    format!("plugin already mounted: {}", mounted.name),
+                ));
+            }
+            seen.push(mounted.name);
             mounted.registry.validate_vsock(mounted.name)?;
             validate_scope(mounted.name, &mounted.scope)?;
+            for filter in &mounted.registry.trap_filters {
+                validate_trap_filter(mounted.name, filter)?;
+            }
         }
         Ok(KelirBuilder {
             config: self.config,
@@ -429,29 +468,30 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
     pub fn plugin<PCtx, PDeps>(
         mut self,
         plugin: KelirBuilder<Plugin, Unsealed, PCtx, PDeps, HNil, NoParams>,
-    ) -> Result<Self, PluginError>
+    ) -> Self
     where
         PDeps: HList,
         Plugins: Satisfies<PDeps>,
     {
-        if self
-            .registration
-            .mounted
-            .iter()
-            .any(|mounted| mounted.name == plugin.name)
-        {
-            return Err(PluginError::reject(
-                Errno::Econfig,
-                format!("plugin already mounted: {}", plugin.name),
-            ));
-        }
         self.registration.mounted.push(MountedPlugin {
             name: plugin.name,
             scope: plugin.scope,
             fork: plugin.fork,
             registry: plugin.registry,
         });
-        Ok(self)
+        self
+    }
+
+    // see: cans/02-plugin-model.md#Unified-builder
+    pub fn r#use<PCtx, PDeps>(
+        self,
+        plugin: KelirBuilder<Plugin, Unsealed, PCtx, PDeps, HNil, NoParams>,
+    ) -> Self
+    where
+        PDeps: HList,
+        Plugins: Satisfies<PDeps>,
+    {
+        self.plugin(plugin)
     }
 
     // see: cans/03-sdk-architecture.md#Rust-SDK
@@ -625,10 +665,8 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         self
     }
 
-    pub fn lifecycle_mut(&mut self) -> LifecycleMut<'_> {
-        LifecycleMut {
-            vetoes: &mut self.registration.vetoes,
-        }
+    pub fn lifecycle_mut(&mut self) -> LifecycleMut<'_, Plugins, Params, Ctx, Deps> {
+        LifecycleMut { builder: self }
     }
 }
 
@@ -816,15 +854,6 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
             }),
             encapsulation: cfg.encapsulation,
         }
-    }
-}
-
-impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
-    KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>
-{
-    // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub async fn boot(self) -> Result<Session<Plugins, Params>, PluginError> {
-        self.seal()?.finish_boot().await
     }
 }
 

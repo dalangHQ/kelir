@@ -41,17 +41,17 @@ const runtime = kelir({
   tscLocked: true, enableWatchdog: true,
 })
   // 1. Plugins mount first; TPlugins accumulates ledger, chaos, policy
-  .plugin(ledger({
+  .use(ledger({
     store: "sqlite://.kelir/audit.merkle.db",
     merkleChain: true,
     otel: { propagateW3cTraceparent: true, serviceName: "kelir-swe-agent" },
     receipts: { includeDirtyBytes: true, includeBinaryBlake3: true, includeSyscallCount: true },
   }))
-  .plugin(chaos({
+  .use(chaos({
     network: [{ target: "api.stripe.com", baseMs: 150, jitterMs: 30, dropRate: 0.02 }],
     fs: [{ targetPath: "/workspace/build/cache/*", simulateError: "enospc", errorProbability: 0.05 }],
   }))
-  .plugin(repoPolicyPlugin({ maxDiffBytes: 64 * 1024, protectedBranches: ["main", "master", "release/*"] }))
+  .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024, protectedBranches: ["main", "master", "release/*"] }))
 
   // 2. Planes and hooks mount next; c.ledger is statically inferred without manual generics
   .terminal({
@@ -188,6 +188,7 @@ const runtime = kelir({
   });
 
 async function main() {
+  runtime.seal();
   const session = await runtime.boot();
   console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from inspect import Parameter
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, NoReturn, Self
 
 from kelir.service_caps import materialize_cap
 from kelir.plugin_fusion import (
@@ -98,7 +98,7 @@ _VERB_ARITY: dict[str, tuple[int, ...]] = {
 
 # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 _SCOPE_VERBS: dict[str, tuple[str, ...]] = {
-    "trap": ("on_trap", "on_process_exit"),
+    "trap": ("on_trap", "on_process_exit", "on_trap_deny"),
     "fs": ("on_fs_lookup", "on_fs_read", "on_fs_write", "on_fs_lock"),
     "net": ("on_net_outbound", "on_net_inbound"),
     "console": ("on_console_input", "on_console_output"),
@@ -191,6 +191,15 @@ class _Scope:
         self._builder._on(verb, handler)
         return self
 
+    def on_trap_deny(self, handler: Handler) -> Self:
+        if "on_trap_deny" not in self._verbs:
+            raise EConfig(".on_trap_deny is not in this scope")
+        self._builder.on_trap_deny(handler)
+        return self
+
+    def end(self) -> KelirBuilder:
+        return self._builder
+
     def on_trap(self, handler: Handler) -> Self:
         return self._scoped_on("on_trap", handler)
 
@@ -281,7 +290,15 @@ class _PluginMount:
     ) -> Callable[..., KelirBuilder]:
         if obj is None:
             return _plugin_create
-        return obj._plugin_mount
+        return _plugin_instance_raise
+
+
+def _plugin_instance_raise(*args: Any, **kwargs: Any) -> KelirBuilder:
+    raise EConfig(
+        ".plugin() on a host builder mounts nothing: "
+        "KelirBuilder.plugin(name) creates a plugin-mode builder; "
+        "mount a plugin with .use(plugin)"
+    )
 
 
 class KelirBuilder:
@@ -330,15 +347,11 @@ class KelirBuilder:
         self._handlers: list[tuple[str, Handler, int]] = []
         # TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
         self._vsock: list[tuple[Any, Handler]] = []
-        self._host_only_calls: list[str] = []
         self._mounted: bool = False
         self.enabled: bool = True
 
     # see: cans/02-plugin-model.md#Unified-builder
     plugin = _PluginMount()
-
-    def _plugin_mount(self, plugin: BasePlugin[Any, Any] | KelirBuilder) -> Self:
-        return self.use(plugin)
 
     @property
     def name(self) -> str | None:
@@ -351,8 +364,7 @@ class KelirBuilder:
     # see: cans/08-lifecycle.md#Detached-lifecycle
     def detached(self, detached: bool) -> Self:
         if self._mode == "plugin":
-            self._record_host_only("detached")
-            return self
+            self._raise_host_only("detached")
         self._config["detached"] = detached
         return self
 
@@ -362,32 +374,37 @@ class KelirBuilder:
     # see: cans/04-terminal-plane.md#Terminal-pipeline
     def terminal(self, **kwargs: Any) -> Self:
         if self._mode == "plugin":
-            self._record_host_only("terminal")
-            return self
+            self._raise_host_only("terminal")
         self._config["terminal"] = kwargs
         return self
 
     # see: cans/05-storage-plane.md#Workspace-commit
     def storage(self, **kwargs: Any) -> Self:
         if self._mode == "plugin":
-            self._record_host_only("storage")
-            return self
-        self._config["storage"] = kwargs
+            self._raise_host_only("storage")
+        self._config.setdefault("storage", {}).update(kwargs)
+        return self
+
+    # see: cans/05-storage-plane.md#Workspace-commit
+    def lock_broker(self, enabled: bool = True) -> Self:
+        if self._mode == "plugin":
+            self._raise_host_only("lock_broker")
+        if not isinstance(enabled, bool):
+            raise EConfig(".lock_broker(enabled) expects a bool")
+        self._config.setdefault("storage", {})["lock_broker"] = enabled
         return self
 
     # see: cans/07-wire-plane.md#DNS-policy-filter
     def wire(self, **kwargs: Any) -> Self:
         if self._mode == "plugin":
-            self._record_host_only("wire")
-            return self
+            self._raise_host_only("wire")
         self._config["wire"] = kwargs
         return self
 
     # see: cans/03-sdk-architecture.md#Python-SDK
     def params(self, model: type) -> Self:
         if self._mode == "plugin":
-            self._record_host_only("params")
-            return self
+            self._raise_host_only("params")
         # TODO (L3): validated params models ride the native boot once the PyO3 binding awaits.
         self._params_model = model
         return self
@@ -405,11 +422,6 @@ class KelirBuilder:
             registered = {registration.name for registration in self._plugin_registrations}
             if plugin._name in registered:
                 raise EConfig(f"plugin already mounted: {plugin._name}")
-            if plugin._host_only_calls:
-                raise EConfig(
-                    f"{plugin._name}: host-only verb .{plugin._host_only_calls[0]}() "
-                    "called on plugin-mode builder"
-                )
             for required in plugin._requires:
                 if required not in registered:
                     raise EConfig(
@@ -457,8 +469,7 @@ class KelirBuilder:
         if callable(pattern):
             return self._scope_entry("trap", pattern)
         if self._mode == "plugin":
-            self._record_host_only("trap")
-            return self
+            self._raise_host_only("trap")
         snapshot = (
             pattern.snapshot()
             if isinstance(pattern, TrapFilter)
@@ -496,8 +507,7 @@ class KelirBuilder:
     ) -> Self:
         # see: cans/02-plugin-model.md#Foreign-plugin-proxy
         if self._mode == "plugin":
-            self._record_host_only("register_custom_action")
-            return self
+            self._raise_host_only("register_custom_action")
         self._hooks.append(
             HookDescriptor(
                 ring=RingEvent.CUSTOM_ACTION,
@@ -519,8 +529,7 @@ class KelirBuilder:
     ) -> Self:
         # see: cans/02-plugin-model.md#Foreign-plugin-proxy
         if self._mode == "plugin":
-            self._record_host_only("register_stream_kind")
-            return self
+            self._raise_host_only("register_stream_kind")
         self._hooks.append(
             HookDescriptor(
                 ring=RingEvent.VSOCK_SERVICE,
@@ -608,8 +617,7 @@ class KelirBuilder:
 
     def on_trap_deny(self, handler: Handler) -> Self:
         if self._mode == "plugin":
-            self._record_host_only("on_trap_deny")
-            return self
+            self._raise_host_only("on_trap_deny")
         self._hooks.append(
             HookDescriptor(
                 ring=RingEvent.LIFECYCLE,
@@ -643,8 +651,14 @@ class KelirBuilder:
     def telemetry(self, fn: Callable[[_Scope], Any]) -> Self:
         return self._scope_entry("telemetry", fn)
 
+    # see: cans/02-plugin-model.md#Unified-builder
     def context(self, fn: Handler) -> Self:
         self._check_mounted("context")
+        if self._mode == "host":
+            raise EConfig(
+                ".context() is plugin-only: a host-mode KelirBuilder has no "
+                "plugin context; call it on KelirBuilder.plugin(name)"
+            )
         self._context_fn = fn
         return self
 
@@ -746,10 +760,10 @@ class KelirBuilder:
         if self._mode == "plugin" and self._mounted:
             raise EConfig(f"plugin already mounted: {self._name}")
 
-    def _record_host_only(self, verb: str) -> None:
-        if self._mounted:
-            raise EConfig(f"plugin already mounted: {self._name}")
-        self._host_only_calls.append(verb)
+    def _raise_host_only(self, verb: str) -> NoReturn:
+        raise EConfig(
+            f"{self._name}: host-only verb .{verb}() called on plugin-mode builder"
+        )
 
     # see: cans/02-plugin-model.md#Unified-builder
     def hook_descriptors(self) -> list[HookDescriptor]:
@@ -832,11 +846,6 @@ class KelirBuilder:
                 )
 
     def _validate_plugin_shape(self, plugin: KelirBuilder) -> None:
-        if plugin._host_only_calls:
-            raise EConfig(
-                f"{plugin._name}: host-only verb .{plugin._host_only_calls[0]}() "
-                "called on plugin-mode builder"
-            )
         self._validate_scope(plugin._name, plugin._scope)
         self._validate_vsock(plugin._name, plugin._vsock)
 
@@ -866,6 +875,11 @@ class KelirBuilder:
         self._validate_scope(self._name, self._scope)
         self._validate_vsock(self._name, self._vsock)
 
+    # see: cans/02-plugin-model.md#Unified-builder
+    def seal(self) -> Self:
+        self._validate_all()
+        return self
+
     @property
     def vsock_services(self) -> list[VsockServiceEntry]:
         return [spec for spec, _ in self._vsock if isinstance(spec, VsockServiceEntry)]
@@ -881,7 +895,7 @@ class KelirBuilder:
             raise EConfig(
                 "cannot boot a plugin-mode KelirBuilder; mount it on a host with .use()"
             )
-        self._validate_all()
+        self.seal()
         descriptor = self.fuse().describe()
         bridge = _load_native_bridge()
         native = bridge.PyKelirBuilder(

@@ -119,6 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         carryover_bytes: 1024,
     })
     .plugin_instance(GitGatePlugin)
+    .seal()?
     .boot()
     .await?;
 

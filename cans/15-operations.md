@@ -158,8 +158,10 @@
         - Asserts every builder verb exists on host mode and plugin mode
         - Asserts every nested scope exists on host mode and plugin mode
         - Asserts every mount merges: host descriptors include plugin hooks
-        - 46 builder cases: one per verb (30), one per scope (8), one per merge (8)
-        - 58 vectors total: 46 builder cases plus the 12 other cases
+        - 50 builder cases: one per verb (30), one per scope (8), one per merge (8)
+        - Plus one per chain verb (4)
+        - 58 vectors live in vectors.json; 62 total once the 4 chain cases generate
+          - 50 builder cases plus the 12 other cases
         - Asserts every Verdict and FilterAction outcome appears in a case
         - Verb home: see: 02-plugin-model.md#Chainable-verbs
         - Scope home: see: 02-plugin-model.md#Nested-scopes
@@ -169,7 +171,7 @@
         - Execution lands with Agent 2 codegen; unexecuted cases report not-executable
       - --fluent-builder-coverage
         - History, not a second gate: see: #--unified-builder-coverage
-        - Current count there: 46 builder cases, 58 vectors
+        - Current count there: 46 builder cases, 58 vectors; 50/62 once the 4 chain cases generate
     - --veto-coverage
       - Asserts every VetoEvent is registered at least once in an example
       - Veto home: see: 08-lifecycle.md#Lifecycle-vetoes
@@ -304,7 +306,12 @@
     - Release gate: kelir-core release requires parity green
     - Unified-builder parity vectors
       - vectors.json gains a plugin-merge case family
-      - Builder cases: 30 verb, 8 scope, 8 merge; 58 vectors total
+      - Builder cases: 30 verb, 8 scope, 8 merge, 4 chain
+        - 62 vectors total once generated (58 live)
+      - Chain cases pin the fixed chain: seal, trap filter form, trap scope form, lock broker
+      - Each chain case pins builder name, requires list, and ring set with ordinals
+      - Chain cases are built by the parity run as one expression per SDK
+        - No reassignment, no ? mid-chain
       - Each case pins builder name, requires list, and ring set with ordinals
       - Each case pins ordered event payloads and expected Verdict results
       - FilterAction results are pinned for byte-transform rings

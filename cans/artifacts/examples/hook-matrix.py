@@ -139,7 +139,8 @@ async def main() -> None:
             enable_watchdog=True,
             driver="auto",
         )
-        .plugin(plugin)
+        .use(plugin)
+        .seal()
     )
 
     async with builder as session:

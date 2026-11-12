@@ -24,11 +24,12 @@ def build_runtime() -> KelirBuilder:
             tsc_locked=True, enable_watchdog=True,
         )
 
-        .plugin(ContainerPlugin(ContainerConfig(
+        .use(ContainerPlugin(ContainerConfig(
             runtime="crun",
             isolate_var_lib_containers=True,
             pin_subuid_ranges=True,
         )))
+        .seal()
     )
 
 

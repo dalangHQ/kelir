@@ -105,55 +105,52 @@ async def row_custom(c: HandlerContext) -> Verdict:
 
 
 def build_runtime() -> KelirBuilder:
-    builder = kelir.builder(
-        vcpus=2,
-        memory_mb=2048,
-        kernel=f"./fixtures/vmlinux-6.6-{platform.machine()}-kelir",
-        rootfs_erofs="./fixtures/rootfs-policy.erofs",
-        tsc_locked=True,
-        enable_watchdog=True,
-        driver="auto",
-    )
-
-    builder = builder.plugin(PolicyMatrixPlugin())
-    builder = builder.plugin(WatchdogSilencerPlugin())
-
     async def quarantine(payload: dict) -> None:
         POLICY_STATE.quarantined_pids.append(payload["pid"])
-
-    # see: cans/02-plugin-model.md#Custom(schema)
-    builder.register_custom_action(
-        "quarantine",
-        {"type": "object",
-         "properties": {"pid": {"type": "integer"},
-                        "reason": {"type": "string"}},
-         "required": ["pid", "reason"]},
-        quarantine,
-    )
 
     async def echo(request: bytes) -> bytes:
         return request
 
-    # see: cans/11-protocol.md#Control-channel
-    builder.vsock_service(
-        VsockServiceEntry(
-            port=0x0013,
-            service="echo",
-            schema={"type": "object", "properties": {}},
-        ),
-        echo,
-    )
-
     # see: cans/02-plugin-model.md#Full-Verdict-lattice
-    builder.trap(TrapFilter.binary("policy-allow"), pre=row_allow)
-    builder.trap(TrapFilter.binary("policy-deny"), pre=row_deny)
-    builder.trap(TrapFilter.binary("policy-rewrite"), pre=row_rewrite)
-    builder.trap(TrapFilter.binary("policy-abort"), pre=row_abort)
-    builder.trap(TrapFilter.binary("policy-yield"), pre=row_yield)
-    builder.trap(TrapFilter.binary("policy-approval"), pre=row_approval)
-    builder.trap(TrapFilter.binary("policy-custom"), pre=row_custom)
-
-    return builder
+    return (
+        kelir.builder(
+            vcpus=2,
+            memory_mb=2048,
+            kernel=f"./fixtures/vmlinux-6.6-{platform.machine()}-kelir",
+            rootfs_erofs="./fixtures/rootfs-policy.erofs",
+            tsc_locked=True,
+            enable_watchdog=True,
+            driver="auto",
+        )
+        .use(PolicyMatrixPlugin())
+        .use(WatchdogSilencerPlugin())
+        # see: cans/02-plugin-model.md#Custom(schema)
+        .register_custom_action(
+            "quarantine",
+            {"type": "object",
+             "properties": {"pid": {"type": "integer"},
+                            "reason": {"type": "string"}},
+             "required": ["pid", "reason"]},
+            quarantine,
+        )
+        # see: cans/11-protocol.md#Control-channel
+        .vsock_service(
+            VsockServiceEntry(
+                port=0x0013,
+                service="echo",
+                schema={"type": "object", "properties": {}},
+            ),
+            echo,
+        )
+        .trap(TrapFilter.binary("policy-allow"), pre=row_allow)
+        .trap(TrapFilter.binary("policy-deny"), pre=row_deny)
+        .trap(TrapFilter.binary("policy-rewrite"), pre=row_rewrite)
+        .trap(TrapFilter.binary("policy-abort"), pre=row_abort)
+        .trap(TrapFilter.binary("policy-yield"), pre=row_yield)
+        .trap(TrapFilter.binary("policy-approval"), pre=row_approval)
+        .trap(TrapFilter.binary("policy-custom"), pre=row_custom)
+        .seal()
+    )
 
 
 async def main() -> None:

@@ -61,6 +61,8 @@ jobs:
         run: just check-plugin-coverage
       - name: Examples canonical (--examples-canonical)
         run: just check-examples-canonical
+      - name: Builder parity (--builder-parity)
+        run: just check-builder-parity
       - name: Touched files within write budget
         if: github.event_name == 'pull_request'
         run: |

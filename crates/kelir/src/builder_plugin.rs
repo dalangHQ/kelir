@@ -9,7 +9,6 @@ use std::sync::Arc;
 use kelir_interface::driver_interface::{
     DaxWindowMode, FastBootMode, WatchdogEvent, WatchdogVerdict,
 };
-use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::FilterSnapshot;
 use kelir_interface::plugin_model::{
     AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, MountScope, PipelineBinder, PluginClone,
@@ -106,6 +105,52 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     {
         self.registry.vsock.push((spec, Arc::new(handler)));
         self
+    }
+
+    // see: cans/02-plugin-model.md#Filter-before-FFI-gate
+    pub fn trap<F>(mut self, filter: impl Into<TrapFilter>, f: F) -> Self
+    where
+        F: Fn(&TrapEvent, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        let filter: TrapFilter = filter.into();
+        let snapshot = FilterSnapshot::from(&filter);
+        self.registry.trap_filters.push(filter);
+        self.registry
+            .trap
+            .push(Arc::new(TrapClosureAdapter::<_, OnTrap> {
+                handler: move |event: &TrapEvent, ctx: &HandlerCtx| {
+                    if !filter_matches(&snapshot, event) {
+                        return Ok(Verdict::Pass);
+                    }
+                    f(event, ctx)
+                },
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+    pub fn trap_scope<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(
+            TrapScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
+    {
+        configure(TrapScope { builder: self })
+    }
+
+    pub fn group<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(Self) -> Self,
+    {
+        configure(self)
+    }
+
+    pub fn guard<F>(self, enabled: bool, configure: F) -> Self
+    where
+        F: FnOnce(Self) -> Self,
+    {
+        if enabled { configure(self) } else { self }
     }
 
     pub fn on_trap<F>(mut self, f: F) -> Self
@@ -467,63 +512,63 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     where
         F: FnOnce(
             FsScope<Plugins, Params, Mode, Ctx, Deps>,
-        ) -> FsScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
     {
-        configure(FsScope { builder: self }).builder
+        configure(FsScope { builder: self })
     }
 
     pub fn net<F>(self, configure: F) -> Self
     where
         F: FnOnce(
             NetScope<Plugins, Params, Mode, Ctx, Deps>,
-        ) -> NetScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
     {
-        configure(NetScope { builder: self }).builder
+        configure(NetScope { builder: self })
     }
 
     pub fn console<F>(self, configure: F) -> Self
     where
         F: FnOnce(
             ConsoleScope<Plugins, Params, Mode, Ctx, Deps>,
-        ) -> ConsoleScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
     {
-        configure(ConsoleScope { builder: self }).builder
+        configure(ConsoleScope { builder: self })
     }
 
     pub fn exec<F>(self, configure: F) -> Self
     where
         F: FnOnce(
             ExecScope<Plugins, Params, Mode, Ctx, Deps>,
-        ) -> ExecScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
     {
-        configure(ExecScope { builder: self }).builder
+        configure(ExecScope { builder: self })
     }
 
     pub fn host<F>(self, configure: F) -> Self
     where
         F: FnOnce(
             HostScope<Plugins, Params, Mode, Ctx, Deps>,
-        ) -> HostScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
     {
-        configure(HostScope { builder: self }).builder
+        configure(HostScope { builder: self })
     }
 
     pub fn lifecycle<F>(self, configure: F) -> Self
     where
         F: FnOnce(
             LifecycleScope<Plugins, Params, Mode, Ctx, Deps>,
-        ) -> LifecycleScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
     {
-        configure(LifecycleScope { builder: self }).builder
+        configure(LifecycleScope { builder: self })
     }
 
     pub fn telemetry<F>(self, configure: F) -> Self
     where
         F: FnOnce(
             TelemetryScope<Plugins, Params, Mode, Ctx, Deps>,
-        ) -> TelemetryScope<Plugins, Params, Mode, Ctx, Deps>,
+        ) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
     {
-        configure(TelemetryScope { builder: self }).builder
+        configure(TelemetryScope { builder: self })
     }
 }
 
@@ -531,96 +576,36 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
     KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>
 {
-    pub fn trap<F>(mut self, filter: impl Into<TrapFilter>, f: F) -> Result<Self, PluginError>
-    where
-        F: Fn(&TrapEvent, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
-    {
-        let filter: TrapFilter = filter.into();
-        validate_trap_filter("host", &filter)?;
-        let snapshot = FilterSnapshot::from(&filter);
-        self.registry
-            .trap
-            .push(Arc::new(TrapClosureAdapter::<_, OnTrap> {
-                handler: move |event: &TrapEvent, ctx: &HandlerCtx| {
-                    if !filter_matches(&snapshot, event) {
-                        return Ok(Verdict::Pass);
-                    }
-                    f(event, ctx)
-                },
-                verb: PhantomData,
-            }));
-        Ok(self)
-    }
-
     // see: cans/10-attestation.md#Step-evaluation-loop
-    pub fn trap_async<F, Fut>(
-        mut self,
-        filter: impl Into<TrapFilter>,
-        f: F,
-    ) -> Result<Self, PluginError>
+    pub fn trap_async<F, Fut>(mut self, filter: impl Into<TrapFilter>, f: F) -> Self
     where
         F: Fn(HandlerCtx) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Verdict, PluginError>> + Send + 'static,
     {
         let filter: TrapFilter = filter.into();
-        validate_trap_filter("host", &filter)?;
         let snapshot = FilterSnapshot::from(&filter);
+        self.registry.trap_filters.push(filter);
         self.registry.trap.push(Arc::new(AsyncTrapClosureAdapter {
             filter: snapshot,
             handler: f,
         }));
-        Ok(self)
+        self
     }
 
     // see: cans/10-attestation.md#Step-evaluation-loop
-    pub fn post_exec<F, Fut>(
-        mut self,
-        filter: impl Into<TrapFilter>,
-        f: F,
-    ) -> Result<Self, PluginError>
+    pub fn post_exec<F, Fut>(mut self, filter: impl Into<TrapFilter>, f: F) -> Self
     where
         F: Fn(HandlerCtx) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<PostExecAction, PluginError>> + Send + 'static,
     {
         let filter: TrapFilter = filter.into();
-        validate_trap_filter("host", &filter)?;
         let snapshot = FilterSnapshot::from(&filter);
+        self.registry.trap_filters.push(filter);
         self.registry.post_exec.push(Arc::new(PostExecGateAdapter {
             filter: snapshot,
             handler: f,
         }));
-        Ok(self)
-    }
-}
-
-// see: cans/02-plugin-model.md#Filter-before-FFI-gate
-fn validate_trap_filter(name: &str, filter: &TrapFilter) -> Result<(), PluginError> {
-    if filter.binary.as_deref() == Some("") {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            format!("{name}: trap filter binary must not be empty"),
-        ));
-    }
-    if filter.args.iter().any(|arg| arg.is_empty()) {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            format!("{name}: trap filter arg must not be empty"),
-        ));
-    }
-    Ok(())
-}
-
-// see: cans/02-plugin-model.md#Unified-builder
-impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
-    KelirBuilder<Plugin, Unsealed, Ctx, Deps, Plugins, Params>
-{
-    pub fn trap<F>(self, configure: F) -> Self
-    where
-        F: FnOnce(
-            TrapScope<Plugins, Params, Plugin, Ctx, Deps>,
-        ) -> TrapScope<Plugins, Params, Plugin, Ctx, Deps>,
-    {
-        configure(TrapScope { builder: self }).builder
+        self
     }
 }
 

@@ -8,9 +8,11 @@
 # The 24 ring verbs + 8 closure scopes + context / require / scope /
 # fork_with / vsock_service exist in BOTH modes. Mount is merge by
 # value: host.use(plugin) appends the plugin's hook_descriptors() after
-# the host's own hooks. Validation happens once, in boot(), over the host
-# + mounted plugins together. There is no build(): a plugin-mode builder
-# is mounted as-is, and the _built flag / _check_open machinery deletes.
+# the host's own hooks. Validation happens once, in seal(), over the host
+# + mounted plugins together; boot() seals implicitly when the builder is
+# not sealed yet. There is no build(): a plugin-mode builder is mounted
+# as-is, and any verb after seal() raises EConfig. fuse() is internal,
+# not a chain verb and not a terminal; boot() is the single terminal.
 # PluginBuilder / _PluginWrapper / plugin_builder.py are deleted.
 #
 # Owned by: cans/02-plugin-model.md#Unified-builder
@@ -21,7 +23,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Self
 
 from kelir.generated.fusion_tables import RingEvent
 from kelir.plugin_fusion import (
@@ -91,6 +93,9 @@ class TrapScope:
     def __init__(self, builder: KelirBuilder) -> None:
         self._builder = builder
 
+    def end(self) -> KelirBuilder:
+        return self._builder
+
     def on_trap(self, handler: Callable[..., Any]) -> TrapScope:
         self._builder._on("on_trap", handler)
         return self
@@ -104,6 +109,9 @@ class TrapScope:
 class FsScope:
     def __init__(self, builder: KelirBuilder) -> None:
         self._builder = builder
+
+    def end(self) -> KelirBuilder:
+        return self._builder
 
     def on_fs_lookup(self, handler: Callable[..., Any]) -> FsScope:
         self._builder._on("on_fs_lookup", handler)
@@ -127,6 +135,9 @@ class NetScope:
     def __init__(self, builder: KelirBuilder) -> None:
         self._builder = builder
 
+    def end(self) -> KelirBuilder:
+        return self._builder
+
     def on_net_outbound(self, handler: Callable[..., Any]) -> NetScope:
         self._builder._on("on_net_outbound", handler)
         return self
@@ -140,6 +151,9 @@ class NetScope:
 class ConsoleScope:
     def __init__(self, builder: KelirBuilder) -> None:
         self._builder = builder
+
+    def end(self) -> KelirBuilder:
+        return self._builder
 
     def on_console_input(self, handler: Callable[..., Any]) -> ConsoleScope:
         self._builder._on("on_console_input", handler)
@@ -155,6 +169,9 @@ class ExecScope:
     def __init__(self, builder: KelirBuilder) -> None:
         self._builder = builder
 
+    def end(self) -> KelirBuilder:
+        return self._builder
+
     def on_exec_stdout(self, handler: Callable[..., Any]) -> ExecScope:
         self._builder._on("on_exec_stdout", handler)
         return self
@@ -168,6 +185,9 @@ class ExecScope:
 class HostScope:
     def __init__(self, builder: KelirBuilder) -> None:
         self._builder = builder
+
+    def end(self) -> KelirBuilder:
+        return self._builder
 
     def on_host_lsm_exec(self, handler: Callable[..., Any]) -> HostScope:
         self._builder._on("on_host_lsm_exec", handler)
@@ -190,6 +210,9 @@ class HostScope:
 class LifecycleScope:
     def __init__(self, builder: KelirBuilder) -> None:
         self._builder = builder
+
+    def end(self) -> KelirBuilder:
+        return self._builder
 
     def on_vm_init(self, handler: Callable[..., Any]) -> LifecycleScope:
         self._builder._on("on_vm_init", handler)
@@ -216,6 +239,9 @@ class LifecycleScope:
 class TelemetryScope:
     def __init__(self, builder: KelirBuilder) -> None:
         self._builder = builder
+
+    def end(self) -> KelirBuilder:
+        return self._builder
 
     def on_memory_pressure(self, handler: Callable[..., Any]) -> TelemetryScope:
         self._builder._on("on_memory_pressure", handler)
@@ -261,6 +287,7 @@ class KelirBuilder:
         self._plugins: list[object] = []
         self._plugin_registrations: list[PluginRegistration] = []
         self._session: Any = None
+        self._sealed: bool = False
         self._params_model: type | None = None
         self._config: dict[str, Any] = {
             "vcpus": vcpus,
@@ -287,7 +314,12 @@ class KelirBuilder:
         if self._name is not None and verb not in self._host_only_verbs:
             self._host_only_verbs.append(verb)
 
+    def _check_sealed(self, verb: str) -> None:
+        if self._sealed:
+            raise EConfig(f"KelirBuilder is sealed: .{verb}() after .seal()")
+
     def _on(self, verb: str, handler: Callable[..., Any]) -> KelirBuilder:
+        self._check_sealed(verb)
         ring_value, lifecycle_tag = _VERB_RINGS[verb]
         ring = _ring_for_value(ring_value)
         if ring is None:
@@ -306,10 +338,16 @@ class KelirBuilder:
         return self
 
     def context(self, fn: Callable[..., Any]) -> KelirBuilder:
+        # see: cans/02-plugin-model.md#Chain-decisions
+        # Plugin-mode only: host-mode context() raises EConfig.
+        self._check_sealed("context")
+        if self._name is None:
+            raise EConfig(".context() is plugin-only: a host-mode KelirBuilder has no plugin context")
         self._context_fn = fn
         return self
 
     def require(self, plugin: type | str) -> KelirBuilder:
+        self._check_sealed("require")
         required = plugin if isinstance(plugin, str) else str(getattr(plugin, "name", "") or plugin.__name__)
         if not required:
             raise EConfig(f"KelirBuilder '{self._name}' .require got an unnamed plugin")
@@ -318,10 +356,12 @@ class KelirBuilder:
         return self
 
     def scope(self, scope: Any) -> KelirBuilder:
+        self._check_sealed("scope")
         self._scope = scope
         return self
 
     def fork_with(self, fn: Callable[[KelirBuilder], KelirBuilder]) -> KelirBuilder:
+        self._check_sealed("fork_with")
         self._fork_fn = fn
         return self
 
@@ -398,6 +438,7 @@ class KelirBuilder:
         return self._on("on_watchdog", handler)
 
     def vsock_service(self, spec: Any, handler: Callable[..., Any]) -> KelirBuilder:
+        self._check_sealed("vsock_service")
         raw: Any = spec.get("port") if isinstance(spec, dict) else getattr(spec, "port", None)
         if raw is not None and (
             isinstance(raw, bool) or not isinstance(raw, int) or raw < 0 or raw > 0xFFFFFFFF
@@ -405,10 +446,6 @@ class KelirBuilder:
             raise EConfig(f"vsock service port {raw} outside u32")
         self._vsock.append((spec, handler, self._next_ordinal))
         self._next_ordinal += 1
-        return self
-
-    def trap(self, fn: Callable[[TrapScope], TrapScope]) -> KelirBuilder:
-        fn(TrapScope(self))
         return self
 
     def fs(self, fn: Callable[[FsScope], FsScope]) -> KelirBuilder:
@@ -458,6 +495,9 @@ class KelirBuilder:
         return sorted(descriptors, key=lambda hook: hook.ordinal)
 
     def fork_state(self) -> KelirBuilder:
+        # see: cans/02-plugin-model.md#Chain-decisions
+        # fork_state is a factory, not a chain verb: it returns a fresh
+        # plugin-mode builder and never continues the chain.
         if self._fork_fn is not None:
             return self._fork_fn(self)
         clone = KelirBuilder.plugin(self._name) if self._name is not None else KelirBuilder()
@@ -484,12 +524,12 @@ class KelirBuilder:
     def use(self, plugin: BasePlugin | KelirBuilder) -> Self:
         from dataclasses import replace
 
+        self._check_sealed("use")
         if isinstance(plugin, KelirBuilder):
             name = plugin._name
             if name is None:
                 raise EConfig("KelirBuilder.use() mounts a plugin-mode builder: use KelirBuilder.plugin(name)")
-            if any(mounted.name == name for mounted in self._mounted):
-                raise EConfig(f"plugin already mounted: {name}")
+            # Duplicate mounts are recorded, not rejected: seal() rejects them.
             for descriptor in plugin.hook_descriptors():
                 self._hooks.append(replace(descriptor, ordinal=self._next_ordinal))
                 self._next_ordinal += 1
@@ -531,10 +571,8 @@ class KelirBuilder:
         )
         return self
 
-    def plugin(self, plugin: BasePlugin | KelirBuilder) -> Self:
-        return self.use(plugin)
-
     def detached(self, detached: bool) -> Self:
+        self._check_sealed("detached")
         self._record_host_only("detached")
         self._config["detached"] = detached
         return self
@@ -543,21 +581,31 @@ class KelirBuilder:
         return bool(self._config.get("detached", False))
 
     def terminal(self, **kwargs: Any) -> Self:
+        self._check_sealed("terminal")
         self._record_host_only("terminal")
         self._config["terminal"] = kwargs
         return self
 
     def storage(self, **kwargs: Any) -> Self:
+        self._check_sealed("storage")
         self._record_host_only("storage")
-        self._config["storage"] = kwargs
+        self._config["storage"] = {**self._config.get("storage", {}), **kwargs}
+        return self
+
+    def lock_broker(self, enabled: bool = True) -> Self:
+        self._check_sealed("lock_broker")
+        self._record_host_only("lock_broker")
+        self._config["storage"] = {**self._config.get("storage", {}), "lock_broker": enabled}
         return self
 
     def wire(self, **kwargs: Any) -> Self:
+        self._check_sealed("wire")
         self._record_host_only("wire")
         self._config["wire"] = kwargs
         return self
 
     def params(self, model: type) -> Self:
+        self._check_sealed("params")
         self._record_host_only("params")
         self._params_model = model
         return self
@@ -568,10 +616,14 @@ class KelirBuilder:
         pre: Callable[..., Awaitable[Any]] | None = None,
         post: Callable[..., Awaitable[Any]] | None = None,
     ) -> Self:
+        # see: cans/02-plugin-model.md#Chain-decisions
+        # One trap, both forms, both modes: one callable and no pre/post
+        # is the trap scope entry point; (pattern, pre, post) is the
+        # filter registration. The filter form is not host-only.
+        self._check_sealed("trap")
         if callable(fn_or_pattern) and pre is None and post is None:
             fn_or_pattern(TrapScope(self))
             return self
-        self._record_host_only("trap")
         pattern = fn_or_pattern
         snapshot = (
             pattern.snapshot()
@@ -608,6 +660,7 @@ class KelirBuilder:
         schema: dict[str, Any],
         handler: Callable[..., Awaitable[Any]],
     ) -> Self:
+        self._check_sealed("register_custom_action")
         self._record_host_only("register_custom_action")
         self._hooks.append(
             HookDescriptor(
@@ -627,6 +680,7 @@ class KelirBuilder:
         schema: dict[str, Any],
         handler: Callable[[bytes], Awaitable[bytes]],
     ) -> Self:
+        self._check_sealed("register_stream_kind")
         self._record_host_only("register_stream_kind")
         self._hooks.append(
             HookDescriptor(
@@ -640,50 +694,56 @@ class KelirBuilder:
         self._next_ordinal += 1
         return self
 
-    _LIFECYCLE_TAGS: dict[str, Literal["trap-deny"]] = {
-        "on_trap_deny": "trap-deny",
-    }
-
-    def _lifecycle_decorator(
-        self, name: str
-    ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
-        tag = self._LIFECYCLE_TAGS.get(name)
-        if tag is None:
-            raise EConfig(f"unknown lifecycle hook {name}")
-
-        def decorator(
-            fn: Callable[..., Awaitable[Any]],
-        ) -> Callable[..., Awaitable[Any]]:
-            self._record_host_only(name)
-            self._hooks.append(
-                HookDescriptor(
-                    ring=RingEvent.LIFECYCLE,
-                    stage=HookStage.SINGLE,
-                    ordinal=self._next_ordinal,
-                    lifecycle_tag=tag,
-                    run=fn,
-                )
+    def on_trap_deny(self, handler: Callable[..., Any]) -> Self:
+        # see: cans/02-plugin-model.md#Unified-builder
+        # Plain method form, returning Self, matching live Py; not a
+        # decorator property. Host-only: it is not one of the 24 rings.
+        self._check_sealed("on_trap_deny")
+        self._record_host_only("on_trap_deny")
+        self._hooks.append(
+            HookDescriptor(
+                ring=RingEvent.LIFECYCLE,
+                stage=HookStage.SINGLE,
+                ordinal=self._next_ordinal,
+                lifecycle_tag="trap-deny",
+                run=handler,
             )
-            self._next_ordinal += 1
-            return fn
-
-        return decorator
-
-    @property
-    def on_trap_deny(self) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
-        return self._lifecycle_decorator("on_trap_deny")
+        )
+        self._next_ordinal += 1
+        return self
 
     @property
     def vsock_services(self) -> list[VsockServiceEntry]:
         return [spec for spec, _, _ in self._vsock if isinstance(spec, VsockServiceEntry)]
 
     def fuse(self) -> FusedTrampoline:
+        # Internal: fuse() is not a chain verb and not a terminal; seal()
+        # and boot() call it. Callers use seal() then boot().
         return FusedTrampoline.fuse(self.hook_descriptors())
+
+    def seal(self) -> Self:
+        if self._sealed:
+            return self
+        if self._name is not None:
+            raise EConfig("seal requires a host-mode builder")
+        self._validate()
+        self._sealed = True
+        return self
 
     async def boot(self) -> Any:
         if self._name is not None:
             raise EConfig("boot requires a host-mode builder")
-        self._validate()
+        self.seal()
+        descriptor = self.fuse().describe()
+        # session boot follows the live KelirBuilder.boot() tail (native
+        # bridge); the descriptor above is its validated input.
+        return descriptor
+
+    def _validate(self) -> None:
+        for spec, _handler, _ordinal in self._vsock:
+            _validate_vsock_spec(self._name, spec)
+        if self._scope is not None:
+            _validate_scope(self._name, self._scope)
         registered = {registration.name for registration in self._plugin_registrations}
         for required in self._requires:
             if required not in registered:
@@ -696,21 +756,11 @@ class KelirBuilder:
             for required in required_names:
                 if required not in registered:
                     raise EConfig(f"missing prerequisite: {required} required by {name}")
+        seen: set[str] = set()
         for mounted in self._mounted:
-            for required in mounted.requires:
-                if required not in registered:
-                    raise EConfig(f"missing prerequisite: {required} required by {mounted.name}")
-        descriptor = self.fuse().describe()
-        # session boot follows the live KelirBuilder.boot() tail (native
-        # bridge); the descriptor above is its validated input.
-        return descriptor
-
-    def _validate(self) -> None:
-        for spec, _handler, _ordinal in self._vsock:
-            _validate_vsock_spec(self._name, spec)
-        if self._scope is not None:
-            _validate_scope(self._name, self._scope)
-        for mounted in self._mounted:
+            if mounted.name in seen:
+                raise EConfig(f"plugin already mounted: {mounted.name}")
+            seen.add(mounted.name)
             for spec in mounted.vsock:
                 _validate_vsock_spec(mounted.name, spec)
             if mounted.scope is not None:
@@ -718,6 +768,9 @@ class KelirBuilder:
             if mounted.host_only_verbs:
                 verb = mounted.host_only_verbs[0]
                 raise EConfig(f"{mounted.name}: host-only verb '{verb}' used on a plugin-mode builder")
+            for required in mounted.requires:
+                if required not in registered:
+                    raise EConfig(f"missing prerequisite: {required} required by {mounted.name}")
 
 
 def _vsock_kind(spec: Any) -> int | None:
@@ -758,34 +811,43 @@ def _validate_scope(name: str | None, scope: Any) -> None:
 # Deleted shapes: PluginBuilder, _PluginWrapper, plugin_builder.py, the
 # _built flag and _check_open machinery, build(). Nothing is documented
 # as an alternative: the old shapes are gone, not deprecated.
-# Mount: use() merges a plugin-mode builder by value. fuse() sorts each
+# Mount: use() merges a plugin-mode builder by value. The instance
+# .plugin() mount alias deletes; mount is use() only.
+# KelirBuilder.plugin(name) stays as the plugin-mode factory. fuse() sorts each
 # ring by ordinal and throws on a duplicate ordinal, so use()
 # re-ordinals the mounted plugin's hooks into the host's sequence as it
 # merges them (dataclasses.replace keeps the plugin builder's own
-# ordinals untouched). Mounting the same plugin twice raises EConfig
-# `plugin already mounted: <name>`. The missing-prerequisite check is at
-# boot() with `missing prerequisite: <dep> required by <plugin>`; that
-# text is already the live boot() text in packages/py/kelir/__init__.py
-# (the DX-round note claiming the old text was stale). boot() is the one
-# validation: the vsock triple (port 1..=65535, non-empty service)
-# applies to host-registered and plugin services alike
-# (vsock_service keeps the live u32 call-site check as the
-# type-range guard), the scope triple (non-empty paths), and host-only
-# verbs recorded on a plugin-mode builder, rejected with `<plugin>:
-# host-only verb '<verb>' used on a plugin-mode builder`. An empty
-# builder (no handlers) still boots. The vsock spec is (port, service,
-# schema) in Python: the schema field is plugin-level in TS/Python and
-# absent in Rust. Trait-object plugins mounted via use() validate
-# vsock/scope at bind time through the binder, not at boot(): their specs
-# are only visible inside hook_descriptors().
+# ordinals untouched). Mounting the same plugin twice is recorded at
+# use() and raises EConfig at seal() with `plugin already mounted:
+# <name>`. The missing-prerequisite check is at seal() with `missing
+# prerequisite: <dep> required by <plugin>`; that text is already the
+# live boot() text in packages/py/kelir/__init__.py (the DX-round note
+# claiming the old text was stale). seal() is the one validation: the
+# vsock triple (port 1..=65535, non-empty service) applies to
+# host-registered and plugin services alike (vsock_service keeps the
+# live u32 call-site check as the type-range guard), the scope triple
+# (non-empty paths), and host-only verbs recorded on a plugin-mode
+# builder, rejected with `<plugin>: host-only verb '<verb>' used on a
+# plugin-mode builder`. An empty builder (no handlers) still seals.
+# fuse() is internal: the one descriptor path, called inside seal() and
+# boot(), never by the caller. The vsock spec is (port, service, schema)
+# in Python: the schema field is plugin-level in TS/Python and absent in
+# Rust. Trait-object plugins mounted via use() validate vsock/scope at
+# bind time through the binder, not at seal(): their specs are only
+# visible inside hook_descriptors().
 # trap() dispatches on its arguments: one callable and no pre/post is the
-# trap scope entry point; (pattern, pre, post) is the host-only trap
-# registration (pattern filter, PRE/POST stages). The live host's
+# trap scope entry point; (pattern, pre, post) is the filter trap
+# registration (pattern filter, PRE/POST stages), in both modes. The live host's
 # on_vm_init / on_vm_ready / on_vm_shutdown / on_pre_commit /
 # on_post_commit are ring-verb methods of the same names (plain method
 # form, returning Self), not decorator properties; on_trap_deny stays
-# the host-only decorator property: it is not one of the 24 rings. Registration-time arity check: each on_* verifies the
+# the host-only method: it is not one of the 24 rings. Registration-time arity check: each on_* verifies the
 # handler arity via inspect.signature and raises EConfig at registration
 # on mismatch. Vsock ordinals are assigned at registration so
 # hook_descriptors() is pure; the ring-missing EConfig now raises at
 # registration (it raised at _descriptors() under build()).
+# fork_state() is a factory, not a chain verb. group()/guard() do not
+# exist in Python; every scope has .end() returning the builder, and
+# scope callbacks may return the scope or None. lock_broker(enabled=True)
+# is a host-only verb; only the boolean reaches the PyO3 bridge.
+# context() raises EConfig on host mode; it is plugin-mode only.

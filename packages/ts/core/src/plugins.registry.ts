@@ -1,7 +1,8 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
 import type { ChaosHandle, LedgerHandle, MeshHandle } from "./context.lifecycle.types.js";
-import type { KelirPlugin, PluginContext } from "./hook.registry.js";
+import { createPlugin } from "./builder.lifecycle.js";
+import type { KelirBuilder } from "./builder.lifecycle.js";
 
 export interface PluginEnablement {
   readonly enabled?: boolean;
@@ -33,10 +34,8 @@ export interface ChaosConfig extends PluginEnablement {
 
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export function chaos(
-  config: ChaosConfig,
-): KelirPlugin & PluginContext<{ chaos: ChaosHandle }> {
-  return { name: "chaos", enabled: config.enabled, config };
+export function chaos<P = unknown>(config: ChaosConfig): KelirBuilder<"chaos", { chaos: ChaosHandle }, never, P> {
+  return createPlugin<"chaos", { chaos: ChaosHandle }, ChaosConfig, never, P>("chaos", { enabled: config.enabled, config });
 }
 
 
@@ -49,8 +48,8 @@ export interface ContainerConfig extends PluginEnablement {
 }
 
 
-export function container(config: ContainerConfig): KelirPlugin {
-  return { name: "container", enabled: config.enabled, config };
+export function container<P = unknown>(config: ContainerConfig): KelirBuilder<"container", unknown, never, P> {
+  return createPlugin<"container", unknown, ContainerConfig, never, P>("container", { enabled: config.enabled, config });
 }
 
 
@@ -81,8 +80,8 @@ export interface DbProxyConfig extends PluginEnablement {
 }
 
 
-export function dbProxy(config: DbProxyConfig): KelirPlugin {
-  return { name: "db-proxy", enabled: config.enabled, config };
+export function dbProxy<P = unknown>(config: DbProxyConfig): KelirBuilder<"db-proxy", unknown, never, P> {
+  return createPlugin<"db-proxy", unknown, DbProxyConfig, never, P>("db-proxy", { enabled: config.enabled, config });
 }
 
 
@@ -113,10 +112,8 @@ export interface LedgerConfig extends PluginEnablement {
 
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export function ledger(
-  config: LedgerConfig,
-): KelirPlugin & PluginContext<{ ledger: LedgerHandle }> {
-  return { name: "ledger", enabled: config.enabled, config };
+export function ledger<P = unknown>(config: LedgerConfig): KelirBuilder<"ledger", { ledger: LedgerHandle }, never, P> {
+  return createPlugin<"ledger", { ledger: LedgerHandle }, LedgerConfig, never, P>("ledger", { enabled: config.enabled, config });
 }
 
 
@@ -124,8 +121,8 @@ export interface McpConfig extends PluginEnablement {
 }
 
 
-export function mcp(config: McpConfig): KelirPlugin {
-  return { name: "mcp", enabled: config.enabled, config };
+export function mcp<P = unknown>(config: McpConfig): KelirBuilder<"mcp", unknown, never, P> {
+  return createPlugin<"mcp", unknown, McpConfig, never, P>("mcp", { enabled: config.enabled, config });
 }
 
 
@@ -150,10 +147,8 @@ export interface MeshConfig extends PluginEnablement {
 
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export function mesh(
-  config: MeshConfig,
-): KelirPlugin & PluginContext<{ mesh: MeshHandle }> {
-  return { name: "mesh", enabled: config.enabled, config };
+export function mesh<P = unknown>(config: MeshConfig): KelirBuilder<"mesh", { mesh: MeshHandle }, never, P> {
+  return createPlugin<"mesh", { mesh: MeshHandle }, MeshConfig, never, P>("mesh", { enabled: config.enabled, config });
 }
 
 
@@ -170,8 +165,8 @@ export interface ProfileConfig extends PluginEnablement {
 }
 
 
-export function profile(config: ProfileConfig): KelirPlugin {
-  return { name: "profile", enabled: config.enabled, config };
+export function profile<P = unknown>(config: ProfileConfig): KelirBuilder<"profile", unknown, never, P> {
+  return createPlugin<"profile", unknown, ProfileConfig, never, P>("profile", { enabled: config.enabled, config });
 }
 
 
@@ -183,8 +178,8 @@ export interface ReplayConfig extends PluginEnablement {
 }
 
 
-export function replay(config: ReplayConfig): KelirPlugin {
-  return { name: "replay", enabled: config.enabled, config };
+export function replay<P = unknown>(config: ReplayConfig): KelirBuilder<"replay", unknown, never, P> {
+  return createPlugin<"replay", unknown, ReplayConfig, never, P>("replay", { enabled: config.enabled, config });
 }
 
 
@@ -215,8 +210,8 @@ export interface SupplyChainConfig extends PluginEnablement {
 }
 
 
-export function supplyChain(config: SupplyChainConfig): KelirPlugin {
-  return { name: "supply-chain", enabled: config.enabled, config };
+export function supplyChain<P = unknown>(config: SupplyChainConfig): KelirBuilder<"supply-chain", unknown, never, P> {
+  return createPlugin<"supply-chain", unknown, SupplyChainConfig, never, P>("supply-chain", { enabled: config.enabled, config });
 }
 
 
@@ -226,8 +221,8 @@ export interface ToolGuardConfig extends PluginEnablement {
 }
 
 
-export function toolGuard(config: ToolGuardConfig): KelirPlugin {
-  return { name: "tool-guard", enabled: config.enabled, config };
+export function toolGuard<P = unknown>(config: ToolGuardConfig): KelirBuilder<"tool-guard", unknown, never, P> {
+  return createPlugin<"tool-guard", unknown, ToolGuardConfig, never, P>("tool-guard", { enabled: config.enabled, config });
 }
 
 
@@ -238,8 +233,8 @@ export interface TransactionConfig extends PluginEnablement {
 }
 
 
-export function transaction(config: TransactionConfig): KelirPlugin {
-  return { name: "transaction", enabled: config.enabled, config };
+export function transaction<P = unknown>(config: TransactionConfig): KelirBuilder<"transaction", unknown, never, P> {
+  return createPlugin<"transaction", unknown, TransactionConfig, never, P>("transaction", { enabled: config.enabled, config });
 }
 
 
@@ -249,8 +244,8 @@ export interface VaultConfig extends PluginEnablement {
 }
 
 
-export function vault(config: VaultConfig): KelirPlugin {
-  return { name: "vault", enabled: config.enabled, config };
+export function vault<P = unknown>(config: VaultConfig): KelirBuilder<"vault", unknown, never, P> {
+  return createPlugin<"vault", unknown, VaultConfig, never, P>("vault", { enabled: config.enabled, config });
 }
 
 
@@ -285,76 +280,6 @@ export interface WireIngressConfig extends PluginEnablement {
 }
 
 
-export function wireIngress(config: WireIngressConfig): KelirPlugin {
-  return { name: "wire-ingress", enabled: config.enabled, config };
-}
-
-
-// see: cans/02-plugin-model.md#Unified-builder
-import { createPlugin } from "./builder.lifecycle.js";
-import type { KelirBuilder } from "./builder.lifecycle.js";
-
-
-export function mcpBuilder(config: McpConfig): KelirBuilder {
-  return createPlugin("mcp", { config });
-}
-
-
-export function meshBuilder(config: MeshConfig): KelirBuilder {
-  return createPlugin("mesh", { config });
-}
-
-
-export function containerBuilder(config: ContainerConfig): KelirBuilder {
-  return createPlugin("container", { config });
-}
-
-
-export function dbProxyBuilder(config: DbProxyConfig): KelirBuilder {
-  return createPlugin("db-proxy", { config });
-}
-
-
-export function replayBuilder(config: ReplayConfig): KelirBuilder {
-  return createPlugin("replay", { config });
-}
-
-
-export function supplyChainBuilder(config: SupplyChainConfig): KelirBuilder {
-  return createPlugin("supply-chain", { config });
-}
-
-
-export function toolGuardBuilder(config: ToolGuardConfig): KelirBuilder {
-  return createPlugin("tool-guard", { config });
-}
-
-
-export function vaultBuilder(config: VaultConfig): KelirBuilder {
-  return createPlugin("vault", { config });
-}
-
-
-export function wireIngressBuilder(config: WireIngressConfig): KelirBuilder {
-  return createPlugin("wire-ingress", { config });
-}
-
-
-export function chaosBuilder(config: ChaosConfig): KelirBuilder {
-  return createPlugin("chaos", { config });
-}
-
-
-export function ledgerBuilder(config: LedgerConfig): KelirBuilder {
-  return createPlugin("ledger", { config });
-}
-
-
-export function profileBuilder(config: ProfileConfig): KelirBuilder {
-  return createPlugin("profile", { config });
-}
-
-
-export function transactionBuilder(config: TransactionConfig): KelirBuilder {
-  return createPlugin("transaction", { config });
+export function wireIngress<P = unknown>(config: WireIngressConfig): KelirBuilder<"wire-ingress", unknown, never, P> {
+  return createPlugin<"wire-ingress", unknown, WireIngressConfig, never, P>("wire-ingress", { enabled: config.enabled, config });
 }

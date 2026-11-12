@@ -384,7 +384,7 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut session = build_runtime()?.boot().await?;
+    let mut session = build_runtime()?.seal()?.boot().await?;
     session.terminal.resize(120, 40)?;
     eprintln!("[kelir] host pressure={}", session.host.pressure_level());
     let port = session.wire.forward_port(8080, Some(8080))?;

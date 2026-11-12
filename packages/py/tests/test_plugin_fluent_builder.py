@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from kelir import FilterAction, HandlerContext, KelirBuilder, TrapEvent, Verdict
+from kelir import FilterAction, HandlerContext, KelirBuilder, TrapEvent, TrapFilter, Verdict
 from kelir.model_plugin import (
     BasePlugin,
     WatchdogEvent,
@@ -105,13 +105,59 @@ def test_verb_after_mount_raises_econfig() -> None:
         KelirBuilder().use(plugin)
 
 
-def test_host_only_verb_rejected_at_mount() -> None:
-    plugin = KelirBuilder.plugin("x").terminal(prompt=">")
+def test_host_only_verbs_raise_at_call_site() -> None:
+    async def _echo(request: bytes) -> bytes:
+        return request
+
+    async def _quarantine(payload: dict[str, Any]) -> None:
+        return None
+
+    plugin = KelirBuilder.plugin("x")
     with pytest.raises(
         EConfig,
-        match=r"x: host-only verb .terminal\(\) called on plugin-mode builder",
+        match=r"x: host-only verb \.detached\(\) called on plugin-mode builder",
     ):
-        KelirBuilder().use(plugin)
+        plugin.detached(True)
+    with pytest.raises(
+        EConfig,
+        match=r"x: host-only verb \.terminal\(\) called on plugin-mode builder",
+    ):
+        plugin.terminal(prompt=">")
+    with pytest.raises(
+        EConfig,
+        match=r"x: host-only verb \.storage\(\) called on plugin-mode builder",
+    ):
+        plugin.storage(lock_broker=True)
+    with pytest.raises(
+        EConfig,
+        match=r"x: host-only verb \.wire\(\) called on plugin-mode builder",
+    ):
+        plugin.wire(sinkhole=None)
+    with pytest.raises(
+        EConfig,
+        match=r"x: host-only verb \.params\(\) called on plugin-mode builder",
+    ):
+        plugin.params(dict)
+    with pytest.raises(
+        EConfig,
+        match=r"x: host-only verb \.trap\(\) called on plugin-mode builder",
+    ):
+        plugin.trap(TrapFilter.binary("x"), pre=_trap)
+    with pytest.raises(
+        EConfig,
+        match=r"x: host-only verb \.register_custom_action\(\) called on plugin-mode builder",
+    ):
+        plugin.register_custom_action("q", {"type": "object"}, _quarantine)
+    with pytest.raises(
+        EConfig,
+        match=r"x: host-only verb \.register_stream_kind\(\) called on plugin-mode builder",
+    ):
+        plugin.register_stream_kind(0x0013, {"type": "object"}, _echo)
+    with pytest.raises(
+        EConfig,
+        match=r"x: host-only verb \.on_trap_deny\(\) called on plugin-mode builder",
+    ):
+        plugin.on_trap_deny(lambda event, session: None)
 
 
 def test_boot_plugin_mode_raises_econfig() -> None:
@@ -469,3 +515,104 @@ def test_fork_with_replays_custom_fork() -> None:
 def test_fork_state_on_host_raises_econfig() -> None:
     with pytest.raises(EConfig, match=r"Session.fork"):
         KelirBuilder().fork_state()
+
+
+def test_scope_end_returns_builder() -> None:
+    plugin = KelirBuilder.plugin("x")
+    seen: list[KelirBuilder] = []
+    plugin.trap(lambda t: seen.append(t.on_trap(_trap).end()))
+    assert seen[0] is plugin
+    chained = KelirBuilder.plugin("y").trap(
+        lambda t: t.on_trap(_trap).end().on_process_exit(lambda event: None)
+    )
+    assert [d.ring for d in hook_descriptors(chained)] == [
+        RingEvent.TRAP,
+        RingEvent.PROCESS_EXIT,
+    ]
+
+
+def test_scope_callback_may_return_none() -> None:
+    def _configure(scope: Any) -> None:
+        scope.on_trap(_trap)
+
+    plugin = KelirBuilder.plugin("x").trap(_configure)
+    assert len(hook_descriptors(plugin)) == 1
+    assert hook_descriptors(plugin)[0].ring is RingEvent.TRAP
+
+
+def test_trap_scope_on_trap_deny() -> None:
+    host = KelirBuilder().trap(
+        lambda t: t.on_trap(_trap).on_trap_deny(lambda event, session: None)
+    )
+    descriptors = host.hook_descriptors()
+    assert [d.lifecycle_tag for d in descriptors] == [None, "trap-deny"]
+    assert descriptors[1].ring is RingEvent.LIFECYCLE
+    with pytest.raises(EConfig, match=r"host-only verb \.on_trap_deny\(\)"):
+        KelirBuilder.plugin("x").trap(
+            lambda t: t.on_trap_deny(lambda event, session: None)
+        )
+
+
+def test_plugin_instance_call_raises_econfig() -> None:
+    with pytest.raises(EConfig, match=r"mount a plugin with \.use\(plugin\)"):
+        KelirBuilder().plugin("chaos")
+    with pytest.raises(EConfig, match=r"mount a plugin with \.use\(plugin\)"):
+        KelirBuilder().plugin(LedgerPlugin())
+    assert KelirBuilder.plugin("chaos").name == "chaos"
+
+
+def test_context_on_host_raises_econfig() -> None:
+    with pytest.raises(EConfig, match=r"\.context\(\) is plugin-only"):
+        KelirBuilder().context(lambda: {})
+    plugin = KelirBuilder.plugin("x").context(lambda: {"n": 1})
+    assert plugin._context_fn is not None
+    assert plugin._context_fn() == {"n": 1}
+
+
+def test_seal_validates_and_chains() -> None:
+    host = KelirBuilder().on_trap(_trap)
+    assert host.seal() is host
+    assert host.seal().on_vm_ready(lambda ctx: None) is host
+    with pytest.raises(
+        EConfig, match=r"missing prerequisite: missing-dep required by host"
+    ):
+        KelirBuilder().require("missing-dep").seal()
+
+
+def test_seal_validates_plugin_shape_without_boot() -> None:
+    async def _serve(data: bytes) -> bytes:
+        return data
+
+    plugin = KelirBuilder.plugin("x").vsock_service(
+        {"port": 0, "service": "s"}, _serve
+    )
+    with pytest.raises(EConfig, match=r"invalid port 0"):
+        plugin.seal()
+
+
+def test_lock_broker_verb() -> None:
+    host = KelirBuilder().lock_broker()
+    assert host._config["storage"]["lock_broker"] is True
+    assert host.lock_broker(False)._config["storage"]["lock_broker"] is False
+    merged = KelirBuilder().storage(shared_caches=["/x"]).lock_broker()
+    assert merged._config["storage"] == {
+        "shared_caches": ["/x"],
+        "lock_broker": True,
+    }
+    kept = KelirBuilder().lock_broker().storage(shared_caches=["/x"])
+    assert kept._config["storage"]["lock_broker"] is True
+    with pytest.raises(EConfig, match=r"host-only verb \.lock_broker\(\)"):
+        KelirBuilder.plugin("x").lock_broker()
+    with pytest.raises(EConfig, match=r"expects a bool"):
+        KelirBuilder().lock_broker("yes")  # type: ignore[arg-type]
+
+
+def test_fork_state_is_factory() -> None:
+    plugin = KelirBuilder.plugin("svc").on_trap(_trap)
+    forked = plugin.fork_state()
+    assert forked is not plugin
+    assert forked._mode == "plugin"
+    assert forked.name == "svc"
+    forked.on_process_exit(lambda event: None)
+    assert len(hook_descriptors(plugin)) == 1
+    assert len(hook_descriptors(forked)) == 2

@@ -51,24 +51,25 @@ export interface PluginContext<Ctx> {
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-export interface TrapScope<Ctx> {
+export interface TrapScope<Ctx, Owner = unknown> {
   onTrap(
     handler: (
       event: TrapInfo,
       c: TrapContext & Ctx,
     ) => Promise<Verdict> | Verdict,
-  ): TrapScope<Ctx>;
+  ): TrapScope<Ctx, Owner>;
   onProcessExit(
     handler: (event: ProcessExitEvent) => Promise<void> | void,
-  ): TrapScope<Ctx>;
+  ): TrapScope<Ctx, Owner>;
+  end(): Owner;
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-export interface FsScope<Ctx> {
-  onFsLookup(handler: (path: string) => Verdict): FsScope<Ctx>;
+export interface FsScope<Ctx, Owner = unknown> {
+  onFsLookup(handler: (path: string) => Verdict): FsScope<Ctx, Owner>;
   onFsRead(
     handler: (path: string, buffer: Uint8Array) => Uint8Array,
-  ): FsScope<Ctx>;
+  ): FsScope<Ctx, Owner>;
   onFsWrite(
     handler: (
       path: string,
@@ -76,7 +77,7 @@ export interface FsScope<Ctx> {
       pid: number,
       ctx: TrapContext & Ctx,
     ) => FilterAction,
-  ): FsScope<Ctx>;
+  ): FsScope<Ctx, Owner>;
   onFsLock(
     handler: (
       path: string,
@@ -84,97 +85,104 @@ export interface FsScope<Ctx> {
       flockType: number,
       pid: number,
     ) => Verdict,
-  ): FsScope<Ctx>;
+  ): FsScope<Ctx, Owner>;
+  end(): Owner;
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-export interface NetScope<Ctx> {
-  onNetOutbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Ctx>;
-  onNetInbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Ctx>;
+export interface NetScope<Ctx, Owner = unknown> {
+  onNetOutbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Ctx, Owner>;
+  onNetInbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Ctx, Owner>;
+  end(): Owner;
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-export interface ConsoleScope<Ctx> {
+export interface ConsoleScope<Ctx, Owner = unknown> {
   onConsoleInput(
     handler: (
       port: number,
       bytes: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
-  ): ConsoleScope<Ctx>;
+  ): ConsoleScope<Ctx, Owner>;
   onConsoleOutput(
     handler: (
       port: number,
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
-  ): ConsoleScope<Ctx>;
+  ): ConsoleScope<Ctx, Owner>;
+  end(): Owner;
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-export interface ExecScope<Ctx> {
+export interface ExecScope<Ctx, Owner = unknown> {
   onExecStdout(
     handler: (
       pid: number,
       execId: number,
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
-  ): ExecScope<Ctx>;
+  ): ExecScope<Ctx, Owner>;
   onExecStderr(
     handler: (
       pid: number,
       execId: number,
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
-  ): ExecScope<Ctx>;
+  ): ExecScope<Ctx, Owner>;
+  end(): Owner;
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-export interface HostScope<Ctx> {
-  onHostLsmExec(handler: (path: string, pid: number) => Verdict): HostScope<Ctx>;
-  onHostPressure(handler: (level: number) => Verdict): HostScope<Ctx>;
-  onHostKeyringAccess(handler: (key: string) => Verdict): HostScope<Ctx>;
+export interface HostScope<Ctx, Owner = unknown> {
+  onHostLsmExec(handler: (path: string, pid: number) => Verdict): HostScope<Ctx, Owner>;
+  onHostPressure(handler: (level: number) => Verdict): HostScope<Ctx, Owner>;
+  onHostKeyringAccess(handler: (key: string) => Verdict): HostScope<Ctx, Owner>;
   onHostPreempt(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): HostScope<Ctx>;
+  ): HostScope<Ctx, Owner>;
+  end(): Owner;
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-export interface LifecycleScope<Ctx> {
+export interface LifecycleScope<Ctx, Owner = unknown> {
   onVmInit(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): LifecycleScope<Ctx>;
+  ): LifecycleScope<Ctx, Owner>;
   onVmReady(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): LifecycleScope<Ctx>;
+  ): LifecycleScope<Ctx, Owner>;
   onVmShutdown(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): LifecycleScope<Ctx>;
+  ): LifecycleScope<Ctx, Owner>;
   onPreCommit(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): LifecycleScope<Ctx>;
+  ): LifecycleScope<Ctx, Owner>;
   onPostCommit(
     handler: (
       ctx: LifecycleContext,
       committed: boolean,
     ) => Promise<void> | void,
-  ): LifecycleScope<Ctx>;
+  ): LifecycleScope<Ctx, Owner>;
+  end(): Owner;
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-export interface TelemetryScope<Ctx> {
+export interface TelemetryScope<Ctx, Owner = unknown> {
   onMemoryPressure(
     handler: (
       availableMb: number,
       totalMb: number,
     ) => Promise<void> | void,
-  ): TelemetryScope<Ctx>;
+  ): TelemetryScope<Ctx, Owner>;
   onHeartbeat(
     handler: (event: HeartbeatEvent) => Promise<void> | void,
-  ): TelemetryScope<Ctx>;
+  ): TelemetryScope<Ctx, Owner>;
   onWatchdog(
     handler: (
       event: WatchdogEvent,
     ) => Promise<WatchdogVerdict> | WatchdogVerdict,
-  ): TelemetryScope<Ctx>;
+  ): TelemetryScope<Ctx, Owner>;
+  end(): Owner;
 }
 
 function unpack(event: unknown): readonly unknown[] {
@@ -222,7 +230,6 @@ export class HookRegistry<Ctx = unknown> {
   readonly deriveFns: Array<(c: unknown) => unknown> = [];
   readonly contextFns: Array<(c: unknown) => unknown> = [];
   readonly vsockEntries: VsockServiceEntry[] = [];
-  readonly hostOnlyCalls: string[] = [];
 
   constructor(pluginName?: string) {
     this.pluginName = pluginName;
@@ -236,8 +243,9 @@ export class HookRegistry<Ctx = unknown> {
     return this.scopeValue;
   }
 
-  setScope(scope: MountScope): void {
+  setScope(scope: MountScope): this {
     this.scopeValue = scope;
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Foreign-plugin-proxy
@@ -249,7 +257,7 @@ export class HookRegistry<Ctx = unknown> {
     lifecycleTag?: LifecycleTag;
     customActionName?: string;
     vsockKind?: number;
-  }): void {
+  }): this {
     this.hooks.push({
       ring: hook.ring,
       stage: hook.stage,
@@ -262,26 +270,18 @@ export class HookRegistry<Ctx = unknown> {
       run: hook.run,
     });
     this.nextOrdinal += 1;
+    return this;
   }
 
-  adoptHook(hook: HookDescriptor): void {
+  adoptHook(hook: HookDescriptor): this {
     this.hooks.push({ ...hook, ordinal: this.nextOrdinal });
     this.nextOrdinal += 1;
-  }
-
-  recordHostOnly(verb: string): void {
-    if (!this.hostOnlyCalls.includes(verb)) {
-      this.hostOnlyCalls.push(verb);
-    }
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  validate(): void {
+  validate(): this {
     const owner = this.owner;
-    const hostOnly = this.hostOnlyCalls[0];
-    if (hostOnly !== undefined) {
-      throw new EConfig(`plugin ${owner} called host-only verb ${hostOnly}`);
-    }
     for (const hook of this.hooks) {
       if (!KNOWN_RINGS.has(hook.ring)) {
         throw new EConfig(
@@ -313,6 +313,7 @@ export class HookRegistry<Ctx = unknown> {
     if (this.scopeValue !== undefined) {
       validateScope(this.scopeValue, owner);
     }
+    return this;
   }
 
   clone(): HookRegistry<Ctx> {
@@ -324,16 +325,16 @@ export class HookRegistry<Ctx = unknown> {
     copy.deriveFns.push(...this.deriveFns);
     copy.contextFns.push(...this.contextFns);
     copy.vsockEntries.push(...this.vsockEntries);
-    copy.hostOnlyCalls.push(...this.hostOnlyCalls);
     return copy;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  trap(
-    fn: (scope: TrapScope<Ctx>) => TrapScope<Ctx>,
+  trap<Owner>(
+    fn: (scope: TrapScope<Ctx, Owner>) => TrapScope<Ctx, Owner> | void,
+    endTarget: () => Owner,
   ): HookRegistry<Ctx> {
     const registry = this;
-    const scope: TrapScope<Ctx> = {
+    const scope: TrapScope<Ctx, Owner> = {
       onTrap(handler) {
         registry.onTrap(handler);
         return scope;
@@ -342,17 +343,21 @@ export class HookRegistry<Ctx = unknown> {
         registry.onProcessExit(handler);
         return scope;
       },
+      end() {
+        return endTarget();
+      },
     };
     fn(scope);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  fs(
-    fn: (scope: FsScope<Ctx>) => FsScope<Ctx>,
+  fs<Owner>(
+    fn: (scope: FsScope<Ctx, Owner>) => FsScope<Ctx, Owner> | void,
+    endTarget: () => Owner,
   ): HookRegistry<Ctx> {
     const registry = this;
-    const scope: FsScope<Ctx> = {
+    const scope: FsScope<Ctx, Owner> = {
       onFsLookup(handler) {
         registry.onFsLookup(handler);
         return scope;
@@ -369,17 +374,21 @@ export class HookRegistry<Ctx = unknown> {
         registry.onFsLock(handler);
         return scope;
       },
+      end() {
+        return endTarget();
+      },
     };
     fn(scope);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  net(
-    fn: (scope: NetScope<Ctx>) => NetScope<Ctx>,
+  net<Owner>(
+    fn: (scope: NetScope<Ctx, Owner>) => NetScope<Ctx, Owner> | void,
+    endTarget: () => Owner,
   ): HookRegistry<Ctx> {
     const registry = this;
-    const scope: NetScope<Ctx> = {
+    const scope: NetScope<Ctx, Owner> = {
       onNetOutbound(handler) {
         registry.onNetOutbound(handler);
         return scope;
@@ -388,17 +397,21 @@ export class HookRegistry<Ctx = unknown> {
         registry.onNetInbound(handler);
         return scope;
       },
+      end() {
+        return endTarget();
+      },
     };
     fn(scope);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  console(
-    fn: (scope: ConsoleScope<Ctx>) => ConsoleScope<Ctx>,
+  console<Owner>(
+    fn: (scope: ConsoleScope<Ctx, Owner>) => ConsoleScope<Ctx, Owner> | void,
+    endTarget: () => Owner,
   ): HookRegistry<Ctx> {
     const registry = this;
-    const scope: ConsoleScope<Ctx> = {
+    const scope: ConsoleScope<Ctx, Owner> = {
       onConsoleInput(handler) {
         registry.onConsoleInput(handler);
         return scope;
@@ -407,17 +420,21 @@ export class HookRegistry<Ctx = unknown> {
         registry.onConsoleOutput(handler);
         return scope;
       },
+      end() {
+        return endTarget();
+      },
     };
     fn(scope);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  exec(
-    fn: (scope: ExecScope<Ctx>) => ExecScope<Ctx>,
+  exec<Owner>(
+    fn: (scope: ExecScope<Ctx, Owner>) => ExecScope<Ctx, Owner> | void,
+    endTarget: () => Owner,
   ): HookRegistry<Ctx> {
     const registry = this;
-    const scope: ExecScope<Ctx> = {
+    const scope: ExecScope<Ctx, Owner> = {
       onExecStdout(handler) {
         registry.onExecStdout(handler);
         return scope;
@@ -426,17 +443,21 @@ export class HookRegistry<Ctx = unknown> {
         registry.onExecStderr(handler);
         return scope;
       },
+      end() {
+        return endTarget();
+      },
     };
     fn(scope);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  host(
-    fn: (scope: HostScope<Ctx>) => HostScope<Ctx>,
+  host<Owner>(
+    fn: (scope: HostScope<Ctx, Owner>) => HostScope<Ctx, Owner> | void,
+    endTarget: () => Owner,
   ): HookRegistry<Ctx> {
     const registry = this;
-    const scope: HostScope<Ctx> = {
+    const scope: HostScope<Ctx, Owner> = {
       onHostLsmExec(handler) {
         registry.onHostLsmExec(handler);
         return scope;
@@ -453,17 +474,21 @@ export class HookRegistry<Ctx = unknown> {
         registry.onHostPreempt(handler);
         return scope;
       },
+      end() {
+        return endTarget();
+      },
     };
     fn(scope);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  lifecycle(
-    fn: (scope: LifecycleScope<Ctx>) => LifecycleScope<Ctx>,
+  lifecycle<Owner>(
+    fn: (scope: LifecycleScope<Ctx, Owner>) => LifecycleScope<Ctx, Owner> | void,
+    endTarget: () => Owner,
   ): HookRegistry<Ctx> {
     const registry = this;
-    const scope: LifecycleScope<Ctx> = {
+    const scope: LifecycleScope<Ctx, Owner> = {
       onVmInit(handler) {
         registry.onVmInit(handler);
         return scope;
@@ -484,17 +509,21 @@ export class HookRegistry<Ctx = unknown> {
         registry.onPostCommit(handler);
         return scope;
       },
+      end() {
+        return endTarget();
+      },
     };
     fn(scope);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  telemetry(
-    fn: (scope: TelemetryScope<Ctx>) => TelemetryScope<Ctx>,
+  telemetry<Owner>(
+    fn: (scope: TelemetryScope<Ctx, Owner>) => TelemetryScope<Ctx, Owner> | void,
+    endTarget: () => Owner,
   ): HookRegistry<Ctx> {
     const registry = this;
-    const scope: TelemetryScope<Ctx> = {
+    const scope: TelemetryScope<Ctx, Owner> = {
       onMemoryPressure(handler) {
         registry.onMemoryPressure(handler);
         return scope;
@@ -507,6 +536,9 @@ export class HookRegistry<Ctx = unknown> {
         registry.onWatchdog(handler);
         return scope;
       },
+      end() {
+        return endTarget();
+      },
     };
     fn(scope);
     return this;
@@ -514,38 +546,41 @@ export class HookRegistry<Ctx = unknown> {
 
   onNetOutbound(
     handler: (frame: Uint8Array) => FilterAction,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.NetOutbound,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as Uint8Array),
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
   onNetInbound(
     handler: (frame: Uint8Array) => FilterAction,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.NetInbound,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as Uint8Array),
     });
+    return this;
   }
 
   onFsLookup(
     handler: (path: string) => Verdict,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.FsLookup,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as string),
     });
+    return this;
   }
 
   onFsRead(
     handler: (path: string, buffer: Uint8Array) => Uint8Array,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.FsRead,
       stage: "single",
@@ -554,6 +589,7 @@ export class HookRegistry<Ctx = unknown> {
         return handler(args[0] as string, args[1] as Uint8Array);
       },
     });
+    return this;
   }
 
   onFsWrite(
@@ -563,7 +599,7 @@ export class HookRegistry<Ctx = unknown> {
       pid: number,
       ctx: TrapContext & Ctx,
     ) => FilterAction,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.FsWrite,
       stage: "single",
@@ -577,6 +613,7 @@ export class HookRegistry<Ctx = unknown> {
         );
       },
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
@@ -587,7 +624,7 @@ export class HookRegistry<Ctx = unknown> {
       flockType: number,
       pid: number,
     ) => Verdict,
-  ): void {
+  ): this {
     this.addHook({
       ring: "fs-lock" as RingEvent,
       stage: "single",
@@ -601,6 +638,7 @@ export class HookRegistry<Ctx = unknown> {
         );
       },
     });
+    return this;
   }
 
   onConsoleInput(
@@ -608,7 +646,7 @@ export class HookRegistry<Ctx = unknown> {
       port: number,
       bytes: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.ConsoleInput,
       stage: "single",
@@ -617,6 +655,7 @@ export class HookRegistry<Ctx = unknown> {
         return handler(args[0] as number, args[1] as Uint8Array);
       },
     });
+    return this;
   }
 
   onConsoleOutput(
@@ -624,7 +663,7 @@ export class HookRegistry<Ctx = unknown> {
       port: number,
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.ConsoleOutput,
       stage: "single",
@@ -633,6 +672,7 @@ export class HookRegistry<Ctx = unknown> {
         return handler(args[0] as number, args[1] as Uint8Array);
       },
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#KelirPlugin-trait
@@ -642,7 +682,7 @@ export class HookRegistry<Ctx = unknown> {
       execId: number,
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.ExecStdout,
       stage: "single",
@@ -655,6 +695,7 @@ export class HookRegistry<Ctx = unknown> {
         );
       },
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#KelirPlugin-trait
@@ -664,7 +705,7 @@ export class HookRegistry<Ctx = unknown> {
       execId: number,
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.ExecStderr,
       stage: "single",
@@ -677,26 +718,29 @@ export class HookRegistry<Ctx = unknown> {
         );
       },
     });
+    return this;
   }
 
   onHeartbeat(
     handler: (event: HeartbeatEvent) => Promise<void> | void,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.Heartbeat,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as HeartbeatEvent),
     });
+    return this;
   }
 
   onProcessExit(
     handler: (event: ProcessExitEvent) => Promise<void> | void,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.ProcessExit,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as ProcessExitEvent),
     });
+    return this;
   }
 
   onTrap(
@@ -704,7 +748,7 @@ export class HookRegistry<Ctx = unknown> {
       event: TrapInfo,
       c: TrapContext & Ctx,
     ) => Promise<Verdict> | Verdict,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.Trap,
       stage: "single",
@@ -713,24 +757,26 @@ export class HookRegistry<Ctx = unknown> {
         return handler(args[0] as TrapInfo, args[1] as TrapContext & Ctx);
       },
     });
+    return this;
   }
 
   onWatchdog(
     handler: (
       event: WatchdogEvent,
     ) => Promise<WatchdogVerdict> | WatchdogVerdict,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.Watchdog,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as WatchdogEvent),
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
   onHostLsmExec(
     handler: (path: string, pid: number) => Verdict,
-  ): void {
+  ): this {
     this.addHook({
       ring: "host-lsm-exec" as RingEvent,
       stage: "single",
@@ -739,76 +785,83 @@ export class HookRegistry<Ctx = unknown> {
         return handler(args[0] as string, args[1] as number);
       },
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
   onHostPressure(
     handler: (level: number) => Verdict,
-  ): void {
+  ): this {
     this.addHook({
       ring: "host-pressure" as RingEvent,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as number),
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
   onHostKeyringAccess(
     handler: (key: string) => Verdict,
-  ): void {
+  ): this {
     this.addHook({
       ring: "host-keyring-access" as RingEvent,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as string),
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
   onVmInit(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.Lifecycle,
       stage: "single",
       lifecycleTag: "vm-init",
       run: (event) => handler(unpack(event)[0] as LifecycleContext),
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
   onVmReady(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.Lifecycle,
       stage: "single",
       lifecycleTag: "vm-ready",
       run: (event) => handler(unpack(event)[0] as LifecycleContext),
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
   onVmShutdown(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.Lifecycle,
       stage: "single",
       lifecycleTag: "vm-shutdown",
       run: (event) => handler(unpack(event)[0] as LifecycleContext),
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
   onPreCommit(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.Lifecycle,
       stage: "single",
       lifecycleTag: "pre-commit",
       run: (event) => handler(unpack(event)[0] as LifecycleContext),
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
@@ -817,7 +870,7 @@ export class HookRegistry<Ctx = unknown> {
       ctx: LifecycleContext,
       committed: boolean,
     ) => Promise<void> | void,
-  ): void {
+  ): this {
     this.addHook({
       ring: RingEvent.Lifecycle,
       stage: "single",
@@ -827,17 +880,19 @@ export class HookRegistry<Ctx = unknown> {
         return handler(args[0] as LifecycleContext, args[1] as boolean);
       },
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
   onHostPreempt(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): void {
+  ): this {
     this.addHook({
       ring: "host-preempt" as RingEvent,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as LifecycleContext),
     });
+    return this;
   }
 
   // see: cans/02-plugin-model.md#Segregated-ring-traits
@@ -846,7 +901,7 @@ export class HookRegistry<Ctx = unknown> {
       availableMb: number,
       totalMb: number,
     ) => Promise<void> | void,
-  ): void {
+  ): this {
     this.addHook({
       ring: "memory-pressure" as RingEvent,
       stage: "single",
@@ -855,5 +910,6 @@ export class HookRegistry<Ctx = unknown> {
         return handler(args[0] as number, args[1] as number);
       },
     });
+    return this;
   }
 }

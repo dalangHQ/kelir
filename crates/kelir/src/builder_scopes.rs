@@ -4,7 +4,7 @@ use std::path::Path;
 use std::pin::Pin;
 
 use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
-use kelir_interface::plugin_model::{HandlerCtx, LifecycleCtx, PluginError};
+use kelir_interface::plugin_model::{HandlerCtx, LifecycleCtx, PluginError, VetoEvent};
 use kelir_interface::protocol_wire::{FilterAction, Heartbeat, ProcessExit, TrapEvent, Verdict};
 
 use crate::builder_sdk::{KelirBuilder, Unsealed};
@@ -32,6 +32,10 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     {
         self.builder = self.builder.on_process_exit(f);
         self
+    }
+
+    pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
     }
 }
 
@@ -77,6 +81,10 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self.builder = self.builder.on_fs_lock(f);
         self
     }
+
+    pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
+    }
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
@@ -101,6 +109,10 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     {
         self.builder = self.builder.on_net_inbound(f);
         self
+    }
+
+    pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
     }
 }
 
@@ -127,6 +139,10 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self.builder = self.builder.on_console_output(f);
         self
     }
+
+    pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
+    }
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
@@ -151,6 +167,10 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     {
         self.builder = self.builder.on_exec_stderr(f);
         self
+    }
+
+    pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
     }
 }
 
@@ -198,6 +218,10 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     {
         self.builder = self.builder.on_host_preempt(f);
         self
+    }
+
+    pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
     }
 }
 
@@ -279,6 +303,19 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self.builder = self.builder.on_post_commit(f);
         self
     }
+
+    pub fn register_veto(
+        mut self,
+        event: VetoEvent,
+        callback: Box<dyn Fn() -> bool + Send + Sync>,
+    ) -> Self {
+        self.builder.registration.vetoes.push((event, callback));
+        self
+    }
+
+    pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
+    }
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
@@ -314,5 +351,9 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     {
         self.builder = self.builder.on_watchdog(f);
         self
+    }
+
+    pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
     }
 }

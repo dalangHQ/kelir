@@ -34,7 +34,33 @@ LOCAL_SNAPSHOT = "./fixtures/migrate-snapshot.erofs"
 
 
 def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
-    builder = (
+    async def pre_migrate(c: HandlerContext) -> Verdict:
+        if c.cap.db_proxy.rewrite_target != "migrate_schema.":
+            return Verdict.drop(
+                "EdbProxySchema",
+                f"EdbProxySchema: got {c.cap.db_proxy.rewrite_target!r}",
+            )
+        return Verdict.pass_()
+
+    async def post_migrate(c: HandlerContext) -> PostExecAction:
+        receipt = await c.receipt()
+        if not any(e.namespace == "net:l7:sql" for e in receipt.extensions):
+            return PostExecAction.rollback_and_halt()
+        return PostExecAction.proceed()
+
+    # see: cans/plugins/transaction.md#Plugin-transaction
+    async def _pre_commit(session: Session) -> None:
+        await session.cap.ledger.flush()
+
+    async def _post_commit(session: Session, committed: bool) -> None:
+        if committed:
+            print("[kelir] commit: per-entry leaf commit, staged snapshot "
+                  "is next cold-start fixture")
+        else:
+            print("[kelir] commit aborted: staging unlinked, broker upper "
+                  "and tombstones dropped, last good snapshot kept")
+
+    return (
         kelir.builder(
             vcpus=2, memory_mb=2048, driver="auto",
             kernel=f"./fixtures/vmlinux-6.6-{os.uname().machine}-kelir",
@@ -43,7 +69,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         )
 
         # see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
-        .plugin(DbProxyPlugin(DbProxyConfig(
+        .use(DbProxyPlugin(DbProxyConfig(
             postgres=PgWireRewrite(
                 listen_port=5432,
                 upstream=f"{pg_host}:5432",
@@ -63,7 +89,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         )))
 
         # see: cans/plugins/ledger.md#Merkle-WAL
-        .plugin(LedgerPlugin(LedgerConfig(
+        .use(LedgerPlugin(LedgerConfig(
             store="sqlite://.kelir/migrate-audit.merkle.db",
             merkle_chain=True,
             otel=None,
@@ -73,45 +99,17 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         )))
 
         # see: cans/plugins/transaction.md#Two-phase-commit-demonstration
-        .plugin(TransactionPlugin(TransactionConfig(
+        .use(TransactionPlugin(TransactionConfig(
             timeout_ms=30000,
             auto_rollback_on_taint=True,
             flush_fuse_before_commit=True,
         )))
+        # see: cans/plugins/db-proxy.md#Plugin-db-proxy
+        .trap(TrapFilter.binary("migrate"), pre=pre_migrate, post=post_migrate)
+        .on_pre_commit(_pre_commit)
+        .on_post_commit(_post_commit)
+        .seal()
     )
-
-    async def pre_migrate(c: HandlerContext) -> Verdict:
-        if c.cap.db_proxy.rewrite_target != "migrate_schema.":
-            return Verdict.drop(
-                "EdbProxySchema",
-                f"EdbProxySchema: got {c.cap.db_proxy.rewrite_target!r}",
-            )
-        return Verdict.pass_()
-
-    async def post_migrate(c: HandlerContext) -> PostExecAction:
-        receipt = await c.receipt()
-        if not any(e.namespace == "net:l7:sql" for e in receipt.extensions):
-            return PostExecAction.rollback_and_halt()
-        return PostExecAction.proceed()
-
-    # see: cans/plugins/db-proxy.md#Plugin-db-proxy
-    builder.trap(TrapFilter.binary("migrate"), pre=pre_migrate, post=post_migrate)
-
-    # see: cans/plugins/transaction.md#Plugin-transaction
-    @builder.on_pre_commit
-    async def _pre_commit(session: Session) -> None:
-        await session.cap.ledger.flush()
-
-    @builder.on_post_commit
-    async def _post_commit(session: Session, committed: bool) -> None:
-        if committed:
-            print("[kelir] commit: per-entry leaf commit, staged snapshot "
-                  "is next cold-start fixture")
-        else:
-            print("[kelir] commit aborted: staging unlinked, broker upper "
-                  "and tombstones dropped, last good snapshot kept")
-
-    return builder
 
 
 async def main() -> None:

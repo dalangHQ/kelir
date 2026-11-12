@@ -15,6 +15,8 @@ async fn hd_15_vcpu_scale_online_offline_dynamic() -> Result<(), String> {
         None,
     );
     let session = KelirBuilder::new(config)
+        .seal()
+        .map_err(|e| e.to_string())?
         .boot()
         .await
         .map_err(|e| e.to_string())?;

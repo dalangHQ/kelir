@@ -19,8 +19,12 @@
 // This artifact names the type parameters (Ctx, Deps, Plugins, Params,
 // SealState) but does not fix their list or order; method signatures
 // below return Self where the arity would otherwise be spelled. The
-// host-only verbs record their use on a plugin-mode builder and seal()
-// rejects them; params() is host-only by type (the arity pin).
+// host-only verbs are not implemented for Plugin mode: calling one on
+// a plugin-mode builder is a compile error, not a recorded call seal()
+// rejects (live: builder_sdk.rs Host,Unsealed impl only). There is no
+// record-and-reject path in Rust; params() is host-only by type (the
+// arity pin). Every chain verb returns Self; seal() is the only
+// fallible chain step, and config after seal() is a compile error.
 //
 // Owned by: cans/02-plugin-model.md#Unified-builder
 // see: cans/02-plugin-model.md#Unified-builder
@@ -145,6 +149,7 @@ pub struct KelirBuilder {
     scope: MountScope,
     fork: Option<ForkFn>,
     trap: Vec<Arc<dyn TrapInterposer>>,
+    trap_filters: Vec<TrapFilter>,
     fs: Vec<Arc<dyn FsInterposer>>,
     net: Vec<Arc<dyn NetInterposer>>,
     console: Vec<Arc<dyn ConsoleInterposer>>,
@@ -159,7 +164,7 @@ pub struct KelirBuilder {
 // see: cans/02-plugin-model.md#Unified-builder
 struct MountedPlugin {
     name: &'static str,
-    host_only_verbs: Vec<&'static str>,
+    trap_filters: Vec<TrapFilter>,
     vsock: Vec<VsockServiceSpec>,
     scope: MountScope,
 }
@@ -530,6 +535,7 @@ impl KelirBuilder {
             scope: MountScope::default(),
             fork: None,
             trap: Vec::new(),
+            trap_filters: Vec::new(),
             fs: Vec::new(),
             net: Vec::new(),
             console: Vec::new(),
@@ -557,6 +563,7 @@ impl KelirBuilder {
             scope: self.scope,
             fork: self.fork,
             trap: self.trap,
+            trap_filters: self.trap_filters,
             fs: self.fs,
             net: self.net,
             console: self.console,
@@ -615,14 +622,14 @@ impl KelirBuilder {
     where
         F: Fn(&TrapEvent, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
-        self.trap(|s| s.on_trap(f))
+        self.trap_scope(|s| s.on_trap(f))
     }
 
     pub fn on_process_exit<F>(mut self, f: F) -> Self
     where
         F: Fn(&ProcessExit, &HandlerCtx) -> Result<(), PluginError> + Send + Sync + 'static,
     {
-        self.trap(|s| s.on_process_exit(f))
+        self.trap_scope(|s| s.on_process_exit(f))
     }
 
     pub fn on_fs_lookup<F>(mut self, f: F) -> Self
@@ -791,12 +798,49 @@ impl KelirBuilder {
         self.telemetry(|s| s.on_watchdog(f))
     }
 
-    pub fn trap<F>(mut self, scope_fn: F) -> Self
+    // see: cans/02-plugin-model.md#Unified-builder
+    // trap(filter, handler) is the filter form, in both modes; the
+    // filter is retained and validated at seal(), so this verb never
+    // fails and the chain never breaks on it.
+    pub fn trap<F>(mut self, filter: impl Into<TrapFilter>, f: F) -> Self
+    where
+        F: Fn(&TrapEvent, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        let filter: TrapFilter = filter.into();
+        let snapshot = FilterSnapshot::from(&filter);
+        self.trap_filters.push(filter);
+        self.trap.push(Arc::new(TrapClosureAdapter::<_, OnTrap> {
+            handler: move |event: &TrapEvent, ctx: &HandlerCtx| {
+                if !filter_matches(&snapshot, event) {
+                    return Ok(Verdict::Pass);
+                }
+                f(event, ctx)
+            },
+            verb: PhantomData,
+        }));
+        self
+    }
+
+    pub fn trap_scope<F>(mut self, scope_fn: F) -> Self
     where
         F: for<'a> FnOnce(TrapScope<'a>) -> TrapScope<'a>,
     {
         let _ = scope_fn(TrapScope { trap: &mut self.trap });
         self
+    }
+
+    pub fn group<F>(mut self, configure: F) -> Self
+    where
+        F: FnOnce(Self) -> Self,
+    {
+        configure(self)
+    }
+
+    pub fn guard<F>(mut self, enabled: bool, configure: F) -> Self
+    where
+        F: FnOnce(Self) -> Self,
+    {
+        if enabled { configure(self) } else { self }
     }
 
     pub fn fs<F>(mut self, scope_fn: F) -> Self
@@ -871,65 +915,21 @@ impl KelirBuilder {
 // Mount. plugin() merges a plugin-mode builder by value: its hook vecs
 // append after the host's own hooks (host hooks first, then plugins in
 // mount order; within a plugin, registration order), its vsock services
-// append after the host's, and its mounted records flatten into the
-// host's (plugin-into-plugin mount composes the same way). plugin() and
-// plugin_instance() return Result: mounting the same plugin twice is
-// an error. The live plugin() was infallible; the duplicate check is
-// runtime, so the unified mount returns Result.
+// append after the host's, and its trap filters ride along for seal()
+// to validate with the plugin named. plugin() and plugin_instance()
+// return Self: mounting the same plugin twice is recorded here and
+// rejected by seal(). A plugin-mode builder has no plugin() method, so
+// plugin-into-plugin mount is a compile error in Rust, not a merge.
 impl KelirBuilder {
-    pub fn plugin(mut self, plugin: Self) -> Result<Self, PluginError> {
+    pub fn plugin(mut self, plugin: Self) -> Self {
+        // Live, plugin() takes KelirBuilder<Plugin, Unsealed, ...>: a
+        // host-mode builder cannot be passed, so the empty name below
+        // only stands in for that type error; seal() rejects it.
         let name = match plugin.name {
             Some(name) => name,
-            None => {
-                return Err(PluginError::reject(
-                    "EINVAL",
-                    "plugin() mounts a plugin-mode builder: use named()",
-                ));
-            }
+            None => "",
         };
-        if self.mounted.iter().any(|mounted| mounted.name == name) {
-            return Err(PluginError::reject(
-                "EINVAL",
-                &format!("plugin already mounted: {name}"),
-            ));
-        }
-        let mut host_only_verbs: Vec<&'static str> = Vec::new();
-        if plugin.registration.storage_cfg.is_some() {
-            host_only_verbs.push("storage");
-        }
-        if plugin.registration.terminal_cfg.is_some() {
-            host_only_verbs.push("terminal");
-        }
-        if plugin.registration.wire_cfg.is_some() {
-            host_only_verbs.push("wire");
-        }
-        if plugin.registration.lock_broker_cfg.is_some() {
-            host_only_verbs.push("lock_broker");
-        }
-        if plugin.registration.detached {
-            host_only_verbs.push("detached");
-        }
-        if !matches!(plugin.fast_boot, FastBootMode::Off) {
-            host_only_verbs.push("fast_boot");
-        }
-        if !matches!(plugin.dax_window, DaxWindowMode::Off) {
-            host_only_verbs.push("dax_window");
-        }
-        // trap(filter, handler) is host-only by impl block: the plugin-mode
-        // builder exposes trap(|scope| ...) instead, so the compiler (E0592)
-        // pins the split — no runtime check, no Registration.traps field.
-        if plugin.registration.on_trap_deny.is_some() {
-            host_only_verbs.push("on_trap_deny");
-        }
-        if !plugin.registration.custom_actions.is_empty() {
-            host_only_verbs.push("register_custom_action");
-        }
-        if !plugin.registration.stream_kind_services.is_empty() {
-            host_only_verbs.push("register_stream_kind");
-        }
-        if !plugin.registration.vetoes.is_empty() {
-            host_only_verbs.push("lifecycle_mut");
-        }
+        let trap_filters = plugin.trap_filters.clone();
         let vsock_specs: Vec<VsockServiceSpec> = plugin
             .vsock
             .iter()
@@ -937,6 +937,7 @@ impl KelirBuilder {
             .collect();
         let scope = plugin.scope.clone();
         self.trap.extend(plugin.trap);
+        self.trap_filters.extend(plugin.trap_filters);
         self.fs.extend(plugin.fs);
         self.net.extend(plugin.net);
         self.console.extend(plugin.console);
@@ -946,25 +947,18 @@ impl KelirBuilder {
         self.vsock.extend(plugin.vsock);
         self.mounted.push(MountedPlugin {
             name,
-            host_only_verbs,
+            trap_filters,
             vsock: vsock_specs,
             scope,
         });
-        self.mounted.extend(plugin.mounted);
-        Ok(self)
+        self
     }
 
-    pub fn plugin_instance<P>(mut self, plugin: P) -> Result<Self, PluginError>
+    pub fn plugin_instance<P>(mut self, plugin: P) -> Self
     where
         P: KelirPlugin + PluginDeps + Clone + 'static,
     {
         let name = plugin.name();
-        if self.mounted.iter().any(|mounted| mounted.name == name) {
-            return Err(PluginError::reject(
-                "EINVAL",
-                &format!("plugin already mounted: {name}"),
-            ));
-        }
         let context = plugin.context();
         let scope = plugin.default_scope();
         let mut registration = self.registration.narrow::<P::Context>();
@@ -976,22 +970,22 @@ impl KelirBuilder {
         self.registration = registration;
         self.mounted.push(MountedPlugin {
             name,
-            host_only_verbs: Vec::new(),
+            trap_filters: Vec::new(),
             vsock: Vec::new(),
             scope,
         });
-        Ok(self)
+        self
     }
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-// Host-only verbs. They exist on the one struct (like Elysia .listen())
-// and are simply not called on a plugin-mode builder; a call on one is
-// recorded in its registration and seal() rejects it with the plugin
-// named. params() is host-only by type (the arity pin). The live host's
-// on_vm_init / on_vm_ready / on_vm_shutdown methods are the ring verbs
-// above (append, plain async fn); on_trap_deny stays: it is not one of
-// the 24 rings.
+// Host-only verbs. They exist only on the Host-mode impl (live:
+// builder_sdk.rs Host,Unsealed); a plugin-mode builder has no such
+// methods, so calling one is a compile error. params() is host-only by
+// type (the arity pin). The live host's on_vm_init / on_vm_ready /
+// on_vm_shutdown methods are the ring verbs above (append, plain async
+// fn); on_trap_deny stays: it is not one of the 24 rings. trap(filter,
+// handler) is not here: it is a both-modes verb in the impl above.
 impl KelirBuilder {
     pub fn storage(mut self, config: StoragePlaneConfig<Plugins, Params>) -> Self {
         self.registration.storage_cfg = Some(config.retag());
@@ -1036,25 +1030,48 @@ impl KelirBuilder {
         self
     }
 
-    pub fn trap<F>(mut self, filter: impl Into<TrapFilter>, f: F) -> Result<Self, PluginError>
+    // see: cans/02-plugin-model.md#Unified-builder
+    // trap(filter, handler) is not here: it is a both-modes verb in the
+    // impl above. trap_async and post_exec are host-only, and infallible
+    // like trap: each retains its filter and seal() validates it.
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    pub fn trap_async<F, Fut>(
+        mut self,
+        filter: impl Into<TrapFilter>,
+        f: F,
+    ) -> Self
     where
-        F: Fn(&TrapEvent, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+        F: Fn(HandlerCtx) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Verdict, PluginError>> + Send + 'static,
     {
         let filter: TrapFilter = filter.into();
-        validate_trap_filter("host", &filter)?;
         let snapshot = FilterSnapshot::from(&filter);
-        self.registry
-            .trap
-            .push(Arc::new(TrapClosureAdapter::<_, OnTrap> {
-                handler: move |event: &TrapEvent, ctx: &HandlerCtx| {
-                    if !filter_matches(&snapshot, event) {
-                        return Ok(Verdict::Pass);
-                    }
-                    f(event, ctx)
-                },
-                verb: PhantomData,
-            }));
-        Ok(self)
+        self.trap_filters.push(filter);
+        self.registry.trap.push(Arc::new(AsyncTrapClosureAdapter {
+            filter: snapshot,
+            handler: f,
+        }));
+        self
+    }
+
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    pub fn post_exec<F, Fut>(
+        mut self,
+        filter: impl Into<TrapFilter>,
+        f: F,
+    ) -> Self
+    where
+        F: Fn(HandlerCtx) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<PostExecAction, PluginError>> + Send + 'static,
+    {
+        let filter: TrapFilter = filter.into();
+        let snapshot = FilterSnapshot::from(&filter);
+        self.trap_filters.push(filter);
+        self.registry.post_exec.push(Arc::new(PostExecGateAdapter {
+            filter: snapshot,
+            handler: f,
+        }));
+        self
     }
 
     pub fn on_trap_deny<F, Fut, T>(mut self, f: F) -> Self
@@ -1124,20 +1141,26 @@ impl KelirBuilder {
     }
 
     // see: cans/02-plugin-model.md#Unified-builder
-    // The one validation. The live seal() was infallible; the unified
-    // seal() validates and returns Result. (a) vsock triple and (b) scope
-    // triple over the host's own registrations and every mounted
-    // plugin's, with the plugin named on failure. (c) deps: enforced at
-    // mount by the Satisfies bound on plugin() / plugin_instance(); there
-    // is no runtime deps check in Rust, the uniform message is the
-    // TS/Python runtime form. (d) host-only verbs recorded on a
-    // plugin-mode builder, rejected here with the plugin named.
+    // The one validation. seal() validates and returns Result. (a) vsock
+    // triple and (b) scope triple over the host's own registrations and
+    // every mounted plugin's, with the plugin named on failure. (c) deps:
+    // enforced at mount by the Satisfies bound on plugin() /
+    // plugin_instance(); there is no runtime deps check in Rust, the
+    // uniform message is the TS/Python runtime form. (d) trap-filter
+    // triple: every trap filter has a non-empty binary and non-empty
+    // args, host and mounted alike. (e) duplicate mount names, recorded
+    // by plugin() / plugin_instance(), rejected here. There is no
+    // host-only-verb check in Rust: those verbs do not exist on a
+    // plugin-mode builder, so they cannot be recorded.
     pub fn seal(self) -> Result<Self, PluginError> {
         if self.config.is_none() {
             return Err(PluginError::reject(
                 "EINVAL",
                 "seal requires a host-mode builder",
             ));
+        }
+        for filter in &self.trap_filters {
+            validate_trap_filter("host", filter)?;
         }
         for (spec, _) in &self.vsock {
             if spec.port == 0 || spec.port > 65535 {
@@ -1163,7 +1186,24 @@ impl KelirBuilder {
                 }
             }
         }
+        let mut seen: Vec<&'static str> = Vec::new();
         for mounted in &self.mounted {
+            if mounted.name.is_empty() {
+                return Err(PluginError::reject(
+                    "EINVAL",
+                    "plugin() mounts a plugin-mode builder: use named()",
+                ));
+            }
+            if seen.contains(&mounted.name) {
+                return Err(PluginError::reject(
+                    "EINVAL",
+                    &format!("plugin already mounted: {}", mounted.name),
+                ));
+            }
+            seen.push(mounted.name);
+            for filter in &mounted.trap_filters {
+                validate_trap_filter(mounted.name, filter)?;
+            }
             for spec in &mounted.vsock {
                 if spec.port == 0 || spec.port > 65535 {
                     return Err(PluginError::reject(
@@ -1193,15 +1233,6 @@ impl KelirBuilder {
                         ));
                     }
                 }
-            }
-            if let Some(verb) = mounted.host_only_verbs.first() {
-                return Err(PluginError::reject(
-                    "EINVAL",
-                    &format!(
-                        "{}: host-only verb '{verb}' used on a plugin-mode builder",
-                        mounted.name
-                    ),
-                ));
             }
         }
         Ok(self)
@@ -1294,6 +1325,13 @@ impl PluginDeps for KelirBuilder {
 // Seal-time messages name the plugin on mounted-plugin failures:
 // `<plugin>: <triple failure>`. Host-level failures use the bare triple
 // message. The duplicate-mount message is `plugin already mounted:
-// <name>`; the missing-prerequisite message is `missing prerequisite:
-// <dep> required by <plugin>` (runtime form in TS/Python; Satisfies
-// bound in Rust).
+// <name>`, raised by seal(), not by plugin(); the missing-prerequisite
+// message is `missing prerequisite: <dep> required by <plugin>`
+// (runtime form in TS/Python; Satisfies bound in Rust). group(f) applies
+// f to the builder; guard(enabled, f) applies f only when enabled; every
+// scope has .end() returning the builder, and scope closures must return
+// the builder via .end(). fork_state is a factory, not a chain verb.
+// Scope structs here borrow the hook vecs; live builder_scopes.rs scopes
+// own the builder and close via .end().
+// validate_trap_filter(name, filter) rejects an empty binary or an
+// empty arg; it runs at seal(), never at registration.

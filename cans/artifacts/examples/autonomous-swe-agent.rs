@@ -404,12 +404,9 @@ async fn build_runtime(
             include_wall_clock_ns: true,
             include_phase_timings: false,
         },
-    }));
-
-    let builder = builder.plugin_instance(policy_plugin);
-
-    let builder = builder
-        .trap_async(
+    }))
+    .plugin_instance(policy_plugin)
+    .trap_async(
             "*",
             {
                 let oracle = Arc::clone(&oracle);
@@ -438,7 +435,7 @@ async fn build_runtime(
                     }
                 }
             },
-        )?
+        )
         .trap_async(
             TrapFilter::binary("npm")
                 .with_arg("test")
@@ -463,7 +460,7 @@ async fn build_runtime(
                     },
                 )))
             },
-        )?
+        )
         .trap_async(
             TrapFilter::binary("git").with_arg("push"),
             |c: HandlerCtx<_, _>| async move {
@@ -486,7 +483,7 @@ async fn build_runtime(
                 }
                 Ok(Verdict::Pass)
             },
-        )?
+        )
         .post_exec(
             "*",
             {
@@ -538,7 +535,7 @@ async fn build_runtime(
                     }
                 }
             },
-        )?
+        )
         .trap_async(
             TrapFilter::binary("git").with_arg("commit").with_arg("-m"),
             {
@@ -557,7 +554,7 @@ async fn build_runtime(
                     }
                 }
             },
-        )?
+        )
         .post_exec(
             TrapFilter::binary("git").with_arg("commit"),
             |c: HandlerCtx<_, _>| async move {
@@ -576,9 +573,7 @@ async fn build_runtime(
                 }
                 Ok(PostExecAction::Proceed)
             },
-        )?;
-
-    let builder = builder
+        )
         .on_vm_init(|ctx| {
             Box::pin(async move {
                 ctx.set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot)
@@ -604,7 +599,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     )
     .await?;
 
-    let mut session = builder.boot().await?;
+    let mut session = builder.seal()?.boot().await?;
     session.terminal.resize(120, 40)?;
     eprintln!("[kelir] host pressure={}", session.host.pressure_level());
 
