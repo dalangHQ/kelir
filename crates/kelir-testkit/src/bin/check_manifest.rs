@@ -1,4 +1,5 @@
 use kelir_testkit::CaseMap;
+use kelir_testkit::case_map::SlopRegister;
 use kelir_testkit::spec_anchors::{self, AnchorIndex};
 use std::collections::HashSet;
 use std::fs;
@@ -635,6 +636,194 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // see: cans/artifacts/test-plan/l3-slop-register.yaml#entries
+    let register_path = repo_root.join("cans/artifacts/test-plan/l3-slop-register.yaml");
+    let mut slop_entries = 0;
+    let mut slop_covered = 0;
+    match fs::read_to_string(&register_path) {
+        Ok(register_raw) => match serde_yaml::from_str::<SlopRegister>(&register_raw) {
+            Ok(register) => {
+                slop_entries = register.entries.len();
+                let map_status: std::collections::HashMap<&str, &str> = map
+                    .cases
+                    .iter()
+                    .map(|entry| (entry.case_id.as_str(), entry.status.as_str()))
+                    .collect();
+                let mut register_ids = HashSet::new();
+                let mut register_domains = HashSet::new();
+                for entry in &register.entries {
+                    if !register_ids.insert(entry.case_id.as_str()) {
+                        eprintln!("ERROR: duplicate slop register entry: {}", entry.case_id);
+                        errors += 1;
+                    }
+                    register_domains.insert(entry.domain.as_str());
+                    match map_status.get(entry.case_id.as_str()) {
+                        None => {
+                            eprintln!(
+                                "ERROR: slop register entry has no map case: {}",
+                                entry.case_id
+                            );
+                            errors += 1;
+                        }
+                        Some(status) if *status == "implemented" => {
+                            eprintln!(
+                                "ERROR: slop register entry {} is implemented in the map",
+                                entry.case_id
+                            );
+                            errors += 1;
+                        }
+                        Some(_) => {}
+                    }
+                    if entry.slop_risks.is_empty() {
+                        eprintln!(
+                            "ERROR: slop register entry {} has empty slop_risks",
+                            entry.case_id
+                        );
+                        errors += 1;
+                    }
+                    if entry.must_not.is_empty() {
+                        eprintln!(
+                            "ERROR: slop register entry {} has empty must_not",
+                            entry.case_id
+                        );
+                        errors += 1;
+                    }
+                    if entry.acceptance.is_empty() {
+                        eprintln!(
+                            "ERROR: slop register entry {} has empty acceptance",
+                            entry.case_id
+                        );
+                        errors += 1;
+                    }
+                }
+                for group in &register.code_only {
+                    register_domains.insert(group.domain.as_str());
+                    if group.slop_risks.is_empty() {
+                        eprintln!(
+                            "ERROR: slop register code_only group {} has empty slop_risks",
+                            group.domain
+                        );
+                        errors += 1;
+                    }
+                    if group.must_not.is_empty() {
+                        eprintln!(
+                            "ERROR: slop register code_only group {} has empty must_not",
+                            group.domain
+                        );
+                        errors += 1;
+                    }
+                    if group.acceptance.is_empty() {
+                        eprintln!(
+                            "ERROR: slop register code_only group {} has empty acceptance",
+                            group.domain
+                        );
+                        errors += 1;
+                    }
+                }
+                for entry in &map.cases {
+                    if entry.status == "red" || entry.status == "gap" {
+                        if register_ids.contains(entry.case_id.as_str()) {
+                            slop_covered += 1;
+                        } else {
+                            eprintln!(
+                                "ERROR: red/gap case {} lacks a slop register entry",
+                                entry.case_id
+                            );
+                            errors += 1;
+                        }
+                    }
+                }
+                for (root, ext) in [
+                    (repo_root.join("crates"), "rs"),
+                    (repo_root.join("packages/ts"), "ts"),
+                    (repo_root.join("packages/py"), "py"),
+                ] {
+                    for walked in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+                        let p = walked.path();
+                        let rel = p
+                            .strip_prefix(&repo_root)
+                            .unwrap_or(p)
+                            .to_string_lossy()
+                            .to_string();
+                        if rel.contains("node_modules") || rel.contains("/target/") {
+                            continue;
+                        }
+                        if p.extension().is_none_or(|e| e != ext) {
+                            continue;
+                        }
+                        let text = match fs::read_to_string(p) {
+                            Ok(text) => text,
+                            Err(err) => {
+                                eprintln!("ERROR: Cannot read {rel}: {err}");
+                                errors += 1;
+                                continue;
+                            }
+                        };
+                        for (index, line) in text.lines().enumerate() {
+                            let Some(todo_at) = line.find("TODO (L3)") else {
+                                continue;
+                            };
+                            let trimmed = line.trim_start();
+                            if !trimmed.starts_with("//") && !trimmed.starts_with('#') {
+                                continue;
+                            }
+                            let after_todo = &line[todo_at..];
+                            let Some(bracket_at) = after_todo.find('[') else {
+                                eprintln!(
+                                    "ERROR: {rel}:{}: TODO (L3) line lacks a [tag]",
+                                    index + 1
+                                );
+                                errors += 1;
+                                continue;
+                            };
+                            let after_bracket = &after_todo[bracket_at + 1..];
+                            let Some(close_at) = after_bracket.find(']') else {
+                                eprintln!(
+                                    "ERROR: {rel}:{}: TODO (L3) line lacks a [tag]",
+                                    index + 1
+                                );
+                                errors += 1;
+                                continue;
+                            };
+                            let tag = &after_bracket[..close_at];
+                            if tag.is_empty() {
+                                eprintln!(
+                                    "ERROR: {rel}:{}: TODO (L3) line lacks a [tag]",
+                                    index + 1
+                                );
+                                errors += 1;
+                                continue;
+                            }
+                            if !after_todo.contains("; slop:") {
+                                eprintln!(
+                                    "ERROR: {rel}:{}: TODO (L3) [{tag}] lacks `; slop:`",
+                                    index + 1
+                                );
+                                errors += 1;
+                                continue;
+                            }
+                            if !register_ids.contains(tag) && !register_domains.contains(tag) {
+                                eprintln!(
+                                    "ERROR: {rel}:{}: TODO (L3) tag [{tag}] names no register entry or code_only domain",
+                                    index + 1
+                                );
+                                errors += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("ERROR: malformed {}: {}", register_path.display(), err);
+                errors += 1;
+            }
+        },
+        Err(err) => {
+            eprintln!("ERROR: cannot read {}: {}", register_path.display(), err);
+            errors += 1;
+        }
+    }
+
     if errors == 0 {
         println!(
             "Manifest verification passed: {}/{} cases synchronized with filesystem.",
@@ -652,6 +841,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "Red by language: rust={} typescript={} python={}",
             red_by_language[0], red_by_language[1], red_by_language[2]
+        );
+        println!(
+            "Slop register verified: {slop_entries} entries covering {slop_covered} red/gap cases."
         );
         if warnings > 0 {
             println!(

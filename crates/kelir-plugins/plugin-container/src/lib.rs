@@ -107,7 +107,7 @@ impl ContainerPlugin {
         kind: IdMapKind,
         event: &TrapEvent,
     ) -> Result<Verdict, PluginError> {
-        // TODO (L3): subuid/subgid range resolution against the guest user policy beyond the pinned containment check.
+        // TODO (L3) [plugin_engine]: subuid/subgid range resolution against the guest user policy beyond the pinned containment check; slop: subuid/subgid beyond pin unchecked, guest uid escapes containment
         let Ok(allocations) = parse_id_map_allocations(&event.argv) else {
             return Ok(reject_eperm(
                 "malformed newuidmap/newgidmap allocation request",
@@ -154,7 +154,7 @@ impl ContainerPlugin {
                 return reject_eperm("raw device mount request");
             }
         }
-        // TODO (L3): mount policy table for the OCI runtime config path (capability sets, device allowlist).
+        // TODO (L3) [plugin_engine]: mount policy table for the OCI runtime config path (capability sets, device allowlist); slop: mount policy table missing, capabilities/devices unfiltered at runtime
         Verdict::Pass
     }
 }
@@ -177,7 +177,7 @@ impl KelirPlugin for ContainerPlugin {
 
     // see: cans/plugins/container.md#UID/GID-mapping-isolation
     fn default_scope(&self) -> MountScope {
-        // TODO (L3): gate-2 canonical (st_dev, st_ino, binary_blake3) identity per cans/11-protocol.md#Trap-fast-path
+        // TODO (L3) [pe_20_same_path_different_identity_never_matches]: gate-2 canonical (st_dev, st_ino, binary_blake3) identity per cans/11-protocol.md#Trap-fast-path; slop: path string matched, swapped (dev,ino,blake3) passes as trusted git
         MountScope::default().with_binaries([
             NEWUIDMAP,
             NEWGIDMAP,
@@ -235,7 +235,7 @@ impl LifecycleParticipant for ContainerPlugin {
             let (subuid, subgid) = resolve_unprivileged_ranges(&owner)?;
             self.service.pin_guest_id_map(subuid, subgid).await?;
         }
-        // TODO (L3): apply the pinned ranges through the host idmap configuration in StorageConfig.
+        // TODO (L3) [plugin_engine]: apply the pinned ranges through the host idmap configuration in StorageConfig; slop: pinned ranges never applied to idmap, host ids leak into guest
         Ok(())
     }
 }

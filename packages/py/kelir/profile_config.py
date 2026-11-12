@@ -97,7 +97,7 @@ class SessionProfile(BaseModel):
     storage: StorageProfile | None = None
 
 
-# TODO (L3): route non-session namespaces to their ConfigurablePlugin schema owners per cans/plugins/profile.md#Inversion-of-Control-configuration-router.
+# TODO (L3) [bindings_py]: route non-session namespaces to their ConfigurablePlugin schema owners per cans/plugins/profile.md#Inversion-of-Control-configuration-router.; slop: non-session namespace silently dropped from config
 class ProfileConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -34,7 +34,7 @@ interface NativeRelayBridge {
 async function loadNativeRelayBridge(): Promise<NativeRelayBridge> {
   const specifier = "./native/kelir.node";
   try {
-    // TODO (L3): ship the precompiled NAPI addon next to the dist bundle and verify its ABI version.
+    // TODO (L3) [bt_04_napi_boot_before_fuse_hooks_fails_closed]: ship the precompiled NAPI addon next to the dist bundle and verify its ABI version.; slop: dist ships without native addon, boot fails with wrong EConfig
     const addon = (await import(specifier)) as unknown as {
       readonly default?: NativeRelayBridge;
     };
@@ -195,7 +195,7 @@ export class Session {
   private suspendedReasonValue: SuspendReason | undefined;
 
   constructor(native: NativeSessionHandle) {
-    // TODO (L3): only the NAPI addon constructs Session, from a booted native handle.
+    // TODO (L3) [bt_04_napi_boot_before_fuse_hooks_fails_closed]: only the NAPI addon constructs Session, from a booted native handle.; slop: Session constructed without native handle, boot check bypassed
     this.native = native;
     this.driverName = native.driverName;
     this.bootMs = native.bootMs;
@@ -308,7 +308,7 @@ export class Session {
   static async attach(sessionId: string): Promise<Session> {
     const relay = await relaySocketPath(sessionId);
     void relay;
-    // TODO (L3): connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.
+    // TODO (L3) [lc_15_detached_session_reconnect_relay]: connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.; slop: attach skips lease check, binds dead relay.sock
     throw new EConfig("TODO: Session.attach (L3)");
   }
 

@@ -185,7 +185,7 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn run_plugin(name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO (L3): replace manifest and source scanning with the AST extractor required by cans/02-plugin-model.md#Auto-generated-manifest-contract.
+    // TODO (L3) [plugin_engine]: replace manifest and source scanning with the AST extractor required by cans/02-plugin-model.md#Auto-generated-manifest-contract.; slop: regex scan passes, AST extractor never built
     let roster = tier_roster()?;
     let Some(plugin) = roster.iter().find(|plugin| plugin.tier.crate_name == name) else {
         return Err(format!(

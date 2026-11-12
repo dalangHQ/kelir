@@ -345,7 +345,7 @@ impl VectorSuite {
 }
 
 // see: cans/15-operations.md#Multi-language-parity-gate
-// TODO (L3): canonicalize CBOR map ordering (envp HashMap iteration) so `kelir-plugin-cli vectors` regenerates byte-stable frame_hex literals.
+// TODO (L3) [protocol_mux]: canonicalize CBOR map ordering (envp HashMap iteration) so `kelir-plugin-cli vectors` regenerates byte-stable frame_hex literals.; slop: frame_hex regenerates unstable, CBOR order never canonicalized
 fn cbor<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, VectorError> {
     let mut out = Vec::new();
     ciborium::ser::into_writer(value, &mut out).map_err(|e| VectorError::Encode(e.to_string()))?;

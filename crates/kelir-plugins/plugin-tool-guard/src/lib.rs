@@ -1,7 +1,7 @@
 // see: cans/plugins/tool-guard.md#Plugin-tool-guard
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/test_tool_guard.rs per cans/artifacts/config/project-structure.txt.
+// TODO (L3) [governance_tools]: tests/test_tool_guard.rs per cans/artifacts/config/project-structure.txt; slop: test_tool_guard.rs missing, guard verdicts untested, Pass stub passes vacuously
 pub mod service_tool_guard;
 
 use std::collections::HashMap;
@@ -115,7 +115,7 @@ impl ToolGuardPlugin {
         if quota.invocations >= self.config.max_invocations_per_trace {
             return Ok(false);
         }
-        // TODO (L3): token-bucket cadence clamp per tool per cans/plugins/tool-guard.md.
+        // TODO (L3) [gt_04_token_bucket_call_quota_etoolquota]: token-bucket cadence clamp per tool per cans/plugins/tool-guard.md; slop: bucket never charged, burst passes, ETOOLQUOTA never fires
         quota.invocations = quota.invocations.saturating_add(1);
         Ok(true)
     }
@@ -175,13 +175,13 @@ impl ToolGuardPlugin {
         schema: &ToolSchema,
     ) -> Result<Verdict, PluginError> {
         let _ = (frame, schema);
-        // TODO (L3): taint-gated approval (Suspend until Approval), secret-pattern sanitization (Drop with ESecurityViolation), cyclic-rewrite rejection (ECYCLICREWRITE), and ExecveMutation serialization (Patch) per cans/plugins/tool-guard.md.
+        // TODO (L3) [gt_03_taint_tracking_mutation_suspend]: taint-gated approval (Suspend until Approval), secret-pattern sanitization (Drop with ESecurityViolation), cyclic-rewrite rejection (ECYCLICREWRITE), and ExecveMutation serialization (Patch) per cans/plugins/tool-guard.md; slop: evaluate returns Pass unconditionally, tainted mutation executes, secrets leak
         Ok(Verdict::Pass)
     }
 
     async fn scrub_tool_response(&self, payload: &[u8]) -> Result<(), PluginError> {
         let _ = payload;
-        // TODO (L3): strip host secrets from tool responses before model context ingestion per cans/plugins/tool-guard.md.
+        // TODO (L3) [gt_06_payload_secret_pattern_scrub]: strip host secrets from tool responses before model context ingestion per cans/plugins/tool-guard.md; slop: scrub returns Ok(()) unscrubbed, host secret reaches model context
         Ok(())
     }
 }
@@ -253,7 +253,7 @@ impl PluginDeps for ToolGuardPlugin {
 impl LifecycleParticipant for ToolGuardPlugin {
     async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         // see: cans/plugins/tool-guard.md#Immutable-schema-locking
-        // TODO (L3): boot-time tools/list fetch+lock halts here until route_request and decode_tools_list land; an empty-catalog boot would fake the spec-mandated lock.
+        // TODO (L3) [governance_tools]: boot-time tools/list fetch+lock halts here until route_request and decode_tools_list land; an empty-catalog boot would fake the spec-mandated lock; slop: empty-catalog boot fakes the lock, unpinned tools run
         let response = self.mcp.route_request(TOOLS_LIST_QUERY).await?;
         let mut advertisement = decode_tools_list(&response)?;
         // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
@@ -278,7 +278,7 @@ impl LifecycleParticipant for ToolGuardPlugin {
 #[async_trait]
 impl ConsoleInterposer for ToolGuardPlugin {
     async fn on_console_input(&self, port: u32, bytes: &[u8]) -> Result<Vec<u8>, PluginError> {
-        // TODO (L3): trace quota eviction once the console surface grows a close hook per cans/plugins/tool-guard.md.
+        // TODO (L3) [governance_tools]: trace quota eviction once the console surface grows a close hook per cans/plugins/tool-guard.md; slop: trace quota never evicted, closed-trace budget leaks into next trace
         if !self.interposes_port(port) {
             return Ok(bytes.to_vec());
         }
@@ -287,7 +287,7 @@ impl ConsoleInterposer for ToolGuardPlugin {
             Verdict::Drop { errno, reason } => {
                 Err(PluginError::reject(errno.unwrap_or(Errno::Eperm), reason))
             }
-            // TODO (L3): synthesize the JSON-RPC error object (code -32001) and the approval suspend per cans/plugins/tool-guard.md.
+            // TODO (L3) [gt_09_verdict_drop_jsonrpc_error_synthesis]: synthesize the JSON-RPC error object (code -32001) and the approval suspend per cans/plugins/tool-guard.md; slop: Suspend maps to Halt, connection closes, no -32001 framed error
             Verdict::Suspend { .. } => Err(PluginError::Halt(
                 "tool-guard approval suspend pending (L3)".into(),
             )),

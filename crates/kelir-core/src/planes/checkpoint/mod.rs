@@ -25,7 +25,7 @@ impl PidLineage {
             incarnation_id,
         }
     }
-    // TODO (L3): resolve guest pid to its lineage root by walking the trap-stream ppid chain.
+    // TODO (L3) [lifecycle_checkpoint]: resolve guest pid to its lineage root by walking the trap-stream ppid chain; slop: step attribution without lineage root, wrong step blamed
 
     pub const fn root_pid(self) -> u32 {
         self.root_pid
@@ -152,7 +152,7 @@ impl CheckpointPlane {
     }
 
     // see: cans/10-attestation.md#Step-evaluation-loop
-    // TODO (L3): invoke this create from the trap-match pre-hook so active_step() has a live slot per trap event.
+    // TODO (L3) [lc_03_step_evaluation_taint_rollback]: invoke this create from the trap-match pre-hook so active_step() has a live slot per trap event; slop: trap without live step slot, evaluation unattributed
     pub fn create_step(
         &self,
         lineage: PidLineage,
@@ -205,7 +205,7 @@ impl CheckpointPlane {
             delta: step.pending_delta,
         });
         graph.set_head(lineage, step.slot_id);
-        // TODO (L3): flush the staging delta into the Base sparse extents on the checkpoint slot.
+        // TODO (L3) [lifecycle_checkpoint]: flush the staging delta into the Base sparse extents on the checkpoint slot; slop: staging delta never flushed, base extents stale
         Ok(step.slot_id)
     }
 
@@ -214,7 +214,7 @@ impl CheckpointPlane {
         let mut steps = self.lock_steps()?;
         match steps.remove(&lineage) {
             Some(step) => {
-                // TODO (L3): discard the working delta from the checkpoint slot in <8ms.
+                // TODO (L3) [lc_03_step_evaluation_taint_rollback]: discard the working delta from the checkpoint slot in <8ms; slop: delta kept past 8ms, rollback leaves dirty pages
                 Ok(step.base_descriptor)
             }
             None => Err(PluginError::Halt(
@@ -242,7 +242,7 @@ impl CheckpointPlane {
 
     // see: cans/09-snapshots.md#Restore-modes
     // see: cans/08-lifecycle.md#Clock-invariants
-    // TODO (L3): read the live guest CLOCK_MONOTONIC through the driver surface; the watermark is the in-tree proxy.
+    // TODO (L3) [lc_11_lid_sleep_clock_resync_snap]: read the live guest CLOCK_MONOTONIC through the driver surface; the watermark is the in-tree proxy; slop: wake Ok without guest clock snap to host wall clock
     pub fn restore(
         &self,
         node_id: u64,
@@ -305,7 +305,7 @@ impl CheckpointPlane {
             PluginError::Halt("checkpoint head missing from manifest graph".into())
         })?;
         let compacted_id = self.next_slot_id.fetch_add(1, Ordering::SeqCst);
-        // TODO (L3): single-pass block copy flattens ancestor delta pages into the base sparse extents on export; CAS/BLAKE3 manifest addressing replaces sequential node ids.
+        // TODO (L3) [lc_20_portable_snapshot_archive_export]: single-pass block copy flattens ancestor delta pages into the base sparse extents on export; CAS/BLAKE3 manifest addressing replaces sequential node ids; slop: export Ok without trailer BLAKE3 digest, manifest unchecked
         graph.insert(CheckpointNode {
             node_id: compacted_id,
             parent: Some(base),

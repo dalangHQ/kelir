@@ -24,7 +24,7 @@ fn now_unix() -> i64 {
 }
 
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO (L3): connect to relay.sock and stream the detached session after the catalog lease check per cans/08-lifecycle.md#Detached-lifecycle.
+    // TODO (L3) [lc_15_detached_session_reconnect_relay]: connect to relay.sock and stream the detached session after the catalog lease check per cans/08-lifecycle.md#Detached-lifecycle.; slop: attach returns Ok, lease check and relay stream skipped
     let Some(id_arg) = args.first() else {
         return Err("attach requires a session id: kelir attach <session-id>".into());
     };
@@ -46,5 +46,5 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         row.runner_pid,
         relay.display()
     );
-    Err("TODO (L3): kelir attach relay.sock connect".into())
+    Err("TODO (L3) [lc_15_detached_session_reconnect_relay]: kelir attach relay.sock connect; slop: attach Ok without relay.sock ping/pong round-trip".into())
 }

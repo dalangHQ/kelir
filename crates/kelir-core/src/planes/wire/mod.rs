@@ -43,7 +43,7 @@ impl SmoltcpStack {
     }
 
     pub fn poll(&mut self) -> Result<bool, PluginError> {
-        // TODO (L3): attach the virtio-net device + SocketSet and run interface.poll over the TCP/UDP sockets.
+        // TODO (L3) [vr_11_virtio_net_smoltcp_frame_sink]: attach the virtio-net device + SocketSet and run interface.poll over the TCP/UDP sockets; slop: host TAP created, frames never sink into smoltcp
         let _ = &self.interface;
         Ok(false)
     }
@@ -63,7 +63,7 @@ pub enum DnsRcode {
 }
 
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-// TODO (L3): reload nameservers via inotify when /etc/resolv.conf changes.
+// TODO (L3) [wp_09_dns_gateway_host_state_tracking]: reload nameservers via inotify when /etc/resolv.conf changes; slop: resolv.conf change ignored, stale upstream kept
 fn host_resolver_nameservers() -> Vec<IpAddr> {
     std::fs::read_to_string(RESOLV_CONF_PATH)
         .map(|text| parse_resolv_conf_nameservers(&text))
@@ -92,7 +92,7 @@ pub struct DnsQuery {
 
 impl DnsQuery {
     pub fn parse(bytes: &[u8]) -> Result<Self, PluginError> {
-        // TODO (L3): parse the DNS wire query (name, qtype, EDNS0 OPT record).
+        // TODO (L3) [wp_02_synthetic_dns_nxdomain_enforcement]: parse the DNS wire query (name, qtype, EDNS0 OPT record); slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
         let _ = bytes;
         Err(PluginError::Halt("DNS query parse pending (L3)".into()))
     }
@@ -112,7 +112,7 @@ pub struct DnsResponse {
 impl DnsResponse {
     // see: cans/07-wire-plane.md#EDNS0-downgrade
     pub fn downgrade_edns0(&mut self) {
-        // TODO (L3): clear the AD flag bit and the OPT record DO bit inside wire_bytes.
+        // TODO (L3) [wire_plane]: clear the AD flag bit and the OPT record DO bit inside wire_bytes; slop: AD/DO bits leak upstream, downgrade never applied
         self.edns_downgraded = true;
     }
 }
@@ -159,7 +159,7 @@ pub enum LinkLocalRoute {
 }
 
 // see: cans/07-wire-plane.md#Pre-policy-drop-zones
-// TODO (L3): drop non-link-local cloud IMDS endpoints (e.g. Azure 168.63.129.16) at ingress; only the link-local 169.254.169.254 exception reaches the vault.
+// TODO (L3) [wire_plane]: drop non-link-local cloud IMDS endpoints (e.g. Azure 168.63.129.16) at ingress; only the link-local 169.254.169.254 exception reaches the vault; slop: cloud IMDS endpoint reaches vault, quarantine bypassed
 pub fn link_local_route(frame: &[u8], direction: FrameDirection) -> Option<LinkLocalRoute> {
     let remote = frame_remote_ip(frame, direction)?;
     if !remote.is_link_local() {
@@ -376,7 +376,7 @@ impl WirePlane {
     }
 
     // see: cans/07-wire-plane.md#DNS-policy-filter
-    // TODO (L3): the ssh agent bridge mounts, vault placeholders hydrate, and l4 proxies open host listeners.
+    // TODO (L3) [wire_plane]: the ssh agent bridge mounts, vault placeholders hydrate, and l4 proxies open host listeners; slop: agent bridge unmounted, placeholders dry, listeners closed
     pub fn with_wiring(self, wiring: WireWiring) -> Self {
         if let Ok(mut domains) = self.allowed_domains.write() {
             *domains = wiring.sinkhole_allowlist.clone();
@@ -506,7 +506,7 @@ impl WirePlane {
             }),
             FrameClass::TcpDns | FrameClass::UdpDns => Ok(FilterAction::Forward),
             FrameClass::Tcp => {
-                // TODO (L3): terminate the TCP stream in the embedded smoltcp stack.
+                // TODO (L3) [vr_11_virtio_net_smoltcp_frame_sink]: terminate the TCP stream in the embedded smoltcp stack; slop: host TAP created, frames never sink into smoltcp
                 let _ = self.stack.poll()?;
                 Ok(FilterAction::Forward)
             }
@@ -552,7 +552,7 @@ impl WirePlane {
                     .as_ref()
                     .is_some_and(|wiring| wiring.allow_udp_proxied)
                 {
-                    // TODO (L3): forward via the full-cone UDP NAT host socket per guest source port.
+                    // TODO (L3) [wire_plane]: forward via the full-cone UDP NAT host socket per guest source port; slop: UDP forwarded without per-port host socket
                     let _ = self.stack.poll()?;
                     Ok(FilterAction::Forward)
                 } else {
@@ -565,7 +565,7 @@ impl WirePlane {
             FrameClass::TcpDns | FrameClass::UdpDns => {
                 match dns_payload(frame, FrameDirection::Outbound) {
                     Some(payload) => {
-                        // TODO (L3): synthesize the answer frame into the guest ingress ring once the DNS wire parser lands.
+                        // TODO (L3) [wp_02_synthetic_dns_nxdomain_enforcement]: synthesize the answer frame into the guest ingress ring once the DNS wire parser lands; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
                         self.resolve_synthetic_dns(payload)?;
                         Ok(FilterAction::Forward)
                     }
@@ -576,7 +576,7 @@ impl WirePlane {
                 }
             }
             FrameClass::Tcp => {
-                // TODO (L3): run policy + NAT over the outbound TCP stream via the smoltcp stack.
+                // TODO (L3) [wp_04_userspace_netstack_unprivileged_dial]: run policy + NAT over the outbound TCP stream via the smoltcp stack; slop: dial needs CAP_NET_ADMIN or iptables, not plain socket
                 let _ = self.stack.poll()?;
                 Ok(FilterAction::Forward)
             }
@@ -587,7 +587,7 @@ impl WirePlane {
     }
 
     // see: cans/07-wire-plane.md#Frame-drop-and-forward-semantics
-    // TODO (L3): vCPU loop must act on this
+    // TODO (L3) [wire_plane]: vCPU loop must act on this; slop: surfaced action never acted on, vCPU ignores verdict
     pub fn surface_action(
         &self,
         action: kelir_interface::protocol_wire::FilterAction,
@@ -616,7 +616,7 @@ impl WirePlane {
                         "IMDS 169.254.169.254:{vsock_port} has no vault vsock sink bound; mount plugin-vault and bind it"
                     )));
                 }
-                // TODO (L3): parse the HTTP metadata request and bridge it to the bound vault vsock service stream.
+                // TODO (L3) [wire_plane]: parse the HTTP metadata request and bridge it to the bound vault vsock service stream; slop: metadata request never bridged to vault vsock
                 Ok(kelir_interface::protocol_wire::FilterAction::Forward)
             }
             _ => Err(PluginError::Halt(
@@ -626,7 +626,7 @@ impl WirePlane {
     }
 
     pub fn divert_l4(&self, guest_port: u16, host_target: String) -> Result<L4Stream, PluginError> {
-        // TODO (L3): divert the guest TCP stream over stream kind 0x0005 to the host target.
+        // TODO (L3) [wp_12_l4_diversion_passthrough_tls]: divert the guest TCP stream over stream kind 0x0005 to the host target; slop: TLS terminated in supervisor, plaintext in memory
         let _ = L4Stream::new(guest_port, host_target);
         Err(PluginError::Halt(
             "L4 stream diversion over 0x0005 pending (L3)".into(),
@@ -650,7 +650,7 @@ impl WirePlane {
                 || (!allowed.is_empty() && !domain_matches(&allowed, &query.name))
         };
         if blocked {
-            // TODO (L3): serialize the synthetic NXDOMAIN answer into wire_bytes.
+            // TODO (L3) [wp_02_synthetic_dns_nxdomain_enforcement]: serialize the synthetic NXDOMAIN answer into wire_bytes; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
             let mut response = DnsResponse {
                 wire_bytes: Vec::new(),
                 rcode: DnsRcode::NxDomain,
@@ -667,7 +667,7 @@ impl WirePlane {
             edns_downgraded: false,
         };
         response.downgrade_edns0();
-        // TODO (L3): relay the query to the live upstream resolver; ServFail is the answer until the relay is wired.
+        // TODO (L3) [wp_09_dns_gateway_host_state_tracking]: relay the query to the live upstream resolver; ServFail is the answer until the relay is wired; slop: resolv.conf change ignored, stale upstream kept
         Ok(response)
     }
 
@@ -675,7 +675,7 @@ impl WirePlane {
         &self,
         payload: &[u8],
     ) -> Result<DnsResponse, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): parse the query, apply the domain allowlist, forward to the tracked nameservers, EDNS0-downgrade the response.
+        // TODO (L3) [wp_09_dns_gateway_host_state_tracking]: parse the query, apply the domain allowlist, forward to the tracked nameservers, EDNS0-downgrade the response; slop: resolv.conf change ignored, stale upstream kept
         let _ = (payload, &self.allowed_domains, &self.synthetic_dns_ip);
         if self.resolver_nameservers.is_empty() {
             return Err(PluginError::Halt(
@@ -704,7 +704,7 @@ impl WirePlane {
             slot.last_active_unix = now_unix;
             return Ok(());
         }
-        // TODO (L3): open the per-source-port host UDP socket and store its descriptor in the slab entry (Full Cone endpoint independence).
+        // TODO (L3) [wire_plane]: open the per-source-port host UDP socket and store its descriptor in the slab entry (Full Cone endpoint independence); slop: slab entry without host socket, endpoint independence broken
         let entry = UdpNatEntry {
             guest_source_port,
             last_active_unix: now_unix,
@@ -751,7 +751,7 @@ impl WirePlane {
                 continue;
             };
             if now_unix.saturating_sub(entry.last_active_unix) > UDP_NAT_IDLE_TIMEOUT_SECS {
-                // TODO (L3): close(2) the host UDP socket descriptor before releasing the slab slot.
+                // TODO (L3) [wire_plane]: close(2) the host UDP socket descriptor before releasing the slab slot; slop: slab released with host fd open, descriptor leaks
                 *slot = None;
                 reaped += 1;
             }
@@ -763,7 +763,7 @@ impl WirePlane {
     // see: cans/07-wire-plane.md#Rollback-interaction
     // see: cans/07-wire-plane.md#Socket-lifecycle
     pub fn quiesce(&self) -> Result<(), PluginError> {
-        // TODO (L3): close live host-side L4 sockets with SO_LINGER zero, emit RST to peers, drain splicing buffers.
+        // TODO (L3) [wp_03_rollback_socket_termination_econnreset]: close live host-side L4 sockets with SO_LINGER zero, emit RST to peers, drain splicing buffers; slop: rollback Ok, host sockets open, no RST, send succeeds
         let mut slab = self
             .udp_nat_slab
             .lock()

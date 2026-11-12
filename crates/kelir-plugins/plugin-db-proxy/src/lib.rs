@@ -1,7 +1,7 @@
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt.
+// TODO (L3) [relational_transaction]: tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt; slop: test_db_proxy.rs missing, proxy behavior untested, Forward stub passes vacuously
 pub mod pgwire_db_proxy;
 pub mod reassembler_wire;
 pub mod service_db_proxy;
@@ -67,7 +67,7 @@ pub struct EphemeralCredentials {
     pub ttl_seconds: u32,
 }
 
-// TODO (L3): resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md.
+// TODO (L3) [rt_12_ephemeral_db_credentials_injection]: resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md; slop: guest connection string carries password, secret enters guest
 
 // see: cans/artifacts/examples/db-backed-runtime.py#DbProxyConfig
 #[derive(Clone, Debug, Default)]
@@ -109,7 +109,7 @@ impl DbProxyPlugin {
         descriptor: PgFrameDescriptor,
     ) -> Result<FilterAction, PluginError> {
         let _ = descriptor;
-        // TODO (L3): in-place Q/P SQL rewrite against rewrite_rules, per-connection rewrite tally above max_rewrites_per_conn aborting ECYCLICREWRITE, and pgwire ErrorResponse synthesis (EPERM→42501, ENOENT→42P01, unmapped→XX000) per cans/plugins/db-proxy.md.
+        // TODO (L3) [rt_10_pgwire_frame_rewrite_in_place]: in-place Q/P SQL rewrite against rewrite_rules, per-connection rewrite tally above max_rewrites_per_conn aborting ECYCLICREWRITE, and pgwire ErrorResponse synthesis (EPERM→42501, ENOENT→42P01, unmapped→XX000) per cans/plugins/db-proxy.md; slop: frame Forwarded unrewritten, 4th rewrite passes, no 42501 synthesis
         Ok(FilterAction::Forward)
     }
 
@@ -145,7 +145,7 @@ impl DbProxyPlugin {
             flows.remove(&key);
             return Ok(FilterAction::Forward);
         }
-        // TODO (L3): FIN half-close state machine per RFC 793.
+        // TODO (L3) [relational_transaction]: FIN half-close state machine per RFC 793; slop: half-close ignored, FIN state leaks, peer hangs or resets
         let state = flows.entry(key).or_default();
         match state.reassembly.push_segment(&segment)? {
             SegmentOutcome::Dropped => Ok(FilterAction::Drop {
@@ -166,7 +166,7 @@ impl DbProxyPlugin {
                     }
                     Ok(action)
                 }
-                // TODO (L3): row-data and ErrorResponse mediation on the server-to-client stream.
+                // TODO (L3) [relational_transaction]: row-data and ErrorResponse mediation on the server-to-client stream; slop: server rows unmediated, ErrorResponse unfiltered, leaks or spoofing pass through
                 NetDirection::UpstreamToGuest => Ok(FilterAction::Forward),
             },
         }

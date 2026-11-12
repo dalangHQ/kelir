@@ -42,7 +42,7 @@ where
 // see: cans/03-sdk-architecture.md#Rust-SDK
 pub trait Satisfies<Other> {}
 
-// TODO (L3): order-insensitive subset check so a required dependency is accepted wherever it sits in Plugins per cans/03-sdk-architecture.md#Rust-SDK.
+// TODO (L3) [plugin_engine]: order-insensitive subset check so a required dependency is accepted wherever it sits in Plugins per cans/03-sdk-architecture.md#Rust-SDK.; slop: positional subset check, dependency order silently rejected
 impl<Plugins: HList> Satisfies<HNil> for Plugins {}
 
 impl<Head, Tail, OtherTail> Satisfies<HCons<Head, OtherTail>> for HCons<Head, Tail>

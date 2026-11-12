@@ -100,7 +100,7 @@ def _snapshot_to_dict(snapshot: SnapshotDescriptor) -> dict[str, Any]:
 
 # see: cans/03-sdk-architecture.md#Python-SDK
 def _bridge_safe_config(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
-    # TODO (L3): token shields, prompts, and snoop callbacks cross once the FFI callback bridge lands.
+    # TODO (L3) [bindings_py]: token shields, prompts, and snoop callbacks cross once the FFI callback bridge lands.; slop: token shield/prompt/snoop dropped silently when bridge absent
     known = {
         "terminal": {
             "cols", "rows", "drop_osc52", "strip_title",
@@ -267,7 +267,7 @@ class Verdict:
         cbor: dict[str, Any] | None = None,
         attr: Any = None,
     ) -> Verdict:
-        # TODO (L3): serialize to FsInodeAttr / Custom payload
+        # TODO (L3) [bindings_py]: serialize to FsInodeAttr / Custom payload; slop: patch attr stays untyped Any, Rust rejects FsInodeAttr shape
         if args and attr is None:
             attr = args[0]
         mutation = None
@@ -449,7 +449,7 @@ class VmHandle:
         native.set_vcpus(count)
 
     async def map_shared_region(self, tag: str, size_bytes: int) -> bytes:
-        # TODO (L3): map a zero-copy host memory segment via the PyO3 _kelir bridge.
+        # TODO (L3) [vr_06_virtio_shm_doorbell_fence]: map a zero-copy host memory segment via the PyO3 _kelir bridge.; slop: segment mapped without SeqCst fences, guest reads stale bytes
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vm map_shared_region (L3)")
 
     async def import_snapshot(self, data: bytes) -> None:
@@ -496,23 +496,23 @@ class StorageHandle:
 
 class VsockChannel:
     async def write(self, data: bytes) -> None:
-        # TODO (L3): write frame to vsock channel via the PyO3 _kelir bridge.
+        # TODO (L3) [vr_12_transport_af_vsock_fallback_parity]: write frame to vsock channel via the PyO3 _kelir bridge.; slop: vsock frame bytes differ from SPSC framing
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vsock write (L3)")
 
     async def read(self) -> bytes:
-        # TODO (L3): read frame from vsock channel via the PyO3 _kelir bridge.
+        # TODO (L3) [vr_12_transport_af_vsock_fallback_parity]: read frame from vsock channel via the PyO3 _kelir bridge.; slop: vsock read returns SPSC-incompatible framing
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vsock read (L3)")
 
 
 class VsockHandle:
     async def channel(self, kind: int) -> VsockChannel:
-        # TODO (L3): open duplex byte stream on vsock kind via the PyO3 _kelir bridge.
+        # TODO (L3) [vr_12_transport_af_vsock_fallback_parity]: open duplex byte stream on vsock kind via the PyO3 _kelir bridge.; slop: duplex stream framing diverges from SPSC carrier
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: vsock channel (L3)")
 
 
 class FsHandle:
     async def warm_cache(self, paths: list[str]) -> None:
-        # TODO (L3): warm shared caches into the guest via the PyO3 _kelir bridge.
+        # TODO (L3) [storage_plane]: warm shared caches into the guest via the PyO3 _kelir bridge.; slop: warm_cache no-ops, guest reads cold upper
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: fs warm_cache (L3)")
 
 
@@ -521,7 +521,7 @@ class TerminalHandle:
         self._native = native
 
     def notice(self, text: str) -> None:
-        # TODO (L3): publish TerminalNotice to the event bus via the PyO3 _kelir bridge.
+        # TODO (L3) [terminal_plane]: publish TerminalNotice to the event bus via the PyO3 _kelir bridge.; slop: TerminalNotice never published, terminal state diverges
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: terminal notice (L3)")
 
     async def resize(self, cols: int, rows: int) -> None:
@@ -562,7 +562,7 @@ class HostHandle:
 
 class StepHandle:
     def last(self) -> SnapshotDescriptor:
-        # TODO (L3): return the most recently marked checkpoint via the PyO3 _kelir bridge.
+        # TODO (L3) [lifecycle_checkpoint]: return the most recently marked checkpoint via the PyO3 _kelir bridge.; slop: checkpoint lookup returns stale or fabricated descriptor
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: step last (L3)")
 
 
@@ -585,7 +585,7 @@ class HandlerContext(Generic[CtxT, ParamsT]):
         self.params: ParamsT | None = params
 
     async def receipt(self) -> ExecutionReceipt:
-        # TODO (L3): fetch the trap's execution receipt via the PyO3 _kelir bridge.
+        # TODO (L3) [ar_01_execution_receipt_blake3_binding]: fetch the trap's execution receipt via the PyO3 _kelir bridge.; slop: receipt fabricated without binary BLAKE3 binding
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: trap receipt (L3)")
 
     # see: cans/02-plugin-model.md#Unified-verdict

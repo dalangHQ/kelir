@@ -1,7 +1,7 @@
 // see: cans/01-architecture.md#Host-runtime
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/ facade integration tests per cans/artifacts/config/project-structure.txt.
+// TODO (L3) [plugin_engine]: tests/ facade integration tests per cans/artifacts/config/project-structure.txt.; slop: facade tests assert Ok(()), no session exercised
 pub use kelir_core::*;
 pub use kelir_interface as interface;
 pub use kelir_interface::driver_interface;

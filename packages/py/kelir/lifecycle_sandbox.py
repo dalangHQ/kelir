@@ -181,7 +181,7 @@ class Sandbox:
         )
 
     async def export_spec(self, path: str) -> None:
-        # TODO (L3): full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.
+        # TODO (L3) [bindings_py]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
         Path(path).write_text(_profile_text(self._profile, path), encoding="utf-8")
 
     async def stop(self) -> None:

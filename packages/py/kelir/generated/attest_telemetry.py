@@ -120,7 +120,7 @@ def from_native_exit_kind(raw: NativeExitKindRecord) -> ExitKind:
     raise ValueError(f"unknown native exit kind record: {raw}")
 
 
-# TODO (L3): no FFI producer populates ExecutionReceipt.exit_kind yet
+# TODO (L3) [attestation_receipts]: no FFI producer populates ExecutionReceipt.exit_kind yet; slop: receipt exit_kind fabricated, Normal without guest ACK
 class ExecutionReceipt(BaseModel):
     pid: int = 0
     binary_path: str = ""

@@ -38,7 +38,7 @@ pub enum FuseOpcode {
 
 impl FuseOpcode {
     pub fn from_u32(value: u32) -> Result<Self, PluginError> {
-        // TODO (L3): validate opcode numbers against the virtio-fs queue parser.
+        // TODO (L3) [vr_10_virtio_fs_fuse_req_channel]: validate opcode numbers against the virtio-fs queue parser; slop: FUSE reply never marshalled, virtqueue never consumed
         match value {
             uapi_fuse::FUSE_LOOKUP => Ok(FuseOpcode::Lookup),
             uapi_fuse::FUSE_GETATTR => Ok(FuseOpcode::Getattr),
@@ -70,7 +70,7 @@ pub struct FuseRequest {
 }
 
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
-// TODO (L3): driver marshals each reply into the fuse_out wire structs.
+// TODO (L3) [vr_10_virtio_fs_fuse_req_channel]: driver marshals each reply into the fuse_out wire structs; slop: FUSE reply never marshalled, virtqueue never consumed
 #[derive(Debug, Clone)]
 pub enum FuseReply {
     // see: cans/05-storage-plane.md#Interception-pipeline
@@ -169,7 +169,7 @@ impl FuseDispatcher {
                 match self.interposer.on_fs_lookup(&request.path)? {
                     Verdict::Pass => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
-                        // TODO (L3): fill lookup payload from broker getattr.
+                        // TODO (L3) [sp_11_host_fifo_socket_lookup_enxio]: fill lookup payload from broker getattr; slop: lookup accepts FIFO/socket, ENXIO never returned
                         reply: FuseReply::Payload(Vec::new()),
                     }),
                     // see: cans/02-plugin-model.md#Unified-verdict
@@ -224,7 +224,7 @@ impl FuseDispatcher {
                     .on_fs_read(&request.path, &request.data)?;
                 Ok(FuseResponse {
                     guest_inode: request.guest_inode,
-                    // TODO (L3): fill read payload from broker read at offset.
+                    // TODO (L3) [sp_14_in_flight_read_masking_pattern_replace]: fill read payload from broker read at offset; slop: guest reads raw secret, host file mutated instead
                     reply: FuseReply::Payload(Vec::new()),
                 })
             }
@@ -238,14 +238,14 @@ impl FuseDispatcher {
                     }
                 }
                 Err(PluginError::Halt(
-                    "TODO (L3): FUSE GETATTR needs the broker stat across lower, upper, and tombstones".into(),
+                    "TODO (L3) [storage_plane]: FUSE GETATTR needs the broker stat across lower, upper, and tombstones; slop: GETATTR without lower/upper/tombstone merge, stat wrong".into(),
                 ))
             }
             FuseOpcode::Readdir => Err(PluginError::Halt(
-                "TODO (L3): FUSE READDIR needs the host-side dir merge of base, upper, and tombstones".into(),
+                "TODO (L3) [sp_06_host_cow_broker_dir_merge_cache]: FUSE READDIR needs the host-side dir merge of base, upper, and tombstones; slop: readdir re-merges every call, zero cache hits".into(),
             )),
             FuseOpcode::Unlink => Err(PluginError::Halt(
-                "TODO (L3): FUSE UNLINK needs the broker tombstone write".into(),
+                "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: FUSE UNLINK needs the broker tombstone write; slop: commit Ok, tombstone or file still on host disk".into(),
             )),
             FuseOpcode::Mkdir => {
                 // see: cans/05-storage-plane.md#Storage-quotas
@@ -256,15 +256,15 @@ impl FuseDispatcher {
                     });
                 }
                 Err(PluginError::Halt(
-                    "TODO (L3): FUSE MKDIR needs the broker upper-directory create".into(),
+                    "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: FUSE MKDIR needs the broker upper-directory create; slop: commit Ok, tombstone or file still on host disk".into(),
                 ))
             }
             FuseOpcode::Rename => Err(PluginError::Halt(
-                "TODO (L3): FUSE RENAME needs the broker upper-file move".into(),
+                "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: FUSE RENAME needs the broker upper-file move; slop: in-place write, no temp+rename, inode unchanged".into(),
             )),
-            // TODO (L3): statfs replies remaining broker quota from the plane atomics.
+            // TODO (L3) [sp_16_statfs_zero_crawl_constant_time]: statfs replies remaining broker quota from the plane atomics; slop: statfs crawls host tree, time grows with base
             FuseOpcode::Statfs => Err(PluginError::Halt(
-                "TODO (L3): FUSE STATFS needs the remaining-quota reply from the plane atomics"
+                "TODO (L3) [sp_16_statfs_zero_crawl_constant_time]: FUSE STATFS needs the remaining-quota reply from the plane atomics; slop: statfs crawls host tree, time grows with base"
                     .into(),
             )),
             FuseOpcode::Write => {
@@ -333,7 +333,7 @@ impl FuseDispatcher {
                 };
                 self.lock_broker.acquire(&lock_request)?;
                 let flock_cmd = match request.opcode {
-                    // TODO (L3): flock LOCK_EX/LOCK_NB constants live in the enclave.
+                    // TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_EX/LOCK_NB constants live in the enclave; slop: in-memory lock table, no host flock, contender succeeds
                     FuseOpcode::Setlk => 6,
                     FuseOpcode::Setlkw => 2,
                     _ => 2,
@@ -344,7 +344,7 @@ impl FuseDispatcher {
                 {
                     Verdict::Pass => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
-                        // TODO (L3): fill lock payload from host flock grant; conflicts reply EWOULDBLOCK.
+                        // TODO (L3) [sp_19_host_inode_flock_contention_ewouldblock]: fill lock payload from host flock grant; conflicts reply EWOULDBLOCK; slop: contention Ok or wrong errno, EWOULDBLOCK never returned
                         reply: FuseReply::Payload(Vec::new()),
                     }),
                     Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(
@@ -436,10 +436,10 @@ impl FuseWorker {
     }
 
     pub fn run(&mut self) -> Result<(), PluginError> {
-        // TODO (L3): virtqueue consumption loop, recv request, dispatch, reply on queue.
+        // TODO (L3) [vr_10_virtio_fs_fuse_req_channel]: virtqueue consumption loop, recv request, dispatch, reply on queue; slop: FUSE reply never marshalled, virtqueue never consumed
         let _ = (&self.receiver, &self.dispatcher, self.session_id);
         Err(PluginError::Halt(
-            "TODO (L3): FuseWorker::run needs the virtqueue consumption loop in kelir-drivers/kelir-transport enclave".into(),
+            "TODO (L3) [vr_10_virtio_fs_fuse_req_channel]: FuseWorker::run needs the virtqueue consumption loop in kelir-drivers/kelir-transport enclave; slop: FUSE reply never marshalled, virtqueue never consumed".into(),
         ))
     }
 }

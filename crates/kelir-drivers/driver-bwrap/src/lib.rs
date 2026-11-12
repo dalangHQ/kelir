@@ -32,7 +32,7 @@ impl BwrapDriver {
     }
 
     fn spawn_namespace(&mut self) -> Result<(), VmmError> {
-        // TODO (L3): spawn bubblewrap/unshare user namespace via raw libc.
+        // TODO (L3) [hd_09_bwrap_emulated_fallback_opt_in]: spawn bubblewrap/unshare user namespace via raw libc; slop: namespace spawns without opt-in check, silent emulated boot
         Err(VmmError::Unsupported(
             "bwrap boot: bubblewrap namespace spawn (L3)".into(),
         ))
@@ -60,7 +60,7 @@ impl VmmDriver for BwrapDriver {
                 "emulated fallback not allowed".to_string(),
             ));
         }
-        // TODO (L3): deterministic replay needs hypervisor clock control (kvm-clock/KVM_SET_CLOCK); a namespace wrapper cannot provide it.
+        // TODO (L3) [hypervisor_driver]: deterministic replay needs hypervisor clock control (kvm-clock/KVM_SET_CLOCK); a namespace wrapper cannot provide it; slop: emulated clock faked as kvm-clock, replay timestamps diverge
         reject_emulated_deterministic_clock("bwrap", config.deterministic_clock)?;
         self.config = Some(config);
         self.spawn_namespace()
@@ -68,7 +68,7 @@ impl VmmDriver for BwrapDriver {
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn set_entropy_backend(&mut self, backend: EntropyBackend) -> Result<(), VmmError> {
-        // TODO (L3): swap the workload entropy source for the seeded ChaCha20 stream and advance the offset as getrandom() bytes are drawn.
+        // TODO (L3) [vr_03_virtio_rng_mandatory_entropy]: swap the workload entropy source for the seeded ChaCha20 stream and advance the offset as getrandom() bytes are drawn; slop: seeded stream never wired, host getrandom passed off as guest entropy
         self.entropy_backend = Some(backend);
         self.entropy_offset = 0;
         Ok(())
@@ -76,7 +76,7 @@ impl VmmDriver for BwrapDriver {
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn entropy_position(&self) -> Result<EntropyStreamPosition, VmmError> {
-        // TODO (L3): report the live seeded-stream offset; host entropy is not position-trackable.
+        // TODO (L3) [vr_03_virtio_rng_mandatory_entropy]: report the live seeded-stream offset; host entropy is not position-trackable; slop: offset 0 reported while draws advance, replay diverges silently
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => Ok(EntropyStreamPosition {
                 offset_bytes: self.entropy_offset,
@@ -92,7 +92,7 @@ impl VmmDriver for BwrapDriver {
         &mut self,
         position: EntropyStreamPosition,
     ) -> Result<(), VmmError> {
-        // TODO (L3): rewind the seeded stream to the restored offset before the next draw.
+        // TODO (L3) [vr_03_virtio_rng_mandatory_entropy]: rewind the seeded stream to the restored offset before the next draw; slop: rewind sets offset field only, stream continues from live position
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => {
                 self.entropy_offset = position.offset_bytes;

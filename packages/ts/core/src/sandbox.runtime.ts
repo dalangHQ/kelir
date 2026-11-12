@@ -162,7 +162,7 @@ export class Sandbox {
   }
 
   async exportSpec(path: string): Promise<void> {
-    // TODO (L3): full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.
+    // TODO (L3) [bindings_ts]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
     await writeFile(path, serializeProfile(this.profile, profileFormatForPath(path)));
   }
 

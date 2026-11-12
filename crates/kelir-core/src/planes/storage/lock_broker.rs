@@ -116,10 +116,10 @@ impl LockBroker {
     }
 
     pub fn acquire(&self, request: &LockRequest) -> Result<LockGrant, PluginError> {
-        // TODO (L3): match request.host_path against wiring.scope_globs before mediation; undeclared paths deny with EPERM.
+        // TODO (L3) [storage_plane]: match request.host_path against wiring.scope_globs before mediation; undeclared paths deny with EPERM; slop: undeclared path mediated, EPERM never denied
         let blocking = request.blocking && !self.wiring.non_blocking;
         let flock_cmd = match (request.kind, blocking) {
-            // TODO (L3): flock LOCK_SH/LOCK_EX/LOCK_NB constants live in the enclave.
+            // TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_SH/LOCK_EX/LOCK_NB constants live in the enclave; slop: in-memory lock table, no host flock, contender succeeds
             (LockKind::Shared, true) => 1,
             (LockKind::Shared, false) => 5,
             (LockKind::Exclusive, true) => 2,
@@ -161,22 +161,22 @@ impl LockBroker {
                 ));
             }
         }
-        // TODO (L3): host fd cache lookup, flock delegation, EWOULDBLOCK on conflict.
+        // TODO (L3) [sp_19_host_inode_flock_contention_ewouldblock]: host fd cache lookup, flock delegation, EWOULDBLOCK on conflict; slop: contention Ok or wrong errno, EWOULDBLOCK never returned
         let key = LockKey {
             namespace: request.namespace,
             guest_inode: request.guest_inode,
         };
         let _ = (&self.cache, &self.states, key);
         Err(PluginError::Halt(
-            "TODO (L3): LockBroker::acquire needs flock delegation in kelir-drivers/kelir-transport enclave".into(),
+            "TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: LockBroker::acquire needs flock delegation in kelir-drivers/kelir-transport enclave; slop: in-memory lock table, no host flock, contender succeeds".into(),
         ))
     }
 
     pub fn release(&self, key: LockKey) -> Result<(), PluginError> {
-        // TODO (L3): flock LOCK_UN plus host fd cache release in the enclave.
+        // TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_UN plus host fd cache release in the enclave; slop: in-memory lock table, no host flock, contender succeeds
         let _ = key;
         Err(PluginError::Halt(
-            "TODO (L3): LockBroker::release needs flock delegation in kelir-drivers/kelir-transport enclave".into(),
+            "TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: LockBroker::release needs flock delegation in kelir-drivers/kelir-transport enclave; slop: in-memory lock table, no host flock, contender succeeds".into(),
         ))
     }
 
@@ -199,7 +199,7 @@ impl LockBrokerCoordination for LockBroker {
 
     // see: cans/05-storage-plane.md#Host-inode-lock-broker
     async fn release_transaction_locks_for(&self, namespace: [u8; 16]) -> Result<(), PluginError> {
-        // TODO (L3): close the released host fds through the enclave flock delegation.
+        // TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: close the released host fds through the enclave flock delegation; slop: in-memory lock table, no host flock, contender succeeds
         {
             let mut states = self
                 .states

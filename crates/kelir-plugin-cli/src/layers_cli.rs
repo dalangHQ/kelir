@@ -12,7 +12,7 @@ const RULES: &[(&str, &[&str])] = &[
 ];
 
 pub fn check() -> Result<(), Box<dyn std::error::Error>> {
-    // TODO (L3): enforce the per-tier plugin-to-plugin rule per cans/02-plugin-model.md#Plugin-tiering; the scan bans core/driver/adapter prefixes only.
+    // TODO (L3) [pe_01_downward_only_tier_dependency_lint]: enforce the per-tier plugin-to-plugin rule per cans/02-plugin-model.md#Plugin-tiering; the scan bans core/driver/adapter prefixes only.; slop: lint disabled, upward tier import passes
     let root = crate::workspace_root()?;
     for (path, forbidden) in RULES {
         check_dir(&root.join(path), forbidden)?;

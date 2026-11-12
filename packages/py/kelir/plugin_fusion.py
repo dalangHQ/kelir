@@ -113,7 +113,7 @@ class FusedTrampoline:
                 return len(chain.hooks)
         return 0
 
-    # TODO (L3): compile each fused chain into the single flat closure that runs it per ring event.
+    # TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: compile each fused chain into the single flat closure that runs it per ring event.; slop: descriptor claims fused while hooks cross per hook
     def describe(self) -> dict[str, Any]:
         return {
             "rings": [

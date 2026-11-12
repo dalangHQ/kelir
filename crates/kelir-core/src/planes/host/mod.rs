@@ -154,13 +154,13 @@ impl HostPlane {
         }
         #[cfg(not(target_os = "linux"))]
         {
-            // TODO (L3): report host RSS on non-Linux (task_info on macOS, GetProcessMemoryInfo on Windows).
+            // TODO (L3) [lc_02_suspend_zero_rss_purge]: report host RSS on non-Linux (task_info on macOS, GetProcessMemoryInfo on Windows); slop: RSS unreported on macOS/Windows, suspend purge unproven
             None
         }
     }
 
     pub fn lsm_status(&self) -> bool {
-        // TODO (L3): query the host LSM (Linux LSM / macOS sandbox / Windows integrity) status.
+        // TODO (L3) [hypervisor_driver]: query the host LSM (Linux LSM / macOS sandbox / Windows integrity) status; slop: LSM status never queried, posture unproven
         let _ = &self.reaper_kind;
         false
     }
@@ -176,20 +176,20 @@ impl HostPlane {
     pub fn subscribe_pressure(
         &self,
     ) -> Result<PressureSubscription, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): subscribe to the kernel pressure source (cgroup v2 memory.pressure via epoll/io_uring, DISPATCH_SOURCE_TYPE_MEMORYPRESSURE on macOS) and store the subscription in watcher.
+        // TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: subscribe to the kernel pressure source (cgroup v2 memory.pressure via epoll/io_uring, DISPATCH_SOURCE_TYPE_MEMORYPRESSURE on macOS) and store the subscription in watcher; slop: pressure ignored, no madvise reclaim, balloon unadjusted
         let _ = &self.watcher;
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): HostPlane::subscribe_pressure".into(),
+            "TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: HostPlane::subscribe_pressure; slop: pressure ignored, no madvise reclaim, balloon unadjusted".into(),
         ))
     }
 
     pub fn poll_pressure_events(
         &self,
     ) -> Result<Vec<PressureEvent>, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): drain kernel pressure events into PressureEvents and update pressure_level.
+        // TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: drain kernel pressure events into PressureEvents and update pressure_level; slop: pressure ignored, no madvise reclaim, balloon unadjusted
         let _ = &self.watcher;
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): HostPlane::poll_pressure_events".into(),
+            "TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: HostPlane::poll_pressure_events; slop: pressure ignored, no madvise reclaim, balloon unadjusted".into(),
         ))
     }
 
@@ -211,10 +211,10 @@ impl HostPlane {
         &self,
         request: ReclaimRequest,
     ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): reclaim request.bytes of host frames via madvise(MADV_DONTNEED) on Linux, hv_vm_unmap + mach_vm_deallocate on macOS.
+        // TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: reclaim request.bytes of host frames via madvise(MADV_DONTNEED) on Linux, hv_vm_unmap + mach_vm_deallocate on macOS; slop: pressure ignored, no madvise reclaim, balloon unadjusted
         let _ = request;
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): HostPlane::reclaim".into(),
+            "TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: HostPlane::reclaim; slop: pressure ignored, no madvise reclaim, balloon unadjusted".into(),
         ))
     }
 
@@ -222,10 +222,10 @@ impl HostPlane {
         &self,
         parent_pid: u32,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): arm the platform reaper (pdeathsig / kqueue NOTE_EXIT / Job Object) on parent_pid.
+        // TODO (L3) [lc_12_host_reaper_pdeathsig_enforcement]: arm the platform reaper (pdeathsig / kqueue NOTE_EXIT / Job Object) on parent_pid; slop: no pdeathsig arm, orphan hypervisor survives parent SIGKILL
         let _ = parent_pid;
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): HostPlane::arm_host_reaper".into(),
+            "TODO (L3) [lc_12_host_reaper_pdeathsig_enforcement]: HostPlane::arm_host_reaper; slop: no pdeathsig arm, orphan hypervisor survives parent SIGKILL".into(),
         ))
     }
 }

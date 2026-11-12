@@ -247,7 +247,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     return this.registry.contextFns;
   }
 
-  // TODO (L3): the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.
+  // TODO (L3) [plugin_engine]: the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.; slop: interceptors never registered, traps bypass filter chain
   get vsockServices(): readonly VsockServiceEntry[] {
     return [
       ...this.registry.vsockEntries,
@@ -869,7 +869,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   private async loadNativeAddon(): Promise<NativeAddonBinding> {
     const specifier = "./native/kelir.node";
     try {
-      // TODO (L3): ship the precompiled NAPI addon next to the dist bundle and verify its ABI version.
+      // TODO (L3) [bt_04_napi_boot_before_fuse_hooks_fails_closed]: ship the precompiled NAPI addon next to the dist bundle and verify its ABI version.; slop: dist ships without native addon, boot fails with wrong EConfig
       const addon = (await import(specifier)) as unknown as {
         readonly default?: NativeAddonBinding;
       };
@@ -898,9 +898,9 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       enableWatchdog: this.kelirConfig.enableWatchdog,
       driver: this.kelirConfig.driver,
     });
-    // TODO (L3): forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.
+    // TODO (L3) [bindings_ts]: forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.; slop: boot flags silently dropped by native constructor
     if (this.terminalCfg) {
-      // TODO (L3): tokenShield.onClamp and prompt actions stay TypeScript-side until threadsafe-function bridging lands.
+      // TODO (L3) [bindings_ts]: tokenShield.onClamp and prompt actions stay TypeScript-side until threadsafe-function bridging lands.; slop: tokenShield/prompt actions never cross to native
       nativeBuilder.setTerminalConfig({
         cols: this.terminalCfg.cols,
         rows: this.terminalCfg.rows,
@@ -913,8 +913,8 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       });
     }
     if (this.storageCfg !== undefined || this.lockBrokerCfg !== undefined) {
-      // TODO (L3): snoop onWrite callbacks stay TypeScript-side until threadsafe-function bridging lands.
-      // TODO (L3): forward lockBroker globs/nonBlocking once the native setter exists.
+      // TODO (L3) [bindings_ts]: snoop onWrite callbacks stay TypeScript-side until threadsafe-function bridging lands.; slop: snoop onWrite never fires on guest writes
+      // TODO (L3) [bindings_ts]: forward lockBroker globs/nonBlocking once the native setter exists.; slop: lockBroker globs/nonBlocking silently dropped, lock broker never enforced
       nativeBuilder.setStorageConfig({
         idmapGuestUid: this.storageCfg?.idmap?.guestUid,
         idmapHostUid: this.storageCfg?.idmap?.hostUid,
@@ -950,9 +950,9 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         tapFilter: this.wireCfg.tapFilter,
       });
     }
-    // TODO (L3): the params schema stays TypeScript-side; the native params model bridge lands with typed context threading.
+    // TODO (L3) [bt_01_typescript_boot_econfig_missing_typebox_dependency]: the params schema stays TypeScript-side; the native params model bridge lands with typed context threading.; slop: params schema stays unvalidated stub, boot passes bad params
     if (this.paramsSchema) {
-      // TODO (L3): forward the pinned params schema once the native params model bridge exists.
+      // TODO (L3) [bt_01_typescript_boot_econfig_missing_typebox_dependency]: forward the pinned params schema once the native params model bridge exists.; slop: pinned params schema never forwarded, native validates nothing
     }
     for (const registration of this.pluginRegistrations) {
       nativeBuilder.addPlugin(registration.name, registration.enabled);
@@ -963,7 +963,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         "kelir native NAPI trampoline table is not one entry per ring event",
       );
     }
-    // TODO (L3): bind each fused ring chain to its single trampoline entry as one threadsafe closure.
+    // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: bind each fused ring chain to its single trampoline entry as one threadsafe closure.; slop: chains bound per hook, crossings multiply per ring event
     const nativeSession = await nativeBuilder.boot();
     const session = new Session(nativeSession);
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages

@@ -204,7 +204,7 @@ impl PyVmHandle {
 
     #[pyo3(signature = (_tag, _size_bytes))]
     fn map_shared_region(&self, _tag: String, _size_bytes: f64) -> PyResult<()> {
-        // TODO (L3): hand the SharedMemoryHandle across the bridge via SCM_RIGHTS once Session::memory_handoff lands.
+        // TODO (L3) [bindings_py]: hand the SharedMemoryHandle across the bridge via SCM_RIGHTS once Session::memory_handoff lands.; slop: handle never crosses, Buffer fabricated or missing
         Err(missing(
             "map_shared_region: the shared-memory handle crosses via SCM_RIGHTS handoff (L3)",
         ))
@@ -240,7 +240,7 @@ fn lock_session(
 impl PyTerminalHandle {
     #[pyo3(signature = (_message))]
     fn notice(&self, _message: String) -> PyResult<()> {
-        // TODO (L3): publish the TerminalNotice event once the reactive event bus lands.
+        // TODO (L3) [terminal_plane]: publish the TerminalNotice event once the reactive event bus lands.; slop: notice never published, terminal state unobserved
         Err(missing(
             "terminal notice: TerminalNotice emission lands with the reactive event bus (L3)",
         ))
@@ -361,7 +361,7 @@ pub struct PyVsockHandle {}
 impl PyVsockHandle {
     #[pyo3(signature = (_kind))]
     fn channel(&self, _kind: u32) -> PyResult<()> {
-        // TODO (L3): open the duplex channel once the mux SPSC rings carry stream frames.
+        // TODO (L3) [pm_02_stream_mux_open_data_close_flags]: open the duplex channel once the mux SPSC rings carry stream frames.; slop: channel opened without open/data/close flags
         Err(missing(
             "vsock channel: duplex streams ride the mux SPSC rings (L3)",
         ))
@@ -375,7 +375,7 @@ pub struct PyStepHandle {}
 #[pymethods]
 impl PyStepHandle {
     fn last(&self) -> PyResult<()> {
-        // TODO (L3): expose the active StepSlot once dispatch constructs HandlerCtx step stacks.
+        // TODO (L3) [lifecycle_checkpoint]: expose the active StepSlot once dispatch constructs HandlerCtx step stacks.; slop: step slot never constructed, hooks run without step
         Err(missing(
             "step last: step slots live in the dispatch HandlerCtx (L3)",
         ))
@@ -510,7 +510,7 @@ impl PySessionHandle {
 
     #[pyo3(signature = (_binary, _argv))]
     fn spawn(&self, _binary: String, _argv: Vec<String>) -> PyResult<()> {
-        // TODO (L3): spawn writes on the EXEC stream kind via the shim wire protocol.
+        // TODO (L3) [tp_09_exec_stream_sublane_stdio_fidelity]: spawn writes on the EXEC stream kind via the shim wire protocol.; slop: EXEC writes bypass sublane, stdio interleaved
         Err(missing(
             "spawn: EXEC stream dispatch lands with the shim wire protocol (L3)",
         ))
@@ -518,7 +518,7 @@ impl PySessionHandle {
 
     #[pyo3(signature = (_binary, _argv))]
     fn exec_in_guest(&self, _binary: String, _argv: Vec<String>) -> PyResult<()> {
-        // TODO (L3): exec_in_guest rides the EXEC stream kind via the shim wire protocol.
+        // TODO (L3) [tp_09_exec_stream_sublane_stdio_fidelity]: exec_in_guest rides the EXEC stream kind via the shim wire protocol.; slop: exec rides wrong stream kind, output lost
         Err(missing(
             "exec_in_guest: EXEC stream dispatch lands with the shim wire protocol (L3)",
         ))
@@ -535,7 +535,7 @@ impl PySessionHandle {
     }
 
     fn rollback(&self) -> PyResult<()> {
-        // TODO (L3): lineage-derived head rollback needs the dispatch PID lineage.
+        // TODO (L3) [lc_03_step_evaluation_taint_rollback]: lineage-derived head rollback needs the dispatch PID lineage.; slop: rollback without lineage, wrong head restored
         Err(missing(
             "rollback: pass a snapshot; lineage-derived head rollback lands with PID tracking (L3)",
         ))
@@ -551,21 +551,21 @@ impl PySessionHandle {
     }
 
     fn console(&self) -> PyResult<()> {
-        // TODO (L3): attach the PTY console master once the terminal plane owns it.
+        // TODO (L3) [terminal_plane]: attach the PTY console master once the terminal plane owns it.; slop: PTY never attached, console output lost
         Err(missing(
             "console: PTY master attach lands with the terminal plane console (L3)",
         ))
     }
 
     fn get_causal_delta_from_parent(&self) -> PyResult<()> {
-        // TODO (L3): causal deltas are produced by plugin-ledger over the delta chain.
+        // TODO (L3) [ar_09_causal_delta_aggregation_merkle]: causal deltas are produced by plugin-ledger over the delta chain.; slop: deltas fabricated, no merkle aggregation
         Err(missing(
             "get_causal_delta_from_parent: causal deltas come from plugin-ledger (L3)",
         ))
     }
 
     fn handle_ingress(&self) -> PyResult<()> {
-        // TODO (L3): wire-ingress parked connections surface once the wire plane owns the host listeners.
+        // TODO (L3) [wire_plane]: wire-ingress parked connections surface once the wire plane owns the host listeners.; slop: parked connections never surface, listeners silent
         Err(missing(
             "handle_ingress: inbound connections park in the wire plane listeners (L3)",
         ))
@@ -621,7 +621,7 @@ impl PyKelirBuilder {
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
-    // TODO (L3): prompt rules and the token-shield clamp callback stay Python-side until the FFI callback bridge lands.
+    // TODO (L3) [bindings_py]: prompt rules and the token-shield clamp callback stay Python-side until the FFI callback bridge lands.; slop: callbacks stay Python-side, silently dropped
     fn set_terminal_config(&mut self, cfg: &Bound<'_, PyDict>) -> PyResult<()> {
         let mut wiring = kelir_core::planes::terminal::TerminalWiring::default();
         for (key, value) in cfg.iter() {
@@ -843,7 +843,7 @@ impl PyKelirBuilder {
         if let Some(reason) = self.config.missing_boot_path() {
             return Err(PyValueError::new_err(reason));
         }
-        // TODO (L3): bind each fused ring chain to its single trampoline entry as one closure and dispatch through the kelir-core pipeline.
+        // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: bind each fused ring chain to its single trampoline entry as one closure and dispatch through the kelir-core pipeline.; slop: one closure per hook, multiple crossings
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
         let plane_wiring = kelir_core::session_lifecycle::PlaneWiring {
             terminal: self.terminal_wiring.clone(),
@@ -859,7 +859,7 @@ impl PyKelirBuilder {
             plane_wiring,
         )
         .map_err(halt)?;
-        // TODO (L3): re-source driver_name from the booted core session once it exposes the resolved driver.
+        // TODO (L3) [hypervisor_driver]: re-source driver_name from the booted core session once it exposes the resolved driver.; slop: driver name stale, wrong backend reported
         Ok(PySessionHandle::from_session(
             session,
             self.driver_name.clone(),

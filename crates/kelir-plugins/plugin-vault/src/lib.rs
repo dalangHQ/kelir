@@ -32,7 +32,7 @@ const METADATA_MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_CONCURRENT_METADATA_SESSIONS: usize = 64;
 
 // see: cans/07-wire-plane.md#Pre-policy-drop-zones
-// TODO (L3): pin this constant against the kelir-core vsock transport host-bridge identity.
+// TODO (L3) [governance_vault]: pin this constant against the kelir-core vsock transport host-bridge identity; slop: CID constant unpinned, bridge identity drifts, wrong peer served
 pub const WIRE_PLANE_BRIDGE_CID: u32 = 2;
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service
@@ -118,7 +118,7 @@ impl MetadataEndpoint {
             name: name.into(),
             ttl_seconds: self.config.token_ttl_seconds,
         };
-        // TODO (L3): parse ttl_seconds and audience query parameters per cans/plugins/vault.md.
+        // TODO (L3) [gv_03_audience_locking_validation]: parse ttl_seconds and audience query parameters per cans/plugins/vault.md; slop: audience unparsed, query pollutes name, wildcard token issued
         match self.broker.issue(&token_request).await {
             Ok(token) => ok_response(&token),
             Err(err) => error_response(err.errno().as_str(), err.reason()),
@@ -169,7 +169,7 @@ impl VaultPlugin {
     }
 
     // see: cans/plugins/vault.md#Metadata-service-(vault)
-    // TODO (L3): no L2 boot identity carries a vsock guest CID (VmConfig and LifecycleCtx lack it); core binds it once the vsock transport lands.
+    // TODO (L3) [governance_vault]: no L2 boot identity carries a vsock guest CID (VmConfig and LifecycleCtx lack it); core binds it once the vsock transport lands; slop: guest CID never bound, any vsock peer passes as session
     fn is_session_peer(&self, peer: &VsockPeer) -> bool {
         self.session_guest_cid.is_some_and(|cid| cid == peer.cid)
     }
@@ -188,7 +188,7 @@ impl VaultPlugin {
     }
 
     // see: cans/02-plugin-model.md#Latency-ceiling
-    // TODO (L3): replace the tracked blocking thread with pollable stream reads once the transport exposes readiness.
+    // TODO (L3) [governance_vault]: replace the tracked blocking thread with pollable stream reads once the transport exposes readiness; slop: blocking thread kept, metadata worker stalls on unread stream
     fn serve_peer_off_worker(
         &self,
         peer: &VsockPeer,
@@ -413,7 +413,7 @@ fn http_response(status: &str, body: &str) -> Vec<u8> {
     .into_bytes()
 }
 
-// TODO (L3): replace with the workspace JSON encoder once dependencies permit; minimal escaping skeleton only.
+// TODO (L3) [governance_vault]: replace with the workspace JSON encoder once dependencies permit; minimal escaping skeleton only; slop: hand-rolled escaping ships, crafted value breaks JSON string
 fn json_string(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len() + 2);
     for ch in value.chars() {

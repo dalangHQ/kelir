@@ -75,7 +75,7 @@ impl PipelineEngine {
         Ok(())
     }
 
-    // TODO (L3): no TrampolineRing tag exists for memory-pressure telemetry, so fused crossings cannot bind this ring yet.
+    // TODO (L3) [telemetry_audit]: no TrampolineRing tag exists for memory-pressure telemetry, so fused crossings cannot bind this ring yet; slop: telemetry ring bound without tag, crossings unattributed
     // see: cans/14-observability.md#Metrics-pipeline
     pub async fn dispatch_memory_pressure(
         &self,
@@ -110,7 +110,7 @@ impl PipelineEngine {
     }
 
     // see: cans/10-attestation.md#Step-evaluation-loop
-    // TODO (L3): the step-evaluation loop calls this per committed step per cans/10-attestation.md#Step-evaluation-loop.
+    // TODO (L3) [lc_03_step_evaluation_taint_rollback]: the step-evaluation loop calls this per committed step per cans/10-attestation.md#Step-evaluation-loop; slop: step loop runs without per-step evaluation, taint unrevoked
     pub async fn dispatch_post_exec(
         &self,
         event: &TrapEvent,

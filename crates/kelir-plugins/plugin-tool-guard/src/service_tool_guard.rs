@@ -29,7 +29,7 @@ pub struct McpFrame {
 impl McpFrame {
     // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
     pub fn decode(payload: &[u8]) -> Result<Self, PluginError> {
-        // TODO (L3): decode JSON Lines frames and classify tools/call vs tools/list per cans/plugins/mcp.md; FLAG_CONTINUATION reassembly per cans/11-protocol.md#Stream-mux-framing.
+        // TODO (L3) [gt_01_jsonrpc_tool_call_interposition]: decode JSON Lines frames and classify tools/call vs tools/list per cans/plugins/mcp.md; FLAG_CONTINUATION reassembly per cans/11-protocol.md#Stream-mux-framing; slop: decode returns default frame, tools/call never classified, calls Halt EPERM
         let _ = payload;
         Ok(Self {
             method: McpMethod::Unparsed,
@@ -48,7 +48,7 @@ pub struct ToolsListResult {
 
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
 pub fn decode_tools_list(payload: &[u8]) -> Result<ToolsListResult, PluginError> {
-    // TODO (L3): decode the JSON Lines tools/list result envelope per cans/plugins/mcp.md.
+    // TODO (L3) [governance_tools]: decode the JSON Lines tools/list result envelope per cans/plugins/mcp.md; slop: tools/list envelope undecoded, catalog stays empty, lock faked
     Err(PluginError::Halt(format!(
         "tools/list envelope decode pending (L3): {} bytes",
         payload.len()
@@ -203,7 +203,7 @@ impl ToolRegistryService for ToolRegistry {
             .approvals
             .lock()
             .map_err(|_| PluginError::Halt("approval ledger poisoned".into()))?;
-        // TODO (L3): verify canonical arguments and payload hash before the host approval binds per cans/plugins/tool-guard.md.
+        // TODO (L3) [gt_03_taint_tracking_mutation_suspend]: verify canonical arguments and payload hash before the host approval binds per cans/plugins/tool-guard.md; slop: approval binds without hash check, mutated payload rides approval
         approvals.push(ApprovalRequest {
             tool: request.tool.clone(),
             canonical_arguments: request.canonical_arguments.clone(),

@@ -32,7 +32,7 @@ pub struct TrapInspection {
 }
 
 pub fn inspect_trap(trap: &SeccompTrap, seq: u64) -> Result<TrapInspection, ShimError> {
-    // TODO (L3): capture argv/envp/auxv via process_vm_readv without thread attachment.
+    // TODO (L3) [protocol_mux]: capture argv/envp/auxv via process_vm_readv without thread attachment; slop: argv/envp read via /proc race, frozen thread mutates mid-read
     let _frozen = FreezeGuard::acquire(trap.pid)?;
     let (binary_path, binary_dev, binary_ino) = resolve_exe(trap.pid)?;
     let argv = read_argv(trap.pid)?;
@@ -56,7 +56,7 @@ pub fn inspect_trap(trap: &SeccompTrap, seq: u64) -> Result<TrapInspection, Shim
         memfd_create_flags: None,
     });
     Ok(TrapInspection {
-        // TODO (L3): fill resolved_binary from interpreter unwrapping; zero identity until then.
+        // TODO (L3) [protocol_mux]: fill resolved_binary from interpreter unwrapping; zero identity until then; slop: interpreter path reported as binary, BLAKE3 binds wrong file
         event,
         interp,
         execfn_present: auxv_value(&auxv, AT_EXECFN).is_some(),

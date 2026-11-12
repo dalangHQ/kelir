@@ -17,7 +17,7 @@ impl Wake for ThreadWaker {
 }
 
 // see: cans/02-plugin-model.md#Latency-ceiling
-// TODO (L3): drive the futures on the async runtime once the transport exposes a runtime handle.
+// TODO (L3) [plugin_engine]: drive the futures on the async runtime once the transport exposes a runtime handle.; slop: futures never driven, transport handle assumed present
 pub fn block_on<F: Future>(future: F) -> F::Output {
     let mut future = Box::pin(future);
     let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));

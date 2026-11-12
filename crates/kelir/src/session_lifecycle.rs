@@ -214,7 +214,7 @@ pub struct SpawnResult {
 pub struct VsockHandle;
 
 impl VsockHandle {
-    // TODO (L3): open the multiplexed vsock channel for the stream kind per cans/03-sdk-architecture.md#Session-surfaces.
+    // TODO (L3) [wire_plane]: open the multiplexed vsock channel for the stream kind per cans/03-sdk-architecture.md#Session-surfaces.; slop: channel Ok, multiplexed vsock bytes never flow
     pub async fn channel(&self, _kind: u16) -> Result<VsockChannel, PluginError> {
         Err(PluginError::Halt("TODO (L3): VsockHandle::channel".into()))
     }
@@ -288,7 +288,7 @@ impl SpawnBuilder {
         self.session_id.is_some()
     }
 
-    // TODO (L3): serialize the params value into the request buffer so HandlerCtx::params::<T>() decodes it per cans/03-sdk-architecture.md#Params-typed-views.
+    // TODO (L3) [protocol_mux]: serialize the params value into the request buffer so HandlerCtx::params::<T>() decodes it per cans/03-sdk-architecture.md#Params-typed-views.; slop: params never serialized, typed decode unproven
     pub fn params<T>(self, _params: T) -> Self {
         self
     }
@@ -296,7 +296,7 @@ impl SpawnBuilder {
 
 // see: cans/11-protocol.md#Per-command-rlimits
 fn encode_exec_control_limits(limits: Option<&ProcessLimits>) -> Vec<u8> {
-    // TODO (L3): serialize the rlimit descriptor onto EXEC control sub-lane 0x03.
+    // TODO (L3) [protocol_mux]: serialize the rlimit descriptor onto EXEC control sub-lane 0x03.; slop: rlimit dropped, EXEC sub-lane 0x03 never carries it
     let _ = limits;
     Vec::new()
 }
@@ -311,7 +311,7 @@ impl Future for SpawnBuilder {
             )));
         }
         let _control = encode_exec_control_limits(self.limits.as_ref());
-        // TODO (L3): encode the EXEC frame on the bound stream kind and dispatch it over the session transport.
+        // TODO (L3) [protocol_mux]: encode the EXEC frame on the bound stream kind and dispatch it over the session transport.; slop: EXEC frame never encoded, guest exec never dispatched
         Poll::Ready(Err(PluginError::Halt("TODO (L3): guest exec".into())))
     }
 }

@@ -1,7 +1,7 @@
 // see: cans/plugins/ledger.md#Plugin-ledger
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/test_merkle_wal.rs, test_causal_delta.rs, test_otel.rs per cans/artifacts/config/project-structure.txt.
+// TODO (L3) [telemetry_audit]: tests/test_merkle_wal.rs, test_causal_delta.rs, test_otel.rs per cans/artifacts/config/project-structure.txt; slop: ledger tests missing, WAL/OTel paths untested, encoder-only passes vacuously
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -123,7 +123,7 @@ impl LedgerCtx {
     }
 
     pub async fn flush(&self) -> Result<(), PluginError> {
-        // TODO (L3): ship the WAL flush and OTel export over gRPC/HTTP; the encoder below only shapes the payload.
+        // TODO (L3) [ta_04_otlp_grpc_metric_export_streaming]: ship the WAL flush and OTel export over gRPC/HTTP; the encoder below only shapes the payload; slop: encoder-only kept, metrics written to local disk, no gRPC frames sent
         let Some(metrics) = &self.metrics else {
             return Err(PluginError::Halt(
                 "ledger flush needs a bound MetricRegistry".into(),
@@ -151,14 +151,14 @@ impl LedgerCtx {
     }
 
     pub async fn blake3_of_producing_process(&self, _path: &Path) -> Result<String, PluginError> {
-        // TODO (L3): resolve the producing-process digest from the live per-process receipt.
+        // TODO (L3) [telemetry_audit]: resolve the producing-process digest from the live per-process receipt; slop: digest from path string, receipt never consulted, wrong binary attributed
         Err(PluginError::Halt(
             "ledger blake3_of_producing_process needs the live receipt".into(),
         ))
     }
 
     pub async fn finalize(&self, _request: FinalizeRequest) -> Result<FinalReceipt, PluginError> {
-        // TODO (L3): append the leaf via wal_ledger::WalRecord + wal_ledger::merkle_root, sign the receipt, and return the finalized root.
+        // TODO (L3) [telemetry_audit]: append the leaf via wal_ledger::WalRecord + wal_ledger::merkle_root, sign the receipt, and return the finalized root; slop: finalize keeps Err Halt, no leaf appended or signed, receipt unverifiable
         Err(PluginError::Halt(
             "ledger finalize needs the Merkle WAL sink".into(),
         ))
@@ -223,7 +223,7 @@ impl LedgerPlugin {
     }
 
     pub fn export_metrics(&self) -> Result<Vec<u8>, OtlpError> {
-        // TODO (L3): ship the encoded snapshot over OTLP gRPC/HTTP; the encoder below only shapes the payload.
+        // TODO (L3) [ta_04_otlp_grpc_metric_export_streaming]: ship the encoded snapshot over OTLP gRPC/HTTP; the encoder below only shapes the payload; slop: snapshot encoder-only, OTLP never sent, collector receives nothing
         let Some(snapshot) = self.snapshot_metrics() else {
             return Err(OtlpError::NotImplemented(
                 "ledger export_metrics needs a bound MetricRegistry".to_string(),

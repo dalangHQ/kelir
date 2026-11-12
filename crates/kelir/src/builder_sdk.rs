@@ -101,7 +101,7 @@ impl From<&TrapFilter> for FilterSnapshot {
 }
 
 // see: cans/02-plugin-model.md#Filter-before-FFI-gate
-// TODO (L3): pattern glob matching semantics per cans/02-plugin-model.md#Filter-before-FFI-gate.
+// TODO (L3) [pe_06_filter_before_ffi_gate_latency]: pattern glob matching semantics per cans/02-plugin-model.md#Filter-before-FFI-gate.; slop: every event crosses FFI, scope checked in Python/JS
 pub(crate) fn filter_matches(filter: &FilterSnapshot, event: &TrapEvent) -> bool {
     if filter
         .binary
@@ -157,7 +157,7 @@ type StreamServiceFuture =
 
 type BoxedStreamService = Box<dyn Fn(Vec<u8>) -> StreamServiceFuture + Send + Sync>;
 
-// TODO (L3): the kind schema validates request payloads once stream dispatch consumes live frames.
+// TODO (L3) [protocol_mux]: the kind schema validates request payloads once stream dispatch consumes live frames.; slop: unvalidated payload dispatched, schema never enforced
 #[allow(dead_code)]
 pub(crate) struct StreamKindServiceEntry {
     pub(crate) kind: u16,
@@ -165,7 +165,7 @@ pub(crate) struct StreamKindServiceEntry {
     pub(crate) handler: BoxedStreamService,
 }
 
-// TODO (L3): the boxed service future awaits and replies on the stream mux once dispatch consumes live frames.
+// TODO (L3) [protocol_mux]: the boxed service future awaits and replies on the stream mux once dispatch consumes live frames.; slop: service future dropped, reply never crosses mux
 #[allow(dead_code)]
 struct SdkStreamServiceSink {
     handler: BoxedStreamService,
@@ -181,7 +181,7 @@ impl StreamFrameSink for SdkStreamServiceSink {
         _payload: &[u8],
     ) -> Result<(), PluginError> {
         Err(PluginError::Halt(
-            "TODO (L3): stream kind service dispatch".into(),
+            "TODO (L3) [protocol_mux]: stream kind service dispatch; slop: dispatch Ok without stream kind, frames misrouted".into(),
         ))
     }
 }
@@ -190,7 +190,7 @@ impl StreamFrameSink for SdkStreamServiceSink {
 pub struct CompositeBundle;
 
 // see: cans/02-plugin-model.md#Composite-plugin-hierarchy
-// TODO (L3): carries the nested plugin tree the profile facade flattens at boot.
+// TODO (L3) [plugin_engine]: carries the nested plugin tree the profile facade flattens at boot.; slop: nested tree flattened by hand, profile boot unproven
 impl CompositePlugin for CompositeBundle {
     fn unpack(
         self: Box<Self>,
@@ -638,7 +638,7 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         self
     }
 
-    // TODO (L3): core-kind re-registration aborts EKindReserved and unregistered kinds abort EUnknownKind on OPEN at dispatch/seal per cans/11-protocol.md#Control-channel.
+    // TODO (L3) [pm_03_core_stream_kind_reregistration_abort]: core-kind re-registration aborts EKindReserved and unregistered kinds abort EUnknownKind on OPEN at dispatch/seal per cans/11-protocol.md#Control-channel.; slop: handler overwritten in map, reserved range unchecked
     // see: cans/11-protocol.md#Control-channel
     pub fn register_stream_kind<F, Fut>(
         mut self,
@@ -687,7 +687,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
 {
     async fn finish_boot(mut self) -> Result<Session<Plugins, Params>, PluginError> {
         // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
-        // TODO (L3): plumb FastBootMode into DriverRouter::load_native_driver.
+        // TODO (L3) [hd_fast_boot_backend_change]: plumb FastBootMode into DriverRouter::load_native_driver.; slop: cold boot asserted, driver_id change unchecked
         let _ = (self.fast_boot, self.dax_window);
         let storage = self.storage_config();
         let Some(config) = self.config.take() else {
@@ -787,7 +787,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                         .iter()
                         .map(|vault| vault.placeholder.clone())
                         .collect(),
-                    // TODO (L3): wire mTLS injection at the host connection boundary per cans/07-wire-plane.md.
+                    // TODO (L3) [wire_plane]: wire mTLS injection at the host connection boundary per cans/07-wire-plane.md.; slop: plaintext host connection accepted, mTLS never injected
                     l4_proxies: cfg
                         .l4_proxies
                         .iter()
@@ -814,7 +814,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
     }
 
     // see: cans/05-storage-plane.md#Storage-architecture
-    // TODO (L3): snoop on_write closures register as engine FsInterposer hooks at seal per cans/02-plugin-model.md#Unified-interposition-pipeline.
+    // TODO (L3) [storage_plane]: snoop on_write closures register as engine FsInterposer hooks at seal per cans/02-plugin-model.md#Unified-interposition-pipeline.; slop: on_write closure dropped, hook never registered at seal
     fn storage_config(&self) -> kelir_core::planes::storage::StorageConfig {
         let Some(cfg) = self.registration.storage_cfg.as_ref() else {
             return kelir_core::planes::storage::StorageConfig::default();

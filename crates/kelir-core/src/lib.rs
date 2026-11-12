@@ -5,7 +5,7 @@
 // see: cans/15-operations.md#Developer-CLI
 pub const KELIR_CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-// TODO (L3): vmm/router.rs + tests/unit_bus.rs, unit_dispatch.rs, unit_planes.rs per cans/artifacts/config/project-structure.txt.
+// TODO (L3) [hypervisor_driver]: vmm/router.rs + tests/unit_bus.rs, unit_dispatch.rs, unit_planes.rs per cans/artifacts/config/project-structure.txt; slop: router module missing, layout unproven
 pub mod bus;
 pub mod dispatch_plugin;
 pub mod planes;

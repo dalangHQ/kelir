@@ -70,7 +70,7 @@ fn quoted_literal(line: &str) -> Option<String> {
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // see: cans/15-operations.md#Subcommands
-    // TODO (L3): render the --show ring-mask report over declared_ring_mask.
+    // TODO (L3) [virtio_rings]: render the --show ring-mask report over declared_ring_mask.; slop: mask report Ok, declared_ring_mask never read
     Err(
         "rings: not implemented (L3): --show ring-mask rendering per cans/15-operations.md#Subcommands"
             .into(),

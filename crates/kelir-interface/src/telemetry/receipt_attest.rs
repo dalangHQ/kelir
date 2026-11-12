@@ -48,7 +48,7 @@ pub struct ExecutionReceipt {
     pub extensions: Vec<ReceiptExtension>,
 }
 
-// TODO (L3): consumed by cans/10-attestation.md#Attestation-provenance-classification session-token verification.
+// TODO (L3) [ar_12_session_attestation_token_injection]: consumed by cans/10-attestation.md#Attestation-provenance-classification session-token verification.; slop: token presence asserted, host-key signature never verified
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttestationToken {
     pub session_token: String,

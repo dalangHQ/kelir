@@ -319,7 +319,7 @@ impl LifecycleParticipant for ReplayPlugin {
             }
             self.state.mark_pmu_degraded();
         }
-        // TODO (L3): capture the deterministic RNG seed in the snapshot manifest at replay start.
+        // TODO (L3) [lc_23_replay_deterministic_seed_reproduces_step_windows]: capture the deterministic RNG seed in the snapshot manifest at replay start; slop: seed never captured, unseeded randomness, replays diverge run to run
         Ok(())
     }
 

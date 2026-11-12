@@ -111,7 +111,7 @@ const ProfileSchema = Type.Object(
 
 export type ProfileSpec = Static<typeof ProfileSchema>;
 
-// TODO (L3): route non-session namespaces to their ConfigurablePlugin schema owners per cans/plugins/profile.md#Inversion-of-Control-configuration-router.
+// TODO (L3) [bindings_ts]: route non-session namespaces to their ConfigurablePlugin schema owners per cans/plugins/profile.md#Inversion-of-Control-configuration-router.; slop: non-session namespace silently dropped from config
 export function parseProfile(
   text: string,
   format: ProfileFormat,
@@ -150,7 +150,7 @@ function toTomlTables(value: TomlValue): TomlValue {
   return value;
 }
 
-// TODO (L3): full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.
+// TODO (L3) [bindings_ts]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
 export function serializeProfile(
   profile: ProfileSpec,
   format: ProfileFormat,

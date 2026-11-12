@@ -261,7 +261,7 @@ impl NativeVmHandle {
 
     #[napi]
     pub async fn map_shared_region(&self, _tag: String, _size_bytes: f64) -> Result<Buffer> {
-        // TODO (L3): hand the SharedMemoryHandle across the bridge via SCM_RIGHTS once Session::memory_handoff lands.
+        // TODO (L3) [bindings_ts]: hand the SharedMemoryHandle across the bridge via SCM_RIGHTS once Session::memory_handoff lands.; slop: handle never crosses, Buffer fabricated or missing
         Err(missing(
             "map_shared_region: the shared-memory handle crosses via SCM_RIGHTS handoff (L3)",
         ))
@@ -289,7 +289,7 @@ pub struct NativeTerminalHandle {
 impl NativeTerminalHandle {
     #[napi]
     pub fn notice(&self, _message: String) -> Result<()> {
-        // TODO (L3): publish the TerminalNotice event once the reactive event bus lands.
+        // TODO (L3) [terminal_plane]: publish the TerminalNotice event once the reactive event bus lands.; slop: notice never published, terminal state unobserved
         Err(missing(
             "terminal notice: TerminalNotice emission lands with the reactive event bus (L3)",
         ))
@@ -420,7 +420,7 @@ pub struct NativeVsockHandle {}
 impl NativeVsockHandle {
     #[napi]
     pub async fn channel(&self, _kind: u32) -> Result<()> {
-        // TODO (L3): open the duplex channel once the mux SPSC rings carry stream frames.
+        // TODO (L3) [pm_02_stream_mux_open_data_close_flags]: open the duplex channel once the mux SPSC rings carry stream frames.; slop: channel opened without open/data/close flags
         Err(missing(
             "vsock channel: duplex streams ride the mux SPSC rings (L3)",
         ))
@@ -435,7 +435,7 @@ pub struct NativeStepHandle {}
 impl NativeStepHandle {
     #[napi]
     pub fn last(&self) -> Result<NativeSnapshotDescriptorRecord> {
-        // TODO (L3): expose the active StepSlot once dispatch constructs HandlerCtx step stacks.
+        // TODO (L3) [lifecycle_checkpoint]: expose the active StepSlot once dispatch constructs HandlerCtx step stacks.; slop: step slot never constructed, hooks run without step
         Err(missing(
             "step last: step slots live in the dispatch HandlerCtx (L3)",
         ))
@@ -572,7 +572,7 @@ impl NativeSessionHandle {
 
     #[napi]
     pub async fn spawn(&self, _binary: String, _argv: Vec<String>) -> Result<()> {
-        // TODO (L3): spawn writes on the EXEC stream kind via the shim wire protocol.
+        // TODO (L3) [tp_09_exec_stream_sublane_stdio_fidelity]: spawn writes on the EXEC stream kind via the shim wire protocol.; slop: EXEC writes bypass sublane, stdio interleaved
         Err(missing(
             "spawn: EXEC stream dispatch lands with the shim wire protocol (L3)",
         ))
@@ -580,7 +580,7 @@ impl NativeSessionHandle {
 
     #[napi]
     pub async fn exec_in_guest(&self, _binary: String, _argv: Vec<String>) -> Result<()> {
-        // TODO (L3): exec_in_guest rides the EXEC stream kind via the shim wire protocol.
+        // TODO (L3) [tp_09_exec_stream_sublane_stdio_fidelity]: exec_in_guest rides the EXEC stream kind via the shim wire protocol.; slop: exec rides wrong stream kind, output lost
         Err(missing(
             "exec_in_guest: EXEC stream dispatch lands with the shim wire protocol (L3)",
         ))
@@ -601,7 +601,7 @@ impl NativeSessionHandle {
 
     #[napi]
     pub async fn rollback(&self) -> Result<()> {
-        // TODO (L3): lineage-derived head rollback needs the dispatch PID lineage.
+        // TODO (L3) [lc_03_step_evaluation_taint_rollback]: lineage-derived head rollback needs the dispatch PID lineage.; slop: rollback without lineage, wrong head restored
         Err(missing(
             "rollback: pass a snapshot; lineage-derived head rollback lands with PID tracking (L3)",
         ))
@@ -621,7 +621,7 @@ impl NativeSessionHandle {
 
     #[napi]
     pub async fn console(&self) -> Result<()> {
-        // TODO (L3): attach the PTY console master once the terminal plane owns it.
+        // TODO (L3) [terminal_plane]: attach the PTY console master once the terminal plane owns it.; slop: PTY never attached, console output lost
         Err(missing(
             "console: PTY master attach lands with the terminal plane console (L3)",
         ))
@@ -629,7 +629,7 @@ impl NativeSessionHandle {
 
     #[napi]
     pub async fn get_causal_delta_from_parent(&self) -> Result<()> {
-        // TODO (L3): causal deltas are produced by plugin-ledger over the delta chain.
+        // TODO (L3) [ar_09_causal_delta_aggregation_merkle]: causal deltas are produced by plugin-ledger over the delta chain.; slop: deltas fabricated, no merkle aggregation
         Err(missing(
             "get_causal_delta_from_parent: causal deltas come from plugin-ledger (L3)",
         ))
@@ -637,7 +637,7 @@ impl NativeSessionHandle {
 
     #[napi]
     pub async fn handle_ingress(&self) -> Result<()> {
-        // TODO (L3): wire-ingress parked connections surface once the wire plane owns the host listeners.
+        // TODO (L3) [wire_plane]: wire-ingress parked connections surface once the wire plane owns the host listeners.; slop: parked connections never surface, listeners silent
         Err(missing(
             "handle_ingress: inbound connections park in the wire plane listeners (L3)",
         ))
@@ -769,14 +769,14 @@ impl NativeKelirBuilder {
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
-    // TODO (L3): prompt rules and the token-shield clamp callback stay TypeScript-side until threadsafe-function bridging lands.
+    // TODO (L3) [bindings_ts]: prompt rules and the token-shield clamp callback stay TypeScript-side until threadsafe-function bridging lands.; slop: callbacks stay TS-side, silently dropped
     #[napi]
     pub fn set_terminal_config(&mut self, config: NativeTerminalConfig) {
         self.terminal_cfg = Some(config);
     }
 
     // see: cans/05-storage-plane.md#Workspace-commit
-    // TODO (L3): snoop on_write callbacks stay TypeScript-side until threadsafe-function bridging lands.
+    // TODO (L3) [bindings_ts]: snoop on_write callbacks stay TypeScript-side until threadsafe-function bridging lands.; slop: snoop callbacks stay TS-side, writes unobserved
     #[napi]
     pub fn set_storage_config(&mut self, config: NativeStorageConfig) {
         self.storage_cfg = Some(config);
@@ -865,7 +865,7 @@ impl NativeKelirBuilder {
         if let Some(reason) = self.config.missing_boot_path() {
             return Err(Error::new(Status::InvalidArg, reason.to_string()));
         }
-        // TODO (L3): bind each fused ring chain to its single trampoline entry as one threadsafe closure and dispatch through the kelir-core pipeline.
+        // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: bind each fused ring chain to its single trampoline entry as one threadsafe closure and dispatch through the kelir-core pipeline.; slop: one closure per hook, multiple crossings
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
         let plane_wiring = self.plane_wiring()?;
         let synthetic_files = self
@@ -883,7 +883,7 @@ impl NativeKelirBuilder {
             plane_wiring,
         )
         .map_err(halt)?;
-        // TODO (L3): re-source driver_name from the booted core session once it exposes the resolved driver.
+        // TODO (L3) [hypervisor_driver]: re-source driver_name from the booted core session once it exposes the resolved driver.; slop: driver name stale, wrong backend reported
         NativeSessionHandle::from_session(
             session,
             self.driver_name.clone(),
@@ -900,7 +900,7 @@ impl Default for NativeKelirBuilder {
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 impl NativeKelirBuilder {
-    // TODO (L3): token-shield clamps, prompt rules, snoop callbacks, and mtls injection ride threadsafe functions into the planes.
+    // TODO (L3) [bindings_ts]: token-shield clamps, prompt rules, snoop callbacks, and mtls injection ride threadsafe functions into the planes.; slop: plane wiring drops clamps, snoop, mtls
     fn plane_wiring(&self) -> Result<kelir_core::session_lifecycle::PlaneWiring> {
         let terminal =
             self.terminal_cfg

@@ -1,7 +1,7 @@
 // see: cans/plugins/chaos.md#Plugin-chaos
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/test_chaos.rs per cans/artifacts/config/project-structure.txt.
+// TODO (L3) [plugin_engine]: tests/test_chaos.rs per cans/artifacts/config/project-structure.txt; slop: tests/test_chaos.rs missing; chaos faults untested, drills pass vacuously
 use std::path::Path;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
@@ -76,11 +76,11 @@ impl FaultTable {
 // see: cans/plugins/chaos.md#Service-exports-(chaos)
 impl FaultInjectionService for FaultTable {
     fn set_network_rules(&self, rules: Vec<NetworkFaultRule>) -> Result<(), PluginError> {
-        // TODO (L3): validate dynamic rule mutations against the monotonic lattice before installation.
+        // TODO (L3) [plugin_engine]: validate dynamic rule mutations against the monotonic lattice before installation; slop: lattice check skipped, non-monotonic rule installed, later rules silently dropped
         Self::write_rules(&self.network, rules)
     }
     fn set_fs_rules(&self, rules: Vec<StorageFaultRule>) -> Result<(), PluginError> {
-        // TODO (L3): validate dynamic rule mutations against the monotonic lattice before installation.
+        // TODO (L3) [plugin_engine]: validate dynamic rule mutations against the monotonic lattice before installation; slop: lattice check skipped, non-monotonic rule installed, later rules silently dropped
         Self::write_rules(&self.fs, rules)
     }
 }
@@ -129,12 +129,12 @@ impl ChaosPlugin {
             }
             if rule.base_ms > 0 || rule.jitter_ms > 0 {
                 // see: cans/02-plugin-model.md#Latency-ceiling
-                // TODO (L3): sample deterministic jitter in 0..=jitter_ms instead of the upper bound.
+                // TODO (L3) [plugin_engine]: sample deterministic jitter in 0..=jitter_ms instead of the upper bound; slop: upper-bound jitter only, no 0..=jitter_ms sample, timing assertions vacuous
                 return Ok(FilterAction::Suspend {
                     until: SuspendUntil::Deadline(rule.base_ms.saturating_add(rule.jitter_ms)),
                 });
             }
-            // TODO (L3): bandwidth_kbps link-speed clamping on the matched stream.
+            // TODO (L3) [plugin_engine]: bandwidth_kbps link-speed clamping on the matched stream; slop: bandwidth unclamped, matched stream exceeds kbps cap silently
         }
         Ok(FilterAction::Forward)
     }
@@ -157,25 +157,25 @@ impl ChaosPlugin {
     }
 
     fn frame_matches(&self, rule: &NetworkFaultRule, frame: &[u8]) -> Result<bool, PluginError> {
-        // TODO (L3): parse L2/L4 headers and match the rule target domain or host pattern.
+        // TODO (L3) [pe_16_chaos_rst_injection_drops_matching_frame]: parse L2/L4 headers and match the rule target domain or host pattern; slop: frame_matches stays Ok(false), RST rule never fires, drill passes vacuously
         let _ = (rule, frame);
         Ok(false)
     }
 
     fn loss_sampled(&self, rule: &NetworkFaultRule) -> Result<bool, PluginError> {
-        // TODO (L3): deterministic synthetic packet loss sampling against drop_rate.
+        // TODO (L3) [plugin_engine]: deterministic synthetic packet loss sampling against drop_rate; slop: loss never sampled, drop_rate ignored, all packets Forward
         let _ = rule;
         Ok(false)
     }
 
     fn path_matches(&self, pattern: &str, path: &Path) -> Result<bool, PluginError> {
-        // TODO (L3): glob match of the rule target_path over the real FUSE write path argument.
+        // TODO (L3) [plugin_engine]: glob match of the rule target_path over the real FUSE write path argument; slop: glob never matched, wrong paths dropped, real write path ignored
         let _ = (pattern, path);
         Ok(false)
     }
 
     fn error_sampled(&self, rule: &StorageFaultRule) -> Result<bool, PluginError> {
-        // TODO (L3): deterministic error sampling against error_probability per write() call.
+        // TODO (L3) [plugin_engine]: deterministic error sampling against error_probability per write() call; slop: error never sampled, error_probability ignored, writes always succeed
         let _ = rule;
         Ok(false)
     }
@@ -203,7 +203,7 @@ impl PluginDeps for ChaosPlugin {
     type Deps = NoDeps;
 }
 
-// TODO (L3): construct ChaosPlugin via KelirBuilder::named in the kelir facade crate; a dependency on that crate here is a cargo cycle since the facade depends on plugin-chaos per cans/02-plugin-model.md#KelirPlugin-trait.
+// TODO (L3) [plugin_engine]: construct ChaosPlugin via KelirBuilder::named in the kelir facade crate; a dependency on that crate here is a cargo cycle since the facade depends on plugin-chaos per cans/02-plugin-model.md#KelirPlugin-trait; slop: facade cycle: plugin-chaos depends on facade, build breaks cyclically
 
 // see: cans/plugins/chaos.md#Bidirectional-across-wire-plane
 impl NetInterposer for ChaosPlugin {

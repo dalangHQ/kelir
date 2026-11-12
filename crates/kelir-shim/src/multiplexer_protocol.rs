@@ -23,7 +23,7 @@ pub struct ExecSpec {
 
 impl ExecSpec {
     pub fn parse(payload: &[u8]) -> Result<Self, ShimError> {
-        // TODO (L3): parse EXEC_IO_SPEC binary/argv/limits from the open payload.
+        // TODO (L3) [pm_08_exec_flow_control_input_stall]: parse EXEC_IO_SPEC binary/argv/limits from the open payload; slop: spec parse stubbed, open payload never yields binary/argv/limits
         let _ = payload;
         Err(ShimError::ExecSpecParsePending)
     }
@@ -61,7 +61,7 @@ impl ExecSlot {
         if signal == 0 || signal > 64 {
             return Err(ShimError::InvalidSignal { signal });
         }
-        // TODO (L3): deliver via pidfd_open/pidfd_send_signal so a recycled pid cannot receive a stale signal.
+        // TODO (L3) [pm_07_exec_signal_cancellation_by_exec_id]: deliver via pidfd_open/pidfd_send_signal so a recycled pid cannot receive a stale signal; slop: kill() hits recycled pid, successor task dies instead
         // SAFETY: pid is slab-owned from spawn, never wire-supplied; signal is range-checked 1..=64 above.
         let ret = unsafe { libc::kill(self.pid, signal as libc::c_int) };
         if ret == 0 {
@@ -113,7 +113,7 @@ impl ExecSlotSlab {
             })
     }
 
-    // TODO (L3): size the pool by min(guest RLIMIT_NPROC, host max_exec_slots from session config).
+    // TODO (L3) [pm_06_exec_slot_slab_saturation_reject]: size the pool by min(guest RLIMIT_NPROC, host max_exec_slots from session config); slop: pool sized to hardcoded 4096, RLIMIT_NPROC/max_exec_slots ignored
     pub fn allocate(&mut self, slot: ExecSlot) -> Result<usize, ShimError> {
         let idx = match self.free.pop() {
             Some(recycled) => recycled,
@@ -231,7 +231,7 @@ impl Multiplexer {
         })?;
         match msg_type {
             MsgType::Trap | MsgType::VmLifecycleControl => {
-                // TODO (L3): route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes.
+                // TODO (L3) [pm_01_control_channel_0_lifecycle_priority]: route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes; slop: control payload dropped as ControlPending, lifecycle never routed
                 Err(ShimError::ControlPending {
                     msg_type: msg_type as u16,
                 })
@@ -270,7 +270,7 @@ impl Multiplexer {
         })?;
         match msg_type {
             MsgType::Trap | MsgType::VmLifecycleControl => {
-                // TODO (L3): route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes.
+                // TODO (L3) [pm_01_control_channel_0_lifecycle_priority]: route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes; slop: control frame enters data lane path, trap dispatch never runs
                 return Err(ShimError::ControlPending {
                     msg_type: msg_type as u16,
                 });
@@ -286,7 +286,7 @@ impl Multiplexer {
             return self.open_stream(stream_id, body);
         }
         if (flags & (codec_protocol::FLAG_CLOSE | codec_protocol::FLAG_RST)) != 0 {
-            // TODO (L3): flush stdout/stderr EOF frames before release; exit frames defer until EOF flush.
+            // TODO (L3) [protocol_mux]: flush stdout/stderr EOF frames before release; exit frames defer until EOF flush; slop: stream released before EOF flush, exit frame precedes output
             self.close_stream(stream_id);
             return Ok(());
         }
@@ -295,7 +295,7 @@ impl Multiplexer {
             .resolve(stream_id)
             .ok_or(ShimError::SlotEmpty { stream_id })?;
         if (flags & codec_protocol::FLAG_WINDOW_UPDATE) != 0 {
-            // TODO (L3): apply per-stream credit window update to the resolved slot.
+            // TODO (L3) [pm_08_exec_flow_control_input_stall]: apply per-stream credit window update to the resolved slot; slop: credit update dropped, guest stalls or overruns buffer
             return Ok(());
         }
         if (flags & codec_protocol::FLAG_DATA) != 0 {
@@ -307,7 +307,7 @@ impl Multiplexer {
                 .map_err(|()| ShimError::TruncatedFrame)?;
             match lane {
                 EXEC_STREAM_STDIN => {
-                    // TODO (L3): route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03).
+                    // TODO (L3) [pm_08_exec_flow_control_input_stall]: route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03); slop: stdin payload discarded, 10MB transfer never arrives intact
                     let _ = (
                         data,
                         slot.pid,
@@ -319,7 +319,7 @@ impl Multiplexer {
                     return Ok(());
                 }
                 EXEC_STREAM_CONTROL => {
-                    // TODO (L3): apply exec control frames: exit code, EOF, window resize, rlimit descriptors.
+                    // TODO (L3) [pm_08_exec_flow_control_input_stall]: apply exec control frames: exit code, EOF, window resize, rlimit descriptors; slop: exit code and window resize dropped, ExecControlPending masks loss
                     return Err(ShimError::ExecControlPending);
                 }
                 _ => return Err(ShimError::UnknownExecSubLane { lane }),
@@ -349,7 +349,7 @@ impl Multiplexer {
     }
 
     fn spawn_exec(&mut self, spec: &ExecSpec) -> Result<ExecSlot, ShimError> {
-        // TODO (L3): openpty via crate::pty_terminal::open_pty_slave, fork, setrlimit from spec.limits between fork and execve, execve spec.binary/spec.argv; the child is reaped by the main.rs waitpid loop.
+        // TODO (L3) [vr_09_virtio_console_port0_pty_dedication]: openpty via crate::pty_terminal::open_pty_slave, fork, setrlimit from spec.limits between fork and execve, execve spec.binary/spec.argv; the child is reaped by the main.rs waitpid loop; slop: exec never spawned, EXEC stream bytes never become a process
         let _ = (spec, self.next_exec_id);
         Err(ShimError::SpawnPending)
     }

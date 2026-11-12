@@ -96,7 +96,7 @@ export class FusedTrampoline {
     return this.chains.find((chain) => chain.ring === ring)?.hooks.length ?? 0;
   }
 
-  // TODO (L3): compile each fused chain into the single flat closure that runs it per ring event.
+  // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: compile each fused chain into the single flat closure that runs it per ring event.; slop: descriptor claims fused while hooks cross per hook
   describe(): FusedTrampolineDescriptor {
     return {
       rings: this.chains.map((chain) => ({

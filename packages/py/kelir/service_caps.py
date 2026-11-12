@@ -49,19 +49,19 @@ class DbCap:
 
 class LedgerCap:
     async def blake3_of_producing_process(self, path: Path | str) -> str:
-        # TODO (L3): resolve the producing process for path via the PyO3 _kelir bridge.
+        # TODO (L3) [bindings_py]: resolve the producing process for path via the PyO3 _kelir bridge.; slop: process resolution returns fabricated ppid
         raise _missing("ledger blake3_of_producing_process")
 
     async def flush(self) -> None:
-        # TODO (L3): force the ledger WAL flush and OTel export via the PyO3 _kelir bridge.
+        # TODO (L3) [telemetry_audit]: force the ledger WAL flush and OTel export via the PyO3 _kelir bridge.; slop: WAL flush/OTel export no-ops, audit chain breaks
         raise _missing("ledger flush")
 
     async def count_denials(self, ppid: int) -> int:
-        # TODO (L3): count ledger denials for ppid via the PyO3 _kelir bridge.
+        # TODO (L3) [bindings_py]: count ledger denials for ppid via the PyO3 _kelir bridge.; slop: denial count returns zero, ledger denials hidden
         raise _missing("ledger count_denials")
 
     async def get_causal_delta_from_parent(self) -> CausalDelta:
-        # TODO (L3): fetch the ledger causal delta via the PyO3 _kelir bridge.
+        # TODO (L3) [ar_09_causal_delta_aggregation_merkle]: fetch the ledger causal delta via the PyO3 _kelir bridge.; slop: ledger delta omits tombstones, audit desyncs
         raise _missing("ledger get_causal_delta_from_parent")
 
     async def finalize(
@@ -70,7 +70,7 @@ class LedgerCap:
         include_delta: CausalDelta | None = None,
         include_merkle_root: bool = False,
     ) -> LedgerFinalizeResult:
-        # TODO (L3): finalize the ledger receipt via the PyO3 _kelir bridge.
+        # TODO (L3) [attestation_receipts]: finalize the ledger receipt via the PyO3 _kelir bridge.; slop: receipt finalized without BLAKE3 binding
         raise _missing("ledger finalize")
 
 
@@ -99,15 +99,15 @@ class TransactionScope:
         exc_val: BaseException | None,
         exc_tb: Any,
     ) -> None:
-        # TODO (L3): commit or roll back the 2PC scope via the PyO3 _kelir bridge.
+        # TODO (L3) [relational_transaction]: commit or roll back the 2PC scope via the PyO3 _kelir bridge.; slop: 2PC commit no-ops, partial commit looks atomic
         return None
 
     async def savepoint(self) -> Savepoint:
-        # TODO (L3): snapshot broker upper and tombstone state via the PyO3 _kelir bridge.
+        # TODO (L3) [storage_plane]: snapshot broker upper and tombstone state via the PyO3 _kelir bridge.; slop: broker snapshot returns empty upper, rollback loses state
         raise _missing("transaction savepoint")
 
     async def rollback_to_savepoint(self, savepoint: Savepoint) -> None:
-        # TODO (L3): restore the savepoint blob via the PyO3 _kelir bridge.
+        # TODO (L3) [relational_transaction]: restore the savepoint blob via the PyO3 _kelir bridge.; slop: savepoint restore no-ops, rolled-back rows resurface
         raise _missing("transaction rollback_to_savepoint")
 
 
@@ -126,7 +126,7 @@ class TransactionCap:
 
 class ContainerCap:
     async def ingest_image(self, tarball: Path | str) -> str:
-        # TODO (L3): ingest the OCI tarball via the PyO3 _kelir bridge.
+        # TODO (L3) [adapters_ingestion]: ingest the OCI tarball via the PyO3 _kelir bridge.; slop: OCI tarball accepted without layer digest check
         raise _missing("container ingest_image")
 
 

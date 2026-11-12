@@ -184,7 +184,7 @@ fn harness_exempt_files(repo_root: &Path) -> HashSet<String> {
     let Ok(raw) = fs::read_to_string(&map_path) else {
         return HashSet::new();
     };
-    // TODO (L3): fail closed when the typed map parse fails; check-manifest gates the file today.
+    // TODO (L3) [governance_tools]: fail closed when the typed map parse fails; check-manifest gates the file today.; slop: parse failure ignored, gate passes on stale map
     let Ok(map) = serde_yaml::from_str::<CaseMap>(&raw) else {
         return HashSet::new();
     };

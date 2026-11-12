@@ -19,7 +19,7 @@ pub fn resolve_plugin_registrations(
         if !registration.enabled {
             continue;
         }
-        // TODO (L3): dynamic discovery resolves a registered name to its plugin entry point; the registry only validates shape and dedupes.
+        // TODO (L3) [pe_02_cyclic_dependency_graph_abort]: dynamic discovery resolves a registered name to its plugin entry point; the registry only validates shape and dedupes; slop: cyclic graph boots Ok, recursion instead of abort
         if resolved.iter().any(|item| item.name == registration.name) {
             // see: cans/02-plugin-model.md#Static-dispatch
             tracing::warn!(

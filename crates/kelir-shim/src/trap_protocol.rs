@@ -207,7 +207,7 @@ fn bpf_jump(code: u32, k: u32, jt: u8, jf: u8) -> libc::sock_filter {
 
 // see: cans/11-protocol.md#Trap-fast-path
 fn trap_filter_program() -> Vec<libc::sock_filter> {
-    // TODO (L3): gate-1 in-kernel allowlist fast path for harmless tools plus in-filter mprotect(PROT_EXEC)/memfd_create flag masking.
+    // TODO (L3) [hd_02_wx_mmu_prot_exec_trap]: gate-1 in-kernel allowlist fast path for harmless tools plus in-filter mprotect(PROT_EXEC)/memfd_create flag masking; slop: allowlist passes mprotect PROT_EXEC, Stage-2 fault never fires
     let monitored = [
         libc::SYS_execve,
         libc::SYS_execveat,

@@ -1,7 +1,7 @@
 // see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/test_parking.rs per cans/artifacts/config/project-structure.txt.
+// TODO (L3) [wire_plane]: tests/test_parking.rs per cans/artifacts/config/project-structure.txt; slop: test_parking.rs missing, park/suspend path untested
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -352,7 +352,7 @@ impl WireIngressPlugin {
     }
 
     // see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
-    // TODO (L3): core dispatches L4_FORWARD mux streams into this handler; kelir-interface exposes no mux-kind binder yet.
+    // TODO (L3) [wire_plane]: core dispatches L4_FORWARD mux streams into this handler; kelir-interface exposes no mux-kind binder yet; slop: no mux-kind binder, L4_FORWARD never dispatched, handler dead
     pub fn on_l4_forward_frame(&self, payload: &mut [u8]) -> Result<FilterAction, PluginError> {
         let Some((l4, initial)) = L4ForwardFrame::decode(payload) else {
             return Ok(FilterAction::Drop {

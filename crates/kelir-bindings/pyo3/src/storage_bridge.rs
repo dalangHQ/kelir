@@ -137,7 +137,7 @@ pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageProjection> 
                     let dynamic =
                         py_field(&file, "dynamic_fn").is_some_and(|generator| !generator.is_none());
                     if dynamic {
-                        // TODO (L3): dynamic synthetic generators stay Python-side until the FFI callback bridge lands.
+                        // TODO (L3) [bindings_py]: dynamic synthetic generators stay Python-side until the FFI callback bridge lands.; slop: dynamic synthetic files silently dropped
                         continue;
                     }
                     let content = field_str(&file, "content", "synthetic_files")?;
@@ -145,7 +145,7 @@ pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageProjection> 
                 }
             }
             "snoops" => {
-                // TODO (L3): snoop on_write callbacks stay Python-side until the FFI callback bridge lands.
+                // TODO (L3) [bindings_py]: snoop on_write callbacks stay Python-side until the FFI callback bridge lands.; slop: snoop callbacks stay Python-side, writes unobserved
                 let _ = value;
             }
             other => {

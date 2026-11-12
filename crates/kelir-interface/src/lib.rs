@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/unit_codec.rs + tests/unit_traits.rs per cans/artifacts/config/project-structure.txt.
+// TODO (L3) [protocol_mux]: tests/unit_codec.rs + tests/unit_traits.rs per cans/artifacts/config/project-structure.txt.; slop: stub tests assert Ok(()), no codec wire bytes
 pub mod chaos_types;
 pub mod codec_protocol;
 pub mod credential_vault;

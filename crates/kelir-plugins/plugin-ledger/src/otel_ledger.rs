@@ -33,7 +33,7 @@ impl TraceParent {
 
     // see: cans/plugins/ledger.md#OpenTelemetry
     pub fn parse_header(value: &str) -> Result<Self, PluginError> {
-        // TODO (L3): enforce the full W3C trace-context rules (version, all-zero trace/span ids, extension fields).
+        // TODO (L3) [ta_05_w3c_traceparent_span_propagation]: enforce the full W3C trace-context rules (version, all-zero trace/span ids, extension fields); slop: new root trace per request, traceparent never injected, traces severed
         let mut parts = value.split('-');
         let version = parts
             .next()

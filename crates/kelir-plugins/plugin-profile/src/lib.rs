@@ -1,7 +1,7 @@
 // see: cans/plugins/profile.md#Plugin-profile
 #![forbid(unsafe_code)]
 
-// TODO (L3): tests/test_profile.rs per cans/artifacts/config/project-structure.txt.
+// TODO (L3) [governance_vault]: tests/test_profile.rs per cans/artifacts/config/project-structure.txt; slop: test_profile.rs missing, profile hydration untested, placeholders unresolved silently
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -559,7 +559,7 @@ impl ProfileState {
             PatchOp::Remove => {
                 remove_pointer(document, &remainder);
             }
-            // TODO (L3): Move/Copy leave the stored base stale (Test is read-only); cross-path base update needs owner-state verification; see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching
+            // TODO (L3) [governance_vault]: Move/Copy leave the stored base stale (Test is read-only); cross-path base update needs owner-state verification; see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching; slop: stale base after Move/Copy, cross-path update without owner verification
             PatchOp::Move | PatchOp::Copy | PatchOp::Test => {}
         }
     }

@@ -204,7 +204,7 @@ pub struct StorageProfile {
 }
 
 impl SandboxProfile {
-    // TODO (L3): consume topology, max_vcpus, balloon, devices, watchdog timeout/action/cadence, kernel_boot_params, and shim once VmConfig grows driver fields.
+    // TODO (L3) [hypervisor_driver]: consume topology, max_vcpus, balloon, devices, watchdog timeout/action/cadence, kernel_boot_params, and shim once VmConfig grows driver fields.; slop: VmConfig fields silently dropped, driver boot unpinned
     pub fn to_vm_config(&self) -> VmConfig {
         let session = self.session.as_ref();
         let compute = session.and_then(|s| s.compute.as_ref());
@@ -231,7 +231,7 @@ impl SandboxProfile {
         if let Some(grace) = clock.and_then(|c| c.preemption_grace_ms) {
             config.preemption_grace_ms = grace;
         }
-        // TODO (L3): route driver.fast_boot and storage.dax_window through KelirBuilder.
+        // TODO (L3) [hd_fast_boot_backend_change]: route driver.fast_boot and storage.dax_window through KelirBuilder.; slop: fast_boot/dax flags dropped, cold path taken silently
         config
     }
 }

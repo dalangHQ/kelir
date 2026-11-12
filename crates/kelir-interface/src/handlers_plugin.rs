@@ -84,7 +84,7 @@ pub struct HandlerCtx<Plugins = (), Params = ()> {
 }
 
 impl<Plugins, Params> HandlerCtx<Plugins, Params> {
-    // TODO (L3): wire the live session handles into the dispatch view per cans/03-sdk-architecture.md#Session-surfaces.
+    // TODO (L3) [plugin_engine]: wire the live session handles into the dispatch view per cans/03-sdk-architecture.md#Session-surfaces.; slop: empty dispatch view, live handles never wired
     pub fn new(session_id: [u8; 16], pid: u32, plugins: Plugins, params_buffer: Vec<u8>) -> Self {
         Self {
             session_id,
@@ -256,7 +256,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
     }
 
     pub async fn receipt(&self) -> Result<ExecutionReceipt, PluginError> {
-        // TODO (L3): wire to the live per-process receipt in Part 2.
+        // TODO (L3) [ar_01_execution_receipt_blake3_binding]: wire to the live per-process receipt in Part 2.; slop: tautological hash from reaped file, binary_blake3 ignored
         Ok(ExecutionReceipt {
             pid: self.pid,
             binary_path: String::new(),

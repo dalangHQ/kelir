@@ -1,0 +1,3242 @@
+$schema: kelir-test-plan/l3-slop-register/v1
+generated: 181 red/gap entries + 17 code_only groups; 542 TODO (L3) markers at base 745c219; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s
+total_cases: 254
+covered_red_gap: 181
+entries:
+- case_id: ad_01_radix_layer_unpack_whiteout_merge
+  status: red
+  domain: adapters_ingestion
+  target_crate: crates/kelir-adapters/kelir-pack
+  slop_risks:
+  - EROFS image builds and the whited-out /secret path is still present in the emitted tree
+  - Opaque directory /etc keeps its hidden entries because .wh..wh..opq never mutates the radix node
+  - Build asserts exit 0 without ever looking up the deleted path in the radix tree
+  must_not:
+  - Never treat a successful build as proof; lookup of the whited-out path must return None
+  - Never apply whiteouts after EROFS emit; mutation happens in phase 1 in place
+  acceptance:
+  - radix_tree.lookup('/secret') is None and lookup('/etc/old.conf') is None after phase 1 (AS-04A)
+  - adapters.layer_compiled audit event emitted with receipt exit_kind Normal
+  code_todos:
+  - crates/kelir-adapters/kelir-pack/src/main.rs
+- case_id: ad_02_expansion_ratio_15_to_1_abort
+  status: red
+  domain: adapters_ingestion
+  target_crate: crates/kelir-adapters/kelir-pack
+  slop_risks:
+  - Build fails with FetchPending/Phase1Pending while the 16 MiB layer is still unpacked to disk
+  - Abort fires but a partial rootfs.erofs or CAS blob is left on disk
+  - Ratio checked against whole-image bytes instead of the single layer's 15:1 budget
+  must_not:
+  - Never return a generic error; abort must be PackError::LayerOversize
+  - Never emit any output bytes when the ratio is exceeded
+  acceptance:
+  - run() returns Err(PackError::LayerOversize) for the 1 MiB -> 16 MiB layer
+  - output_exists('rootfs.erofs') is false and zero CAS blobs written (AS-04B)
+  code_todos: []
+- case_id: ad_03_single_layer_8gib_ceiling_enforcement
+  status: red
+  domain: adapters_ingestion
+  target_crate: crates/kelir-adapters/kelir-pack
+  slop_risks:
+  - Ceiling enforced per whole image, so an 8 GiB + 1 byte single layer passes inside a small image
+  - Build fails with FetchPending instead of PackError::LayerOversize at the 8 GiB boundary
+  - Partial EROFS output remains on disk after the abort
+  must_not:
+  - Never check the ceiling against total image bytes; it is per-layer, strictly 8 GiB
+  - Never emit output bytes past the ceiling
+  acceptance:
+  - Err(PackError::LayerOversize) for the 8589934593-byte layer
+  - No rootfs.erofs emitted; adapters.layer_oversize_abort audit event with fault_reason E_LAYER_OVERSIZE
+  code_todos: []
+- case_id: ad_04_layer_entry_500k_inode_cap
+  status: red
+  domain: adapters_ingestion
+  target_crate: crates/kelir-adapters/kelir-pack
+  slop_risks:
+  - Abort keyed to byte size, so a 500001-entry small layer passes and exhausts phase-1 RAM
+  - inode_count tracked but the 500000 ceiling never compared during the header scan
+  - Build fails with Phase1Pending instead of PackError::LayerOversize
+  must_not:
+  - Never substitute a byte-size check for the inode-count ceiling
+  - Never grow the radix tree unbounded past 500000 entries
+  acceptance:
+  - Err(PackError::LayerOversize) for the 500001-entry tar
+  - No rootfs.erofs emitted; receipt fault_reason E_LAYER_OVERSIZE
+  code_todos: []
+- case_id: ad_05_single_pass_erofs_blake3_digest
+  status: red
+  domain: adapters_ingestion
+  target_crate: crates/kelir-adapters/kelir-pack
+  slop_risks:
+  - Digest string exists but does not match the emitted cas/blobs/blake3_<hash> name
+  - Digest computed by re-reading the finished image instead of feeding payload chunks during the single pass
+  - Two deterministic builds of one layer produce different digests
+  must_not:
+  - Never re-read the image to compute the digest; chunks feed the hasher during phase 2
+  - Never report a digest that is not the CAS blob name suffix
+  acceptance:
+  - run1.rootfs_digest equals run2.rootfs_digest across two deterministic runs
+  - cas_blob_path ends with run1.rootfs_digest (AS-04A)
+  code_todos:
+  - crates/kelir-adapters/kelir-pack/src/main.rs
+- case_id: ad_06_containerd_shim_v2_mount_lifecycle
+  status: gap
+  domain: adapters_ingestion
+  target_crate: crates/kelir-adapters
+  slop_risks:
+  - Shim boots a session while inventing its own image translation path that bypasses kelir-pack budgets
+  - Session boots without ContainerdOrchestrationPolicy registered via PipelineBinder
+  - Booted rootfs digest differs from the kelir-pack digest for the same OCI manifest
+  must_not:
+  - Never add a nested translation layer; the shim maps flat onto kelir-pack output
+  - Never boot without the policy registered
+  acceptance:
+  - session.rootfs_digest() equals kelir_pack_digest('oci://registry/ns/app:v1')
+  - policy_registered('ContainerdOrchestrationPolicy') is true; adapters.shim_task_created emitted
+  code_todos: []
+- case_id: ad_07_containerd_rootless_pod_isolation
+  status: gap
+  domain: adapters_ingestion
+  target_crate: crates/kelir-adapters
+  slop_risks:
+  - Two pods boot but share a mount, network, or user namespace
+  - Pods judged isolated by boot success alone while sharing one rootfs digest
+  - In-guest rootless Podman presented as the shim policy isolation
+  must_not:
+  - Never substitute in-guest rootless Podman for native microVM pod isolation
+  - Never reuse a session id or namespace entry across pods
+  acceptance:
+  - session_a.id() != session_b.id() and shared_namespaces(session_a, session_b) == 0
+  - Both sessions reach Running with disjoint rootfs digests
+  code_todos: []
+- case_id: ad_08_mcp_server_stdio_mux_bridge
+  status: red
+  domain: adapters_ingestion
+  target_crate: crates/kelir-adapters/mcp-server
+  slop_risks:
+  - tools/call succeeds but the frame crossed Port 0 PTY instead of MCP_CONSOLE 0x0012
+  - mcp-server forwards stdio bytes raw without plugin-mcp JSON-RPC translation
+  - Success asserted from the tool result while the mux stream kind is never inspected
+  must_not:
+  - Never route MCP frames through Port 0 PTY
+  - Never bypass plugin-mcp translation on the stdio wire
+  acceptance:
+  - frame.stream_kind == 0x0012 for the tools/call frame
+  - pty_port0_bytes() == 0; adapters.mcp_frame_bridged emitted
+  code_todos:
+  - crates/kelir-adapters/mcp-server/src/main.rs
+- case_id: ad_09_mcp_console_framing_continuation
+  status: red
+  domain: adapters_ingestion
+  target_crate: crates/kelir-adapters/mcp-server
+  slop_risks:
+  - 98304-byte tools/call frame succeeds as a single frame, exceeding the 64 KB max without splitting
+  - Frame split but reassembled bytes differ from the original payload
+  - Continuation flag set on the wrong frame, so the peer decodes Unparsed with empty arguments
+  must_not:
+  - Never send a frame larger than 64 KB without FLAG_CONTINUATION
+  - Never accept reassembly that is not byte-exact
+  acceptance:
+  - frame_count() == 2 for the 96 KB payload
+  - reassembled_bytes() equals original_bytes() (AS-04A)
+  code_todos: []
+- case_id: ad_10_openshell_grpc_sandbox_bootstrap
+  status: gap
+  domain: adapters_ingestion
+  target_crate: crates/kelir-adapters
+  slop_risks:
+  - Sandbox boots but an in-guest OpenShell supervisor process still runs inside the guest
+  - Policy enforced by the in-guest supervisor instead of out-of-band via vsock Channel 0 and FUSE gates
+  - SandboxService mapped onto a nested shim instead of KelirBuilder boot primitives
+  must_not:
+  - Never leave any supervisor process inside the guest
+  - Never enforce policy in-guest; enforcement is out-of-band
+  acceptance:
+  - guest_supervisor_processes() == 0 after boot
+  - session.lifecycle_state() == LifecycleState::Running; adapters.openshell_sandbox_booted emitted
+  code_todos: []
+- case_id: ad_11_openshell_approval_bridge_suspend
+  status: gap
+  domain: adapters_ingestion
+  target_crate: crates/kelir-adapters
+  slop_risks:
+  - Session reports suspended while host RSS and CPU cost never drop
+  - Resume happens before the RFC 6902 profile patch lands, so the denial is replayed
+  - Suspension uses an internal reason instead of SuspendReason::External
+  must_not:
+  - Never resume before the approval patch is applied to plugin-profile
+  - Never suspend with a reason other than SuspendReason::External on denial
+  acceptance:
+  - session.suspend(SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold)) returns Ok and state is Suspended with zero host CPU cost
+  - profile_patch_applied_before_resume() is true; adapters.openshell_approval_resumed emitted
+  code_todos: []
+- case_id: ad_12_e2b_compat_session_parity
+  status: red
+  domain: adapters_ingestion
+  target_crate: packages/ts/e2b-compat
+  slop_risks:
+  - TS close() returns Ok while the underlying Session never reaches Terminated
+  - 'TS and Python wrappers diverge: one reaches Terminated, the other stalls in Running'
+  - create/close success asserted without reading any Session lifecycle state
+  must_not:
+  - Never treat close() Ok as Terminated; the state transition must be read
+  - Never add an in-guest shim or daemon to make parity pass
+  acceptance:
+  - ts_sandbox.close() and py_sandbox.close() both return Ok
+  - ts_session and py_session lifecycle_state() both equal LifecycleState::Terminated in the same order (AS-04A)
+  code_todos: []
+- case_id: ar_01_execution_receipt_blake3_binding
+  status: red
+  domain: attestation_receipts
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Receipt hash computed from the reaped file inside the test, a tautology that can never fail
+  - binary_blake3 field ignored while only the exit code is asserted
+  - Receipt bound to the wrong binary after a rewrite, hiding the patch chain
+  must_not:
+  - Compute the expected hash from the reaped file in the test
+  - Assert the receipt without checking binary_blake3
+  acceptance:
+  - receipt.exit_code == 0 and receipt.exit_kind == ExitKind::Normal
+  - receipt.binary_blake3 equals the hardcoded literal BLAKE3 of /bin/true
+  code_todos:
+  - crates/kelir-interface/src/handlers_plugin.rs
+  - crates/kelir-shim/src/main.rs
+  - packages/py/kelir/__init__.py
+- case_id: ar_02_class1_hardware_provenance_immutability
+  status: gap
+  domain: attestation_receipts
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Class 1 attestation falls back to Class 3 guest-unverified data when evidence is missing
+  - Guest stdout string parsed as an ExecutionReceipt when the trap receipt is missing
+  - Missing Tier 1 evidence returns Ok instead of denial
+  must_not:
+  - Fall back to unverified guest payload buffers when hypervisor evidence is missing
+  - Parse guest stdout as a receipt
+  acceptance:
+  - verify_res == Err(AttestationError::ProvenanceViolation) on missing Tier 1 evidence
+  - No Class 3 fallback path exists for Class 1 provenance
+  code_todos: []
+- case_id: ar_03_dirty_bytes_exact_byte_accounting
+  status: red
+  domain: attestation_receipts
+  target_crate: crates/kelir-core
+  slop_risks:
+  - dirty_bytes computed as dirty pages times host page size (4096 on Linux, 16384 on Mac)
+  - Receipt reports 0 dirty bytes after a 100-byte guest write
+  - Dirty accounting differs between 4KB and 16KB hosts
+  must_not:
+  - Multiply the dirty page count by the host page size
+  - Report dirty_bytes from a page counter instead of exact bytes
+  acceptance:
+  - receipt.dirty_bytes == 100 after a 100-byte guest write
+  - receipt.dirty_bytes != 4096 and identical across x86_64 and aarch64
+  code_todos: []
+- case_id: ar_04_binary_blake3_cache_invalidation
+  status: gap
+  domain: attestation_receipts
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Hash cache served after touch/truncate without invalidation
+  - Cache key omits st_mtime_ns so a rewrite keeps the old hash
+  - New hash asserted equal to the cached hash after the file changed
+  must_not:
+  - Assert the hash is cached without checking that touch/truncate forces invalidation
+  - Key the cache on path alone instead of (st_dev, st_ino, st_size, st_mtime_ns)
+  acceptance:
+  - first_receipt.binary_blake3 != second_receipt.binary_blake3 after mtime change
+  - Cache invalidated on any key component change
+  code_todos: []
+- case_id: ar_05_erofs_trusted_prefix_fast_path
+  status: red
+  domain: attestation_receipts
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Every /usr/bin invocation reads raw bytes from the EROFS block device
+  - Trusted-prefix resolution performs disk I/O instead of the O(1) host-RAM table
+  - Untrusted prefix granted the Gate 3 skip
+  must_not:
+  - Read raw file bytes from the EROFS block device on every invocation
+  - Resolve trusted prefixes from disk instead of the pre-computed BLAKE3 table
+  acceptance:
+  - disk_read_bytes_during_resolution() == 0 during /usr/bin resolution
+  - resolution_duration < 2us via the O(1) host-RAM index
+  code_todos: []
+- case_id: ar_07_exit_code_patch_chain_divergence
+  status: red
+  domain: attestation_receipts
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Receipt records the original binary hash, concealing the rewrite chain
+  - TrapEvent and receipt both carry a single binary_blake3 with no original/final split
+  - Exit code asserted without checking which binary produced it
+  must_not:
+  - Assert the original binary hash in the ExecutionReceipt
+  - Record one binary_blake3 for both the trap event and the receipt
+  acceptance:
+  - trap_event.original_binary_blake3 != receipt.binary_blake3
+  - receipt.binary_blake3 == hash_of('/bin/safe_wrapper')
+  code_todos: []
+- case_id: ar_09_causal_delta_aggregation_merkle
+  status: gap
+  domain: attestation_receipts
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Delta generated without broker tombstone paths in modified_inodes
+  - receipt_leaf_hash or storage_delta_root left zero, so the delta carries no chain identity
+  - Aggregation drops the forked process from spawned_pids
+  must_not:
+  - Assert a delta was generated without checking modified_inodes covers created and unlinked files
+  - Aggregate with zero leaf hashes and call the chain valid
+  acceptance:
+  - delta.modified_inodes.len() == 2 and delta.spawned_pids.len() == 1
+  - delta.receipt_leaf_hash and delta.storage_delta_root are both nonzero
+  code_todos:
+  - crates/kelir-bindings/napi/src/lib.rs
+  - crates/kelir-bindings/pyo3/src/lib.rs
+  - packages/py/kelir/lifecycle_session.py
+  - packages/py/kelir/service_caps.py
+- case_id: ar_12_session_attestation_token_injection
+  status: gap
+  domain: attestation_receipts
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Token presence asserted without verifying the signature from the host session key
+  - Token accepted with a session_token that does not match the active session
+  - Workload verifies the token over an untrusted channel instead of vsock Channel 0
+  must_not:
+  - Assert the token is present without verifying its cryptographic signature
+  - Inject the token without binding it to the active session id
+  acceptance:
+  - token.verify_sig(&host_pub_key) == true
+  - token.session_token == active_session_id
+  code_todos:
+  - crates/kelir-interface/src/telemetry/receipt_attest.rs
+- case_id: ar_13_vmlinux_blake3_pre_vcpu_attest
+  status: gap
+  domain: attestation_receipts
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Kernel boots without the token carrying the exact pre-computed vmlinux digest
+  - Forged kernel accepted because the digest is never compared
+  - Digest pinned from the SHA-256 of empty input instead of the kernel BLAKE3
+  must_not:
+  - Assert the kernel booted without checking token.vmlinux_blake3
+  - Pin the expected digest from empty input instead of blake3_file(kernel_image_path)
+  acceptance:
+  - token.vmlinux_blake3 == blake3_file(kernel_image_path)
+  - Forged kernel image fails attestation before vCPU start
+  code_todos: []
+- case_id: ar_14_rootfs_erofs_blake3_pre_vcpu_attest
+  status: gap
+  domain: attestation_receipts
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Untracked ext4 image boots instead of the verified EROFS rootfs
+  - Forged rootfs accepted because erofs_blake3 is never compared
+  - Digest pinned from a rotation of the SHA-256 of empty input
+  must_not:
+  - Boot an untracked ext4 image instead of verifying the EROFS hash binding
+  - Assert boot Ok without checking token.erofs_blake3
+  acceptance:
+  - token.erofs_blake3 == blake3_file(rootfs_erofs_path)
+  - Forged rootfs image fails attestation before vCPU start
+  code_todos: []
+- case_id: bp_01_python_boot_econfig_missing_pydantic_dependency
+  status: red
+  domain: bindings_py
+  target_crate: packages/py
+  slop_risks:
+  - boot raises the generic missing-_kelir EConfig instead of naming missing pydantic, so the test passes on the wrong error
+  - BaseModel stays TYPE_CHECKING-only and boot accepts malformed params that cross the FFI boundary unvalidated
+  - a stub pydantic shim is added that always validates, so boot passes with the dependency unresolvable
+  must_not:
+  - assert EConfig without running boot with the pydantic specifier unresolvable
+  - add a TYPE_CHECKING-only import or a validation shim that never runs at boot
+  acceptance:
+  - boot with pydantic unresolvable throws exactly EConfig naming pydantic, vcpus_launched() == 0
+  - audit event sdk.python.boot_econfig emitted with receipt exit_kind HypervisorFault, fault_reason EConfig
+  code_todos:
+  - packages/py/kelir/kelir_builder.py
+- case_id: bp_02_python_vectors_parity_frame_verdict_equality
+  status: red
+  domain: bindings_py
+  target_crate: packages/py
+  slop_risks:
+  - expected frame_hex derived by running the subject encoder instead of read as literals from ./vectors.json
+  - Py verdict shape differs from Rust while the 58 vectors still pass in Py-only tests
+  - runner asserts only that 58 vectors ran, not byte-for-byte frame_hex and expected_verdict equality per vector
+  must_not:
+  - derive expected values from subject output; expected frame_hex and expected_verdict are literals from ./vectors.json
+  - ship a Py-only verdict encoding that diverges from the Rust parity CLI comparison
+  acceptance:
+  - 'kelir-plugin-cli parity run ./vectors.json over the Py consumer: 58/58 vectors, frame_hex byte-identical, expected_verdict identical'
+  - audit event sdk.python.vectors_parity_passed, receipt exit_kind Normal
+  code_todos: []
+- case_id: bp_03_python_fused_trampoline_single_crossing_chained_hooks
+  status: red
+  domain: bindings_py
+  target_crate: packages/py
+  slop_risks:
+  - assert all 5 hooks ran without measuring FFI trampoline crossings, so 5 crossings pass as fused
+  - describe() returns a fused descriptor while fuse() still invokes each hook through its own crossing
+  - Py fused closure diverges from the Rust single-closure shape, so the same chain crosses once in Rust and five times in Py
+  must_not:
+  - count hook invocations as proof of fusion; crossings_per_ring_event(TRAP) must equal 1
+  - leave the compiled flat closure as a descriptor-only stub
+  acceptance:
+  - 'FusedTrampoline.fuse(5 Trap hooks): crossings_per_ring_event(TRAP) == 1 and hook_count(TRAP) == 5'
+  - audit event sdk.python.fused_hook_executed, receipt exit_kind Normal
+  code_todos:
+  - crates/kelir-bindings/pyo3/src/lib.rs
+  - packages/py/kelir/plugin_fusion.py
+- case_id: bt_01_typescript_boot_econfig_missing_typebox_dependency
+  status: red
+  domain: bindings_ts
+  target_crate: packages/ts
+  slop_risks:
+  - boot throws the generic missing-NAPI-addon EConfig instead of naming missing TypeBox
+  - local stub t in schema.config.ts kept as the validator, so boot passes with TypeBox unresolvable
+  - TypeBox added as a dependency but boot never calls it, so malformed params cross the FFI boundary unvalidated
+  must_not:
+  - assert EConfig without running boot with the TypeBox specifier unresolvable
+  - keep the stub t object as the runtime validator
+  acceptance:
+  - boot with TypeBox unresolvable throws exactly EConfig naming TypeBox, vcpus_launched() == 0
+  - audit event sdk.typescript.boot_econfig emitted with receipt exit_kind HypervisorFault, fault_reason EConfig
+  code_todos:
+  - packages/ts/core/src/builder.lifecycle.ts
+- case_id: bt_02_typescript_vectors_parity_frame_verdict_equality
+  status: red
+  domain: bindings_ts
+  target_crate: packages/ts
+  slop_risks:
+  - expected frame_hex derived by running the subject encoder instead of read as literals from ./vectors.json
+  - TS verdict shape differs from Rust while the 58 vectors still pass in TS-only tests
+  - runner asserts only that 58 vectors ran, not byte-for-byte frame_hex and expected_verdict equality per vector
+  must_not:
+  - derive expected values from subject output; expected frame_hex and expected_verdict are literals from ./vectors.json
+  - ship a TS-only verdict encoding that diverges from the Rust parity CLI comparison
+  acceptance:
+  - 'kelir-plugin-cli parity run ./vectors.json over the TS consumer: 58/58 vectors, frame_hex byte-identical, expected_verdict identical'
+  - audit event sdk.typescript.vectors_parity_passed, receipt exit_kind Normal
+  code_todos: []
+- case_id: bt_03_typescript_fused_trampoline_single_crossing_chained_hooks
+  status: red
+  domain: bindings_ts
+  target_crate: packages/ts
+  slop_risks:
+  - assert all 5 hooks ran without measuring FFI trampoline crossings, so 5 crossings pass as fused
+  - describe() returns a fused descriptor while the NAPI trampoline table still holds one entry per hook
+  - builder.boot() never checks trampolineEntryCount() against the fused descriptor ring count
+  must_not:
+  - count hook invocations as proof of fusion; crossingsPerRingEvent(Trap) must equal 1
+  - bind each fused chain through one threadsafe closure per hook instead of one per ring event
+  acceptance:
+  - 'FusedTrampoline.fuse(5 Trap hooks): crossingsPerRingEvent(Trap) == 1, hookCount(Trap) == 5'
+  - builder.boot() asserts trampolineEntryCount() equals the fused descriptor ring count
+  code_todos:
+  - crates/kelir-bindings/napi/src/lib.rs
+  - packages/ts/core/src/builder.lifecycle.ts
+  - packages/ts/core/src/fusion.plugin.ts
+- case_id: bt_04_napi_boot_before_fuse_hooks_fails_closed
+  status: red
+  domain: bindings_ts
+  target_crate: crates/kelir-bindings/napi
+  slop_risks:
+  - boot fails with the generic missing-addon EConfig instead of the exact 'fuse_hooks must run before boot' rejection
+  - a NativeSessionHandle is produced despite fuse_hooks never running, so hooks never fire and traps pass unfiltered
+  - TS-side check added that mimics the rejection while the native boot path still boots unfused
+  must_not:
+  - assert boot fails without matching the exact fuse_hooks reason string
+  - produce a session handle or trampoline entries before fuse_hooks runs
+  acceptance:
+  - NativeKelirBuilder::new(None x 6).boot() returns Err containing 'fuse_hooks must run before boot'
+  - trampoline_entry_count() == 0 and no NativeSessionHandle produced; audit event sdk.boot_rejected
+  code_todos:
+  - packages/ts/core/src/builder.lifecycle.ts
+  - packages/ts/core/src/session.lifecycle.ts
+- case_id: gt_01_jsonrpc_tool_call_interposition
+  status: red
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - McpFrame::decode returns the default frame (method Other, no tool name), so tools/call is never classified and the call is rejected with Halt EPERM before any policy runs
+  - Tool asserted executed while the guard never inspected the arguments before the guest process launched
+  - Frames classified by substring on the raw bytes instead of JSON-RPC 2.0 decode, so a tools/list frame is treated as tools/call
+  must_not:
+  - Classify frames by substring instead of JSON-RPC 2.0 decode
+  - Assert execution without the guard hook firing first
+  acceptance:
+  - tool_guard_interception_count() == 1 for the tools/call frame
+  - interception_payload_tool_name() == 'execute_command' with event tool_guard.tool_call_intercepted
+  code_todos:
+  - crates/kelir-plugins/plugin-tool-guard/src/service_tool_guard.rs
+- case_id: gt_03_taint_tracking_mutation_suspend
+  status: red
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - evaluate_tool_call returns Verdict::Pass unconditionally, so the tainted write_file executes without approval
+  - Suspend returned but the guest file is still written before the approval arrives
+  - Approval binds to the tool name only instead of the canonical payload hash, so a mutated payload rides the approval
+  must_not:
+  - Return Verdict::Pass for a mutating tool under tainted state
+  - Suspend without binding the approval to the canonical payload hash
+  acceptance:
+  - 'Verdict is Suspend { until: SuspendUntil::Approval }'
+  - fs::exists_in_guest('deploy.sh') == false with event tool_guard.suspended_for_approval
+  code_todos:
+  - crates/kelir-plugins/plugin-tool-guard/src/lib.rs
+  - crates/kelir-plugins/plugin-tool-guard/src/service_tool_guard.rs
+- case_id: gt_04_token_bucket_call_quota_etoolquota
+  status: red
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - charge_quota never runs because McpFrame::decode fails first, so the burst is rejected with Halt EPERM and the quota path is never exercised
+  - Bucket refills on every call, so 6 calls against capacity 5 never exhaust
+  - Quota enforced per trace instead of per tool, so one tool burst consumes another tool budget
+  must_not:
+  - Reject the burst with Halt EPERM from the decode stub instead of ETOOLQUOTA from the bucket
+  - Refill the bucket on every call
+  acceptance:
+  - 6th call against capacity 5 returns Verdict::Drop with errno ETOOLQUOTA
+  - Receipt fault_reason ETOOLQUOTA with event tool_guard.quota_exceeded
+  code_todos:
+  - crates/kelir-plugins/plugin-tool-guard/src/lib.rs
+- case_id: gt_05_verdict_patch_execve_mutation_apply
+  status: gap
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Patch returned but the guest process spawns with the original argv, so the mutation never applies
+  - new_binary applied but new_argv and env left original, so the execve runs partially mutated
+  - Patch asserted by the verdict variant only while /proc/$PID/cmdline is never read
+  must_not:
+  - Return Verdict::Patch without the shim applying new_binary, new_argv, and env atomically
+  - Assert the Patch verdict without reading the executed argv in the guest
+  acceptance:
+  - executed_task_argv() == ['curl', 'http://safe.url']
+  - frames_outbound == 1 with event tool_guard.execve_patched
+  code_todos:
+  - crates/kelir-shim/src/main.rs
+- case_id: gt_06_payload_secret_pattern_scrub
+  status: red
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - scrub_tool_response returns Ok(()) without scrubbing, so the host secret reaches model context verbatim
+  - Scrubber replaces only the first occurrence, so a repeated token leaks in the same chunk
+  - Scrub asserted by the call returning Ok while the output bytes are never scanned for the credential substring
+  must_not:
+  - Return Ok(()) from scrub_tool_response without stripping secrets
+  - Scrub only the first occurrence of a secret pattern
+  acceptance:
+  - 'scrubbed_output == ''Authentication failed with token: [REDACTED]'''
+  - Zero occurrences of the credential substring with event tool_guard.response_scrubbed
+  code_todos:
+  - crates/kelir-plugins/plugin-tool-guard/src/lib.rs
+- case_id: gt_07_tool_guard_mcp_console_upstream
+  status: gap
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - MCP plugin registered ahead of tool-guard in the dispatch array, so tool commands reach the guest before governance filters evaluate
+  - Ordering asserted from the plugin registration order in a config file while the live dispatch array order is never read
+  - tool-guard mounted on a different console port than MCP, so the upstream check never sees the frames
+  must_not:
+  - Register MCP ahead of tool-guard in the dispatch array
+  - Assert ordering from config without reading the live dispatch order
+  acceptance:
+  - tool_guard_idx < mcp_idx on MCP_CONSOLE in the live dispatch array
+  - Event pipeline.order_validated with no tool invocation bypassing tool-guard
+  code_todos: []
+- case_id: gt_08_schema_drift_method_not_found
+  status: red
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Unpinned tool rejected with Halt EPERM from the decode stub instead of a framed JSON-RPC error with code -32601
+  - Error object synthesized with a generic 500 code instead of -32601 Method not found
+  - Connection closed on rejection instead of returning the framed error, so the client sees a transport failure
+  must_not:
+  - Return Halt EPERM instead of a framed JSON-RPC error with code -32601
+  - Close the connection instead of returning the framed error
+  acceptance:
+  - jsonrpc_response.error.code == -32601 for the unregistered tool
+  - Event tool_guard.unknown_tool_rejected with the connection left open
+  code_todos: []
+- case_id: gt_09_verdict_drop_jsonrpc_error_synthesis
+  status: red
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Drop maps to PluginError::reject and the vsock connection closes abruptly, crashing the model client transport
+  - Error object synthesized with code -32000 instead of -32000 - errno_number (-32001 for EPERM)
+  - Message field omits the policy reason, so the client cannot tell denial from failure
+  must_not:
+  - Terminate the socket connection instead of sending the framed error response
+  - Synthesize code -32000 instead of -32001 for an EPERM drop
+  acceptance:
+  - jsonrpc_response.error.code == -32001
+  - Error message contains 'Policy denied' and the connection remains open, event tool_guard.tool_dropped
+  code_todos:
+  - crates/kelir-plugins/plugin-tool-guard/src/lib.rs
+- case_id: gt_10_tool_call_depth_recursion_ceiling
+  status: red
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - All 51 calls rejected with Halt EPERM from the decode stub, so the ceiling is never exercised and zero of the first 50 pass
+  - 51st call allowed because the per-trace count resets on every call
+  - Ceiling enforced with ECYCLICREWRITE instead of ETOOLQUOTA, conflating the invocation ceiling with cyclic-rewrite rejection
+  must_not:
+  - Reject the first 50 calls with Halt EPERM from the decode stub
+  - Reject the 51st call with ECYCLICREWRITE instead of ETOOLQUOTA
+  acceptance:
+  - First 50 calls in the trace pass and the 51st returns Verdict::Drop with errno ETOOLQUOTA
+  - Receipt fault_reason ETOOLQUOTA with event tool_guard.depth_exceeded
+  code_todos: []
+- case_id: gt_11_out_of_band_human_approval_resume
+  status: gap
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Approval wait spins a thread polling for the out-of-band authorization, burning 100% host CPU
+  - Suspend returned but the vCPU thread keeps executing, so the tool runs before approval lands
+  - Resume fires without a MSG_APPROVAL message type, so the approval is delivered through an ad-hoc channel that bypasses Channel 0
+  must_not:
+  - Spin a thread polling while awaiting approval
+  - Resume the tool without an out-of-band approval delivered via Channel 0
+  acceptance:
+  - vcpu_state_was_parked() == true while suspended
+  - tool_execution_res.is_ok() == true after approval with event tool_guard.approved_and_resumed
+  code_todos: []
+- case_id: gt_12_model_controlled_flag_taint_override
+  status: red
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - evaluate_tool_call returns Verdict::Pass without consulting taint, so override_taint:true in the model parameters clears the host gate
+  - Taint cleared from guest arguments, so a prompt-injected force=true untaints write_file
+  - Verdict Suspend asserted while registry.taint('write_file') reads clean, so the gate and the state disagree
+  must_not:
+  - Accept override_taint:true from model parameters
+  - Let in-guest instructions clear host-tracked taint
+  acceptance:
+  - Verdict is Suspend regardless of the override_taint parameter
+  - registry.taint('write_file') == Ok(ToolTaint::Tainted) with event tool_guard.taint_override_ignored
+  code_todos: []
+- case_id: gv_02_out_of_scope_credential_denial
+  status: gap
+  domain: governance_vault
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - issue() returns a token for a registered credential outside the declared MountScope, so a compromised workload extracts arbitrary keyring secrets
+  - Scope check compares credential names only, so production_db_password under a different name passes
+  - Denial returns a token-shaped 200 with zero bytes instead of 403 EACCES
+  must_not:
+  - Issue a token for an out-of-scope credential
+  - Return a 200 with an empty token instead of 403 EACCES
+  acceptance:
+  - Out-of-scope request returns HTTP 403 / EACCES
+  - Response body contains no token bytes with event vault.scope_denied
+  code_todos:
+  - crates/kelir-plugins/plugin-vault/src/service_vault.rs
+- case_id: gv_03_audience_locking_validation
+  status: red
+  domain: governance_vault
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Audience query parameter left unparsed, so the query string pollutes the credential name and the endpoint answers 404 ENODATA instead of 403 EACCES
+  - Token issued with a wildcard audience, so it replays against any destination
+  - Audience copied from the descriptor unchecked, so a token minted for api.openai.com is accepted at api.anthropic.com
+  must_not:
+  - Issue a wildcard-audience token
+  - Copy the descriptor audience into the token without checking it against the request destination
+  acceptance:
+  - openai_key?audience=api.anthropic.com returns 403 EACCES
+  - Event vault.audience_mismatch with no token issued
+  code_todos:
+  - crates/kelir-plugins/plugin-vault/src/lib.rs
+- case_id: gv_05_host_keyring_mlock_zeroization
+  status: gap
+  domain: governance_vault
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Token buffer allocated as a plain Rust String without ZeroizeOnDrop, so the plaintext lingers after drop
+  - mlock(2) never called on the keyring pages, so the kernel swaps secret keys to unencrypted disk
+  - Zeroization asserted on the token string while the keyring copy in the host keyring stays live and unpinned
+  must_not:
+  - Allocate secret buffers as plain String without zeroize-on-drop
+  - Mint tokens without mlock(2) pinning the host keyring memory
+  acceptance:
+  - Raw memory slice reads 0x00 after buffer drop
+  - keyring_is_mlocked() == true with event vault.buffer_zeroized
+  code_todos:
+  - crates/kelir-plugins/plugin-vault/src/service_vault.rs
+- case_id: gv_08_external_egress_sidecar_tls_relay
+  status: gap
+  domain: governance_vault
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - TLS terminated inside supervisor memory, so a supervisor heap dump exposes the plaintext enterprise token
+  - Sidecar implemented as an in-process thread instead of an out-of-tree daemon, so the secret still transits supervisor memory
+  - Relay asserted by the HTTP 200 while the supervisor heap is never scanned for the secret
+  must_not:
+  - Terminate TLS inside supervisor memory
+  - Implement the sidecar as an in-process thread
+  acceptance:
+  - supervisor_memory_contains('super_secret_token_123') == false during egress
+  - frames_outbound == 1 with event vault.sidecar_relayed
+  code_todos: []
+- case_id: gv_10_sigv4_signed_header_synthesis
+  status: gap
+  domain: governance_vault
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Raw AWS secret key passed to the guest so the workload can sign requests itself, instead of the broker synthesizing headers out-of-band
+  - Authorization header synthesized with a static signature that never binds the request method, path, or body
+  - Signed headers asserted by presence of the Authorization key while the AWS4-HMAC-SHA256 signature value is never checked
+  must_not:
+  - Pass the raw AWS secret key to the guest
+  - Synthesize a static Authorization header that does not bind method, path, and body
+  acceptance:
+  - Returned JSON Authorization header starts with 'AWS4-HMAC-SHA256 Credential=AKIA_TEST'
+  - Event vault.sigv4_signed with no secret key bytes in the guest-visible payload
+  code_todos: []
+- case_id: gv_11_mtls_client_cert_bundle_issuance
+  status: red
+  domain: governance_vault
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - issue() ignores CredentialKind and mints the generic opaque bearer token, so the caller gets a bearer instead of a PEM bundle
+  - Certificate issued with a 10-year validity, so the private key persists indefinitely in the guest filesystem
+  - Bundle asserted by the 200 status while the cert PEM content and expiry are never inspected
+  must_not:
+  - Ignore CredentialKind and mint the generic bearer token
+  - Issue a certificate valid longer than 900 seconds
+  acceptance:
+  - cert_bundle.cert_pem contains 'BEGIN CERTIFICATE'
+  - cert_bundle.validity_seconds <= 900 with event vault.mtls_issued
+  code_todos: []
+- case_id: gv_12_vault_placeholder_profile_resolution
+  status: gap
+  domain: governance_vault
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - vault:// placeholder resolved directly to the plaintext secret in the profile AST, so the secret lands in the profile file
+  - Placeholder replaced by the secret string in the hydrated environment instead of the metadata URL
+  - Resolution asserted by the key existing while the value is never checked, hiding a leaked plaintext
+  must_not:
+  - Resolve a vault:// placeholder to the plaintext secret in the profile AST
+  - Put the raw secret in the hydrated environment instead of the metadata URL
+  acceptance:
+  - hydrated_env['DB_PASS'] == 'http://169.254.169.254/kelir/credentials/db_password'
+  - Profile AST contains the URL pointer and never the raw secret, event vault.placeholder_resolved
+  code_todos: []
+- case_id: hd_01_nohardware_vmm_fatal_abort
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - boot error caught generically without asserting the E_NOHARDWAREVMM fault_reason
+  - bwrap child spawned as silent fallback while allow_emulated_fallback is false
+  - is_emulated() returning Ok(true) accepted as a hardware boot
+  must_not:
+  - catch VmmError without matching NoHardwareVmm
+  - instantiate any emulated sandbox when opt-in is false
+  acceptance:
+  - boot_err matches VmmError::NoHardwareVmm and receipt fault_reason is E_NOHARDWAREVMM
+  - no bwrap child process exists and driver.is_emulated() is Ok(false)
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-core/src/vmm/mod.rs
+  - crates/kelir-drivers/driver-rustvmm/src/host_probe.rs
+- case_id: hd_02_wx_mmu_prot_exec_trap
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - exit failure asserted without the Stage-2 MMU fault and exit code 137
+  - mock VmmDriver stands in for the real MMU boundary
+  - PROT_EXEC allocation succeeds and the binary runs
+  must_not:
+  - mock the MMU or driver in the test graph
+  - accept a generic exit failure as the trap
+  acceptance:
+  - receipt fault_reason is E_WX_VIOLATION with exit code 137
+  - driver.capabilities().requires_hardware_vmm is true
+  code_todos:
+  - crates/kelir-shim/src/trap_protocol.rs
+- case_id: hd_03_hardware_rollback_timing_bound
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - rollback Ok asserted without measuring host-side elapsed time
+  - rollback Unsupported swallowed as a pass
+  - registers reset but RAM contents survive the rollback
+  must_not:
+  - treat Err(VmmError::Unsupported) as rollback success
+  - assert completion without the <8ms stopwatch
+  acceptance:
+  - rollback returns Ok(()) and stopwatch elapsed is < 8ms
+  - post-rollback register and RAM state equals the checkpointed state
+  code_todos:
+  - crates/kelir-drivers/driver-rustvmm/src/lib.rs
+  - crates/kelir-interface/src/driver_interface.rs
+- case_id: hd_04_cold_boot_budget_enforcement
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - VM alive asserted without host stopwatch to first guest exec
+  - 60ms driver-trait bound accepted in place of the 50ms case bound
+  - boot timed from driver load instead of cold start
+  must_not:
+  - assert liveness without the <50ms first-exec stopwatch
+  - substitute the 60ms artifact bound for the 50ms bound
+  acceptance:
+  - boot stopwatch to first guest exec is < 50ms
+  - first workload exec output observed
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-drivers/driver-hvf/src/lib.rs
+  - crates/kelir-drivers/driver-rustvmm/src/lib.rs
+- case_id: hd_05_kvm_userfaultfd_cow_tracking
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - dirty_bytes asserted without any userfaultfd fault resolution
+  - guest writes counted from a host-side estimate instead of the fault counter
+  - snapshot.dirty_bytes equals a hardcoded 1MiB without a fault firing
+  must_not:
+  - assert dirty tracking without a userfaultfd fault counter read
+  - derive dirty_bytes from guest writes alone
+  acceptance:
+  - snapshot.dirty_bytes is 1048576 after the guest write fault resolves
+  - physical userfaultfd fault counter increments on the guest write
+  code_todos: []
+- case_id: hd_06_hvf_stage2_chunk_promoter
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - memory modified asserted without checking 2MB chunk alignment
+  - 4KB pages promoted one by one and called a chunk promotion
+  - promote_chunked_stage2_pages stubbed to Ok(()) with no hv_vm_protect call
+  must_not:
+  - assert promotion without the 2MB chunk-size probe
+  - replace the hv_vm_protect Stage-2 intercept with a no-op
+  acceptance:
+  - promoted chunk size is 2MiB
+  - Stage-2 write-protect intercept fires on the promoted range
+  code_todos:
+  - crates/kelir-drivers/driver-hvf/src/lib.rs
+- case_id: hd_07_openvmm_apic_restore_sequence
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - restore Ok asserted without APIC-before-TSC MSR write ordering
+  - TSC deadline written first and APIC state committed after
+  - rollback succeeds while the restore sequence audit log is empty
+  must_not:
+  - assert restore completion without the MSR restore sequence log
+  - commit the TSC deadline before Local APIC state
+  acceptance:
+  - restore audit log shows APIC committed before the TSC deadline MSR write
+  - post-restore vCPU registers match the checkpointed APIC/TSC state
+  code_todos:
+  - crates/kelir-drivers/driver-openvmm/src/lib.rs
+- case_id: hd_08_avf_pkvm_boundary_enforcement
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - AVF boot asserted without an access fault on un-donated memory
+  - map_shared_region returns Ok on a range never donated to pKVM
+  - generic Unsupported accepted in place of E_PKVM_NON_DONATED_MEMORY
+  must_not:
+  - map host memory into the enclave without a pKVM donation check
+  - accept a generic error where the typed fault is required
+  acceptance:
+  - map of an un-donated range errs and receipt fault_reason is E_PKVM_NON_DONATED_MEMORY
+  - boot fails closed with exit code 1
+  code_todos:
+  - crates/kelir-drivers/driver-avf/src/lib.rs
+- case_id: hd_09_bwrap_emulated_fallback_opt_in
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - bwrap boot asserted without checking allow_emulated_fallback was true
+  - emulated boot proceeds with the opt-in flag false
+  - bwrap boot passes by falling back silently from a missing hardware driver
+  must_not:
+  - boot the bwrap tier unless allow_emulated_fallback is true
+  - treat a silent hardware-to-emulated downgrade as a boot
+  acceptance:
+  - boot succeeds only with policy.allow_emulated_fallback true
+  - boot with the flag false rejects with a typed error
+  code_todos:
+  - crates/kelir-drivers/driver-bwrap/src/lib.rs
+  - crates/kelir-interface/src/driver_interface.rs
+- case_id: hd_10_proot_ptrace_trap_conformance
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - command output asserted without a ptrace trap firing
+  - exec runs directly on the host with no PR_SET_PTRACER interposition
+  - receipt syscall_count is zero while exit code is 0
+  must_not:
+  - assert the command ran without a typed TrapEvent from the ptrace interposer
+  - run the workload outside the tracer and report its output
+  acceptance:
+  - receipt syscall_count is > 0 with exit code 0
+  - a typed TrapEvent is generated by the ptrace interposer for the exec
+  code_todos:
+  - crates/kelir-drivers/driver-proot/src/lib.rs
+- case_id: hd_11_cpuid_tsc_deadline_normalization
+  status: gap
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - CPUID data returned without checking ECX bit 24 (TSC-deadline) on AMD
+  - host CPUID leaves passed through unfiltered to the guest
+  - Leaf 0x1 returned with the host vendor string instead of the synthetic one
+  must_not:
+  - assert CPUID output without the (1 << 24) TSC-deadline bitmask check
+  - pass host leaves through the synthetic filter
+  acceptance:
+  - guest CPUID ECX & (1 << 24) is nonzero
+  - Leaf 0x1 reports invariant TSC with the synthetic vendor
+  code_todos:
+  - crates/kelir-drivers/driver-rustvmm/src/lib.rs
+- case_id: hd_14_guest_kernel_hardening_kptr_restrict
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - kallsyms read asserted without checking every pointer is 0x00000000
+  - real kernel addresses leak in stdout and the test only checks exit code
+  - kptr_restrict/hidepid settings never applied in the guest kernel
+  must_not:
+  - assert the read without the all-zero pointer line check
+  - accept a nonzero kernel address in the output buffer
+  acceptance:
+  - every stdout line starts with 0000000000000000
+  - guest kernel has kptr_restrict=2 and hidepid=2 applied
+  code_todos: []
+- case_id: hd_15_vcpu_scale_online_offline_dynamic
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - set_vcpus Ok asserted without host thread park/unpark observed
+  - guest nproc still reports the old count after the scale call
+  - scale accepted while VmmDriver has no set_vcpus surface at all
+  must_not:
+  - assert scaling from the Ok return alone
+  - count vCPUs from config instead of live host threads and guest nproc
+  acceptance:
+  - host threads transition parked to unparked on scale-up
+  - guest exec nproc reports 4 after set_vcpus(4)
+  code_todos:
+  - crates/kelir-interface/src/handles_lifecycle.rs
+- case_id: hd_16_virtio_balloon_pressure_reclaim
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - balloon inflated asserted without host RSS dropping
+  - adjust_balloon Ok while no madvise(MADV_DONTNEED) reclaim runs
+  - balloon target recorded but physical frames stay resident
+  must_not:
+  - assert reclaim without the host RSS measurement
+  - report inflation success from the balloon size field alone
+  acceptance:
+  - host RSS after is <= host RSS before minus 250MiB
+  - adjust_balloon(256) returns Ok and frames are released
+  code_todos:
+  - crates/kelir-core/src/planes/host/mod.rs
+  - crates/kelir-interface/src/driver_interface.rs
+- case_id: hd_17_mach_vm_deallocate_footprint_purge
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - libc madvise used on macOS and claimed as a memory purge
+  - wired RSS asserted from a host estimate with no mach_vm_deallocate call
+  - balloon Ok while the wired footprint never drops
+  must_not:
+  - use madvise-alone on macOS in place of mach_vm_deallocate
+  - assert the purge without the mach_deallocate probe and wired-RSS drop
+  acceptance:
+  - mach_deallocate_called() is true
+  - host wired RSS drops after adjust_balloon(128)
+  code_todos: []
+- case_id: hd_18_rosetta_binfmt_registration
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - x86_64 binary exit 0 asserted without a Rosetta handler in binfmt_misc
+  - binary runs natively on Apple Silicon and is reported as translated
+  - Rosetta directory never mounted at /run/rosetta
+  must_not:
+  - assert translation without the guest binfmt_misc Rosetta entry
+  - accept host-arch execution as Rosetta translation
+  acceptance:
+  - guest binfmt_misc has the Rosetta handler and x86_64 ELF exits 0
+  - receipt exit_kind is Normal for the translated binary
+  code_todos: []
+- case_id: hd_fast_boot_backend_change
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - cold boot asserted without checking the recorded driver_id differs from the current backend
+  - stale KVM snapshot reused after the backend changed
+  - cold boot exceeds 60ms and is still reported as the fallback
+  must_not:
+  - reuse a snapshot keyed to a different driver_id
+  - assert the fallback without the <60ms cold-boot stopwatch
+  acceptance:
+  - recorded driver_id differs from current driver_id and boot path is Cold
+  - cold boot elapsed is < 60ms with the cache repopulated for the new backend
+  code_todos:
+  - crates/kelir/src/builder_sdk.rs
+  - crates/kelir/src/sandbox_runtime.rs
+- case_id: hd_fast_boot_drift
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - cold boot asserted without checking the recomputed cache key changed
+  - drifted vmlinux/erofs/boot_params still hydrate the stale snapshot
+  - cold boot exceeds 60ms and is still reported as the fallback
+  must_not:
+  - hydrate a snapshot whose BLAKE3 key no longer matches the inputs
+  - assert the fallback without the key-change and <60ms checks
+  acceptance:
+  - recomputed BLAKE3 key differs from the stored key and boot path is Cold
+  - cold boot elapsed is < 60ms
+  code_todos: []
+- case_id: hd_fast_boot_hit
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - boot Ok asserted without the host stopwatch to first guest exec
+  - warm boot reads the snapshot but hydrates different bytes than cached
+  - 500us bound checked against a cold boot instead of the mmap hydration
+  must_not:
+  - assert a warm boot without the <500us hydration stopwatch
+  - accept hydrated bytes that differ from the cached snapshot bytes
+  acceptance:
+  - warm boot elapsed is < 500us with FastBootMode::Auto
+  - hydrated base bytes equal the cached snapshot bytes
+  code_todos:
+  - crates/kelir-integration/tests/full_pipeline_test.rs
+- case_id: hd_fast_boot_miss
+  status: red
+  domain: hypervisor_driver
+  target_crate: crates/kelir-core
+  slop_risks:
+  - boot Ok asserted without checking the boot path was cold
+  - empty cache reported as an error to the SDK instead of a silent miss
+  - cache left empty after the cold-boot fallback
+  must_not:
+  - surface a cache miss as an SDK error
+  - assert the miss without the Cold boot-path check
+  acceptance:
+  - boot path is Cold with FastBootMode::Auto and no SDK error raised
+  - cold boot elapsed is < 60ms and the cache is populated for the next boot
+  code_todos: []
+- case_id: lc_01_cow_fork_warm_memory_sharing
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Fork clones the parent memory buffer with memcpy instead of CoW page tables
+  - Host dirty page delta is nonzero immediately after fork
+  - Fork takes over 10ms because the whole checkpoint plane is copied
+  must_not:
+  - Clone memory with memcpy instead of establishing CoW page tables
+  - Fork without the native VmmDriver::fork CoW clone
+  acceptance:
+  - fork_duration < 10ms and child dirty_pages == 0 immediately after fork
+  - Child write dirties only the written pages, parent pages stay shared
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-drivers/driver-hvf/src/lib.rs
+  - crates/kelir-interface/src/driver_interface.rs
+- case_id: lc_02_suspend_zero_rss_purge
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Suspend pauses the vCPU without unmapping physical RAM pages
+  - Host RSS stays at the running level after suspend
+  - Suspend completes without flushing compressed pages to NVMe
+  must_not:
+  - Pause the vCPU without the suspend-image write and RSS purge
+  - Advance lifecycle state to Suspended before the driver reports success
+  acceptance:
+  - host_process_rss_mb() < 15 and suspend_duration < 50ms
+  - Suspended image restores on resume with state intact
+  code_todos:
+  - crates/kelir-core/src/planes/host/mod.rs
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-interface/src/driver_interface.rs
+- case_id: lc_03_step_evaluation_taint_rollback
+  status: gap
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Tainted step reports failure while the upper file and RAM keep the writes
+  - Rollback takes over 8ms, missing the step-evaluation bound
+  - Step evaluated without a live StepSlot per trap event
+  must_not:
+  - Assert step failed without asserting the upper backing file is punched to 0 bytes
+  - Rollback the slot without reverting RAM to the pre-step snapshot
+  acceptance:
+  - broker.allocated_bytes() == 0 and fs::exists_in_guest('src/payload.bin') == false after rollback
+  - rollback_time < 8ms
+  code_todos:
+  - crates/kelir-bindings/napi/src/lib.rs
+  - crates/kelir-bindings/pyo3/src/lib.rs
+  - crates/kelir-core/src/dispatch_plugin/lifecycle_dispatch.rs
+  - crates/kelir-core/src/dispatch_plugin/mod.rs
+  - crates/kelir-core/src/planes/checkpoint/mod.rs
+  - packages/ts/core/src/index.ts
+- case_id: lc_04_draining_state_rejection_ebusy
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Draining kills in-flight commands instead of letting them complete
+  - New exec accepted during Draining instead of refused with EBUSY
+  - Drain returns before in-flight frames reach quiescence
+  must_not:
+  - Terminate in-flight commands instead of rejecting only new ones
+  - Refuse new exec with a generic error instead of EBUSY
+  acceptance:
+  - In-flight command completes with exit 0 while new exec fails with EBUSY
+  - New tool call during Draining returns the EBUSY diagnostic
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+- case_id: lc_06_hvf_chunked_page_promoter_2mb
+  status: gap
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Writing 512 contiguous 4KB pages triggers 512 Stage-2 exits instead of 1
+  - Promotion tested on Linux KVM and claimed for macOS HVF
+  - 2MB promotion applied to non-contiguous pages, corrupting the mapping
+  must_not:
+  - Assert the write succeeded without measuring the Stage-2 exit count
+  - Test the HVF promoter on Linux and claim macOS coverage
+  acceptance:
+  - hvf_stage2_data_abort_count() == 1 for 512 contiguous 4KB page writes
+  - Promotion runs only on the macOS aarch64 HVF path
+  code_todos: []
+- case_id: lc_07_cow_fork_uncloned_descriptor_veto
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Fork ignores the registered Fork veto and spawns the child microVM
+  - Veto callback returns false but fork still returns Ok
+  - Child VM created before the veto is consulted
+  must_not:
+  - Ignore the veto callback and spawn the child anyway
+  - Consult the veto after the child VM is created
+  acceptance:
+  - fork() returns Err containing ESessionVeto and active_microvm_count() stays 1
+  - No child process exists after the vetoed fork
+  code_todos: []
+- case_id: lc_08_rollback_trap_held_precondition
+  status: gap
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Rollback issued while a trap is still held, leaving the guest task hung
+  - Held trap released with the wrong verdict instead of Drop{EFAULT}
+  - Rollback resets memory while the trapped task still awaits a decision
+  must_not:
+  - Issue rollback without draining the active seccomp/trap queue
+  - Release the held trap with Pass instead of Verdict::Drop{EFAULT}
+  acceptance:
+  - trapped_task_result == Err(EFAULT) and active_held_traps_count() == 0 before the reset
+  - Memory and registers reset only after the trap unblocks
+  code_todos: []
+- case_id: lc_10_abrupt_kill_dirty_shutdown_receipt
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Kill returns a Normal exit 0 receipt instead of HardKilled
+  - Kill flushes state before SIGKILL, hiding the dirty shutdown
+  - on_vm_shutdown fires on kill, masking the abrupt teardown
+  must_not:
+  - Assert kill succeeded with exit code 0 and ExitKind::Normal
+  - Flush or sync before issuing SIGKILL
+  acceptance:
+  - receipt.exit_kind == ExitKind::HardKilled and receipt.exit_code == 137
+  - No flush or shutdown hook runs on the kill path
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+- case_id: lc_11_lid_sleep_clock_resync_snap
+  status: gap
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Wake succeeds while the guest clock still shows pre-sleep time
+  - Clock resync applied to the monotonic watermark instead of the wall clock
+  - TLS certs fail after wake because guest time never jumped forward
+  must_not:
+  - Assert wake succeeded without verifying the guest clock jumped forward
+  - Resync by stepping the clock instead of snapping to host wall-clock
+  acceptance:
+  - guest_clock_gettime(CLOCK_REALTIME) >= host_wall_clock() after wake
+  - Resync frame dispatched over Control 0x0000 on sleep/wake
+  code_todos:
+  - crates/kelir-core/src/planes/checkpoint/mod.rs
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-interface/src/handles_lifecycle.rs
+- case_id: lc_12_host_reaper_pdeathsig_enforcement
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Child hypervisor survives as an orphaned CPU spinner after parent SIGKILL
+  - Reaper armed only for clean parent exit, not abrupt kill -9
+  - waitpid used as the death proof instead of testing parent kill
+  must_not:
+  - Assert the child died via waitpid without killing the parent with SIGKILL
+  - Arm the reaper after the child is already running unprotected
+  acceptance:
+  - Child hypervisor PID is dead after the parent is killed with SIGKILL
+  - prctl(PR_SET_PDEATHSIG, SIGKILL) applied on Linux before the child runs
+  code_todos:
+  - crates/kelir-core/src/planes/host/mod.rs
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-interface/src/driver_interface.rs
+- case_id: lc_13_host_reaper_kqueue_proc_exit
+  status: gap
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Reaper tested on Linux and claimed to work on macOS kqueue
+  - kqueue watcher registered without EVFILT_PROC NOTE_EXIT
+  - Hypervisor keeps running after the macOS host PID exits
+  must_not:
+  - Test on Linux and claim the macOS kqueue reaper works
+  - Watch the wrong PID or filter instead of EVFILT_PROC NOTE_EXIT
+  acceptance:
+  - kevent_note_exit_received == true and hypervisor_stopped == true on macOS
+  - Case executes only on the macOS platform target
+  code_todos: []
+- case_id: lc_14_detached_session_lease_heartbeat
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Detached boot keeps lease_kind Ephemeral with expires_at None
+  - Runner never updates expires_at, so the lease goes stale after 30s
+  - Expired lease never triggers cleanup of the detached row
+  must_not:
+  - Assert the detached session exists without verifying lease heartbeat progression
+  - Set expires_at once at boot and never advance it
+  acceptance:
+  - read_catalog_expires_at('ses_lc_14') advances forward after 30 seconds
+  - Detached row carries lease_kind='lease' with a runner child pid
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+- case_id: lc_15_detached_session_reconnect_relay
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Attach returns Ok without a round-trip through relay.sock
+  - CLI connects to a stale socket path instead of ~/.kelir/sessions/<id>/relay.sock
+  - Reconnect rebuilds from local state instead of the runner-owned state
+  must_not:
+  - Assert connection without a ping/pong frame round-trip over relay.sock
+  - Skip the catalog lease liveness check before connecting
+  acceptance:
+  - Ping/pong frame round-trips over relay.sock with exec exit_code 0
+  - Session rebuilt from the runner-owned state after reconnect
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-plugin-cli/src/attach_cli.rs
+  - packages/py/kelir/lifecycle_session.py
+  - packages/ts/core/src/session.lifecycle.ts
+- case_id: lc_16_session_incarnation_cas_guard
+  status: gap
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Session row deleted without checking the incarnation compare-and-swap
+  - Stale incarnation proceeds with the destructive verb instead of E_STALE_INCARNATION
+  - Second concurrent remover silently overwrites the first
+  must_not:
+  - Delete the session row without checking incarnation_id
+  - Accept a mismatched incarnation and proceed with removal
+  acceptance:
+  - remove_err contains E_STALE_INCARNATION on CAS mismatch
+  - catalog_session_exists('ses_shared_01') stays true after the stale remove
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+- case_id: lc_17_zombie_reaper_pid1_adoption
+  status: gap
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Orphan exits leave state-Z zombies in the in-guest process table
+  - Background task completion asserted without inspecting the guest ps table
+  - Shim waitpid loop never runs because the shim is not guest PID 1
+  must_not:
+  - Assert the background task finished without inspecting the in-guest process table
+  - Reap only direct children instead of adopted orphans
+  acceptance:
+  - Guest `ps -ef` shows 0 processes in state 'Z' after orphan exits
+  - Shim runs as guest PID 1 with a waitpid(-1, WNOHANG) adoption loop
+  code_todos:
+  - crates/kelir-shim/src/main.rs
+- case_id: lc_18_watchdog_heartbeat_timeout_reboot
+  status: gap
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Watchdog reboot claimed without vCPU registers reset to instruction 0
+  - Heartbeat expiry never fires on_watchdog because no driver event loop exists
+  - Reboot counted from a log line instead of the VM state transition
+  must_not:
+  - Assert reboot without checking the VM transitioned through Reboot state
+  - Arm the watchdog from a timer instead of the driver heartbeat expiry
+  acceptance:
+  - watchdog_reboot_count() == 1 after heartbeat expiry
+  - VM transitions through Reboot state and restarts cold boot
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-interface/src/driver_interface.rs
+  - packages/py/kelir/model_plugin.py
+- case_id: lc_20_portable_snapshot_archive_export
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Snapshot exported without verifying the trailer SHA-256/BLAKE3 digest
+  - Archive stream missing manifest.json or the ram/upperdir entries
+  - Export returns Ok with an unverified trailer that a corrupted archive would pass
+  must_not:
+  - Export the snapshot without verifying the trailer digest against the manifest
+  - Stream the archive without the content-addressed manifest
+  acceptance:
+  - archive.verify_trailer_digest() == true and archive.has_entry('manifest.json')
+  - Trailer digest matches the header BLAKE3 hash of inner manifest.json
+  code_todos:
+  - crates/kelir-core/src/planes/checkpoint/mod.rs
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-interface/src/driver_interface.rs
+- case_id: lc_21_detached_scm_rights_parent_sigkill_abort
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Child exits without the parent descriptor being closed after the handoff ack
+  - Orphan session row left in the catalog after the aborted handoff
+  - Shared-memory descriptor inherited across the session boundary
+  must_not:
+  - Assert the child exits without checking the descriptor was closed
+  - Leave the parent end open after the handoff ack
+  acceptance:
+  - child_aborted() == true, descriptor_leaked() == false, orphan_session_rows('ses_lc_21') == 0
+  - Parent end closed after the handoff ack, child holds the only descriptor
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+- case_id: lc_23_replay_deterministic_seed_reproduces_step_windows
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-plugins/plugin-replay
+  slop_risks:
+  - Single replay run asserted complete without comparing a second seeded run
+  - Unseeded randomness in the replay path makes windows diverge run to run
+  - Step windows compared by count only, not window-for-window equality
+  must_not:
+  - Run one replay and assert it completes without comparing a second seeded run
+  - Allow unseeded randomness in the replay configuration
+  acceptance:
+  - ctx_a.retired_instructions() == ctx_b.retired_instructions() for identical seeds
+  - ctx_a.pending_step_windows() == ctx_b.pending_step_windows() window for window
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-plugins/plugin-replay/src/lib.rs
+- case_id: lc_base_snapshot_capture
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Boot returns Ok while the base capture never ran
+  - Capture ordered before the last on_vm_ready handler returns
+  - First spawn runs before the capture, so the base misses boot state
+  must_not:
+  - Assert boot Ok without checking capture ordering against on_vm_ready return
+  - Capture before VmReady transitions to Running
+  acceptance:
+  - capture_sequence > vm_ready_sequence and spawns_before_capture == 0
+  - Capture runs at the boot().await return edge after every on_vm_ready handler
+  code_todos:
+  - crates/kelir-interface/src/driver_interface.rs
+- case_id: lc_base_snapshot_lifecycle
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Base snapshot node id appears in CheckpointPlane::lineage(head)
+  - Exported archive manifest carries the base digest
+  - Base snapshot shows up in a user-visible CausalDelta chain
+  must_not:
+  - Assert export_snapshot Ok without checking the archive manifest for the base digest
+  - Store the base snapshot as a normal lineage node with a parent digest
+  acceptance:
+  - checkpoint.lineage(head) does not contain base_node_id
+  - Exported manifest contains no base digest; base stored under cas/blobs with parent_digest None
+  code_todos:
+  - crates/kelir-interface/src/handles_lifecycle.rs
+- case_id: pe_01_downward_only_tier_dependency_lint
+  status: red
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - 'layers::check() extended to scan only kelir_core::/kelir_drivers:: prefixes while Tier 1 plugin-mcp importing Tier 3 plugin-ledger still passes'
+  - Lint disabled or narrowed in CI so the upward import passes with exit 0 and no ci.layering_violation_caught event
+  - Tier 1 plugin reaches Tier 3 behavior through a new shared helper crate instead of ServiceRegistry/EventBus, keeping the upward edge
+  must_not:
+  - Disable or narrow layers::check() to make the import pass
+  - Route Tier 1 to Tier 3 through a new shared crate instead of ServiceRegistry/EventBus
+  acceptance:
+  - layers::check() returns Err containing 'layer violation' for Tier 1 importing Tier 3
+  - Exit code 1 with audit event ci.layering_violation_caught and zero state modified
+  code_todos:
+  - crates/kelir-plugin-cli/src/layers_cli.rs
+- case_id: pe_02_cyclic_dependency_graph_abort
+  status: red
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Boot accepts cyclic [plugin_a -> plugin_b, plugin_b -> plugin_a] and returns Ok(session), recursing or deadlocking at init
+  - Cycle check dedupes names only and never walks edges, so a 3-node cycle passes
+  - Boot aborts with a generic Halt that never names the cycle, so the diagnostic names no culprit
+  must_not:
+  - Validate registration shape and dedupe only, without walking the dependency edges for cycles
+  - Return Ok(session) for a cyclic graph
+  acceptance:
+  - Session::boot_with_plugins returns Err(PluginError::Halt) mentioning 'Cyclic dependency'
+  - Receipt exit_kind HypervisorFault with fault_reason EConfig('Cyclic dependency') and event plugin.cyclic_dependency_aborted
+  code_todos:
+  - crates/kelir-core/src/plugin_registry.rs
+- case_id: pe_03_overlapping_mutator_scope_eambiguous
+  status: red
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Both overlapping mutators execute sequentially, last writer wins, and the conflict is never detected
+  - Scope overlap checked by exact path equality only, so /workspace/src vs /workspace/src/main.rs passes as disjoint
+  - Boot returns Ok(()) and the nondeterministic mutation order is left to race
+  must_not:
+  - Execute both mutators sequentially without a boot-time scope-conflict check
+  - Compare scopes by string equality instead of path containment
+  acceptance:
+  - Boot returns Err(PluginError::AmbiguousMutation) for overlapping scopes
+  - Diagnostic names src/main.rs with event plugin.ambiguous_mutation_rejected, receipt EAmbiguousMutation
+  code_todos: []
+- case_id: pe_06_filter_before_ffi_gate_latency
+  status: gap
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Every ring event crosses NAPI/PyO3 and MountScope is checked inside Python/JavaScript, so Gate 2 never runs in native memory
+  - Latency measured on an in-scope fast path only while out-of-scope events still pay the FFI crossing
+  - Gate-2 timing asserted from a single warm sample instead of the <2us bound
+  must_not:
+  - Dispatch across FFI for every event and check scope inside the foreign runtime
+  - Assert latency from one warm sample
+  acceptance:
+  - napi_trampoline_crossing_count() == 0 for out-of-scope ring events
+  - gate2_duration < 2000ns with audit event pipeline.ffi_skipped
+  code_todos:
+  - crates/kelir/src/builder_sdk.rs
+- case_id: pe_11_ffi_buffer_streaming_chunk_ceiling
+  status: red
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - dispatch_fs_write exposes the whole 1 MiB buffer to the hook in one call, so the 64 KiB ceiling never binds
+  - Chunking splits the buffer but the last partial chunk is dropped or the hook sees overlapping slices
+  - Chunk count asserted as 16 while max chunk size is never measured, hiding a 1 MiB first chunk
+  must_not:
+  - Pass the full buffer across FFI in a single call
+  - Assert chunk count without asserting max chunk size <= 65536
+  acceptance:
+  - 16 hook calls for a 1 MiB write, each chunk <= 65536 bytes
+  - upper_bytes_dirtied == 1048576 with event foreign.chunk_streamed
+  code_todos: []
+- case_id: pe_12_declarative_error_mapping_posix_errno
+  status: gap
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Every foreign exception maps to generic EIO (errno 5), so CustomPermissionError loses its EACCES meaning
+  - Mapping table keyed on exception message strings instead of the declared registry, so a reworded message maps wrong
+  - Guest receives an unparseable string instead of a POSIX errno and the supervisor crashes on the foreign exception
+  must_not:
+  - Map all foreign exceptions to EIO
+  - Key the mapping on exception message text instead of the declarative registry
+  acceptance:
+  - CustomPermissionError yields Verdict::Drop with errno EACCES (13)
+  - Receipt fault_reason EACCES with event plugin.error_mapped
+  code_todos: []
+- case_id: pe_13_fork_state_specialization_isolation
+  status: red
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Parent and child plugins share one Arc<Mutex> counter, so a child increment mutates parent state
+  - Session::fork clones the session struct but the child pipeline carries no interceptors, so the fork_state probe never fires
+  - Fork returns Ok with the child sharing the parent plugin graph by reference instead of fork_state() specialization
+  must_not:
+  - Share plugin state between parent and child through Arc<Mutex> without deep cloning via fork_state()
+  - Return a forked child whose pipeline has no interceptors
+  acceptance:
+  - After child increment, parent counter == 10 and child counter == 11
+  - Child dispatch reaches the fork_state-specialized probe with event plugin.state_forked
+  code_todos:
+  - crates/kelir-core/src/session_lifecycle.rs
+- case_id: pe_14_service_registry_peer_resolution
+  status: gap
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Peer plugin reached through an unsafe static global instead of the typed HandlerCtx
+  - Peer resolved by downcasting to its concrete struct type, coupling the caller to the peer implementation
+  - A new ServiceRegistry type added that duplicates the live HandlerCtx::ctx::<T, _>() path and diverges from it
+  must_not:
+  - Resolve peer capabilities through a static global or a concrete peer type
+  - Add a second registry that duplicates HandlerCtx::ctx::<T, _>()
+  acceptance:
+  - ctx::<CredentialBrokerCtx, _>().broker().issue(...) returns Ok for the peer capability
+  - Event plugin.service_resolved with no global/static access in the resolution path
+  code_todos: []
+- case_id: pe_16_chaos_rst_injection_drops_matching_frame
+  status: red
+  domain: plugin_engine
+  target_crate: crates/kelir-plugins/plugin-chaos
+  slop_risks:
+  - frame_matches returns Ok(false) forever, so the RST rule never fires and the drill passes vacuously
+  - Matching by destination port only, so an RST rule for 10.0.0.2 drops frames for every host
+  - Drop asserted without the errno, so a Drop with EPERM or no errno passes as the ECONNREFUSED case
+  must_not:
+  - Leave frame_matches returning Ok(false) while asserting the Drop
+  - Match on port or protocol only instead of the rule target domain/host
+  acceptance:
+  - on_net_outbound on the matching frame returns FilterAction::Drop with errno ECONNREFUSED
+  - A non-matching frame still returns Forward, with event chaos.rst_injected
+  code_todos:
+  - crates/kelir-plugins/plugin-chaos/src/lib.rs
+  - packages/py/tests/test_plugin_fluent_builder.py
+- case_id: pe_17_shell_c_command_unwrap_drops_git_push_force
+  status: gap
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Test asserts Drop for direct git push --force only and never exercises the bash -c form, so the wrapper bypass stays live
+  - Resolver matches the binary_path string, so bash never matches the git policy row and the wrapped exec Passes
+  - Unwrapping parses only the first argv token and misses the -c payload string
+  must_not:
+  - Assert the direct form only and call the case done
+  - Match policy on the binary_path string instead of the unwrapped terminal binary
+  acceptance:
+  - dispatch_trap on bash -c 'git push --force' returns Verdict::Drop with errno EPERM
+  - Direct git push --force also Drops EPERM, event policy.trap_denied
+  code_todos:
+  - crates/kelir-core/src/trap_gate.rs
+- case_id: pe_18_python_c_os_system_unwrap_drops_git_push_force
+  status: gap
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - python -c payload treated as one opaque argv entry, so the os.system('git push --force') inside never reaches the git row
+  - Test asserts Drop for direct git only and never exercises the python -c form
+  - Resolver unwraps sh -c but not python -c / node -e / perl -e, so the interpreter bypass stays live
+  must_not:
+  - Treat the -c string as one argv entry instead of inspecting it as code
+  - Assert the direct form only and call the case done
+  acceptance:
+  - dispatch_trap on python -c os.system('git push --force') returns Verdict::Drop with errno EPERM
+  - Direct git push --force also Drops EPERM, event policy.trap_denied
+  code_todos: []
+- case_id: pe_19_env_xargs_reexec_unwrap_drops_git_push_force
+  status: gap
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - env re-exec treated as the terminal binary, so env git push --force Passes the git row
+  - Unwrapping stops after one layer, so env xargs git or find -exec git bypass the row
+  - Test asserts Drop for direct git only and never exercises the env form
+  must_not:
+  - Treat the wrapper binary as terminal instead of unwrapping env/xargs/find -exec re-exec steps
+  - Assert the direct form only and call the case done
+  acceptance:
+  - dispatch_trap on env git push --force returns Verdict::Drop with errno EPERM
+  - Direct git push --force also Drops EPERM, event policy.trap_denied
+  code_todos: []
+- case_id: pe_20_same_path_different_identity_never_matches
+  status: gap
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - MountScope::allows_binary compares the binary_path string, so a bind-mounted binary at /usr/bin/git with a different (st_dev, st_ino, blake3) Passes the git row
+  - Identity pinned by path plus file size only, so a same-size swapped binary matches
+  - Test asserts the pinned identity Passes and never exercises the swapped identity
+  must_not:
+  - Decide identity from the binary_path string instead of (st_dev, st_ino, binary_blake3)
+  - Assert the pinned identity Passes without exercising the swapped identity
+  acceptance:
+  - dispatch_trap on the swapped identity returns Verdict::Drop with errno EPERM
+  - The pinned identity still returns Verdict::Pass, event policy.trap_denied
+  code_todos:
+  - crates/kelir-core/src/trap_gate.rs
+  - crates/kelir-interface/src/plugin_model.rs
+  - crates/kelir-plugins/plugin-container/src/lib.rs
+- case_id: pe_21_trap_pass_provisional_effect_hook_redecides
+  status: gap
+  domain: plugin_engine
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Trap Pass treated as blanket authorization, so the out-of-scope fs write Forwards and MountScope is decorative
+  - Test asserts the trap Passes and never dispatches the effect hook, so the re-decision is never exercised
+  - Trap and fs dispatch tested in isolation only, so no test proves the pipeline re-decides at the effect hook
+  must_not:
+  - Let a trap Pass authorize the effect without an effect-hook decision
+  - Assert the trap verdict only and skip the fs dispatch
+  acceptance:
+  - dispatch_fs_write on the out-of-scope write after a trap Pass returns FilterAction::Drop with errno EPERM
+  - An in-scope write still Forwards, event policy.effect_denied
+  code_todos: []
+- case_id: pm_01_control_channel_0_lifecycle_priority
+  status: red
+  domain: protocol_mux
+  target_crate: crates/kelir-core
+  slop_risks:
+  - lifecycle signal multiplexed onto Stream Mux 0x0001 behind a full data buffer
+  - control payload dropped as ControlPending and the signal never delivered
+  - signal delivery asserted without the 1ms latency bound under backlog
+  must_not:
+  - route Channel 0x0000 signals through the Stream Mux data lanes
+  - drop a control payload without an in-band reject
+  acceptance:
+  - SIGTERM frame arrives on Channel 0 within 1ms while the Stream Mux backlog is 65536 bytes
+  - control payloads reach the trap dispatcher and lifecycle controller
+  code_todos:
+  - crates/kelir-shim/src/main.rs
+  - crates/kelir-shim/src/multiplexer_protocol.rs
+- case_id: pm_02_stream_mux_open_data_close_flags
+  status: red
+  domain: protocol_mux
+  target_crate: crates/kelir-core
+  slop_risks:
+  - OPEN|CLOSE frame (flags 0x05) accepted and stream 7 registered
+  - flag exclusivity checked only for known-good encoders
+  - invalid flag mask accepted because the decoder ignores unknown bits
+  must_not:
+  - register a stream from a frame with mutually exclusive flags
+  - accept a flag combination the parser does not explicitly allow
+  acceptance:
+  - decode of flags 0x05 errs with ProtocolError::InvalidFlags(5)
+  - receipt fault_reason is EProtocol('Mutually exclusive flags')
+  code_todos:
+  - crates/kelir-bindings/napi/src/lib.rs
+  - crates/kelir-bindings/pyo3/src/lib.rs
+- case_id: pm_03_core_stream_kind_reregistration_abort
+  status: red
+  domain: protocol_mux
+  target_crate: crates/kelir-core
+  slop_risks:
+  - plugin re-registers core kind 0x0001 and the handler is silently overwritten
+  - bootstrap seals while a frozen core kind was replaced
+  - register_stream_kind Ok asserted without the EKindReserved abort
+  must_not:
+  - overwrite a handler in the kind map without checking the 0x0001-0x000F reserved range
+  - seal bootstrap after a core-kind re-registration
+  acceptance:
+  - re-registering kind 0x0001 aborts with EKindReserved
+  - exit code is 1
+  code_todos:
+  - crates/kelir-core/src/dispatch_plugin/mod.rs
+  - crates/kelir/src/builder_sdk.rs
+- case_id: pm_05_stream_kind_conflict_ekindconflict
+  status: red
+  domain: protocol_mux
+  target_crate: crates/kelir-core
+  slop_risks:
+  - second plugin overwrites the first kind registration without error
+  - boot seals with two plugins on the same stream kind
+  - collision asserted from log output instead of the boot error
+  must_not:
+  - allow a second registration to overwrite the first
+  - seal bootstrap with a kind collision present
+  acceptance:
+  - second registration fails with EKindConflict
+  - boot() fails and exit code is 1
+  code_todos:
+  - crates/kelir-core/src/dispatch_plugin/mod.rs
+- case_id: pm_06_exec_slot_slab_saturation_reject
+  status: gap
+  domain: protocol_mux
+  target_crate: crates/kelir-core
+  slop_risks:
+  - shim grows the heap unboundedly until the OOM killer fires
+  - SlabSaturated swallowed and the exec silently queued
+  - pool sized to a hardcoded 4096 instead of min(RLIMIT_NPROC, max_exec_slots)
+  must_not:
+  - queue exec work past slab saturation
+  - grow the slab past the configured exec-slot bound
+  acceptance:
+  - saturation returns MSG_EXEC_REJECT{ENOMEM} in-band with the microVM healthy
+  - exec result is Err(ShimError::SlabSaturated) at the pool bound
+  code_todos:
+  - crates/kelir-shim/src/main.rs
+  - crates/kelir-shim/src/multiplexer_protocol.rs
+- case_id: pm_07_exec_signal_cancellation_by_exec_id
+  status: gap
+  domain: protocol_mux
+  target_crate: crates/kelir-core
+  slop_risks:
+  - raw guest pid sent over the wire instead of the 64-bit exec_id
+  - signal delivered with kill() to a recycled pid, killing the successor task
+  - unknown exec_id asserted as an error instead of a silent drop
+  must_not:
+  - put a raw pid on the wire in place of exec_id
+  - deliver a signal by pid instead of pidfd
+  acceptance:
+  - wire payload carries the 64-bit exec_id, never a raw pid
+  - signal to an exited exec_id drops silently and the successor task with the reused pid keeps running
+  code_todos:
+  - crates/kelir-shim/src/multiplexer_protocol.rs
+- case_id: pm_08_exec_flow_control_input_stall
+  status: gap
+  domain: protocol_mux
+  target_crate: crates/kelir-core
+  slop_risks:
+  - frames dropped when the buffer fills instead of stalling input
+  - stdin payload discarded on the shim side and the transfer still reported complete
+  - credit window update dropped so the guest overruns the socket buffer
+  must_not:
+  - drop frames when the buffer is full
+  - discard stdin payload instead of routing it to slot.stdin_fd
+  acceptance:
+  - 10MiB received with dropped_frame_count 0
+  - guest write() blocks until the host drains the buffer, then resumes without loss
+  code_todos:
+  - crates/kelir-shim/src/multiplexer_protocol.rs
+- case_id: pm_09_control_vfs_paginated_cursor_streaming
+  status: gap
+  domain: protocol_mux
+  target_crate: crates/kelir-core
+  slop_risks:
+  - entire directory returned in one unpaginated response
+  - reply frame exceeds the 64KB CBOR payload cap
+  - cursor token ignored and the listing re-read from the start
+  must_not:
+  - return an unpaginated directory listing
+  - emit a reply frame larger than 64KB
+  acceptance:
+  - max observed frame size is <= 65536 across more than 10 pages
+  - list returns a cursor and streams with O(1) memory
+  code_todos: []
+- case_id: pm_10_bulk_transfer_stream_dma_throughput
+  status: gap
+  domain: protocol_mux
+  target_crate: crates/kelir-core
+  slop_risks:
+  - bulk chunks wrapped in a CBOR envelope
+  - per-chunk FUSE context switches on the bulk path
+  - throughput asserted from a single small chunk instead of the 64MiB transfer
+  must_not:
+  - wrap bulk chunks in CBOR
+  - route bulk bytes through the FUSE request path
+  acceptance:
+  - cbor_decode_invocations() is 0 and received_bulk_bytes is 67108864
+  - stream kind is 0x0004 BULK with raw un-encoded payload
+  code_todos: []
+- case_id: pm_12_version_negotiation_handshake_reject
+  status: gap
+  domain: protocol_mux
+  target_crate: crates/kelir-core
+  slop_risks:
+  - version field ignored and communication attempted anyway
+  - handshake with version 0x02 accepted by the version 0x01 host
+  - session continues after a mismatched handshake instead of aborting
+  must_not:
+  - exchange frames before the Control 0x0000 handshake validates version 0x01
+  - ignore a version mismatch and keep the session alive
+  acceptance:
+  - handshake with guest version 2 rejects with E_INCOMPATIBLE_SHIM_VERSION
+  - session aborts with exit code 1
+  code_todos:
+  - crates/kelir-shim/src/main.rs
+- case_id: pm_13_vsock_fallback_connect_fails_closed
+  status: red
+  domain: protocol_mux
+  target_crate: crates/kelir-transport
+  slop_risks:
+  - connect failure asserted without checking no fd was retained
+  - failed connect leaves a half-open transport holding a socket fd
+  - error kind asserted as generic instead of ConnectionRefused
+  must_not:
+  - retain a file descriptor after a failed vsock connect
+  - report connect failure with a generic error kind
+  acceptance:
+  - connect to the unreachable vsock address errs
+  - open fd count is unchanged after the failed connect and no fd leaks
+  code_todos:
+  - crates/kelir-transport/src/fallback_transport.rs
+- case_id: pm_14_mesh_rejects_foreign_trust_domain_peer
+  status: red
+  domain: protocol_mux
+  target_crate: crates/kelir-plugins/plugin-mesh
+  slop_risks:
+  - rejection asserted without checking peer_rejections() records the peer
+  - foreign-domain peer rejected with a generic error instead of ECONNREFUSED
+  - peer handshake decode stub fires before the trust-domain assertion
+  must_not:
+  - reject a peer without recording it in peer_rejections()
+  - accept an SVID whose trust domain differs from the mesh config
+  acceptance:
+  - peer_rejections() has one entry with reason containing foreign.test
+  - rejection entry carries the peer cid and port and the mesh.peer_rejected audit event fires
+  code_todos:
+  - crates/kelir-plugins/plugin-mesh/src/lib.rs
+- case_id: rt_02_sqlite_uds_bridge_mux_delegation
+  status: gap
+  domain: relational_transaction
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - SQLite traffic reaches the host database file through a VirtIO-FS bind mount instead of the DB_SQLITE (0x0011) mux stream
+  - Bridge forwards bytes but never mediates statements, so Patch rewrite / Drop deny never runs on the SQLite channel
+  - on_client_bytes returns Pass without transferring a byte, so the test asserts Ok(()) while no query executes
+  must_not:
+  - Expose the host SQLite file to the guest through VirtIO-FS
+  - Return Pass from the bridge without a byte transferred over stream kind 0x0011
+  acceptance:
+  - db_sqlite_stream_bytes_transferred() > 0 for a guest query
+  - virtio_fs_db_file_access_count() == 0 with event db_proxy.sqlite_query_executed
+  code_todos:
+  - crates/kelir-plugins/plugin-db-proxy/src/sqlite_db_proxy.rs
+- case_id: rt_03_2pc_pre_commit_vcpu_pause_drain
+  status: red
+  domain: relational_transaction
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - on_pre_commit issues SQL pre-commit while vCPUs keep executing, so writes land mid-2PC and split-brain follows
+  - Commit proceeds with in-flight FUSE ops still queued, so the filesystem half commits against a moving target
+  - pre-commit returns Ok(()) while freeze_vcpus still returns the no-backend Unsupported error, faking the pause
+  must_not:
+  - Commit on one leg while the other leg is still executing (2PC committing on one leg)
+  - Return Ok from on_pre_commit while vCPUs run and the FUSE queue is non-empty
+  acceptance:
+  - on_pre_commit returns Ok with vCPU execution state Paused
+  - broker.in_flight_fuse_ops() == 0 with event transaction.pre_commit_settled
+  code_todos:
+  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-plugins/plugin-transaction/src/lib.rs
+- case_id: rt_06_spatial_blast_radius_schema_scope
+  status: gap
+  domain: relational_transaction
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - handle_pgwire_frame Forwards the out-of-scope query upstream and relies on database user permissions instead of blocking in-process
+  - Scope checked against the query string by substring, so private.auth_users referenced through an alias or quoted identifier slips through
+  - Query blocked but the pgwire response carries no 42501 SQLSTATE, so the client cannot tell denial from failure
+  must_not:
+  - Forward the query upstream and rely on database permissions
+  - Assert the block without asserting upstream_queries_received() == 0
+  acceptance:
+  - upstream_queries_received() == 0 for a query on undeclared schema 'private'
+  - pgwire response SQLSTATE 42501 with event db_proxy.table_scope_denied
+  code_todos:
+  - crates/kelir-plugins/plugin-transaction/src/lib.rs
+- case_id: rt_08_side_effect_egress_transaction_taint
+  status: gap
+  domain: relational_transaction
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Outbound HTTP egress during an open 2PC transaction is allowed, so an irreversible webhook fires before commit
+  - Taint recorded on the transaction but the egress path never consults it, so the abort never triggers
+  - Abort rolls back the database legs but the already-sent webhook stays sent, leaving a partial side effect
+  must_not:
+  - Allow L7 egress during an active transaction
+  - Mark the transaction tainted without dropping the egress frame
+  acceptance:
+  - wire_dropped_frame_count() == 1 for egress during an active transaction
+  - Receipt fault_reason E_TRANSACTION_TAINT with event transaction.egress_taint_aborted
+  code_todos:
+  - crates/kelir-plugins/plugin-transaction/src/service_transaction.rs
+- case_id: rt_09_transaction_timeout_abort_etimedout
+  status: gap
+  domain: relational_transaction
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - timeout_ms stays config-only (default 30_000) with no timer, so the transaction holds database locks indefinitely
+  - Timeout aborts the local state but never issues ROLLBACK upstream, so the backend still holds the locks
+  - Deadline checked only at commit time, so a transaction idle past the deadline never aborts on its own
+  must_not:
+  - Leave timeout_ms as config with no enforcing timer
+  - Abort locally without rolling back upstream
+  acceptance:
+  - Transaction past timeout_ms terminates with ETIMEDOUT
+  - upstream_sql_transaction_state() == 'ROLLED_BACK' with event transaction.timed_out
+  code_todos: []
+- case_id: rt_10_pgwire_frame_rewrite_in_place
+  status: red
+  domain: relational_transaction
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - handle_pgwire_frame returns Forward with the original SQL, so the server sees 'SELECT * FROM users' instead of the tenant-prefixed form
+  - Test asserts Forward only and never extracts the SQL bytes from the rewritten frame
+  - Rewrite applied to the Query message but not the Parse message, so prepared statements bypass tenant prefixing
+  must_not:
+  - Forward the frame without rewriting the Q/P SQL bytes in place
+  - Assert Forward without asserting the rewritten SQL string
+  acceptance:
+  - extract_pgwire_sql(&rewritten_frame) == 'SELECT * FROM tenant_123_users'
+  - frames_outbound == 1 with event db_proxy.query_rewritten
+  code_todos:
+  - crates/kelir-plugins/plugin-db-proxy/src/lib.rs
+- case_id: rt_11_cyclic_query_rewrite_ecyclicrewrite
+  status: red
+  domain: relational_transaction
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - No per-connection rewrite tally exists, so the 4th Query rewrite returns Forward and the cyclic rules loop forever
+  - Tally kept globally instead of per connection, so one noisy connection exhausts the budget for all connections
+  - Abort returns a generic error instead of ECYCLICREWRITE, so the client cannot distinguish cyclic rewrite from failure
+  must_not:
+  - Allow the 4th rewrite on a connection to execute without error
+  - Tally rewrites globally instead of per connection
+  acceptance:
+  - 4th rewrite on the same connection returns Err ECYCLICREWRITE
+  - Receipt fault_reason ECYCLICREWRITE with event db_proxy.cyclic_rewrite_aborted
+  code_todos: []
+- case_id: rt_12_ephemeral_db_credentials_injection
+  status: gap
+  domain: relational_transaction
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Database password placed in the guest connection string, so the secret enters the guest
+  - Host injects the password but the guest packet still carries a placeholder the server rejects, so auth fails while the test asserts injection
+  - Ephemeral credential minted with no TTL, so a long-lived password persists past the session
+  must_not:
+  - Pass the database password in the guest connection string
+  - Inject at the guest side instead of the host connection boundary
+  acceptance:
+  - guest_connection_password_bytes() is empty
+  - upstream_authenticated_with_secret() == true with event db_proxy.credentials_injected
+  code_todos:
+  - crates/kelir-plugins/plugin-db-proxy/src/lib.rs
+- case_id: sc_01_lifecycle_script_trap_exit126
+  status: red
+  domain: supply_chain_security
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - blocks_lifecycle_script returns Ok(false) forever, so the postinstall.sh execve Passes and the malicious package runs
+  - Detection runs in guest userspace instead of the hypervisor trap, so the script executes before the check
+  - Exit code asserted as 0 or 1 while the case demands 126, so a killed-but-wrong-code path passes
+  must_not:
+  - Leave blocks_lifecycle_script returning Ok(false) while asserting the block
+  - Catch script execution in guest userspace instead of the hypervisor trap
+  acceptance:
+  - Receipt exit_code == 126 for the lifecycle script execve
+  - stderr contains 'Lifecycle script blocked' with event supply_chain.lifecycle_script_blocked
+  code_todos:
+  - crates/kelir-plugins/plugin-supply-chain/src/lib.rs
+- case_id: sc_02_argv_high_entropy_obfuscation_kill
+  status: red
+  domain: supply_chain_security
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - flags_obfuscated_argv returns Ok(false) forever, so the 112-char 5.917 bits/char payload Passes and executes
+  - Entropy computed over argv[0] only, so the base64 blob in argv[1:] is never measured
+  - Threshold hardcoded to a value other than 5.2 bits/char, so the pinned payload passes or benign commands fail
+  must_not:
+  - Leave flags_obfuscated_argv returning Ok(false) while asserting the Drop
+  - Measure entropy over argv[0] instead of argv[1:]
+  acceptance:
+  - Calculated entropy > 5.2 for the pinned payload
+  - Verdict is Drop with errno EPERM, event supply_chain.high_entropy_blocked
+  code_todos:
+  - crates/kelir-plugins/plugin-supply-chain/src/lib.rs
+- case_id: sc_06_package_guard_pip_lifecycle_block
+  status: red
+  domain: supply_chain_security
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - setup.py child of pip install allowed because pip was invoked by a trusted user, so the wheel build code runs
+  - Detection keys on the setup.py filename only, so a renamed build script under the same pip tree executes
+  - Exit code asserted from the pip parent instead of the setup.py child, so the blocked child is never observed
+  must_not:
+  - Allow setup.py to execute because pip was invoked by a trusted user
+  - Assert the pip parent exit code instead of the setup.py child exit code
+  acceptance:
+  - pip_child_exit_code() == 126 for the setup.py build execve
+  - broker.allocated_bytes() == 0 with event supply_chain.pip_build_blocked
+  code_todos: []
+- case_id: sc_07_nested_script_ancestor_trap
+  status: red
+  domain: supply_chain_security
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Only the leaf node process is trapped, so the intermediate sh spawns node payload.js and the exploit runs
+  - Ancestor walk stops at the direct parent, so npm -> sh -> node is never recognized as one lifecycle chain
+  - sh trapped but the verdict allows it to continue, so node still execs after the trap
+  must_not:
+  - Trap only the leaf node process and let the sh ancestor spawn
+  - Return Pass for the sh ancestor while asserting the nested trap
+  acceptance:
+  - sh_ancestor_trapped() == true before any node execve
+  - leaf_node_executed() == false with event supply_chain.ancestor_trapped
+  code_todos: []
+- case_id: sc_10_stderr_script_blocked_diagnostic
+  status: gap
+  domain: supply_chain_security
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Deny path returns Verdict::Drop with errno EACCES only and emits no stderr, so the developer sees a silent build failure
+  - Diagnostic prints a generic error without naming the package manager or the blocked script path
+  - stderr asserted to be non-empty while the manager name and script path are never checked
+  must_not:
+  - Return Drop EACCES with no stderr diagnostic
+  - Print a generic error that names neither the manager nor the blocked script
+  acceptance:
+  - Guest stderr contains 'blocked npm lifecycle script at node_modules/bad/install.js'
+  - Exit code 126 with event supply_chain.diagnostic_emitted
+  code_todos: []
+- case_id: sp_01_host_cow_upper_discard_on_rollback
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Rollback returns Ok while upper file still holds allocated st_blocks on host disk
+  - Tombstones left behind after rollback so deleted files reappear on retry
+  - Discard punches only the length prefix, leaving sparse extents allocated
+  must_not:
+  - Assert rollback Ok without reading host st_blocks and tombstone count
+  - Punch upper file without posix_fadvise(DONTNEED)
+  acceptance:
+  - broker.sparse_upper_blocks() == 0 and broker.tombstone_count() == 0 after rollback
+  - storage.rollback_complete audit event emitted with state_modified false
+  code_todos:
+  - crates/kelir-core/src/planes/storage/io_storage.rs
+  - crates/kelir-core/src/planes/storage/mod.rs
+- case_id: sp_06_host_cow_broker_dir_merge_cache
+  status: gap
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Second readdir re-merges base+upper+tombstones from disk with no cache hit
+  - Cache keyed by path only, so a broker mutation in the subtree serves stale entries
+  - Merge result cached but never invalidated, build storm re-reads every directory
+  must_not:
+  - Assert readdir returned files without checking dir_merge_cache_hits()
+  - Cache the merge without an invalidation hook on broker mutation
+  acceptance:
+  - Second readdir performs 0 host stat calls (dir_merge_cache_hits() == 1)
+  - Post-mutation readdir lists the new entry, stale result never reused
+  code_todos:
+  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+- case_id: sp_07_ephemeral_scratch_tmpfs_discard
+  status: gap
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Teardown returns Ok while the scratch backing file still exists on host
+  - Scratch build artifacts (tmp/build.o) leak into the base workspace git tree
+  - Scratch disk reconciled into the workspace instead of discarded
+  must_not:
+  - Assert teardown completed without checking the scratch backing path is unlinked
+  - Mount scratch inside the workspace instead of a dedicated virtio-blk device
+  acceptance:
+  - fs::exists(scratch_backing_path) == false after teardown
+  - base_workspace_has('tmp/build.o') == false
+  code_todos: []
+- case_id: sp_08_reconciler_atomic_leaf_commit
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Commit writes directly to the target file in place, leaving torn bytes on crash
+  - Rename without temp staging so the committed inode never changes
+  - Commit reports Ok while the upper file still holds allocated blocks
+  must_not:
+  - Write in place to the target path instead of temp+rename
+  - Commit without the renameat2 RENAME_NOREPLACE atomic swap
+  acceptance:
+  - host_stat('src/main.rs').st_ino differs from the pre-commit inode
+  - storage.leaf_committed audit event emitted, sparse_upper_blocks() == 0
+  code_todos:
+  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+  - crates/kelir-core/src/planes/storage/io_storage.rs
+  - crates/kelir-core/src/planes/storage/storage_reconciler.rs
+  - packages/py/tests/test_storage_reconciler.py
+  - packages/ts/core/tests/reconciler.storage.test.ts
+- case_id: sp_09_reconciler_tombstone_unlink_commit
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Commit returns Ok while the tombstoned file still exists on host disk
+  - Tombstone count stays nonzero so the deleted file resurrects on the next reconcile
+  - New directories created through the upper file instead of in place
+  must_not:
+  - Assert commit completed without checking fs::exists(host_file) == false
+  - Leave tombstones in the broker after the unlink commit
+  acceptance:
+  - fs::exists('obsolete.rs') == false and broker.tombstone_count() == 0
+  - New directory visible in place on the host after reconcile
+  code_todos:
+  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+  - crates/kelir-core/src/planes/storage/io_storage.rs
+- case_id: sp_10_reconciler_busy_lock_retry_backoff
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Reconciler fails immediately on EBUSY without entering the retry loop
+  - Retry loop retries with no backoff, hammering the contended lock
+  - Fallback writes in place on EPERM without the 2000ms backoff
+  must_not:
+  - Return the first EBUSY as the reconcile result
+  - Retry without the 2000ms backoff between attempts
+  acceptance:
+  - reconciler_retry_attempts() > 0 and reconcile_result.is_ok() after lock release
+  - Scripted EBUSY-once atomic_rename succeeds on retry
+  code_todos: []
+- case_id: sp_11_host_fifo_socket_lookup_enxio
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Lookup succeeds on a host FIFO or socket instead of failing ENXIO
+  - Lookup error carries the wrong errno string instead of raw ENXIO
+  - Guest opens a host socket through the FUSE lookup path
+  must_not:
+  - Assert open failed without checking raw_os_error() == ENXIO
+  - Add a S_IFIFO/S_IFSOCK check only on open while lookup still succeeds
+  acceptance:
+  - lookup_err.raw_os_error() == Some(libc::ENXIO) for FIFO and socket paths
+  - Guest read of the FIFO path fails before any payload is returned
+  code_todos:
+  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+- case_id: sp_12_workspace_encapsulation_mode_000
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - External host process reads the workspace while encapsulation claims Locked
+  - Workspace root left at its default mode instead of mode 000
+  - Encapsulation tested from inside the microVM instead of an external host process
+  must_not:
+  - Test encapsulation from inside the guest instead of an external host process
+  - Set the mode on a subdirectory while the workspace root stays readable
+  acceptance:
+  - External host open() returns raw EACCES under Locked encapsulation
+  - host_stat('workspace').st_mode & 0o777 == 0
+  code_todos: []
+- case_id: sp_14_in_flight_read_masking_pattern_replace
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Host disk file redacted in place, mutating the source repository
+  - Guest read returns the raw secret because the mask runs after the VFS return
+  - Pattern replacement applied to the stored file instead of the in-flight buffer
+  must_not:
+  - Redact the file on host disk before the guest reads
+  - Apply masking after the read payload leaves on_fs_read
+  acceptance:
+  - Guest buffer reads "token = '[REDACTED_AWS_KEY]'" while host disk still holds the raw secret
+  - Host file bytes unchanged after the masked guest read
+  code_todos:
+  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+- case_id: sp_15_host_inode_lock_broker_flock_bridge
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - In-memory lock table grants the lock while no host flock is held
+  - Second external host process acquires flock(LOCK_EX) successfully
+  - Lock release never reaches the host fd, leaking the grant
+  must_not:
+  - Implement the broker as an in-memory lock table without host flock delegation
+  - Acquire without the host fd cache lookup
+  acceptance:
+  - External host flock(LOCK_EX) attempt returns Err(EWOULDBLOCK) while the guest holds the lock
+  - Lock release frees the host fd and a new acquire succeeds
+  code_todos:
+  - crates/kelir-bindings/napi/src/storage_bridge.rs
+  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+  - crates/kelir-core/src/planes/storage/io_storage.rs
+  - crates/kelir-core/src/planes/storage/lock_broker.rs
+- case_id: sp_16_statfs_zero_crawl_constant_time
+  status: gap
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - statfs walks the base directory tree, so latency grows with inode count
+  - Remaining quota computed from a host statfs call instead of the plane atomics
+  - Statfs duration at 500k inodes exceeds twice the duration at 1k inodes
+  must_not:
+  - Call host statfs or walk the directory tree to calculate free space
+  - Report quota from a cached host value instead of the O(1) atomic read
+  acceptance:
+  - host_vfs_crawl_count == 0 for statfs at any base size
+  - statfs_duration_500k <= statfs_duration_1k * 2
+  code_todos:
+  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+- case_id: sp_17_secondary_image_graft_readonly
+  status: gap
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Graft adds a new virtio-blk PCI device, changing the PCI device count
+  - Grafted image mounted writable so guest writes reach the host image
+  - Graft performed through a PCI hot-plug instead of a VFS namespace graft
+  must_not:
+  - Attach the secondary image as a new virtio-blk PCI device
+  - Graft the image writable instead of read-only
+  acceptance:
+  - pci_device_count_after == pci_device_count_before
+  - Guest reads /opt/node_modules/package.json from the grafted image
+  code_todos: []
+- case_id: sp_18_write_chunk_64kb_transparent_stream
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - 256KB guest write delivered to on_fs_write as a single 262144-byte call
+  - Write split into chunks of the wrong size, breaking the 64KB boundary
+  - Chunking applied at the wrong layer so the guest sees a short write
+  must_not:
+  - Assert write completed without counting on_fs_write invocations
+  - Chunk in the guest instead of transparently in the FUSE driver
+  acceptance:
+  - on_fs_write_invocation_count == 4 for a 256KB write
+  - broker.sparse_upper_len() == 262144 after the chunked write
+  code_todos: []
+- case_id: sp_19_host_inode_flock_contention_ewouldblock
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - In-memory lock table lets the external contender acquire the host flock
+  - Contention denial returns Ok or a wrong errno instead of EWOULDBLOCK
+  - FUSE SETLK granted without delegating to host flock
+  must_not:
+  - Implement contention with an in-memory lock table and no host flock
+  - Return a generic error string instead of raw EWOULDBLOCK
+  acceptance:
+  - External host flock(LOCK_EX | LOCK_NB) returns Err(EWOULDBLOCK)
+  - FUSE SETLK conflict reply carries EWOULDBLOCK
+  code_todos:
+  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+  - crates/kelir-core/src/planes/storage/lock_broker.rs
+- case_id: sp_20_readdir_cache_invalidation_build_storm
+  status: gap
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Post-mutation readdir serves the pre-mutation cached entries
+  - Invalidation keyed on the wrong subtree so a sibling mutation evicts nothing
+  - Build storm re-reads every directory because the merge cache never fills
+  must_not:
+  - Assert readdir entries without checking the cache was invalidated after mutation
+  - Invalidate the whole cache on every mutation instead of the mutated subtree
+  acceptance:
+  - post_mutation_entries() contains '/src/new.rs' and stale_cache_hits() == 0
+  - Repeated readdir during a build storm performs 0 host stat calls on the second pass
+  code_todos: []
+- case_id: sp_dax_available
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - DAX window reports Ok while host frames are mapped writable
+  - Guest page cache serves the rootfs instead of being bypassed
+  - Window tag is not kelir.dax.erofs, so the wrong backing is mapped
+  must_not:
+  - Assert DAX Ok without checking frames are shared read-only
+  - Map the window through the guest page cache
+  acceptance:
+  - window.tag() == "kelir.dax.erofs" and window.frames_read_only()
+  - Guest RAM for the rootfs working set is under 8MB
+  code_todos: []
+- case_id: sp_dax_fallback
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Fallback serves bytes that differ from the DAX-path bytes
+  - Fallback fails the guest read instead of serving it via FUSE chunks
+  - Fallback path silently serves from the page cache instead of FUSE
+  must_not:
+  - Assert fallback Ok without comparing fallback bytes to DAX-path bytes
+  - Fall back to a full remap instead of FUSE chunked reads
+  acceptance:
+  - fallback.bytes() == dax.bytes() with fallback.chunk_len() == 4096
+  - fallback.served_via() == "fuse_chunked" and the guest read succeeds
+  code_todos: []
+- case_id: sp_dax_teardown
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Terminate returns Ok while Stage-2 is still mapped
+  - Host memfd never released, leaking the backing on every session
+  - Rollback touches the DAX window, writing host EROFS pages
+  must_not:
+  - Assert terminate Ok without checking Stage-2 unmapped and memfd released
+  - Teardown the window through the guest instead of unmapping Stage-2
+  acceptance:
+  - window.refcount() == 0, stage2_mapped() == false, memfd_released() == true
+  - host_pages.writes_observed() == 0 after teardown
+  code_todos: []
+- case_id: ta_02_merkle_wal_host_isolation_cwd
+  status: gap
+  domain: telemetry_audit
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - WAL path set to a guest VFS mount path and accepted at plugin construction
+  - store_path resolved relative to the guest workspace instead of the consumer CWD
+  - Guest-path rejection asserted without ever constructing with a guest path
+  must_not:
+  - Never accept a store_path that resolves inside the guest rootfs
+  - Never invent a LedgerError variant; rejection is LedgerError::GuestPathRejected
+  acceptance:
+  - init with a guest-resolving store_path returns Err(LedgerError::GuestPathRejected)
+  - Receipt fault_reason is EGuestPathRejected; ledger.invalid_path_rejected emitted
+  code_todos: []
+- case_id: ta_03_merkle_wal_survives_guest_rollback
+  status: gap
+  domain: telemetry_audit
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - session.rollback() deletes or rewrites WAL entries
+  - WAL record count asserted before rollback only, never compared after
+  - Fork duplicates the WAL so two sessions share one ledger
+  must_not:
+  - Never let any guest operation rewrite, delete, or duplicate WAL records
+  - Never place the WAL where rollback or fork can reach it
+  acceptance:
+  - wal_record_count() == 5 before and after guest rollback (AS-05)
+  - ledger.rollback_recorded emitted with WAL intact
+  code_todos:
+  - crates/kelir-plugins/plugin-ledger/src/wal_ledger.rs
+- case_id: ta_04_otlp_grpc_metric_export_streaming
+  status: red
+  domain: telemetry_audit
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Local SQLite/LMDB file written for metrics even though OTLP is configured
+  - Encoded protobuf bytes mistaken for export while zero gRPC frames leave the host
+  - Export asserted from the encoder return value without a mock collector receiving spans
+  must_not:
+  - Never write metrics to local disk when OTLP is configured
+  - Never treat OtlpExporter::export_* returning Vec<u8> as a completed export
+  acceptance:
+  - fs::exists('.kelir/audit.merkle.db') is false
+  - otlp_mock_server_received_spans() >= 100 and gRPC frames sent > 0 (AS-02)
+  code_todos:
+  - crates/kelir-otlp/src/lib.rs
+  - crates/kelir-plugins/plugin-ledger/src/lib.rs
+- case_id: ta_05_w3c_traceparent_span_propagation
+  status: gap
+  domain: telemetry_audit
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - A new root trace ID is generated on every request, severing distributed trace links
+  - propagate_w3c_traceparent flag stays set while no traceparent header is ever injected
+  - Trace continuity asserted from TraceParent::parse_header existing, not from an outbound header
+  must_not:
+  - Never generate a fresh root trace ID per request
+  - Never leave the flag unconsumed; injection into outbound requests is the implementation
+  acceptance:
+  - outbound_http_header('traceparent') contains the session root trace_id 4bf92f3577b34da6a3ce929d0e0e4736
+  - telemetry.traceparent_injected emitted with wire frames_outbound == 1 (AS-03)
+  code_todos:
+  - crates/kelir-plugins/plugin-ledger/src/otel_ledger.rs
+- case_id: ta_06_merkle_wal_opt_in_suppression
+  status: gap
+  domain: telemetry_audit
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Local LMDB database initialized by default even though ledger.merkle.enabled is unset
+  - Receipts asserted delivered to OTLP while a local .kelir/audit.merkle.db also appears on disk
+  - Suppression asserted from config parsing alone without checking the filesystem
+  must_not:
+  - Never initialize the local Merkle store unless ledger.merkle.enabled is true
+  - Never let receipts fall back to local disk when the WAL is off
+  acceptance:
+  - fs::exists('.kelir/audit.merkle.db') is false with merkle disabled (AS-02)
+  - ledger.store_suppressed emitted; receipts flow to OTLP alone
+  code_todos: []
+- case_id: ta_07_wal_disk_full_resource_pressure
+  status: gap
+  domain: telemetry_audit
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Audit records silently dropped when the WAL partition fills
+  - emit_delta returns Err(PluginError::Halt) and the failure propagates instead of suspending the session
+  - Session keeps executing while ENOSPC persists, losing audit coverage
+  must_not:
+  - Never drop audit records silently on disk-full
+  - Never propagate the WAL error as a pipeline Halt; it suspends the session
+  acceptance:
+  - session.suspend(SuspendReason::ResourcePressure) returns Ok on ENOSPC
+  - session.lifecycle_state() == LifecycleState::Suspended(SuspendReason::ResourcePressure); lifecycle.suspended_resource_pressure emitted (AS-03)
+  code_todos: []
+- case_id: ta_09_otlp_export_failure_non_blocking
+  status: gap
+  domain: telemetry_audit
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Guest command blocks waiting for the OTLP export response while the endpoint is blackholed
+  - Export error propagates as Err(PluginError::Halt) and halts the pipeline
+  - Unbounded export buffer grows while the endpoint is down
+  must_not:
+  - Never block inline execution on export; the buffer is bounded and excess samples drop with a metric
+  - Never propagate an export failure into the pipeline
+  acceptance:
+  - emit completes in < 5ms while the OTLP endpoint is blackholed (AS-06)
+  - ledger.otlp_dropped_sample emitted; guest command completes
+  code_todos:
+  - crates/kelir-plugins/plugin-ledger/src/wal_ledger.rs
+- case_id: tp_01_host_terminal_guard_raii_restore
+  status: gap
+  domain: terminal_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Guard drops without restoring termios, leaving the host shell corrupted
+  - Panic unwind skips the restore because the guard is not RAII
+  - Restore asserted from a saved copy instead of libc::tcgetattr on fd 0
+  must_not:
+  - Assert the guard dropped without inspecting physical termios c_lflag bits
+  - Restore termios only on the clean path and not on panic unwind
+  acceptance:
+  - current_termios.c_lflag & ECHO == original_termios.c_lflag & ECHO after unwinding panic
+  - tcsetattr(TCSAFLUSH) restores the saved termios unconditionally on drop
+  code_todos: []
+- case_id: tp_02_pty_raw_mode_ctrl_c_passthrough
+  status: gap
+  domain: terminal_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - SIGINT sent to the host process group instead of the guest foreground pgid
+  - Host process dies from the Ctrl+C meant for the guest
+  - 0x03 byte asserted sent without the guest task exiting 130
+  must_not:
+  - Send SIGINT to the host process group instead of asserting virtio-console byte transit
+  - Mask SIGINT on the guest instead of the host thread
+  acceptance:
+  - supervisor_process.is_alive() and guest_task_receipt.exit_code == 130
+  - 0x03 traverses virtio-console to the guest foreground pgid
+  code_todos: []
+- case_id: tp_03_ansi_sanitizer_osc52_clipboard_drop
+  status: red
+  domain: terminal_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - OSC 52 clipboard payload reaches the host terminal verbatim
+  - Sanitizer asserted run while the payload bytes remain in the buffer
+  - Only the BEL terminator stripped while the ST terminator passes through
+  must_not:
+  - Assert the sanitizer ran without checking OSC 52 payload bytes were purged
+  - Strip only one terminator form and leave the other
+  acceptance:
+  - sanitized_output == 'Normal Text' with zero occurrences of OSC 52
+  - Durable log (read_from 0) carries no OSC 52 payload
+  code_todos:
+  - crates/kelir-core/src/planes/terminal/mod.rs
+- case_id: tp_04_ansi_sanitizer_title_spoof_strip
+  status: red
+  domain: terminal_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Title spoof sequences reach the host terminal with BEL terminators intact
+  - ST-terminated OSC 0/2 sequences pass while only BEL forms are stripped
+  - Sanitizer tested with incomplete escape sequences only
+  must_not:
+  - Test with incomplete escape sequences missing BEL and ST terminators
+  - Strip OSC 0 but leave OSC 1/2 title sequences
+  acceptance:
+  - sanitized_output == 'PayloadDone' for both BEL- and ST-terminated inputs
+  - Durable log carries no OSC 0/2 title sequence verbatim
+  code_todos: []
+- case_id: tp_05_token_shield_scrollback_clamping
+  status: gap
+  domain: terminal_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Clamp slices a byte slice mid-character, producing invalid UTF-8
+  - Token spans survive clamping because redaction runs after truncation
+  - Grid truncated by lines only while bytes exceed max_bytes_total
+  must_not:
+  - Slice the byte slice directly without UTF-8 boundary checks
+  - Clamp without redacting token spans at the boundary
+  acceptance:
+  - clamped.len() <= 100 and std::str::from_utf8(clamped) succeeds
+  - Token spans redacted at the clamped boundary
+  code_todos:
+  - crates/kelir-core/src/planes/terminal/mod.rs
+- case_id: tp_06_placeholder_mask_carryover_window
+  status: red
+  domain: terminal_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Secret split across chunks passes through because only whole-chunk secrets are tested
+  - Carryover window shorter than MAX_PLACEHOLDER_LEN - 1, missing the split
+  - First chunk emitted unmasked before the second chunk arrives
+  must_not:
+  - Test secrets that fit entirely in one chunk and ignore boundary carryover
+  - Mask each chunk independently without the carryover window
+  acceptance:
+  - '''sk-an'' + ''t-12345'' across two chunks redacts to ''API key is [REDACTED] confirmed'''
+  - Carryover window holds MAX_PLACEHOLDER_LEN - 1 bytes across chunk boundaries
+  code_todos: []
+- case_id: tp_08_disclosure_ansi_box_inline_render
+  status: gap
+  domain: terminal_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Notice written as raw text without saving/restoring cursor position
+  - ANSI box corrupts the cursor state of the Port 0 stream
+  - Disclosure injected on the wrong port instead of Port 0
+  must_not:
+  - Write raw text without saving/restoring cursor position via ANSI DEC sequences
+  - Inject the notice without the save/restore cursor pair
+  acceptance:
+  - injected_bytes starts with 0x1B 0x37 (ESC 7) and ends with 0x1B 0x38 (ESC 8)
+  - Cursor position unchanged after the inline box renders
+  code_todos: []
+- case_id: tp_09_exec_stream_sublane_stdio_fidelity
+  status: red
+  domain: terminal_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - stdout/stderr compared as strings, missing CRLF vs LF byte transformations
+  - Programmatic exec routed through a PTY, adding terminal escapes
+  - Binary bytes 0x00/0xFF lost in a text decode
+  must_not:
+  - Assert string equality on text outputs instead of bitwise byte equality
+  - Route programmatic commands through a PTY
+  acceptance:
+  - exec_stdout_bytes == [0x00, 0xFF, 0x0A, 0x1B, 0x5B, 0x30, 0x6D] bitwise
+  - Zero terminal escape pollution on the EXEC_STREAM sublane
+  code_todos:
+  - crates/kelir-bindings/napi/src/lib.rs
+  - crates/kelir-bindings/pyo3/src/lib.rs
+  - packages/py/kelir/model_plugin.py
+- case_id: tp_10_exec_slot_flag_alloc_pty_opt_in
+  status: gap
+  domain: terminal_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Command runs without a PTY while FLAG_ALLOC_PTY claims one was allocated
+  - isatty(1) returns false in the guest task
+  - Interactive execs serialize over Port 0 instead of private PTY slaves
+  must_not:
+  - Assert the command ran without verifying isatty(1) returned true
+  - Share one PTY across concurrent interactive execs
+  acceptance:
+  - Guest 'python3 -c "import sys; print(sys.stdout.isatty())"' outputs 'True'
+  - console_port0_bytes_observed() == 0 during the PTY exec
+  code_todos: []
+- case_id: vr_02_doorbell_mmio_eventfd_coherency
+  status: gap
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - consumer polls the ring flags in a tight loop instead of blocking on eventfd
+  - doorbell write returns Ok while the host eventfd count never increments
+  - host thread busy-spins and the test still passes on throughput
+  must_not:
+  - replace the eventfd wake with flag polling
+  - assert delivery without the host eventfd read of 1
+  acceptance:
+  - host eventfd read returns 1 after the guest MMIO doorbell write
+  - consumer wakes with a single poll iteration, no spin loop
+  code_todos:
+  - crates/kelir-transport/src/spsc_ring.rs
+- case_id: vr_03_virtio_rng_mandatory_entropy
+  status: gap
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - entropy read asserted without getrandom(GRND_NONBLOCK) returning at early boot
+  - host getrandom bytes passed off as guest virtio-rng output
+  - seeded stream offset stays 0 while draws advance, so replay diverges
+  must_not:
+  - block guest getrandom waiting on host entropy
+  - report the seeded offset without advancing it per draw
+  acceptance:
+  - guest getrandom(GRND_NONBLOCK) returns 32 bytes with entropy_pool_ready true
+  - seeded-stream offset advances by the drawn byte count
+  code_todos:
+  - crates/kelir-drivers/driver-avf/src/lib.rs
+  - crates/kelir-drivers/driver-bwrap/src/lib.rs
+  - crates/kelir-drivers/driver-hvf/src/lib.rs
+  - crates/kelir-drivers/driver-openvmm/src/lib.rs
+  - crates/kelir-drivers/driver-proot/src/lib.rs
+  - crates/kelir-drivers/driver-rustvmm/src/lib.rs
+- case_id: vr_04_virtio_rng_profile_immutable
+  status: red
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - profile with virtio_rng.enabled=false boots Ok
+  - to_vm_config silently drops the devices section instead of rejecting
+  - boot error asserted without EConfig naming virtio-rng
+  must_not:
+  - boot a profile that disables the mandatory virtio-rng device
+  - drop the devices section silently in to_vm_config
+  acceptance:
+  - boot rejects and receipt fault_reason contains EConfig and virtio-rng
+  - exit code is 1
+  code_todos: []
+- case_id: vr_05_virtio_blk_erofs_readonly_mount
+  status: gap
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - ext4 read-write image mounted in place of immutable EROFS
+  - guest write to / succeeds instead of failing with EROFS
+  - mount time asserted without the <2ms cold-mount bound
+  must_not:
+  - mount a writable rootfs image for the base system
+  - accept a guest write to / without the EROFS errno
+  acceptance:
+  - guest write to / fails with raw OS error EROFS
+  - EROFS cold mount completes in < 2ms
+  code_todos: []
+- case_id: vr_06_virtio_shm_doorbell_fence
+  status: gap
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - SHM payload transferred with no Acquire/Release fence
+  - guest reads a stale payload and the test only checks the final bytes
+  - flush returns Ok without any fence or doorbell notification
+  must_not:
+  - transfer SHM data without atomic memory ordering on reads
+  - treat a no-op flush as a fenced transfer
+  acceptance:
+  - SHM buffer reads are atomically consistent across the transfer
+  - flush issues an explicit host fence plus doorbell notification
+  code_todos:
+  - crates/kelir-transport/src/spsc_ring.rs
+  - packages/py/kelir/__init__.py
+- case_id: vr_07_virtio_shm_unmap_on_teardown
+  status: red
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - VM killed without asserting munmap of the host backing fds
+  - shared region still present in /proc/self/maps after teardown
+  - teardown Ok asserted while memfd fds stay open
+  must_not:
+  - kill the VM without the /proc/self/maps unmap check
+  - leave memfd backing fds open after teardown
+  acceptance:
+  - /proc/self/maps contains neither shared region address after teardown
+  - both memfd fds are closed on teardown
+  code_todos: []
+- case_id: vr_08_virtio_wdt_ping_cadence
+  status: red
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - watchdog fired asserted without fired_at_ns and last active PID
+  - set_watchdog Ok while no WatchdogDiagnostic is ever synthesized
+  - heartbeat expiry asserted from a wall-clock estimate instead of the driver event
+  must_not:
+  - assert the watchdog from Ok alone without the typed diagnostic
+  - synthesize the diagnostic from a test-side timer instead of the driver
+  acceptance:
+  - WatchdogDiagnostic carries last_active_pid > 0 and last_heartbeat_ms >= 5000
+  - receipt fault_reason is WatchdogTimeout with exit code 1
+  code_todos: []
+- case_id: vr_09_virtio_console_port0_pty_dedication
+  status: red
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - programmatic commands routed over Port 0 instead of stream kind EXEC
+  - console_port0_bytes > 0 while the test only checks exec exit code
+  - exec dispatched without the 0x0001 stream-kind binding
+  must_not:
+  - send programmatic exec bytes over Port 0
+  - assert exec success without the Port 0 byte count of 0
+  acceptance:
+  - console_port0_bytes_observed() is 0 and stream_mux_exec_bytes() > 0
+  - exec packets carry stream_kind 0x0001
+  code_todos:
+  - crates/kelir-shim/src/main.rs
+  - crates/kelir-shim/src/multiplexer_protocol.rs
+- case_id: vr_10_virtio_fs_fuse_req_channel
+  status: gap
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - blocking syscalls issued inside FUSE request handlers
+  - broker fds opened without O_NONBLOCK and the test only checks the reply
+  - guest VFS call blocks the host broker thread
+  must_not:
+  - open broker fds without O_NONBLOCK
+  - issue a blocking host call on the FUSE request path
+  acceptance:
+  - broker fd flags include O_NONBLOCK
+  - FUSE request completes without blocking host I/O
+  code_todos:
+  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+  - crates/kelir-core/src/planes/storage/io_storage.rs
+- case_id: vr_11_virtio_net_smoltcp_frame_sink
+  status: gap
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - physical host TAP interface created to pass the networking test
+  - frame asserted delivered while no smoltcp socket ever receives it
+  - smoltcp Interface constructed but no frame is sunk into it
+  must_not:
+  - create a host TAP/TUN interface for guest networking
+  - assert delivery without an active smoltcp socket receiving the frame
+  acceptance:
+  - host TAP interface count is 0 and smoltcp_active_sockets() is 1
+  - Ethernet frame terminates in host process memory
+  code_todos:
+  - crates/kelir-core/src/planes/wire/mod.rs
+- case_id: vr_12_transport_af_vsock_fallback_parity
+  status: red
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - wire framing headers altered for the AF_VSOCK fallback
+  - vsock write returns Ok while the bytes on the wire differ from the SPSC bytes
+  - fallback parity asserted from decoded payloads instead of raw frame bytes
+  must_not:
+  - change framing bytes per carrier
+  - assert parity on decoded payloads instead of bitwise frame bytes
+  acceptance:
+  - SPSC-encoded bytes equal AF_VSOCK-encoded bytes bitwise
+  - vsock fallback write carries the identical frame
+  code_todos:
+  - crates/kelir-shim/src/main.rs
+  - crates/kelir-transport/src/fallback_transport.rs
+  - packages/py/kelir/__init__.py
+- case_id: vr_13_transport_named_pipe_windows_parity
+  status: gap
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - backpressure ignored on Windows and excess frames dropped silently
+  - sender keeps writing past a full pipe buffer
+  - named-pipe open Ok while no pipe is ever opened at config.path
+  must_not:
+  - drop frames when the pipe buffer fills
+  - assert delivery without the sender parked state
+  acceptance:
+  - sender is parked when the buffer fills and dropped_frames_count is 0
+  - pipe opened at the configured path carries identical framing
+  code_todos:
+  - crates/kelir-transport/src/fallback_transport.rs
+- case_id: vr_14_host_interposer_latency_budget
+  status: gap
+  domain: virtio_rings
+  target_crate: crates/kelir-core
+  slop_risks:
+  - latency benchmark includes allocation overhead instead of native evaluation
+  - evaluation slower than 2us reported as passing on an averaged sample
+  - interposer result asserted without any timing measurement
+  must_not:
+  - benchmark evaluation with allocation overhead included
+  - assert the budget without the <2000ns stopwatch
+  acceptance:
+  - HostInterposer evaluation stopwatch reads < 2000ns
+  - gate_2_us=2 budget enforced with no allocation in the path
+  code_todos: []
+- case_id: wp_02_synthetic_dns_nxdomain_enforcement
+  status: red
+  domain: wire_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - NXDOMAIN claimed while the query was actually forwarded upstream
+  - Upstream ServFail returned instead of a locally synthesized NXDOMAIN
+  - Response latency over 1ms because the answer came from the network
+  must_not:
+  - Assert NXDOMAIN was returned by the upstream DNS
+  - Forward undeclared targets upstream instead of synthesizing locally
+  acceptance:
+  - upstream_dns_packets_sent() == 0 and dns_response_rcode() == 3
+  - dns_latency < 1ms for the synthetic answer
+  code_todos:
+  - crates/kelir-core/src/planes/wire/mod.rs
+- case_id: wp_03_rollback_socket_termination_econnreset
+  status: red
+  domain: wire_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Rollback completes while host-side session sockets stay open
+  - Guest send() succeeds after rollback instead of ECONNRESET
+  - Sockets closed without RST so the peer sees a clean FIN
+  must_not:
+  - Assert rollback completed without verifying TCP socket state transitions
+  - Close sockets without SO_LINGER zero and RST emission
+  acceptance:
+  - guest_send_err.raw_os_error() == Some(libc::ECONNRESET)
+  - host_active_session_sockets() == 0 after rollback
+  code_todos:
+  - crates/kelir-core/src/planes/wire/mod.rs
+  - crates/kelir-core/src/session_lifecycle.rs
+- case_id: wp_04_userspace_netstack_unprivileged_dial
+  status: gap
+  domain: wire_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Outbound dial uses iptables/nftables or an elevated network namespace
+  - Dial requires CAP_NET_ADMIN instead of a plain unprivileged host socket
+  - Host interface created for the guest connection
+  must_not:
+  - Use iptables/nftables or elevated network namespace rules
+  - Create a host interface for outbound connections
+  acceptance:
+  - cap_net_admin_effective() == false during the dial
+  - Outbound connection completes over a plain unprivileged host socket
+  code_todos:
+  - crates/kelir-core/src/planes/wire/mod.rs
+- case_id: wp_09_dns_gateway_host_state_tracking
+  status: gap
+  domain: wire_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - resolv.conf rewritten but the active upstream still points at the old nameserver
+  - Nameserver reload requires a VM restart
+  - Upstream list read once at boot and never watched
+  must_not:
+  - Assert DNS works without asserting the upstream nameserver IP updated dynamically
+  - Reload nameservers only at boot instead of on inotify change
+  acceptance:
+  - active_upstreams() == [10.0.0.2] after resolv.conf is rewritten
+  - Reload happens without a VM restart
+  code_todos:
+  - crates/kelir-core/src/planes/wire/mod.rs
+- case_id: wp_11_socks5h_synthetic_pool_allocation
+  status: gap
+  domain: wire_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Domain resolved locally via getaddrinfo before connecting to the SOCKS proxy
+  - External DNS query leaks the target domain outside the proxy
+  - CONNECT frame carries the synthetic IP instead of the original hostname
+  must_not:
+  - Resolve the domain locally via getaddrinfo before connecting
+  - Send the target as an IP instead of preserving the original hostname in CONNECT
+  acceptance:
+  - 0 external DNS queries and synthetic_ip starts with '198.18.'
+  - socks5_connect_frame_host() == 'internal-service.corp'
+  code_todos: []
+- case_id: wp_12_l4_diversion_passthrough_tls
+  status: red
+  domain: wire_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Supervisor terminates TLS with a custom CA, becoming a MITM
+  - Plaintext HTTP strings from the TLS session present in supervisor memory
+  - Guest TLS verification bypassed so the peer is never verified
+  must_not:
+  - Terminate TLS with a custom CA cert in the supervisor process
+  - Inspect or log TLS plaintext in the supervisor
+  acceptance:
+  - supervisor_contains_plaintext('GET /secret') == false
+  - guest_verified_peer_tls() == true with bytes passed through unmodified
+  code_todos:
+  - crates/kelir-core/src/planes/wire/mod.rs
+- case_id: wp_13_upstream_dial_proxy_chain_auth
+  status: gap
+  domain: wire_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - HTTP_PROXY credentials injected into guest environment variables
+  - Guest performs the CONNECT handshake instead of the host netstack
+  - Upstream proxy receives no Proxy-Authorization header
+  must_not:
+  - Inject HTTP_PROXY credentials directly into guest environment variables
+  - Let the guest perform the upstream proxy handshake
+  acceptance:
+  - guest_env_has('HTTP_PROXY') == false
+  - upstream_connect_header('Proxy-Authorization').is_some() == true
+  code_todos: []
+code_only:
+- domain: adapters_ingestion
+  target_crate: crates/kelir-adapters/kelir-pack
+  slop_risks:
+  - fetch_manifest returns Ok with a manifest that was never fetched from the registry or disk
+  - FetchPending swallowed and the build proceeds with an empty manifest
+  - OCI tarball ingested without verifying layer digests, so a tampered layer unpacks
+  must_not:
+  - Never proceed to phase 1 without a fetched manifest
+  - accept a layer whose BLAKE3 digest does not match the manifest
+  acceptance:
+  - fetch_manifest returns the registry or on-disk OCI manifest, or Err(PackError::FetchPending)
+  - No phase-1 scan runs on an unfetched manifest
+  code_todos:
+  - crates/kelir-adapters/kelir-pack/src/main.rs
+  - packages/py/kelir/service_caps.py
+- domain: attestation_receipts
+  target_crate: packages/py
+  slop_risks:
+  - Kernel panic missed because only the canonical 'Kernel panic' line is recognized
+  - Non-canonical panic exit reported as Normal instead of the panic exit kind
+  - UART scrape stops at the first unrecognized panic signature
+  must_not:
+  - Report a guest panic as a Normal exit
+  - Scrape only the canonical panic line and ignore other signatures
+  acceptance:
+  - Non-canonical kernel panic signatures map to the panic exit kind
+  - UART scrape covers the full panic signature set
+  code_todos:
+  - crates/kelir-core/src/uart_terminal.rs
+  - crates/kelir-plugin-cli/src/attest_cli.rs
+  - packages/py/kelir/generated/attest_telemetry.py
+  - packages/py/kelir/model_plugin.py
+  - packages/py/kelir/service_caps.py
+- domain: bindings_py
+  target_crate: packages/py
+  slop_risks:
+  - bridge stub returns Ok or a zero value instead of raising the missing-bridge EConfig, so callers believe spawn, exec, or map succeeded
+  - Py-side callback (token shield, snoop, prompt) silently stays local while the guest runs unshielded
+  - Py config or verdict value diverges from the Rust shape while Py-only tests pass
+  must_not:
+  - replace a bridge raise with a silent no-op or fabricated return value
+  - add a Py-only reimplementation of native behavior instead of crossing the bridge
+  acceptance:
+  - every bridge stub still raises EConfig naming the missing _kelir bridge until the PyO3 bridge lands
+  - Py verdict and errno shapes match the Rust wire encoding in cross-SDK parity
+  code_todos:
+  - crates/kelir-bindings/pyo3/src/lib.rs
+  - crates/kelir-bindings/pyo3/src/storage_bridge.rs
+  - packages/py/kelir/__init__.py
+  - packages/py/kelir/kelir_builder.py
+  - packages/py/kelir/lifecycle_sandbox.py
+  - packages/py/kelir/lifecycle_session.py
+  - packages/py/kelir/profile_config.py
+  - packages/py/kelir/service_caps.py
+- domain: bindings_ts
+  target_crate: packages/ts
+  slop_risks:
+  - addon stub returns Ok instead of throwing the missing-addon EConfig, so callers believe boot succeeded
+  - TS-side callback (tokenShield, snoop, prompt) silently stays local while the guest runs unshielded
+  - TS verdict or errno shape diverges from Rust while TS-only tests pass
+  must_not:
+  - replace a missing-addon throw with a silent no-op
+  - ship a TS-only reimplementation of native behavior instead of crossing the addon
+  acceptance:
+  - every addon stub still throws EConfig naming the missing NAPI addon until the cdylib ships
+  - TS verdict and errno shapes match the Rust wire encoding in cross-SDK parity
+  code_todos:
+  - crates/kelir-bindings/napi/src/lib.rs
+  - packages/ts/core/src/builder.lifecycle.ts
+  - packages/ts/core/src/profile.schema.ts
+  - packages/ts/core/src/sandbox.runtime.ts
+- domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - MCP transport stubs keep returning the default frame while tool-guard asserts interception, so no JSON-RPC frame ever reaches the console
+  - Boot-time tools/list fetch+lock halts before the lock, so an empty-catalog boot fakes the spec-mandated immutable schema lock
+  - Tool-guard trace quota state never evicted, so quota from a closed trace leaks into the next trace
+  must_not:
+  - Boot with an empty tool catalog while claiming the schema lock holds
+  - Assert MCP tool exposure while the transport still returns default frames
+  acceptance:
+  - tools/call frames decoded from MCP_CONSOLE with tool name and arguments before guest launch
+  - Boot locks the fetched tools/list catalog; trace quota state evicts when the console closes
+  code_todos:
+  - crates/kelir-plugin-cli/src/budgets_cli.rs
+  - crates/kelir-plugins/plugin-mcp/src/lib.rs
+  - crates/kelir-plugins/plugin-tool-guard/src/lib.rs
+  - crates/kelir-plugins/plugin-tool-guard/src/service_tool_guard.rs
+  - crates/kelir-testkit/src/bin/check_tests.rs
+- domain: governance_vault
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Metadata service answers non-session vsock peers because the guest CID is never bound at boot, so any peer mints tokens
+  - JSON responses built by the minimal escaping skeleton, so a crafted credential value breaks out of the JSON string
+  - Profile base updates applied without owner-state verification, so a stale base survives a Move/Copy
+  must_not:
+  - Serve credential metadata to a vsock peer whose CID was never bound at boot
+  - Ship the hand-rolled JSON escaping skeleton as the encoder
+  acceptance:
+  - Non-session vsock peer receives ECONNREFUSED from the metadata service
+  - JSON responses encode credential values without breakout; Move/Copy leaves no stale base without owner-state verification
+  code_todos:
+  - crates/kelir-plugins/plugin-profile/src/lib.rs
+  - crates/kelir-plugins/plugin-vault/src/lib.rs
+- domain: hypervisor_driver
+  target_crate: crates/kelir-interface
+  slop_risks:
+  - Driver probe returns Ok without a loaded backend, hiding the missing hardware
+  - Boot config (page size, clocksource) warned about but never consumed by the driver
+  - Host LSM posture never queried, so the security state is unproven
+  must_not:
+  - Return Ok from the driver probe without a backend handshake
+  - Silently drop unconsumed boot config instead of failing or applying it
+  acceptance:
+  - Driver probe fails with E_NOHARDWAREVMM when no backend loads
+  - Boot config values reach the driver or the boot refuses with a typed error
+  code_todos:
+  - crates/kelir-bindings/napi/src/lib.rs
+  - crates/kelir-bindings/pyo3/src/lib.rs
+  - crates/kelir-core/src/lib.rs
+  - crates/kelir-core/src/planes/host/mod.rs
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-drivers/driver-bwrap/src/lib.rs
+  - crates/kelir-drivers/driver-proot/src/lib.rs
+  - crates/kelir-integration/src/lib.rs
+  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-plugin-cli/src/doctor_cli.rs
+  - crates/kelir-plugin-cli/src/setup_cli.rs
+  - crates/kelir/src/sandbox_runtime.rs
+- domain: lifecycle_checkpoint
+  target_crate: packages/py
+  slop_risks:
+  - Staging delta never flushed into the Base sparse extents, so the checkpoint slot holds stale state
+  - Graceful shutdown returns without the MSG_SHUTDOWN_ACK gate, skipping the pre-teardown flush
+  - Orphaned session dirs never swept, leaking disk across restarts
+  must_not:
+  - Report checkpoint success without flushing the staging delta
+  - Skip the shutdown ACK gate and tear down the vCPU early
+  acceptance:
+  - Checkpoint slot base extents match the flushed staging delta
+  - Shutdown waits for MSG_SHUTDOWN_ACK on Control 0x0000 before vCPU teardown
+  code_todos:
+  - crates/kelir-bindings/napi/src/lib.rs
+  - crates/kelir-bindings/pyo3/src/lib.rs
+  - crates/kelir-core/src/planes/checkpoint/mod.rs
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-interface/src/driver_interface.rs
+  - packages/py/kelir/__init__.py
+  - packages/py/kelir/lifecycle_session.py
+  - packages/py/kelir/model_plugin.py
+- domain: plugin_engine
+  target_crate: crates/kelir
+  slop_risks:
+  - Scope stored at registration but never enforced at dispatch, so out-of-scope calls pass
+  - Token-bucket rate gate counts a 1s window instead of exact bucket accounting, letting bursts through
+  - In-flight exec count drifts because no ProcessExit is guaranteed per exec_started
+  must_not:
+  - Store scopes without dispatch-time enforcement
+  - Enforce scope only on the path filter while device/pressure dispatch skips it
+  acceptance:
+  - Out-of-scope dispatch returns the scope denial at dispatch time
+  - In-flight exec count returns to zero after every exec completes
+  code_todos:
+  - crates/kelir-core/src/dispatch_plugin/mod.rs
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-core/src/trap_gate.rs
+  - crates/kelir-integration/src/lib.rs
+  - crates/kelir-interface/src/error_envelope.rs
+  - crates/kelir-interface/src/handlers_plugin.rs
+  - crates/kelir-interface/src/plugin_model.rs
+  - crates/kelir-interface/src/runtime_block.rs
+  - crates/kelir-plugin-cli/src/audit_cli.rs
+  - crates/kelir-plugin-cli/src/manifest_cli.rs
+  - crates/kelir-plugin-cli/src/registry_cli.rs
+  - crates/kelir-plugin-cli/src/scaffold_cli.rs
+  - crates/kelir-plugin-cli/src/spec_cli.rs
+  - crates/kelir-plugins/plugin-chaos/src/lib.rs
+  - crates/kelir-plugins/plugin-container/src/lib.rs
+  - crates/kelir-plugins/plugin-container/src/service_container.rs
+  - crates/kelir/src/builder_sdk.rs
+  - crates/kelir/src/hlist_sdk.rs
+  - crates/kelir/src/lib.rs
+  - packages/py/kelir/kelir_builder.py
+  - packages/py/kelir/model_plugin.py
+  - packages/py/tests/test_plugin_fluent_builder.py
+  - packages/ts/core/src/builder.lifecycle.ts
+- domain: protocol_mux
+  target_crate: crates/kelir
+  slop_risks:
+  - trap encode/dispatch failure swallowed, host never learns the trap was dropped
+  - argv/envp read via /proc races a live thread, frozen inspection captures torn state
+  - stream released before EOF flush, exit frame precedes the output bytes
+  must_not:
+  - swallow a trap or control error without an in-band reject frame
+  - report inspection identity or exit status from a partially read process
+  acceptance:
+  - every trap encode/dispatch failure emits an in-band reject frame
+  - exit frame is emitted only after stdout/stderr EOF flush
+  code_todos:
+  - crates/kelir-interface/src/lib.rs
+  - crates/kelir-plugin-testkit/src/fixtures_testkit.rs
+  - crates/kelir-plugin-testkit/src/vectors_testkit.rs
+  - crates/kelir-plugins/plugin-mesh/src/lib.rs
+  - crates/kelir-shim/src/introspect_trap.rs
+  - crates/kelir-shim/src/main.rs
+  - crates/kelir-shim/src/multiplexer_protocol.rs
+  - crates/kelir/src/builder_sdk.rs
+  - crates/kelir/src/session_lifecycle.rs
+- domain: relational_transaction
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - db-proxy transport stubs keep returning Ok(()) while no COMMIT, ROLLBACK, or SAVEPOINT ever reaches a connection, so 2PC tests assert Ok(()) on a no-op
+  - Reassembler stand-in forwards frames without checksum verification or TCP state, so invalid frames and out-of-order segments pass as valid pgwire
+  - Transaction UUID namespace minted from a hardcoded value instead of the session seeded entropy, so transaction ids collide across sessions
+  must_not:
+  - Return Ok(()) from issue_commit/issue_rollback/inject_savepoint without touching a proxy connection
+  - Forward reassembled frames without checksum and TCP state-machine validation
+  acceptance:
+  - COMMIT/ROLLBACK/SAVEPOINT observable on every active proxy connection
+  - Invalid-checksum frames rejected and out-of-order segments reassembled per RFC 793
+  code_todos:
+  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-plugins/plugin-db-proxy/src/lib.rs
+  - crates/kelir-plugins/plugin-db-proxy/src/reassembler_wire.rs
+  - crates/kelir-plugins/plugin-db-proxy/src/service_db_proxy.rs
+  - crates/kelir-plugins/plugin-transaction/src/lib.rs
+  - crates/kelir-plugins/plugin-transaction/src/service_transaction.rs
+  - packages/py/kelir/service_caps.py
+- domain: storage_plane
+  target_crate: crates/kelir-core
+  slop_risks:
+  - GETATTR stat merges only one layer, reporting wrong sizes for overlaid files
+  - Open escapes the workspace root because openat2 RESOLVE_BENEATH is never used
+  - Undeclared host path mediated instead of denied with EPERM
+  must_not:
+  - Serve a stat without merging lower, upper, and tombstones
+  - Mediate undeclared paths instead of denying EPERM
+  acceptance:
+  - GETATTR for an overlaid file reflects the merged lower/upper/tombstone state
+  - Open outside the root fails and undeclared paths deny with EPERM
+  code_todos:
+  - crates/kelir-catalog/src/lib.rs
+  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+  - crates/kelir-core/src/planes/storage/io_storage.rs
+  - crates/kelir-core/src/planes/storage/lock_broker.rs
+  - crates/kelir-core/src/planes/storage/mod.rs
+  - crates/kelir-core/src/planes/storage/storage_reconciler.rs
+  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-interface/src/handles_lifecycle.rs
+  - crates/kelir/src/builder_sdk.rs
+  - packages/py/kelir/__init__.py
+  - packages/py/kelir/model_plugin.py
+  - packages/py/kelir/service_caps.py
+- domain: supply_chain_security
+  target_crate: crates/kelir-core
+  slop_risks:
+  - Gate-1 BPF program never loaded, so the allowlist is unenforced
+  - Trap passes without a BPF match deciding Skip
+  - Event binary/argv never evaluated against the loaded program
+  must_not:
+  - Decide Skip without a loaded gate-1 BPF program
+  - Load the program but never run events against it
+  acceptance:
+  - Gate-1 BPF program loaded before any trap is evaluated
+  - Non-allowlisted binary/argv yields Skip from the BPF match
+  code_todos:
+  - crates/kelir-core/src/trap_gate.rs
+  - crates/kelir-plugin-cli/src/fixtures_cli.rs
+  - crates/kelir-plugins/plugin-supply-chain/src/lib.rs
+- domain: telemetry_audit
+  target_crate: crates/kelir-plugins/plugin-ledger
+  slop_risks:
+  - Telemetry ring bound without a TrampolineRing tag, so fused crossings cannot attribute memory-pressure events
+  - Memory-pressure telemetry silently dropped because no ring tag exists
+  - Fused crossing counted on the wrong ring, corrupting per-ring accounting
+  must_not:
+  - Bind the telemetry ring with a hardcoded tag instead of a TrampolineRing tag
+  - Drop memory-pressure events silently when the tag is missing
+  acceptance:
+  - Memory-pressure event carries a TrampolineRing tag across the fused crossing
+  - Per-ring telemetry counts match the dispatched crossings
+  code_todos:
+  - crates/kelir-core/src/dispatch_plugin/lifecycle_dispatch.rs
+  - crates/kelir-plugins/plugin-ledger/src/lib.rs
+  - crates/kelir-plugins/plugin-ledger/src/wal_ledger.rs
+  - packages/py/kelir/model_plugin.py
+  - packages/py/kelir/service_caps.py
+- domain: terminal_plane
+  target_crate: crates/kelir
+  slop_risks:
+  - VT100 escape sequences unparsed, leaving the matrix and cursor wrong
+  - Cursors lost on restart because the chunk index is never written
+  - Replay reads only the in-memory segment map, ignoring durable chunk files
+  must_not:
+  - Feed console bytes to the grid without parsing escape sequences
+  - Persist logs without the append-only chunk index
+  acceptance:
+  - VT100 input updates the matrix and cursor deterministically
+  - Cursors survive a process restart from the durable chunk files and index
+  code_todos:
+  - crates/kelir-bindings/napi/src/lib.rs
+  - crates/kelir-bindings/pyo3/src/lib.rs
+  - crates/kelir-core/src/planes/terminal/mod.rs
+  - crates/kelir-interface/src/handles_lifecycle.rs
+  - crates/kelir-plugin-cli/src/logs_cli.rs
+  - crates/kelir/src/planes/terminal_plane.rs
+  - packages/py/kelir/__init__.py
+  - packages/py/kelir/lifecycle_session.py
+  - packages/py/kelir/model_plugin.py
+- domain: virtio_rings
+  target_crate: crates/kelir-plugin-cli
+  slop_risks:
+  - Ring-mask report renders while declared_ring_mask was never read
+  - Report shows a static mask that does not reflect the declared rings
+  must_not:
+  - Never render a ring report from anything but declared_ring_mask
+  acceptance:
+  - --show output matches declared_ring_mask exactly
+  code_todos:
+  - crates/kelir-plugin-cli/src/rings_cli.rs
+- domain: wire_plane
+  target_crate: crates/kelir-interface
+  slop_risks:
+  - AD/DO bits leak upstream because the EDNS0 downgrade never runs
+  - Cloud IMDS endpoint reaches the vault because ingress quarantine is unimplemented
+  - Surfaced filter action never acted on by the vCPU loop
+  must_not:
+  - Forward DNS responses with AD/DO bits intact
+  - Bridge metadata requests to the vault without the link-local quarantine
+  acceptance:
+  - Outbound DNS responses carry cleared AD and DO bits
+  - Non-link-local IMDS endpoints drop at ingress; only 169.254.169.254 reaches the vault
+  code_todos:
+  - crates/kelir-bindings/napi/src/lib.rs
+  - crates/kelir-bindings/pyo3/src/lib.rs
+  - crates/kelir-core/src/planes/wire/mod.rs
+  - crates/kelir-interface/src/vsock_mesh.rs
+  - crates/kelir-plugins/plugin-wire-ingress/src/lib.rs
+  - crates/kelir/src/builder_sdk.rs
+  - crates/kelir/src/session_lifecycle.rs
+  - packages/py/kelir/model_plugin.py
+  - packages/py/tests/test_wire_sinkhole.py
+  - packages/ts/core/tests/sinkhole.wire.test.ts

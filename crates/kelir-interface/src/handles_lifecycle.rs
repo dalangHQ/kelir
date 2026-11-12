@@ -163,7 +163,7 @@ impl VmControl for DriverVmControl {
     }
 
     async fn set_vcpus(&self, _count: u8) -> Result<(), PluginError> {
-        // TODO (L3): VmmDriver has no set_vcpus surface; the adapter cannot park/unpark host vCPU threads.
+        // TODO (L3) [hd_15_vcpu_scale_online_offline_dynamic]: VmmDriver has no set_vcpus surface; the adapter cannot park/unpark host vCPU threads.; slop: set_vcpus Ok, host thread parking never verified
         Err(PluginError::Halt(
             "VmmDriver has no set_vcpus surface".into(),
         ))
@@ -290,7 +290,7 @@ impl VmHandle {
     }
 
     // see: cans/08-lifecycle.md#Clock-invariants
-    // TODO (L3): read the live guest CLOCK_MONOTONIC through the driver surface; zero defers the clamp to the plane watermark floor.
+    // TODO (L3) [lc_11_lid_sleep_clock_resync_snap]: read the live guest CLOCK_MONOTONIC through the driver surface; zero defers the clamp to the plane watermark floor.; slop: zero clock accepted, guest time jump unverified
     pub fn guest_monotonic_ns(&self) -> u64 {
         0
     }
@@ -361,7 +361,7 @@ impl VmHandle {
 pub struct FsHandle;
 
 impl FsHandle {
-    // TODO (L3): prefetch the storage catalog entries for the requested paths into the warm cache.
+    // TODO (L3) [storage_plane]: prefetch the storage catalog entries for the requested paths into the warm cache.; slop: warm cache Ok, catalog entries never prefetched
     pub async fn warm_cache(&self, _paths: &[&str]) -> Result<(), PluginError> {
         Err(PluginError::Halt("TODO (L3): FsHandle::warm_cache".into()))
     }
@@ -371,12 +371,12 @@ impl FsHandle {
 pub struct TerminalHandle;
 
 impl TerminalHandle {
-    // TODO (L3): publish the TerminalNotice event to the event bus per cans/04-terminal-plane.md#Terminal-pipeline.
+    // TODO (L3) [terminal_plane]: publish the TerminalNotice event to the event bus per cans/04-terminal-plane.md#Terminal-pipeline.; slop: notice swallowed, event never reaches bus
     pub fn notice(&self, _msg: &str) {}
 }
 
 // see: cans/10-attestation.md#Step-evaluation-loop
-// TODO (L3): pop slots on checkpoint commit/rollback; dispatch-side pre-exec hydration pushes them.
+// TODO (L3) [lc_base_snapshot_lifecycle]: pop slots on checkpoint commit/rollback; dispatch-side pre-exec hydration pushes them.; slop: slots never popped, base digest leaks into manifest
 #[derive(Debug, Clone, Default)]
 pub struct StepStack {
     slots: Vec<SnapshotDescriptor>,

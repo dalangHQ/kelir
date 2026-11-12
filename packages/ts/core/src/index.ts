@@ -50,6 +50,6 @@ export async function runStepEvaluationLoop(
 ): Promise<StepEvaluationResult> {
   void session;
   void evaluator;
-  // TODO (L3): pre-step checkpoint, intent analysis, post-condition receipt verification, rollback on failure.
+  // TODO (L3) [lc_03_step_evaluation_taint_rollback]: pre-step checkpoint, intent analysis, post-condition receipt verification, rollback on failure.; slop: step passes without RAM/upper revert check
   throw new Error("TODO: runStepEvaluationLoop (L3)");
 }

@@ -176,7 +176,7 @@ impl StoragePlane {
     }
 
     // see: cans/05-storage-plane.md#Storage-architecture
-    // TODO (L3): plane engines consume wiring (idmap remap, mask-read scan, encapsulation chmod, shared-cache mounts) per cans/05.
+    // TODO (L3) [storage_plane]: plane engines consume wiring (idmap remap, mask-read scan, encapsulation chmod, shared-cache mounts) per cans/05; slop: wiring unconsumed, encapsulation and masking unenforced
     pub fn with_wiring(mut self, wiring: StorageConfig) -> Self {
         self.wiring = wiring;
         self
@@ -210,7 +210,7 @@ impl StoragePlane {
         self
     }
 
-    // TODO (L3): first construction wins; later calls with different broker_dir/guard return the anchored reconciler.
+    // TODO (L3) [storage_plane]: first construction wins; later calls with different broker_dir/guard return the anchored reconciler; slop: second broker_dir silently replaces anchored reconciler
     pub fn reconciler(
         &self,
         broker_dir: PathBuf,
@@ -303,10 +303,10 @@ impl StoragePlane {
     }
 
     pub fn discard(&self) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): drop the sparse upper file and tombstones; base untouched.
+        // TODO (L3) [sp_01_host_cow_upper_discard_on_rollback]: drop the sparse upper file and tombstones; base untouched; slop: rollback Ok, upper st_blocks nonzero, tombstones left
         let _ = (&self.sparse_upper_path, &self.tombstones);
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): StoragePlane::discard needs the sparse upper drop".into(),
+            "TODO (L3) [sp_01_host_cow_upper_discard_on_rollback]: StoragePlane::discard needs the sparse upper drop; slop: rollback Ok, upper st_blocks nonzero, tombstones left".into(),
         ))
     }
 
@@ -339,7 +339,7 @@ impl StoragePlane {
     pub fn punch_hole_sparse_upper(
         &self,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on sparse_upper_path.
+        // TODO (L3) [sp_01_host_cow_upper_discard_on_rollback]: FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on sparse_upper_path; slop: rollback Ok, upper st_blocks nonzero, tombstones left
         self.io.punch_hole(&self.sparse_upper_path, 0, u64::MAX)?;
         self.io.advise_dontneed(&self.sparse_upper_path)
     }
@@ -369,7 +369,7 @@ impl StoragePlane {
     }
 
     // see: cans/05-storage-plane.md#Host-CoW-broker
-    // TODO (L3): report the sparse upper allocation on non-Unix hosts; the constant 0 hides host block usage.
+    // TODO (L3) [sp_01_host_cow_upper_discard_on_rollback]: report the sparse upper allocation on non-Unix hosts; the constant 0 hides host block usage; slop: rollback Ok, upper st_blocks nonzero, tombstones left
     #[cfg(not(unix))]
     pub fn sparse_upper_blocks(&self) -> u64 {
         0

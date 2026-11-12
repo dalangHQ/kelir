@@ -31,9 +31,9 @@ impl DriverRouter {
             )));
         }
         let _ = policy_wx;
-        // TODO (L3): probe the host backend (KVM/HVF/AVF) and load the native driver per cans/01-architecture.md#Driver-backends; missing hardware returns VmmError::NoHardwareVmm, never a silent downgrade.
+        // TODO (L3) [hd_01_nohardware_vmm_fatal_abort]: probe the host backend (KVM/HVF/AVF) and load the native driver per cans/01-architecture.md#Driver-backends; missing hardware returns VmmError::NoHardwareVmm, never a silent downgrade; slop: silent emulated fallback or Unsupported, never E_NOHARDWAREVMM
         Err(VmmError::Unsupported(
-            "TODO (L3): DriverRouter::load_native_driver".into(),
+            "TODO (L3) [hd_01_nohardware_vmm_fatal_abort]: DriverRouter::load_native_driver; slop: silent emulated fallback or Unsupported, never E_NOHARDWAREVMM".into(),
         ))
     }
 

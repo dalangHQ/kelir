@@ -54,7 +54,7 @@ impl<F: Future> Future for Quarantined<F> {
                 "quarantined future polled after completion".into(),
             )));
         };
-        // TODO (L3): log the panic payload and backtrace to the host ledger and roll back the active StepSlot.
+        // TODO (L3) [lc_03_step_evaluation_taint_rollback]: log the panic payload and backtrace to the host ledger and roll back the active StepSlot; slop: panic logs without StepSlot rollback, tainted state kept
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             Future::poll(inner.as_mut(), cx)
         })) {
@@ -239,12 +239,12 @@ impl PipelineBinder for PipelineEngine {
         service: Arc<dyn VsockServiceHandler>,
         scope: MountScope,
     ) {
-        // TODO (L3): scope is stored; dispatch-time enforcement lands with vsock dispatch.
+        // TODO (L3) [plugin_engine]: scope is stored; dispatch-time enforcement lands with vsock dispatch; slop: scope stored never enforced at vsock dispatch
         let scope = self.effective_scope(scope);
         self.vsock_services.push((spec, service, scope));
     }
     // see: cans/02-plugin-model.md#Segregated-ring-traits
-    // TODO (L3): scopes are stored; dispatch-time enforcement for the lifecycle and telemetry rings lands with the veto gate.
+    // TODO (L3) [plugin_engine]: scopes are stored; dispatch-time enforcement for the lifecycle and telemetry rings lands with the veto gate; slop: lifecycle/telemetry rings bypass veto gate
     fn bind_lifecycle_scoped(&mut self, stage: Arc<dyn LifecycleParticipant>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.lifecycle_interceptors.push(stage);
@@ -357,7 +357,7 @@ impl PipelineEngine {
             self.ffi_window_ops.store(1, Ordering::Release);
             return Ok(());
         }
-        // TODO (L3): exact token-bucket accounting; the 1s window below is the pre-insertion rate gate.
+        // TODO (L3) [plugin_engine]: exact token-bucket accounting; the 1s window below is the pre-insertion rate gate; slop: rate gate counts window only, bucket never exact
         let ops = self.ffi_window_ops.fetch_add(1, Ordering::AcqRel);
         if ops >= u64::from(self.ffi_rate_per_sec) {
             return Err(PluginError::Halt(format!(
@@ -453,7 +453,7 @@ impl PipelineEngine {
     }
 
     // see: cans/10-attestation.md#Step-evaluation-loop
-    // TODO (L3): resolve guest pid to its lineage root before lookup once the trap-stream ppid chain walk lands.
+    // TODO (L3) [plugin_engine]: resolve guest pid to its lineage root before lookup once the trap-stream ppid chain walk lands; slop: trap lookup without lineage root, wrong process blamed
     pub fn hydrate_step<Plugins, Params>(
         &self,
         ctx: &mut HandlerCtx<Plugins, Params>,
@@ -469,7 +469,7 @@ impl PipelineEngine {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // TODO (L3): fused descriptor ordinals bind 1:1 onto the native interposer chain; ring-level matching is the L2 handoff boundary.
+    // TODO (L3) [plugin_engine]: fused descriptor ordinals bind 1:1 onto the native interposer chain; ring-level matching is the L2 handoff boundary; slop: descriptor ordinals unbound to interposer chain
     fn fused_ring(&self, ring: TrampolineRing) -> bool {
         self.trampoline.as_ref().is_some_and(|descriptor| {
             descriptor
@@ -480,7 +480,7 @@ impl PipelineEngine {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // TODO (L3): the AOT-fused trampoline closure marshals the whole hook chain across this single crossing at the native-to-foreign boundary.
+    // TODO (L3) [plugin_engine]: the AOT-fused trampoline closure marshals the whole hook chain across this single crossing at the native-to-foreign boundary; slop: hook chain split across crossings, single-crossing unproven
     fn fused_crossing(
         &self,
         ring: TrampolineRing,
@@ -603,7 +603,7 @@ impl PipelineEngine {
         if self.sealed {
             return Err(PluginError::Halt("pipeline already sealed".into()));
         }
-        // TODO (L3): conflicts surface the structured EKindConflict/EPortConflict envelope from the artifacts.
+        // TODO (L3) [pm_05_stream_kind_conflict_ekindconflict]: conflicts surface the structured EKindConflict/EPortConflict envelope from the artifacts; slop: kind collision seals Ok, EKindConflict never surfaced
         for (index, (spec, _, _)) in self.vsock_services.iter().enumerate() {
             if self.vsock_services[..index]
                 .iter()
@@ -615,7 +615,7 @@ impl PipelineEngine {
                 )));
             }
         }
-        // TODO (L3): freeze all five ring chains.
+        // TODO (L3) [pm_03_core_stream_kind_reregistration_abort]: freeze all five ring chains; slop: frozen core kind re-registers, seal never aborts
         self.sealed = true;
         Ok(())
     }
@@ -733,7 +733,7 @@ impl PipelineEngine {
         ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
         self.metrics.record_exec();
-        // TODO (L3): in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started.
+        // TODO (L3) [plugin_engine]: in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started; slop: in-flight count drifts, ProcessExit never guaranteed
         self.metrics.exec_finished();
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::ProcessExit)?;
@@ -877,7 +877,7 @@ impl PipelineEngine {
         Ok(FilterAction::Forward)
     }
 
-    // TODO (L3): host scope.devices has no VirtioDevice mapping; only the path filter is enforced here.
+    // TODO (L3) [plugin_engine]: host scope.devices has no VirtioDevice mapping; only the path filter is enforced here; slop: device scope unchecked, path filter only
     pub fn dispatch_host_lsm_exec(
         &self,
         path: &std::path::Path,
@@ -917,7 +917,7 @@ impl PipelineEngine {
         Ok(Verdict::Pass)
     }
 
-    // TODO (L3): pressure/keyring dispatch carries no path or device input, so no scope filter can evaluate here yet.
+    // TODO (L3) [plugin_engine]: pressure/keyring dispatch carries no path or device input, so no scope filter can evaluate here yet; slop: pressure dispatch skips scope filter entirely
     pub fn dispatch_host_pressure(&self, level: u32) -> Result<Verdict, PluginError> {
         for interceptor in &self.host_interceptors {
             let verdict = map_reject_to_verdict(quarantine_sync(

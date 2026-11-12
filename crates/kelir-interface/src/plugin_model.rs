@@ -235,7 +235,7 @@ impl MountScope {
         }
     }
 
-    // TODO (L3): canonical (st_dev, st_ino, binary_blake3) — cans/11-protocol.md#Trap-fast-path
+    // TODO (L3) [pe_20_same_path_different_identity_never_matches]: canonical (st_dev, st_ino, binary_blake3) — cans/11-protocol.md#Trap-fast-path; slop: swapped identity Passes, exact dev/ino/BLAKE3 match skipped
     // see: cans/02-plugin-model.md#Filter-before-FFI-gate
     pub fn allows_binary(&self, _binary: &str) -> bool {
         self.binaries.is_none()
@@ -357,7 +357,7 @@ fn vmm_error(error: VmmError) -> PluginError {
 }
 
 // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
-// TODO (L3): veto callback boxes carry Send + Sync beyond the artifact's Box<dyn Fn() -> bool> so LifecycleCtx stays Send across async await points.
+// TODO (L3) [plugin_engine]: veto callback boxes carry Send + Sync beyond the artifact's Box<dyn Fn() -> bool> so LifecycleCtx stays Send across async await points.; slop: veto callback without Send+Sync, LifecycleCtx Send unproven
 pub struct LifecycleCtx<'a> {
     pub config: &'a VmConfig,
     pub session_id: &'a str,

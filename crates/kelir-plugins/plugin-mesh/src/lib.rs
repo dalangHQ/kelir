@@ -171,7 +171,7 @@ impl MeshPlugin {
                 trust_domain,
                 workload_prefix,
             } => {
-                // TODO (L3): obtain the host-issued SVID credential bytes and the session-bounded expiry.
+                // TODO (L3) [protocol_mux]: obtain the host-issued SVID credential bytes and the session-bounded expiry; slop: SVID self-minted locally, host issuance bypassed, expiry self-asserted
                 Ok(SpiffeSvid {
                     spiffe_id: SpiffeId {
                         trust_domain: trust_domain.clone(),
@@ -213,7 +213,7 @@ impl MeshPlugin {
                 ),
             ));
         }
-        // TODO (L3): verify the SVID credential signature and the workload prefix authorization.
+        // TODO (L3) [pm_14_mesh_rejects_foreign_trust_domain_peer]: verify the SVID credential signature and the workload prefix authorization; slop: signature unverified, foreign trust domain accepted into mesh
         Ok(())
     }
 
@@ -226,7 +226,7 @@ impl MeshPlugin {
         if !self.config.mtls {
             return Ok(());
         }
-        // TODO (L3): validate the mTLS handshake framing bytes across hypervisor boundaries.
+        // TODO (L3) [protocol_mux]: validate the mTLS handshake framing bytes across hypervisor boundaries; slop: framing unvalidated, malformed handshake bytes accepted as mTLS
         Err(PluginError::Halt(
             "mTLS handshake validation pending (L3)".into(),
         ))
@@ -239,7 +239,7 @@ impl MeshPlugin {
         handshake: &PeerSessionHandshake,
     ) -> Result<(), PluginError> {
         let mut peers = self.state.lock_peers()?;
-        // TODO (L3): peer federation routing tables and call-hop propagation across routines.
+        // TODO (L3) [protocol_mux]: peer federation routing tables and call-hop propagation across routines; slop: federation unrouted, call hops never propagate, peers partitioned
         peers.push(PeerRecord {
             cid: peer.cid,
             port: peer.port,
@@ -251,7 +251,7 @@ impl MeshPlugin {
     }
 
     // see: cans/02-plugin-model.md#Latency-ceiling
-    // TODO (L3): replace the tracked blocking thread with pollable stream reads once the transport exposes readiness.
+    // TODO (L3) [protocol_mux]: replace the tracked blocking thread with pollable stream reads once the transport exposes readiness; slop: blocking thread kept, worker stalls on unread stream
     fn spawn_peer_handshake(
         &self,
         peer: &VsockPeer,
@@ -346,7 +346,7 @@ impl HandshakeDriver {
     // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
     fn run(&mut self) {
         if let Err(error) = self.handshake() {
-            // TODO (L3): forward the peer fingerprint to plugin-ledger on mTLS rejection per cans/plugins/mesh.md.
+            // TODO (L3) [protocol_mux]: forward the peer fingerprint to plugin-ledger on mTLS rejection per cans/plugins/mesh.md; slop: rejection never forwarded to ledger, audit misses the foreign peer
             self.plugin.state.record_rejection(PeerRejection {
                 cid: self.peer.cid,
                 port: self.peer.port,
@@ -365,7 +365,7 @@ impl HandshakeDriver {
     }
 
     // see: cans/11-protocol.md#Wire-framing
-    // TODO (L3): the peer handshake encoder must emit the u32 LE length prefix this reader expects.
+    // TODO (L3) [protocol_mux]: the peer handshake encoder must emit the u32 LE length prefix this reader expects; slop: encoder omits u32 LE prefix, reader misframes handshake, peers never join
     fn read_handshake_frame(&mut self) -> Result<Vec<u8>, PluginError> {
         let mut prefix = [0u8; 4];
         self.read_exact(&mut prefix)?;
@@ -404,7 +404,7 @@ impl HandshakeDriver {
 
 // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
 fn decode_peer_handshake(buf: &[u8]) -> Result<PeerSessionHandshake, PluginError> {
-    // TODO (L3): decode the Channel 0 PeerSessionHandshake per cans/11-protocol.md#Wire-framing.
+    // TODO (L3) [pm_14_mesh_rejects_foreign_trust_domain_peer]: decode the Channel 0 PeerSessionHandshake per cans/11-protocol.md#Wire-framing; slop: handshake decode stays Err Halt, identity never checked, foreign peer unchallenged
     Err(PluginError::Halt(format!(
         "peer handshake decode pending (L3): {} bytes",
         buf.len()
@@ -429,7 +429,7 @@ impl MeshCtx {
         _region: &SharedMemoryHandle,
         shard_id: u32,
     ) -> Result<(), PluginError> {
-        // TODO (L3): route the shard announcement over the peer federation streams and propagate the traceparent.
+        // TODO (L3) [protocol_mux]: route the shard announcement over the peer federation streams and propagate the traceparent; slop: announcement unrouted, traceparent lost, shards never converge
         let peers = self.state.lock_peers()?;
         let Some(record) = peers.last() else {
             return Err(PluginError::Halt(format!(
@@ -451,7 +451,7 @@ impl MeshCtx {
 
     // see: cans/artifacts/examples/multi-vm-swarm.rs#await_winner
     pub async fn await_winner(&self, _timeout: Duration) -> Result<u32, PluginError> {
-        // TODO (L3): await the winning shard announcement on the mesh listener streams.
+        // TODO (L3) [protocol_mux]: await the winning shard announcement on the mesh listener streams; slop: no listener wait, winning shard never awaited, election never settles
         let peers = self.state.lock_peers()?;
         Err(PluginError::Halt(format!(
             "mesh winner election pending (L3): {} peers connected",

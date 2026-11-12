@@ -76,7 +76,7 @@ impl Vt100StateMachine {
         &mut self,
         _bytes: &[u8],
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): parse VT100 escape sequences in bytes and update matrix + cursor.
+        // TODO (L3) [terminal_plane]: parse VT100 escape sequences in bytes and update matrix + cursor; slop: escape sequences unparsed, matrix and cursor wrong
         Ok(())
     }
 
@@ -136,7 +136,7 @@ fn log_file_name(stream: LogStream) -> String {
 }
 
 // see: cans/01-architecture.md#Host-state-root
-// TODO (L3): write the append-only index.bin chunk index beside the per-stream logs so cursors survive restarts.
+// TODO (L3) [terminal_plane]: write the append-only index.bin chunk index beside the per-stream logs so cursors survive restarts; slop: cursors lost on restart, index never written
 fn session_log_path(
     session_id: &[u8; 16],
     stream: LogStream,
@@ -220,7 +220,7 @@ impl TerminalPlane {
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
-    // TODO (L3): the host filter pipeline applies drop_osc52/strip_title to console output before VT100 feed.
+    // TODO (L3) [tp_03_ansi_sanitizer_osc52_clipboard_drop]: the host filter pipeline applies drop_osc52/strip_title to console output before VT100 feed; slop: OSC52 payload reaches host terminal, bytes not purged
     pub fn with_wiring(self, wiring: &TerminalWiring) -> Self {
         let _ = self.resize(wiring.cols, wiring.rows);
         Self {
@@ -293,7 +293,7 @@ impl TerminalPlane {
         ))
     }
 
-    // TODO (L3): replay from the durable chunk files and index.bin so cursors survive process restarts; the in-memory segment map starts empty each boot.
+    // TODO (L3) [terminal_plane]: replay from the durable chunk files and index.bin so cursors survive process restarts; the in-memory segment map starts empty each boot; slop: replay reads memory only, durable chunks ignored
     pub fn read_from(
         &self,
         port: u32,
@@ -380,12 +380,12 @@ impl TerminalPlane {
 }
 
 fn filter_ansi_shadow(buf: &[u8]) -> Vec<u8> {
-    // TODO (L3): strip ANSI shadow sequences from buf.
+    // TODO (L3) [tp_03_ansi_sanitizer_osc52_clipboard_drop]: strip ANSI shadow sequences from buf; slop: OSC52 payload reaches host terminal, bytes not purged
     buf.to_vec()
 }
 
 fn apply_token_shield(grid: &[u8], max_lines: usize, max_bytes: usize) -> Vec<u8> {
-    // TODO (L3): truncate grid to max_lines/max_bytes with saturating math and redact token spans.
+    // TODO (L3) [tp_05_token_shield_scrollback_clamping]: truncate grid to max_lines/max_bytes with saturating math and redact token spans; slop: clamp slices mid-char, invalid UTF-8, tokens leak
     let _ = (max_lines, max_bytes);
     grid.to_vec()
 }

@@ -88,7 +88,7 @@ impl Reconciler {
     }
 
     pub fn detect(&self) -> Result<Vec<PathBuf>, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): diff this walk against the broker's changed-entry state.
+        // TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: diff this walk against the broker's changed-entry state; slop: in-place write, no temp+rename, inode unchanged
         let mut entries = Vec::new();
         let upper = self.broker_dir.join("upper");
         if upper.is_dir() {
@@ -122,24 +122,24 @@ impl Reconciler {
         &self,
         paths: &[PathBuf],
     ) -> Result<StagingGuard, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): copy entries to .tmp.<nonce> staging files owned by StagingGuard behind StorageIo.
+        // TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: copy entries to .tmp.<nonce> staging files owned by StagingGuard behind StorageIo; slop: in-place write, no temp+rename, inode unchanged
         for path in paths {
             self.contain(path)?;
         }
         let _ = self.io.open_root(&self.host_target)?;
         let _ = (&self.broker_dir, self.guard);
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Reconciler::stage needs the StorageIo copy primitive".into(),
+            "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: Reconciler::stage needs the StorageIo copy primitive; slop: in-place write, no temp+rename, inode unchanged".into(),
         ))
     }
 
     pub fn commit(&self) -> Result<CommitStats, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): per-entry temp+rename via StorageIo::atomic_rename; Host Inode Broker pre-checks active host flock descriptors.
+        // TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: per-entry temp+rename via StorageIo::atomic_rename; Host Inode Broker pre-checks active host flock descriptors; slop: in-place write, no temp+rename, inode unchanged
         let _ = self.detect()?;
         let _ = self.io.open_root(&self.host_target)?;
         let _ = (&self.broker_dir, self.guard);
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Reconciler::commit needs the StorageIo rename primitive".into(),
+            "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: Reconciler::commit needs the StorageIo rename primitive; slop: in-place write, no temp+rename, inode unchanged".into(),
         ))
     }
 
@@ -171,7 +171,7 @@ impl Reconciler {
                 ));
             }
         }
-        // TODO (L3): openat2 RESOLVE_BENEATH via the platform root handle removes the resolve race.
+        // TODO (L3) [storage_plane]: openat2 RESOLVE_BENEATH via the platform root handle removes the resolve race; slop: resolve race open, openat2 RESOLVE_BENEATH unused
         let root = self.host_target.canonicalize()?;
         let mut prefix = target.to_path_buf();
         while prefix != self.host_target && !prefix.exists() {
@@ -193,7 +193,7 @@ impl Reconciler {
         &self,
         req: FsReconcileRequest,
     ) -> Result<CommitStats, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3): detect -> classify -> stage -> commit orchestration for non-empty broker state; idempotent replay.
+        // TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: detect -> classify -> stage -> commit orchestration for non-empty broker state; idempotent replay; slop: in-place write, no temp+rename, inode unchanged
         let entries = self.detect()?;
         let _ = (
             &self.broker_dir,
@@ -207,7 +207,7 @@ impl Reconciler {
             return Ok(CommitStats::default());
         }
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): Reconciler::reconcile orchestration for staged entries".into(),
+            "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: Reconciler::reconcile orchestration for staged entries; slop: in-place write, no temp+rename, inode unchanged".into(),
         ))
     }
 

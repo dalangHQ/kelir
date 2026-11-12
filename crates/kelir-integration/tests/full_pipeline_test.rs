@@ -1,6 +1,6 @@
 // see: cans/15-operations.md#Manifest-invariant
 
-// TODO (L3): fill each stub with the live fast-boot/DAX surface per its case file.
+// TODO (L3) [hd_fast_boot_hit]: fill each stub with the live fast-boot/DAX surface per its case file.; slop: boot Ok asserted, 500us warm-boot bound never measured
 
 #[test]
 #[ignore]

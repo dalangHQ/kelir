@@ -62,7 +62,7 @@ impl ErrorEnvelope {
 }
 
 // see: cans/02-plugin-model.md#Declarative-error-mapping
-// TODO (L3): dispatch-time failures populate driver/ring/binary from the failing hook context.
+// TODO (L3) [plugin_engine]: dispatch-time failures populate driver/ring/binary from the failing hook context.; slop: envelope filled with defaults, hook context never read
 impl From<PluginError> for ErrorEnvelope {
     fn from(error: PluginError) -> Self {
         let message = error.to_string();

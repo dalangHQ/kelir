@@ -33,7 +33,7 @@ pub fn check(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
             .into());
         }
     }
-    // TODO (L3): measured p95 enforcement rides the benchmark suites per cans/15-operations.md#CI-matrix.
+    // TODO (L3) [governance_tools]: measured p95 enforcement rides the benchmark suites per cans/15-operations.md#CI-matrix.; slop: p95 asserted from stale numbers, benchmarks never run
     println!(
         "budgets: {} enforce=true, {} spec ceiling(s) hold",
         path.display(),

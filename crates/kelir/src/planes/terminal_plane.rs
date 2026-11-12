@@ -13,7 +13,7 @@ pub use kelir_core::planes::terminal::TokenShieldConfig;
 pub struct PromptStream;
 
 impl PromptStream {
-    // TODO (L3): write the matched prompt's response bytes into the guest console stream per cans/04-terminal-plane.md#Host-filter-pipeline-execution-order; Ok(0) drops the answer.
+    // TODO (L3) [terminal_plane]: write the matched prompt's response bytes into the guest console stream per cans/04-terminal-plane.md#Host-filter-pipeline-execution-order; Ok(0) drops the answer.; slop: Ok(0) drops answer, console bytes never verified
     pub async fn write(&self, _data: &[u8]) -> Result<usize, PluginError> {
         Ok(0)
     }

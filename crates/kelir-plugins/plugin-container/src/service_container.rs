@@ -64,19 +64,19 @@ impl SharedContainerService {
 
     // see: cans/artifacts/code/container-service.rs#configure_runtime
     pub(crate) async fn configure_rootless_runtime(&self) -> Result<(), PluginError> {
-        // TODO (L3): configure the rootless Podman and crun runtime environments inside the microVM.
+        // TODO (L3) [plugin_engine]: configure the rootless Podman and crun runtime environments inside the microVM; slop: Podman/crun env unconfigured, runtime fails or runs unconfined
         Ok(())
     }
 
     // see: cans/artifacts/code/container-service.rs#mount_scratch
     pub(crate) async fn mount_scratch_device(&self, _scratch: &Path) -> Result<(), PluginError> {
-        // TODO (L3): mount the ephemeral scratch device at /var/lib/containers.
+        // TODO (L3) [plugin_engine]: mount the ephemeral scratch device at /var/lib/containers; slop: scratch device unmounted, container writes land on host disk
         Ok(())
     }
 
     // see: cans/artifacts/code/container-service.rs#ingest_image
     pub(crate) async fn ingest_cached_image(&self, _tarball: &Path) -> Result<String, PluginError> {
-        // TODO (L3): delegate ingestion to the external kelir-pack binary; in-process OCI parsing is forbidden.
+        // TODO (L3) [plugin_engine]: delegate ingestion to the external kelir-pack binary; in-process OCI parsing is forbidden; slop: in-process OCI parsing, forbidden path, ingest bypasses kelir-pack
         Err(PluginError::Halt(
             "TODO (L3): container ingest_image delegates to kelir-pack".into(),
         ))
@@ -84,7 +84,7 @@ impl SharedContainerService {
 
     // see: cans/plugins/container.md#Non-nested-OCI-container-execution
     pub(crate) async fn build_cgroup_delegation_hierarchy(&self) -> Result<(), PluginError> {
-        // TODO (L3): construct the synthetic cgroup v2 delegation hierarchy.
+        // TODO (L3) [plugin_engine]: construct the synthetic cgroup v2 delegation hierarchy; slop: cgroup hierarchy unbuilt, container escapes CPU/memory limits
         Ok(())
     }
 

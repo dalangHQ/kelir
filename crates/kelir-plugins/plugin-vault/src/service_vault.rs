@@ -107,7 +107,7 @@ pub trait CredentialBrokerService: Send + Sync {
 }
 
 // see: cans/plugins/vault.md#Service-exports-(vault)
-// TODO (L3): pin host keyring memory with mlock(2) through the driver/transport enclave; plugins forbid unsafe.
+// TODO (L3) [gv_05_host_keyring_mlock_zeroization]: pin host keyring memory with mlock(2) through the driver/transport enclave; plugins forbid unsafe; slop: keyring never mlocked, secrets swap to disk, drop never zeroizes
 pub struct CredentialBroker {
     descriptors: Vec<CredentialDescriptor>,
     session_id: Mutex<Option<String>>,
@@ -212,7 +212,7 @@ impl CredentialBrokerService for CredentialBroker {
             .checked_add(u64::from(request.ttl_seconds))
             .ok_or_else(|| VaultError::Einval("token expiry overflow".into()))?;
         let nonce = self.issuance_nonce.fetch_add(1, Ordering::AcqRel);
-        // TODO (L3): MountScope confinement (EPERM) and audience locking (EACCES); scope derives from the builder MountScope per cans/plugins/vault.md.
+        // TODO (L3) [gv_02_out_of_scope_credential_denial]: MountScope confinement (EPERM) and audience locking (EACCES); scope derives from the builder MountScope per cans/plugins/vault.md; slop: scope and audience unchecked, out-of-scope token issued
         let token = IssuedToken {
             token: mint_token(nonce)?,
             ttl_seconds: request.ttl_seconds,

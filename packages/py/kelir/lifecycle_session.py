@@ -62,7 +62,7 @@ class Session:
         if snapshot is not None:
             await self.vm.rollback(snapshot)
             return
-        # TODO (L3): call native driver rollback via the PyO3 _kelir bridge.
+        # TODO (L3) [lifecycle_checkpoint]: call native driver rollback via the PyO3 _kelir bridge.; slop: rollback no-ops, tainted state persists
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session rollback (L3)")
 
     async def stop(self) -> None:
@@ -81,11 +81,11 @@ class Session:
         cwd: str | None = None,
         params: Any = None,
     ) -> SpawnResult:
-        # TODO (L3): spawn binary in the guest via the PyO3 _kelir bridge.
+        # TODO (L3) [bindings_py]: spawn binary in the guest via the PyO3 _kelir bridge.; slop: spawn returns Ok without guest process
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session spawn (L3)")
 
     async def exec_in_guest(self, binary: str, argv: list[str]) -> SpawnResult:
-        # TODO (L3): exec binary in the guest via the PyO3 _kelir bridge.
+        # TODO (L3) [bindings_py]: exec binary in the guest via the PyO3 _kelir bridge.; slop: exec returns Ok without guest process
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session exec_in_guest (L3)")
 
     async def suspend(self, reason: SuspendReason) -> None:
@@ -117,7 +117,7 @@ class Session:
         return Path(str(member()))
 
     async def console(self) -> None:
-        # TODO (L3): open the PTY console master via the PyO3 _kelir bridge.
+        # TODO (L3) [terminal_plane]: open the PTY console master via the PyO3 _kelir bridge.; slop: PTY master never opened, console input lost
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session console (L3)")
 
     # see: cans/08-lifecycle.md#Detached-lifecycle
@@ -125,9 +125,9 @@ class Session:
     async def attach(cls, session_id: str) -> Session:
         relay = kelir.relay_socket_path(session_id)
         _ = relay
-        # TODO (L3): connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.
+        # TODO (L3) [lc_15_detached_session_reconnect_relay]: connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.; slop: attach skips lease check, binds dead relay.sock
         raise EConfig("TODO: Session.attach (L3)")
 
     async def get_causal_delta_from_parent(self) -> CausalDelta:
-        # TODO (L3): fetch causal delta from parent session via the PyO3 _kelir bridge.
+        # TODO (L3) [ar_09_causal_delta_aggregation_merkle]: fetch causal delta from parent session via the PyO3 _kelir bridge.; slop: delta omits tombstones, audit log desyncs from disk
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session get_causal_delta_from_parent (L3)")
