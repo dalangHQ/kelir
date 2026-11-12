@@ -2,8 +2,6 @@
 
 import type { ChaosHandle, LedgerHandle, MeshHandle } from "./context.lifecycle.types.js";
 import type { KelirPlugin, PluginContext } from "./hook.registry.js";
-// see: cans/02-plugin-model.md#Unified-builder
-import { createPlugin, type KelirBuilder } from "./builder.lifecycle.js";
 
 export interface PluginEnablement {
   readonly enabled?: boolean;
@@ -290,6 +288,11 @@ export interface WireIngressConfig extends PluginEnablement {
 export function wireIngress(config: WireIngressConfig): KelirPlugin {
   return { name: "wire-ingress", enabled: config.enabled, config };
 }
+
+
+// see: cans/02-plugin-model.md#Unified-builder
+import { createPlugin } from "./builder.lifecycle.js";
+import type { KelirBuilder } from "./builder.lifecycle.js";
 
 
 export function mcpBuilder(config: McpConfig): KelirBuilder {

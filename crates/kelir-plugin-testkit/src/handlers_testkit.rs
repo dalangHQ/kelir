@@ -366,7 +366,7 @@ impl VmmDriver for FixtureVmmDriver {
         Ok(())
     }
 
-    // see: cans/08-lifecycle.md#Balloon
+    // see: cans/08-lifecycle.md#Balloon-convergence
     async fn adjust_balloon(&mut self, target_mb: u32) -> Result<BalloonConvergence, DriverError> {
         self.require_running()?;
         self.ledger.balloon_mb = Some(target_mb);

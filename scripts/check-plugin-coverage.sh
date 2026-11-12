@@ -15,11 +15,11 @@ fail=0
 # Roster: one plugin spec file per community plugin.
 mapfile -t plugins < <(ls cans/plugins/*.md | xargs -n1 basename | sed 's/\.md$//' | grep -v '^commercial$' | sort)
 
-# Coverage text: matrix section plus SDK policy demonstrations section.
-matrix=$(awk '/Coverage matrix \(community plugins/,/Userland SDK policy demonstrations/' "$SPEC")
-demos=$(awk '/Userland SDK policy demonstrations/,/Non-plugin surface examples/' "$SPEC")
-coverage="$matrix
-$demos"
+# Coverage text: the matrix section. The "Userland SDK policy demonstrations"
+# section no longer exists as its own section; its content moved inline into
+# the matrix (db-proxy, supply-chain carry a "(userland SDK policy)" note).
+matrix=$(awk '/Coverage matrix \(plugin -> demonstrating example\)/,/Non-plugin surface examples/' "$SPEC")
+coverage="$matrix"
 
 expand_braces() {
     local tok="$1"

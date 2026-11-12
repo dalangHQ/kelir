@@ -165,13 +165,16 @@ pub fn load_builder_plugins(
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
+const UNIFIED_BUILDER_SEE: &str = "// see: cans/02-plugin-model.md#Unified-builder
+";
+
 pub fn emit_typescript(plugins: &[BuilderPlugin]) -> String {
     let mut lines: Vec<String> = vec![
         String::new(),
         String::new(),
-        "// see: cans/02-plugin-model.md#Unified-builder ".to_string(),
-        "import { createPlugin } from \"./plugin.model.js\";".to_string(),
-        "import type { KelirBuilder } from \"./plugin.model.js\";".to_string(),
+        UNIFIED_BUILDER_SEE.trim_end().to_string(),
+        "import { createPlugin } from \"./builder.lifecycle.js\";".to_string(),
+        "import type { KelirBuilder } from \"./builder.lifecycle.js\";".to_string(),
     ];
     for plugin in plugins {
         let factory = format!("{}Builder", sdk_camel(&plugin.name));

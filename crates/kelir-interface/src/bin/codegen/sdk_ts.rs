@@ -141,10 +141,10 @@ pub fn emit_ts(projections: &[Projection]) -> Result<String, String> {
             handle_types.join(", ")
         ));
         lines.push(
-            "import type { KelirPlugin, PluginContext } from \"./plugin.model.js\";".to_string(),
+            "import type { KelirPlugin, PluginContext } from \"./hook.registry.js\";".to_string(),
         );
     } else {
-        lines.push("import type { KelirPlugin } from \"./plugin.model.js\";".to_string());
+        lines.push("import type { KelirPlugin } from \"./hook.registry.js\";".to_string());
     }
     lines.push(String::new());
     lines.push("export interface PluginEnablement {".to_string());

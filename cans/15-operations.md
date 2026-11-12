@@ -30,7 +30,8 @@
         - locally reproducible
       - `pre-flight` is the only gate that must pass before push; it is the
         - union of the three exclusions above plus physical code hygiene gates
-    - `pre-flight` runs parity, plugin audit, tiered check before push
+    - `check-all` runs every local gate, including parity, plugin audit, tiered check
+      - `pre-flight` stays the fast pre-push subset
       - see: #Multi-language-parity-gate and #Developer-CLI
     - Disk-conscious setup
       - `dev-min`: incremental off, debug symbols off; the

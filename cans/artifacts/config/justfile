@@ -193,11 +193,11 @@ test-red:
         exit 1
     fi
     set +e
-    OUT=$(cargo nextest run --run-ignored ignored-only --no-fail-fast 2>&1)
+    OUT=$(cargo nextest run --workspace --run-ignored ignored-only --no-fail-fast 2>&1)
     set -e
     printf '%s\n' "$OUT" | tail -15
-    RUST_FAILS=$(printf '%s\n' "$OUT" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | tail -1)
-    RUST_PASSES=$(printf '%s\n' "$OUT" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | tail -1)
+    RUST_FAILS=$(printf '%s\n' "$OUT" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | tail -1 || true)
+    RUST_PASSES=$(printf '%s\n' "$OUT" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | tail -1 || true)
     RUST_FAILS=${RUST_FAILS:-0}
     RUST_PASSES=${RUST_PASSES:-0}
     TS_FAILS=0
@@ -208,8 +208,8 @@ test-red:
         TS_OUT=$(node --test --test-reporter=tap packages/ts/core/tests/red/*.test.ts 2>&1)
         set -e
         printf '%s\n' "$TS_OUT" | grep -E '^(not ok|# (tests|pass|fail))' | tail -15
-        TS_FAILS=$(printf '%s\n' "$TS_OUT" | grep -oE '^# fail [0-9]+' | grep -oE '[0-9]+' | tail -1)
-        TS_PASSES=$(printf '%s\n' "$TS_OUT" | grep -oE '^# pass [0-9]+' | grep -oE '[0-9]+' | tail -1)
+        TS_FAILS=$(printf '%s\n' "$TS_OUT" | grep -oE '^# fail [0-9]+' | grep -oE '[0-9]+' | tail -1 || true)
+        TS_PASSES=$(printf '%s\n' "$TS_OUT" | grep -oE '^# pass [0-9]+' | grep -oE '[0-9]+' | tail -1 || true)
         TS_FAILS=${TS_FAILS:-0}
         TS_PASSES=${TS_PASSES:-0}
     fi
@@ -217,11 +217,11 @@ test-red:
     PY_PASSES=0
     if ls packages/py/tests/red/test_*.py >/dev/null 2>&1; then
         set +e
-        PY_OUT=$(uv run --no-project pytest packages/py/tests/red 2>&1)
+        PY_OUT=$(PYTHONPATH=packages/py uv run --no-project pytest packages/py/tests/red 2>&1)
         set -e
         printf '%s\n' "$PY_OUT" | tail -15
-        PY_FAILS=$(printf '%s\n' "$PY_OUT" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | tail -1)
-        PY_PASSES=$(printf '%s\n' "$PY_OUT" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | tail -1)
+        PY_FAILS=$(printf '%s\n' "$PY_OUT" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | tail -1 || true)
+        PY_PASSES=$(printf '%s\n' "$PY_OUT" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | tail -1 || true)
         PY_FAILS=${PY_FAILS:-0}
         PY_PASSES=${PY_PASSES:-0}
     fi
@@ -353,3 +353,6 @@ check-types:
 
 # Test-plan gates in one recipe (work-order-2 section 3).
 check-gates: check-manifest check-tests check-scenarios check-scorecard
+
+# Full local gate: every check above, in dependency order. Excludes test-integration (hypervisor), test-drivers-windows/macos (platform jobs), build-shim cross-compile, check-spec-touched (PR-only).
+check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-hygiene lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon
