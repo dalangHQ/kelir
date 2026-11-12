@@ -506,7 +506,7 @@ fn canonical_chaos_shape() -> Result<(), PluginError> {
         .plugin_instance(LedgerPlugin::new(false))
         .plugin(chaos);
     let mut binder = RecordingBinder::default();
-    builder.register_interceptors(&mut binder);
+    builder.bind_registry(&mut binder);
     assert_eq!(binder.binds, vec!["fs".to_string(), "net".to_string()]);
     Ok(())
 }
@@ -539,7 +539,7 @@ fn host_ring_verbs_bind_before_mounted() -> Result<(), PluginError> {
         .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
         .plugin(plugin);
     let mut binder = RecordingBinder::default();
-    host.register_interceptors(&mut binder);
+    host.bind_registry(&mut binder);
     assert_eq!(
         binder.binds,
         vec!["fs".to_string(), "lifecycle".to_string(), "net".to_string(),]
@@ -570,7 +570,7 @@ fn empty_host_seals() {
 fn host_trap_filter_registers_on_engine_ring() -> Result<(), PluginError> {
     let host = test_builder().trap("git", |_event, _ctx| Ok(Verdict::Pass));
     let mut binder = RecordingBinder::default();
-    host.register_interceptors(&mut binder);
+    host.bind_registry(&mut binder);
     assert_eq!(binder.binds, vec!["trap".to_string()]);
     let empty_binary = test_builder()
         .trap("", |_event, _ctx| Ok(Verdict::Pass))

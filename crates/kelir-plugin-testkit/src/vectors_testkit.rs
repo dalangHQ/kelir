@@ -338,6 +338,7 @@ impl VectorSuite {
                 vectors.extend(plugin_builder_verb_cases()?);
                 vectors.extend(plugin_builder_nested_cases()?);
                 vectors.extend(plugin_builder_merge_cases()?);
+                vectors.extend(crate::vectors_chain_testkit::plugin_builder_chain_cases()?);
                 vectors
             },
         })
@@ -479,7 +480,7 @@ fn plugin_builder_fs_write_trap_case() -> Result<VectorCase, VectorError> {
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
 #[allow(clippy::too_many_arguments)]
-fn plugin_builder_case(
+pub(crate) fn plugin_builder_case(
     name: &str,
     seq: u64,
     requires: Vec<String>,
@@ -512,7 +513,10 @@ fn plugin_builder_case(
 
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
-fn plugin_builder_trap_json(seq: u64, binary: &str) -> Result<serde_json::Value, VectorError> {
+pub(crate) fn plugin_builder_trap_json(
+    seq: u64,
+    binary: &str,
+) -> Result<serde_json::Value, VectorError> {
     let event = policy_matrix_trap_event(seq, binary);
     serde_json::to_value(GuestToHost::TrapEvent(Box::new(event)))
         .map_err(|e| VectorError::Encode(e.to_string()))

@@ -39,9 +39,13 @@
 # seals implicitly.
 #
 # Closed set (spec): 30 chain verbs + 8 scopes in every SDK. This file
-# lists 54 verbs because it also covers the host-only, mount,
+# lists 58 verbs because it also covers the host-only, mount,
 # validation, terminal, factory, internal, and reader entries, so the
 # gate can check the whole surface, not just the closed chain set.
+# Group, guard, and end are verbs here, not open gaps: the chain
+# decisions pin them in all three SDKs (see: cans/02-plugin-model.md#Chain-decisions).
+# Vectors stay 58 live; the 4 chain cases take the total to 62 only once
+# the A3 generator lands them (see: cans/15-operations.md#Unified-builder-parity-vectors).
 
 schema: kelir-builder-verbs/v1
 
@@ -343,6 +347,28 @@ verbs:
     modes: both
     kind: structural
     status: { rust: live, typescript: live, python: live }
+  - name: group
+    rust: group
+    typescript: group
+    python: group
+    placement: flat
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: live, typescript: live, python: new }
+    note: Named block of chain steps; the closure takes the builder and returns it (TS also accepts void).
+  - name: guard
+    rust: guard
+    typescript: guard
+    python: guard
+    placement: flat
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: live, typescript: new, python: new }
+    note: Boolean conditional group only; guard(enabled, fn) runs fn only when enabled is true.
   - name: fork_with
     rust: fork_with
     typescript: forkWith
@@ -385,6 +411,17 @@ verbs:
     kind: ring
     status: { rust: changed, typescript: live, python: live }
     note: Rust renames the plugin-mode scope form from trap to trap_scope; both modes gain both forms.
+  - name: end
+    rust: end
+    typescript: end
+    python: end
+    placement: scoped-entry
+    scope: null
+    returns: builder
+    modes: both
+    kind: structural
+    status: { rust: live, typescript: live, python: live }
+    note: Closes a scope and returns the builder; one per scope type (Rust/TS 8, Py 1 _Scope.end).
   - name: plugin
     rust: plugin
     typescript: use
@@ -394,8 +431,19 @@ verbs:
     returns: builder
     modes: host
     kind: mount
-    status: { rust: changed, typescript: live, python: live }
-    note: Rust mount verb is plugin(); TS mount verb is use() with a kept plugin() alias; Py mount verb is use() only, the instance plugin() alias deletes.
+    status: { rust: changed, typescript: live, python: changed }
+    note: Rust mount verb is plugin(); TS mount verb is use() with a kept plugin() alias delegating to use(); Py mount verb is use() with an instance plugin() alias delegating to use(); a string argument to instance plugin() raises EConfig.
+  - name: use
+    rust: use
+    typescript: use
+    python: use
+    placement: flat
+    scope: null
+    returns: builder
+    modes: host
+    kind: mount
+    status: { rust: live, typescript: live, python: live }
+    note: "The mount alias: Rust use() delegates to plugin(), TS/Py plugin() delegates to use()."
   - name: plugin_instance
     rust: plugin_instance
     typescript: null
@@ -416,8 +464,8 @@ verbs:
     returns: sealed-builder
     modes: host
     kind: validation
-    status: { rust: live, typescript: new, python: new }
-    note: The one validation; Rust returns Result<Sealed>, TS returns this + sealed flag, Py returns Self raising EConfig.
+    status: { rust: live, typescript: changed, python: changed }
+    note: The one validation; Rust returns Result<Sealed>, TS returns this + sealed flag, Py returns Self raising EConfig. Duplicate-mount and missing-prerequisite checks run at seal() in all three SDKs.
   - name: boot
     rust: boot
     typescript: boot
@@ -428,7 +476,7 @@ verbs:
     modes: host
     kind: terminal
     status: { rust: live, typescript: live, python: live }
-    note: The single terminal; Rust: no boot() on Unsealed, seal()?.boot() only; TS/Py: boot() seals implicitly.
+    note: "The single terminal; Rust: no boot() on Unsealed, seal()?.boot() only; TS/Py: boot() seals implicitly."
   - name: fork_state
     rust: fork_state
     typescript: forkState
@@ -438,8 +486,8 @@ verbs:
     returns: fresh-builder
     modes: both
     kind: factory
-    status: { rust: live, typescript: live, python: live }
-    note: Factory, not a chain verb; plugin-mode only in intent, host forks via Session.fork().
+    status: { rust: live, typescript: changed, python: live }
+    note: Factory, not a chain verb; plugin-mode only. Host-mode forkState()/fork_state() throws EConfig in TS/Py and does not exist in Rust (fork always yields a plugin-mode builder); hosts fork via Session.fork().
   - name: fuse
     rust: fuse
     typescript: fuse
@@ -490,7 +538,7 @@ verbs:
     returns: builder
     modes: host
     kind: host-only
-    status: { rust: live, typescript: new, python: new }
+    status: { rust: live, typescript: live, python: live }
     note: Standalone host-only verb in all three SDKs; only the boolean reaches the native bridge in TS/Py, globs/non_blocking forwarding is L3.
   - name: detached
     rust: detached
@@ -685,50 +733,7 @@ scopes:
     modes: both
     status: { rust: live, typescript: live, python: live }
 
-  - name: group
-    rust: group
-    typescript: group
-    python: null
-    placement: flat
-    scope: null
-    returns: builder
-    modes: both
-    kind: structural
-    status: { rust: new, typescript: new, python: open-gap }
-    note: Named block of chain steps; Python does not have it.
-  - name: guard
-    rust: guard
-    typescript: null
-    python: null
-    placement: flat
-    scope: null
-    returns: builder
-    modes: both
-    kind: structural
-    status: { rust: new, typescript: open-gap, python: open-gap }
-    note: Boolean conditional group; Rust only.
-  - name: end
-    rust: end
-    typescript: end
-    python: end
-    placement: scoped-entry
-    scope: null
-    returns: builder
-    modes: both
-    kind: structural
-    status: { rust: new, typescript: new, python: new }
-    note: Closes a scope and returns the builder; one per scope type.
-
-open_gaps:
-  - name: group
-    rust: group
-    typescript: group
-    python: null
-    status: { rust: live, typescript: live, python: open-gap }
-    note: Elysia-style grouping verb; Python does not have it.
-  - name: guard
-    rust: guard
-    typescript: null
-    python: null
-    status: { rust: live, typescript: open-gap, python: open-gap }
-    note: Boolean conditional group; Rust only.
+open_gaps: []
+# No open gaps remain for group/guard/end: they are verbs above in all
+# three SDKs. A status of new on a verb means the code track lands it;
+# open-gap is reserved for a verb the decisions pin as not existing.

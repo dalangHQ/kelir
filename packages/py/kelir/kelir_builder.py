@@ -9,12 +9,12 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, NoReturn, Self
 
+from kelir.builder_scopes import _VERB_ARITY, _VERB_RINGS
 from kelir.service_caps import materialize_cap
 from kelir.plugin_fusion import (
     FusedTrampoline,
     HookDescriptor,
     HookStage,
-    LifecycleTag,
     PluginRegistration,
     RingEvent,
     TrapFilterSnapshot,
@@ -38,62 +38,6 @@ class VsockServiceEntry:
 Handler = Callable[..., Any]
 
 
-# see: cans/02-plugin-model.md#Segregated-ring-traits
-_VERB_RINGS: dict[str, tuple[str, LifecycleTag | None]] = {
-    "on_trap": ("trap", None),
-    "on_process_exit": ("process-exit", None),
-    "on_fs_lookup": ("fs-lookup", None),
-    "on_fs_read": ("fs-read", None),
-    "on_fs_write": ("fs-write", None),
-    "on_fs_lock": ("fs-lock", None),
-    "on_net_outbound": ("net-outbound", None),
-    "on_net_inbound": ("net-inbound", None),
-    "on_console_input": ("console-input", None),
-    "on_console_output": ("console-output", None),
-    "on_exec_stdout": ("exec-stdout", None),
-    "on_exec_stderr": ("exec-stderr", None),
-    "on_host_lsm_exec": ("host-lsm-exec", None),
-    "on_host_pressure": ("host-pressure", None),
-    "on_host_keyring_access": ("host-keyring-access", None),
-    "on_vm_init": ("lifecycle", "vm-init"),
-    "on_vm_ready": ("lifecycle", "vm-ready"),
-    "on_vm_shutdown": ("lifecycle", "vm-shutdown"),
-    "on_pre_commit": ("lifecycle", "pre-commit"),
-    "on_post_commit": ("lifecycle", "post-commit"),
-    "on_host_preempt": ("host-preempt", None),
-    "on_memory_pressure": ("memory-pressure", None),
-    "on_heartbeat": ("heartbeat", None),
-    "on_watchdog": ("watchdog", None),
-}
-
-
-# see: cans/02-plugin-model.md#KelirPlugin-trait
-_VERB_ARITY: dict[str, tuple[int, ...]] = {
-    "on_trap": (1, 2),
-    "on_process_exit": (1, 2),
-    "on_fs_lookup": (1,),
-    "on_fs_read": (2,),
-    "on_fs_write": (4,),
-    "on_fs_lock": (4,),
-    "on_net_outbound": (1,),
-    "on_net_inbound": (1,),
-    "on_console_input": (2,),
-    "on_console_output": (2,),
-    "on_exec_stdout": (3,),
-    "on_exec_stderr": (3,),
-    "on_host_lsm_exec": (2,),
-    "on_host_pressure": (1,),
-    "on_host_keyring_access": (1,),
-    "on_vm_init": (1,),
-    "on_vm_ready": (1,),
-    "on_vm_shutdown": (1,),
-    "on_pre_commit": (1,),
-    "on_post_commit": (2,),
-    "on_host_preempt": (1,),
-    "on_memory_pressure": (2,),
-    "on_heartbeat": (1,),
-    "on_watchdog": (1,),
-}
 
 
 # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
@@ -290,15 +234,26 @@ class _PluginMount:
     ) -> Callable[..., KelirBuilder]:
         if obj is None:
             return _plugin_create
-        return _plugin_instance_raise
+        return _plugin_instance_mount(obj)
 
 
-def _plugin_instance_raise(*args: Any, **kwargs: Any) -> KelirBuilder:
-    raise EConfig(
-        ".plugin() on a host builder mounts nothing: "
-        "KelirBuilder.plugin(name) creates a plugin-mode builder; "
-        "mount a plugin with .use(plugin)"
-    )
+def _plugin_instance_mount(host: KelirBuilder) -> Callable[..., KelirBuilder]:
+    def mount(plugin: Any) -> KelirBuilder:
+        if isinstance(plugin, str):
+            raise EConfig(
+                ".plugin() on an instance mounts a plugin-mode builder, "
+                f"not a name: got {plugin!r}; create it with "
+                f"KelirBuilder.plugin({plugin!r}) then mount it with "
+                ".use(plugin) or .plugin(builder)"
+            )
+        if not isinstance(plugin, KelirBuilder):
+            raise EConfig(
+                ".plugin() on an instance mounts only a plugin-mode "
+                "KelirBuilder; mount a BasePlugin with .use(plugin)"
+            )
+        return host.use(plugin)
+
+    return mount
 
 
 class KelirBuilder:
@@ -348,6 +303,7 @@ class KelirBuilder:
         # TODO (L3) [plugin_engine]: the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.; slop: interceptors never registered, traps bypass filter chain
         self._vsock: list[tuple[Any, Handler]] = []
         self._mounted: bool = False
+        self._mounted_on: list[KelirBuilder] = []
         self.enabled: bool = True
 
     # see: cans/02-plugin-model.md#Unified-builder
@@ -417,16 +373,6 @@ class KelirBuilder:
         if isinstance(plugin, KelirBuilder):
             if plugin._mode != "plugin":
                 raise EConfig("only a plugin-mode KelirBuilder can be mounted with .use()")
-            if plugin._mounted:
-                raise EConfig(f"plugin already mounted: {plugin._name}")
-            registered = {registration.name for registration in self._plugin_registrations}
-            if plugin._name in registered:
-                raise EConfig(f"plugin already mounted: {plugin._name}")
-            for required in plugin._requires:
-                if required not in registered:
-                    raise EConfig(
-                        f"missing prerequisite: {required} required by {plugin._name}"
-                    )
             for descriptor in plugin.hook_descriptors():
                 descriptor.ordinal = self._next_ordinal
                 self._next_ordinal += 1
@@ -436,18 +382,12 @@ class KelirBuilder:
                 PluginRegistration(name=str(plugin._name), enabled=plugin.enabled)
             )
             plugin._mounted = True
+            plugin._mounted_on.append(self)
             return self
         if not isinstance(plugin, _BasePlugin):
             raise EConfig("expected a BasePlugin or a plugin-mode KelirBuilder")
         name = getattr(plugin, "name", None) or type(plugin).__name__
         enabled = bool(getattr(plugin, "enabled", True))
-        registered = {registration.name for registration in self._plugin_registrations}
-        required_names = getattr(plugin, "requires", ())
-        if isinstance(required_names, str):
-            required_names = (required_names,)
-        for required in required_names:
-            if required not in registered:
-                raise EConfig(f"missing prerequisite: {required} required by {name}")
         self._plugins.append(plugin)
         self._plugin_registrations.append(
             PluginRegistration(name=str(name), enabled=enabled)
@@ -466,10 +406,9 @@ class KelirBuilder:
         post: Callable[..., Awaitable[Any]] | None = None,
     ) -> Self:
         # see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        self._check_mounted("trap")
         if callable(pattern):
             return self._scope_entry("trap", pattern)
-        if self._mode == "plugin":
-            self._raise_host_only("trap")
         snapshot = (
             pattern.snapshot()
             if isinstance(pattern, TrapFilter)
@@ -651,6 +590,23 @@ class KelirBuilder:
     def telemetry(self, fn: Callable[[_Scope], Any]) -> Self:
         return self._scope_entry("telemetry", fn)
 
+    # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+    def group(self, fn: Callable[[KelirBuilder], KelirBuilder | None]) -> Self:
+        self._check_mounted("group")
+        result = fn(self)
+        if result is not None and result is not self:
+            raise EConfig("group() must return the builder it receives")
+        return self
+
+    # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+    def guard(self, enabled: bool, fn: Callable[[KelirBuilder], KelirBuilder | None]) -> Self:
+        self._check_mounted("guard")
+        if not isinstance(enabled, bool):
+            raise EConfig(".guard(enabled, ...) expects a bool")
+        if enabled:
+            return self.group(fn)
+        return self
+
     # see: cans/02-plugin-model.md#Unified-builder
     def context(self, fn: Handler) -> Self:
         self._check_mounted("context")
@@ -803,6 +759,7 @@ class KelirBuilder:
                 )
             )
             ordinal += 1
+        descriptors.extend(self._hooks)
         return sorted(descriptors, key=lambda hook: hook.ordinal)
 
     def _validate_scope(self, name: str | None, scope: Any) -> None:
@@ -850,12 +807,19 @@ class KelirBuilder:
         self._validate_vsock(plugin._name, plugin._vsock)
 
     def _validate_all(self) -> None:
+        seen: set[str] = set()
+        for registration in self._plugin_registrations:
+            if registration.name in seen:
+                raise EConfig(f"plugin already mounted: {registration.name}")
+            seen.add(registration.name)
         registered = {registration.name for registration in self._plugin_registrations}
         for required in self._requires:
             if required not in registered:
                 raise EConfig(f"missing prerequisite: {required} required by host")
         for plugin in self._plugins:
             if isinstance(plugin, KelirBuilder):
+                if any(host is not self for host in plugin._mounted_on):
+                    raise EConfig(f"plugin already mounted: {plugin._name}")
                 self._validate_plugin_shape(plugin)
                 for required in plugin._requires:
                     if required not in registered:

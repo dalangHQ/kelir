@@ -174,11 +174,25 @@ test("plugin mounts directly and merges hooks into the host", () => {
   assert.equal(builder.fuse().hookCount(RingEvent.Trap), 1);
 });
 
-test("mounting the same plugin twice throws EConfig", () => {
+test("mounting the same plugin twice throws EConfig at seal", () => {
   const plugin = createPlugin<"wired", Record<string, never>>("wired").onTrap(() => Verdict.Pass);
   const builder = kelir().use(plugin);
+  builder.use(plugin);
+  assert.equal(builder.hooksForFusion().rings[0].hookCount, 1);
   assert.throws(
-    () => builder.use(plugin),
+    () => builder.seal(),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message === "plugin already mounted: wired",
+  );
+});
+
+test("mounting one plugin instance on two hosts throws EConfig at seal", () => {
+  const plugin = createPlugin<"wired", Record<string, never>>("wired").onTrap(() => Verdict.Pass);
+  kelir().use(plugin);
+  const second = kelir().use(plugin);
+  assert.throws(
+    () => second.seal(),
     (error: unknown) =>
       error instanceof EConfig &&
       error.message === "plugin already mounted: wired",
@@ -341,18 +355,53 @@ test("use rejects a host-mode builder as a plugin", () => {
   );
 });
 
-test("use reports a missing prerequisite", () => {
-  const chaos = chaosPlugin();
+test("use and plugin reject a non-plugin argument with a clear EConfig", () => {
   assert.throws(
-    () => kelir().use(chaos),
+    () => kelir().use("not-a-plugin" as unknown as KelirPlugin),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message ===
+        ".use() expects a plugin builder or a KelirPlugin, got string",
+  );
+  assert.throws(
+    () => kelir().plugin("not-a-plugin" as unknown as KelirPlugin),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message ===
+        ".use() expects a plugin builder or a KelirPlugin, got string",
+  );
+  assert.throws(
+    () => kelir().use(null as unknown as KelirPlugin),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message ===
+        ".use() expects a plugin builder or a KelirPlugin, got null",
+  );
+  assert.throws(
+    () => kelir().use({ enabled: true } as unknown as KelirPlugin),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message ===
+        ".use() expects a plugin builder or a KelirPlugin, got object",
+  );
+});
+
+test("use reports a missing prerequisite at seal", () => {
+  const chaos = chaosPlugin();
+  const builder = kelir().use(chaos);
+  assert.throws(
+    () => builder.seal(),
     (error: unknown) =>
       error instanceof EConfig &&
       error.message === "missing prerequisite: ledger required by chaos",
   );
   const ledger = createPlugin<"ledger", Record<string, never>>("ledger");
-  const builder = kelir().use(ledger).use(chaos);
-  assert.equal(builder.fuse().hookCount(RingEvent.FsWrite), 1);
-  assert.equal(builder.fuse().hookCount(RingEvent.NetOutbound), 1);
+  const good = kelir().use(ledger).use(chaosPlugin());
+  assert.equal(good.seal(), good);
+  assert.equal(good.fuse().hookCount(RingEvent.FsWrite), 1);
+  assert.equal(good.fuse().hookCount(RingEvent.NetOutbound), 1);
+  const reversed = kelir().use(chaosPlugin()).use(createPlugin<"ledger", Record<string, never>>("ledger"));
+  assert.equal(reversed.seal(), reversed);
 });
 
 test("canonical chaos plugin", () => {

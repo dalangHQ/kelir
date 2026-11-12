@@ -368,17 +368,23 @@
       - trap(filter, handler) and trap_scope(closure) exist in both modes
       - trap_async and post_exec are host-only and return Self; filter validation runs at seal()
       - Mount: host.plugin(builder) moves the registry by value
+        - host.use(builder) is the same verb and delegates to plugin()
+        - No plugin() on a plugin-mode builder: plugin-of-plugin is a compile error
       - Mount: host.plugin_instance(P) for trait plugins
       - Mount requires Plugins: Satisfies<Deps> at compile time
       - Mount returns Self; an already-mounted name is EConfig at seal()
         - plugin already mounted: <name>
+      - group() / guard() / fork_state() (chain decisions)
+        - group<F>(self, configure: F) -> Self where F: FnOnce(Self) -> Self
+        - guard<F>(self, enabled: bool, configure: F) -> Self where F: FnOnce(Self) -> Self
+        - fork_state() always yields a plugin-mode builder; no host-mode builder fork
+        - Hosts fork via Session.fork()
       - seal() validates host hooks and mounted plugins; returns Result
       - boot() on Sealed is the single terminal; boot() on Unsealed does not exist
       - Host-only: storage, terminal, wire, lock_broker, detached
       - Host-only: fast_boot, dax_window, seal, params, plugin, plugin_instance
       - Host-only: trap_async, post_exec, on_trap_deny, register_custom_action
       - Host-only: register_stream_kind, lifecycle_mut
-      - No plugin() on a plugin-mode builder: plugin-of-plugin is a compile error
       - register_vsock_service deletes; vsock_service is the one verb
       - Surface: see: artifacts/code/rust-plugin-builder.rs
     - TypeScript
@@ -390,12 +396,23 @@
         - boot() seals implicitly when the builder is not sealed yet
       - trap(filter, handler) and trap(closure) are both modes under one overloaded name
       - forkState() is a factory, not a chain verb; it returns a fresh plugin-mode builder
+        - forkState() throws EConfig on a host-mode builder
+        - A4 lands it; live returns a clone
+        - Hosts fork via Session.fork(), not the builder factory
+      - group() / guard(): closures return the builder
+        - group(fn: (builder: this) => this | void): this (live)
+        - guard(enabled: boolean, fn: (builder: this) => this): this (A4 lands)
       - Mount: host.use(builder) merges the registry; host.plugin(builder) is the same verb
-      - Mount returns this; duplicate mount and missing prerequisite checks run at mount time
-        - Mount time means at .use(), not at seal()
+        - host.plugin(builder) delegates to use()
+        - A string argument to host.plugin() throws a clear EConfig (A4 lands the runtime check)
+      - Mount returns this; duplicate mount and missing prerequisite checks run at seal()
+        - Seal time means at seal(), not at mount time
+        - Live TypeScript still checks duplicates at mount; A4 moves the check to seal()
         - Host-only verbs throw EConfig at the call site on a plugin-mode builder
       - seal() validates mounted plugins and the hook registry
-      - Missing prerequisites use the same text as Rust at mount time
+      - Examples call .seal() before .boot()
+        - boot() seals implicitly only when the caller omits it
+      - Missing prerequisites use the same text as Rust at seal time
       - Host-only: terminal, wire, detached, boot, seal, use
       - Host-only: on, onTrapDeny, registerStreamKind
       - lockBroker(config) is a host-only verb
@@ -412,13 +429,23 @@
         - boot() seals implicitly when the builder is not sealed yet
       - trap(filter, pre, post) and trap(closure) are both modes under one name
       - fork_state() is a factory, not a chain verb; it returns a fresh plugin-mode builder
+        - fork_state() raises EConfig on a host-mode builder (live)
+        - Hosts fork via Session.fork(), not the builder factory
       - context() raises EConfig on host mode; it is plugin-mode only
-      - Mount: host.use(builder) merges the registry; the instance .plugin() mount alias deletes
-      - Mount returns Self; duplicate mount and missing prerequisite checks run at mount time
-        - Mount time means at .use(), not at seal()
+      - group() / guard(): closures return the builder
+        - group(fn: Callable[[KelirBuilder], KelirBuilder]) -> Self (A5 lands)
+        - guard(enabled: bool, fn: Callable[[KelirBuilder], KelirBuilder]) -> Self (A5 lands)
+      - Mount: host.use(builder) merges the registry; instance .plugin(builder) is the same verb
+        - Instance .plugin(builder) delegates to .use()
+          - A5 lands it; live raises EConfig for any instance call
+        - A string argument to instance .plugin() raises a clear EConfig
+        - KelirBuilder.plugin(name) classmethod is the plugin-mode factory, not a mount
+      - Mount returns Self; duplicate mount and missing prerequisite checks run at seal()
+        - Seal time means at seal(), not at mount time
+        - Live Python still checks duplicates at mount; A5 moves the check to seal()
         - Host-only verbs raise EConfig at the call site when mode is plugin
       - seal() validates host requirements and mounted plugin shapes
-      - Missing prerequisites raise EConfig at mount time (.use())
+      - Missing prerequisites raise EConfig at seal time (.seal())
         - seal() re-checks host requirements
       - Host-only: storage, terminal, wire, detached, params, boot, seal, use
       - Host-only: on_trap_deny, register_custom_action, register_stream_kind

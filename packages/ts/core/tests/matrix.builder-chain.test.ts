@@ -75,6 +75,8 @@ test("every chain verb returns the same builder", () => {
   assert.equal(plugin.use(createPlugin<"inner", Record<string, never>>("inner")), plugin);
   assert.equal(plugin.plugin(createPlugin<"inner2", Record<string, never>>("inner2")), plugin);
   assert.equal(plugin.group((b) => b.onTrap(() => Verdict.Pass)), plugin);
+  assert.equal(plugin.guard(true, (b) => b.onTrap(() => Verdict.Pass)), plugin);
+  assert.equal(plugin.guard(false, (b) => b.onTrap(() => Verdict.Pass)), plugin);
   assert.equal(plugin.seal(), plugin);
 });
 
@@ -114,6 +116,7 @@ test("seal blocks every verb, and seal itself is idempotent", () => {
     [".forkWith", () => builder.forkWith(() => createPlugin<"x", Record<string, never>>("x"))],
     [".vsockService", () => builder.vsockService(1024, "ping", t.Object({ ping: t.String() }), (request) => request)],
     [".group", () => builder.group((b) => b.onTrap(() => Verdict.Pass))],
+    [".guard", () => builder.guard(true, (b) => b.onTrap(() => Verdict.Pass))],
   ];
   for (const [verb, run] of verbs) {
     assert.throws(run, isSealedError(verb));
@@ -237,6 +240,21 @@ test("group runs the block on the same builder and rejects a foreign builder", (
   );
 });
 
+test("guard applies the block only when enabled", () => {
+  const skipped = kelir().guard(false, (inner) => inner.onTrap(() => Verdict.Pass));
+  assert.equal(skipped.fuse().hookCount(RingEvent.Trap), 0);
+  const applied = kelir().guard(true, (inner) => inner.onTrap(() => Verdict.Pass));
+  assert.equal(applied.fuse().hookCount(RingEvent.Trap), 1);
+  const returned = kelir().guard(true, (inner) => inner.onTrap(() => Verdict.Pass));
+  assert.equal(returned.fuse().hookCount(RingEvent.Trap), 1);
+  assert.throws(
+    () => kelir().guard(true, () => kelir()),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message === "guard() must return the builder it receives",
+  );
+});
+
 test("lockBroker is a host verb returning the builder", () => {
   const builder = kelir();
   assert.equal(builder.lockBroker({ globs: ["/workspace/**"], nonBlocking: true }), builder);
@@ -283,6 +301,16 @@ test("forkState is a factory: a fork of a sealed builder is a fresh unsealed bui
   fork.onTrap(() => Verdict.Pass);
   assert.equal(fork.hooksForFusion().rings[0].hookCount, 2);
   assert.equal(fork.fuse().hookCount(RingEvent.Trap), 2);
+});
+
+test("forkState on a host-mode builder throws EConfig", () => {
+  assert.throws(
+    () => kelir().forkState(),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message ===
+        "host-mode KelirBuilder forks via Session.fork(), not .forkState()",
+  );
 });
 
 test("createPlugin threads a Params generic into trap handlers", () => {

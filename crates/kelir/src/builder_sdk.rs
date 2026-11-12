@@ -674,7 +674,8 @@ impl<SealState, Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
 {
     // see: cans/02-plugin-model.md#Unified-builder
-    pub(crate) fn bind_registry(&self, pipeline: &mut dyn PipelineBinder) {
+    // see: cans/02-plugin-model.md#Chain-decisions
+    pub fn bind_registry(&self, pipeline: &mut dyn PipelineBinder) {
         self.registry.bind(pipeline, &self.scope);
         for mounted in &self.registration.mounted {
             mounted.bind(pipeline);

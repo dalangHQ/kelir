@@ -47,108 +47,24 @@ import {
   type TrapFilterSnapshot,
 } from "./fusion.plugin.js";
 
-export interface KelirConfig {
-  readonly vcpus?: number;
-  readonly memoryMb?: number;
-  readonly pageSizeKb?: number;
-  readonly deterministicClock?: boolean;
-  readonly pinnedClocksource?: string;
-  readonly preemptionGraceMs?: number;
-  readonly driver?: string;
-  readonly kernel?: string;
-  readonly rootfsErofs?: string;
-  readonly tscLocked?: boolean;
-  readonly enableWatchdog?: boolean;
-  readonly detached?: boolean;
-}
-
-// see: cans/04-terminal-plane.md#Terminal-pipeline
-export interface TerminalStream {
-  write(data: string): void;
-}
-
-// see: cans/04-terminal-plane.md#Terminal-pipeline
-export interface TerminalConfig {
-  readonly cols?: number;
-  readonly rows?: number;
-  readonly dropOsc52?: boolean;
-  readonly stripTitle?: boolean;
-  readonly tokenShield?: {
-    readonly maxBytesTotal: number;
-    readonly maxLinesTotal: number;
-    readonly clampStrategy: string;
-    readonly onClamp?: (stats: {
-      droppedBytes: number;
-      droppedLines: number;
-    }) => string;
-  };
-  readonly prompts?: readonly {
-    readonly match: RegExp;
-    readonly timeoutMs: number;
-    readonly verifyForeground: boolean;
-    readonly action: (
-      prompt: unknown,
-      stream: TerminalStream,
-    ) => Promise<void> | void;
-  }[];
-  readonly streamEngine?: string;
-}
-
-// see: cans/05-storage-plane.md#Workspace-commit
-export interface StorageConfig<Ctx = unknown> {
-  readonly idmap?: { readonly guestUid: number; readonly hostUid: number };
-  readonly sharedCaches?: readonly string[];
-  readonly lockBroker?: boolean;
-  readonly syntheticFiles?: readonly {
-    readonly path: string;
-    readonly content: string | (() => string);
-    readonly mode?: number;
-  }[];
-  readonly maskRead?: readonly {
-    readonly glob: string;
-    readonly pattern: RegExp;
-    readonly replace: string;
-  }[];
-  readonly snoops?: readonly {
-    readonly path: string;
-    readonly sync: boolean;
-    readonly onWrite: (
-      path: string,
-      raw: Uint8Array,
-      c: TrapContext & Ctx,
-    ) => Promise<void> | void;
-  }[];
-  readonly encapsulation?: string;
-  readonly scanEngine?: string;
-  readonly carryoverBytes?: number;
-}
-
-// see: cans/07-wire-plane.md#DNS-policy-filter
-export interface WireConfig {
-  readonly sinkhole?: { readonly dnsExcept: readonly string[] };
-  readonly sshAgentBridge?: boolean;
-  readonly vaults?: readonly {
-    readonly name: string;
-    readonly kind: "bearer_token" | "sigv4" | "mtls_bundle";
-    readonly audience: string;
-    readonly placeholder: string;
-  }[];
-  readonly l4Proxies?: readonly {
-    readonly listenPort: number;
-    readonly destination: string;
-    readonly injectMtls?: {
-      readonly certPath: string;
-      readonly keyPath: string;
-    };
-  }[];
-  readonly tapFilter?: string;
-}
-
-// see: cans/05-storage-plane.md#Host-inode-lock-broker
-export interface LockBrokerConfig {
-  readonly globs: readonly string[];
-  readonly nonBlocking?: boolean;
-}
+import type {
+  KelirConfig,
+  TerminalStream,
+  TerminalConfig,
+  StorageConfig,
+  WireConfig,
+  LockBrokerConfig,
+  CreatePluginOptions,
+} from "./builder.config.js";
+export type {
+  KelirConfig,
+  TerminalStream,
+  TerminalConfig,
+  StorageConfig,
+  WireConfig,
+  LockBrokerConfig,
+  CreatePluginOptions,
+};
 
 export type TrapHandlerResult = Verdict | PostExecAction;
 
@@ -166,11 +82,11 @@ interface PluginRegistration {
   readonly enabled: boolean;
 }
 
-// see: cans/03-sdk-architecture.md#TypeScript-SDK
-export interface CreatePluginOptions<Opts = unknown> {
-  readonly opts?: Opts;
-  readonly enabled?: boolean;
-  readonly config?: Opts;
+interface MountRecord {
+  readonly name: string;
+  readonly enabled: boolean;
+  readonly requiredDeps: readonly string[];
+  readonly duplicate: boolean;
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
@@ -206,6 +122,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   private registry: HookRegistry<Ctx>;
   private mounted: HookRegistry<Ctx>[] = [];
   private pluginRegistrations: PluginRegistration[] = [];
+  private mountRecords: MountRecord[] = [];
   private mountedFlag = false;
   private sealedFlag = false;
   private lockBrokerCfg: LockBrokerConfig | undefined;
@@ -325,34 +242,37 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     plugin: P & ValidateDeps<Ctx, P>,
   ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params> {
     this.checkVerb(".use");
+    if (
+      !(plugin instanceof KelirBuilder) &&
+      (typeof plugin !== "object" ||
+        plugin === null ||
+        typeof (plugin as KelirPlugin).name !== "string")
+    ) {
+      throw new EConfig(
+        `.use() expects a plugin builder or a KelirPlugin, got ${plugin === null ? "null" : typeof plugin}`,
+      );
+    }
     if (plugin instanceof KelirBuilder) {
       if (plugin.mode === "host") {
         throw new EConfig("cannot mount a host-mode builder as a plugin");
-      }
-      if (
-        plugin.mountedFlag ||
-        this.pluginRegistrations.some(
-          (registration) => registration.name === plugin.name,
-        )
-      ) {
-        throw new EConfig(`plugin already mounted: ${plugin.name}`);
       }
       const options = plugin.storedOptions as
         | { readonly enabled?: boolean; readonly config?: unknown }
         | undefined;
       const enabled = options?.enabled !== false;
-      if (enabled) {
-        for (const dep of plugin.registry.requiredDeps) {
-          if (
-            !this.pluginRegistrations.some(
-              (registration) => registration.name === dep,
-            )
-          ) {
-            throw new EConfig(
-              `missing prerequisite: ${dep} required by ${plugin.name}`,
-            );
-          }
-        }
+      const duplicate =
+        plugin.mountedFlag ||
+        this.pluginRegistrations.some(
+          (registration) => registration.name === plugin.name,
+        );
+      this.mountRecords.push({
+        name: plugin.name,
+        enabled,
+        requiredDeps: [...plugin.registry.requiredDeps],
+        duplicate,
+      });
+      if (duplicate) {
+        return this as unknown as KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params>;
       }
       for (const hook of plugin.registry.hooks) {
         this.registry.adoptHook(hook);
@@ -378,18 +298,17 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       readonly registerInterceptors?: (bind: (hook: HookDescriptor) => void) => void;
       readonly vsockServices?: readonly VsockServiceEntry[];
     };
-    if (enabled) {
-      for (const dep of trait.requiredDeps ?? []) {
-        if (
-          !this.pluginRegistrations.some(
-            (registration) => registration.name === dep,
-          )
-        ) {
-          throw new EConfig(
-            `missing prerequisite: ${dep} required by ${asPlugin.name}`,
-          );
-        }
-      }
+    const duplicate = this.pluginRegistrations.some(
+      (registration) => registration.name === asPlugin.name,
+    );
+    this.mountRecords.push({
+      name: asPlugin.name,
+      enabled,
+      requiredDeps: [...(trait.requiredDeps ?? [])],
+      duplicate,
+    });
+    if (duplicate) {
+      return this as unknown as KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params>;
     }
     this.pluginRegistrations.push({ name: asPlugin.name, enabled });
     if (typeof trait.registerInterceptors === "function" && enabled) {
@@ -784,6 +703,15 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     return this;
   }
 
+  // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+  guard(enabled: boolean, fn: (builder: this) => this | void): this {
+    this.checkVerb(".guard");
+    if (!enabled) return this;
+    const result = fn(this);
+    if (result !== undefined && result !== this) throw new EConfig("guard() must return the builder it receives");
+    return this;
+  }
+
   // see: cans/02-plugin-model.md#KelirPlugin-trait
   forkWith(
     fn: () => KelirBuilder<Name, Ctx, Deps, Params>,
@@ -794,6 +722,11 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   forkState(): KelirBuilder<Name, Ctx, Deps, Params> {
+    if (this.mode === "host") {
+      throw new EConfig(
+        "host-mode KelirBuilder forks via Session.fork(), not .forkState()",
+      );
+    }
     if (this.forkFn !== undefined) {
       return this.forkFn();
     }
@@ -807,6 +740,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     copy.registry = this.registry.clone();
     copy.mounted = [...this.mounted];
     copy.pluginRegistrations = [...this.pluginRegistrations];
+    copy.mountRecords = [...this.mountRecords];
     copy.detachedFlag = this.detachedFlag;
     copy.terminalCfg = this.terminalCfg;
     copy.storageCfg = this.storageCfg;
@@ -845,9 +779,36 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     this.registry.validate();
   }
 
+  private validateMounts(): void {
+    const seen = new Set<string>();
+    for (const record of this.mountRecords) {
+      if (record.duplicate || seen.has(record.name)) {
+        throw new EConfig(`plugin already mounted: ${record.name}`);
+      }
+      seen.add(record.name);
+    }
+    const mounted = new Set(
+      this.pluginRegistrations.map((registration) => registration.name),
+    );
+    for (const record of this.mountRecords) {
+      if (!record.enabled) continue;
+      for (const dep of record.requiredDeps) {
+        if (!mounted.has(dep)) {
+          throw new EConfig(
+            `missing prerequisite: ${dep} required by ${record.name}`,
+          );
+        }
+      }
+    }
+  }
+
   // see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
   seal(): this {
-    if (!this.sealedFlag) { this.validate(); this.sealedFlag = true; }
+    if (!this.sealedFlag) {
+      this.validate();
+      this.validateMounts();
+      this.sealedFlag = true;
+    }
     return this;
   }
 

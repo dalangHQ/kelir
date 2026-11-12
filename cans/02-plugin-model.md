@@ -450,8 +450,8 @@
         - fuse() is internal, not a chain verb and not a terminal; boot() is the single terminal
         - boot() seals implicitly when the builder is not sealed yet
       - Seal validates once, over the host plus mounted plugins together
-        - Duplicate mount: Rust at seal(), TS/Py at mount
-        - Missing prerequisite: Rust at seal(), TS/Py at mount
+        - Duplicate mount: seal() in all three SDKs, never at mount
+        - Missing prerequisite: seal() in all three SDKs, never at mount
         - Host-only verb on a plugin-mode builder
           - Rust: a compile error; TS/Py: EConfig at the call site
         - Vsock triple, scope triple, trap-filter triple
@@ -474,15 +474,30 @@
       - (d) forkState() / fork_state() are factories, not chain verbs
         - They return a fresh plugin-mode builder; they never continue the chain
         - Host-mode builders fork via Session.fork(), not the builder factory
-        - Live host-mode consequence stays per SDK
-        - Python raises EConfig; Rust and TypeScript return a clone
-      - (e) group() / guard() / .end(): landed per SDK, gaps named, not faked
-        - group(): Rust and TypeScript have it; Python does not (open gap)
-        - guard(enabled, f): Rust only, a boolean conditional group; TS/Py open gap
+        - Rust: fork_state() is plugin-mode only by type; it always yields a plugin-mode builder
+          - KelirPlugin::fork_state / clone_box construct KelirBuilder<Plugin, Unsealed, ...>
+          - There is no host-mode builder fork in Rust
+        - TypeScript: forkState() throws EConfig on a host-mode builder
+          - A4 lands it; live returns a clone
+        - Python: fork_state() raises EConfig on a host-mode builder (live)
+      - (e) group() / guard() / .end(): one shape in all three SDKs
+        - group(fn): the closure takes a sub-builder and returns the builder
+          - Rust: group<F>(self, configure: F) -> Self where F: FnOnce(Self) -> Self (live)
+          - TypeScript: group(fn: (builder: this) => this | void): this (live)
+            - void is tolerated; any other return throws
+          - Python: group(fn: Callable[[KelirBuilder], KelirBuilder]) -> Self (A5 lands; no live verb)
+        - guard(enabled, fn): boolean-conditional only, in all three SDKs (Rust's shape)
+          - Rust: guard<F>(self, enabled: bool, configure: F) -> Self (live)
+            - F: FnOnce(Self) -> Self
+          - TypeScript: guard(enabled: boolean, fn: (builder: this) => this): this
+            - A4 lands it; no live verb
+          - Python: guard(enabled: bool, fn: Callable[[KelirBuilder], KelirBuilder]) -> Self
+            - A5 lands it; no live verb
+          - No predicate, no string, no other condition form
+            - enabled is a bool; the closure runs only when it is true
         - .end() closes a scope and returns the builder, in all three SDKs
         - Rust scope closures must return the builder via .end()
-        - TS/Py closures may return the scope or void
-        - CompositeBundle has no mount verb: mounting it is unsupported, the type stays
+        - TS/Py scope closures may return the scope or void
       - (f) Python host-mode .context() raises EConfig
         - boot() never reads a host context and the bridge takes no host-context param
         - context() is plugin-mode only in Python and Rust
@@ -495,6 +510,35 @@
       - (h) Session / Sandbox post-boot operations are out of scope
         - Promise<void> / None-returning post-boot operations are not chain verbs
         - They are not touched here
+      - (i) lock-broker and CompositeBundle: landed shape at L2
+        - lock_broker / lockBroker is a standalone host-only verb in all three SDKs
+          - Rust: lock_broker(config: LockBrokerConfig) -> Self (live)
+            - LockBrokerConfig: scope LockScope::Globs(Vec<String>), non_blocking: bool
+          - TypeScript: lockBroker(config: LockBrokerConfig): this (live)
+            - LockBrokerConfig: globs: readonly string[], nonBlocking?: boolean
+            - Only the boolean reaches the native addon
+            - globs/nonBlocking forwarding is L3
+          - Python: lock_broker(enabled: bool = True) -> Self (live)
+            - Only the boolean reaches the PyO3 bridge
+          - A plugin-mode builder calling it fails fast at the call site in all three SDKs
+        - CompositeBundle has no mount verb: mounting it is unsupported, the type stays
+          - The Rust type stays for the profile facade's unpack path
+          - Live Rust unpack() returns an empty vec
+            - TODO (L3) [plugin_engine] in builder_sdk.rs
+            - The profile-facade flattening that consumes it is L3 work, not pinned here
+      - (j) Named L3 blockers (no open gap is left unnamed)
+        - Lock-broker globs/nonBlocking: sp_15_host_inode_lock_broker_flock_bridge
+          - Status red in the slop register (l3-slop-register.yaml:2183)
+          - Rust threads the full config in-process to StoragePlane
+          - TS/Py native bridges take the boolean only
+          - PyO3 storage_bridge.rs:61-66 extracts bool only
+          - PyO3 :162-166 hardcodes non_blocking false
+          - NAPI storage_bridge.rs:37 carries the sp_15 TODO marker
+          - flock delegation is TODO (L3) in lock_broker.rs:122,171,179
+        - CompositeBundle unpack: no dedicated case id exists in the register
+          - Tracked under the plugin_engine code_only domain group
+          - TODO (L3) [plugin_engine] at builder_sdk.rs:194; unpack returns an empty vec
+          - Mounting one stays unsupported; the type stays for the profile facade
     - Rust generic arity (pinned; the contract A3 implements)
       - KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
       - Mode is HostMode or PluginMode; no other modes exist
@@ -550,8 +594,8 @@
           - Are live ring verbs in all three SDKs
           - Artifact prose calling them superseded is stale
           - A2 corrects the artifact; the spec keeps the verbs
-          - See: cans/artifacts/code/rust-plugin-builder.rs:124-125
-          - See: cans/artifacts/code/rust-plugin-builder.rs:990-991
+          - See: cans/artifacts/code/rust-plugin-builder.rs
+          - See: cans/artifacts/code/rust-plugin-builder-scopes.rs
         - Lifecycle commit: .on_pre_commit, .on_post_commit, .on_host_preempt
         - Telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
         - Vsock: .vsock_service(spec, handler)
@@ -586,6 +630,7 @@
         - A nested chain and the equivalent flat chain produce
           - identical descriptors: same rings, same ordinals
       - Scope shape: see: artifacts/code/rust-plugin-builder.rs
+      - Scope shape: see: artifacts/code/rust-plugin-builder-scopes.rs
       - Scope shape: see: artifacts/code/typescript-plugin-builder.ts
       - Scope shape: see: artifacts/code/python-plugin-builder.py
     - Host-only verbs (Mode-gated; a plugin-mode builder must not call them)
@@ -598,20 +643,35 @@
       - TypeScript: on and onTrapDeny stay host-only
         - trap(filter, handler) and trap(closure) are both modes
       - TypeScript: registerStreamKind stays host-only
-      - TypeScript: no standalone lockBroker verb; the lock broker is a storage config flag
+      - TypeScript: lockBroker(config) is a standalone host-only verb
+        - Only the boolean reaches the native addon
       - Python: storage, terminal, wire, detached, params, boot, seal, use
       - Python: on_trap_deny stays host-only
         - trap(filter, pre, post) and trap(closure) are both modes
       - Python: register_custom_action, register_stream_kind
-      - Python: no standalone lock_broker verb; the lock broker rides storage(lock_broker=...)
+      - Python: lock_broker(enabled=True) is a standalone host-only verb
+        - Only the boolean reaches the PyO3 bridge
       - register_vsock_service deletes in all SDKs; vsock_service is the one verb
       - Rust rejection is a compile error: no method on PluginMode
-      - TypeScript and Python rejection is EConfig at seal, not at mount
-        - Mount records the call; seal() rejects it with the plugin named
-        - Live TypeScript and Python still reject at mount; A4/A5 move the check to seal()
+      - TypeScript and Python rejection is EConfig at the call site, not at seal
+        - Host-only verbs throw at the call site on a plugin-mode builder, live in both SDKs
+        - Duplicate-mount and missing-prerequisite checks run at seal(), not at mount
+        - Live TypeScript and Python still check duplicates at mount; A4/A5 move the check to seal()
       - Host-only list: see: 03-sdk-architecture.md#Unified-builder-surface
     - Mount is a merge
       - host.plugin(plugin) takes the plugin-mode builder by value
+      - Instance .plugin(builder) mounts in all three SDKs
+        - The class/factory .plugin(name) creates
+        - Rust: host.plugin(builder) is the mount verb
+          - host.use(builder) is the same verb and delegates to plugin()
+        - TypeScript: host.use(builder) is the mount verb
+          - host.plugin(builder) is the same verb and delegates to use() (live)
+        - Python: host.use(builder) is the mount verb
+          - Instance .plugin(builder) delegates to .use()
+          - A5 lands it; live raises EConfig for any instance call
+        - A string argument to instance .plugin() raises a clear EConfig
+          - In TypeScript and Python; in Rust it is a compile error
+        - KelirBuilder.plugin(name) in Python is the plugin-mode factory, not a mount
       - Hook registry, vsock list, and deps move into the host Registration
       - Append, in mount order; duplicate hooks from two plugins both kept
       - Mounting a name twice is EConfig: plugin already mounted: <name>

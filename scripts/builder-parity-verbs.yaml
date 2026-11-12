@@ -9,14 +9,15 @@ schema:
   return: builder Self-this-KelirBuilder, sealed Rust Result Sealed else builder, terminal boot only, scope the scope type, registry HookRegistry this
   sdks: sdks the verb is required in, absence outside the list is not a failure
   status: fixed true pre-fix, target FIXED target differing pre-fix, pin A1 must pin the target
-  cans_home: cans/artifacts/test-plan/builder-parity-verbs.yaml
+  cans_home: cans/artifacts/config/builder-verbs.yaml
+  behavior: machine-readable behavioral checks the gate script reads; kind selects the check, sdks the SDKs it covers, total/cases carry the vectors numbers
 verbs:
   plugin:
     placement: flat
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: mount by value; Py plugin is a creation-only descriptor, mount is use()
+    note: mount by value; instance .plugin(builder) mounts via .use() in all three SDKs, a string argument is rejected in TS/Py
   plugin_instance:
     placement: flat
     return: builder
@@ -28,7 +29,7 @@ verbs:
     return: sealed
     sdks: rust,ts,py
     status: fixed
-    note: validation gate, not a mid-chain verb; in all three SDKs since the chain fix
+    note: validation gate, not a mid-chain verb; in all three SDKs since the chain fix; duplicate-mount and missing-prerequisite checks run at seal() in all three SDKs
   terminal:
     placement: flat
     return: builder
@@ -147,21 +148,21 @@ verbs:
   group:
     placement: flat
     return: builder
-    sdks: rust,ts
-    status: fixed
-    note: named block of chain steps; Python has no group()
+    sdks: rust,ts,py
+    status: target
+    note: named block of chain steps; the closure takes the (sub-)builder and returns it; all three SDKs
   guard:
     placement: flat
     return: builder
-    sdks: rust
-    status: fixed
-    note: Rust-only boolean conditional group
+    sdks: rust,ts,py
+    status: target
+    note: boolean conditional group; guard(enabled, f) applies f only when enabled, else the builder passes through; all three SDKs
   fork_state:
     placement: flat
     return: builder
     sdks: ts,py
     status: fixed
-    note: factory, not a chain verb; Rust fork_state is a KelirPlugin trait method, not a builder verb
+    note: factory, not a chain verb; Rust fork_state is a KelirPlugin trait method, not a builder verb; host-mode fork errors in all three SDKs (rust type-error or Result, ts throw, py raise)
   trap_async:
     placement: flat
     return: builder
@@ -439,3 +440,30 @@ verbs:
     sdks: ts
     status: target
     note: TS HookRegistry validator; pre-fix returns void
+behavior:
+  group_shape:
+    kind: closure_sub_builder
+    sdks: rust,ts,py
+    note: group takes a closure receiving the (sub-)builder and returns the builder
+  guard_shape:
+    kind: boolean_conditional
+    sdks: rust,ts,py
+    note: guard takes a bool plus a closure; the closure runs only when the bool is true
+  fork_host_errors:
+    kind: host_fork_errors
+    sdks: rust,ts,py
+    note: host-mode fork errors in every SDK; plugin-mode fork returns a fresh builder
+  seal_time_mount_checks:
+    kind: seal_time_mount_checks
+    sdks: rust,ts,py
+    note: duplicate-mount and missing-prerequisite checks run at seal(), not at mount
+  plugin_mount_alias:
+    kind: plugin_mount_alias
+    sdks: rust,ts,py
+    note: instance .plugin(builder) mounts via .use(); a string argument is rejected in TS/Py
+  vectors_total:
+    kind: vectors_total
+    sdks: rust,ts,py
+    total: 62
+    cases: plugin-builder-seal,plugin-builder-trap-filter,plugin-builder-trap-scope,plugin-builder-lock-broker
+    note: vectors.json carries the 4 chain cases on top of the 58 base vectors

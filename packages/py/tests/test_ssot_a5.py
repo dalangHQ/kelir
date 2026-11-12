@@ -50,9 +50,9 @@ def test_use_mounts_plugin_instance() -> None:
 def test_plugin_rejects_non_name_and_instance_plugin() -> None:
     with pytest.raises(EConfig, match=r"non-empty plugin name"):
         KelirBuilder.plugin(LedgerPlugin())
-    with pytest.raises(EConfig, match=r"mount a plugin with \.use\(plugin\)"):
+    with pytest.raises(EConfig, match=r"mounts a plugin-mode builder, not a name"):
         KelirBuilder().plugin("ledger")
-    with pytest.raises(EConfig, match=r"mount a plugin with \.use\(plugin\)"):
+    with pytest.raises(EConfig, match=r"mounts only a plugin-mode KelirBuilder"):
         KelirBuilder().plugin(LedgerPlugin())
 
 

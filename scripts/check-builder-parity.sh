@@ -423,7 +423,167 @@ check
 py_end_count="$(awk -v from="$PY_SCOPE_START" -v to="$PY_SCOPE_END" 'NR >= from && (to == 0 || NR < to) && $0 ~ "^    def end\(" { n++ } END { print n+0 }' "$PY_FILE")"
 if [ "$py_end_count" != "1" ]; then fail "py: _Scope.end() defined $py_end_count times, want 1"; fi
 
+# see: scripts/builder-parity-verbs.yaml
+declare -A BEHAVIOR_KIND BEHAVIOR_SDKS BEHAVIOR_TOTAL BEHAVIOR_CASES
+BEHAVIORS=()
+while IFS='|' read -r kind a b c; do
+    case "$kind" in
+        BEHAVIOR) BEHAVIORS+=("$a") ;;
+        BFIELD)
+            case "$b" in
+                kind) BEHAVIOR_KIND["$a"]="$c" ;;
+                sdks) BEHAVIOR_SDKS["$a"]="$c" ;;
+                total) BEHAVIOR_TOTAL["$a"]="$c" ;;
+                cases) BEHAVIOR_CASES["$a"]="$c" ;;
+            esac
+            ;;
+    esac
+done < <(awk '
+    /^behavior:/ { v=1; next }
+    /^[^ #]/ { v=0 }
+    v && /^  [A-Za-z][A-Za-z0-9_]*:/ { sub(/^  /,""); sub(/:$/,""); name=$0; print "BEHAVIOR|" name; next }
+    v && /^    [a-z]+:/ && name != "" {
+        line=$0; sub(/^    /,"",line)
+        key=line; sub(/:.*$/,"",key)
+        val=line; sub(/^[^:]*: */,"",val)
+        print "BFIELD|" name "|" key "|" val
+    }
+' "$YAML")
+if [ "${#BEHAVIORS[@]}" -eq 0 ]; then echo "FAIL: no behavior checks parsed from $YAML"; exit 1; fi
+for b in "${BEHAVIORS[@]}"; do
+    check
+    if [ -z "${BEHAVIOR_KIND[$b]:-}" ] || [ -z "${BEHAVIOR_SDKS[$b]:-}" ]; then
+        fail "yaml: behavior $b is missing kind/sdks"
+    fi
+    case "${BEHAVIOR_KIND[$b]:-}" in closure_sub_builder|boolean_conditional|host_fork_errors|seal_time_mount_checks|plugin_mount_alias|vectors_total) ;; *) fail "yaml: behavior $b has bad kind ${BEHAVIOR_KIND[$b]:-}" ;; esac
+done
+
+# see: scripts/builder-parity-verbs.yaml
+body_lines() {
+    local file="$1" start_re="$2" end_re="$3" s e
+    s="$(grep -nE "$start_re" "$file" | head -1 | cut -d: -f1)"
+    [ -n "$s" ] || return 1
+    e="$(sed -n "$((s + 1)),\$p" "$file" | grep -nE "$end_re" | head -1 | cut -d: -f1)"
+    [ -n "$e" ] || return 1
+    sed -n "$((s + 1)),$((s + e - 1))p" "$file"
+}
+
+# see: cans/02-plugin-model.md#Chain-decisions
+check_group_shape() {
+    check
+    if grep -A3 -E "pub fn group<F>\(self, configure: F\) -> Self" $RS_BUILDER | grep -q "FnOnce(Self) -> Self"; then :; else fail "rust: group() is not a closure taking the builder (want FnOnce(Self) -> Self)"; fi
+    check
+    if grep -qF "group(fn: (builder: this) => this | void): this" "$TS_BUILDER"; then :; else fail "ts: group() is not a closure taking the builder (want group(fn: (builder: this) => this | void): this)"; fi
+    check
+    if grep -A2 -E "^    def group\(self," "$PY_FILE" | grep -qF "Callable[[KelirBuilder]"; then :; else fail "py: group() is not a closure taking the builder (want def group(self, fn: Callable[[KelirBuilder], ...])"; fi
+}
+
+# see: cans/02-plugin-model.md#Chain-decisions
+check_guard_shape() {
+    check
+    if grep -A3 -E "pub fn guard<F>\(self, enabled: bool, configure: F\) -> Self" $RS_BUILDER | grep -q "FnOnce(Self) -> Self" && grep -qF "if enabled { configure(self) } else { self }" $RS_BUILDER; then :; else fail "rust: guard() is not boolean-conditional-only (want guard(enabled: bool, configure) applying the closure only when enabled)"; fi
+    check
+    ts_guard_body="$(body_lines "$TS_BUILDER" '^  guard\(' '^  [a-zA-Z_]' || true)"
+    if grep -qF "guard(enabled: boolean," "$TS_BUILDER" && grep -A2 -F "guard(enabled: boolean," "$TS_BUILDER" | grep -qF "(builder: this)" && printf '%s' "$ts_guard_body" | grep -qE "if \(!?enabled\)"; then :; else fail "ts: guard() is not boolean-conditional-only (want guard(enabled: boolean, fn: (builder: this) => ...) applying the closure only when enabled)"; fi
+    check
+    py_guard_body="$(body_lines "$PY_FILE" '^    def guard\(' '^    def ' || true)"
+    if grep -A2 -E "^    def guard\(self, enabled: bool," "$PY_FILE" | grep -qF "Callable[[KelirBuilder]" && printf '%s' "$py_guard_body" | grep -qE "if (not )?enabled:"; then :; else fail "py: guard() is not boolean-conditional-only (want def guard(self, enabled: bool, fn: Callable[[KelirBuilder], ...]) applying the closure only when enabled)"; fi
+}
+
+# see: cans/02-plugin-model.md#Chain-decisions
+check_fork_host_errors() {
+    check
+    if grep -qE "fn fork_state.*Result<" crates/kelir-interface/src/plugin_model.rs crates/kelir/src/builder_plugin.rs; then
+        :
+    elif ! grep -A1 "> KelirPlugin\$" crates/kelir/src/builder_plugin.rs | grep -q "for KelirBuilder<Mode," \
+        && ! grep -A1 "> AnyPlugin\$" crates/kelir/src/builder_plugin.rs | grep -q "for KelirBuilder<Mode," \
+        && grep -A1 "> KelirPlugin\$" crates/kelir/src/builder_plugin.rs | grep -q "for KelirBuilder<Plugin,"; then
+        :
+    else
+        fail "rust: host-mode fork does not error (want fork_state returning Result, or KelirPlugin/AnyPlugin implemented for plugin-mode builders only)"
+    fi
+    check
+    ts_fork_body="$(body_lines "$TS_BUILDER" '^  forkState\(' '^  (private )?[a-zA-Z_]' || true)"
+    if printf '%s' "$ts_fork_body" | grep -qF 'this.mode === "host"' && printf '%s' "$ts_fork_body" | grep -qF "throw new EConfig"; then :; else fail "ts: forkState() does not throw on a host-mode builder"; fi
+    check
+    py_fork_body="$(body_lines "$PY_FILE" '^    def fork_state\(' '^    def ' || true)"
+    if printf '%s' "$py_fork_body" | grep -qF 'self._mode == "host"' && printf '%s' "$py_fork_body" | grep -qF "raise EConfig"; then :; else fail "py: fork_state() does not raise on a host-mode builder"; fi
+}
+
+# see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
+check_seal_time_mount_checks() {
+    check
+    rs_seal_body="$(body_lines crates/kelir/src/builder_sdk.rs '^    pub fn seal\($' '^    pub fn ' || true)"
+    if printf '%s' "$rs_seal_body" | grep -qF "plugin already mounted"; then :; else fail "rust: seal() does not reject a duplicate mount (want 'plugin already mounted' in seal())"; fi
+    check
+    rs_plugin_body="$(body_lines crates/kelir/src/builder_sdk.rs '^    pub fn plugin<' '^    pub fn r#use' || true)"
+    rs_use_body="$(body_lines crates/kelir/src/builder_sdk.rs '^    pub fn r#use' '^    pub fn plugin_instance' || true)"
+    if printf '%s\n%s' "$rs_plugin_body" "$rs_use_body" | grep -qF "already mounted"; then fail "rust: duplicate-mount check still runs at mount time (.plugin()/.use())"; fi
+    check
+    ts_use_body="$(body_lines "$TS_BUILDER" '^  use<' '^  plugin<' || true)"
+    ts_plugin_body="$(body_lines "$TS_BUILDER" '^  plugin<' '^  private checkedTrapContext' || true)"
+    if printf '%s\n%s' "$ts_use_body" "$ts_plugin_body" | grep -qE "already mounted|missing prerequisite"; then fail "ts: duplicate-mount or missing-prerequisite check still runs at mount time (.use()/.plugin())"; fi
+    check
+    ts_validate_body="$(body_lines "$TS_BUILDER" '^  private validate\(' '^  hooksForFusion\(' || true)"
+    if printf '%s' "$ts_validate_body" | grep -qF "already mounted" && printf '%s' "$ts_validate_body" | grep -qF "missing prerequisite"; then :; else fail "ts: seal() does not check duplicate mounts and missing prerequisites (want both diagnostics in validate()/seal())"; fi
+    check
+    py_use_body="$(body_lines "$PY_FILE" '^    def use\(' '^    def trap\(' || true)"
+    if printf '%s' "$py_use_body" | grep -qE "already mounted|missing prerequisite"; then fail "py: duplicate-mount or missing-prerequisite check still runs at mount time (.use())"; fi
+    check
+    py_validate_body="$(body_lines "$PY_FILE" '^    def _validate_all\(' '^    def seal\(' || true)"
+    if printf '%s' "$py_validate_body" | grep -qF "already mounted" && printf '%s' "$py_validate_body" | grep -qF "missing prerequisite"; then :; else fail "py: seal() does not check duplicate mounts and missing prerequisites (want both diagnostics in _validate_all()/seal())"; fi
+}
+
+# see: cans/03-sdk-architecture.md#Unified-builder-surface
+check_plugin_mount_alias() {
+    check
+    rs_use_body="$(body_lines crates/kelir/src/builder_sdk.rs '^    pub fn r#use' '^    pub fn plugin_instance' || true)"
+    if grep -qE "pub fn plugin<" crates/kelir/src/builder_sdk.rs && printf '%s' "$rs_use_body" | grep -qF "self.plugin(plugin)"; then :; else fail "rust: .plugin() mount alias missing on the host builder (want pub fn plugin + r#use delegating to self.plugin)"; fi
+    check
+    ts_plugin_body="$(body_lines "$TS_BUILDER" '^  plugin<' '^  private checkedTrapContext' || true)"
+    if printf '%s' "$ts_plugin_body" | grep -qF "return this.use(plugin)"; then :; else fail "ts: .plugin() does not delegate to .use()"; fi
+    check
+    ts_mount_body="$(body_lines "$TS_BUILDER" '^  use<' '^  private checkedTrapContext' || true)"
+    if printf '%s' "$ts_mount_body" | grep -q "typeof plugin" && printf '%s' "$ts_mount_body" | grep -qE "['\"]string['\"]" && printf '%s' "$ts_mount_body" | grep -qF "throw new EConfig"; then :; else fail "ts: .use()/.plugin() does not reject a string argument"; fi
+    check
+    py_mount_region="$(body_lines "$PY_FILE" '^class _PluginMount:' '^class KelirBuilder:' || true)"
+    py_plugin_body="$(body_lines "$PY_FILE" '^    def plugin\(' '^    def ' || true)"
+    if printf '%s\n%s' "$py_mount_region" "$py_plugin_body" | grep -qE "(obj|self|builder|host)\.use\("; then :; else fail "py: instance .plugin() does not mount via .use()"; fi
+    check
+    if { printf '%s' "$py_mount_region" | grep -qF "isinstance(" && printf '%s' "$py_mount_region" | grep -qF "str" && printf '%s' "$py_mount_region" | grep -qF "raise EConfig"; } \
+        || { printf '%s' "$py_plugin_body" | grep -qF "isinstance(" && printf '%s' "$py_plugin_body" | grep -qF "str" && printf '%s' "$py_plugin_body" | grep -qF "raise EConfig"; }; then :; else fail "py: instance .plugin() does not reject a string argument"; fi
+}
+
+# see: cans/15-operations.md#Unified-builder-parity-vectors
+check_vectors_total() {
+    local name="$1" want_total="${BEHAVIOR_TOTAL[$1]:-}" want_cases="${BEHAVIOR_CASES[$1]:-}" got_total="" got_names="" missing="" c
+    check
+    if [ -z "$want_total" ] || [ -z "$want_cases" ]; then fail "yaml: behavior $name is missing total/cases"; return; fi
+    if ! command -v python3 >/dev/null 2>&1; then fail "vectors: python3 is required to read vectors.json"; return; fi
+    got_total="$(VECTORS_FILE="$ROOT/vectors.json" python3 -c 'import json,os; print(len(json.load(open(os.environ["VECTORS_FILE"]))["vectors"]))' 2>/dev/null || echo "?")"
+    if [ "$got_total" != "$want_total" ]; then fail "vectors: vectors.json has $got_total vectors, want $want_total"; fi
+    check
+    got_names="$(VECTORS_FILE="$ROOT/vectors.json" python3 -c 'import json,os; print(" ".join(sorted(x["name"] for x in json.load(open(os.environ["VECTORS_FILE"]))["vectors"])))' 2>/dev/null || echo "")"
+    missing=""
+    for c in ${want_cases//,/ }; do
+        case " $got_names " in *" $c "*) ;; *) missing="$missing $c" ;; esac
+    done
+    if [ -n "$missing" ]; then fail "vectors: missing chain cases:$missing"; fi
+}
+
+for b in "${BEHAVIORS[@]}"; do
+    case "${BEHAVIOR_KIND[$b]:-}" in
+        closure_sub_builder) check_group_shape ;;
+        boolean_conditional) check_guard_shape ;;
+        host_fork_errors) check_fork_host_errors ;;
+        seal_time_mount_checks) check_seal_time_mount_checks ;;
+        plugin_mount_alias) check_plugin_mount_alias ;;
+        vectors_total) check_vectors_total "$b" ;;
+        *) fail "yaml: behavior $b has unknown kind ${BEHAVIOR_KIND[$b]:-}" ;;
+    esac
+done
+
 if [ "$GATE_FAIL" -eq 0 ]; then
-    echo "OK: builder parity: $CHECKS checks passed (${#VERBS[@]} verbs, rust/ts/py)"
+    echo "OK: builder parity: $CHECKS checks passed (${#VERBS[@]} verbs, ${#BEHAVIORS[@]} behaviors, rust/ts/py)"
 fi
 exit "$GATE_FAIL"

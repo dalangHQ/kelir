@@ -1,6 +1,6 @@
 // see: cans/02-plugin-model.md#Unified-builder
 use kelir::interface::driver_interface::default_vm_config;
-use kelir::interface::plugin_model::{PluginError, VetoEvent};
+use kelir::interface::plugin_model::{KelirPlugin, PluginError, VetoEvent};
 use kelir::interface::protocol_wire::{PostExecAction, Verdict};
 use kelir::plugin_model::FilterAction;
 use kelir::{HNil, Host, KelirBuilder, NoParams, TrapFilter, Unsealed};
@@ -147,6 +147,18 @@ fn seal_rejects_empty_trap_filter() {
         text.contains("EConfig") && text.contains("trap filter binary must not be empty"),
         "unexpected error: {text}"
     );
+}
+
+// see: cans/02-plugin-model.md#Chain-decisions
+#[test]
+fn plugin_mode_fork_state_clones_and_fork_with_wins() {
+    let plugin = KelirBuilder::named("forked");
+    let cloned = plugin.fork_state("child");
+    assert_eq!(cloned.name(), "forked");
+    let custom = KelirBuilder::named("parent")
+        .fork_with(|_child| Box::new(KelirBuilder::named("child-plugin")));
+    let forked = custom.fork_state("child");
+    assert_eq!(forked.name(), "child-plugin");
 }
 
 // see: cans/02-plugin-model.md#Unified-builder

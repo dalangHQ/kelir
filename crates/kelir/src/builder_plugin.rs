@@ -610,8 +610,9 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl<SealState, Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> KelirPlugin
-    for KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
+// see: cans/02-plugin-model.md#Chain-decisions
+impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList> KelirPlugin
+    for KelirBuilder<Plugin, SealState, Ctx, Deps, Plugins, Params>
 where
     Ctx: Clone + Send + Sync + 'static,
 {
@@ -642,8 +643,9 @@ where
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl<SealState, Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> PluginClone
-    for KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
+// see: cans/02-plugin-model.md#Chain-decisions
+impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList> PluginClone
+    for KelirBuilder<Plugin, SealState, Ctx, Deps, Plugins, Params>
 where
     Ctx: Clone + Send + Sync + 'static,
 {
@@ -667,8 +669,9 @@ where
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl<SealState, Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> AnyPlugin
-    for KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
+// see: cans/02-plugin-model.md#Chain-decisions
+impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList> AnyPlugin
+    for KelirBuilder<Plugin, SealState, Ctx, Deps, Plugins, Params>
 where
     Ctx: Clone + Send + Sync + 'static,
 {
@@ -694,8 +697,9 @@ where
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl<SealState, Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> PluginDeps
-    for KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
+// see: cans/02-plugin-model.md#Chain-decisions
+impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList> PluginDeps
+    for KelirBuilder<Plugin, SealState, Ctx, Deps, Plugins, Params>
 {
     type Deps = Deps;
 }

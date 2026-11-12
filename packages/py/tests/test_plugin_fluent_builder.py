@@ -67,13 +67,33 @@ def test_builder_chain_mounts_plugin() -> None:
     assert FusedTrampoline.fuse(plugin).hook_count(RingEvent.TRAP) == 1
 
 
-def test_require_missing_raises_econfig_at_mount() -> None:
+def test_require_missing_raises_econfig_at_seal() -> None:
     plugin = KelirBuilder.plugin("x").require("missing-dep")
-    builder = KelirBuilder()
+    builder = KelirBuilder().use(plugin)
     with pytest.raises(
         EConfig, match=r"missing prerequisite: missing-dep required by x"
     ):
-        builder.use(plugin)
+        builder.seal()
+
+
+def test_require_satisfied_out_of_order_mount_passes_at_seal() -> None:
+    plugin = KelirBuilder.plugin("x").require(LedgerPlugin)
+    builder = KelirBuilder().use(plugin).use(LedgerPlugin())
+    assert builder.seal() is builder
+
+
+def test_duplicate_mount_raises_econfig_at_seal() -> None:
+    plugin = KelirBuilder.plugin("x").on_trap(_trap)
+    builder = KelirBuilder().use(plugin).use(plugin)
+    with pytest.raises(EConfig, match=r"plugin already mounted: x"):
+        builder.seal()
+    other = KelirBuilder.plugin("x").on_trap(_trap)
+    twin = KelirBuilder().use(KelirBuilder.plugin("x")).use(other)
+    with pytest.raises(EConfig, match=r"plugin already mounted: x"):
+        twin.seal()
+    base = KelirBuilder().use(LedgerPlugin()).use(LedgerPlugin())
+    with pytest.raises(EConfig, match=r"plugin already mounted: ledger"):
+        base.seal()
 
 
 def test_host_require_missing_raises_econfig_at_boot() -> None:
@@ -100,9 +120,14 @@ def test_verb_after_mount_raises_econfig() -> None:
     with pytest.raises(EConfig, match=r"plugin already mounted: x"):
         plugin.trap(lambda t: t.on_trap(_trap))
     with pytest.raises(EConfig, match=r"plugin already mounted: x"):
+        plugin.trap(TrapFilter.binary("x"), pre=_trap)
+    with pytest.raises(EConfig, match=r"plugin already mounted: x"):
         plugin.require("ledger")
     with pytest.raises(EConfig, match=r"plugin already mounted: x"):
-        KelirBuilder().use(plugin)
+        plugin.group(lambda b: b)
+    host = KelirBuilder().use(plugin)
+    with pytest.raises(EConfig, match=r"plugin already mounted: x"):
+        host.seal()
 
 
 def test_host_only_verbs_raise_at_call_site() -> None:
@@ -138,11 +163,10 @@ def test_host_only_verbs_raise_at_call_site() -> None:
         match=r"x: host-only verb \.params\(\) called on plugin-mode builder",
     ):
         plugin.params(dict)
-    with pytest.raises(
-        EConfig,
-        match=r"x: host-only verb \.trap\(\) called on plugin-mode builder",
-    ):
-        plugin.trap(TrapFilter.binary("x"), pre=_trap)
+    # see: cans/02-plugin-model.md#Chain-decisions
+    before = len(plugin.hook_descriptors())
+    plugin.trap(TrapFilter.binary("x"), pre=_trap)
+    assert len(plugin.hook_descriptors()) == before + 1
     with pytest.raises(
         EConfig,
         match=r"x: host-only verb \.register_custom_action\(\) called on plugin-mode builder",
@@ -553,12 +577,63 @@ def test_trap_scope_on_trap_deny() -> None:
         )
 
 
-def test_plugin_instance_call_raises_econfig() -> None:
-    with pytest.raises(EConfig, match=r"mount a plugin with \.use\(plugin\)"):
-        KelirBuilder().plugin("chaos")
-    with pytest.raises(EConfig, match=r"mount a plugin with \.use\(plugin\)"):
-        KelirBuilder().plugin(LedgerPlugin())
+def test_plugin_instance_call_mounts_builder() -> None:
+    host = KelirBuilder().plugin(KelirBuilder.plugin("chaos"))
+    assert host is not None
+    assert [r.name for r in host._plugin_registrations] == ["chaos"]
     assert KelirBuilder.plugin("chaos").name == "chaos"
+    with pytest.raises(EConfig, match=r"only a plugin-mode KelirBuilder"):
+        KelirBuilder().plugin(KelirBuilder())
+
+
+def test_plugin_instance_call_with_name_raises_clear_econfig() -> None:
+    with pytest.raises(
+        EConfig, match=r"mounts a plugin-mode builder, not a name"
+    ):
+        KelirBuilder().plugin("chaos")
+    with pytest.raises(EConfig) as excinfo:
+        KelirBuilder().plugin("chaos")
+    assert "expected a BasePlugin" not in str(excinfo.value)
+    assert "KelirBuilder.plugin('chaos')" in str(excinfo.value)
+
+
+def test_plugin_instance_call_with_base_plugin_raises_clear_econfig() -> None:
+    with pytest.raises(
+        EConfig, match=r"mounts only a plugin-mode KelirBuilder"
+    ):
+        KelirBuilder().plugin(LedgerPlugin())
+
+
+def test_group_runs_block_on_same_builder() -> None:
+    plugin = KelirBuilder.plugin("x").group(lambda b: b.on_trap(_trap))
+    assert [d.ring for d in hook_descriptors(plugin)] == [RingEvent.TRAP]
+    assert plugin.group(lambda b: b) is plugin
+    assert plugin.group(lambda b: None) is plugin
+    host = KelirBuilder().group(lambda b: b.on_trap(_trap))
+    assert [d.ring for d in host.hook_descriptors()] == [RingEvent.TRAP]
+    with pytest.raises(
+        EConfig, match=r"group\(\) must return the builder it receives"
+    ):
+        KelirBuilder.plugin("y").group(lambda b: KelirBuilder.plugin("z"))
+
+
+def test_guard_applies_only_when_enabled() -> None:
+    skipped = KelirBuilder.plugin("x").guard(False, lambda b: b.on_trap(_trap))
+    assert hook_descriptors(skipped) == []
+    applied = KelirBuilder.plugin("y").guard(True, lambda b: b.on_trap(_trap))
+    assert len(hook_descriptors(applied)) == 1
+    chained = (
+        KelirBuilder.plugin("z")
+        .group(lambda b: b.on_trap(_trap))
+        .guard(True, lambda b: b.on_process_exit(lambda event: None))
+        .guard(False, lambda b: b.on_fs_lookup(lambda path: Verdict.pass_()))
+    )
+    assert [d.ring for d in hook_descriptors(chained)] == [
+        RingEvent.TRAP,
+        RingEvent.PROCESS_EXIT,
+    ]
+    with pytest.raises(EConfig, match=r"expects a bool"):
+        KelirBuilder.plugin("w").guard(1, lambda b: b.on_trap(_trap))  # type: ignore[arg-type]
 
 
 def test_context_on_host_raises_econfig() -> None:
