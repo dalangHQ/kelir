@@ -124,6 +124,7 @@ fn ts_schema_paths(source: &str) -> BTreeSet<String> {
 }
 
 // see: cans/15-operations.md#Multi-language-parity-gate
+#[allow(clippy::collapsible_if)]
 fn py_model_fields(source: &str) -> BTreeMap<String, Vec<(String, String)>> {
     let mut classes: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
     let mut current: Option<String> = None;
@@ -471,5 +472,23 @@ fn ts_and_py_profile_fields_match_the_ssot_fixture() -> Result<(), Box<dyn std::
         expected,
         "Py ProfileConfig drifted from the SSOT session-compute field list"
     );
+    Ok(())
+}
+
+// see: cans/plugins/profile.md#Session-compute-schema-(profile)
+#[tokio::test]
+async fn sandbox_profile_parses_kelir_toml_session_budget() -> Result<(), Box<dyn std::error::Error>>
+{
+    let fixture = repo_path("../../cans/artifacts/examples/fixtures/kelir.toml");
+    let sandbox = kelir::sandbox_runtime::Sandbox::from_config(&fixture).await?;
+    let Some(budget) = sandbox
+        .profile()
+        .session
+        .as_ref()
+        .and_then(|session| session.budget.as_ref())
+    else {
+        return Err("kelir.toml [session.budget] did not parse".into());
+    };
+    assert_eq!(budget.exec_seconds, Some(300));
     Ok(())
 }

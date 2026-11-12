@@ -1,6 +1,6 @@
 // see: cans/02-plugin-model.md#Unified-verdict
 
-import { kelir, createPlugin, t, LifecycleEvent, SuspendUntil, VetoEvent,
+import { kelir, createPlugin, t, LifecycleEvent, SuspendUntil, SuspendReason, VetoEvent,
          type Session } from "@kelir/core";
 
 const policyState = {
@@ -43,7 +43,7 @@ const policyPlugin = createPlugin("policy-matrix")
           },
         });
       default:
-        return null;
+        return c.pass();
     }
   })
   // see: cans/08-lifecycle.md#Watchdog
@@ -70,8 +70,8 @@ const runtime = kelir({
   rootfsErofs: "./fixtures/rootfs-policy.erofs",
   tscLocked: true, enableWatchdog: true,
 })
-  .use(policyPlugin)
-  .use(watchdogSilencer)
+  .plugin(policyPlugin)
+  .plugin(watchdogSilencer)
 
   // see: cans/11-protocol.md#Unknown-name-at-trap-time-fails-with-EUnknownAction
   .registerCustomAction("quarantine",
@@ -108,8 +108,8 @@ async function main() {
   }
 
   policyState.plannedSuspend = true;
-  await session.suspend("/tmp/policy-matrix.snap");
-  await session.resume("/tmp/policy-matrix.snap");
+  await session.suspend(SuspendReason.resourcePressure);
+  await session.resume();
   policyState.plannedSuspend = false;
 
   await session.terminate();

@@ -2,6 +2,7 @@
 
 import {
   Session,
+  SuspendReason,
   relaySocketPath,
   type NativeSessionHandle,
 } from "../dist/index.js";
@@ -136,6 +137,7 @@ function fakeNativeSession(options?: {
     calls,
     driverName: "qemu-microvm",
     bootMs: 1337,
+    sessionDir: "/tmp/test-session",
     spawn: async (
       binary: string,
       argv: string[],
@@ -592,15 +594,24 @@ async function sessionDelegatesLifecycleCalls(): Promise<void> {
     guestResult.stderr === "guest ls",
     "execInGuest surfaces the native stderr",
   );
-  await session.suspend("/tmp/snapshot.snap");
+  const reason = SuspendReason.external("human-authorization-hold");
+  await session.suspend(reason);
   check(
-    callsOf(native, "suspend")[0].args[0] === "/tmp/snapshot.snap",
-    "suspend forwards the snapshot path",
+    callsOf(native, "suspend")[0].args[0] === "/tmp/test-session/suspend.img",
+    "suspend derives the snapshot path from sessionDir",
   );
-  await session.resume("/tmp/snapshot.snap");
   check(
-    callsOf(native, "resume")[0].args[0] === "/tmp/snapshot.snap",
-    "resume forwards the snapshot path",
+    session.suspendedReason === reason,
+    "suspend records the reason on the session",
+  );
+  await session.resume();
+  check(
+    callsOf(native, "resume")[0].args[0] === "/tmp/test-session/suspend.img",
+    "resume derives the snapshot path from sessionDir",
+  );
+  check(
+    session.suspendedReason === undefined,
+    "resume clears the recorded reason",
   );
   await session.rollback();
   check(

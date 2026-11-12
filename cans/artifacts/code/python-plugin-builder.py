@@ -782,10 +782,9 @@ def _validate_scope(name: str | None, scope: Any) -> None:
 # trap scope entry point; (pattern, pre, post) is the host-only trap
 # registration (pattern filter, PRE/POST stages). The live host's
 # on_vm_init / on_vm_ready / on_vm_shutdown / on_pre_commit /
-# on_post_commit decorator properties are superseded by the ring-verb
-# methods of the same names (plain method form, returning Self);
-# on_trap_deny stays the host-only decorator property: it is not one of
-# the 24 rings. Registration-time arity check: each on_* verifies the
+# on_post_commit are ring-verb methods of the same names (plain method
+# form, returning Self), not decorator properties; on_trap_deny stays
+# the host-only decorator property: it is not one of the 24 rings. Registration-time arity check: each on_* verifies the
 # handler arity via inspect.signature and raises EConfig at registration
 # on mismatch. Vsock ordinals are assigned at registration so
 # hook_descriptors() is pure; the ring-missing EConfig now raises at

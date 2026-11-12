@@ -6,9 +6,10 @@ import inspect
 from dataclasses import dataclass
 from inspect import Parameter
 from pathlib import Path
-from types import SimpleNamespace, TracebackType
+from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, Self
 
+from kelir.service_caps import materialize_cap
 from kelir.plugin_fusion import (
     FusedTrampoline,
     HookDescriptor,
@@ -31,7 +32,7 @@ class VsockServiceEntry:
     port: int
     service: str
     schema: dict[str, Any]
-    handler: Callable[[bytes], Awaitable[bytes]]
+    handler: Callable[[bytes], Awaitable[bytes]] | None = None
 
 
 Handler = Callable[..., Any]
@@ -263,6 +264,26 @@ class _Scope:
         return self._scoped_on("on_watchdog", handler)
 
 
+# see: cans/02-plugin-model.md#Unified-builder
+def _plugin_create(name: str) -> KelirBuilder:
+    if not isinstance(name, str) or not name:
+        raise EConfig("KelirBuilder.plugin(name) expects a non-empty plugin name")
+    builder = KelirBuilder()
+    builder._mode = "plugin"
+    builder._name = name
+    return builder
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+class _PluginMount:
+    def __get__(
+        self, obj: KelirBuilder | None, objtype: type[KelirBuilder] | None = None
+    ) -> Callable[..., KelirBuilder]:
+        if obj is None:
+            return _plugin_create
+        return obj._plugin_mount
+
+
 class KelirBuilder:
     def __init__(
         self,
@@ -314,12 +335,10 @@ class KelirBuilder:
         self.enabled: bool = True
 
     # see: cans/02-plugin-model.md#Unified-builder
-    @classmethod
-    def plugin(cls, name: str) -> KelirBuilder:
-        builder = cls()
-        builder._mode = "plugin"
-        builder._name = name
-        return builder
+    plugin = _PluginMount()
+
+    def _plugin_mount(self, plugin: BasePlugin[Any, Any] | KelirBuilder) -> Self:
+        return self.use(plugin)
 
     @property
     def name(self) -> str | None:
@@ -675,14 +694,25 @@ class KelirBuilder:
         forked._next_ordinal = self._next_ordinal
         return forked
 
-    def vsock_service(self, spec: Any, handler: Handler) -> Self:
+    def vsock_service(self, spec: Any, handler: Handler | None = None) -> Self:
         self._check_mounted("vsock_service")
+        entry_handler: Handler | None = None
+        if isinstance(spec, VsockServiceEntry):
+            entry_handler = spec.handler
+        if handler is not None and entry_handler is not None:
+            raise EConfig(
+                "vsock service handler passed twice: pass it once, "
+                "as the vsock_service() argument"
+            )
+        resolved = handler if handler is not None else entry_handler
+        if resolved is None:
+            raise EConfig("vsock service declares no handler")
         raw: Any = spec.get("port") if isinstance(spec, dict) else getattr(spec, "port", None)
         if raw is not None and (
             isinstance(raw, bool) or not isinstance(raw, int) or raw < 0 or raw > 0xFFFFFFFF
         ):
             raise EConfig(f"vsock service port {raw} outside u32")
-        self._vsock.append((spec, handler))
+        self._vsock.append((spec, resolved))
         return self
 
     def _on(self, verb: str, handler: Handler) -> Self:
@@ -897,7 +927,7 @@ class KelirBuilder:
                     raise EConfig(
                         f"plugin '{registration.name}' context is not a mapping; capability struct cannot be materialized (B13)"
                     )
-                setattr(session.cap, registration.name, SimpleNamespace(**record))
+                materialize_cap(session.cap, registration.name, record)
         return session
 
     async def __aenter__(self) -> Session:

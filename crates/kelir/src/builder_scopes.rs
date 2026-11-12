@@ -1,10 +1,11 @@
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 
 use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
 use kelir_interface::plugin_model::{HandlerCtx, LifecycleCtx, PluginError};
-use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{FilterAction, Heartbeat, ProcessExit, TrapEvent, Verdict};
 
 use crate::builder_sdk::{KelirBuilder, Unsealed};
 use crate::hlist_sdk::HList;
@@ -52,7 +53,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 
     pub fn on_fs_read<F>(mut self, f: F) -> Self
     where
-        F: Fn(&Path, &mut [u8]) -> Result<(), PluginError> + Send + Sync + 'static,
+        F: Fn(&Path, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
         self.builder = self.builder.on_fs_read(f);
         self
@@ -113,7 +114,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 {
     pub fn on_console_input<F>(mut self, f: F) -> Self
     where
-        F: Fn(u32, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
+        F: Fn(u32, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
         self.builder = self.builder.on_console_input(f);
         self
@@ -121,7 +122,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 
     pub fn on_console_output<F>(mut self, f: F) -> Self
     where
-        F: Fn(u32, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
+        F: Fn(u32, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
         self.builder = self.builder.on_console_output(f);
         self
@@ -138,7 +139,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 {
     pub fn on_exec_stdout<F>(mut self, f: F) -> Self
     where
-        F: Fn(u32, u64, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
+        F: Fn(u32, u64, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
         self.builder = self.builder.on_exec_stdout(f);
         self
@@ -146,7 +147,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 
     pub fn on_exec_stderr<F>(mut self, f: F) -> Self
     where
-        F: Fn(u32, u64, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
+        F: Fn(u32, u64, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
         self.builder = self.builder.on_exec_stderr(f);
         self
@@ -185,10 +186,15 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_host_preempt<F, Fut>(mut self, f: F) -> Self
+    pub fn on_host_preempt<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.builder = self.builder.on_host_preempt(f);
         self
@@ -203,46 +209,72 @@ pub struct LifecycleScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HLis
 impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     LifecycleScope<Plugins, Params, Mode, Ctx, Deps>
 {
-    pub fn on_vm_init<F, Fut>(mut self, f: F) -> Self
+    pub fn on_vm_init<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.builder = self.builder.on_vm_init(f);
         self
     }
 
-    pub fn on_vm_ready<F, Fut>(mut self, f: F) -> Self
+    pub fn on_vm_ready<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.builder = self.builder.on_vm_ready(f);
         self
     }
 
-    pub fn on_vm_shutdown<F, Fut>(mut self, f: F) -> Self
+    pub fn on_vm_shutdown<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.builder = self.builder.on_vm_shutdown(f);
         self
     }
 
-    pub fn on_pre_commit<F, Fut>(mut self, f: F) -> Self
+    pub fn on_pre_commit<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.builder = self.builder.on_pre_commit(f);
         self
     }
 
-    pub fn on_post_commit<F, Fut>(mut self, f: F) -> Self
+    pub fn on_post_commit<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>, bool) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+                bool,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.builder = self.builder.on_post_commit(f);
         self
@@ -268,7 +300,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 
     pub fn on_heartbeat<F, Fut>(mut self, f: F) -> Self
     where
-        F: Fn(u64) -> Fut + Send + Sync + 'static,
+        F: Fn(&Heartbeat) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
         self.builder = self.builder.on_heartbeat(f);

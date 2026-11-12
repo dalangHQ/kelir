@@ -5,10 +5,12 @@
 use async_trait::async_trait;
 use kelir::{
     driver_interface::{DriverPolicy, WxPolicy},
-    planes::storage_plane::{IdmapConfig, ReadMaskEngine, StorageConfig, WorkspaceEncapsulation},
-    plugin_model::{KelirPlugin, PluginError, TrapInterposer, Verdict},
-    protocol_wire::TrapEvent,
-    KelirBuilder, PidLineage, SnapshotDescriptor, VmConfig,
+    planes::storage_plane::{
+        IdmapConfig, ReadMaskEngine, StoragePlaneConfig, WorkspaceEncapsulation,
+    },
+    plugin_model::{KelirPlugin, NoDeps, PluginDeps, PluginError, TrapInterposer, Verdict},
+    protocol_wire::{ExecveMutation, PatchPayload, TrapEvent},
+    KelirBuilder, SnapshotDescriptor, VmConfig,
 };
 use kelir_interface::plugin_model::HandlerCtx;
 
@@ -25,6 +27,10 @@ impl KelirPlugin for GitGatePlugin {
     }
 }
 
+impl PluginDeps for GitGatePlugin {
+    type Deps = NoDeps;
+}
+
 #[async_trait]
 impl TrapInterposer for GitGatePlugin {
     async fn on_trap(&self, event: &TrapEvent, _c: &HandlerCtx) -> Result<Verdict, PluginError> {
@@ -35,10 +41,20 @@ impl TrapInterposer for GitGatePlugin {
         match event.argv.get(1).map(String::as_str) {
             Some("push") => {
                 if event.argv.iter().any(|a| a == "--force") {
-                    return Ok(Verdict::Drop {
-                        errno: Some("EPOLICY".into()),
-                        reason: "EPOLICY: --force rejected".into(),
-                    });
+                    let argv: Vec<String> = event
+                        .argv
+                        .iter()
+                        .filter(|a| a.as_str() != "--force")
+                        .cloned()
+                        .collect();
+                    return Ok(Verdict::Patch(PatchPayload::ExecveMutation(
+                        ExecveMutation {
+                            new_binary: None,
+                            new_argv: Some(argv),
+                            set_env: vec![("KELIR_DISARMED".to_string(), "1".to_string())],
+                            unset_env: vec![],
+                        },
+                    )));
                 }
                 Ok(Verdict::Pass)
             }
@@ -73,6 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
             verify_hw_lockfile: false,
@@ -88,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         preemption_grace_ms: 0,
         entropy_seed: None,
     })
-    .storage(StorageConfig {
+    .storage(StoragePlaneConfig {
         idmap: IdmapConfig {
             guest_uid: 0,
             host_uid: 0,
@@ -97,18 +114,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         lock_broker: false,
         synthetic_files: vec![],
         mask_read: vec![],
-        snoops: vec![],
         encapsulation: WorkspaceEncapsulation::Passthrough,
         scan_engine: ReadMaskEngine::FastRegex,
         carryover_bytes: 1024,
     })
-    .plugin(GitGatePlugin)
+    .plugin_instance(GitGatePlugin)
     .boot()
     .await?;
 
     session.terminal.resize(120, 40)?;
     let slot = session.checkpoint.create_step(
-        PidLineage::new(1),
+        session.lineage(1),
         SnapshotDescriptor {
             id: "git-gate-base".into(),
             dirty_bytes: 0,
@@ -117,9 +133,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             guest_clock: None,
         },
     )?;
-    let node = session.checkpoint.commit_step(PidLineage::new(1))?;
+    let node = session.checkpoint.commit_step(session.lineage(1))?;
     eprintln!("[kelir] checkpoint slot={slot} node={node}");
     // TODO (L3): spawn git push --force origin main in the guest and gate it via GitGatePlugin.
-    session.stop()?;
+    session.stop().await?;
     Ok(())
 }

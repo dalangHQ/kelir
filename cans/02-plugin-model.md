@@ -136,6 +136,29 @@
       - Patch payload is registered per ring: ExecveMutation, FsInode,
         - Custom(schema)
       - Idempotency and density: see: 01-architecture.md#Codebase-invariants
+      - Hook-return pin (SSOT-A1): the split above is canonical
+        - Verdict for decision hooks (Trap, Fs lookup, Host, MCP)
+        - FilterAction for byte-transform hooks (Fs write, Net, pgwire)
+        - No per-ring aliases
+      - Reject mapping pin (SSOT-A1)
+        - Err(PluginError::Reject { errno, reason }) maps to a Drop
+        - Verdict ring: Verdict::Drop { errno: Some(errno), reason }
+        - FilterAction ring: FilterAction::Drop { errno, reason }
+        - Other PluginError variants propagate as errors
+        - See: crates/kelir-interface/src/plugin_model.rs:52
+      - Observation-event pin (SSOT-A1)
+        - on_heartbeat receives one HeartbeatEvent { uptime_ms }
+        - on_process_exit receives one ProcessExitEvent { pid, exit_code }
+        - RS is the outlier: bare uptime_ms: u64, two-arg on_process_exit
+        - See: crates/kelir-interface/src/plugin_model.rs:771-821
+        - See: crates/kelir-interface/src/protocol_wire.rs:223-244
+      - Read/console pin (SSOT-A1)
+        - Read, console, and exec-stream hooks return the buffer
+        - The buffer may be new or the same one passed in
+        - Write/net hooks mutate the passed buffer and return FilterAction
+        - RS mutates in place and returns () here; it is the outlier
+        - See: crates/kelir-interface/src/plugin_model.rs:783-808
+        - See: crates/kelir-interface/src/plugin_model.rs:838
     - Shape of the surface
       - Lifecycle, trap, and terminal hooks are `async`; storage and wire
         - hooks are synchronous; neither blocks the dispatch array
@@ -165,10 +188,15 @@
       - Storage plane fully attributed: on_fs_write carries PID and HandlerCtx
       - Control plane messages hook-observable; nothing bypasses the graph
     - Hook return semantics
-      - Every hook returns Verdict; no per-ring aliases
+      - Verdict covers decision hooks; FilterAction covers byte hooks
+        - See: #Unified-verdict
       - on_fs_lookup → Verdict::Pass = fall through; Patch(attr) = serve
-      - on_fs_write / on_net_outbound / on_net_inbound / on_host_exec → Verdict
+      - on_fs_write / on_net_outbound / on_net_inbound → FilterAction
+      - on_host_exec → Verdict
       - Trap hooks → Verdict; ring-specific defaults documented per plane
+      - SPEC CORRECTION (SSOT-A1)
+        - The Unified-verdict split is canonical: on_fs_write returns FilterAction, not Verdict
+        - See: crates/kelir-interface/src/plugin_model.rs:842-873
   - Declarative plugin macros
     - Plugins expose declarative DSL attributes expanding at assembly time
     - Macros expand to static MountScope masks and binary trap registrations
@@ -450,6 +478,12 @@
         - Console: .on_console_input, .on_console_output, .on_exec_stdout, .on_exec_stderr
         - Host: .on_host_lsm_exec, .on_host_pressure, .on_host_keyring_access
         - Lifecycle init: .on_vm_init, .on_vm_ready, .on_vm_shutdown
+        - Verdict (SSOT-A1): .on_vm_init / .on_vm_ready / .on_vm_shutdown
+          - Are live ring verbs in all three SDKs
+          - Artifact prose calling them superseded is stale
+          - A2 corrects the artifact; the spec keeps the verbs
+          - See: cans/artifacts/code/rust-plugin-builder.rs:124-125
+          - See: cans/artifacts/code/rust-plugin-builder.rs:990-991
         - Lifecycle commit: .on_pre_commit, .on_post_commit, .on_host_preempt
         - Telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
         - Vsock: .vsock_service(spec, handler)
@@ -518,7 +552,8 @@
       - Rust: seal() yields KelirBuilder<HostMode, Sealed, Ctx, Deps, Plugins, Params>
       - Rust: seal() carries Plugins: Satisfies<Deps> for host requires
       - Triple: every verb resolves to a known ring
-      - Triple: every vsock spec is valid: port 1..=65535, non-empty service
+      - Triple: every vsock spec is valid: port 1..=65535
+        - Non-empty service, non-empty schema
       - Triple: every scope value is well-formed
       - Plugin failure text names the plugin: <plugin>: <triple failure>
       - Host failure text is the bare triple text; the host has no name

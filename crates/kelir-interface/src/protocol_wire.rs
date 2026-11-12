@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::errno_types::Errno;
+pub use crate::errno_types::Errno;
 
 // see: cans/11-protocol.md#Binary-exec-channel
 macro_rules! wire_consts {
@@ -148,6 +148,31 @@ pub enum FilterAction {
     Abort {
         reason: String,
     },
+}
+
+// see: cans/10-attestation.md#Step-evaluation-loop
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PostExecAction {
+    Proceed,
+    RollbackAndHalt,
+}
+
+// see: cans/10-attestation.md#Step-evaluation-loop
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StepVerdict {
+    Commit,
+    Rollback,
+    YieldToHost,
+}
+
+impl PostExecAction {
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    pub const fn to_step_verdict(self) -> StepVerdict {
+        match self {
+            Self::Proceed => StepVerdict::Commit,
+            Self::RollbackAndHalt => StepVerdict::Rollback,
+        }
+    }
 }
 
 // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation

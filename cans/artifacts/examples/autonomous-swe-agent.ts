@@ -1,9 +1,8 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction,
-         type Session, type SnapshotDescriptor, type ExecutionReceipt,
-         type CausalDelta, type PluginContract,
-         type PolicyHandle } from "@kelir/core";
+import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction, SuspendReason, FilterAction,
+         type KelirBuilder, type Session, type SnapshotDescriptor, type ExecutionReceipt,
+         type CausalDelta, type PolicyHandle } from "@kelir/core";
 import { chaos, ledger } from "@kelir/core";
 import crypto from "node:crypto";
 
@@ -24,8 +23,16 @@ type RepoPolicyCtx = {
 
 const repoPolicyPlugin = (
   opts: { maxDiffBytes: number; protectedBranches: string[] },
-): PluginContract<"repo-policy", RepoPolicyCtx, "ledger"> =>
-  createPlugin("repo-policy", { opts });
+): KelirBuilder<"repo-policy", RepoPolicyCtx, "ledger", unknown> =>
+  createPlugin<"repo-policy", RepoPolicyCtx, typeof opts>("repo-policy", { opts })
+    .requires("ledger")
+    .onFsWrite((path, buffer, _pid, ctx) => {
+      if (path.endsWith(".diff") && buffer.byteLength > opts.maxDiffBytes) {
+        ctx.policy.recordViolation();
+        return FilterAction.Drop("ENOSPC", "diff exceeds policy ceiling");
+      }
+      return FilterAction.Forward;
+    });
 
 const runtime = kelir({
   vcpus: 4, memoryMb: 4096, driver: "auto",
@@ -34,17 +41,17 @@ const runtime = kelir({
   tscLocked: true, enableWatchdog: true,
 })
   // 1. Plugins mount first; TPlugins accumulates ledger, chaos, policy
-  .use(ledger({
+  .plugin(ledger({
     store: "sqlite://.kelir/audit.merkle.db",
     merkleChain: true,
     otel: { propagateW3cTraceparent: true, serviceName: "kelir-swe-agent" },
     receipts: { includeDirtyBytes: true, includeBinaryBlake3: true, includeSyscallCount: true },
   }))
-  .use(chaos({
+  .plugin(chaos({
     network: [{ target: "api.stripe.com", baseMs: 150, jitterMs: 30, dropRate: 0.02 }],
-    fs: [{ targetPath: "/workspace/build/cache/*", simulateError: "ENOSPC", errorProbability: 0.05 }],
+    fs: [{ targetPath: "/workspace/build/cache/*", simulateError: "enospc", errorProbability: 0.05 }],
   }))
-  .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024, protectedBranches: ["main", "master", "release/*"] }))
+  .plugin(repoPolicyPlugin({ maxDiffBytes: 64 * 1024, protectedBranches: ["main", "master", "release/*"] }))
 
   // 2. Planes and hooks mount next; c.ledger is statically inferred without manual generics
   .terminal({
@@ -75,10 +82,6 @@ const runtime = kelir({
           if (evt.falsifiedResult) throw new Error("EPERM: harness hallucination detected.");
           const producerBlake3 = await c.ledger.blake3OfProducingProcess(path);
           await oracle.ingestHarnessEvent({ path, event: evt, producerBlake3 });
-        } },
-      { path: "**/*.diff", sync: true,
-        onWrite: async (_path, raw) => {
-          if (raw.byteLength > 64 * 1024) throw new Error("ENOSPC: diff exceeds policy ceiling");
         } },
     ],
   })
@@ -152,7 +155,7 @@ const runtime = kelir({
                        env: { KELIR_DISARMED: "1" } });
     return c.patch({
       binary: "/bin/git",
-      argv: ["git", "push", "origin", `HEAD:refs/heads/agent/${crypto.randomUUID().slice(0, 8)}`],
+      argv: [...c.trap.argv, `HEAD:refs/heads/agent/${crypto.randomUUID().slice(0, 8)}`],
       env:  { KELIR_REWRITTEN: "1" },
     });
   })
@@ -217,9 +220,9 @@ async function main() {
     if (!winner) { await session.vm.rollback(baseSnap); return; }
     winningDelta = winner.delta;
 
-    await session.suspend("/tmp/eval.snap");
+    await session.suspend(SuspendReason.external("human-authorization-hold"));
     await oracle.awaitHumanApproval();
-    await session.resume("/tmp/eval.snap");
+    await session.resume();
 
     // see: cans/05-storage-plane.md#Atomic-commit-reconciler
     const stats = await session.storage.reconcile({
@@ -236,7 +239,7 @@ async function main() {
     console.log("[kelir] merkle root:", final.merkleRoot);
     console.log("[kelir] signed JWS: ", final.signedJws.slice(0, 80) + "…");
   } finally {
-    await session.suspend("/tmp/eval.snap");
+    await session.suspend(SuspendReason.external("human-authorization-hold"));
     await session.terminate();
   }
 }

@@ -22,7 +22,7 @@ impl PipelineEngine {
             if fused.is_none() {
                 self.foreign_submit_complete();
             }
-            outcome?;
+            *bytes = outcome?;
         }
         drop(fused);
         Ok(())
@@ -48,7 +48,7 @@ impl PipelineEngine {
             if fused.is_none() {
                 self.foreign_submit_complete();
             }
-            outcome?;
+            *chunk = outcome?;
         }
         drop(fused);
         // see: cans/04-terminal-plane.md#Terminal-pipeline
@@ -79,7 +79,7 @@ impl PipelineEngine {
             if fused.is_none() {
                 self.foreign_submit_complete();
             }
-            outcome?;
+            *chunk = outcome?;
         }
         drop(fused);
         // see: cans/04-terminal-plane.md#Binary-exec-channel-(terminal-plane)
@@ -116,7 +116,7 @@ impl PipelineEngine {
             if fused.is_none() {
                 self.foreign_submit_complete();
             }
-            outcome?;
+            *chunk = outcome?;
         }
         drop(fused);
         // see: cans/04-terminal-plane.md#Binary-exec-channel-(terminal-plane)

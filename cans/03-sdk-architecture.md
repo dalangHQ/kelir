@@ -30,6 +30,12 @@
       - .use(plugin) populates c.cap (Python) / c.<pluginKey> (TS) at boot, not before
       - capability struct materializes from the plugin's Context at boot
       - it is not a stub; it exists before the first handler invocation
+      - Capability keys are plugin names (SSOT-A1 pin)
+        - Keys: ledger, db-proxy, policy, transaction, container
+        - The db key is "db-proxy", not "db"
+        - See: cans/plugins/db-proxy.md:5
+      - Non-conforming: cans/artifacts/examples/db-backed-runtime.py:84
+        - Reads c.cap.db; Py spells the hyphenated key db_proxy
       - No string-keyed service registry on any SDK
     - Authoring model
       - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
@@ -85,7 +91,12 @@
           - Python: Verdict.pass_() / .patch / .drop / .suspend / .abort
         - Console interposer signature (all SDKs)
           - on_console_input(port, bytes) / on_console_output(port, chunk)
-          - port identifies the virtio-console port; bytes mutated in place
+          - port identifies the virtio-console port
+          - The handler returns the (possibly new) buffer
+          - Pin (SSOT-A1): return-new-buffer
+            - The former "bytes mutated in place" sided with RS only
+            - RS mutates in place and returns (); it is the outlier
+            - See: crates/kelir-interface/src/plugin_model.rs:783-808
         - Suspend surface naming
           - Rust: Verdict::Suspend { until: SuspendUntil }
           - TS: c.suspend(SuspendUntil.deadline | .approval | .handshake)
@@ -109,6 +120,18 @@
             - see: 08-lifecycle.md#Hypervisor-primitives
           - session.rollback() | control
             - no socket-preserving flag; see: 08-lifecycle.md#Rollback
+          - session.suspend(reason) / session.resume() | control
+            - see: 08-lifecycle.md#Suspend-and-resume
+            - Per-SDK spelling (SSOT-A1)
+              - Rust: Session.suspend(reason: SuspendReason) / resume()
+              - TS: Session.suspend(path) / resume(path)
+              - Python: Session.suspend() / resume(path)
+              - The pin takes a reason and derives the path
+              - TS suspend(path) / resume(path) are non-conforming
+              - Py resume(path) is non-conforming
+              - Py suspend() derives the path but takes no reason
+            - Sandbox.suspend() takes no argument in all SDKs
+              - It delegates to session suspend
       - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
         - Stream kind registration: builder.register_stream_kind(kind, handler)
           - core kinds frozen; plugin kinds registered at boot
@@ -147,6 +170,49 @@
           - No PMU-derived field is compared cross-host
         - Decision static constructors (Py/RS) vs c.deny/c.resume/c.rewrite (TS)
         - Lifecycle decorators/methods (Py/RS) vs .on(LifecycleEvent.VmReady) (TS)
+      - Convergence pins (SSOT-A1): one form per concept
+        - The language tracks conform to these
+        - The spec does not bend to the outlier
+        - Winner rule: first branch in branch order with exitCode == 0 wins
+          - RS picks the first branch to finish; it is the outlier
+          - See: cans/artifacts/examples/autonomous-swe-agent.rs:626-633
+        - Git-push argv rewrite
+          - Append HEAD:refs/heads/agent/<8 lowercase hex> to argv
+          - Preserve the remote and flags
+          - TS rebuilds argv from scratch; it is the outlier
+          - See: cans/artifacts/examples/autonomous-swe-agent.ts:155
+        - Mount alias
+          - Instance .plugin(obj) mounts a plugin instance in Python
+          - And in TypeScript; both are an alias of .use
+          - Rust has no .plugin(obj) overload; its live forms are
+          - .plugin(KelirBuilder<Plugin>) for the builder merge
+          - .plugin_instance(P) for the trait path
+          - See: crates/kelir/src/builder_sdk.rs:428-490
+        - Transaction scope
+          - scope(name, paths, schemas, inodes) is an async context manager
+          - It yields a handle-bound Tx with savepoint()
+          - And rollback_to_savepoint(sp) / commit() / abort()
+          - The service trait stays handle-threaded (begin_scope, commit)
+          - And abort, savepoint, rollback_to_savepoint
+          - See: crates/kelir-plugins/plugin-transaction/src/service_transaction.rs:30-46
+        - Ledger finalize
+          - finalize(FinalizeRequest { include_delta, include_merkle_root })
+          - Returns FinalReceipt { merkle_root, signed_jws }
+          - include_delta is a required CausalDelta
+          - TS allows a missing/null includeDelta; it is the outlier
+          - See: crates/kelir-plugins/plugin-ledger/src/lib.rs:91-102
+        - Container ingest
+          - ingest_image(tarball) returns the image id string
+          - See: crates/kelir-plugins/plugin-container/src/service_container.rs:18
+        - DriverPolicy.driver is Option<String>
+          - It names the selected backend, None for default
+          - See: crates/kelir-interface/src/driver_interface.rs:50-59
+          - The artifact lacks the field (non-conforming here)
+        - Suspend/resume, hook returns, event shapes, vsock, custom action
+          - See: 08-lifecycle.md#Suspend-and-resume
+          - See: 02-plugin-model.md#Unified-verdict
+          - See: 11-protocol.md#Custom-dispatch-contract
+        - Fixture values: see: plugins/profile.md
   - Idiomatic Surfaces Law
     - TS, Python, and Rust do not copy each other's method names
     - Each enforces 1:1 behavioral and wire parity against vectors.json
@@ -192,6 +258,10 @@
     - Plugin context may hold Arc<Mutex<_>>; that is userland, not engine state
     - Engine functional-core invariant: see: [1]
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
+      - handler() was deleted deliberately, it must not be re-added
+        - It was an unused identity fn in builder_sdk.rs
+        - Not a missing API; examples use direct closures instead
+        - See: cans/_collab/handoffs.md:16
       - Accepts core KelirPlugin plus only needed ring traits
         - Stateless plugins implement KelirPlugin with zero fork_state boilerplate
         - Example trait bounds follow the split; unneeded traits stay unimplemented

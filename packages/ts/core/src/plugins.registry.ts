@@ -21,7 +21,7 @@ export interface NetworkFaultRule {
 
 export interface StorageFaultRule {
   readonly targetPath?: string;
-  readonly simulateError?: string;
+  readonly simulateError?: "eperm" | "eacces" | "enoent" | "einval" | "enospc" | "erofs" | "econnrefused" | "enxio" | "ewouldblock" | "efault" | "ebusy" | "exdev" | "epipe" | "enodata" | "eproto" | "epolicy" | "etoolquota" | "ewxviolation" | "econfig" | "esecurityviolation" | "eunknownkind" | "eclockregress";
   readonly errorProbability?: number;
 }
 

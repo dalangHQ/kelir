@@ -11,9 +11,12 @@ import kelir
 from kelir import (
     Caps,
     CheckpointHandle,
+    External,
     HostHandle,
+    ResourcePressure,
     SpawnResult,
     StorageHandle,
+    SuspendReason,
     TerminalHandle,
     VmHandle,
     VsockHandle,
@@ -27,6 +30,7 @@ class Session:
         self.driver_name: str = ""
         self.boot_ms: int = 0
         self.cap = Caps()
+        self.suspended_reason: SuspendReason | None = None
         self.vm = VmHandle(self)
         self.terminal = TerminalHandle()
         self.storage = StorageHandle()
@@ -84,13 +88,23 @@ class Session:
         # TODO (L3): exec binary in the guest via the PyO3 _kelir bridge.
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session exec_in_guest (L3)")
 
-    async def suspend(self) -> None:
+    async def suspend(self, reason: SuspendReason) -> None:
+        if isinstance(reason, type) or not isinstance(
+            reason, (External, ResourcePressure)
+        ):
+            raise EConfig(
+                "session suspend reason must be External(kind) or "
+                "ResourcePressure(), "
+                f"got {type(reason).__name__}"
+            )
         native = kelir._require_native(self._native, "session suspend")
         native.suspend(str(self.session_dir() / "suspend.img"))
+        self.suspended_reason = reason
 
-    async def resume(self, path: str) -> None:
+    async def resume(self) -> None:
         native = kelir._require_native(self._native, "session resume")
-        native.resume(path)
+        native.resume(str(self.session_dir() / "suspend.img"))
+        self.suspended_reason = None
 
     # see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
     def session_dir(self) -> Path:

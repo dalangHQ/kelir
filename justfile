@@ -68,6 +68,10 @@ check-plugin-coverage:
 check-examples-canonical:
     ./scripts/check-examples-canonical.sh
 
+# --examples: the canonical examples compile/typecheck in all three languages.
+check-examples:
+    ./scripts/check-examples.sh
+
 # Compile-only gate for drivers with no CI test runner (Android AVF,
 # Termux proot); test execution needs hardware CI does not have.
 check-drivers:
@@ -355,4 +359,4 @@ check-types:
 check-gates: check-manifest check-tests check-scenarios check-scorecard
 
 # Full local gate: every check above, in dependency order. Excludes test-integration (hypervisor), test-drivers-windows/macos (platform jobs), build-shim cross-compile, check-spec-touched (PR-only).
-check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-hygiene lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon
+check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-examples check-hygiene lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon

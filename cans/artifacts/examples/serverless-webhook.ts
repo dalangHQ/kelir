@@ -1,6 +1,6 @@
 // see: cans/08-lifecycle.md#State-machine
 
-import { kelir, t, PostExecAction,
+import { kelir, t, PostExecAction, SuspendReason,
          type ExecutionReceipt } from "@kelir/core";
 import { wireIngress, mcp, toolGuard, ledger } from "@kelir/core";
 
@@ -27,7 +27,7 @@ const runtime = kelir({
 
   // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
   // see: cans/plugins/wire-ingress.md#On-rollback:-parked-connections-get-TCP-RST-(post-handshake:-503-close)
-  .use(wireIngress({
+  .plugin(wireIngress({
     listen: { port: 8443, protocol: "https" },
     parking: { maxBufferedBytes: 64 * 1024, idleTimeoutMs: 30_000 },
     // see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
@@ -37,11 +37,9 @@ const runtime = kelir({
   }))
 
   // see: cans/plugins/mcp.md#Stream-kind-MCP-CONSOLE-routes-directly-to-MCP-client-without-PTY-conflict
-  // TODO: live McpConfig has no transport/advertise fields; SSOT transport MCP_CONSOLE + advertise webhook.dispatch/webhook.replay dropped as config, see cans/plugins/mcp.md#Transport:-JSON-RPC-2.0-over-MCP-CONSOLE-mux-stream
-  .use(mcp({}))
+  .plugin(mcp({}))
 
-  // TODO: live ToolGuardConfig has no approvals field; SSOT approvals webhook.replay hold 500ms dropped as config, see cans/plugins/tool-guard.md#Host-approval-binds-strictly-to-canonical-arguments-and-payload-hash
-  .use(toolGuard({
+  .plugin(toolGuard({
     // see: cans/plugins/tool-guard.md#Immutable-schema-locking
     pinSchemas: true,
     // see: cans/plugins/tool-guard.md#Call-quota
@@ -49,8 +47,7 @@ const runtime = kelir({
   }))
 
   // see: cans/plugins/ledger.md#Merkle-WAL
-  // TODO: SSOT otel.traceParent matches no live field; spec name is propagate_w3c_traceparent, live TS field propagateW3cTraceparent used, see cans/plugins/ledger.md#OpenTelemetry
-  .use(ledger({
+  .plugin(ledger({
     store: "sqlite://.kelir/webhook.merkle.db",
     merkleChain: true,
     otel: { propagateW3cTraceparent: true, serviceName: "kelir-webhook" },
@@ -87,7 +84,7 @@ async function main() {
     }
     console.log(`[kelir] served ${served} webhook(s) across wake cycles`);
   } finally {
-    await session.suspend("/tmp/webhook-idle.snap");
+    await session.suspend(SuspendReason.external("human-authorization-hold"));
     await session.terminate();
   }
 }

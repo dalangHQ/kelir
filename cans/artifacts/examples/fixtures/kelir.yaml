@@ -269,7 +269,6 @@ wire:
     # Upstream corporate proxy chaining.
     upstream_dial:
       env_lookup: true                # Reads HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY
-      dial_timeout_ms: 5000
 
     # L4 TCP socket proxy mapping.
     proxies:
@@ -358,7 +357,6 @@ terminal:
   # Headless Screen Matrix Framebuffer.
   wireframe_grid:
     track_screen_matrix: true         # Maintains embedded VT100 state machine
-    export_on_trap: true              # Attaches terminal screenshot hash to ExecutionReceipt
 
 # ------------------------------------------------------------------------------
 # 7. CHECKPOINT PLANE (Step Verification Loop, CoW Diffs, Hardware Rollback)
@@ -618,6 +616,11 @@ plugins:
     socket_path: "/run/kelir/mcp.sock"
     framing: "json_lines"             # Strict newline-delimited JSON (no Content-Length header)
     max_frame_bytes: 65536
+
+  # ─── PLUGIN: REPO-POLICY (Branch Protection & Diff Limits) ───────
+  repo-policy:
+    max_diff_bytes: 65536
+    protected_branches: ["main", "master", "release/*"]
 
 # ------------------------------------------------------------------------------
 # 10. HARDWARE ATTESTATION & FACT EMISSION

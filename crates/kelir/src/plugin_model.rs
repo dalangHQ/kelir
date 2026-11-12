@@ -10,4 +10,4 @@ pub use kelir_interface::plugin_model::{
     PluginClone, PluginDeps, SystemTelemetryParticipant, TrapInterposer, VetoEvent, VirtioDevice,
     VirtioRing,
 };
-pub use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdict};
+pub use kelir_interface::protocol_wire::{Errno, FilterAction, ProcessExit, TrapEvent, Verdict};

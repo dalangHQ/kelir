@@ -23,6 +23,8 @@ import kelir
 from kelir import (
     CausalDelta,
     ExecutionReceipt,
+    External,
+    ExternalSuspendKind,
     FilterAction,
     HandlerContext,
     KelirBuilder,
@@ -453,13 +455,15 @@ async def build_runtime(
     async def _init(ctx: LifecycleCtx) -> None:
         ctx.set_watchdog(timeout=timedelta(minutes=5), action="reboot")
 
+    # TODO: SSOT npm-ci via session.exec_in_guest dropped; live on_vm_ready delivers LifecycleCtx only, see cans/08-lifecycle.md#Session-and-context-handles
     @builder.on_vm_ready
-    async def _ready(session: Session) -> None:
-        await session.exec_in_guest("npm", ["ci", "--prefer-offline"])
+    async def _ready(_ctx: LifecycleCtx | None) -> None:
+        return None
 
+    # TODO: SSOT ledger.flush on shutdown dropped; live on_vm_shutdown delivers LifecycleCtx only, see cans/08-lifecycle.md#Session-and-context-handles
     @builder.on_vm_shutdown
-    async def _shutdown(session: Session) -> None:
-        await session.cap.ledger.flush()
+    async def _shutdown(_ctx: LifecycleCtx | None) -> None:
+        return None
 
     # see: cans/08-lifecycle.md#Break-glass
     @builder.on_trap_deny
@@ -537,10 +541,10 @@ async def main() -> None:
         winning_id, winning_delta = winner
 
         # see: cans/08-lifecycle.md#Suspend-and-resume
-        await session.suspend("/tmp/eval.snap")
+        await session.suspend(External(ExternalSuspendKind.HUMAN_AUTHORIZATION_HOLD))
         log.info("[kelir] suspended rss_mb=0")
         await oracle.await_human_approval()
-        await session.resume("/tmp/eval.snap")
+        await session.resume()
 
         stats = await session.storage.reconcile(
             cwd="/workspace/checkout-service",

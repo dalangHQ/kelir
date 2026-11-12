@@ -1,7 +1,7 @@
 // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::LifecycleParticipant;
 use kelir_interface::plugin_model::PluginError;
+use kelir_interface::protocol_wire::Errno;
 use kelir_plugin_testkit::block_on;
 use plugin_transaction::{
     Savepoint, TransactionConfig, TransactionHandle, TransactionPlugin, TransactionScope,

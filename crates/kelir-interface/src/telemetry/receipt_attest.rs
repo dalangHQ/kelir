@@ -35,8 +35,7 @@ pub enum ExitKind {
 pub struct ExecutionReceipt {
     pub pid: u32,
     pub binary_path: String,
-    #[serde(with = "crate::hex_codec::serde_hex_32")]
-    pub binary_blake3: [u8; 32],
+    pub binary_blake3: String,
     pub exit_kind: ExitKind,
     pub correlation_token: Option<String>,
     pub dirty_bytes: u64,

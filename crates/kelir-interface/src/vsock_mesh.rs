@@ -49,6 +49,7 @@ pub const VAULT_METADATA_VSOCK_PORT: u32 = 80;
 pub struct VsockServiceSpec {
     pub port: u32,
     pub service: String,
+    pub schema: Option<serde_json::Value>,
 }
 
 // see: cans/03-sdk-architecture.md#Session-surfaces

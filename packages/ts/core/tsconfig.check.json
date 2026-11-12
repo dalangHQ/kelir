@@ -2,9 +2,17 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": ".",
+    "rootDir": "../../..",
     "baseUrl": ".",
-    "paths": { "@kelir/core": ["./src/index.ts"] }
+    "paths": {
+      "@kelir/core": [
+        "./src/index.ts"
+      ]
+    }
   },
-  "include": ["src/**/*", "tests/*.test.ts", "examples/*.ts"]
+  "include": [
+    "src/**/*",
+    "tests/*.test.ts",
+    "../../../cans/artifacts/examples/*.ts"
+  ]
 }

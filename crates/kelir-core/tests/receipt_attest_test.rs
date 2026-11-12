@@ -121,10 +121,7 @@ fn ar_10_receipt_struct_exhaustiveness_lint() -> Result<(), String> {
     assert_eq!(receipt.binary_path, "/bin/true");
     assert_eq!(
         receipt.binary_blake3,
-        kelir_interface::hex_codec::decode_hex_fixed::<32>(
-            "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
-        )
-        .map_err(|e| e.to_string())?
+        "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
     );
     match &receipt.exit_kind {
         ExitKind::Normal => {}
@@ -214,9 +211,7 @@ async fn ar_07_exit_code_patch_chain_divergence() -> Result<(), String> {
     };
     let ctx: HandlerCtx<(), ()> = HandlerCtx::new([0u8; 16], 42, (), Vec::new()).with_trap(trap);
     let receipt = ctx.receipt().await.map_err(|e| e.to_string())?;
-    let final_blake3 = kelir_interface::hex_codec::decode_hex_fixed::<32>(AR07_FINAL_HEX)
-        .map_err(|e| e.to_string())?;
-    if receipt.binary_blake3 != final_blake3 {
+    if receipt.binary_blake3 != AR07_FINAL_HEX {
         return Err(format!(
             "receipt.binary_blake3 = {:?}; the receipt must record the FINAL binary of the rewrite chain {AR07_FINAL_HEX} while the frozen trap keeps the original {AR07_ORIGINAL_HEX}",
             receipt.binary_blake3

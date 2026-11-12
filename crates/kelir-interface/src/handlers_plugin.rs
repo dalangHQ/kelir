@@ -260,7 +260,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         Ok(ExecutionReceipt {
             pid: self.pid,
             binary_path: String::new(),
-            binary_blake3: [0u8; 32],
+            binary_blake3: String::new(),
             exit_kind: ExitKind::Normal,
             correlation_token: None,
             dirty_bytes: 0,

@@ -346,7 +346,7 @@ async fn sandbox_facade_fails_closed_before_boot() -> Result<(), String> {
     )
     .await
     .map_err(|e| e.to_string())?;
-    match sandbox.resume("/tmp/snap").await {
+    match sandbox.resume().await {
         Err(PluginError::Halt(message)) if message.contains("Sandbox::resume before boot") => {}
         other => return Err(format!("resume before boot gave {other:?}")),
     }

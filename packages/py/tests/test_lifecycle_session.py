@@ -14,12 +14,14 @@ import pytest
 
 import kelir
 from kelir import (
+    Approval,
     Caps,
     ClockHandle,
     Deadline,
     ExecveMutation,
     FilterAction,
     HandlerContext,
+    Handshake,
     KelirBuilder,
     PostExecAction,
     Sandbox,
@@ -160,8 +162,8 @@ def test_session_surface_shapes() -> None:
     assert session.driver_name == ""
     assert session.boot_ms == 0
     assert isinstance(session.cap, Caps)
-    assert not hasattr(session.cap, "db")
-    assert not hasattr(session.cap, "policy")
+    assert session.cap.db_proxy.rewrite_target == ""
+    assert session.cap.policy.violations == 0
 
 
 def test_session_native_calls_raise_econfig() -> None:
@@ -336,6 +338,10 @@ def _canonical_verdict_wire(verdict: Verdict) -> Any:
         until = verdict.payload["until"]
         if isinstance(until, Deadline):
             return {"Suspend": {"until": {"Deadline": until.value}}}
+        if isinstance(until, Approval):
+            return {"Suspend": {"until": "Approval"}}
+        if isinstance(until, Handshake):
+            return {"Suspend": {"until": "Handshake"}}
         return {"Suspend": {"until": until}}
     return {"Abort": {"reason": verdict.payload["reason"]}}
 
@@ -356,7 +362,7 @@ def test_handler_context_verdict_convenience_matches_vectors_wire_literals() -> 
             )
         ),
         "trap-mutating-tool-suspend-approval": _canonical_verdict_wire(
-            ctx.suspend("Approval")
+            ctx.suspend(Approval())
         ),
         "trap-clock-skew-deadline-suspend": _canonical_verdict_wire(
             ctx.suspend(Deadline(60000))
@@ -480,21 +486,21 @@ def test_builder_vsock_service_validates_u32_port() -> None:
         return request
 
     builder = KelirBuilder()
-    entry = VsockServiceEntry(port=0, service="echo", schema={}, handler=handler)
+    entry = VsockServiceEntry(port=0, service="echo", schema={})
     assert builder.vsock_service(entry, handler) is builder
-    entry = VsockServiceEntry(port=0xFFFFFFFF, service="echo", schema={}, handler=handler)
+    entry = VsockServiceEntry(port=0xFFFFFFFF, service="echo", schema={})
     assert builder.vsock_service(entry, handler) is builder
     assert len(builder.vsock_services) == 2
     assert builder.vsock_services[0].port == 0
     assert builder.vsock_services[1].port == 0xFFFFFFFF
     with pytest.raises(EConfig, match=r"outside u32"):
-        entry = VsockServiceEntry(port=-1, service="echo", schema={}, handler=handler)
+        entry = VsockServiceEntry(port=-1, service="echo", schema={})
         builder.vsock_service(entry, handler)
     with pytest.raises(EConfig, match=r"outside u32"):
-        entry = VsockServiceEntry(port=0x100000000, service="echo", schema={}, handler=handler)
+        entry = VsockServiceEntry(port=0x100000000, service="echo", schema={})
         builder.vsock_service(entry, handler)
     with pytest.raises(EConfig, match=r"outside u32"):
-        entry = VsockServiceEntry(port=True, service="echo", schema={}, handler=handler)
+        entry = VsockServiceEntry(port=True, service="echo", schema={})
         builder.vsock_service(entry, handler)
 
 
@@ -626,9 +632,9 @@ def test_sandbox_before_boot_raises_econfig() -> None:
     with pytest.raises(EConfig, match=r"Sandbox\.rollback before boot"):
         asyncio.run(sandbox.rollback())
     with pytest.raises(EConfig, match=r"Sandbox\.suspend before boot"):
-        asyncio.run(sandbox.suspend())
+        asyncio.run(sandbox.suspend(kelir.ResourcePressure()))
     with pytest.raises(EConfig, match=r"Sandbox\.resume before boot"):
-        asyncio.run(sandbox.resume("/tmp/snap"))
+        asyncio.run(sandbox.resume())
     with pytest.raises(EConfig, match=r"Sandbox\.reconcile before boot"):
         asyncio.run(sandbox.reconcile())
     with pytest.raises(EConfig, match=r"Sandbox\.stop before boot"):

@@ -4,7 +4,7 @@
 // see: cans/plugins/replay.md#Replay-mode-requires-network-isolation-for-determinism
 
 use kelir::{
-    KelirBuilder, PidLineage, ReplayConfig, ReplayPlugin, SnapshotDescriptor, VmConfig,
+    KelirBuilder, ReplayConfig, ReplayPlugin, SnapshotDescriptor, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
 };
 
@@ -20,6 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
             verify_hw_lockfile: false,
@@ -36,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         entropy_seed: Some(0x5EED),
     })
-    .plugin(ReplayPlugin::new(ReplayConfig {
+    .plugin_instance(ReplayPlugin::new(ReplayConfig {
         step_window: 1_000_000,
         kernel_params: vec![
             "clocksource=kvm-clock".into(),
@@ -51,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     for run in 0..2 {
         let slot = session.checkpoint.create_step(
-            PidLineage::new(1),
+            session.lineage(1),
             SnapshotDescriptor {
                 id: format!("replay-run-{run}"),
                 dirty_bytes: 0,
@@ -60,10 +61,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 guest_clock: None,
             },
         )?;
-        let node = session.checkpoint.commit_step(PidLineage::new(1))?;
+        let node = session.checkpoint.commit_step(session.lineage(1))?;
         eprintln!("[kelir] run {run} -> slot={slot} node={node}");
     }
     // TODO (L3): spawn date +%s.%N in the guest twice and replay both runs deterministically.
-    session.stop()?;
+    session.stop().await?;
     Ok(())
 }

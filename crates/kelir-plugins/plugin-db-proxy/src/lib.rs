@@ -10,13 +10,12 @@ pub use service_db_proxy::SqlProxyService;
 
 use std::sync::Arc;
 
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     KelirPlugin, MountScope, NetInterposer, NoDeps, PipelineBinder, PluginDeps, StreamFrameSink,
     VirtioDevice,
 };
-use kelir_interface::protocol_wire::{FilterAction, StreamKind, Verdict};
+use kelir_interface::protocol_wire::{Errno, FilterAction, StreamKind, Verdict};
 
 use crate::pgwire_db_proxy::PgFrameDescriptor;
 use crate::reassembler_wire::{

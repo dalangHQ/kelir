@@ -10,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .boot()
         .await?;
 
-    let r = box_.exec("git").args(["status"]).await?;
+    let r = box_.exec("git", &["status"]).await?;
     eprintln!("[kelir] git status -> exit={}", r.exit_code);
 
     box_.export_spec("./fixtures/kelir.exported.toml").await?;

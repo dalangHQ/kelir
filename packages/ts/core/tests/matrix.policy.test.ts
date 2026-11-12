@@ -1,6 +1,6 @@
 // see: cans/02-plugin-model.md#Unified-verdict
 
-import { kelir, createPlugin, t, LifecycleEvent, SuspendUntil, VetoEvent,
+import { kelir, createPlugin, t, LifecycleEvent, SuspendReason, SuspendUntil, VetoEvent,
          type Session } from "../dist/index.js";
 
 
@@ -112,8 +112,8 @@ async function policyMatrixCase_trapVerdictRows(session: Session): Promise<void>
 
 async function policyMatrixCase_suspendResumeWithWatchdogVeto(session: Session): Promise<void> {
   policyState.plannedSuspend = true;
-  await session.suspend("/tmp/policy-matrix.snap");
-  await session.resume("/tmp/policy-matrix.snap");
+  await session.suspend(SuspendReason.resourcePressure);
+  await session.resume();
   policyState.plannedSuspend = false;
 }
 

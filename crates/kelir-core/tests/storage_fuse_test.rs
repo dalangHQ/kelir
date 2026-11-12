@@ -125,15 +125,16 @@ impl FsInterposer for MaskingFs {
     fn on_fs_read(
         &self,
         _path: &Path,
-        buffer: &mut [u8],
-    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        if let Some(at) = buffer
+        buffer: &[u8],
+    ) -> Result<Vec<u8>, kelir_interface::plugin_model::PluginError> {
+        let mut out = buffer.to_vec();
+        if let Some(at) = out
             .windows(b"AKIAABCDEFGHIJKLMNOP".len())
             .position(|window| window == b"AKIAABCDEFGHIJKLMNOP")
         {
-            buffer[at..at + 20].copy_from_slice(b"REDACTED.aws.key.000");
+            out[at..at + 20].copy_from_slice(b"REDACTED.aws.key.000");
         }
-        Ok(())
+        Ok(out)
     }
 }
 

@@ -57,6 +57,16 @@
       - Real credentials never enter guest physical RAM
     - Bidirectional extraction
       - export_spec() emits active plugin topologies to TOML or YAML
+    - Fixture canonical values (SSOT-A1)
+      - Mesh lives under plugins.mesh in both fixtures
+        - See: cans/artifacts/examples/fixtures/kelir.yaml:570
+        - See: cans/artifacts/examples/fixtures/kelir.toml:193
+      - Repo-policy protected branches are ["main", "master", "release/*"]
+        - In all three examples; the TOML fixture lists only ["main"]
+        - See: cans/artifacts/examples/autonomous-swe-agent.rs:230
+        - See: cans/artifacts/examples/autonomous-swe-agent.py:291
+        - See: cans/artifacts/examples/autonomous-swe-agent.ts:47
+        - See: cans/artifacts/examples/fixtures/kelir.toml:248
     - Root invariants (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#invariants.default_zero_capability
       - see: artifacts/examples/fixtures/kelir.yaml#invariants.physicality_check
@@ -90,6 +100,11 @@
       - see: artifacts/examples/fixtures/kelir.yaml#session.compute.vcpus
       - session.compute.max_vcpus: TBD (set_vcpus exists, no VmConfig field yet)
       - see: artifacts/examples/fixtures/kelir.yaml#session.compute.memory_mb
+      - Canonical fixture values (SSOT-A1): vcpus 4, memory_mb 4096
+        - The YAML fixture wins
+        - The TOML fixture (vcpus 2, memory_mb 1024) is non-conforming
+        - See: cans/artifacts/examples/fixtures/kelir.yaml:72-74
+        - See: cans/artifacts/examples/fixtures/kelir.toml:32-34
       - see: artifacts/examples/fixtures/kelir.yaml#session.compute.page_size_kb
     - Session balloon (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#session.balloon.enabled

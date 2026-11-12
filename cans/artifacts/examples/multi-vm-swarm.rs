@@ -12,7 +12,7 @@ use serde::Deserialize;
 use tokio::task::JoinSet;
 
 use kelir::{
-    HCons, HNil, KelirBuilder, LedgerConfig, LedgerCtx, LedgerPlugin, MeshConfig, MeshCtx,
+    HCons, HNil, Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerPlugin, MeshConfig, MeshCtx,
     MeshPlugin, NoParams, PackageGuardConfig, PeerIdentity, PeerListener, ReceiptConfig, Session,
     SnapshotDescriptor, SupplyChainConfig, SupplyChainCtx, SupplyChainPlugin,
     TraceParentPropagation, Unsealed, VmConfig, WxJitConfig,
@@ -38,7 +38,7 @@ enum WorkerAction {
 const SWARM_REGION: &str = "swarm-coordination";
 const SWARM_BYTES: usize = 32;
 
-fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
+fn swarm_builder() -> KelirBuilder<Host, Unsealed, (), HNil, SwarmPlugins, NoParams> {
     KelirBuilder::new(VmConfig {
         vcpus: 4,
         memory_mb: 8192,
@@ -48,6 +48,7 @@ fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
         enable_watchdog: true,
         enable_gpu_passthrough: true,
         driver_policy: DriverPolicy {
+            driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
             verify_hw_lockfile: false,
@@ -68,7 +69,7 @@ fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
         non_blocking: true,
     })
     // see: cans/plugins/mesh.md#Plugin-mesh
-    .plugin(MeshPlugin::new(MeshConfig {
+    .plugin_instance(MeshPlugin::new(MeshConfig {
         peer_identity: PeerIdentity::Spiffe {
             trust_domain: "kelir.local".into(),
             workload_prefix: "swarm/worker".into(),
@@ -87,7 +88,7 @@ fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
         ],
     }))
     // see: cans/plugins/supply-chain.md#Plugin-supply-chain
-    .plugin(SupplyChainPlugin::new(SupplyChainConfig {
+    .plugin_instance(SupplyChainPlugin::new(SupplyChainConfig {
         wx_jit: WxJitConfig::default(),
         package_guard: PackageGuardConfig {
             managers: vec!["npm".into(), "pip".into(), "cargo".into()],
@@ -95,9 +96,10 @@ fn swarm_builder() -> KelirBuilder<Unsealed, SwarmPlugins, NoParams> {
         },
     }))
     // see: cans/plugins/ledger.md#Plugin-ledger
-    .plugin(LedgerPlugin::new(true).with_config(LedgerConfig {
+    .plugin_instance(LedgerPlugin::new(true).with_config(LedgerConfig {
         store: ".kelir/swarm-audit.merkle.db".into(),
         merkle_chain: true,
+        suppress_local_db: false,
         otel: None,
         receipts: ReceiptConfig {
             include_syscall_count: false,
@@ -115,7 +117,7 @@ async fn boot_swarm(
         VetoEvent::Fork,
         Box::new(move || veto_flag.load(Ordering::SeqCst)),
     );
-    let session = builder.seal().boot().await?;
+    let session = builder.seal()?.boot().await?;
 
     session.terminal.resize(120, 40)?;
     session.checkpoint.create_step(
@@ -138,7 +140,7 @@ async fn run_shard(
     mut child: Session<SwarmPlugins, NoParams>,
     shard_id: u32,
     total: u32,
-) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(u32, i32), Box<dyn std::error::Error + Send + Sync>> {
     child.checkpoint.create_step(
         child.lineage(1),
         SnapshotDescriptor {
@@ -151,8 +153,8 @@ async fn run_shard(
     )?;
     child.checkpoint.commit_step(child.lineage(1))?;
     // TODO (L3): map the shard-exchange shared region, spawn cargo test --shard, and publish the result via MeshCtx.
-    child.stop()?;
-    Ok(true)
+    child.stop().await?;
+    Ok((shard_id, 0))
 }
 
 #[tokio::main]
@@ -161,24 +163,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let mut joins = JoinSet::new();
     for shard_id in 0..8u32 {
-        let child = session.fork()?;
+        let child = session.fork().await?;
         joins.spawn(async move { run_shard(child, shard_id, 8).await });
     }
 
     let mut passed = 0u32;
+    let mut winner: Option<u32> = None;
     while let Some(join) = joins.join_next().await {
-        if join?? {
+        let (shard_id, code) = join??;
+        if code == 0 {
             passed += 1;
+            if winner.is_none() {
+                winner = Some(shard_id);
+            }
         }
     }
 
-    let winner = session
+    match session
         .ctx::<MeshCtx, _>()
         .await_winner(Duration::from_secs(2))
-        .await?;
-    eprintln!("[kelir] {passed}/8 shards passed; winner shard={winner}");
+        .await
+    {
+        Ok(mesh_winner) => eprintln!("[kelir] mesh winner shard={mesh_winner}"),
+        Err(err) => eprintln!("[kelir] mesh await_winner pending (L3): {err}"),
+    }
+    eprintln!("[kelir] {passed}/8 shards passed; winner shard={winner:?}");
     // TODO (L3): count supply-chain denials via session.ctx::<LedgerCtx>() once LedgerCtx grows the by-kind counter per cans/plugins/ledger.md#Ledger-handler-API.
 
-    session.stop()?;
+    session.stop().await?;
     Ok(())
 }

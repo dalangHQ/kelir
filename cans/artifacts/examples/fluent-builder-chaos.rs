@@ -4,7 +4,7 @@
 // see: cans/artifacts/examples/fluent-builder-chaos.py#build_chaos_plugin
 
 use kelir::plugin_model::{FilterAction, MountScope};
-use kelir::{KelirBuilder, LedgerPlugin};
+use kelir::{HCons, HNil, KelirBuilder, LedgerCtx, LedgerPlugin, NoParams, Plugin, Unsealed};
 
 // see: cans/02-plugin-model.md#Unified-builder
 // The canonical chaos plugin: identical behaviour in all three languages.
@@ -13,7 +13,8 @@ use kelir::{KelirBuilder, LedgerPlugin};
 // No build(): the plugin-mode builder is mounted as-is, and the host's
 // seal() validates it. The concrete KelirBuilder type parameters follow
 // the spec arity pin (cans/02-plugin-model.md#Unified-builder, A1).
-pub fn build_chaos_plugin() -> KelirBuilder {
+pub fn build_chaos_plugin(
+) -> KelirBuilder<Plugin, Unsealed, (), HCons<LedgerCtx, HNil>, HNil, NoParams> {
     KelirBuilder::named("chaos")
         .require::<LedgerPlugin>()
         .scope(MountScope::default().with_paths(["/workspace"]))

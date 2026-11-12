@@ -31,7 +31,7 @@ async function checkRejects(
 async function sandboxFailsClosedBeforeBoot(): Promise<void> {
   const box = await Sandbox.create();
   await checkRejects(
-    box.resume("/tmp/snap"),
+    box.resume(),
     "Sandbox.resume before boot",
     "resume rejects before boot",
   );

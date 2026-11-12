@@ -2,6 +2,7 @@
 
 import { KelirBuilder, type KelirConfig } from "./builder.lifecycle.js";
 import { Session } from "./session.lifecycle.js";
+import type { SuspendReason } from "./verdict.protocol.js";
 import { EConfig } from "./errors.sdk.js";
 import type { SpawnResult } from "./types.core.js";
 import {
@@ -134,19 +135,19 @@ export class Sandbox {
   }
 
   // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
-  async suspend(): Promise<void> {
+  async suspend(reason: SuspendReason): Promise<void> {
     if (this.booted === null) {
       throw new EConfig("Sandbox.suspend before boot");
     }
-    return this.booted.suspend(`${this.booted.sessionDir}/suspend.img`);
+    return this.booted.suspend(reason);
   }
 
   // see: cans/08-lifecycle.md#Suspend-and-resume
-  async resume(path: string): Promise<void> {
+  async resume(): Promise<void> {
     if (this.booted === null) {
       throw new EConfig("Sandbox.resume before boot");
     }
-    return this.booted.resume(path);
+    return this.booted.resume();
   }
 
   async reconcile(options: {

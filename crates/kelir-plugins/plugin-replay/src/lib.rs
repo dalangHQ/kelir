@@ -8,13 +8,14 @@ use async_trait::async_trait;
 use kelir_interface::driver_interface::{
     EntropyBackend, EntropyStreamPosition, PmuSample, PmuSampler, VmmError,
 };
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PluginDeps,
 };
+use kelir_interface::protocol_wire::Errno;
 
 // see: cans/plugins/replay.md#Error-and-return-semantics-(replay)
+const ECLOCKREGRESS: Errno = Errno::Eclockregress;
 
 // see: cans/artifacts/examples/replay.rs#ReplayConfig
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.replay
@@ -121,7 +122,7 @@ impl ReplayState {
                 "PMU sample timestamp regressed: {sampled_at_ns}ns behind floor {floor}ns"
             ));
             return Err(PluginError::reject(
-                Errno::Eclockregress,
+                ECLOCKREGRESS,
                 "PMU sample timestamp regressed behind the monotonic floor",
             ));
         }

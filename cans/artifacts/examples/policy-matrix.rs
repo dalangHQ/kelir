@@ -11,21 +11,21 @@ use std::sync::{
 
 use async_trait::async_trait;
 use ciborium::value::Value as CborValue;
+use serde::{Deserialize, Serialize};
 use kelir_interface::driver_interface::SuspendReason;
 use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::HandlerCtx;
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 use kelir::{
-    HCons, HNil, KelirBuilder, NoParams, PidLineage, SnapshotDescriptor, Unsealed, VmConfig,
+    HCons, HNil, Host, KelirBuilder, NoParams, SnapshotDescriptor, Unsealed, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
-    handler,
     plugin_model::{
-        AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant, PluginError,
-        SystemTelemetryParticipant, TrapInterposer, Verdict, VetoEvent, WatchdogEvent,
-        WatchdogVerdict,
+        AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PluginDeps,
+        PluginError, SystemTelemetryParticipant, TrapInterposer, Verdict, VetoEvent,
+        WatchdogEvent, WatchdogVerdict,
     },
-    protocol_wire::{ExecveMutation, PatchPayload, SuspendUntil, TrapEvent},
+    protocol_wire::{Errno, ExecveMutation, PatchPayload, SuspendUntil, TrapEvent},
 };
 
 #[derive(Default)]
@@ -133,6 +133,10 @@ impl KelirPlugin for PolicyMatrixPlugin {
     }
 }
 
+impl PluginDeps for PolicyMatrixPlugin {
+    type Deps = NoDeps;
+}
+
 #[async_trait]
 impl LifecycleParticipant for PolicyMatrixPlugin {
     async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
@@ -167,7 +171,7 @@ impl TrapInterposer for PolicyMatrixPlugin {
             "policy-allow" => Ok(Verdict::Pass),
 
             "policy-deny" => Ok(Verdict::Drop {
-                errno: Some("EPOLICY".into()),
+                errno: Some(Errno::Epolicy),
                 reason: "EPOLICY: policy-matrix denies this binary.".into(),
             }),
             // Row 3: Patch — env mutation ONLY through the ExecveMutation
@@ -200,16 +204,13 @@ impl TrapInterposer for PolicyMatrixPlugin {
 
             "policy-custom" => Ok(Verdict::Patch(PatchPayload::Custom {
                 name: "quarantine".into(),
-                cbor: CborValue::Map(vec![
-                    (
-                        CborValue::Text("pid".into()),
-                        CborValue::Integer(event.pid.into()),
-                    ),
-                    (
-                        CborValue::Text("reason".into()),
-                        CborValue::Text("policy-matrix quarantine row".into()),
-                    ),
-                ]),
+                cbor: CborValue::serialized(&QuarantinePayload {
+                    pid: event.pid,
+                    reason: "policy-matrix quarantine row".into(),
+                })
+                .map_err(|err| {
+                    PluginError::Halt(format!("quarantine payload encode failed: {err}"))
+                })?,
             })),
             _ => Ok(Verdict::Pass),
         }
@@ -250,6 +251,10 @@ impl KelirPlugin for WatchdogSilencerPlugin {
     }
 }
 
+impl PluginDeps for WatchdogSilencerPlugin {
+    type Deps = NoDeps;
+}
+
 #[async_trait]
 impl SystemTelemetryParticipant for WatchdogSilencerPlugin {
     async fn on_watchdog(&self, _event: &WatchdogEvent) -> Result<WatchdogVerdict, PluginError> {
@@ -267,7 +272,13 @@ impl SystemTelemetryParticipant for WatchdogSilencerPlugin {
 
 type PolicyPlugins = HCons<(), HCons<(), HNil>>;
 
-type PolicyBuilder = KelirBuilder<Unsealed, PolicyPlugins, NoParams>;
+type PolicyBuilder = KelirBuilder<Host, Unsealed, (), HNil, PolicyPlugins, NoParams>;
+
+#[derive(Deserialize, Serialize)]
+struct QuarantinePayload {
+    pid: u32,
+    reason: String,
+}
 
 fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + Sync>> {
     struct EchoVsock;
@@ -319,6 +330,7 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
             verify_hw_lockfile: false,
@@ -334,8 +346,8 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
         preemption_grace_ms: 0,
         entropy_seed: None,
     })
-    .plugin(policy)
-    .plugin(WatchdogSilencerPlugin::new(shared))
+    .plugin_instance(policy)
+    .plugin_instance(WatchdogSilencerPlugin::new(shared))
     .register_custom_action(
         "quarantine",
         serde_json::json!({
@@ -346,30 +358,23 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
             },
             "required": ["pid", "reason"],
         }),
-        handler(move |payload: CborValue| {
+        move |payload: QuarantinePayload| {
             let quarantine_state = Arc::clone(&quarantine_state);
             async move {
-                if let CborValue::Map(entries) = payload {
-                    for (k, v) in entries {
-                        if k == CborValue::Text("pid".into()) {
-                            if let CborValue::Integer(pid) = v {
-                                quarantine_state
-                                    .quarantined_pids
-                                    .lock()
-                                    .unwrap_or_else(|e| e.into_inner())
-                                    .push(i128::from(pid) as u32);
-                            }
-                        }
-                    }
-                }
-                Ok(())
+                quarantine_state
+                    .quarantined_pids
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push(payload.pid);
+                Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
             }
-        }),
+        },
     )
     .vsock_service(
         VsockServiceSpec {
             port: 0x0013,
             service: "echo".to_string(),
+            schema: None,
         },
         EchoVsock,
     );
@@ -395,7 +400,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "policy-custom",
     ] {
         let slot = session.checkpoint.create_step(
-            PidLineage::new(1),
+            session.lineage(1),
             SnapshotDescriptor {
                 id: format!("policy-matrix-{binary}"),
                 dirty_bytes: 0,
@@ -404,15 +409,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 guest_clock: None,
             },
         )?;
-        let node = session.checkpoint.commit_step(PidLineage::new(1))?;
+        let node = session.checkpoint.commit_step(session.lineage(1))?;
         eprintln!("[kelir] {binary} -> slot={slot} node={node}");
     }
     // TODO (L3): spawn each policy binary in the guest and drive the policy matrix over it.
     // TODO (L3): open a vsock channel on port 0x0013 and echo policy-matrix:ping through it.
 
-    session.suspend(SuspendReason::ResourcePressure)?;
-    session.resume()?;
+    session.suspend(SuspendReason::ResourcePressure).await?;
+    session.resume().await?;
 
-    session.stop()?;
+    session.stop().await?;
     Ok(())
 }

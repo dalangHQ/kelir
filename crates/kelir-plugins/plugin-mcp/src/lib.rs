@@ -176,25 +176,25 @@ impl LifecycleParticipant for McpPlugin {
 // see: cans/plugins/mcp.md#MCP-hook-wiring
 #[async_trait]
 impl ConsoleInterposer for McpPlugin {
-    async fn on_console_input(&self, port: u32, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
-        let _ = (port, bytes);
+    async fn on_console_input(&self, port: u32, bytes: &[u8]) -> Result<Vec<u8>, PluginError> {
+        let _ = port;
         // TODO (L3): stream JSON-RPC frames from the MCP client into MCP_CONSOLE per cans/plugins/mcp.md.
-        Ok(())
+        Ok(bytes.to_vec())
     }
 
-    async fn on_console_output(&self, port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
-        let _ = (port, chunk);
+    async fn on_console_output(&self, port: u32, chunk: &[u8]) -> Result<Vec<u8>, PluginError> {
+        let _ = port;
         // TODO (L3): stream JSON-RPC frames from MCP_CONSOLE back to the MCP client per cans/plugins/mcp.md.
-        Ok(())
+        Ok(chunk.to_vec())
     }
 }
 
 // see: cans/plugins/mcp.md#MCP-hook-wiring
 impl FsInterposer for McpPlugin {
-    fn on_fs_read(&self, path: &Path, buffer: &mut [u8]) -> Result<(), PluginError> {
-        let _ = (path, buffer);
+    fn on_fs_read(&self, path: &Path, buffer: &[u8]) -> Result<Vec<u8>, PluginError> {
+        let _ = path;
         // TODO (L3): expose guest reads as the read_file tool per cans/plugins/mcp.md.
-        Ok(())
+        Ok(buffer.to_vec())
     }
 
     fn on_fs_write(

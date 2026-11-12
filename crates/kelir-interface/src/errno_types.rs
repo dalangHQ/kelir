@@ -134,3 +134,10 @@ impl std::str::FromStr for Errno {
         }
     }
 }
+
+// see: cans/02-plugin-model.md#Unified-verdict
+impl From<&str> for Errno {
+    fn from(value: &str) -> Self {
+        value.parse().unwrap_or(Self::Eperm)
+    }
+}

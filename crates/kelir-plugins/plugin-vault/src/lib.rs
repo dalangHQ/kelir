@@ -233,6 +233,7 @@ impl KelirPlugin for VaultPlugin {
             VsockServiceSpec {
                 port: self.config.metadata_vsock_port,
                 service: "kelir-credentials".into(),
+                schema: None,
             },
             handler,
             self.default_scope(),

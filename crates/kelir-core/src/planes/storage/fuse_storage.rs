@@ -3,10 +3,9 @@
 // see: cans/05-storage-plane.md#Host-inode-lock-broker
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
 // see: cans/02-plugin-model.md#Hook-return-semantics
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{FsContext, FsInodeAttr, FsInterposer, HandlerCtx};
-use kelir_interface::protocol_wire::{FilterAction, PatchPayload, Verdict};
+use kelir_interface::protocol_wire::{Errno, FilterAction, PatchPayload, Verdict};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -17,6 +16,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use super::StorageQuota;
 use super::lock_broker::{LockBroker, LockKind, LockRequest};
 use super::storage_synthetic::SyntheticFile;
+use crate::dispatch_plugin::map_reject_to_filter_action;
 
 mod uapi_fuse;
 
@@ -193,8 +193,7 @@ impl FuseDispatcher {
                         "FUSE LOOKUP Patch payload is not an FsInode".into(),
                     )),
                     Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(
-                        "FUSE LOOKUP denied: {reason} ({})",
-                        errno.map_or("none", |errno| errno.as_str())
+                        "FUSE LOOKUP denied: {reason} ({errno:?})"
                     ))),
                     Verdict::Suspend { .. } => Err(PluginError::Halt(
                         "FUSE LOOKUP interposer returned Suspend, unsupported for lookup".into(),
@@ -220,8 +219,9 @@ impl FuseDispatcher {
                         });
                     }
                 }
-                self.interposer
-                    .on_fs_read(&request.path, &mut request.data)?;
+                request.data = self
+                    .interposer
+                    .on_fs_read(&request.path, &request.data)?;
                 Ok(FuseResponse {
                     guest_inode: request.guest_inode,
                     // TODO (L3): fill read payload from broker read at offset.
@@ -279,7 +279,7 @@ impl FuseDispatcher {
                         reply: FuseReply::Errno(-libc::ENOSPC),
                     });
                 }
-                match self.interposer.on_fs_write(
+                match map_reject_to_filter_action(self.interposer.on_fs_write(
                     request.path.as_path(),
                     &mut request.data,
                     request.pid,
@@ -289,7 +289,7 @@ impl FuseDispatcher {
                         journal: 0,
                         offset: 0,
                     }),
-                )? {
+                ))? {
                     // see: cans/05-storage-plane.md#FUSE-opcode-table
                     FilterAction::Forward => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
@@ -348,8 +348,7 @@ impl FuseDispatcher {
                         reply: FuseReply::Payload(Vec::new()),
                     }),
                     Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(
-                        "FUSE SETLK denied: {reason} ({})",
-                        errno.map_or("none", |errno| errno.as_str())
+                        "FUSE SETLK denied: {reason} ({errno:?})"
                     ))),
                     Verdict::Patch(_) => Err(PluginError::Halt(
                         "FUSE SETLK interposer returned Patch, unsupported for locks".into(),
@@ -385,16 +384,16 @@ fn drop_errno(errno: Errno) -> Result<i32, PluginError> {
         Errno::Econnrefused => Ok(libc::ECONNREFUSED),
         Errno::Enoent => Ok(libc::ENOENT),
         Errno::Einval => Ok(libc::EINVAL),
-        Errno::Epipe => Ok(libc::EPIPE),
         Errno::Enodata => Ok(libc::ENODATA),
+        Errno::Epipe => Ok(libc::EPIPE),
         Errno::Eproto => Ok(libc::EPROTO),
-        Errno::Epolicy
+        Errno::Econfig
+        | Errno::Epolicy
         | Errno::Etoolquota
         | Errno::Ewxviolation
-        | Errno::Econfig
+        | Errno::Eclockregress
         | Errno::Esecurityviolation
-        | Errno::Eunknownkind
-        | Errno::Eclockregress => Err(PluginError::Halt(format!(
+        | Errno::Eunknownkind => Err(PluginError::Halt(format!(
             "FUSE errno {errno} has no POSIX mapping on the storage plane"
         ))),
     }

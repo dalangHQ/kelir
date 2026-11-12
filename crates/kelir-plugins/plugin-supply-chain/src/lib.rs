@@ -389,6 +389,7 @@ impl KelirPlugin for SupplyChainPlugin {
             VsockServiceSpec {
                 port: WX_ALLOC_VSOCK_PORT,
                 service: "wx-alloc".into(),
+                schema: None,
             },
             service,
             self.default_scope(),

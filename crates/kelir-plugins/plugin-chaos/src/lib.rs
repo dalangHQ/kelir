@@ -3,15 +3,13 @@
 
 // TODO (L3): tests/test_chaos.rs per cans/artifacts/config/project-structure.txt.
 use std::path::Path;
-use std::str::FromStr;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     FsInterposer, HandlerCtx, KelirPlugin, NetInterposer, NoDeps, PipelineBinder, PluginDeps,
 };
-use kelir_interface::protocol_wire::{FilterAction, SuspendUntil};
+use kelir_interface::protocol_wire::{Errno, FilterAction, SuspendUntil};
 
 pub use kelir_interface::chaos_types::FaultDirection;
 
@@ -34,7 +32,7 @@ pub struct NetworkFaultRule {
 #[derive(Clone, Debug)]
 pub struct StorageFaultRule {
     pub target_path: String,
-    pub simulate_error: String,
+    pub simulate_error: Errno,
     pub error_probability: f64,
 }
 
@@ -149,14 +147,8 @@ impl ChaosPlugin {
             }
             if self.error_sampled(rule)? {
                 // see: cans/05-storage-plane.md#Write-gating
-                let errno = Errno::from_str(&rule.simulate_error).map_err(|unknown| {
-                    PluginError::reject(
-                        Errno::Einval,
-                        format!("chaos: simulate_error carries {unknown}"),
-                    )
-                })?;
                 return Ok(FilterAction::Drop {
-                    errno: Some(errno),
+                    errno: Some(rule.simulate_error),
                     reason: format!("chaos: simulated storage fault on {}", rule.target_path),
                 });
             }

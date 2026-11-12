@@ -91,7 +91,7 @@ impl PipelineEngine {
     }
 
     // see: cans/14-observability.md#Metrics-pipeline
-    pub async fn dispatch_heartbeat(&self, uptime_ms: u64) -> Result<(), PluginError> {
+    pub async fn dispatch_heartbeat(&self, event: &Heartbeat) -> Result<(), PluginError> {
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::Heartbeat)?;
         for participant in &self.telemetry_interceptors {
@@ -99,7 +99,7 @@ impl PipelineEngine {
                 // see: cans/01-architecture.md#FFI-boundary-economics
                 self.try_foreign_submit()?;
             }
-            let outcome = quarantine_unit(participant.on_heartbeat(uptime_ms)).await;
+            let outcome = quarantine_unit(participant.on_heartbeat(event)).await;
             if fused.is_none() {
                 self.foreign_submit_complete();
             }
@@ -107,6 +107,22 @@ impl PipelineEngine {
         }
         drop(fused);
         Ok(())
+    }
+
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    // TODO (L3): the step-evaluation loop calls this per committed step per cans/10-attestation.md#Step-evaluation-loop.
+    pub async fn dispatch_post_exec(
+        &self,
+        event: &TrapEvent,
+        ctx: &HandlerCtx,
+    ) -> Result<StepVerdict, PluginError> {
+        for gate in &self.post_exec_gates {
+            let action = quarantine_unit(gate.check(event, ctx)).await?;
+            if action != PostExecAction::Proceed {
+                return Ok(action.to_step_verdict());
+            }
+        }
+        Ok(StepVerdict::Commit)
     }
 
     // see: cans/08-lifecycle.md#Watchdog

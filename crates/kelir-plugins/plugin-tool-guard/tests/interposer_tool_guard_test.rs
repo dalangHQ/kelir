@@ -1,8 +1,8 @@
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::ConsoleInterposer;
 use kelir_interface::plugin_model::KelirPlugin;
 use kelir_interface::plugin_model::PluginError;
+use kelir_interface::protocol_wire::Errno;
 use kelir_plugin_testkit::block_on;
 use plugin_tool_guard::ToolGuardPlugin;
 use plugin_tool_guard::service_tool_guard::{
@@ -62,8 +62,8 @@ fn gt_02_immutable_schema_locking_esecurity() -> Result<(), String> {
 #[test]
 fn tool_guard_unparsed_frame_fails_closed() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
-    let mut bytes = b"\x00not-a-json-rpc-frame".to_vec();
-    match block_on(plugin.on_console_input(0x0012, &mut bytes)) {
+    let bytes = b"\x00not-a-json-rpc-frame".to_vec();
+    match block_on(plugin.on_console_input(0x0012, &bytes)) {
         Err(PluginError::Reject { errno, reason }) => {
             if errno != Errno::Eperm {
                 return Err(format!(
@@ -81,7 +81,7 @@ fn tool_guard_unparsed_frame_fails_closed() -> Result<(), String> {
                 "unparsed frame must reject with EPERM, got {err:?}"
             ));
         }
-        Ok(()) => {
+        Ok(_) => {
             return Err(
                 "unparsed MCP frame passed through tool-guard; interposition must fail closed"
                     .into(),
@@ -95,16 +95,18 @@ fn tool_guard_unparsed_frame_fails_closed() -> Result<(), String> {
 #[test]
 fn tool_guard_pty_port_0_not_interposed() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
-    let mut bytes = b"\x00not-a-json-rpc-frame".to_vec();
+    let bytes = b"\x00not-a-json-rpc-frame".to_vec();
     let before = bytes.clone();
-    block_on(plugin.on_console_input(0, &mut bytes)).map_err(|err| format!("{err:?}"))?;
-    if bytes != before {
+    let returned =
+        block_on(plugin.on_console_input(0, &bytes)).map_err(|err| format!("{err:?}"))?;
+    if returned != before {
         return Err("tool-guard mutated PTY port 0 bytes; interposition must not reach it".into());
     }
-    let mut chunk = b"\x00not-a-json-rpc-frame".to_vec();
+    let chunk = b"\x00not-a-json-rpc-frame".to_vec();
     let chunk_before = chunk.clone();
-    block_on(plugin.on_console_output(0, &mut chunk)).map_err(|err| format!("{err:?}"))?;
-    if chunk != chunk_before {
+    let returned =
+        block_on(plugin.on_console_output(0, &chunk)).map_err(|err| format!("{err:?}"))?;
+    if returned != chunk_before {
         return Err("tool-guard mutated PTY port 0 output; interposition must not reach it".into());
     }
     Ok(())
@@ -197,9 +199,9 @@ fn gt_04_token_bucket_call_quota_etoolquota() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
     pin_tool(&plugin, "shell")?;
     for call in 1..=5u64 {
-        let mut frame = tools_call_frame("shell", call);
-        match block_on(plugin.on_console_input(0x0012, &mut frame)) {
-            Ok(()) => {}
+        let frame = tools_call_frame("shell", call);
+        match block_on(plugin.on_console_input(0x0012, &frame)) {
+            Ok(_) => {}
             Err(e) => {
                 return Err(format!(
                     "burst call {call} under bucket capacity 5 must pass, got {e:?}"
@@ -207,13 +209,13 @@ fn gt_04_token_bucket_call_quota_etoolquota() -> Result<(), String> {
             }
         }
     }
-    let mut sixth = tools_call_frame("shell", 6);
-    match block_on(plugin.on_console_input(0x0012, &mut sixth)) {
+    let sixth = tools_call_frame("shell", 6);
+    match block_on(plugin.on_console_input(0x0012, &sixth)) {
         Err(PluginError::Halt(message)) if message.starts_with("ETOOLQUOTA:") => {}
         Err(e) => {
             return Err(format!("6th burst call must reject ETOOLQUOTA, got {e:?}"));
         }
-        Ok(()) => {
+        Ok(_) => {
             return Err("6th burst call passed; the token-bucket governor must exhaust".into());
         }
     }
@@ -225,9 +227,9 @@ fn gt_04_token_bucket_call_quota_etoolquota() -> Result<(), String> {
 #[ignore]
 fn gt_06_payload_secret_pattern_scrub() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
-    let mut chunk = b"Authentication failed with token: ghp_secret_token_1234567890abcdef".to_vec();
-    block_on(plugin.on_console_output(0x0012, &mut chunk)).map_err(|e| e.to_string())?;
-    let text = String::from_utf8(chunk).map_err(|e| e.to_string())?;
+    let chunk = b"Authentication failed with token: ghp_secret_token_1234567890abcdef".to_vec();
+    let scrubbed = block_on(plugin.on_console_output(0x0012, &chunk)).map_err(|e| e.to_string())?;
+    let text = String::from_utf8(scrubbed).map_err(|e| e.to_string())?;
     assert!(
         !text.contains("ghp_secret_token_1234567890abcdef"),
         "host secret must be purged from the scrubbed output, got: {text}"
@@ -246,8 +248,10 @@ fn gt_08_schema_drift_method_not_found() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
     pin_tool(&plugin, "read_file")?;
     let mut frame = tools_call_frame("unregistered_tool", 1);
-    match block_on(plugin.on_console_input(0x0012, &mut frame)) {
-        Ok(()) => {}
+    match block_on(plugin.on_console_input(0x0012, &frame)) {
+        Ok(returned) => {
+            frame = returned;
+        }
         Err(e) => {
             return Err(format!(
                 "unpinned tool call must return a framed JSON-RPC error, got {e:?}"
@@ -273,8 +277,10 @@ fn gt_09_verdict_drop_jsonrpc_error_synthesis() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
     pin_tool(&plugin, "read_file")?;
     let mut frame = b"\x00not-a-json-rpc-frame".to_vec();
-    match block_on(plugin.on_console_input(0x0012, &mut frame)) {
-        Ok(()) => {}
+    match block_on(plugin.on_console_input(0x0012, &frame)) {
+        Ok(returned) => {
+            frame = returned;
+        }
         Err(e) => {
             return Err(format!(
                 "Drop verdict must keep the stream open with a framed error, got {e:?}"
@@ -301,9 +307,9 @@ fn gt_10_tool_call_depth_recursion_ceiling() -> Result<(), String> {
     pin_tool(&plugin, "shell")?;
     let mut saw_pass = false;
     for call in 1..=51u64 {
-        let mut frame = tools_call_frame("shell", call);
-        match block_on(plugin.on_console_input(0x0012, &mut frame)) {
-            Ok(()) => {
+        let frame = tools_call_frame("shell", call);
+        match block_on(plugin.on_console_input(0x0012, &frame)) {
+            Ok(_) => {
                 if call == 51 {
                     return Err("51st call passed; the per-trace ceiling must reject".into());
                 }
@@ -338,9 +344,9 @@ fn gt_10_tool_call_depth_recursion_ceiling() -> Result<(), String> {
 fn gt_01_jsonrpc_tool_call_interposition() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
     pin_tool(&plugin, "execute_command")?;
-    let mut frame = tools_call_frame("execute_command", 1);
-    match block_on(plugin.on_console_input(0x0012, &mut frame)) {
-        Ok(()) => {}
+    let frame = tools_call_frame("execute_command", 1);
+    match block_on(plugin.on_console_input(0x0012, &frame)) {
+        Ok(_) => {}
         Err(e) => {
             return Err(format!(
                 "tools/call frame for pinned execute_command must be intercepted and forwarded, got {e:?}"
@@ -360,9 +366,9 @@ fn gt_03_taint_tracking_mutation_suspend() -> Result<(), String> {
     registry
         .mark_tainted("write_file")
         .map_err(|err| format!("{err:?}"))?;
-    let mut frame = br#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"write_file","arguments":{"path":"deploy.sh","content":"rm -rf /"}}}"#
+    let frame = br#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"write_file","arguments":{"path":"deploy.sh","content":"rm -rf /"}}}"#
         .to_vec();
-    match block_on(plugin.on_console_input(0x0012, &mut frame)) {
+    match block_on(plugin.on_console_input(0x0012, &frame)) {
         Err(PluginError::Halt(message))
             if message.contains("approval") || message.contains("suspend") => {}
         Err(e) => {
@@ -370,7 +376,7 @@ fn gt_03_taint_tracking_mutation_suspend() -> Result<(), String> {
                 "tainted write_file must suspend for approval, got {e:?}"
             ));
         }
-        Ok(()) => {
+        Ok(_) => {
             return Err("tainted write_file passed without the approval suspend".into());
         }
     }
@@ -387,9 +393,9 @@ fn gt_12_model_controlled_flag_taint_override() -> Result<(), String> {
     registry
         .mark_tainted("write_file")
         .map_err(|err| format!("{err:?}"))?;
-    let mut frame = br#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"write_file","arguments":{"path":"a.txt","override_taint":true,"trusted":true}}}"#
+    let frame = br#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"write_file","arguments":{"path":"a.txt","override_taint":true,"trusted":true}}}"#
         .to_vec();
-    match block_on(plugin.on_console_input(0x0012, &mut frame)) {
+    match block_on(plugin.on_console_input(0x0012, &frame)) {
         Err(PluginError::Halt(message))
             if message.contains("approval") || message.contains("suspend") => {}
         Err(e) => {
@@ -397,7 +403,7 @@ fn gt_12_model_controlled_flag_taint_override() -> Result<(), String> {
                 "override_taint arguments must not bypass the approval gate, got {e:?}"
             ));
         }
-        Ok(()) => {
+        Ok(_) => {
             return Err("override_taint arguments bypassed the taint gate".into());
         }
     }

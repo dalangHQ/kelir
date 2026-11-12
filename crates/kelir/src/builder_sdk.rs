@@ -10,8 +10,8 @@ use kelir_interface::fusion_plugin::FilterSnapshot;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     AnyPlugin, CompositePlugin, ConsoleInterposer, FsInterposer, HostInterposer, LifecycleEvent,
-    LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps, StreamFrameSink,
-    SystemTelemetryParticipant, TrapInterposer, VetoEvent, VetoList,
+    LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps, PostExecGate,
+    StreamFrameSink, SystemTelemetryParticipant, TrapInterposer, VetoEvent, VetoList,
 };
 use kelir_interface::protocol_wire::{StreamKind, TrapEvent};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
@@ -27,11 +27,7 @@ use crate::session_lifecycle::Session;
 #[cfg(feature = "plugin-tool-guard")]
 use plugin_tool_guard::{ToolGuardPlugin, ToolSpec};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PostExecAction {
-    Proceed,
-    RollbackAndHalt,
-}
+pub use crate::protocol_wire::{PostExecAction, StepVerdict};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unsealed;
@@ -211,6 +207,7 @@ pub(crate) struct HookRegistry {
     pub(crate) lifecycle: Vec<Arc<dyn LifecycleParticipant>>,
     pub(crate) telemetry: Vec<Arc<dyn SystemTelemetryParticipant>>,
     pub(crate) vsock: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>)>,
+    pub(crate) post_exec: Vec<Arc<dyn PostExecGate>>,
 }
 
 impl HookRegistry {
@@ -239,6 +236,9 @@ impl HookRegistry {
         }
         for stage in &self.telemetry {
             pipeline.bind_telemetry_scoped(Arc::clone(stage), scope.clone());
+        }
+        for gate in &self.post_exec {
+            pipeline.bind_post_exec_scoped(Arc::clone(gate), scope.clone());
         }
     }
 
@@ -563,22 +563,36 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         self
     }
 
-    pub fn register_custom_action<F, Fut>(
+    pub fn register_custom_action<T, F, Fut>(
         mut self,
         name: &str,
         schema: serde_json::Value,
         f: F,
     ) -> Self
     where
-        F: Fn(ciborium::value::Value) -> Fut + Clone + Send + Sync + 'static,
+        T: serde::de::DeserializeOwned + Send + 'static,
+        F: Fn(T) -> Fut + Clone + Send + Sync + 'static,
         Fut: Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
     {
         self.registration.custom_actions.push(CustomActionEntry {
             name: name.to_string(),
             schema,
             handler: Box::new(move |payload: ciborium::value::Value| {
-                let fut = f.clone()(payload);
-                Box::pin(fut)
+                let f = f.clone();
+                Box::pin(async move {
+                    let mut encoded = Vec::new();
+                    ciborium::ser::into_writer(&payload, &mut encoded).map_err(|err| {
+                        Box::new(PluginError::Halt(format!(
+                            "custom action payload encode failed: {err}"
+                        ))) as Box<dyn std::error::Error + Send + Sync>
+                    })?;
+                    let typed: T = ciborium::from_reader(encoded.as_slice()).map_err(|err| {
+                        Box::new(PluginError::Halt(format!(
+                            "custom action payload decode failed: {err}"
+                        ))) as Box<dyn std::error::Error + Send + Sync>
+                    })?;
+                    f(typed).await
+                })
             }),
         });
         self

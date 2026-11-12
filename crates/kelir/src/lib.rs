@@ -4,7 +4,9 @@
 // TODO (L3): tests/ facade integration tests per cans/artifacts/config/project-structure.txt.
 pub use kelir_core::*;
 pub use kelir_interface as interface;
+pub use kelir_interface::driver_interface;
 
+pub mod builder_adapters;
 pub mod builder_plugin;
 pub mod builder_scopes;
 pub mod builder_sdk;
@@ -20,7 +22,9 @@ pub use builder_scopes::{
     ConsoleScope, ExecScope, FsScope, HostScope, LifecycleScope, NetScope, TelemetryScope,
     TrapScope,
 };
-pub use builder_sdk::{Host, KelirBuilder, Plugin, PostExecAction, Sealed, TrapFilter, Unsealed};
+pub use builder_sdk::{
+    Host, KelirBuilder, Plugin, PostExecAction, Sealed, StepVerdict, TrapFilter, Unsealed,
+};
 pub use hlist_sdk::{HCons, HList, HNil, NoParams};
 pub use kelir_core::planes::checkpoint::{PidLineage, StepSlot};
 pub use kelir_core::planes::storage::storage_reconciler::CommitStats;

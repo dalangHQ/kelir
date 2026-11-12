@@ -17,12 +17,12 @@ use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, FfiDispatchQueue, FsInterposer, HandlerCtx, HostInterposer, LifecycleCtx,
     LifecycleEvent, LifecycleParticipant, LockBrokerCoordination, MountScope, NetInterposer,
-    ParkedConnectionReset, PipelineBinder, StreamFrameSink, SystemTelemetryParticipant,
-    TokenRevocation, TrapInterposer, VirtioDevice,
+    ParkedConnectionReset, PipelineBinder, PostExecGate, StreamFrameSink,
+    SystemTelemetryParticipant, TokenRevocation, TrapInterposer, VirtioDevice,
 };
 use kelir_interface::protocol_wire::{
-    EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, ProcessExit, StreamKind, TrapEvent,
-    Verdict,
+    EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, Heartbeat, PostExecAction, ProcessExit,
+    StepVerdict, StreamKind, TrapEvent, Verdict,
 };
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
@@ -84,9 +84,9 @@ where
     }
 }
 
-async fn quarantine_unit<F>(future: F) -> Result<(), PluginError>
+async fn quarantine_unit<F, T>(future: F) -> Result<T, PluginError>
 where
-    F: Future<Output = Result<(), PluginError>>,
+    F: Future<Output = Result<T, PluginError>>,
 {
     Quarantined::new(future).await?
 }
@@ -95,6 +95,32 @@ fn quarantine_sync<T>(run: impl FnOnce() -> T, on_panic: impl FnOnce() -> T) -> 
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
         Ok(output) => output,
         Err(_) => on_panic(),
+    }
+}
+
+// see: cans/02-plugin-model.md#Unified-verdict
+pub(crate) fn map_reject_to_verdict(
+    result: Result<Verdict, PluginError>,
+) -> Result<Verdict, PluginError> {
+    match result {
+        Err(PluginError::Reject { errno, reason }) => Ok(Verdict::Drop {
+            errno: Some(errno),
+            reason,
+        }),
+        other => other,
+    }
+}
+
+// see: cans/02-plugin-model.md#Unified-verdict
+pub(crate) fn map_reject_to_filter_action(
+    result: Result<FilterAction, PluginError>,
+) -> Result<FilterAction, PluginError> {
+    match result {
+        Err(PluginError::Reject { errno, reason }) => Ok(FilterAction::Drop {
+            errno: Some(errno),
+            reason,
+        }),
+        other => other,
     }
 }
 
@@ -150,6 +176,8 @@ pub struct PipelineEngine {
     lifecycle_scopes: Vec<MountScope>,
     telemetry_interceptors: Vec<Arc<dyn SystemTelemetryParticipant>>,
     telemetry_scopes: Vec<MountScope>,
+    post_exec_gates: Vec<Arc<dyn PostExecGate>>,
+    post_exec_scopes: Vec<MountScope>,
     stream_sinks: Vec<(StreamKind, Arc<dyn StreamFrameSink>, MountScope)>,
     lock_broker: Option<Arc<dyn LockBrokerCoordination>>,
     parked_reset: Option<Arc<dyn ParkedConnectionReset>>,
@@ -188,6 +216,12 @@ impl PipelineBinder for PipelineEngine {
         let scope = self.effective_scope(scope);
         self.trap_interceptors.push(stage);
         self.trap_scopes.push(scope);
+    }
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    fn bind_post_exec_scoped(&mut self, gate: Arc<dyn PostExecGate>, scope: MountScope) {
+        let scope = self.effective_scope(scope);
+        self.post_exec_gates.push(gate);
+        self.post_exec_scopes.push(scope);
     }
     fn bind_console_scoped(&mut self, stage: Arc<dyn ConsoleInterposer>, scope: MountScope) {
         let scope = self.effective_scope(scope);
@@ -272,6 +306,8 @@ impl PipelineEngine {
             lifecycle_scopes: Vec::new(),
             telemetry_interceptors: Vec::new(),
             telemetry_scopes: Vec::new(),
+            post_exec_gates: Vec::new(),
+            post_exec_scopes: Vec::new(),
             stream_sinks: Vec::new(),
             lock_broker: None,
             parked_reset: None,
@@ -499,6 +535,11 @@ impl PipelineEngine {
         <Self as PipelineBinder>::bind_trap_scoped(self, stage, scope);
     }
 
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    pub fn bind_post_exec_scoped(&mut self, gate: Arc<dyn PostExecGate>, scope: MountScope) {
+        <Self as PipelineBinder>::bind_post_exec_scoped(self, gate, scope);
+    }
+
     fn scope_at(scopes: &[MountScope], index: usize) -> MountScope {
         scopes.get(index).cloned().unwrap_or_default()
     }
@@ -676,7 +717,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                outcome?
+                map_reject_to_verdict(outcome)?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
@@ -748,7 +789,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                outcome?
+                map_reject_to_filter_action(outcome)?
             };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
@@ -787,7 +828,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                outcome?
+                map_reject_to_filter_action(outcome)?
             };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
@@ -826,7 +867,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                outcome?
+                map_reject_to_filter_action(outcome)?
             };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
@@ -866,7 +907,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                outcome?
+                map_reject_to_verdict(outcome)?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
@@ -879,7 +920,7 @@ impl PipelineEngine {
     // TODO (L3): pressure/keyring dispatch carries no path or device input, so no scope filter can evaluate here yet.
     pub fn dispatch_host_pressure(&self, level: u32) -> Result<Verdict, PluginError> {
         for interceptor in &self.host_interceptors {
-            let verdict = quarantine_sync(
+            let verdict = map_reject_to_verdict(quarantine_sync(
                 || interceptor.on_host_pressure(level),
                 || {
                     Ok(Verdict::Drop {
@@ -887,7 +928,7 @@ impl PipelineEngine {
                         reason: "Plugin panicked".into(),
                     })
                 },
-            )?;
+            ))?;
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }
@@ -897,7 +938,7 @@ impl PipelineEngine {
 
     pub fn dispatch_host_keyring_access(&self, key: &str) -> Result<Verdict, PluginError> {
         for interceptor in &self.host_interceptors {
-            let verdict = quarantine_sync(
+            let verdict = map_reject_to_verdict(quarantine_sync(
                 || interceptor.on_host_keyring_access(key),
                 || {
                     Ok(Verdict::Drop {
@@ -905,7 +946,7 @@ impl PipelineEngine {
                         reason: "Plugin panicked".into(),
                     })
                 },
-            )?;
+            ))?;
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }

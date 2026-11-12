@@ -77,6 +77,13 @@
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.otel
   - Error and return semantics (ledger)
     - Hook signature (ledger): see: artifacts/code/plugin-trait.rs
+    - Finalize pin (SSOT-A1)
+      - finalize(FinalizeRequest { include_delta, include_merkle_root })
+      - Returns FinalReceipt { merkle_root, signed_jws }
+      - include_delta is a required CausalDelta
+      - TS allows a missing/null includeDelta; it is the outlier
+      - See: crates/kelir-plugins/plugin-ledger/src/lib.rs:91-102
+      - See: crates/kelir-plugins/plugin-ledger/src/lib.rs:160
     - Return errno and rejection behavior (ledger)
       - Pure observer: never returns Reject or blocks inline execution
       - Disk-full on WAL partition triggers hypervisor LifecycleRequest::Suspend(ResourcePressure)

@@ -171,6 +171,109 @@ pub enum PatchPayload {
     Custom { name: String, cbor: ciborium::value::Value },
 }
 
+/// POSIX errno for a deny verdict, as a typed enum (not String).
+/// The set is the live typed enum in
+/// crates/kelir-interface/src/errno_types.rs#Errno: 15 POSIX names
+/// the storage plane maps in fuse_storage.rs#drop_errno, plus 7
+/// non-POSIX policy names the engine rejects via Halt. Traversal
+/// denials pin EACCES (POSIX only; no invented errno name).
+/// Variant spelling is E + the POSIX name in lower CamelCase
+/// (Eperm, Eacces); the wire form is the SCREAMING name, except
+/// EConfig, ESecurityViolation, EUnknownKind, EClockRegress,
+/// which keep their mixed-case wire spelling. From<&str> maps an
+/// unrecognized name to EPERM, the generic POSIX denial used by
+/// the policy examples (see rust-handle-injection.rs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum Errno {
+    Eperm,
+    Eacces,
+    Enoent,
+    Einval,
+    Enospc,
+    Erofs,
+    Econnrefused,
+    Enxio,
+    Ewouldblock,
+    Efault,
+    Ebusy,
+    Exdev,
+    Epipe,
+    Enodata,
+    Eproto,
+    Epolicy,
+    Etoolquota,
+    Ewxviolation,
+    #[serde(rename = "EConfig")]
+    Econfig,
+    #[serde(rename = "ESecurityViolation")]
+    Esecurityviolation,
+    #[serde(rename = "EUnknownKind")]
+    Eunknownkind,
+    #[serde(rename = "EClockRegress")]
+    Eclockregress,
+}
+
+impl Errno {
+    /// Wire form: the SCREAMING POSIX name (e.g. "EPERM").
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Errno::Eperm => "EPERM",
+            Errno::Eacces => "EACCES",
+            Errno::Enoent => "ENOENT",
+            Errno::Einval => "EINVAL",
+            Errno::Enospc => "ENOSPC",
+            Errno::Erofs => "EROFS",
+            Errno::Econnrefused => "ECONNREFUSED",
+            Errno::Enxio => "ENXIO",
+            Errno::Ewouldblock => "EWOULDBLOCK",
+            Errno::Efault => "EFAULT",
+            Errno::Ebusy => "EBUSY",
+            Errno::Exdev => "EXDEV",
+            Errno::Epipe => "EPIPE",
+            Errno::Enodata => "ENODATA",
+            Errno::Eproto => "EPROTO",
+            Errno::Epolicy => "EPOLICY",
+            Errno::Etoolquota => "ETOOLQUOTA",
+            Errno::Ewxviolation => "EWXVIOLATION",
+            Errno::Econfig => "EConfig",
+            Errno::Esecurityviolation => "ESecurityViolation",
+            Errno::Eunknownkind => "EUnknownKind",
+            Errno::Eclockregress => "EClockRegress",
+        }
+    }
+}
+
+impl From<&str> for Errno {
+    fn from(name: &str) -> Self {
+        match name {
+            "EPERM" => Errno::Eperm,
+            "EACCES" => Errno::Eacces,
+            "ENOENT" => Errno::Enoent,
+            "EINVAL" => Errno::Einval,
+            "ENOSPC" => Errno::Enospc,
+            "EROFS" => Errno::Erofs,
+            "ECONNREFUSED" => Errno::Econnrefused,
+            "ENXIO" => Errno::Enxio,
+            "EWOULDBLOCK" => Errno::Ewouldblock,
+            "EFAULT" => Errno::Efault,
+            "EBUSY" => Errno::Ebusy,
+            "EXDEV" => Errno::Exdev,
+            "EPIPE" => Errno::Epipe,
+            "ENODATA" => Errno::Enodata,
+            "EPROTO" => Errno::Eproto,
+            "EPOLICY" => Errno::Epolicy,
+            "ETOOLQUOTA" => Errno::Etoolquota,
+            "EWXVIOLATION" => Errno::Ewxviolation,
+            "EConfig" => Errno::Econfig,
+            "ESecurityViolation" => Errno::Esecurityviolation,
+            "EUnknownKind" => Errno::Eunknownkind,
+            "EClockRegress" => Errno::Eclockregress,
+            _ => Errno::Eperm,
+        }
+    }
+}
+
 /// Sync hot-path filter result. The buffer is `&mut`; a handler that
 /// wants to forward a mutated buffer returns Forward. No Patch variant:
 /// "transform" is the buffer write itself, not a separate decision.
@@ -180,7 +283,7 @@ pub enum FilterAction {
     /// Forward the (possibly in-place-mutated) buffer.
     Forward,
     /// Deny. errno surfaces to guest. None = silent drop (chaos only).
-    Drop { errno: Option<String>, reason: String },
+    Drop { errno: Option<Errno>, reason: String },
     /// Yield to host.
     Suspend { until: SuspendUntil },
 }
@@ -196,7 +299,7 @@ pub enum Verdict {
     /// never silent: L4 TCP gets a TCP RST or ICMP Port Unreachable,
     /// L7 HTTP gets a synthetic 403 with a JSON receipt). errno None
     /// indicates silent blackholing, for plugin-chaos loss injection only.
-    Drop { errno: Option<String>, reason: String },
+    Drop { errno: Option<Errno>, reason: String },
     /// Yield or hold to host until `until`.
     Suspend { until: SuspendUntil },
     /// Fatal; pipeline freezes.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass, field
 from datetime import timedelta
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 CtxT = TypeVar("CtxT")
@@ -168,6 +169,50 @@ class Deadline:
     value: int = 0
 
 
+# see: cans/11-protocol.md#Wire-messages
+SuspendUntil = Approval | Deadline | Handshake
+
+
+# see: cans/11-protocol.md#Wire-messages
+def _suspend_until(until: Any) -> SuspendUntil | None:
+    if until is None:
+        return None
+    if isinstance(until, type):
+        raise EConfig(
+            "suspend until must be an instance, e.g. Approval(), "
+            "not the Approval class"
+        )
+    if not isinstance(until, (Approval, Deadline, Handshake)):
+        raise EConfig(
+            "suspend until must be Approval(), Deadline(ms), or Handshake, "
+            f"got {type(until).__name__}"
+        )
+    return until
+
+
+# see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
+class ExternalSuspendKind(str, Enum):
+    HUMAN_AUTHORIZATION_HOLD = "human-authorization-hold"
+    WIRE_CONNECTION_PARKING = "wire-connection-parking"
+    STEP_EVALUATION_YIELD = "step-evaluation-yield"
+    HOST_POWER_EVENT_SNAPSHOT = "host-power-event-snapshot"
+
+
+# see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
+@dataclass
+class External:
+    kind: ExternalSuspendKind
+
+
+# see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
+class ResourcePressure:
+    pass
+
+
+# see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
+SuspendReason = External | ResourcePressure
+
+
 # see: cans/11-protocol.md#Wire-framing
 class ExecveMutation:
 
@@ -243,8 +288,8 @@ class Verdict:
         )
 
     @classmethod
-    def suspend(cls, until: Any = None) -> Verdict:
-        return cls("suspend", until=until)
+    def suspend(cls, until: SuspendUntil | None = None) -> Verdict:
+        return cls("suspend", until=_suspend_until(until))
 
     @classmethod
     def abort(cls, reason: str = "") -> Verdict:
@@ -280,8 +325,8 @@ class FilterAction:
         return cls("drop", errno=errno, reason=reason)
 
     @classmethod
-    def suspend(cls, until: Any = None) -> FilterAction:
-        return cls("suspend", until=until)
+    def suspend(cls, until: SuspendUntil | None = None) -> FilterAction:
+        return cls("suspend", until=_suspend_until(until))
 
     # see: cans/02-plugin-model.md#Unified-verdict
     @classmethod
@@ -345,8 +390,17 @@ class CommitStats:
 
 
 # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-class Caps:
-    pass
+from kelir.service_caps import (
+    Caps as Caps,
+    ContainerCap as ContainerCap,
+    DbCap as DbCap,
+    LedgerCap as LedgerCap,
+    LedgerFinalizeResult as LedgerFinalizeResult,
+    PolicyCap as PolicyCap,
+    Savepoint as Savepoint,
+    TransactionCap as TransactionCap,
+    TransactionScope as TransactionScope,
+)
 
 
 class ClockHandle:
@@ -566,7 +620,7 @@ class HandlerContext(Generic[CtxT, ParamsT]):
         )
 
     # see: cans/02-plugin-model.md#Unified-verdict
-    def suspend(self, until: Any = None) -> Verdict:
+    def suspend(self, until: SuspendUntil | None = None) -> Verdict:
         return Verdict.suspend(until)
 
     # see: cans/02-plugin-model.md#Unified-verdict
@@ -594,32 +648,46 @@ from kelir.kelir_builder import (
 
 __all__ = [
     "Approval",
+    "Caps",
     "CausalDelta",
     "Channel",
     "CheckpointHandle",
+    "ContainerCap",
     "CtxT",
+    "DbCap",
     "Deadline",
     "ExecStream",
     "ExecveMutation",
     "ExecutionReceipt",
     "ExitKind",
+    "External",
+    "ExternalSuspendKind",
     "FilterAction",
     "GuestClock",
     "Handshake",
     "HandlerContext",
     "HostHandle",
     "KelirBuilder",
+    "LedgerCap",
+    "LedgerFinalizeResult",
     "MsgType",
     "ParamsT",
     "PhaseTimings",
+    "PolicyCap",
     "PostExecAction",
     "ReceiptExtension",
+    "ResourcePressure",
     "CommitStats",
     "Sandbox",
+    "Savepoint",
     "Session",
     "SnapshotDescriptor",
     "SpawnResult",
     "StreamKind",
+    "SuspendReason",
+    "SuspendUntil",
+    "TransactionCap",
+    "TransactionScope",
     "TrapEvent",
     "TrapFilter",
     "Verdict",

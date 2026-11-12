@@ -13,11 +13,11 @@ use kelir::{
     driver_interface::{DriverPolicy, WxPolicy},
     plugin_model::{
         AnyPlugin, ConsoleInterposer, FilterAction, FsInterposer, HostInterposer, KelirPlugin,
-        NetInterposer, PluginError, SystemTelemetryParticipant, TrapInterposer, Verdict,
-        WatchdogEvent, WatchdogVerdict,
+        NetInterposer, NoDeps, PluginDeps, PluginError, SystemTelemetryParticipant,
+        TrapInterposer, Verdict, WatchdogEvent, WatchdogVerdict,
     },
-    protocol_wire::{PatchPayload, ProcessExit, SuspendUntil},
-    KelirBuilder, PidLineage, SnapshotDescriptor, VmConfig,
+    protocol_wire::{Errno, Heartbeat, PatchPayload, ProcessExit, SuspendUntil},
+    KelirBuilder, SnapshotDescriptor, VmConfig,
 };
 
 const IDENTITY_PATH: &str = "/workspace/.policy/identity";
@@ -118,6 +118,10 @@ impl KelirPlugin for HookMatrixPlugin {
     }
 }
 
+impl PluginDeps for HookMatrixPlugin {
+    type Deps = NoDeps;
+}
+
 impl NetInterposer for HookMatrixPlugin {
     fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         if frame.windows(DENY_MARKER.len()).any(|w| w == DENY_MARKER) {
@@ -155,7 +159,7 @@ impl FsInterposer for HookMatrixPlugin {
     fn on_fs_lookup(&self, path: &Path) -> Result<Verdict, PluginError> {
         if escapes_workspace(path) {
             return Ok(Verdict::Drop {
-                errno: Some("E_PATH_TRAVERSAL".into()),
+                errno: Some(Errno::Eacces),
                 reason: "lookup escapes the /workspace root".into(),
             });
         }
@@ -172,16 +176,16 @@ impl FsInterposer for HookMatrixPlugin {
         }))
     }
 
-    fn on_fs_read(&self, _path: &Path, buffer: &mut [u8]) -> Result<(), PluginError> {
+    fn on_fs_read(&self, _path: &Path, buffer: &[u8]) -> Result<Vec<u8>, PluginError> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
 
         let mut window = state.tail.clone();
         window.extend_from_slice(buffer);
         mask_tokens(&mut window);
         let chunk_start = window.len() - buffer.len();
-        buffer.copy_from_slice(&window[chunk_start..]);
+        let out = window[chunk_start..].to_vec();
         state.tail = window[window.len().saturating_sub(CARRYOVER)..].to_vec();
-        Ok(())
+        Ok(out)
     }
 
     fn on_fs_write(
@@ -209,7 +213,7 @@ impl HostInterposer for HookMatrixPlugin {
 
 #[async_trait]
 impl ConsoleInterposer for HookMatrixPlugin {
-    async fn on_console_input(&self, _port: u32, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_input(&self, _port: u32, bytes: &[u8]) -> Result<Vec<u8>, PluginError> {
         let mut out = Vec::with_capacity(bytes.len());
         let mut i = 0;
         while i < bytes.len() {
@@ -231,13 +235,13 @@ impl ConsoleInterposer for HookMatrixPlugin {
                 i += 1;
             }
         }
-        *bytes = out;
-        Ok(())
+        Ok(out)
     }
 
-    async fn on_console_output(&self, _port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
-        mask_tokens(chunk);
-        Ok(())
+    async fn on_console_output(&self, _port: u32, chunk: &[u8]) -> Result<Vec<u8>, PluginError> {
+        let mut out = chunk.to_vec();
+        mask_tokens(&mut out);
+        Ok(out)
     }
 }
 
@@ -259,7 +263,8 @@ impl TrapInterposer for HookMatrixPlugin {
 
 #[async_trait]
 impl SystemTelemetryParticipant for HookMatrixPlugin {
-    async fn on_heartbeat(&self, uptime_ms: u64) -> Result<(), PluginError> {
+    async fn on_heartbeat(&self, event: &Heartbeat) -> Result<(), PluginError> {
+        let uptime_ms = event.uptime_ms;
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
 
         if state.last_uptime_ms == Some(uptime_ms) && state.heartbeats > 0 {
@@ -289,6 +294,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
             verify_hw_lockfile: false,
@@ -304,13 +310,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         preemption_grace_ms: 0,
         entropy_seed: None,
     })
-    .plugin(plugin)
+    .plugin_instance(plugin)
     .boot()
     .await?;
     session.terminal.resize(120, 40)?;
     eprintln!("[kelir] host pressure={}", session.host.pressure_level());
     let slot = session.checkpoint.create_step(
-        PidLineage::new(1),
+        session.lineage(1),
         SnapshotDescriptor {
             id: "hook-matrix-probe".into(),
             dirty_bytes: 0,
@@ -319,7 +325,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             guest_clock: None,
         },
     )?;
-    let node = session.checkpoint.commit_step(PidLineage::new(1))?;
+    let node = session.checkpoint.commit_step(session.lineage(1))?;
     eprintln!("[kelir] checkpoint slot={slot} node={node}");
     // TODO (L3): spawn cat IDENTITY_PATH in the guest and drive the hook matrix over it.
 
@@ -332,6 +338,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         handle.failures(),
     );
 
-    session.stop()?;
+    session.stop().await?;
     Ok(())
 }

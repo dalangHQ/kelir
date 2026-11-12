@@ -8,13 +8,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, HCons, HNil, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope,
     PipelineBinder, PluginDeps, VirtioDevice,
 };
-use kelir_interface::protocol_wire::{StreamKind, Verdict};
+use kelir_interface::protocol_wire::{Errno, StreamKind, Verdict};
 use plugin_mcp::{McpCtx, McpEndpointService};
 
 use crate::service_tool_guard::{
@@ -133,11 +132,7 @@ impl ToolGuardPlugin {
         Ok(())
     }
 
-    async fn guard_tool_call(
-        &self,
-        trace: u32,
-        payload: &mut [u8],
-    ) -> Result<Verdict, PluginError> {
+    async fn guard_tool_call(&self, trace: u32, payload: &[u8]) -> Result<Verdict, PluginError> {
         let frame = McpFrame::decode(payload)?;
         // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
         if frame.method == McpMethod::Unparsed {
@@ -184,7 +179,7 @@ impl ToolGuardPlugin {
         Ok(Verdict::Pass)
     }
 
-    async fn scrub_tool_response(&self, payload: &mut [u8]) -> Result<(), PluginError> {
+    async fn scrub_tool_response(&self, payload: &[u8]) -> Result<(), PluginError> {
         let _ = payload;
         // TODO (L3): strip host secrets from tool responses before model context ingestion per cans/plugins/tool-guard.md.
         Ok(())
@@ -282,13 +277,13 @@ impl LifecycleParticipant for ToolGuardPlugin {
 
 #[async_trait]
 impl ConsoleInterposer for ToolGuardPlugin {
-    async fn on_console_input(&self, port: u32, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_input(&self, port: u32, bytes: &[u8]) -> Result<Vec<u8>, PluginError> {
         // TODO (L3): trace quota eviction once the console surface grows a close hook per cans/plugins/tool-guard.md.
         if !self.interposes_port(port) {
-            return Ok(());
+            return Ok(bytes.to_vec());
         }
         match self.guard_tool_call(port, bytes).await? {
-            Verdict::Pass | Verdict::Patch(_) => Ok(()),
+            Verdict::Pass | Verdict::Patch(_) => Ok(bytes.to_vec()),
             Verdict::Drop { errno, reason } => {
                 Err(PluginError::reject(errno.unwrap_or(Errno::Eperm), reason))
             }
@@ -303,18 +298,20 @@ impl ConsoleInterposer for ToolGuardPlugin {
         }
     }
 
-    async fn on_console_output(&self, port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_output(&self, port: u32, chunk: &[u8]) -> Result<Vec<u8>, PluginError> {
         // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
         if !self.interposes_port(port) {
-            return Ok(());
+            return Ok(chunk.to_vec());
         }
         // see: cans/plugins/tool-guard.md#Immutable-schema-locking
         let frame = McpFrame::decode(chunk)?;
         if frame.method == McpMethod::ToolsList {
             // see: cans/plugins/tool-guard.md#Immutable-schema-locking
             let advertisement: ToolsListResult = decode_tools_list(chunk)?;
-            return self.ingest_advertisement(&advertisement).await;
+            self.ingest_advertisement(&advertisement).await?;
+            return Ok(chunk.to_vec());
         }
-        self.scrub_tool_response(chunk).await
+        self.scrub_tool_response(chunk).await?;
+        Ok(chunk.to_vec())
     }
 }

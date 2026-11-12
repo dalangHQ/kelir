@@ -76,7 +76,7 @@ export interface TerminalConfig {
     readonly maxBytesTotal: number;
     readonly maxLinesTotal: number;
     readonly clampStrategy: string;
-    readonly onClamp: (stats: {
+    readonly onClamp?: (stats: {
       droppedBytes: number;
       droppedLines: number;
     }) => string;
@@ -160,12 +160,12 @@ interface PluginRegistration {
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-export interface CreatePluginOptions<Opts> {
+export interface CreatePluginOptions<Opts = unknown> {
   readonly opts?: Opts;
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-export type ValidateDeps<Ctx, P> = P extends KelirBuilder<any, any, any, infer Deps>
+export type ValidateDeps<Ctx, P> = P extends KelirBuilder<any, any, infer Deps, any>
   ? [Deps] extends [never]
     ? unknown
     : string extends Deps
@@ -177,7 +177,7 @@ export type ValidateDeps<Ctx, P> = P extends KelirBuilder<any, any, any, infer D
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 export type PluginContextOf<P> =
-  P extends KelirBuilder<infer C, any, infer Name, any>
+  P extends KelirBuilder<infer Name, infer C, any, any>
     ? (C extends Record<string, unknown>
         ? (string extends keyof C
             ? { readonly [K in Name]: C }
@@ -189,16 +189,16 @@ export type PluginContextOf<P> =
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string = string, Deps extends string = never> {
+export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps extends string = never, Params = unknown> {
   private readonly mode: "host" | "plugin";
   readonly name: string;
-  private readonly storedOptions?: Ctx | CreatePluginOptions<Ctx>;
+  private readonly storedOptions?: Ctx | CreatePluginOptions<unknown>;
   private readonly kelirConfig: KelirConfig;
   private registry: HookRegistry<Ctx>;
   private mounted: HookRegistry<Ctx>[] = [];
   private pluginRegistrations: PluginRegistration[] = [];
   private mountedFlag = false;
-  private forkFn?: () => KelirBuilder<Ctx, Params, Name, Deps>;
+  private forkFn?: () => KelirBuilder<Name, Ctx, Deps, Params>;
   private detachedFlag: boolean;
   private terminalCfg: TerminalConfig | undefined;
   private storageCfg: StorageConfig<any> | undefined;
@@ -206,8 +206,8 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
   private paramsSchema: Schema<unknown> | undefined;
 
   constructor(config?: KelirConfig);
-  constructor(name: string, options?: Ctx | CreatePluginOptions<Ctx>);
-  constructor(configOrName: KelirConfig | string = {}, options?: Ctx | CreatePluginOptions<Ctx>) {
+  constructor(name: string, options?: Ctx | CreatePluginOptions<unknown>);
+  constructor(configOrName: KelirConfig | string = {}, options?: Ctx | CreatePluginOptions<unknown>) {
     if (typeof configOrName === "string") {
       this.mode = "plugin";
       this.name = configOrName;
@@ -270,10 +270,10 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
   }
 
   // see: cans/05-storage-plane.md#Workspace-commit
-  storage<C = Ctx>(config: StorageConfig<C>): KelirBuilder<Ctx & C, Params, Name, Deps> {
-    if (this.hostOnlyRejected(".storage")) return this as unknown as KelirBuilder<Ctx & C, Params, Name, Deps>;
+  storage<C = Ctx>(config: StorageConfig<C>): KelirBuilder<Name, Ctx & C, Deps, Params> {
+    if (this.hostOnlyRejected(".storage")) return this as unknown as KelirBuilder<Name, Ctx & C, Deps, Params>;
     this.storageCfg = config as StorageConfig<any>;
-    return this as unknown as KelirBuilder<Ctx & C, Params, Name, Deps>;
+    return this as unknown as KelirBuilder<Name, Ctx & C, Deps, Params>;
   }
 
   // see: cans/07-wire-plane.md#DNS-policy-filter
@@ -284,10 +284,10 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
-  params<S extends Schema<any>>(schema: S): KelirBuilder<Ctx, Infer<S>, Name, Deps> {
-    if (this.hostOnlyRejected(".params")) return this as unknown as KelirBuilder<Ctx, Infer<S>, Name, Deps>;
+  params<S extends Schema<any>>(schema: S): KelirBuilder<Name, Ctx, Deps, Infer<S>> {
+    if (this.hostOnlyRejected(".params")) return this as unknown as KelirBuilder<Name, Ctx, Deps, Infer<S>>;
     this.paramsSchema = schema;
-    return this as unknown as KelirBuilder<Ctx, Infer<S>, Name, Deps>;
+    return this as unknown as KelirBuilder<Name, Ctx, Deps, Infer<S>>;
   }
 
   // see: cans/08-lifecycle.md#Detached-lifecycle
@@ -304,7 +304,7 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
   // see: cans/artifacts/code/typescript-accumulation.ts#runtime
   use<P extends KelirBuilder<any, any, any, any> | KelirPlugin>(
     plugin: P & ValidateDeps<Ctx, P>,
-  ): KelirBuilder<Ctx & PluginContextOf<P>, Params, Name, Deps> {
+  ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params> {
     this.checkMounted(".use");
     if (plugin instanceof KelirBuilder) {
       if (plugin.mode === "host") {
@@ -356,7 +356,7 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
       }
       this.pluginRegistrations.push({ name: plugin.name, enabled });
       plugin.mountedFlag = true;
-      return this as unknown as KelirBuilder<Ctx & PluginContextOf<P>, Params, Name, Deps>;
+      return this as unknown as KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params>;
     }
     const asPlugin = plugin as unknown as KelirPlugin;
     const enabled = asPlugin.enabled !== false;
@@ -389,7 +389,14 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
         this.registry.vsockEntries.push(service);
       }
     }
-    return this as unknown as KelirBuilder<Ctx & PluginContextOf<P>, Params, Name, Deps>;
+    return this as unknown as KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params>;
+  }
+
+  // see: cans/02-plugin-model.md#Unified-builder
+  plugin<P extends KelirBuilder<any, any, any, any> | KelirPlugin>(
+    plugin: P & ValidateDeps<Ctx, P>,
+  ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params> {
+    return this.use(plugin);
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
@@ -686,15 +693,26 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
+  requires<Req extends string>(
+    name?: Req,
+  ): KelirBuilder<Name, Ctx, Deps | Req, Params>;
+  requires<P extends KelirBuilder<any, any, any, any>>(
+    plugin?: P,
+  ): KelirBuilder<
+    Name,
+    Ctx & PluginContextOf<P>,
+    Deps | (P extends KelirBuilder<infer N, any, any, any> ? N : never),
+    Params
+  >;
   requires<Req extends string | KelirBuilder<any, any, any, any>>(
     name?: string | KelirBuilder<any, any, any, any>,
   ): KelirBuilder<
-    Ctx & (Req extends KelirBuilder<infer C, any, infer N, any>
+    Name,
+    Ctx & (Req extends KelirBuilder<infer N, infer C, any, any>
       ? (C extends Record<string, unknown> ? (string extends keyof C ? { readonly [K in N]: C } : (N extends keyof C ? C : { readonly [K in N]: C })) : { readonly [K in N]: C })
       : unknown),
-    Params,
-    Name,
-    Deps | (Req extends KelirBuilder<any, any, infer N, any> ? N : Req extends string ? Req : never)
+    Deps | (Req extends KelirBuilder<infer N, any, any, any> ? N : Req extends string ? Req : never),
+    Params
   > {
     this.checkMounted(".requires");
     if (typeof name === "string") {
@@ -707,31 +725,31 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
       }
     }
     return this as unknown as KelirBuilder<
-      Ctx & (Req extends KelirBuilder<infer C, any, infer N, any>
+      Name,
+      Ctx & (Req extends KelirBuilder<infer N, infer C, any, any>
         ? (C extends Record<string, unknown> ? (string extends keyof C ? { readonly [K in N]: C } : (N extends keyof C ? C : { readonly [K in N]: C })) : { readonly [K in N]: C })
         : unknown),
-      Params,
-      Name,
-      Deps | (Req extends KelirBuilder<any, any, infer N, any> ? N : Req extends string ? Req : never)
+      Deps | (Req extends KelirBuilder<infer N, any, any, any> ? N : Req extends string ? Req : never),
+      Params
     >;
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
   derive<NewCtx>(
     fn: (c: Ctx) => NewCtx,
-  ): KelirBuilder<Ctx & NewCtx, Params, Name, Deps> {
+  ): KelirBuilder<Name, Ctx & NewCtx, Deps, Params> {
     this.checkMounted(".derive");
     this.registry.deriveFns.push(fn as (c: unknown) => unknown);
-    return this as unknown as KelirBuilder<Ctx & NewCtx, Params, Name, Deps>;
+    return this as unknown as KelirBuilder<Name, Ctx & NewCtx, Deps, Params>;
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
   context<NewCtx>(
     fn: (c: Ctx) => NewCtx,
-  ): KelirBuilder<Ctx & NewCtx, Params, Name, Deps> {
+  ): KelirBuilder<Name, Ctx & NewCtx, Deps, Params> {
     this.checkMounted(".context");
     this.registry.contextFns.push(fn as (c: unknown) => unknown);
-    return this as unknown as KelirBuilder<Ctx & NewCtx, Params, Name, Deps>;
+    return this as unknown as KelirBuilder<Name, Ctx & NewCtx, Deps, Params>;
   }
 
   // see: cans/artifacts/code/plugin-trait.rs#MountScope
@@ -743,24 +761,24 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
 
   // see: cans/02-plugin-model.md#KelirPlugin-trait
   forkWith(
-    fn: () => KelirBuilder<Ctx, Params, Name, Deps>,
+    fn: () => KelirBuilder<Name, Ctx, Deps, Params>,
   ): this {
     this.checkMounted(".forkWith");
     this.forkFn = fn;
     return this;
   }
 
-  forkState(): KelirBuilder<Ctx, Params, Name, Deps> {
+  forkState(): KelirBuilder<Name, Ctx, Deps, Params> {
     if (this.forkFn !== undefined) {
       return this.forkFn();
     }
     return this.clone();
   }
 
-  private clone(): KelirBuilder<Ctx, Params, Name, Deps> {
+  private clone(): KelirBuilder<Name, Ctx, Deps, Params> {
     const copy = this.mode === "plugin"
-      ? new KelirBuilder<Ctx, Params, Name, Deps>(this.name, this.storedOptions)
-      : new KelirBuilder<Ctx, Params, Name, Deps>(this.kelirConfig);
+      ? new KelirBuilder<Name, Ctx, Deps, Params>(this.name, this.storedOptions)
+      : new KelirBuilder<Name, Ctx, Deps, Params>(this.kelirConfig);
     copy.registry = this.registry.clone();
     copy.mounted = [...this.mounted];
     copy.pluginRegistrations = [...this.pluginRegistrations];
@@ -931,8 +949,9 @@ export function kelir(config: KelirConfig = {}): KelirBuilder {
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 export function createPlugin<
   Name extends string,
-  Ctx,
+  Ctx = unknown,
+  Opts = unknown,
   Deps extends string = never,
->(name: Name, options?: Ctx | CreatePluginOptions<Ctx>): KelirBuilder<Ctx, unknown, Name, Deps> {
-  return new KelirBuilder<Ctx, unknown, Name, Deps>(name, options);
+>(name: Name, options?: CreatePluginOptions<Opts> | Ctx): KelirBuilder<Name, Ctx, Deps, unknown> {
+  return new KelirBuilder<Name, Ctx, Deps, unknown>(name, options);
 }

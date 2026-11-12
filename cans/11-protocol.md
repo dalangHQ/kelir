@@ -251,6 +251,11 @@
     - Custom dispatch contract
       - Registration: builder.register_custom_action(name, schema, handler)
       - Wire Custom carries name + CBOR; the name resolves at SDK registration
+      - Handler pin (SSOT-A1)
+        - The handler receives the typed object decoded per schema
+        - It never receives raw CBOR
+        - Hand-parsing the CBOR map in the handler is non-conforming
+        - See: cans/artifacts/examples/policy-matrix.rs:349-355
       - Unknown name at trap time fails with EUnknownAction
       - Registration after boot() fails with EConfig
     - Verdict invariants: see: [1]

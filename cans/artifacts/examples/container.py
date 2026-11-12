@@ -34,7 +34,6 @@ def build_runtime() -> KelirBuilder:
 
 async def main() -> None:
     async with build_runtime() as session:
-        # TODO: Caps has no .container and ingest_image exists nowhere in packages/py (Caps at packages/py/kelir/__init__.py:323 exposes ledger, db, policy, transaction only); SSOT tarball shape kept per cans/plugins/container.md#Non-nested-OCI-container-execution.
         image = await session.cap.container.ingest_image(OCI_TARBALL)
 
         run = await session.spawn(

@@ -6,23 +6,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, NoDeps,
     PipelineBinder, PluginDeps, TrapInterposer,
 };
-use kelir_interface::protocol_wire::{TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{Errno, TrapEvent, Verdict};
 
 pub mod service_container;
 
 pub use service_container::{ContainerCtx, ContainerService, SharedContainerService};
-
-// see: cans/plugins/container.md#Error-and-return-semantics-(container)
-
-// see: cans/plugins/container.md#Error-and-return-semantics-(container)
-
-// see: cans/plugins/container.md#Error-and-return-semantics-(container)
 
 // see: cans/plugins/container.md#UID/GID-mapping-isolation
 const NEWUIDMAP: &str = "newuidmap";

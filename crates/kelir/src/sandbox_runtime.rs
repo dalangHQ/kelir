@@ -67,6 +67,16 @@ pub struct SessionProfile {
     pub driver: Option<DriverProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub storage: Option<StorageProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<BudgetProfile>,
+}
+
+// see: cans/plugins/profile.md#Session-compute-schema-(profile)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BudgetProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exec_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -362,11 +372,11 @@ impl Sandbox {
     }
 
     // see: cans/08-lifecycle.md#Suspend-and-resume
-    pub async fn resume(&mut self, path: &str) -> Result<(), PluginError> {
+    pub async fn resume(&mut self) -> Result<(), PluginError> {
         let Some(session) = self.session.as_mut() else {
             return Err(PluginError::Halt("Sandbox::resume before boot".into()));
         };
-        session.vm_handle().resume(path).await
+        session.resume().await
     }
 
     pub fn reconcile(&self, req: FsReconcileRequest) -> Result<CommitStats, PluginError> {

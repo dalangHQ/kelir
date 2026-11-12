@@ -110,7 +110,7 @@ const runtime = kelir({
   kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
   rootfsErofs: "./fixtures/rootfs-hooks.erofs",
   tscLocked: true, enableWatchdog: true,
-}).use(hookMatrixPlugin);
+}).plugin(hookMatrixPlugin);
 
 async function main() {
   const session: Session = await runtime.boot();

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
 import kelir
-from kelir import Approval, Deadline, HandlerContext, KelirBuilder, TrapFilter, Verdict, VsockServiceEntry
+from kelir import Approval, Deadline, HandlerContext, KelirBuilder, ResourcePressure, TrapFilter, Verdict, VsockServiceEntry
 from kelir.model_plugin import (
     BasePlugin,
     VetoEvent,
@@ -89,7 +89,7 @@ async def row_abort(c: HandlerContext) -> Verdict:
 # see: cans/09-snapshots.md#Snapshots
 async def row_yield(c: HandlerContext) -> Verdict:
     await c.vm.checkpoint("policy-yield")
-    return Verdict.suspend(until=Approval)
+    return Verdict.suspend(until=Approval())
 
 
 async def row_approval(c: HandlerContext) -> Verdict:
@@ -140,7 +140,6 @@ def build_runtime() -> KelirBuilder:
             port=0x0013,
             service="echo",
             schema={"type": "object", "properties": {}},
-            handler=echo,
         ),
         echo,
     )
@@ -175,8 +174,8 @@ async def main() -> None:
             print(f"[kelir] {binary} -> exit={run.exit_code}")
 
         POLICY_STATE.planned_suspend = True
-        await session.suspend("/tmp/policy-matrix.snap")
-        await session.resume("/tmp/policy-matrix.snap")
+        await session.suspend(ResourcePressure())
+        await session.resume()
         POLICY_STATE.planned_suspend = False
 
 

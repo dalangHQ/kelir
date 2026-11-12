@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Generic, Optional
@@ -23,6 +24,8 @@ __all__ = [
     "VetoEvent",
     "WatchdogEvent",
     "WatchdogVerdict",
+    "plugin_error_to_filter_action",
+    "plugin_error_to_verdict",
 ]
 
 
@@ -36,6 +39,16 @@ class PluginError(Exception):
     @classmethod
     def reject(cls, errno: str = "", reason: str = "") -> PluginError:
         return cls(errno=errno, reason=reason)
+
+
+# see: cans/02-plugin-model.md#Full-Verdict-lattice
+def plugin_error_to_verdict(err: PluginError) -> Verdict:
+    return Verdict.drop(err.errno, err.reason)
+
+
+# see: cans/02-plugin-model.md#Full-Verdict-lattice
+def plugin_error_to_filter_action(err: PluginError) -> FilterAction:
+    return FilterAction.drop(err.errno, err.reason)
 
 
 @dataclass
@@ -72,9 +85,9 @@ class LifecycleCtx:
 
     def __init__(self) -> None:
         self._vetoes: list[tuple[VetoEvent, Callable[[], bool]]] = []
-        self._watchdog: tuple[int, str] | None = None
+        self._watchdog: tuple[int | timedelta, str] | None = None
 
-    def set_watchdog(self, timeout: int, action: str) -> None:
+    def set_watchdog(self, timeout: int | timedelta, action: str) -> None:
         # TODO (L3): arm the VM watchdog via the PyO3 _kelir bridge.
         self._watchdog = (timeout, action)
 

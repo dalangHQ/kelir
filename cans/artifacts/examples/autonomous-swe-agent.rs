@@ -17,11 +17,10 @@ use tokio::sync::Mutex;
 
 use kelir::{
     ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, FsReconcileRequest, HCons,
-    HNil, HandlerCtx, KelirBuilder, LedgerConfig, LedgerCtx, LedgerPlugin, NetworkFaultRule,
-    NoParams, OtelConfig, PostExecAction, ReceiptConfig, SnapshotDescriptor, StorageFaultRule,
-    TrapFilter, Unsealed, Verdict, VmConfig,
+    HNil, HandlerCtx, Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerPlugin,
+    NetworkFaultRule, NoParams, OtelConfig, PostExecAction, ReceiptConfig, SnapshotDescriptor,
+    StorageFaultRule, TrapFilter, Unsealed, Verdict, VmConfig,
     interface::driver_interface::{DriverPolicy, WxPolicy},
-    handler,
     planes::{
         storage_plane::{
             DynamicFile, IdmapConfig, MaskReadRule, ReadMaskEngine, StoragePlaneConfig,
@@ -31,9 +30,10 @@ use kelir::{
         wire_plane::{L4Proxy, SinkholeConfig, TapFilter, WireConfig},
     },
     plugin_model::{
-        AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginError, TrapInterposer,
+        AnyPlugin, FilterAction, FsInterposer, KelirPlugin, NoDeps, PluginDeps, PluginError,
+        TrapInterposer,
     },
-    protocol_wire::{ExecveMutation, PatchPayload, TrapEvent},
+    protocol_wire::{Errno, ExecveMutation, PatchPayload, TrapEvent},
     telemetry_attest::ExecutionReceipt,
 };
 
@@ -146,6 +146,10 @@ impl KelirPlugin for RepoPolicyPlugin {
     }
 }
 
+impl PluginDeps for RepoPolicyPlugin {
+    type Deps = NoDeps;
+}
+
 #[async_trait]
 impl TrapInterposer for RepoPolicyPlugin {
     async fn on_trap(
@@ -163,7 +167,7 @@ impl TrapInterposer for RepoPolicyPlugin {
         if h.is_protected().await {
             h.record_violation().await;
             return Ok(Verdict::Drop {
-                errno: Some("EPERM".into()),
+                errno: Some(Errno::Eperm),
                 reason: format!("EPOLICY: '{}' is protected.", h.branch().await),
             });
         }
@@ -195,7 +199,7 @@ impl FsInterposer for RepoPolicyPlugin {
         if path.extension().is_some_and(|e| e == "diff") && data.len() > self.opts.max_diff_bytes {
             self.state.blocking_lock().violations += 1;
             return Ok(FilterAction::Drop {
-                errno: Some("ENOSPC".into()),
+                errno: Some(Errno::Enospc),
                 reason: "diff exceeds policy ceiling".into(),
             });
         }
@@ -219,7 +223,10 @@ async fn build_runtime(
     pg_key: PathBuf,
 ) -> Result<
     KelirBuilder<
+        Host,
         Unsealed,
+        (),
+        HNil,
         HCons<RepoPolicyHandle, HCons<LedgerCtx, HCons<Arc<dyn FaultInjectionService>, HNil>>>,
         NoParams,
     >,
@@ -229,6 +236,7 @@ async fn build_runtime(
         max_diff_bytes: 64 * 1024,
         protected_branches: vec!["main".into(), "master".into(), "release/*".into()],
     });
+    let policy_handle = policy_plugin.handle();
 
     let builder = KelirBuilder::new(VmConfig {
         vcpus: 4,
@@ -239,6 +247,7 @@ async fn build_runtime(
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
             verify_hw_lockfile: false,
@@ -341,7 +350,7 @@ async fn build_runtime(
 
         tap_filter: TapFilter::AllowUdpProxied,
     })
-    .plugin(ChaosPlugin::new(ChaosConfig {
+    .plugin_instance(ChaosPlugin::new(ChaosConfig {
         network: vec![
             NetworkFaultRule {
                 target: "api.stripe.com".into(),
@@ -373,14 +382,15 @@ async fn build_runtime(
         ],
         fs: vec![StorageFaultRule {
             target_path: "/workspace/build/cache/*".into(),
-            simulate_error: "ENOSPC".into(),
+            simulate_error: Errno::Enospc,
             error_probability: 0.05,
         }],
     }))
     // see: cans/plugins/ledger.md#Plugin-ledger
-    .plugin(LedgerPlugin::new(true).with_config(LedgerConfig {
+    .plugin_instance(LedgerPlugin::new(true).with_config(LedgerConfig {
         store: ".kelir/audit.merkle.db".into(),
         merkle_chain: true,
+        suppress_local_db: false,
         otel: Some(OtelConfig {
             endpoint: "http://localhost:4318/v1/traces".into(),
             service_name: "kelir-swe-agent".into(),
@@ -396,24 +406,28 @@ async fn build_runtime(
         },
     }));
 
-    let builder = builder.plugin(policy_plugin);
+    let builder = builder.plugin_instance(policy_plugin);
 
     let builder = builder
-        .trap(
+        .trap_async(
             "*",
-            handler({
+            {
                 let oracle = Arc::clone(&oracle);
                 move |c: HandlerCtx<_, _>| {
                     let oracle = Arc::clone(&oracle);
                     async move {
                         let _pre = c.vm.checkpoint(format!("pre:{}", c.trap.pid)).await?;
 
-                        let intent: IntentAnalysis = oracle.analyze_intent(&c.trap).await?;
+                        let intent: IntentAnalysis = oracle
+                            .analyze_intent(&c.trap)
+                            .await
+                            .map_err(|err| {
+                                PluginError::Halt(format!("intent analysis failed: {err}"))
+                            })?;
                         if !intent.is_hypothesis_valid {
-                            // see: cans/plugins/ledger.md#Ledger-handler-API
-                            c.ctx::<LedgerCtx, _>().record_denial(c.trap.ppid);
+                            // TODO (L3): record the denial on the ledger once trap closures receive the typed session per cans/02-plugin-model.md#Trap-and-lifecycle-hooks-receive-HandlerCtx-or-a-restricted-lifecycle-context.
                             return Ok(Verdict::Drop {
-                                errno: Some("EPERM".into()),
+                                errno: Some(Errno::Eperm),
                                 reason: format!(
                                     "Verification Reject: {}",
                                     intent.falsification_reason.unwrap_or_default()
@@ -423,14 +437,14 @@ async fn build_runtime(
                         Ok(Verdict::Pass)
                     }
                 }
-            }),
-        )
-        .trap(
+            },
+        )?
+        .trap_async(
             TrapFilter::binary("npm")
                 .with_arg("test")
                 .with_arg("--")
                 .with_arg("--runInBand"),
-            handler(|c: HandlerCtx<_, _>| async move {
+            |c: HandlerCtx<_, _>| async move {
                 c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
                 // Env injection via Patch, not env.set + Pass (09: EINVALIDDECISION).
                 // SDK patch carries the typed ExecveMutation (CBOR on the wire).
@@ -448,11 +462,11 @@ async fn build_runtime(
                         unset_env: vec![],
                     },
                 )))
-            }),
-        )
-        .trap(
+            },
+        )?
+        .trap_async(
             TrapFilter::binary("git").with_arg("push"),
-            handler(|c: HandlerCtx<_, _>| async move {
+            |c: HandlerCtx<_, _>| async move {
                 if c.trap.argv.iter().any(|a| a == "--force") {
                     let argv: Vec<String> = c
                         .trap
@@ -471,11 +485,11 @@ async fn build_runtime(
                     )));
                 }
                 Ok(Verdict::Pass)
-            }),
-        )
-        .trap(
+            },
+        )?
+        .post_exec(
             "*",
-            handler({
+            {
                 let oracle = Arc::clone(&oracle);
                 move |c: HandlerCtx<_, _>| {
                     let oracle = Arc::clone(&oracle);
@@ -507,7 +521,14 @@ async fn build_runtime(
                             return Ok(PostExecAction::RollbackAndHalt);
                         }
 
-                        if !oracle.verify_physical_receipt(&receipt).await? {
+                        if !oracle
+                            .verify_physical_receipt(&receipt)
+                            .await
+                            .map_err(|err| {
+                                PluginError::Halt(format!(
+                                    "physical receipt verification failed: {err}"
+                                ))
+                            })? {
                             c.vm.rollback(&pre).await?;
                             c.terminal
                                 .notice("⚡ [KELIR]: post-condition violated — REVERTED\n");
@@ -516,32 +537,34 @@ async fn build_runtime(
                         Ok(PostExecAction::Proceed)
                     }
                 }
-            }),
-        )
-        .trap(
+            },
+        )?
+        .trap_async(
             TrapFilter::binary("git").with_arg("commit").with_arg("-m"),
-            handler({
-                move |c: HandlerCtx<_, _>| async move {
-                    let policy = c.ctx::<RepoPolicyHandle, _>();
-                    let n = policy.violations().await;
-                    if n > 0 {
-                        return Ok(Verdict::Drop {
-                            errno: Some("EPERM".into()),
-                            reason: format!("EPOLICY: {n} prior violation(s)."),
-                        });
+            {
+                let policy = policy_handle.clone();
+                move |c: HandlerCtx<_, _>| {
+                    let policy = policy.clone();
+                    async move {
+                        let n = policy.violations().await;
+                        if n > 0 {
+                            return Ok(Verdict::Drop {
+                                errno: Some(Errno::Eperm),
+                                reason: format!("EPOLICY: {n} prior violation(s)."),
+                            });
+                        }
+                        Ok(Verdict::Pass)
                     }
-                    Ok(Verdict::Pass)
                 }
-            }),
-        )
-        .trap(
+            },
+        )?
+        .post_exec(
             TrapFilter::binary("git").with_arg("commit"),
-            handler(|c: HandlerCtx<_, _>| async move {
+            |c: HandlerCtx<_, _>| async move {
                 let receipt = c.receipt().await?;
 
                 if receipt.dirty_bytes == 0 {
-                    return Err(Box::new(PluginError::Halt("zero-byte delta commit".into()))
-                        as Box<dyn std::error::Error + Send + Sync>);
+                    return Err(PluginError::Halt("zero-byte delta commit".into()));
                 }
 
                 match receipt.extensions.iter().find(|e| e.namespace == "fs:vfs") {
@@ -552,8 +575,8 @@ async fn build_runtime(
                     None => eprintln!("[kelir] commit fs:vfs extension absent"),
                 }
                 Ok(PostExecAction::Proceed)
-            }),
-        );
+            },
+        )?;
 
     let builder = builder
         .on_vm_init(|ctx| {
@@ -604,32 +627,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let phase: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
         let mut joins = tokio::task::JoinSet::new();
         for id in ['A', 'B', 'C', 'D'] {
-            let mut child = session.fork()?;
+            let mut child = session.fork().await?;
             joins.spawn(async move {
-                child.checkpoint.create_step(
-                    child.lineage(1),
-                    SnapshotDescriptor {
-                        id: format!("hypothesis-{id}"),
-                        dirty_bytes: 0,
-                        created_at_ns: 0,
-                        parent_digest: None,
-                        guest_clock: None,
-                    },
-                )?;
-                child.checkpoint.commit_step(child.lineage(1))?;
-                // TODO (L3): skew the child clock, spawn npm run verify-hypothesis-{id}, and read back its causal delta.
-                child.stop()?;
-                Ok::<_, Box<dyn std::error::Error + Send + Sync>>(id)
+                let outcome: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
+                    child.checkpoint.create_step(
+                        child.lineage(1),
+                        SnapshotDescriptor {
+                            id: format!("hypothesis-{id}"),
+                            dirty_bytes: 0,
+                            created_at_ns: 0,
+                            parent_digest: None,
+                            guest_clock: None,
+                        },
+                    )?;
+                    child.checkpoint.commit_step(child.lineage(1))?;
+                    // TODO (L3): skew the child clock, spawn npm run verify-hypothesis-{id}, and read back its causal delta.
+                    child.stop().await?;
+                    Ok(())
+                }
+                .await;
+                // Winner rule: first branch in branch order with exit code 0 wins.
+                (id, i32::from(outcome.is_err()))
             });
         }
 
-        let mut winner: Option<char> = None;
+        let mut exit_codes = Vec::new();
         while let Some(joined) = joins.join_next().await {
-            let id = joined??;
-            if winner.is_none() {
-                winner = Some(id);
-            }
+            exit_codes.push(
+                joined.map_err(|err| Box::new(err) as Box<dyn std::error::Error + Send + Sync>)?,
+            );
         }
+        // Winner rule: first branch in branch order with exit code 0 wins.
+        let winner = ['A', 'B', 'C', 'D'].into_iter().find(|id| {
+            exit_codes
+                .iter()
+                .any(|(branch, code)| branch == id && *code == 0)
+        });
         let Some(id) = winner else {
             let lineage = session.lineage(1);
             session.rollback(lineage).await?;
@@ -638,10 +671,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         session.suspend(SuspendReason::External(
             ExternalSuspendKind::HumanAuthorizationHold,
-        ))?;
+        ))
+        .await?;
         eprintln!("[kelir] suspended: host RSS = 0 MB; awaiting approval");
         oracle.await_human_approval().await?;
-        session.resume()?;
+        session.resume().await?;
 
         let stats = session.storage.reconcile(FsReconcileRequest {
             cwd: "/workspace/checkout-service".into(),
@@ -659,12 +693,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
     .await;
 
-    if let Err(e) = session.suspend(SuspendReason::External(
-        ExternalSuspendKind::HumanAuthorizationHold,
-    )) {
+    if let Err(e) = session
+        .suspend(SuspendReason::External(
+            ExternalSuspendKind::HumanAuthorizationHold,
+        ))
+        .await
+    {
         eprintln!("[kelir] final suspend failed: {e}");
     }
-    session.stop()?;
+    session.stop().await?;
     phase
 }
 

@@ -2,8 +2,8 @@
 use std::sync::Arc;
 
 use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
+use kelir_interface::protocol_wire::Errno;
 use kelir_interface::vsock_mesh::VsockPeer;
 use kelir_plugin_testkit::LoopbackStream;
 use kelir_plugin_testkit::block_on;

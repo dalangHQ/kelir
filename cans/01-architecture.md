@@ -18,6 +18,10 @@
           - Silent driver downgrade is an uncatchable fatal error: E_NOHARDWAREVMM
           - Emulation tiers require explicit granular opt-in in DriverPolicy
           - DriverPolicy: wx_enforcement, allow_emulated_fallback, driver (bwrap/proot)
+            - DriverPolicy.driver is Option<String> (SSOT-A1 pin)
+              - Names the selected backend, None for default
+              - Live: crates/kelir-interface/src/driver_interface.rs:50-59
+              - The artifact DriverPolicy lacks the field (non-conforming here)
             - Exercised by: see: artifacts/examples/replay.rs
         - Foreign runtime embedding
           - ForeignPluginProxy embeds V8 and Python event loops directly

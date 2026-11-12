@@ -95,7 +95,7 @@ async def row_abort(c: HandlerContext[None, None]) -> Verdict:
 
 async def row_yield(c: HandlerContext[None, None]) -> Verdict:
     await c.vm.checkpoint("policy-yield")
-    return Verdict.suspend(until=Approval)
+    return Verdict.suspend(until=Approval())
 
 
 async def row_approval(c: HandlerContext[None, None]) -> Verdict:
@@ -289,6 +289,6 @@ def test_session_flows_require_native_bridge() -> None:
     with pytest.raises(EConfig, match=r"session spawn"):
         asyncio.run(session.spawn("policy-allow", ["--policy-matrix"]))
     with pytest.raises(EConfig, match=r"session suspend"):
-        asyncio.run(session.suspend())
+        asyncio.run(session.suspend(kelir.ResourcePressure()))
     with pytest.raises(EConfig, match=r"session resume"):
-        asyncio.run(session.resume("/tmp/policy-matrix.snap"))
+        asyncio.run(session.resume())

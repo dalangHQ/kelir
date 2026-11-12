@@ -4,7 +4,13 @@
     - State machine
       - Centralized Hypervisor Lifecycle State Machine:
         - States: Initializing, Running, Draining, Suspended(SuspendReason), Terminated
-        - SuspendReason: External(u32) | ResourcePressure
+        - SuspendReason: External(ExternalSuspendKind) | ResourcePressure
+        - ExternalSuspendKind variants (SSOT-A1 pin)
+          - HumanAuthorizationHold | WireConnectionParking
+          - StepEvaluationYield | HostPowerEventSnapshot
+          - See: crates/kelir-interface/src/driver_interface.rs:350-363
+        - The spec's former External(u32) is withdrawn
+          - Code and artifact already carry External(ExternalSuspendKind)
         - Eliminates independent suspend implementations outside core
         - Cycle-exact resume via Channel 0 control frame or wire ingress frame
         - Draining is a first-class state
@@ -168,6 +174,27 @@
   - Suspend and resume
     - suspend
       - Reason: SuspendReason::External or ResourcePressure
+      - Canonical signature (SSOT-A1 pin)
+        - Session.suspend(reason: SuspendReason) / Session.resume()
+        - The image path derives from session state, never user-supplied
+        - Path: <session_dir>/suspend.img
+      - The vm-handle / native-bridge layer keeps suspend(path)
+        - And resume(path); the bridge supplies a fixed reason
+        - Reason: External(HumanAuthorizationHold)
+        - See: crates/kelir-bindings/napi/src/lib.rs:70
+        - See: crates/kelir-bindings/pyo3/src/lib.rs:53
+      - Non-conforming sides
+        - TS Session.suspend(path) / resume(path) takes a caller path
+          - Where the pin takes a reason
+          - See: packages/ts/core/src/session.lifecycle.ts:271-276
+        - Py Session.suspend() derives the path but takes no reason
+          - And resume(path) takes a caller path
+          - See: packages/py/kelir/lifecycle_session.py:87-91
+        - RS Sandbox.resume(path) takes a caller path
+          - Where Session.resume() takes none
+          - See: crates/kelir/src/sandbox_runtime.rs:365
+      - Sandbox.suspend() takes no argument and delegates to session suspend
+        - See: 03-sdk-architecture.md#Sandbox-high-level-facade
       - Freezes vCPU registers
       - Page-dump engine: lz4_flex compression over io_uring direct I/O
       - Flushes compressed pages to local NVMe
@@ -193,7 +220,8 @@
       - tmpfs host path when write volume fits RAM; SBC profile selects this
       - by default. Otherwise writes hit disk blocks as normal.
     - External suspension
-      - Triggered by SuspendReason::External(u32) awaiting out-of-band release
+      - Triggered by SuspendReason::External(ExternalSuspendKind)
+        - Awaiting out-of-band release
       - Resume executes cycle-exact upon external release signal
       - Release signal arrives on Control 0x0000
   - Elastic compute
@@ -231,7 +259,13 @@
       - Prevents checkpoint descriptor explosion from recursive directory sweeps
       - Intercepts configured clean execution targets before workload exit
     - Autonomous step verification loop
-      - Host registers StepEvaluator closure through CheckpointService
+      - Host registers StepEvaluator closure through CheckpointPlane
+        - Session handle: session.checkpoint
+      - SPEC CORRECTION (SSOT-A1)
+        - The former "CheckpointService" named here never existed
+        - The live surface is CheckpointPlane plus session.checkpoint
+        - See: crates/kelir-core/src/planes/checkpoint/mod.rs:99
+        - See: crates/kelir-core/src/session_lifecycle.rs:32
       - Captures atomic pre-step SnapshotDescriptor before workload execution
       - Evaluates physical ExecutionReceipt upon trapped process exit
       - Step outcomes (StepVerdict):

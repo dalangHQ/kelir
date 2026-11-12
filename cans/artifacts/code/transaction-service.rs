@@ -14,10 +14,17 @@
 // kelir.yaml#plugins.transaction.two_phase_commit.
 //
 // Owned by: cans/plugins/transaction.md#Service-exports-(transaction)
+//
+// Projection rule: the service trait below is handle-threaded (every
+// method takes the TransactionHandle it acts on). SDK projections expose
+// scope() as an async context manager over one handle, with savepoint()
+// and rollback_to_savepoint() bound to that handle; the handle is
+// implicit in the projection and explicit in the service trait. Neither
+// shape replaces the other.
 
 use async_trait::async_trait;
 use std::path::PathBuf;
-use kelir_interface::plugin::PluginError;
+use kelir_interface::plugin_model::PluginError;
 
 /// Declared blast radius of one transaction. A mutation outside the
 /// declared scope fails closed: filesystem writes outside `paths`

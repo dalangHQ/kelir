@@ -119,9 +119,9 @@ struct CountingConsole {
 
 #[async_trait]
 impl ConsoleInterposer for CountingConsole {
-    async fn on_console_output(&self, _port: u32, _chunk: &mut Vec<u8>) -> Result<(), PluginError> {
+    async fn on_console_output(&self, _port: u32, chunk: &[u8]) -> Result<Vec<u8>, PluginError> {
         self.called.store(true, Ordering::SeqCst);
-        Ok(())
+        Ok(chunk.to_vec())
     }
 }
 

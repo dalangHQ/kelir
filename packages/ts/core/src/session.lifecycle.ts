@@ -22,6 +22,7 @@ import type {
   VsockHandle,
   WireHandle,
 } from "./context.lifecycle.types.js";
+import type { SuspendReason } from "./verdict.protocol.js";
 import { EConfig } from "./errors.sdk.js";
 
 // see: cans/03-sdk-architecture.md#Cross-SDK-guarantees
@@ -191,6 +192,7 @@ export class Session {
   readonly vsock: VsockHandle;
   readonly step: StepHandle;
   private readonly native: NativeSessionHandle;
+  private suspendedReasonValue: SuspendReason | undefined;
 
   constructor(native: NativeSessionHandle) {
     // TODO (L3): only the NAPI addon constructs Session, from a booted native handle.
@@ -268,12 +270,19 @@ export class Session {
     return this.native.execInGuest(binary, argv, options);
   }
 
-  async suspend(path: string): Promise<void> {
-    return this.native.suspend(path);
+  // see: cans/08-lifecycle.md#Suspend-and-resume
+  get suspendedReason(): SuspendReason | undefined {
+    return this.suspendedReasonValue;
   }
 
-  async resume(path: string): Promise<void> {
-    return this.native.resume(path);
+  async suspend(reason: SuspendReason): Promise<void> {
+    await this.native.suspend(`${this.sessionDir}/suspend.img`);
+    this.suspendedReasonValue = reason;
+  }
+
+  async resume(): Promise<void> {
+    await this.native.resume(`${this.sessionDir}/suspend.img`);
+    this.suspendedReasonValue = undefined;
   }
 
   async rollback(snapshot?: SnapshotDescriptor): Promise<void> {

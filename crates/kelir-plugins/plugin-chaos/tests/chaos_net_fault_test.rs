@@ -1,5 +1,4 @@
 // see: cans/artifacts/test-plan/cases/plugin_engine/pe_16_chaos_rst_injection_drops_matching_frame.yaml#case_id
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::NetInterposer;
 use kelir_interface::protocol_wire::FilterAction;
 use plugin_chaos::{ChaosConfig, ChaosPlugin, FaultDirection, NetworkFaultRule};
@@ -50,8 +49,8 @@ fn pe_16_chaos_rst_injection_drops_matching_frame() -> Result<(), String> {
     match plugin.on_net_outbound(&mut matching) {
         Ok(FilterAction::Drop { errno, reason }) => {
             assert_eq!(
-                errno,
-                Some(Errno::Econnrefused),
+                errno.map(|errno| errno.as_str()),
+                Some("ECONNREFUSED"),
                 "RST injection must carry ECONNREFUSED, reason: {reason}"
             );
             assert!(

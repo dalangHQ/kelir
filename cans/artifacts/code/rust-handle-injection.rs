@@ -12,6 +12,7 @@
 // Canonical spec home:    cans/03-sdk-architecture.md#Rust-SDK
 
 use kelir::plugin::{AnyPlugin, MountScope, VirtioDevice};
+use kelir::protocol_wire::Errno;
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
@@ -56,7 +57,7 @@ let builder = builder
         if policy.violations().await > 0 {
             // EPERM is the generic POSIX denial used here; no
             // policy-specific errno is pinned in the grounded spec facts.
-            return Ok(Verdict::Drop { errno: Some("EPERM".into()), reason: "Policy violations recorded".into() });
+            return Ok(Verdict::Drop { errno: Some(Errno::Eperm), reason: "Policy violations recorded".into() });
         }
         Ok(Verdict::Pass)
     }))

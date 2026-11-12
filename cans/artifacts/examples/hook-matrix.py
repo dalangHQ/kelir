@@ -100,7 +100,7 @@ class HookMatrixPlugin(BasePlugin):
         return chunk
 
     def on_fs_write(
-        self, path: Path, data: bytearray, pid: int, ctx: HandlerContext,
+        self, path: Path, data: bytes, pid: int, ctx: HandlerContext,
     ) -> FilterAction:
         return FilterAction.forward()
 

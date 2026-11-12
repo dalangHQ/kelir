@@ -74,6 +74,29 @@ export const SuspendUntil: {
   },
 };
 
+// see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
+export type ExternalSuspendKind =
+  | "human-authorization-hold"
+  | "wire-connection-parking"
+  | "step-evaluation-yield"
+  | "host-power-event-snapshot";
+
+// see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
+export type SuspendReason =
+  | { readonly kind: "external"; readonly detail: ExternalSuspendKind }
+  | { readonly kind: "resource-pressure" };
+
+// see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
+export const SuspendReason: {
+  readonly resourcePressure: SuspendReason;
+  external(detail: ExternalSuspendKind): SuspendReason;
+} = {
+  resourcePressure: { kind: "resource-pressure" },
+  external(detail: ExternalSuspendKind): SuspendReason {
+    return { kind: "external", detail };
+  },
+};
+
 export enum PostExecAction {
   Proceed = "proceed",
   RollbackAndHalt = "rollback-and-halt",

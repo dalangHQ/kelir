@@ -44,6 +44,9 @@ pub enum WxPolicy {
 /// Host virtualization selection and hardware validation parameters.
 #[derive(Debug, Clone)]
 pub struct DriverPolicy {
+    /// Backend driver selection override; None leaves the choice to the backend picker.
+    /// see: cans/01-architecture.md#Driver-backends
+    pub driver: Option<String>,
     /// Refuse to initialize if true hardware virtualization (KVM/HVF/AVF) is missing.
     pub require_hardware_vmm: bool,
     /// Explicit flag required to permit bwrap or proot fallback execution.

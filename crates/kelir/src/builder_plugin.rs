@@ -3,20 +3,21 @@
 use std::future::Future;
 use std::marker::PhantomData;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use kelir_interface::driver_interface::{
     DaxWindowMode, FastBootMode, WatchdogEvent, WatchdogVerdict,
 };
 use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::FilterSnapshot;
 use kelir_interface::plugin_model::{
-    AnyPlugin, ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, KelirPlugin,
-    LifecycleCtx, LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginClone,
-    PluginDeps, PluginError, SystemTelemetryParticipant, TrapInterposer,
+    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, MountScope, PipelineBinder, PluginClone,
+    PluginDeps, PluginError,
 };
-use kelir_interface::protocol_wire::{FilterAction, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{
+    FilterAction, Heartbeat, PostExecAction, ProcessExit, TrapEvent, Verdict,
+};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::builder_scopes::{
@@ -28,346 +29,14 @@ use crate::builder_sdk::{
 };
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
 
-struct OnTrap;
-struct OnProcessExit;
-struct OnFsLookup;
-struct OnFsRead;
-struct OnFsWrite;
-struct OnFsLock;
-struct OnNetOutbound;
-struct OnNetInbound;
-struct OnConsoleInput;
-struct OnConsoleOutput;
-struct OnExecStdout;
-struct OnExecStderr;
-struct OnHostLsmExec;
-struct OnHostPressure;
-struct OnHostKeyringAccess;
-struct OnVmInit;
-struct OnVmReady;
-struct OnVmShutdown;
-struct OnPreCommit;
-struct OnPostCommit;
-struct OnHostPreempt;
-struct OnMemoryPressure;
-struct OnHeartbeat;
-struct OnWatchdog;
-
-// see: cans/02-plugin-model.md#Segregated-ring-traits
-pub struct TrapClosureAdapter<F, Verb> {
-    handler: F,
-    verb: PhantomData<fn() -> Verb>,
-}
-
-// see: cans/02-plugin-model.md#Segregated-ring-traits
-pub struct FsClosureAdapter<F, Verb> {
-    handler: F,
-    verb: PhantomData<fn() -> Verb>,
-}
-
-// see: cans/02-plugin-model.md#Segregated-ring-traits
-pub struct NetClosureAdapter<F, Verb> {
-    handler: F,
-    verb: PhantomData<fn() -> Verb>,
-}
-
-// see: cans/02-plugin-model.md#Segregated-ring-traits
-pub struct ConsoleClosureAdapter<F, Verb> {
-    handler: F,
-    verb: PhantomData<fn() -> Verb>,
-}
-
-// see: cans/02-plugin-model.md#Segregated-ring-traits
-pub struct HostClosureAdapter<F, Verb> {
-    handler: F,
-    verb: PhantomData<fn() -> Verb>,
-}
-
-// see: cans/02-plugin-model.md#Segregated-ring-traits
-pub struct LifecycleClosureAdapter<F, Verb> {
-    handler: F,
-    verb: PhantomData<fn() -> Verb>,
-}
-
-// see: cans/02-plugin-model.md#Segregated-ring-traits
-pub struct TelemetryClosureAdapter<F, Verb> {
-    handler: F,
-    verb: PhantomData<fn() -> Verb>,
-}
-
-#[async_trait]
-impl<F> TrapInterposer for TrapClosureAdapter<F, OnTrap>
-where
-    F: Fn(&TrapEvent, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync,
-{
-    async fn on_trap(&self, event: &TrapEvent, ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
-        (self.handler)(event, ctx)
-    }
-}
-
-#[async_trait]
-impl<F> TrapInterposer for TrapClosureAdapter<F, OnProcessExit>
-where
-    F: Fn(&ProcessExit, &HandlerCtx) -> Result<(), PluginError> + Send + Sync,
-{
-    async fn on_process_exit(
-        &self,
-        event: &ProcessExit,
-        ctx: &HandlerCtx,
-    ) -> Result<(), PluginError> {
-        (self.handler)(event, ctx)
-    }
-}
-
-impl<F> FsInterposer for FsClosureAdapter<F, OnFsLookup>
-where
-    F: Fn(&Path) -> Result<Verdict, PluginError> + Send + Sync,
-{
-    fn on_fs_lookup(&self, path: &Path) -> Result<Verdict, PluginError> {
-        (self.handler)(path)
-    }
-}
-
-impl<F> FsInterposer for FsClosureAdapter<F, OnFsRead>
-where
-    F: Fn(&Path, &mut [u8]) -> Result<(), PluginError> + Send + Sync,
-{
-    fn on_fs_read(&self, path: &Path, buffer: &mut [u8]) -> Result<(), PluginError> {
-        (self.handler)(path, buffer)
-    }
-}
-
-impl<F> FsInterposer for FsClosureAdapter<F, OnFsWrite>
-where
-    F: Fn(&Path, &mut [u8], u32, &HandlerCtx) -> Result<FilterAction, PluginError> + Send + Sync,
-{
-    fn on_fs_write(
-        &self,
-        path: &Path,
-        data: &mut [u8],
-        pid: u32,
-        ctx: &HandlerCtx,
-    ) -> Result<FilterAction, PluginError> {
-        (self.handler)(path, data, pid, ctx)
-    }
-}
-
-impl<F> FsInterposer for FsClosureAdapter<F, OnFsLock>
-where
-    F: Fn(&Path, i32, i16, u32) -> Result<Verdict, PluginError> + Send + Sync,
-{
-    fn on_fs_lock(
-        &self,
-        path: &Path,
-        flock_cmd: i32,
-        flock_type: i16,
-        pid: u32,
-    ) -> Result<Verdict, PluginError> {
-        (self.handler)(path, flock_cmd, flock_type, pid)
-    }
-}
-
-impl<F> NetInterposer for NetClosureAdapter<F, OnNetOutbound>
-where
-    F: Fn(&mut [u8]) -> Result<FilterAction, PluginError> + Send + Sync,
-{
-    fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        (self.handler)(frame)
-    }
-}
-
-impl<F> NetInterposer for NetClosureAdapter<F, OnNetInbound>
-where
-    F: Fn(&mut [u8]) -> Result<FilterAction, PluginError> + Send + Sync,
-{
-    fn on_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        (self.handler)(frame)
-    }
-}
-
-#[async_trait]
-impl<F> ConsoleInterposer for ConsoleClosureAdapter<F, OnConsoleInput>
-where
-    F: Fn(u32, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync,
-{
-    async fn on_console_input(&self, port: u32, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
-        (self.handler)(port, bytes)
-    }
-}
-
-#[async_trait]
-impl<F> ConsoleInterposer for ConsoleClosureAdapter<F, OnConsoleOutput>
-where
-    F: Fn(u32, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync,
-{
-    async fn on_console_output(&self, port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
-        (self.handler)(port, chunk)
-    }
-}
-
-#[async_trait]
-impl<F> ConsoleInterposer for ConsoleClosureAdapter<F, OnExecStdout>
-where
-    F: Fn(u32, u64, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync,
-{
-    async fn on_exec_stdout(
-        &self,
-        pid: u32,
-        exec_id: u64,
-        chunk: &mut Vec<u8>,
-    ) -> Result<(), PluginError> {
-        (self.handler)(pid, exec_id, chunk)
-    }
-}
-
-#[async_trait]
-impl<F> ConsoleInterposer for ConsoleClosureAdapter<F, OnExecStderr>
-where
-    F: Fn(u32, u64, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync,
-{
-    async fn on_exec_stderr(
-        &self,
-        pid: u32,
-        exec_id: u64,
-        chunk: &mut Vec<u8>,
-    ) -> Result<(), PluginError> {
-        (self.handler)(pid, exec_id, chunk)
-    }
-}
-
-impl<F> HostInterposer for HostClosureAdapter<F, OnHostLsmExec>
-where
-    F: Fn(&Path, u32) -> Result<Verdict, PluginError> + Send + Sync,
-{
-    fn on_host_lsm_exec(&self, path: &Path, pid: u32) -> Result<Verdict, PluginError> {
-        (self.handler)(path, pid)
-    }
-}
-
-impl<F> HostInterposer for HostClosureAdapter<F, OnHostPressure>
-where
-    F: Fn(u32) -> Result<Verdict, PluginError> + Send + Sync,
-{
-    fn on_host_pressure(&self, level: u32) -> Result<Verdict, PluginError> {
-        (self.handler)(level)
-    }
-}
-
-impl<F> HostInterposer for HostClosureAdapter<F, OnHostKeyringAccess>
-where
-    F: Fn(&str) -> Result<Verdict, PluginError> + Send + Sync,
-{
-    fn on_host_keyring_access(&self, key: &str) -> Result<Verdict, PluginError> {
-        (self.handler)(key)
-    }
-}
-
-#[async_trait]
-impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnVmInit>
-where
-    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync,
-    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
-{
-    async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        (self.handler)(ctx).await
-    }
-}
-
-#[async_trait]
-impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnVmReady>
-where
-    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync,
-    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
-{
-    async fn on_vm_ready(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        (self.handler)(ctx).await
-    }
-}
-
-#[async_trait]
-impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnVmShutdown>
-where
-    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync,
-    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
-{
-    async fn on_vm_shutdown(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        (self.handler)(ctx).await
-    }
-}
-
-#[async_trait]
-impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnPreCommit>
-where
-    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync,
-    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
-{
-    async fn on_pre_commit(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        (self.handler)(ctx).await
-    }
-}
-
-#[async_trait]
-impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnPostCommit>
-where
-    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>, bool) -> Fut + Send + Sync,
-    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
-{
-    async fn on_post_commit(
-        &self,
-        ctx: &mut LifecycleCtx<'_>,
-        committed: bool,
-    ) -> Result<(), PluginError> {
-        (self.handler)(ctx, committed).await
-    }
-}
-
-#[async_trait]
-impl<F, Fut> LifecycleParticipant for LifecycleClosureAdapter<F, OnHostPreempt>
-where
-    F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync,
-    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
-{
-    async fn on_host_preempt(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        (self.handler)(ctx).await
-    }
-}
-
-#[async_trait]
-impl<F, Fut> SystemTelemetryParticipant for TelemetryClosureAdapter<F, OnMemoryPressure>
-where
-    F: Fn(u32, u32) -> Fut + Send + Sync,
-    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
-{
-    async fn on_memory_pressure(
-        &self,
-        available_mb: u32,
-        total_mb: u32,
-    ) -> Result<(), PluginError> {
-        (self.handler)(available_mb, total_mb).await
-    }
-}
-
-#[async_trait]
-impl<F, Fut> SystemTelemetryParticipant for TelemetryClosureAdapter<F, OnHeartbeat>
-where
-    F: Fn(u64) -> Fut + Send + Sync,
-    Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
-{
-    async fn on_heartbeat(&self, uptime_ms: u64) -> Result<(), PluginError> {
-        (self.handler)(uptime_ms).await
-    }
-}
-
-#[async_trait]
-impl<F, Fut> SystemTelemetryParticipant for TelemetryClosureAdapter<F, OnWatchdog>
-where
-    F: Fn(&WatchdogEvent) -> Fut + Send + Sync,
-    Fut: Future<Output = Result<WatchdogVerdict, PluginError>> + Send + 'static,
-{
-    async fn on_watchdog(&self, event: &WatchdogEvent) -> Result<WatchdogVerdict, PluginError> {
-        (self.handler)(event).await
-    }
-}
+use crate::builder_adapters::{
+    AsyncTrapClosureAdapter, ConsoleClosureAdapter, FsClosureAdapter, HostClosureAdapter,
+    LifecycleClosureAdapter, NetClosureAdapter, OnConsoleInput, OnConsoleOutput, OnExecStderr,
+    OnExecStdout, OnFsLock, OnFsLookup, OnFsRead, OnFsWrite, OnHeartbeat, OnHostKeyringAccess,
+    OnHostLsmExec, OnHostPreempt, OnHostPressure, OnMemoryPressure, OnNetInbound, OnNetOutbound,
+    OnPostCommit, OnPreCommit, OnProcessExit, OnTrap, OnVmInit, OnVmReady, OnVmShutdown,
+    OnWatchdog, PostExecGateAdapter, TelemetryClosureAdapter, TrapClosureAdapter,
+};
 
 // see: cans/02-plugin-model.md#Unified-builder
 impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
@@ -480,7 +149,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 
     pub fn on_fs_read<F>(mut self, f: F) -> Self
     where
-        F: Fn(&Path, &mut [u8]) -> Result<(), PluginError> + Send + Sync + 'static,
+        F: Fn(&Path, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
         self.registry
             .fs
@@ -548,7 +217,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 
     pub fn on_console_input<F>(mut self, f: F) -> Self
     where
-        F: Fn(u32, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
+        F: Fn(u32, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
         self.registry
             .console
@@ -561,7 +230,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 
     pub fn on_console_output<F>(mut self, f: F) -> Self
     where
-        F: Fn(u32, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
+        F: Fn(u32, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
         self.registry
             .console
@@ -574,7 +243,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 
     pub fn on_exec_stdout<F>(mut self, f: F) -> Self
     where
-        F: Fn(u32, u64, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
+        F: Fn(u32, u64, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
         self.registry
             .console
@@ -587,7 +256,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 
     pub fn on_exec_stderr<F>(mut self, f: F) -> Self
     where
-        F: Fn(u32, u64, &mut Vec<u8>) -> Result<(), PluginError> + Send + Sync + 'static,
+        F: Fn(u32, u64, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
         self.registry
             .console
@@ -637,10 +306,15 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_vm_init<F, Fut>(mut self, f: F) -> Self
+    pub fn on_vm_init<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.registry
             .lifecycle
@@ -651,10 +325,15 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_vm_ready<F, Fut>(mut self, f: F) -> Self
+    pub fn on_vm_ready<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.registry
             .lifecycle
@@ -665,10 +344,15 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_vm_shutdown<F, Fut>(mut self, f: F) -> Self
+    pub fn on_vm_shutdown<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.registry
             .lifecycle
@@ -679,10 +363,15 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_pre_commit<F, Fut>(mut self, f: F) -> Self
+    pub fn on_pre_commit<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.registry
             .lifecycle
@@ -693,10 +382,16 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_post_commit<F, Fut>(mut self, f: F) -> Self
+    pub fn on_post_commit<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>, bool) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+                bool,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.registry
             .lifecycle
@@ -707,10 +402,15 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_host_preempt<F, Fut>(mut self, f: F) -> Self
+    pub fn on_host_preempt<F>(mut self, f: F) -> Self
     where
-        F: for<'c, 'i> Fn(&'c mut LifecycleCtx<'i>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.registry
             .lifecycle
@@ -737,7 +437,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 
     pub fn on_heartbeat<F, Fut>(mut self, f: F) -> Self
     where
-        F: Fn(u64) -> Fut + Send + Sync + 'static,
+        F: Fn(&Heartbeat) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
         self.registry
@@ -849,6 +549,46 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
                 },
                 verb: PhantomData,
             }));
+        Ok(self)
+    }
+
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    pub fn trap_async<F, Fut>(
+        mut self,
+        filter: impl Into<TrapFilter>,
+        f: F,
+    ) -> Result<Self, PluginError>
+    where
+        F: Fn(HandlerCtx) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Verdict, PluginError>> + Send + 'static,
+    {
+        let filter: TrapFilter = filter.into();
+        validate_trap_filter("host", &filter)?;
+        let snapshot = FilterSnapshot::from(&filter);
+        self.registry.trap.push(Arc::new(AsyncTrapClosureAdapter {
+            filter: snapshot,
+            handler: f,
+        }));
+        Ok(self)
+    }
+
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    pub fn post_exec<F, Fut>(
+        mut self,
+        filter: impl Into<TrapFilter>,
+        f: F,
+    ) -> Result<Self, PluginError>
+    where
+        F: Fn(HandlerCtx) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<PostExecAction, PluginError>> + Send + 'static,
+    {
+        let filter: TrapFilter = filter.into();
+        validate_trap_filter("host", &filter)?;
+        let snapshot = FilterSnapshot::from(&filter);
+        self.registry.post_exec.push(Arc::new(PostExecGateAdapter {
+            filter: snapshot,
+            handler: f,
+        }));
         Ok(self)
     }
 }

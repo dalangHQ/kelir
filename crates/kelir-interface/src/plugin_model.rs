@@ -20,7 +20,8 @@ pub use crate::handlers_plugin::{
     ConsoleContext, ExecContext, FsContext, HandlerCtx, Has, HostContext, NetContext,
 };
 use crate::protocol_wire::{
-    FilterAction, ProcessExit, StreamKind, SuspendUntil, TrapEvent, Verdict,
+    FilterAction, Heartbeat, PostExecAction, ProcessExit, StreamKind, SuspendUntil, TrapEvent,
+    Verdict,
 };
 use crate::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
@@ -569,6 +570,11 @@ pub trait PipelineBinder {
         self.bind_trap_scoped(stage, MountScope::default());
     }
     fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope);
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    fn bind_post_exec(&mut self, gate: Arc<dyn PostExecGate>) {
+        self.bind_post_exec_scoped(gate, MountScope::default());
+    }
+    fn bind_post_exec_scoped(&mut self, gate: Arc<dyn PostExecGate>, scope: MountScope);
     fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>) {
         self.bind_console_scoped(stage, MountScope::default());
     }
@@ -779,33 +785,46 @@ pub trait TrapInterposer: Send + Sync {
     }
 }
 
+// see: cans/10-attestation.md#Step-evaluation-loop
+#[async_trait]
+pub trait PostExecGate: Send + Sync {
+    async fn check(
+        &self,
+        event: &TrapEvent,
+        ctx: &HandlerCtx,
+    ) -> Result<PostExecAction, PluginError> {
+        let _ = (event, ctx);
+        Ok(PostExecAction::Proceed)
+    }
+}
+
 #[async_trait]
 pub trait ConsoleInterposer: Send + Sync {
-    async fn on_console_input(&self, port: u32, bytes: &mut Vec<u8>) -> Result<(), PluginError> {
-        let _ = (port, bytes);
-        Ok(())
+    async fn on_console_input(&self, port: u32, bytes: &[u8]) -> Result<Vec<u8>, PluginError> {
+        let _ = port;
+        Ok(bytes.to_vec())
     }
-    async fn on_console_output(&self, port: u32, chunk: &mut Vec<u8>) -> Result<(), PluginError> {
-        let _ = (port, chunk);
-        Ok(())
+    async fn on_console_output(&self, port: u32, chunk: &[u8]) -> Result<Vec<u8>, PluginError> {
+        let _ = port;
+        Ok(chunk.to_vec())
     }
     async fn on_exec_stdout(
         &self,
         pid: u32,
         exec_id: u64,
-        chunk: &mut Vec<u8>,
-    ) -> Result<(), PluginError> {
-        let _ = (pid, exec_id, chunk);
-        Ok(())
+        chunk: &[u8],
+    ) -> Result<Vec<u8>, PluginError> {
+        let _ = (pid, exec_id);
+        Ok(chunk.to_vec())
     }
     async fn on_exec_stderr(
         &self,
         pid: u32,
         exec_id: u64,
-        chunk: &mut Vec<u8>,
-    ) -> Result<(), PluginError> {
-        let _ = (pid, exec_id, chunk);
-        Ok(())
+        chunk: &[u8],
+    ) -> Result<Vec<u8>, PluginError> {
+        let _ = (pid, exec_id);
+        Ok(chunk.to_vec())
     }
 }
 
@@ -819,8 +838,8 @@ pub trait SystemTelemetryParticipant: Send + Sync {
         let _ = (available_mb, total_mb);
         Ok(())
     }
-    async fn on_heartbeat(&self, uptime_ms: u64) -> Result<(), PluginError> {
-        let _ = uptime_ms;
+    async fn on_heartbeat(&self, event: &Heartbeat) -> Result<(), PluginError> {
+        let _ = event;
         Ok(())
     }
     async fn on_watchdog(&self, event: &WatchdogEvent) -> Result<WatchdogVerdict, PluginError> {
@@ -836,9 +855,9 @@ pub trait FsInterposer: Send + Sync {
         let _ = path;
         Ok(Verdict::Pass)
     }
-    fn on_fs_read(&self, path: &Path, buffer: &mut [u8]) -> Result<(), PluginError> {
-        let _ = (path, buffer);
-        Ok(())
+    fn on_fs_read(&self, path: &Path, buffer: &[u8]) -> Result<Vec<u8>, PluginError> {
+        let _ = path;
+        Ok(buffer.to_vec())
     }
     fn on_fs_write(
         &self,

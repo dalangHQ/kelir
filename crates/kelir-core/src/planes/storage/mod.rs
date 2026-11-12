@@ -6,7 +6,6 @@ pub mod io_storage;
 pub mod lock_broker;
 pub mod storage_reconciler;
 pub mod storage_synthetic;
-use kelir_interface::errno_types::Errno;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -68,7 +67,7 @@ fn accrue_quota(
         })?;
         if total > max {
             return Err(kelir_interface::plugin_model::PluginError::reject(
-                Errno::Enospc,
+                kelir_interface::protocol_wire::Errno::Enospc,
                 format!("storage {kind} quota exceeded"),
             ));
         }

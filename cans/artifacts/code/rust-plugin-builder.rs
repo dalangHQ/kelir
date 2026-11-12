@@ -121,9 +121,11 @@ pub struct TelemetryClosureAdapter<F, Verb> {
 // plugin-mode builder (config None, name Some). The seven vecs are the
 // single hook registry for both faces: the host face's ring verbs append
 // here, exactly like the plugin face's. Registration keeps plane config
-// and host-only registrations only; its former on_vm_init / on_vm_ready
-// / on_vm_shutdown single-handler fields are superseded by the lifecycle
-// vec and delete. Registration, TrapFilter, CustomActionEntry,
+// and host-only registrations only; the former on_vm_init / on_vm_ready
+// / on_vm_shutdown single-handler fields were folded into the lifecycle
+// vec, and the on_vm_init / on_vm_ready / on_vm_shutdown methods remain
+// as the ring verbs that append to it. Registration, TrapFilter,
+// CustomActionEntry,
 // StreamKindServiceEntry, and LifecycleMut are defined in builder_sdk.rs
 // alongside the builder; the trap-closure adapter (TrapClosureAdapter) and
 // its OnTrap/OnProcessExit verbs live in builder_plugin.rs and register on
@@ -987,9 +989,9 @@ impl KelirBuilder {
 // and are simply not called on a plugin-mode builder; a call on one is
 // recorded in its registration and seal() rejects it with the plugin
 // named. params() is host-only by type (the arity pin). The live host's
-// on_vm_init / on_vm_ready / on_vm_shutdown single-handler methods are
-// superseded by the ring verbs above (append, plain async fn) and delete;
-// on_trap_deny stays: it is not one of the 24 rings.
+// on_vm_init / on_vm_ready / on_vm_shutdown methods are the ring verbs
+// above (append, plain async fn); on_trap_deny stays: it is not one of
+// the 24 rings.
 impl KelirBuilder {
     pub fn storage(mut self, config: StoragePlaneConfig<Plugins, Params>) -> Self {
         self.registration.storage_cfg = Some(config.retag());
