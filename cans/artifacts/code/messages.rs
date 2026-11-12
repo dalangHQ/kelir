@@ -85,7 +85,6 @@ pub struct Heartbeat {
 // ── Wire enums ───────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
-#[non_exhaustive]
 pub enum GuestToHost {
     TrapEvent(TrapEvent),
     ProcessExit(ProcessExit),
@@ -123,7 +122,6 @@ pub const EXEC_STREAM_STDERR: u8 = 0x02;
 pub const EXEC_STREAM_CONTROL: u8 = 0x03; // stream control: exit code, EOF, rlimit descriptors, window resize (signals ride Control 0x0000)
 
 #[derive(Debug, Serialize, Deserialize)]
-#[non_exhaustive]
 pub enum HostToGuest {
     /// Verdict on Intercepted Syscall
     TrapDecision {
@@ -146,7 +144,6 @@ pub enum HostToGuest {
 /// Drop = c.drop(errno, reason), Suspend = c.suspend(until),
 /// Abort = c.abort(reason).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub enum SuspendUntil {
     /// Hold until the given deadline in milliseconds elapses.
     Deadline(u64),
@@ -162,7 +159,6 @@ pub enum SuspendUntil {
 /// registration (see 11-protocol.md Custom dispatch). Unknown names
 /// fail with EUnknownAction before the pipeline resumes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub enum PatchPayload {
     ExecveMutation(ExecveMutation),
     /// Served inode for on_fs_lookup: same fields as FsInodeAttr, carried
@@ -180,9 +176,8 @@ pub enum PatchPayload {
 /// Variant spelling is E + the POSIX name in lower CamelCase
 /// (Eperm, Eacces); the wire form is the SCREAMING name, except
 /// EConfig, ESecurityViolation, EUnknownKind, EClockRegress,
-/// which keep their mixed-case wire spelling. From<&str> maps an
-/// unrecognized name to EPERM, the generic POSIX denial used by
-/// the policy examples (see rust-handle-injection.rs).
+/// which keep their mixed-case wire spelling. There is no silent
+/// fallback: an unrecognized name is not an errno.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Errno {
@@ -240,36 +235,6 @@ impl Errno {
             Errno::Esecurityviolation => "ESecurityViolation",
             Errno::Eunknownkind => "EUnknownKind",
             Errno::Eclockregress => "EClockRegress",
-        }
-    }
-}
-
-impl From<&str> for Errno {
-    fn from(name: &str) -> Self {
-        match name {
-            "EPERM" => Errno::Eperm,
-            "EACCES" => Errno::Eacces,
-            "ENOENT" => Errno::Enoent,
-            "EINVAL" => Errno::Einval,
-            "ENOSPC" => Errno::Enospc,
-            "EROFS" => Errno::Erofs,
-            "ECONNREFUSED" => Errno::Econnrefused,
-            "ENXIO" => Errno::Enxio,
-            "EWOULDBLOCK" => Errno::Ewouldblock,
-            "EFAULT" => Errno::Efault,
-            "EBUSY" => Errno::Ebusy,
-            "EXDEV" => Errno::Exdev,
-            "EPIPE" => Errno::Epipe,
-            "ENODATA" => Errno::Enodata,
-            "EPROTO" => Errno::Eproto,
-            "EPOLICY" => Errno::Epolicy,
-            "ETOOLQUOTA" => Errno::Etoolquota,
-            "EWXVIOLATION" => Errno::Ewxviolation,
-            "EConfig" => Errno::Econfig,
-            "ESecurityViolation" => Errno::Esecurityviolation,
-            "EUnknownKind" => Errno::Eunknownkind,
-            "EClockRegress" => Errno::Eclockregress,
-            _ => Errno::Eperm,
         }
     }
 }

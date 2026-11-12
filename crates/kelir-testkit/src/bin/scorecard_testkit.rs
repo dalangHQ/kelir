@@ -1,3 +1,5 @@
+// TODO (L3) [governance_tools]: read CaseEntry case_id/quadrant/title in the scorecard gate; slop: entry fields parsed but never read
+#![allow(dead_code)]
 // see: cans/15-operations.md#Coverage-gates
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -25,7 +27,6 @@ struct DomainMeta {
     description: String,
 }
 
-#[allow(dead_code)]
 #[derive(serde::Deserialize)]
 struct CaseEntry {
     case_id: String,

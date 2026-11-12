@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use crate::cli_error::CliError;
 use crate::layers_cli;
 
 // see: cans/02-plugin-model.md#Segregated-ring-traits
@@ -19,7 +20,7 @@ pub const RING_TRAITS: &[&str] = &[
 
 const KELIR_PLUGIN_IDENTITY: &str = "KelirPlugin";
 
-pub fn declared_ring_mask(dir: &Path) -> Result<BTreeSet<String>, Box<dyn std::error::Error>> {
+pub fn declared_ring_mask(dir: &Path) -> Result<BTreeSet<String>, CliError> {
     let mut files = Vec::new();
     layers_cli::collect_rs(dir, &mut files)?;
     let mut mask = BTreeSet::new();
@@ -41,7 +42,7 @@ pub fn declared_ring_mask(dir: &Path) -> Result<BTreeSet<String>, Box<dyn std::e
     Ok(mask)
 }
 
-pub fn declared_plugin_name(dir: &Path) -> Result<Option<String>, Box<dyn std::error::Error>> {
+pub fn declared_plugin_name(dir: &Path) -> Result<Option<String>, CliError> {
     let mut files = Vec::new();
     layers_cli::collect_rs(dir, &mut files)?;
     for file in files {
@@ -68,7 +69,7 @@ fn quoted_literal(line: &str) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
-pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), CliError> {
     // see: cans/15-operations.md#Subcommands
     // TODO (L3) [virtio_rings]: render the --show ring-mask report over declared_ring_mask.; slop: mask report Ok, declared_ring_mask never read
     Err(

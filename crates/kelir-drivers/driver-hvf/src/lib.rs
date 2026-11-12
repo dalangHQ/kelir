@@ -1,3 +1,5 @@
+// TODO (L3) [hd_04_cold_boot_budget_enforcement]: call run_vcpu/promote_chunked_stage2_pages from the live vCPU loop; slop: vCPU never runs
+#![allow(dead_code)]
 // see: cans/01-architecture.md#Host-memory-pressure-watcher
 // see: cans/08-lifecycle.md#CoW-fork
 // see: cans/artifacts/diagrams/host-runtime.txt#driver-hvf
@@ -8,7 +10,6 @@ use kelir_interface::driver_interface::{
     check_hw_lockfile,
 };
 
-#[allow(dead_code)]
 pub struct HvfDriver {
     vcpu_ids: Vec<sys_driver::hv_vcpu_t>,
     memory_mapped_bytes: usize,
@@ -45,7 +46,6 @@ impl HvfDriver {
         ))
     }
 
-    #[allow(dead_code)]
     fn run_vcpu(&mut self) -> Result<(), VmmError> {
         // TODO (L3) [hd_04_cold_boot_budget_enforcement]: call sys_driver::hv_vcpu_run on each vcpu handle inside an unsafe block; slop: vCPU never runs yet boot reports first exec within budget
         Err(VmmError::Unsupported("hvf run: hv_vcpu_run (L3)".into()))
@@ -58,7 +58,6 @@ impl HvfDriver {
         ))
     }
 
-    #[allow(dead_code)]
     fn promote_chunked_stage2_pages(&self, _ipa: u64) -> Result<(), VmmError> {
         // see: cans/08-lifecycle.md#CoW-fork
         // TODO (L3) [hd_06_hvf_stage2_chunk_promoter]: promote 2MB contiguous blocks via Mach vm_copy CoW; slop: 4KB pages promoted as 2MB chunks, chunk size never asserted

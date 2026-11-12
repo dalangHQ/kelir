@@ -2,7 +2,6 @@
 // see: cans/01-architecture.md#Driver-backends
 pub struct DriverRouter {
     // see: cans/01-architecture.md#Driver-backends
-    #[allow(dead_code)]
     active_driver: Box<dyn kelir_interface::driver_interface::VmmDriver>,
 }
 

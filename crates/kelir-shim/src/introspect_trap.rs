@@ -22,7 +22,6 @@ const CGROUP_V2_ROOT: &str = "/sys/fs/cgroup";
 // see: cans/11-protocol.md#Frozen-inspection-mechanics
 const FREEZE_POLL_LIMIT: u32 = 1000;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TrapInspection {
     pub event: TrapEvent,

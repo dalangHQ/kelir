@@ -6,7 +6,6 @@ use kelir_interface::driver_interface::{
     check_hw_lockfile, reject_emulated_deterministic_clock,
 };
 
-#[allow(dead_code)]
 pub struct ProotDriver {
     allow_emulated_fallback: bool,
     config: Option<VmConfig>,

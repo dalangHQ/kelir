@@ -142,7 +142,10 @@ impl LocalMerkleDbSink {
 
     // see: cans/plugins/ledger.md#Merkle-WAL-specification
     fn record_for(&self, delta: &CausalDelta, timestamp_ns: u64) -> Result<WalRecord, PluginError> {
-        let head = self.head.lock().unwrap_or_else(|e| e.into_inner());
+        let head = self
+            .head
+            .lock()
+            .map_err(|_| PluginError::Halt("wal ledger head lock poisoned".into()))?;
         Ok(WalRecord::from_delta(head.1, head.0, delta, timestamp_ns))
     }
 }

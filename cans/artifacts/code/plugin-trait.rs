@@ -352,7 +352,7 @@ pub trait KelirPlugin: Send + Sync {
     fn context(&self) -> Self::Context;
 
     /// Unique identifier for telemetry.
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
 
     /// Default mount scope. Overridden by explicit builder scope.
     fn default_scope(&self) -> MountScope { MountScope::default() }

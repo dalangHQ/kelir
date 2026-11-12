@@ -3,7 +3,6 @@
 // see: cans/artifacts/diagrams/trap-flow.txt#Kernel-seccomp-unotify-triggers
 use std::fmt;
 
-#[allow(dead_code)]
 pub const TRAP_CHANNEL: u16 = 0x0000;
 
 // see: cans/11-protocol.md#Trap-fast-path
@@ -20,7 +19,6 @@ const AUDIT_ARCH: u32 = 0xC000_003E;
 #[cfg(target_arch = "aarch64")]
 const AUDIT_ARCH: u32 = 0xC000_00B7;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShimError {
     SeccompInstall { errno: libc::c_int },
@@ -251,12 +249,10 @@ fn trap_filter_program() -> Vec<libc::sock_filter> {
     prog
 }
 
-#[allow(dead_code)]
 pub struct SeccompFilter {
     fd: libc::c_int,
 }
 
-#[allow(dead_code)]
 impl SeccompFilter {
     // see: cans/11-protocol.md#Trap-fast-path
     pub fn install() -> Result<Self, ShimError> {
@@ -289,12 +285,10 @@ impl SeccompFilter {
     }
 }
 
-#[allow(dead_code)]
 pub struct SeccompNotify {
     fd: libc::c_int,
 }
 
-#[allow(dead_code)]
 impl SeccompNotify {
     // see: cans/11-protocol.md#Trap-fast-path
     pub fn install(filter: &SeccompFilter) -> Result<Self, ShimError> {
@@ -353,14 +347,12 @@ impl SeccompNotify {
     }
 }
 
-#[allow(dead_code)]
 pub struct SeccompTrap {
     pub pid: u32,
     pub syscall_nr: i32,
     pub args: [u64; 6],
 }
 
-#[allow(dead_code)]
 impl SeccompTrap {
     pub fn route_channel(&self) -> u16 {
         TRAP_CHANNEL

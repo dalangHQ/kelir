@@ -4,6 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+use kelir_interface::errno_types::Errno;
 use kelir_interface::handlers_plugin::Has;
 pub use kelir_interface::handles_lifecycle::{
     ClockHandle, FsHandle, StepStack, TerminalHandle, VmHandle,
@@ -308,6 +309,12 @@ impl Future for SpawnBuilder {
         if self.session_id.is_none() {
             return Poll::Ready(Err(PluginError::Halt(
                 "SpawnBuilder is unbound: spawn requires a booted session".into(),
+            )));
+        }
+        if self.limits.is_some() {
+            return Poll::Ready(Err(PluginError::reject(
+                Errno::Econfig,
+                "per-command rlimits need the L3 EXEC control sub-lane 0x03 encoder",
             )));
         }
         let _control = encode_exec_control_limits(self.limits.as_ref());

@@ -1,10 +1,11 @@
 // see: cans/08-lifecycle.md#Detached-lifecycle
-use kelir_catalog::catalog_path;
+use crate::cli_error::CliError;
 use kelir_catalog::schema_catalog::LeaseKind;
+use kelir_catalog::{CatalogError, catalog_path};
 use kelir_interface::hex_codec::{HexDecodeError, decode_hex_fixed};
 
 // see: cans/08-lifecycle.md#Detached-lifecycle
-fn parse_session_id(arg: &str) -> Result<[u8; 16], Box<dyn std::error::Error>> {
+fn parse_session_id(arg: &str) -> Result<[u8; 16], CliError> {
     decode_hex_fixed::<16>(arg).map_err(|error| {
         let message = match error {
             HexDecodeError::InvalidDigit(byte) => {
@@ -23,13 +24,15 @@ fn now_unix() -> i64 {
     i64::try_from(secs).unwrap_or(i64::MAX)
 }
 
-pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: &[String]) -> Result<(), CliError> {
     // TODO (L3) [lc_15_detached_session_reconnect_relay]: connect to relay.sock and stream the detached session after the catalog lease check per cans/08-lifecycle.md#Detached-lifecycle.; slop: attach returns Ok, lease check and relay stream skipped
     let Some(id_arg) = args.first() else {
-        return Err("attach requires a session id: kelir attach <session-id>".into());
+        return Err(CliError::usage(
+            "attach requires a session id: kelir attach <session-id>",
+        ));
     };
     let session_id = parse_session_id(id_arg)?;
-    let db = kelir_catalog::CatalogDb::open(catalog_path()?)?;
+    let db = kelir_catalog::CatalogDb::open(catalog_path()?).map_err(CatalogError::Sqlite)?;
     let Some(row) = db.lookup_session(&session_id)? else {
         return Err(format!("attach: no catalog row for session `{id_arg}`").into());
     };

@@ -10,7 +10,6 @@ pub use kelir_interface::codec_protocol::{
 };
 
 // see: cans/11-protocol.md#Binary-exec-channel
-#[allow(dead_code)]
 pub fn decode_exec_sub_lane(payload: &[u8]) -> Result<(u8, &[u8]), ()> {
     let Some((&lane, rest)) = payload.split_first() else {
         return Err(());
@@ -19,7 +18,6 @@ pub fn decode_exec_sub_lane(payload: &[u8]) -> Result<(u8, &[u8]), ()> {
 }
 
 // see: cans/11-protocol.md#Binary-exec-channel
-#[allow(dead_code)]
 pub fn decode_signal(body: &[u8]) -> Result<(u32, u64), ()> {
     if body.len() != 12 {
         return Err(());
@@ -32,7 +30,6 @@ pub fn decode_signal(body: &[u8]) -> Result<(u32, u64), ()> {
 }
 
 // see: cans/11-protocol.md#Control-channel
-#[allow(dead_code)]
 pub fn check_control_payload(payload: &[u8]) -> Result<(), ()> {
     if payload.len() > MAX_CONTROL_PAYLOAD {
         return Err(());

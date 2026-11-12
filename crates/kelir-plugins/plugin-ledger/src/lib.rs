@@ -117,9 +117,13 @@ impl LedgerCtx {
         }
     }
 
-    pub fn record_denial(&self, ppid: u32) {
-        let mut denials = self.denials.lock().unwrap_or_else(|e| e.into_inner());
+    pub fn record_denial(&self, ppid: u32) -> Result<(), PluginError> {
+        let mut denials = self
+            .denials
+            .lock()
+            .map_err(|_| PluginError::Halt("ledger denials lock poisoned".into()))?;
         *denials.entry(ppid).or_insert(0) += 1;
+        Ok(())
     }
 
     pub async fn flush(&self) -> Result<(), PluginError> {
@@ -145,9 +149,12 @@ impl LedgerCtx {
         Ok(())
     }
 
-    pub async fn count_denials(&self, ppid: u32) -> u64 {
-        let denials = self.denials.lock().unwrap_or_else(|e| e.into_inner());
-        denials.get(&ppid).copied().unwrap_or(0)
+    pub async fn count_denials(&self, ppid: u32) -> Result<u64, PluginError> {
+        let denials = self
+            .denials
+            .lock()
+            .map_err(|_| PluginError::Halt("ledger denials lock poisoned".into()))?;
+        Ok(denials.get(&ppid).copied().unwrap_or(0))
     }
 
     pub async fn blake3_of_producing_process(&self, _path: &Path) -> Result<String, PluginError> {

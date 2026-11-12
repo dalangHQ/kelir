@@ -7,7 +7,6 @@ use kelir_interface::driver_interface::{
     check_hw_lockfile,
 };
 
-#[allow(dead_code)]
 pub struct OpenVmmDriver {
     partition_handle: usize,
     config: Option<VmConfig>,

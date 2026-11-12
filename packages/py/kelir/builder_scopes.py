@@ -1,35 +1,13 @@
 # see: cans/02-plugin-model.md#Segregated-ring-traits
 from __future__ import annotations
 
-from kelir.plugin_fusion import LifecycleTag
+from kelir.generated.fusion_tables import HOOK_RINGS, LifecycleTag
 
 
 # see: cans/02-plugin-model.md#Segregated-ring-traits
 _VERB_RINGS: dict[str, tuple[str, LifecycleTag | None]] = {
-    "on_trap": ("trap", None),
-    "on_process_exit": ("process-exit", None),
-    "on_fs_lookup": ("fs-lookup", None),
-    "on_fs_read": ("fs-read", None),
-    "on_fs_write": ("fs-write", None),
-    "on_fs_lock": ("fs-lock", None),
-    "on_net_outbound": ("net-outbound", None),
-    "on_net_inbound": ("net-inbound", None),
-    "on_console_input": ("console-input", None),
-    "on_console_output": ("console-output", None),
-    "on_exec_stdout": ("exec-stdout", None),
-    "on_exec_stderr": ("exec-stderr", None),
-    "on_host_lsm_exec": ("host-lsm-exec", None),
-    "on_host_pressure": ("host-pressure", None),
-    "on_host_keyring_access": ("host-keyring-access", None),
-    "on_vm_init": ("lifecycle", "vm-init"),
-    "on_vm_ready": ("lifecycle", "vm-ready"),
-    "on_vm_shutdown": ("lifecycle", "vm-shutdown"),
-    "on_pre_commit": ("lifecycle", "pre-commit"),
-    "on_post_commit": ("lifecycle", "post-commit"),
-    "on_host_preempt": ("host-preempt", None),
-    "on_memory_pressure": ("memory-pressure", None),
-    "on_heartbeat": ("heartbeat", None),
-    "on_watchdog": ("watchdog", None),
+    verb: (ring.value, lifecycle_tag)
+    for verb, (ring, lifecycle_tag) in HOOK_RINGS.items()
 }
 
 

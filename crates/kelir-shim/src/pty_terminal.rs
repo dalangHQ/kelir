@@ -2,7 +2,6 @@
 
 use crate::trap_protocol::ShimError;
 
-#[allow(dead_code)]
 pub fn open_pty_slave() -> Result<(i32, i32), ShimError> {
     let mut master: libc::c_int = -1;
     let mut slave: libc::c_int = -1;

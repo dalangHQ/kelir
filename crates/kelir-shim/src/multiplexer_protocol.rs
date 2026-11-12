@@ -13,7 +13,6 @@ use crate::trap_protocol::ShimError;
 pub const SLAB_CHUNK: usize = 256;
 pub const MAX_EXEC_SLOTS: usize = 4096;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct ExecSpec {
     pub binary: String,
@@ -29,7 +28,6 @@ impl ExecSpec {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct ExecSlot {
     pub pid: libc::pid_t,
@@ -39,7 +37,6 @@ pub struct ExecSlot {
     pub stderr_fd: i32,
 }
 
-#[allow(dead_code)]
 impl ExecSlot {
     pub fn new(
         pid: libc::pid_t,
@@ -78,7 +75,6 @@ impl ExecSlot {
     }
 }
 
-#[allow(dead_code)]
 pub struct ExecSlotSlab {
     chunks: Vec<[Option<ExecSlot>; SLAB_CHUNK]>,
     free: Vec<usize>,
@@ -163,7 +159,6 @@ struct StreamMapEntry {
     slot: usize,
 }
 
-#[allow(dead_code)]
 pub struct StreamSlotTable {
     entries: Vec<StreamMapEntry>,
 }
@@ -205,7 +200,6 @@ impl StreamSlotTable {
     }
 }
 
-#[allow(dead_code)]
 pub struct Multiplexer {
     pub slots: ExecSlotSlab,
     table: StreamSlotTable,

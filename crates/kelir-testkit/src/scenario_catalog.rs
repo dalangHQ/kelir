@@ -112,7 +112,6 @@ pub struct IndexEntry {
     pub file: String,
     pub family: String,
     pub target_tier: String,
-    #[allow(dead_code)]
     pub title: String,
 }
 

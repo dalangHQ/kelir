@@ -1,3 +1,5 @@
+// TODO (L3) [governance_tools]: read CaseEntry.quadrant in the manifest gate; slop: quadrant parsed but never checked
+#![allow(dead_code)]
 use kelir_testkit::CaseMap;
 use kelir_testkit::case_map::SlopRegister;
 use kelir_testkit::spec_anchors::{self, AnchorIndex};
@@ -24,7 +26,6 @@ struct DomainMeta {
     case_count: usize,
 }
 
-#[allow(dead_code)]
 #[derive(serde::Deserialize)]
 struct CaseEntry {
     case_id: String,

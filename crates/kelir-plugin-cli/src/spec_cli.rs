@@ -1,4 +1,5 @@
 // see: cans/15-operations.md#Developer-CLI
+use crate::cli_error::CliError;
 use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
@@ -79,7 +80,7 @@ pub fn validate_profile_aot(path: &str) -> Result<AotReport, SpecError> {
     })
 }
 
-pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: &[String]) -> Result<(), CliError> {
     match args.first().map(String::as_str) {
         Some("check") => {
             let path = args.get(1).map(String::as_str).unwrap_or("kelir.toml");
@@ -98,9 +99,11 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             // TODO (L3) [plugin_engine]: emit the canonical kelir.toml or kelir.yaml for the profile.; slop: hand-written toml passes, canonical profile never emitted
             Err(format!("spec export: canonical export of {path} (L3)").into())
         }
-        Some(other) => {
-            Err(format!("spec: unknown subcommand `{other}` (expected check or export)").into())
-        }
-        None => Err("spec requires a subcommand: check <file> or export <file>".into()),
+        Some(other) => Err(CliError::usage(format!(
+            "spec: unknown subcommand `{other}` (expected check or export)"
+        ))),
+        None => Err(CliError::usage(
+            "spec requires a subcommand: check <file> or export <file>",
+        )),
     }
 }

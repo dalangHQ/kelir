@@ -1,5 +1,6 @@
 // see: cans/15-operations.md#Multi-language-parity-gate
-pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+use crate::cli_error::CliError;
+pub fn run(args: &[String]) -> Result<(), CliError> {
     let out = args.first().map(String::as_str).unwrap_or("vectors.json");
     let suite = kelir_plugin_testkit::vectors_testkit::VectorSuite::fixtures()?;
     let count = suite.vectors.len();

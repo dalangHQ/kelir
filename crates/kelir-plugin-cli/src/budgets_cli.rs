@@ -2,6 +2,7 @@
 use std::fs;
 use std::path::Path;
 
+use crate::cli_error::CliError;
 use kelir_testkit::perf_budgets::{Budgets, validate_scorecard_budgets};
 
 // see: cans/15-operations.md#CI-matrix
@@ -13,7 +14,7 @@ const SPEC_CEILINGS: &[(&str, u64)] = &[
     ("idle_memory_rss_mb", 4),
 ];
 
-pub fn check(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn check(path: &Path) -> Result<(), CliError> {
     let text = fs::read_to_string(path)
         .map_err(|e| format!("budgets: cannot read {}: {e}", path.display()))?;
     let budgets: Budgets = toml::from_str(&text)

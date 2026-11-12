@@ -6,7 +6,6 @@ use kelir_interface::driver_interface::{
     check_hw_lockfile,
 };
 
-#[allow(dead_code)]
 pub struct AvfDriver {
     avf_fd: i32,
     config: Option<VmConfig>,

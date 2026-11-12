@@ -2,6 +2,7 @@
 use driver_rustvmm::host_probe;
 use std::path::PathBuf;
 
+use crate::cli_error::CliError;
 use kelir_interface::driver_interface::{HW_LOCKFILE_PATH, verify_hw_lockfile};
 
 // see: cans/15-operations.md#Developer-CLI
@@ -252,10 +253,7 @@ pub fn probe_host() -> DoctorReport {
 }
 
 // see: cans/15-operations.md#Developer-CLI
-pub fn write_hw_lockfile(
-    path: &HwLockPath,
-    report: &DoctorReport,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write_hw_lockfile(path: &HwLockPath, report: &DoctorReport) -> Result<(), CliError> {
     if let Some(parent) = path.as_path().parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -273,7 +271,7 @@ pub fn write_hw_lockfile(
     Ok(())
 }
 
-pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: &[String]) -> Result<(), CliError> {
     let mut enforce = false;
     let mut json = false;
     for arg in args {
@@ -281,10 +279,9 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             "--enforce" => enforce = true,
             "--json" => json = true,
             other => {
-                return Err(format!(
+                return Err(CliError::usage(format!(
                     "doctor: unknown flag `{other}` (expected --enforce or --json)"
-                )
-                .into());
+                )));
             }
         }
     }

@@ -1,6 +1,8 @@
 // see: cans/01-architecture.md#Axiomatic-foundations
 // see: cans/08-lifecycle.md#State-machine
 #![forbid(unsafe_code)]
+// TODO (L3) [hypervisor_driver]: read DriverRouter.active_driver once the router dispatches to a live backend; slop: router holds a driver it never drives
+#![allow(dead_code)]
 
 // see: cans/15-operations.md#Developer-CLI
 pub const KELIR_CORE_VERSION: &str = env!("CARGO_PKG_VERSION");

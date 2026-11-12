@@ -6,6 +6,7 @@ use std::path::Path;
 
 use sha2::Digest;
 
+use crate::cli_error::CliError;
 use kelir_interface::hex_codec::encode_hex;
 
 // see: cans/15-operations.md#Developer-CLI
@@ -145,7 +146,7 @@ fn verify_entry(entry: &FixtureEntry) -> Result<(), FixtureError> {
     Ok(())
 }
 
-pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: &[String]) -> Result<(), CliError> {
     let path = args.get(1).map(String::as_str).unwrap_or("fixtures.toml");
     match args.first().map(String::as_str) {
         Some("--verify") => {
@@ -179,9 +180,9 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             );
             Ok(())
         }
-        Some(other) => {
-            Err(format!("fixtures: unknown flag `{other}` (expected --verify or --fetch)").into())
-        }
-        None => Err("fixtures requires --verify or --fetch".into()),
+        Some(other) => Err(CliError::usage(format!(
+            "fixtures: unknown flag `{other}` (expected --verify or --fetch)"
+        ))),
+        None => Err(CliError::usage("fixtures requires --verify or --fetch")),
     }
 }

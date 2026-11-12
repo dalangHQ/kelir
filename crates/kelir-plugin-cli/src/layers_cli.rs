@@ -1,4 +1,5 @@
 // see: cans/15-operations.md#Coverage-gates
+use crate::cli_error::CliError;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -11,7 +12,7 @@ const RULES: &[(&str, &[&str])] = &[
     ("crates/kelir-drivers", &["kelir_plugins::", "kelir_core::"]),
 ];
 
-pub fn check() -> Result<(), Box<dyn std::error::Error>> {
+pub fn check() -> Result<(), CliError> {
     // TODO (L3) [pe_01_downward_only_tier_dependency_lint]: enforce the per-tier plugin-to-plugin rule per cans/02-plugin-model.md#Plugin-tiering; the scan bans core/driver/adapter prefixes only.; slop: lint disabled, upward tier import passes
     let root = crate::workspace_root()?;
     for (path, forbidden) in RULES {
@@ -20,7 +21,7 @@ pub fn check() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), CliError> {
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
         if path.is_dir() {
@@ -32,7 +33,7 @@ pub fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), Box<dyn std:
     Ok(())
 }
 
-pub fn check_dir(dir: &Path, forbidden: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+pub fn check_dir(dir: &Path, forbidden: &[&str]) -> Result<(), CliError> {
     let mut files = Vec::new();
     collect_rs(dir, &mut files)?;
     for file in files {

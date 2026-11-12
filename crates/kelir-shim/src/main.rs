@@ -1,3 +1,5 @@
+// TODO (L3) [pm_01_control_channel_0_lifecycle_priority]: wire the trap/codec/introspect skeleton into live execution; slop: shim skeleton unwired, crate-wide allow until then
+#![allow(dead_code)]
 // see: cans/01-architecture.md#Axiomatic-foundations
 // see: cans/08-lifecycle.md#Zombie-reaping
 // see: cans/artifacts/diagrams/guest-vm.txt#kelir-shim

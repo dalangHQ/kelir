@@ -1,4 +1,5 @@
 // see: cans/15-operations.md#Coverage-gates
+use crate::cli_error::CliError;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 
@@ -30,7 +31,7 @@ enum DepSpec {
 }
 
 // see: cans/15-operations.md#Coverage-gates
-fn parse_manifest(text: &str) -> Result<PluginManifestToml, Box<dyn std::error::Error>> {
+fn parse_manifest(text: &str) -> Result<PluginManifestToml, CliError> {
     toml::from_str(text).map_err(|e| format!("graph: manifest is not valid TOML: {e}").into())
 }
 
@@ -47,7 +48,7 @@ fn path_deps(manifest: &PluginManifestToml) -> Vec<String> {
     deps
 }
 
-pub fn plugin_graph() -> Result<HashMap<String, Vec<String>>, Box<dyn std::error::Error>> {
+pub fn plugin_graph() -> Result<HashMap<String, Vec<String>>, CliError> {
     let mut graph: HashMap<String, Vec<String>> = HashMap::new();
     for entry in fs::read_dir(crate::workspace_root()?.join("crates/kelir-plugins"))? {
         let dir = entry?.path();
@@ -69,7 +70,7 @@ pub(crate) fn visit(
     visiting: &mut HashSet<String>,
     done: &mut HashSet<String>,
     stack: &mut Vec<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), CliError> {
     if done.contains(node) {
         return Ok(());
     }
@@ -92,9 +93,7 @@ pub(crate) fn visit(
     Ok(())
 }
 
-pub(crate) fn assert_acyclic(
-    graph: &HashMap<String, Vec<String>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn assert_acyclic(graph: &HashMap<String, Vec<String>>) -> Result<(), CliError> {
     let mut visiting = HashSet::new();
     let mut done = HashSet::new();
     let mut stack = Vec::new();
@@ -104,7 +103,7 @@ pub(crate) fn assert_acyclic(
     Ok(())
 }
 
-pub fn check() -> Result<(), Box<dyn std::error::Error>> {
+pub fn check() -> Result<(), CliError> {
     let graph = plugin_graph()?;
     for (name, deps) in &graph {
         for dep in deps {

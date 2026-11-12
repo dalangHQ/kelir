@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+// TODO (L3) [hd_11_cpuid_tsc_deadline_normalization]: call filter_synthetic_cpuid from the live vCPU loop and read the KVM fds; slop: CPUID filter and fds never used
+#![allow(dead_code)]
 // see: cans/01-architecture.md#Driver-backends
 // see: cans/08-lifecycle.md#CoW-fork
 // see: cans/artifacts/diagrams/host-runtime.txt#driver-rustvmm
@@ -10,7 +12,6 @@ use kelir_interface::driver_interface::{
     check_hw_lockfile,
 };
 
-#[allow(dead_code)]
 pub struct RustVmmDriver {
     #[cfg(target_os = "linux")]
     kvm_fd: Option<kvm_ioctls::Kvm>,
@@ -51,7 +52,6 @@ impl RustVmmDriver {
     }
 
     #[cfg(target_os = "linux")]
-    #[allow(dead_code)]
     fn filter_synthetic_cpuid(&self, _vcpu: &kvm_ioctls::VcpuFd) -> Result<(), VmmError> {
         // see: cans/01-architecture.md#Driver-backends
         // TODO (L3) [hd_11_cpuid_tsc_deadline_normalization]: enforce invariant TSC and Leaf 0x1 TSC-deadline; slop: guest CPUID passes host leaves through, TSC-deadline bit unset

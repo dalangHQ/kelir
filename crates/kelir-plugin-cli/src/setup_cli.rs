@@ -2,6 +2,7 @@
 use std::error::Error;
 use std::fmt;
 
+use crate::cli_error::CliError;
 use crate::doctor_cli::{HwLockPath, probe_host, write_hw_lockfile};
 
 // see: cans/15-operations.md#Developer-CLI
@@ -78,7 +79,7 @@ pub fn run_step(step: SetupStep) -> Result<(), SetupError> {
     }
 }
 
-pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: &[String]) -> Result<(), CliError> {
     let mut steps: Vec<SetupStep> = Vec::new();
     for arg in args {
         match arg.as_str() {

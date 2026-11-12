@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use kelir_core::plugin_registry::{PluginManifest, PluginTier, parse_plugin_manifest};
 
+use crate::cli_error::CliError;
 use crate::graph_cli;
 use crate::layers_cli;
 use crate::rings_cli;
@@ -21,12 +22,12 @@ const ALLOWED_SUPPORT_CRATES: &[&str] = &["kelir-otlp"];
 const ALLOWED_DEV_CRATES: &[&str] = &["driver-rustvmm"];
 
 // see: cans/02-plugin-model.md#Plugin-tiering
-fn plugin_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn plugin_dir() -> Result<PathBuf, CliError> {
     Ok(crate::workspace_root()?.join("crates/kelir-plugins"))
 }
 
 // see: cans/02-plugin-model.md#Plugin-ownership
-fn workspace_manifest() -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn workspace_manifest() -> Result<PathBuf, CliError> {
     Ok(crate::workspace_root()?.join("Cargo.toml"))
 }
 
@@ -51,7 +52,7 @@ struct MemberPackageToml {
 }
 
 // see: cans/02-plugin-model.md#Plugin-tiering
-fn tier_roster() -> Result<Vec<PluginManifest>, Box<dyn std::error::Error>> {
+fn tier_roster() -> Result<Vec<PluginManifest>, CliError> {
     let mut roster: Vec<PluginManifest> = Vec::new();
     for entry in fs::read_dir(plugin_dir()?)? {
         let dir = entry?.path();
@@ -79,9 +80,7 @@ fn tier_roster() -> Result<Vec<PluginManifest>, Box<dyn std::error::Error>> {
 }
 
 // see: cans/02-plugin-model.md#Plugin-ownership
-fn forbidden_workspace_crates(
-    plugins: &BTreeSet<&str>,
-) -> Result<BTreeSet<String>, Box<dyn std::error::Error>> {
+fn forbidden_workspace_crates(plugins: &BTreeSet<&str>) -> Result<BTreeSet<String>, CliError> {
     let manifest_path = workspace_manifest()?;
     let root: WorkspaceRootToml =
         toml::from_str(&fs::read_to_string(&manifest_path)?).map_err(|e| {
@@ -124,7 +123,7 @@ fn check_regular_dep(
     dep: &str,
     roster: &[PluginManifest],
     forbidden: &BTreeSet<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), CliError> {
     if dep == INTERFACE_CRATE {
         return Ok(());
     }
@@ -155,7 +154,7 @@ fn check_dev_dep(
     dep: &str,
     roster: &[PluginManifest],
     forbidden: &BTreeSet<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), CliError> {
     if dep == TESTKIT_CRATE {
         return Ok(());
     }
@@ -177,14 +176,14 @@ fn check_dev_dep(
     }
 }
 
-pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: &[String]) -> Result<(), CliError> {
     let Some(name) = args.first() else {
-        return Err("check -p requires a plugin name".into());
+        return Err(CliError::usage("check -p requires a plugin name"));
     };
     run_plugin(name)
 }
 
-pub fn run_plugin(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_plugin(name: &str) -> Result<(), CliError> {
     // TODO (L3) [plugin_engine]: replace manifest and source scanning with the AST extractor required by cans/02-plugin-model.md#Auto-generated-manifest-contract.; slop: regex scan passes, AST extractor never built
     let roster = tier_roster()?;
     let Some(plugin) = roster.iter().find(|plugin| plugin.tier.crate_name == name) else {

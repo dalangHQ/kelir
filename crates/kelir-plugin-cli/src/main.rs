@@ -6,6 +6,7 @@ pub mod attest_cli;
 pub mod audit_cli;
 pub mod budgets_cli;
 pub mod bump_core_cli;
+pub mod cli_error;
 pub mod doctor_cli;
 pub mod fixtures_cli;
 pub mod graph_cli;
@@ -20,8 +21,10 @@ pub mod setup_cli;
 pub mod spec_cli;
 pub mod vectors_cli;
 
+use crate::cli_error::CliError;
+
 // see: cans/15-operations.md#Local-velocity
-pub(crate) fn workspace_root() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+pub(crate) fn workspace_root() -> Result<std::path::PathBuf, CliError> {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(std::path::Path::parent)
@@ -29,11 +32,11 @@ pub(crate) fn workspace_root() -> Result<std::path::PathBuf, Box<dyn std::error:
         .map(std::path::Path::to_path_buf)
 }
 
-fn check_layers() -> Result<(), Box<dyn std::error::Error>> {
+fn check_layers() -> Result<(), CliError> {
     layers_cli::check()
 }
 
-fn check_budgets(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+fn check_budgets(args: &[String]) -> Result<(), CliError> {
     let path = match args.first() {
         None => workspace_root()?.join("perf/budgets.toml"),
         Some(path) => std::path::PathBuf::from(path),
@@ -41,17 +44,16 @@ fn check_budgets(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     budgets_cli::check(&path)
 }
 
-fn expect_no_args(args: &[String], flag: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn expect_no_args(args: &[String], flag: &str) -> Result<(), CliError> {
     if let Some(arg) = args.first() {
-        return Err(format!(
+        return Err(CliError::usage(format!(
             "check: unknown argument `{arg}` after {flag} (expected --layers, --budgets, --graph, or -p <plugin>)"
-        )
-        .into());
+        )));
     }
     Ok(())
 }
 
-fn check(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+fn check(args: &[String]) -> Result<(), CliError> {
     match args.first().map(String::as_str) {
         Some("--layers") => {
             expect_no_args(&args[1..], "--layers")?;
@@ -60,14 +62,15 @@ fn check(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         Some("--budgets") => {
             let rest = &args[1..];
             if rest.len() > 1 {
-                return Err("check: --budgets takes at most one budget file path".into());
+                return Err(CliError::usage(
+                    "check: --budgets takes at most one budget file path",
+                ));
             }
             for arg in rest {
                 if arg.starts_with('-') {
-                    return Err(format!(
+                    return Err(CliError::usage(format!(
                         "check: unknown flag `{arg}` (expected --layers, --budgets, --graph, or -p <plugin>)"
-                    )
-                    .into());
+                    )));
                 }
             }
             check_budgets(rest)
@@ -78,27 +81,35 @@ fn check(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         }
         Some("-p") => {
             if args.len() != 2 {
-                return Err(
-                    "check: -p requires exactly one plugin name and no further flags".into(),
-                );
+                return Err(CliError::usage(
+                    "check: -p requires exactly one plugin name and no further flags",
+                ));
             }
             audit_cli::run(&args[1..])
         }
-        Some(other) => Err(format!(
+        Some(other) => Err(CliError::usage(format!(
             "check: unknown flag `{other}` (expected --layers, --budgets, --graph, or -p <plugin>)"
-        )
-        .into()),
-        None => Err("check requires a flag: --layers, --budgets, --graph, or -p <plugin>".into()),
+        ))),
+        None => Err(CliError::usage(
+            "check requires a flag: --layers, --budgets, --graph, or -p <plugin>",
+        )),
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().collect();
+    if let Err(err) = dispatch(&args) {
+        eprintln!("{err}");
+        return err.exit_code();
+    }
+    std::process::ExitCode::SUCCESS
+}
+
+fn dispatch(args: &[String]) -> Result<(), CliError> {
     if args.len() < 2 {
-        return Err(
-            "kelir-plugin-cli: missing subcommand (expected doctor|attach|attest|bump-core|check|parity|fixtures|logs|manifest|registry|rings|new|setup|spec|vectors)"
-                .into(),
-        );
+        return Err(CliError::usage(
+            "kelir-plugin-cli: missing subcommand (expected doctor|attach|attest|bump-core|check|parity|fixtures|logs|manifest|registry|rings|new|setup|spec|vectors)",
+        ));
     }
     match args[1].as_str() {
         "doctor" => doctor_cli::run(&args[2..])?,
@@ -116,7 +127,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "setup" => setup_cli::run(&args[2..])?,
         "spec" => spec_cli::run(&args[2..])?,
         "vectors" => vectors_cli::run(&args[2..])?,
-        other => return Err(format!("kelir-plugin-cli: unknown subcommand `{other}`").into()),
+        other => {
+            return Err(CliError::usage(format!(
+                "kelir-plugin-cli: unknown subcommand `{other}`"
+            )));
+        }
     }
     Ok(())
 }

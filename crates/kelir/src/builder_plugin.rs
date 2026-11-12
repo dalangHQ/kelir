@@ -675,7 +675,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList> AnyPlugin
 where
     Ctx: Clone + Send + Sync + 'static,
 {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         KelirPlugin::name(self)
     }
 

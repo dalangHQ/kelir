@@ -145,7 +145,6 @@ type CustomActionFuture =
 
 type BoxedCustomAction = Box<dyn Fn(ciborium::value::Value) -> CustomActionFuture + Send + Sync>;
 
-#[allow(dead_code)]
 pub(crate) struct CustomActionEntry {
     pub(crate) name: String,
     pub(crate) schema: serde_json::Value,
@@ -158,7 +157,6 @@ type StreamServiceFuture =
 type BoxedStreamService = Box<dyn Fn(Vec<u8>) -> StreamServiceFuture + Send + Sync>;
 
 // TODO (L3) [protocol_mux]: the kind schema validates request payloads once stream dispatch consumes live frames.; slop: unvalidated payload dispatched, schema never enforced
-#[allow(dead_code)]
 pub(crate) struct StreamKindServiceEntry {
     pub(crate) kind: u16,
     pub(crate) schema: serde_json::Value,
@@ -166,7 +164,6 @@ pub(crate) struct StreamKindServiceEntry {
 }
 
 // TODO (L3) [protocol_mux]: the boxed service future awaits and replies on the stream mux once dispatch consumes live frames.; slop: service future dropped, reply never crosses mux
-#[allow(dead_code)]
 struct SdkStreamServiceSink {
     handler: BoxedStreamService,
 }
@@ -432,6 +429,24 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         validate_scope(self.name, &self.scope)?;
         for filter in &self.registry.trap_filters {
             validate_trap_filter("host", filter)?;
+        }
+        if self.fast_boot != FastBootMode::Off {
+            return Err(PluginError::reject(
+                Errno::Econfig,
+                format!(
+                    "fast_boot {:?} rejected: only Off seals until the L3 driver backend lands",
+                    self.fast_boot
+                ),
+            ));
+        }
+        if self.dax_window != DaxWindowMode::Off {
+            return Err(PluginError::reject(
+                Errno::Econfig,
+                format!(
+                    "dax_window {:?} rejected: only Off seals until the L3 driver backend lands",
+                    self.dax_window
+                ),
+            ));
         }
         let mut seen: Vec<&'static str> = Vec::new();
         for mounted in &self.registration.mounted {

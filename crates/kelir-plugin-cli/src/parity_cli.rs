@@ -17,6 +17,8 @@ use kelir_plugin_testkit::vectors_testkit::{
     UnifiedBuilderCase, VectorCase, VectorSuite, arm_watchdog_case, register_veto_case,
 };
 
+use crate::cli_error::CliError;
+
 // see: cans/08-lifecycle.md#Watchdog
 const WATCHDOG_VERDICTS: [WatchdogVerdict; 2] =
     [WatchdogVerdict::Suppress, WatchdogVerdict::Mitigate];
@@ -416,7 +418,7 @@ fn assert_canonical_roster(vectors: &[VectorCase]) -> Result<(), String> {
     Ok(())
 }
 
-pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: &[String]) -> Result<(), CliError> {
     let mut path = "vectors.json".to_string();
     match args.first().map(String::as_str) {
         None => {}
@@ -426,7 +428,9 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Some(other) => {
-            return Err(format!("parity: unknown action `{other}` (expected `run [path]`)").into());
+            return Err(CliError::usage(format!(
+                "parity: unknown action `{other}` (expected `run [path]`)"
+            )));
         }
     }
     let text = fs::read_to_string(&path).map_err(|e| {

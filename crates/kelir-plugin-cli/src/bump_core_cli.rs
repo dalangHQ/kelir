@@ -1,4 +1,5 @@
 // see: cans/15-operations.md#Developer-CLI
+use crate::cli_error::CliError;
 use std::error::Error;
 use std::fmt;
 use std::path::Path;
@@ -90,7 +91,7 @@ pub fn write_pin(pin: &ChannelPin, path: &Path) -> Result<(), BumpCoreError> {
         .map_err(|e| BumpCoreError::Io(format!("bump-core: cannot write {}: {e}", path.display())))
 }
 
-pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: &[String]) -> Result<(), CliError> {
     let mut channel: Option<CoreChannel> = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {

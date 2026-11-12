@@ -95,7 +95,13 @@ impl PartialEq for PluginError {
                     reason: right_reason,
                 },
             ) => left_errno == right_errno && left_reason == right_reason,
-            (Self::Io(left), Self::Io(right)) => left.kind() == right.kind(),
+            (Self::Io(left), Self::Io(right)) => {
+                match (left.raw_os_error(), right.raw_os_error()) {
+                    (Some(left), Some(right)) => left == right,
+                    (None, None) => left.kind() == right.kind(),
+                    _ => false,
+                }
+            }
             (Self::Halt(left), Self::Halt(right)) => left == right,
             _ => false,
         }
@@ -218,8 +224,7 @@ impl MountScope {
     ) -> Option<Vec<T>> {
         match (child, parent) {
             (Some(a), Some(b)) => Some(a.iter().filter(|x| b.contains(x)).cloned().collect()),
-            (Some(a), None) => Some(a.clone()),
-            (None, Some(b)) => Some(b.clone()),
+            (Some(a), None) | (None, Some(a)) => Some(a.clone()),
             (None, None) => None,
         }
     }
@@ -242,37 +247,34 @@ impl MountScope {
     }
 
     pub fn allows_path(&self, path: &Path) -> bool {
-        match &self.paths {
-            None => true,
-            Some(list) => list.iter().any(|item| path.starts_with(item)),
-        }
+        self.paths
+            .as_ref()
+            .is_none_or(|list| list.iter().any(|item| path.starts_with(item)))
     }
 
     pub fn allows_device(&self, device: VirtioDevice) -> bool {
-        match &self.devices {
-            None => true,
-            Some(list) => list.contains(&device),
-        }
+        self.devices
+            .as_ref()
+            .is_none_or(|list| list.contains(&device))
     }
 
     // see: cans/02-plugin-model.md#Mount-scoping
     pub fn allows_stream_kind(&self, kind: StreamKind) -> bool {
-        match &self.stream_kinds {
-            None => true,
-            Some(list) => list.contains(&kind),
-        }
+        self.stream_kinds
+            .as_ref()
+            .is_none_or(|list| list.contains(&kind))
     }
 
     // see: cans/02-plugin-model.md#Mount-scoping
     pub fn allows_net(&self, ip: [u8; 4], port: u16) -> bool {
-        let cidr_ok = match &self.net_cidrs {
-            None => true,
-            Some(list) => list.is_empty() || list.iter().any(|cidr| cidr_contains(cidr, ip)),
-        };
-        let port_ok = match &self.net_ports {
-            None => true,
-            Some(list) => list.is_empty() || list.contains(&port),
-        };
+        let cidr_ok = self
+            .net_cidrs
+            .as_ref()
+            .is_none_or(|list| list.is_empty() || list.iter().any(|cidr| cidr_contains(cidr, ip)));
+        let port_ok = self
+            .net_ports
+            .as_ref()
+            .is_none_or(|list| list.is_empty() || list.contains(&port));
         cidr_ok && port_ok
     }
 }
@@ -288,11 +290,7 @@ fn cidr_contains(cidr: &str, ip: [u8; 4]) -> bool {
     if prefix > 32 {
         return false;
     }
-    let mask = if prefix == 0 {
-        0
-    } else {
-        u32::MAX << (32 - prefix)
-    };
+    let mask = u32::MAX.checked_shl(32 - prefix).unwrap_or(0);
     (u32::from_be_bytes(ip) & mask) == (network & mask)
 }
 
@@ -517,7 +515,7 @@ where
 }
 
 pub trait AnyPlugin: Send + Sync {
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin>;
     fn register_interceptors(&self, _pipeline: &mut dyn PipelineBinder) {}
     fn default_scope(&self) -> MountScope {
@@ -532,7 +530,7 @@ impl<T> AnyPlugin for T
 where
     T: 'static + KelirPlugin + Clone,
 {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         KelirPlugin::name(self)
     }
 
@@ -703,7 +701,7 @@ pub trait CompositePlugin: Send + Sync {
 pub trait KelirPlugin: Send + Sync + PluginClone {
     type Context: Send + Sync + Clone + 'static;
     fn context(&self) -> Self::Context;
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
     fn default_scope(&self) -> MountScope {
         MountScope::default()
     }

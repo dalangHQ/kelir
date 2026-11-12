@@ -91,7 +91,6 @@ pub struct ExecveMutation {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub enum PatchPayload {
     ExecveMutation(ExecveMutation),
     FsInode {
@@ -108,7 +107,6 @@ pub enum PatchPayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub enum SuspendUntil {
     Deadline(u64),
     Approval,
@@ -272,7 +270,6 @@ pub struct Heartbeat {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[non_exhaustive]
 pub enum GuestToHost {
     TrapEvent(Box<TrapEvent>),
     ProcessExit(ProcessExit),
@@ -288,7 +285,6 @@ pub struct Handshake {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[non_exhaustive]
 pub enum HostToGuest {
     TrapDecision { seq: u64, action: Verdict },
     AdjustBalloon { target_mb: u32 },
