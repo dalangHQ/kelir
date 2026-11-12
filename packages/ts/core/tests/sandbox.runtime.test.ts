@@ -1,6 +1,6 @@
 // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
-import { Sandbox } from "./sandbox.runtime.js";
-import { EConfig } from "./errors.sdk.js";
+import { Sandbox } from "../dist/index.js";
+import { EConfig } from "../dist/index.js";
 
 function check(condition: boolean, label: string): void {
   if (!condition) {

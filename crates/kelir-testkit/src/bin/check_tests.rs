@@ -244,6 +244,22 @@ fn valid_src_base(base: &str, sep: char) -> bool {
         })
 }
 
+// see: cans/artifacts/test-plan/matrix.yaml#filename_grammar
+fn lint_test_placement(
+    path: &Path,
+    repo_root: &Path,
+    exempt: &HashSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let rel = rel_path_of(path, repo_root);
+    if rel.contains("/tests/") || exempt.contains(&rel) {
+        return;
+    }
+    violations.push(format!(
+        "{rel}: [NG-07] test file lives outside tests/; test files live in tests/ only."
+    ));
+}
+
 fn lint_test_filename(
     path: &Path,
     repo_root: &Path,
@@ -325,6 +341,15 @@ fn main() -> ExitCode {
             };
             lint_file(path, &content, &mut violations);
         }
+        if path.extension().is_some_and(|ext| ext == "rs")
+            && !path.to_string_lossy().contains("/tests/")
+            && !path.to_string_lossy().contains("/benches/")
+            && path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().ends_with("_test.rs"))
+        {
+            lint_test_placement(path, &repo_root, &harness_exempt, &mut violations);
+        }
     }
 
     let ts_dir = repo_root.join("packages/ts");
@@ -351,6 +376,7 @@ fn main() -> ExitCode {
             "<entity>.<domain>[.role].test.ts",
             &mut violations,
         );
+        lint_test_placement(path, &repo_root, &harness_exempt, &mut violations);
     }
 
     let py_dir = repo_root.join("packages/py");
@@ -380,6 +406,7 @@ fn main() -> ExitCode {
             "test_<domain>_<entity>[_role].py",
             &mut violations,
         );
+        lint_test_placement(path, &repo_root, &harness_exempt, &mut violations);
     }
 
     // see: cans/artifacts/test-plan/matrix.yaml#filename_grammar
@@ -507,6 +534,7 @@ fn main() -> ExitCode {
             counts.py_src_files,
             counts.rs_src_files
         );
+        println!("Test placement gate NG-07 clean: no test file lives outside tests/.");
         ExitCode::SUCCESS
     } else {
         eprintln!(

@@ -1,10 +1,10 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-import { kelir } from "./builder.lifecycle.js";
-import type { ValidateDeps } from "./builder.lifecycle.js";
-import { createPlugin } from "./builder.lifecycle.js";
-import { t } from "./schema.config.js";
-import type { LedgerHandle } from "./context.lifecycle.types.js";
-import { RingEvent } from "./fusion.plugin.js";
+import { kelir } from "../dist/index.js";
+import type { ValidateDeps } from "../dist/index.js";
+import { createPlugin } from "../dist/index.js";
+import { t } from "../dist/index.js";
+import type { LedgerHandle } from "../dist/index.js";
+import { RingEvent } from "../dist/index.js";
 
 function check(condition: boolean, label: string): void {
   if (!condition) {
@@ -13,6 +13,8 @@ function check(condition: boolean, label: string): void {
 }
 
 const secretMask = createPlugin("secretMask", { maskActive: true });
+const secretMaskStorage = createPlugin("secretMask", { maskActive: true });
+const secretMaskDeny = createPlugin("secretMask", { maskActive: true });
 const secureWorkspace = createPlugin("secureWorkspace")
   .requires<typeof secretMask>()
   .derive((c) => ({ workspaceSecured: c.secretMask.maskActive }));
@@ -46,7 +48,7 @@ const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
 
 const storageFirst = kelir({ vcpus: 4, memoryMb: 4096 })
   .storage<{ ledger: LedgerHandle }>({})
-  .use(secretMask)
+  .use(secretMaskStorage)
   .trap("git", (c) => {
     const ledger: LedgerHandle = c.ledger;
     const masked: boolean = c.secretMask.maskActive;
@@ -62,7 +64,7 @@ const vsock = kelir({ vcpus: 4, memoryMb: 4096 })
   .vsockService(1024, "ping", t.Object({ ping: t.String() }), (request) => ({ pong: request.ping }));
 
 const denied = kelir({ vcpus: 4, memoryMb: 4096 })
-  .use(secretMask)
+  .use(secretMaskDeny)
   .onTrapDeny((event, session) => {
     const masked: boolean = session.secretMask.maskActive;
     void event;

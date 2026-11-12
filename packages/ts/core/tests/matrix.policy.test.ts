@@ -1,7 +1,7 @@
 // see: cans/02-plugin-model.md#Unified-verdict
 
 import { kelir, createPlugin, t, LifecycleEvent, SuspendUntil, VetoEvent,
-         type Session } from "@kelir/core";
+         type Session } from "../dist/index.js";
 
 
 const policyState = {

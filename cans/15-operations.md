@@ -118,7 +118,7 @@
       - Clock-continuity replay runs in the plugin-replay cell
     - Invariant test manifest: see: artifacts/test-plan/manifest.yaml
     - Execution matrix and anti-slop rules: see: artifacts/test-plan/matrix.yaml
-    - Filename grammar gates NG-01..NG-05 ride check-tests
+    - Filename grammar gates NG-01..NG-07 ride check-tests
       - Grammar: see: artifacts/test-plan/matrix.yaml#filename_grammar
     - --plugin-coverage
       - Plugin asserts: see: [4]
@@ -364,6 +364,7 @@
       - TS source: <entity>.<domain>[.role].ts; Python source: <domain>_<entity>.py
       - Barrels stay conventional: lib.rs/main.rs/mod.rs, index.ts, __init__.py, *.d.ts
       - Test filename grammar: see: artifacts/test-plan/matrix.yaml#filename_grammar
+      - Tests live in tests/ only; a test file under src/ fails NG-07
     - Plugin testkit is dev-only; see: 02-plugin-model.md#Plugin-testkit
     - Integration needs a real hypervisor; see: #Per-plugin-CI
     - Adapter crates: see: 12-adapters.md

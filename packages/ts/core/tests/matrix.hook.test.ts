@@ -1,7 +1,7 @@
 // see: cans/02-plugin-model.md#Segregated-ring-traits
 
 import { kelir, createPlugin, Verdict, FilterAction, SuspendUntil,
-         type Session } from "@kelir/core";
+         type Session } from "../dist/index.js";
 
 
 const IDENTITY_PATH = "/workspace/.policy/identity";
