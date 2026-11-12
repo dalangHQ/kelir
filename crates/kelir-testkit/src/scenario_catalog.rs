@@ -193,7 +193,7 @@ pub fn load_case_facts(tp_root: &Path) -> (BTreeMap<String, CaseFacts>, Vec<Stri
     let cases_dir = tp_root.join("cases");
     let mut rels: Vec<String> = Vec::new();
     for entry in WalkDir::new(&cases_dir).into_iter().filter_map(|e| e.ok()) {
-        if entry.depth() != 2 || !entry.path().extension().is_some_and(|ext| ext == "yaml") {
+        if entry.depth() != 2 || entry.path().extension().is_none_or(|ext| ext != "yaml") {
             continue;
         }
         match entry.path().strip_prefix(&cases_dir) {
@@ -250,7 +250,7 @@ pub fn load_scenario_files(tp_root: &Path) -> (Vec<ScenarioFile>, Vec<String>) {
         .into_iter()
         .filter_map(|e| e.ok())
     {
-        if entry.depth() != 2 || !entry.path().extension().is_some_and(|ext| ext == "yaml") {
+        if entry.depth() != 2 || entry.path().extension().is_none_or(|ext| ext != "yaml") {
             continue;
         }
         match entry.path().strip_prefix(&scenarios_dir) {

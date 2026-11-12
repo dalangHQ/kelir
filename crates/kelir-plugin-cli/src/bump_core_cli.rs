@@ -78,15 +78,15 @@ pub fn write_pin(pin: &ChannelPin, path: &Path) -> Result<(), BumpCoreError> {
     });
     let text = serde_json::to_string_pretty(&json)
         .map_err(|e| BumpCoreError::Io(format!("bump-core: cannot encode pin: {e}")))?;
-    if let Some(parent) = path.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            BumpCoreError::Io(format!(
-                "bump-core: cannot create {}: {e}",
-                parent.display()
-            ))
-        })?;
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                BumpCoreError::Io(format!(
+                    "bump-core: cannot create {}: {e}",
+                    parent.display()
+                ))
+            })?;
+        }
     }
     std::fs::write(path, text)
         .map_err(|e| BumpCoreError::Io(format!("bump-core: cannot write {}: {e}", path.display())))

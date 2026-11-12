@@ -231,7 +231,7 @@ pub fn assert_vectors(vectors: &[VectorCase]) -> Result<ParityReport, String> {
         }
         if let Some(builder) = &vector.plugin_builder {
             assert_builder_ordinals(builder, &vector.name)?;
-            if builder.scope.is_some() != !builder.host_rings.is_empty() {
+            if builder.scope.is_some() == builder.host_rings.is_empty() {
                 return Err(format!(
                     "parity: vector `{}` merge pin is inconsistent: a scope requires host hooks and host hooks require a scope",
                     vector.name
