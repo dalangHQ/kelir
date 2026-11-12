@@ -236,7 +236,7 @@ test-red:
 # ForeignPluginProxy, memory pinning, unhandled freeze recovery
 test-sdks: build-ts
     pnpm -r test
-    uv run --no-project pytest packages/py
+    PYTHONPATH=packages/py uv run --no-project pytest packages/py
 
 # Cross-plugin integration; requires real hypervisor (KVM/HVF)
 test-integration:
