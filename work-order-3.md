@@ -1,175 +1,404 @@
-# work-order.md — L1/L2 spec-misalignment triage
+```markdown
+# work-order.md — Filename-Driven Maturity
 
-**Phase:** L1/L2 only. Do not fill `TODO (L3)` bodies. Fix contracts, wiring, and dispatch plumbing.
-
-**Rules for agents:** one worktree each, exclusive file scope, no pushes, squash-merge at end. Report decisions after the fact; never ask. Verify each claim against the live tree before editing.
-
----
-
-## Agent A — `kelir-interface` contract alignment
-
-**Scope (exclusive):** `crates/kelir-interface/src/{plugin_model.rs,protocol_wire.rs,codec_protocol.rs,handlers_plugin.rs,driver_interface.rs}`
-
-**Goal:** make the L1 type surface match the CANS contract.
-
-### Tasks
-- [ ] **A1. `ExecveMutation.set_env` type.** CANS/plugins/tool-guard.md specifies `HashMap<String, String>`; code has `Vec<(String, String)>` in `protocol_wire.rs`. Choose one direction and record in `_collab/conflicts.md`:
-  - `HashMap` matches spec text; `Vec` preserves wire order.
-  - If keeping `Vec`, add a `// see:` note in the spec file (spec change) instead of silently diverging.
-- [ ] **A2. `HandlerCtx` verdict helpers.** CANS/03 Rust surface lists `c.pass() / c.patch(m) / c.drop(e,r) / c.suspend(u) / c.abort(r)`. Add these on `HandlerCtx<Plugins, Params>` (return `Verdict`; patch takes `PatchPayload`). TS and Python already have them; Rust does not.
-- [ ] **A3. `FilterAction` helpers.** CANS/11 says `c.forward() / c.filter_drop(errno, reason) / c.filter_suspend(until)`. Add to `HandlerCtx` for fs-write/net rings. TS currently exposes only `FilterAction.Forward / .Drop / .Suspend` statics.
-- [ ] **A4. `MountScope` network fields.** CANS/02 Mount scoping names a “Network filter: ingress dispatcher bypasses net hooks outside declared CIDR/port rules.” Current `MountScope` has `devices, binaries, paths, stream_kinds` only. Add `net_cidrs: Option<Vec<...>>` and `net_ports: Option<Vec<...>>`. Wire `allows_net` helper. Leave enforcement (L2 dispatch check) to Agent C.
-- [ ] **A5. `WatchdogAction::Terminate { emit_diagnostic: bool }`.** CANS/08 says `WatchdogAction::Terminate` always synthesizes `WatchdogDiagnostic`. Change to `Terminate` (no payload) or document the deviation in `_collab/conflicts.md`. Do not silently keep `false` path.
-- [ ] **A6. `FLAG_CONTINUATION`.** CANS/plugins/mcp.md references `FLAG_CONTINUATION` for >64KB MCP messages. Not present in `codec_protocol.rs` nor in CANS/11’s mux flag list. **Spec-vs-spec conflict.** Add to `_collab/conflicts.md`; do not invent a new mux flag bit until resolved. Meanwhile add a compile-time constant `FLAG_CONTINUATION_RESERVED: u8 = 0x20;` guarded by a `// see:` pointing at the open conflict, so the bit is reserved.
-- [ ] **A7. `StreamKind` plugin-registered variants.** CANS/11 says kinds are numbers; `register_stream_kind` accepts any `u16`. `StreamKind::from_u16` returns `None` for plugin-registered kinds (0x0013..0x7FFF). Either add `StreamKind::Plugin(u16)` or document that MountScope/descriptor uses raw `u16` for plugin kinds. Pick one, record in conflicts if it changes spec.
-- [ ] **A8. `on_fs_read` offset gap.** CANS/05 says read masking operates “across offsets” but `FsContext` carries no offset and `FsInterposer::on_fs_read` has no offset argument. Add `offset: u64` to `FsContext`, or note the L3 deferral with a `// TODO (L3):` (do not add offset param now).
-
-### Verify
-- [ ] `cargo check -p kelir-interface` passes.
-- [ ] `cargo clippy -p kelir-interface -- -D warnings` passes.
-- [ ] No new prose comments; every comment is `// see:`, `// TODO…:`, or `// SAFETY:`.
+**Read first:** [`plan.md`](plan.md), then [`AGENTS.md`](AGENTS.md) §0, §2, §6, then [`cans/AGENTS.md`](cans/AGENTS.md) (the CANS rules you must obey while editing `cans/`).
 
 ---
 
-## Agent B — `kelir` (SDK facade) session surface
+## Mission
 
-**Scope (exclusive):** `crates/kelir/src/{session_lifecycle.rs,sandbox_runtime.rs,builder_sdk.rs,builder_scopes.rs,builder_plugin.rs}`
+Land plan.md in one coordinated wave. Five agents, each owning a vertical
+slice. Every slice edits, in order: **`cans/` → `cans/artifacts/` → codebase**.
 
-**Goal:** align the Rust SDK surface with CANS/03 and CANS/08.
-
-### Tasks
-- [ ] **B1. `Session::exec(cmd, limits?)`.** CANS/03 calls the programmatic exec surface `session.exec(cmd, limits?)`. Rust currently exposes only `Session::spawn(binary, argv)`. Add `exec(binary: &str, argv: &[&str], limits: Option<ProcessLimits>) -> SpawnBuilder`; keep `spawn` as a thin alias for backward-compat within this repo (no external API frozen yet). Add `limits: Option<ProcessLimits>` to `SpawnBuilder` and serialize it on the EXEC control sub-lane 0x03 per CANS/11 (stub the encode; leave wire bytes for L3).
-- [ ] **B2. `Session::skew_clock`.** CANS/08 lists `skew_clock` on `Session` (not only `session.vm().clock.skew`). Add `Session::skew_clock(&self, delta: Duration) -> Result<(), PluginError>` delegating to `self.vm().clock.skew(delta)`. Check `session_lifecycle.rs`, `sandbox_runtime.rs`, and the pyo3/napi bridges for a matching surface.
-- [ ] **B3. `Session::checkpoint.create(label)` on Rust.** CANS/03 lists `session.checkpoint.create(label)`. Current Rust `Session` exposes `checkpoint` only via `Deref` to `kelir_core::Session.checkpoint: Arc<CheckpointPlane>` which has `create_step(lineage, base)`, not `create(label)`. Also `StorageHandle`, `WireHandle`, `VsockHandle`, `StepHandle`, `CheckpointHandle` exist as unused structs (dead code) while pyo3/napi route through the real planes. **Pick one:**
-  - Either expose a `Session::checkpoint_handle(&self) -> CheckpointHandle` that wraps `vm().checkpoint(label)` and deprecate the unused structs, or
-  - Delete the unused `StorageHandle` / `WireHandle` / `VsockHandle` / `StepHandle` / `CheckpointHandle` structs (they shadow real planes; CANS/03 says planes ARE the surface).
-  Record decision in `_collab/conflicts.md`.
-- [ ] **B4. `Session::rollback()` signature.** CANS/08 shows `session.rollback()` (no args) from `on_process_exit`. Current code requires `PidLineage`. Add `Session::rollback_here()` that derives `PidLineage` from `self.core.lineage(ctx.pid)` when called from a trap context, or add a doc example showing `session.rollback(session.lineage(pid))`. Do not silently change `rollback(lineage)`.
-- [ ] **B5. `KelirBuilder<Plugin, …>` trap scope coverage.** CANS/02 says 30 verbs / 8 scopes exist in plugin mode, but `builder_plugin.rs` only adds `trap(configure)` for `Plugin` mode — it does not add `fs/net/console/exec/host/lifecycle/telemetry` scope entries for `Plugin` mode (they exist generically in `builder_plugin.rs` but on `Mode` generic — verify they compile for `Mode = Plugin`). **Verify with a compile test**: `let b = KelirBuilder::named("x").fs(|s| s.on_fs_lookup(|_| Verdict::Pass));` compiles. If it doesn’t, extend the generic impl.
-- [ ] **B6. `seal()` text for host.** CANS/02 says “Host failure text is the bare triple text; the host has no name.” Current `builder_sdk.rs` uses `self.name = "host"` and prefixes errors with `"host: …"`. Change to bare text when `Mode = Host` — or set `self.name = ""` for host and skip the prefix. Small change; keep plugin-mode prefixed.
-- [ ] **B7. `Satisfies` order-insensitive.** `hlist_sdk.rs` is currently order-sensitive; CANS/02 lists “order-insensitive subset check” in the contract. This is currently marked `// TODO (L3)`. Leave as-is; add a `// TODO (L2):` if you can implement the recursive subset impl in L2. Do not fill without a decision — note in `_collab/conflicts.md`.
-
-### Verify
-- [ ] `cargo check -p kelir --all-targets` passes.
-- [ ] Existing Rust example snippets in `cans/artifacts/examples/` (if referenced) still type-check against the new surface — at minimum, spot-check `crates/kelir/src/lib.rs` re-exports.
-- [ ] `cargo clippy -p kelir --all-targets -- -D warnings` passes.
+The maturity axis is orthogonal to test status, plugin tier, and target tier.
+Do not conflate them. Do not invent an "L4".
 
 ---
 
-## Agent C — `kelir-core` wire/storage L2 gaps
+## Plan corrections (do not silently follow plan.md)
 
-**Scope (exclusive):** `crates/kelir-core/src/planes/wire/mod.rs`, `crates/kelir-core/src/planes/storage/mod.rs`, `crates/kelir-core/src/planes/storage/fuse_storage.rs`, `crates/kelir-core/src/session_lifecycle.rs`, `crates/kelir-core/src/dispatch_plugin/*.rs`
+Three points in plan.md need interpreting before any agent starts.
 
-**Goal:** close L2 dispatch gaps without filling L3 bodies.
-
-### Tasks
-- [ ] **C1. `process_outbound_frame` honors `allow_udp_proxied`.** CANS/07 says “Permitted UDP egress uses endpoint-independent mapping (Full Cone NAT).” Current code drops all `FrameClass::UdpOther` unconditionally. Wire the `WireWiring.allow_udp_proxied` flag into the outbound classifier: if set, forward UDP (the actual NAT is L3); else drop. Add matching `// see:` anchor at CANS/07 UDP-NAT node.
-- [ ] **C2. `WirePlane::forward_port` kernel bind.** CANS/07: “host_port = None or 0 binds ephemeral port 0; host kernel allocates free port.” Current impl picks a port from `EPHEMERAL_PORT_MIN..=u16::MAX` and records it in a HashMap without calling `bind(2)`. This is silent-failure wiring — a subsequent OS bind can collide. Add a `bind()` call to the enclave (`kelir-transport` or `driver-*`) with `SO_REUSEADDR | SO_REUSEPORT` (as spec mandates) before inserting into the map; return `Err(WireError::PortOccupied)` only on actual `EADDRINUSE`. Keep the HashMap as the logical registry. Add doc-comment `// see: cans/07-wire-plane.md#Port-forwarding`.
-- [ ] **C3. `resolve_synthetic_dns` NXDOMAIN default.** CANS/07 says blocked queries return `NXDOMAIN`; allowed queries forward. Current stub returns `ServFail` unconditionally. Change the default to `ServFail` only when the upstream relay is not yet wired (a `// TODO (L3):`) and return `NxDomain` when the query name is on the sinkhole denylist. Add the denylist lookup plumbing (allowlist already exists; add the inverse check).
-- [ ] **C4. EDNS0 downgrade plumbing.** CANS/07 says the synthetic gateway strips the DO bit before upstream and clears AD on the response. Add the `downgrade_edns0` path in the response synthesis (currently a TODO in `DnsResponse`). Keep the wire parsing as `// TODO (L3):`.
-- [ ] **C5. `dispatch_fs_write` scope → `MountScope`**. Agent A is adding `MountScope.net_cidrs/net_ports`; no action needed here unless C1 needs it.
-- [ ] **C6. `dispatch_net_outbound` / `dispatch_net_inbound` scope**. CANS/02 says “Network filter: ingress dispatcher bypasses net hooks outside declared CIDR/port rules.” Current code only checks `scope.allows_device(VirtioDevice::Net)`; TODO comment already says “CIDR/port scope rules need a frame parser; only the device mask is enforced here.” This is L2 — the frame parser exists in `frame_layout_views.rs` (Agent C can wire `Ipv4View` / `TcpView` to check CIDR/port). Do it: parse the L2/L3 header, extract dst/src IP:port, check `scope.allows_net(...)` (use Agent A’s fields). Do not implement the actual traffic shaping.
-- [ ] **C7. `FuseReply::Written(size)`.** CANS/05 says FUSE WRITE reply size is `fuse_write_out.size` (requested chunk size), never the payload bytes. In `dispatch` `FilterAction::Forward` branch currently returns `FuseReply::Written(request.data.len() as u64)`. Use `request.size` instead. (The `Drop { errno: None }` branch already uses `request.size`.)
-- [ ] **C8. `Session::boot` double registration.** `boot_with_engine` calls `CatalogDb::open(...).register_session(&row)` unconditionally. If the same `session_id` boots twice (restore path), this fails with a UNIQUE constraint. Add `INSERT OR IGNORE` or a pre-check `lookup_session` first. L2 wiring. Flag as a bug.
-- [ ] **C9. `CheckpointPlane::commit_step` and `restore`.** Per CANS/08, `commit_step` should “flush staging delta, advance active step slot”. Currently just inserts into graph. This is L3 — leave the `// TODO (L3):` and skip.
-- [ ] **C10. `SnapStore`/`.kelir-snap` archive.** CANS/09 describes a `format version + feature flags + entry table` header with trailer for end-to-end integrity. `Session::export_snapshot` returns `Err(Unsupported("L3"))` — that’s L3. Leave; but verify the `SnapshotDescriptor` field names match CANS/09 (`dirty_bytes` as byte count not page count — already correct; `parent_digest: Option<String>` — already correct; add `// see: cans/09-snapshots.md#Archives-and-portability` above the type).
-
-### Verify
-- [ ] `cargo check -p kelir-core` passes.
-- [ ] Unit tests: none required at L2, but if you add `C6` parser paths, add `#[cfg(test)]`-free `tests/wire_scope_test.rs` (per AGENTS.md: no `#[cfg(test)]` in `src/`).
-- [ ] `cargo clippy -p kelir-core -- -D warnings` passes.
-- [ ] Any new `// see:` anchors resolve against `crates/kelir-testkit/anchors.json` (Agent E regenerates).
+1. **The checker binary location.** plan.md says `crates/kelir-engine/src/bin/maturity.rs`. That file is L3-shaped (`std::fs`, `walkdir`). `kelir-engine = ["L1","L2"]` forbids `std::fs` in L2. **Work-order:** the checker goes in a new binary crate `crates/kelir-maturity/` with `allowed_levels = ["L1","L2","L3"]`.
+2. **`kelir-interface` stays `["L1","L2"]`.** plan.md tightens it to `["L1"]`, which forbids `impl` blocks. `kelir-interface` has `impl` blocks today (`Errno::as_str`, `From<PluginError> for ErrorEnvelope`, serde impls). Tightening is deferred to a follow-up PR that amends the L1 policy.
+3. **`.run.rs` rename is deferred to the L3 phase.** Every file we move in this wave is a stub returning `Halt` with a `// TODO (L3) [tag]: ...; slop: ...` comment. That comment is forbidden in `.run.rs` per plan.md §The-boundary. **Work-order:** all moved stubs land as `.flow.rs` (L2). The `.run.rs` rename happens when L3 bodies are actually written. `allowed_levels = ["L1","L2","L3"]` still lands now so those renames are one `mv` later.
 
 ---
 
-## Agent D — Hygiene audit (read-only + mechanical fixes)
+## Coordination
 
-**Scope (exclusive):** mechanical — no design changes. Fix only clear-cut violations.
-
-**Goal:** enforce AGENTS.md section 3 (comment law) and section 6 (hygiene gates).
-
-### Tasks
-- [ ] **D1. Comment law sweep.** Run the exact greps from AGENTS.md section 3. For each violation:
-  - Delete the prose comment if it duplicates a `see:`/`TODO:`/`SAFETY:` neighbour.
-  - Convert to `see:` if it documents an owning concept.
-  - Convert to `TODO (Lx):` if it defers work.
-  - Delete trailing `//` on the same line as code — merge into a preceding `see:` or `TODO:` on its own line, or drop it.
-  - Delete `///` doc comments and Python docstrings; replace with one-line `see:` or `TODO:` as appropriate.
-  - Delete `# NOTE:` lines in YAML manifests under `crates/kelir-testkit/*.yaml` — replace with `see:` or drop.
-  Report count: before/after per language.
-- [ ] **D2. File-size audit.** `find crates packages -name '*.rs' -o -name '*.ts' -o -name '*.py' | xargs wc -l | awk '$1 > 1000'`. Produce the list. For each: **do not refactor** (that breaks agent isolation) — record in `_collab/conflicts.md` as L2/L3 debt. Highest-probability offenders:
-  - `crates/kelir-core/src/session_lifecycle.rs`
-  - `crates/kelir/src/builder_sdk.rs`
-  - `crates/kelir/src/session_lifecycle.rs`
-  - `crates/kelir/src/builder_plugin.rs`
-  - `crates/kelir-interface/src/plugin_model.rs`
-  - `crates/kelir-bindings/napi/src/lib.rs`
-  - `crates/kelir-bindings/pyo3/src/lib.rs`
-  - `crates/kelir-shim/src/main.rs`
-  - `packages/py/kelir/__init__.py`
-  - `packages/ts/core/src/builder.lifecycle.ts`
-- [ ] **D3. `#[cfg(test)]` in `src/`.** Grep `crates/**/src/**/*.rs` for `#[cfg(test)]`. Must return zero. Fix any hits by moving to `tests/`.
-- [ ] **D4. Banned-API audit.** Grep for `unwrap()`, `expect(`, `panic!`, `todo!()`, `unimplemented!()`, `unreachable!()` in non-enclave crates (anywhere outside `kelir-drivers`, `kelir-transport`, `kelir-shim`). Report; do not edit yet unless the fix is a trivial `?` and behaviour-preserving.
-- [ ] **D5. `#![forbid(unsafe_code)]` presence.** Every `.rs` library file at crate root must have it except the three enclaves. Grep; report missing.
-- [ ] **D6. Missing `// see:` headers.** Certain `crates/kelir-testkit/src/bin/*.rs` files (`scorecard_testkit.rs`, `check_tests.rs`) start with no `see:` header. Add a single top-of-file `// see:` pointing to their owning CANS node (`cans/15-operations.md#Coverage-gates` for both, or the specific node).
-- [ ] **D7. `TODO (L3):` growth.** Count current `TODO (L3):` markers across the tree. Report the number; do not delete.
-
-### Verify
-- [ ] All four AGENTS.md section 3 greps return empty.
-- [ ] `just check-hygiene` (or the equivalent) passes.
-- [ ] Deliverable: `_collab/hygiene-report.md` with counts and file lists.
+| Rule | Detail |
+|---|---|
+| Branch per agent | `maturity/agent-<n>` |
+| Worktree per agent | one worktree per branch; no shared checkout |
+| `CARGO_TARGET_DIR` | `target/agent-<n>` — eliminates Cargo lock contention |
+| Merge order | **1 → 5a → (2, 3, 4 in any order) → 5b** |
+| Parallel start | 2, 3, 4 open their branches immediately; they rebase onto `main` after 1 and 5a land, before opening PR |
+| Shared files | Only the owning agent lands edits to shared files (`cans/01-architecture.md`, `cans/artifacts/config/project-structure.txt`, root `Cargo.toml`, `AGENTS.md`, `perf/maturity-policy.toml`). If your slice needs a shared-file edit, note it in your PR body; the owning agent folds it in. |
+| Push | never from an agent. Converge by squash-merge into one commit per agent. |
+| Rebase | every open agent rebases onto `main` after every merge |
+| CI | a PR is not opened until the gates below pass locally on the rebased branch |
 
 ---
 
-## Agent E — Spec anchors + testkit + misc L1/L2 mismatches
+## Merge chain
 
-**Scope (exclusive):** `crates/kelir-testkit/src/**`, `crates/kelir-plugin-cli/src/**`, `crates/kelir-plugins/plugin-{chaos,container,db-proxy,ledger,mcp,mesh,profile,replay,supply-chain,tool-guard,transaction,vault,wire-ingress}/src/**` (plugin-specific trait impls only), `crates/kelir-adapters/**`, `crates/kelir-catalog/src/**`
-
-**Goal:** make sure spec anchors resolve, testkit vector counts match spec, and no plugin crate violates the tier contract.
-
-### Tasks
-- [ ] **E1. Regenerate `anchors.json`.** Run `cargo run -p kelir-testkit --bin anchors`. Verify it matches the spec’s current `cans/*.md` set. If the file is committed stale, fix by regenerating. If `check-manifest` was failing, this is likely the cause.
-- [ ] **E2. `crates/kelir-testkit/src/vectors_testkit.rs` count.** Verify the suite produces 58 vectors = 46 builder cases (30 verb + 8 scope + 8 merge) + 12 others. Current `verb_cases` returns 22 ring + 6 structural = 28; base has 2 builder cases (`trap`, `fs_write`); = 30. `nested_cases` = 8; `merge_cases` = 8. Non-builder = 12 (6 traps, 1 heartbeat, 2 watchdog, 3 veto, 1 exec_rewrite = 13? count exactly). If it’s 13, one case is duplicated or misplaced. Fix by audit against CANS/15 coverage spec.
-- [ ] **E3. `crates/kelir-plugin-cli/src/parity_cli.rs` canonical roster check.** `assert_canonical_roster` requires declared order to exactly match `kelir-plugin-testkit::fixtures_testkit::canonical_vector_names()`. That function currently calls `VectorSuite::fixtures()` — which now includes builder cases, so order is stable. Verify.
-- [ ] **E4. Plugin tier violations.** Re-verify each `crates/kelir-plugins/*/Cargo.toml` against CANS/02:
-  - `plugin-mesh` (Tier 1): only `kelir-interface` + `async-trait`. ✓
-  - `plugin-mcp` (Tier 1): only `kelir-interface` + `async-trait`. ✓
-  - `plugin-supply-chain` (Tier 2): `kelir-interface` + `async-trait` — **no Tier 1 peer import.** Is that legal? CANS/02 says “Tier 2 plugins depend on kelir-interface and **consume** Tier 1 services via ServiceRegistry.” A Tier 2 plugin that consumes no Tier 1 services has zero peer imports and is legal per “dependency invariant: Zero concrete peer imports within the same tier” (downward-only). Verify no violation.
-  - `plugin-container` (Tier 2): same shape. ✓
-  - `plugin-tool-guard` (Tier 2): imports `plugin-mcp` (Tier 1). ✓
-  - `plugin-ledger` (Tier 3): imports `kelir-otlp` (not a plugin) — legal per “external sink delegates persistence.” ✓
-  - `plugin-transaction` (Tier 3): imports `plugin-db-proxy` (Tier 2). ✓
-  - Run `kelir-plugin-cli check --graph` to validate acyclic and downward-only.
-- [ ] **E5. `plugin_supply_chain::WxAllocToken::WIRE_LEN`.** CANS/plugins/supply-chain.md says the token is delivered over vsock to the guest. Current `WIRE_LEN = 16 + 8 + 32` — is that the spec’s token layout? The spec says “Verified JIT runtimes receive dynamic one-time MMU allocation token over vsock.” No wire layout pinned in spec. Leave the size; add `// TODO (L3):` for cross-impl sync if a canonical layout is added.
-- [ ] **E6. `plugin_vault::MetadataEndpoint::serve`.** CANS/plugins/vault.md says token response body is `{ token, ttl_seconds, scope, audience }`. Code matches. ✓ `metadata_vsock_port` default is `VAULT_METADATA_VSOCK_PORT = 80` per CANS. ✓ Leave.
-- [ ] **E7. `plugin_tool_guard::decode_tools_list`.** Currently returns `Err(Unsupported("L3"))`. That means at boot, `ToolGuardPlugin::on_vm_ready` will fail. This makes `plugin-tool-guard` unable to boot even in L2. Check whether this is intentional (L2 gap) or a bug. If intentional, add `// TODO (L3):` on the call site. If not, at least return an empty `ToolsListResult` so the plugin boots without pinning.
-- [ ] **E8. `plugin_profile` `apply_patch_to_base` Move/Copy leaves base stale.** CANS/plugins/profile.md requires RFC 6902 semantics. Current `PatchOp::Move | Copy | Test => {}` silently no-ops. This is a semantic bug even at L2 (patch dispatch succeeds but doesn’t mutate). Add `// TODO (L3):` on the site with a pointed `see:`.
-- [ ] **E9. `plugin_db_proxy` `intercept_ethernet_frame` FIN handling.** CANS/07 says “Rollback interaction: session.rollback() closes every host-side socket.” FIN/RST tracking is L3. Leave, but verify `// TODO (L3): FIN half-close state machine` is present.
-- [ ] **E10. `crates/kelir-adapters/mcp-server/src/main.rs`.** Empty `main` with `// TODO (L3): direct the stdio wire frames to plugin-mcp`. This is a binary that should compile and run as a no-op. Verify it builds (it does).
-
-### Verify
-- [ ] `cargo run -p kelir-testkit --bin anchors` produces deterministic output.
-- [ ] `cargo test -p kelir-plugin-testkit` passes (no runtime panics).
-- [ ] `kelir-plugin-cli check --graph --layers` passes.
-- [ ] Deliverable: `_collab/misc-report.md` with the audit.
+```
+main
+ ├── Agent 1  (maturity tooling)                        ✓ vacuous pass everywhere
+ ├── Agent 5a (rename kelir-core → kelir-engine)        ✓ everyone now writes `kelir_engine::`
+ ├── Agent 2  (storage split)                           ┐
+ ├── Agent 3  (wire split)                              ├ independent, any order
+ ├── Agent 4  (terminal + checkpoint + host split)      ┘
+ └── Agent 5b (composition root + final crate topology)
+```
 
 ---
 
-## Cross-agent conflicts to resolve first
+## Agent 1 — Maturity tooling
 
-- **A1 vs `_collab/conflicts.md`:** `ExecveMutation.set_env` type — pick HashMap (spec) and either accept nondeterministic serialization for `Verdict::Patch` receipts, or update spec.
-- **A6 vs CANS/11:** `FLAG_CONTINUATION` — spec-internal conflict; file in `_collab/conflicts.md`, do not invent a flag bit.
-- **B3 vs B1:** unused `StorageHandle`/`WireHandle`/`CheckpointHandle` dead code — decide keep-or-delete as part of `Session` refactor; if deleted, ensure pyo3/napi bridges’ access to `.storage`/`.wire` on the native handle still works.
-- **D2:** files >1000 LOC — do not split at L2; record debt. If the user wants splitting, that’s a separate work order.
+**Blocks on:** nothing. **Blocks:** every other agent's local gate.
+
+### Spec (`cans/`)
+
+- `cans/15-operations.md`
+  - **§Developer-CLI**: add a `kelir-maturity` subcommand list: `check`, `list --level <L> --crate <crate>`, `list --tag <slop-tag>`, `emit --out maturity/`. Note it runs in <2s and is the only gate for body maturity.
+  - **§CI-matrix**: add a `maturity-check` job to the enforced-invariants list; add it to the per-PR gates.
+- `cans/01-architecture.md`
+  - **§Codebase-invariants**: add a `Maturity discipline` subsection — one sentence per invariant:
+    - Level = filename suffix (`.rs` = L1, `.flow.rs` = L2, `.run.rs` = L3).
+    - Crate role = `[package.metadata.kelir].allowed_levels`.
+    - Placement invariant: `level_of(file) ∈ crate.allowed_levels`, enforced by `kelir-maturity check`.
+    - The four axes (maturity, test status, plugin tier, target tier) are orthogonal.
+
+### Artifacts (`cans/artifacts/`)
+
+- `perf/maturity-policy.toml` — new file. Copy the policy verbatim from plan.md §The-policy-file.
+- `cans/artifacts/config/justfile` — add `check-maturity` target: `cargo run -p kelir-maturity -- check`.
+- `cans/artifacts/config/ci.yml` — add `maturity-check` job to the matrix; wire to `just check-maturity`.
+- `cans/artifacts/config/project-structure.txt` — add `crates/kelir-maturity/` with `Cargo.toml`, `src/main.rs`, `src/lib.rs`.
+
+### Codebase
+
+- New crate `crates/kelir-maturity/`:
+  - `Cargo.toml` — `[package] name = "kelir-maturity"`, `[package.metadata.kelir] allowed_levels = ["L1","L2","L3"]`; deps: `serde`, `toml`, `regex`, `walkdir`.
+  - `src/lib.rs` — `level_of(&Path) -> Level`, `crate_of(&Path) -> PathBuf`, `read_allowed_levels(&CargoToml) -> Vec<Level>`, `Policy::from_toml(&str) -> Policy`. ~60 lines.
+  - `src/main.rs` — `check`, `list`, `emit` subcommands; the ~80-line `check()` from plan.md §The-check-binary.
+- Root `Cargo.toml` — add `crates/kelir-maturity` to `[workspace.members]`.
+- Every `crates/*/Cargo.toml` — add `[package.metadata.kelir] allowed_levels = ["L1","L2","L3"]`. Every existing crate. Vacuously passes today; agents 2/3/4 tighten their own new crates in their PRs.
+
+### Gates
+
+```sh
+cargo check --workspace --all-targets
+cargo run -p kelir-maturity -- check    # must exit 0 (vacuous)
+cargo run -p kelir-maturity -- list --level L2 --crate kelir-interface  # sanity
+just check-spec
+```
 
 ---
 
-## Definition of done
+## Agent 5a — Rename `kelir-core` → `kelir-engine`
 
-- [ ] All 5 agents report back with `_collab/*-report.md`.
-- [ ] All cross-agent conflicts resolved in `_collab/conflicts.md` with a decision line each.
-- [ ] `cargo check --workspace --all-targets` green.
-- [ ] `cargo clippy --workspace --all-targets -- -D warnings` green.
-- [ ] `cargo test --workspace` green (unit tests only; integration tier gated on KVM/HVF).
-- [ ] `just check-hygiene`, `just check-spec`, `just check-manifest`, `just check-tests`, `just check-scorecard` all green.
-- [ ] No new `TODO (L3):` introduced; existing count unchanged or decreasing (per AGENTS.md D7).
+**Blocks on:** nothing (parallel with Agent 1). **Blocks:** Agents 2, 3, 4's `Cargo.toml` edits, `kelir/src/lib.rs`, and every `use kelir_core::`.
+
+### Spec (`cans/`)
+
+Pure `sed`: `kelir-core` → `kelir-engine`, `kelir_core` → `kelir_engine` across:
+- `cans/01-architecture.md`, `cans/02-plugin-model.md`, `cans/03-sdk-architecture.md`
+- `cans/11-protocol.md`, `cans/12-adapters.md`, `cans/13-cli.md`, `cans/14-observability.md`
+- `cans/00-overview.md`, `cans/06-storage-catalog.md`, `cans/10-attestation.md`
+- `cans/15-operations.md`
+
+Do **not** change `KELIR_CORE_VERSION` (the const stays named) or the `bump-core` CLI command. Only the crate name renames.
+
+### Artifacts (`cans/artifacts/`)
+
+Same `sed` over:
+- `cans/artifacts/config/project-structure.txt`
+- `cans/artifacts/diagrams/host-runtime.txt`
+- `cans/artifacts/code/plugin-trait.rs`
+- `cans/artifacts/code/vmm-driver-trait.rs`
+- `cans/artifacts/code/step-evaluation-loop.ts`
+- any other file that references `kelir-core` or `kelir_core`
+
+### Codebase
+
+```sh
+git mv crates/kelir-core crates/kelir-engine
+```
+
+Then:
+- `crates/kelir-engine/Cargo.toml` — `name = "kelir-engine"`; leave `allowed_levels` as Agent 1 set it.
+- Root `Cargo.toml` — `[workspace.members]` line updated.
+- Every `Cargo.toml` in `crates/`, `packages/ts/*/package.json` (if it refs), `crates/kelir-shim/Cargo.toml` — dependency line `kelir-core = { path = ... }` → `kelir-engine = { path = ... }`.
+- Every `.rs` file — `sed -i 's/kelir_core/kelir_engine/g; s/kelir-core/kelir-engine/g'` across `crates/`, `packages/`. Re-grep to confirm zero hits.
+- `crates/kelir-engine/src/lib.rs` — `pub const KELIR_CORE_VERSION` stays; `#![forbid(unsafe_code)]` stays.
+- `crates/kelir/src/lib.rs` — `pub use kelir_core::*;` → `pub use kelir_engine::*;`.
+- `AGENTS.md` §7 — `crates/kelir-interface/ ... crates/kelir-core/` → `crates/kelir-engine/`.
+
+**Do not** touch composition root wiring (`RealFuseOps::new(...)` etc.) — that is Agent 5b.
+
+### Gates
+
+```sh
+cargo check --workspace --all-targets
+cargo run -p kelir-maturity -- check
+grep -rn "kelir_core\|kelir-core" crates/ packages/   # must be empty
+just check-spec
+```
+
+---
+
+## Agent 2 — Storage plane split
+
+**Blocks on:** Agents 1, 5a. **Blocks:** Agent 5b (composition root).
+
+### Spec (`cans/`)
+
+- `cans/05-storage-plane.md`
+  - **§Storage-architecture**: replace "Owner: kelir-core native storage subsystem (kelir-core::storage)" with "Owner: `kelir-storage` (L3) + `kelir-storage-io` (L3) + `kelir-engine::planes::storage` (L2)".
+  - Add a `Crate topology` node under §Storage-architecture listing the three crates and the three-level split per plan.md §Target-crate-layout.
+  - Add a `Trait seam` node under §Storage-architecture: `FuseOps` and `StorageIo` live in `kelir-interface::storage`; the L2 façade holds `Arc<dyn FuseOps>`; the L3 impl is `RealFuseOps`; `kelir-engine` cannot name `RealFuseOps`.
+  - Every `see:` that currently points at `fuse_storage.rs` / `storage_reconciler.rs` / `io_storage.rs` / `lock_broker.rs` / `storage_synthetic.rs` retargets at `crates/kelir-storage/src/*.flow.rs` or `crates/kelir-storage-io/src/*.flow.rs`.
+
+### Artifacts (`cans/artifacts/`)
+
+- `cans/artifacts/diagrams/storage-architecture.txt` — update crate labels.
+- `cans/artifacts/code/reconciler.rs` — note new path; keep body.
+- `cans/artifacts/config/project-structure.txt` — add `crates/kelir-storage/`, `crates/kelir-storage-io/`; delete the `crates/kelir-engine/src/planes/storage/` sub-tree entries that moved.
+
+### Codebase
+
+New crates:
+- `crates/kelir-interface/src/storage/mod.rs` — `pub mod fuse; pub mod io;`
+- `crates/kelir-interface/src/storage/fuse.rs` (L1, ~15 lines) — `FuseOps` trait; move `FuseRequest`, `FuseReply`, `FuseResponse`, `FuseOpcode`, `FuseDirEntry` here from `kelir-core/src/planes/storage/fuse_storage.rs`.
+- `crates/kelir-interface/src/storage/io.rs` (L1, ~20 lines) — `StorageIo` trait, `RootHandle`, `HostFileLock`; move from `kelir-core/src/planes/storage/io_storage.rs`.
+- `crates/kelir-interface/Cargo.toml` — `allowed_levels = ["L1","L2"]` (not `["L1"]`, see Plan corrections).
+
+- `crates/kelir-engine/src/planes/storage/mod.rs` (L2) — `FuseDispatcher` façade holding `Arc<dyn FuseOps>`, `Arc<dyn StorageIo>`, `StorageQuota`, lock broker config, metrics. Delegates to the ops.
+- `crates/kelir-engine/src/planes/storage/fuse.flow.rs` (L2) — `FuseDispatcher::dispatch` from `fuse_storage.rs`.
+- `crates/kelir-engine/src/planes/storage/storage_quota.flow.rs` (L2) — `StorageQuota` (today `kelir-core/src/planes/storage/mod.rs`).
+
+- New `crates/kelir-storage/` (L3):
+  - `Cargo.toml` — `name = "kelir-storage"`, `allowed_levels = ["L1","L2","L3"]`, deps: `kelir-interface`, `kelir-engine`, `kelir-storage-io`, `kelir-otlp`.
+  - `src/lib.rs` (L2) — `pub use real_fuse::RealFuseOps;` etc.
+  - `src/fuse.flow.rs` (L2 for now; renames to `fuse.run.rs` when the body lands) — move `kelir-core/src/planes/storage/fuse_storage.rs` body here; keep the `// TODO (L3) [...]` markers.
+  - `src/reconciler.flow.rs`, `src/lock_broker.flow.rs`, `src/storage_synthetic.flow.rs` — move `kelir-core/src/planes/storage/storage_reconciler.rs`, `lock_broker.rs`, `storage_synthetic.rs` bodies here.
+
+- New `crates/kelir-storage-io/` (L3):
+  - `Cargo.toml` — `name = "kelir-storage-io"`, `allowed_levels = ["L1","L2","L3"]`, deps: `kelir-interface`, `libc`.
+  - `src/lib.rs` (L2) — `pub use real_io::RealStorageIo;`
+  - `src/io.flow.rs` (L2 for now) — move `kelir-core/src/planes/storage/io_storage.rs` body here (the `UnimplementedStorageIo` impl), rename to `RealStorageIo`.
+
+- Deletions:
+  - `crates/kelir-core/src/planes/storage/*.rs` — every file (all bodies moved).
+  - `crates/kelir-core/src/planes/storage/` — directory removed.
+
+- `crates/kelir-engine/Cargo.toml` — depends on `kelir-storage-io` (for the L1 `StorageIo` trait it re-exports). `allowed_levels` stays `["L1","L2","L3"]` from Agent 1; Agent 5b tightens to `["L1","L2"]`.
+- Root `Cargo.toml` — add `crates/kelir-storage`, `crates/kelir-storage-io` to `[workspace.members]`.
+- `crates/kelir/src/lib.rs` — keep `pub mod planes::storage_plane;` forwarding to `kelir_engine::planes::storage::*`. Agent 5b rewrites the composition root.
+
+### Gates
+
+```sh
+cargo check --workspace --all-targets
+cargo run -p kelir-maturity -- check
+cargo nextest run -p kelir-storage -p kelir-storage-io -p kelir-interface -p kelir-engine
+just check-layers   # downward-only still holds
+just check-spec
+```
+
+---
+
+## Agent 3 — Wire plane split
+
+**Blocks on:** Agents 1, 5a. **Blocks:** Agent 5b.
+
+### Spec (`cans/`)
+
+- `cans/07-wire-plane.md`
+  - **§Wire-architecture**: replace "Owner: kelir-core native wire subsystem (kelir-core::wire)" with the three-crate split per plan.md.
+  - Add `Crate topology` and `Trait seam` nodes: `NetOps`, `DnsOps`, `UdpNatOps`, `L4DivertOps` in `kelir-interface::wire`; `RealNetOps` etc. in `kelir-wire`; `kelir-engine::planes::wire` holds the `Arc<dyn *Ops>` façades.
+
+### Artifacts (`cans/artifacts/`)
+
+- `cans/artifacts/diagrams/wire-plane.txt` — update crate labels.
+- `cans/artifacts/config/project-structure.txt` — add `crates/kelir-wire/`; delete `crates/kelir-engine/src/planes/wire/` entries that moved.
+
+### Codebase
+
+- `crates/kelir-interface/src/wire/mod.rs` — `pub mod net; pub mod dns; pub mod udp_nat; pub mod l4;`
+- `crates/kelir-interface/src/wire/net.rs` (L1) — `NetOps` trait: `fn intercept_ethernet_frame(&self, direction: FrameDirection, frame: &mut [u8]) -> Result<FilterAction, PluginError>`.
+- `crates/kelir-interface/src/wire/dns.rs` (L1) — `DnsOps` trait; move `DnsQuery`, `DnsResponse`, `DnsRcode` from `kelir-core/src/planes/wire/mod.rs`.
+- `crates/kelir-interface/src/wire/udp_nat.rs` (L1) — `UdpNatOps` trait; move `UdpNatEntry`, `UDP_NAT_SLAB_CAPACITY`, `UDP_NAT_IDLE_TIMEOUT_SECS`.
+- `crates/kelir-interface/src/wire/l4.rs` (L1) — `L4DivertOps` trait; move `L4Stream`.
+
+- `crates/kelir-engine/src/planes/wire/mod.rs` (L2) — `WirePlane` façade holding `Arc<dyn NetOps>`, `Arc<dyn DnsOps>`, `Arc<dyn UdpNatOps>`, `Arc<dyn L4DivertOps>`, imds_sink, port_forwards, host_listeners. Delegates every call.
+- `crates/kelir-engine/src/planes/wire/layout_wire.flow.rs` (L2) — `layout_wire` (frame views used by the L2 façade and by db-proxy's L3; keep in `kelir-engine` because both consumers name it).
+
+- New `crates/kelir-wire/` (L3):
+  - `Cargo.toml` — `name = "kelir-wire"`, `allowed_levels = ["L1","L2","L3"]`, deps: `kelir-interface`, `kelir-engine`, `smoltcp`, `kelir-otlp`, `kelir-transport`.
+  - `src/smoltcp.flow.rs` (rename to `.run.rs` when body lands) — `SmoltcpStack` body.
+  - `src/dns.flow.rs` — `resolve_query`, `resolve_synthetic_dns`, `parse_resolv_conf_nameservers`, `host_resolver_nameservers` body.
+  - `src/udp_nat.flow.rs` — `udp_nat_alloc`, `reap_stale_udp_sockets`.
+  - `src/l4.flow.rs` — `divert_l4`.
+  - `src/lib.rs` (L2) — `pub use real_wire::{RealNetOps, RealDnsOps, RealUdpNatOps, RealL4DivertOps};`
+
+- Deletions:
+  - `crates/kelir-core/src/planes/wire/mod.rs` — moved.
+  - `crates/kelir-core/src/planes/wire/layout_wire.rs` — moved to `kelir-engine`.
+
+- Root `Cargo.toml` — add `crates/kelir-wire`.
+
+### Gates
+
+```sh
+cargo check --workspace --all-targets
+cargo run -p kelir-maturity -- check
+cargo nextest run -p kelir-wire -p kelir-interface -p kelir-engine
+just check-spec
+```
+
+---
+
+## Agent 4 — Terminal + Checkpoint + Host split
+
+**Blocks on:** Agents 1, 5a. **Blocks:** Agent 5b.
+
+Three planes, one agent, three crates.
+
+### Spec (`cans/`)
+
+- `cans/04-terminal-plane.md` — §Terminal-pipeline: add `Crate topology` + `Trait seam` nodes for `kelir-terminal` and `TerminalOps`.
+- `cans/08-lifecycle.md` — §Native-checkpoint-plane: add `Crate topology` + `Trait seam` for `kelir-checkpoint` and `CheckpointOps`. §Host-crash-reaper, §Host-memory-pressure-watcher: same for `kelir-host` and `HostOps`.
+- `cans/09-snapshots.md` — §Snapshot-taxonomy, §Archives-and-portability: retarget `see:` at `crates/kelir-checkpoint/src/*.flow.rs`.
+
+### Artifacts (`cans/artifacts/`)
+
+- `cans/artifacts/diagrams/terminal-pipeline.txt`, `cans/artifacts/diagrams/host-runtime.txt` — update crate labels.
+- `cans/artifacts/code/causal-delta.rs`, `cans/artifacts/code/execution-receipt.rs` — note new homes.
+- `cans/artifacts/config/project-structure.txt` — add `crates/kelir-terminal/`, `crates/kelir-checkpoint/`, `crates/kelir-host/`; delete the corresponding `crates/kelir-engine/src/planes/*/` entries.
+
+### Codebase
+
+- `crates/kelir-interface/src/terminal/mod.rs` (L1) — `TerminalOps` trait: `resize`, `feed`, `export_screen_matrix`, `read_from`, `append_stream_chunk`, `record_output`, `output_filters`, `token_shield`, `prompts`. Move `TokenShieldConfig`, `PromptRuleConfig`, `TerminalWiring`, `LogStream`, `LogCursor`, `LogSegment` here from `kelir-core/src/planes/terminal/mod.rs`.
+- `crates/kelir-interface/src/checkpoint/mod.rs` (L1) — `CheckpointOps` trait; move `PidLineage`, `StepSlot`, `CheckpointNode`, `ManifestGraph` here.
+- `crates/kelir-interface/src/host/mod.rs` (L1) — `HostOps` trait; move `PressureLevel`, `PressureEvent`, `PressureSource`, `BalloonRequest`, `ReclaimRequest`, `HostReaperKind`.
+
+- `crates/kelir-engine/src/planes/terminal/mod.rs` (L2) — `TerminalPlane` façade holding `Arc<dyn TerminalOps>`.
+- `crates/kelir-engine/src/planes/checkpoint/mod.rs` (L2) — `CheckpointPlane` façade holding `Arc<dyn CheckpointOps>`.
+- `crates/kelir-engine/src/planes/host/mod.rs` (L2) — `HostPlane` façade holding `Arc<dyn HostOps>`.
+
+- New `crates/kelir-terminal/` (L3):
+  - `Cargo.toml` — `name = "kelir-terminal"`, `allowed_levels = ["L1","L2","L3"]`, deps: `kelir-interface`, `kelir-engine`, `kelir-otlp`.
+  - `src/vt100.flow.rs`, `src/token_shield.flow.rs`, `src/log_segment.flow.rs` — move `kelir-core/src/planes/terminal/mod.rs` body here, split by module.
+  - `src/lib.rs` (L2) — `pub use real_terminal::RealTerminalOps;`
+
+- New `crates/kelir-checkpoint/` (L3):
+  - `Cargo.toml` — `name = "kelir-checkpoint"`, `allowed_levels = ["L1","L2","L3"]`, deps: `kelir-interface`, `kelir-engine`, `kelir-otlp`.
+  - `src/manifest_graph.flow.rs`, `src/step_slot.flow.rs`, `src/compaction.flow.rs` — move `kelir-core/src/planes/checkpoint/mod.rs` body.
+  - `src/lib.rs` (L2) — `pub use real_checkpoint::RealCheckpointOps;`
+
+- New `crates/kelir-host/` (L3):
+  - `Cargo.toml` — `name = "kelir-host"`, `allowed_levels = ["L1","L2","L3"]`, deps: `kelir-interface`, `kelir-engine`, `kelir-otlp`, `libc`.
+  - `src/pressure.flow.rs`, `src/balloon.flow.rs`, `src/reaper.flow.rs` — move `kelir-core/src/planes/host/mod.rs` body.
+  - `src/lib.rs` (L2) — `pub use real_host::RealHostOps;`
+
+- Deletions:
+  - `crates/kelir-core/src/planes/terminal/`, `crates/kelir-core/src/planes/checkpoint/`, `crates/kelir-core/src/planes/host/` — directories removed.
+
+- Root `Cargo.toml` — add `crates/kelir-terminal`, `crates/kelir-checkpoint`, `crates/kelir-host`.
+
+### Gates
+
+```sh
+cargo check --workspace --all-targets
+cargo run -p kelir-maturity -- check
+cargo nextest run -p kelir-terminal -p kelir-checkpoint -p kelir-host -p kelir-interface -p kelir-engine
+just check-spec
+```
+
+---
+
+## Agent 5b — Composition root + final crate topology
+
+**Blocks on:** Agents 2, 3, 4. **Blocks:** nothing; lands last.
+
+### Spec (`cans/`)
+
+- `cans/01-architecture.md`
+  - **§Host-runtime**: rewrite the crate list to the final topology. `kelir-core` disappears. `kelir-engine: stripped microkernel (BusDispatcher, PipelineEngine, EventBus, DriverRouter)`. Add the six new crates (`kelir-storage`, `kelir-storage-io`, `kelir-wire`, `kelir-terminal`, `kelir-checkpoint`, `kelir-host`) with their roles from plan.md §Target-crate-layout.
+  - **§Core-invariants**: confirm no `kelir-core` refs remain.
+- `cans/02-plugin-model.md`, `cans/03-sdk-architecture.md` — same crate-list rewrite where they list `kelir-core` sub-modules.
+- `cans/12-adapters.md`, `cans/13-cli.md`, `cans/14-observability.md` — confirm no `kelir-core` refs remain.
+
+### Artifacts (`cans/artifacts/`)
+
+- `cans/artifacts/config/project-structure.txt` — final tree with all six new crates; delete every `crates/kelir-core/` entry (should already be `crates/kelir-engine/` from 5a; rewrite the plane sub-dirs).
+- `cans/artifacts/diagrams/host-runtime.txt` — final crate topology diagram.
+- `cans/artifacts/code/vmm-driver-trait.rs`, `cans/artifacts/code/plugin-trait.rs` — confirm crate refs are `kelir-engine`.
+
+### Codebase
+
+- `crates/kelir-engine/Cargo.toml` — `allowed_levels = ["L1","L2"]`.
+- `crates/kelir-engine/src/lib.rs` — `pub mod planes;` now just re-exports the façades from the new crates. The planes sub-dirs (`storage/`, `wire/`, `terminal/`, `checkpoint/`, `host/`) live in `kelir-engine` as thin L2 façades delegating to `Arc<dyn *Ops>`.
+- `crates/kelir-engine/src/planes/mod.rs` — `pub mod storage; pub mod wire; pub mod terminal; pub mod checkpoint; pub mod host;` with each sub-module holding only the L2 `.flow.rs` façade files.
+- `crates/kelir/src/lib.rs` — **composition root**: bind `RealFuseOps`, `RealStorageIo`, `RealTerminalOps`, `RealCheckpointOps`, `RealHostOps`, `RealNetOps`, `RealDnsOps`, `RealUdpNatOps`, `RealL4DivertOps` into the `PipelineEngineBuilder`. Every `*Ops` slot is required — `seal()` returns `Halt("FuseOps unbound at seal")` on any missing binding. No default `NopFuseOps`.
+- `crates/kelir/src/builder_sdk.rs` — `finish_boot()` constructs the `Real*` types and passes them to `kelir_engine::Session::boot_with_engine`. Verify `kelir-engine`'s builder does not name any `Real*` type.
+
+### Gates
+
+```sh
+cargo check --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+cargo run -p kelir-maturity -- check
+cargo nextest run --workspace
+pnpm -r exec tsc --noEmit
+uv run mypy packages/py
+just check-hygiene
+just check-spec
+```
+
+---
+
+## Gates (every agent runs before opening PR)
+
+```sh
+just check-spec
+cargo check --workspace --all-targets
+cargo run -p kelir-maturity -- check
+git diff --stat   # must touch only your slice + noted shared-file edits
+```
+
+Agents 2, 3, 4 also run `just check-layers` after landing the split; the
+downward-only invariant must still hold (`kelir-storage` depends on
+`kelir-engine`, `kelir-engine` never on `kelir-storage`).
+
+---
+
+## Test matrix
+
+| Agent | New tests | Existing tests to re-run |
+|---|---|---|
+| 1 | `crates/kelir-maturity/tests/check_test.rs` — one passing tree, one failing tree per rule | none |
+| 2 | none new (deferred to L3 phase) | `kelir-interface`, `kelir-engine`, `kelir-storage`, `kelir-storage-io` |
+| 3 | none new | `kelir-wire`, `kelir-interface`, `kelir-engine` |
+| 4 | none new | `kelir-terminal`, `kelir-checkpoint`, `kelir-host`, `kelir-interface`, `kelir-engine` |
+| 5a | none (mechanical rename) | `cargo test --workspace` |
+| 5b | `crates/kelir/tests/composition_seal_test.rs` — unbound `FuseOps` fails `seal()` | `cargo test --workspace` |
+
+Tests do not land in this wave beyond the checker's own unit tests and the
+composition-root seal test. Body tests are L3-phase work.
+
+---
+
+## What "done" looks like
+
+- `find crates -name '*.run.rs' | wc -l` → 0 (deferred to L3 phase per Plan corrections).
+- `cargo run -p kelir-maturity -- check` exits 0 on `main`.
+- `cargo check --workspace --all-targets` passes with `kelir-engine` set to `allowed_levels = ["L1","L2"]` and no `.run.rs` file anywhere in it.
+- `rg 'kelir_core|kelir-core' crates/ packages/ cans/ cans/artifacts/` → empty.
+- `kelir/src/lib.rs` names every `Real*Ops` type; `kelir-engine/src/lib.rs` names none of them.
+- An agent given *"fix storage FUSE UNLINK atomicity"* finds the file in one `rg 'UNLINK' --glob '*.flow.rs' crates/kelir-storage/` and opens `crates/kelir-storage/src/reconciler.flow.rs`. Two-file context (L1 trait + L2 façade), not fifteen.
+```

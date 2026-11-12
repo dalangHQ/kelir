@@ -29,7 +29,7 @@
   },
   "include": [
         "AGENTS.md",
-//     "cans/",
+     "cans/",
        "crates",
         "packages"
   ],
