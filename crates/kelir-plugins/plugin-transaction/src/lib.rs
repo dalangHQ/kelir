@@ -7,6 +7,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::LockBrokerCoordination;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
@@ -126,13 +127,13 @@ impl PeerCoordination {
     ) -> Result<ActiveTransaction, PluginError> {
         let active = self.active()?.ok_or_else(|| {
             PluginError::reject(
-                "EINVAL",
+                Errno::Einval,
                 "no transaction scope is active on the coordinator",
             )
         })?;
         if active.handle.id != handle.id {
             return Err(PluginError::reject(
-                "EINVAL",
+                Errno::Einval,
                 format!(
                     "handle {} does not match the active transaction {}",
                     handle.id, active.handle.id
@@ -151,7 +152,7 @@ impl PeerCoordination {
                 .is_some_and(|active| !active.scope.schemas.is_empty())
         {
             return Err(PluginError::reject(
-                "EPOLICY",
+                Errno::Epolicy,
                 "transaction declares SQL schemas but no SqlProxyCtx peer is bound",
             ));
         }
@@ -165,7 +166,7 @@ impl PeerCoordination {
     ) -> Result<TransactionHandle, PluginError> {
         if let Some(active) = self.active()? {
             return Err(PluginError::reject(
-                "EINVAL",
+                Errno::Einval,
                 format!(
                     "transaction {} is still active; commit or abort it before opening a new scope",
                     active.handle.id
@@ -265,7 +266,7 @@ impl PeerCoordination {
             })
             .ok_or_else(|| {
                 PluginError::reject(
-                    "EINVAL",
+                    Errno::Einval,
                     format!(
                         "savepoint {} is not registered on transaction {}",
                         savepoint.id, transaction.id
@@ -413,7 +414,7 @@ impl LifecycleParticipant for TransactionPlugin {
         // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
         if !self.config.flush_fuse_before_commit {
             return Err(PluginError::reject(
-                "ESecurityViolation",
+                Errno::Esecurityviolation,
                 "flush_fuse_before_commit is required; disabling the pre-commit FUSE drain forfeits 2PC atomicity",
             ));
         }

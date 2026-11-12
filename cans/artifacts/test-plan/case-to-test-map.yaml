@@ -2053,6 +2053,11 @@ harness_tests:
     pid and EPERM, EFFIQUEUESATURATED with EBUSY, EAMBIGUOUSMUTATION, io errno, EConfig fallback,
     full-context JSON serialization the NAPI/PyO3 bridges forward); no dedicated plan case covers
     the envelope mapping yet (L2 wiring addition).
+- file: crates/kelir-interface/tests/errno_serde_test.rs
+  reason: Errno newtype serde pin per cans/02-plugin-model.md#Unified-verdict (bare-string wire
+    round-trip for all 22 variants, unknown wire string rejected at deserialization, io
+    raw_os_error mapping, Reject display keeps the wire code); no dedicated plan case covers
+    the errno newtype yet (L2 wiring addition).
 - file: crates/kelir-interface/tests/causal_delta_hex_test.rs
   reason: CausalDelta serde-hex pin per cans/10-attestation.md#Causal-delta (artifact
     cans/artifacts/code/causal-delta.rs, added by b7e5346 without a map entry); pins

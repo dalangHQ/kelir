@@ -18,7 +18,7 @@ class TransactionConfig:
     flush_fuse_before_commit: bool = True
 
 
-class TransactionPlugin(BasePlugin):
+class TransactionPlugin(BasePlugin[None, None]):
     name = "transaction"
 
     def __init__(self, config: TransactionConfig | None = None) -> None:

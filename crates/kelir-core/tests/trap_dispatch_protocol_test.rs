@@ -9,6 +9,7 @@ use kelir_core::dispatch_plugin::PipelineEngine;
 use kelir_core::planes::checkpoint::{CheckpointPlane, PidLineage};
 use kelir_core::session_lifecycle::PlaneWiring;
 use kelir_interface::driver_interface::{SnapshotDescriptor, default_vm_config};
+use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::{
     FusedTrampolineDescriptor, HookEntry, HookStage, RingChain, TrampolineRing, TrampolineTable,
 };
@@ -51,7 +52,7 @@ impl TrapInterposer for DropTrap {
         _ctx: &HandlerCtx,
     ) -> Result<Verdict, kelir_interface::plugin_model::PluginError> {
         Ok(Verdict::Drop {
-            errno: Some("EPERM".into()),
+            errno: Some(Errno::Eperm),
             reason: "denied".to_string(),
         })
     }
@@ -165,7 +166,7 @@ async fn pe_04_interceptor_pipeline_monotonic_verdict() -> Result<(), String> {
     match verdict {
         Verdict::Drop {
             errno: Some(errno), ..
-        } => assert_eq!(errno, "EPERM"),
+        } => assert_eq!(errno, Errno::Eperm),
         other => return Err(format!("first Drop did not halt pipeline: {other:?}")),
     }
     assert!(!second_called.load(Ordering::SeqCst));
@@ -286,7 +287,7 @@ async fn pe_09_panic_quarantine_catch_unwind_efault() -> Result<(), String> {
             errno: Some(errno),
             reason,
         } => {
-            assert_eq!(errno, "EFAULT");
+            assert_eq!(errno, Errno::Efault);
             assert_eq!(reason, "Plugin panicked");
         }
         other => {
@@ -302,7 +303,7 @@ async fn pe_09_panic_quarantine_catch_unwind_efault() -> Result<(), String> {
     match second {
         Verdict::Drop {
             errno: Some(errno), ..
-        } => assert_eq!(errno, "EFAULT"),
+        } => assert_eq!(errno, Errno::Efault),
         other => {
             return Err(format!(
                 "engine did not survive quarantined panic: {other:?}"

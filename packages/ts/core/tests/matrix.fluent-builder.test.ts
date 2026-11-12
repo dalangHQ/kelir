@@ -17,15 +17,15 @@ import {
 } from "../dist/index.js";
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-const p: KelirPlugin = createPlugin("x");
+const p: KelirPlugin = createPlugin<"x", Record<string, never>>("x");
 void p;
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-const chained = createPlugin("chained")
+const chained = createPlugin<"chained", Record<string, never>>("chained")
   .context(() => ({ ready: true }))
   .requires<"ledger">()
   .scope({ binaries: ["git"] })
-  .onTrap(() => null);
+  .onTrap(() => Verdict.Pass);
 void chained;
 
 // TODO (L2): re-express the unmet-requires compile-error assertion (kelir().use(createPlugin("x").requires<"missing">())) without @ts-expect-error, which the comment law bans.
@@ -68,8 +68,8 @@ function mergedDescriptors(
 }
 
 function allVerbsFlat(): ReturnType<typeof createPlugin> {
-  return createPlugin("all-flat")
-    .onTrap(() => null)
+  return createPlugin<"all-flat", Record<string, never>>("all-flat")
+    .onTrap(() => Verdict.Pass)
     .onProcessExit(() => {})
     .onFsLookup(() => Verdict.Pass)
     .onFsRead(() => new Uint8Array(0))
@@ -96,9 +96,9 @@ function allVerbsFlat(): ReturnType<typeof createPlugin> {
 }
 
 function allVerbsNested(): ReturnType<typeof createPlugin> {
-  return createPlugin("all-nested")
+  return createPlugin<"all-nested", Record<string, never>>("all-nested")
     .trap((scope) =>
-      scope.onTrap(() => null).onProcessExit(() => {}),
+      scope.onTrap(() => Verdict.Pass).onProcessExit(() => {}),
     )
     .fs((scope) =>
       scope
@@ -146,7 +146,7 @@ function allVerbsNested(): ReturnType<typeof createPlugin> {
 }
 
 function chaosPlugin(): ReturnType<typeof createPlugin> {
-  return createPlugin("chaos")
+  return createPlugin<"chaos", Record<string, never>>("chaos")
     .requires("ledger")
     .scope({ paths: ["/workspace"] })
     .fs((scope) =>
@@ -158,7 +158,7 @@ function chaosPlugin(): ReturnType<typeof createPlugin> {
 }
 
 test("createPlugin returns a KelirBuilder with no build step", () => {
-  const plugin = createPlugin("x");
+  const plugin = createPlugin<"x", Record<string, never>>("x");
   assert.equal(plugin instanceof KelirBuilder, true);
   assert.equal(
     (plugin as unknown as Record<string, unknown>).build,
@@ -168,13 +168,13 @@ test("createPlugin returns a KelirBuilder with no build step", () => {
 });
 
 test("plugin mounts directly and merges hooks into the host", () => {
-  const plugin = createPlugin("wired").onTrap(() => null);
+  const plugin = createPlugin<"wired", Record<string, never>>("wired").onTrap(() => Verdict.Pass);
   const builder = kelir().use(plugin);
   assert.equal(builder.fuse().hookCount(RingEvent.Trap), 1);
 });
 
 test("mounting the same plugin twice throws EConfig", () => {
-  const plugin = createPlugin("wired").onTrap(() => null);
+  const plugin = createPlugin<"wired", Record<string, never>>("wired").onTrap(() => Verdict.Pass);
   const builder = kelir().use(plugin);
   assert.throws(
     () => builder.use(plugin),
@@ -185,11 +185,11 @@ test("mounting the same plugin twice throws EConfig", () => {
 });
 
 test("verbs on a mounted plugin throw EConfig", () => {
-  const plugin = createPlugin("wired").onTrap(() => null);
+  const plugin = createPlugin<"wired", Record<string, never>>("wired").onTrap(() => Verdict.Pass);
   kelir().use(plugin);
-  assert.throws(() => plugin.onTrap(() => null), EConfig);
+  assert.throws(() => plugin.onTrap(() => Verdict.Pass), EConfig);
   assert.throws(
-    () => plugin.trap((scope) => scope.onTrap(() => null)),
+    () => plugin.trap((scope) => scope.onTrap(() => Verdict.Pass)),
     EConfig,
   );
   assert.throws(() => plugin.requires("ledger"), EConfig);
@@ -197,14 +197,14 @@ test("verbs on a mounted plugin throw EConfig", () => {
 });
 
 test("scope survives mount", () => {
-  const plugin = createPlugin("scoped").scope({ binaries: ["git"] });
+  const plugin = createPlugin<"scoped", Record<string, never>>("scoped").scope({ binaries: ["git"] });
   kelir().use(plugin);
   assert.deepEqual(plugin.getScope(), { binaries: ["git"] });
 });
 
 test("forkWith re-runs the fork closure", () => {
-  const plugin = createPlugin("forked").forkWith(() =>
-    createPlugin("forked").onTrap(() => null),
+  const plugin = createPlugin<"forked", Record<string, never>>("forked").forkWith(() =>
+    createPlugin<"forked", Record<string, never>>("forked").onTrap(() => Verdict.Pass),
   );
   assert.equal(plugin.fuse().hookCount(RingEvent.Trap), 0);
   const forked = plugin.forkState();
@@ -214,7 +214,7 @@ test("forkWith re-runs the fork closure", () => {
 });
 
 test("forkState without forkWith clones the builder", () => {
-  const plugin = createPlugin("cloned").onTrap(() => null);
+  const plugin = createPlugin<"cloned", Record<string, never>>("cloned").onTrap(() => Verdict.Pass);
   const forked = plugin.forkState();
   assert.equal(forked.name, "cloned");
   assert.equal(forked.fuse().hookCount(RingEvent.Trap), 1);
@@ -268,7 +268,7 @@ test("nested scopes equal flat descriptors", () => {
 test("fuse rejects an invalid vsock spec", () => {
   assert.throws(
     () =>
-      createPlugin("bad-port")
+      createPlugin<"bad-port", Record<string, never>>("bad-port")
         .vsockService(
           0,
           "ping",
@@ -280,7 +280,7 @@ test("fuse rejects an invalid vsock spec", () => {
   );
   assert.throws(
     () =>
-      createPlugin("bad-port")
+      createPlugin<"bad-port", Record<string, never>>("bad-port")
         .vsockService(
           65536,
           "ping",
@@ -292,7 +292,7 @@ test("fuse rejects an invalid vsock spec", () => {
   );
   assert.throws(
     () =>
-      createPlugin("bad-service")
+      createPlugin<"bad-service", Record<string, never>>("bad-service")
         .vsockService(
           1024,
           "",
@@ -307,14 +307,14 @@ test("fuse rejects an invalid vsock spec", () => {
 test("fuse rejects a malformed scope", () => {
   assert.throws(
     () =>
-      createPlugin("bad-scope")
+      createPlugin<"bad-scope", Record<string, never>>("bad-scope")
         .scope({ binaries: "git" } as unknown as { binaries: string[] })
         .fuse(),
     EConfig,
   );
   assert.throws(
     () =>
-      createPlugin("bad-scope")
+      createPlugin<"bad-scope", Record<string, never>>("bad-scope")
         .scope({ unknown: [] } as unknown as { binaries: string[] })
         .fuse(),
     EConfig,
@@ -338,7 +338,7 @@ test("use reports a missing prerequisite", () => {
       error instanceof EConfig &&
       error.message === "missing prerequisite: ledger required by chaos",
   );
-  const ledger = createPlugin("ledger");
+  const ledger = createPlugin<"ledger", Record<string, never>>("ledger");
   const builder = kelir().use(ledger).use(chaos);
   assert.equal(builder.fuse().hookCount(RingEvent.FsWrite), 1);
   assert.equal(builder.fuse().hookCount(RingEvent.NetOutbound), 1);
@@ -356,7 +356,7 @@ test("canonical chaos plugin", () => {
 });
 
 test("derive and context fns are stored on the builder", () => {
-  const plugin = createPlugin("stored")
+  const plugin = createPlugin<"stored", Record<string, never>>("stored")
     .derive(() => ({ ready: true }))
     .context(() => ({ mode: "guest" }));
   assert.equal(plugin.deriveFns.length, 1);
@@ -366,7 +366,7 @@ test("derive and context fns are stored on the builder", () => {
 });
 
 test("plugin-level vsockService forwards through use", () => {
-  const plugin = createPlugin("pinged").vsockService(
+  const plugin = createPlugin<"pinged", Record<string, never>>("pinged").vsockService(
     1024,
     "ping",
     t.Object({ ping: t.String() }),
@@ -381,14 +381,14 @@ test("plugin-level vsockService forwards through use", () => {
 });
 
 test("host-only verbs on a plugin-mode builder fail at mount", () => {
-  const terminalPlugin = createPlugin("term").terminal({ cols: 80 });
+  const terminalPlugin = createPlugin<"term", Record<string, never>>("term").terminal({ cols: 80 });
   assert.throws(
     () => kelir().use(terminalPlugin),
     (error: unknown) =>
       error instanceof EConfig &&
       error.message === "plugin term called host-only verb .terminal",
   );
-  const detachedPlugin = createPlugin("det").detached(true);
+  const detachedPlugin = createPlugin<"det", Record<string, never>>("det").detached(true);
   assert.throws(
     () => kelir().use(detachedPlugin),
     (error: unknown) =>
@@ -399,7 +399,7 @@ test("host-only verbs on a plugin-mode builder fail at mount", () => {
 
 test("host gains the 24 verbs", () => {
   const builder = kelir()
-    .onTrap(() => null)
+    .onTrap(() => Verdict.Pass)
     .onFsWrite(() => FilterAction.Forward)
     .onNetOutbound(() => FilterAction.Forward)
     .onVmInit(() => {});
@@ -410,9 +410,9 @@ test("host gains the 24 verbs", () => {
 });
 
 test("mount merges descriptors: host hooks first, then plugin in mount order", () => {
-  const builder = kelir().onTrap(() => null);
+  const builder = kelir().onTrap(() => Verdict.Pass);
   const chaos = chaosPlugin();
-  builder.use(createPlugin("ledger"));
+  builder.use(createPlugin<"ledger", Record<string, never>>("ledger"));
   builder.use(chaos);
   assert.deepEqual(mergedDescriptors(builder), [
     {
@@ -437,7 +437,7 @@ test("mount merges descriptors: host hooks first, then plugin in mount order", (
 });
 
 test("fuse rejects a mounted plugin with a bad vsock spec", () => {
-  const plugin = createPlugin("bad-port").vsockService(
+  const plugin = createPlugin<"bad-port", Record<string, never>>("bad-port").vsockService(
     0,
     "ping",
     t.Object({ ping: t.String() }),

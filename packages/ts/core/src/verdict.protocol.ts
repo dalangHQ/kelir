@@ -2,12 +2,12 @@
 
 import type { PatchInput } from "./types.core.js";
 
-export interface Verdict {
-  readonly kind: "pass" | "drop" | "patch" | "suspend" | "abort";
-  readonly reason?: string;
-  readonly patch?: PatchInput;
-  readonly until?: SuspendUntil;
-}
+export type Verdict =
+  | { readonly kind: "pass" }
+  | { readonly kind: "drop"; readonly errno?: string; readonly reason: string }
+  | { readonly kind: "patch"; readonly patch: PatchInput }
+  | { readonly kind: "suspend"; readonly until: SuspendUntil }
+  | { readonly kind: "abort"; readonly reason?: string };
 
 export const Verdict: {
   readonly Pass: Verdict;
@@ -18,7 +18,7 @@ export const Verdict: {
 } = {
   Pass: { kind: "pass" },
   Drop(errno: string, reason?: string): Verdict {
-    return { kind: "drop", reason: reason ?? errno };
+    return { kind: "drop", errno, reason: reason ?? errno };
   },
   Patch(attr: PatchInput): Verdict {
     return { kind: "patch", patch: attr };
@@ -32,12 +32,11 @@ export const Verdict: {
 };
 
 // see: cans/02-plugin-model.md#Unified-verdict
-export interface FilterAction {
-  readonly kind: "forward" | "drop" | "suspend" | "abort";
-  readonly errno?: string;
-  readonly reason?: string;
-  readonly until?: SuspendUntil;
-}
+export type FilterAction =
+  | { readonly kind: "forward" }
+  | { readonly kind: "drop"; readonly errno?: string; readonly reason: string }
+  | { readonly kind: "suspend"; readonly until: SuspendUntil }
+  | { readonly kind: "abort"; readonly reason?: string };
 
 export const FilterAction: {
   readonly Forward: FilterAction;
@@ -47,7 +46,7 @@ export const FilterAction: {
 } = {
   Forward: { kind: "forward" },
   Drop(errno?: string, reason?: string): FilterAction {
-    return { kind: "drop", errno, reason };
+    return { kind: "drop", errno, reason: reason ?? errno ?? "drop" };
   },
   Suspend(until: SuspendUntil): FilterAction {
     return { kind: "suspend", until };
@@ -58,10 +57,10 @@ export const FilterAction: {
 };
 
 // see: cans/11-protocol.md#Wire-messages
-export interface SuspendUntil {
-  readonly kind: "deadline" | "approval" | "handshake";
-  readonly deadlineMs?: number;
-}
+export type SuspendUntil =
+  | { readonly kind: "deadline"; readonly deadlineMs: number }
+  | { readonly kind: "approval" }
+  | { readonly kind: "handshake" };
 
 export const SuspendUntil: {
   readonly approval: SuspendUntil;

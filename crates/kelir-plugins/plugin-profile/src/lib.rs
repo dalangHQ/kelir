@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     KelirPlugin, LifecycleParticipant, MountScope, NoDeps, PipelineBinder, PluginDeps,
@@ -38,7 +39,7 @@ impl NamespaceRouter {
         match self.namespaces.get_mut(namespace) {
             Some(plugin) => plugin.configure(fragment),
             None => Err(PluginError::reject(
-                "EConfig",
+                Errno::Econfig,
                 format!("profile namespace `{namespace}` has no registered owner"),
             )),
         }
@@ -87,7 +88,7 @@ impl JsonPatch {
             Some(namespace) if !namespace.is_empty() => {}
             _ => {
                 return Err(PluginError::reject(
-                    "EConfig",
+                    Errno::Econfig,
                     format!(
                         "RFC 6902 patch path `{}` carries no namespace segment",
                         self.path
@@ -98,7 +99,7 @@ impl JsonPatch {
         match self.op {
             PatchOp::Add | PatchOp::Replace | PatchOp::Test if self.value.is_none() => {
                 return Err(PluginError::reject(
-                    "EConfig",
+                    Errno::Econfig,
                     format!(
                         "RFC 6902 {:?} patch at `{}` requires a value",
                         self.op, self.path
@@ -107,7 +108,7 @@ impl JsonPatch {
             }
             PatchOp::Move | PatchOp::Copy if self.from.is_none() => {
                 return Err(PluginError::reject(
-                    "EConfig",
+                    Errno::Econfig,
                     format!(
                         "RFC 6902 {:?} patch at `{}` requires a from path",
                         self.op, self.path
@@ -171,7 +172,7 @@ fn check_value_against_base(
 ) -> Result<(), PluginError> {
     if matches!(base, Some(Value::Number(_))) && !value.is_number() {
         return Err(PluginError::reject(
-            "ESecurityViolation",
+            Errno::Esecurityviolation,
             format!("RFC 6902 patch at `{path}` replaces a numeric limit with a non-numeric value"),
         ));
     }
@@ -188,7 +189,7 @@ fn check_value_against_base(
             };
             if new_number > base_number {
                 return Err(PluginError::reject(
-                    "ESecurityViolation",
+                    Errno::Esecurityviolation,
                     format!(
                         "RFC 6902 patch at `{path}` widens a monotonic limit from {base_number} to {new_number}"
                     ),
@@ -387,21 +388,21 @@ impl ProfileState {
 
     fn ingest_json(&self, document: &str) -> Result<Vec<String>, PluginError> {
         let value: Value = serde_json::from_str(document).map_err(|err| {
-            PluginError::reject("EConfig", format!("profile JSON parse failed: {err}"))
+            PluginError::reject(Errno::Econfig, format!("profile JSON parse failed: {err}"))
         })?;
         self.ingest_value(value)
     }
 
     fn ingest_toml(&self, document: &str) -> Result<Vec<String>, PluginError> {
         let value: Value = toml::from_str(document).map_err(|err| {
-            PluginError::reject("EConfig", format!("profile TOML parse failed: {err}"))
+            PluginError::reject(Errno::Econfig, format!("profile TOML parse failed: {err}"))
         })?;
         self.ingest_value(value)
     }
 
     fn ingest_yaml(&self, document: &str) -> Result<Vec<String>, PluginError> {
         let value: Value = serde_yaml::from_str(document).map_err(|err| {
-            PluginError::reject("EConfig", format!("profile YAML parse failed: {err}"))
+            PluginError::reject(Errno::Econfig, format!("profile YAML parse failed: {err}"))
         })?;
         self.ingest_value(value)
     }
@@ -409,7 +410,7 @@ impl ProfileState {
     fn ingest_value(&self, value: Value) -> Result<Vec<String>, PluginError> {
         let Some(document) = value.as_object() else {
             return Err(PluginError::reject(
-                "EConfig",
+                Errno::Econfig,
                 "profile document must be an object keyed by namespace",
             ));
         };
@@ -417,7 +418,7 @@ impl ProfileState {
         for (namespace, fragment) in document {
             let fragment_bytes = serde_json::to_vec(fragment).map_err(|err| {
                 PluginError::reject(
-                    "EConfig",
+                    Errno::Econfig,
                     format!("profile fragment for `{namespace}` failed to serialize: {err}"),
                 )
             })?;
@@ -435,13 +436,13 @@ impl ProfileState {
     fn dispatch_patch(&self, payload: &[u8]) -> Result<Vec<String>, PluginError> {
         if !self.config.rfc6902_dynamic_patching {
             return Err(PluginError::reject(
-                "EPERM",
+                Errno::Eperm,
                 "RFC 6902 dynamic patching is disabled in the profile config",
             ));
         }
         let patches: Vec<JsonPatch> = serde_json::from_slice(payload).map_err(|err| {
             PluginError::reject(
-                "EConfig",
+                Errno::Econfig,
                 format!("PROFILE_SYNC patch payload failed to parse: {err}"),
             )
         })?;
@@ -450,14 +451,14 @@ impl ProfileState {
             patch.validate()?;
             let Some(namespace) = patch.namespace() else {
                 return Err(PluginError::reject(
-                    "EConfig",
+                    Errno::Econfig,
                     "RFC 6902 patch path carries no namespace segment",
                 ));
             };
             self.check_monotonic(patch)?;
             let fragment = serde_json::to_vec(patch).map_err(|err| {
                 PluginError::reject(
-                    "EConfig",
+                    Errno::Econfig,
                     format!("RFC 6902 patch for `{namespace}` failed to serialize: {err}"),
                 )
             })?;
@@ -510,7 +511,7 @@ impl ProfileState {
                     Some(target) => {
                         if contains_number(target) {
                             return Err(PluginError::reject(
-                                "ESecurityViolation",
+                                Errno::Esecurityviolation,
                                 format!(
                                     "RFC 6902 patch at `{}` removes a numeric limit",
                                     patch.path

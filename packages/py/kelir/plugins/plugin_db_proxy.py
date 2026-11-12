@@ -41,7 +41,7 @@ class DbProxyConfig:
     credentials: EphemeralCredentials | None = None
 
 
-class DbProxyPlugin(BasePlugin):
+class DbProxyPlugin(BasePlugin[None, None]):
     name = "db-proxy"
 
     def __init__(self, config: DbProxyConfig | None = None) -> None:

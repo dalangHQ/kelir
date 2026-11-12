@@ -9,6 +9,7 @@ use std::thread::JoinHandle;
 use async_trait::async_trait;
 use kelir_interface::credential_vault::CredentialDescriptor;
 use kelir_interface::driver_interface::Stream;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, NoDeps,
@@ -84,7 +85,7 @@ impl MetadataEndpoint {
         serving.retain(|handle| !handle.is_finished());
         if serving.len() >= MAX_CONCURRENT_METADATA_SESSIONS {
             return Err(PluginError::reject(
-                "ECONNREFUSED",
+                Errno::Econnrefused,
                 "metadata service: serving capacity exceeded",
             ));
         }
@@ -120,7 +121,7 @@ impl MetadataEndpoint {
         // TODO (L3): parse ttl_seconds and audience query parameters per cans/plugins/vault.md.
         match self.broker.issue(&token_request).await {
             Ok(token) => ok_response(&token),
-            Err(err) => error_response(err.errno(), err.reason()),
+            Err(err) => error_response(err.errno().as_str(), err.reason()),
         }
     }
 }
@@ -180,8 +181,7 @@ impl VaultPlugin {
                 "metadata service: session guest CID unbound at boot; core vsock CID wiring pending (L3)"
                     .into(),
             ),
-            Some(_) => PluginError::reject(
-                "ECONNREFUSED",
+            Some(_) => PluginError::reject(Errno::Econnrefused,
                 "metadata service: non-session vsock peer",
             ),
         }
@@ -334,7 +334,7 @@ fn read_metadata_request(stream: &mut dyn Stream) -> Result<Vec<u8>, PluginError
     loop {
         if request.len() >= METADATA_MAX_REQUEST_BYTES {
             return Err(PluginError::reject(
-                "EINVAL",
+                Errno::Einval,
                 "metadata request exceeds the 64KB frame budget",
             ));
         }
@@ -367,7 +367,7 @@ fn write_metadata_response(stream: &mut dyn Stream, response: &[u8]) -> Result<(
         let written_now = stream.write(&response[written..])?;
         if written_now == 0 {
             return Err(PluginError::reject(
-                "EPIPE",
+                Errno::Epipe,
                 "metadata client closed the vsock stream",
             ));
         }

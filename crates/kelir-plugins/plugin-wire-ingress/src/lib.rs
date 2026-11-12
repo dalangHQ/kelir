@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
+use kelir_interface::errno_types::Errno;
 use kelir_interface::handles_lifecycle::VmHandle;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
@@ -163,7 +164,7 @@ impl IngressState {
                 Some(existing) => {
                     if existing.target_port != frame.target_port {
                         return Err(PluginError::reject(
-                            "EPROTO",
+                            Errno::Eproto,
                             "L4_FORWARD connection id reused for a different target port",
                         ));
                     }

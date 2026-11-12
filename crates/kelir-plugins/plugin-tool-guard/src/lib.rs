@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, HCons, HNil, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope,
@@ -141,7 +142,7 @@ impl ToolGuardPlugin {
         // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
         if frame.method == McpMethod::Unparsed {
             return Ok(Verdict::Drop {
-                errno: Some("EPERM".into()),
+                errno: Some(Errno::Eperm),
                 reason: "unparsed MCP frame fails closed pending JSON-RPC 2.0 decode".into(),
             });
         }
@@ -150,13 +151,13 @@ impl ToolGuardPlugin {
         }
         let Some(tool) = frame.tool_name.clone() else {
             return Ok(Verdict::Drop {
-                errno: Some("EPERM".into()),
+                errno: Some(Errno::Eperm),
                 reason: "tools/call frame carries no tool name".into(),
             });
         };
         if !self.charge_quota(trace)? {
             return Ok(Verdict::Drop {
-                errno: Some("ETOOLQUOTA".into()),
+                errno: Some(Errno::Etoolquota),
                 reason: format!("tool {tool} exceeded max_invocations_per_trace"),
             });
         }
@@ -164,7 +165,7 @@ impl ToolGuardPlugin {
             Ok(Some(schema)) => schema,
             Ok(None) => {
                 return Ok(Verdict::Drop {
-                    errno: Some("EPERM".into()),
+                    errno: Some(Errno::Eperm),
                     reason: format!("tool {tool} is not pinned in the locked catalog"),
                 });
             }
@@ -288,10 +289,9 @@ impl ConsoleInterposer for ToolGuardPlugin {
         }
         match self.guard_tool_call(port, bytes).await? {
             Verdict::Pass | Verdict::Patch(_) => Ok(()),
-            Verdict::Drop { errno, reason } => Err(PluginError::reject(
-                errno.unwrap_or_else(|| "EPERM".into()),
-                reason,
-            )),
+            Verdict::Drop { errno, reason } => {
+                Err(PluginError::reject(errno.unwrap_or(Errno::Eperm), reason))
+            }
             // TODO (L3): synthesize the JSON-RPC error object (code -32001) and the approval suspend per cans/plugins/tool-guard.md.
             Verdict::Suspend { .. } => Err(PluginError::Halt(
                 "tool-guard approval suspend pending (L3)".into(),

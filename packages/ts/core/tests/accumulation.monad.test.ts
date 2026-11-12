@@ -15,7 +15,7 @@ function check(condition: boolean, label: string): void {
 const secretMask = createPlugin("secretMask", { maskActive: true });
 const secretMaskStorage = createPlugin("secretMask", { maskActive: true });
 const secretMaskDeny = createPlugin("secretMask", { maskActive: true });
-const secureWorkspace = createPlugin("secureWorkspace")
+const secureWorkspace = createPlugin<"secureWorkspace", Record<string, never>>("secureWorkspace")
   .requires<typeof secretMask>()
   .derive((c) => ({ workspaceSecured: c.secretMask.maskActive }));
 

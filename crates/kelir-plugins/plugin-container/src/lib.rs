@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, NoDeps,
@@ -18,13 +19,10 @@ pub mod service_container;
 pub use service_container::{ContainerCtx, ContainerService, SharedContainerService};
 
 // see: cans/plugins/container.md#Error-and-return-semantics-(container)
-const EPERM: &str = "EPERM";
 
 // see: cans/plugins/container.md#Error-and-return-semantics-(container)
-const ENOENT: &str = "ENOENT";
 
 // see: cans/plugins/container.md#Error-and-return-semantics-(container)
-const EINVAL: &str = "EINVAL";
 
 // see: cans/plugins/container.md#UID/GID-mapping-isolation
 const NEWUIDMAP: &str = "newuidmap";
@@ -225,7 +223,7 @@ impl LifecycleParticipant for ContainerPlugin {
         // see: cans/plugins/container.md#Non-nested-OCI-container-execution
         if !self.config.isolate_var_lib_containers && !self.config.allow_unsandboxed {
             return Err(PluginError::reject(
-                "ESecurityViolation",
+                Errno::Esecurityviolation,
                 "isolate_var_lib_containers is required; set allow_unsandboxed to opt out explicitly",
             ));
         }
@@ -329,7 +327,7 @@ fn allocation_within(alloc: IdMapAllocation, pinned: &Range<u32>) -> bool {
 // see: cans/plugins/container.md#Error-and-return-semantics-(container)
 fn reject_eperm(reason: &str) -> Verdict {
     Verdict::Drop {
-        errno: Some(EPERM.into()),
+        errno: Some(Errno::Eperm),
         reason: reason.to_string(),
     }
 }
@@ -348,14 +346,15 @@ fn effective_host_uid() -> Result<u32, PluginError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        let meta = std::fs::metadata("/proc/self")
-            .map_err(|e| PluginError::reject(ENOENT, format!("host identity probe failed: {e}")))?;
+        let meta = std::fs::metadata("/proc/self").map_err(|e| {
+            PluginError::reject(Errno::Enoent, format!("host identity probe failed: {e}"))
+        })?;
         Ok(meta.uid())
     }
     #[cfg(not(unix))]
     {
         Err(PluginError::reject(
-            EINVAL,
+            Errno::Einval,
             "rootless id mapping requires a unix host",
         ))
     }
@@ -377,7 +376,7 @@ fn passwd_name_for_uid(uid: u32) -> Option<String> {
 // see: cans/plugins/container.md#UID/GID-mapping-isolation
 fn parse_subid_file(path: &str, owner: &SubidOwner) -> Result<Option<Range<u32>>, PluginError> {
     let contents = std::fs::read_to_string(path)
-        .map_err(|e| PluginError::reject(ENOENT, format!("{path} unreadable: {e}")))?;
+        .map_err(|e| PluginError::reject(Errno::Enoent, format!("{path} unreadable: {e}")))?;
     let mut matched = None;
     for line in contents.lines() {
         if line.trim().is_empty() {
@@ -390,32 +389,38 @@ fn parse_subid_file(path: &str, owner: &SubidOwner) -> Result<Option<Range<u32>>
             }
             _ => {
                 return Err(PluginError::reject(
-                    EINVAL,
+                    Errno::Einval,
                     format!("{path} line is not owner:lower:count: {line}"),
                 ));
             }
         };
         let lower = lower.parse::<u32>().map_err(|_| {
-            PluginError::reject(EINVAL, format!("{path} lower id is not numeric: {line}"))
+            PluginError::reject(
+                Errno::Einval,
+                format!("{path} lower id is not numeric: {line}"),
+            )
         })?;
         let count = count.parse::<u32>().map_err(|_| {
-            PluginError::reject(EINVAL, format!("{path} count is not numeric: {line}"))
+            PluginError::reject(
+                Errno::Einval,
+                format!("{path} count is not numeric: {line}"),
+            )
         })?;
         if count == 0 {
             return Err(PluginError::reject(
-                EINVAL,
+                Errno::Einval,
                 format!("{path} count is zero: {line}"),
             ));
         }
         let end = lower.checked_add(count).ok_or_else(|| {
-            PluginError::reject(EINVAL, format!("{path} range overflows u32: {line}"))
+            PluginError::reject(Errno::Einval, format!("{path} range overflows u32: {line}"))
         })?;
         let owner_match = owner.name.as_deref().is_some_and(|name| user == name)
             || user.parse::<u32>() == Ok(owner.uid);
         if owner_match {
             if matched.is_some() {
                 return Err(PluginError::reject(
-                    EINVAL,
+                    Errno::Einval,
                     format!("{path} carries duplicate entries for uid {}", owner.uid),
                 ));
             }
@@ -431,13 +436,13 @@ fn resolve_unprivileged_ranges(
 ) -> Result<(Range<u32>, Range<u32>), PluginError> {
     let subuid = parse_subid_file(SUBUID_PATH, owner)?.ok_or_else(|| {
         PluginError::reject(
-            ENOENT,
+            Errno::Enoent,
             format!("no subuid range allocated to uid {}", owner.uid),
         )
     })?;
     let subgid = parse_subid_file(SUBGID_PATH, owner)?.ok_or_else(|| {
         PluginError::reject(
-            ENOENT,
+            Errno::Enoent,
             format!("no subgid range allocated to uid {}", owner.uid),
         )
     })?;

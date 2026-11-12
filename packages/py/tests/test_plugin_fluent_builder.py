@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from kelir import FilterAction, HandlerContext, KelirBuilder, Verdict
+from kelir import FilterAction, HandlerContext, KelirBuilder, TrapEvent, Verdict
 from kelir.model_plugin import (
     BasePlugin,
     WatchdogEvent,
@@ -21,7 +21,7 @@ from kelir.plugins.plugin_ledger import LedgerPlugin, ledger_builder
 from kelir.sdk_errors import EConfig
 
 
-async def _trap(event: Any) -> Verdict:
+async def _trap(event: TrapEvent) -> Verdict:
     return Verdict.pass_()
 
 
@@ -41,7 +41,11 @@ def _chaos_net_outbound(config: ChaosConfig, frame: bytearray) -> FilterAction:
 
 # see: cans/plugins/chaos.md#Storage-chaos
 def _chaos_fs_write(
-    config: ChaosConfig, path: Path, data: Any, pid: int, ctx: HandlerContext
+    config: ChaosConfig,
+    path: Path,
+    data: bytes,
+    pid: int,
+    ctx: HandlerContext[None, None],
 ) -> FilterAction:
     # TODO (L3): apply config.fs fault rules to the write.
     return FilterAction.forward()
@@ -124,7 +128,7 @@ def test_use_host_builder_raises_econfig() -> None:
 
 
 def test_to_builder_converts_subclass_plugin() -> None:
-    class ProbePlugin(BasePlugin):
+    class ProbePlugin(BasePlugin[None, None]):
         name = "probe"
 
         async def on_trap(self, event: Any) -> Verdict | None:

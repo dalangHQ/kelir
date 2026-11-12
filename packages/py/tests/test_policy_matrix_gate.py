@@ -42,7 +42,7 @@ def _fresh_policy_state() -> None:
     POLICY_STATE.quarantined_pids = []
 
 
-class PolicyMatrixPlugin(BasePlugin):
+class PolicyMatrixPlugin(BasePlugin[None, None]):
     name = "policy-matrix"
 
     async def on_vm_init(self, ctx: Any) -> None:
@@ -59,7 +59,7 @@ class PolicyMatrixPlugin(BasePlugin):
         return WatchdogVerdict.ExecuteDefault
 
 
-class WatchdogSilencerPlugin(BasePlugin):
+class WatchdogSilencerPlugin(BasePlugin[None, None]):
 
     name = "watchdog-silencer"
 
@@ -70,18 +70,18 @@ class WatchdogSilencerPlugin(BasePlugin):
         return WatchdogVerdict.ExecuteDefault
 
 
-PreExecHandler = Callable[[HandlerContext], Awaitable[Verdict]]
+PreExecHandler = Callable[[HandlerContext[None, None]], Awaitable[Verdict]]
 
 
-async def row_allow(c: HandlerContext) -> Verdict:
+async def row_allow(c: HandlerContext[None, None]) -> Verdict:
     return Verdict.pass_()
 
 
-async def row_deny(c: HandlerContext) -> Verdict:
+async def row_deny(c: HandlerContext[None, None]) -> Verdict:
     return Verdict.drop("EPOLICY", "EPOLICY: policy-matrix denies this binary.")
 
 
-async def row_rewrite(c: HandlerContext) -> Verdict:
+async def row_rewrite(c: HandlerContext[None, None]) -> Verdict:
     return Verdict.patch(
         binary="/bin/policy-allow",
         argv=["policy-allow", "--rewritten"],
@@ -89,20 +89,20 @@ async def row_rewrite(c: HandlerContext) -> Verdict:
     )
 
 
-async def row_abort(c: HandlerContext) -> Verdict:
+async def row_abort(c: HandlerContext[None, None]) -> Verdict:
     return Verdict.abort("EPOLICY: abort row")
 
 
-async def row_yield(c: HandlerContext) -> Verdict:
+async def row_yield(c: HandlerContext[None, None]) -> Verdict:
     await c.vm.checkpoint("policy-yield")
     return Verdict.suspend(until=Approval)
 
 
-async def row_approval(c: HandlerContext) -> Verdict:
+async def row_approval(c: HandlerContext[None, None]) -> Verdict:
     return Verdict.suspend(until=Deadline(500))
 
 
-async def row_custom(c: HandlerContext) -> Verdict:
+async def row_custom(c: HandlerContext[None, None]) -> Verdict:
     return Verdict.patch(
         name="quarantine",
         cbor={"pid": c.trap.pid, "reason": "policy-matrix quarantine row"},

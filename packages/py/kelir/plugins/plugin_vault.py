@@ -17,7 +17,7 @@ class VaultConfig:
     token_ttl_seconds: int = 60
 
 
-class VaultPlugin(BasePlugin):
+class VaultPlugin(BasePlugin[None, None]):
     name = "vault"
 
     def __init__(self, config: VaultConfig | None = None) -> None:

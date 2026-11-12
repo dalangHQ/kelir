@@ -8,6 +8,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use kelir_interface::codec_protocol::MAX_FRAME_PAYLOAD;
 use kelir_interface::driver_interface::{SharedMemoryHandle, Stream};
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PipelineBinder,
@@ -18,7 +19,6 @@ use kelir_interface::vsock_mesh::{
 };
 
 // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
-const ECONNREFUSED: &str = "ECONNREFUSED";
 
 // see: cans/02-plugin-model.md#Latency-ceiling
 const MAX_CONCURRENT_HANDSHAKES: usize = 64;
@@ -123,7 +123,7 @@ impl MeshState {
         handshakes.retain(|handle| !handle.is_finished());
         if handshakes.len() >= MAX_CONCURRENT_HANDSHAKES {
             return Err(PluginError::reject(
-                ECONNREFUSED,
+                Errno::Econnrefused,
                 "mesh peer handshake capacity exceeded",
             ));
         }
@@ -192,7 +192,7 @@ impl MeshPlugin {
         let PeerIdentity::Spiffe { trust_domain, .. } = &self.config.peer_identity;
         if &handshake.svid.spiffe_id.trust_domain != trust_domain {
             return Err(PluginError::reject(
-                ECONNREFUSED,
+                Errno::Econnrefused,
                 format!(
                     "peer {}:{} presented trust domain {}",
                     peer.cid, peer.port, handshake.svid.spiffe_id.trust_domain
@@ -205,7 +205,7 @@ impl MeshPlugin {
             .is_some_and(|peer_id| peer_id != &handshake.svid.spiffe_id)
         {
             return Err(PluginError::reject(
-                ECONNREFUSED,
+                Errno::Econnrefused,
                 format!(
                     "peer {}:{} vsock identity diverges from the handshake SVID",
                     peer.cid, peer.port

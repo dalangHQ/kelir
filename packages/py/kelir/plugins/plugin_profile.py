@@ -25,7 +25,7 @@ class ProfileConfig:
     cdi: CdiConfig | None = None
 
 
-class ProfilePlugin(BasePlugin):
+class ProfilePlugin(BasePlugin[None, None]):
     name = "profile"
 
     def __init__(self, config: ProfileConfig | None = None) -> None:

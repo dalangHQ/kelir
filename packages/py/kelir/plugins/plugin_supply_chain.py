@@ -41,7 +41,7 @@ class SupplyChainConfig:
     package_guard: PackageGuardConfig = field(default_factory=lambda: PackageGuardConfig())
 
 
-class SupplyChainPlugin(BasePlugin):
+class SupplyChainPlugin(BasePlugin[None, None]):
     name = "supply-chain"
 
     def __init__(self, config: SupplyChainConfig | None = None) -> None:

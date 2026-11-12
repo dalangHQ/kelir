@@ -2,6 +2,7 @@
 use std::sync::Arc;
 
 use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::vsock_mesh::VsockPeer;
 use kelir_plugin_testkit::LoopbackStream;
@@ -137,7 +138,10 @@ fn gv_09_metadata_non_vsock_peer_econnrefused() -> Result<(), String> {
         spiffe_id: None,
     };
     match block_on(plugin.on_connect(&foreign, Box::new(LoopbackStream::new(1)), &ctx)) {
-        Err(PluginError::Reject { errno, .. }) if errno == "ECONNREFUSED" => (),
+        Err(PluginError::Reject {
+            errno: Errno::Econnrefused,
+            ..
+        }) => (),
         Err(err) => {
             return Err(format!(
                 "non-session peer must fail with ECONNREFUSED, got {err:?}"

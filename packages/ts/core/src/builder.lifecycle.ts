@@ -3,6 +3,7 @@
 // see: cans/artifacts/code/typescript-accumulation.ts#runtime
 
 import type { Schema, Infer } from "./schema.config.js";
+import { validateSchema } from "./schema.config.js";
 import type { TrapContext, LifecycleContext, HandlerContext } from "./context.lifecycle.types.js";
 import { HookRegistry } from "./hook.registry.js";
 import type {
@@ -142,13 +143,13 @@ export interface WireConfig {
   readonly tapFilter?: string;
 }
 
-export type TrapHandlerResult = Verdict | PostExecAction | null | void;
+export type TrapHandlerResult = Verdict | PostExecAction;
 
-export type TrapHandler<Ctx = unknown, Params = unknown> = (
+export type TrapHandler<Ctx, Params> = (
   c: HandlerContext<Ctx, Params>,
 ) => Promise<TrapHandlerResult> | TrapHandlerResult;
 
-export interface TrapHandlers<Ctx = unknown, Params = unknown> {
+export interface TrapHandlers<Ctx, Params> {
   readonly pre?: TrapHandler<Ctx, Params>;
   readonly post?: (c: HandlerContext<Ctx, Params>) => Promise<PostExecAction> | PostExecAction;
 }
@@ -159,8 +160,8 @@ interface PluginRegistration {
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-export interface CreatePluginOptions {
-  readonly opts?: unknown;
+export interface CreatePluginOptions<Opts> {
+  readonly opts?: Opts;
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
@@ -191,7 +192,7 @@ export type PluginContextOf<P> =
 export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string = string, Deps extends string = never> {
   private readonly mode: "host" | "plugin";
   readonly name: string;
-  private readonly storedOptions?: Ctx | CreatePluginOptions;
+  private readonly storedOptions?: Ctx | CreatePluginOptions<Ctx>;
   private readonly kelirConfig: KelirConfig;
   private registry: HookRegistry<Ctx>;
   private mounted: HookRegistry<Ctx>[] = [];
@@ -205,8 +206,8 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
   private paramsSchema: Schema<unknown> | undefined;
 
   constructor(config?: KelirConfig);
-  constructor(name: string, options?: Ctx | CreatePluginOptions);
-  constructor(configOrName: KelirConfig | string = {}, options?: Ctx | CreatePluginOptions) {
+  constructor(name: string, options?: Ctx | CreatePluginOptions<Ctx>);
+  constructor(configOrName: KelirConfig | string = {}, options?: Ctx | CreatePluginOptions<Ctx>) {
     if (typeof configOrName === "string") {
       this.mode = "plugin";
       this.name = configOrName;
@@ -391,6 +392,26 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
     return this as unknown as KelirBuilder<Ctx & PluginContextOf<P>, Params, Name, Deps>;
   }
 
+  // see: cans/03-sdk-architecture.md#TypeScript-SDK
+  private checkedTrapContext(event: unknown): HandlerContext<Ctx, Params> {
+    if (this.paramsSchema !== undefined) {
+      if (
+        typeof event !== "object" ||
+        event === null ||
+        !("params" in event)
+      ) {
+        throw new EConfig(
+          "trap event carries no params for the pinned params schema",
+        );
+      }
+      validateSchema(
+        this.paramsSchema,
+        (event as { readonly params: unknown }).params,
+      );
+    }
+    return event as HandlerContext<Ctx, Params>;
+  }
+
   // see: cans/02-plugin-model.md#Foreign-plugin-proxy
   trap(
     filter: string | TrapFilter,
@@ -418,7 +439,7 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
         stage: "single",
         filter: filterSnapshot,
         run: (event: unknown): unknown =>
-          (handler as TrapHandler<Ctx, Params>)(event as HandlerContext<Ctx, Params>),
+          (handler as TrapHandler<Ctx, Params>)(this.checkedTrapContext(event)),
       });
       return this;
     }
@@ -428,7 +449,7 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
         ring: RingEvent.Trap,
         stage: "pre",
         filter: filterSnapshot,
-        run: (event: unknown): unknown => pre(event as HandlerContext<Ctx, Params>),
+        run: (event: unknown): unknown => pre(this.checkedTrapContext(event)),
       });
     }
     if (handler.post !== undefined) {
@@ -437,7 +458,7 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
         ring: RingEvent.Trap,
         stage: "post",
         filter: filterSnapshot,
-        run: (event: unknown): unknown => post(event as HandlerContext<Ctx, Params>),
+        run: (event: unknown): unknown => post(this.checkedTrapContext(event)),
       });
     }
     return this;
@@ -490,7 +511,7 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
 
   registerCustomAction<P>(
     name: string,
-    _schema: Schema<P>,
+    schema: Schema<P>,
     handler: (payload: P) => Promise<void> | void,
   ): this {
     this.registry.addHook({
@@ -498,7 +519,7 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
       stage: "single",
       customActionName: name,
       run: (payload: unknown): unknown =>
-        (handler as (arg: unknown) => Promise<void> | void)(payload),
+        handler(validateSchema(schema, payload)),
     });
     return this;
   }
@@ -506,7 +527,7 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
   // see: cans/11-protocol.md#Control-channel
   registerStreamKind<Req, Resp = unknown>(
     kind: number,
-    _schema: Schema<Req>,
+    schema: Schema<Req>,
     handler: (request: Req) => Promise<Resp> | Resp,
   ): this {
     this.registry.addHook({
@@ -514,7 +535,7 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
       stage: "single",
       vsockKind: kind,
       run: (payload: unknown): unknown =>
-        (handler as (arg: unknown) => unknown)(payload),
+        handler(validateSchema(schema, payload)),
     });
     return this;
   }
@@ -616,7 +637,7 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
     this.checkMounted(".onProcessExit"); this.registry.onProcessExit(handler); return this;
   }
 
-  onTrap(handler: (event: TrapInfo, c: TrapContext & Ctx) => Promise<Verdict | null> | Verdict | null): this {
+  onTrap(handler: (event: TrapInfo, c: TrapContext & Ctx) => Promise<Verdict> | Verdict): this {
     this.checkMounted(".onTrap"); this.registry.onTrap(handler); return this;
   }
 
@@ -766,8 +787,9 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
     this.registry.vsockEntries.push({
       port,
       service,
-      schema: schema as Schema<unknown>,
-      handler: handler as (request: unknown) => Promise<unknown> | unknown,
+      schema,
+      handler: (request: unknown): Promise<unknown> | unknown =>
+        handler(validateSchema(schema, request)),
     });
     return this;
   }
@@ -812,15 +834,15 @@ export class KelirBuilder<Ctx = unknown, Params = unknown, Name extends string =
     }
     const descriptor = this.fusedDescriptor();
     const addon = await this.loadNativeAddon();
-    const nativeBuilder = new addon.NativeKelirBuilder(
-      this.kelirConfig.vcpus,
-      this.kelirConfig.memoryMb,
-      this.kelirConfig.kernel,
-      this.kelirConfig.rootfsErofs,
-      this.kelirConfig.tscLocked,
-      this.kelirConfig.enableWatchdog,
-      this.kelirConfig.driver,
-    );
+    const nativeBuilder = new addon.NativeKelirBuilder({
+      vcpus: this.kelirConfig.vcpus,
+      memoryMb: this.kelirConfig.memoryMb,
+      kernel: this.kelirConfig.kernel,
+      rootfsErofs: this.kelirConfig.rootfsErofs,
+      tscLocked: this.kelirConfig.tscLocked,
+      enableWatchdog: this.kelirConfig.enableWatchdog,
+      driver: this.kelirConfig.driver,
+    });
     // TODO (L3): forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.
     if (this.terminalCfg) {
       // TODO (L3): tokenShield.onClamp and prompt actions stay TypeScript-side until threadsafe-function bridging lands.
@@ -909,8 +931,8 @@ export function kelir(config: KelirConfig = {}): KelirBuilder {
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 export function createPlugin<
   Name extends string,
-  Ctx = Record<string, unknown>,
+  Ctx,
   Deps extends string = never,
->(name: Name, options?: Ctx | CreatePluginOptions): KelirBuilder<Ctx, unknown, Name, Deps> {
+>(name: Name, options?: Ctx | CreatePluginOptions<Ctx>): KelirBuilder<Ctx, unknown, Name, Deps> {
   return new KelirBuilder<Ctx, unknown, Name, Deps>(name, options);
 }

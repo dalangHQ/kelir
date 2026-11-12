@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use kelir_interface::driver_interface::Stream;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     HandlerCtx, KelirPlugin, NoDeps, PipelineBinder, PluginDeps, TrapInterposer,
@@ -15,10 +16,10 @@ use kelir_interface::protocol_wire::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdi
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 // see: cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)
-pub const WX_VIOLATION_ERRNO: &str = "EWXVIOLATION";
+pub const WX_VIOLATION_ERRNO: Errno = Errno::Ewxviolation;
 
 // see: cans/plugins/supply-chain.md#Return-errno-and-rejection-behavior-(supply-chain)
-pub const SCRIPT_DENY_ERRNO: &str = "EACCES";
+pub const SCRIPT_DENY_ERRNO: Errno = Errno::Eacces;
 
 // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
 pub const WX_ALLOC_VSOCK_PORT: u32 = 5253;
@@ -287,7 +288,7 @@ impl SupplyChainPlugin {
         {
             // see: cans/plugins/supply-chain.md#Return-errno-and-rejection-behavior-(supply-chain)
             return Ok(Verdict::Drop {
-                errno: Some(SCRIPT_DENY_ERRNO.into()),
+                errno: Some(SCRIPT_DENY_ERRNO),
                 reason: format!("lifecycle script denied: {}", event.binary_path),
             });
         }
@@ -326,7 +327,7 @@ impl SupplyChainPlugin {
         }
         // see: cans/plugins/supply-chain.md#Return-errno-and-rejection-behavior-(supply-chain)
         Ok(Verdict::Drop {
-            errno: Some(WX_VIOLATION_ERRNO.into()),
+            errno: Some(WX_VIOLATION_ERRNO),
             reason: format!("PID {} attempted {operation}", event.pid),
         })
     }
@@ -422,7 +423,7 @@ impl TrapInterposer for SupplyChainPlugin {
         if !self.is_bypass_runner(&event.binary_path) && self.flags_obfuscated_argv(&event.argv)? {
             // TODO (L3): flag-to-verdict policy for encrypted or base64-obfuscated argv above the entropy threshold.
             return Ok(Verdict::Drop {
-                errno: Some(SCRIPT_DENY_ERRNO.into()),
+                errno: Some(SCRIPT_DENY_ERRNO),
                 reason: format!("obfuscated argv denied: {}", event.binary_path),
             });
         }

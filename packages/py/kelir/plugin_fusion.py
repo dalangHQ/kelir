@@ -80,7 +80,7 @@ class FusedTrampoline:
 
     @classmethod
     def fuse(
-        cls, hooks: list[HookDescriptor] | BasePlugin | KelirBuilder
+        cls, hooks: list[HookDescriptor] | BasePlugin[Any, Any] | KelirBuilder
     ) -> FusedTrampoline:
         if isinstance(hooks, list):
             descriptors: list[HookDescriptor] = hooks

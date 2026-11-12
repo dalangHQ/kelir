@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use kelir_interface::driver_interface::{DaxWindowMode, FastBootMode, VmConfig};
+use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::FilterSnapshot;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
@@ -281,7 +282,7 @@ fn triple_failure(name: &str, failure: String) -> String {
 fn validate_vsock_spec(name: &str, port: u32, service: &str) -> Result<(), PluginError> {
     if port == 0 || port > 65_535 {
         return Err(PluginError::reject(
-            "EConfig",
+            Errno::Econfig,
             triple_failure(
                 name,
                 format!("vsock service port {port} out of range 1..=65535"),
@@ -290,7 +291,7 @@ fn validate_vsock_spec(name: &str, port: u32, service: &str) -> Result<(), Plugi
     }
     if service.is_empty() {
         return Err(PluginError::reject(
-            "EConfig",
+            Errno::Econfig,
             triple_failure(name, "vsock service name must not be empty".to_string()),
         ));
     }
@@ -300,13 +301,13 @@ fn validate_vsock_spec(name: &str, port: u32, service: &str) -> Result<(), Plugi
 fn validate_scope(name: &str, scope: &MountScope) -> Result<(), PluginError> {
     if has_empty(&scope.binaries) {
         return Err(PluginError::reject(
-            "EConfig",
+            Errno::Econfig,
             triple_failure(name, "scope binary name must not be empty".to_string()),
         ));
     }
     if has_empty(&scope.paths) {
         return Err(PluginError::reject(
-            "EConfig",
+            Errno::Econfig,
             triple_failure(name, "scope path must not be empty".to_string()),
         ));
     }
@@ -440,7 +441,7 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
             .any(|mounted| mounted.name == plugin.name)
         {
             return Err(PluginError::reject(
-                "EConfig",
+                Errno::Econfig,
                 format!("plugin already mounted: {}", plugin.name),
             ));
         }
@@ -639,7 +640,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
         let storage = self.storage_config();
         let Some(config) = self.config.take() else {
             return Err(PluginError::reject(
-                "EConfig",
+                Errno::Econfig,
                 "host builder has no VmConfig",
             ));
         };
@@ -672,7 +673,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
         for entry in std::mem::take(&mut registration.stream_kind_services) {
             let Some(kind) = StreamKind::from_u16(entry.kind) else {
                 return Err(PluginError::reject(
-                    "EUnknownKind",
+                    Errno::Eunknownkind,
                     format!("stream kind 0x{:04x} is not registered", entry.kind),
                 ));
             };

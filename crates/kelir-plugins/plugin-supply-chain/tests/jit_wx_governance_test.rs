@@ -1,6 +1,7 @@
 // see: cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)
 use std::collections::HashMap;
 
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::TrapInterposer;
 use kelir_interface::protocol_wire::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
 use kelir_plugin_testkit::block_on;
@@ -80,8 +81,9 @@ fn sc_03_seccomp_unotify_wx_jit_mediation() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(errno), ..
-        } if errno == "EWXVIOLATION" => (),
+            errno: Some(Errno::Ewxviolation),
+            ..
+        } => (),
         verdict => {
             return Err(format!(
                 "unverified mprotect(PROT_EXEC) must drop with EWXVIOLATION, got {verdict:?}"
@@ -142,7 +144,7 @@ fn sc_04_verified_jit_catalog_token_grant() -> Result<(), String> {
     assert_eq!(token.nonce, 1);
     assert_eq!(token.binary_blake3, [0x42; 32]);
     match plugin.ctx().consume_wx_token(1) {
-        Err(err) if format!("{err:?}").contains("EWXVIOLATION") => (),
+        Err(err) if format!("{err}").contains("EWXVIOLATION") => (),
         Err(err) => {
             return Err(format!(
                 "second consume of the same token must fail with EWXVIOLATION, got {err:?}"
@@ -176,9 +178,9 @@ fn sc_05_unverified_binary_jit_ewxviolation() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(errno),
+            errno: Some(Errno::Ewxviolation),
             reason,
-        } if errno == "EWXVIOLATION" => {
+        } => {
             assert!(
                 reason.contains("2403"),
                 "drop reason must name the pid: {reason}"
@@ -211,8 +213,9 @@ fn sc_08_memfd_create_dynamic_elf_block() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(errno), ..
-        } if errno == "EWXVIOLATION" => (),
+            errno: Some(Errno::Ewxviolation),
+            ..
+        } => (),
         verdict => {
             return Err(format!(
                 "unverified memfd_create for in-memory ELF load must drop with EWXVIOLATION, got {verdict:?}"
@@ -266,9 +269,9 @@ fn sc_01_lifecycle_script_trap_exit126() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(errno),
+            errno: Some(Errno::Eacces),
             reason,
-        } if errno == "EACCES" => {
+        } => {
             assert!(
                 reason.contains("lifecycle script denied")
                     && reason.contains("node_modules/malicious-pkg/postinstall.sh"),
@@ -299,9 +302,9 @@ fn sc_02_argv_high_entropy_obfuscation_kill() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(errno),
+            errno: Some(Errno::Eacces),
             reason,
-        } if errno == "EACCES" => {
+        } => {
             assert!(
                 reason.contains("obfuscated argv denied"),
                 "deny must name the obfuscated argv kill: {reason}"
@@ -342,9 +345,9 @@ fn sc_06_package_guard_pip_lifecycle_block() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&build, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(errno),
+            errno: Some(Errno::Eacces),
             reason,
-        } if errno == "EACCES" => {
+        } => {
             assert!(
                 reason.contains("lifecycle script denied") && reason.contains("setup.py"),
                 "deny must name the blocked setup.py build: {reason}"
@@ -380,9 +383,9 @@ fn sc_07_nested_script_ancestor_trap() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&sh, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(errno),
+            errno: Some(Errno::Eacces),
             reason,
-        } if errno == "EACCES" => {
+        } => {
             assert!(
                 reason.contains("lifecycle script denied") && reason.contains("/bin/sh"),
                 "deny must name the trapped sh ancestor: {reason}"

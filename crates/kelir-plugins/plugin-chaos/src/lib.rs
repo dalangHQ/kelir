@@ -3,8 +3,10 @@
 
 // TODO (L3): tests/test_chaos.rs per cans/artifacts/config/project-structure.txt.
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     FsInterposer, HandlerCtx, KelirPlugin, NetInterposer, NoDeps, PipelineBinder, PluginDeps,
@@ -14,7 +16,7 @@ use kelir_interface::protocol_wire::{FilterAction, SuspendUntil};
 pub use kelir_interface::chaos_types::FaultDirection;
 
 // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
-pub const RST_INJECTION_ERRNO: &str = "ECONNREFUSED";
+pub const RST_INJECTION_ERRNO: Errno = Errno::Econnrefused;
 
 // see: cans/plugins/chaos.md#Network-chaos
 #[derive(Clone, Debug)]
@@ -116,7 +118,7 @@ impl ChaosPlugin {
             if rule.inject_rst {
                 // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
                 return Ok(FilterAction::Drop {
-                    errno: Some(RST_INJECTION_ERRNO.into()),
+                    errno: Some(RST_INJECTION_ERRNO),
                     reason: format!("chaos: synthetic TCP RST injected for {}", rule.target),
                 });
             }
@@ -147,8 +149,14 @@ impl ChaosPlugin {
             }
             if self.error_sampled(rule)? {
                 // see: cans/05-storage-plane.md#Write-gating
+                let errno = Errno::from_str(&rule.simulate_error).map_err(|unknown| {
+                    PluginError::reject(
+                        Errno::Einval,
+                        format!("chaos: simulate_error carries {unknown}"),
+                    )
+                })?;
                 return Ok(FilterAction::Drop {
-                    errno: Some(rule.simulate_error.clone()),
+                    errno: Some(errno),
                     reason: format!("chaos: simulated storage fault on {}", rule.target_path),
                 });
             }

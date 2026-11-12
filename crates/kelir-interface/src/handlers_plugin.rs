@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use serde::de::DeserializeOwned;
 
+use crate::errno_types::Errno;
 use crate::handles_lifecycle::{FsHandle, StepStack, TerminalHandle, VmHandle};
 use crate::plugin_model::PluginError;
 use crate::protocol_wire::{
@@ -229,7 +230,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         Verdict::Patch(payload)
     }
 
-    pub fn drop(&self, errno: Option<String>, reason: String) -> Verdict {
+    pub fn drop(&self, errno: Option<Errno>, reason: String) -> Verdict {
         Verdict::Drop { errno, reason }
     }
 
@@ -246,7 +247,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         FilterAction::Forward
     }
 
-    pub fn filter_drop(&self, errno: Option<String>, reason: String) -> FilterAction {
+    pub fn filter_drop(&self, errno: Option<Errno>, reason: String) -> FilterAction {
         FilterAction::Drop { errno, reason }
     }
 

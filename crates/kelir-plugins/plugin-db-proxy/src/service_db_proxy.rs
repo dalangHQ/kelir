@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 
 // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
@@ -96,7 +97,7 @@ impl SqlProxyService for SqlProxy {
         match table.statements.get(&handle.id) {
             Some(sql) => Ok(sql.clone()),
             None => Err(PluginError::reject(
-                "ENOENT",
+                Errno::Enoent,
                 "statement handle is not registered",
             )),
         }

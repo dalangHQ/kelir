@@ -38,7 +38,7 @@ class ChaosConfig:
     fs: list[StorageFaultRule] = field(default_factory=list)
 
 
-class ChaosPlugin(BasePlugin):
+class ChaosPlugin(BasePlugin[None, None]):
     name = "chaos"
 
     def __init__(self, config: ChaosConfig | None = None) -> None:

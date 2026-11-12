@@ -19,7 +19,7 @@ class ReplayConfig:
     network_isolation: bool = True
 
 
-class ReplayPlugin(BasePlugin):
+class ReplayPlugin(BasePlugin[None, None]):
     name = "replay"
 
     def __init__(self, config: ReplayConfig | None = None) -> None:

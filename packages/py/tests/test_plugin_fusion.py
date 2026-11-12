@@ -253,14 +253,14 @@ def test_hook_descriptors_empty_for_vanilla_plugin() -> None:
     assert hook_descriptors(object()) == []
 
 
-class WatchdogOnlyPlugin(BasePlugin):
+class WatchdogOnlyPlugin(BasePlugin[None, None]):
     name = "watchdog-only"
 
     async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
         return WatchdogVerdict.Mitigate
 
 
-class LifecyclePlugin(BasePlugin):
+class LifecyclePlugin(BasePlugin[None, None]):
     name = "lifecycle-probe"
 
     async def on_vm_init(self, ctx: Any) -> None:

@@ -716,6 +716,19 @@ pub struct NativeWireConfig {
     pub tap_filter: Option<String>,
 }
 
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
+#[derive(Default)]
+#[napi(object)]
+pub struct NativeKelirOptions {
+    pub vcpus: Option<u8>,
+    pub memory_mb: Option<u32>,
+    pub kernel: Option<String>,
+    pub rootfs_erofs: Option<String>,
+    pub tsc_locked: Option<bool>,
+    pub enable_watchdog: Option<bool>,
+    pub driver: Option<String>,
+}
+
 #[napi]
 pub struct NativeKelirBuilder {
     config: VmConfig,
@@ -731,29 +744,21 @@ pub struct NativeKelirBuilder {
 #[napi]
 impl NativeKelirBuilder {
     #[napi(constructor)]
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        vcpus: Option<u8>,
-        memory_mb: Option<u32>,
-        kernel: Option<String>,
-        rootfs_erofs: Option<String>,
-        tsc_locked: Option<bool>,
-        enable_watchdog: Option<bool>,
-        driver: Option<String>,
-    ) -> Self {
+    pub fn new(options: Option<NativeKelirOptions>) -> Self {
+        let options = options.unwrap_or_default();
         let mut config = default_vm_config(
-            vcpus,
-            memory_mb,
-            kernel,
-            rootfs_erofs,
-            tsc_locked,
-            enable_watchdog,
+            options.vcpus,
+            options.memory_mb,
+            options.kernel,
+            options.rootfs_erofs,
+            options.tsc_locked,
+            options.enable_watchdog,
         );
         // see: cans/01-architecture.md#Driver-backends
-        config.driver_policy.driver = driver.clone();
+        config.driver_policy.driver = options.driver.clone();
         Self {
             config,
-            driver_name: driver.unwrap_or_else(|| "auto".to_string()),
+            driver_name: options.driver.unwrap_or_else(|| "auto".to_string()),
             plugins: Vec::new(),
             fused: None,
             trampolines: TrampolineTable::default(),
@@ -889,7 +894,7 @@ impl NativeKelirBuilder {
 
 impl Default for NativeKelirBuilder {
     fn default() -> Self {
-        Self::new(None, None, None, None, None, None, None)
+        Self::new(None)
     }
 }
 

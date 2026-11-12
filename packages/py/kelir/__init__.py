@@ -5,7 +5,10 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
+
+CtxT = TypeVar("CtxT")
+ParamsT = TypeVar("ParamsT")
 
 if TYPE_CHECKING:
     from kelir.model_plugin import BasePlugin
@@ -510,16 +513,22 @@ class StepHandle:
 
 
 
-class HandlerContext:
-    def __init__(self, trap: TrapEvent | None = None, cap: Caps | None = None) -> None:
+class HandlerContext(Generic[CtxT, ParamsT]):
+    def __init__(
+        self,
+        trap: TrapEvent | None = None,
+        cap: Caps | None = None,
+        ctx: CtxT | None = None,
+        params: ParamsT | None = None,
+    ) -> None:
         self.trap: TrapEvent = trap if trap is not None else TrapEvent()
         self.vm = VmHandle(Session())
         self.fs = FsHandle()
         self.terminal = TerminalHandle()
-        self.ctx: Any = None
+        self.ctx: CtxT | None = ctx
         self.step = StepHandle()
         self.cap = cap if cap is not None else Caps()
-        self.params: Any = None
+        self.params: ParamsT | None = params
 
     async def receipt(self) -> ExecutionReceipt:
         # TODO (L3): fetch the trap's execution receipt via the PyO3 _kelir bridge.
@@ -534,8 +543,27 @@ class HandlerContext:
         return Verdict.drop(errno, reason)
 
     # see: cans/02-plugin-model.md#Unified-verdict
-    def patch(self, *args: Any, **kwargs: Any) -> Verdict:
-        return Verdict.patch(*args, **kwargs)
+    def patch(
+        self,
+        *args: Any,
+        binary: str | None = None,
+        argv: list[str] | None = None,
+        env: dict[str, str] | None = None,
+        unset_env: list[str] | None = None,
+        name: str | None = None,
+        cbor: dict[str, Any] | None = None,
+        attr: Any = None,
+    ) -> Verdict:
+        return Verdict.patch(
+            *args,
+            binary=binary,
+            argv=argv,
+            env=env,
+            unset_env=unset_env,
+            name=name,
+            cbor=cbor,
+            attr=attr,
+        )
 
     # see: cans/02-plugin-model.md#Unified-verdict
     def suspend(self, until: Any = None) -> Verdict:
@@ -569,6 +597,7 @@ __all__ = [
     "CausalDelta",
     "Channel",
     "CheckpointHandle",
+    "CtxT",
     "Deadline",
     "ExecStream",
     "ExecveMutation",
@@ -581,6 +610,7 @@ __all__ = [
     "HostHandle",
     "KelirBuilder",
     "MsgType",
+    "ParamsT",
     "PhaseTimings",
     "PostExecAction",
     "ReceiptExtension",

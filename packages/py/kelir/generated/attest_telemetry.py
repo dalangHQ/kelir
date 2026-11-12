@@ -3,7 +3,7 @@
 # see: cans/10-attestation.md#Execution-receipts
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import Literal, TypeGuard, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -70,7 +70,36 @@ ExitKind = (
     | ExitKindHardKilled
 )
 
-NativeExitKindRecord = str | dict[str, int | str]
+class NativeExitKindSignalRecord(TypedDict):
+    signal: int
+
+
+class NativeExitKindKernelPanicRecord(TypedDict):
+    kernelPanic: str
+
+
+class NativeExitKindHypervisorFaultRecord(TypedDict):
+    hypervisorFault: str
+
+
+NativeExitKindRecord = (
+    Literal["normal", "dirtyShutdown", "hardKilled"]
+    | NativeExitKindSignalRecord
+    | NativeExitKindKernelPanicRecord
+    | NativeExitKindHypervisorFaultRecord
+)
+
+
+def _is_signal_record(raw: object) -> TypeGuard[NativeExitKindSignalRecord]:
+    return isinstance(raw, dict) and "signal" in raw
+
+
+def _is_kernel_panic_record(raw: object) -> TypeGuard[NativeExitKindKernelPanicRecord]:
+    return isinstance(raw, dict) and "kernelPanic" in raw
+
+
+def _is_hypervisor_fault_record(raw: object) -> TypeGuard[NativeExitKindHypervisorFaultRecord]:
+    return isinstance(raw, dict) and "hypervisorFault" in raw
 
 
 def from_native_exit_kind(raw: NativeExitKindRecord) -> ExitKind:
@@ -82,11 +111,13 @@ def from_native_exit_kind(raw: NativeExitKindRecord) -> ExitKind:
         if raw == "hardKilled":
             return ExitKindHardKilled()
         raise ValueError(f"unknown native exit kind tag: {raw}")
-    if "signal" in raw:
-        return ExitKindSignal(signal=cast(int, raw["signal"]))
-    if "kernelPanic" in raw:
-        return ExitKindKernelPanic(message=cast(str, raw["kernelPanic"]))
-    return ExitKindHypervisorFault(message=cast(str, raw["hypervisorFault"]))
+    if _is_signal_record(raw):
+        return ExitKindSignal(signal=raw["signal"])
+    if _is_kernel_panic_record(raw):
+        return ExitKindKernelPanic(message=raw["kernelPanic"])
+    if _is_hypervisor_fault_record(raw):
+        return ExitKindHypervisorFault(message=raw["hypervisorFault"])
+    raise ValueError(f"unknown native exit kind record: {raw}")
 
 
 # TODO (L3): no FFI producer populates ExecutionReceipt.exit_kind yet

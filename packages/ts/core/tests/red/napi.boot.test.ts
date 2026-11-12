@@ -2,16 +2,32 @@
 import test from "node:test";
 
 // see: cans/artifacts/test-plan/cases/bindings_ts/bt_04_napi_boot_before_fuse_hooks_fails_closed.yaml#case_id
+interface NativeKelirOptionsBinding {
+  readonly vcpus?: number;
+  readonly memoryMb?: number;
+  readonly kernel?: string;
+  readonly rootfsErofs?: string;
+  readonly tscLocked?: boolean;
+  readonly enableWatchdog?: boolean;
+  readonly driver?: string;
+}
+
 interface NativeBuilderBinding {
   readonly trampoline_entry_count: () => number;
   readonly boot: () => Promise<unknown>;
 }
 
 async function bt_04_napi_boot_before_fuse_hooks_fails_closed(): Promise<void> {
-  let binding: { readonly NativeKelirBuilder: new () => NativeBuilderBinding };
+  let binding: {
+    readonly NativeKelirBuilder: new (
+      options?: NativeKelirOptionsBinding,
+    ) => NativeBuilderBinding;
+  };
   try {
     binding = (await import("../../dist/native/kelir.node")) as {
-      readonly NativeKelirBuilder: new () => NativeBuilderBinding;
+      readonly NativeKelirBuilder: new (
+        options?: NativeKelirOptionsBinding,
+      ) => NativeBuilderBinding;
     };
   } catch {
     throw new Error(

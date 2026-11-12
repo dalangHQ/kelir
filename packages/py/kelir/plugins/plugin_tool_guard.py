@@ -17,7 +17,7 @@ class ToolGuardConfig:
     pin_schemas: bool = True
 
 
-class ToolGuardPlugin(BasePlugin):
+class ToolGuardPlugin(BasePlugin[None, None]):
     name = "tool-guard"
 
     def __init__(self, config: ToolGuardConfig | None = None) -> None:

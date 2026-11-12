@@ -34,7 +34,7 @@ class MeshConfig:
     listeners: list[PeerListener] = field(default_factory=list)
 
 
-class MeshPlugin(BasePlugin):
+class MeshPlugin(BasePlugin[None, None]):
     name = "mesh"
 
     def __init__(self, config: MeshConfig | None = None) -> None:

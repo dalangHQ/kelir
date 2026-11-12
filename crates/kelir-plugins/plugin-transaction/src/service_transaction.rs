@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 
 use crate::TransactionCtx;
@@ -59,7 +60,7 @@ impl TransactionService for TransactionCtx {
         if let Err(err) = coordination.prepare_participants().await {
             coordination.abort_active().await?;
             return Err(PluginError::reject(
-                "EPOLICY",
+                Errno::Epolicy,
                 format!("2PC prepare failed; participants rolled back: {err}"),
             ));
         }

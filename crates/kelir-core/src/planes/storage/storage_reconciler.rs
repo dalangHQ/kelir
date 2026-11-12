@@ -1,6 +1,7 @@
 // see: cans/05-storage-plane.md#Workspace-commit
 // see: cans/artifacts/code/reconciler.rs#reconcile_upperdir
 use super::io_storage::StorageIo;
+use kelir_interface::errno_types::Errno;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -150,13 +151,13 @@ impl Reconciler {
             .any(|component| matches!(component, Component::ParentDir))
         {
             return Err(kelir_interface::plugin_model::PluginError::reject(
-                "EXDEV",
+                Errno::Exdev,
                 format!("path traversal rejected: {target:?}"),
             ));
         }
         if !target.starts_with(&self.host_target) {
             return Err(kelir_interface::plugin_model::PluginError::reject(
-                "EXDEV",
+                Errno::Exdev,
                 format!("target escapes workspace root: {target:?}"),
             ));
         }
@@ -166,7 +167,7 @@ impl Reconciler {
             }
             if fs::symlink_metadata(ancestor).is_ok_and(|meta| meta.is_symlink()) {
                 return Err(kelir_interface::plugin_model::PluginError::reject(
-                    "EXDEV",
+                    Errno::Exdev,
                     format!("symlink component rejected: {ancestor:?}"),
                 ));
             }
@@ -182,7 +183,7 @@ impl Reconciler {
         let resolved = prefix.canonicalize()?;
         if !resolved.starts_with(&root) {
             return Err(kelir_interface::plugin_model::PluginError::reject(
-                "EXDEV",
+                Errno::Exdev,
                 format!("resolved target escapes workspace root: {resolved:?}"),
             ));
         }

@@ -14,6 +14,7 @@ use kelir_core::planes::storage::storage_reconciler::{
     FsReconcileRequest, Reconciler, TraversalGuard,
 };
 use kelir_core::planes::storage::{StorageConfig, WorkspaceEncapsulation};
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::{FsInterposer, HandlerCtx, PluginError};
 use kelir_interface::protocol_wire::{PatchPayload, Verdict};
 use std::os::unix::fs::PermissionsExt;
@@ -69,12 +70,12 @@ fn sp_02_symlink_traversal_escape_exdev() -> Result<(), String> {
     let workspace = temp_workspace("sp02");
     let reconciler = reconciler_for(&workspace);
     match reconciler.contain(&workspace.join("../../etc/shadow")) {
-        Err(PluginError::Reject { errno, .. }) => assert_eq!(errno, "EXDEV"),
+        Err(PluginError::Reject { errno, .. }) => assert_eq!(errno, Errno::Exdev),
         Err(e) => return Err(format!("parent traversal gave wrong error: {e}")),
         Ok(()) => return Err("parent traversal accepted".to_string()),
     }
     match reconciler.contain(Path::new("/etc/passwd")) {
-        Err(PluginError::Reject { errno, .. }) => assert_eq!(errno, "EXDEV"),
+        Err(PluginError::Reject { errno, .. }) => assert_eq!(errno, Errno::Exdev),
         Err(e) => return Err(format!("absolute escape gave wrong error: {e}")),
         Ok(()) => return Err("absolute escape accepted".to_string()),
     }
@@ -85,7 +86,7 @@ fn sp_02_symlink_traversal_escape_exdev() -> Result<(), String> {
     {
         std::os::unix::fs::symlink("/etc", workspace.join("link")).map_err(|e| e.to_string())?;
         match reconciler.contain(&workspace.join("link/passwd")) {
-            Err(PluginError::Reject { errno, .. }) => assert_eq!(errno, "EXDEV"),
+            Err(PluginError::Reject { errno, .. }) => assert_eq!(errno, Errno::Exdev),
             Err(e) => return Err(format!("symlink escape gave wrong error: {e}")),
             Ok(()) => return Err("symlink escape accepted".to_string()),
         }
@@ -135,7 +136,7 @@ fn sp_04_storage_quota_enforcement_enospc() -> Result<(), String> {
         10,
     );
     match plane.check_quota(15 * 1024 * 1024, 0) {
-        Err(PluginError::Reject { errno, .. }) => assert_eq!(errno, "ENOSPC"),
+        Err(PluginError::Reject { errno, .. }) => assert_eq!(errno, Errno::Enospc),
         Err(e) => return Err(format!("over-quota write gave wrong error: {e}")),
         Ok(()) => return Err("over-quota write accepted".to_string()),
     }
@@ -159,7 +160,7 @@ fn sp_05_storage_inode_quota_enospc() -> Result<(), String> {
     plane.check_quota(0, 10).map_err(|e| e.to_string())?;
     assert_eq!(plane.allocated_inodes(), 10);
     match plane.check_quota(0, 1) {
-        Err(PluginError::Reject { errno, .. }) => assert_eq!(errno, "ENOSPC"),
+        Err(PluginError::Reject { errno, .. }) => assert_eq!(errno, Errno::Enospc),
         Err(e) => return Err(format!("over-quota create gave wrong error: {e}")),
         Ok(()) => return Err("eleventh inode accepted".to_string()),
     }
@@ -328,7 +329,7 @@ impl StorageIo for EbusyThenOkIo {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if attempt == 0 {
             return Err(PluginError::reject(
-                "EBUSY",
+                Errno::Ebusy,
                 "host inode locked by an external process".to_string(),
             ));
         }

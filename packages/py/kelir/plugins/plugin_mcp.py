@@ -16,7 +16,7 @@ class McpConfig:
     pass
 
 
-class McpPlugin(BasePlugin):
+class McpPlugin(BasePlugin[None, None]):
     name = "mcp"
 
     def __init__(self, config: McpConfig | None = None) -> None:

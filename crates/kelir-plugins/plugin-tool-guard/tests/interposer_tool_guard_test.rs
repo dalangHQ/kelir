@@ -1,4 +1,5 @@
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::ConsoleInterposer;
 use kelir_interface::plugin_model::KelirPlugin;
 use kelir_interface::plugin_model::PluginError;
@@ -40,7 +41,10 @@ fn gt_02_immutable_schema_locking_esecurity() -> Result<(), String> {
         tools: vec![drifted],
     };
     match block_on(registry.ingest_tools_list(&drifted_list)) {
-        Err(PluginError::Reject { errno, .. }) if errno == "ESecurityViolation" => (),
+        Err(PluginError::Reject {
+            errno: Errno::Esecurityviolation,
+            ..
+        }) => (),
         Err(err) => {
             return Err(format!(
                 "post-lock drift must halt with ESecurityViolation, got {err:?}"
@@ -61,7 +65,7 @@ fn tool_guard_unparsed_frame_fails_closed() -> Result<(), String> {
     let mut bytes = b"\x00not-a-json-rpc-frame".to_vec();
     match block_on(plugin.on_console_input(0x0012, &mut bytes)) {
         Err(PluginError::Reject { errno, reason }) => {
-            if errno != "EPERM" {
+            if errno != Errno::Eperm {
                 return Err(format!(
                     "unparsed frame must reject with EPERM, got {errno}"
                 ));
@@ -146,7 +150,10 @@ fn tool_guard_locks_after_first_advertisement() -> Result<(), String> {
         tools: vec![drifted],
     };
     match block_on(plugin.ingest_advertisement(&drifted_list)) {
-        Err(PluginError::Reject { errno, .. }) if errno == "ESecurityViolation" => (),
+        Err(PluginError::Reject {
+            errno: Errno::Esecurityviolation,
+            ..
+        }) => (),
         Err(err) => {
             return Err(format!(
                 "post-lock drift must halt with ESecurityViolation, got {err:?}"

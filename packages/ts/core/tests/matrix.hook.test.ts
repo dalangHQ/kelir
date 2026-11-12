@@ -98,7 +98,7 @@ function backOffIncompleteAnsi(window: Uint8Array, emit: number): number {
   return emit;
 }
 
-const hookMatrixPlugin = createPlugin("hook-matrix")
+const hookMatrixPlugin = createPlugin<"hook-matrix", Record<string, never>>("hook-matrix")
 
 
   .onNetOutbound((frame) => {

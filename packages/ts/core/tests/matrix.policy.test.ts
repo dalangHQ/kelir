@@ -12,7 +12,7 @@ const policyState = {
   quarantinedPids: [] as number[],
 };
 
-const policyPlugin = createPlugin("policy-matrix")
+const policyPlugin = createPlugin<"policy-matrix", Record<string, never>>("policy-matrix")
   .onTrap(async (event, c) => {
     const binary = event.binaryPath.split("/").pop();
     switch (binary) {
@@ -42,7 +42,7 @@ const policyPlugin = createPlugin("policy-matrix")
           },
         });
       default:
-        return null;
+        return c.pass();
     }
   })
 
@@ -56,7 +56,7 @@ const policyPlugin = createPlugin("policy-matrix")
   })
 
 
-const watchdogSilencer = createPlugin("watchdog-silencer")
+const watchdogSilencer = createPlugin<"watchdog-silencer", Record<string, never>>("watchdog-silencer")
   .onWatchdog(async () => {
     if (policyState.plannedSuspend) {
       policyState.suppressions += 1;

@@ -5,6 +5,7 @@ pub mod chaos_types;
 pub mod codec_protocol;
 pub mod credential_vault;
 pub mod driver_interface;
+pub mod errno_types;
 pub mod error_envelope;
 pub mod frame_layout_views;
 pub mod fusion_plugin;

@@ -8,7 +8,7 @@ use kelir_interface::codec_protocol::{
 use kelir_interface::protocol_wire::{CHANNELS, EXEC_STREAMS, MSG_TYPES, STREAM_KINDS};
 
 use crate::model_codegen::{EnumDef, Model, Ty};
-use crate::naming_codegen::{camel, kebab, screaming};
+use crate::naming_codegen::{camel, kebab, screaming, snake};
 
 pub const PY_SEE: &str = "# see: cans/03-sdk-architecture.md#Python-SDK
 # see: cans/15-operations.md#Multi-language-parity-gate
@@ -127,44 +127,70 @@ fn emit_native_exit_kind(def: &EnumDef) -> Result<String, String> {
             name.to_string()
         }
     };
-    let mut out = String::from("NativeExitKindRecord = str | dict[str, int | str]\n\n\n");
+    let mut unit_variants = Vec::new();
+    let mut payload_variants = Vec::new();
+    for variant in &def.variants {
+        if variant.payload.is_none() {
+            unit_variants.push(variant);
+        } else {
+            payload_variants.push(variant);
+        }
+    }
+    let mut out = String::new();
+    for variant in &payload_variants {
+        let tag = native_tag(&variant.name);
+        let class = format!("NativeExitKind{}Record", variant.name);
+        let payload_py = match variant.payload.as_ref() {
+            Some(Ty::U32) => "int",
+            _ => "str",
+        };
+        let _ = writeln!(out, "class {class}(TypedDict):");
+        let _ = writeln!(out, "    {tag}: {payload_py}");
+        out.push_str("\n\n");
+    }
+    let tags: Vec<String> = unit_variants
+        .iter()
+        .map(|variant| format!("\"{}\"", native_tag(&variant.name)))
+        .collect();
+    out.push_str("NativeExitKindRecord = (\n");
+    let _ = writeln!(out, "    Literal[{}]", tags.join(", "));
+    for variant in &payload_variants {
+        let class = format!("NativeExitKind{}Record", variant.name);
+        let _ = writeln!(out, "    | {class}");
+    }
+    out.push_str(")\n\n\n");
+    for variant in &payload_variants {
+        let tag = native_tag(&variant.name);
+        let class = format!("NativeExitKind{}Record", variant.name);
+        let guard = format!("_is_{}_record", snake(&tag));
+        let _ = writeln!(out, "def {guard}(raw: object) -> TypeGuard[{class}]:");
+        let _ = writeln!(out, "    return isinstance(raw, dict) and \"{tag}\" in raw");
+        out.push_str("\n\n");
+    }
     let _ = writeln!(
         out,
         "def from_native_exit_kind(raw: NativeExitKindRecord) -> ExitKind:"
     );
     out.push_str("    if isinstance(raw, str):\n");
-    let mut payload_variants = Vec::new();
-    for variant in &def.variants {
-        if variant.payload.is_none() {
-            let tag = native_tag(&variant.name);
-            let class = format!("ExitKind{}", variant.name);
-            let _ = writeln!(out, "        if raw == \"{tag}\":");
-            let _ = writeln!(out, "            return {class}()");
-        } else {
-            payload_variants.push(variant);
-        }
-    }
-    out.push_str("        raise ValueError(f\"unknown native exit kind tag: {raw}\")\n");
-    for (index, variant) in payload_variants.iter().enumerate() {
+    for variant in &unit_variants {
         let tag = native_tag(&variant.name);
         let class = format!("ExitKind{}", variant.name);
-        let (payload_name, payload_py) = match variant.payload.as_ref() {
+        let _ = writeln!(out, "        if raw == \"{tag}\":");
+        let _ = writeln!(out, "            return {class}()");
+    }
+    out.push_str("        raise ValueError(f\"unknown native exit kind tag: {raw}\")\n");
+    for variant in &payload_variants {
+        let tag = native_tag(&variant.name);
+        let class = format!("ExitKind{}", variant.name);
+        let guard = format!("_is_{}_record", snake(&tag));
+        let (payload_name, _) = match variant.payload.as_ref() {
             Some(Ty::U32) => ("signal", "int"),
             _ => ("message", "str"),
         };
-        if index + 1 == payload_variants.len() {
-            let _ = writeln!(
-                out,
-                "    return {class}({payload_name}=cast({payload_py}, raw[\"{tag}\"]))"
-            );
-        } else {
-            let _ = writeln!(out, "    if \"{tag}\" in raw:");
-            let _ = writeln!(
-                out,
-                "        return {class}({payload_name}=cast({payload_py}, raw[\"{tag}\"]))"
-            );
-        }
+        let _ = writeln!(out, "    if {guard}(raw):");
+        let _ = writeln!(out, "        return {class}({payload_name}=raw[\"{tag}\"])");
     }
+    out.push_str("    raise ValueError(f\"unknown native exit kind record: {raw}\")\n");
     out.push_str("\n\n");
     Ok(out)
 }
@@ -174,7 +200,7 @@ pub fn emit_telemetry(model: &Model, order: &[&str]) -> Result<String, String> {
     let mut out = String::new();
     out.push_str(PY_SEE);
     out.push_str("from __future__ import annotations\n\n");
-    out.push_str("from typing import Literal, cast\n\n");
+    out.push_str("from typing import Literal, TypeGuard, TypedDict\n\n");
     out.push_str("from pydantic import BaseModel, Field\n\n");
     for name in order {
         if *name == "ExitKind" {

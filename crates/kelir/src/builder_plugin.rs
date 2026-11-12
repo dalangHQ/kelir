@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use kelir_interface::driver_interface::{
     DaxWindowMode, FastBootMode, WatchdogEvent, WatchdogVerdict,
 };
+use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::FilterSnapshot;
 use kelir_interface::plugin_model::{
     AnyPlugin, ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, KelirPlugin,
@@ -856,13 +857,13 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
 fn validate_trap_filter(name: &str, filter: &TrapFilter) -> Result<(), PluginError> {
     if filter.binary.as_deref() == Some("") {
         return Err(PluginError::reject(
-            "EConfig",
+            Errno::Econfig,
             format!("{name}: trap filter binary must not be empty"),
         ));
     }
     if filter.args.iter().any(|arg| arg.is_empty()) {
         return Err(PluginError::reject(
-            "EConfig",
+            Errno::Econfig,
             format!("{name}: trap filter arg must not be empty"),
         ));
     }

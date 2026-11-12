@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Generic, Optional
 
-from kelir import FilterAction, HandlerContext, Verdict
+from kelir import CtxT, FilterAction, HandlerContext, ParamsT, TrapEvent, Verdict
 from kelir.plugin_fusion import HookDescriptor, HookStage
 from kelir.generated.fusion_tables import HOOK_RINGS
 
@@ -72,9 +72,9 @@ class LifecycleCtx:
 
     def __init__(self) -> None:
         self._vetoes: list[tuple[VetoEvent, Callable[[], bool]]] = []
-        self._watchdog: tuple[Any, str] | None = None
+        self._watchdog: tuple[int, str] | None = None
 
-    def set_watchdog(self, timeout: Any, action: str) -> None:
+    def set_watchdog(self, timeout: int, action: str) -> None:
         # TODO (L3): arm the VM watchdog via the PyO3 _kelir bridge.
         self._watchdog = (timeout, action)
 
@@ -117,10 +117,10 @@ def hook_descriptors(plugin: object) -> list[HookDescriptor]:
     return descriptors
 
 
-class BasePlugin:
+class BasePlugin(Generic[CtxT, ParamsT]):
 
-    name: str = ""
-    requires: tuple[str, ...] = ()
+    name: ClassVar[str] = ""
+    requires: ClassVar[tuple[str, ...]] = ()
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
     def to_builder(self) -> KelirBuilder:
@@ -137,7 +137,7 @@ class BasePlugin:
             getattr(builder, method_name)(getattr(self, method_name))
         return builder
 
-    async def on_trap(self, event: Any) -> Optional[Verdict]:
+    async def on_trap(self, event: TrapEvent) -> Optional[Verdict]:
         # TODO (L3): dispatch trap event to the plugin
         return None
 
@@ -150,7 +150,7 @@ class BasePlugin:
         return buffer
 
     def on_fs_write(
-        self, path: Path, data: Any, pid: int, ctx: HandlerContext
+        self, path: Path, data: bytes, pid: int, ctx: HandlerContext[CtxT, ParamsT]
     ) -> FilterAction:
         # TODO (L3): dispatch fs write to the plugin
         return FilterAction.forward()
@@ -185,15 +185,15 @@ class BasePlugin:
         # TODO (L3): dispatch process-exit event to the plugin
         pass
 
-    async def on_vm_init(self, ctx: Any) -> None:
+    async def on_vm_init(self, ctx: LifecycleCtx | None) -> None:
         # TODO (L3): dispatch vm-init lifecycle event to the plugin
         pass
 
-    async def on_vm_ready(self, ctx: Any) -> None:
+    async def on_vm_ready(self, ctx: LifecycleCtx | None) -> None:
         # TODO (L3): dispatch vm-ready lifecycle event to the plugin
         pass
 
-    async def on_vm_shutdown(self, ctx: Any) -> None:
+    async def on_vm_shutdown(self, ctx: LifecycleCtx | None) -> None:
         # TODO (L3): dispatch vm-shutdown lifecycle event to the plugin
         pass
 

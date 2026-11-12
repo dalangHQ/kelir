@@ -56,7 +56,7 @@ export interface TrapScope<Ctx> {
     handler: (
       event: TrapInfo,
       c: TrapContext & Ctx,
-    ) => Promise<Verdict | null> | Verdict | null,
+    ) => Promise<Verdict> | Verdict,
   ): TrapScope<Ctx>;
   onProcessExit(
     handler: (event: ProcessExitEvent) => Promise<void> | void,
@@ -703,7 +703,7 @@ export class HookRegistry<Ctx = unknown> {
     handler: (
       event: TrapInfo,
       c: TrapContext & Ctx,
-    ) => Promise<Verdict | null> | Verdict | null,
+    ) => Promise<Verdict> | Verdict,
   ): void {
     this.addHook({
       ring: RingEvent.Trap,

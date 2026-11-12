@@ -39,7 +39,7 @@ class LedgerConfig:
     receipts: ReceiptConfig = field(default_factory=lambda: ReceiptConfig())
 
 
-class LedgerPlugin(BasePlugin):
+class LedgerPlugin(BasePlugin[None, None]):
     name = "ledger"
 
     def __init__(self, config: LedgerConfig | None = None) -> None:

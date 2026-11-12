@@ -11,6 +11,7 @@ use std::task::{Context, Poll};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
+use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::TrampolineRing;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
@@ -77,7 +78,7 @@ where
     match Quarantined::new(future).await {
         Ok(output) => output,
         Err(_) => Ok(Verdict::Drop {
-            errno: Some("EFAULT".into()),
+            errno: Some(Errno::Efault),
             reason: "Plugin panicked".into(),
         }),
     }
@@ -857,7 +858,7 @@ impl PipelineEngine {
                     || interceptor.on_host_lsm_exec(path, pid),
                     || {
                         Ok(Verdict::Drop {
-                            errno: Some("EFAULT".into()),
+                            errno: Some(Errno::Efault),
                             reason: "Plugin panicked".into(),
                         })
                     },
@@ -882,7 +883,7 @@ impl PipelineEngine {
                 || interceptor.on_host_pressure(level),
                 || {
                     Ok(Verdict::Drop {
-                        errno: Some("EFAULT".into()),
+                        errno: Some(Errno::Efault),
                         reason: "Plugin panicked".into(),
                     })
                 },
@@ -900,7 +901,7 @@ impl PipelineEngine {
                 || interceptor.on_host_keyring_access(key),
                 || {
                     Ok(Verdict::Drop {
-                        errno: Some("EFAULT".into()),
+                        errno: Some(Errno::Efault),
                         reason: "Plugin panicked".into(),
                     })
                 },

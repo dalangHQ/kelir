@@ -20,7 +20,7 @@ class ContainerConfig:
     scratch_device: str | None = None
 
 
-class ContainerPlugin(BasePlugin):
+class ContainerPlugin(BasePlugin[None, None]):
     name = "container"
 
     def __init__(self, config: ContainerConfig | None = None) -> None:

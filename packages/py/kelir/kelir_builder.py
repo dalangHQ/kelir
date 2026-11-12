@@ -374,7 +374,7 @@ class KelirBuilder:
         return self
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
-    def use(self, plugin: BasePlugin | KelirBuilder) -> Self:
+    def use(self, plugin: BasePlugin[Any, Any] | KelirBuilder) -> Self:
         from kelir.model_plugin import BasePlugin as _BasePlugin
         from kelir.model_plugin import hook_descriptors
 

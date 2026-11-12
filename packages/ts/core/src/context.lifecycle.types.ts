@@ -121,6 +121,6 @@ export interface TrapContext {
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-export type HandlerContext<Ctx = unknown, Params = unknown> = TrapContext & Ctx & {
+export type HandlerContext<Ctx, Params> = TrapContext & Ctx & {
   readonly params: Params;
 };

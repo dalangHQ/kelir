@@ -1,13 +1,13 @@
 // see: cans/artifacts/test-plan/cases/bindings_ts/bt_03_typescript_fused_trampoline_single_crossing_chained_hooks.yaml#case_id
 import test from "node:test";
 
-import { FusedTrampoline, RingEvent, kelir } from "../../dist/index.js";
+import { FusedTrampoline, RingEvent, Verdict, kelir } from "../../dist/index.js";
 
 // see: cans/artifacts/test-plan/cases/bindings_ts/bt_03_typescript_fused_trampoline_single_crossing_chained_hooks.yaml#case_id
 async function bt_03_typescript_fused_trampoline_single_crossing_chained_hooks(): Promise<void> {
   const builder = kelir();
   for (let index = 0; index < 5; index += 1) {
-    builder.trap("fs.write:*", async () => null);
+    builder.trap("fs.write:*", async () => Verdict.Pass);
   }
   const fused: FusedTrampoline = builder.fuse();
   if (fused.crossingsPerRingEvent(RingEvent.Trap) !== 1) {

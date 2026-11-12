@@ -3,6 +3,7 @@
 // see: cans/05-storage-plane.md#Host-inode-lock-broker
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
 // see: cans/02-plugin-model.md#Hook-return-semantics
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{FsContext, FsInodeAttr, FsInterposer, HandlerCtx};
 use kelir_interface::protocol_wire::{FilterAction, PatchPayload, Verdict};
@@ -192,7 +193,8 @@ impl FuseDispatcher {
                         "FUSE LOOKUP Patch payload is not an FsInode".into(),
                     )),
                     Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(
-                        "FUSE LOOKUP denied: {reason} ({errno:?})"
+                        "FUSE LOOKUP denied: {reason} ({})",
+                        errno.map_or("none", |errno| errno.as_str())
                     ))),
                     Verdict::Suspend { .. } => Err(PluginError::Halt(
                         "FUSE LOOKUP interposer returned Suspend, unsupported for lookup".into(),
@@ -302,7 +304,7 @@ impl FuseDispatcher {
                     FilterAction::Drop {
                         errno: Some(errno), ..
                     } => {
-                        let errno = drop_errno(&errno)?;
+                        let errno = drop_errno(errno)?;
                         Ok(FuseResponse {
                             guest_inode: request.guest_inode,
                             reply: FuseReply::Errno(-errno),
@@ -346,7 +348,8 @@ impl FuseDispatcher {
                         reply: FuseReply::Payload(Vec::new()),
                     }),
                     Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(
-                        "FUSE SETLK denied: {reason} ({errno:?})"
+                        "FUSE SETLK denied: {reason} ({})",
+                        errno.map_or("none", |errno| errno.as_str())
                     ))),
                     Verdict::Patch(_) => Err(PluginError::Halt(
                         "FUSE SETLK interposer returned Patch, unsupported for locks".into(),
@@ -368,19 +371,30 @@ impl FuseDispatcher {
 
 // see: cans/05-storage-plane.md#Write-gating
 // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
-fn drop_errno(errno: &str) -> Result<i32, PluginError> {
+fn drop_errno(errno: Errno) -> Result<i32, PluginError> {
     match errno {
-        "EPERM" => Ok(libc::EPERM),
-        "ENXIO" => Ok(libc::ENXIO),
-        "EWOULDBLOCK" => Ok(libc::EWOULDBLOCK),
-        "EACCES" => Ok(libc::EACCES),
-        "EFAULT" => Ok(libc::EFAULT),
-        "EBUSY" => Ok(libc::EBUSY),
-        "EXDEV" => Ok(libc::EXDEV),
-        "ENOSPC" => Ok(libc::ENOSPC),
-        "EROFS" => Ok(libc::EROFS),
-        "ECONNREFUSED" => Ok(libc::ECONNREFUSED),
-        _ => Err(PluginError::Halt(format!(
+        Errno::Eperm => Ok(libc::EPERM),
+        Errno::Enxio => Ok(libc::ENXIO),
+        Errno::Ewouldblock => Ok(libc::EWOULDBLOCK),
+        Errno::Eacces => Ok(libc::EACCES),
+        Errno::Efault => Ok(libc::EFAULT),
+        Errno::Ebusy => Ok(libc::EBUSY),
+        Errno::Exdev => Ok(libc::EXDEV),
+        Errno::Enospc => Ok(libc::ENOSPC),
+        Errno::Erofs => Ok(libc::EROFS),
+        Errno::Econnrefused => Ok(libc::ECONNREFUSED),
+        Errno::Enoent => Ok(libc::ENOENT),
+        Errno::Einval => Ok(libc::EINVAL),
+        Errno::Epipe => Ok(libc::EPIPE),
+        Errno::Enodata => Ok(libc::ENODATA),
+        Errno::Eproto => Ok(libc::EPROTO),
+        Errno::Epolicy
+        | Errno::Etoolquota
+        | Errno::Ewxviolation
+        | Errno::Econfig
+        | Errno::Esecurityviolation
+        | Errno::Eunknownkind
+        | Errno::Eclockregress => Err(PluginError::Halt(format!(
             "FUSE errno {errno} has no POSIX mapping on the storage plane"
         ))),
     }

@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::hex_codec::encode_hex;
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
@@ -76,12 +77,12 @@ pub enum VaultError {
 }
 
 impl VaultError {
-    pub fn errno(&self) -> &'static str {
+    pub fn errno(&self) -> Errno {
         match self {
-            Self::Enodata(_) => "ENODATA",
-            Self::Eperm(_) => "EPERM",
-            Self::Eacces(_) => "EACCES",
-            Self::Einval(_) => "EINVAL",
+            Self::Enodata(_) => Errno::Enodata,
+            Self::Eperm(_) => Errno::Eperm,
+            Self::Eacces(_) => Errno::Eacces,
+            Self::Einval(_) => Errno::Einval,
         }
     }
 

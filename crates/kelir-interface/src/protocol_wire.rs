@@ -6,6 +6,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::errno_types::Errno;
+
 // see: cans/11-protocol.md#Binary-exec-channel
 macro_rules! wire_consts {
     ($group:ident, $repr:ty, { $($name:ident = $value:literal),+ $(,)? }) => {
@@ -120,7 +122,7 @@ pub enum Verdict {
     Pass,
     Patch(PatchPayload),
     Drop {
-        errno: Option<String>,
+        errno: Option<Errno>,
         reason: String,
     },
     Suspend {
@@ -137,7 +139,7 @@ pub enum Verdict {
 pub enum FilterAction {
     Forward,
     Drop {
-        errno: Option<String>,
+        errno: Option<Errno>,
         reason: String,
     },
     Suspend {

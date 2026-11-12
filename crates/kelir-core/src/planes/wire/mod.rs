@@ -4,6 +4,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex, RwLock};
 
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::{FilterAction, StreamKind};
 use kelir_interface::vsock_mesh::{VAULT_METADATA_VSOCK_PORT, VsockServiceHandler};
@@ -556,7 +557,7 @@ impl WirePlane {
                     Ok(FilterAction::Forward)
                 } else {
                     Ok(FilterAction::Drop {
-                        errno: Some("ECONNREFUSED".into()),
+                        errno: Some(Errno::Econnrefused),
                         reason: "UDP egress denied: allow_udp_proxied not enabled".into(),
                     })
                 }

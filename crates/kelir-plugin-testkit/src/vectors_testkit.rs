@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use kelir_interface::codec_protocol::{CodecError, FLAG_DATA};
 use kelir_interface::driver_interface::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
+use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::TrampolineRing;
 use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::plugin_model::VetoEvent;
@@ -256,7 +257,7 @@ impl VectorSuite {
                             HashMap::new(),
                         ),
                         Verdict::Drop {
-                            errno: Some("EPERM".to_string()),
+                            errno: Some(Errno::Eperm),
                             reason: "EPOLICY: force push denied".to_string(),
                         },
                     )?,
@@ -433,7 +434,7 @@ fn plugin_builder_trap_case() -> Result<VectorCase, VectorError> {
         expected_outcomes: vec![
             UnifiedBuilderOutcome::Verdict(Verdict::Pass),
             UnifiedBuilderOutcome::Verdict(Verdict::Drop {
-                errno: Some("EPOLICY".to_string()),
+                errno: Some(Errno::Epolicy),
                 reason: "EPOLICY: policy-matrix denies this binary.".to_string(),
             }),
             UnifiedBuilderOutcome::Verdict(Verdict::Abort {

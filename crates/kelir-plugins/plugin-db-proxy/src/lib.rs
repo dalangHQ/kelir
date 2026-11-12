@@ -10,6 +10,7 @@ pub use service_db_proxy::SqlProxyService;
 
 use std::sync::Arc;
 
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     KelirPlugin, MountScope, NetInterposer, NoDeps, PipelineBinder, PluginDeps, StreamFrameSink,
@@ -213,10 +214,9 @@ impl StreamFrameSink for DbSqliteStreamSink {
         let mut frame = payload.to_vec();
         match self.bridge.on_client_bytes(stream_id, &mut frame)? {
             Verdict::Pass => Ok(()),
-            Verdict::Drop { errno, reason } => Err(PluginError::reject(
-                errno.unwrap_or_else(|| "EPERM".into()),
-                reason,
-            )),
+            Verdict::Drop { errno, reason } => {
+                Err(PluginError::reject(errno.unwrap_or(Errno::Eperm), reason))
+            }
             Verdict::Abort { reason } => Err(PluginError::Halt(reason)),
             _ => Err(PluginError::Halt(
                 "db-proxy stream suspend/patch verdict pending (L3)".into(),

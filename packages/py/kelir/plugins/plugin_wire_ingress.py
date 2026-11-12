@@ -47,7 +47,7 @@ class WireIngressConfig:
     backlog: BacklogConfig = field(default_factory=lambda: BacklogConfig(max_connections=256, overflow="reject-503"))
 
 
-class WireIngressPlugin(BasePlugin):
+class WireIngressPlugin(BasePlugin[None, None]):
     name = "wire-ingress"
 
     def __init__(self, config: WireIngressConfig | None = None) -> None:

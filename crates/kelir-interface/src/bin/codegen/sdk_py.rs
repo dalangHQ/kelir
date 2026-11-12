@@ -621,7 +621,10 @@ pub fn emit_py_module(proj: &Projection) -> Result<String, String> {
     }
     lines.push(String::new());
     lines.push(String::new());
-    lines.push(format!("class {}(BasePlugin):", krate.plugin_class));
+    lines.push(format!(
+        "class {}(BasePlugin[None, None]):",
+        krate.plugin_class
+    ));
     lines.push(format!("    name = \"{}\"", krate.plugin_class_name));
     lines.push(String::new());
     lines.push(format!(

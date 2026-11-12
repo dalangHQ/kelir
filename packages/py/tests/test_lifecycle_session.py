@@ -278,7 +278,7 @@ def test_load_native_bridge_raises_econfig_when_module_absent() -> None:
 
 
 def test_handler_context_shapes() -> None:
-    ctx = HandlerContext()
+    ctx: HandlerContext[None, None] = HandlerContext()
     assert ctx.trap == TrapEvent()
     assert ctx.trap.pid == 0
     assert ctx.ctx is None
@@ -287,7 +287,7 @@ def test_handler_context_shapes() -> None:
 
 
 def test_handler_context_verdict_convenience_constructs_canonical_verdicts() -> None:
-    ctx = HandlerContext()
+    ctx: HandlerContext[None, None] = HandlerContext()
     passed = ctx.pass_()
     assert (passed.kind, passed.payload) == (Verdict.pass_().kind, Verdict.pass_().payload)
     dropped = ctx.drop("EPERM", "denied here")
@@ -341,7 +341,7 @@ def _canonical_verdict_wire(verdict: Verdict) -> Any:
 
 
 def test_handler_context_verdict_convenience_matches_vectors_wire_literals() -> None:
-    ctx = HandlerContext()
+    ctx: HandlerContext[None, None] = HandlerContext()
     built = {
         "trap-git-commit-pass": _canonical_verdict_wire(ctx.pass_()),
         "trap-git-push-deny-epolicy": _canonical_verdict_wire(

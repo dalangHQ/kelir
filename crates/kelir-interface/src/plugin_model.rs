@@ -15,6 +15,7 @@ use crate::driver_interface::{
     BalloonConvergence, EntropyBackend, EntropyStreamPosition, PmuSampler, VmConfig, VmmDriver,
     VmmError, WatchdogAction, WatchdogEvent, WatchdogVerdict,
 };
+use crate::errno_types::Errno;
 pub use crate::handlers_plugin::{
     ConsoleContext, ExecContext, FsContext, HandlerCtx, Has, HostContext, NetContext,
 };
@@ -49,7 +50,7 @@ pub enum PluginError {
     #[error("Ambiguous mutation detected across plugins on resource '{resource}': {conflict}")]
     AmbiguousMutation { resource: String, conflict: String },
     #[error("{errno}: {reason}")]
-    Reject { errno: String, reason: String },
+    Reject { errno: Errno, reason: String },
     #[error("Internal I/O failure: {0}")]
     Io(#[from] std::io::Error),
     #[error("Plugin halted: {0}")]
@@ -111,9 +112,9 @@ impl PluginError {
         }
     }
 
-    pub fn reject(errno: impl Into<String>, reason: impl Into<String>) -> Self {
+    pub fn reject(errno: Errno, reason: impl Into<String>) -> Self {
         Self::Reject {
-            errno: errno.into(),
+            errno,
             reason: reason.into(),
         }
     }

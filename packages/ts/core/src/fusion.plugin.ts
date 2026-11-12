@@ -227,14 +227,19 @@ export interface NativeKelirBuilderBinding {
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
+export interface NativeKelirOptionsBinding {
+  readonly vcpus?: number;
+  readonly memoryMb?: number;
+  readonly kernel?: string;
+  readonly rootfsErofs?: string;
+  readonly tscLocked?: boolean;
+  readonly enableWatchdog?: boolean;
+  readonly driver?: string;
+}
+
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
 export interface NativeAddonBinding {
   readonly NativeKelirBuilder: new (
-    vcpus?: number,
-    memoryMb?: number,
-    kernel?: string,
-    rootfsErofs?: string,
-    tscLocked?: boolean,
-    enableWatchdog?: boolean,
-    driver?: string,
+    options?: NativeKelirOptionsBinding,
   ) => NativeKelirBuilderBinding;
 }
