@@ -178,7 +178,6 @@ async fn lc_02_suspend_zero_rss_purge() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/lifecycle_checkpoint/lc_09_graceful_shutdown_syncfs_flushed.yaml#case_id
 #[tokio::test]
-#[ignore]
 async fn lc_09_graceful_shutdown_syncfs_flushed() -> Result<(), String> {
     let fired = Arc::new(AtomicBool::new(false));
     let observer = Arc::clone(&fired);
