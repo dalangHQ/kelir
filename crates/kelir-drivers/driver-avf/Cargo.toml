@@ -3,6 +3,7 @@ name = "driver-avf"
 version = "1.0.0"
 edition = "2024"
 license = "FSL-1.1-Apache-2.0"
+publish = false
 
 [dependencies]
 kelir-interface = { path = "../../kelir-interface" }

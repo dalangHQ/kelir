@@ -3,6 +3,7 @@ name = "kelir-testkit"
 version = "0.1.0"
 edition = "2024"
 license = "FSL-1.1-Apache-2.0"
+publish = false
 authors = ["Kelir Contributors"]
 rust-version = "1.85"
 description = "Test plan verification harness: manifest parity checker, anti-slop linter, scenario tier validator, scorecard generator."

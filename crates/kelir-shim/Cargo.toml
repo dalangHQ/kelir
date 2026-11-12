@@ -3,6 +3,7 @@ name = "kelir-shim"
 version = "1.0.0"
 edition = "2024"
 license = "FSL-1.1-Apache-2.0"
+publish = false
 
 [dependencies]
 blake3 = { workspace = true }

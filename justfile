@@ -102,7 +102,8 @@ check-hygiene:
         echo "FAIL: Unsafe code detected outside driver/transport/shim enclaves:"
         echo "$unsafe_violations" && exit 1
     fi
-    echo "OK: All files <= 1000 LOC; zero inline tests in src/."
+    cargo deny check licenses
+    echo "OK: All files <= 1000 LOC; zero inline tests in src/; licenses ok."
 
 check-tiered:
     cargo check --profile dev-min --workspace --all-targets
