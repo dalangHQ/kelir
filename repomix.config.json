@@ -28,10 +28,10 @@
     }
   },
   "include": [
-  //      "AGENTS.md",
-     "cans/",
-  //     "crates",
-  //      "packages"
+        "AGENTS.md",
+//     "cans/",
+       "crates",
+        "packages"
   ],
   "ignore": {
     "useGitignore": true,
