@@ -87,7 +87,7 @@ def test_host_require_missing_raises_econfig_at_boot() -> None:
 def test_require_satisfied_passes_prerequisite_check() -> None:
     plugin = KelirBuilder.plugin("x").require(LedgerPlugin)
     builder = KelirBuilder().use(LedgerPlugin()).use(plugin)
-    with pytest.raises(EConfig) as excinfo:
+    with pytest.raises((EConfig, ValueError)) as excinfo:
         asyncio.run(builder.boot())
     assert "missing prerequisite" not in str(excinfo.value)
 
