@@ -96,7 +96,7 @@ state machine is gap → red → implemented, one direction only.
 
 | Implemented | Red | Gap |
 |---:|---:|---:|
-| 72 | 107 | 75 |
+| 73 | 106 | 75 |
 
 ## Hypervisor Performance Floor (Budgets)
 
