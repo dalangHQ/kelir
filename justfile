@@ -87,9 +87,15 @@ check-layers:
 check-budgets:
     cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
 
-# --maturity: filename level ∈ crate allowed_levels; the only gate for body maturity.
+# --maturity: filename level ∈ crate allowed_levels, forbid/structural
+# rules S1-S5 gated by [policy] forbid_mode, placement always hard.
 check-maturity:
-    cargo run -p kelir-maturity -- check
+    cargo run -p kelir-maturity -- check --strict
+
+# Same, plus the per-PR L2 delta budget (net-new .flow.rs files) against a
+# base ref. CI PRs pass the PR base; local default is origin/main.
+check-maturity-base base="origin/main":
+    cargo run -p kelir-maturity -- check --strict --base {{base}}
 
 panic-hunt:
     cargo nextest run -p kelir-engine --test panic_hunt
@@ -318,6 +324,19 @@ check-scenarios:
 # Run static AST linter enforcing Anti-Slop Laws AS-01 to AS-08
 check-tests:
     cargo run -p kelir-testkit --bin check-tests
+
+# Full governance gate sweep, cheap -> expensive. CI runs each step as its
+# own job; this recipe is the local equivalent of the whole gate matrix.
+check-all: check-maturity
+    cargo run -p kelir-plugin-cli -- check --layers
+    cargo run -p kelir-plugin-cli -- check --graph
+    cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
+    cargo run -p kelir-testkit --bin check-manifest
+    cargo run -p kelir-testkit --bin check-tests
+    cargo run -p kelir-testkit --bin check-scenarios
+    cargo run -p kelir-testkit --bin scorecard -- check
+    cargo run -p kelir-plugin-cli -- parity run
+    cargo run -p kelir-plugin-cli -- fixtures --verify
 
 # ── Codegen coherence pipeline (work-order-2: CI/CD Coherence Architecture) ──
 # SSOT flow: cans/*.md + artifacts -> kelir-interface (macros/schemas)

@@ -1,4 +1,3 @@
-// TODO (L3) [governance_tools]: read CaseEntry case_id/quadrant/title in the scorecard gate; slop: entry fields parsed but never read
 #![allow(dead_code)]
 // see: cans/15-operations.md#Coverage-gates
 use std::fs;
@@ -24,7 +23,6 @@ struct PlanMeta {
 struct DomainMeta {
     prefix: String,
     case_count: usize,
-    description: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -107,6 +105,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let manifest_raw = fs::read_to_string(&manifest_path)?;
     let manifest: Manifest = serde_yaml::from_str(&manifest_raw)?;
+
+    // see: cans/artifacts/test-plan/manifest.yaml#cases
+    let mut errors = 0;
+    for case in &manifest.cases {
+        if case.title.trim().is_empty() || case.title.starts_with("TODO") {
+            eprintln!(
+                "ERROR: {}: title is empty or a TODO placeholder",
+                case.case_id
+            );
+            errors += 1;
+        }
+    }
+    if errors > 0 {
+        eprintln!("Scorecard validation failed with {errors} errors.");
+        std::process::exit(1)
+    }
 
     let budgets_raw = fs::read_to_string(repo_root.join("perf/budgets.toml"))?;
     let budgets: Budgets = toml::from_str(&budgets_raw)?;
@@ -248,19 +262,37 @@ fn render_scorecard(
     ));
 
     out.push_str("## Domain Coverage Matrix\n\n");
-    out.push_str("| Domain | Prefix | Cases | Status | Scope Description |\n");
-    out.push_str("|---|---|---:|---|---|\n");
+    // see: cans/artifacts/test-plan/matrix.yaml#confusion_matrix.quadrants
+    out.push_str("| Domain | Prefix | Cases | TP | FP | FN | TN | Status |\n");
+    out.push_str("|---|---|---:|---:|---:|---:|---:|---|\n");
 
     for (name, domain) in &manifest.domains {
-        let domain_cases = manifest.cases.iter().filter(|c| &c.domain == name).count();
-        let status = if domain_cases == domain.case_count {
+        let domain_cases: Vec<&CaseEntry> = manifest
+            .cases
+            .iter()
+            .filter(|case| &case.domain == name)
+            .collect();
+        let count = |quadrant: &str| {
+            domain_cases
+                .iter()
+                .filter(|case| case.quadrant == quadrant)
+                .count()
+        };
+        let status = if domain_cases.len() == domain.case_count {
             "pass"
         } else {
             "drift"
         };
         out.push_str(&format!(
-            "| `{}` | `{}` | {} | {} | {} |\n",
-            name, domain.prefix, domain_cases, status, domain.description
+            "| `{}` | `{}` | {} | {} | {} | {} | {} | {} |\n",
+            name,
+            domain.prefix,
+            domain_cases.len(),
+            count("true_positive"),
+            count("false_positive"),
+            count("false_negative"),
+            count("true_negative"),
+            status
         ));
     }
 

@@ -3,19 +3,26 @@
 // see: cans/15-operations.md#Multi-language-parity-gate
 #[path = "fusion_codegen.flow.rs"]
 mod fusion_codegen;
+#[path = "merkle_codegen.flow.rs"]
 mod merkle_codegen;
 #[path = "model_codegen.flow.rs"]
 mod model_codegen;
 mod naming_codegen;
+#[path = "otlp_codegen.flow.rs"]
 mod otlp_codegen;
 #[path = "plugin_builder_codegen.flow.rs"]
 mod plugin_builder_codegen;
+#[path = "py_codegen.flow.rs"]
 mod py_codegen;
 #[path = "sdk_codegen.flow.rs"]
 mod sdk_codegen;
+#[path = "sdk_py.flow.rs"]
 mod sdk_py;
+#[path = "sdk_ts.flow.rs"]
 mod sdk_ts;
+#[path = "ts_codegen.flow.rs"]
 mod ts_codegen;
+#[path = "wire_codegen.flow.rs"]
 mod wire_codegen;
 
 use std::collections::HashSet;

@@ -15,6 +15,8 @@ use kelir_otlp::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfig};
 pub mod compute_ledger;
 #[path = "otel_ledger.flow.rs"]
 pub mod otel_ledger;
+#[path = "wal.run.rs"]
+pub mod wal;
 #[path = "wal_ledger.flow.rs"]
 pub mod wal_ledger;
 

@@ -52,7 +52,7 @@ struct MemberPackageToml {
 }
 
 // see: cans/02-plugin-model.md#Plugin-tiering
-fn tier_roster() -> Result<Vec<PluginManifest>, CliError> {
+pub(crate) fn tier_roster() -> Result<Vec<PluginManifest>, CliError> {
     let mut roster: Vec<PluginManifest> = Vec::new();
     for entry in fs::read_dir(plugin_dir()?)? {
         let dir = entry?.path();
@@ -110,7 +110,10 @@ fn forbidden_workspace_crates(plugins: &BTreeSet<&str>) -> Result<BTreeSet<Strin
     Ok(forbidden)
 }
 
-fn tier_of<'a>(roster: &'a [PluginManifest], crate_name: &str) -> Option<&'a PluginTier> {
+pub(crate) fn tier_of<'a>(
+    roster: &'a [PluginManifest],
+    crate_name: &str,
+) -> Option<&'a PluginTier> {
     roster
         .iter()
         .find(|plugin| plugin.tier.crate_name == crate_name)

@@ -1,0 +1,3 @@
+// see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+// TODO (L3) [gt_03_taint_tracking_mutation_suspend]: taint-gated approval for evaluate_tool_call: Suspend until Approval on mutating tools under tainted state, secret-pattern Drop ESecurityViolation, cyclic-rewrite ECYCLICREWRITE, ExecveMutation Patch serialization; slop: evaluate_tool_call keeps returning Ok(Pass), tainted mutation executes, secrets leak
+// TODO (L3) [gt_09_verdict_drop_jsonrpc_error_synthesis]: JSON-RPC 2.0 error object synthesis (code -32001) plus the approval suspend frame for dropped tool calls; slop: Suspend maps to Halt, connection closes, no -32001 framed error reaches the client

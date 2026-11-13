@@ -179,20 +179,18 @@ fn is_tautology(snippet: &str) -> bool {
 }
 
 // see: cans/artifacts/test-plan/case-to-test-map.yaml#harness_tests
-fn harness_exempt_files(repo_root: &Path) -> HashSet<String> {
+fn harness_exempt_files(repo_root: &Path) -> Result<HashSet<String>, String> {
     let map_path = repo_root.join("cans/artifacts/test-plan/case-to-test-map.yaml");
-    let Ok(raw) = fs::read_to_string(&map_path) else {
-        return HashSet::new();
-    };
-    // TODO (L3) [governance_tools]: fail closed when the typed map parse fails; check-manifest gates the file today.; slop: parse failure ignored, gate passes on stale map
-    let Ok(map) = serde_yaml::from_str::<CaseMap>(&raw) else {
-        return HashSet::new();
-    };
-    map.harness_tests
+    let raw = fs::read_to_string(&map_path)
+        .map_err(|e| format!("check-tests: cannot read {}: {e}", map_path.display()))?;
+    let map: CaseMap = serde_yaml::from_str(&raw)
+        .map_err(|e| format!("check-tests: cannot parse {}: {e}", map_path.display()))?;
+    Ok(map
+        .harness_tests
         .into_iter()
         .filter(|test| !test.file.is_empty())
         .map(|test| test.file)
-        .collect()
+        .collect())
 }
 
 fn is_vendor_entry(entry: &walkdir::DirEntry) -> bool {
@@ -308,7 +306,13 @@ fn main() -> ExitCode {
         yaml_cases: 0,
         yaml_snippets: 0,
     };
-    let harness_exempt = harness_exempt_files(&repo_root);
+    let harness_exempt = match harness_exempt_files(&repo_root) {
+        Ok(exempt) => exempt,
+        Err(err) => {
+            eprintln!("ERROR: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     let tests_dir = repo_root.join("crates");
     for entry in WalkDir::new(&tests_dir).into_iter().filter_map(|e| e.ok()) {

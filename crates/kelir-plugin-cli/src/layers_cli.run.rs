@@ -1,4 +1,5 @@
 // see: cans/15-operations.md#Coverage-gates
+// see: cans/02-plugin-model.md#Plugin-tiering
 use crate::cli_error::CliError;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,10 +20,39 @@ const RULES: &[(&str, &[&str])] = &[
 ];
 
 pub fn check() -> Result<(), CliError> {
-    // TODO (L3) [pe_01_downward_only_tier_dependency_lint]: enforce the per-tier plugin-to-plugin rule per cans/02-plugin-model.md#Plugin-tiering; the scan bans core/driver/adapter prefixes only.; slop: lint disabled, upward tier import passes
     let root = crate::workspace_root()?;
     for (path, forbidden) in RULES {
         check_dir(&root.join(path), forbidden)?;
+    }
+    // see: cans/02-plugin-model.md#Plugin-tiering
+    let roster = crate::audit_cli::tier_roster()?;
+    let mut violations = Vec::new();
+    for plugin in &roster {
+        for dep in &plugin.deps {
+            if let Some(dep_tier) = crate::audit_cli::tier_of(&roster, dep) {
+                if dep_tier.level >= plugin.tier.level {
+                    violations.push(format!(
+                        "layer violation: `{}` (tier {}) depends on `{}` (tier {}); dependencies must be downward-only",
+                        plugin.tier.crate_name, plugin.tier.level,
+                        dep_tier.crate_name, dep_tier.level,
+                    ));
+                }
+            }
+        }
+        for dep in &plugin.dev_deps {
+            if let Some(dep_tier) = crate::audit_cli::tier_of(&roster, dep) {
+                if dep_tier.level >= plugin.tier.level {
+                    violations.push(format!(
+                        "layer violation: `{}` (tier {}) dev-depends on `{}` (tier {}); dependencies must be downward-only",
+                        plugin.tier.crate_name, plugin.tier.level,
+                        dep_tier.crate_name, dep_tier.level,
+                    ));
+                }
+            }
+        }
+    }
+    if !violations.is_empty() {
+        return Err(violations.join("\n").into());
     }
     Ok(())
 }

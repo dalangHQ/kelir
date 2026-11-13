@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 fn print_line(s: &str) {
     use std::io::Write;
@@ -19,8 +19,15 @@ fn print_line(s: &str) {
 }
 
 fn usage() -> String {
-    "usage: kelir-maturity check [--root <dir>]\n       kelir-maturity list --level <L1|L2|L3> [--crate <name>]\n       kelir-maturity list --tag <slop-tag>\n       kelir-maturity emit --out <dir>"
-        .to_string()
+    [
+        "usage: kelir-maturity check [--root <dir>] [--strict] [--base <ref>]",
+        "       --strict: exit 1 on any failure; hard placement failures exit 1 either way",
+        "       --base <ref>: fail when net-new .flow.rs files vs <ref> exceed the policy budget",
+        "       kelir-maturity list --level <L1|L2|L3> [--crate <name>]",
+        "       kelir-maturity list --tag <slop-tag>",
+        "       kelir-maturity emit --out <dir>",
+    ]
+    .join("\n")
 }
 
 fn flag(args: &[String], name: &str) -> Option<String> {
@@ -72,8 +79,25 @@ fn cmd_check(args: &[String]) -> ExitCode {
     let root = flag(args, "--root")
         .map(PathBuf::from)
         .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let strict = args.iter().any(|a| a == "--strict");
     let policy = load_policy(&root);
-    let report = check_tree(&root, &policy);
+    let mut report = check_tree(&root, &policy);
+    if let Some(base) = flag(args, "--base") {
+        match l2_delta_flow_files(&root, &base) {
+            Ok(delta) => {
+                let max = policy.l2_max_delta_per_pr;
+                if max > 0 && delta > max as i64 {
+                    report.fails.push(format!(
+                        "L2 delta budget exceeded: {} net-new .flow.rs files vs {} (max {})",
+                        delta, base, max
+                    ));
+                }
+            }
+            Err(e) => {
+                report.fails.push(e);
+            }
+        }
+    }
     for fail in &report.fails {
         print_line(&format!("FAIL {}", fail));
     }
@@ -90,26 +114,65 @@ fn cmd_check(args: &[String]) -> ExitCode {
         *warn_counts.entry(id).or_insert(0) += 1;
     }
     for (id, n) in &warn_counts {
-        print_line(&format!(
-            "WARN {}: {} hits (content rule, warn-only this wave)",
-            id, n
-        ));
+        print_line(&format!("WARN {}: {} hits (warn-only this wave)", id, n));
     }
-    if report.passed() {
+    if report.fails.is_empty() {
         print_line(&format!(
-            "OK: {} files, 0 placement failures, {} content warnings",
+            "OK: {} files, 0 failures, {} warnings",
             report.files,
             report.warns.len()
         ));
         ExitCode::from(0)
+    } else if strict || report.hard_fails > 0 {
+        print_line(&format!(
+            "FAIL: {} failures in {} files ({} hard)",
+            report.fails.len(),
+            report.files,
+            report.hard_fails
+        ));
+        ExitCode::from(1)
     } else {
         print_line(&format!(
-            "FAIL: {} placement failures in {} files",
+            "FAIL: {} non-hard failures in {} files stay non-fatal without --strict",
             report.fails.len(),
             report.files
         ));
-        ExitCode::from(1)
+        ExitCode::from(0)
     }
+}
+
+fn l2_delta_flow_files(root: &Path, base: &str) -> Result<i64, String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .arg("diff")
+        .arg("--name-status")
+        .arg("--no-renames")
+        .arg(base)
+        .output()
+        .map_err(|e| format!("L2 delta: git diff vs {base} failed: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "L2 delta: git diff vs {base} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let mut delta: i64 = 0;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let mut parts = line.split('\t');
+        let (Some(status), Some(path)) = (parts.next(), parts.next()) else {
+            continue;
+        };
+        if !path.ends_with(".flow.rs") {
+            continue;
+        }
+        if status.starts_with('A') {
+            delta += 1;
+        } else if status.starts_with('D') {
+            delta -= 1;
+        }
+    }
+    Ok(delta)
 }
 
 fn cmd_list(args: &[String], root: &Path) -> ExitCode {

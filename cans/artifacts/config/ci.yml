@@ -598,8 +598,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: mozilla-actions/sccache-action@v0.0.5
-      - name: Check Body Maturity Placement
+      - name: Check Body Maturity (strict)
         run: just check-maturity
+      # L2 delta budget (net-new .flow.rs files per PR) vs the PR base.
+      # Push events have no base_ref; the strict step above still gates them.
+      - name: L2 delta budget vs PR base
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          cargo run -p kelir-maturity -- check --strict --base "origin/${{ github.base_ref }}"
 
   # ─── PLUGIN CONTRACT AUDIT ─────────────────────────────
   # Same command as `just check-plugin`. The audit that
