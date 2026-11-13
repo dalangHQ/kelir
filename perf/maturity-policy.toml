@@ -10,33 +10,45 @@
 [budget]
 L2_max_delta_per_pr = 20        # net new L2 files per PR, not net lines
 
-[[level.L1.forbid]]
-id = "impl-block"
-pattern = '^\s*impl\b'
-hint  = "L1 is contract: no impl blocks (derive attrs are fine)"
+# Phase-in: warn until the 477 legacy content-rule hits (201 impl-block,
+# 123 trait-object, 112 os-reach in drivers residue, testkit, interface
+# lib.rs, etc.) converge; the code default when this key is absent stays
+# "error" so nothing can silently weaken the gate.
+[policy]
+forbid_mode = "warn"
 
 [[level.L1.forbid]]
-id = "os-reach"
-pattern = '\b(libc|std::fs|std::net|std::process|std::os|tokio::fs|tokio::net|tokio::process|block_on)\b'
+id = "pe_20_l1_async"
+pattern = 'async fn .*\bimpl\b'
+hint  = "move to <Type>.flow.rs"
 
 [[level.L1.forbid]]
-id = "trait-object"
-pattern = '\bdyn\s+[A-Z]'
-hint  = "trait objects are wiring (L2), not contract (L1)"
+id = "pe_20_l1_spawn"
+pattern = 'std::thread::spawn|tokio::spawn'
+hint  = "move to <stem>.run.rs"
+
+[[level.L1.forbid]]
+id = "pe_20_l1_await"
+pattern = '\.await\b'
+hint  = "move to <stem>.flow.rs"
+
+[[level.L2.forbid]]
+id = "pe_20_l2_spawn"
+pattern = 'std::thread::spawn|#\[tokio::main\]'
+hint  = "move to <stem>.run.rs"
+
+# tokio::runtime::Builder stays out (same S3 deviation): the sanctioned
+# block_on utility crates/kelir-interface/src/runtime_block.flow.rs uses
+# Builder::new_current_thread per the carve-out note above.
+[[level.L2.forbid]]
+id = "pe_20_l2_runtime"
+pattern = 'tokio::runtime::Runtime::new'
+hint  = "move to <stem>.run.rs"
 
 [[level.L2.forbid]]
 id = "domain-trait-impl"
 pattern = '^\s*impl\s+(FuseOps|StorageIo|TerminalOps|NetOps|DnsOps|UdpNatOps|TrapInterposer|FsInterposer|NetInterposer|LifecycleParticipant|SystemTelemetryParticipant)\s+for\b'
 hint  = "domain trait impls are bodies (L3)"
-
-[[level.L2.forbid]]
-id = "os-reach"
-pattern = '\b(libc|std::fs|std::net|std::process|std::os)\b'
-
-[[level.L2.forbid]]
-id = "direct-impl-construct"
-pattern = '\bReal[A-Z]\w*::new\('
-hint  = "the seam must go through Arc<dyn Ops>, not the concrete type"
 
 [[level.L3.forbid]]
 id = "trait-decl"
@@ -47,6 +59,39 @@ hint  = "traits are contract (L1)"
 id = "interface-reexport"
 pattern = '^\s*pub\s+(use|mod)\b.*\b(Ops|Interposer|Participant|Handle)\b'
 hint  = "crate-level re-exports live in lib.rs (L2), not in bodies"
+
+[[level.L1.warn]]
+id = "impl-block"
+pattern = '^\s*impl\b'
+hint  = "L1 is contract: no impl blocks (derive attrs are fine)"
+# legacy: re-promote to forbid once the L1 impl-block residue is converged
+
+[[level.L1.warn]]
+id = "os-reach"
+pattern = '\b(libc|std::fs|std::net|std::process|std::os|tokio::fs|tokio::net|tokio::process|block_on)\b'
+# legacy: re-promote to forbid once the L1 os-reach residue is converged
+
+[[level.L1.warn]]
+id = "trait-object"
+pattern = '\bdyn\s+[A-Z]'
+hint  = "trait objects are wiring (L2), not contract (L1)"
+# legacy: re-promote to forbid once the L1 trait-object residue is converged
+
+[[level.L2.warn]]
+id = "os-reach"
+pattern = '\b(libc|std::fs|std::net|std::process|std::os)\b'
+# legacy: re-promote to forbid once the L2 os-reach residue is converged
+
+[[level.L2.warn]]
+id = "direct-impl-construct"
+pattern = '\bReal[A-Z]\w*::new\('
+hint  = "the seam must go through Arc<dyn Ops>, not the concrete type"
+# legacy: re-promote to forbid once the direct-impl-construct residue is converged
+
+[[level.L3.warn]]
+id = "pe_20_l3_todo"
+pattern = '// TODO \(L3\)'
+hint  = "L3 stubs are visible in `kelir-maturity list --level L3`"
 
 # advisory only — warn, do not fail
 [[level.L2.warn]]

@@ -19,7 +19,7 @@ fn print_line(s: &str) {
 }
 
 fn usage() -> String {
-    "usage: kelir-maturity check [--root <dir>]\n       kelir-maturity list --level <L1|L2|L3> [--crate <name>]\n       kelir-maturity list --tag <slop-tag>\n       kelir-maturity emit --out <dir>"
+    "usage: kelir-maturity check [--root <dir>] [--base <ref>] [--strict]\n       kelir-maturity list --level <L1|L2|L3> [--crate <name>]\n       kelir-maturity list --tag <slop-tag>\n       kelir-maturity emit --out <dir>"
         .to_string()
 }
 
@@ -72,10 +72,25 @@ fn cmd_check(args: &[String]) -> ExitCode {
     let root = flag(args, "--root")
         .map(PathBuf::from)
         .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let strict = args.iter().any(|a| a == "--strict");
     let policy = load_policy(&root);
-    let report = check_tree(&root, &policy);
-    for fail in &report.fails {
-        print_line(&format!("FAIL {}", fail));
+    let mut report = check_tree(&root, &policy);
+    if let Some(base) = flag(args, "--base") {
+        match l2_delta_files(&root, &base) {
+            Ok(delta) => {
+                let max = policy.l2_max_delta_per_pr;
+                if max > 0 && delta > max as u64 {
+                    report.fails.push(format!(
+                        "L2 delta budget exceeded: {} net new .flow.rs files vs {} (max {})",
+                        delta, base, max
+                    ));
+                }
+            }
+            Err(e) => report.fails.push(format!("L2 delta: {e}")),
+        }
+    }
+    for fail in report.fails.iter().chain(report.structural_fails.iter()) {
+        print_line(&format!("FAIL {fail}"));
     }
     let mut warn_counts: BTreeMap<String, usize> = BTreeMap::new();
     for warn in &report.warns {
@@ -90,10 +105,7 @@ fn cmd_check(args: &[String]) -> ExitCode {
         *warn_counts.entry(id).or_insert(0) += 1;
     }
     for (id, n) in &warn_counts {
-        print_line(&format!(
-            "WARN {}: {} hits (content rule, warn-only this wave)",
-            id, n
-        ));
+        print_line(&format!("WARN {}: {} hits (content rule, warn-only this wave)", id, n));
     }
     if report.passed() {
         print_line(&format!(
@@ -102,14 +114,57 @@ fn cmd_check(args: &[String]) -> ExitCode {
             report.warns.len()
         ));
         ExitCode::from(0)
-    } else {
+    } else if strict {
         print_line(&format!(
-            "FAIL: {} placement failures in {} files",
+            "FAIL: {} placement/content failures, {} structural failures in {} files (--strict)",
+            report.fails.len(),
+            report.structural_fails.len(),
+            report.files
+        ));
+        ExitCode::from(1)
+    } else if report.structural_fails.is_empty() {
+        print_line(&format!(
+            "FAIL: {} placement/content failures in {} files",
             report.fails.len(),
             report.files
         ));
         ExitCode::from(1)
+    } else {
+        print_line(&format!(
+            "FAIL: {} structural failures in {} files",
+            report.structural_fails.len(),
+            report.files
+        ));
+        ExitCode::from(1)
     }
+}
+
+fn l2_delta_files(root: &Path, base: &str) -> Result<u64, String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .arg("diff")
+        .arg("--name-status")
+        .arg(base)
+        .arg("--")
+        .arg("*.flow.rs")
+        .output()
+        .map_err(|e| format!("git diff failed: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git diff --name-status {base} failed (unresolvable ref?): {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let mut net_new = 0u64;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        if line.starts_with('A') {
+            net_new += 1;
+        } else if line.starts_with('D') {
+            net_new = net_new.saturating_sub(1);
+        }
+    }
+    Ok(net_new)
 }
 
 fn cmd_list(args: &[String], root: &Path) -> ExitCode {

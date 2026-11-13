@@ -8,6 +8,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+pub mod structure;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 pub enum Level {
     L1,
@@ -96,6 +98,8 @@ struct PolicyFile {
     #[serde(default)]
     budget: BudgetFile,
     #[serde(default)]
+    policy: ModeFile,
+    #[serde(default)]
     level: BTreeMap<String, LevelRulesFile>,
 }
 
@@ -103,6 +107,12 @@ struct PolicyFile {
 struct BudgetFile {
     #[serde(default, rename = "L2_max_delta_per_pr")]
     l2_max_delta_per_pr: u32,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ModeFile {
+    #[serde(default)]
+    forbid_mode: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -134,7 +144,24 @@ pub struct Rule {
 #[derive(Debug)]
 pub struct Policy {
     pub l2_max_delta_per_pr: u32,
+    pub forbid_mode: ForbidMode,
     pub rules: Vec<Rule>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForbidMode {
+    Warn,
+    Error,
+}
+
+impl ForbidMode {
+    pub fn from_name(name: &str) -> Option<ForbidMode> {
+        match name {
+            "warn" => Some(ForbidMode::Warn),
+            "error" => Some(ForbidMode::Error),
+            _ => None,
+        }
+    }
 }
 
 impl Policy {
@@ -156,8 +183,20 @@ impl Policy {
                 rules.push(rule(level, false, rf)?);
             }
         }
+        let forbid_mode = match file.policy.forbid_mode.as_deref() {
+            None => ForbidMode::Error,
+            Some(name) => match ForbidMode::from_name(name) {
+                Some(mode) => mode,
+                None => {
+                    return Err(format!(
+                        "policy.forbid_mode: invalid value `{name}` (expected \"warn\" or \"error\")"
+                    ))
+                }
+            },
+        };
         Ok(Policy {
             l2_max_delta_per_pr: file.budget.l2_max_delta_per_pr,
+            forbid_mode,
             rules,
         })
     }
@@ -165,6 +204,7 @@ impl Policy {
     pub fn empty() -> Policy {
         Policy {
             l2_max_delta_per_pr: 0,
+            forbid_mode: ForbidMode::Error,
             rules: Vec::new(),
         }
     }
@@ -195,11 +235,12 @@ pub struct CheckReport {
     pub files: usize,
     pub fails: Vec<String>,
     pub warns: Vec<String>,
+    pub structural_fails: Vec<String>,
 }
 
 impl CheckReport {
     pub fn passed(&self) -> bool {
-        self.fails.is_empty()
+        self.fails.is_empty() && self.structural_fails.is_empty()
     }
 }
 
@@ -262,12 +303,17 @@ pub fn check_tree(root: &Path, policy: &Policy) -> CheckReport {
         for r in policy.rules_for(level, true) {
             for (n, line) in src.lines().enumerate() {
                 if r.regex.is_match(line) {
-                    report.warns.push(format!(
-                        "{}:{}: {} (forbid, warn-only this wave)",
+                    let hit = format!(
+                        "{}:{}: [forbid:{}] {}",
                         file.display(),
                         n + 1,
-                        r.id
-                    ));
+                        r.id,
+                        r.hint.as_deref().unwrap_or("")
+                    );
+                    match policy.forbid_mode {
+                        ForbidMode::Error => report.fails.push(hit),
+                        ForbidMode::Warn => report.warns.push(hit),
+                    }
                 }
             }
         }
@@ -286,6 +332,7 @@ pub fn check_tree(root: &Path, policy: &Policy) -> CheckReport {
                 file.display()
             ));
         }
+        structure::check_file(&file, policy, &mut report);
     }
     report
 }
