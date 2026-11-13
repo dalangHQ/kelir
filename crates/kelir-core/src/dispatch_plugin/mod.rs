@@ -5,7 +5,7 @@ mod fs_dispatch;
 mod host_dispatch;
 mod lifecycle_dispatch;
 mod params_hydration;
-mod registration;
+mod plugin_registration;
 
 use std::future::Future;
 use std::pin::Pin;
