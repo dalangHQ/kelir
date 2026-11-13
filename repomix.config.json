@@ -28,8 +28,8 @@
     }
   },
   "include": [
-        "AGENTS.md",
-     "cans/",
+  //      "AGENTS.md",
+  //   "cans/",
        "crates",
         "packages"
   ],
