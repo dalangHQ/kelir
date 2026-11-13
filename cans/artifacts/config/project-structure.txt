@@ -37,31 +37,35 @@ kelir/
 │   │
 │   ├── kelir/                         # Facade crate: single Cargo dependency re-exporting kelir-engine + feature-gated kelir-plugins/*
 │   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs                 # Re-export surface: kelir-engine API (5 native planes) + optional feature-gated plugins
-│   │       ├── builder_sdk.rs             # KelirBuilder typestate (Unsealed/Sealed), plugin/terminal/storage/wire registration
-│   │       ├── driver_interface.rs              # Driver routing over kelir-interface VmmDriver
-│   │       ├── hlist_sdk.rs               # Heterogeneous plugin-context list
-│   │       ├── plugin_model.rs              # Facade plugin re-exports
-│   │       ├── protocol_wire.rs            # Facade protocol re-exports
-│   │       ├── sandbox_runtime.rs             # Sandbox entrypoint
-│   │       ├── session_lifecycle.rs             # Session assembly from builder parts
-│   │       ├── telemetry_attest.rs           # Facade telemetry re-exports
-│   │       ├── planes/
-│   │       │   ├── mod.rs
-│   │       │   ├── terminal_plane.rs        # Terminal plane facade
-│   │       │   ├── storage_plane.rs         # Storage plane facade
-│   │       │   └── wire_plane.rs            # Wire plane facade
-│   │       └── tests/
-│   │           └── profile_schema_parity_test.rs
-│   │       └── plugins/
-│   │           ├── mod.rs
-│   │           ├── plugin_chaos.rs           # plugin-chaos facade
-│   │           ├── plugin_ledger.rs          # plugin-ledger facade
-│   │           ├── plugin_mesh.rs            # plugin-mesh facade
-│   │           ├── plugin_replay.rs          # plugin-replay facade
-│   │           └── supply_chain.rs    # plugin-supply-chain facade
-│   │   # No tests/ dir: zero Rust test files in this crate
+│   │   ├── src/
+│   │   │   ├── lib.rs                 # Composition root: binds all nine Real*Ops; re-export surface: kelir-engine API (5 native planes) + optional feature-gated plugins
+│   │   │   ├── builder_sdk.rs             # KelirBuilder typestate (Unsealed/Sealed), plugin/terminal/storage/wire registration
+│   │   │   ├── builder_adapters.rs        # Closure adapters over the segregated ring traits
+│   │   │   ├── builder_plugin.rs          # Plugin-mode chain (KelirPlugin trait + ring traits)
+│   │   │   ├── builder_scopes.rs          # Scope builders for the fluent plugin-creation builder
+│   │   │   ├── hlist_sdk.rs               # Heterogeneous plugin-context list
+│   │   │   ├── plugin_model.rs              # Facade plugin re-exports
+│   │   │   ├── protocol_wire.rs            # Facade protocol re-exports
+│   │   │   ├── sandbox_runtime.rs             # Sandbox entrypoint
+│   │   │   ├── session_lifecycle.rs             # Session assembly from builder parts
+│   │   │   ├── telemetry_attest.rs           # Facade telemetry re-exports
+│   │   │   └── planes/
+│   │   │       ├── mod.rs
+│   │   │       ├── terminal_plane.rs        # Terminal plane facade
+│   │   │       ├── storage_plane.rs         # Storage plane facade
+│   │   │       └── wire_plane.rs            # Wire plane facade
+│   │   └── tests/
+│   │       ├── builder_chain_test.rs
+│   │       ├── composition_seal_test.rs     # Composition-root seal pins (unbound ops fail boot, bound FuseOps dispatches)
+│   │       ├── console_port0_pty_test.rs
+│   │       ├── exec_stream_terminal_test.rs
+│   │       ├── fluent_builder_plugin_test.rs
+│   │       ├── guest_exec_driver_test.rs
+│   │       ├── profile_schema_parity_test.rs
+│   │       ├── sandbox_profile_virtio_test.rs
+│   │       ├── session_lifecycle_test.rs
+│   │       ├── stream_kind_protocol_test.rs
+│   │       └── vcpu_scale_session_test.rs
 │   │
 │   ├── kelir-interface/               # Centralized leaf traits, wire framing, and context types
 │   │   ├── Cargo.toml                 # Dependencies: serde, blake3, ciborium, thiserror, async-trait, tokio
@@ -78,10 +82,10 @@ kelir/
 │   │   │   ├── vsock_mesh.rs               # Vsock addressing
 │   │   │   ├── wire/
 │   │   │   │   ├── mod.rs
-│   │   │   │   ├── net.rs                 # NetOps trait, frame classification, WireWiring
-│   │   │   │   ├── dns.rs                 # DnsOps trait, DnsQuery, DnsResponse, DnsRcode
+│   │   │   │   ├── net_ops.rs             # NetOps trait, frame classification, WireWiring (#[path] keeps module name net)
+│   │   │   │   ├── dns_ops.rs             # DnsOps trait, DnsQuery, DnsResponse, DnsRcode (#[path] keeps module name dns)
 │   │   │   │   ├── udp_nat.rs             # UdpNatOps trait, UdpNatEntry, NAT slab constants
-│   │   │   │   └── l4.rs                  # L4DivertOps trait, L4Stream
+│   │   │   │   └── l4_ops.rs              # L4DivertOps trait, L4Stream (#[path] keeps module name l4)
 │   │   │   ├── telemetry/
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── delta_attest.rs           # CausalDelta
@@ -97,7 +101,10 @@ kelir/
 │   │   │       └── codegen/           # Native codegen: TS/PY SDK types, fusion tables, wire consts, Merkle, OTLP
 │   │   │           └── plugin_builder_codegen.rs # Per-plugin fluent-builder wrapper factories (TS registry + Py modules)
 │   │   └── tests/
-│   │       └── clock_reject_interface_test.rs
+│   │       ├── causal_delta_hex_test.rs
+│   │       ├── clock_reject_interface_test.rs
+│   │       ├── errno_serde_test.rs
+│   │       └── error_envelope_mapping_test.rs
 │   │
 │   ├── kelir-engine/                    # In-process stripped microkernel
 │   │   ├── Cargo.toml
@@ -116,9 +123,17 @@ kelir/
 │   │       │   ├── host/mod.rs        # Host Plane façade: delegates to kelir-host RealHostOps (pressure.run.rs, balloon.run.rs, reaper.run.rs)
 │   │       │   └── checkpoint/mod.rs  # Checkpoint Plane façade: delegates to kelir-checkpoint RealCheckpointOps (manifest_graph.run.rs, step_slot.run.rs, compaction.run.rs)
 │   │       ├── bus/mod.rs             # VirtIO Device Multiplexer (vsock, console, fs, net) over kelir-transport
-│   │       ├── dispatch_plugin.rs            # Static dispatch array & ArcSwap pipeline runner
+│   │       ├── dispatch_plugin/            # Static dispatch array & ArcSwap pipeline runner
+│   │       │   ├── mod.rs
+│   │       │   ├── console_dispatch.rs
+│   │       │   ├── fs_dispatch.rs
+│   │       │   ├── host_dispatch.rs
+│   │       │   ├── lifecycle_dispatch.rs
+│   │       │   ├── params_hydration.rs
+│   │       │   └── plugin_registration.rs
 │   │       ├── plugin_registry.rs     # Plugin registration and ordering
 │   │       ├── session_lifecycle.rs             # Session lifecycle assembly
+│   │       ├── session_support.rs               # NullDriver, mint_uuid_v7, workspace quota consts
 │   │       ├── trap_gate.rs           # Filter-before-FFI trampoline & entropy analyzer
 │   │       ├── uart_terminal.rs                # Early-boot UART scrape
 │   │       └── vmm/mod.rs             # Driver orchestration
@@ -131,11 +146,14 @@ kelir/
 │   │       ├── panic_hunt.rs          # Harness panic probe (map harness_tests exception)
 │   │       ├── receipt_attest_test.rs
 │   │       ├── storage_fuse_test.rs
+│   │       ├── storage_lock_broker_test.rs
 │   │       ├── storage_reconciler_test.rs
+│   │       ├── trap_dispatch_fused_test.rs  # Fused-trap half split from trap_dispatch_protocol_test.rs (LOC split)
 │   │       ├── trap_dispatch_protocol_test.rs
 │   │       ├── uart_boot_terminal_test.rs
 │   │       ├── wire_dns_gateway_test.rs
-│   │       └── wire_l4_diversion_test.rs
+│   │       ├── wire_l4_diversion_test.rs
+│   │       └── wire_scope_test.rs           # Mount-scope net-filter dispatch (WO3-C6)
 │   │
 │   ├── kelir-terminal/                # Terminal plane: RealTerminalOps (VT100 grid, token shield, log segments)
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp
@@ -207,7 +225,7 @@ kelir/
 │   │   │   ├── bin/
 │   │   │       ├── anchors_testkit.rs         # Spec anchor index generator (committed anchors.json)
 │   │   │       ├── check_manifest.rs  # Manifest-disk parity, law_reference and platform_target checks
-│   │   │       ├── check_tests.rs     # Anti-slop AST linter: AS-01..AS-08 + filename grammar NG-01..03
+│   │   │       ├── check_tests.rs     # Anti-slop AST linter: AS-01..AS-08 + filename grammar NG-01..NG-07
 │   │   │       ├── check_scenarios.rs # Scenario tier gate: ref resolution, assert substrings, plane-pair coverage
 │   │   │       └── scorecard_testkit.rs       # Scorecard generator and verification gate
 │   │
@@ -217,7 +235,7 @@ kelir/
 │   │   │   ├── lib.rs                 # level_of, crate_of, read_allowed_levels, Policy::from_toml
 │   │   │   └── main.rs                # check, list, emit subcommands
 │   │   └── tests/
-│   │       └── check_test.rs          # One passing tree, one failing tree per rule
+│   │       └── maturity_check_test.rs   # level_of, placement, content-rule warns, L3 TODO warns on prepared stubs
 │   │
 │   ├── kelir-storage/                 # Storage L3 impls (RealFuseOps, Reconciler, LockBroker); .run.rs stubs
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-storage-io, kelir-otlp, libc
