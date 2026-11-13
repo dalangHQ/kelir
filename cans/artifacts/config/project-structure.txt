@@ -209,10 +209,10 @@ kelir/
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, async-trait, tokio, ciborium, serde, serde_json
 │   │   ├── src/
 │   │   │   ├── lib.rs
-│   │   │   ├── handlers_testkit.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
+│   │   │   ├── handlers_testkit.run.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
 │   │   │   ├── fixtures_testkit.rs            # Synthetic PTY streams, broker upper files, synthetic configs
 │   │   │   ├── assertions_testkit.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
-│   │   │   └── vectors_testkit.rs             # vectors.json fixture loading
+│   │   │   └── vectors_testkit.flow.rs             # vectors.json fixture loading
 │   │   └── tests/
 │   │       └── wire_frame_decode_test.rs
 │   │
@@ -220,14 +220,14 @@ kelir/
 │   │   ├── Cargo.toml                 # Depends on serde, serde_yaml, toml, walkdir
 │   │   ├── src/
 │   │   │   ├── lib.rs
-│   │   │   ├── spec_anchors.rs        # Spec heading/anchor extraction shared by the gates
-│   │   │   ├── scenario_catalog.rs    # Scenario tier model shared by the gates: loading, plane map, composition
+│   │   │   ├── spec_anchors.run.rs        # Spec heading/anchor extraction shared by the gates
+│   │   │   ├── scenario_catalog.run.rs    # Scenario tier model shared by the gates: loading, plane map, composition
 │   │   │   ├── bin/
-│   │   │       ├── anchors_testkit.rs         # Spec anchor index generator (committed anchors.json)
-│   │   │       ├── check_manifest.rs  # Manifest-disk parity, law_reference and platform_target checks
-│   │   │       ├── check_tests.rs     # Anti-slop AST linter: AS-01..AS-08 + filename grammar NG-01..NG-07
-│   │   │       ├── check_scenarios.rs # Scenario tier gate: ref resolution, assert substrings, plane-pair coverage
-│   │   │       └── scorecard_testkit.rs       # Scorecard generator and verification gate
+│   │   │       ├── anchors_testkit.run.rs         # Spec anchor index generator (committed anchors.json)
+│   │   │       ├── check_manifest.run.rs  # Manifest-disk parity, law_reference and platform_target checks
+│   │   │       ├── check_tests.run.rs     # Anti-slop AST linter: AS-01..AS-08 + filename grammar NG-01..NG-07
+│   │   │       ├── check_scenarios.run.rs # Scenario tier gate: ref resolution, assert substrings, plane-pair coverage
+│   │   │       └── scorecard_testkit.run.rs       # Scorecard generator and verification gate
 │   │
 │   ├── kelir-maturity/                # Maturity checker: filename level ∈ crate allowed_levels
 │   │   ├── Cargo.toml                 # Depends on serde, toml, regex, walkdir
@@ -401,20 +401,20 @@ kelir/
 │   │   ├── src/
 │   │       ├── main.rs                # Subcommand dispatch
 │   │       ├── attach_cli.rs              # Session attach
-│   │       ├── doctor_cli.rs              # Consumer probes: KVM/HVF, kernel, EROFS
-│   │       ├── audit_cli.rs               # Same audit as CI
-│   │       ├── vectors_cli.rs             # Regenerate vectors.json from testkit fixtures
+│   │       ├── doctor_cli.run.rs              # Consumer probes: KVM/HVF, kernel, EROFS
+│   │       ├── audit_cli.run.rs               # Same audit as CI
+│   │       ├── vectors_cli.run.rs             # Regenerate vectors.json from testkit fixtures
 │   │       ├── registry_cli.rs            # Registry attestation and verification commands
-│   │       ├── layers_cli.rs              # Downward-only crate dependency validator
-│   │       ├── budgets_cli.rs             # Hard performance budget validator
-│   │       ├── fixtures_cli.rs            # Content-addressed test oracle fetcher and validator
-│   │       ├── setup_cli.rs               # kelir setup: host hardening, shims, LSM, hw-lock
-│   │       ├── spec_cli.rs                # kelir spec check/export: AOT profile validation, canonical emit
+│   │       ├── layers_cli.run.rs              # Downward-only crate dependency validator
+│   │       ├── budgets_cli.run.rs             # Hard performance budget validator
+│   │       ├── fixtures_cli.run.rs            # Content-addressed test oracle fetcher and validator
+│   │       ├── setup_cli.flow.rs               # kelir setup: host hardening, shims, LSM, hw-lock
+│   │       ├── spec_cli.run.rs                # kelir spec check/export: AOT profile validation, canonical emit
 │   │       ├── scaffold_cli.rs            # plugin new: scaffold crate, trait stubs, empty vectors
 │   │       ├── manifest_cli.rs            # plugin manifest: auto-generated manifest from AST
-│   │       ├── rings_cli.rs               # plugin rings --show: ring inventory and masks
-│   │       ├── graph_cli.rs               # plugin graph: dependency DAG validation
-│   │       ├── parity_cli.rs              # Parity runner: vectors + AST surface diff
+│   │       ├── rings_cli.run.rs               # plugin rings --show: ring inventory and masks
+│   │       ├── graph_cli.run.rs               # plugin graph: dependency DAG validation
+│   │       ├── parity_cli.run.rs              # Parity runner: vectors + AST surface diff
 │   │       └── logs_cli.rs                # kelir logs: tail session output with cursor replay
 │   │   └── tests/
 │   │       └── cli_governance_test.rs

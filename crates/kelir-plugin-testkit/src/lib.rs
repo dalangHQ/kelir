@@ -3,9 +3,12 @@
 
 pub mod assertions_testkit;
 pub mod fixtures_testkit;
+#[path = "handlers_testkit.run.rs"]
 pub mod handlers_testkit;
 pub mod vectors_chain_testkit;
+#[path = "vectors_parse.flow.rs"]
 pub mod vectors_parse;
+#[path = "vectors_testkit.flow.rs"]
 pub mod vectors_testkit;
 
 pub use kelir_interface::runtime_block::block_on;

@@ -11,23 +11,23 @@ autobins = false
 
 [[bin]]
 name = "check-manifest"
-path = "src/bin/check_manifest.rs"
+path = "src/bin/check_manifest.run.rs"
 
 [[bin]]
 name = "anchors"
-path = "src/bin/anchors_testkit.rs"
+path = "src/bin/anchors_testkit.run.rs"
 
 [[bin]]
 name = "check-tests"
-path = "src/bin/check_tests.rs"
+path = "src/bin/check_tests.run.rs"
 
 [[bin]]
 name = "check-scenarios"
-path = "src/bin/check_scenarios.rs"
+path = "src/bin/check_scenarios.run.rs"
 
 [[bin]]
 name = "scorecard"
-path = "src/bin/scorecard_testkit.rs"
+path = "src/bin/scorecard_testkit.run.rs"
 
 [dependencies]
 serde = { workspace = true }
