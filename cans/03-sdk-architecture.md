@@ -74,6 +74,8 @@
           - Wire: session.wire.forward_port(guest_port, host_port)
             - Returns Result<u16, WireError> with allocated port
           - Checkpoint: session.checkpoint.create(label), session.rollback()
+          - Composition root binds the plane bodies: crates/kelir constructs every Real*Ops and passes it in PlaneWiring; boot fails closed on any unbound required slot (TerminalOps, CheckpointOps, HostOps, NetOps, DnsOps, UdpNatOps, L4DivertOps, StorageIo)
+          - FuseOps and ReconcilerOps ride PlaneWiring as optional slots: FuseOps needs Arc<PipelineEngine> while Session owns the engine by value, and the Reconciler needs a broker_dir the host broker journal has not anchored yet; an unbound FuseOps leaves the session with no FUSE dispatcher, and StoragePlane::reconcile fails closed without a Reconciler
         - Plugin extension pattern
         - Optional domain plugins attach via typed extensions
         - Rust: session.ctx::<T>() infallible via `Session<Plugins, Params>`

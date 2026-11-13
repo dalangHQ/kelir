@@ -853,11 +853,28 @@ impl PyKelirBuilder {
         }
         // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
+        // see: cans/01-architecture.md#Host-runtime
+        let metrics = Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+        let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> =
+            Arc::new(kelir_wire::RealDnsOps::new());
+        // TODO (L3) [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
+        // TODO (L3) [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
         let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
             terminal: self.terminal_wiring.clone(),
-            terminal_ops: None,
-            checkpoint_ops: None,
-            host_ops: None,
+            terminal_ops: Some(Arc::new(kelir_terminal::RealTerminalOps::new(
+                metrics.clone(),
+            ))),
+            checkpoint_ops: Some(Arc::new(kelir_checkpoint::RealCheckpointOps::new(
+                metrics.clone(),
+            ))),
+            host_ops: Some(Arc::new(kelir_host::RealHostOps::new(metrics.clone()))),
+            net_ops: Some(Arc::new(kelir_wire::RealNetOps::new(Arc::clone(&dns_ops)))),
+            dns_ops: Some(dns_ops),
+            udp_nat_ops: Some(Arc::new(kelir_wire::RealUdpNatOps::new())),
+            l4_ops: Some(Arc::new(kelir_wire::RealL4DivertOps::new())),
+            storage_io: Some(Arc::new(kelir_storage_io::RealStorageIo)),
+            reconciler: None,
+            fuse_ops: None,
             wire: self.wire_wiring.clone(),
             storage: self.storage_config.config.clone(),
         };

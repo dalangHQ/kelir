@@ -158,6 +158,22 @@ impl WirePlane {
         }
     }
 
+    pub fn ops(
+        &self,
+    ) -> (
+        Arc<dyn NetOps>,
+        Arc<dyn DnsOps>,
+        Arc<dyn UdpNatOps>,
+        Arc<dyn L4DivertOps>,
+    ) {
+        (
+            Arc::clone(&self.net_ops),
+            Arc::clone(&self.dns_ops),
+            Arc::clone(&self.udp_nat_ops),
+            Arc::clone(&self.l4_ops),
+        )
+    }
+
     // see: cans/07-wire-plane.md#DNS-policy-filter
     // TODO (L3) [wire_plane]: the ssh agent bridge mounts, vault placeholders hydrate, and l4 proxies open host listeners; slop: agent bridge unmounted, placeholders dry, listeners closed
     pub fn with_wiring(self, wiring: WireWiring) -> Self {

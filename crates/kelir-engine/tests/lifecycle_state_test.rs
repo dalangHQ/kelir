@@ -15,12 +15,19 @@ use kelir_interface::plugin_model::{LifecycleCtx, PluginError, VetoList};
 
 fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
     let metrics = || Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+    let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> =
+        Arc::new(kelir_wire::RealDnsOps::new());
     kelir_engine::session_lifecycle::PlaneWiring {
         terminal_ops: Some(Arc::new(kelir_terminal::RealTerminalOps::new(metrics()))),
         checkpoint_ops: Some(Arc::new(
             kelir_checkpoint::RealCheckpointOps::new(metrics()),
         )),
         host_ops: Some(Arc::new(kelir_host::RealHostOps::new(metrics()))),
+        net_ops: Some(Arc::new(kelir_wire::RealNetOps::new(Arc::clone(&dns_ops)))),
+        dns_ops: Some(dns_ops),
+        udp_nat_ops: Some(Arc::new(kelir_wire::RealUdpNatOps::new())),
+        l4_ops: Some(Arc::new(kelir_wire::RealL4DivertOps::new())),
+        storage_io: Some(Arc::new(kelir_storage_io::RealStorageIo)),
         ..Default::default()
     }
 }

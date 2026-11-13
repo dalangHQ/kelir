@@ -146,6 +146,7 @@
   - Core invariants
     - The closed set of core primitives
     - Interposition is total: every device channel is hooked
+    - kelir-engine names no Real*Ops type; only crates/kelir binds the plane bodies (composition root)
     - Interposition verdict model: see: 02-plugin-model.md#Unified-verdict
     - Trait definitions
       - Low-footprint preset contract: see: #Embedded-profile
@@ -252,6 +253,8 @@
     - TypeScript consumer: @kelir/core via in-process NAPI-RS
     - Python consumer: kelir via PyO3
     - kelir-engine: stripped microkernel (BusDispatcher, PipelineEngine, EventBus, DriverRouter)
+    - kelir-storage, kelir-storage-io, kelir-wire, kelir-terminal, kelir-checkpoint, kelir-host: plane bodies (RealFuseOps, RealStorageIo, RealNetOps, RealDnsOps, RealUdpNatOps, RealL4DivertOps, RealTerminalOps, RealCheckpointOps, RealHostOps); kelir-engine holds only the L2 façades
+    - Composition root: crates/kelir binds every Real*Ops; see: 03-sdk-architecture.md#Native-Engine-Planes-on-Session
     - PipelineEngine: compiles inline interceptors into indexed contiguous tables
     - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
   - Host state root

@@ -949,11 +949,28 @@ impl NativeKelirBuilder {
             Some(cfg) => storage_config(cfg)?,
             None => kelir_engine::planes::storage::StorageConfig::default(),
         };
+        // see: cans/01-architecture.md#Host-runtime
+        let metrics = Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+        let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> =
+            Arc::new(kelir_wire::RealDnsOps::new());
+        // TODO (L3) [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
+        // TODO (L3) [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
         Ok(kelir_engine::session_lifecycle::PlaneWiring {
             terminal,
-            terminal_ops: None,
-            checkpoint_ops: None,
-            host_ops: None,
+            terminal_ops: Some(Arc::new(kelir_terminal::RealTerminalOps::new(
+                metrics.clone(),
+            ))),
+            checkpoint_ops: Some(Arc::new(kelir_checkpoint::RealCheckpointOps::new(
+                metrics.clone(),
+            ))),
+            host_ops: Some(Arc::new(kelir_host::RealHostOps::new(metrics.clone()))),
+            net_ops: Some(Arc::new(kelir_wire::RealNetOps::new(Arc::clone(&dns_ops)))),
+            dns_ops: Some(dns_ops),
+            udp_nat_ops: Some(Arc::new(kelir_wire::RealUdpNatOps::new())),
+            l4_ops: Some(Arc::new(kelir_wire::RealL4DivertOps::new())),
+            storage_io: Some(Arc::new(kelir_storage_io::RealStorageIo)),
+            reconciler: None,
+            fuse_ops: None,
             wire,
             storage,
         })

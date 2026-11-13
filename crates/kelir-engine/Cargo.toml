@@ -10,7 +10,6 @@ kelir-interface = { path = "../kelir-interface" }
 kelir-transport = { path = "../kelir-transport" }
 kelir-otlp = { path = "../kelir-otlp" }
 kelir-catalog = { path = "../kelir-catalog" }
-kelir-storage-io = { path = "../kelir-storage-io" }
 serde = { workspace = true }
 toml = { workspace = true }
 ciborium = { workspace = true }
@@ -35,4 +34,4 @@ kelir-host = { path = "../kelir-host" }
 workspace = true
 
 [package.metadata.kelir]
-allowed_levels = ["L1", "L2", "L3"]
+allowed_levels = ["L1", "L2"]

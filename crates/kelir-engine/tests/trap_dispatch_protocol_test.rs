@@ -47,20 +47,27 @@ fn boot_config() -> kelir_interface::driver_interface::VmConfig {
 
 fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
     let metrics = || Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+    let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> =
+        Arc::new(kelir_wire::RealDnsOps::new());
     kelir_engine::session_lifecycle::PlaneWiring {
         terminal_ops: Some(Arc::new(kelir_terminal::RealTerminalOps::new(metrics()))),
-        checkpoint_ops: Some(Arc::new(kelir_checkpoint::RealCheckpointOps::new(
-            metrics(),
-        ))),
+        checkpoint_ops: Some(Arc::new(
+            kelir_checkpoint::RealCheckpointOps::new(metrics()),
+        )),
         host_ops: Some(Arc::new(kelir_host::RealHostOps::new(metrics()))),
+        net_ops: Some(Arc::new(kelir_wire::RealNetOps::new(Arc::clone(&dns_ops)))),
+        dns_ops: Some(dns_ops),
+        udp_nat_ops: Some(Arc::new(kelir_wire::RealUdpNatOps::new())),
+        l4_ops: Some(Arc::new(kelir_wire::RealL4DivertOps::new())),
+        storage_io: Some(Arc::new(kelir_storage_io::RealStorageIo)),
         ..Default::default()
     }
 }
 
 fn checkpoint_plane() -> Arc<CheckpointPlane> {
-    Arc::new(CheckpointPlane::new(Arc::new(RealCheckpointOps::new(Arc::new(
-        kelir_otlp::registry_otlp::MetricRegistry::new(),
-    )))))
+    Arc::new(CheckpointPlane::new(Arc::new(RealCheckpointOps::new(
+        Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
+    ))))
 }
 
 struct DropTrap;
@@ -349,14 +356,9 @@ fn pe_10_immutable_dispatch_table_post_seal() -> Result<(), String> {
         Err(e) => return Err(format!("second seal gave wrong error: {e}")),
         Ok(()) => return Err("second seal succeeded".to_string()),
     }
-    let mut session = Session::boot_with_plugins(
-        boot_config(),
-        &[],
-        None,
-        Vec::new(),
-        plane_wiring(),
-    )
-    .map_err(|e| e.to_string())?;
+    let mut session =
+        Session::boot_with_plugins(boot_config(), &[], None, Vec::new(), plane_wiring())
+            .map_err(|e| e.to_string())?;
     assert!(!session.pipeline().is_sealed());
     session.pipeline_mut().seal().map_err(|e| e.to_string())?;
     assert!(session.pipeline().is_sealed());

@@ -706,9 +706,15 @@ dependencies = [
  "async-trait",
  "ciborium",
  "kelir-catalog",
+ "kelir-checkpoint",
  "kelir-engine",
+ "kelir-host",
  "kelir-interface",
  "kelir-otlp",
+ "kelir-storage",
+ "kelir-storage-io",
+ "kelir-terminal",
+ "kelir-wire",
  "plugin-chaos",
  "plugin-container",
  "plugin-db-proxy",
@@ -830,8 +836,15 @@ dependencies = [
 name = "kelir-napi"
 version = "1.0.0"
 dependencies = [
+ "kelir-checkpoint",
  "kelir-engine",
+ "kelir-host",
  "kelir-interface",
+ "kelir-otlp",
+ "kelir-storage",
+ "kelir-storage-io",
+ "kelir-terminal",
+ "kelir-wire",
  "napi",
  "napi-build",
  "napi-derive",
@@ -894,8 +907,15 @@ dependencies = [
 name = "kelir-pyo3"
 version = "1.0.0"
 dependencies = [
+ "kelir-checkpoint",
  "kelir-engine",
+ "kelir-host",
  "kelir-interface",
+ "kelir-otlp",
+ "kelir-storage",
+ "kelir-storage-io",
+ "kelir-terminal",
+ "kelir-wire",
  "pyo3",
  "serde_json",
 ]

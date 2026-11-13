@@ -24,12 +24,32 @@ pub struct PlaneWiring {
     pub terminal_ops: Option<Arc<dyn kelir_interface::terminal::TerminalOps>>,
     pub checkpoint_ops: Option<Arc<dyn kelir_interface::checkpoint::CheckpointOps>>,
     pub host_ops: Option<Arc<dyn kelir_interface::host::HostOps>>,
+    pub net_ops: Option<Arc<dyn kelir_interface::wire::net::NetOps>>,
+    pub dns_ops: Option<Arc<dyn kelir_interface::wire::dns::DnsOps>>,
+    pub udp_nat_ops: Option<Arc<dyn kelir_interface::wire::udp_nat::UdpNatOps>>,
+    pub l4_ops: Option<Arc<dyn kelir_interface::wire::l4::L4DivertOps>>,
+    pub storage_io: Option<Arc<dyn kelir_interface::storage::StorageIo>>,
+    pub reconciler: Option<Arc<dyn kelir_interface::storage::ReconcilerOps>>,
+    pub fuse_ops: Option<Arc<dyn kelir_interface::storage::FuseOps>>,
     pub wire: Option<kelir_interface::wire::net::WireWiring>,
     pub storage: crate::planes::storage::StorageConfig,
 }
 
 // see: cans/03-sdk-architecture.md#Params-typed-views
 type ExecParamsStore = Arc<std::sync::RwLock<std::collections::HashMap<(u64, u8), Vec<u8>>>>;
+
+// see: cans/01-architecture.md#Host-runtime
+fn required_ops<T>(
+    slot: Option<T>,
+    ops: &str,
+    field: &str,
+) -> Result<T, kelir_interface::plugin_model::PluginError> {
+    slot.ok_or_else(|| {
+        kelir_interface::plugin_model::PluginError::Halt(format!(
+            "{ops} unbound at boot; bind via PlaneWiring::{field}"
+        ))
+    })
+}
 
 pub struct Session {
     pub terminal: Arc<crate::planes::terminal::TerminalPlane>,
@@ -40,6 +60,7 @@ pub struct Session {
     terminal_ops: Arc<dyn kelir_interface::terminal::TerminalOps>,
     checkpoint_ops: Arc<dyn kelir_interface::checkpoint::CheckpointOps>,
     host_ops: Arc<dyn kelir_interface::host::HostOps>,
+    fuse_ops: Option<Arc<dyn kelir_interface::storage::FuseOps>>,
     metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     uart: crate::uart_terminal::UartRingBuffer,
     driver: Option<Arc<tokio::sync::Mutex<Box<dyn kelir_interface::driver_interface::VmmDriver>>>>,
@@ -318,6 +339,21 @@ impl Session {
         bind_engine_stream_sinks(&self.engine, self.owned_bus.dispatcher())
     }
 
+    // see: cans/05-storage-plane.md#Storage-architecture
+    pub fn dispatch_fuse(
+        &self,
+        request: &mut kelir_interface::storage::FuseRequest,
+        ctx: &kelir_interface::plugin_model::HandlerCtx,
+    ) -> Result<kelir_interface::storage::FuseResponse, kelir_interface::plugin_model::PluginError>
+    {
+        let Some(ops) = self.fuse_ops.as_ref() else {
+            return Err(kelir_interface::plugin_model::PluginError::Halt(
+                "FuseOps unbound at boot; bind via PlaneWiring::fuse_ops".into(),
+            ));
+        };
+        crate::planes::storage::fuse::FuseDispatcher::new(Arc::clone(ops)).dispatch(request, ctx)
+    }
+
     pub fn set_detached(&mut self, detached: bool) {
         self.detached = detached;
     }
@@ -421,43 +457,45 @@ impl Session {
         register_catalog_row(session_id, incarnation_id)?;
         // see: cans/01-architecture.md#Host-state-root
         let workspace_root = ensure_workspace_root(&session_id)?;
-        let storage = crate::planes::storage::StoragePlane::new(
+        let terminal_ops = required_ops(plane_wiring.terminal_ops, "TerminalOps", "terminal_ops")?;
+        let checkpoint_ops = required_ops(
+            plane_wiring.checkpoint_ops,
+            "CheckpointOps",
+            "checkpoint_ops",
+        )?;
+        let host_ops = required_ops(plane_wiring.host_ops, "HostOps", "host_ops")?;
+        let storage_io = required_ops(plane_wiring.storage_io, "StorageIo", "storage_io")?;
+        let mut storage = crate::planes::storage::StoragePlane::new(
             workspace_root.clone(),
             workspace_root.join("upper.img"),
             DEFAULT_WORKSPACE_QUOTA_BYTES,
             DEFAULT_WORKSPACE_QUOTA_INODES,
         )
         .with_synthetic_files(synthetic_files)
-        .with_wiring(plane_wiring.storage);
+        .with_wiring(plane_wiring.storage)
+        .with_io(storage_io);
+        if let Some(reconciler) = plane_wiring.reconciler {
+            storage = storage.with_reconciler(reconciler);
+        }
+        let net_ops = required_ops(plane_wiring.net_ops, "NetOps", "net_ops")?;
+        let dns_ops = required_ops(plane_wiring.dns_ops, "DnsOps", "dns_ops")?;
+        let udp_nat_ops = required_ops(plane_wiring.udp_nat_ops, "UdpNatOps", "udp_nat_ops")?;
+        let l4_ops = required_ops(plane_wiring.l4_ops, "L4DivertOps", "l4_ops")?;
         // see: cans/plugins/replay.md#Invariants-and-policy-(replay)
-        let wire = crate::planes::wire::WirePlane::new().with_wiring(match plane_wiring.wire {
-            Some(mut wiring) => {
-                wiring.sinkhole_drop_all |= config.network_off;
-                wiring
-            }
-            None => kelir_interface::wire::net::WireWiring {
-                sinkhole_drop_all: config.network_off,
-                ..Default::default()
-            },
-        });
+        let wire = crate::planes::wire::WirePlane::with_ops(net_ops, dns_ops, udp_nat_ops, l4_ops)
+            .with_wiring(match plane_wiring.wire {
+                Some(mut wiring) => {
+                    wiring.sinkhole_drop_all |= config.network_off;
+                    wiring
+                }
+                None => kelir_interface::wire::net::WireWiring {
+                    sinkhole_drop_all: config.network_off,
+                    ..Default::default()
+                },
+            });
         if let Some(handler) = engine.vsock_service(VAULT_METADATA_VSOCK_PORT) {
             wire.bind_imds_sink(handler)?;
         }
-        let terminal_ops = plane_wiring.terminal_ops.ok_or_else(|| {
-            kelir_interface::plugin_model::PluginError::Halt(
-                "TerminalOps unbound at boot; bind via PlaneWiring::terminal_ops".into(),
-            )
-        })?;
-        let checkpoint_ops = plane_wiring.checkpoint_ops.ok_or_else(|| {
-            kelir_interface::plugin_model::PluginError::Halt(
-                "CheckpointOps unbound at boot; bind via PlaneWiring::checkpoint_ops".into(),
-            )
-        })?;
-        let host_ops = plane_wiring.host_ops.ok_or_else(|| {
-            kelir_interface::plugin_model::PluginError::Halt(
-                "HostOps unbound at boot; bind via PlaneWiring::host_ops".into(),
-            )
-        })?;
         let terminal = Arc::new(
             match &plane_wiring.terminal {
                 Some(wiring) => crate::planes::terminal::TerminalPlane::new(
@@ -540,6 +578,7 @@ impl Session {
             terminal_ops,
             checkpoint_ops,
             host_ops,
+            fuse_ops: plane_wiring.fuse_ops,
             metrics,
             uart: crate::uart_terminal::UartRingBuffer::new(),
             driver,
@@ -654,6 +693,10 @@ impl Session {
         let checkpoint_ops = self.checkpoint_ops.fresh();
         let host_ops = self.host_ops.fresh();
         let storage_wiring = self.storage.wiring().clone();
+        let storage_io = self.storage.storage_io();
+        let storage_reconciler = self.storage.reconciler();
+        let wire_ops = self.wire.ops();
+        let fuse_ops = self.fuse_ops.clone();
         let config = self.config.clone();
         // see: cans/06-storage-catalog.md#Entity-model
         let session_id = mint_uuid_v7();
@@ -679,13 +722,17 @@ impl Session {
             register_catalog_row(session_id, incarnation_id)?;
             // see: cans/01-architecture.md#Host-state-root
             let workspace_root = ensure_workspace_root(&session_id)?;
-            let storage = crate::planes::storage::StoragePlane::new(
+            let mut storage = crate::planes::storage::StoragePlane::new(
                 workspace_root.clone(),
                 workspace_root.join("upper.img"),
                 DEFAULT_WORKSPACE_QUOTA_BYTES,
                 DEFAULT_WORKSPACE_QUOTA_INODES,
             )
-            .with_wiring(storage_wiring);
+            .with_wiring(storage_wiring)
+            .with_io(storage_io);
+            if let Some(reconciler) = storage_reconciler {
+                storage = storage.with_reconciler(reconciler);
+            }
             let checkpoint = Arc::new(
                 crate::planes::checkpoint::CheckpointPlane::new(Arc::clone(&checkpoint_ops))
                     .with_metrics(Arc::clone(&metrics)),
@@ -702,13 +749,17 @@ impl Session {
             Ok(Self {
                 terminal,
                 storage: storage.with_metrics(Arc::clone(&metrics)),
-                wire: crate::planes::wire::WirePlane::new().with_metrics(Arc::clone(&metrics)),
+                wire: crate::planes::wire::WirePlane::with_ops(
+                    wire_ops.0, wire_ops.1, wire_ops.2, wire_ops.3,
+                )
+                .with_metrics(Arc::clone(&metrics)),
                 checkpoint,
                 host: crate::planes::host::HostPlane::new(Arc::clone(&host_ops))
                     .with_metrics(Arc::clone(&metrics)),
                 terminal_ops,
                 checkpoint_ops,
                 host_ops,
+                fuse_ops,
                 metrics,
                 uart: crate::uart_terminal::UartRingBuffer::new(),
                 driver: child_driver,

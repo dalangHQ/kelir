@@ -9,11 +9,70 @@ pub mod storage_quota;
 pub use storage_quota::StorageQuota;
 
 use kelir_interface::storage::{
-    CommitStats, FsReconcileRequest, ReconcilerOps, StorageIo, SyntheticFile,
+    CommitStats, FsReconcileRequest, ReconcilerOps, RootHandle, StorageIo, SyntheticFile,
 };
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
+
+struct UnboundStorageIo;
+
+impl StorageIo for UnboundStorageIo {
+    fn open_root(
+        &self,
+        _root: &Path,
+    ) -> Result<RootHandle, kelir_interface::plugin_model::PluginError> {
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "StorageIo unbound at StoragePlane::new; bind the kelir-storage-io ops in the composition root".into(),
+        ))
+    }
+
+    fn atomic_rename(
+        &self,
+        _temp: &Path,
+        _target: &Path,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "StorageIo unbound at StoragePlane::new; bind the kelir-storage-io ops in the composition root".into(),
+        ))
+    }
+
+    fn lock_exclusive(
+        &self,
+        _path: &Path,
+    ) -> Result<kelir_interface::storage::HostFileLock, kelir_interface::plugin_model::PluginError>
+    {
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "StorageIo unbound at StoragePlane::new; bind the kelir-storage-io ops in the composition root".into(),
+        ))
+    }
+
+    fn punch_hole(
+        &self,
+        _path: &Path,
+        _offset: u64,
+        _len: u64,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "StorageIo unbound at StoragePlane::new; bind the kelir-storage-io ops in the composition root".into(),
+        ))
+    }
+
+    fn advise_dontneed(
+        &self,
+        _path: &Path,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "StorageIo unbound at StoragePlane::new; bind the kelir-storage-io ops in the composition root".into(),
+        ))
+    }
+
+    fn remove_file(&self, _path: &Path) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "StorageIo unbound at StoragePlane::new; bind the kelir-storage-io ops in the composition root".into(),
+        ))
+    }
+}
 
 pub struct StoragePlane {
     workspace_root: PathBuf,
@@ -93,7 +152,7 @@ impl StoragePlane {
             sparse_upper_path: sparse_upper,
             tombstones: Arc::new(RwLock::new(HashSet::new())),
             quota: Arc::new(StorageQuota::new(max_bytes, max_inodes)),
-            io: Arc::new(kelir_storage_io::RealStorageIo),
+            io: Arc::new(UnboundStorageIo),
             reconciler: OnceLock::new(),
             wiring: StorageConfig::default(),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
@@ -134,6 +193,14 @@ impl StoragePlane {
     pub fn with_io(mut self, storage_io: Arc<dyn StorageIo>) -> Self {
         self.io = storage_io;
         self
+    }
+
+    pub fn storage_io(&self) -> Arc<dyn StorageIo> {
+        Arc::clone(&self.io)
+    }
+
+    pub fn reconciler(&self) -> Option<Arc<dyn ReconcilerOps>> {
+        self.reconciler.get().map(Arc::clone)
     }
 
     // TODO (L3) [storage_plane]: anchor derives broker_dir from the live host broker journal once the broker owns its layout; slop: anchor without broker journal, broker_dir invented
