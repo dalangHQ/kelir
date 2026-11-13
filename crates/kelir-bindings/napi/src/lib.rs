@@ -14,7 +14,7 @@ use tokio::sync::Mutex as AsyncMutex;
 pub mod fusion_plugin;
 pub mod storage_bridge;
 
-use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, convert_descriptor};
+use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, attach_runs, convert_descriptor};
 use storage_bridge::storage_config;
 
 use kelir_core::Session;
@@ -807,13 +807,16 @@ impl NativeKelirBuilder {
     }
 
     #[napi]
-    pub fn fuse_hooks(&mut self, rings: Vec<Object>) -> Result<()> {
+    pub fn fuse_hooks(&mut self, rings: Vec<Object>, runs: Option<Vec<Object>>) -> Result<()> {
         if self.fused.is_some() {
             return Err(Error::from_reason(
                 "fuse_hooks: the trampoline descriptor is frozen at seal".to_string(),
             ));
         }
-        let descriptor = convert_descriptor(rings)?;
+        let mut descriptor = convert_descriptor(rings)?;
+        if let Some(runs) = runs {
+            attach_runs(&mut descriptor, runs)?;
+        }
         self.trampolines =
             TrampolineTable::from_descriptor(&descriptor).map_err(Error::from_reason)?;
         self.fused = Some(descriptor);
@@ -865,7 +868,7 @@ impl NativeKelirBuilder {
         if let Some(reason) = self.config.missing_boot_path() {
             return Err(Error::new(Status::InvalidArg, reason.to_string()));
         }
-        // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: bind each fused ring chain to its single trampoline entry as one threadsafe closure and dispatch through the kelir-core pipeline.; slop: one closure per hook, multiple crossings
+        // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
         let plane_wiring = self.plane_wiring()?;
         let synthetic_files = self

@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
+use kelir_core::dispatch_plugin::PipelineEngine;
 use kelir_core::planes::storage::StoragePlane;
 use kelir_core::planes::storage::fuse_storage::{
     FuseDispatcher, FuseOpcode, FuseReply, FuseRequest,
@@ -15,7 +16,9 @@ use kelir_core::planes::storage::storage_reconciler::{
 };
 use kelir_core::planes::storage::{StorageConfig, WorkspaceEncapsulation};
 use kelir_interface::errno_types::Errno;
-use kelir_interface::plugin_model::{FsInterposer, HandlerCtx, PluginError};
+use kelir_interface::plugin_model::{
+    FsInterposer, HandlerCtx, MountScope, PipelineBinder, PluginError,
+};
 use kelir_interface::protocol_wire::{PatchPayload, Verdict};
 use std::os::unix::fs::PermissionsExt;
 
@@ -28,6 +31,12 @@ fn temp_workspace(name: &str) -> PathBuf {
 
 fn drop_workspace(path: &Path) {
     let _ = std::fs::remove_dir_all(path);
+}
+
+fn engine_with(interposer: Arc<dyn FsInterposer>) -> Arc<PipelineEngine> {
+    let mut engine = PipelineEngine::new();
+    engine.bind_fs_scoped(interposer, MountScope::default());
+    Arc::new(engine)
 }
 
 fn reconciler_for(workspace: &Path) -> Reconciler {
@@ -98,7 +107,7 @@ fn sp_02_symlink_traversal_escape_exdev() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/storage_plane/sp_03_setuid_bit_strip_invariant.yaml#case_id
 #[test]
 fn sp_03_setuid_bit_strip_invariant() -> Result<(), String> {
-    let dispatcher = FuseDispatcher::new(Arc::new(PatchInode));
+    let dispatcher = FuseDispatcher::new(engine_with(Arc::new(PatchInode)));
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let mut request = FuseRequest {
         opcode: FuseOpcode::Lookup,

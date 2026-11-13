@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -11,6 +12,8 @@ pub use kelir_interface::handles_lifecycle::{
 };
 use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::plugin_model::{LifecycleEvent, MountScope, PipelineBinder, PluginError};
+use kelir_interface::spawn_transport::{SpawnRequest, SpawnTransport};
+use serde::Serialize;
 
 use crate::builder_sdk::Registration;
 use crate::hlist_sdk::{HList, HNil, NoParams};
@@ -54,6 +57,16 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         &self.core
     }
 
+    // see: cans/10-attestation.md#Execution-receipts
+    pub fn store_receipt(&self, receipt: kelir_interface::telemetry::ExecutionReceipt) {
+        self.core.store_receipt(receipt);
+    }
+
+    // see: cans/10-attestation.md#Execution-receipts
+    pub fn receipt(&self, pid: u32) -> Option<kelir_interface::telemetry::ExecutionReceipt> {
+        self.core.receipt(pid)
+    }
+
     // see: cans/03-sdk-architecture.md#Session-surfaces
     pub fn vm(&self) -> VmHandle {
         self.core.vm()
@@ -93,6 +106,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         SpawnBuilder::default()
             .args([binary])
             .bind(self.core.session_id(), StreamKind::Exec)
+            .with_transport(self.core.spawn_transport())
     }
 
     // see: cans/02-plugin-model.md#Static-dispatch
@@ -124,8 +138,6 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         let mut child = self.core.fork().await?;
         let child_session_id = encode_hex(&child.session_id());
         // see: cans/08-lifecycle.md#CoW-fork
-        // TODO (L2): host on_trap_deny and custom-action callbacks are consumed into the parent engine at boot and are not Clone; child inheritance lands with the engine registration-state accessor (dispatch_plugin).
-        // TODO (L2): host stream-kind service entries are not forwarded into the engine at boot (builder_sdk §1.5) and their boxed handlers are not Clone; child routing re-registers through the engine and bus binding below.
         let mut registration = Registration {
             instances: Vec::new(),
             mounted: Vec::new(),
@@ -254,13 +266,16 @@ impl tokio::io::AsyncWrite for VsockChannel {
 }
 
 // see: cans/11-protocol.md#Binary-exec-channel
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct SpawnBuilder {
     pub args: Vec<String>,
     pub cwd: Option<String>,
     pub session_id: Option<[u8; 16]>,
     pub stream_kind: StreamKind,
     pub limits: Option<ProcessLimits>,
+    pub transport: Option<Arc<dyn SpawnTransport>>,
+    pub params_bytes: Vec<u8>,
+    params_error: Option<String>,
 }
 
 impl SpawnBuilder {
@@ -289,8 +304,19 @@ impl SpawnBuilder {
         self.session_id.is_some()
     }
 
-    // TODO (L3) [protocol_mux]: serialize the params value into the request buffer so HandlerCtx::params::<T>() decodes it per cans/03-sdk-architecture.md#Params-typed-views.; slop: params never serialized, typed decode unproven
-    pub fn params<T>(self, _params: T) -> Self {
+    // see: cans/11-protocol.md#Binary-exec-channel
+    pub fn with_transport(mut self, transport: Arc<dyn SpawnTransport>) -> Self {
+        self.transport = Some(transport);
+        self
+    }
+
+    // see: cans/03-sdk-architecture.md#Params-typed-views
+    pub fn params<T: Serialize>(mut self, params: T) -> Self {
+        let mut buffer = Vec::new();
+        match ciborium::into_writer(&params, &mut buffer) {
+            Ok(()) => self.params_bytes = buffer,
+            Err(error) => self.params_error = Some(format!("params encode failed: {error}")),
+        }
         self
     }
 }
@@ -311,14 +337,41 @@ impl Future for SpawnBuilder {
                 "SpawnBuilder is unbound: spawn requires a booted session".into(),
             )));
         }
+        if let Some(error) = &self.params_error {
+            return Poll::Ready(Err(PluginError::Halt(error.clone())));
+        }
         if self.limits.is_some() {
             return Poll::Ready(Err(PluginError::reject(
                 Errno::Econfig,
                 "per-command rlimits need the L3 EXEC control sub-lane 0x03 encoder",
             )));
         }
-        let _control = encode_exec_control_limits(self.limits.as_ref());
-        // TODO (L3) [protocol_mux]: encode the EXEC frame on the bound stream kind and dispatch it over the session transport.; slop: EXEC frame never encoded, guest exec never dispatched
-        Poll::Ready(Err(PluginError::Halt("TODO (L3): guest exec".into())))
+        let Some(transport) = &self.transport else {
+            return Poll::Ready(Err(PluginError::Halt(
+                "SpawnBuilder has no transport: spawn requires a booted session".into(),
+            )));
+        };
+        let Some(session_id) = self.session_id else {
+            return Poll::Ready(Err(PluginError::Halt(
+                "SpawnBuilder is unbound: spawn requires a booted session".into(),
+            )));
+        };
+        let request = SpawnRequest {
+            session_id,
+            stream_kind: self.stream_kind,
+            args: self.args.clone(),
+            cwd: self.cwd.clone(),
+            limits_bytes: encode_exec_control_limits(self.limits.as_ref()),
+            params_bytes: self.params_bytes.clone(),
+        };
+        match transport.dispatch_exec(&request) {
+            Ok(()) => {
+                // TODO (L3) [protocol_mux]: the SpawnResult (exit code, stdout, stderr) lands with live guest exec; dispatch accepted the request but no result channel exists yet.; slop: spawn Ok without a guest result
+                Poll::Ready(Err(PluginError::Halt(
+                    "TODO (L3): guest exec result".into(),
+                )))
+            }
+            Err(error) => Poll::Ready(Err(error)),
+        }
     }
 }

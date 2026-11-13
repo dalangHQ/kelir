@@ -1,7 +1,11 @@
 // see: cans/02-plugin-model.md#Static-dispatch
 // see: cans/02-plugin-model.md#Unified-interposition-pipeline
 mod console_dispatch;
+mod fs_dispatch;
+mod host_dispatch;
 mod lifecycle_dispatch;
+mod params_hydration;
+mod registration;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -12,7 +16,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
 use kelir_interface::errno_types::Errno;
-use kelir_interface::fusion_plugin::TrampolineRing;
+use kelir_interface::fusion_plugin::{
+    FusedTrampolineCallback, FusedTrampolineDescriptor, TrampolineRing,
+};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, FfiDispatchQueue, FsInterposer, HandlerCtx, HostInterposer, LifecycleCtx,
@@ -24,6 +30,7 @@ use kelir_interface::protocol_wire::{
     EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, Heartbeat, PostExecAction, ProcessExit,
     StepVerdict, StreamKind, TrapEvent, Verdict,
 };
+use kelir_interface::telemetry::{ExecutionReceipt, ReceiptStore};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::planes::checkpoint::{CheckpointPlane, PidLineage};
@@ -147,9 +154,26 @@ pub struct CustomActionBinding {
     pub handler: CustomActionCallback,
 }
 
+// see: cans/08-lifecycle.md#CoW-fork
+#[derive(Clone)]
+pub struct HostRegistrationState {
+    pub on_trap_deny: Option<Arc<TrapDenyCallback>>,
+    pub custom_actions: Vec<Arc<CustomActionBinding>>,
+    pub stream_kind_services: Vec<(StreamKind, Arc<dyn StreamFrameSink>)>,
+    pub lock_broker: Option<Arc<dyn LockBrokerCoordination>>,
+    pub token_revoker: Option<Arc<dyn TokenRevocation>>,
+}
+
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 struct FusedCrossing<'a> {
     engine: &'a PipelineEngine,
+    verdict: Verdict,
+}
+
+impl FusedCrossing<'_> {
+    pub(crate) fn non_pass_verdict(&self) -> Option<Verdict> {
+        (!matches!(self.verdict, Verdict::Pass)).then(|| self.verdict.clone())
+    }
 }
 
 impl Drop for FusedCrossing<'_> {
@@ -185,8 +209,10 @@ pub struct PipelineEngine {
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     trampoline: Option<kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
     checkpoint: Option<Arc<CheckpointPlane>>,
-    on_trap_deny: Option<TrapDenyCallback>,
-    custom_actions: Vec<CustomActionBinding>,
+    on_trap_deny: Option<Arc<TrapDenyCallback>>,
+    custom_actions: Vec<Arc<CustomActionBinding>>,
+    receipt_store: ReceiptStore,
+    fused_callbacks: Vec<(TrampolineRing, u32, Arc<dyn FusedTrampolineCallback>)>,
     foreign_queue: FfiDispatchQueue,
     ffi_rate_per_sec: u32,
     ffi_window_start_ms: AtomicU64,
@@ -317,6 +343,8 @@ impl PipelineEngine {
             checkpoint: None,
             on_trap_deny: None,
             custom_actions: Vec::new(),
+            receipt_store: ReceiptStore::new(),
+            fused_callbacks: Vec::new(),
             foreign_queue: FfiDispatchQueue::default(),
             ffi_rate_per_sec: 0,
             ffi_window_start_ms: AtomicU64::new(0),
@@ -410,30 +438,6 @@ impl PipelineEngine {
         self.checkpoint.as_ref()
     }
 
-    // see: cans/03-sdk-architecture.md#Builder-consumption-model-across-languages
-    pub fn set_on_trap_deny(&mut self, callback: TrapDenyCallback) {
-        self.on_trap_deny = Some(callback);
-    }
-
-    // see: cans/03-sdk-architecture.md#Rust-SDK
-    pub fn register_custom_action(&mut self, name: String, handler: CustomActionCallback) {
-        self.custom_actions
-            .push(CustomActionBinding { name, handler });
-    }
-
-    // see: cans/11-protocol.md#Kind-registration
-    pub fn register_stream_kind(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>) {
-        self.stream_sinks.push((kind, sink, MountScope::default()));
-    }
-
-    // see: cans/11-protocol.md#Kind-registration
-    pub fn stream_kind_services(&self) -> Vec<(StreamKind, Arc<dyn StreamFrameSink>)> {
-        self.stream_sinks
-            .iter()
-            .map(|(kind, sink, _)| (*kind, Arc::clone(sink)))
-            .collect()
-    }
-
     // see: cans/03-sdk-architecture.md#Rust-SDK
     pub async fn dispatch_custom_action(
         &self,
@@ -485,12 +489,36 @@ impl PipelineEngine {
         &self,
         ring: TrampolineRing,
     ) -> Result<Option<FusedCrossing<'_>>, PluginError> {
-        if self.fused_ring(ring) {
-            self.try_foreign_submit()?;
-            Ok(Some(FusedCrossing { engine: self }))
-        } else {
-            Ok(None)
+        let mut callbacks: Vec<_> = self
+            .fused_callbacks
+            .iter()
+            .filter(|(callback_ring, _, _)| *callback_ring == ring)
+            .collect();
+        callbacks.sort_by_key(|(_, ordinal, _)| *ordinal);
+        if callbacks.is_empty() && !self.fused_ring(ring) {
+            return Ok(None);
         }
+        self.try_foreign_submit()?;
+        let mut verdict = Verdict::Pass;
+        for (_, ordinal, callback) in callbacks {
+            let outcome = quarantine_sync(
+                || callback.run(ring, *ordinal),
+                || {
+                    Ok(Verdict::Drop {
+                        errno: Some(Errno::Efault),
+                        reason: "Plugin panicked".into(),
+                    })
+                },
+            );
+            verdict = map_reject_to_verdict(outcome)?;
+            if !matches!(verdict, Verdict::Pass) {
+                break;
+            }
+        }
+        Ok(Some(FusedCrossing {
+            engine: self,
+            verdict,
+        }))
     }
 
     pub fn vsock_service(&self, port: u32) -> Option<Arc<dyn VsockServiceHandler>> {
@@ -686,6 +714,18 @@ impl PipelineEngine {
         ctx: &HandlerCtx,
         session: Option<&Session>,
     ) -> Result<Verdict, PluginError> {
+        // see: cans/03-sdk-architecture.md#Params-typed-views
+        let params_hydrated_ctx = params_hydration::hydrate_params_ctx(ctx, session);
+        let ctx = params_hydrated_ctx.as_ref().unwrap_or(ctx);
+        // see: cans/10-attestation.md#Execution-receipts
+        let hydrated;
+        let ctx = match self.receipt_store.lookup(ctx.pid) {
+            Some(receipt) if ctx.receipt.is_none() => {
+                hydrated = ctx.erased().with_receipt(receipt);
+                &hydrated
+            }
+            _ => ctx,
+        };
         if let Some(syscall) = &event.syscall {
             self.metrics.record_syscall();
             // see: cans/14-observability.md#Metrics-pipeline
@@ -695,13 +735,20 @@ impl PipelineEngine {
         }
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::Trap)?;
+        if let Some(verdict) = fused
+            .as_ref()
+            .and_then(|crossing| crossing.non_pass_verdict())
+        {
+            return Ok(verdict);
+        }
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
             let fallback = MountScope::default();
             let scope = self.trap_scopes.get(index).unwrap_or(&fallback);
             match self.gate.evaluate(event, scope) {
                 GateDecision::Skip => continue,
                 GateDecision::Deny(verdict) => {
-                    if let (Some(callback), Some(session)) = (&self.on_trap_deny, session) {
+                    if let (Some(callback), Some(session)) = (self.on_trap_deny.as_deref(), session)
+                    {
                         callback(event, session).await?;
                     }
                     return Ok(verdict);
@@ -732,6 +779,15 @@ impl PipelineEngine {
         event: &ProcessExit,
         ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
+        // see: cans/10-attestation.md#Execution-receipts
+        let hydrated;
+        let ctx = match self.receipt_store.lookup(ctx.pid) {
+            Some(receipt) if ctx.receipt.is_none() => {
+                hydrated = ctx.erased().with_receipt(receipt);
+                &hydrated
+            }
+            _ => ctx,
+        };
         self.metrics.record_exec();
         // TODO (L3) [plugin_engine]: in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started; slop: in-flight count drifts, ProcessExit never guaranteed
         self.metrics.exec_finished();
@@ -757,46 +813,6 @@ impl PipelineEngine {
         }
         drop(fused);
         Ok(())
-    }
-
-    pub fn dispatch_fs_write(
-        &self,
-        path: &std::path::Path,
-        data: &mut [u8],
-        pid: u32,
-        ctx: &HandlerCtx,
-    ) -> Result<FilterAction, PluginError> {
-        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-        let fused = self.fused_crossing(TrampolineRing::FsWrite)?;
-        for (index, interceptor) in self.fs_interceptors.iter().enumerate() {
-            let scope = Self::scope_at(&self.fs_scopes, index);
-            if !Self::fs_scope_allows(&scope, path, ctx) {
-                continue;
-            }
-            if fused.is_none() {
-                // see: cans/01-architecture.md#FFI-boundary-economics
-                self.try_foreign_submit()?;
-            }
-            let action = {
-                let outcome = quarantine_sync(
-                    || interceptor.on_fs_write(path, data, pid, ctx),
-                    || {
-                        Ok(FilterAction::Abort {
-                            reason: "Plugin panicked".into(),
-                        })
-                    },
-                );
-                if fused.is_none() {
-                    self.foreign_submit_complete();
-                }
-                map_reject_to_filter_action(outcome)?
-            };
-            if !matches!(action, FilterAction::Forward) {
-                return Ok(action);
-            }
-        }
-        drop(fused);
-        Ok(FilterAction::Forward)
     }
 
     // see: cans/02-plugin-model.md#Mount-scoping
@@ -885,6 +901,12 @@ impl PipelineEngine {
     ) -> Result<Verdict, PluginError> {
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::HostLsmExec)?;
+        if let Some(verdict) = fused
+            .as_ref()
+            .and_then(|crossing| crossing.non_pass_verdict())
+        {
+            return Ok(verdict);
+        }
         for (index, interceptor) in self.host_interceptors.iter().enumerate() {
             let scope = Self::scope_at(&self.host_scopes, index);
             if !scope.allows_path(path) {
@@ -914,43 +936,6 @@ impl PipelineEngine {
             }
         }
         drop(fused);
-        Ok(Verdict::Pass)
-    }
-
-    // TODO (L3) [plugin_engine]: pressure/keyring dispatch carries no path or device input, so no scope filter can evaluate here yet; slop: pressure dispatch skips scope filter entirely
-    pub fn dispatch_host_pressure(&self, level: u32) -> Result<Verdict, PluginError> {
-        for interceptor in &self.host_interceptors {
-            let verdict = map_reject_to_verdict(quarantine_sync(
-                || interceptor.on_host_pressure(level),
-                || {
-                    Ok(Verdict::Drop {
-                        errno: Some(Errno::Efault),
-                        reason: "Plugin panicked".into(),
-                    })
-                },
-            ))?;
-            if !matches!(verdict, Verdict::Pass) {
-                return Ok(verdict);
-            }
-        }
-        Ok(Verdict::Pass)
-    }
-
-    pub fn dispatch_host_keyring_access(&self, key: &str) -> Result<Verdict, PluginError> {
-        for interceptor in &self.host_interceptors {
-            let verdict = map_reject_to_verdict(quarantine_sync(
-                || interceptor.on_host_keyring_access(key),
-                || {
-                    Ok(Verdict::Drop {
-                        errno: Some(Errno::Efault),
-                        reason: "Plugin panicked".into(),
-                    })
-                },
-            ))?;
-            if !matches!(verdict, Verdict::Pass) {
-                return Ok(verdict);
-            }
-        }
         Ok(Verdict::Pass)
     }
 }

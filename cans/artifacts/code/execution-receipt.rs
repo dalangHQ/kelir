@@ -86,6 +86,17 @@ pub struct ExecutionReceipt {
     pub extensions: Vec<ReceiptExtension>,
 }
 
+/// Per-session receipt store: latest ExecutionReceipt per pid, keyed by
+/// receipt pid. Dispatch hydrates HandlerCtx from it before trap
+/// interceptors run, so HandlerCtx::receipt() returns the stored receipt
+/// instead of Err. Fork snapshots it into the child session. No live
+/// producer mints into it yet (L3); until then it holds only receipts
+/// stored explicitly via insert.
+#[derive(Debug, Clone, Default)]
+pub struct ReceiptStore {
+    receipts: std::sync::RwLock<std::collections::HashMap<u32, ExecutionReceipt>>,
+}
+
 /// Attestation token: a separate fact emission per 10-attestation
 /// (TrapEvent, ExecutionReceipt, CausalDelta, AttestationToken). It
 /// is not a receipt field. Its fields are exactly the Class 1

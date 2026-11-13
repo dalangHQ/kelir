@@ -1,15 +1,99 @@
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 // see: cans/03-sdk-architecture.md#Python-SDK
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
+use kelir_interface::fusion_plugin::FusedTrampolineCallback;
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::protocol_wire::Verdict;
+
 pub use kelir_interface::fusion_plugin::{
     FilterSnapshot, FusedTrampolineDescriptor, HookEntry, HookStage, RingChain, TrampolineRing,
     TrampolineTable, validate_hook,
 };
+
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
+pub struct PyFusedCallback {
+    callable: Py<PyAny>,
+}
+
+impl PyFusedCallback {
+    pub fn new(callable: Py<PyAny>) -> Self {
+        Self { callable }
+    }
+}
+
+impl FusedTrampolineCallback for PyFusedCallback {
+    fn run(&self, ring: TrampolineRing, ordinal: u32) -> Result<Verdict, PluginError> {
+        let outcome = Python::with_gil(|py| {
+            self.callable
+                .bind(py)
+                .call1((ring.as_tag(), ordinal))
+                .map(|_| ())
+        });
+        outcome.map_err(|error| {
+            PluginError::Halt(format!(
+                "fused trampoline callable on ring {} ordinal {ordinal} failed: {error}",
+                ring.as_tag()
+            ))
+        })?;
+        // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
+        Ok(Verdict::Pass)
+    }
+}
+
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
+pub fn attach_runs(
+    descriptor: &mut FusedTrampolineDescriptor,
+    runs: &Bound<'_, PyList>,
+) -> PyResult<()> {
+    for run_value in runs.iter() {
+        let run_entry = run_value.downcast::<PyDict>()?;
+        let ring_tag = required_str(run_entry, "ring", "run entry")?;
+        let ring_kind = TrampolineRing::from_tag(&ring_tag).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "fused trampoline run declares unknown ring `{ring_tag}`"
+            ))
+        })?;
+        let ordinal: u32 = run_entry
+            .get_item("ordinal")?
+            .ok_or_else(|| {
+                PyValueError::new_err(format!(
+                    "fused trampoline run on ring {ring_tag} declares no `ordinal`"
+                ))
+            })?
+            .extract()?;
+        let callable = match run_entry.get_item("run")? {
+            Some(value) if !value.is_none() && value.is_callable() => value.unbind(),
+            _ => {
+                return Err(PyValueError::new_err(format!(
+                    "fused trampoline run on ring {ring_tag} ordinal {ordinal} declares no callable `run`"
+                )));
+            }
+        };
+        let callback = Arc::new(PyFusedCallback::new(callable));
+        let Some(chain) = descriptor
+            .rings
+            .iter_mut()
+            .find(|chain| chain.ring == ring_kind)
+        else {
+            return Err(PyValueError::new_err(format!(
+                "fused trampoline run on ring {ring_tag} ordinal {ordinal} has no matching descriptor hook"
+            )));
+        };
+        let Some(hook) = chain.hooks.iter_mut().find(|hook| hook.ordinal == ordinal) else {
+            return Err(PyValueError::new_err(format!(
+                "fused trampoline run on ring {ring_tag} ordinal {ordinal} has no matching descriptor hook"
+            )));
+        };
+        hook.run = Some(callback);
+    }
+    Ok(())
+}
 
 fn optional_str(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<String>> {
     match dict.get_item(key)? {
@@ -117,6 +201,7 @@ pub fn convert_descriptor(descriptor: &Bound<'_, PyDict>) -> PyResult<FusedTramp
                 lifecycle_tag,
                 custom_action_name,
                 vsock_kind,
+                run: None,
             };
             validate_hook(ring_kind, &entry).map_err(PyValueError::new_err)?;
             converted.push(entry);

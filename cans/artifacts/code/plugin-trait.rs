@@ -155,6 +155,19 @@ impl MountScope {
         self.paths = Some(paths.into_iter().map(Into::into).collect());
         self
     }
+    /// Binary-list membership (L2): no list allows all; an entry matches
+    /// when it equals the event binary path, or when it carries no `/` and
+    /// equals the file name of that path. Membership admits the event to
+    /// dispatch only; it never confers trust — canonical identity
+    /// (st_dev, st_ino, binary_blake3) decides trust.
+    pub fn allows_binary(&self, binary: &str) -> bool {
+        self.binaries.as_ref().is_none_or(|list| {
+            list.iter().any(|entry| {
+                entry == binary
+                    || (!entry.contains('/') && binary.rsplit('/').next() == Some(entry.as_str()))
+            })
+        })
+    }
     /// Evaluates boolean intersection against an ancestor scope during composite unpacking
     pub fn intersect(&self, parent: &Self) -> Self {
         Self {
@@ -422,7 +435,7 @@ pub trait FsInterposer {
     /// Verdict::Pass = fall through; Patch = serve (payload per ring:
     /// FsInode carries the served inode attributes for lookup).
     fn on_fs_lookup(&self, _path: &Path) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
-    fn on_fs_read(&self, _path: &Path, _buffer: &mut [u8]) -> Result<(), PluginError> { Ok(()) }
+    fn on_fs_read(&self, _path: &Path, _buffer: &[u8]) -> Result<Vec<u8>, PluginError> { Ok(_buffer.to_vec()) }
     /// Sync hot-path buffer transform. Mutate `_data` in place, return
     /// FilterAction::Forward to commit. No Patch variant: the buffer
     /// is the payload. Native Rust only; foreign runtimes must yield
@@ -484,4 +497,99 @@ pub trait ForeignPluginBridge: KelirPlugin {
     fn worker_channel_capacity(&self) -> usize { 4_096 }
     /// Max inspected byte ceiling across FFI boundary (default 64KB)
     fn buffer_ceiling(&self) -> usize { 64 * 1024 }
+}
+
+/// Fused trampoline callback: the runnable half of a fused hook.
+/// `HookEntry.run` carries one of these per descriptor hook; the engine
+/// registry is keyed by (ring, ordinal) and fused_crossing invokes the
+/// matching callbacks in ordinal order, first non-Pass verdict wins.
+/// A callback that panics quarantines to Verdict::Drop (Efault); a
+/// PluginError::Reject maps to Verdict::Drop, any other error propagates.
+/// Verdict-returning dispatches (trap, host-lsm-exec) return the folded
+/// fused verdict before the native interceptor loop; FilterAction and
+/// unit-returning dispatches invoke the callbacks but have no Verdict to
+/// fold into, so the folded verdict is observable only on the crossing
+/// guard until a Verdict-to-FilterAction mapping lands.
+pub trait FusedTrampolineCallback: Send + Sync + 'static {
+    fn run(&self, ring: TrampolineRing, ordinal: u32) -> Result<Verdict, PluginError>;
+}
+
+/// Fused crossing guard: one FFI submit for the whole ring event, closed
+/// by Drop via foreign_submit_complete. Carries the folded verdict of the
+/// callbacks invoked at the crossing.
+pub struct FusedCrossing<'a> {
+    engine: &'a PipelineEngine,
+    verdict: Verdict,
+}
+
+impl PipelineEngine {
+    pub fn register_fused_callback(
+        &mut self,
+        ring: TrampolineRing,
+        ordinal: u32,
+        callback: Arc<dyn FusedTrampolineCallback>,
+    ) {
+        self.fused_callbacks.push((ring, ordinal, callback));
+    }
+    pub fn register_fused_callbacks(&mut self, descriptor: &FusedTrampolineDescriptor) {
+        for chain in &descriptor.rings {
+            for hook in &chain.hooks {
+                if let Some(callback) = hook.run.clone() {
+                    self.register_fused_callback(chain.ring, hook.ordinal, callback);
+                }
+            }
+        }
+    }
+    fn fused_crossing(
+        &self,
+        ring: TrampolineRing,
+    ) -> Result<Option<FusedCrossing<'_>>, PluginError> {
+        let mut callbacks: Vec<&(TrampolineRing, u32, Arc<dyn FusedTrampolineCallback>)> =
+            self.fused_callbacks
+                .iter()
+                .filter(|(callback_ring, _, _)| *callback_ring == ring)
+                .collect();
+        callbacks.sort_by_key(|(_, ordinal, _)| *ordinal);
+        if callbacks.is_empty() && !self.fused_ring(ring) {
+            return Ok(None);
+        }
+        self.try_foreign_submit()?;
+        let mut verdict = Verdict::Pass;
+        for (_, ordinal, callback) in callbacks {
+            let outcome = quarantine_sync(
+                || callback.run(ring, *ordinal),
+                || {
+                    Ok(Verdict::Drop {
+                        errno: Some(Errno::Efault),
+                        reason: "Plugin panicked".into(),
+                    })
+                },
+            );
+            verdict = map_reject_to_verdict(outcome)?;
+            if !matches!(verdict, Verdict::Pass) {
+                break;
+            }
+        }
+        Ok(Some(FusedCrossing {
+            engine: self,
+            verdict,
+        }))
+    }
+}
+
+/// NAPI adapter: each TypeScript run is wrapped once in a threadsafe
+/// function at fuse_hooks time; run() enqueues (ring tag, ordinal) onto
+/// the JS thread non-blocking and returns Pass. The JS return value does
+/// not gate dispatch until the L3 verdict rendezvous lands, and the ring
+/// event payload is not marshaled yet: the TS side passes the hook a
+/// { ring, ordinal } event object.
+/// PyO3 adapter: each Python run is stored as a Py<PyAny> callable at
+/// fuse_hooks time; run() calls it under the GIL with (ring tag, ordinal)
+/// and returns Pass. Same L3 boundary: return-value-to-Verdict mapping
+/// and ring-event payload marshaling.
+pub struct NapiFusedCallback {
+    call: ThreadsafeFunction<(String, u32)>,
+}
+pub struct PyFusedCallback {
+    callable: Py<PyAny>,
 }

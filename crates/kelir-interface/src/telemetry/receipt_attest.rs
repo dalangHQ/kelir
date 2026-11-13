@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::RwLock;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,6 +49,55 @@ pub struct ExecutionReceipt {
     pub egress_bytes: u64,
     pub egress_dropped_bytes: u64,
     pub extensions: Vec<ReceiptExtension>,
+}
+
+// see: cans/10-attestation.md#Execution-receipts
+#[derive(Debug, Default)]
+pub struct ReceiptStore {
+    receipts: RwLock<HashMap<u32, ExecutionReceipt>>,
+}
+
+impl Clone for ReceiptStore {
+    fn clone(&self) -> Self {
+        let store = Self::new();
+        for receipt in self.snapshot() {
+            store.insert(receipt);
+        }
+        store
+    }
+}
+
+impl ReceiptStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // see: cans/10-attestation.md#Execution-receipts
+    pub fn insert(&self, receipt: ExecutionReceipt) {
+        let mut receipts = self
+            .receipts
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        receipts.insert(receipt.pid, receipt);
+    }
+
+    // see: cans/10-attestation.md#Execution-receipts
+    pub fn lookup(&self, pid: u32) -> Option<ExecutionReceipt> {
+        let receipts = self
+            .receipts
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        receipts.get(&pid).cloned()
+    }
+
+    // see: cans/08-lifecycle.md#CoW-fork
+    pub fn snapshot(&self) -> Vec<ExecutionReceipt> {
+        let receipts = self
+            .receipts
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        receipts.values().cloned().collect()
+    }
 }
 
 // TODO (L3) [ar_12_session_attestation_token_injection]: consumed by cans/10-attestation.md#Attestation-provenance-classification session-token verification.; slop: token presence asserted, host-key signature never verified

@@ -76,6 +76,13 @@
       - Host consumer slow or stalled → producer fd is paused, not dropped
       - No mid-flight frame loss; no guest kernel deadlock
     - Programmatic tooling uses stream kind EXEC (0x0001) exclusively; PTY bypassed
+    - Spawn submit path
+      - SpawnBuilder carries the session transport bound at spawn_builder; poll() builds SpawnRequest and calls SpawnTransport::dispatch_exec
+        - see: artifacts/code/wire-protocol.rs
+      - SpawnRequest carries args, cwd, rlimit bytes, and CBOR params_bytes for the exec
+        - see: artifacts/code/wire-protocol.rs
+      - Guest exec frame encode and the SpawnResult channel are not part of dispatch_exec; a dispatched request is not guest execution
+        - see: artifacts/code/wire-protocol.rs
   - Control-plane VFS stream
     - Transport: mux 0x0001, stream kind VFS, framed CBOR
     - Purpose: posix-like primitives without host-directory exposure or VM exit
@@ -126,6 +133,8 @@
       - Untrusted /workspace/** always traverses Gate 3
       - Skip applies only after unwrapping resolves the terminal binary
       - Unresolved unwrap forfeits the skip and traverses Gate 3
+      - Skip stays inert until canonical identity confirms trust; a trusted-prefix path match alone never skips
+      - A trusted prefix matches the path itself or a path strictly under it; a sibling sharing the string prefix never matches
       - Compiler and test-suite fork/exec storms run at hardware speed
     - Canonical exec identity
       - Identity is (st_dev, st_ino, binary_blake3), never a path string

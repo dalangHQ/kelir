@@ -101,6 +101,12 @@
     - Receipt ownership
       - kelir-core generates and holds at trap/exit boundary
       - c.receipt() is the single read API on HandlerCtx
+    - Receipt store
+      - Per-session store keyed by pid; see: artifacts/code/execution-receipt.rs
+      - Dispatch hydrates HandlerCtx from the store before trap interceptors run
+      - HandlerCtx::receipt() returns the stored receipt, or Err when none is stored
+      - Fork carries a snapshot of the parent store into the child session
+      - Live minting at the trap/exit boundary is L3; until then the store holds only receipts stored explicitly
   - Causal delta
     - see: [2]
     - Definition: Δ = S_A − S_B between two checkpoint descriptors

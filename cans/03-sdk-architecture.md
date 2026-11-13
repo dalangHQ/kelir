@@ -242,6 +242,11 @@
       - Rust: c.params::<T>() deserializes from validated buffer
       - TypeScript: params typed by .params(schema) (TypeBox)
       - Python: params typed by Pydantic BaseModel
+    - Rust spawn path encodes typed params as CBOR into the exec request
+      - SpawnBuilder::params<T: Serialize> writes the CBOR bytes into the request buffer; HandlerCtx::params::<T>() decodes the same buffer
+        - see: artifacts/code/wire-protocol.rs
+      - Session holds the per-exec params store keyed by (exec_id, stream_id); trap dispatch hydrates HandlerCtx.params_buffer from the store per exec before interceptors run
+        - see: artifacts/code/wire-protocol.rs
     - Zero-allocation validation: operates on zero-copy guest memory
   - Rust SDK
     - Superseded by the unified builder surface: see: #Unified-builder-surface

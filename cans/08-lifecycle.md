@@ -75,6 +75,9 @@
       - Driver fork yields raw Box<dyn VmmDriver>
       - Runtime re-hydrates complete Session around it
       - Rebinds 4-ring dispatch table, virtio channels, plugin graph
+      - Host registration re-hydrates from the parent engine
+        - on_trap_deny, custom actions, stream-kind sinks, lock broker, token revoker
+        - Shared by reference; callbacks are not Clone and never re-boxed
       - session.vm.fork() returns full Session
       - spawn() and every other session API directly callable on child
     - Child handoff scope
@@ -84,6 +87,8 @@
         - StepSlot state
         - 4-ring dispatch table
         - virtio channel state
+        - Host registration state (on_trap_deny, custom actions, stream-kind sinks, lock broker, token revoker)
+        - Per-session receipt store snapshot (receipts for pre-fork pids)
       - Not inherited
         - Host-side handles
           - Files, sockets, PTY masters

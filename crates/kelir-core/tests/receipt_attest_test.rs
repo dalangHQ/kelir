@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use kelir_core::dispatch_plugin::PipelineEngine;
 use kelir_core::planes::storage::fuse_storage::{FuseDispatcher, FuseOpcode, FuseRequest};
 use kelir_core::uart_terminal::{UartRingBuffer, decode_early_boot_exit};
-use kelir_interface::plugin_model::{FsInterposer, HandlerCtx};
+use kelir_interface::plugin_model::{FsInterposer, HandlerCtx, MountScope, PipelineBinder};
 use kelir_interface::protocol_wire::TrapEvent;
 use kelir_interface::telemetry::{ExecutionReceipt, ExitKind};
 
@@ -18,6 +19,12 @@ fn attest_workspace(name: &str) -> PathBuf {
 
 fn drop_workspace(path: &Path) {
     let _ = std::fs::remove_dir_all(path);
+}
+
+fn engine_with(interposer: Arc<dyn FsInterposer>) -> Arc<PipelineEngine> {
+    let mut engine = PipelineEngine::new();
+    engine.bind_fs_scoped(interposer, MountScope::default());
+    Arc::new(engine)
 }
 
 struct AttestPassFs;
@@ -157,7 +164,7 @@ async fn ar_03_dirty_bytes_exact_byte_accounting() -> Result<(), String> {
     let workspace = attest_workspace("ar03");
     let target = workspace.join("test.dat");
     std::fs::write(&target, b"").map_err(|e| e.to_string())?;
-    let dispatcher = FuseDispatcher::new(Arc::new(AttestPassFs));
+    let dispatcher = FuseDispatcher::new(engine_with(Arc::new(AttestPassFs)));
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let mut request = FuseRequest {
         opcode: FuseOpcode::Write,

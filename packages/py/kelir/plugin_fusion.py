@@ -113,6 +113,20 @@ class FusedTrampoline:
                 return len(chain.hooks)
         return 0
 
+    # see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    def runs(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "ring": chain.ring.value,
+                "ordinal": hook.ordinal,
+                "run": lambda ring, ordinal, hook=hook: hook.run(
+                    {"ring": ring, "ordinal": ordinal}
+                ),
+            }
+            for chain in self.chains
+            for hook in chain.hooks
+        ]
+
     # TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: compile each fused chain into the single flat closure that runs it per ring event.; slop: descriptor claims fused while hooks cross per hook
     def describe(self) -> dict[str, Any]:
         return {

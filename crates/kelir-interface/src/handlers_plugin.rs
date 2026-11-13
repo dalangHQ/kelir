@@ -13,7 +13,7 @@ use crate::plugin_model::PluginError;
 use crate::protocol_wire::{
     FilterAction, PatchPayload, ProcessLimits, SuspendUntil, TrapEvent, Verdict,
 };
-use crate::telemetry::{ExecutionReceipt, ExitKind};
+use crate::telemetry::ExecutionReceipt;
 
 // see: cans/03-sdk-architecture.md#Rust-SDK
 pub trait Has<T, Index> {
@@ -78,6 +78,7 @@ pub struct HandlerCtx<Plugins = (), Params = ()> {
     pub host_ctx: Option<HostContext>,
     pub console_ctx: Option<ConsoleContext>,
     pub exec_ctx: Option<ExecContext>,
+    pub receipt: Option<ExecutionReceipt>,
     plugins: Plugins,
     params_buffer: Vec<u8>,
     _params: PhantomData<fn() -> Params>,
@@ -99,6 +100,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
             host_ctx: None,
             console_ctx: None,
             exec_ctx: None,
+            receipt: None,
             plugins,
             params_buffer,
             _params: PhantomData,
@@ -140,6 +142,12 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         self
     }
 
+    // see: cans/10-attestation.md#Execution-receipts
+    pub fn with_receipt(mut self, receipt: ExecutionReceipt) -> Self {
+        self.receipt = Some(receipt);
+        self
+    }
+
     pub fn retag<Params2>(self) -> HandlerCtx<Plugins, Params2> {
         HandlerCtx {
             session_id: self.session_id,
@@ -154,6 +162,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
             host_ctx: self.host_ctx,
             console_ctx: self.console_ctx,
             exec_ctx: self.exec_ctx,
+            receipt: self.receipt,
             plugins: self.plugins,
             params_buffer: self.params_buffer,
             _params: PhantomData,
@@ -177,6 +186,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
             host_ctx: self.host_ctx,
             console_ctx: self.console_ctx,
             exec_ctx: self.exec_ctx,
+            receipt: self.receipt,
             plugins: f(self.plugins),
             params_buffer: self.params_buffer,
             _params: PhantomData,
@@ -209,6 +219,9 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         if let Some(exec_ctx) = &self.exec_ctx {
             erased = erased.with_exec_ctx(exec_ctx.clone());
         }
+        if let Some(receipt) = &self.receipt {
+            erased = erased.with_receipt(receipt.clone());
+        }
         erased
     }
 
@@ -219,6 +232,12 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
     pub fn params<T: DeserializeOwned>(&self) -> Result<T, PluginError> {
         ciborium::from_reader(self.params_buffer.as_slice())
             .map_err(|e| PluginError::Halt(format!("EINVAL: params decode failed: {e}")))
+    }
+
+    // see: cans/03-sdk-architecture.md#Params-typed-views
+    pub fn with_params_buffer(mut self, buffer: Vec<u8>) -> Self {
+        self.params_buffer = buffer;
+        self
     }
 
     // see: cans/03-sdk-architecture.md#Unified-verdict-surface
@@ -255,23 +274,15 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         FilterAction::Suspend { until }
     }
 
+    // see: cans/10-attestation.md#Execution-receipts
+    // TODO (L3) [ar_01_execution_receipt_blake3_binding]: no live producer mints receipts into the store yet; dispatch hydrates once the trap/exit boundary stores one; slop: receipt() Err, stored receipt never minted.
     pub async fn receipt(&self) -> Result<ExecutionReceipt, PluginError> {
-        // TODO (L3) [ar_01_execution_receipt_blake3_binding]: wire to the live per-process receipt in Part 2.; slop: tautological hash from reaped file, binary_blake3 ignored
-        Ok(ExecutionReceipt {
-            pid: self.pid,
-            binary_path: String::new(),
-            binary_blake3: String::new(),
-            exit_kind: ExitKind::Normal,
-            correlation_token: None,
-            dirty_bytes: 0,
-            syscall_count: None,
-            exit_code: 0,
-            wall_clock_ns: 0,
-            phase_timings: None,
-            egress_bytes: 0,
-            egress_dropped_bytes: 0,
-            extensions: Vec::new(),
-        })
+        match &self.receipt {
+            Some(receipt) => Ok(receipt.clone()),
+            None => Err(PluginError::Halt(
+                "ENOENT: no execution receipt bound to this handler context".into(),
+            )),
+        }
     }
 }
 

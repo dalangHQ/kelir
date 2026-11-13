@@ -823,10 +823,6 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     return FusedTrampoline.fuse(this.registry.hooks);
   }
 
-  private fusedDescriptor(): FusedTrampolineDescriptor {
-    return this.fuse().describe();
-  }
-
   private async loadNativeAddon(): Promise<NativeAddonBinding> {
     const specifier = "./native/kelir.node";
     try {
@@ -848,7 +844,8 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         `cannot boot plugin ${this.name}: mount it on a host with .use()`,
       );
     }
-    const descriptor = this.fusedDescriptor();
+    const fused = this.fuse();
+    const descriptor = fused.describe();
     const addon = await this.loadNativeAddon();
     const nativeBuilder = new addon.NativeKelirBuilder({
       vcpus: this.kelirConfig.vcpus,
@@ -918,13 +915,13 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     for (const registration of this.pluginRegistrations) {
       nativeBuilder.addPlugin(registration.name, registration.enabled);
     }
-    nativeBuilder.fuseHooks(descriptor.rings);
+    nativeBuilder.fuseHooks(descriptor.rings, fused.runs());
     if (nativeBuilder.trampolineEntryCount() !== descriptor.rings.length) {
       throw new EConfig(
         "kelir native NAPI trampoline table is not one entry per ring event",
       );
     }
-    // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: bind each fused ring chain to its single trampoline entry as one threadsafe closure.; slop: chains bound per hook, crossings multiply per ring event
+    // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
     const nativeSession = await nativeBuilder.boot();
     const session = new Session(nativeSession);
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages

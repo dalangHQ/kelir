@@ -96,6 +96,31 @@ def test_fuse_of_empty_hook_list() -> None:
     assert trampoline.crossings_per_ring_event(RingEvent.TRAP) == 0
 
 
+def test_runs_threads_each_hook_callable_by_ring_and_ordinal() -> None:
+    seen: list[Any] = []
+    hooks = [
+        HookDescriptor(
+            ring=RingEvent.TRAP,
+            stage=HookStage.PRE,
+            ordinal=1,
+            run=lambda event: seen.append(event),
+        ),
+        HookDescriptor(
+            ring=RingEvent.TRAP,
+            stage=HookStage.PRE,
+            ordinal=0,
+            run=_noop,
+        ),
+    ]
+    runs = FusedTrampoline.fuse(hooks).runs()
+    assert [(entry["ring"], entry["ordinal"]) for entry in runs] == [
+        ("trap", 0),
+        ("trap", 1),
+    ]
+    runs[1]["run"]("trap", 1)
+    assert seen == [{"ring": "trap", "ordinal": 1}]
+
+
 def test_fuse_orders_hooks_by_ordinal_within_ring() -> None:
     hooks = [
         HookDescriptor(ring=RingEvent.TRAP, stage=HookStage.PRE, ordinal=5, run=_noop),

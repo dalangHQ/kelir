@@ -29,6 +29,7 @@
       - Exclusion and comparison rules: see: 10-attestation.md#Field-semantics
     - Host dashboards (Prometheus, Datadog, Grafana Alloy, OTel Collector)
       - consume without bespoke scrapers
+    - Memory-pressure dispatch crosses the fused MemoryPressure ring: see: 02-plugin-model.md#Foreign-plugin-proxy
   - Health signals
     - Heartbeat loss marks a guest as stalled or wedged
     - Parent watchdogs reap orphaned runtime processes

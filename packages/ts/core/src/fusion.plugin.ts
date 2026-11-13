@@ -52,6 +52,12 @@ export function lifecycleTagFor(event: LifecycleEvent): LifecycleTag {
   }
 }
 
+export interface FusedHookRun {
+  readonly ring: RingEvent;
+  readonly ordinal: number;
+  readonly run: (ring: RingEvent, ordinal: number) => unknown;
+}
+
 export interface FusedRingChain {
   readonly ring: RingEvent;
   readonly hooks: readonly HookDescriptor[];
@@ -113,6 +119,17 @@ export class FusedTrampoline {
         })),
       })),
     };
+  }
+
+  // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+  runs(): readonly FusedHookRun[] {
+    return this.chains.flatMap((chain) =>
+      chain.hooks.map((hook) => ({
+        ring: chain.ring,
+        ordinal: hook.ordinal,
+        run: (ring: RingEvent, ordinal: number) => hook.run({ ring, ordinal }),
+      })),
+    );
   }
 }
 
@@ -221,7 +238,10 @@ export interface NativeKelirBuilderBinding {
   setTerminalConfig(config: NativeTerminalConfigBinding): void;
   setStorageConfig(config: NativeStorageConfigBinding): void;
   setWireConfig(config: NativeWireConfigBinding): void;
-  fuseHooks(rings: readonly FusedRingChainDescriptor[]): void;
+  fuseHooks(
+    rings: readonly FusedRingChainDescriptor[],
+    runs?: readonly FusedHookRun[],
+  ): void;
   trampolineEntryCount(): number;
   boot(): Promise<NativeSessionHandle>;
 }

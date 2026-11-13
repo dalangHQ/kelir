@@ -2,9 +2,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use kelir_core::dispatch_plugin::PipelineEngine;
 use kelir_core::planes::storage::LockBrokerWiring;
 use kelir_core::planes::storage::lock_broker::{LockBroker, LockKey, LockKind, LockRequest};
-use kelir_interface::plugin_model::{FsInterposer, PluginError};
+use kelir_interface::plugin_model::{
+    FsInterposer, HandlerCtx, MountScope, PipelineBinder, PluginError,
+};
 
 fn temp_workspace(name: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("kelir-et2-{name}"));
@@ -15,6 +18,12 @@ fn temp_workspace(name: &str) -> PathBuf {
 
 fn drop_workspace(path: &Path) {
     let _ = std::fs::remove_dir_all(path);
+}
+
+fn engine_with(interposer: Arc<dyn FsInterposer>) -> Arc<PipelineEngine> {
+    let mut engine = PipelineEngine::new();
+    engine.bind_fs_scoped(interposer, MountScope::default());
+    Arc::new(engine)
 }
 
 struct PassFs;
@@ -29,12 +38,13 @@ fn sp_15_host_inode_lock_broker_flock_bridge() -> Result<(), String> {
     let target = workspace.join("index.lock");
     std::fs::write(&target, b"staged index\n").map_err(|e| e.to_string())?;
     let broker = LockBroker::with_wiring(
-        Arc::new(PassFs),
+        engine_with(Arc::new(PassFs)),
         LockBrokerWiring {
             scope_globs: vec!["**/*".to_string()],
             non_blocking: false,
         },
     );
+    let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let request = LockRequest {
         namespace: [0x15; 16],
         guest_inode: 7,
@@ -43,7 +53,7 @@ fn sp_15_host_inode_lock_broker_flock_bridge() -> Result<(), String> {
         blocking: true,
         pid: 42,
     };
-    let outcome = broker.acquire(&request);
+    let outcome = broker.acquire(&request, &ctx);
     let grant = match outcome {
         Ok(grant) => grant,
         Err(PluginError::Halt(message)) => {
@@ -115,12 +125,13 @@ fn sp_19_host_inode_flock_contention_ewouldblock() -> Result<(), String> {
         return Err("external host holder never armed its flock".to_string());
     }
     let broker = LockBroker::with_wiring(
-        Arc::new(PassFs),
+        engine_with(Arc::new(PassFs)),
         LockBrokerWiring {
             scope_globs: vec!["**/*".to_string()],
             non_blocking: true,
         },
     );
+    let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let request = LockRequest {
         namespace: [0x19; 16],
         guest_inode: 7,
@@ -129,7 +140,7 @@ fn sp_19_host_inode_flock_contention_ewouldblock() -> Result<(), String> {
         blocking: true,
         pid: 42,
     };
-    let outcome = broker.acquire(&request);
+    let outcome = broker.acquire(&request, &ctx);
     let _ = holder.kill();
     let _ = holder.wait();
     match outcome {

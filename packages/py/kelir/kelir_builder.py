@@ -860,7 +860,8 @@ class KelirBuilder:
                 "cannot boot a plugin-mode KelirBuilder; mount it on a host with .use()"
             )
         self.seal()
-        descriptor = self.fuse().describe()
+        fused = self.fuse()
+        descriptor = fused.describe()
         bridge = _load_native_bridge()
         native = bridge.PyKelirBuilder(
             vcpus=self._config["vcpus"],
@@ -886,7 +887,7 @@ class KelirBuilder:
             native.set_wire_config(_bridge_safe_config("wire", self._config["wire"]))
         for registration in self._plugin_registrations:
             native.use_plugin(registration.name, registration.enabled)
-        native.fuse_hooks(descriptor)
+        native.fuse_hooks(descriptor, fused.runs())
         native_handle = native.boot()
         session = Session.from_native(native_handle)
         # see: cans/03-sdk-architecture.md#Service-lookup-across-languages

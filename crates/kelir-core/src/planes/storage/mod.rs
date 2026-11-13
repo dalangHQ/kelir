@@ -234,29 +234,29 @@ impl StoragePlane {
 
     pub fn lock_broker(
         &self,
-        interposer: Arc<dyn kelir_interface::plugin_model::FsInterposer>,
+        engine: Arc<crate::dispatch_plugin::PipelineEngine>,
     ) -> &lock_broker::LockBroker {
-        self.lock_broker_arc(interposer)
+        self.lock_broker_arc(engine)
     }
 
     // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
     pub fn lock_broker_coordination(
         &self,
-        interposer: Arc<dyn kelir_interface::plugin_model::FsInterposer>,
+        engine: Arc<crate::dispatch_plugin::PipelineEngine>,
     ) -> Arc<dyn kelir_interface::plugin_model::LockBrokerCoordination> {
-        let broker: Arc<lock_broker::LockBroker> = Arc::clone(self.lock_broker_arc(interposer));
+        let broker: Arc<lock_broker::LockBroker> = Arc::clone(self.lock_broker_arc(engine));
         broker
     }
 
     fn lock_broker_arc(
         &self,
-        interposer: Arc<dyn kelir_interface::plugin_model::FsInterposer>,
+        engine: Arc<crate::dispatch_plugin::PipelineEngine>,
     ) -> &Arc<lock_broker::LockBroker> {
         // see: cans/05-storage-plane.md#Host-inode-lock-broker
         let wiring = self.wiring.lock_broker.clone().unwrap_or_default();
         self.lock_broker.get_or_init(|| {
             Arc::new(
-                lock_broker::LockBroker::with_wiring(interposer, wiring)
+                lock_broker::LockBroker::with_wiring(engine, wiring)
                     .with_namespace(self.lock_namespace),
             )
         })
@@ -270,15 +270,15 @@ impl StoragePlane {
     pub fn fuse_worker(
         &self,
         receiver: std::sync::mpsc::Receiver<fuse_storage::FuseRequest>,
-        interposer: Arc<dyn kelir_interface::plugin_model::FsInterposer>,
+        engine: Arc<crate::dispatch_plugin::PipelineEngine>,
         session_id: [u8; 16],
     ) -> &Mutex<fuse_storage::FuseWorker> {
         self.fuse_worker.get_or_init(|| {
-            let lock_broker = Arc::clone(self.lock_broker_arc(Arc::clone(&interposer)));
+            let lock_broker = Arc::clone(self.lock_broker_arc(Arc::clone(&engine)));
             Mutex::new(
                 fuse_storage::FuseWorker::new(
                     receiver,
-                    interposer,
+                    engine,
                     lock_broker,
                     Arc::clone(&self.quota),
                     session_id,

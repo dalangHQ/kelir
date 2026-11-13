@@ -79,6 +79,16 @@
     - Exactly one FFI trampoline crossing per ring event regardless of hook count
     - Marshals ring events across threadsafe boundaries on match
     - Non-blocking trap returns: see: #Unified-verdict
+    - Registered callbacks invoke at the crossing
+      - PipelineEngine holds callbacks keyed by (ring, ordinal)
+      - fused_crossing invokes the matching callbacks in ordinal order; first non-Pass verdict wins
+      - No callback registered falls back to the per-hook foreign submit
+      - Callback trait and engine signatures: see: artifacts/code/plugin-trait.rs
+    - Foreign runtimes register run callables through the FFI surface
+      - NAPI wraps each TypeScript run in a threadsafe function; PyO3 stores the callable
+      - Each registered run lands in HookEntry.run and boot registers it on the engine
+      - The foreign return value does not gate dispatch and the ring event payload is not marshaled yet; both land with the verdict rendezvous
+      - Adapter shapes: see: artifacts/code/plugin-trait.rs
   - Composite plugin hierarchy
     - see: [1]
     - Mount verb: none; a CompositeBundle has no mount verb and mounting one is unsupported
@@ -109,7 +119,7 @@
           - Expanded: on_exec_stdout(pid, exec_id, chunk), on_exec_stderr(pid, exec_id, chunk)
           - Fires for EXEC stream kind; see: 11-protocol.md#Binary-exec-channel
           - PTY (Port 0) path unchanged; exec path uses exec_id rather than port
-        - FsInterposer: fs lookup, read, write; synchronous hot path
+        - FsInterposer: fs lookup, read, write, lock; synchronous hot path
         - NetInterposer: net outbound, net inbound; synchronous hot path
         - HostInterposer: host lsm exec, host pressure, host keyring; sync hot path
       - Identity markers
@@ -274,6 +284,8 @@
     - Gate 2 evaluates canonical identity; see: 11-protocol.md#Trap-fast-path
     - binary_path and argv[0] never identify the binary
     - Trusted-prefix bypass: see: 11-protocol.md#Trap-fast-path
+    - Binary-list match (L2 scope membership, not identity): no list allows all; an entry matches when it equals the event binary path, or when it carries no `/` and equals the file name of that path
+    - A binary-list match admits the event to dispatch only; it never confers trust and never yields a Pass or Skip verdict
   - Latency ceiling
     - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs
     - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs

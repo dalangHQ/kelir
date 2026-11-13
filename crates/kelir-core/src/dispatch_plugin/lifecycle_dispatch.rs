@@ -75,18 +75,27 @@ impl PipelineEngine {
         Ok(())
     }
 
-    // TODO (L3) [telemetry_audit]: no TrampolineRing tag exists for memory-pressure telemetry, so fused crossings cannot bind this ring yet; slop: telemetry ring bound without tag, crossings unattributed
     // see: cans/14-observability.md#Metrics-pipeline
     pub async fn dispatch_memory_pressure(
         &self,
         available_mb: u32,
         total_mb: u32,
     ) -> Result<(), PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::MemoryPressure)?;
         for participant in &self.telemetry_interceptors {
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
             let outcome =
                 quarantine_unit(participant.on_memory_pressure(available_mb, total_mb)).await;
+            if fused.is_none() {
+                self.foreign_submit_complete();
+            }
             outcome?;
         }
+        drop(fused);
         Ok(())
     }
 

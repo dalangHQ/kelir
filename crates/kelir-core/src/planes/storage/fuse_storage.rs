@@ -4,7 +4,7 @@
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
 // see: cans/02-plugin-model.md#Hook-return-semantics
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{FsContext, FsInodeAttr, FsInterposer, HandlerCtx};
+use kelir_interface::plugin_model::{FsContext, FsInodeAttr, HandlerCtx};
 use kelir_interface::protocol_wire::{Errno, FilterAction, PatchPayload, Verdict};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -16,7 +16,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use super::StorageQuota;
 use super::lock_broker::{LockBroker, LockKind, LockRequest};
 use super::storage_synthetic::SyntheticFile;
-use crate::dispatch_plugin::map_reject_to_filter_action;
+use crate::dispatch_plugin::PipelineEngine;
 
 mod uapi_fuse;
 
@@ -100,7 +100,7 @@ pub struct FuseResponse {
 
 // see: cans/05-storage-plane.md#Interception-pipeline
 pub struct FuseDispatcher {
-    interposer: Arc<dyn FsInterposer>,
+    engine: Arc<PipelineEngine>,
     synthetic_files: Vec<SyntheticFile>,
     virtual_inodes: RwLock<HashMap<PathBuf, u64>>,
     next_virtual_inode: AtomicU64,
@@ -109,14 +109,14 @@ pub struct FuseDispatcher {
 }
 
 impl FuseDispatcher {
-    pub fn new(interposer: Arc<dyn FsInterposer>) -> Self {
+    pub fn new(engine: Arc<PipelineEngine>) -> Self {
         Self {
-            interposer: interposer.clone(),
+            engine: Arc::clone(&engine),
             synthetic_files: Vec::new(),
             virtual_inodes: RwLock::new(HashMap::new()),
             next_virtual_inode: AtomicU64::new(2),
             quota: Arc::new(StorageQuota::unbounded()),
-            lock_broker: Arc::new(LockBroker::new(interposer)),
+            lock_broker: Arc::new(LockBroker::new(engine)),
         }
     }
 
@@ -166,7 +166,7 @@ impl FuseDispatcher {
                         });
                     }
                 }
-                match self.interposer.on_fs_lookup(&request.path)? {
+                match self.engine.dispatch_fs_lookup(&request.path, ctx)? {
                     Verdict::Pass => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
                         // TODO (L3) [sp_11_host_fifo_socket_lookup_enxio]: fill lookup payload from broker getattr; slop: lookup accepts FIFO/socket, ENXIO never returned
@@ -220,8 +220,8 @@ impl FuseDispatcher {
                     }
                 }
                 request.data = self
-                    .interposer
-                    .on_fs_read(&request.path, &request.data)?;
+                    .engine
+                    .dispatch_fs_read(&request.path, &request.data, ctx)?;
                 Ok(FuseResponse {
                     guest_inode: request.guest_inode,
                     // TODO (L3) [sp_14_in_flight_read_masking_pattern_replace]: fill read payload from broker read at offset; slop: guest reads raw secret, host file mutated instead
@@ -279,7 +279,7 @@ impl FuseDispatcher {
                         reply: FuseReply::Errno(-libc::ENOSPC),
                     });
                 }
-                match map_reject_to_filter_action(self.interposer.on_fs_write(
+                match self.engine.dispatch_fs_write(
                     request.path.as_path(),
                     &mut request.data,
                     request.pid,
@@ -289,7 +289,7 @@ impl FuseDispatcher {
                         journal: 0,
                         offset: 0,
                     }),
-                ))? {
+                )? {
                     // see: cans/05-storage-plane.md#FUSE-opcode-table
                     FilterAction::Forward => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
@@ -331,7 +331,7 @@ impl FuseDispatcher {
                     blocking: matches!(request.opcode, FuseOpcode::Setlkw),
                     pid: request.pid,
                 };
-                self.lock_broker.acquire(&lock_request)?;
+                self.lock_broker.acquire(&lock_request, ctx)?;
                 let flock_cmd = match request.opcode {
                     // TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_EX/LOCK_NB constants live in the enclave; slop: in-memory lock table, no host flock, contender succeeds
                     FuseOpcode::Setlk => 6,
@@ -339,8 +339,8 @@ impl FuseDispatcher {
                     _ => 2,
                 };
                 match self
-                    .interposer
-                    .on_fs_lock(&request.path, flock_cmd, 1, request.pid)?
+                    .engine
+                    .dispatch_fs_lock(&request.path, flock_cmd, 1, request.pid, ctx)?
                 {
                     Verdict::Pass => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
@@ -412,14 +412,14 @@ pub struct FuseWorker {
 impl FuseWorker {
     pub fn new(
         receiver: Receiver<FuseRequest>,
-        interposer: Arc<dyn FsInterposer>,
+        engine: Arc<PipelineEngine>,
         lock_broker: Arc<LockBroker>,
         quota: Arc<StorageQuota>,
         session_id: [u8; 16],
     ) -> Self {
         Self {
             receiver,
-            dispatcher: FuseDispatcher::new(interposer)
+            dispatcher: FuseDispatcher::new(engine)
                 .with_lock_broker(lock_broker)
                 .with_quota(quota),
             session_id,

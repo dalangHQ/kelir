@@ -80,3 +80,19 @@ pub const KIND_MCP_CONSOLE: u16 = 0x0012;
 // MuxFrameHeader (stream_id: u32, flags: u8, len: u32), payload.
 // EXEC sub-lane codes live in protocol_wire.rs (EXEC_STREAM_*); 0=stdin,
 // 1=stdout, 2=stderr, 3=exec control.
+//
+// Spawn submit path (11-protocol Binary exec channel, 03-sdk-architecture Params typed views):
+// SpawnRequest { session_id: [u8; 16], stream_kind: StreamKind, args: Vec<String>,
+//   cwd: Option<String>, limits_bytes: Vec<u8>, params_bytes: Vec<u8> }.
+// params_bytes is the CBOR encoding of the SpawnBuilder::params<T: Serialize> value;
+// HandlerCtx::params::<T>() decodes the same bytes with ciborium, so encode and
+// decode share one codec and one buffer shape.
+// SpawnTransport::dispatch_exec(&self, request: &SpawnRequest) -> Result<(), PluginError>
+// is the host-side submit; the live transport encodes the EXEC frame on the bound
+// stream kind. The EXEC frame encode and the SpawnResult (exit code, stdout,
+// stderr) channel are not part of dispatch_exec.
+// Per-exec params store: session key (exec_id: u64, stream_id: u8) -> params_bytes.
+// The transport stores request.params_bytes under the (exec_id, stream_id) the
+// EXEC frame allocates; trap dispatch hydrates HandlerCtx.params_buffer from the
+// store per exec before interceptors run, so c.params::<T>() reads the params
+// of the exec being trapped and never another exec's.

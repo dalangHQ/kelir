@@ -11,7 +11,8 @@
       - Guest sees one POSIX filesystem; zero union-driver behavior in guest
     - Interception pipeline
       - FUSE bridge directly links guest VFS to host broker
-      - Pipeline engine exposes synchronous lookup, read, and write interception
+      - Pipeline engine exposes synchronous lookup, read, write, and lock interception
+      - FUSE lookup, read, write, and lock dispatch runs through the pipeline engine across all mounted interceptors with scope filtering and one fused crossing per ring event
       - Emits physical StorageDelta events directly to host event bus on commit
     - Host I/O invariants
       - Mandatory non-blocking host I/O: host descriptors open with O_NONBLOCK
@@ -98,8 +99,8 @@
     - Synthetic inodes layer onto the host CoW broker namespace at lookup
   - In-flight read masking
     - Pipeline exposes synchronous FsInterposer::on_fs_read hooks across offsets
-    - Zero-copy mutable slice passed directly to registered interposers
-    - Redaction and pattern replacement execute in-place before guest VFS return
+    - Reads dispatch through the pipeline engine, threading the buffer across mounted interposers in order
+    - Redaction and pattern replacement execute on the threaded buffer before guest VFS return
   - Host inode lock broker
     - Cross-VM advisory file lock mediation native to storage plane
     - Intercepts FUSE SETLK and SETLKW requests on declared repository paths
@@ -107,6 +108,7 @@
     - Delegates acquisition directly to host OS advisory locks (flock)
     - Conflicting lock returns EWOULDBLOCK without host thread latency
     - `SETLK` and `SETLKW` dispatch calls `LockBroker::acquire` before the interposer
+    - `LockBroker::acquire` routes the lock hook through the pipeline engine across mounted interceptors with scope filtering and one fused crossing
     - Lock denial replies `FuseReply::Errno(EWOULDBLOCK)`
   - Storage quotas
     - Tracked state

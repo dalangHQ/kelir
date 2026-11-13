@@ -134,6 +134,9 @@ impl TrapGateEvaluator {
 
     // see: cans/11-protocol.md#Trap-fast-path
     fn trusted_prefix_skip(&self, event: &TrapEvent) -> bool {
+        if !self.is_trusted_path(&event.binary_path) {
+            return false;
+        }
         if !self.is_trusted(event) {
             return false;
         }
@@ -167,10 +170,14 @@ impl TrapGateEvaluator {
         })
     }
 
+    // see: cans/11-protocol.md#Trap-fast-path
     fn is_trusted_path(&self, path: &str) -> bool {
-        self.trusted_prefixes
-            .iter()
-            .any(|prefix| path.starts_with(prefix.as_str()))
+        self.trusted_prefixes.iter().any(|prefix| {
+            path == prefix.as_str()
+                || path
+                    .strip_prefix(prefix.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
     }
 
     // see: cans/11-protocol.md#Trap-fast-path

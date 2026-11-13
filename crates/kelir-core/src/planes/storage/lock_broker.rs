@@ -2,11 +2,13 @@
 use super::LockBrokerWiring;
 use async_trait::async_trait;
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{FsInterposer, LockBrokerCoordination};
+use kelir_interface::plugin_model::{HandlerCtx, LockBrokerCoordination};
 use kelir_interface::protocol_wire::Verdict;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+
+use crate::dispatch_plugin::PipelineEngine;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LockKind {
@@ -77,7 +79,7 @@ impl HostFdCache {
 }
 
 pub struct LockBroker {
-    interposer: Arc<dyn FsInterposer>,
+    engine: Arc<PipelineEngine>,
     cache: RwLock<HostFdCache>,
     states: RwLock<HashMap<LockKey, LockState>>,
     namespace: [u8; 16],
@@ -85,14 +87,14 @@ pub struct LockBroker {
 }
 
 impl LockBroker {
-    pub fn new(interposer: Arc<dyn FsInterposer>) -> Self {
-        Self::with_wiring(interposer, LockBrokerWiring::default())
+    pub fn new(engine: Arc<PipelineEngine>) -> Self {
+        Self::with_wiring(engine, LockBrokerWiring::default())
     }
 
     // see: cans/05-storage-plane.md#Host-inode-lock-broker
-    pub fn with_wiring(interposer: Arc<dyn FsInterposer>, wiring: LockBrokerWiring) -> Self {
+    pub fn with_wiring(engine: Arc<PipelineEngine>, wiring: LockBrokerWiring) -> Self {
         Self {
-            interposer,
+            engine,
             cache: RwLock::new(HostFdCache::default()),
             states: RwLock::new(HashMap::new()),
             namespace: [0; 16],
@@ -115,7 +117,11 @@ impl LockBroker {
         self.namespace
     }
 
-    pub fn acquire(&self, request: &LockRequest) -> Result<LockGrant, PluginError> {
+    pub fn acquire(
+        &self,
+        request: &LockRequest,
+        ctx: &HandlerCtx,
+    ) -> Result<LockGrant, PluginError> {
         // TODO (L3) [storage_plane]: match request.host_path against wiring.scope_globs before mediation; undeclared paths deny with EPERM; slop: undeclared path mediated, EPERM never denied
         let blocking = request.blocking && !self.wiring.non_blocking;
         let flock_cmd = match (request.kind, blocking) {
@@ -129,10 +135,13 @@ impl LockBroker {
             LockKind::Shared => 0,
             LockKind::Exclusive => 1,
         };
-        match self
-            .interposer
-            .on_fs_lock(&request.host_path, flock_cmd, flock_type, request.pid)?
-        {
+        match self.engine.dispatch_fs_lock(
+            &request.host_path,
+            flock_cmd,
+            flock_type,
+            request.pid,
+            ctx,
+        )? {
             Verdict::Pass => {}
             Verdict::Drop { errno, reason } => {
                 return Err(PluginError::Halt(format!(

@@ -407,7 +407,9 @@ def test_boot_requires_native_plugin_contexts_for_caps(
         def use_plugin(self, name: str, enabled: bool) -> None:
             return None
 
-        def fuse_hooks(self, descriptor: dict[str, Any]) -> None:
+        def fuse_hooks(
+            self, descriptor: dict[str, Any], runs: Any = None
+        ) -> None:
             return None
 
         def boot(self) -> _StubHandle:

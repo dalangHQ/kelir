@@ -136,6 +136,7 @@ fn builder_descriptor(case: &UnifiedBuilderCase) -> FusedTrampolineDescriptor {
                 lifecycle_tag: None,
                 custom_action_name: None,
                 vsock_kind: None,
+                run: None,
             }),
             None => chains.push(RingChain {
                 ring,
@@ -147,6 +148,7 @@ fn builder_descriptor(case: &UnifiedBuilderCase) -> FusedTrampolineDescriptor {
                     lifecycle_tag: None,
                     custom_action_name: None,
                     vsock_kind: None,
+                    run: None,
                 }],
             }),
         };

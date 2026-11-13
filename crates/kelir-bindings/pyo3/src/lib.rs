@@ -12,7 +12,7 @@ use pyo3::types::{PyBytes, PyDict, PyList};
 pub mod fusion_plugin;
 pub mod storage_bridge;
 
-use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, convert_descriptor};
+use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, attach_runs, convert_descriptor};
 use kelir_core::Session;
 use kelir_core::planes::storage::storage_reconciler::FsReconcileRequest;
 use kelir_interface::driver_interface::{
@@ -787,13 +787,21 @@ impl PyKelirBuilder {
         Ok(())
     }
 
-    fn fuse_hooks(&mut self, descriptor: &Bound<'_, PyDict>) -> PyResult<()> {
+    #[pyo3(signature = (descriptor, runs=None))]
+    fn fuse_hooks(
+        &mut self,
+        descriptor: &Bound<'_, PyDict>,
+        runs: Option<&Bound<'_, PyList>>,
+    ) -> PyResult<()> {
         if self.fused.is_some() {
             return Err(PyValueError::new_err(
                 "fuse_hooks: the trampoline descriptor is frozen at seal",
             ));
         }
-        let converted = convert_descriptor(descriptor)?;
+        let mut converted = convert_descriptor(descriptor)?;
+        if let Some(runs) = runs {
+            attach_runs(&mut converted, runs)?;
+        }
         self.trampolines =
             TrampolineTable::from_descriptor(&converted).map_err(PyValueError::new_err)?;
         self.fused = Some(converted);
@@ -843,7 +851,7 @@ impl PyKelirBuilder {
         if let Some(reason) = self.config.missing_boot_path() {
             return Err(PyValueError::new_err(reason));
         }
-        // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: bind each fused ring chain to its single trampoline entry as one closure and dispatch through the kelir-core pipeline.; slop: one closure per hook, multiple crossings
+        // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
         let plane_wiring = kelir_core::session_lifecycle::PlaneWiring {
             terminal: self.terminal_wiring.clone(),

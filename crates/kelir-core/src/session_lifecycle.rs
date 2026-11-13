@@ -25,6 +25,9 @@ pub struct PlaneWiring {
     pub storage: crate::planes::storage::StorageConfig,
 }
 
+// see: cans/03-sdk-architecture.md#Params-typed-views
+type ExecParamsStore = Arc<std::sync::RwLock<std::collections::HashMap<(u64, u8), Vec<u8>>>>;
+
 pub struct Session {
     pub terminal: Arc<crate::planes::terminal::TerminalPlane>,
     pub storage: crate::planes::storage::StoragePlane,
@@ -43,6 +46,7 @@ pub struct Session {
     plugins: Vec<crate::plugin_registry::PluginRegistration>,
     detached: bool,
     state: LifecycleState,
+    exec_params: ExecParamsStore,
 }
 
 // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
@@ -232,6 +236,26 @@ fn bind_engine_stream_sinks(
     Ok(())
 }
 
+// see: cans/11-protocol.md#Binary-exec-channel
+struct DetachedSpawnTransport {
+    session_id: [u8; 16],
+    exec_params: ExecParamsStore,
+}
+
+// see: cans/11-protocol.md#Binary-exec-channel
+// TODO (L3) [protocol_mux]: encode the EXEC frame on the bound stream kind and dispatch it over the session transport, storing request.params_bytes in the session exec-params store under the allocated (exec_id, stream_id).; slop: EXEC frame never encoded, guest exec never dispatched
+impl kelir_interface::spawn_transport::SpawnTransport for DetachedSpawnTransport {
+    fn dispatch_exec(
+        &self,
+        request: &kelir_interface::spawn_transport::SpawnRequest,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let _ = request;
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "TODO (L3): guest exec dispatch".into(),
+        ))
+    }
+}
+
 impl Session {
     // see: cans/08-lifecycle.md#Detached-lifecycle
     pub fn relay_socket_path(
@@ -296,6 +320,33 @@ impl Session {
         self.vetoes = vetoes;
     }
 
+    // see: cans/11-protocol.md#Binary-exec-channel
+    // TODO (L2): return the live transport once the engine lane binds the bus dispatch.
+    pub fn spawn_transport(&self) -> Arc<dyn kelir_interface::spawn_transport::SpawnTransport> {
+        Arc::new(DetachedSpawnTransport {
+            session_id: self.session_id,
+            exec_params: Arc::clone(&self.exec_params),
+        })
+    }
+
+    // see: cans/03-sdk-architecture.md#Params-typed-views
+    pub fn store_exec_params(&self, exec_id: u64, stream_id: u8, params: Vec<u8>) {
+        let mut store = self
+            .exec_params
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        store.insert((exec_id, stream_id), params);
+    }
+
+    // see: cans/03-sdk-architecture.md#Params-typed-views
+    pub fn exec_params(&self, exec_id: u64, stream_id: u8) -> Option<Vec<u8>> {
+        let store = self
+            .exec_params
+            .read()
+            .unwrap_or_else(|error| error.into_inner());
+        store.get(&(exec_id, stream_id)).cloned()
+    }
+
     // see: cans/08-lifecycle.md#Detached-lifecycle
     pub fn memory_handoff(
         &self,
@@ -317,7 +368,7 @@ impl Session {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // TODO (L3) [plugin_engine]: fused descriptor hook dispatch lands with the trampoline ring binding per cans/02-plugin-model.md#Foreign-plugin-proxy; with_trampoline preserves the caller's engine state; slop: fused dispatch without trampoline binding, state lost
+    // TODO (L3) [plugin_engine]: the AOT-fused trampoline closure marshals the whole hook chain across this single crossing at the native-to-foreign boundary; slop: descriptor ordinals unbound to a compiled closure, callbacks invoked per hook in ordinal order
     pub fn boot_with_plugins(
         config: kelir_interface::driver_interface::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
@@ -328,6 +379,7 @@ impl Session {
         let mut engine = crate::dispatch_plugin::PipelineEngine::new();
         if let Some(descriptor) = trampoline {
             engine = engine.with_trampoline(descriptor.clone());
+            engine.register_fused_callbacks(descriptor);
         }
         let mut session = Self::boot_with_engine(
             config,
@@ -478,6 +530,7 @@ impl Session {
             plugins: resolved,
             detached: false,
             state: LifecycleState::Initializing,
+            exec_params: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         };
         // see: cans/11-protocol.md#Kind-registration
         session.bind_stream_kind_sinks()?;
@@ -503,6 +556,16 @@ impl Session {
 
     pub fn pipeline_mut(&mut self) -> &mut crate::dispatch_plugin::PipelineEngine {
         &mut self.engine
+    }
+
+    // see: cans/10-attestation.md#Execution-receipts
+    pub fn store_receipt(&self, receipt: kelir_interface::telemetry::ExecutionReceipt) {
+        self.engine.store_receipt(receipt);
+    }
+
+    // see: cans/10-attestation.md#Execution-receipts
+    pub fn receipt(&self, pid: u32) -> Option<kelir_interface::telemetry::ExecutionReceipt> {
+        self.engine.receipt(pid)
     }
 
     // see: cans/02-plugin-model.md#Core-context-keys
@@ -557,7 +620,6 @@ impl Session {
     ) -> impl Future<Output = Result<Self, kelir_interface::plugin_model::PluginError>> + Send {
         // TODO (L3) [lc_01_cow_fork_warm_memory_sharing]: backend drivers implement the native CoW clone behind VmmDriver::fork; slop: fork memcpy clones RAM, dirty pages nonzero, over 10ms
         // TODO (L3) [pe_13_fork_state_specialization_isolation]: rebind vsock channels and wire wiring onto the child engine; the SDK layer rebinds the plugin graph via fork_state; slop: child pipeline loses interceptors, fork_state not rebound
-        // TODO (L2): rehydrate the child engine's ring/vsock/lifecycle registration state; PipelineEngine exposes no accessor for the parent registration table (dispatch_plugin owns it).
         let incarnation_id = mint_uuid_v7();
         // see: cans/08-lifecycle.md#CoW-fork
         let parent_driver = self.driver.clone();
@@ -569,6 +631,9 @@ impl Session {
         let session_id = mint_uuid_v7();
         let plugins = self.plugins.clone();
         let detached = self.detached;
+        let parent_registration = self.engine.host_registration_state();
+        let parent_receipts = self.engine.receipt_store().snapshot();
+        let exec_params = Arc::clone(&self.exec_params);
         async move {
             // see: cans/08-lifecycle.md#CoW-fork
             let child_driver = match parent_driver {
@@ -603,10 +668,15 @@ impl Session {
                 crate::planes::checkpoint::CheckpointPlane::new()
                     .with_metrics(Arc::clone(&metrics)),
             );
-            let engine = crate::dispatch_plugin::PipelineEngine::new()
+            let mut engine = crate::dispatch_plugin::PipelineEngine::new()
                 .with_metrics(Arc::clone(&metrics))
                 .with_terminal(Arc::clone(&terminal))
                 .with_checkpoint(Arc::clone(&checkpoint));
+            // see: cans/08-lifecycle.md#CoW-fork
+            engine.rehydrate_host_registration(parent_registration);
+            for receipt in parent_receipts {
+                engine.store_receipt(receipt);
+            }
             Ok(Self {
                 terminal,
                 storage: storage.with_metrics(Arc::clone(&metrics)),
@@ -629,6 +699,7 @@ impl Session {
                 detached,
                 // see: cans/08-lifecycle.md#CoW-fork
                 state: LifecycleState::Running,
+                exec_params,
             })
         }
     }

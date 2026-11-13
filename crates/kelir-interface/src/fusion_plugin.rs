@@ -2,6 +2,11 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/03-sdk-architecture.md#Python-SDK
 use std::collections::HashSet;
+use std::fmt;
+use std::sync::Arc;
+
+use crate::plugin_model::PluginError;
+use crate::protocol_wire::Verdict;
 
 // see: cans/02-plugin-model.md#Segregated-ring-traits
 macro_rules! tag_enum {
@@ -66,6 +71,11 @@ tag_enum! {
     }
 }
 
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
+pub trait FusedTrampolineCallback: Send + Sync + 'static {
+    fn run(&self, ring: TrampolineRing, ordinal: u32) -> Result<Verdict, PluginError>;
+}
+
 // see: cans/02-plugin-model.md#Filter-before-FFI-gate
 #[derive(Debug, Clone, Default)]
 pub struct FilterSnapshot {
@@ -75,7 +85,7 @@ pub struct FilterSnapshot {
 }
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct HookEntry {
     pub ordinal: u32,
     pub stage: HookStage,
@@ -84,6 +94,22 @@ pub struct HookEntry {
     pub lifecycle_tag: Option<String>,
     pub custom_action_name: Option<String>,
     pub vsock_kind: Option<u32>,
+    pub run: Option<Arc<dyn FusedTrampolineCallback>>,
+}
+
+impl fmt::Debug for HookEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HookEntry")
+            .field("ordinal", &self.ordinal)
+            .field("stage", &self.stage)
+            .field("plugin_name", &self.plugin_name)
+            .field("filter", &self.filter)
+            .field("lifecycle_tag", &self.lifecycle_tag)
+            .field("custom_action_name", &self.custom_action_name)
+            .field("vsock_kind", &self.vsock_kind)
+            .field("run", &self.run.as_ref().map(|_| "FusedTrampolineCallback"))
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
