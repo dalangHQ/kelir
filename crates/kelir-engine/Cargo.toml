@@ -25,6 +25,7 @@ bytes = { workspace = true }
 [dev-dependencies]
 kelir-storage = { path = "../kelir-storage" }
 kelir-storage-io = { path = "../kelir-storage-io" }
+kelir-wire = { path = "../kelir-wire" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 [lints]

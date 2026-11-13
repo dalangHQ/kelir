@@ -3,7 +3,6 @@
 
 pub(crate) use kelir_interface::frame_layout_views::{
     ETH_HEADER_BYTES, ETHERTYPE_IPV4, EthView, IP_PROTO_TCP, IPV4_MIN_HEADER_BYTES, Ipv4View,
-    TCP_MIN_HEADER_BYTES, TcpView,
 };
 
 pub(crate) const UDP_HEADER_BYTES: usize = 8;

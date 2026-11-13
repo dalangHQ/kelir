@@ -1,7 +1,9 @@
 - Wire plane
   - Wire architecture
     - see: artifacts/diagrams/wire-plane.txt
-    - Owner: kelir-engine native wire subsystem (kelir-engine::wire)
+    - Owner: `kelir-wire` (L3) + `kelir-engine::planes::wire` (L2) + `kelir-interface::wire` (L1)
+    - Crate topology: `kelir-interface::wire` holds the `NetOps`, `DnsOps`, `UdpNatOps`, `L4DivertOps` traits and wire types; `kelir-wire` holds `RealNetOps`, `RealDnsOps`, `RealUdpNatOps`, `RealL4DivertOps`; `kelir-engine::planes::wire` holds the `WirePlane` facade over `Arc<dyn *Ops>`
+    - Trait seam: the L2 facade holds `Arc<dyn NetOps>`, `Arc<dyn DnsOps>`, `Arc<dyn UdpNatOps>`, `Arc<dyn L4DivertOps>` and delegates every call; `kelir-engine` never names a `Real*Ops` type
     - Hardware abstraction: virtio-net bound host-side to embedded smoltcp TCP/IP stack
     - Hook points: on_net_outbound and on_net_inbound
     - Interceptor hooks receive NetContext containing raw Ethernet frames
@@ -72,7 +74,7 @@
   - Synthetic DNS gateway
     - Gateway binding
       - Guest paravirtual network binds synthetic gateway 192.168.127.1:53
-      - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-engine::wire
+      - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-wire::RealNetOps via kelir-engine::planes::wire
       - Traffic to non-gateway resolvers redirected at ingress ring
     - Host-state resolution
       - Queries resolved host-side via live OS resolver state

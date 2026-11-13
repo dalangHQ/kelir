@@ -1,14 +1,29 @@
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_01_default_deny_ingress_drop.yaml#case_id
 use std::net::TcpListener;
+use std::sync::Arc;
 
 use kelir_engine::Session;
-use kelir_engine::planes::wire::{
-    FrameDirection, LinkLocalRoute, WirePlane, classify_frame_directional, link_local_route,
-};
+use kelir_engine::planes::wire::WirePlane;
 use kelir_interface::driver_interface::SnapshotDescriptor;
 use kelir_interface::driver_interface::default_vm_config;
 use kelir_interface::protocol_wire::FilterAction;
 use kelir_interface::protocol_wire::StreamKind;
+use kelir_interface::wire::dns::DnsOps;
+use kelir_interface::wire::net::{
+    FrameClass, FrameDirection, LinkLocalRoute, classify_frame_directional, link_local_route,
+};
+use kelir_wire::{RealDnsOps, RealL4DivertOps, RealNetOps, RealUdpNatOps};
+
+fn test_wire() -> WirePlane {
+    let dns: Arc<dyn DnsOps> = Arc::new(RealDnsOps::new());
+    let net = Arc::new(RealNetOps::new(Arc::clone(&dns)));
+    WirePlane::with_ops(
+        net,
+        dns,
+        Arc::new(RealUdpNatOps::new()),
+        Arc::new(RealL4DivertOps::new()),
+    )
+}
 
 fn ipv4_frame(dst: [u8; 4], proto: u8, dst_port: u16) -> Vec<u8> {
     let mut frame = Vec::with_capacity(42);
@@ -31,9 +46,9 @@ fn wp_01_default_deny_ingress_drop() -> Result<(), String> {
     let mut frame = ipv4_frame([10, 0, 0, 2], 1, 0);
     assert_eq!(
         classify_frame_directional(&frame, FrameDirection::Inbound),
-        kelir_engine::planes::wire::FrameClass::NonTcpUdp
+        FrameClass::NonTcpUdp
     );
-    let mut wire = WirePlane::new();
+    let mut wire = test_wire();
     let action = wire
         .process_inbound_frame(&mut frame)
         .map_err(|e| e.to_string())?;
@@ -50,7 +65,7 @@ fn wp_01_default_deny_ingress_drop() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_05_udp_nat_full_cone_mapping.yaml#case_id
 #[test]
 fn wp_05_udp_nat_full_cone_mapping() -> Result<(), String> {
-    let wire = WirePlane::new();
+    let wire = test_wire();
     wire.udp_nat_alloc(51820, 1000).map_err(|e| e.to_string())?;
     wire.udp_nat_alloc(51820, 1001).map_err(|e| e.to_string())?;
     assert_eq!(wire.udp_nat_slab_used().map_err(|e| e.to_string())?, 1);
@@ -62,7 +77,7 @@ fn wp_05_udp_nat_full_cone_mapping() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_06_udp_socket_reaper_slab_limit.yaml#case_id
 #[test]
 fn wp_06_udp_socket_reaper_slab_limit() -> Result<(), String> {
-    let wire = WirePlane::new();
+    let wire = test_wire();
     for port in 0..2000u16 {
         wire.udp_nat_alloc(port, 1000).map_err(|e| e.to_string())?;
     }
@@ -87,7 +102,7 @@ fn wp_07_link_local_quarantine_drop() -> Result<(), String> {
         link_local_route(&frame, FrameDirection::Outbound),
         Some(LinkLocalRoute::Drop)
     );
-    let mut wire = WirePlane::new();
+    let mut wire = test_wire();
     let action = wire
         .process_outbound_frame(&mut frame)
         .map_err(|e| e.to_string())?;
@@ -109,7 +124,7 @@ fn wp_08_imds_cloud_metadata_quarantine() -> Result<(), String> {
         Some(LinkLocalRoute::VaultImds { vsock_port }) => assert_eq!(vsock_port, 80),
         other => return Err(format!("IMDS frame routed wrongly: {other:?}")),
     }
-    let wire = WirePlane::new();
+    let wire = test_wire();
     assert!(!wire.imds_sink_bound());
     match wire.route_imds_to_vault(&frame) {
         Err(kelir_interface::plugin_model::PluginError::Halt(message)) => {
@@ -126,7 +141,7 @@ fn wp_08_imds_cloud_metadata_quarantine() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_14_port_forward_ephemeral_allocation.yaml#case_id
 #[test]
 fn wp_14_port_forward_ephemeral_allocation() -> Result<(), String> {
-    let wire = WirePlane::new();
+    let wire = test_wire();
     let allocated = wire
         .forward_port(8080, Some(0))
         .map_err(|e| e.to_string())?;
@@ -161,7 +176,7 @@ fn wp_14_port_forward_ephemeral_allocation() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_15_port_forward_collision_abort.yaml#case_id
 #[test]
 fn wp_15_port_forward_collision_abort() -> Result<(), String> {
-    let wire = WirePlane::new();
+    let wire = test_wire();
     let first = wire
         .forward_port(8080, Some(9999))
         .map_err(|e| e.to_string())?;
@@ -219,7 +234,7 @@ async fn wp_03_rollback_socket_termination_econnreset() -> Result<(), String> {
 #[test]
 #[ignore]
 fn wp_12_l4_diversion_passthrough_tls() -> Result<(), String> {
-    let wire = WirePlane::new();
+    let wire = test_wire();
     match wire.divert_l4(8443, "127.0.0.1:9443".to_string()) {
         Ok(stream) => {
             assert_eq!(stream.kind, StreamKind::L4Forward);
@@ -238,7 +253,7 @@ fn wp_12_l4_diversion_passthrough_tls() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_16_port_forward_so_linger_zero_release.yaml#case_id
 #[test]
 fn wp_16_port_forward_so_linger_zero_release() -> Result<(), String> {
-    let wire = WirePlane::new();
+    let wire = test_wire();
     let published = wire
         .forward_port(8080, Some(12345))
         .map_err(|e| e.to_string())?;

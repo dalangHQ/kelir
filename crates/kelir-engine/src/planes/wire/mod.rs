@@ -1,21 +1,20 @@
 // see: cans/07-wire-plane.md#Wire-architecture
 // see: cans/07-wire-plane.md#Userspace-network-stack
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex, RwLock};
 
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::protocol_wire::{FilterAction, StreamKind};
-use kelir_interface::vsock_mesh::{VAULT_METADATA_VSOCK_PORT, VsockServiceHandler};
+use kelir_interface::protocol_wire::FilterAction;
+use kelir_interface::vsock_mesh::VsockServiceHandler;
+use kelir_interface::wire::dns::{DnsOps, DnsQuery, DnsResponse};
+use kelir_interface::wire::l4::{L4DivertOps, L4Stream};
+use kelir_interface::wire::net::{
+    FrameDirection, LinkLocalRoute, NetOps, WireWiring, link_local_route,
+};
+use kelir_interface::wire::udp_nat::UdpNatOps;
 
+#[path = "layout_wire.flow.rs"]
 pub(crate) mod layout_wire;
-
-pub const SYNTHETIC_DNS_GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 127, 1);
-pub const SYNTHETIC_DNS_PORT: u16 = 53;
-
-// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-pub const RESOLV_CONF_PATH: &str = "/etc/resolv.conf";
 
 // see: cans/07-wire-plane.md#Port-forwarding
 #[derive(Debug, thiserror::Error)]
@@ -30,327 +29,98 @@ impl From<WireError> for PluginError {
     }
 }
 
-// see: cans/07-wire-plane.md#Pre-policy-drop-zones
-pub const LINK_LOCAL_IMDS_IP: Ipv4Addr = Ipv4Addr::new(169, 254, 169, 254);
+struct UnboundNetOps;
 
-pub struct SmoltcpStack {
-    interface: Option<smoltcp::iface::Interface>,
-}
-
-impl SmoltcpStack {
-    pub fn new() -> Self {
-        Self { interface: None }
+impl NetOps for UnboundNetOps {
+    fn intercept_ethernet_frame(
+        &self,
+        _direction: FrameDirection,
+        _frame: &mut [u8],
+    ) -> Result<FilterAction, PluginError> {
+        Err(PluginError::Halt(
+            "NetOps unbound at WirePlane::new; bind the kelir-wire ops in the composition root"
+                .into(),
+        ))
     }
 
-    pub fn poll(&mut self) -> Result<bool, PluginError> {
-        // TODO (L3) [vr_11_virtio_net_smoltcp_frame_sink]: attach the virtio-net device + SocketSet and run interface.poll over the TCP/UDP sockets; slop: host TAP created, frames never sink into smoltcp
-        let _ = &self.interface;
-        Ok(false)
-    }
+    fn apply_wiring(&self, _wiring: &WireWiring) {}
 }
 
-impl Default for SmoltcpStack {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+struct UnboundDnsOps;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DnsRcode {
-    NoError,
-    NxDomain,
-    ServFail,
-}
-
-// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-// TODO (L3) [wp_09_dns_gateway_host_state_tracking]: reload nameservers via inotify when /etc/resolv.conf changes; slop: resolv.conf change ignored, stale upstream kept
-fn host_resolver_nameservers() -> Vec<IpAddr> {
-    std::fs::read_to_string(RESOLV_CONF_PATH)
-        .map(|text| parse_resolv_conf_nameservers(&text))
-        .unwrap_or_default()
-}
-
-// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-fn parse_resolv_conf_nameservers(text: &str) -> Vec<IpAddr> {
-    text.lines()
-        .filter_map(|line| {
-            let mut fields = line.split_whitespace();
-            match (fields.next(), fields.next()) {
-                (Some("nameserver"), Some(addr)) => addr.parse().ok(),
-                _ => None,
-            }
-        })
-        .collect()
-}
-
-#[derive(Debug, Clone)]
-pub struct DnsQuery {
-    pub name: String,
-    pub qtype: u16,
-    pub edns_do: bool,
-}
-
-impl DnsQuery {
-    pub fn parse(bytes: &[u8]) -> Result<Self, PluginError> {
-        // TODO (L3) [wp_02_synthetic_dns_nxdomain_enforcement]: parse the DNS wire query (name, qtype, EDNS0 OPT record); slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
-        let _ = bytes;
-        Err(PluginError::Halt("DNS query parse pending (L3)".into()))
+impl DnsOps for UnboundDnsOps {
+    fn resolve_query(&self, _query: &mut DnsQuery) -> Result<DnsResponse, PluginError> {
+        Err(PluginError::Halt(
+            "DnsOps unbound at WirePlane::new; bind the kelir-wire ops in the composition root"
+                .into(),
+        ))
     }
 
-    pub fn downgrade_edns0(&mut self) {
-        self.edns_do = false;
+    fn resolve_synthetic_dns(&self, _payload: &[u8]) -> Result<DnsResponse, PluginError> {
+        Err(PluginError::Halt(
+            "DnsOps unbound at WirePlane::new; bind the kelir-wire ops in the composition root"
+                .into(),
+        ))
+    }
+
+    fn apply_wiring(&self, _wiring: &WireWiring) {}
+}
+
+struct UnboundUdpNatOps;
+
+impl UdpNatOps for UnboundUdpNatOps {
+    fn udp_nat_alloc(&self, _guest_source_port: u16, _now_unix: u64) -> Result<(), PluginError> {
+        Err(PluginError::Halt(
+            "UdpNatOps unbound at WirePlane::new; bind the kelir-wire ops in the composition root"
+                .into(),
+        ))
+    }
+
+    fn udp_nat_slab_used(&self) -> Result<usize, PluginError> {
+        Err(PluginError::Halt(
+            "UdpNatOps unbound at WirePlane::new; bind the kelir-wire ops in the composition root"
+                .into(),
+        ))
+    }
+
+    fn reap_stale_udp_sockets(&self, _now_unix: u64) -> Result<usize, PluginError> {
+        Err(PluginError::Halt(
+            "UdpNatOps unbound at WirePlane::new; bind the kelir-wire ops in the composition root"
+                .into(),
+        ))
+    }
+
+    fn quiesce(&self) -> Result<(), PluginError> {
+        Err(PluginError::Halt(
+            "UdpNatOps unbound at WirePlane::new; bind the kelir-wire ops in the composition root"
+                .into(),
+        ))
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct DnsResponse {
-    pub wire_bytes: Vec<u8>,
-    pub rcode: DnsRcode,
-    pub edns_downgraded: bool,
-}
+// TODO (L3) [wire_plane]: WirePlane::new binds fail-closed Unbound*Ops; Agent 5b replaces construction with the kelir-wire ops; slop: unbound ops Halt every frame/DNS/NAT/L4 call until the composition root binds them
+struct UnboundL4DivertOps;
 
-impl DnsResponse {
-    // see: cans/07-wire-plane.md#EDNS0-downgrade
-    pub fn downgrade_edns0(&mut self) {
-        // TODO (L3) [wire_plane]: clear the AD flag bit and the OPT record DO bit inside wire_bytes; slop: AD/DO bits leak upstream, downgrade never applied
-        self.edns_downgraded = true;
+impl L4DivertOps for UnboundL4DivertOps {
+    fn divert_l4(&self, _guest_port: u16, _host_target: String) -> Result<L4Stream, PluginError> {
+        Err(PluginError::Halt(
+            "L4DivertOps unbound at WirePlane::new; bind the kelir-wire ops in the composition root"
+                .into(),
+        ))
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct L4Stream {
-    pub kind: StreamKind,
-    pub guest_port: u16,
-    pub host_target: String,
-}
-
-impl L4Stream {
-    pub fn new(guest_port: u16, host_target: String) -> Self {
-        Self {
-            kind: StreamKind::L4Forward,
-            guest_port,
-            host_target,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FrameClass {
-    TooShort,
-    NonIp,
-    NonTcpUdp,
-    Tcp,
-    TcpDns,
-    UdpDns,
-    UdpOther,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FrameDirection {
-    Inbound,
-    Outbound,
-}
-
-// see: cans/07-wire-plane.md#Pre-policy-drop-zones
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkLocalRoute {
-    Drop,
-    VaultImds { vsock_port: u32 },
-}
-
-// see: cans/07-wire-plane.md#Pre-policy-drop-zones
-// TODO (L3) [wire_plane]: drop non-link-local cloud IMDS endpoints (e.g. Azure 168.63.129.16) at ingress; only the link-local 169.254.169.254 exception reaches the vault; slop: cloud IMDS endpoint reaches vault, quarantine bypassed
-pub fn link_local_route(frame: &[u8], direction: FrameDirection) -> Option<LinkLocalRoute> {
-    let remote = frame_remote_ip(frame, direction)?;
-    if !remote.is_link_local() {
-        return None;
-    }
-    if direction == FrameDirection::Outbound && remote == LINK_LOCAL_IMDS_IP {
-        return Some(LinkLocalRoute::VaultImds {
-            vsock_port: VAULT_METADATA_VSOCK_PORT,
-        });
-    }
-    Some(LinkLocalRoute::Drop)
-}
-
-// see: cans/07-wire-plane.md#Pre-policy-drop-zones
-fn frame_remote_ip(frame: &[u8], direction: FrameDirection) -> Option<Ipv4Addr> {
-    if frame.len() < layout_wire::ETH_HEADER_BYTES {
-        return None;
-    }
-    if layout_wire::EthView::new_unchecked(frame).etype() != layout_wire::ETHERTYPE_IPV4 {
-        return None;
-    }
-    let ip = layout_wire::Ipv4View::new_unchecked(&frame[layout_wire::ETH_HEADER_BYTES..]);
-    let octets = match direction {
-        FrameDirection::Inbound => ip.src_checked(),
-        FrameDirection::Outbound => ip.dst_checked(),
-    }?;
-    Some(Ipv4Addr::from(octets))
-}
-
-pub fn classify_frame(frame: &[u8]) -> FrameClass {
-    classify_frame_directional(frame, FrameDirection::Outbound)
-}
-
-pub fn classify_frame_directional(frame: &[u8], direction: FrameDirection) -> FrameClass {
-    if frame.len() < layout_wire::ETH_HEADER_BYTES {
-        return FrameClass::TooShort;
-    }
-    if layout_wire::EthView::new_unchecked(frame).etype() != layout_wire::ETHERTYPE_IPV4 {
-        return FrameClass::NonIp;
-    }
-    let ip = layout_wire::Ipv4View::new_unchecked(&frame[layout_wire::ETH_HEADER_BYTES..]);
-    let Some(ihl) = ip.ihl_bytes_checked() else {
-        return FrameClass::TooShort;
-    };
-    if ihl < layout_wire::IPV4_MIN_HEADER_BYTES
-        || frame.len() < layout_wire::ETH_HEADER_BYTES + ihl + layout_wire::L4_PORT_PAIR_BYTES
-    {
-        return FrameClass::TooShort;
-    }
-    match ip.proto() {
-        layout_wire::IP_PROTO_TCP => {
-            if is_synthetic_dns(frame, direction) {
-                FrameClass::TcpDns
-            } else {
-                FrameClass::Tcp
-            }
-        }
-        layout_wire::IP_PROTO_UDP => {
-            if is_synthetic_dns(frame, direction) {
-                FrameClass::UdpDns
-            } else {
-                FrameClass::UdpOther
-            }
-        }
-        _ => FrameClass::NonTcpUdp,
-    }
-}
-
-// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-pub fn is_synthetic_dns(frame: &[u8], direction: FrameDirection) -> bool {
-    if frame.len() < layout_wire::ETH_HEADER_BYTES {
-        return false;
-    }
-    if layout_wire::EthView::new_unchecked(frame).etype() != layout_wire::ETHERTYPE_IPV4 {
-        return false;
-    }
-    let ip = layout_wire::Ipv4View::new_unchecked(&frame[layout_wire::ETH_HEADER_BYTES..]);
-    let Some(ihl) = ip.ihl_bytes_checked() else {
-        return false;
-    };
-    if ihl < layout_wire::IPV4_MIN_HEADER_BYTES
-        || frame.len() < layout_wire::ETH_HEADER_BYTES + ihl + layout_wire::L4_PORT_PAIR_BYTES
-    {
-        return false;
-    }
-    let gateway_octets = SYNTHETIC_DNS_GATEWAY_IP.octets();
-    let gateway_ip = match direction {
-        FrameDirection::Inbound => ip.src(),
-        FrameDirection::Outbound => ip.dst(),
-    };
-    if gateway_ip != gateway_octets {
-        return false;
-    }
-    let protocol = ip.proto();
-    if protocol != layout_wire::IP_PROTO_TCP && protocol != layout_wire::IP_PROTO_UDP {
-        return false;
-    }
-    let l4_start = layout_wire::ETH_HEADER_BYTES + ihl;
-    let port = match protocol {
-        layout_wire::IP_PROTO_TCP => {
-            let tcp = layout_wire::TcpView::new_unchecked(&frame[l4_start..]);
-            match direction {
-                FrameDirection::Inbound => tcp.src_port(),
-                FrameDirection::Outbound => tcp.dst_port(),
-            }
-        }
-        _ => {
-            let udp = layout_wire::UdpView::new_unchecked(&frame[l4_start..]);
-            match direction {
-                FrameDirection::Inbound => udp.src_port(),
-                FrameDirection::Outbound => udp.dst_port(),
-            }
-        }
-    };
-    port == SYNTHETIC_DNS_PORT
-}
-
-// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-pub fn dns_payload(frame: &[u8], direction: FrameDirection) -> Option<&[u8]> {
-    if !is_synthetic_dns(frame, direction) {
-        return None;
-    }
-    let ip = layout_wire::Ipv4View::new_unchecked(&frame[layout_wire::ETH_HEADER_BYTES..]);
-    let l4_start = layout_wire::ETH_HEADER_BYTES + ip.ihl_bytes_checked()?;
-    match ip.proto() {
-        layout_wire::IP_PROTO_UDP => {
-            if frame.len() < l4_start + layout_wire::UDP_HEADER_BYTES {
-                return None;
-            }
-            Some(&frame[l4_start + layout_wire::UDP_HEADER_BYTES..])
-        }
-        layout_wire::IP_PROTO_TCP => {
-            let tcp = layout_wire::TcpView::new_unchecked(&frame[l4_start..]);
-            let header_bytes = tcp.header_bytes_checked()?;
-            if header_bytes < layout_wire::TCP_MIN_HEADER_BYTES
-                || frame.len() < l4_start + header_bytes
-            {
-                return None;
-            }
-            Some(&frame[l4_start + header_bytes..])
-        }
-        _ => None,
-    }
-}
-
-// see: cans/07-wire-plane.md#DNS-policy-filter
-// see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-fn domain_matches(domains: &[String], name: &str) -> bool {
-    domains.iter().any(|entry| {
-        entry == name
-            || entry == "*"
-            || name
-                .strip_suffix(entry.as_str())
-                .is_some_and(|head| head.ends_with('.'))
-    })
-}
-
-pub struct UdpNatEntry {
-    guest_source_port: u16,
-    last_active_unix: u64,
-}
-
-// see: cans/07-wire-plane.md#UDP-socket-reaper
-pub const UDP_NAT_SLAB_CAPACITY: usize = 1_024;
-
-// see: cans/07-wire-plane.md#UDP-socket-reaper
-pub const UDP_NAT_IDLE_TIMEOUT_SECS: u64 = 30;
 
 pub struct WirePlane {
-    synthetic_dns_ip: Ipv4Addr,
-    resolver_nameservers: Vec<IpAddr>,
-    udp_nat_slab: Arc<Mutex<Vec<Option<UdpNatEntry>>>>,
+    net_ops: Arc<dyn NetOps>,
+    dns_ops: Arc<dyn DnsOps>,
+    udp_nat_ops: Arc<dyn UdpNatOps>,
+    l4_ops: Arc<dyn L4DivertOps>,
     port_forwards: Arc<Mutex<std::collections::HashMap<u16, u16>>>,
     host_listeners:
         Arc<Mutex<std::collections::HashMap<u16, kelir_transport::host_bind::HostListener>>>,
-    allowed_domains: Arc<RwLock<Vec<String>>>,
-    stack: SmoltcpStack,
     imds_sink: Arc<RwLock<Option<Arc<dyn VsockServiceHandler>>>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     wiring: Option<WireWiring>,
-}
-
-// see: cans/07-wire-plane.md#DNS-policy-filter
-#[derive(Debug, Clone, Default)]
-pub struct WireWiring {
-    pub sinkhole_allowlist: Vec<String>,
-    pub sinkhole_drop_all: bool,
-    pub ssh_agent_bridge: bool,
-    pub vault_placeholders: Vec<String>,
-    pub l4_proxies: Vec<(u16, String)>,
-    pub allow_udp_proxied: bool,
 }
 
 impl Default for WirePlane {
@@ -361,14 +131,27 @@ impl Default for WirePlane {
 
 impl WirePlane {
     pub fn new() -> Self {
+        Self::with_ops(
+            Arc::new(UnboundNetOps),
+            Arc::new(UnboundDnsOps),
+            Arc::new(UnboundUdpNatOps),
+            Arc::new(UnboundL4DivertOps),
+        )
+    }
+
+    pub fn with_ops(
+        net_ops: Arc<dyn NetOps>,
+        dns_ops: Arc<dyn DnsOps>,
+        udp_nat_ops: Arc<dyn UdpNatOps>,
+        l4_ops: Arc<dyn L4DivertOps>,
+    ) -> Self {
         Self {
-            synthetic_dns_ip: SYNTHETIC_DNS_GATEWAY_IP,
-            resolver_nameservers: host_resolver_nameservers(),
-            udp_nat_slab: Arc::new(Mutex::new(Vec::new())),
+            net_ops,
+            dns_ops,
+            udp_nat_ops,
+            l4_ops,
             port_forwards: Arc::new(Mutex::new(std::collections::HashMap::new())),
             host_listeners: Arc::new(Mutex::new(std::collections::HashMap::new())),
-            allowed_domains: Arc::new(RwLock::new(Vec::new())),
-            stack: SmoltcpStack::new(),
             imds_sink: Arc::new(RwLock::new(None)),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             wiring: None,
@@ -378,9 +161,8 @@ impl WirePlane {
     // see: cans/07-wire-plane.md#DNS-policy-filter
     // TODO (L3) [wire_plane]: the ssh agent bridge mounts, vault placeholders hydrate, and l4 proxies open host listeners; slop: agent bridge unmounted, placeholders dry, listeners closed
     pub fn with_wiring(self, wiring: WireWiring) -> Self {
-        if let Ok(mut domains) = self.allowed_domains.write() {
-            *domains = wiring.sinkhole_allowlist.clone();
-        }
+        self.dns_ops.apply_wiring(&wiring);
+        self.net_ops.apply_wiring(&wiring);
         Self {
             wiring: Some(wiring),
             ..self
@@ -485,33 +267,9 @@ impl WirePlane {
         kelir_interface::protocol_wire::FilterAction,
         kelir_interface::plugin_model::PluginError,
     > {
-        if let Some(LinkLocalRoute::Drop) = link_local_route(frame, FrameDirection::Inbound) {
-            let action = FilterAction::Drop {
-                errno: None,
-                reason: "link-local 169.254.0.0/16 quarantined pre-policy".into(),
-            };
-            self.record_drop(&action);
-            return Ok(action);
-        }
-        let action: Result<
-            kelir_interface::protocol_wire::FilterAction,
-            kelir_interface::plugin_model::PluginError,
-        > = match classify_frame_directional(frame, FrameDirection::Inbound) {
-            FrameClass::TooShort
-            | FrameClass::NonIp
-            | FrameClass::NonTcpUdp
-            | FrameClass::UdpOther => Ok(FilterAction::Drop {
-                errno: None,
-                reason: "non-TCP/UDP frame dropped at ingress ring".into(),
-            }),
-            FrameClass::TcpDns | FrameClass::UdpDns => Ok(FilterAction::Forward),
-            FrameClass::Tcp => {
-                // TODO (L3) [vr_11_virtio_net_smoltcp_frame_sink]: terminate the TCP stream in the embedded smoltcp stack; slop: host TAP created, frames never sink into smoltcp
-                let _ = self.stack.poll()?;
-                Ok(FilterAction::Forward)
-            }
-        };
-        let action = action?;
+        let action = self
+            .net_ops
+            .intercept_ethernet_frame(FrameDirection::Inbound, frame)?;
         self.record_drop(&action);
         Ok(self.surface_action(action))
     }
@@ -535,53 +293,9 @@ impl WirePlane {
             Some(LinkLocalRoute::VaultImds { .. }) => return self.route_imds_to_vault(frame),
             None => {}
         }
-        let action: Result<
-            kelir_interface::protocol_wire::FilterAction,
-            kelir_interface::plugin_model::PluginError,
-        > = match classify_frame_directional(frame, FrameDirection::Outbound) {
-            FrameClass::TooShort | FrameClass::NonIp | FrameClass::NonTcpUdp => {
-                Ok(FilterAction::Drop {
-                    errno: None,
-                    reason: "non-TCP/UDP frame dropped at egress ring".into(),
-                })
-            }
-            // see: cans/07-wire-plane.md#UDP-NAT-semantics
-            FrameClass::UdpOther => {
-                if self
-                    .wiring
-                    .as_ref()
-                    .is_some_and(|wiring| wiring.allow_udp_proxied)
-                {
-                    // TODO (L3) [wire_plane]: forward via the full-cone UDP NAT host socket per guest source port; slop: UDP forwarded without per-port host socket
-                    let _ = self.stack.poll()?;
-                    Ok(FilterAction::Forward)
-                } else {
-                    Ok(FilterAction::Drop {
-                        errno: Some(Errno::Econnrefused),
-                        reason: "UDP egress denied: allow_udp_proxied not enabled".into(),
-                    })
-                }
-            }
-            FrameClass::TcpDns | FrameClass::UdpDns => {
-                match dns_payload(frame, FrameDirection::Outbound) {
-                    Some(payload) => {
-                        // TODO (L3) [wp_02_synthetic_dns_nxdomain_enforcement]: synthesize the answer frame into the guest ingress ring once the DNS wire parser lands; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
-                        self.resolve_synthetic_dns(payload)?;
-                        Ok(FilterAction::Forward)
-                    }
-                    None => Ok(FilterAction::Drop {
-                        errno: None,
-                        reason: "DNS frame without a gateway payload dropped at egress ring".into(),
-                    }),
-                }
-            }
-            FrameClass::Tcp => {
-                // TODO (L3) [wp_04_userspace_netstack_unprivileged_dial]: run policy + NAT over the outbound TCP stream via the smoltcp stack; slop: dial needs CAP_NET_ADMIN or iptables, not plain socket
-                let _ = self.stack.poll()?;
-                Ok(FilterAction::Forward)
-            }
-        };
-        let action = action?;
+        let action = self
+            .net_ops
+            .intercept_ethernet_frame(FrameDirection::Outbound, frame)?;
         self.record_drop(&action);
         Ok(self.surface_action(action))
     }
@@ -626,11 +340,7 @@ impl WirePlane {
     }
 
     pub fn divert_l4(&self, guest_port: u16, host_target: String) -> Result<L4Stream, PluginError> {
-        // TODO (L3) [wp_12_l4_diversion_passthrough_tls]: divert the guest TCP stream over stream kind 0x0005 to the host target; slop: TLS terminated in supervisor, plaintext in memory
-        let _ = L4Stream::new(guest_port, host_target);
-        Err(PluginError::Halt(
-            "L4 stream diversion over 0x0005 pending (L3)".into(),
-        ))
+        self.l4_ops.divert_l4(guest_port, host_target)
     }
 
     // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
@@ -639,52 +349,14 @@ impl WirePlane {
         &self,
         query: &mut DnsQuery,
     ) -> Result<DnsResponse, kelir_interface::plugin_model::PluginError> {
-        let blocked = {
-            let allowed = self
-                .allowed_domains
-                .read()
-                .map_err(|_| PluginError::Halt("dns allowlist lock poisoned".into()))?;
-            self.wiring
-                .as_ref()
-                .is_some_and(|wiring| wiring.sinkhole_drop_all)
-                || (!allowed.is_empty() && !domain_matches(&allowed, &query.name))
-        };
-        if blocked {
-            // TODO (L3) [wp_02_synthetic_dns_nxdomain_enforcement]: serialize the synthetic NXDOMAIN answer into wire_bytes; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
-            let mut response = DnsResponse {
-                wire_bytes: Vec::new(),
-                rcode: DnsRcode::NxDomain,
-                edns_downgraded: false,
-            };
-            response.downgrade_edns0();
-            return Ok(response);
-        }
-        // see: cans/07-wire-plane.md#EDNS0-downgrade
-        query.downgrade_edns0();
-        let mut response = DnsResponse {
-            wire_bytes: Vec::new(),
-            rcode: DnsRcode::ServFail,
-            edns_downgraded: false,
-        };
-        response.downgrade_edns0();
-        // TODO (L3) [wp_09_dns_gateway_host_state_tracking]: relay the query to the live upstream resolver; ServFail is the answer until the relay is wired; slop: resolv.conf change ignored, stale upstream kept
-        Ok(response)
+        self.dns_ops.resolve_query(query)
     }
 
     pub fn resolve_synthetic_dns(
         &self,
         payload: &[u8],
     ) -> Result<DnsResponse, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3) [wp_09_dns_gateway_host_state_tracking]: parse the query, apply the domain allowlist, forward to the tracked nameservers, EDNS0-downgrade the response; slop: resolv.conf change ignored, stale upstream kept
-        let _ = (payload, &self.allowed_domains, &self.synthetic_dns_ip);
-        if self.resolver_nameservers.is_empty() {
-            return Err(PluginError::Halt(
-                "DNS resolver pending (L3): no nameservers tracked from /etc/resolv.conf".into(),
-            ));
-        }
-        Err(PluginError::Halt(
-            "DNS resolver pending (L3): query parse and upstream forward".into(),
-        ))
+        self.dns_ops.resolve_synthetic_dns(payload)
     }
 
     // see: cans/07-wire-plane.md#UDP-socket-reaper
@@ -693,48 +365,12 @@ impl WirePlane {
         guest_source_port: u16,
         now_unix: u64,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        let mut slab = self.udp_nat_slab.lock().map_err(|_| {
-            kelir_interface::plugin_model::PluginError::Halt("udp nat slab lock poisoned".into())
-        })?;
-        if let Some(slot) = slab
-            .iter_mut()
-            .flatten()
-            .find(|entry| entry.guest_source_port == guest_source_port)
-        {
-            slot.last_active_unix = now_unix;
-            return Ok(());
-        }
-        // TODO (L3) [wire_plane]: open the per-source-port host UDP socket and store its descriptor in the slab entry (Full Cone endpoint independence); slop: slab entry without host socket, endpoint independence broken
-        let entry = UdpNatEntry {
-            guest_source_port,
-            last_active_unix: now_unix,
-        };
-        if let Some(free) = slab.iter().position(Option::is_none) {
-            slab[free] = Some(entry);
-            return Ok(());
-        }
-        if slab.len() < UDP_NAT_SLAB_CAPACITY {
-            slab.push(Some(entry));
-            return Ok(());
-        }
-        let oldest = slab.iter().enumerate().min_by_key(|(_, slot)| {
-            slot.as_ref()
-                .map_or(u64::MAX, |entry| entry.last_active_unix)
-        });
-        let Some((index, _)) = oldest else {
-            return Err(PluginError::Halt("udp nat slab cap exhausted".into()));
-        };
-        slab[index] = Some(entry);
-        Ok(())
+        self.udp_nat_ops.udp_nat_alloc(guest_source_port, now_unix)
     }
 
     // see: cans/07-wire-plane.md#UDP-socket-reaper
     pub fn udp_nat_slab_used(&self) -> Result<usize, PluginError> {
-        let slab = self
-            .udp_nat_slab
-            .lock()
-            .map_err(|_| PluginError::Halt("udp nat slab lock poisoned".into()))?;
-        Ok(slab.iter().flatten().count())
+        self.udp_nat_ops.udp_nat_slab_used()
     }
 
     // see: cans/07-wire-plane.md#UDP-socket-reaper
@@ -742,21 +378,7 @@ impl WirePlane {
         &self,
         now_unix: u64,
     ) -> Result<usize, kelir_interface::plugin_model::PluginError> {
-        let mut slab = self.udp_nat_slab.lock().map_err(|_| {
-            kelir_interface::plugin_model::PluginError::Halt("udp nat slab lock poisoned".into())
-        })?;
-        let mut reaped = 0usize;
-        for slot in slab.iter_mut() {
-            let Some(entry) = slot.as_ref() else {
-                continue;
-            };
-            if now_unix.saturating_sub(entry.last_active_unix) > UDP_NAT_IDLE_TIMEOUT_SECS {
-                // TODO (L3) [wire_plane]: close(2) the host UDP socket descriptor before releasing the slab slot; slop: slab released with host fd open, descriptor leaks
-                *slot = None;
-                reaped += 1;
-            }
-        }
-        Ok(reaped)
+        self.udp_nat_ops.reap_stale_udp_sockets(now_unix)
     }
 
     // see: cans/08-lifecycle.md#Rollback
@@ -764,11 +386,7 @@ impl WirePlane {
     // see: cans/07-wire-plane.md#Socket-lifecycle
     pub fn quiesce(&self) -> Result<(), PluginError> {
         // TODO (L3) [wp_03_rollback_socket_termination_econnreset]: close live host-side L4 sockets with SO_LINGER zero, emit RST to peers, drain splicing buffers; slop: rollback Ok, host sockets open, no RST, send succeeds
-        let mut slab = self
-            .udp_nat_slab
-            .lock()
-            .map_err(|_| PluginError::Halt("udp nat slab lock poisoned".into()))?;
-        slab.clear();
+        self.udp_nat_ops.quiesce()?;
         let mut forwards = self
             .port_forwards
             .lock()

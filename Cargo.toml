@@ -67,6 +67,7 @@ members = [
     "crates/kelir-shim",
     "crates/kelir-testkit",
     "crates/kelir-transport",
+    "crates/kelir-wire",
 ]
 
 [profile.dev-min]

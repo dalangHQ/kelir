@@ -792,7 +792,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                 }
             }),
             wire: registration.wire_cfg.as_ref().map(|cfg| {
-                kelir_engine::planes::wire::WireWiring {
+                kelir_interface::wire::net::WireWiring {
                     sinkhole_allowlist: cfg.sinkhole.allowlist.clone(),
                     sinkhole_drop_all: cfg.sinkhole.drop_all,
                     ssh_agent_bridge: cfg.ssh_agent_bridge,

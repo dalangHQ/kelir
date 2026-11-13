@@ -751,6 +751,7 @@ dependencies = [
  "kelir-storage",
  "kelir-storage-io",
  "kelir-transport",
+ "kelir-wire",
  "libc",
  "serde",
  "smoltcp",
@@ -931,6 +932,17 @@ dependencies = [
  "rustix",
  "thiserror 2.0.21",
  "tokio-vsock",
+]
+
+[[package]]
+name = "kelir-wire"
+version = "1.0.0"
+dependencies = [
+ "kelir-engine",
+ "kelir-interface",
+ "kelir-otlp",
+ "kelir-transport",
+ "smoltcp",
 ]
 
 [[package]]

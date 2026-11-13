@@ -919,7 +919,7 @@ impl NativeKelirBuilder {
         let wire = self
             .wire_cfg
             .as_ref()
-            .map(|cfg| kelir_engine::planes::wire::WireWiring {
+            .map(|cfg| kelir_interface::wire::net::WireWiring {
                 sinkhole_allowlist: cfg.sinkhole_dns_except.clone().unwrap_or_default(),
                 sinkhole_drop_all: cfg.sinkhole_drop_all.unwrap_or(false),
                 ssh_agent_bridge: cfg.ssh_agent_bridge.unwrap_or(false),

@@ -1,4 +1,20 @@
-use kelir_engine::planes::wire::{DnsQuery, DnsRcode, WirePlane, WireWiring};
+use std::sync::Arc;
+
+use kelir_engine::planes::wire::WirePlane;
+use kelir_interface::wire::dns::{DnsOps, DnsQuery, DnsRcode};
+use kelir_interface::wire::net::WireWiring;
+use kelir_wire::{RealDnsOps, RealL4DivertOps, RealNetOps, RealUdpNatOps};
+
+fn test_wire() -> WirePlane {
+    let dns: Arc<dyn DnsOps> = Arc::new(RealDnsOps::new());
+    let net = Arc::new(RealNetOps::new(Arc::clone(&dns)));
+    WirePlane::with_ops(
+        net,
+        dns,
+        Arc::new(RealUdpNatOps::new()),
+        Arc::new(RealL4DivertOps::new()),
+    )
+}
 
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_10_dns_edns0_downgrade_bit_strip.yaml#case_id
 #[test]
@@ -19,7 +35,7 @@ fn wp_10_dns_edns0_downgrade_bit_strip() -> Result<(), String> {
 #[test]
 #[ignore]
 fn wp_02_synthetic_dns_nxdomain_enforcement() -> Result<(), String> {
-    let wire = WirePlane::new().with_wiring(WireWiring {
+    let wire = test_wire().with_wiring(WireWiring {
         sinkhole_allowlist: vec!["api.github.com".to_string()],
         ..WireWiring::default()
     });

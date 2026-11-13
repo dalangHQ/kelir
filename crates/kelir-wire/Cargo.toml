@@ -1,0 +1,22 @@
+[package]
+name = "kelir-wire"
+version = "1.0.0"
+edition = "2024"
+license = "FSL-1.1-Apache-2.0"
+publish = false
+authors = ["Kelir Contributors"]
+rust-version = "1.85"
+description = "Wire plane bodies: smoltcp stack, synthetic DNS gateway, UDP NAT, L4 diversion."
+
+[dependencies]
+kelir-interface = { path = "../kelir-interface" }
+kelir-engine = { path = "../kelir-engine" }
+smoltcp = { version = "0.11", default-features = false, features = ["std", "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-udp"] }
+kelir-otlp = { path = "../kelir-otlp" }
+kelir-transport = { path = "../kelir-transport" }
+
+[lints]
+workspace = true
+
+[package.metadata.kelir]
+allowed_levels = ["L1", "L2", "L3"]

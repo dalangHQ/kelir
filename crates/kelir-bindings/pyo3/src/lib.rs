@@ -580,7 +580,7 @@ pub struct PyKelirBuilder {
     fused: Option<FusedTrampolineDescriptor>,
     trampolines: TrampolineTable,
     terminal_wiring: Option<kelir_engine::planes::terminal::TerminalWiring>,
-    wire_wiring: Option<kelir_engine::planes::wire::WireWiring>,
+    wire_wiring: Option<kelir_interface::wire::net::WireWiring>,
     storage_config: storage_bridge::PyStorageProjection,
 }
 
@@ -673,7 +673,7 @@ impl PyKelirBuilder {
 
     // see: cans/07-wire-plane.md#DNS-policy-filter
     fn set_wire_config(&mut self, cfg: &Bound<'_, PyDict>) -> PyResult<()> {
-        let mut wiring = kelir_engine::planes::wire::WireWiring::default();
+        let mut wiring = kelir_interface::wire::net::WireWiring::default();
         for (key, value) in cfg.iter() {
             match key.to_string().as_str() {
                 "sinkhole" => {

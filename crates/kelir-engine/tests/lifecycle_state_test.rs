@@ -187,7 +187,7 @@ fn lifecycle_boot_forces_drop_all_over_explicit_wiring_when_network_off() -> Res
         None,
         Vec::new(),
         kelir_engine::session_lifecycle::PlaneWiring {
-            wire: Some(kelir_engine::planes::wire::WireWiring::default()),
+            wire: Some(kelir_interface::wire::net::WireWiring::default()),
             ..Default::default()
         },
     )
@@ -208,7 +208,7 @@ fn lifecycle_boot_forces_drop_all_over_explicit_wiring_when_network_off() -> Res
         None,
         Vec::new(),
         kelir_engine::session_lifecycle::PlaneWiring {
-            wire: Some(kelir_engine::planes::wire::WireWiring::default()),
+            wire: Some(kelir_interface::wire::net::WireWiring::default()),
             ..Default::default()
         },
     )

@@ -21,7 +21,7 @@ use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 #[derive(Debug, Clone, Default)]
 pub struct PlaneWiring {
     pub terminal: Option<crate::planes::terminal::TerminalWiring>,
-    pub wire: Option<crate::planes::wire::WireWiring>,
+    pub wire: Option<kelir_interface::wire::net::WireWiring>,
     pub storage: crate::planes::storage::StorageConfig,
 }
 
@@ -429,7 +429,7 @@ impl Session {
                 wiring.sinkhole_drop_all |= config.network_off;
                 wiring
             }
-            None => crate::planes::wire::WireWiring {
+            None => kelir_interface::wire::net::WireWiring {
                 sinkhole_drop_all: config.network_off,
                 ..Default::default()
             },

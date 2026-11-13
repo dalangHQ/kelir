@@ -76,6 +76,12 @@ kelir/
 │   │   │   ├── handlers_plugin.rs            # HandlerCtx constructors
 │   │   │   ├── handles_lifecycle.rs             # Session/VM handle types
 │   │   │   ├── vsock_mesh.rs               # Vsock addressing
+│   │   │   ├── wire/
+│   │   │   │   ├── mod.rs
+│   │   │   │   ├── net.rs                 # NetOps trait, frame classification, WireWiring
+│   │   │   │   ├── dns.rs                 # DnsOps trait, DnsQuery, DnsResponse, DnsRcode
+│   │   │   │   ├── udp_nat.rs             # UdpNatOps trait, UdpNatEntry, NAT slab constants
+│   │   │   │   └── l4.rs                  # L4DivertOps trait, L4Stream
 │   │   │   ├── telemetry/
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── delta_attest.rs           # CausalDelta
@@ -106,7 +112,7 @@ kelir/
 │   │       │   │   └── storage_quota.flow.rs
 │   │       │   ├── wire/              # Wire Plane: virtio-net, userspace smoltcp ingress ring, DNS policy filter + synthetic gateway, connection parking
 │   │       │   │   ├── mod.rs
-│   │       │   │   └── layout_wire.rs      # L2-L4 frame layout constants
+│   │       │   │   └── layout_wire.flow.rs  # L2-L4 frame layout constants
 │   │       │   ├── host/mod.rs        # Host Plane: eBPF/LSM hooks, cgroup v2 pressure, host keyring mediation
 │   │       │   └── checkpoint/mod.rs  # Checkpoint Plane: Step verification loop, CoW diffs, hardware rollback
 │   │       ├── bus/mod.rs             # VirtIO Device Multiplexer (vsock, console, fs, net) over kelir-transport
@@ -199,6 +205,16 @@ kelir/
 │   │   └── src/
 │   │       ├── lib.rs                 # Re-exports RealStorageIo
 │   │       └── io.run.rs              # RealStorageIo (TODO (L3) shells, no meat)
+│   │
+│   ├── kelir-wire/                  # Wire plane bodies: smoltcp stack, DNS gateway, UDP NAT, L4 diversion
+│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, smoltcp, kelir-otlp, kelir-transport
+│   │   └── src/
+│   │       ├── lib.rs                 # Re-exports RealNetOps, RealDnsOps, RealUdpNatOps, RealL4DivertOps
+│   │       ├── smoltcp.run.rs         # SmoltcpStack + RealNetOps
+│   │       ├── dns.run.rs             # RealDnsOps
+│   │       ├── udp_nat.run.rs         # RealUdpNatOps
+│   │       └── l4.run.rs              # RealL4DivertOps
+│   │
 │   │
 │   ├── kelir-shim/                    # Guest Paravirtual Micro-Init (<50KB musl PID 1)
 │   │   ├── Cargo.toml                 # Dependencies: blake3, ciborium, kelir-interface, libc; release lto = "fat"
