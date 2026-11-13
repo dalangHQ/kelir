@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#VirtIO-Device-Complex"
-  statement: "virtio-rng is unconfigurable; profile cannot remove the device. GAP: no from_spec entry point, no KelirError type, and no profile-validation path exist in code — VmConfig (crates/kelir-interface/src/driver_interface.rs) has no virtio_rng field — and EConfig is a spec error code (cans/03-sdk-architecture.md:21, cans/plugins/profile.md:270) with no typed Rust surface, so this case asserts the spec-required behavior and fails against the live tree until profile validation is wired."
+  statement: "virtio-rng is unconfigurable; profile cannot remove the device. GAP: no from_spec entry point, no KelirError type, and no profile-validation path exist in code — VmConfig (crates/kelir-interface/src/driver_interface.flow.rs) has no virtio_rng field — and EConfig is a spec error code (cans/03-sdk-architecture.md:21, cans/plugins/profile.md:270) with no typed Rust surface, so this case asserts the spec-required behavior and fails against the live tree until profile validation is wired."
   blast_radius_if_breached: "Malicious profile removes entropy device, causing guest cryptographic failures."
 
 confusion_matrix:

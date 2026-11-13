@@ -14,7 +14,7 @@
     - Ingest pin (SSOT-A1)
       - ingest_image(tarball) returns the image id string
       - The capability key is "container"
-      - See: crates/kelir-plugins/plugin-container/src/service_container.rs:18
+      - See: crates/kelir-plugins/plugin-container/src/service_container.flow.rs:18
   - Invariants and policy (container)
     - Non-nested OCI container execution
       - Configures rootless Podman and crun runtime environments inside microVM

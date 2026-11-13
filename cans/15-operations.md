@@ -111,6 +111,8 @@
       - [package.metadata.kelir] allowed_levels
     - Content rules in perf/maturity-policy.toml report as warnings this
       - wave; placement failures fail the job
+    - Scope is src/ files only; tests/ and benches/ are excluded, test files
+      - are governed by NG-01 (names, placement), not by filename level
     - A prepared .run.rs stub carrying // TODO (L3) warns, not fails, until
       - the L3 phase fills it; the markers are removed as bodies land
     - Runs in <2s; the only gate for body maturity

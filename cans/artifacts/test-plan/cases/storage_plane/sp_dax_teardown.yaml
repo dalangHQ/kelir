@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#EROFS-DAX-execution"
-  statement: "Window teardown unmaps Stage-2 on session terminate; refcount zero releases the host memfd; host EROFS pages are untouched and rollback never touches the window. Gap: no DaxWindow type exists until L3; DaxWindowMode is a builder-only stub in crates/kelir/src/builder_sdk.rs, so teardown is specified against cans/05-storage-plane.md#EROFS-DAX-execution, not a live unmap path."
+  statement: "Window teardown unmaps Stage-2 on session terminate; refcount zero releases the host memfd; host EROFS pages are untouched and rollback never touches the window. Gap: no DaxWindow type exists until L3; DaxWindowMode is a builder-only stub in crates/kelir/src/builder_sdk.flow.rs, so teardown is specified against cans/05-storage-plane.md#EROFS-DAX-execution, not a live unmap path."
   blast_radius_if_breached: "A leaked Stage-2 mapping or memfd pins host memory after terminate; a touched host page corrupts the shared read-only EROFS image for other sessions."
 
 confusion_matrix:

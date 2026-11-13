@@ -1,4 +1,4 @@
-// crates/kelir-plugins/plugin-container/src/service_container.rs
+// crates/kelir-plugins/plugin-container/src/service_container.flow.rs
 //
 // The ContainerService surface: what the container plugin exposes
 // through PipelineBinder for container lifecycle tracking. Each method

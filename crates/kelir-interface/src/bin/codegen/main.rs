@@ -1,13 +1,17 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/03-sdk-architecture.md#Python-SDK
 // see: cans/15-operations.md#Multi-language-parity-gate
+#[path = "fusion_codegen.flow.rs"]
 mod fusion_codegen;
 mod merkle_codegen;
+#[path = "model_codegen.flow.rs"]
 mod model_codegen;
 mod naming_codegen;
 mod otlp_codegen;
+#[path = "plugin_builder_codegen.flow.rs"]
 mod plugin_builder_codegen;
 mod py_codegen;
+#[path = "sdk_codegen.flow.rs"]
 mod sdk_codegen;
 mod sdk_py;
 mod sdk_ts;
@@ -87,11 +91,12 @@ fn die(message: &str) -> ! {
 fn main() -> ExitCode {
     let root = repo_root();
     let interface = root.join("crates/kelir-interface/src");
-    let mut model = parse_model(&interface.join("driver_interface.rs")).unwrap_or_else(|e| die(&e));
+    let mut model =
+        parse_model(&interface.join("driver_interface.flow.rs")).unwrap_or_else(|e| die(&e));
     for path in [
-        interface.join("telemetry/receipt_attest.rs"),
-        interface.join("telemetry/delta_attest.rs"),
-        root.join("crates/kelir-plugins/plugin-ledger/src/wal_ledger.rs"),
+        interface.join("telemetry/receipt_attest.flow.rs"),
+        interface.join("telemetry/delta_attest.flow.rs"),
+        root.join("crates/kelir-plugins/plugin-ledger/src/wal_ledger.flow.rs"),
     ] {
         let parsed = parse_model(&path).unwrap_or_else(|e| die(&e));
         model.structs.extend(parsed.structs);
@@ -115,7 +120,7 @@ fn main() -> ExitCode {
     let otlp_records = otlp_codegen::emit_records(&model).unwrap_or_else(|e| die(&e));
     let domain_merkle = merkle_codegen::emit_domain_leaves(&model).unwrap_or_else(|e| die(&e));
     let packed_merkle = merkle_codegen::emit_packed_records(&model).unwrap_or_else(|e| die(&e));
-    let fusion_model = fusion_codegen::parse_fusion(&interface.join("fusion_plugin.rs"))
+    let fusion_model = fusion_codegen::parse_fusion(&interface.join("fusion_plugin.flow.rs"))
         .unwrap_or_else(|e| die(&e));
     let ts_fusion = fusion_codegen::emit_typescript(&fusion_model);
     let py_fusion = fusion_codegen::emit_python(&fusion_model);
@@ -150,15 +155,15 @@ fn main() -> ExitCode {
             wire_codegen::emit_wire_h(),
         ),
         (
-            root.join("crates/kelir-otlp/src/records_otlp.rs"),
+            root.join("crates/kelir-otlp/src/records_otlp.flow.rs"),
             otlp_records,
         ),
         (
-            root.join("crates/kelir-interface/src/telemetry/merkle_attest.rs"),
+            root.join("crates/kelir-interface/src/telemetry/merkle_attest.flow.rs"),
             domain_merkle,
         ),
         (
-            root.join("crates/kelir-plugins/plugin-ledger/src/wal_ledger/merkle_wal.rs"),
+            root.join("crates/kelir-plugins/plugin-ledger/src/wal_ledger/merkle_wal.flow.rs"),
             packed_merkle,
         ),
         (

@@ -6,7 +6,9 @@ pub mod checkpoint;
 #[path = "codec_protocol.flow.rs"]
 pub mod codec_protocol;
 pub mod credential_vault;
+#[path = "driver_interface.flow.rs"]
 pub mod driver_interface;
+#[path = "errno_types.flow.rs"]
 pub mod errno_types;
 #[path = "error_envelope.flow.rs"]
 pub mod error_envelope;

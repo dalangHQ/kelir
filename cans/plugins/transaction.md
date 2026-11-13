@@ -21,7 +21,7 @@
       - begin_scope(TransactionScope) / commit(handle) / abort(handle)
       - savepoint(&handle) / rollback_to_savepoint(&handle, savepoint)
       - RS TransactionScope currently carries no name label
-      - See: crates/kelir-plugins/plugin-transaction/src/service_transaction.rs:30-46
+      - See: crates/kelir-plugins/plugin-transaction/src/service_transaction.flow.rs:30-46
   - Invariants and policy (transaction)
     - Multi-resource 2PC coordination
       - Synchronizes commit/abort across host CoW broker, db-proxy, and lock broker

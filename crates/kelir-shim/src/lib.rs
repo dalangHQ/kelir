@@ -4,10 +4,13 @@
 #[allow(unused_imports)]
 mod codec_protocol;
 // see: cans/11-protocol.md#Trap-fast-path
+#[path = "introspect_trap.run.rs"]
 mod introspect_trap;
 // see: cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)
+#[path = "pty_terminal.run.rs"]
 pub mod pty_terminal;
 // see: cans/11-protocol.md#Trap-fast-path
+#[path = "trap_protocol.run.rs"]
 mod trap_protocol;
 // see: cans/11-protocol.md#Trap-fast-path
 pub use trap_protocol::ShimError;

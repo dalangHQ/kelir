@@ -72,7 +72,7 @@ kelir/
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # Re-exports all core contracts
 │   │   │   ├── plugin_model.flow.rs              # KelirPlugin, MountScope, LifecycleCtx, PluginError
-│   │   │   ├── driver_interface.rs              # VmmDriver, VmConfig, SnapshotDescriptor, WatchdogAction
+│   │   │   ├── driver_interface.flow.rs              # VmmDriver, VmConfig, SnapshotDescriptor, WatchdogAction
 │   │   │   ├── protocol_wire.flow.rs            # MuxFrameHeader (stream_id, flags, len), TrapEvent, Verdict, GuestToHost, HostToGuest
 │   │   │   ├── codec_protocol.flow.rs               # Frame codec
 │   │   │   ├── credential_vault.rs          # Credential descriptors
@@ -82,7 +82,7 @@ kelir/
 │   │   │   ├── vsock_mesh.flow.rs               # Vsock addressing
 │   │   │   ├── wire/
 │   │   │   │   ├── mod.rs
-│   │   │   │   ├── net_ops.rs             # NetOps trait, frame classification, WireWiring (#[path] keeps module name net)
+│   │   │   │   ├── net_ops.flow.rs             # NetOps trait, frame classification, WireWiring (#[path] keeps module name net)
 │   │   │   │   ├── dns_ops.flow.rs             # DnsOps trait, DnsQuery, DnsResponse, DnsRcode (#[path] keeps module name dns)
 │   │   │   │   ├── udp_nat.flow.rs             # UdpNatOps trait, UdpNatEntry, NAT slab constants
 │   │   │   │   └── l4_ops.flow.rs              # L4DivertOps trait, L4Stream (#[path] keeps module name l4)
@@ -99,7 +99,7 @@ kelir/
 │   │   │   │   └── uapi_fuse.rs           # Generated FUSE UAPI tables (linux/fuse.h oracle)
 │   │   │   └── bin/
 │   │   │       └── codegen/           # Native codegen: TS/PY SDK types, fusion tables, wire consts, Merkle, OTLP
-│   │   │           └── plugin_builder_codegen.rs # Per-plugin fluent-builder wrapper factories (TS registry + Py modules)
+│   │   │           └── plugin_builder_codegen.flow.rs # Per-plugin fluent-builder wrapper factories (TS registry + Py modules)
 │   │   └── tests/
 │   │       ├── causal_delta_hex_test.rs
 │   │       ├── clock_reject_interface_test.rs
@@ -132,8 +132,8 @@ kelir/
 │   │       │   ├── params_hydration.rs
 │   │       │   └── plugin_registration.flow.rs
 │   │       ├── plugin_registry.rs     # Plugin registration and ordering
-│   │       ├── session_lifecycle.rs             # Session lifecycle assembly
-│   │       ├── session_support.rs               # NullDriver, mint_uuid_v7, workspace quota consts
+│   │       ├── session_lifecycle.flow.rs             # Session lifecycle assembly
+│   │       ├── session_support.flow.rs               # NullDriver, mint_uuid_v7, workspace quota consts
 │   │       ├── trap_gate.flow.rs           # Filter-before-FFI trampoline & entropy analyzer
 │   │       ├── uart_terminal.flow.rs                # Early-boot UART scrape
 │   │       └── vmm/mod.rs             # Driver orchestration
@@ -265,14 +265,14 @@ kelir/
 │   ├── kelir-shim/                    # Guest Paravirtual Micro-Init (<50KB musl PID 1)
 │   │   ├── Cargo.toml                 # Dependencies: blake3, ciborium, kelir-interface, libc; release lto = "fat"
 │   │   ├── src/
-│   │   │   ├── codec_protocol.flow.rs               # Raw slice bit-shift frame codec (zero serde/ciborium)
-│   │   │   ├── introspect_trap.rs          # Trap inspection for the seccomp notifier
-│   │   │   ├── introspect/
+│   │   │   ├── codec_protocol.rs               # Raw slice bit-shift frame codec (zero serde/ciborium)
+│   │   │   ├── introspect_trap.run.rs          # Trap inspection for the seccomp notifier
+│   │   │   ├── introspect_trap/
 │   │   │   │   └── uapi_trap.rs            # Generated ELF UAPI constants (linux/elf.h oracle)
 │   │   │   ├── main.rs                # Guest PID 1 reaper & loop
 │   │   │   ├── multiplexer_protocol.run.rs         # Raw VirtIO stream multiplexer (Control 0x0000, stream mux 0x0001, transport port 5252 & virtio-ports; Transport backend)
-│   │   │   ├── pty_terminal.rs                 # openpty() line discipline broker for console ring
-│   │   │   └── trap_protocol.rs                # seccomp-unotify trap forwarder
+│   │   │   ├── pty_terminal.run.rs                 # openpty() line discipline broker for console ring
+│   │   │   └── trap_protocol.run.rs                # seccomp-unotify trap forwarder
 │   │   └── tests/
 │   │       └── pty_discipline_terminal_test.rs
 │   │
@@ -355,7 +355,6 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs             # ToolInterposer: on_tool_list, on_tool_call, on_tool_result
-│   │   │   │   ├── jsonrpc.rs         # JSON-RPC 2.0 parsing
 │   │   │   │   └── service_tool_guard.flow.rs         # Tool-call interposition service
 │   │   │   └── tests/
 │   │   │       └── interposer_tool_guard_test.rs

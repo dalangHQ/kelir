@@ -1,4 +1,4 @@
-// crates/kelir-interface/src/protocol_wire.rs
+// crates/kelir-interface/src/protocol_wire.flow.rs
 //
 // All wire messages exchanged over transport port 5252.
 // 5252 is a transport identifier, not an AF_VSOCK port: the Transport
@@ -7,7 +7,7 @@
 // Exactly two transports: Control 0x0000 and Stream Mux 0x0001;
 // every other capability is a stream kind multiplexed on 0x0001
 // (see wire-protocol.rs for the kind registry).
-// Payloads encode as CBOR inside the TLV frame defined in codec_protocol.rs.
+// Payloads encode as CBOR inside the TLV frame defined in codec_protocol.flow.rs.
 //
 // Owned by: cans/11-protocol.md#Wire-messages
 
@@ -169,7 +169,7 @@ pub enum PatchPayload {
 
 /// POSIX errno for a deny verdict, as a typed enum (not String).
 /// The set is the live typed enum in
-/// crates/kelir-interface/src/errno_types.rs#Errno: 15 POSIX names
+/// crates/kelir-interface/src/errno_types.flow.rs#Errno: 15 POSIX names
 /// the storage plane maps in fuse_storage.rs#drop_errno, plus 7
 /// non-POSIX policy names the engine rejects via Halt. Traversal
 /// denials pin EACCES (POSIX only; no invented errno name).

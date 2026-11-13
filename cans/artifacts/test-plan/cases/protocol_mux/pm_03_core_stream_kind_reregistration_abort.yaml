@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/11-protocol.md#Kind-registration"
-  statement: "Core kinds abort re-registration with EKindReserved; core kinds frozen (0x0001-0x000F). Gap: register_stream_kind returns Self infallibly and the abort is a TODO (L3) in crates/kelir/src/builder_sdk.rs; the abort is specified against cans/11-protocol.md#Kind-registration, not a live check."
+  statement: "Core kinds abort re-registration with EKindReserved; core kinds frozen (0x0001-0x000F). Gap: register_stream_kind returns Self infallibly and the abort is a TODO (L3) in crates/kelir/src/builder_sdk.flow.rs; the abort is specified against cans/11-protocol.md#Kind-registration, not a live check."
   blast_radius_if_breached: "Third-party plugin hijacks core execution stream kind, subverting process IO routing."
 
 confusion_matrix:

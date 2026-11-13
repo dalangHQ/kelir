@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/08-lifecycle.md#Autonomous-fast-boot-hydration"
-  statement: "Capture happens at the end of the builder.boot().await return edge, after every on_vm_ready handler has returned and VmReady has transitioned to Running, and before the first Session::spawn. Gap: the capture hook is L3 (finish_boot runs run_lifecycle_hook(LifecycleEvent::VmReady) in crates/kelir/src/builder_sdk.rs; no capture exists yet), so ordering is specified against cans/08-lifecycle.md#Autonomous-fast-boot-hydration, not a live capture path."
+  statement: "Capture happens at the end of the builder.boot().await return edge, after every on_vm_ready handler has returned and VmReady has transitioned to Running, and before the first Session::spawn. Gap: the capture hook is L3 (finish_boot runs run_lifecycle_hook(LifecycleEvent::VmReady) in crates/kelir/src/builder_sdk.flow.rs; no capture exists yet), so ordering is specified against cans/08-lifecycle.md#Autonomous-fast-boot-hydration, not a live capture path."
   blast_radius_if_breached: "Capture before VmReady handlers return snapshots half-initialized guest state; capture after first spawn bakes workload side effects into every later fast boot."
 
 confusion_matrix:

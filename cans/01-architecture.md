@@ -20,7 +20,7 @@
           - DriverPolicy: wx_enforcement, allow_emulated_fallback, driver (bwrap/proot)
             - DriverPolicy.driver is Option<String> (SSOT-A1 pin)
               - Names the selected backend, None for default
-              - Live: crates/kelir-interface/src/driver_interface.rs:50-59
+              - Live: crates/kelir-interface/src/driver_interface.flow.rs:50-59
               - The artifact DriverPolicy lacks the field (non-conforming here)
             - Exercised by: see: artifacts/examples/replay.rs
         - Foreign runtime embedding
@@ -80,8 +80,10 @@
           - Crate role is [package.metadata.kelir].allowed_levels in the crate Cargo.toml.
           - Placement invariant: level_of(file) is in crate.allowed_levels, enforced by kelir-maturity check.
           - Content rules per level live in perf/maturity-policy.toml; this wave they report as warnings, placement failures fail the job.
+          - L2 tolerates plumbing os-reach: pure libc constants, std::net types with no IO, reads of a tool's own inputs, session-directory lifecycle; guest-affecting IO and domain-trait impls are L3.
+          - The composition root (builder_sdk.flow.rs finish_boot, napi/pyo3 bindings) is the one place that constructs Real* types; the L2 direct-impl-construct rule guards every other L2 file.
           - A // TODO (L3) in a prepared .run.rs stub warns until the L3 phase fills it; the markers are removed as bodies land.
-          - Current phase is L1/L2 only; no L3 bodies land until the L3 phase opens.
+          - Current phase is L1/L2 only: no new L3 bodies land until the L3 phase opens; pre-existing L3-shaped bodies are labeled .run.rs as found, not written.
           - Maturity, test status, plugin tier, and target tier are four orthogonal axes.
         - Zero-panic production invariant
           - Workspace-wide deny on unwrap_used, expect_used, and panic

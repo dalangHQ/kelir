@@ -12,7 +12,9 @@ pub mod bus;
 pub mod dispatch_plugin;
 pub mod planes;
 pub mod plugin_registry;
+#[path = "session_lifecycle.flow.rs"]
 pub mod session_lifecycle;
+#[path = "session_support.flow.rs"]
 pub mod session_support;
 #[path = "trap_gate.flow.rs"]
 pub mod trap_gate;

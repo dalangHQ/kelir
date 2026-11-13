@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#EROFS-DAX-execution"
-  statement: "If the DAX window fails, reads fall back transparently to standard FUSE chunked reads serving bytes identical to the DAX path. Gap: no DaxWindow type exists until L3; DaxWindowMode is a builder-only stub in crates/kelir/src/builder_sdk.rs, so the fallback is specified against cans/05-storage-plane.md#EROFS-DAX-execution, not a live map path."
+  statement: "If the DAX window fails, reads fall back transparently to standard FUSE chunked reads serving bytes identical to the DAX path. Gap: no DaxWindow type exists until L3; DaxWindowMode is a builder-only stub in crates/kelir/src/builder_sdk.flow.rs, so the fallback is specified against cans/05-storage-plane.md#EROFS-DAX-execution, not a live map path."
   blast_radius_if_breached: "A failed DAX window surfaces as a guest read error instead of transparent fallback, breaking rootfs reads on hosts without memfd or Stage-2 map."
 
 confusion_matrix:

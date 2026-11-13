@@ -8,7 +8,7 @@
         - ExternalSuspendKind variants (SSOT-A1 pin)
           - HumanAuthorizationHold | WireConnectionParking
           - StepEvaluationYield | HostPowerEventSnapshot
-          - See: crates/kelir-interface/src/driver_interface.rs:350-363
+          - See: crates/kelir-interface/src/driver_interface.flow.rs:350-363
         - The spec's former External(u32) is withdrawn
           - Code and artifact already carry External(ExternalSuspendKind)
         - Eliminates independent suspend implementations outside core
@@ -197,7 +197,7 @@
           - See: packages/py/kelir/lifecycle_session.py:87-91
         - RS Sandbox.resume(path) takes a caller path
           - Where Session.resume() takes none
-          - See: crates/kelir/src/sandbox_runtime.rs:365
+          - See: crates/kelir/src/sandbox_runtime.flow.rs:365
       - Sandbox.suspend() takes no argument and delegates to session suspend
         - See: 03-sdk-architecture.md#Sandbox-high-level-facade
       - Freezes vCPU registers
@@ -273,7 +273,7 @@
         - The live surface is CheckpointPlane plus session.checkpoint
         - See: crates/kelir-checkpoint/src/real_checkpoint.run.rs
         - See: crates/kelir-engine/src/planes/checkpoint/mod.rs
-        - See: crates/kelir-engine/src/session_lifecycle.rs:32
+        - See: crates/kelir-engine/src/session_lifecycle.flow.rs:32
       - Captures atomic pre-step SnapshotDescriptor before workload execution
       - Evaluates physical ExecutionReceipt upon trapped process exit
       - Step outcomes (StepVerdict):

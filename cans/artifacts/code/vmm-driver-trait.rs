@@ -1,4 +1,4 @@
-// crates/kelir-interface/src/driver_interface.rs
+// crates/kelir-interface/src/driver_interface.flow.rs
 //
 // The universal hypervisor backend abstraction.
 // Interface enforces #![forbid(unsafe_code)].
@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::io::AsyncRead;
 
-// normative mirror of crates/kelir-interface/src/driver_interface.rs
+// normative mirror of crates/kelir-interface/src/driver_interface.flow.rs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FastBootMode {
     #[default]

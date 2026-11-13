@@ -6,10 +6,13 @@
 // TODO (L3) [lc_17_zombie_reaper_pid1_adoption]: tests/test_anti_toctou.rs + tests/test_reaper.rs per cans/artifacts/config/project-structure.txt#kelir-shim; slop: reaper tests absent, zombie adoption never exercised
 
 mod codec_protocol;
+#[path = "introspect_trap.run.rs"]
 mod introspect_trap;
 #[path = "multiplexer_protocol.run.rs"]
 mod multiplexer_protocol;
+#[path = "pty_terminal.run.rs"]
 mod pty_terminal;
+#[path = "trap_protocol.run.rs"]
 mod trap_protocol;
 
 use kelir_interface::vsock_mesh::VSOCK_CONTROL_PORT;

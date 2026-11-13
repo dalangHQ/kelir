@@ -1,6 +1,6 @@
 // ILLUSTRATIVE, NON-STANDALONE — do not compile this file directly.
 // It pins the shape of one plugin_builder parity vector case; the live shape
-// is crates/kelir-plugin-testkit/src/vectors_testkit.rs (PluginBuilderCase)
+// is crates/kelir-plugin-testkit/src/vectors_testkit.flow.rs (PluginBuilderCase)
 // and the normative contract is cans/02-plugin-model.md#Fluent-plugin-creation-builder.
 //
 // Owned by: cans/02-plugin-model.md#Fluent-plugin-creation-builder

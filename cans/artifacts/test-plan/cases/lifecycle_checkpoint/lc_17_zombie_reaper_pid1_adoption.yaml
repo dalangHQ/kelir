@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/08-lifecycle.md#Zombie-reaping"
-  statement: "Shim runs as guest PID 1; waitpid(-1, WNOHANG) loop adopts and reaps foreground shell exits. Gap: ExecResult (crates/kelir/src/session_lifecycle.rs) carries exit_code only and no stdout capture, so the `ps` output assertion is specified against the L3 ExecResult shape."
+  statement: "Shim runs as guest PID 1; waitpid(-1, WNOHANG) loop adopts and reaps foreground shell exits. Gap: ExecResult (crates/kelir/src/session_lifecycle.flow.rs) carries exit_code only and no stdout capture, so the `ps` output assertion is specified against the L3 ExecResult shape."
   blast_radius_if_breached: "Long-running microVMs exhaust Linux PID table with `<defunct>` zombie processes."
 
 confusion_matrix:

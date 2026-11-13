@@ -40,7 +40,7 @@
       - Returns engine-level Verdict from 02-plugin-model.md#Unified-verdict
       - Verdict::Pass: forwards frame untouched
       - Verdict::Patch(ExecveMutation): serializes canonical mutation ABI:
-        - Field layout owned by crates/kelir-interface/src/protocol_wire.rs
+        - Field layout owned by crates/kelir-interface/src/protocol_wire.flow.rs
         - new_binary: Option<String> (overrides target ELF path)
         - new_argv: Option<Vec<String>> (replaces execution arguments)
         - set_env: Vec<(String, String)> (ordered injected environment pairs)

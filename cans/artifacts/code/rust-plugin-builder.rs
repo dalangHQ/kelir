@@ -1,6 +1,6 @@
 // ILLUSTRATIVE, NON-STANDALONE — do not compile this file directly.
 // It pins the unified builder surface; the live shape is
-// crates/kelir/src/builder_sdk.rs + crates/kelir/src/builder_plugin.rs
+// crates/kelir/src/builder_sdk.flow.rs + crates/kelir/src/builder_plugin.flow.rs
 // and the normative contract is cans/02-plugin-model.md#Unified-builder.
 // Scopes are pinned in cans/artifacts/code/rust-plugin-builder-scopes.rs.
 //
@@ -22,7 +22,7 @@
 // below return Self where the arity would otherwise be spelled. The
 // host-only verbs are not implemented for Plugin mode: calling one on
 // a plugin-mode builder is a compile error, not a recorded call seal()
-// rejects (live: builder_sdk.rs Host,Unsealed impl only). There is no
+// rejects (live: builder_sdk.flow.rs Host,Unsealed impl only). There is no
 // record-and-reject path in Rust; params() is host-only by type (the
 // arity pin). Every chain verb returns Self; seal() is the only
 // fallible chain step, and config after seal() is a compile error.
@@ -133,9 +133,9 @@ pub struct TelemetryClosureAdapter<F, Verb> {
 // single-handler fields were folded into the lifecycle vec, and the
 // on_vm_init / on_vm_ready / on_vm_shutdown methods remain as the ring
 // verbs that append to it. Registration, TrapFilter, CustomActionEntry,
-// StreamKindServiceEntry, and LifecycleMut are defined in builder_sdk.rs
+// StreamKindServiceEntry, and LifecycleMut are defined in builder_sdk.flow.rs
 // alongside the builder; the trap-closure adapter (TrapClosureAdapter) and
-// its OnTrap/OnProcessExit verbs live in builder_plugin.rs and register on
+// its OnTrap/OnProcessExit verbs live in builder_plugin.flow.rs and register on
 // the HookRegistry vec — one trap path, one engine dispatch point.
 // VmConfig has no Default live, so the host config
 // is Option: Some on the host face, None on the plugin face. Scopes live
@@ -700,7 +700,7 @@ impl KelirBuilder {
 
 // see: cans/02-plugin-model.md#Unified-builder
 // Host-only verbs. They exist only on the Host-mode impl (live:
-// builder_sdk.rs Host,Unsealed); a plugin-mode builder has no such
+// builder_sdk.flow.rs Host,Unsealed); a plugin-mode builder has no such
 // methods, so calling one is a compile error. params() is host-only by
 // type (the arity pin). The live host's on_vm_init / on_vm_ready /
 // on_vm_shutdown methods are the ring verbs above (append, plain async
@@ -945,7 +945,7 @@ impl PluginDeps for KelirBuilder {
 
 // see: cans/02-plugin-model.md#Unified-builder
 // Deleted shapes: PluginBuilder, PluginWrapper, plugin_builder_scopes,
-// the duplicated Satisfies (one Satisfies lives in hlist_sdk.rs),
+// the duplicated Satisfies (one Satisfies lives in hlist_sdk.flow.rs),
 // build(), with_composite(). Nothing is documented as an alternative:
 // the old shapes are gone, not deprecated.
 // Ring resolution holds by construction: every verb is typed, so no

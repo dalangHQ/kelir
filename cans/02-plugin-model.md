@@ -157,20 +157,20 @@
         - Verdict ring: Verdict::Drop { errno: Some(errno), reason }
         - FilterAction ring: FilterAction::Drop { errno, reason }
         - Other PluginError variants propagate as errors
-        - See: crates/kelir-interface/src/plugin_model.rs:52
+        - See: crates/kelir-interface/src/plugin_model.flow.rs:52
       - Observation-event pin (SSOT-A1)
         - on_heartbeat receives one HeartbeatEvent { uptime_ms }
         - on_process_exit receives one ProcessExitEvent { pid, exit_code }
         - RS is the outlier: bare uptime_ms: u64, two-arg on_process_exit
-        - See: crates/kelir-interface/src/plugin_model.rs:771-821
-        - See: crates/kelir-interface/src/protocol_wire.rs:223-244
+        - See: crates/kelir-interface/src/plugin_model.flow.rs:771-821
+        - See: crates/kelir-interface/src/protocol_wire.flow.rs:223-244
       - Read/console pin (SSOT-A1)
         - Read, console, and exec-stream hooks return the buffer
         - The buffer may be new or the same one passed in
         - Write/net hooks mutate the passed buffer and return FilterAction
         - RS mutates in place and returns () here; it is the outlier
-        - See: crates/kelir-interface/src/plugin_model.rs:783-808
-        - See: crates/kelir-interface/src/plugin_model.rs:838
+        - See: crates/kelir-interface/src/plugin_model.flow.rs:783-808
+        - See: crates/kelir-interface/src/plugin_model.flow.rs:838
     - Shape of the surface
       - Lifecycle, trap, and terminal hooks are `async`; storage and wire
         - hooks are synchronous; neither blocks the dispatch array
@@ -208,7 +208,7 @@
       - Trap hooks → Verdict; ring-specific defaults documented per plane
       - SPEC CORRECTION (SSOT-A1)
         - The Unified-verdict split is canonical: on_fs_write returns FilterAction, not Verdict
-        - See: crates/kelir-interface/src/plugin_model.rs:842-873
+        - See: crates/kelir-interface/src/plugin_model.flow.rs:842-873
   - Declarative plugin macros
     - Plugins expose declarative DSL attributes expanding at assembly time
     - Macros expand to static MountScope masks and binary trap registrations
@@ -536,7 +536,7 @@
         - CompositeBundle has no mount verb: mounting it is unsupported, the type stays
           - The Rust type stays for the profile facade's unpack path
           - Live Rust unpack() returns an empty vec
-            - TODO (L3) [plugin_engine] in builder_sdk.rs
+            - TODO (L3) [plugin_engine] in builder_sdk.flow.rs
             - The profile-facade flattening that consumes it is L3 work, not pinned here
       - (j) Named L3 blockers (no open gap is left unnamed)
         - Lock-broker globs/nonBlocking: sp_15_host_inode_lock_broker_flock_bridge
@@ -549,7 +549,7 @@
           - flock delegation is TODO (L3) in crates/kelir-storage/src/lock_broker.run.rs:128,180,188
         - CompositeBundle unpack: no dedicated case id exists in the register
           - Tracked under the plugin_engine code_only domain group
-          - TODO (L3) [plugin_engine] at builder_sdk.rs:194; unpack returns an empty vec
+          - TODO (L3) [plugin_engine] at builder_sdk.flow.rs:194; unpack returns an empty vec
           - Mounting one stays unsupported; the type stays for the profile facade
     - Rust generic arity (pinned; the contract A3 implements)
       - KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
@@ -560,7 +560,7 @@
       - Plugins is the HList of mounted plugin contexts (host only)
       - Params is the host typed-params type; plugin mode is NoParams
       - Defaults: HostMode, Unsealed, (), HNil, HNil, NoParams
-      - One Satisfies: the hlist_sdk.rs impls; the duplicate deletes
+      - One Satisfies: the hlist_sdk.flow.rs impls; the duplicate deletes
       - Arity home: see: artifacts/code/rust-plugin-builder.rs
     - Creation forms
       - Rust host: KelirBuilder::new(config) with all defaults

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#EROFS-DAX-execution"
-  statement: "DAX window maps clean EROFS pages via virtio-shm tag kelir.dax.erofs; host frames shared read-only, guest page cache bypassed, rootfs working set under 8MB. Gap: no DaxWindow type exists until L3; DaxWindowMode is a builder-only stub in crates/kelir/src/builder_sdk.rs, so the window is specified against cans/05-storage-plane.md#EROFS-DAX-execution, not a live map path."
+  statement: "DAX window maps clean EROFS pages via virtio-shm tag kelir.dax.erofs; host frames shared read-only, guest page cache bypassed, rootfs working set under 8MB. Gap: no DaxWindow type exists until L3; DaxWindowMode is a builder-only stub in crates/kelir/src/builder_sdk.flow.rs, so the window is specified against cans/05-storage-plane.md#EROFS-DAX-execution, not a live map path."
   blast_radius_if_breached: "Guest page cache duplicates host EROFS pages, rootfs working set returns to 64MB and warm-start density is lost."
 
 confusion_matrix:

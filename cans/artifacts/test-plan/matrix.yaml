@@ -105,7 +105,7 @@ filename_grammar:
   rust:
     pattern: "<entity>_<domain>[_role]_test.rs"
     example: "storage_reconciler_test.rs"
-    src_rule: "src/ modules use <entity>_<domain>.rs (session_lifecycle.rs, storage_reconciler.rs); lib.rs, main.rs and mod.rs stay conventional"
+    src_rule: "src/ modules use <entity>_<domain>.rs (session_lifecycle.flow.rs, storage_reconciler.rs); lib.rs, main.rs and mod.rs stay conventional"
   typescript:
     pattern: "<entity>.<domain>[.role].test.ts"
     example: "session.lifecycle.test.ts"

@@ -1,6 +1,6 @@
 // ILLUSTRATIVE, NON-STANDALONE — do not compile this file directly.
 // It pins the unified builder scope surface; the live shape is
-// crates/kelir/src/builder_scopes.rs and the normative contract is
+// crates/kelir/src/builder_scopes.flow.rs and the normative contract is
 // cans/02-plugin-model.md#Unified-builder.
 //
 // Target shape: ONE scope struct per ring group, eight in all. Each

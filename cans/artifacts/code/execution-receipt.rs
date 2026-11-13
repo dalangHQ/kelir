@@ -1,4 +1,4 @@
-// crates/kelir-interface/src/telemetry/receipt_attest.rs
+// crates/kelir-interface/src/telemetry/receipt_attest.flow.rs
 //
 // Per-process cryptographic execution receipt.
 // Struct exhaustiveness tripwire: adding any field to ExecutionReceipt

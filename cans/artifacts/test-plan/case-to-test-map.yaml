@@ -407,7 +407,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: MountScope confinement is an L3 TODO in CredentialBroker::issue (crates/kelir-plugins/plugin-vault/src/service_vault.rs);
+  reason: MountScope confinement is an L3 TODO in CredentialBroker::issue (crates/kelir-plugins/plugin-vault/src/service_vault.flow.rs);
     unregistered names reject with VaultError::Enodata today, but an out-of-scope yet registered credential
     is not checked.
 - case_id: gv_03_audience_locking_validation
@@ -913,7 +913,7 @@ cases:
   status: red
   test_file: crates/kelir-plugin-cli/tests/layers_plugin_engine_test.rs
   test_fn: pe_01_downward_only_tier_dependency_lint
-  reason: 'kelir-plugin-cli check --layers over a mock tree (CWD=tempdir) with Tier 1 plugin-mcp src importing plugin_ledger exited 0: layers_cli::check() scans only kelir_engine::/kelir_drivers:: prefixes; the per-tier plugin-to-plugin rule TODO (L3) at layers_cli.rs:49 let the upward import pass'
+  reason: 'kelir-plugin-cli check --layers over a mock tree (CWD=tempdir) with Tier 1 plugin-mcp src importing plugin_ledger exited 0: layers_cli::check() scans only kelir_engine::/kelir_drivers:: prefixes; the per-tier plugin-to-plugin rule TODO (L3) at layers_cli.run.rs:49 let the upward import pass'
 - case_id: pe_02_cyclic_dependency_graph_abort
   case_file: cases/plugin_engine/pe_02_cyclic_dependency_graph_abort.yaml
   target_crate: crates/kelir-engine
@@ -1005,7 +1005,7 @@ cases:
   status: red
   test_file: crates/kelir-engine/tests/trap_dispatch_protocol_test.rs
   test_fn: pe_13_fork_state_specialization_isolation
-  reason: 'Session::fork returned a child whose pipeline carried no interceptors; child dispatch did not reach the fork_state-specialized probe: log=[trap:parent] only; fork does not rebind the plugin graph via fork_state (TODO L3 at session_lifecycle.rs:453)'
+  reason: 'Session::fork returned a child whose pipeline carried no interceptors; child dispatch did not reach the fork_state-specialized probe: log=[trap:parent] only; fork does not rebind the plugin graph via fork_state (TODO L3 at session_lifecycle.flow.rs:453)'
 - case_id: pe_14_service_registry_peer_resolution
   case_file: cases/plugin_engine/pe_14_service_registry_peer_resolution.yaml
   target_crate: crates/kelir-engine
@@ -1038,7 +1038,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: "Spec defines unwrapping in 5796e7f (TrapEvent.resolved_binary/interpreter_chain/shell_payload) but the live resolver is a stub: resolve_canonical() returns CanonicalResolvePending (trap_gate.rs:51-55) and TrapFilter::matches is unchanged/provisional, so bash -c payloads never resolve to git."
+  reason: "Spec defines unwrapping in 5796e7f (TrapEvent.resolved_binary/interpreter_chain/shell_payload) but the live resolver is a stub: resolve_canonical() returns CanonicalResolvePending (trap_gate.flow.rs:51-55) and TrapFilter::matches is unchanged/provisional, so bash -c payloads never resolve to git."
 - case_id: pe_18_python_c_os_system_unwrap_drops_git_push_force
   case_file: cases/plugin_engine/pe_18_python_c_os_system_unwrap_drops_git_push_force.yaml
   target_crate: crates/kelir-engine
@@ -1046,7 +1046,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: "Spec defines unwrapping in 5796e7f (TrapEvent.resolved_binary/interpreter_chain/shell_payload) but the live resolver is a stub: resolve_canonical() returns CanonicalResolvePending (trap_gate.rs:51-55), so python -c payloads stay one opaque argv entry, never inspected as code."
+  reason: "Spec defines unwrapping in 5796e7f (TrapEvent.resolved_binary/interpreter_chain/shell_payload) but the live resolver is a stub: resolve_canonical() returns CanonicalResolvePending (trap_gate.flow.rs:51-55), so python -c payloads stay one opaque argv entry, never inspected as code."
 - case_id: pe_19_env_xargs_reexec_unwrap_drops_git_push_force
   case_file: cases/plugin_engine/pe_19_env_xargs_reexec_unwrap_drops_git_push_force.yaml
   target_crate: crates/kelir-engine
@@ -1054,7 +1054,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: "Spec defines recursive unwrapping incl. env/xargs/find -exec in 5796e7f but the live resolver is a stub: resolve_canonical() returns CanonicalResolvePending (trap_gate.rs:51-55), so env/xargs layers never resolve to the terminal binary."
+  reason: "Spec defines recursive unwrapping incl. env/xargs/find -exec in 5796e7f but the live resolver is a stub: resolve_canonical() returns CanonicalResolvePending (trap_gate.flow.rs:51-55), so env/xargs layers never resolve to the terminal binary."
 - case_id: pe_20_same_path_different_identity_never_matches
   case_file: cases/plugin_engine/pe_20_same_path_different_identity_never_matches.yaml
   target_crate: crates/kelir-engine
@@ -1062,7 +1062,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: "Identity spec is (dev, ino, blake3) in 5796e7f with a ResolvedBinary type, but live matching is still the binary_path string: MountScope.allows_binary compares strings (plugin_model.rs:149) and MountScope.binaries stays Vec<String> by decision in that commit, so no canonical comparison exists."
+  reason: "Identity spec is (dev, ino, blake3) in 5796e7f with a ResolvedBinary type, but live matching is still the binary_path string: MountScope.allows_binary compares strings (plugin_model.flow.rs:149) and MountScope.binaries stays Vec<String> by decision in that commit, so no canonical comparison exists."
 - case_id: pe_21_trap_pass_provisional_effect_hook_redecides
   case_file: cases/plugin_engine/pe_21_trap_pass_provisional_effect_hook_redecides.yaml
   target_crate: crates/kelir-engine
@@ -1690,7 +1690,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: TokenShield (crates/kelir/src/planes/terminal_plane.rs) has no clamp_stream method — only max_bytes_total/max_lines_total
+  reason: TokenShield (crates/kelir/src/planes/terminal_plane.flow.rs) has no clamp_stream method — only max_bytes_total/max_lines_total
     fields — and the real clamp is the private apply_token_shield in crates/kelir-engine/src/planes/terminal/mod.rs,
     currently ...
 - case_id: tp_06_placeholder_mask_carryover_window
@@ -1716,7 +1716,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: no TerminalNotice type and no publish_notice method exist in code — EventBusBinder (crates/kelir-interface/src/plugin_model.rs:447)
+  reason: no TerminalNotice type and no publish_notice method exist in code — EventBusBinder (crates/kelir-interface/src/plugin_model.flow.rs:447)
     exposes no publish surface — so the disclosure is asserted as the spec-required behavior, not via
     a callable su...
 - case_id: tp_09_exec_stream_sublane_stdio_fidelity
@@ -1734,7 +1734,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: no exec_pty method and no alloc_pty surface exist on SpawnBuilder (crates/kelir/src/session_lifecycle.rs)
+  reason: no exec_pty method and no alloc_pty surface exist on SpawnBuilder (crates/kelir/src/session_lifecycle.flow.rs)
     — FLAG_ALLOC_PTY (0x04) lives only in spec (cans/11-protocol.md:58) and shim EXEC_IO_SPEC parsing
     is a TODO (L3) — so the opt-in is asserted ...
 - case_id: tp_11_stream_replay_monotonic_cursor_read
@@ -1788,7 +1788,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'verified WAVE-A: rg eventfd|doorbell over crates/ hits only the TODO (L3) comments in spsc_ring.rs read/write/flush; no doorbell/eventfd type, fd, or wake API exists in-tree, and the ring read returns Ok(0) on empty by Transport contract, so no parking-on-doorbell observable can be asserted without inventing the wake channel'
+  reason: 'verified WAVE-A: rg eventfd|doorbell over crates/ hits only the TODO (L3) comments in spsc_ring.flow.rs read/write/flush; no doorbell/eventfd type, fd, or wake API exists in-tree, and the ring read returns Ok(0) on empty by Transport contract, so no parking-on-doorbell observable can be asserted without inventing the wake channel'
 - case_id: vr_03_virtio_rng_mandatory_entropy
   case_file: cases/virtio_rings/vr_03_virtio_rng_mandatory_entropy.yaml
   target_crate: crates/kelir-engine
@@ -1804,7 +1804,7 @@ cases:
   status: red
   test_file: crates/kelir/tests/sandbox_profile_virtio_test.rs
   test_fn: vr_04_virtio_rng_profile_immutable
-  reason: 'nextest ignored-only: profile with session.devices.virtio_rng.enabled=false booted Ok at the live SandboxProfile::to_vm_config + KelirBuilder::boot boundary; to_vm_config silently drops the devices section (TODO L3, sandbox_runtime.rs) so no EConfig virtio-rng-mandatory rejection exists'
+  reason: 'nextest ignored-only: profile with session.devices.virtio_rng.enabled=false booted Ok at the live SandboxProfile::to_vm_config + KelirBuilder::boot boundary; to_vm_config silently drops the devices section (TODO L3, sandbox_runtime.flow.rs) so no EConfig virtio-rng-mandatory rejection exists'
 - case_id: vr_05_virtio_blk_erofs_readonly_mount
   case_file: cases/virtio_rings/vr_05_virtio_blk_erofs_readonly_mount.yaml
   target_crate: crates/kelir-engine
@@ -1820,7 +1820,7 @@ cases:
   status: gap
   test_file: null
   test_fn: null
-  reason: 'verified WAVE-A: rg fence|memfd|mmap over src hits only the flush() TODO (L3) comment in spsc_ring.rs; no fence API exists, and the live ring already does Acquire/Release ordering, so any x86 visibility assertion passes today — a SeqCst doorbell-fence observable would be a tautology on this arch'
+  reason: 'verified WAVE-A: rg fence|memfd|mmap over src hits only the flush() TODO (L3) comment in spsc_ring.flow.rs; no fence API exists, and the live ring already does Acquire/Release ordering, so any x86 visibility assertion passes today — a SeqCst doorbell-fence observable would be a tautology on this arch'
 - case_id: vr_07_virtio_shm_unmap_on_teardown
   case_file: cases/virtio_rings/vr_07_virtio_shm_unmap_on_teardown.yaml
   target_crate: crates/kelir-engine

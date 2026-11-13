@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/08-lifecycle.md#Elastic-compute"
-  statement: "Scale up unparks host threads; shim writes /sys/devices/system/cpu/cpuX/online with no reboot. GAP: VmmDriver has no set_vcpus surface — the VmHandle::set_vcpus adapter returns Err noting exactly that (crates/kelir-interface/src/handles_lifecycle.rs) — and no active_vcpu_threads probe exists, so thread park/unpark is asserted via the set_vcpus call and the guest nproc result only."
+  statement: "Scale up unparks host threads; shim writes /sys/devices/system/cpu/cpuX/online with no reboot. GAP: VmmDriver has no set_vcpus surface — the VmHandle::set_vcpus adapter returns Err noting exactly that (crates/kelir-interface/src/handles_lifecycle.flow.rs) — and no active_vcpu_threads probe exists, so thread park/unpark is asserted via the set_vcpus call and the guest nproc result only."
   blast_radius_if_breached: "Scaling compute requires full microVM reboots, blowing warm caches and dropping sessions."
 
 confusion_matrix:

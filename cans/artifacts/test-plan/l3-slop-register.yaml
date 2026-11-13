@@ -201,7 +201,7 @@ entries:
   - receipt.exit_code == 0 and receipt.exit_kind == ExitKind::Normal
   - receipt.binary_blake3 equals the hardcoded literal BLAKE3 of /bin/true
   code_todos:
-  - crates/kelir-interface/src/handlers_plugin.rs
+  - crates/kelir-interface/src/handlers_plugin.flow.rs
   - crates/kelir-shim/src/main.rs
   - packages/py/kelir/__init__.py
 - case_id: ar_02_class1_hardware_provenance_immutability
@@ -313,7 +313,7 @@ entries:
   - token.verify_sig(&host_pub_key) == true
   - token.session_token == active_session_id
   code_todos:
-  - crates/kelir-interface/src/telemetry/receipt_attest.rs
+  - crates/kelir-interface/src/telemetry/receipt_attest.flow.rs
 - case_id: ar_13_vmlinux_blake3_pre_vcpu_attest
   status: gap
   domain: attestation_receipts
@@ -473,7 +473,7 @@ entries:
   - tool_guard_interception_count() == 1 for the tools/call frame
   - interception_payload_tool_name() == 'execute_command' with event tool_guard.tool_call_intercepted
   code_todos:
-  - crates/kelir-plugins/plugin-tool-guard/src/service_tool_guard.rs
+  - crates/kelir-plugins/plugin-tool-guard/src/service_tool_guard.flow.rs
 - case_id: gt_03_taint_tracking_mutation_suspend
   status: red
   domain: governance_tools
@@ -490,7 +490,7 @@ entries:
   - fs::exists_in_guest('deploy.sh') == false with event tool_guard.suspended_for_approval
   code_todos:
   - crates/kelir-plugins/plugin-tool-guard/src/lib.rs
-  - crates/kelir-plugins/plugin-tool-guard/src/service_tool_guard.rs
+  - crates/kelir-plugins/plugin-tool-guard/src/service_tool_guard.flow.rs
 - case_id: gt_04_token_bucket_call_quota_etoolquota
   status: red
   domain: governance_tools
@@ -645,7 +645,7 @@ entries:
   - Out-of-scope request returns HTTP 403 / EACCES
   - Response body contains no token bytes with event vault.scope_denied
   code_todos:
-  - crates/kelir-plugins/plugin-vault/src/service_vault.rs
+  - crates/kelir-plugins/plugin-vault/src/service_vault.flow.rs
 - case_id: gv_03_audience_locking_validation
   status: red
   domain: governance_vault
@@ -677,7 +677,7 @@ entries:
   - Raw memory slice reads 0x00 after buffer drop
   - keyring_is_mlocked() == true with event vault.buffer_zeroized
   code_todos:
-  - crates/kelir-plugins/plugin-vault/src/service_vault.rs
+  - crates/kelir-plugins/plugin-vault/src/service_vault.flow.rs
 - case_id: gv_08_external_egress_sidecar_tls_relay
   status: gap
   domain: governance_vault
@@ -753,7 +753,7 @@ entries:
   - boot_err matches VmmError::NoHardwareVmm and receipt fault_reason is E_NOHARDWAREVMM
   - no bwrap child process exists and driver.is_emulated() is Ok(false)
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
   - crates/kelir-engine/src/vmm/mod.rs
   - crates/kelir-drivers/driver-rustvmm/src/host_probe.rs
 - case_id: hd_02_wx_mmu_prot_exec_trap
@@ -771,7 +771,7 @@ entries:
   - receipt fault_reason is E_WX_VIOLATION with exit code 137
   - driver.capabilities().requires_hardware_vmm is true
   code_todos:
-  - crates/kelir-shim/src/trap_protocol.rs
+  - crates/kelir-shim/src/trap_protocol.run.rs
 - case_id: hd_03_hardware_rollback_timing_bound
   status: red
   domain: hypervisor_driver
@@ -788,7 +788,7 @@ entries:
   - post-rollback register and RAM state equals the checkpointed state
   code_todos:
   - crates/kelir-drivers/driver-rustvmm/src/lib.rs
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
 - case_id: hd_04_cold_boot_budget_enforcement
   status: red
   domain: hypervisor_driver
@@ -804,7 +804,7 @@ entries:
   - boot stopwatch to first guest exec is < 50ms
   - first workload exec output observed
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
   - crates/kelir-drivers/driver-hvf/src/lib.rs
   - crates/kelir-drivers/driver-rustvmm/src/lib.rs
 - case_id: hd_05_kvm_userfaultfd_cow_tracking
@@ -886,7 +886,7 @@ entries:
   - boot with the flag false rejects with a typed error
   code_todos:
   - crates/kelir-drivers/driver-bwrap/src/lib.rs
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
 - case_id: hd_10_proot_ptrace_trap_conformance
   status: red
   domain: hypervisor_driver
@@ -949,7 +949,7 @@ entries:
   - host threads transition parked to unparked on scale-up
   - guest exec nproc reports 4 after set_vcpus(4)
   code_todos:
-  - crates/kelir-interface/src/handles_lifecycle.rs
+  - crates/kelir-interface/src/handles_lifecycle.flow.rs
 - case_id: hd_16_virtio_balloon_pressure_reclaim
   status: red
   domain: hypervisor_driver
@@ -966,7 +966,7 @@ entries:
   - adjust_balloon(256) returns Ok and frames are released
   code_todos:
   - crates/kelir-engine/src/planes/host/mod.rs
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
 - case_id: hd_17_mach_vm_deallocate_footprint_purge
   status: red
   domain: hypervisor_driver
@@ -1012,8 +1012,8 @@ entries:
   - recorded driver_id differs from current driver_id and boot path is Cold
   - cold boot elapsed is < 60ms with the cache repopulated for the new backend
   code_todos:
-  - crates/kelir/src/builder_sdk.rs
-  - crates/kelir/src/sandbox_runtime.rs
+  - crates/kelir/src/builder_sdk.flow.rs
+  - crates/kelir/src/sandbox_runtime.flow.rs
 - case_id: hd_fast_boot_drift
   status: red
   domain: hypervisor_driver
@@ -1075,9 +1075,9 @@ entries:
   - fork_duration < 10ms and child dirty_pages == 0 immediately after fork
   - Child write dirties only the written pages, parent pages stay shared
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
   - crates/kelir-drivers/driver-hvf/src/lib.rs
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
 - case_id: lc_02_suspend_zero_rss_purge
   status: red
   domain: lifecycle_checkpoint
@@ -1094,8 +1094,8 @@ entries:
   - Suspended image restores on resume with state intact
   code_todos:
   - crates/kelir-engine/src/planes/host/mod.rs
-  - crates/kelir-engine/src/session_lifecycle.rs
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
 - case_id: lc_03_step_evaluation_taint_rollback
   status: gap
   domain: lifecycle_checkpoint
@@ -1113,7 +1113,7 @@ entries:
   code_todos:
   - crates/kelir-bindings/napi/src/lib.rs
   - crates/kelir-bindings/pyo3/src/lib.rs
-  - crates/kelir-engine/src/dispatch_plugin/lifecycle_dispatch.rs
+  - crates/kelir-engine/src/dispatch_plugin/lifecycle_dispatch.flow.rs
   - crates/kelir-engine/src/dispatch_plugin/mod.rs
   - crates/kelir-engine/src/planes/checkpoint/mod.rs
   - packages/ts/core/src/index.ts
@@ -1132,7 +1132,7 @@ entries:
   - In-flight command completes with exit 0 while new exec fails with EBUSY
   - New tool call during Draining returns the EBUSY diagnostic
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
 - case_id: lc_06_hvf_chunked_page_promoter_2mb
   status: gap
   domain: lifecycle_checkpoint
@@ -1193,7 +1193,7 @@ entries:
   - receipt.exit_kind == ExitKind::HardKilled and receipt.exit_code == 137
   - No flush or shutdown hook runs on the kill path
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
 - case_id: lc_11_lid_sleep_clock_resync_snap
   status: gap
   domain: lifecycle_checkpoint
@@ -1210,9 +1210,9 @@ entries:
   - Resync frame dispatched over Control 0x0000 on sleep/wake
   code_todos:
   - crates/kelir-engine/src/planes/checkpoint/mod.rs
-  - crates/kelir-engine/src/session_lifecycle.rs
-  - crates/kelir-interface/src/driver_interface.rs
-  - crates/kelir-interface/src/handles_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
+  - crates/kelir-interface/src/handles_lifecycle.flow.rs
 - case_id: lc_12_host_reaper_pdeathsig_enforcement
   status: red
   domain: lifecycle_checkpoint
@@ -1229,8 +1229,8 @@ entries:
   - prctl(PR_SET_PDEATHSIG, SIGKILL) applied on Linux before the child runs
   code_todos:
   - crates/kelir-engine/src/planes/host/mod.rs
-  - crates/kelir-engine/src/session_lifecycle.rs
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
 - case_id: lc_13_host_reaper_kqueue_proc_exit
   status: gap
   domain: lifecycle_checkpoint
@@ -1261,7 +1261,7 @@ entries:
   - read_catalog_expires_at('ses_lc_14') advances forward after 30 seconds
   - Detached row carries lease_kind='lease' with a runner child pid
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
 - case_id: lc_15_detached_session_reconnect_relay
   status: red
   domain: lifecycle_checkpoint
@@ -1277,7 +1277,7 @@ entries:
   - Ping/pong frame round-trips over relay.sock with exec exit_code 0
   - Session rebuilt from the runner-owned state after reconnect
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
   - crates/kelir-plugin-cli/src/attach_cli.rs
   - packages/py/kelir/lifecycle_session.py
   - packages/ts/core/src/session.lifecycle.ts
@@ -1296,7 +1296,7 @@ entries:
   - remove_err contains E_STALE_INCARNATION on CAS mismatch
   - catalog_session_exists('ses_shared_01') stays true after the stale remove
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
 - case_id: lc_17_zombie_reaper_pid1_adoption
   status: gap
   domain: lifecycle_checkpoint
@@ -1328,8 +1328,8 @@ entries:
   - watchdog_reboot_count() == 1 after heartbeat expiry
   - VM transitions through Reboot state and restarts cold boot
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
   - packages/py/kelir/model_plugin.py
 - case_id: lc_20_portable_snapshot_archive_export
   status: red
@@ -1347,8 +1347,8 @@ entries:
   - Trailer digest matches the header BLAKE3 hash of inner manifest.json
   code_todos:
   - crates/kelir-engine/src/planes/checkpoint/mod.rs
-  - crates/kelir-engine/src/session_lifecycle.rs
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
 - case_id: lc_21_detached_scm_rights_parent_sigkill_abort
   status: red
   domain: lifecycle_checkpoint
@@ -1364,7 +1364,7 @@ entries:
   - child_aborted() == true, descriptor_leaked() == false, orphan_session_rows('ses_lc_21') == 0
   - Parent end closed after the handoff ack, child holds the only descriptor
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
 - case_id: lc_23_replay_deterministic_seed_reproduces_step_windows
   status: red
   domain: lifecycle_checkpoint
@@ -1380,8 +1380,8 @@ entries:
   - ctx_a.retired_instructions() == ctx_b.retired_instructions() for identical seeds
   - ctx_a.pending_step_windows() == ctx_b.pending_step_windows() window for window
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
   - crates/kelir-plugins/plugin-replay/src/lib.rs
 - case_id: lc_base_snapshot_capture
   status: red
@@ -1398,7 +1398,7 @@ entries:
   - capture_sequence > vm_ready_sequence and spawns_before_capture == 0
   - Capture runs at the boot().await return edge after every on_vm_ready handler
   code_todos:
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
 - case_id: lc_base_snapshot_lifecycle
   status: red
   domain: lifecycle_checkpoint
@@ -1414,7 +1414,7 @@ entries:
   - checkpoint.lineage(head) does not contain base_node_id
   - Exported manifest contains no base digest; base stored under cas/blobs with parent_digest None
   code_todos:
-  - crates/kelir-interface/src/handles_lifecycle.rs
+  - crates/kelir-interface/src/handles_lifecycle.flow.rs
 - case_id: pe_01_downward_only_tier_dependency_lint
   status: red
   domain: plugin_engine
@@ -1430,7 +1430,7 @@ entries:
   - layers::check() returns Err containing 'layer violation' for Tier 1 importing Tier 3
   - Exit code 1 with audit event ci.layering_violation_caught and zero state modified
   code_todos:
-  - crates/kelir-plugin-cli/src/layers_cli.rs
+  - crates/kelir-plugin-cli/src/layers_cli.run.rs
 - case_id: pe_02_cyclic_dependency_graph_abort
   status: red
   domain: plugin_engine
@@ -1477,7 +1477,7 @@ entries:
   - napi_trampoline_crossing_count() == 0 for out-of-scope ring events
   - gate2_duration < 2000ns with audit event pipeline.ffi_skipped
   code_todos:
-  - crates/kelir/src/builder_sdk.rs
+  - crates/kelir/src/builder_sdk.flow.rs
 - case_id: pe_11_ffi_buffer_streaming_chunk_ceiling
   status: red
   domain: plugin_engine
@@ -1523,7 +1523,7 @@ entries:
   - After child increment, parent counter == 10 and child counter == 11
   - Child dispatch reaches the fork_state-specialized probe with event plugin.state_forked
   code_todos:
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
 - case_id: pe_14_service_registry_peer_resolution
   status: gap
   domain: plugin_engine
@@ -1571,7 +1571,7 @@ entries:
   - dispatch_trap on bash -c 'git push --force' returns Verdict::Drop with errno EPERM
   - Direct git push --force also Drops EPERM, event policy.trap_denied
   code_todos:
-  - crates/kelir-engine/src/trap_gate.rs
+  - crates/kelir-engine/src/trap_gate.flow.rs
 - case_id: pe_18_python_c_os_system_unwrap_drops_git_push_force
   status: gap
   domain: plugin_engine
@@ -1617,8 +1617,8 @@ entries:
   - dispatch_trap on the swapped identity returns Verdict::Drop with errno EPERM
   - The pinned identity still returns Verdict::Pass, event policy.trap_denied
   code_todos:
-  - crates/kelir-engine/src/trap_gate.rs
-  - crates/kelir-interface/src/plugin_model.rs
+  - crates/kelir-engine/src/trap_gate.flow.rs
+  - crates/kelir-interface/src/plugin_model.flow.rs
   - crates/kelir-plugins/plugin-container/src/lib.rs
 - case_id: pe_21_trap_pass_provisional_effect_hook_redecides
   status: gap
@@ -1651,7 +1651,7 @@ entries:
   - control payloads reach the trap dispatcher and lifecycle controller
   code_todos:
   - crates/kelir-shim/src/main.rs
-  - crates/kelir-shim/src/multiplexer_protocol.rs
+  - crates/kelir-shim/src/multiplexer_protocol.run.rs
 - case_id: pm_02_stream_mux_open_data_close_flags
   status: red
   domain: protocol_mux
@@ -1685,7 +1685,7 @@ entries:
   - exit code is 1
   code_todos:
   - crates/kelir-engine/src/dispatch_plugin/mod.rs
-  - crates/kelir/src/builder_sdk.rs
+  - crates/kelir/src/builder_sdk.flow.rs
 - case_id: pm_05_stream_kind_conflict_ekindconflict
   status: red
   domain: protocol_mux
@@ -1718,7 +1718,7 @@ entries:
   - exec result is Err(ShimError::SlabSaturated) at the pool bound
   code_todos:
   - crates/kelir-shim/src/main.rs
-  - crates/kelir-shim/src/multiplexer_protocol.rs
+  - crates/kelir-shim/src/multiplexer_protocol.run.rs
 - case_id: pm_07_exec_signal_cancellation_by_exec_id
   status: gap
   domain: protocol_mux
@@ -1734,7 +1734,7 @@ entries:
   - wire payload carries the 64-bit exec_id, never a raw pid
   - signal to an exited exec_id drops silently and the successor task with the reused pid keeps running
   code_todos:
-  - crates/kelir-shim/src/multiplexer_protocol.rs
+  - crates/kelir-shim/src/multiplexer_protocol.run.rs
 - case_id: pm_08_exec_flow_control_input_stall
   status: gap
   domain: protocol_mux
@@ -1750,7 +1750,7 @@ entries:
   - 10MiB received with dropped_frame_count 0
   - guest write() blocks until the host drains the buffer, then resumes without loss
   code_todos:
-  - crates/kelir-shim/src/multiplexer_protocol.rs
+  - crates/kelir-shim/src/multiplexer_protocol.run.rs
 - case_id: pm_09_control_vfs_paginated_cursor_streaming
   status: gap
   domain: protocol_mux
@@ -1812,7 +1812,7 @@ entries:
   - connect to the unreachable vsock address errs
   - open fd count is unchanged after the failed connect and no fd leaks
   code_todos:
-  - crates/kelir-transport/src/fallback_transport.rs
+  - crates/kelir-transport/src/fallback_transport.flow.rs
 - case_id: pm_14_mesh_rejects_foreign_trust_domain_peer
   status: red
   domain: protocol_mux
@@ -1844,7 +1844,7 @@ entries:
   - db_sqlite_stream_bytes_transferred() > 0 for a guest query
   - virtio_fs_db_file_access_count() == 0 with event db_proxy.sqlite_query_executed
   code_todos:
-  - crates/kelir-plugins/plugin-db-proxy/src/sqlite_db_proxy.rs
+  - crates/kelir-plugins/plugin-db-proxy/src/sqlite_db_proxy.flow.rs
 - case_id: rt_03_2pc_pre_commit_vcpu_pause_drain
   status: red
   domain: relational_transaction
@@ -1860,7 +1860,7 @@ entries:
   - on_pre_commit returns Ok with vCPU execution state Paused
   - broker.in_flight_fuse_ops() == 0 with event transaction.pre_commit_settled
   code_todos:
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
   - crates/kelir-plugins/plugin-transaction/src/lib.rs
 - case_id: rt_06_spatial_blast_radius_schema_scope
   status: gap
@@ -1893,7 +1893,7 @@ entries:
   - wire_dropped_frame_count() == 1 for egress during an active transaction
   - Receipt fault_reason E_TRANSACTION_TAINT with event transaction.egress_taint_aborted
   code_todos:
-  - crates/kelir-plugins/plugin-transaction/src/service_transaction.rs
+  - crates/kelir-plugins/plugin-transaction/src/service_transaction.flow.rs
 - case_id: rt_09_transaction_timeout_abort_etimedout
   status: gap
   domain: relational_transaction
@@ -2352,7 +2352,7 @@ entries:
   - wal_record_count() == 5 before and after guest rollback (AS-05)
   - ledger.rollback_recorded emitted with WAL intact
   code_todos:
-  - crates/kelir-plugins/plugin-ledger/src/wal_ledger.rs
+  - crates/kelir-plugins/plugin-ledger/src/wal_ledger.flow.rs
 - case_id: ta_04_otlp_grpc_metric_export_streaming
   status: red
   domain: telemetry_audit
@@ -2385,7 +2385,7 @@ entries:
   - outbound_http_header('traceparent') contains the session root trace_id 4bf92f3577b34da6a3ce929d0e0e4736
   - telemetry.traceparent_injected emitted with wire frames_outbound == 1 (AS-03)
   code_todos:
-  - crates/kelir-plugins/plugin-ledger/src/otel_ledger.rs
+  - crates/kelir-plugins/plugin-ledger/src/otel_ledger.flow.rs
 - case_id: ta_06_merkle_wal_opt_in_suppression
   status: gap
   domain: telemetry_audit
@@ -2431,7 +2431,7 @@ entries:
   - emit completes in < 5ms while the OTLP endpoint is blackholed (AS-06)
   - ledger.otlp_dropped_sample emitted; guest command completes
   code_todos:
-  - crates/kelir-plugins/plugin-ledger/src/wal_ledger.rs
+  - crates/kelir-plugins/plugin-ledger/src/wal_ledger.flow.rs
 - case_id: tp_01_host_terminal_guard_raii_restore
   status: gap
   domain: terminal_plane
@@ -2587,7 +2587,7 @@ entries:
   - host eventfd read returns 1 after the guest MMIO doorbell write
   - consumer wakes with a single poll iteration, no spin loop
   code_todos:
-  - crates/kelir-transport/src/spsc_ring.rs
+  - crates/kelir-transport/src/spsc_ring.flow.rs
 - case_id: vr_03_virtio_rng_mandatory_entropy
   status: gap
   domain: virtio_rings
@@ -2654,7 +2654,7 @@ entries:
   - SHM buffer reads are atomically consistent across the transfer
   - flush issues an explicit host fence plus doorbell notification
   code_todos:
-  - crates/kelir-transport/src/spsc_ring.rs
+  - crates/kelir-transport/src/spsc_ring.flow.rs
   - packages/py/kelir/__init__.py
 - case_id: vr_07_virtio_shm_unmap_on_teardown
   status: red
@@ -2702,7 +2702,7 @@ entries:
   - exec packets carry stream_kind 0x0001
   code_todos:
   - crates/kelir-shim/src/main.rs
-  - crates/kelir-shim/src/multiplexer_protocol.rs
+  - crates/kelir-shim/src/multiplexer_protocol.run.rs
 - case_id: vr_10_virtio_fs_fuse_req_channel
   status: gap
   domain: virtio_rings
@@ -2752,7 +2752,7 @@ entries:
   - vsock fallback write carries the identical frame
   code_todos:
   - crates/kelir-shim/src/main.rs
-  - crates/kelir-transport/src/fallback_transport.rs
+  - crates/kelir-transport/src/fallback_transport.flow.rs
   - packages/py/kelir/__init__.py
 - case_id: vr_13_transport_named_pipe_windows_parity
   status: gap
@@ -2769,7 +2769,7 @@ entries:
   - sender is parked when the buffer fills and dropped_frames_count is 0
   - pipe opened at the configured path carries identical framing
   code_todos:
-  - crates/kelir-transport/src/fallback_transport.rs
+  - crates/kelir-transport/src/fallback_transport.flow.rs
 - case_id: vr_14_host_interposer_latency_budget
   status: gap
   domain: virtio_rings
@@ -2817,7 +2817,7 @@ entries:
   - host_active_session_sockets() == 0 after rollback
   code_todos:
   - crates/kelir-engine/src/planes/wire/mod.rs
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
 - case_id: wp_04_userspace_netstack_unprivileged_dial
   status: gap
   domain: wire_plane
@@ -2925,8 +2925,8 @@ code_only:
   - Non-canonical kernel panic signatures map to the panic exit kind
   - UART scrape covers the full panic signature set
   code_todos:
-  - crates/kelir-engine/src/uart_terminal.rs
-  - crates/kelir-plugin-cli/src/attest_cli.rs
+  - crates/kelir-engine/src/uart_terminal.flow.rs
+  - crates/kelir-plugin-cli/src/attest_cli.flow.rs
   - packages/py/kelir/generated/attest_telemetry.py
   - packages/py/kelir/model_plugin.py
   - packages/py/kelir/service_caps.py
@@ -2980,7 +2980,7 @@ code_only:
   - RealFuseOps is bound once Session shares Arc<PipelineEngine>
   - Reconciler is bound once the host broker journal anchors broker_dir
   code_todos:
-  - crates/kelir/src/builder_sdk.rs
+  - crates/kelir/src/builder_sdk.flow.rs
   - crates/kelir-bindings/napi/src/lib.rs
   - crates/kelir-bindings/pyo3/src/lib.rs
 - domain: governance_tools
@@ -2996,11 +2996,11 @@ code_only:
   - tools/call frames decoded from MCP_CONSOLE with tool name and arguments before guest launch
   - Boot locks the fetched tools/list catalog; trace quota state evicts when the console closes
   code_todos:
-  - crates/kelir-plugin-cli/src/budgets_cli.rs
+  - crates/kelir-plugin-cli/src/budgets_cli.run.rs
   - crates/kelir-plugins/plugin-mcp/src/lib.rs
   - crates/kelir-plugins/plugin-tool-guard/src/lib.rs
-  - crates/kelir-plugins/plugin-tool-guard/src/service_tool_guard.rs
-  - crates/kelir-testkit/src/bin/check_tests.rs
+  - crates/kelir-plugins/plugin-tool-guard/src/service_tool_guard.flow.rs
+  - crates/kelir-testkit/src/bin/check_tests.run.rs
 - domain: governance_vault
   target_crate: crates/kelir-plugins
   slop_risks:
@@ -3033,14 +3033,14 @@ code_only:
   - crates/kelir-bindings/pyo3/src/lib.rs
   - crates/kelir-engine/src/lib.rs
   - crates/kelir-engine/src/planes/host/mod.rs
-  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
   - crates/kelir-drivers/driver-bwrap/src/lib.rs
   - crates/kelir-drivers/driver-proot/src/lib.rs
   - crates/kelir-integration/src/lib.rs
-  - crates/kelir-interface/src/driver_interface.rs
-  - crates/kelir-plugin-cli/src/doctor_cli.rs
-  - crates/kelir-plugin-cli/src/setup_cli.rs
-  - crates/kelir/src/sandbox_runtime.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
+  - crates/kelir-plugin-cli/src/doctor_cli.run.rs
+  - crates/kelir-plugin-cli/src/setup_cli.flow.rs
+  - crates/kelir/src/sandbox_runtime.flow.rs
 - domain: lifecycle_checkpoint
   target_crate: packages/py
   slop_risks:
@@ -3057,8 +3057,8 @@ code_only:
   - crates/kelir-bindings/napi/src/lib.rs
   - crates/kelir-bindings/pyo3/src/lib.rs
   - crates/kelir-engine/src/planes/checkpoint/mod.rs
-  - crates/kelir-engine/src/session_lifecycle.rs
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
   - packages/py/kelir/__init__.py
   - packages/py/kelir/lifecycle_session.py
   - packages/py/kelir/model_plugin.py
@@ -3076,23 +3076,23 @@ code_only:
   - In-flight exec count returns to zero after every exec completes
   code_todos:
   - crates/kelir-engine/src/dispatch_plugin/mod.rs
-  - crates/kelir-engine/src/session_lifecycle.rs
-  - crates/kelir-engine/src/trap_gate.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
+  - crates/kelir-engine/src/trap_gate.flow.rs
   - crates/kelir-integration/src/lib.rs
-  - crates/kelir-interface/src/error_envelope.rs
-  - crates/kelir-interface/src/handlers_plugin.rs
-  - crates/kelir-interface/src/plugin_model.rs
-  - crates/kelir-interface/src/runtime_block.rs
-  - crates/kelir-plugin-cli/src/audit_cli.rs
+  - crates/kelir-interface/src/error_envelope.flow.rs
+  - crates/kelir-interface/src/handlers_plugin.flow.rs
+  - crates/kelir-interface/src/plugin_model.flow.rs
+  - crates/kelir-interface/src/runtime_block.flow.rs
+  - crates/kelir-plugin-cli/src/audit_cli.run.rs
   - crates/kelir-plugin-cli/src/manifest_cli.rs
   - crates/kelir-plugin-cli/src/registry_cli.rs
   - crates/kelir-plugin-cli/src/scaffold_cli.rs
-  - crates/kelir-plugin-cli/src/spec_cli.rs
+  - crates/kelir-plugin-cli/src/spec_cli.run.rs
   - crates/kelir-plugins/plugin-chaos/src/lib.rs
   - crates/kelir-plugins/plugin-container/src/lib.rs
-  - crates/kelir-plugins/plugin-container/src/service_container.rs
-  - crates/kelir/src/builder_sdk.rs
-  - crates/kelir/src/hlist_sdk.rs
+  - crates/kelir-plugins/plugin-container/src/service_container.flow.rs
+  - crates/kelir/src/builder_sdk.flow.rs
+  - crates/kelir/src/hlist_sdk.flow.rs
   - crates/kelir/src/lib.rs
   - packages/py/kelir/kelir_builder.py
   - packages/py/kelir/model_plugin.py
@@ -3113,13 +3113,13 @@ code_only:
   code_todos:
   - crates/kelir-interface/src/lib.rs
   - crates/kelir-plugin-testkit/src/fixtures_testkit.rs
-  - crates/kelir-plugin-testkit/src/vectors_testkit.rs
+  - crates/kelir-plugin-testkit/src/vectors_testkit.flow.rs
   - crates/kelir-plugins/plugin-mesh/src/lib.rs
-  - crates/kelir-shim/src/introspect_trap.rs
+  - crates/kelir-shim/src/introspect_trap.run.rs
   - crates/kelir-shim/src/main.rs
-  - crates/kelir-shim/src/multiplexer_protocol.rs
-  - crates/kelir/src/builder_sdk.rs
-  - crates/kelir/src/session_lifecycle.rs
+  - crates/kelir-shim/src/multiplexer_protocol.run.rs
+  - crates/kelir/src/builder_sdk.flow.rs
+  - crates/kelir/src/session_lifecycle.flow.rs
 - domain: relational_transaction
   target_crate: crates/kelir-plugins
   slop_risks:
@@ -3133,12 +3133,12 @@ code_only:
   - COMMIT/ROLLBACK/SAVEPOINT observable on every active proxy connection
   - Invalid-checksum frames rejected and out-of-order segments reassembled per RFC 793
   code_todos:
-  - crates/kelir-interface/src/driver_interface.rs
+  - crates/kelir-interface/src/driver_interface.flow.rs
   - crates/kelir-plugins/plugin-db-proxy/src/lib.rs
-  - crates/kelir-plugins/plugin-db-proxy/src/reassembler_wire.rs
-  - crates/kelir-plugins/plugin-db-proxy/src/service_db_proxy.rs
+  - crates/kelir-plugins/plugin-db-proxy/src/reassembler_wire.run.rs
+  - crates/kelir-plugins/plugin-db-proxy/src/service_db_proxy.flow.rs
   - crates/kelir-plugins/plugin-transaction/src/lib.rs
-  - crates/kelir-plugins/plugin-transaction/src/service_transaction.rs
+  - crates/kelir-plugins/plugin-transaction/src/service_transaction.flow.rs
   - packages/py/kelir/service_caps.py
 - domain: storage_plane
   target_crate: crates/kelir-engine
@@ -3159,9 +3159,9 @@ code_only:
   - crates/kelir-engine/src/planes/storage/lock_broker.rs
   - crates/kelir-engine/src/planes/storage/mod.rs
   - crates/kelir-engine/src/planes/storage/storage_reconciler.rs
-  - crates/kelir-engine/src/session_lifecycle.rs
-  - crates/kelir-interface/src/handles_lifecycle.rs
-  - crates/kelir/src/builder_sdk.rs
+  - crates/kelir-engine/src/session_lifecycle.flow.rs
+  - crates/kelir-interface/src/handles_lifecycle.flow.rs
+  - crates/kelir/src/builder_sdk.flow.rs
   - packages/py/kelir/__init__.py
   - packages/py/kelir/model_plugin.py
   - packages/py/kelir/service_caps.py
@@ -3178,8 +3178,8 @@ code_only:
   - Gate-1 BPF program loaded before any trap is evaluated
   - Non-allowlisted binary/argv yields Skip from the BPF match
   code_todos:
-  - crates/kelir-engine/src/trap_gate.rs
-  - crates/kelir-plugin-cli/src/fixtures_cli.rs
+  - crates/kelir-engine/src/trap_gate.flow.rs
+  - crates/kelir-plugin-cli/src/fixtures_cli.run.rs
   - crates/kelir-plugins/plugin-supply-chain/src/lib.rs
 - domain: telemetry_audit
   target_crate: crates/kelir-plugins/plugin-ledger
@@ -3194,9 +3194,9 @@ code_only:
   - Memory-pressure event carries a TrampolineRing tag across the fused crossing
   - Per-ring telemetry counts match the dispatched crossings
   code_todos:
-  - crates/kelir-engine/src/dispatch_plugin/lifecycle_dispatch.rs
+  - crates/kelir-engine/src/dispatch_plugin/lifecycle_dispatch.flow.rs
   - crates/kelir-plugins/plugin-ledger/src/lib.rs
-  - crates/kelir-plugins/plugin-ledger/src/wal_ledger.rs
+  - crates/kelir-plugins/plugin-ledger/src/wal_ledger.flow.rs
   - packages/py/kelir/model_plugin.py
   - packages/py/kelir/service_caps.py
 - domain: terminal_plane
@@ -3215,9 +3215,9 @@ code_only:
   - crates/kelir-bindings/napi/src/lib.rs
   - crates/kelir-bindings/pyo3/src/lib.rs
   - crates/kelir-engine/src/planes/terminal/mod.rs
-  - crates/kelir-interface/src/handles_lifecycle.rs
+  - crates/kelir-interface/src/handles_lifecycle.flow.rs
   - crates/kelir-plugin-cli/src/logs_cli.rs
-  - crates/kelir/src/planes/terminal_plane.rs
+  - crates/kelir/src/planes/terminal_plane.flow.rs
   - packages/py/kelir/__init__.py
   - packages/py/kelir/lifecycle_session.py
   - packages/py/kelir/model_plugin.py
@@ -3231,7 +3231,7 @@ code_only:
   acceptance:
   - --show output matches declared_ring_mask exactly
   code_todos:
-  - crates/kelir-plugin-cli/src/rings_cli.rs
+  - crates/kelir-plugin-cli/src/rings_cli.run.rs
 - domain: wire_plane
   target_crate: crates/kelir-interface
   slop_risks:
@@ -3248,10 +3248,10 @@ code_only:
   - crates/kelir-bindings/napi/src/lib.rs
   - crates/kelir-bindings/pyo3/src/lib.rs
   - crates/kelir-engine/src/planes/wire/mod.rs
-  - crates/kelir-interface/src/vsock_mesh.rs
+  - crates/kelir-interface/src/vsock_mesh.flow.rs
   - crates/kelir-plugins/plugin-wire-ingress/src/lib.rs
-  - crates/kelir/src/builder_sdk.rs
-  - crates/kelir/src/session_lifecycle.rs
+  - crates/kelir/src/builder_sdk.flow.rs
+  - crates/kelir/src/session_lifecycle.flow.rs
   - packages/py/kelir/model_plugin.py
   - packages/py/tests/test_wire_sinkhole.py
   - packages/ts/core/tests/sinkhole.wire.test.ts

@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/09-snapshots.md#Base-snapshot-(engine-internal)"
-  statement: "The autonomous base snapshot is engine-internal: stored under cas/blobs with parent_digest None, absent from CheckpointPlane::lineage(head), absent from Session::export_snapshot output, and excluded from user-visible CausalDelta chains. Gap: capture and hydration are L3 (Session::export_snapshot is a TODO (L3) stub in crates/kelir-engine/src/session_lifecycle.rs), so the exclusion is specified against cans/09-snapshots.md#Base-snapshot-(engine-internal), not a live capture path."
+  statement: "The autonomous base snapshot is engine-internal: stored under cas/blobs with parent_digest None, absent from CheckpointPlane::lineage(head), absent from Session::export_snapshot output, and excluded from user-visible CausalDelta chains. Gap: capture and hydration are L3 (Session::export_snapshot is a TODO (L3) stub in crates/kelir-engine/src/session_lifecycle.flow.rs), so the exclusion is specified against cans/09-snapshots.md#Base-snapshot-(engine-internal), not a live capture path."
   blast_radius_if_breached: "Engine-internal base state leaks into user lineage or exported archives, breaking snapshot portability and polluting user CausalDelta chains with host-internal digests."
 
 confusion_matrix:

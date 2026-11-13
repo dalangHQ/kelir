@@ -10,6 +10,7 @@ use kelir_interface::protocol_wire::{MsgType, TrapEvent, TrappedSyscall};
 
 use crate::trap_protocol::{SeccompTrap, ShimError};
 
+#[path = "introspect_trap/uapi_trap.rs"]
 mod uapi_trap;
 
 pub use self::uapi_trap::{AT_EXECFN, AT_NULL};
@@ -120,6 +121,7 @@ pub fn read_ppid(pid: u32) -> Result<u32, ShimError> {
         .map_err(|_| ShimError::ProcRead { pid, field: "stat" })
 }
 
+#[allow(unknown_lints)]
 #[allow(clippy::chunks_exact_to_as_chunks)]
 pub fn read_auxv(pid: u32) -> Result<Vec<(u64, u64)>, ShimError> {
     let bytes = read_proc_bytes(pid, "auxv")?;

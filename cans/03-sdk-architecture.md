@@ -98,7 +98,7 @@
           - Pin (SSOT-A1): return-new-buffer
             - The former "bytes mutated in place" sided with RS only
             - RS mutates in place and returns (); it is the outlier
-            - See: crates/kelir-interface/src/plugin_model.rs:783-808
+            - See: crates/kelir-interface/src/plugin_model.flow.rs:783-808
         - Suspend surface naming
           - Rust: Verdict::Suspend { until: SuspendUntil }
           - TS: c.suspend(SuspendUntil.deadline | .approval | .handshake)
@@ -189,14 +189,14 @@
           - Rust has no .plugin(obj) overload; its live forms are
           - .plugin(KelirBuilder<Plugin>) for the builder merge
           - .plugin_instance(P) for the trait path
-          - See: crates/kelir/src/builder_sdk.rs:428-490
+          - See: crates/kelir/src/builder_sdk.flow.rs:428-490
         - Transaction scope
           - scope(name, paths, schemas, inodes) is an async context manager
           - It yields a handle-bound Tx with savepoint()
           - And rollback_to_savepoint(sp) / commit() / abort()
           - The service trait stays handle-threaded (begin_scope, commit)
           - And abort, savepoint, rollback_to_savepoint
-          - See: crates/kelir-plugins/plugin-transaction/src/service_transaction.rs:30-46
+          - See: crates/kelir-plugins/plugin-transaction/src/service_transaction.flow.rs:30-46
         - Ledger finalize
           - finalize(FinalizeRequest { include_delta, include_merkle_root })
           - Returns FinalReceipt { merkle_root, signed_jws }
@@ -205,10 +205,10 @@
           - See: crates/kelir-plugins/plugin-ledger/src/lib.rs:91-102
         - Container ingest
           - ingest_image(tarball) returns the image id string
-          - See: crates/kelir-plugins/plugin-container/src/service_container.rs:18
+          - See: crates/kelir-plugins/plugin-container/src/service_container.flow.rs:18
         - DriverPolicy.driver is Option<String>
           - It names the selected backend, None for default
-          - See: crates/kelir-interface/src/driver_interface.rs:50-59
+          - See: crates/kelir-interface/src/driver_interface.flow.rs:50-59
           - The artifact lacks the field (non-conforming here)
         - Suspend/resume, hook returns, event shapes, vsock, custom action
           - See: 08-lifecycle.md#Suspend-and-resume
@@ -266,7 +266,7 @@
     - Engine functional-core invariant: see: [1]
     - .plugin() takes flat plugin instances; .params::<T>() carries the schema
       - handler() was deleted deliberately, it must not be re-added
-        - It was an unused identity fn in builder_sdk.rs
+        - It was an unused identity fn in builder_sdk.flow.rs
         - Not a missing API; examples use direct closures instead
         - See: cans/_collab/handoffs.md:16
       - Accepts core KelirPlugin plus only needed ring traits

@@ -3,7 +3,7 @@
 pub mod dns;
 #[path = "l4_ops.flow.rs"]
 pub mod l4;
-#[path = "net_ops.rs"]
+#[path = "net_ops.flow.rs"]
 pub mod net;
 #[path = "udp_nat.flow.rs"]
 pub mod udp_nat;

@@ -213,9 +213,10 @@ pub fn rs_files(root: &Path) -> Vec<PathBuf> {
         }
     };
     let mut out = Vec::new();
-    let walker = WalkDir::new(base)
-        .into_iter()
-        .filter_entry(|e| !(e.file_type().is_dir() && e.file_name() == "target"));
+    let walker = WalkDir::new(base).into_iter().filter_entry(|e| {
+        !(e.file_type().is_dir()
+            && matches!(e.file_name().to_str(), Some("target" | "tests" | "benches")))
+    });
     for entry in walker.filter_map(|e| e.ok()) {
         let path = entry.path().to_path_buf();
         if path.extension().map(|e| e == "rs").unwrap_or(false) {

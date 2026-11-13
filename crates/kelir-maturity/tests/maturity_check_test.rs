@@ -74,6 +74,25 @@ fn passing_tree() {
 }
 
 #[test]
+fn tests_dir_excluded() {
+    let root = tree("notests");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(&dir.join("src").join("lib.rs"), "pub trait Ops {}\n");
+    write_file(
+        &dir.join("tests").join("helper_test.rs"),
+        "impl Foo for Bar {}\nuse std::fs;\n",
+    );
+    let report = check_tree(&root, &policy());
+    assert!(
+        report.passed(),
+        "tests/ must not be checked: {:?}",
+        report.fails
+    );
+    assert_eq!(report.files, 1);
+    clean(&root);
+}
+
+#[test]
 fn placement_fails_for_l3_in_l1_l2_crate() {
     let root = tree("place");
     let dir = krate(&root, "demo", "\"L1\", \"L2\"");

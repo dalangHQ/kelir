@@ -1,4 +1,12 @@
 # perf/maturity-policy.toml
+# L2 os-reach carve-out (converge decision, rename wave): the L2 os-reach forbid
+# is about host side effects, not plumbing. L2 tolerates pure libc constants,
+# std::net types with no IO, reads of a tool's own inputs (codegen, lockfile
+# probe), and session-directory lifecycle. Guest-affecting IO and domain-trait
+# impls are L3. The composition root (builder_sdk.flow.rs finish_boot, napi/pyo3
+# bindings) is the one place that constructs Real* types.
+# L2_max_delta_per_pr governs incremental PRs; the repo-wide rename wave
+# exceeded it once by design (66 new L2 files), it still bounds later PRs.
 [budget]
 L2_max_delta_per_pr = 20        # net new L2 files per PR, not net lines
 
