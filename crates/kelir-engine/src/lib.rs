@@ -14,7 +14,9 @@ pub mod planes;
 pub mod plugin_registry;
 pub mod session_lifecycle;
 pub mod session_support;
+#[path = "trap_gate.flow.rs"]
 pub mod trap_gate;
+#[path = "uart_terminal.flow.rs"]
 pub mod uart_terminal;
 pub mod vmm;
 

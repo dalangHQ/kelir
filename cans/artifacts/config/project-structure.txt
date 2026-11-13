@@ -39,19 +39,19 @@ kelir/
 │   │   ├── Cargo.toml
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # Composition root: binds all nine Real*Ops; re-export surface: kelir-engine API (5 native planes) + optional feature-gated plugins
-│   │   │   ├── builder_sdk.rs             # KelirBuilder typestate (Unsealed/Sealed), plugin/terminal/storage/wire registration
-│   │   │   ├── builder_adapters.rs        # Closure adapters over the segregated ring traits
-│   │   │   ├── builder_plugin.rs          # Plugin-mode chain (KelirPlugin trait + ring traits)
-│   │   │   ├── builder_scopes.rs          # Scope builders for the fluent plugin-creation builder
-│   │   │   ├── hlist_sdk.rs               # Heterogeneous plugin-context list
-│   │   │   ├── plugin_model.flow.rs              # Facade plugin re-exports
-│   │   │   ├── protocol_wire.flow.rs            # Facade protocol re-exports
-│   │   │   ├── sandbox_runtime.rs             # Sandbox entrypoint
-│   │   │   ├── session_lifecycle.rs             # Session assembly from builder parts
+│   │   │   ├── builder_sdk.flow.rs             # KelirBuilder typestate (Unsealed/Sealed), plugin/terminal/storage/wire registration
+│   │   │   ├── builder_adapters.flow.rs        # Closure adapters over the segregated ring traits
+│   │   │   ├── builder_plugin.flow.rs          # Plugin-mode chain (KelirPlugin trait + ring traits)
+│   │   │   ├── builder_scopes.flow.rs          # Scope builders for the fluent plugin-creation builder
+│   │   │   ├── hlist_sdk.flow.rs               # Heterogeneous plugin-context list
+│   │   │   ├── plugin_model.rs              # Facade plugin re-exports
+│   │   │   ├── protocol_wire.rs            # Facade protocol re-exports
+│   │   │   ├── sandbox_runtime.flow.rs             # Sandbox entrypoint
+│   │   │   ├── session_lifecycle.flow.rs             # Session assembly from builder parts
 │   │   │   ├── telemetry_attest.rs           # Facade telemetry re-exports
 │   │   │   └── planes/
 │   │   │       ├── mod.rs
-│   │   │       ├── terminal_plane.rs        # Terminal plane facade
+│   │   │       ├── terminal_plane.flow.rs        # Terminal plane facade
 │   │   │       ├── storage_plane.rs         # Storage plane facade
 │   │   │       └── wire_plane.rs            # Wire plane facade
 │   │   └── tests/
@@ -125,17 +125,17 @@ kelir/
 │   │       ├── bus/mod.rs             # VirtIO Device Multiplexer (vsock, console, fs, net) over kelir-transport
 │   │       ├── dispatch_plugin/            # Static dispatch array & ArcSwap pipeline runner
 │   │       │   ├── mod.rs
-│   │       │   ├── console_dispatch.rs
-│   │       │   ├── fs_dispatch.rs
-│   │       │   ├── host_dispatch.rs
-│   │       │   ├── lifecycle_dispatch.rs
+│   │       │   ├── console_dispatch.flow.rs
+│   │       │   ├── fs_dispatch.flow.rs
+│   │       │   ├── host_dispatch.flow.rs
+│   │       │   ├── lifecycle_dispatch.flow.rs
 │   │       │   ├── params_hydration.rs
-│   │       │   └── plugin_registration.rs
+│   │       │   └── plugin_registration.flow.rs
 │   │       ├── plugin_registry.rs     # Plugin registration and ordering
 │   │       ├── session_lifecycle.rs             # Session lifecycle assembly
 │   │       ├── session_support.rs               # NullDriver, mint_uuid_v7, workspace quota consts
-│   │       ├── trap_gate.rs           # Filter-before-FFI trampoline & entropy analyzer
-│   │       ├── uart_terminal.rs                # Early-boot UART scrape
+│   │       ├── trap_gate.flow.rs           # Filter-before-FFI trampoline & entropy analyzer
+│   │       ├── uart_terminal.flow.rs                # Early-boot UART scrape
 │   │       └── vmm/mod.rs             # Driver orchestration
 │   │   └── tests/                     # Integration suites (<entity>_<domain>_test.rs)
 │   │       ├── bus_mux_protocol_test.rs

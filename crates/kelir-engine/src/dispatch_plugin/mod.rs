@@ -1,10 +1,15 @@
 // see: cans/02-plugin-model.md#Static-dispatch
 // see: cans/02-plugin-model.md#Unified-interposition-pipeline
+#[path = "console_dispatch.flow.rs"]
 mod console_dispatch;
+#[path = "fs_dispatch.flow.rs"]
 mod fs_dispatch;
+#[path = "host_dispatch.flow.rs"]
 mod host_dispatch;
+#[path = "lifecycle_dispatch.flow.rs"]
 mod lifecycle_dispatch;
 mod params_hydration;
+#[path = "plugin_registration.flow.rs"]
 mod plugin_registration;
 
 use std::future::Future;

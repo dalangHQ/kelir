@@ -7,15 +7,22 @@
 pub use kelir_interface as interface;
 pub use kelir_interface::driver_interface;
 
+#[path = "builder_adapters.flow.rs"]
 pub mod builder_adapters;
+#[path = "builder_plugin.flow.rs"]
 pub mod builder_plugin;
+#[path = "builder_scopes.flow.rs"]
 pub mod builder_scopes;
+#[path = "builder_sdk.flow.rs"]
 pub mod builder_sdk;
+#[path = "hlist_sdk.flow.rs"]
 pub mod hlist_sdk;
 pub mod planes;
 pub mod plugin_model;
 pub mod protocol_wire;
+#[path = "sandbox_runtime.flow.rs"]
 pub mod sandbox_runtime;
+#[path = "session_lifecycle.flow.rs"]
 pub mod session_lifecycle;
 pub mod telemetry_attest;
 
