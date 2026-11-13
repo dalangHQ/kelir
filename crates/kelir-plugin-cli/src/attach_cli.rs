@@ -43,7 +43,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
     {
         return Err(format!("attach: lease for session `{id_arg}` is expired").into());
     }
-    let relay = kelir_core::Session::relay_socket_path(&session_id)?;
+    let relay = kelir_engine::Session::relay_socket_path(&session_id)?;
     println!(
         "kelir attach: session {id_arg} runner_pid={} relay={}",
         row.runner_pid,

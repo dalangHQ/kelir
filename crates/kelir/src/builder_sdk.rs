@@ -138,7 +138,7 @@ type BoxFutureResult = Pin<Box<dyn Future<Output = Result<(), PluginError>> + Se
 
 // see: cans/03-sdk-architecture.md#Builder-consumption-model-across-languages
 type BoxedTrapDenyCallback =
-    Box<dyn Fn(&TrapEvent, &kelir_core::Session) -> BoxFutureResult + Send + Sync>;
+    Box<dyn Fn(&TrapEvent, &kelir_engine::Session) -> BoxFutureResult + Send + Sync>;
 
 type CustomActionFuture =
     Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>;
@@ -606,11 +606,11 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
 
     pub fn on_trap_deny<F, Fut, T>(mut self, f: F) -> Self
     where
-        F: Fn(&TrapEvent, &kelir_core::Session) -> Fut + Clone + Send + Sync + 'static,
+        F: Fn(&TrapEvent, &kelir_engine::Session) -> Fut + Clone + Send + Sync + 'static,
         Fut: Future<Output = Result<T, PluginError>> + Send + 'static,
     {
         self.registration.on_trap_deny = Some(Box::new(
-            move |event: &TrapEvent, session: &kelir_core::Session| {
+            move |event: &TrapEvent, session: &kelir_engine::Session| {
                 let fut = f.clone()(event, session);
                 Box::pin(async move { fut.await.map(drop) })
             },
@@ -712,21 +712,21 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                 "host builder has no VmConfig",
             ));
         };
-        let mut engine = kelir_core::dispatch_plugin::PipelineEngine::new();
+        let mut engine = kelir_engine::dispatch_plugin::PipelineEngine::new();
         self.bind_registry(&mut engine);
         let mut registration = self.registration;
-        let mut plugins: Vec<kelir_core::PluginRegistration> = registration
+        let mut plugins: Vec<kelir_engine::PluginRegistration> = registration
             .instances
             .iter()
             .map(|(plugin, _)| {
-                kelir_core::PluginRegistration::new(plugin.name(), plugin.is_enabled())
+                kelir_engine::PluginRegistration::new(plugin.name(), plugin.is_enabled())
             })
             .collect();
         plugins.extend(
             registration
                 .mounted
                 .iter()
-                .map(|mounted| kelir_core::PluginRegistration::new(mounted.name, true)),
+                .map(|mounted| kelir_engine::PluginRegistration::new(mounted.name, true)),
         );
         for (instance, scope) in &registration.instances {
             if !instance.is_enabled() {
@@ -764,9 +764,9 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
             .as_ref()
             .map(|cfg| cfg.synthetic_files.clone())
             .unwrap_or_default();
-        let plane_wiring = kelir_core::session_lifecycle::PlaneWiring {
+        let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
             terminal: registration.terminal_cfg.as_ref().map(|cfg| {
-                kelir_core::planes::terminal::TerminalWiring {
+                kelir_engine::planes::terminal::TerminalWiring {
                     cols: cfg.cols,
                     rows: cfg.rows,
                     drop_osc52: cfg.drop_osc52,
@@ -775,7 +775,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                     prompts: cfg
                         .prompts
                         .iter()
-                        .map(|rule| kelir_core::planes::terminal::PromptRuleConfig {
+                        .map(|rule| kelir_engine::planes::terminal::PromptRuleConfig {
                             pattern: rule.pattern.clone(),
                             timeout: rule.timeout,
                             verify_foreground: rule.verify_foreground,
@@ -791,10 +791,8 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                         .collect(),
                 }
             }),
-            wire: registration
-                .wire_cfg
-                .as_ref()
-                .map(|cfg| kelir_core::planes::wire::WireWiring {
+            wire: registration.wire_cfg.as_ref().map(|cfg| {
+                kelir_engine::planes::wire::WireWiring {
                     sinkhole_allowlist: cfg.sinkhole.allowlist.clone(),
                     sinkhole_drop_all: cfg.sinkhole.drop_all,
                     ssh_agent_bridge: cfg.ssh_agent_bridge,
@@ -810,10 +808,11 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                         .map(|proxy| (proxy.listen_port, proxy.destination.clone()))
                         .collect(),
                     allow_udp_proxied: matches!(cfg.tap_filter, TapFilter::AllowUdpProxied),
-                }),
+                }
+            }),
             storage,
         };
-        let mut core = kelir_core::Session::boot_with_engine(
+        let mut core = kelir_engine::Session::boot_with_engine(
             config,
             &plugins,
             engine,
@@ -831,15 +830,15 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
 
     // see: cans/05-storage-plane.md#Storage-architecture
     // TODO (L3) [storage_plane]: snoop on_write closures register as engine FsInterposer hooks at seal per cans/02-plugin-model.md#Unified-interposition-pipeline.; slop: on_write closure dropped, hook never registered at seal
-    fn storage_config(&self) -> kelir_core::planes::storage::StorageConfig {
+    fn storage_config(&self) -> kelir_engine::planes::storage::StorageConfig {
         let Some(cfg) = self.registration.storage_cfg.as_ref() else {
-            return kelir_core::planes::storage::StorageConfig::default();
+            return kelir_engine::planes::storage::StorageConfig::default();
         };
         let lock_broker = self
             .registration
             .lock_broker_cfg
             .as_ref()
-            .map(|broker| kelir_core::planes::storage::LockBrokerWiring {
+            .map(|broker| kelir_engine::planes::storage::LockBrokerWiring {
                 scope_globs: match &broker.scope {
                     LockScope::Globs(globs) => globs.clone(),
                 },
@@ -847,23 +846,23 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
             })
             .or_else(|| {
                 cfg.lock_broker
-                    .then(|| kelir_core::planes::storage::LockBrokerWiring {
+                    .then(|| kelir_engine::planes::storage::LockBrokerWiring {
                         scope_globs: Vec::new(),
                         non_blocking: false,
                     })
             });
-        kelir_core::planes::storage::StorageConfig {
+        kelir_engine::planes::storage::StorageConfig {
             shared_caches: cfg
                 .shared_caches
                 .iter()
                 .map(std::path::PathBuf::from)
                 .collect(),
             lock_broker,
-            idmap: Some(kelir_core::planes::storage::IdmapConfig {
+            idmap: Some(kelir_engine::planes::storage::IdmapConfig {
                 guest_uid: cfg.idmap.guest_uid,
                 host_uid: cfg.idmap.host_uid,
             }),
-            mask_read: Some(kelir_core::planes::storage::MaskReadConfig {
+            mask_read: Some(kelir_engine::planes::storage::MaskReadConfig {
                 engine: cfg.scan_engine,
                 carryover_bytes: cfg.carryover_bytes,
                 rules: cfg.mask_read.clone(),

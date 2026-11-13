@@ -3,7 +3,7 @@ case_id: "pe_20_same_path_different_identity_never_matches"
 title: "Exec with the same binary_path string but different dev, ino, and BLAKE3 never matches the policy row for that path"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

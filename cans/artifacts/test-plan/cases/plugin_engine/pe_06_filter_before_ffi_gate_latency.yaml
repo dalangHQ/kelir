@@ -3,7 +3,7 @@ case_id: "pe_06_filter_before_ffi_gate_latency"
 title: "Non-matching MountScope events evaluate in native Rust memory in <2µs, skipping foreign FFI trampolines"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "sp_14_in_flight_read_masking_pattern_replace"
 title: "Synchronous on_fs_read hook redacts and replaces secret patterns in mutable buffer before guest VFS return"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

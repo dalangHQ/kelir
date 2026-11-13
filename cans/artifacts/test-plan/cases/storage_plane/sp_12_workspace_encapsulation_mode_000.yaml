@@ -3,7 +3,7 @@ case_id: "sp_12_workspace_encapsulation_mode_000"
 title: "Locked workspace encapsulation enforces mode 000 on host workspace root; external tools observe EACCES"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

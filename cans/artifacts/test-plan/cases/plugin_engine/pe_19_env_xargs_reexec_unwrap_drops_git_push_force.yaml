@@ -3,7 +3,7 @@ case_id: "pe_19_env_xargs_reexec_unwrap_drops_git_push_force"
 title: "Trap for env git push --force resolves through the re-exec wrapper to git push and Drops with EPERM"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "lc_16_session_incarnation_cas_guard"
 title: "Destructive verb specifying mismatched UUIDv7 incarnation_id aborts with E_STALE_INCARNATION"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "wp_07_link_local_quarantine_drop"
 title: "Link-local addresses (169.254.0.0/16, fe80::/10) dropped before policy, except metadata 169.254.169.254"
 domain: "wire_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -25,7 +25,7 @@ pub struct Session<Plugins = HNil, Params = NoParams>
 where
     Plugins: HList,
 {
-    core: kelir_core::Session,
+    core: kelir_engine::Session,
     plugins: Plugins,
     registration: Registration,
     _params: PhantomData<fn() -> Params>,
@@ -33,7 +33,7 @@ where
 
 impl<Plugins: HList, Params> Session<Plugins, Params> {
     pub(crate) fn from_parts(
-        core: kelir_core::Session,
+        core: kelir_engine::Session,
         plugins: Plugins,
         registration: Registration,
     ) -> Self {
@@ -53,7 +53,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         self.plugins.get()
     }
 
-    pub fn core(&self) -> &kelir_core::Session {
+    pub fn core(&self) -> &kelir_engine::Session {
         &self.core
     }
 
@@ -196,13 +196,13 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
 impl Session<HNil, NoParams> {
     // see: cans/03-sdk-architecture.md#Session-surfaces
     pub async fn attach(session_id: &[u8; 16]) -> Result<Self, PluginError> {
-        let core = kelir_core::Session::attach(session_id)?;
+        let core = kelir_engine::Session::attach(session_id)?;
         Ok(Self::from_parts(core, HNil, Registration::default()))
     }
 }
 
 impl<Plugins: HList, Params> std::ops::Deref for Session<Plugins, Params> {
-    type Target = kelir_core::Session;
+    type Target = kelir_engine::Session;
 
     fn deref(&self) -> &Self::Target {
         &self.core

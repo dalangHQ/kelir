@@ -1,5 +1,5 @@
 // see: cans/artifacts/test-plan/cases/lifecycle_checkpoint/lc_05_monotonic_clock_clamp_on_resume.yaml#case_id
-use kelir_core::planes::checkpoint::{CheckpointPlane, PidLineage};
+use kelir_engine::planes::checkpoint::{CheckpointPlane, PidLineage};
 use kelir_interface::driver_interface::default_vm_config;
 use kelir_interface::driver_interface::{GuestClock, SnapshotDescriptor};
 use kelir_interface::plugin_model::PluginError;
@@ -106,7 +106,7 @@ fn lc_19_delta_chain_unbounded_compaction() -> Result<(), String> {
 #[tokio::test]
 #[ignore]
 async fn lc_20_portable_snapshot_archive_export() -> Result<(), String> {
-    let mut session = kelir_core::Session::boot(boot_config()).map_err(|e| e.to_string())?;
+    let mut session = kelir_engine::Session::boot(boot_config()).map_err(|e| e.to_string())?;
     let mut stream = match session.export_snapshot() {
         Ok(stream) => stream,
         Err(e) => return Err(format!("export_snapshot refused: {e}")),
@@ -144,7 +144,7 @@ async fn lc_20_portable_snapshot_archive_export() -> Result<(), String> {
 #[test]
 #[ignore]
 fn lc_21_detached_scm_rights_parent_sigkill_abort() -> Result<(), String> {
-    let session = kelir_core::Session::boot(boot_config()).map_err(|e| e.to_string())?;
+    let session = kelir_engine::Session::boot(boot_config()).map_err(|e| e.to_string())?;
     let file = std::fs::File::open("/dev/null").map_err(|e| e.to_string())?;
     let fd: std::os::fd::OwnedFd = file.into();
     let handoff = kelir_transport::MemoryHandoff::new(fd, 4096);

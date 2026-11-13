@@ -3,7 +3,7 @@ case_id: "ar_07_exit_code_patch_chain_divergence"
 title: "ExecutionReceipt records final binary BLAKE3 and exit code while TrapEvent records original binary"
 domain: "attestation_receipts"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -255,7 +255,7 @@
       - Host subscribes to VIRTIO_BALLOON_S_MEMFREE / S_AVAIL event queue
       - Host reclaim (madvise / hv_vm_unmap) gates on guest ack, not target set
       - Fork, snapshot, and heavy exec require prior convergence completion
-  - Native checkpoint plane (kelir-core::checkpoint)
+  - Native checkpoint plane (kelir-engine::checkpoint)
     - Zero-harness boundary detection
       - Tracks process group exits and foreground PTY idle quiescence
       - Traps sentinel FUSE inodes on unbacked virtual paths (/dev/kelir-gate)
@@ -269,8 +269,8 @@
       - SPEC CORRECTION (SSOT-A1)
         - The former "CheckpointService" named here never existed
         - The live surface is CheckpointPlane plus session.checkpoint
-        - See: crates/kelir-core/src/planes/checkpoint/mod.rs:99
-        - See: crates/kelir-core/src/session_lifecycle.rs:32
+        - See: crates/kelir-engine/src/planes/checkpoint/mod.rs:99
+        - See: crates/kelir-engine/src/session_lifecycle.rs:32
       - Captures atomic pre-step SnapshotDescriptor before workload execution
       - Evaluates physical ExecutionReceipt upon trapped process exit
       - Step outcomes (StepVerdict):

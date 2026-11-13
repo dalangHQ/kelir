@@ -3,7 +3,7 @@ case_id: "sp_05_storage_inode_quota_enospc"
 title: "Guest file creation exceeding max_inodes budget fails synchronously with ENOSPC"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

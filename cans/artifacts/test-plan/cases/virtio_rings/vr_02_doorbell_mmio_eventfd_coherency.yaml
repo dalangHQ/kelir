@@ -3,7 +3,7 @@ case_id: "vr_02_doorbell_mmio_eventfd_coherency"
 title: "Guest MMIO doorbell write triggers host eventfd notification without CPU spin-polling"
 domain: "virtio_rings"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -1,7 +1,7 @@
 // see: cans/artifacts/test-plan/cases/protocol_mux/pm_04_plugin_stream_kind_dynamic_registration.yaml#case_id
 use std::sync::{Arc, Mutex};
 
-use kelir_core::bus::{BusDispatcher, OwnedBusDispatcher};
+use kelir_engine::bus::{BusDispatcher, OwnedBusDispatcher};
 use kelir_interface::codec_protocol::{
     FLAG_CLOSE, FLAG_DATA, FLAG_OPEN, MAX_FRAME_PAYLOAD, decode_msg_type, encode_msg_frame,
 };
@@ -24,7 +24,7 @@ impl RecordingSink {
     }
 }
 
-impl kelir_core::bus::StreamFrameSink for RecordingSink {
+impl kelir_engine::bus::StreamFrameSink for RecordingSink {
     fn on_stream_frame(
         &self,
         stream_id: u32,
@@ -61,7 +61,7 @@ fn pm_04_plugin_stream_kind_dynamic_registration() -> Result<(), String> {
     dispatcher
         .bind_stream_sink(
             StreamKind::ProfileSync,
-            Arc::clone(&sink) as Arc<dyn kelir_core::bus::StreamFrameSink>,
+            Arc::clone(&sink) as Arc<dyn kelir_engine::bus::StreamFrameSink>,
         )
         .map_err(|e| e.to_string())?;
     let open = mux_frame(7, FLAG_OPEN, &[0x10, 0x00]);

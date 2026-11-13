@@ -3,7 +3,7 @@ case_id: "pm_02_stream_mux_open_data_close_flags"
 title: "Stream mux frames enforce correct protocol flags (OPEN, DATA, CLOSE, RST, WINDOW_UPDATE)"
 domain: "protocol_mux"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

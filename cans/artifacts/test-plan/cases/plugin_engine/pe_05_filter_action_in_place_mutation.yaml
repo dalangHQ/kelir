@@ -3,7 +3,7 @@ case_id: "pe_05_filter_action_in_place_mutation"
 title: "FilterAction::Forward delivers in-place modified byte buffer directly to destination ring or socket"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

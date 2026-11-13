@@ -35,10 +35,10 @@ kelir/
 │
 ├── crates/                            # ── RUST SYSTEMS LAYER ──
 │   │
-│   ├── kelir/                         # Facade crate: single Cargo dependency re-exporting kelir-core + feature-gated kelir-plugins/*
+│   ├── kelir/                         # Facade crate: single Cargo dependency re-exporting kelir-engine + feature-gated kelir-plugins/*
 │   │   ├── Cargo.toml
 │   │   └── src/
-│   │       ├── lib.rs                 # Re-export surface: kelir-core API (5 native planes) + optional feature-gated plugins
+│   │       ├── lib.rs                 # Re-export surface: kelir-engine API (5 native planes) + optional feature-gated plugins
 │   │       ├── builder_sdk.rs             # KelirBuilder typestate (Unsealed/Sealed), plugin/terminal/storage/wire registration
 │   │       ├── driver_interface.rs              # Driver routing over kelir-interface VmmDriver
 │   │       ├── hlist_sdk.rs               # Heterogeneous plugin-context list
@@ -86,7 +86,7 @@ kelir/
 │   │   └── tests/
 │   │       └── clock_reject_interface_test.rs
 │   │
-│   ├── kelir-core/                    # In-process stripped microkernel
+│   ├── kelir-engine/                    # In-process stripped microkernel
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs                 # Core initialization exports
@@ -313,7 +313,7 @@ kelir/
 │   │       └── src/main.rs            # External CLI binary only
 │   │
 │   ├── kelir-integration/             # Cross-plugin integration surface (real hypervisor required)
-│   │   ├── Cargo.toml                 # Depends on kelir-core, kelir-interface, kelir (all-plugins)
+│   │   ├── Cargo.toml                 # Depends on kelir-engine, kelir-interface, kelir (all-plugins)
 │   │   └── src/lib.rs                 # Near-empty stub: see: pointer + L3 TODO only
 │   │   # No tests/ dir: zero Rust test files in this crate
 │   │

@@ -3,7 +3,7 @@ case_id: "pe_10_immutable_dispatch_table_post_seal"
 title: "Dispatch tables become completely immutable after builder seal; zero atomic loads occur during ring transit"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "sp_dax_available"
 title: "DAX window maps clean EROFS pages read-only via virtio-shm; guest RAM stays under 8MB"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "x86_64"

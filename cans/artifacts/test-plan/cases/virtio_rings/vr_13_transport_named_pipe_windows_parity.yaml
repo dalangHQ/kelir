@@ -3,7 +3,7 @@ case_id: "vr_13_transport_named_pipe_windows_parity"
 title: "Windows named-pipe transport fallback enforces identical credit-based park semantics"
 domain: "virtio_rings"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "windows"
   arch: "any"

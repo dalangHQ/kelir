@@ -3,7 +3,7 @@ case_id: "pe_21_trap_pass_provisional_effect_hook_redecides"
 title: "Trap Pass for an exec whose effect writes outside MountScope Drops at on_fs_write and dirties zero host bytes"
 domain: "plugin_engine"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

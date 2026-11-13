@@ -3,7 +3,7 @@ case_id: "wp_12_l4_diversion_passthrough_tls"
 title: "Transparent L4 stream diversion proxies duplex TCP payload to host socket without terminating TLS"
 domain: "wire_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

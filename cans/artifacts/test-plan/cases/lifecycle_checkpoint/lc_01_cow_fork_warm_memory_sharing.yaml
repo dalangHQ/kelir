@@ -3,7 +3,7 @@ case_id: "lc_01_cow_fork_warm_memory_sharing"
 title: "Forked child session shares parent warm pages; host memory dirtied only on child write"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

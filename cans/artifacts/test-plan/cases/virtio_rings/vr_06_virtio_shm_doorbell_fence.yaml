@@ -3,7 +3,7 @@ case_id: "vr_06_virtio_shm_doorbell_fence"
 title: "virtio-shm memory mapped region enforces sequential memory barriers across host and guest doorbells"
 domain: "virtio_rings"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

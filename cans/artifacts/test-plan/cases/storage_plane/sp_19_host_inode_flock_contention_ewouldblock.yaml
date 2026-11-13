@@ -3,7 +3,7 @@ case_id: "sp_19_host_inode_flock_contention_ewouldblock"
 title: "A second host process contending for a guest-held inode lock receives EWOULDBLOCK from the host flock"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Host-inode-lock-broker"
-  statement: "Guest FUSE SETLK delegates directly to host flock; when a second external host process tries flock(LOCK_EX | LOCK_NB) on the same host inode it receives EWOULDBLOCK. Grounded in crates/kelir-core/src/planes/storage/fuse_storage.rs (EWOULDBLOCK errno mapping) and lock_broker.rs HostFdCache; flock delegation itself is an L3 TODO in lock_broker.rs, so the contention outcome is specified against the spec text and the errno mapping, not a live delegation path."
+  statement: "Guest FUSE SETLK delegates directly to host flock; when a second external host process tries flock(LOCK_EX | LOCK_NB) on the same host inode it receives EWOULDBLOCK. Grounded in crates/kelir-engine/src/planes/storage/fuse_storage.rs (EWOULDBLOCK errno mapping) and lock_broker.rs HostFdCache; flock delegation itself is an L3 TODO in lock_broker.rs, so the contention outcome is specified against the spec text and the errno mapping, not a live delegation path."
   blast_radius_if_breached: "Two microVMs running git or cargo on a shared workspace corrupt indices when lock contention silently succeeds."
 
 confusion_matrix:

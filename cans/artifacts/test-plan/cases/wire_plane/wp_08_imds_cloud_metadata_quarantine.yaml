@@ -3,7 +3,7 @@ case_id: "wp_08_imds_cloud_metadata_quarantine"
 title: "Cloud provider metadata service requests (AWS/GCP/Azure) dropped at L3 ingress without wire transit"
 domain: "wire_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Pre-policy-drop-zones"
-  statement: "Cloud metadata IMDS endpoints except 169.254.169.254 dropped at L3 ingress. GAP: no IMDS blocklist exists for non-link-local cloud endpoints in WirePlane — link_local_route (crates/kelir-core/src/planes/wire/mod.rs) handles only the 169.254.0.0/16 and fe80::/10 ranges, so the Azure 168.63.129.16 drop is asserted as the spec-required behavior."
+  statement: "Cloud metadata IMDS endpoints except 169.254.169.254 dropped at L3 ingress. GAP: no IMDS blocklist exists for non-link-local cloud endpoints in WirePlane — link_local_route (crates/kelir-engine/src/planes/wire/mod.rs) handles only the 169.254.0.0/16 and fe80::/10 ranges, so the Azure 168.63.129.16 drop is asserted as the spec-required behavior."
   blast_radius_if_breached: "Workload accesses host cloud provider IAM role credentials (SSRF / instance metadata theft)."
 
 confusion_matrix:

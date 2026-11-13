@@ -112,7 +112,7 @@ cases:
   reason: 'node --test red suite: e2b-compat Sandbox.create() halted with ''kelir native NAPI addon is missing (L3)''; Session::stop is an L3 TODO returning Err and no Terminated state exists, so close-completion is the asserted surface at the TS wrapper (the Python twin compat_e2b.py shares the same L3 gap; asserted by the parity harness once a per-case Python entry is allowed)'
 - case_id: ar_01_execution_receipt_blake3_binding
   case_file: cases/attestation_receipts/ar_01_execution_receipt_blake3_binding.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/session_lifecycle_test.rs
@@ -120,7 +120,7 @@ cases:
   reason: 'nextest ignored-only: spawn /bin/true never produced an exec receipt: Plugin halted: TODO (L3): guest exec; receipt binding (exit_kind Normal + binary BLAKE3 literal) awaits the L3 ExecResult shape'
 - case_id: ar_02_class1_hardware_provenance_immutability
   case_file: cases/attestation_receipts/ar_02_class1_hardware_provenance_immutability.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
@@ -128,15 +128,15 @@ cases:
   reason: 'verified WAVE-A: no claim-verification surface exists (AttestationVerifier/FactSource absent; AttestationToken is defined but never constructed or verified in-tree); guest stdout only flows to terminal recording, so a forged Class-1 claim cannot reach any live verifier — the only exec boundary is already covered red by ar_01'
 - case_id: ar_03_dirty_bytes_exact_byte_accounting
   case_file: cases/attestation_receipts/ar_03_dirty_bytes_exact_byte_accounting.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/receipt_attest_test.rs
+  test_file: crates/kelir-engine/tests/receipt_attest_test.rs
   test_fn: ar_03_dirty_bytes_exact_byte_accounting
   reason: 'nextest ignored-only: receipt.dirty_bytes = 0 after a 100-byte guest write to test.dat; expected exact byte accounting (byte count, not page count: 4KiB Linux and 16KiB Apple hosts must agree); HandlerCtx::receipt is the zero-value stub (dirty_bytes: 0) — the write flowed through the live FuseDispatcher WRITE path (pid 42, 100 bytes), the per-process dirty accounting awaits the L3 receipt wiring'
 - case_id: ar_04_binary_blake3_cache_invalidation
   case_file: cases/attestation_receipts/ar_04_binary_blake3_cache_invalidation.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -144,7 +144,7 @@ cases:
   reason: 'verified WAVE-A: the hash resolution is trap-time per cans/10-attestation.md binary_blake3 identity (cache key st_dev/st_ino/st_size/st_mtime_ns, resolved at trap time), and the only in-tree resolution site (kelir-shim introspect_trap::digest_exe) is a private module with no guest carrier; two receipt harvests without an intervening trap carry the stale hash by spec, and pre-setting the trap digests in the test would make the divergence an echo of the test''s own inputs'
 - case_id: ar_05_erofs_trusted_prefix_fast_path
   case_file: cases/attestation_receipts/ar_05_erofs_trusted_prefix_fast_path.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/session_lifecycle_test.rs
@@ -152,29 +152,29 @@ cases:
   reason: 'nextest ignored-only: /usr/bin/env trusted-prefix resolution never completed (pre-computed BLAKE3 table in host RAM, zero disk reads): Plugin halted: TODO (L3): guest exec; the zero-disk-I/O and <2us halves have no live boundary (no disk-read counter in-tree, AS-04B bench territory), so the closest live boundary is the facade session.spawn on the trusted-prefix path'
 - case_id: ar_06_exit_kind_kernel_panic_uart_scrape
   case_file: cases/attestation_receipts/ar_06_exit_kind_kernel_panic_uart_scrape.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/receipt_attest_test.rs
+  test_file: crates/kelir-engine/tests/receipt_attest_test.rs
   test_fn: ar_06_exit_kind_kernel_panic_uart_scrape
 - case_id: ar_07_exit_code_patch_chain_divergence
   case_file: cases/attestation_receipts/ar_07_exit_code_patch_chain_divergence.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/receipt_attest_test.rs
+  test_file: crates/kelir-engine/tests/receipt_attest_test.rs
   test_fn: ar_07_exit_code_patch_chain_divergence
   reason: 'nextest ignored-only: receipt.binary_blake3 = ""; the receipt must record the FINAL binary of the rewrite chain af837da23197419de9c8e832e45c693a80f3cf7bae7ea7dd7b0eb4d0bfbfadbc while the frozen trap keeps the original 30c40922ba5de55d0291d9c7d5a9586a431d129ecd44bda76558ea7037a39795; the original_/final_ split is spec-only (cans/10-attestation.md exit_code under Patch) and HandlerCtx::receipt returns the zero-value stub, so the rewrite-chain divergence is undetectable at the only live receipt boundary'
 - case_id: ar_08_phase_span_telemetry_isolation
   case_file: cases/attestation_receipts/ar_08_phase_span_telemetry_isolation.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/receipt_attest_test.rs
+  test_file: crates/kelir-engine/tests/receipt_attest_test.rs
   test_fn: ar_08_phase_span_telemetry_isolation
 - case_id: ar_09_causal_delta_aggregation_merkle
   case_file: cases/attestation_receipts/ar_09_causal_delta_aggregation_merkle.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -182,21 +182,21 @@ cases:
   reason: 'verified WAVE-A: no aggregation producer exists — CausalDelta::new is a plain constructor and plugin-ledger compute_causal_delta is a field-for-field pass-through of its StorageDelta inputs plus receipt.leaf_hash(), so every constructible assertion on the delta passes today (echo); the AS-05 Merkle root over modified inodes has no live boundary and its literal cannot be pinned without an implementation'
 - case_id: ar_10_receipt_struct_exhaustiveness_lint
   case_file: cases/attestation_receipts/ar_10_receipt_struct_exhaustiveness_lint.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/receipt_attest_test.rs
+  test_file: crates/kelir-engine/tests/receipt_attest_test.rs
   test_fn: ar_10_receipt_struct_exhaustiveness_lint
 - case_id: ar_11_pmu_counters_excluded_from_receipt
   case_file: cases/attestation_receipts/ar_11_pmu_counters_excluded_from_receipt.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/receipt_attest_test.rs
+  test_file: crates/kelir-engine/tests/receipt_attest_test.rs
   test_fn: ar_11_pmu_counters_excluded_from_receipt
 - case_id: ar_12_session_attestation_token_injection
   case_file: cases/attestation_receipts/ar_12_session_attestation_token_injection.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -204,7 +204,7 @@ cases:
   reason: 'verified WAVE-A: AttestationToken has no construction site and no verify method in-tree (rg AttestationToken over crates/ → the struct definition and re-export only); the /dev/kelir_cfg paravirtual config device and the Ed25519 session-key verification path have no live boundary, so token presence or signature validity cannot be asserted anywhere'
 - case_id: ar_13_vmlinux_blake3_pre_vcpu_attest
   case_file: cases/attestation_receipts/ar_13_vmlinux_blake3_pre_vcpu_attest.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -212,7 +212,7 @@ cases:
   reason: 'verified WAVE-A: no kernel measurement surface — boot_with_engine never opens kernel_path (missing_boot_path checks non-empty only), DriverRouter::prepare_kernel_measurement does not exist (the router only loads drivers), and AttestationToken is never constructed, so the pre-vCPU vmlinux BLAKE3 binding has no live boundary to pin a fixture digest against'
 - case_id: ar_14_rootfs_erofs_blake3_pre_vcpu_attest
   case_file: cases/attestation_receipts/ar_14_rootfs_erofs_blake3_pre_vcpu_attest.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -493,15 +493,15 @@ cases:
     a live surface.
 - case_id: hd_01_nohardware_vmm_fatal_abort
   case_file: cases/hypervisor_driver/hd_01_nohardware_vmm_fatal_abort.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/driver_selection_config_test.rs
+  test_file: crates/kelir-engine/tests/driver_selection_config_test.rs
   test_fn: hd_01_nohardware_vmm_fatal_abort
   reason: 'nextest ignored-only: no-hardware boot halted with L3 stub Err(VmmError::Unsupported(''TODO (L3): DriverRouter::load_native_driver'')) instead of Err(VmmError::NoHardwareVmm) carrying the E_NOHARDWAREVMM diagnostic'
 - case_id: hd_02_wx_mmu_prot_exec_trap
   case_file: cases/hypervisor_driver/hd_02_wx_mmu_prot_exec_trap.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/guest_exec_driver_test.rs
@@ -509,7 +509,7 @@ cases:
   reason: 'nextest ignored-only: exec of an anonymous PROT_EXEC binary halted with ''TODO (L3): guest exec'' instead of the E_WX_VIOLATION Stage-2 fault at the facade session.spawn boundary'
 - case_id: hd_03_hardware_rollback_timing_bound
   case_file: cases/hypervisor_driver/hd_03_hardware_rollback_timing_bound.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-drivers/driver-rustvmm/tests/rollback_budget_driver_test.rs
@@ -517,15 +517,15 @@ cases:
   reason: 'nextest ignored-only: rustvmm rollback refused with ''unsupported: rollback: no native backend override (L3)'', so the advertised 8ms register+RAM reset bound is unenforced'
 - case_id: hd_04_cold_boot_budget_enforcement
   case_file: cases/hypervisor_driver/hd_04_cold_boot_budget_enforcement.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/driver_selection_config_test.rs
+  test_file: crates/kelir-engine/tests/driver_selection_config_test.rs
   test_fn: hd_04_cold_boot_budget_enforcement
   reason: 'nextest ignored-only: DriverRouter::load_native_driver(auto) is Err(TODO (L3)) so the budget contract is uncheckable; the hardware drivers also advertise cold_boot_budget_ms=60 > the 50ms first-workload-exec bound'
 - case_id: hd_05_kvm_userfaultfd_cow_tracking
   case_file: cases/hypervisor_driver/hd_05_kvm_userfaultfd_cow_tracking.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-drivers/driver-rustvmm/tests/uffd_cow_driver_test.rs
@@ -533,7 +533,7 @@ cases:
   reason: 'nextest ignored-only: RustVmmDriver::checkpoint refused with ''unsupported: checkpoint: no native backend override (L3)''; no uffd fault-counter surface exists so dirty_bytes rides the L3 guest-write path'
 - case_id: hd_06_hvf_stage2_chunk_promoter
   case_file: cases/hypervisor_driver/hd_06_hvf_stage2_chunk_promoter.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-drivers/driver-hvf/tests/stage2_cow_driver_test.rs
@@ -541,7 +541,7 @@ cases:
   reason: 'nextest ignored-only: HvfDriver::fork refused with ''unsupported: hvf fork: hv_vm_protect CoW fork (L3)''; promote_chunked_stage2_pages is private so the 2MB chunk is asserted at the CoW fork boundary'
 - case_id: hd_07_openvmm_apic_restore_sequence
   case_file: cases/hypervisor_driver/hd_07_openvmm_apic_restore_sequence.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-drivers/driver-openvmm/tests/apic_restore_driver_test.rs
@@ -549,7 +549,7 @@ cases:
   reason: 'nextest ignored-only: OpenVmmDriver rollback refused with ''unsupported: rollback: no native backend override (L3)''; the APIC-before-TSC ordering lives only as the boot TODO comment'
 - case_id: hd_08_avf_pkvm_boundary_enforcement
   case_file: cases/hypervisor_driver/hd_08_avf_pkvm_boundary_enforcement.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-drivers/driver-avf/tests/pkvm_map_driver_test.rs
@@ -557,15 +557,15 @@ cases:
   reason: 'nextest ignored-only: AvfDriver map_shared_region failed with ''map_shared_region: no native backend override (L3)'' instead of the E_PKVM_NON_DONATED_MEMORY fault; no typed PkvmDonationViolation variant exists'
 - case_id: hd_09_bwrap_emulated_fallback_opt_in
   case_file: cases/hypervisor_driver/hd_09_bwrap_emulated_fallback_opt_in.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/driver_selection_config_test.rs
+  test_file: crates/kelir-engine/tests/driver_selection_config_test.rs
   test_fn: hd_09_bwrap_emulated_fallback_opt_in
   reason: 'nextest ignored-only: DriverRouter::load_native_driver(bwrap, allow_emulated=true) refused with ''unsupported: TODO (L3): DriverRouter::load_native_driver''; no driver overrides is_emulated'
 - case_id: hd_10_proot_ptrace_trap_conformance
   case_file: cases/hypervisor_driver/hd_10_proot_ptrace_trap_conformance.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/guest_exec_driver_test.rs
@@ -573,7 +573,7 @@ cases:
   reason: 'nextest ignored-only: proot exec of /bin/uname never dispatched (''TODO (L3): guest exec''); SpawnBuilder::poll never encodes the EXEC frame so no ptrace trap fires'
 - case_id: hd_11_cpuid_tsc_deadline_normalization
   case_file: cases/hypervisor_driver/hd_11_cpuid_tsc_deadline_normalization.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
@@ -581,22 +581,22 @@ cases:
   reason: 'verified gap: RustVmmDriver::filter_synthetic_cpuid is private and takes a VcpuFd (no leaf/vendor call form), no public CPUID surface exists, and the observable guest CPUID leaf needs a booted vCPU (KVM_CREATE_VM init is L3); no assertable live boundary'
 - case_id: hd_12_arm64_stage2_4k_on_16k_host
   case_file: cases/hypervisor_driver/hd_12_arm64_stage2_4k_on_16k_host.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/uart_boot_terminal_test.rs
+  test_file: crates/kelir-engine/tests/uart_boot_terminal_test.rs
   test_fn: hd_12_arm64_stage2_4k_on_16k_host
   note: 'Adapted: config literal asserted (page_size_kb 4, vcpus 1, memory 256, tsc_locked); live boot path not exercised.'
 - case_id: hd_13_uart_early_boot_panic_scrape
   case_file: cases/hypervisor_driver/hd_13_uart_early_boot_panic_scrape.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/uart_boot_terminal_test.rs
+  test_file: crates/kelir-engine/tests/uart_boot_terminal_test.rs
   test_fn: hd_13_uart_early_boot_panic_scrape
 - case_id: hd_14_guest_kernel_hardening_kptr_restrict
   case_file: cases/hypervisor_driver/hd_14_guest_kernel_hardening_kptr_restrict.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/guest_exec_driver_test.rs
@@ -604,7 +604,7 @@ cases:
   reason: 'nextest ignored-only: guest exec of /bin/cat never dispatched (''TODO (L3): guest exec''); the all-zero stdout pointer check needs the exec output surface'
 - case_id: hd_15_vcpu_scale_online_offline_dynamic
   case_file: cases/hypervisor_driver/hd_15_vcpu_scale_online_offline_dynamic.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/vcpu_scale_session_test.rs
@@ -612,7 +612,7 @@ cases:
   reason: 'nextest ignored-only: VmHandle::set_vcpus(4) halted with ''VmHandle unbound: no VmControl bound''; VmmDriver has no set_vcpus surface and no active_vcpu_threads probe exists'
 - case_id: hd_16_virtio_balloon_pressure_reclaim
   case_file: cases/hypervisor_driver/hd_16_virtio_balloon_pressure_reclaim.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-drivers/driver-rustvmm/tests/balloon_purge_driver_test.rs
@@ -620,7 +620,7 @@ cases:
   reason: 'nextest ignored-only: RustVmmDriver::adjust_balloon(256) refused with ''unsupported: adjust_balloon: no native backend override (L3)''; host madvise(MADV_DONTNEED) reclaim is an L3 TODO in the host plane'
 - case_id: hd_17_mach_vm_deallocate_footprint_purge
   case_file: cases/hypervisor_driver/hd_17_mach_vm_deallocate_footprint_purge.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-drivers/driver-hvf/tests/balloon_purge_driver_test.rs
@@ -628,7 +628,7 @@ cases:
   reason: 'nextest ignored-only: HvfDriver::adjust_balloon(128) refused with ''unsupported: adjust_balloon: no native backend override (L3)''; no mach_deallocate_called probe exists so the wired-RSS purge is asserted at the balloon boundary'
 - case_id: hd_18_rosetta_binfmt_registration
   case_file: cases/hypervisor_driver/hd_18_rosetta_binfmt_registration.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/guest_exec_driver_test.rs
@@ -678,7 +678,7 @@ cases:
   test_fn: hd_24_openvmm_driver_lazy_construction_partition_unset
 - case_id: hd_fast_boot_backend_change
   case_file: cases/hypervisor_driver/hd_fast_boot_backend_change.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-integration/tests/full_pipeline_test.rs
@@ -686,7 +686,7 @@ cases:
   reason: 'nextest ignored-only (full_pipeline_test.rs stub): the FastBootMode driver boot path is a TODO (L3); the driver_id component of BLAKE3(vmlinux || erofs || boot_params || driver_id) has no live driver path, so backend-change invalidation cannot be exercised yet'
 - case_id: hd_fast_boot_drift
   case_file: cases/hypervisor_driver/hd_fast_boot_drift.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-integration/tests/full_pipeline_test.rs
@@ -694,7 +694,7 @@ cases:
   reason: 'nextest ignored-only (full_pipeline_test.rs stub): the FastBootMode driver boot path is a TODO (L3); BLAKE3 key recomputation on vmlinux/erofs/boot_params change has no live driver path, so drift invalidation cannot be exercised yet'
 - case_id: hd_fast_boot_hit
   case_file: cases/hypervisor_driver/hd_fast_boot_hit.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-integration/tests/full_pipeline_test.rs
@@ -702,7 +702,7 @@ cases:
   reason: 'nextest ignored-only (full_pipeline_test.rs stub): the FastBootMode::Auto/Enabled driver boot path is a TODO (L3); mmap hydration of cas/blobs/blake3_<hash> in <500us has no live driver path yet'
 - case_id: hd_fast_boot_miss
   case_file: cases/hypervisor_driver/hd_fast_boot_miss.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-integration/tests/full_pipeline_test.rs
@@ -710,7 +710,7 @@ cases:
   reason: 'nextest ignored-only (full_pipeline_test.rs stub): the FastBootMode driver boot path is a TODO (L3); the cold-boot fallback on an empty base snapshot cache has no live driver path, so the silent-miss contract cannot be exercised yet'
 - case_id: lc_01_cow_fork_warm_memory_sharing
   case_file: cases/lifecycle_checkpoint/lc_01_cow_fork_warm_memory_sharing.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/session_lifecycle_test.rs
@@ -718,7 +718,7 @@ cases:
   reason: 'nextest ignored-only: fork handed the child a fresh checkpoint plane; the committed parent chain (warm memory state) is not inherited (Session::fork builds a fresh CheckpointPlane, no driver CoW fork/re-hydration; child dirty_pages==0 holds but the chain-prefix sharing is the red observable)'
 - case_id: lc_02_suspend_zero_rss_purge
   case_file: cases/lifecycle_checkpoint/lc_02_suspend_zero_rss_purge.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/session_lifecycle_test.rs
@@ -726,7 +726,7 @@ cases:
   reason: 'nextest ignored-only: suspend left host RSS unpurged: 5238784 -> 5238784 bytes; no page-dump flush to disk ran (Session::suspend only flips LifecycleState to Suspended; the <50ms and 0MB literals stay unasserted per AS-04A wall-clock ban)'
 - case_id: lc_03_step_evaluation_taint_rollback
   case_file: cases/lifecycle_checkpoint/lc_03_step_evaluation_taint_rollback.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -734,7 +734,7 @@ cases:
   reason: 'verified WAVE-A: no StepEvaluator/StepVerdict/CheckpointService exists in-tree (spec-only per the case invariant); the only live PostExecAction::RollbackAndHalt surface (builder_sdk) returns the outcome to the caller with no wiring into session rollback; the lone taint surface is MCP-tool-scoped (plugin-tool-guard ToolTaint), not filesystem-write step evaluation'
 - case_id: lc_04_draining_state_rejection_ebusy
   case_file: cases/lifecycle_checkpoint/lc_04_draining_state_rejection_ebusy.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/session_lifecycle_test.rs
@@ -742,14 +742,14 @@ cases:
   reason: 'nextest ignored-only: draining-state exec rejected with the wrong diagnostic: TODO (L3): guest exec; spawn never consults lifecycle state so no EBUSY refusal exists'
 - case_id: lc_05_monotonic_clock_clamp_on_resume
   case_file: cases/lifecycle_checkpoint/lc_05_monotonic_clock_clamp_on_resume.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/lifecycle_checkpoint_test.rs
+  test_file: crates/kelir-engine/tests/lifecycle_checkpoint_test.rs
   test_fn: lc_05_monotonic_clock_clamp_on_resume
 - case_id: lc_06_hvf_chunked_page_promoter_2mb
   case_file: cases/lifecycle_checkpoint/lc_06_hvf_chunked_page_promoter_2mb.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -757,7 +757,7 @@ cases:
   reason: 'verified WAVE-A: platform-gated macos/aarch64/hvf hardware case (CDR-04/AS-07); the promotion surface (HvfDriver::promote_chunked_stage2_pages) is private and L3-Unsupported, and no VM-exit counter observable exists in-tree; cannot honestly be red on this Linux host'
 - case_id: lc_07_cow_fork_uncloned_descriptor_veto
   case_file: cases/lifecycle_checkpoint/lc_07_cow_fork_uncloned_descriptor_veto.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/session_lifecycle_test.rs
@@ -765,7 +765,7 @@ cases:
   reason: 'nextest ignored-only: fork succeeded and silently dropped the registered Fork veto instead of aborting with ESessionVeto; Session::fork performs no veto consultation'
 - case_id: lc_08_rollback_trap_held_precondition
   case_file: cases/lifecycle_checkpoint/lc_08_rollback_trap_held_precondition.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -773,14 +773,14 @@ cases:
   reason: 'verified WAVE-A: no held-trap state exists in-tree (no in-flight trap queue; Session::dispatch_trap is synchronous and rollback_to performs no trap-release step); the Verdict::Drop{EFAULT} release has no live boundary to assert'
 - case_id: lc_09_graceful_shutdown_syncfs_flushed
   case_file: cases/lifecycle_checkpoint/lc_09_graceful_shutdown_syncfs_flushed.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
   test_file: crates/kelir/tests/session_lifecycle_test.rs
   test_fn: lc_09_graceful_shutdown_syncfs_flushed
 - case_id: lc_10_abrupt_kill_dirty_shutdown_receipt
   case_file: cases/lifecycle_checkpoint/lc_10_abrupt_kill_dirty_shutdown_receipt.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/session_lifecycle_test.rs
@@ -788,7 +788,7 @@ cases:
   reason: 'nextest ignored-only: session.kill() returned without firing on_vm_shutdown; no abrupt SIGKILL teardown exists (kill only advances LifecycleState to Terminated; the ExitKind::HardKilled receipt/exit_code 137 has no construction surface in-tree)'
 - case_id: lc_11_lid_sleep_clock_resync_snap
   case_file: cases/lifecycle_checkpoint/lc_11_lid_sleep_clock_resync_snap.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -796,7 +796,7 @@ cases:
   reason: 'verified WAVE-A: no live guest clock state exists (GuestClock is caller-fed on SnapshotDescriptor; the checkpoint plane only tracks the monotonic watermark); nothing consumes VmLifecycleControl frames, so the wall-clock snap observable cannot be asserted — dispatch_clock_resync returning Ok alone would be a tautology'
 - case_id: lc_12_host_reaper_pdeathsig_enforcement
   case_file: cases/lifecycle_checkpoint/lc_12_host_reaper_pdeathsig_enforcement.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/session_lifecycle_test.rs
@@ -804,7 +804,7 @@ cases:
   reason: 'nextest ignored-only: arm_host_reaper refused to arm the platform reaper: TODO (L3): HostPlane::arm_host_reaper (the observed-parent-kill death is unassertable in-process; closest live boundary is the arm call)'
 - case_id: lc_13_host_reaper_kqueue_proc_exit
   case_file: cases/lifecycle_checkpoint/lc_13_host_reaper_kqueue_proc_exit.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -812,7 +812,7 @@ cases:
   reason: 'verified WAVE-A: platform-gated macOS kqueue EVFILT_PROC case; arm_host_reaper is the single live reaper boundary (already red via lc_12 on Linux); no kqueue surface exists in-tree and the case cannot honestly run on this Linux host per CDR-04/AS-07'
 - case_id: lc_14_detached_session_lease_heartbeat
   case_file: cases/lifecycle_checkpoint/lc_14_detached_session_lease_heartbeat.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/session_lifecycle_test.rs
@@ -820,7 +820,7 @@ cases:
   reason: 'nextest ignored-only: detached boot kept lease_kind=Ephemeral expires_at=None; no lease TTL row for the runner heartbeat (boot_with_engine hardcodes LeaseKind::Ephemeral/None; the 30s heartbeat cadence is unassertable per CDR-02 sleep ban — heartbeat_lease refresh itself is live and covered green by sp_22)'
 - case_id: lc_15_detached_session_reconnect_relay
   case_file: cases/lifecycle_checkpoint/lc_15_detached_session_reconnect_relay.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/session_lifecycle_test.rs
@@ -828,7 +828,7 @@ cases:
   reason: 'nextest ignored-only: detached session never created its relay socket at ~/.kelir/sessions/<id>/relay.sock (no runner child exists; Session::attach is also Err TODO L3 today)'
 - case_id: lc_16_session_incarnation_cas_guard
   case_file: cases/lifecycle_checkpoint/lc_16_session_incarnation_cas_guard.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -836,7 +836,7 @@ cases:
   reason: 'verified WAVE-A: no lifecycle verb accepts an expected incarnation_id and no session.remove exists in-tree (kill/stop/drain/rollback take no incarnation; Session only exposes the incarnation_id getter); the E_STALE_INCARNATION CAS abort has no live verb to assert'
 - case_id: lc_17_zombie_reaper_pid1_adoption
   case_file: cases/lifecycle_checkpoint/lc_17_zombie_reaper_pid1_adoption.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -844,7 +844,7 @@ cases:
   reason: 'verified WAVE-A: the in-guest ps state-Z observable needs a booted guest (ExecResult carries exit_code only, no stdout capture; spawn is L3); the shim waitpid loop is guest-side code with no in-process boundary'
 - case_id: lc_18_watchdog_heartbeat_timeout_reboot
   case_file: cases/lifecycle_checkpoint/lc_18_watchdog_heartbeat_timeout_reboot.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -852,36 +852,36 @@ cases:
   reason: 'verified WAVE-A: watchdog firing needs a live VmmDriver (set_watchdog is a trait default returning Unsupported; no driver loads at L2 and AS-01 bans test doubles in the integration tier); no heartbeat-cadence or WatchdogAction trigger surface exists in core'
 - case_id: lc_19_delta_chain_unbounded_compaction
   case_file: cases/lifecycle_checkpoint/lc_19_delta_chain_unbounded_compaction.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/lifecycle_checkpoint_test.rs
+  test_file: crates/kelir-engine/tests/lifecycle_checkpoint_test.rs
   test_fn: lc_19_delta_chain_unbounded_compaction
   note: 'Adapted: graph-level compaction live (new node, head moves, parent = base); single-pass block copy is TODO L3.'
 - case_id: lc_20_portable_snapshot_archive_export
   case_file: cases/lifecycle_checkpoint/lc_20_portable_snapshot_archive_export.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/lifecycle_checkpoint_test.rs
+  test_file: crates/kelir-engine/tests/lifecycle_checkpoint_test.rs
   test_fn: lc_20_portable_snapshot_archive_export
   reason: 'nextest ignored-only: export_snapshot refused: Plugin halted: TODO (L3): Session::export_snapshot (stream/trailer-digest verification awaits the L3 archive)'
 - case_id: lc_21_detached_scm_rights_parent_sigkill_abort
   case_file: cases/lifecycle_checkpoint/lc_21_detached_scm_rights_parent_sigkill_abort.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/lifecycle_checkpoint_test.rs
+  test_file: crates/kelir-engine/tests/lifecycle_checkpoint_test.rs
   test_fn: lc_21_detached_scm_rights_parent_sigkill_abort
   reason: 'nextest ignored-only: memory handoff refused: Plugin halted: TODO (L3): Session::memory_handoff (closest live boundary; the mid-handoff parent SIGKILL abort has no in-process observable — no ack protocol exists)'
 - case_id: lc_22_sqlite_wal_busy_timeout_recovery
   case_file: cases/lifecycle_checkpoint/lc_22_sqlite_wal_busy_timeout_recovery.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
   test_file: crates/kelir-catalog/tests/session_lease_catalog_test.rs
   test_fn: lc_22_sqlite_wal_busy_timeout_recovery
-  note: Lives in kelir-catalog though the manifest targets kelir-core; CatalogDb is its only live API.
+  note: Lives in kelir-catalog though the manifest targets kelir-engine; CatalogDb is its only live API.
 - case_id: lc_23_replay_deterministic_seed_reproduces_step_windows
   case_file: cases/lifecycle_checkpoint/lc_23_replay_deterministic_seed_reproduces_step_windows.yaml
   target_crate: crates/kelir-plugins/plugin-replay
@@ -892,7 +892,7 @@ cases:
   reason: 'nextest ignored-only: replay PMU sampling degraded on the real rustvmm driver: identical seeds cannot reproduce step windows; register_pmu_sampler returns VmmError::Unsupported so ReplayState never accrues windows'
 - case_id: lc_base_snapshot_capture
   case_file: cases/lifecycle_checkpoint/lc_base_snapshot_capture.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-integration/tests/full_pipeline_test.rs
@@ -900,7 +900,7 @@ cases:
   reason: 'nextest ignored-only (full_pipeline_test.rs stub): the base snapshot capture hook is L3 (finish_boot runs run_lifecycle_hook(LifecycleEvent::VmReady) with no capture yet); capture-after-on_vm_ready-before-first-spawn ordering has no live path yet'
 - case_id: lc_base_snapshot_lifecycle
   case_file: cases/lifecycle_checkpoint/lc_base_snapshot_lifecycle.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-integration/tests/full_pipeline_test.rs
@@ -908,45 +908,45 @@ cases:
   reason: 'nextest ignored-only (full_pipeline_test.rs stub): capture and hydration are L3 (Session::export_snapshot is a TODO (L3) stub); the engine-internal exclusion from lineage, export_snapshot, and CausalDelta chains has no live path yet'
 - case_id: pe_01_downward_only_tier_dependency_lint
   case_file: cases/plugin_engine/pe_01_downward_only_tier_dependency_lint.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: red
   test_file: crates/kelir-plugin-cli/tests/layers_plugin_engine_test.rs
   test_fn: pe_01_downward_only_tier_dependency_lint
-  reason: 'kelir-plugin-cli check --layers over a mock tree (CWD=tempdir) with Tier 1 plugin-mcp src importing plugin_ledger exited 0: layers_cli::check() scans only kelir_core::/kelir_drivers:: prefixes; the per-tier plugin-to-plugin rule TODO (L3) at layers_cli.rs:49 let the upward import pass'
+  reason: 'kelir-plugin-cli check --layers over a mock tree (CWD=tempdir) with Tier 1 plugin-mcp src importing plugin_ledger exited 0: layers_cli::check() scans only kelir_engine::/kelir_drivers:: prefixes; the per-tier plugin-to-plugin rule TODO (L3) at layers_cli.rs:49 let the upward import pass'
 - case_id: pe_02_cyclic_dependency_graph_abort
   case_file: cases/plugin_engine/pe_02_cyclic_dependency_graph_abort.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: red
-  test_file: crates/kelir-core/tests/trap_dispatch_protocol_test.rs
+  test_file: crates/kelir-engine/tests/trap_dispatch_protocol_test.rs
   test_fn: pe_02_cyclic_dependency_graph_abort
   reason: 'Session::boot_with_plugins accepted the cyclic registration graph [plugin_a -> plugin_b, plugin_b -> plugin_a] and returned Ok(session); resolve_plugin_registrations only validates shape and dedupes, no cycle detection (TODO L3)'
 - case_id: pe_03_overlapping_mutator_scope_eambiguous
   case_file: cases/plugin_engine/pe_03_overlapping_mutator_scope_eambiguous.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: red
-  test_file: crates/kelir-core/tests/trap_dispatch_protocol_test.rs
+  test_file: crates/kelir-engine/tests/trap_dispatch_protocol_test.rs
   test_fn: pe_03_overlapping_mutator_scope_eambiguous
   reason: 'Session::bind_plugin accepted two mutators with overlapping scopes (/workspace/src vs /workspace/src/main.rs) returning Ok(()); expected Err(PluginError::AmbiguousMutation); no boot-time scope-conflict validation exists (PluginError::AmbiguousMutation constructed nowhere)'
 - case_id: pe_04_interceptor_pipeline_monotonic_verdict
   case_file: cases/plugin_engine/pe_04_interceptor_pipeline_monotonic_verdict.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/trap_dispatch_protocol_test.rs
+  test_file: crates/kelir-engine/tests/trap_dispatch_protocol_test.rs
   test_fn: pe_04_interceptor_pipeline_monotonic_verdict
 - case_id: pe_05_filter_action_in_place_mutation
   case_file: cases/plugin_engine/pe_05_filter_action_in_place_mutation.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/trap_dispatch_protocol_test.rs
+  test_file: crates/kelir-engine/tests/trap_dispatch_protocol_test.rs
   test_fn: pe_05_filter_action_in_place_mutation
 - case_id: pe_06_filter_before_ffi_gate_latency
   case_file: cases/plugin_engine/pe_06_filter_before_ffi_gate_latency.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
@@ -954,44 +954,44 @@ cases:
   reason: Budget/timing only (<2us); bench territory, no benches in this run.
 - case_id: pe_07_aot_hook_fusion_single_trampoline
   case_file: cases/plugin_engine/pe_07_aot_hook_fusion_single_trampoline.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/trap_dispatch_protocol_test.rs
+  test_file: crates/kelir-engine/tests/trap_dispatch_protocol_test.rs
   test_fn: pe_07_aot_hook_fusion_single_trampoline
 - case_id: pe_08_segregated_ring_traits_zero_vtable
   case_file: cases/plugin_engine/pe_08_segregated_ring_traits_zero_vtable.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/trap_dispatch_protocol_test.rs
+  test_file: crates/kelir-engine/tests/trap_dispatch_protocol_test.rs
   test_fn: pe_08_segregated_ring_traits_zero_vtable
   note: 'Adapted: fs-only bind proves segregation (fs write mutates, net outbound forwards byte-identical); no interceptor-count accessor exists.'
 - case_id: pe_09_panic_quarantine_catch_unwind_efault
   case_file: cases/plugin_engine/pe_09_panic_quarantine_catch_unwind_efault.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/trap_dispatch_protocol_test.rs
+  test_file: crates/kelir-engine/tests/trap_dispatch_protocol_test.rs
   test_fn: pe_09_panic_quarantine_catch_unwind_efault
 - case_id: pe_10_immutable_dispatch_table_post_seal
   case_file: cases/plugin_engine/pe_10_immutable_dispatch_table_post_seal.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/trap_dispatch_protocol_test.rs
+  test_file: crates/kelir-engine/tests/trap_dispatch_protocol_test.rs
   test_fn: pe_10_immutable_dispatch_table_post_seal
 - case_id: pe_11_ffi_buffer_streaming_chunk_ceiling
   case_file: cases/plugin_engine/pe_11_ffi_buffer_streaming_chunk_ceiling.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/trap_dispatch_protocol_test.rs
+  test_file: crates/kelir-engine/tests/trap_dispatch_protocol_test.rs
   test_fn: pe_11_ffi_buffer_streaming_chunk_ceiling
   reason: 'dispatch_fs_write exposed the whole 1 MiB buffer to the hook in one call (chunks=[1048576], call count 1); assertion failed: left=1 right=16 (expected 16 chunks of <=65536); no chunked streaming surface exists'
 - case_id: pe_12_declarative_error_mapping_posix_errno
   case_file: cases/plugin_engine/pe_12_declarative_error_mapping_posix_errno.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
@@ -1000,15 +1000,15 @@ cases:
     outside this case; the mapping is spec text only.
 - case_id: pe_13_fork_state_specialization_isolation
   case_file: cases/plugin_engine/pe_13_fork_state_specialization_isolation.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/trap_dispatch_protocol_test.rs
+  test_file: crates/kelir-engine/tests/trap_dispatch_protocol_test.rs
   test_fn: pe_13_fork_state_specialization_isolation
   reason: 'Session::fork returned a child whose pipeline carried no interceptors; child dispatch did not reach the fork_state-specialized probe: log=[trap:parent] only; fork does not rebind the plugin graph via fork_state (TODO L3 at session_lifecycle.rs:453)'
 - case_id: pe_14_service_registry_peer_resolution
   case_file: cases/plugin_engine/pe_14_service_registry_peer_resolution.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
@@ -1033,7 +1033,7 @@ cases:
   reason: 'on_net_outbound returned Forward for the matching frame (dst 10.0.0.2, RST rule target 10.0.0.2); ChaosPlugin::frame_matches is a TODO (L3) stub returning Ok(false) so the RST Drop{errno ECONNREFUSED} never fires; target asserted as IP literal (case example domain example.invalid is unmatchable at L2/L4)'
 - case_id: pe_17_shell_c_command_unwrap_drops_git_push_force
   case_file: cases/plugin_engine/pe_17_shell_c_command_unwrap_drops_git_push_force.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
@@ -1041,7 +1041,7 @@ cases:
   reason: "Spec defines unwrapping in 5796e7f (TrapEvent.resolved_binary/interpreter_chain/shell_payload) but the live resolver is a stub: resolve_canonical() returns CanonicalResolvePending (trap_gate.rs:51-55) and TrapFilter::matches is unchanged/provisional, so bash -c payloads never resolve to git."
 - case_id: pe_18_python_c_os_system_unwrap_drops_git_push_force
   case_file: cases/plugin_engine/pe_18_python_c_os_system_unwrap_drops_git_push_force.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
@@ -1049,7 +1049,7 @@ cases:
   reason: "Spec defines unwrapping in 5796e7f (TrapEvent.resolved_binary/interpreter_chain/shell_payload) but the live resolver is a stub: resolve_canonical() returns CanonicalResolvePending (trap_gate.rs:51-55), so python -c payloads stay one opaque argv entry, never inspected as code."
 - case_id: pe_19_env_xargs_reexec_unwrap_drops_git_push_force
   case_file: cases/plugin_engine/pe_19_env_xargs_reexec_unwrap_drops_git_push_force.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
@@ -1057,7 +1057,7 @@ cases:
   reason: "Spec defines recursive unwrapping incl. env/xargs/find -exec in 5796e7f but the live resolver is a stub: resolve_canonical() returns CanonicalResolvePending (trap_gate.rs:51-55), so env/xargs layers never resolve to the terminal binary."
 - case_id: pe_20_same_path_different_identity_never_matches
   case_file: cases/plugin_engine/pe_20_same_path_different_identity_never_matches.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
@@ -1065,7 +1065,7 @@ cases:
   reason: "Identity spec is (dev, ino, blake3) in 5796e7f with a ResolvedBinary type, but live matching is still the binary_path string: MountScope.allows_binary compares strings (plugin_model.rs:149) and MountScope.binaries stays Vec<String> by decision in that commit, so no canonical comparison exists."
 - case_id: pe_21_trap_pass_provisional_effect_hook_redecides
   case_file: cases/plugin_engine/pe_21_trap_pass_provisional_effect_hook_redecides.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1073,23 +1073,23 @@ cases:
   reason: "Spec now states a trap Pass is provisional with the final decision at the effect hook (5796e7f), but trap and fs dispatch are never exercised as one pipeline, so no test proves a trap Pass cannot authorize an out-of-scope write."
 - case_id: pm_01_control_channel_0_lifecycle_priority
   case_file: cases/protocol_mux/pm_01_control_channel_0_lifecycle_priority.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/bus_mux_protocol_test.rs
+  test_file: crates/kelir-engine/tests/bus_mux_protocol_test.rs
   test_fn: pm_01_control_channel_0_lifecycle_priority
   reason: 'nextest ignored-only: channel-0 signal starved behind the saturated stream mux: first ingress delivered mux stream 7 (flags 0x02) instead of the control signal; poll_ingress never surfaces channel-0 frames'
 - case_id: pm_02_stream_mux_open_data_close_flags
   case_file: cases/protocol_mux/pm_02_stream_mux_open_data_close_flags.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: red
-  test_file: crates/kelir-core/tests/bus_mux_protocol_test.rs
+  test_file: crates/kelir-engine/tests/bus_mux_protocol_test.rs
   test_fn: pm_02_stream_mux_open_data_close_flags
   reason: 'nextest ignored-only: mutually exclusive OPEN|CLOSE frame (flags 0x05) was accepted and registered stream 7 with flags 0x05; mux ingress has no flag-exclusivity rejection'
 - case_id: pm_03_core_stream_kind_reregistration_abort
   case_file: cases/protocol_mux/pm_03_core_stream_kind_reregistration_abort.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: red
   test_file: crates/kelir/tests/stream_kind_protocol_test.rs
@@ -1097,15 +1097,15 @@ cases:
   reason: 'nextest ignored-only: bootstrap sealed with a plugin re-registering the frozen core kind 0x0001 EXEC; register_stream_kind is infallible and seal never surfaces EKindReserved'
 - case_id: pm_04_plugin_stream_kind_dynamic_registration
   case_file: cases/protocol_mux/pm_04_plugin_stream_kind_dynamic_registration.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/bus_mux_protocol_test.rs
+  test_file: crates/kelir-engine/tests/bus_mux_protocol_test.rs
   test_fn: pm_04_plugin_stream_kind_dynamic_registration
   note: 'Adapted: bus-level kind dispatch proven; builder register_stream_kind lives in crates/kelir, out of scope.'
 - case_id: pm_05_stream_kind_conflict_ekindconflict
   case_file: cases/protocol_mux/pm_05_stream_kind_conflict_ekindconflict.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: red
   test_file: crates/kelir/tests/stream_kind_protocol_test.rs
@@ -1113,7 +1113,7 @@ cases:
   reason: 'audit rewrite: old implemented test asserted the live vsock-port conflict instead of the case''s kind collision; nextest ignored-only: bootstrap sealed with two plugins registered for the same stream kind 0x0019; EKindConflict never surfaced'
 - case_id: pm_06_exec_slot_slab_saturation_reject
   case_file: cases/protocol_mux/pm_06_exec_slot_slab_saturation_reject.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1121,7 +1121,7 @@ cases:
   reason: 'verified WAVE-A: Multiplexer/ExecSlotSlab compile only into the kelir-shim binary (main.rs mods, not re-exported by the lib) and src changes are forbidden, so the SlabSaturated saturation signal is unreachable from any test'
 - case_id: pm_07_exec_signal_cancellation_by_exec_id
   case_file: cases/protocol_mux/pm_07_exec_signal_cancellation_by_exec_id.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1129,7 +1129,7 @@ cases:
   reason: 'verified WAVE-A: PID-reuse misdirection needs a genuinely recycled pid which no test can produce; the live exec_id signal path already drops unknown/exited exec ids silently, so every constructible assertion passes today'
 - case_id: pm_08_exec_flow_control_input_stall
   case_file: cases/protocol_mux/pm_08_exec_flow_control_input_stall.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1137,7 +1137,7 @@ cases:
   reason: 'verified WAVE-A: the stream-to-slot binding is reachable only via Multiplexer::open_stream, hard-blocked by the ExecSpec::parse L3 stub, so the stdin_fd routing observable cannot be set up'
 - case_id: pm_09_control_vfs_paginated_cursor_streaming
   case_file: cases/protocol_mux/pm_09_control_vfs_paginated_cursor_streaming.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1145,7 +1145,7 @@ cases:
   reason: 'verified WAVE-A: no core VFS-list surface exists; pagination cursor tokens and reply framing are spec-only, so the paginated streaming observable has no live boundary'
 - case_id: pm_10_bulk_transfer_stream_dma_throughput
   case_file: cases/protocol_mux/pm_10_bulk_transfer_stream_dma_throughput.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1153,15 +1153,15 @@ cases:
   reason: 'verified WAVE-A: the only live surface (SPSC ring + route_stream_frame) already carries bulk bytes verbatim; DMA throughput and CBOR-invocation counters have no live boundary'
 - case_id: pm_11_wire_framing_checked_math_validation
   case_file: cases/protocol_mux/pm_11_wire_framing_checked_math_validation.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/bus_mux_protocol_test.rs
+  test_file: crates/kelir-engine/tests/bus_mux_protocol_test.rs
   test_fn: pm_11_wire_framing_checked_math_validation
   note: 'Adapted: MAX_FRAME_PAYLOAD == 65536 asserted; small control msg Ok, 65535-byte payload errors. panic_hunt.rs is a supplementary harness test for the same framing (see harness_tests).'
 - case_id: pm_12_version_negotiation_handshake_reject
   case_file: cases/protocol_mux/pm_12_version_negotiation_handshake_reject.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1284,43 +1284,43 @@ cases:
     struct exists, no inject path exists in SqlProxyService).
 - case_id: sp_01_host_cow_upper_discard_on_rollback
   case_file: cases/storage_plane/sp_01_host_cow_upper_discard_on_rollback.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/storage_reconciler_test.rs
+  test_file: crates/kelir-engine/tests/storage_reconciler_test.rs
   test_fn: sp_01_host_cow_upper_discard_on_rollback
   reason: 'nextest ignored-only: rollback discard refused: TODO (L3): StoragePlane::discard needs the sparse upper drop (upper.img carried 128 st_blocks and one tombstone at setup; st_blocks==0/tombstones==0 await the punch)'
 - case_id: sp_02_symlink_traversal_escape_exdev
   case_file: cases/storage_plane/sp_02_symlink_traversal_escape_exdev.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/storage_reconciler_test.rs
+  test_file: crates/kelir-engine/tests/storage_reconciler_test.rs
   test_fn: sp_02_symlink_traversal_escape_exdev
 - case_id: sp_03_setuid_bit_strip_invariant
   case_file: cases/storage_plane/sp_03_setuid_bit_strip_invariant.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/storage_reconciler_test.rs
+  test_file: crates/kelir-engine/tests/storage_reconciler_test.rs
   test_fn: sp_03_setuid_bit_strip_invariant
 - case_id: sp_04_storage_quota_enforcement_enospc
   case_file: cases/storage_plane/sp_04_storage_quota_enforcement_enospc.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/storage_reconciler_test.rs
+  test_file: crates/kelir-engine/tests/storage_reconciler_test.rs
   test_fn: sp_04_storage_quota_enforcement_enospc
 - case_id: sp_05_storage_inode_quota_enospc
   case_file: cases/storage_plane/sp_05_storage_inode_quota_enospc.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/storage_reconciler_test.rs
+  test_file: crates/kelir-engine/tests/storage_reconciler_test.rs
   test_fn: sp_05_storage_inode_quota_enospc
 - case_id: sp_06_host_cow_broker_dir_merge_cache
   case_file: cases/storage_plane/sp_06_host_cow_broker_dir_merge_cache.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1328,7 +1328,7 @@ cases:
   reason: 'verified WAVE-A: FuseOpcode carries no readdir (only Lookup/Read/Write/Setlk/Setlkw; the L3 TODO at fuse_storage.rs lists getattr/readdir/unlink/mkdir/rename/statfs as missing), so no merge-cache boundary exists to assert — a stat-call counter would have to be invented'
 - case_id: sp_07_ephemeral_scratch_tmpfs_discard
   case_file: cases/storage_plane/sp_07_ephemeral_scratch_tmpfs_discard.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1336,70 +1336,70 @@ cases:
   reason: 'verified WAVE-A: no scratch device surface exists in-tree (zero virtio-blk scratch mounts; Session::stop only flips LifecycleState to Terminated and never unlinks session state) — the ephemeral scratch discard has no live teardown path'
 - case_id: sp_08_reconciler_atomic_leaf_commit
   case_file: cases/storage_plane/sp_08_reconciler_atomic_leaf_commit.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/storage_reconciler_test.rs
+  test_file: crates/kelir-engine/tests/storage_reconciler_test.rs
   test_fn: sp_08_reconciler_atomic_leaf_commit
   reason: 'nextest ignored-only: reconcile refused: TODO (L3): Reconciler::reconcile orchestration for staged entries (atomic temp+rename leaf swap and inode change await the StorageIo rename primitive)'
 - case_id: sp_09_reconciler_tombstone_unlink_commit
   case_file: cases/storage_plane/sp_09_reconciler_tombstone_unlink_commit.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/storage_reconciler_test.rs
+  test_file: crates/kelir-engine/tests/storage_reconciler_test.rs
   test_fn: sp_09_reconciler_tombstone_unlink_commit
   reason: 'nextest ignored-only: reconcile refused: TODO (L3): Reconciler::reconcile orchestration for staged entries (tombstone unlink of the host base file awaits the commit replay)'
 - case_id: sp_10_reconciler_busy_lock_retry_backoff
   case_file: cases/storage_plane/sp_10_reconciler_busy_lock_retry_backoff.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/storage_reconciler_test.rs
+  test_file: crates/kelir-engine/tests/storage_reconciler_test.rs
   test_fn: sp_10_reconciler_busy_lock_retry_backoff
   reason: 'nextest ignored-only: reconcile refused: TODO (L3): Reconciler::reconcile orchestration for staged entries (scripted EBUSY-once atomic_rename never retried; backoff limit 2000ms unasserted per AS-04A)'
 - case_id: sp_11_host_fifo_socket_lookup_enxio
   case_file: cases/storage_plane/sp_11_host_fifo_socket_lookup_enxio.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/storage_fuse_test.rs
+  test_file: crates/kelir-engine/tests/storage_fuse_test.rs
   test_fn: sp_11_host_fifo_socket_lookup_enxio
   reason: 'nextest ignored-only: host socket lookup returned Payload([]) instead of ENXIO (no S_IFSOCK/S_IFIFO type check on the LOOKUP path; only the errno string mapping exists at drop_errno)'
 - case_id: sp_12_workspace_encapsulation_mode_000
   case_file: cases/storage_plane/sp_12_workspace_encapsulation_mode_000.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/storage_reconciler_test.rs
+  test_file: crates/kelir-engine/tests/storage_reconciler_test.rs
   test_fn: sp_12_workspace_encapsulation_mode_000
   reason: 'nextest ignored-only: external host read succeeded under Locked encapsulation (StorageWiring.encapsulation=Locked never applies mode 000 to the workspace root; no EACCES for outside toolchains)'
 - case_id: sp_13_synthetic_fuse_inode_read_only_0400
   case_file: cases/storage_plane/sp_13_synthetic_fuse_inode_read_only_0400.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/storage_fuse_test.rs
+  test_file: crates/kelir-engine/tests/storage_fuse_test.rs
   test_fn: sp_13_synthetic_fuse_inode_read_only_0400
 - case_id: sp_14_in_flight_read_masking_pattern_replace
   case_file: cases/storage_plane/sp_14_in_flight_read_masking_pattern_replace.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/storage_fuse_test.rs
+  test_file: crates/kelir-engine/tests/storage_fuse_test.rs
   test_fn: sp_14_in_flight_read_masking_pattern_replace
   reason: 'nextest ignored-only: guest read payload did not carry the masked content: left=[] right=[token = ''REDACTED.aws.key.000''NL] (on_fs_read redacts in place but FUSE READ replies Payload(Vec::new()) — the broker read payload is TODO L3)'
 - case_id: sp_15_host_inode_lock_broker_flock_bridge
   case_file: cases/storage_plane/sp_15_host_inode_lock_broker_flock_bridge.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/storage_lock_broker_test.rs
+  test_file: crates/kelir-engine/tests/storage_lock_broker_test.rs
   test_fn: sp_15_host_inode_lock_broker_flock_bridge
   reason: 'nextest ignored-only: lock broker acquire refused: TODO (L3): LockBroker::acquire needs flock delegation in kelir-drivers/kelir-transport enclave (external flock -n contender probe wired for the L3 run)'
 - case_id: sp_16_statfs_zero_crawl_constant_time
   case_file: cases/storage_plane/sp_16_statfs_zero_crawl_constant_time.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
@@ -1407,7 +1407,7 @@ cases:
   reason: 'verified WAVE-A: no statfs reply surface exists (FuseOpcode lacks Statfs per the TODO L3 in fuse_storage.rs; StoragePlane exposes only allocated_bytes/inodes atomics, no remaining-quota reply); constant-time and zero-crawl observables need syscall counting or wall-clock, both banned in tests/ (AS-04A)'
 - case_id: sp_17_secondary_image_graft_readonly
   case_file: cases/storage_plane/sp_17_secondary_image_graft_readonly.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1415,23 +1415,23 @@ cases:
   reason: 'verified WAVE-A: no graft_image/secondary-image surface exists anywhere in crates/ (grep-verified); the VFS graft cannot be asserted at any live boundary and referencing it would be a compile error'
 - case_id: sp_18_write_chunk_64kb_transparent_stream
   case_file: cases/storage_plane/sp_18_write_chunk_64kb_transparent_stream.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/storage_fuse_test.rs
+  test_file: crates/kelir-engine/tests/storage_fuse_test.rs
   test_fn: sp_18_write_chunk_64kb_transparent_stream
   reason: 'nextest ignored-only: 262144-byte guest write was not chunked into four 64KB on_fs_write calls: saw 1 call(s) with sizes [262144] (no 64KB chunk splitting at the FUSE write boundary)'
 - case_id: sp_19_host_inode_flock_contention_ewouldblock
   case_file: cases/storage_plane/sp_19_host_inode_flock_contention_ewouldblock.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/storage_lock_broker_test.rs
+  test_file: crates/kelir-engine/tests/storage_lock_broker_test.rs
   test_fn: sp_19_host_inode_flock_contention_ewouldblock
   reason: 'nextest ignored-only: contention denial carried the wrong diagnostic: TODO (L3): LockBroker::acquire needs flock delegation... instead of EWOULDBLOCK (external holder armed via a real host flock; contention denial must carry EWOULDBLOCK)'
 - case_id: sp_20_readdir_cache_invalidation_build_storm
   case_file: cases/storage_plane/sp_20_readdir_cache_invalidation_build_storm.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1453,7 +1453,7 @@ cases:
   test_fn: sp_22_catalog_heartbeat_lease_cas_guards_handoff
 - case_id: sp_dax_available
   case_file: cases/storage_plane/sp_dax_available.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-integration/tests/full_pipeline_test.rs
@@ -1461,7 +1461,7 @@ cases:
   reason: 'nextest ignored-only (full_pipeline_test.rs stub): no DaxWindow type exists until L3; DaxWindowMode is a builder-only stub, so the virtio-shm window map of clean EROFS pages has no live path yet'
 - case_id: sp_dax_fallback
   case_file: cases/storage_plane/sp_dax_fallback.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-integration/tests/full_pipeline_test.rs
@@ -1469,7 +1469,7 @@ cases:
   reason: 'nextest ignored-only (full_pipeline_test.rs stub): no DaxWindow type exists until L3; DaxWindowMode is a builder-only stub, so transparent fallback to FUSE chunked reads on window failure has no live path yet'
 - case_id: sp_dax_teardown
   case_file: cases/storage_plane/sp_dax_teardown.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-integration/tests/full_pipeline_test.rs
@@ -1611,10 +1611,10 @@ cases:
   reason: 'no ENOSPC injection surface exists (LocalMerkleDbSink::emit_delta returns Err Halt(''LMDB append (L3)'') before any I/O) and Session::suspend is live at L2 (Running->Suspended(ResourcePressure) returns Ok, so the case''s own AS-03 verification passes today; map reason was stale claiming suspend returns Err); the disk-full trigger wiring is unobservable'
 - case_id: ta_08_zero_allocation_metric_registry
   case_file: cases/telemetry_audit/ta_08_zero_allocation_metric_registry.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/metrics_telemetry_test.rs
+  test_file: crates/kelir-engine/tests/metrics_telemetry_test.rs
   test_fn: ta_08_zero_allocation_metric_registry
   note: 'Adapted: record_exec x10000 snapshots 10000; allocation half unmeasurable, no allocator hook.'
 - case_id: ta_09_otlp_export_failure_non_blocking
@@ -1627,10 +1627,10 @@ cases:
   reason: 'OtlpLedgerSink::emit_delta never propagates the export error — it warns and returns Ok (map reason was stale claiming Err(PluginError::Halt)); with no dial the blackhole never blocks so a non-blocking assertion passes today, and the bounded-buffer/drop-with-metric half has no surface'
 - case_id: ta_10_pmu_counters_gauge_only_export
   case_file: cases/telemetry_audit/ta_10_pmu_counters_gauge_only_export.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/metrics_telemetry_test.rs
+  test_file: crates/kelir-engine/tests/metrics_telemetry_test.rs
   test_fn: ta_10_pmu_counters_gauge_only_export
   note: 'Adapted: exhaustive MetricSnapshot destructure is the no-PMU-field proof; gauge half has no surface.'
 - case_id: ta_11_otlp_exporter_encodes_execution_receipt
@@ -1651,7 +1651,7 @@ cases:
   note: 'Adapted: registry half asserted; encode_metrics is a NotImplemented stub.'
 - case_id: tp_01_host_terminal_guard_raii_restore
   case_file: cases/terminal_plane/tp_01_host_terminal_guard_raii_restore.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1660,7 +1660,7 @@ cases:
     the guard behavior is asserted as the spec-required behavior, not via a callable surface.
 - case_id: tp_02_pty_raw_mode_ctrl_c_passthrough
   case_file: cases/terminal_plane/tp_02_pty_raw_mode_ctrl_c_passthrough.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1669,49 +1669,49 @@ cases:
     the guard behavior is asserted as the spec-required behavior, not via a callable surface.
 - case_id: tp_03_ansi_sanitizer_osc52_clipboard_drop
   case_file: cases/terminal_plane/tp_03_ansi_sanitizer_osc52_clipboard_drop.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: red
-  test_file: crates/kelir-core/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_03_ansi_sanitizer_osc52_clipboard_drop
   reason: 'TerminalPlane durable log (read_from 0) carries the raw OSC 52 payload verbatim: ''OSC 52 clipboard payload must be purged...got: echo \x1b]52;c;ZXhpbG9pdA==\x07Normal Text''; filter_ansi_shadow is an identity TODO (L3) stub and with_wiring never applies the filters to console output'
 - case_id: tp_04_ansi_sanitizer_title_spoof_strip
   case_file: cases/terminal_plane/tp_04_ansi_sanitizer_title_spoof_strip.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: red
-  test_file: crates/kelir-core/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_04_ansi_sanitizer_title_spoof_strip
   reason: 'TerminalPlane durable log carries both BEL- and ST-terminated OSC 0/2 title sequences verbatim (\x1b]0;root@host:~\x07Payload\x1b]2;fake_title\x1b\\Done); filter_ansi_shadow is an identity TODO (L3) stub'
 - case_id: tp_05_token_shield_scrollback_clamping
   case_file: cases/terminal_plane/tp_05_token_shield_scrollback_clamping.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
   test_fn: null
   reason: TokenShield (crates/kelir/src/planes/terminal_plane.rs) has no clamp_stream method — only max_bytes_total/max_lines_total
-    fields — and the real clamp is the private apply_token_shield in crates/kelir-core/src/planes/terminal/mod.rs,
+    fields — and the real clamp is the private apply_token_shield in crates/kelir-engine/src/planes/terminal/mod.rs,
     currently ...
 - case_id: tp_06_placeholder_mask_carryover_window
   case_file: cases/terminal_plane/tp_06_placeholder_mask_carryover_window.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: red
-  test_file: crates/kelir-core/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_06_placeholder_mask_carryover_window
   reason: 'TerminalPlane durable log joins the split secret verbatim: ''API key is sk-ant-12345 confirmed'' with no [REDACTED]; no masking engine or carryover window exists (MAX_PLACEHOLDER_LEN has no numeric value in spec; 16-byte window chosen by the case)'
 - case_id: tp_07_vt100_wireframe_matrix_determinism
   case_file: cases/terminal_plane/tp_07_vt100_wireframe_matrix_determinism.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_07_vt100_wireframe_matrix_determinism
   note: 'Adapted: two planes resize 80x24 give equal exports (len 1944); feed is a stub.'
 - case_id: tp_08_disclosure_ansi_box_inline_render
   case_file: cases/terminal_plane/tp_08_disclosure_ansi_box_inline_render.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1721,7 +1721,7 @@ cases:
     a callable su...
 - case_id: tp_09_exec_stream_sublane_stdio_fidelity
   case_file: cases/terminal_plane/tp_09_exec_stream_sublane_stdio_fidelity.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/exec_stream_terminal_test.rs
@@ -1729,7 +1729,7 @@ cases:
   reason: 'facade session.spawn(''/bin/emit_raw_bytes'') poll returned Halt(TODO (L3): guest exec); SpawnBuilder::poll is a TODO (L3) stub so the EXEC_STREAM sublane never delivers bytes; test asserts exit 0 plus an exec-*.log carrying exactly [00 FF 0A 1B 5B 30 6D]'
 - case_id: tp_10_exec_slot_flag_alloc_pty_opt_in
   case_file: cases/terminal_plane/tp_10_exec_slot_flag_alloc_pty_opt_in.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1739,32 +1739,32 @@ cases:
     is a TODO (L3) — so the opt-in is asserted ...
 - case_id: tp_11_stream_replay_monotonic_cursor_read
   case_file: cases/terminal_plane/tp_11_stream_replay_monotonic_cursor_read.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_11_stream_replay_monotonic_cursor_read
 - case_id: tp_12_stream_replay_client_reconnect_resume
   case_file: cases/terminal_plane/tp_12_stream_replay_client_reconnect_resume.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_12_stream_replay_client_reconnect_resume
 - case_id: tp_13_exec_log_file_per_exec_isolation
   case_file: cases/terminal_plane/tp_13_exec_log_file_per_exec_isolation.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_13_exec_log_file_per_exec_isolation
   note: 'Adapted: chunk bytes live in index.bin itself, no separate chunk files, per the case GAP note.'
 - case_id: tp_14_window_resize_exec_control_propagation
   case_file: cases/terminal_plane/tp_14_window_resize_exec_control_propagation.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_14_window_resize_exec_control_propagation
   note: 'Adapted: resize export sizes asserted (120x40 -> 4840, 80x24 -> 1944); guest winsize propagation not live.'
 - case_id: tp_15_shim_openpty_returns_distinct_master_slave
@@ -1776,14 +1776,14 @@ cases:
   test_fn: tp_15_shim_openpty_returns_distinct_master_slave
 - case_id: vr_01_spsc_ring_lockfree_transit
   case_file: cases/virtio_rings/vr_01_spsc_ring_lockfree_transit.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
   test_file: crates/kelir-transport/tests/ring_spsc_transport_test.rs
   test_fn: vr_01_spsc_ring_lockfree_transit
 - case_id: vr_02_doorbell_mmio_eventfd_coherency
   case_file: cases/virtio_rings/vr_02_doorbell_mmio_eventfd_coherency.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1791,7 +1791,7 @@ cases:
   reason: 'verified WAVE-A: rg eventfd|doorbell over crates/ hits only the TODO (L3) comments in spsc_ring.rs read/write/flush; no doorbell/eventfd type, fd, or wake API exists in-tree, and the ring read returns Ok(0) on empty by Transport contract, so no parking-on-doorbell observable can be asserted without inventing the wake channel'
 - case_id: vr_03_virtio_rng_mandatory_entropy
   case_file: cases/virtio_rings/vr_03_virtio_rng_mandatory_entropy.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1799,7 +1799,7 @@ cases:
   reason: 'verified WAVE-A: stale map reason — every driver''s set_entropy_backend returns Ok and stores the backend (rustvmm/hvf/avf), so any arm-boundary assertion passes today; rg getrandom over crates/kelir-shim is empty (no shim-side hook) and there is no guest, so the GRND_NONBLOCK early-boot observable has no assertable live boundary'
 - case_id: vr_04_virtio_rng_profile_immutable
   case_file: cases/virtio_rings/vr_04_virtio_rng_profile_immutable.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: red
   test_file: crates/kelir/tests/sandbox_profile_virtio_test.rs
@@ -1807,7 +1807,7 @@ cases:
   reason: 'nextest ignored-only: profile with session.devices.virtio_rng.enabled=false booted Ok at the live SandboxProfile::to_vm_config + KelirBuilder::boot boundary; to_vm_config silently drops the devices section (TODO L3, sandbox_runtime.rs) so no EConfig virtio-rng-mandatory rejection exists'
 - case_id: vr_05_virtio_blk_erofs_readonly_mount
   case_file: cases/virtio_rings/vr_05_virtio_blk_erofs_readonly_mount.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1815,7 +1815,7 @@ cases:
   reason: 'verified WAVE-A: no virtio-blk device model exists in-tree and the guest-side EROFS errno needs a guest (the in-guest read-only EROFS mount denies writes locally, no host round trip); the FUSE bridge serves the workspace per cans/05 (virtio-fs only), so a rootfs-rooted FUSE WRITE would pin a flow the architecture forbids; the only host-side EROFS surface is the drop_errno string map with no producer'
 - case_id: vr_06_virtio_shm_doorbell_fence
   case_file: cases/virtio_rings/vr_06_virtio_shm_doorbell_fence.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1823,7 +1823,7 @@ cases:
   reason: 'verified WAVE-A: rg fence|memfd|mmap over src hits only the flush() TODO (L3) comment in spsc_ring.rs; no fence API exists, and the live ring already does Acquire/Release ordering, so any x86 visibility assertion passes today — a SeqCst doorbell-fence observable would be a tautology on this arch'
 - case_id: vr_07_virtio_shm_unmap_on_teardown
   case_file: cases/virtio_rings/vr_07_virtio_shm_unmap_on_teardown.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-drivers/driver-rustvmm/tests/virtio_shm_wdt_test.rs
@@ -1831,7 +1831,7 @@ cases:
   reason: 'nextest ignored-only: map_shared_region refused: unsupported: map_shared_region: no native backend override (L3); the /proc/self/maps + memfd-fd unmap-on-teardown observable is asserted after two live arm calls at the real rustvmm driver (the /proc probe wiring awaits the L3 map/terminate overrides)'
 - case_id: vr_08_virtio_wdt_ping_cadence
   case_file: cases/virtio_rings/vr_08_virtio_wdt_ping_cadence.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-drivers/driver-rustvmm/tests/virtio_shm_wdt_test.rs
@@ -1839,7 +1839,7 @@ cases:
   reason: 'nextest ignored-only: set_watchdog refused: unsupported: set_watchdog: no native backend override (L3); the WatchdogDiagnostic firing on cadence expiry has no in-process clock observable (no driver event loop in-tree), so the closest live boundary is the hardware arm call on the real rustvmm driver'
 - case_id: vr_09_virtio_console_port0_pty_dedication
   case_file: cases/virtio_rings/vr_09_virtio_console_port0_pty_dedication.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir/tests/console_port0_pty_test.rs
@@ -1847,7 +1847,7 @@ cases:
   reason: 'nextest ignored-only: programmatic exec never dispatched over stream kind EXEC (Port 0 must carry zero exec bytes): Plugin halted: TODO (L3): guest exec; the Exec 0x0001 binding on session.spawn is live (pre-dispatch check passes) but SpawnBuilder::poll never encodes the EXEC frame, so Port 0 dedication is unverifiable end to end'
 - case_id: vr_10_virtio_fs_fuse_req_channel
   case_file: cases/virtio_rings/vr_10_virtio_fs_fuse_req_channel.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1855,7 +1855,7 @@ cases:
   reason: 'verified WAVE-A: no fd observable exists — StorageIo::open_root/lock_exclusive return path-only handles (RootHandle{root}, HostFileLock{path}), the only in-tree impl is UnimplementedStorageIo, and FuseWorker''s channel is an std mpsc queue with no fd; the O_NONBLOCK flag has no assertable live boundary (the YAML Gap note says the same)'
 - case_id: vr_11_virtio_net_smoltcp_frame_sink
   case_file: cases/virtio_rings/vr_11_virtio_net_smoltcp_frame_sink.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1863,7 +1863,7 @@ cases:
   reason: 'verified WAVE-A: the frame sink is the L3 TODO — SmoltcpStack::poll returns Ok(false) with no ingest API and no SocketSet is ever constructed; classify_frame/link_local_route are live L2 logic that passes today, and no TAP-count or socket-count surface exists, so asserting poll()==true would never turn green without a guest device'
 - case_id: vr_12_transport_af_vsock_fallback_parity
   case_file: cases/virtio_rings/vr_12_transport_af_vsock_fallback_parity.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
   test_file: crates/kelir-transport/tests/ring_spsc_transport_test.rs
@@ -1871,7 +1871,7 @@ cases:
   reason: 'nextest ignored-only: vsock fallback transport is not a byte-for-byte framing carrier: write returns Err(Unsupported) ''vsock fallback write pending (L3)'' while the SPSC ring carrier transits the identical WireFrame; no AF_VSOCK parity path exists'
 - case_id: vr_13_transport_named_pipe_windows_parity
   case_file: cases/virtio_rings/vr_13_transport_named_pipe_windows_parity.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1879,7 +1879,7 @@ cases:
   reason: 'verified WAVE-A: named pipes are the Windows-only debug fallback (cans/01-architecture.md#Transport-engine-abstraction: Windows: SPSC rings primary + named pipes debug fallback); NamedPipeFallbackTransport::open returns Unsupported on every platform and the OS-pipe-buffer park observable needs Windows, so a Linux-CI open()==Ok assertion would never turn green'
 - case_id: vr_14_host_interposer_latency_budget
   case_file: cases/virtio_rings/vr_14_host_interposer_latency_budget.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: gap
   test_file: null
@@ -1894,30 +1894,30 @@ cases:
   test_fn: vr_15_owned_spsc_ring_capacity_accounting
 - case_id: wp_01_default_deny_ingress_drop
   case_file: cases/wire_plane/wp_01_default_deny_ingress_drop.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/wire_l4_diversion_test.rs
+  test_file: crates/kelir-engine/tests/wire_l4_diversion_test.rs
   test_fn: wp_01_default_deny_ingress_drop
 - case_id: wp_02_synthetic_dns_nxdomain_enforcement
   case_file: cases/wire_plane/wp_02_synthetic_dns_nxdomain_enforcement.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/wire_dns_gateway_test.rs
+  test_file: crates/kelir-engine/tests/wire_dns_gateway_test.rs
   test_fn: wp_02_synthetic_dns_nxdomain_enforcement
   reason: 'resolve_synthetic_dns answered ServFail instead of NxDomain for undeclared tunnel.evil.com under allowlist [''api.github.com''] (assertion failed: left=ServFail right=NxDomain); the allowlist gate is a TODO (L3) in resolve_synthetic_dns so the query is never evaluated'
 - case_id: wp_03_rollback_socket_termination_econnreset
   case_file: cases/wire_plane/wp_03_rollback_socket_termination_econnreset.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/wire_l4_diversion_test.rs
+  test_file: crates/kelir-engine/tests/wire_l4_diversion_test.rs
   test_fn: wp_03_rollback_socket_termination_econnreset
   reason: 'rollback_to returned Err Halt(''driver not loaded: hardware rollback needs a booted VMM (L3)'') before any socket teardown; no RST emission surface exists (TODO L3 in Session::rollback_to and WirePlane::quiesce) so guest ECONNRESET is unobservable'
 - case_id: wp_04_userspace_netstack_unprivileged_dial
   case_file: cases/wire_plane/wp_04_userspace_netstack_unprivileged_dial.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1925,36 +1925,36 @@ cases:
   reason: No dial surface exists in-tree.
 - case_id: wp_05_udp_nat_full_cone_mapping
   case_file: cases/wire_plane/wp_05_udp_nat_full_cone_mapping.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/wire_l4_diversion_test.rs
+  test_file: crates/kelir-engine/tests/wire_l4_diversion_test.rs
   test_fn: wp_05_udp_nat_full_cone_mapping
   note: 'Adapted: same UDP port twice gives slab 1, second port gives 2; full NAT mapping not asserted.'
 - case_id: wp_06_udp_socket_reaper_slab_limit
   case_file: cases/wire_plane/wp_06_udp_socket_reaper_slab_limit.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/wire_l4_diversion_test.rs
+  test_file: crates/kelir-engine/tests/wire_l4_diversion_test.rs
   test_fn: wp_06_udp_socket_reaper_slab_limit
 - case_id: wp_07_link_local_quarantine_drop
   case_file: cases/wire_plane/wp_07_link_local_quarantine_drop.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/wire_l4_diversion_test.rs
+  test_file: crates/kelir-engine/tests/wire_l4_diversion_test.rs
   test_fn: wp_07_link_local_quarantine_drop
 - case_id: wp_08_imds_cloud_metadata_quarantine
   case_file: cases/wire_plane/wp_08_imds_cloud_metadata_quarantine.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/wire_l4_diversion_test.rs
+  test_file: crates/kelir-engine/tests/wire_l4_diversion_test.rs
   test_fn: wp_08_imds_cloud_metadata_quarantine
 - case_id: wp_09_dns_gateway_host_state_tracking
   case_file: cases/wire_plane/wp_09_dns_gateway_host_state_tracking.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
@@ -1964,60 +1964,60 @@ cases:
     the spec-required behavior.
 - case_id: wp_10_dns_edns0_downgrade_bit_strip
   case_file: cases/wire_plane/wp_10_dns_edns0_downgrade_bit_strip.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-core/tests/wire_dns_gateway_test.rs
+  test_file: crates/kelir-engine/tests/wire_dns_gateway_test.rs
   test_fn: wp_10_dns_edns0_downgrade_bit_strip
   note: 'Adapted: downgrade_edns0() asserted on a constructed query; DnsQuery::parse is a stub.'
 - case_id: wp_11_socks5h_synthetic_pool_allocation
   case_file: cases/wire_plane/wp_11_socks5h_synthetic_pool_allocation.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
   test_fn: null
-  reason: no SOCKS5h synthetic-pool mapping exists in WirePlane — zero SOCKS/proxy hits in crates/kelir-core/src/planes/wire/mod.rs
+  reason: no SOCKS5h synthetic-pool mapping exists in WirePlane — zero SOCKS/proxy hits in crates/kelir-engine/src/planes/wire/mod.rs
     — so the mapping is asserted as the spec-required behavior (cans/07-wire-plane.md).
 - case_id: wp_12_l4_diversion_passthrough_tls
   case_file: cases/wire_plane/wp_12_l4_diversion_passthrough_tls.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: red
-  test_file: crates/kelir-core/tests/wire_l4_diversion_test.rs
+  test_file: crates/kelir-engine/tests/wire_l4_diversion_test.rs
   test_fn: wp_12_l4_diversion_passthrough_tls
   reason: 'divert_l4 returned Err Halt(''L4 stream diversion over 0x0005 pending (L3)'') instead of Ok(L4Stream kind L4Forward 0x0005, port 8443, target 127.0.0.1:9443); the duplex byte splice is a TODO (L3) in divert_l4'
 - case_id: wp_13_upstream_dial_proxy_chain_auth
   case_file: cases/wire_plane/wp_13_upstream_dial_proxy_chain_auth.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: gap
   test_file: null
   test_fn: null
-  reason: no upstream proxy-chain dial exists in WirePlane — zero proxy/CONNECT hits in crates/kelir-core/src/planes/wire/mod.rs
+  reason: no upstream proxy-chain dial exists in WirePlane — zero proxy/CONNECT hits in crates/kelir-engine/src/planes/wire/mod.rs
     — so the authenticated CONNECT handshake is asserted as the spec-required behavior (cans/07-wire-plane.md).
 - case_id: wp_14_port_forward_ephemeral_allocation
   case_file: cases/wire_plane/wp_14_port_forward_ephemeral_allocation.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/wire_l4_diversion_test.rs
+  test_file: crates/kelir-engine/tests/wire_l4_diversion_test.rs
   test_fn: wp_14_port_forward_ephemeral_allocation
   note: 'Adapted: ephemeral None/0 now binds a real kernel-allocated host port (asserted > 1024) with SO_REUSEADDR|SO_REUSEPORT per CANS/07.'
 - case_id: wp_15_port_forward_collision_abort
   case_file: cases/wire_plane/wp_15_port_forward_collision_abort.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/wire_l4_diversion_test.rs
+  test_file: crates/kelir-engine/tests/wire_l4_diversion_test.rs
   test_fn: wp_15_port_forward_collision_abort
   note: 'Adapted: second bind errors ''already forwarded''; live error is PluginError, not bare WireError.'
 - case_id: wp_16_port_forward_so_linger_zero_release
   case_file: cases/wire_plane/wp_16_port_forward_so_linger_zero_release.yaml
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-core/tests/wire_l4_diversion_test.rs
+  test_file: crates/kelir-engine/tests/wire_l4_diversion_test.rs
   test_fn: wp_16_port_forward_so_linger_zero_release
   note: 'Adapted: forward_port binds a live host listener before registry insert; rebind while the forward is active asserts AddrInUse and the port is instantly re-bindable after SO_LINGER=0 teardown.'
 - case_id: wp_17_wire_ingress_park_connection_suspends_session
@@ -2029,16 +2029,16 @@ cases:
   test_fn: wp_17_wire_ingress_park_connection_suspends_session
   note: 'Partial: parking proven (decode round-trip + Parked + append-Parked + oversize Overflow + reset); is_suspended flag not asserted.'
 harness_tests:
-- file: crates/kelir-core/tests/panic_hunt.rs
+- file: crates/kelir-engine/tests/panic_hunt.rs
   reason: Harness-level panic probe (hostile mux frame plus oversized control payload); not a case test.
     The mapped test for pm_11 lives in bus_mux_protocol_test.rs.
 - file: crates/kelir-plugin-testkit/tests/wire_frame_decode_test.rs
   reason: Testkit-side WireFrame encode/decode round trip plus checked-math rejection (pm_11 framing
     semantics from the parity-vector side); not a case test.
-- file: crates/kelir-core/tests/lifecycle_state_test.rs
+- file: crates/kelir-engine/tests/lifecycle_state_test.rs
   reason: LifecycleState transition-legality unit test per cans/08-lifecycle.md#State-machine; the plan
     carries no dedicated case for the core state machine yet (L2 wiring addition).
-- file: crates/kelir-core/tests/driver_selection_config_test.rs
+- file: crates/kelir-engine/tests/driver_selection_config_test.rs
   reason: Driver-selection L1/L2 contract test per cans/01-architecture.md Driver-backends and
     Fallback-policy anchors (unknown-backend and unprivileged-tier-without-opt-in rejections,
     known-backend pass-through to the L3 stub, is_emulated default, DriverPolicy.driver
@@ -2074,7 +2074,7 @@ harness_tests:
     forms, seal rejects duplicate mounts and empty trap filters, guard
     applies only when enabled); 6 tests, no plan case covers the chain
     surface yet (L1/L2 wiring addition).
-- file: crates/kelir-core/tests/wire_scope_test.rs
+- file: crates/kelir-engine/tests/wire_scope_test.rs
   reason: Mount-scope net-filter dispatch test per cans/02-plugin-model.md#Mount-scoping
     (WO3-C6); outbound and inbound net hooks gated by MountScope net_cidrs/net_ports via
     the frame-layout parser, fail-closed on unparseable frames when rules are declared

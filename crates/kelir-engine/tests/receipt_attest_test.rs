@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use kelir_core::dispatch_plugin::PipelineEngine;
-use kelir_core::planes::storage::fuse_storage::{FuseDispatcher, FuseOpcode, FuseRequest};
-use kelir_core::uart_terminal::{UartRingBuffer, decode_early_boot_exit};
+use kelir_engine::dispatch_plugin::PipelineEngine;
+use kelir_engine::planes::storage::fuse_storage::{FuseDispatcher, FuseOpcode, FuseRequest};
+use kelir_engine::uart_terminal::{UartRingBuffer, decode_early_boot_exit};
 use kelir_interface::plugin_model::{FsInterposer, HandlerCtx, MountScope, PipelineBinder};
 use kelir_interface::protocol_wire::TrapEvent;
 use kelir_interface::telemetry::{ExecutionReceipt, ExitKind};

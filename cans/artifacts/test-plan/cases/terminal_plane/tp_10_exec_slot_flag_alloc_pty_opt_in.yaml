@@ -3,7 +3,7 @@ case_id: "tp_10_exec_slot_flag_alloc_pty_opt_in"
 title: "FLAG_ALLOC_PTY on EXEC_IO_SPEC allocates dedicated slave PTY for command without using Port 0"
 domain: "terminal_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

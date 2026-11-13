@@ -92,7 +92,7 @@ check-maturity:
     cargo run -p kelir-maturity -- check
 
 panic-hunt:
-    cargo nextest run -p kelir-core --test panic_hunt
+    cargo nextest run -p kelir-engine --test panic_hunt
 
 fetch-fixtures:
     cargo run -p kelir-plugin-cli -- fixtures --fetch
@@ -156,7 +156,7 @@ typecheck: build-ts
 # ── Testing ──
 # Core kernel + plugin-testkit
 test-core:
-    cargo nextest run -p kelir-core -p kelir-plugin-testkit
+    cargo nextest run -p kelir-engine -p kelir-plugin-testkit
 
 # Every optional domain plugin independently. Failure in one does not mask others.
 test-plugins:
@@ -280,7 +280,7 @@ pre-flight: check-manifest check-tests check-spec check-fast-boot check-dax test
 # --no-tests pass: the filter selects the 4 hd_fast_boot stubs in
 # kelir-integration/tests/full_pipeline_test.rs (#[ignore], run via test-red);
 # it must not fail the run when the stubs are absent. Scoped to
-# kelir-integration; -p kelir-core --lib is wrong here — the kelir-core
+# kelir-integration; -p kelir-engine --lib is wrong here — the kelir-engine
 # integration suite does not compile at base (E0063 in receipt_attest_test.rs,
 # pre-existing).
 check-fast-boot:
@@ -336,7 +336,7 @@ codegen:
     # Item 13: spec anchor index (committed at crates/kelir-testkit/anchors.json)
     cargo run --quiet -p kelir-testkit --bin anchors
     # Item 5/11: UAPI tables (linux/fuse.h, linux/elf.h) via C oracle
-    sh crates/kelir-core/codegen/gen-fuse-uapi.sh
+    sh crates/kelir-engine/codegen/gen-fuse-uapi.sh
     sh crates/kelir-shim/codegen/gen-elf-uapi.sh
     # Item 9: scorecard render from perf/budgets.toml. Stays a target/ preview
     # here, NOT --in-place: the platform-subset section is host-dependent, and

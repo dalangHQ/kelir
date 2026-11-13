@@ -252,7 +252,7 @@ pub struct VmConfig {
     pub pinned_clocksource: Option<String>,
     // TODO (L3) [lc_23_replay_deterministic_seed_reproduces_step_windows]: consumed by replay drivers stepping the guest clock one instruction at a time.; slop: free-running clock, single replay asserted complete
     pub ns_per_instruction: Option<u32>,
-    // TODO (L3) [lc_12_host_reaper_pdeathsig_enforcement]: consumed by the kelir-core host-crash reaper SIGTERM window (on_host_preempt hook).; slop: waitpid-only check, abrupt parent kill -9 untested
+    // TODO (L3) [lc_12_host_reaper_pdeathsig_enforcement]: consumed by the kelir-engine host-crash reaper SIGTERM window (on_host_preempt hook).; slop: waitpid-only check, abrupt parent kill -9 untested
     pub preemption_grace_ms: u64,
     pub network_off: bool,
 }

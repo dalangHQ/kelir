@@ -3,7 +3,7 @@ case_id: "sp_08_reconciler_atomic_leaf_commit"
 title: "Storage reconciler commits modified files to host workspace via atomic renameat2 leaf replacement"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Workspace-commit"
-  statement: "Per-entry atomic commit at leaf level: temp file + platform rename (renameat2 / renameatx_np). Gap: Reconciler::commit is a TODO (L3) in crates/kelir-core/src/planes/storage/storage_reconciler.rs and StorageIo::atomic_rename needs the driver/transport enclave; the atomic leaf commit is specified against cans/05-storage-plane.md#Workspace-commit, not a live commit path."
+  statement: "Per-entry atomic commit at leaf level: temp file + platform rename (renameat2 / renameatx_np). Gap: Reconciler::commit is a TODO (L3) in crates/kelir-engine/src/planes/storage/storage_reconciler.rs and StorageIo::atomic_rename needs the driver/transport enclave; the atomic leaf commit is specified against cans/05-storage-plane.md#Workspace-commit, not a live commit path."
   blast_radius_if_breached: "Crashing mid-commit corrupts host files with partial or torn writes."
 
 confusion_matrix:

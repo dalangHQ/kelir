@@ -3,7 +3,7 @@ case_id: "tp_09_exec_stream_sublane_stdio_fidelity"
 title: "Stream kind EXEC preserves bitwise raw stdout and stderr bytes without ANSI escape injection"
 domain: "terminal_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

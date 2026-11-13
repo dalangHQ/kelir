@@ -3,7 +3,7 @@ case_id: "ar_13_vmlinux_blake3_pre_vcpu_attest"
 title: "Host measures guest vmlinux BLAKE3 digest prior to vCPU launch and binds hash to attestation token"
 domain: "attestation_receipts"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

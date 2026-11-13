@@ -3,7 +3,7 @@ case_id: "hd_14_guest_kernel_hardening_kptr_restrict"
 title: "Guest kernel boot params kptr_restrict=2 and hidepid=2 suppress pointer leaks to unprivileged code"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "pm_03_core_stream_kind_reregistration_abort"
 title: "Attempting to re-register frozen core stream kind (0x0001 EXEC) aborts with EKindReserved"
 domain: "protocol_mux"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

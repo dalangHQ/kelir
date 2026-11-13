@@ -3,7 +3,7 @@ case_id: "sp_dax_fallback"
 title: "DAX window failure falls back to FUSE chunked reads serving identical bytes"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "x86_64"

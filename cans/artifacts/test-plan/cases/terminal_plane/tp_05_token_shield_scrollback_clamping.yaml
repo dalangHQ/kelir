@@ -3,7 +3,7 @@ case_id: "tp_05_token_shield_scrollback_clamping"
 title: "TokenShield clamps terminal scrollback grid to maxLines/maxBytes without slicing multibyte UTF-8 chars"
 domain: "terminal_plane"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Host-filter-pipeline-execution-order"
-  statement: "Token Shield clamps scrollback grid to maxLines/maxBytes without mid-stream slicing. GAP: TokenShield (crates/kelir/src/planes/terminal_plane.rs) has no clamp_stream method — only max_bytes_total/max_lines_total fields — and the real clamp is the private apply_token_shield in crates/kelir-core/src/planes/terminal/mod.rs, currently an identity stub with a TODO (L3) — so the clamp is asserted as the spec-required behavior."
+  statement: "Token Shield clamps scrollback grid to maxLines/maxBytes without mid-stream slicing. GAP: TokenShield (crates/kelir/src/planes/terminal_plane.rs) has no clamp_stream method — only max_bytes_total/max_lines_total fields — and the real clamp is the private apply_token_shield in crates/kelir-engine/src/planes/terminal/mod.rs, currently an identity stub with a TODO (L3) — so the clamp is asserted as the spec-required behavior."
   blast_radius_if_breached: "Excessive terminal output floods LLM context window or panics UTF-8 parser."
 
 confusion_matrix:

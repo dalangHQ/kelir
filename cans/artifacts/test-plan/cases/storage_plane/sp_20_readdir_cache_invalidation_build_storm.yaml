@@ -3,7 +3,7 @@ case_id: "sp_20_readdir_cache_invalidation_build_storm"
 title: "A broker mutation invalidates the cached per-directory readdir merge so a build storm never reads stale entries"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

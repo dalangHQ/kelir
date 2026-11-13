@@ -3,7 +3,7 @@ case_id: "vr_10_virtio_fs_fuse_req_channel"
 title: "virtio-fs routing channel dispatches in-guest FUSE VFS requests directly to host broker"
 domain: "virtio_rings"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Storage-architecture"
-  statement: "VirtIO-FS only; FUSE bridge directly links guest VFS to host broker with non-blocking host I/O. GAP: O_NONBLOCK is mandated by spec (cans/05-storage-plane.md) but no O_NONBLOCK handling exists in crates/kelir-core/src/planes/storage/fuse_storage.rs, so the non-blocking broker assertion has no executable surface yet."
+  statement: "VirtIO-FS only; FUSE bridge directly links guest VFS to host broker with non-blocking host I/O. GAP: O_NONBLOCK is mandated by spec (cans/05-storage-plane.md) but no O_NONBLOCK handling exists in crates/kelir-engine/src/planes/storage/fuse_storage.rs, so the non-blocking broker assertion has no executable surface yet."
   blast_radius_if_breached: "VFS requests block host ring workers, causing deadlock across all guest vCPUs."
 
 confusion_matrix:

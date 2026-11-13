@@ -3,7 +3,7 @@ case_id: "hd_01_nohardware_vmm_fatal_abort"
 title: "Booting on host without hardware virtualization halts immediately with E_NOHARDWAREVMM when emulated fallback is false"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "x86_64"

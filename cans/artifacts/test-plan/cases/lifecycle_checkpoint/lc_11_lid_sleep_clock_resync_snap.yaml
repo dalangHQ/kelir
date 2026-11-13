@@ -3,7 +3,7 @@ case_id: "lc_11_lid_sleep_clock_resync_snap"
 title: "Host lid wake event dispatches paravirtual clock resync frame over Channel 0x0000, snapping time forward"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

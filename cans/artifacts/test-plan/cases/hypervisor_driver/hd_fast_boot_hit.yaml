@@ -3,7 +3,7 @@ case_id: "hd_fast_boot_hit"
 title: "Fast-boot cache hit hydrates base memory via mmap in under 500us; cold fallback under 60ms"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "x86_64"

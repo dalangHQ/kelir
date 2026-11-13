@@ -3,7 +3,7 @@ case_id: "vr_14_host_interposer_latency_budget"
 title: "HostInterposer synchronous security evaluations complete strictly within the 2µs budget"
 domain: "virtio_rings"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -99,7 +99,7 @@
           - Diagnostic only: spans emit to OTel; excluded from Merkle roots
           - Sum + base overhead = wall_clock_ns (wall_clock only)
     - Receipt ownership
-      - kelir-core generates and holds at trap/exit boundary
+      - kelir-engine generates and holds at trap/exit boundary
       - c.receipt() is the single read API on HandlerCtx
     - Receipt store
       - Per-session store keyed by pid; see: artifacts/code/execution-receipt.rs
@@ -157,7 +157,7 @@
       - Single slot per active PID lineage; sub-steps fold into Base on
         - StepVerdict::Commit, discard on StepVerdict::Rollback
         - see: 08-lifecycle.md#Delta-chain-compaction
-      - StepSlot managed natively by kelir-core::checkpoint
+      - StepSlot managed natively by kelir-engine::checkpoint
       - Fork operations clone active StepSlot state into child sessions
       - Post-hook failure triggers immediate session.rollback() to slot base
     - Typical wiring

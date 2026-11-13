@@ -3,7 +3,7 @@ case_id: "lc_18_watchdog_heartbeat_timeout_reboot"
 title: "Watchdog fires WatchdogAction::Reboot when guest fails to emit GuestToHost::Heartbeat within timeout"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

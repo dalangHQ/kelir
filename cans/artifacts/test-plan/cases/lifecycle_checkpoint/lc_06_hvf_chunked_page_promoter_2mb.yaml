@@ -3,7 +3,7 @@ case_id: "lc_06_hvf_chunked_page_promoter_2mb"
 title: "macOS HVF Stage-2 write fault triggers 2MB chunk promotion via Mach vm_copy, eliminating exit storms"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "macos"
   arch: "aarch64"

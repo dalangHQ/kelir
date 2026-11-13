@@ -1,5 +1,5 @@
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_12_arm64_stage2_4k_on_16k_host.yaml#case_id
-use kelir_core::Session;
+use kelir_engine::Session;
 use kelir_interface::driver_interface::default_vm_config;
 use kelir_interface::telemetry::ExitKind;
 

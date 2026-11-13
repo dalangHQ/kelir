@@ -35,8 +35,8 @@ DECOUPLED PLUGIN CI + REGISTRY FLOW
   └──────────────────────┘
 
   Channels per registered plugin:
-    stable  →  kelir-core@released     green = first-class eligible
-    canary  →  kelir-core@main         drift flags `drifted`; never blocks core
+    stable  →  kelir-engine@released     green = first-class eligible
+    canary  →  kelir-engine@main         drift flags `drifted`; never blocks core
 
   Failure isolation:
     degraded  →  archived after grace window

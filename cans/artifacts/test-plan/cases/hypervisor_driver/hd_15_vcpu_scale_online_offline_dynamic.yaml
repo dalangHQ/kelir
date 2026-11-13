@@ -3,7 +3,7 @@ case_id: "hd_15_vcpu_scale_online_offline_dynamic"
 title: "Dynamic vCPU scaling parks/unparks host threads and updates /sys/devices/system/cpu online without reboot"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "lc_21_detached_scm_rights_parent_sigkill_abort"
 title: "A parent SIGKILL before the SCM_RIGHTS handoff ack aborts the detached child with no orphan session and no leaked descriptor"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/08-lifecycle.md#Child-handoff-scope"
-  statement: "Host-side handles (files, sockets, PTY masters) are not inherited across a session boundary, and the shared-memory descriptor passes via SCM_RIGHTS with the parent end closed after the handoff ack. Gap: the handoff is a TODO in crates/kelir-core/src/session_lifecycle.rs (pass the descriptor via SCM_RIGHTS and close the parent end after the handoff ack); no live ack protocol exists, so this case is specified against the spec text, not a live surface."
+  statement: "Host-side handles (files, sockets, PTY masters) are not inherited across a session boundary, and the shared-memory descriptor passes via SCM_RIGHTS with the parent end closed after the handoff ack. Gap: the handoff is a TODO in crates/kelir-engine/src/session_lifecycle.rs (pass the descriptor via SCM_RIGHTS and close the parent end after the handoff ack); no live ack protocol exists, so this case is specified against the spec text, not a live surface."
   blast_radius_if_breached: "A parent killed mid-handoff leaves an orphan child holding a live descriptor to a dead session's memory."
 
 confusion_matrix:

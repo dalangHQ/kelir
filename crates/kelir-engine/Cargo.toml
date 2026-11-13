@@ -1,5 +1,5 @@
 [package]
-name = "kelir-core"
+name = "kelir-engine"
 version = "1.0.0"
 edition = "2024"
 license = "FSL-1.1-Apache-2.0"

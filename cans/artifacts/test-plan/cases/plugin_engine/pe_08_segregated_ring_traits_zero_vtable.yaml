@@ -3,7 +3,7 @@ case_id: "pe_08_segregated_ring_traits_zero_vtable"
 title: "Plugins implementing only specific ring traits incur zero vtable lookup overhead for untouched rings"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

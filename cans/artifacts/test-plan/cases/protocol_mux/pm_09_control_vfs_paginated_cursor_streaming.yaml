@@ -3,7 +3,7 @@ case_id: "pm_09_control_vfs_paginated_cursor_streaming"
 title: "Stream kind VFS streams directory listing via paginated cursor tokens with constant host memory"
 domain: "protocol_mux"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,18 +3,18 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use kelir_core::dispatch_plugin::PipelineEngine;
-use kelir_core::planes::storage::StoragePlane;
-use kelir_core::planes::storage::fuse_storage::{
+use kelir_engine::dispatch_plugin::PipelineEngine;
+use kelir_engine::planes::storage::StoragePlane;
+use kelir_engine::planes::storage::fuse_storage::{
     FuseDispatcher, FuseOpcode, FuseReply, FuseRequest,
 };
-use kelir_core::planes::storage::io_storage::{
+use kelir_engine::planes::storage::io_storage::{
     HostFileLock, RootHandle, StorageIo, UnimplementedStorageIo,
 };
-use kelir_core::planes::storage::storage_reconciler::{
+use kelir_engine::planes::storage::storage_reconciler::{
     FsReconcileRequest, Reconciler, TraversalGuard,
 };
-use kelir_core::planes::storage::{StorageConfig, WorkspaceEncapsulation};
+use kelir_engine::planes::storage::{StorageConfig, WorkspaceEncapsulation};
 use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::{
     FsInterposer, HandlerCtx, MountScope, PipelineBinder, PluginError,

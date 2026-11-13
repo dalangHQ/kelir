@@ -3,7 +3,7 @@ case_id: "hd_04_cold_boot_budget_enforcement"
 title: "Cold boot without ACPI/PCI probing reaches first guest workload exec in under 50ms"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

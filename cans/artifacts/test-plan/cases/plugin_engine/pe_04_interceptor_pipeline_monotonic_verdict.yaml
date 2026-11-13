@@ -3,7 +3,7 @@ case_id: "pe_04_interceptor_pipeline_monotonic_verdict"
 title: "Downstream interceptor stages cannot loosen or overturn an upstream Verdict::Drop or FilterAction::Drop"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

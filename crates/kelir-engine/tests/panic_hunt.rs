@@ -1,6 +1,6 @@
 // see: cans/11-protocol.md#Wire-framing
 // see: cans/artifacts/test-plan/cases/protocol_mux/pm_11_wire_framing_checked_math_validation.yaml#case_id
-use kelir_core::bus::{BusDispatcher, MAX_FRAME_PAYLOAD};
+use kelir_engine::bus::{BusDispatcher, MAX_FRAME_PAYLOAD};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::MsgType;
 use kelir_transport::Transport;

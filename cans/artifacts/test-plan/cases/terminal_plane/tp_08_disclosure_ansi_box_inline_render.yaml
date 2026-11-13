@@ -3,7 +3,7 @@ case_id: "tp_08_disclosure_ansi_box_inline_render"
 title: "Mandatory host disclosure notice renders formatted ANSI box into Port 0 stream without cursor drift"
 domain: "terminal_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

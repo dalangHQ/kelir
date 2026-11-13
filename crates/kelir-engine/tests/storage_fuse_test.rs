@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use kelir_core::dispatch_plugin::PipelineEngine;
-use kelir_core::planes::storage::fuse_storage::{
+use kelir_engine::dispatch_plugin::PipelineEngine;
+use kelir_engine::planes::storage::fuse_storage::{
     FuseDispatcher, FuseOpcode, FuseReply, FuseRequest,
 };
-use kelir_core::planes::storage::storage_synthetic::SyntheticFile;
+use kelir_engine::planes::storage::storage_synthetic::SyntheticFile;
 use kelir_interface::plugin_model::{FsInterposer, HandlerCtx, MountScope, PipelineBinder};
 
 fn temp_workspace(name: &str) -> PathBuf {

@@ -3,7 +3,7 @@ case_id: "wp_15_port_forward_collision_abort"
 title: "Binding an occupied host port returns Err(WireError::PortOccupied) without falling back to ephemeral port"
 domain: "wire_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

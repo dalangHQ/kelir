@@ -3,7 +3,7 @@ case_id: "ar_01_execution_receipt_blake3_binding"
 title: "Every reaped process emits ExecutionReceipt matching raw binary BLAKE3 hash and true exit code"
 domain: "attestation_receipts"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

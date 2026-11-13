@@ -3,7 +3,7 @@ case_id: "tp_04_ansi_sanitizer_title_spoof_strip"
 title: "ANSI sanitizer strips OSC 0, 1, and 2 window title spoofing escape sequences from terminal stream"
 domain: "terminal_plane"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Host-filter-pipeline-execution-order"
-  statement: "ANSI strip strips OSC 0/1/2 (title spoof) from terminal output streams. GAP: no sanitize_output surface exists — the real function is the private filter_ansi_shadow in crates/kelir-core/src/planes/terminal/mod.rs, currently an identity stub with a TODO (L3) — so the strip is asserted as the spec-required behavior."
+  statement: "ANSI strip strips OSC 0/1/2 (title spoof) from terminal output streams. GAP: no sanitize_output surface exists — the real function is the private filter_ansi_shadow in crates/kelir-engine/src/planes/terminal/mod.rs, currently an identity stub with a TODO (L3) — so the strip is asserted as the spec-required behavior."
   blast_radius_if_breached: "Workload changes host terminal title to mimic trusted admin prompts (sudo / root)."
 
 confusion_matrix:

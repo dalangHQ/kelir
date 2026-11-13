@@ -796,11 +796,11 @@ impl KelirBuilder {
 
     pub fn on_trap_deny<F, Fut, T>(mut self, f: F) -> Self
     where
-        F: Fn(&TrapEvent, &kelir_core::Session) -> Fut + Clone + Send + Sync + 'static,
+        F: Fn(&TrapEvent, &kelir_engine::Session) -> Fut + Clone + Send + Sync + 'static,
         Fut: Future<Output = Result<T, PluginError>> + Send + 'static,
     {
         self.registration.on_trap_deny = Some(Box::new(
-            move |event: &TrapEvent, session: &kelir_core::Session| {
+            move |event: &TrapEvent, session: &kelir_engine::Session| {
                 let fut = f.clone()(event, session);
                 Box::pin(async move { fut.await.map(drop) })
             },

@@ -3,7 +3,7 @@ case_id: "pm_12_version_negotiation_handshake_reject"
 title: "Handshake with mismatched protocol version terminates session with E_INCOMPATIBLE_SHIM_VERSION"
 domain: "protocol_mux"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

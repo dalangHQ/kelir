@@ -1,4 +1,4 @@
-GUEST KERNEL                               HOST HYPERVISOR (kelir-core)
+GUEST KERNEL                               HOST HYPERVISOR (kelir-engine)
 Agent invokes execve("/bin/git", ["push"])
       │
       ▼

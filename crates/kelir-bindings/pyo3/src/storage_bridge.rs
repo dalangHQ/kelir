@@ -6,8 +6,8 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyList};
 
-use kelir_core::planes::storage::storage_synthetic::SyntheticFile;
-use kelir_core::planes::storage::{
+use kelir_engine::planes::storage::storage_synthetic::SyntheticFile;
+use kelir_engine::planes::storage::{
     IdmapConfig, LockBrokerWiring, MaskReadConfig, MaskReadRule, ReadMaskEngine, StorageConfig,
     WorkspaceEncapsulation,
 };

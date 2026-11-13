@@ -3,7 +3,7 @@ case_id: "wp_05_udp_nat_full_cone_mapping"
 title: "Permitted UDP egress maintains full-cone NAT mapping, serving multiple remote peers from one host socket"
 domain: "wire_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

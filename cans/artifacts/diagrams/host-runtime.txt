@@ -9,7 +9,7 @@
 │               │ (Direct Monomorphization)                   │ (napi-rs / PyO3)          │
 │               ▼                                             ▼                           │
 │  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
-│  │                        kelir-core (Stripped Microkernel, #![forbid(unsafe_code)])                          │  │
+│  │                        kelir-engine (Stripped Microkernel, #![forbid(unsafe_code)])                          │  │
 │  │   ├── Native tier plugins: In-memory Rust execution at the latency ceiling        │  │
 │  │   ├── Foreign tier Filter-Before-FFI Gate: MountScope drops unmonitored events    │  │
 │  │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │

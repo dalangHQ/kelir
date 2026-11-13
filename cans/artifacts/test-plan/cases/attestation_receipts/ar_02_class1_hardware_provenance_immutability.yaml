@@ -3,7 +3,7 @@ case_id: "ar_02_class1_hardware_provenance_immutability"
 title: "Attestation verifier rejects Class 3 guest stdout data masquerading as Class 1 hardware facts"
 domain: "attestation_receipts"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

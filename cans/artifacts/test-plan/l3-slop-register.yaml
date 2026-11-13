@@ -189,7 +189,7 @@ entries:
 - case_id: ar_01_execution_receipt_blake3_binding
   status: red
   domain: attestation_receipts
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Receipt hash computed from the reaped file inside the test, a tautology that can never fail
   - binary_blake3 field ignored while only the exit code is asserted
@@ -207,7 +207,7 @@ entries:
 - case_id: ar_02_class1_hardware_provenance_immutability
   status: gap
   domain: attestation_receipts
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Class 1 attestation falls back to Class 3 guest-unverified data when evidence is missing
   - Guest stdout string parsed as an ExecutionReceipt when the trap receipt is missing
@@ -222,7 +222,7 @@ entries:
 - case_id: ar_03_dirty_bytes_exact_byte_accounting
   status: red
   domain: attestation_receipts
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - dirty_bytes computed as dirty pages times host page size (4096 on Linux, 16384 on Mac)
   - Receipt reports 0 dirty bytes after a 100-byte guest write
@@ -237,7 +237,7 @@ entries:
 - case_id: ar_04_binary_blake3_cache_invalidation
   status: gap
   domain: attestation_receipts
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Hash cache served after touch/truncate without invalidation
   - Cache key omits st_mtime_ns so a rewrite keeps the old hash
@@ -252,7 +252,7 @@ entries:
 - case_id: ar_05_erofs_trusted_prefix_fast_path
   status: red
   domain: attestation_receipts
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Every /usr/bin invocation reads raw bytes from the EROFS block device
   - Trusted-prefix resolution performs disk I/O instead of the O(1) host-RAM table
@@ -267,7 +267,7 @@ entries:
 - case_id: ar_07_exit_code_patch_chain_divergence
   status: red
   domain: attestation_receipts
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Receipt records the original binary hash, concealing the rewrite chain
   - TrapEvent and receipt both carry a single binary_blake3 with no original/final split
@@ -282,7 +282,7 @@ entries:
 - case_id: ar_09_causal_delta_aggregation_merkle
   status: gap
   domain: attestation_receipts
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Delta generated without broker tombstone paths in modified_inodes
   - receipt_leaf_hash or storage_delta_root left zero, so the delta carries no chain identity
@@ -301,7 +301,7 @@ entries:
 - case_id: ar_12_session_attestation_token_injection
   status: gap
   domain: attestation_receipts
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Token presence asserted without verifying the signature from the host session key
   - Token accepted with a session_token that does not match the active session
@@ -317,7 +317,7 @@ entries:
 - case_id: ar_13_vmlinux_blake3_pre_vcpu_attest
   status: gap
   domain: attestation_receipts
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Kernel boots without the token carrying the exact pre-computed vmlinux digest
   - Forged kernel accepted because the digest is never compared
@@ -332,7 +332,7 @@ entries:
 - case_id: ar_14_rootfs_erofs_blake3_pre_vcpu_attest
   status: gap
   domain: attestation_receipts
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Untracked ext4 image boots instead of the verified EROFS rootfs
   - Forged rootfs accepted because erofs_blake3 is never compared
@@ -741,7 +741,7 @@ entries:
 - case_id: hd_01_nohardware_vmm_fatal_abort
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - boot error caught generically without asserting the E_NOHARDWAREVMM fault_reason
   - bwrap child spawned as silent fallback while allow_emulated_fallback is false
@@ -753,13 +753,13 @@ entries:
   - boot_err matches VmmError::NoHardwareVmm and receipt fault_reason is E_NOHARDWAREVMM
   - no bwrap child process exists and driver.is_emulated() is Ok(false)
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
-  - crates/kelir-core/src/vmm/mod.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/vmm/mod.rs
   - crates/kelir-drivers/driver-rustvmm/src/host_probe.rs
 - case_id: hd_02_wx_mmu_prot_exec_trap
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - exit failure asserted without the Stage-2 MMU fault and exit code 137
   - mock VmmDriver stands in for the real MMU boundary
@@ -775,7 +775,7 @@ entries:
 - case_id: hd_03_hardware_rollback_timing_bound
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - rollback Ok asserted without measuring host-side elapsed time
   - rollback Unsupported swallowed as a pass
@@ -792,7 +792,7 @@ entries:
 - case_id: hd_04_cold_boot_budget_enforcement
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - VM alive asserted without host stopwatch to first guest exec
   - 60ms driver-trait bound accepted in place of the 50ms case bound
@@ -804,13 +804,13 @@ entries:
   - boot stopwatch to first guest exec is < 50ms
   - first workload exec output observed
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-drivers/driver-hvf/src/lib.rs
   - crates/kelir-drivers/driver-rustvmm/src/lib.rs
 - case_id: hd_05_kvm_userfaultfd_cow_tracking
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - dirty_bytes asserted without any userfaultfd fault resolution
   - guest writes counted from a host-side estimate instead of the fault counter
@@ -825,7 +825,7 @@ entries:
 - case_id: hd_06_hvf_stage2_chunk_promoter
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - memory modified asserted without checking 2MB chunk alignment
   - 4KB pages promoted one by one and called a chunk promotion
@@ -841,7 +841,7 @@ entries:
 - case_id: hd_07_openvmm_apic_restore_sequence
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - restore Ok asserted without APIC-before-TSC MSR write ordering
   - TSC deadline written first and APIC state committed after
@@ -857,7 +857,7 @@ entries:
 - case_id: hd_08_avf_pkvm_boundary_enforcement
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - AVF boot asserted without an access fault on un-donated memory
   - map_shared_region returns Ok on a range never donated to pKVM
@@ -873,7 +873,7 @@ entries:
 - case_id: hd_09_bwrap_emulated_fallback_opt_in
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - bwrap boot asserted without checking allow_emulated_fallback was true
   - emulated boot proceeds with the opt-in flag false
@@ -890,7 +890,7 @@ entries:
 - case_id: hd_10_proot_ptrace_trap_conformance
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - command output asserted without a ptrace trap firing
   - exec runs directly on the host with no PR_SET_PTRACER interposition
@@ -906,7 +906,7 @@ entries:
 - case_id: hd_11_cpuid_tsc_deadline_normalization
   status: gap
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - CPUID data returned without checking ECX bit 24 (TSC-deadline) on AMD
   - host CPUID leaves passed through unfiltered to the guest
@@ -922,7 +922,7 @@ entries:
 - case_id: hd_14_guest_kernel_hardening_kptr_restrict
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - kallsyms read asserted without checking every pointer is 0x00000000
   - real kernel addresses leak in stdout and the test only checks exit code
@@ -937,7 +937,7 @@ entries:
 - case_id: hd_15_vcpu_scale_online_offline_dynamic
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - set_vcpus Ok asserted without host thread park/unpark observed
   - guest nproc still reports the old count after the scale call
@@ -953,7 +953,7 @@ entries:
 - case_id: hd_16_virtio_balloon_pressure_reclaim
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - balloon inflated asserted without host RSS dropping
   - adjust_balloon Ok while no madvise(MADV_DONTNEED) reclaim runs
@@ -965,12 +965,12 @@ entries:
   - host RSS after is <= host RSS before minus 250MiB
   - adjust_balloon(256) returns Ok and frames are released
   code_todos:
-  - crates/kelir-core/src/planes/host/mod.rs
+  - crates/kelir-engine/src/planes/host/mod.rs
   - crates/kelir-interface/src/driver_interface.rs
 - case_id: hd_17_mach_vm_deallocate_footprint_purge
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - libc madvise used on macOS and claimed as a memory purge
   - wired RSS asserted from a host estimate with no mach_vm_deallocate call
@@ -985,7 +985,7 @@ entries:
 - case_id: hd_18_rosetta_binfmt_registration
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - x86_64 binary exit 0 asserted without a Rosetta handler in binfmt_misc
   - binary runs natively on Apple Silicon and is reported as translated
@@ -1000,7 +1000,7 @@ entries:
 - case_id: hd_fast_boot_backend_change
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - cold boot asserted without checking the recorded driver_id differs from the current backend
   - stale KVM snapshot reused after the backend changed
@@ -1017,7 +1017,7 @@ entries:
 - case_id: hd_fast_boot_drift
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - cold boot asserted without checking the recomputed cache key changed
   - drifted vmlinux/erofs/boot_params still hydrate the stale snapshot
@@ -1032,7 +1032,7 @@ entries:
 - case_id: hd_fast_boot_hit
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - boot Ok asserted without the host stopwatch to first guest exec
   - warm boot reads the snapshot but hydrates different bytes than cached
@@ -1048,7 +1048,7 @@ entries:
 - case_id: hd_fast_boot_miss
   status: red
   domain: hypervisor_driver
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - boot Ok asserted without checking the boot path was cold
   - empty cache reported as an error to the SDK instead of a silent miss
@@ -1063,7 +1063,7 @@ entries:
 - case_id: lc_01_cow_fork_warm_memory_sharing
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Fork clones the parent memory buffer with memcpy instead of CoW page tables
   - Host dirty page delta is nonzero immediately after fork
@@ -1075,13 +1075,13 @@ entries:
   - fork_duration < 10ms and child dirty_pages == 0 immediately after fork
   - Child write dirties only the written pages, parent pages stay shared
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-drivers/driver-hvf/src/lib.rs
   - crates/kelir-interface/src/driver_interface.rs
 - case_id: lc_02_suspend_zero_rss_purge
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Suspend pauses the vCPU without unmapping physical RAM pages
   - Host RSS stays at the running level after suspend
@@ -1093,13 +1093,13 @@ entries:
   - host_process_rss_mb() < 15 and suspend_duration < 50ms
   - Suspended image restores on resume with state intact
   code_todos:
-  - crates/kelir-core/src/planes/host/mod.rs
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/planes/host/mod.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-interface/src/driver_interface.rs
 - case_id: lc_03_step_evaluation_taint_rollback
   status: gap
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Tainted step reports failure while the upper file and RAM keep the writes
   - Rollback takes over 8ms, missing the step-evaluation bound
@@ -1113,14 +1113,14 @@ entries:
   code_todos:
   - crates/kelir-bindings/napi/src/lib.rs
   - crates/kelir-bindings/pyo3/src/lib.rs
-  - crates/kelir-core/src/dispatch_plugin/lifecycle_dispatch.rs
-  - crates/kelir-core/src/dispatch_plugin/mod.rs
-  - crates/kelir-core/src/planes/checkpoint/mod.rs
+  - crates/kelir-engine/src/dispatch_plugin/lifecycle_dispatch.rs
+  - crates/kelir-engine/src/dispatch_plugin/mod.rs
+  - crates/kelir-engine/src/planes/checkpoint/mod.rs
   - packages/ts/core/src/index.ts
 - case_id: lc_04_draining_state_rejection_ebusy
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Draining kills in-flight commands instead of letting them complete
   - New exec accepted during Draining instead of refused with EBUSY
@@ -1132,11 +1132,11 @@ entries:
   - In-flight command completes with exit 0 while new exec fails with EBUSY
   - New tool call during Draining returns the EBUSY diagnostic
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
 - case_id: lc_06_hvf_chunked_page_promoter_2mb
   status: gap
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Writing 512 contiguous 4KB pages triggers 512 Stage-2 exits instead of 1
   - Promotion tested on Linux KVM and claimed for macOS HVF
@@ -1151,7 +1151,7 @@ entries:
 - case_id: lc_07_cow_fork_uncloned_descriptor_veto
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Fork ignores the registered Fork veto and spawns the child microVM
   - Veto callback returns false but fork still returns Ok
@@ -1166,7 +1166,7 @@ entries:
 - case_id: lc_08_rollback_trap_held_precondition
   status: gap
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Rollback issued while a trap is still held, leaving the guest task hung
   - Held trap released with the wrong verdict instead of Drop{EFAULT}
@@ -1181,7 +1181,7 @@ entries:
 - case_id: lc_10_abrupt_kill_dirty_shutdown_receipt
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Kill returns a Normal exit 0 receipt instead of HardKilled
   - Kill flushes state before SIGKILL, hiding the dirty shutdown
@@ -1193,11 +1193,11 @@ entries:
   - receipt.exit_kind == ExitKind::HardKilled and receipt.exit_code == 137
   - No flush or shutdown hook runs on the kill path
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
 - case_id: lc_11_lid_sleep_clock_resync_snap
   status: gap
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Wake succeeds while the guest clock still shows pre-sleep time
   - Clock resync applied to the monotonic watermark instead of the wall clock
@@ -1209,14 +1209,14 @@ entries:
   - guest_clock_gettime(CLOCK_REALTIME) >= host_wall_clock() after wake
   - Resync frame dispatched over Control 0x0000 on sleep/wake
   code_todos:
-  - crates/kelir-core/src/planes/checkpoint/mod.rs
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/planes/checkpoint/mod.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-interface/src/driver_interface.rs
   - crates/kelir-interface/src/handles_lifecycle.rs
 - case_id: lc_12_host_reaper_pdeathsig_enforcement
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Child hypervisor survives as an orphaned CPU spinner after parent SIGKILL
   - Reaper armed only for clean parent exit, not abrupt kill -9
@@ -1228,13 +1228,13 @@ entries:
   - Child hypervisor PID is dead after the parent is killed with SIGKILL
   - prctl(PR_SET_PDEATHSIG, SIGKILL) applied on Linux before the child runs
   code_todos:
-  - crates/kelir-core/src/planes/host/mod.rs
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/planes/host/mod.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-interface/src/driver_interface.rs
 - case_id: lc_13_host_reaper_kqueue_proc_exit
   status: gap
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Reaper tested on Linux and claimed to work on macOS kqueue
   - kqueue watcher registered without EVFILT_PROC NOTE_EXIT
@@ -1249,7 +1249,7 @@ entries:
 - case_id: lc_14_detached_session_lease_heartbeat
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Detached boot keeps lease_kind Ephemeral with expires_at None
   - Runner never updates expires_at, so the lease goes stale after 30s
@@ -1261,11 +1261,11 @@ entries:
   - read_catalog_expires_at('ses_lc_14') advances forward after 30 seconds
   - Detached row carries lease_kind='lease' with a runner child pid
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
 - case_id: lc_15_detached_session_reconnect_relay
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Attach returns Ok without a round-trip through relay.sock
   - CLI connects to a stale socket path instead of ~/.kelir/sessions/<id>/relay.sock
@@ -1277,14 +1277,14 @@ entries:
   - Ping/pong frame round-trips over relay.sock with exec exit_code 0
   - Session rebuilt from the runner-owned state after reconnect
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-plugin-cli/src/attach_cli.rs
   - packages/py/kelir/lifecycle_session.py
   - packages/ts/core/src/session.lifecycle.ts
 - case_id: lc_16_session_incarnation_cas_guard
   status: gap
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Session row deleted without checking the incarnation compare-and-swap
   - Stale incarnation proceeds with the destructive verb instead of E_STALE_INCARNATION
@@ -1296,11 +1296,11 @@ entries:
   - remove_err contains E_STALE_INCARNATION on CAS mismatch
   - catalog_session_exists('ses_shared_01') stays true after the stale remove
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
 - case_id: lc_17_zombie_reaper_pid1_adoption
   status: gap
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Orphan exits leave state-Z zombies in the in-guest process table
   - Background task completion asserted without inspecting the guest ps table
@@ -1316,7 +1316,7 @@ entries:
 - case_id: lc_18_watchdog_heartbeat_timeout_reboot
   status: gap
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Watchdog reboot claimed without vCPU registers reset to instruction 0
   - Heartbeat expiry never fires on_watchdog because no driver event loop exists
@@ -1328,13 +1328,13 @@ entries:
   - watchdog_reboot_count() == 1 after heartbeat expiry
   - VM transitions through Reboot state and restarts cold boot
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-interface/src/driver_interface.rs
   - packages/py/kelir/model_plugin.py
 - case_id: lc_20_portable_snapshot_archive_export
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Snapshot exported without verifying the trailer SHA-256/BLAKE3 digest
   - Archive stream missing manifest.json or the ram/upperdir entries
@@ -1346,13 +1346,13 @@ entries:
   - archive.verify_trailer_digest() == true and archive.has_entry('manifest.json')
   - Trailer digest matches the header BLAKE3 hash of inner manifest.json
   code_todos:
-  - crates/kelir-core/src/planes/checkpoint/mod.rs
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/planes/checkpoint/mod.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-interface/src/driver_interface.rs
 - case_id: lc_21_detached_scm_rights_parent_sigkill_abort
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Child exits without the parent descriptor being closed after the handoff ack
   - Orphan session row left in the catalog after the aborted handoff
@@ -1364,7 +1364,7 @@ entries:
   - child_aborted() == true, descriptor_leaked() == false, orphan_session_rows('ses_lc_21') == 0
   - Parent end closed after the handoff ack, child holds the only descriptor
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
 - case_id: lc_23_replay_deterministic_seed_reproduces_step_windows
   status: red
   domain: lifecycle_checkpoint
@@ -1380,13 +1380,13 @@ entries:
   - ctx_a.retired_instructions() == ctx_b.retired_instructions() for identical seeds
   - ctx_a.pending_step_windows() == ctx_b.pending_step_windows() window for window
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-interface/src/driver_interface.rs
   - crates/kelir-plugins/plugin-replay/src/lib.rs
 - case_id: lc_base_snapshot_capture
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Boot returns Ok while the base capture never ran
   - Capture ordered before the last on_vm_ready handler returns
@@ -1402,7 +1402,7 @@ entries:
 - case_id: lc_base_snapshot_lifecycle
   status: red
   domain: lifecycle_checkpoint
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Base snapshot node id appears in CheckpointPlane::lineage(head)
   - Exported archive manifest carries the base digest
@@ -1418,9 +1418,9 @@ entries:
 - case_id: pe_01_downward_only_tier_dependency_lint
   status: red
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
-  - 'layers::check() extended to scan only kelir_core::/kelir_drivers:: prefixes while Tier 1 plugin-mcp importing Tier 3 plugin-ledger still passes'
+  - 'layers::check() extended to scan only kelir_engine::/kelir_drivers:: prefixes while Tier 1 plugin-mcp importing Tier 3 plugin-ledger still passes'
   - Lint disabled or narrowed in CI so the upward import passes with exit 0 and no ci.layering_violation_caught event
   - Tier 1 plugin reaches Tier 3 behavior through a new shared helper crate instead of ServiceRegistry/EventBus, keeping the upward edge
   must_not:
@@ -1434,7 +1434,7 @@ entries:
 - case_id: pe_02_cyclic_dependency_graph_abort
   status: red
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Boot accepts cyclic [plugin_a -> plugin_b, plugin_b -> plugin_a] and returns Ok(session), recursing or deadlocking at init
   - Cycle check dedupes names only and never walks edges, so a 3-node cycle passes
@@ -1446,11 +1446,11 @@ entries:
   - Session::boot_with_plugins returns Err(PluginError::Halt) mentioning 'Cyclic dependency'
   - Receipt exit_kind HypervisorFault with fault_reason EConfig('Cyclic dependency') and event plugin.cyclic_dependency_aborted
   code_todos:
-  - crates/kelir-core/src/plugin_registry.rs
+  - crates/kelir-engine/src/plugin_registry.rs
 - case_id: pe_03_overlapping_mutator_scope_eambiguous
   status: red
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Both overlapping mutators execute sequentially, last writer wins, and the conflict is never detected
   - Scope overlap checked by exact path equality only, so /workspace/src vs /workspace/src/main.rs passes as disjoint
@@ -1465,7 +1465,7 @@ entries:
 - case_id: pe_06_filter_before_ffi_gate_latency
   status: gap
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Every ring event crosses NAPI/PyO3 and MountScope is checked inside Python/JavaScript, so Gate 2 never runs in native memory
   - Latency measured on an in-scope fast path only while out-of-scope events still pay the FFI crossing
@@ -1481,7 +1481,7 @@ entries:
 - case_id: pe_11_ffi_buffer_streaming_chunk_ceiling
   status: red
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - dispatch_fs_write exposes the whole 1 MiB buffer to the hook in one call, so the 64 KiB ceiling never binds
   - Chunking splits the buffer but the last partial chunk is dropped or the hook sees overlapping slices
@@ -1496,7 +1496,7 @@ entries:
 - case_id: pe_12_declarative_error_mapping_posix_errno
   status: gap
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Every foreign exception maps to generic EIO (errno 5), so CustomPermissionError loses its EACCES meaning
   - Mapping table keyed on exception message strings instead of the declared registry, so a reworded message maps wrong
@@ -1511,7 +1511,7 @@ entries:
 - case_id: pe_13_fork_state_specialization_isolation
   status: red
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Parent and child plugins share one Arc<Mutex> counter, so a child increment mutates parent state
   - Session::fork clones the session struct but the child pipeline carries no interceptors, so the fork_state probe never fires
@@ -1523,11 +1523,11 @@ entries:
   - After child increment, parent counter == 10 and child counter == 11
   - Child dispatch reaches the fork_state-specialized probe with event plugin.state_forked
   code_todos:
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
 - case_id: pe_14_service_registry_peer_resolution
   status: gap
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Peer plugin reached through an unsafe static global instead of the typed HandlerCtx
   - Peer resolved by downcasting to its concrete struct type, coupling the caller to the peer implementation
@@ -1559,7 +1559,7 @@ entries:
 - case_id: pe_17_shell_c_command_unwrap_drops_git_push_force
   status: gap
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Test asserts Drop for direct git push --force only and never exercises the bash -c form, so the wrapper bypass stays live
   - Resolver matches the binary_path string, so bash never matches the git policy row and the wrapped exec Passes
@@ -1571,11 +1571,11 @@ entries:
   - dispatch_trap on bash -c 'git push --force' returns Verdict::Drop with errno EPERM
   - Direct git push --force also Drops EPERM, event policy.trap_denied
   code_todos:
-  - crates/kelir-core/src/trap_gate.rs
+  - crates/kelir-engine/src/trap_gate.rs
 - case_id: pe_18_python_c_os_system_unwrap_drops_git_push_force
   status: gap
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - python -c payload treated as one opaque argv entry, so the os.system('git push --force') inside never reaches the git row
   - Test asserts Drop for direct git only and never exercises the python -c form
@@ -1590,7 +1590,7 @@ entries:
 - case_id: pe_19_env_xargs_reexec_unwrap_drops_git_push_force
   status: gap
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - env re-exec treated as the terminal binary, so env git push --force Passes the git row
   - Unwrapping stops after one layer, so env xargs git or find -exec git bypass the row
@@ -1605,7 +1605,7 @@ entries:
 - case_id: pe_20_same_path_different_identity_never_matches
   status: gap
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - MountScope::allows_binary compares the binary_path string, so a bind-mounted binary at /usr/bin/git with a different (st_dev, st_ino, blake3) Passes the git row
   - Identity pinned by path plus file size only, so a same-size swapped binary matches
@@ -1617,13 +1617,13 @@ entries:
   - dispatch_trap on the swapped identity returns Verdict::Drop with errno EPERM
   - The pinned identity still returns Verdict::Pass, event policy.trap_denied
   code_todos:
-  - crates/kelir-core/src/trap_gate.rs
+  - crates/kelir-engine/src/trap_gate.rs
   - crates/kelir-interface/src/plugin_model.rs
   - crates/kelir-plugins/plugin-container/src/lib.rs
 - case_id: pe_21_trap_pass_provisional_effect_hook_redecides
   status: gap
   domain: plugin_engine
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Trap Pass treated as blanket authorization, so the out-of-scope fs write Forwards and MountScope is decorative
   - Test asserts the trap Passes and never dispatches the effect hook, so the re-decision is never exercised
@@ -1638,7 +1638,7 @@ entries:
 - case_id: pm_01_control_channel_0_lifecycle_priority
   status: red
   domain: protocol_mux
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - lifecycle signal multiplexed onto Stream Mux 0x0001 behind a full data buffer
   - control payload dropped as ControlPending and the signal never delivered
@@ -1655,7 +1655,7 @@ entries:
 - case_id: pm_02_stream_mux_open_data_close_flags
   status: red
   domain: protocol_mux
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - OPEN|CLOSE frame (flags 0x05) accepted and stream 7 registered
   - flag exclusivity checked only for known-good encoders
@@ -1672,7 +1672,7 @@ entries:
 - case_id: pm_03_core_stream_kind_reregistration_abort
   status: red
   domain: protocol_mux
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - plugin re-registers core kind 0x0001 and the handler is silently overwritten
   - bootstrap seals while a frozen core kind was replaced
@@ -1684,12 +1684,12 @@ entries:
   - re-registering kind 0x0001 aborts with EKindReserved
   - exit code is 1
   code_todos:
-  - crates/kelir-core/src/dispatch_plugin/mod.rs
+  - crates/kelir-engine/src/dispatch_plugin/mod.rs
   - crates/kelir/src/builder_sdk.rs
 - case_id: pm_05_stream_kind_conflict_ekindconflict
   status: red
   domain: protocol_mux
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - second plugin overwrites the first kind registration without error
   - boot seals with two plugins on the same stream kind
@@ -1701,11 +1701,11 @@ entries:
   - second registration fails with EKindConflict
   - boot() fails and exit code is 1
   code_todos:
-  - crates/kelir-core/src/dispatch_plugin/mod.rs
+  - crates/kelir-engine/src/dispatch_plugin/mod.rs
 - case_id: pm_06_exec_slot_slab_saturation_reject
   status: gap
   domain: protocol_mux
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - shim grows the heap unboundedly until the OOM killer fires
   - SlabSaturated swallowed and the exec silently queued
@@ -1722,7 +1722,7 @@ entries:
 - case_id: pm_07_exec_signal_cancellation_by_exec_id
   status: gap
   domain: protocol_mux
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - raw guest pid sent over the wire instead of the 64-bit exec_id
   - signal delivered with kill() to a recycled pid, killing the successor task
@@ -1738,7 +1738,7 @@ entries:
 - case_id: pm_08_exec_flow_control_input_stall
   status: gap
   domain: protocol_mux
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - frames dropped when the buffer fills instead of stalling input
   - stdin payload discarded on the shim side and the transfer still reported complete
@@ -1754,7 +1754,7 @@ entries:
 - case_id: pm_09_control_vfs_paginated_cursor_streaming
   status: gap
   domain: protocol_mux
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - entire directory returned in one unpaginated response
   - reply frame exceeds the 64KB CBOR payload cap
@@ -1769,7 +1769,7 @@ entries:
 - case_id: pm_10_bulk_transfer_stream_dma_throughput
   status: gap
   domain: protocol_mux
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - bulk chunks wrapped in a CBOR envelope
   - per-chunk FUSE context switches on the bulk path
@@ -1784,7 +1784,7 @@ entries:
 - case_id: pm_12_version_negotiation_handshake_reject
   status: gap
   domain: protocol_mux
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - version field ignored and communication attempted anyway
   - handshake with version 0x02 accepted by the version 0x01 host
@@ -2036,7 +2036,7 @@ entries:
 - case_id: sp_01_host_cow_upper_discard_on_rollback
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Rollback returns Ok while upper file still holds allocated st_blocks on host disk
   - Tombstones left behind after rollback so deleted files reappear on retry
@@ -2048,12 +2048,12 @@ entries:
   - broker.sparse_upper_blocks() == 0 and broker.tombstone_count() == 0 after rollback
   - storage.rollback_complete audit event emitted with state_modified false
   code_todos:
-  - crates/kelir-core/src/planes/storage/io_storage.rs
-  - crates/kelir-core/src/planes/storage/mod.rs
+  - crates/kelir-engine/src/planes/storage/io_storage.rs
+  - crates/kelir-engine/src/planes/storage/mod.rs
 - case_id: sp_06_host_cow_broker_dir_merge_cache
   status: gap
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Second readdir re-merges base+upper+tombstones from disk with no cache hit
   - Cache keyed by path only, so a broker mutation in the subtree serves stale entries
@@ -2065,11 +2065,11 @@ entries:
   - Second readdir performs 0 host stat calls (dir_merge_cache_hits() == 1)
   - Post-mutation readdir lists the new entry, stale result never reused
   code_todos:
-  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+  - crates/kelir-engine/src/planes/storage/fuse_storage.rs
 - case_id: sp_07_ephemeral_scratch_tmpfs_discard
   status: gap
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Teardown returns Ok while the scratch backing file still exists on host
   - Scratch build artifacts (tmp/build.o) leak into the base workspace git tree
@@ -2084,7 +2084,7 @@ entries:
 - case_id: sp_08_reconciler_atomic_leaf_commit
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Commit writes directly to the target file in place, leaving torn bytes on crash
   - Rename without temp staging so the committed inode never changes
@@ -2096,15 +2096,15 @@ entries:
   - host_stat('src/main.rs').st_ino differs from the pre-commit inode
   - storage.leaf_committed audit event emitted, sparse_upper_blocks() == 0
   code_todos:
-  - crates/kelir-core/src/planes/storage/fuse_storage.rs
-  - crates/kelir-core/src/planes/storage/io_storage.rs
-  - crates/kelir-core/src/planes/storage/storage_reconciler.rs
+  - crates/kelir-engine/src/planes/storage/fuse_storage.rs
+  - crates/kelir-engine/src/planes/storage/io_storage.rs
+  - crates/kelir-engine/src/planes/storage/storage_reconciler.rs
   - packages/py/tests/test_storage_reconciler.py
   - packages/ts/core/tests/reconciler.storage.test.ts
 - case_id: sp_09_reconciler_tombstone_unlink_commit
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Commit returns Ok while the tombstoned file still exists on host disk
   - Tombstone count stays nonzero so the deleted file resurrects on the next reconcile
@@ -2116,12 +2116,12 @@ entries:
   - fs::exists('obsolete.rs') == false and broker.tombstone_count() == 0
   - New directory visible in place on the host after reconcile
   code_todos:
-  - crates/kelir-core/src/planes/storage/fuse_storage.rs
-  - crates/kelir-core/src/planes/storage/io_storage.rs
+  - crates/kelir-engine/src/planes/storage/fuse_storage.rs
+  - crates/kelir-engine/src/planes/storage/io_storage.rs
 - case_id: sp_10_reconciler_busy_lock_retry_backoff
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Reconciler fails immediately on EBUSY without entering the retry loop
   - Retry loop retries with no backoff, hammering the contended lock
@@ -2136,7 +2136,7 @@ entries:
 - case_id: sp_11_host_fifo_socket_lookup_enxio
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Lookup succeeds on a host FIFO or socket instead of failing ENXIO
   - Lookup error carries the wrong errno string instead of raw ENXIO
@@ -2148,11 +2148,11 @@ entries:
   - lookup_err.raw_os_error() == Some(libc::ENXIO) for FIFO and socket paths
   - Guest read of the FIFO path fails before any payload is returned
   code_todos:
-  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+  - crates/kelir-engine/src/planes/storage/fuse_storage.rs
 - case_id: sp_12_workspace_encapsulation_mode_000
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - External host process reads the workspace while encapsulation claims Locked
   - Workspace root left at its default mode instead of mode 000
@@ -2167,7 +2167,7 @@ entries:
 - case_id: sp_14_in_flight_read_masking_pattern_replace
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Host disk file redacted in place, mutating the source repository
   - Guest read returns the raw secret because the mask runs after the VFS return
@@ -2179,11 +2179,11 @@ entries:
   - Guest buffer reads "token = '[REDACTED_AWS_KEY]'" while host disk still holds the raw secret
   - Host file bytes unchanged after the masked guest read
   code_todos:
-  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+  - crates/kelir-engine/src/planes/storage/fuse_storage.rs
 - case_id: sp_15_host_inode_lock_broker_flock_bridge
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - In-memory lock table grants the lock while no host flock is held
   - Second external host process acquires flock(LOCK_EX) successfully
@@ -2196,13 +2196,13 @@ entries:
   - Lock release frees the host fd and a new acquire succeeds
   code_todos:
   - crates/kelir-bindings/napi/src/storage_bridge.rs
-  - crates/kelir-core/src/planes/storage/fuse_storage.rs
-  - crates/kelir-core/src/planes/storage/io_storage.rs
-  - crates/kelir-core/src/planes/storage/lock_broker.rs
+  - crates/kelir-engine/src/planes/storage/fuse_storage.rs
+  - crates/kelir-engine/src/planes/storage/io_storage.rs
+  - crates/kelir-engine/src/planes/storage/lock_broker.rs
 - case_id: sp_16_statfs_zero_crawl_constant_time
   status: gap
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - statfs walks the base directory tree, so latency grows with inode count
   - Remaining quota computed from a host statfs call instead of the plane atomics
@@ -2214,11 +2214,11 @@ entries:
   - host_vfs_crawl_count == 0 for statfs at any base size
   - statfs_duration_500k <= statfs_duration_1k * 2
   code_todos:
-  - crates/kelir-core/src/planes/storage/fuse_storage.rs
+  - crates/kelir-engine/src/planes/storage/fuse_storage.rs
 - case_id: sp_17_secondary_image_graft_readonly
   status: gap
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Graft adds a new virtio-blk PCI device, changing the PCI device count
   - Grafted image mounted writable so guest writes reach the host image
@@ -2233,7 +2233,7 @@ entries:
 - case_id: sp_18_write_chunk_64kb_transparent_stream
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - 256KB guest write delivered to on_fs_write as a single 262144-byte call
   - Write split into chunks of the wrong size, breaking the 64KB boundary
@@ -2248,7 +2248,7 @@ entries:
 - case_id: sp_19_host_inode_flock_contention_ewouldblock
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - In-memory lock table lets the external contender acquire the host flock
   - Contention denial returns Ok or a wrong errno instead of EWOULDBLOCK
@@ -2260,12 +2260,12 @@ entries:
   - External host flock(LOCK_EX | LOCK_NB) returns Err(EWOULDBLOCK)
   - FUSE SETLK conflict reply carries EWOULDBLOCK
   code_todos:
-  - crates/kelir-core/src/planes/storage/fuse_storage.rs
-  - crates/kelir-core/src/planes/storage/lock_broker.rs
+  - crates/kelir-engine/src/planes/storage/fuse_storage.rs
+  - crates/kelir-engine/src/planes/storage/lock_broker.rs
 - case_id: sp_20_readdir_cache_invalidation_build_storm
   status: gap
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Post-mutation readdir serves the pre-mutation cached entries
   - Invalidation keyed on the wrong subtree so a sibling mutation evicts nothing
@@ -2280,7 +2280,7 @@ entries:
 - case_id: sp_dax_available
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - DAX window reports Ok while host frames are mapped writable
   - Guest page cache serves the rootfs instead of being bypassed
@@ -2295,7 +2295,7 @@ entries:
 - case_id: sp_dax_fallback
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Fallback serves bytes that differ from the DAX-path bytes
   - Fallback fails the guest read instead of serving it via FUSE chunks
@@ -2310,7 +2310,7 @@ entries:
 - case_id: sp_dax_teardown
   status: red
   domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Terminate returns Ok while Stage-2 is still mapped
   - Host memfd never released, leaking the backing on every session
@@ -2435,7 +2435,7 @@ entries:
 - case_id: tp_01_host_terminal_guard_raii_restore
   status: gap
   domain: terminal_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Guard drops without restoring termios, leaving the host shell corrupted
   - Panic unwind skips the restore because the guard is not RAII
@@ -2450,7 +2450,7 @@ entries:
 - case_id: tp_02_pty_raw_mode_ctrl_c_passthrough
   status: gap
   domain: terminal_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - SIGINT sent to the host process group instead of the guest foreground pgid
   - Host process dies from the Ctrl+C meant for the guest
@@ -2465,7 +2465,7 @@ entries:
 - case_id: tp_03_ansi_sanitizer_osc52_clipboard_drop
   status: red
   domain: terminal_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - OSC 52 clipboard payload reaches the host terminal verbatim
   - Sanitizer asserted run while the payload bytes remain in the buffer
@@ -2477,11 +2477,11 @@ entries:
   - sanitized_output == 'Normal Text' with zero occurrences of OSC 52
   - Durable log (read_from 0) carries no OSC 52 payload
   code_todos:
-  - crates/kelir-core/src/planes/terminal/mod.rs
+  - crates/kelir-engine/src/planes/terminal/mod.rs
 - case_id: tp_04_ansi_sanitizer_title_spoof_strip
   status: red
   domain: terminal_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Title spoof sequences reach the host terminal with BEL terminators intact
   - ST-terminated OSC 0/2 sequences pass while only BEL forms are stripped
@@ -2496,7 +2496,7 @@ entries:
 - case_id: tp_05_token_shield_scrollback_clamping
   status: gap
   domain: terminal_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Clamp slices a byte slice mid-character, producing invalid UTF-8
   - Token spans survive clamping because redaction runs after truncation
@@ -2508,11 +2508,11 @@ entries:
   - clamped.len() <= 100 and std::str::from_utf8(clamped) succeeds
   - Token spans redacted at the clamped boundary
   code_todos:
-  - crates/kelir-core/src/planes/terminal/mod.rs
+  - crates/kelir-engine/src/planes/terminal/mod.rs
 - case_id: tp_06_placeholder_mask_carryover_window
   status: red
   domain: terminal_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Secret split across chunks passes through because only whole-chunk secrets are tested
   - Carryover window shorter than MAX_PLACEHOLDER_LEN - 1, missing the split
@@ -2527,7 +2527,7 @@ entries:
 - case_id: tp_08_disclosure_ansi_box_inline_render
   status: gap
   domain: terminal_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Notice written as raw text without saving/restoring cursor position
   - ANSI box corrupts the cursor state of the Port 0 stream
@@ -2542,7 +2542,7 @@ entries:
 - case_id: tp_09_exec_stream_sublane_stdio_fidelity
   status: red
   domain: terminal_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - stdout/stderr compared as strings, missing CRLF vs LF byte transformations
   - Programmatic exec routed through a PTY, adding terminal escapes
@@ -2560,7 +2560,7 @@ entries:
 - case_id: tp_10_exec_slot_flag_alloc_pty_opt_in
   status: gap
   domain: terminal_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Command runs without a PTY while FLAG_ALLOC_PTY claims one was allocated
   - isatty(1) returns false in the guest task
@@ -2575,7 +2575,7 @@ entries:
 - case_id: vr_02_doorbell_mmio_eventfd_coherency
   status: gap
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - consumer polls the ring flags in a tight loop instead of blocking on eventfd
   - doorbell write returns Ok while the host eventfd count never increments
@@ -2591,7 +2591,7 @@ entries:
 - case_id: vr_03_virtio_rng_mandatory_entropy
   status: gap
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - entropy read asserted without getrandom(GRND_NONBLOCK) returning at early boot
   - host getrandom bytes passed off as guest virtio-rng output
@@ -2612,7 +2612,7 @@ entries:
 - case_id: vr_04_virtio_rng_profile_immutable
   status: red
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - profile with virtio_rng.enabled=false boots Ok
   - to_vm_config silently drops the devices section instead of rejecting
@@ -2627,7 +2627,7 @@ entries:
 - case_id: vr_05_virtio_blk_erofs_readonly_mount
   status: gap
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - ext4 read-write image mounted in place of immutable EROFS
   - guest write to / succeeds instead of failing with EROFS
@@ -2642,7 +2642,7 @@ entries:
 - case_id: vr_06_virtio_shm_doorbell_fence
   status: gap
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - SHM payload transferred with no Acquire/Release fence
   - guest reads a stale payload and the test only checks the final bytes
@@ -2659,7 +2659,7 @@ entries:
 - case_id: vr_07_virtio_shm_unmap_on_teardown
   status: red
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - VM killed without asserting munmap of the host backing fds
   - shared region still present in /proc/self/maps after teardown
@@ -2674,7 +2674,7 @@ entries:
 - case_id: vr_08_virtio_wdt_ping_cadence
   status: red
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - watchdog fired asserted without fired_at_ns and last active PID
   - set_watchdog Ok while no WatchdogDiagnostic is ever synthesized
@@ -2689,7 +2689,7 @@ entries:
 - case_id: vr_09_virtio_console_port0_pty_dedication
   status: red
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - programmatic commands routed over Port 0 instead of stream kind EXEC
   - console_port0_bytes > 0 while the test only checks exec exit code
@@ -2706,7 +2706,7 @@ entries:
 - case_id: vr_10_virtio_fs_fuse_req_channel
   status: gap
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - blocking syscalls issued inside FUSE request handlers
   - broker fds opened without O_NONBLOCK and the test only checks the reply
@@ -2718,12 +2718,12 @@ entries:
   - broker fd flags include O_NONBLOCK
   - FUSE request completes without blocking host I/O
   code_todos:
-  - crates/kelir-core/src/planes/storage/fuse_storage.rs
-  - crates/kelir-core/src/planes/storage/io_storage.rs
+  - crates/kelir-engine/src/planes/storage/fuse_storage.rs
+  - crates/kelir-engine/src/planes/storage/io_storage.rs
 - case_id: vr_11_virtio_net_smoltcp_frame_sink
   status: gap
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - physical host TAP interface created to pass the networking test
   - frame asserted delivered while no smoltcp socket ever receives it
@@ -2735,11 +2735,11 @@ entries:
   - host TAP interface count is 0 and smoltcp_active_sockets() is 1
   - Ethernet frame terminates in host process memory
   code_todos:
-  - crates/kelir-core/src/planes/wire/mod.rs
+  - crates/kelir-engine/src/planes/wire/mod.rs
 - case_id: vr_12_transport_af_vsock_fallback_parity
   status: red
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - wire framing headers altered for the AF_VSOCK fallback
   - vsock write returns Ok while the bytes on the wire differ from the SPSC bytes
@@ -2757,7 +2757,7 @@ entries:
 - case_id: vr_13_transport_named_pipe_windows_parity
   status: gap
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - backpressure ignored on Windows and excess frames dropped silently
   - sender keeps writing past a full pipe buffer
@@ -2773,7 +2773,7 @@ entries:
 - case_id: vr_14_host_interposer_latency_budget
   status: gap
   domain: virtio_rings
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - latency benchmark includes allocation overhead instead of native evaluation
   - evaluation slower than 2us reported as passing on an averaged sample
@@ -2788,7 +2788,7 @@ entries:
 - case_id: wp_02_synthetic_dns_nxdomain_enforcement
   status: red
   domain: wire_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - NXDOMAIN claimed while the query was actually forwarded upstream
   - Upstream ServFail returned instead of a locally synthesized NXDOMAIN
@@ -2800,11 +2800,11 @@ entries:
   - upstream_dns_packets_sent() == 0 and dns_response_rcode() == 3
   - dns_latency < 1ms for the synthetic answer
   code_todos:
-  - crates/kelir-core/src/planes/wire/mod.rs
+  - crates/kelir-engine/src/planes/wire/mod.rs
 - case_id: wp_03_rollback_socket_termination_econnreset
   status: red
   domain: wire_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Rollback completes while host-side session sockets stay open
   - Guest send() succeeds after rollback instead of ECONNRESET
@@ -2816,12 +2816,12 @@ entries:
   - guest_send_err.raw_os_error() == Some(libc::ECONNRESET)
   - host_active_session_sockets() == 0 after rollback
   code_todos:
-  - crates/kelir-core/src/planes/wire/mod.rs
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/planes/wire/mod.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
 - case_id: wp_04_userspace_netstack_unprivileged_dial
   status: gap
   domain: wire_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Outbound dial uses iptables/nftables or an elevated network namespace
   - Dial requires CAP_NET_ADMIN instead of a plain unprivileged host socket
@@ -2833,11 +2833,11 @@ entries:
   - cap_net_admin_effective() == false during the dial
   - Outbound connection completes over a plain unprivileged host socket
   code_todos:
-  - crates/kelir-core/src/planes/wire/mod.rs
+  - crates/kelir-engine/src/planes/wire/mod.rs
 - case_id: wp_09_dns_gateway_host_state_tracking
   status: gap
   domain: wire_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - resolv.conf rewritten but the active upstream still points at the old nameserver
   - Nameserver reload requires a VM restart
@@ -2849,11 +2849,11 @@ entries:
   - active_upstreams() == [10.0.0.2] after resolv.conf is rewritten
   - Reload happens without a VM restart
   code_todos:
-  - crates/kelir-core/src/planes/wire/mod.rs
+  - crates/kelir-engine/src/planes/wire/mod.rs
 - case_id: wp_11_socks5h_synthetic_pool_allocation
   status: gap
   domain: wire_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Domain resolved locally via getaddrinfo before connecting to the SOCKS proxy
   - External DNS query leaks the target domain outside the proxy
@@ -2868,7 +2868,7 @@ entries:
 - case_id: wp_12_l4_diversion_passthrough_tls
   status: red
   domain: wire_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Supervisor terminates TLS with a custom CA, becoming a MITM
   - Plaintext HTTP strings from the TLS session present in supervisor memory
@@ -2880,11 +2880,11 @@ entries:
   - supervisor_contains_plaintext('GET /secret') == false
   - guest_verified_peer_tls() == true with bytes passed through unmodified
   code_todos:
-  - crates/kelir-core/src/planes/wire/mod.rs
+  - crates/kelir-engine/src/planes/wire/mod.rs
 - case_id: wp_13_upstream_dial_proxy_chain_auth
   status: gap
   domain: wire_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - HTTP_PROXY credentials injected into guest environment variables
   - Guest performs the CONNECT handshake instead of the host netstack
@@ -2925,7 +2925,7 @@ code_only:
   - Non-canonical kernel panic signatures map to the panic exit kind
   - UART scrape covers the full panic signature set
   code_todos:
-  - crates/kelir-core/src/uart_terminal.rs
+  - crates/kelir-engine/src/uart_terminal.rs
   - crates/kelir-plugin-cli/src/attest_cli.rs
   - packages/py/kelir/generated/attest_telemetry.py
   - packages/py/kelir/model_plugin.py
@@ -3016,9 +3016,9 @@ code_only:
   code_todos:
   - crates/kelir-bindings/napi/src/lib.rs
   - crates/kelir-bindings/pyo3/src/lib.rs
-  - crates/kelir-core/src/lib.rs
-  - crates/kelir-core/src/planes/host/mod.rs
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/lib.rs
+  - crates/kelir-engine/src/planes/host/mod.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-drivers/driver-bwrap/src/lib.rs
   - crates/kelir-drivers/driver-proot/src/lib.rs
   - crates/kelir-integration/src/lib.rs
@@ -3041,8 +3041,8 @@ code_only:
   code_todos:
   - crates/kelir-bindings/napi/src/lib.rs
   - crates/kelir-bindings/pyo3/src/lib.rs
-  - crates/kelir-core/src/planes/checkpoint/mod.rs
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/planes/checkpoint/mod.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-interface/src/driver_interface.rs
   - packages/py/kelir/__init__.py
   - packages/py/kelir/lifecycle_session.py
@@ -3060,9 +3060,9 @@ code_only:
   - Out-of-scope dispatch returns the scope denial at dispatch time
   - In-flight exec count returns to zero after every exec completes
   code_todos:
-  - crates/kelir-core/src/dispatch_plugin/mod.rs
-  - crates/kelir-core/src/session_lifecycle.rs
-  - crates/kelir-core/src/trap_gate.rs
+  - crates/kelir-engine/src/dispatch_plugin/mod.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
+  - crates/kelir-engine/src/trap_gate.rs
   - crates/kelir-integration/src/lib.rs
   - crates/kelir-interface/src/error_envelope.rs
   - crates/kelir-interface/src/handlers_plugin.rs
@@ -3126,7 +3126,7 @@ code_only:
   - crates/kelir-plugins/plugin-transaction/src/service_transaction.rs
   - packages/py/kelir/service_caps.py
 - domain: storage_plane
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - GETATTR stat merges only one layer, reporting wrong sizes for overlaid files
   - Open escapes the workspace root because openat2 RESOLVE_BENEATH is never used
@@ -3139,19 +3139,19 @@ code_only:
   - Open outside the root fails and undeclared paths deny with EPERM
   code_todos:
   - crates/kelir-catalog/src/lib.rs
-  - crates/kelir-core/src/planes/storage/fuse_storage.rs
-  - crates/kelir-core/src/planes/storage/io_storage.rs
-  - crates/kelir-core/src/planes/storage/lock_broker.rs
-  - crates/kelir-core/src/planes/storage/mod.rs
-  - crates/kelir-core/src/planes/storage/storage_reconciler.rs
-  - crates/kelir-core/src/session_lifecycle.rs
+  - crates/kelir-engine/src/planes/storage/fuse_storage.rs
+  - crates/kelir-engine/src/planes/storage/io_storage.rs
+  - crates/kelir-engine/src/planes/storage/lock_broker.rs
+  - crates/kelir-engine/src/planes/storage/mod.rs
+  - crates/kelir-engine/src/planes/storage/storage_reconciler.rs
+  - crates/kelir-engine/src/session_lifecycle.rs
   - crates/kelir-interface/src/handles_lifecycle.rs
   - crates/kelir/src/builder_sdk.rs
   - packages/py/kelir/__init__.py
   - packages/py/kelir/model_plugin.py
   - packages/py/kelir/service_caps.py
 - domain: supply_chain_security
-  target_crate: crates/kelir-core
+  target_crate: crates/kelir-engine
   slop_risks:
   - Gate-1 BPF program never loaded, so the allowlist is unenforced
   - Trap passes without a BPF match deciding Skip
@@ -3163,7 +3163,7 @@ code_only:
   - Gate-1 BPF program loaded before any trap is evaluated
   - Non-allowlisted binary/argv yields Skip from the BPF match
   code_todos:
-  - crates/kelir-core/src/trap_gate.rs
+  - crates/kelir-engine/src/trap_gate.rs
   - crates/kelir-plugin-cli/src/fixtures_cli.rs
   - crates/kelir-plugins/plugin-supply-chain/src/lib.rs
 - domain: telemetry_audit
@@ -3179,7 +3179,7 @@ code_only:
   - Memory-pressure event carries a TrampolineRing tag across the fused crossing
   - Per-ring telemetry counts match the dispatched crossings
   code_todos:
-  - crates/kelir-core/src/dispatch_plugin/lifecycle_dispatch.rs
+  - crates/kelir-engine/src/dispatch_plugin/lifecycle_dispatch.rs
   - crates/kelir-plugins/plugin-ledger/src/lib.rs
   - crates/kelir-plugins/plugin-ledger/src/wal_ledger.rs
   - packages/py/kelir/model_plugin.py
@@ -3199,7 +3199,7 @@ code_only:
   code_todos:
   - crates/kelir-bindings/napi/src/lib.rs
   - crates/kelir-bindings/pyo3/src/lib.rs
-  - crates/kelir-core/src/planes/terminal/mod.rs
+  - crates/kelir-engine/src/planes/terminal/mod.rs
   - crates/kelir-interface/src/handles_lifecycle.rs
   - crates/kelir-plugin-cli/src/logs_cli.rs
   - crates/kelir/src/planes/terminal_plane.rs
@@ -3232,7 +3232,7 @@ code_only:
   code_todos:
   - crates/kelir-bindings/napi/src/lib.rs
   - crates/kelir-bindings/pyo3/src/lib.rs
-  - crates/kelir-core/src/planes/wire/mod.rs
+  - crates/kelir-engine/src/planes/wire/mod.rs
   - crates/kelir-interface/src/vsock_mesh.rs
   - crates/kelir-plugins/plugin-wire-ingress/src/lib.rs
   - crates/kelir/src/builder_sdk.rs

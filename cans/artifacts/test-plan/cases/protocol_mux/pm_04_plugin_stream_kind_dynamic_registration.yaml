@@ -3,7 +3,7 @@ case_id: "pm_04_plugin_stream_kind_dynamic_registration"
 title: "Plugins dynamically register stream kinds in range 0x0010-0x7FFF at builder setup"
 domain: "protocol_mux"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "pm_08_exec_flow_control_input_stall"
 title: "Host consumer buffer backpressure triggers POSIX input_stall on guest producer fd without frame loss"
 domain: "protocol_mux"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

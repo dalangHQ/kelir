@@ -3,7 +3,7 @@ case_id: "lc_02_suspend_zero_rss_purge"
 title: "session.suspend() flushes compressed memory pages to disk; host RSS drops to 0MB in <50ms"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

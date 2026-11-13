@@ -3,7 +3,7 @@ case_id: "pm_01_control_channel_0_lifecycle_priority"
 title: "Channel 0x0000 delivers lifecycle and signal frames without blocking behind saturated stream mux rings"
 domain: "protocol_mux"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

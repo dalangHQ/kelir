@@ -3,7 +3,7 @@ case_id: "vr_12_transport_af_vsock_fallback_parity"
 title: "AF_VSOCK transport fallback produces byte-for-byte identical framing to in-memory SPSC rings"
 domain: "virtio_rings"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

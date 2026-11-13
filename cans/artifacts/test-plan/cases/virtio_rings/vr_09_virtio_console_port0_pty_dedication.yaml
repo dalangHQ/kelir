@@ -3,7 +3,7 @@ case_id: "vr_09_virtio_console_port0_pty_dedication"
 title: "virtio-console Port 0 is reserved exclusively for interactive human break-glass PTY character stream"
 domain: "virtio_rings"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

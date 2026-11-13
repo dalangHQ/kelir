@@ -10,7 +10,7 @@
 │ virtio-console Ring Buffer (Hardware Shared Memory)                         │
 │   │ Zero-copy virtqueue streaming to Host Physical Memory                   │
 │   ▼                                                                         │
-│ HOST SUPERVISOR (kelir-core Console Plane)                                  │
+│ HOST SUPERVISOR (kelir-engine Console Plane)                                  │
 │   │                                                                         │
 │   ├── Port Multiplexer ─────────► Routes port IDs to discrete dispatchers   │
 │   ├── Interceptor Pipeline ─────► Synchronous ConsoleInterposer execution   │

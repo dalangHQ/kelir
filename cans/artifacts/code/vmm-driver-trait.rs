@@ -110,7 +110,7 @@ pub struct GuestClock {
 
 ///
 /// Compile-time tripwire: Any field added to SnapshotDescriptor mandates
-/// immediate explicit serialization mapping in kelir-core and kelir-catalog;
+/// immediate explicit serialization mapping in kelir-engine and kelir-catalog;
 /// silent field omission fails the workspace exhaustiveness assert.
 #[derive(Debug, Clone)]
 pub struct SnapshotDescriptor {

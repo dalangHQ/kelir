@@ -3,7 +3,7 @@ case_id: "lc_17_zombie_reaper_pid1_adoption"
 title: "kelir-shim PID 1 reaps adopted orphan processes via non-blocking waitpid loop, preventing PID exhaustion"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "wp_04_userspace_netstack_unprivileged_dial"
 title: "Outbound guest TCP connections translate to unprivileged host socket dials without CAP_NET_ADMIN"
 domain: "wire_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "any"

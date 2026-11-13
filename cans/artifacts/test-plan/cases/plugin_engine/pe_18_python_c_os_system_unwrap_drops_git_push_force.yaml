@@ -3,7 +3,7 @@ case_id: "pe_18_python_c_os_system_unwrap_drops_git_push_force"
 title: "Trap for python -c os.system('git push --force') resolves through the interpreter payload to git push and Drops with EPERM"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

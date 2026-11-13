@@ -3,7 +3,7 @@ case_id: "tp_12_stream_replay_client_reconnect_resume"
 title: "Reissuing opaque 64-bit cursor resumes streaming tail with zero dropped or duplicate chunks"
 domain: "terminal_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

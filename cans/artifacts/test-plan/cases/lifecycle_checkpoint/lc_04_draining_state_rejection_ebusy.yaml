@@ -3,7 +3,7 @@ case_id: "lc_04_draining_state_rejection_ebusy"
 title: "MicroVM in Draining state rejects new command execution requests synchronously with EBUSY"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/08-lifecycle.md#State-machine"
-  statement: "In Draining: new exec and tool calls are refused with EBUSY; in-flight commands run to completion. Gap: Session::drain is a TODO (L3) in crates/kelir-core/src/session_lifecycle.rs; the EBUSY refusal is specified against cans/08-lifecycle.md#State-machine, not a live drain path."
+  statement: "In Draining: new exec and tool calls are refused with EBUSY; in-flight commands run to completion. Gap: Session::drain is a TODO (L3) in crates/kelir-engine/src/session_lifecycle.rs; the EBUSY refusal is specified against cans/08-lifecycle.md#State-machine, not a live drain path."
   blast_radius_if_breached: "New workloads spawn during shutdown flush, causing partial work truncation or data loss."
 
 confusion_matrix:

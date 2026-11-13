@@ -3,7 +3,7 @@ case_id: "tp_14_window_resize_exec_control_propagation"
 title: "Terminal window resize payload rides EXEC control sub-lane 0x03, updating in-guest winsize instantly"
 domain: "terminal_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

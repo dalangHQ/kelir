@@ -3,7 +3,7 @@ case_id: "sp_17_secondary_image_graft_readonly"
 title: "Secondary read-only EROFS/SquashFS package image grafts into guest VFS namespace without PCI hot-plug"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

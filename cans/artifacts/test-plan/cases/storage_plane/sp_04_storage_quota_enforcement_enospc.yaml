@@ -3,7 +3,7 @@ case_id: "sp_04_storage_quota_enforcement_enospc"
 title: "Guest write exceeding allocated_bytes budget fails synchronously with ENOSPC; zero host disk leak"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

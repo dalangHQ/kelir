@@ -3,7 +3,7 @@ case_id: "hd_06_hvf_stage2_chunk_promoter"
 title: "macOS HVF resolves Stage-2 translation faults via 2MB chunked promoter using Mach vm_copy"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "macos"
   arch: "aarch64"

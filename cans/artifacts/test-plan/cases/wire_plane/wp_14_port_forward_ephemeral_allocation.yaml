@@ -3,7 +3,7 @@ case_id: "wp_14_port_forward_ephemeral_allocation"
 title: "session.wire.forward_port with host_port=0 allocates ephemeral host port and returns bound port u16"
 domain: "wire_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Port-forwarding"
-  statement: "host_port = 0 binds ephemeral port 0; bound port returned immediately; zero collision probability. GAP: WirePlane::forward_port (crates/kelir-core/src/planes/wire/mod.rs) is a stub that echoes the requested port (Ok(host_port.unwrap_or(guest_port))) with a TODO to bind a host socket, so no real ephemeral allocation happens yet and the >1024 assertion fails against the live tree."
+  statement: "host_port = 0 binds ephemeral port 0; bound port returned immediately; zero collision probability. GAP: WirePlane::forward_port (crates/kelir-engine/src/planes/wire/mod.rs) is a stub that echoes the requested port (Ok(host_port.unwrap_or(guest_port))) with a TODO to bind a host socket, so no real ephemeral allocation happens yet and the >1024 assertion fails against the live tree."
   blast_radius_if_breached: "Parallel test suites conflict on hardcoded host listening ports."
 
 confusion_matrix:

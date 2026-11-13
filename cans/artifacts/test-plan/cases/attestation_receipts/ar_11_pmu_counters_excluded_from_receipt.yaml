@@ -3,7 +3,7 @@ case_id: "ar_11_pmu_counters_excluded_from_receipt"
 title: "Hardware PMU counter samples emit exclusively as OTel gauges and never enter ExecutionReceipt identity"
 domain: "attestation_receipts"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

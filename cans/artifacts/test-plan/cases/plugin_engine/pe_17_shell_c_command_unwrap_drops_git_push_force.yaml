@@ -3,7 +3,7 @@ case_id: "pe_17_shell_c_command_unwrap_drops_git_push_force"
 title: "Trap for bash -c 'git push --force' resolves through the shell payload to git push and Drops with EPERM"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

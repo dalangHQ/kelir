@@ -2,7 +2,7 @@
   - Storage architecture
     - Storage plane attributes
       - see: artifacts/diagrams/storage-architecture.txt
-      - Owner: kelir-core native storage subsystem (kelir-core::storage)
+      - Owner: kelir-engine native storage subsystem (kelir-engine::storage)
       - DAX window lifecycle governed by boot config, not plugin state
       - DAX window is not a stream kind; it is a host-side memory mapping
     - Single storage abstraction

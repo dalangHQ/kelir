@@ -3,7 +3,7 @@ case_id: "ar_12_session_attestation_token_injection"
 title: "Hypervisor injects signed session attestation token via paravirtual configuration device before vCPU start"
 domain: "attestation_receipts"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

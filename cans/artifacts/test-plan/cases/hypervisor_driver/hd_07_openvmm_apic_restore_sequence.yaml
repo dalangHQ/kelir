@@ -3,7 +3,7 @@ case_id: "hd_07_openvmm_apic_restore_sequence"
 title: "Windows WHP backend commits Local APIC state before restoring TSC deadline MSRs"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "windows"
   arch: "x86_64"

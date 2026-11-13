@@ -3,7 +3,7 @@ case_id: "lc_03_step_evaluation_taint_rollback"
 title: "StepEvaluator flags unapproved write in tainted state; triggers rollback and reverts RAM in <8ms"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

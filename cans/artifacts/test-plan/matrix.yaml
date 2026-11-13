@@ -34,11 +34,11 @@ confusion_matrix:
 tier_taxonomy:
   tier_1_unit:
     scope: "Pure functions in native memory: AST/schema parser, MountScope intersection, frame encoders/decoders, CBOR decoders, radix layer compiler; zero FFI, zero hypervisor calls."
-    location: "crates/kelir-interface/tests/, crates/kelir-core/tests/"
+    location: "crates/kelir-interface/tests/, crates/kelir-engine/tests/"
     hardware_required: false
   tier_2_integration:
     scope: "In-process engine tests using real drivers: driver-rustvmm (KVM) or driver-hvf (HVF); real SPSC shared-memory rings, real VirtIO-FS/FUSE broker mounts, smoltcp packet handling, local Unix sockets."
-    location: "crates/kelir-core/tests/, crates/kelir-plugins/*/tests/, crates/kelir-drivers/*/tests/"
+    location: "crates/kelir-engine/tests/, crates/kelir-plugins/*/tests/, crates/kelir-drivers/*/tests/"
     hardware_required: true
   tier_3_e2e:
     scope: "Black-box SDK driver verification across languages (Rust, TS/NAPI, Python/PyO3), external binary adapters (kelir-pack, mcp-server), and full agent loop replays against pre-compiled EROFS images."

@@ -3,7 +3,7 @@ case_id: "hd_11_cpuid_tsc_deadline_normalization"
 title: "CPUID synthetic filter normalizes AMD and Hygon vendor masks to canonical KVM profile with TSC-deadline"
 domain: "hypervisor_driver"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "x86_64"

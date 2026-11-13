@@ -3,7 +3,7 @@ case_id: "pe_09_panic_quarantine_catch_unwind_efault"
 title: "Panicking foreign plugin hook is caught at engine perimeter and converted to Verdict::Drop with EFAULT"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

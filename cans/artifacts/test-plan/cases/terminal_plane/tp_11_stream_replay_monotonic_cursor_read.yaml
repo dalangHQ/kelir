@@ -3,7 +3,7 @@ case_id: "tp_11_stream_replay_monotonic_cursor_read"
 title: "session.terminal.read_from(port, cursor) re-reads exact byte sequence idempotently across restarts"
 domain: "terminal_plane"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

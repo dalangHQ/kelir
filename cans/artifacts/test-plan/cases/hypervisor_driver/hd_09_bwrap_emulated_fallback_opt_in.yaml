@@ -3,7 +3,7 @@ case_id: "hd_09_bwrap_emulated_fallback_opt_in"
 title: "driver-bwrap boots successfully only when allow_emulated_fallback is explicitly set to true"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "x86_64"

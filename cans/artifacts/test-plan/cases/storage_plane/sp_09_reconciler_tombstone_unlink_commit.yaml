@@ -3,7 +3,7 @@ case_id: "sp_09_reconciler_tombstone_unlink_commit"
 title: "Storage reconciler replays recorded tombstones to unlink deleted files from host base workspace"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Workspace-commit"
-  statement: "Deletes unlink in place; new dirs create in place during reconcile. Gap: Reconciler::commit is a TODO (L3) in crates/kelir-core/src/planes/storage/storage_reconciler.rs; the tombstone commit is specified against cans/05-storage-plane.md#Workspace-commit, not a live commit path."
+  statement: "Deletes unlink in place; new dirs create in place during reconcile. Gap: Reconciler::commit is a TODO (L3) in crates/kelir-engine/src/planes/storage/storage_reconciler.rs; the tombstone commit is specified against cans/05-storage-plane.md#Workspace-commit, not a live commit path."
   blast_radius_if_breached: "Files unlinked in guest remain on host disk after commit."
 
 confusion_matrix:

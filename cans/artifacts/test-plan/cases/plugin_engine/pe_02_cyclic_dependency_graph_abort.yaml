@@ -3,7 +3,7 @@ case_id: "pe_02_cyclic_dependency_graph_abort"
 title: "Cyclic crate dependencies in plugin registration graph abort microVM compilation with EConfig"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

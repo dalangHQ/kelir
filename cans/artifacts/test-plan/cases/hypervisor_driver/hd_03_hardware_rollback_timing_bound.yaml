@@ -3,7 +3,7 @@ case_id: "hd_03_hardware_rollback_timing_bound"
 title: "Driver rollback resets physical RAM and vCPU registers strictly within the 8ms bound"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

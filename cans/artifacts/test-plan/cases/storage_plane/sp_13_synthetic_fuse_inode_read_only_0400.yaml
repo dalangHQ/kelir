@@ -3,7 +3,7 @@ case_id: "sp_13_synthetic_fuse_inode_read_only_0400"
 title: "Synthetic FUSE inodes for configuration files (.env) are served from RAM with mode 0o400 strictly"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

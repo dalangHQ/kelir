@@ -3,7 +3,7 @@ case_id: "wp_13_upstream_dial_proxy_chain_auth"
 title: "Upstream dial transport routes TCP connections through authenticated corporate proxy chains"
 domain: "wire_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/07-wire-plane.md#Upstream-dial-transport-Dial-policy"
-  statement: "Corporate egress works without guest cooperation; host netstack performs upstream handshake and splices bytes. GAP: no upstream proxy-chain dial exists in WirePlane — zero proxy/CONNECT hits in crates/kelir-core/src/planes/wire/mod.rs — so the authenticated CONNECT handshake is asserted as the spec-required behavior (cans/07-wire-plane.md)."
+  statement: "Corporate egress works without guest cooperation; host netstack performs upstream handshake and splices bytes. GAP: no upstream proxy-chain dial exists in WirePlane — zero proxy/CONNECT hits in crates/kelir-engine/src/planes/wire/mod.rs — so the authenticated CONNECT handshake is asserted as the spec-required behavior (cans/07-wire-plane.md)."
   blast_radius_if_breached: "Corporate proxies block agent workloads due to missing credentials, or credentials leak to guest env."
 
 confusion_matrix:

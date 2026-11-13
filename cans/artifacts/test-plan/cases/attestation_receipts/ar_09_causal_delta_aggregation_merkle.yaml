@@ -3,7 +3,7 @@ case_id: "ar_09_causal_delta_aggregation_merkle"
 title: "CausalDelta aggregates net filesystem diffs, dirty bytes, and process tree edges between checkpoints"
 domain: "attestation_receipts"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

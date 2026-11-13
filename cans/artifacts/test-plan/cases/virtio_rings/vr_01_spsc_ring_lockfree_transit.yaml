@@ -3,7 +3,7 @@ case_id: "vr_01_spsc_ring_lockfree_transit"
 title: "Lock-free SPSC shared-memory ring sustains duplex transit with zero atomic lock contention"
 domain: "virtio_rings"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

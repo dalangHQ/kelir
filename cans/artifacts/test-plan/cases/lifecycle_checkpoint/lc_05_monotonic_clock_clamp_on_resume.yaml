@@ -3,7 +3,7 @@ case_id: "lc_05_monotonic_clock_clamp_on_resume"
 title: "Resumed microVM clamps CLOCK_MONOTONIC to max(current, snapshot), guaranteeing monotonic forward progress"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

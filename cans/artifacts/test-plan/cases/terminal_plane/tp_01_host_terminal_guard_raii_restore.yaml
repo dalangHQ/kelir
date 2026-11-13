@@ -3,7 +3,7 @@ case_id: "tp_01_host_terminal_guard_raii_restore"
 title: "HostTerminalGuard restores host termios attributes via tcsetattr(TCSAFLUSH) on drop or panic"
 domain: "terminal_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "ta_08_zero_allocation_metric_registry"
 title: "Core metric registry updates counters and gauges in atomic memory with zero heap allocation"
 domain: "telemetry_audit"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

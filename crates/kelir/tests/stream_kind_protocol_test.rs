@@ -92,14 +92,14 @@ impl kelir::interface::plugin_model::StreamFrameSink for ContractSink {
 // see: cans/11-protocol.md#Kind-registration
 #[test]
 fn engine_stream_kind_services_bind_canonical_sink() -> Result<(), String> {
-    let mut engine = kelir_core::dispatch_plugin::PipelineEngine::new();
+    let mut engine = kelir_engine::dispatch_plugin::PipelineEngine::new();
     engine.register_stream_kind(
         kelir::interface::protocol_wire::StreamKind::Bulk,
         std::sync::Arc::new(ContractSink),
     );
     let services = engine.stream_kind_services();
     assert_eq!(services.len(), 1);
-    let mut bus = kelir_core::bus::OwnedBusDispatcher::new(1024, 1024);
+    let mut bus = kelir_engine::bus::OwnedBusDispatcher::new(1024, 1024);
     for (kind, sink) in services {
         bus.dispatcher()
             .bind_stream_sink(kind, sink)

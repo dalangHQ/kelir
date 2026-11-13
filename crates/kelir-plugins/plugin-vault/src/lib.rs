@@ -32,7 +32,7 @@ const METADATA_MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_CONCURRENT_METADATA_SESSIONS: usize = 64;
 
 // see: cans/07-wire-plane.md#Pre-policy-drop-zones
-// TODO (L3) [governance_vault]: pin this constant against the kelir-core vsock transport host-bridge identity; slop: CID constant unpinned, bridge identity drifts, wrong peer served
+// TODO (L3) [governance_vault]: pin this constant against the kelir-engine vsock transport host-bridge identity; slop: CID constant unpinned, bridge identity drifts, wrong peer served
 pub const WIRE_PLANE_BRIDGE_CID: u32 = 2;
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service

@@ -27,7 +27,7 @@ fn pe_01_downward_only_tier_dependency_lint() -> Result<(), String> {
     make_dir(&mcp_src)?;
     let ledger_src = plugins.join("plugin-ledger/src");
     make_dir(&ledger_src)?;
-    make_dir(&root.join("crates/kelir-core/src"))?;
+    make_dir(&root.join("crates/kelir-engine/src"))?;
     make_dir(&root.join("crates/kelir-drivers"))?;
     write_text(
         &plugins.join("plugin-mcp/Cargo.toml"),

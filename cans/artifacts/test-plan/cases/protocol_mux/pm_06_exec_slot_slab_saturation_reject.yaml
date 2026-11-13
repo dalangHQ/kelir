@@ -3,7 +3,7 @@ case_id: "pm_06_exec_slot_slab_saturation_reject"
 title: "Saturating ExecSlot slab allocator causes shim to return MSG_EXEC_REJECT{ENOMEM} without PID 1 crash"
 domain: "protocol_mux"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

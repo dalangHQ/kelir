@@ -3,7 +3,7 @@ case_id: "ar_05_erofs_trusted_prefix_fast_path"
 title: "Executables rooted in EROFS trusted prefixes (/usr/bin) resolve pre-computed BLAKE3 in host RAM in O(1)"
 domain: "attestation_receipts"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

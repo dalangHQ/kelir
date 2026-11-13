@@ -17,8 +17,8 @@ pub mod storage_bridge;
 use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, attach_runs, convert_descriptor};
 use storage_bridge::storage_config;
 
-use kelir_core::Session;
-use kelir_core::planes::storage::storage_reconciler::FsReconcileRequest;
+use kelir_engine::Session;
+use kelir_engine::planes::storage::storage_reconciler::FsReconcileRequest;
 use kelir_interface::driver_interface::{
     ExternalSuspendKind, GuestClock, SnapshotDescriptor, SuspendReason, VmConfig, default_vm_config,
 };
@@ -904,11 +904,11 @@ impl Default for NativeKelirBuilder {
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 impl NativeKelirBuilder {
     // TODO (L3) [bindings_ts]: token-shield clamps, prompt rules, snoop callbacks, and mtls injection ride threadsafe functions into the planes.; slop: plane wiring drops clamps, snoop, mtls
-    fn plane_wiring(&self) -> Result<kelir_core::session_lifecycle::PlaneWiring> {
+    fn plane_wiring(&self) -> Result<kelir_engine::session_lifecycle::PlaneWiring> {
         let terminal =
             self.terminal_cfg
                 .as_ref()
-                .map(|cfg| kelir_core::planes::terminal::TerminalWiring {
+                .map(|cfg| kelir_engine::planes::terminal::TerminalWiring {
                     cols: cfg.cols.unwrap_or(80),
                     rows: cfg.rows.unwrap_or(24),
                     drop_osc52: cfg.drop_osc52.unwrap_or(false),
@@ -919,7 +919,7 @@ impl NativeKelirBuilder {
         let wire = self
             .wire_cfg
             .as_ref()
-            .map(|cfg| kelir_core::planes::wire::WireWiring {
+            .map(|cfg| kelir_engine::planes::wire::WireWiring {
                 sinkhole_allowlist: cfg.sinkhole_dns_except.clone().unwrap_or_default(),
                 sinkhole_drop_all: cfg.sinkhole_drop_all.unwrap_or(false),
                 ssh_agent_bridge: cfg.ssh_agent_bridge.unwrap_or(false),
@@ -947,9 +947,9 @@ impl NativeKelirBuilder {
             });
         let storage = match &self.storage_cfg {
             Some(cfg) => storage_config(cfg)?,
-            None => kelir_core::planes::storage::StorageConfig::default(),
+            None => kelir_engine::planes::storage::StorageConfig::default(),
         };
-        Ok(kelir_core::session_lifecycle::PlaneWiring {
+        Ok(kelir_engine::session_lifecycle::PlaneWiring {
             terminal,
             wire,
             storage,

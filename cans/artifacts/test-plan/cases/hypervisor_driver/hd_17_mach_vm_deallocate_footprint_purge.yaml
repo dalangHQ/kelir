@@ -3,7 +3,7 @@ case_id: "hd_17_mach_vm_deallocate_footprint_purge"
 title: "macOS balloon reclaim unmaps Stage-2 pages and calls mach_vm_deallocate to reduce physical wired RSS"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "macos"
   arch: "aarch64"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/01-architecture.md#Host-memory-pressure-watcher"
-  statement: "macOS madvise-alone is banned; mach_vm_deallocate purges host wired footprints. GAP: no mach_deallocate_called probe exists on any driver; mach_vm_deallocate is named only in spec (cans/01-architecture.md) and the host-plane reclaim TODO (crates/kelir-core/src/planes/host/mod.rs), so the purge is asserted via the host wired-RSS drop only."
+  statement: "macOS madvise-alone is banned; mach_vm_deallocate purges host wired footprints. GAP: no mach_deallocate_called probe exists on any driver; mach_vm_deallocate is named only in spec (cans/01-architecture.md) and the host-plane reclaim TODO (crates/kelir-engine/src/planes/host/mod.rs), so the purge is asserted via the host wired-RSS drop only."
   blast_radius_if_breached: "macOS host wired memory stays pinned indefinitely, starving host applications."
 
 confusion_matrix:

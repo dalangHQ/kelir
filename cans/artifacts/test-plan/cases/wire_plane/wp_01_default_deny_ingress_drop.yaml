@@ -3,7 +3,7 @@ case_id: "wp_01_default_deny_ingress_drop"
 title: "Non-TCP frames (ICMP, raw sockets, unencapsulated UDP) dropped at virtio-net ingress ring"
 domain: "wire_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "tp_03_ansi_sanitizer_osc52_clipboard_drop"
 title: "ANSI sanitizer drops OSC 52 clipboard hijacking escape sequences from terminal character stream"
 domain: "terminal_plane"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/04-terminal-plane.md#Host-filter-pipeline-execution-order"
-  statement: "ANSI strip drops OSC 52 (clipboard hijack) sequences before forwarding chunks to host terminal. GAP: no sanitize_output surface exists — the real function is the private filter_ansi_shadow in crates/kelir-core/src/planes/terminal/mod.rs, currently an identity stub with a TODO (L3) — so the strip is asserted as the spec-required behavior."
+  statement: "ANSI strip drops OSC 52 (clipboard hijack) sequences before forwarding chunks to host terminal. GAP: no sanitize_output surface exists — the real function is the private filter_ansi_shadow in crates/kelir-engine/src/planes/terminal/mod.rs, currently an identity stub with a TODO (L3) — so the strip is asserted as the spec-required behavior."
   blast_radius_if_breached: "Malicious workload output overwrites the host operator's desktop clipboard."
 
 confusion_matrix:

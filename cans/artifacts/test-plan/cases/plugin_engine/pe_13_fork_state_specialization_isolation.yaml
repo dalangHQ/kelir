@@ -3,7 +3,7 @@ case_id: "pe_13_fork_state_specialization_isolation"
 title: "fork_state() specializes child plugin state independently without altering parent session memory"
 domain: "plugin_engine"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

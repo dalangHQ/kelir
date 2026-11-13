@@ -5,11 +5,17 @@ use std::path::{Path, PathBuf};
 
 const RULES: &[(&str, &[&str])] = &[
     (
-        "crates/kelir-core/src",
+        "crates/kelir-engine/src",
         &["kelir_plugins::", "kelir_drivers::", "kelir_adapters::"],
     ),
-    ("crates/kelir-plugins", &["kelir_core::", "kelir_drivers::"]),
-    ("crates/kelir-drivers", &["kelir_plugins::", "kelir_core::"]),
+    (
+        "crates/kelir-plugins",
+        &["kelir_engine::", "kelir_drivers::"],
+    ),
+    (
+        "crates/kelir-drivers",
+        &["kelir_plugins::", "kelir_engine::"],
+    ),
 ];
 
 pub fn check() -> Result<(), CliError> {

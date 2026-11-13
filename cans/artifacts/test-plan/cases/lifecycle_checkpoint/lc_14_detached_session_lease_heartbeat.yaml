@@ -3,7 +3,7 @@ case_id: "lc_14_detached_session_lease_heartbeat"
 title: "Detached runner child updates SQLite catalog expires_at lease timestamp every 30 seconds"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "hd_02_wx_mmu_prot_exec_trap"
 title: "Guest anonymous mmap with PROT_EXEC or memfd_create traps at Stage-2 MMU and halts with E_WX_VIOLATION"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

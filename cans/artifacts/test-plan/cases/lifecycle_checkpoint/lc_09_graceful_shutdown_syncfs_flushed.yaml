@@ -3,7 +3,7 @@ case_id: "lc_09_graceful_shutdown_syncfs_flushed"
 title: "Graceful stop issues MSG_SHUTDOWN_REQUEST, triggering guest syncfs(2) and SIGTERM child process reap"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

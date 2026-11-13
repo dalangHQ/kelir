@@ -3,7 +3,7 @@ case_id: "vr_05_virtio_blk_erofs_readonly_mount"
 title: "virtio-blk exposes immutable EROFS rootfs block device, cold-mounted by guest in under 2ms"
 domain: "virtio_rings"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

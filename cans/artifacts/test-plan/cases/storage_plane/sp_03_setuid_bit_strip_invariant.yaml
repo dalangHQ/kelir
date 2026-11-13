@@ -3,7 +3,7 @@ case_id: "sp_03_setuid_bit_strip_invariant"
 title: "Guest chmod 4755 strips S_ISUID and S_ISGID unconditionally; host file receives mode & !0o6000"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

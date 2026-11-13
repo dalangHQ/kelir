@@ -3,7 +3,7 @@ case_id: "hd_08_avf_pkvm_boundary_enforcement"
 title: "Android /dev/avf backend rejects non-donated memory access via protected KVM boundary"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "android"
   arch: "aarch64"

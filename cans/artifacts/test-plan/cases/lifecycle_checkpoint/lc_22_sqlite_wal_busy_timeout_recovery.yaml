@@ -3,7 +3,7 @@ case_id: "lc_22_sqlite_wal_busy_timeout_recovery"
 title: "A concurrent catalog writer blocked on a SQLite WAL lock recovers within the 5000 ms busy timeout instead of surfacing SQLITE_BUSY"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

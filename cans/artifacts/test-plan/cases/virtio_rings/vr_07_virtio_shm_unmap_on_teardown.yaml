@@ -3,7 +3,7 @@ case_id: "vr_07_virtio_shm_unmap_on_teardown"
 title: "Shared memory segments mapped via virtio-shm unmap completely upon session termination"
 domain: "virtio_rings"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

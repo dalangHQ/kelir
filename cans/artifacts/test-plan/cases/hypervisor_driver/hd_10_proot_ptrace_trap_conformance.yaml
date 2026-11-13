@@ -3,7 +3,7 @@ case_id: "hd_10_proot_ptrace_trap_conformance"
 title: "driver-proot intercepts syscalls under Termux without elevated Linux namespace privileges"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "android"
   arch: "any"

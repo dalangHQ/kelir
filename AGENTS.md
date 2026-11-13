@@ -104,6 +104,6 @@ Numbered as supplied, renumbered where the source duplicated 3. On conflict, the
 
 ## 7. Repo map
 
-- `crates/kelir-interface/` — L1 contract SSOT. `crates/kelir-core/` — engine, planes, dispatch. `crates/kelir-transport/`, `crates/kelir-shim/` — unsafe enclaves.
+- `crates/kelir-interface/` — L1 contract SSOT. `crates/kelir-engine/` — engine, planes, dispatch. `crates/kelir-transport/`, `crates/kelir-shim/` — unsafe enclaves.
 - `crates/kelir-plugins/` — 13 community plugin crates. `crates/kelir-catalog/`, `crates/kelir-otlp/`, `crates/kelir-adapters/`, `crates/kelir-bindings/`, `crates/kelir-plugin-cli/`, `crates/kelir-plugin-testkit/`, `crates/kelir-integration/` — supporting crates.
 - `packages/ts/`, `packages/py/` — SDK projections. `cans/` — spec. `cans/artifacts/` — SSOT content. `scripts/` — coverage / canon checks. `perf/` — budgets.

@@ -3,7 +3,7 @@ case_id: "sp_dax_teardown"
 title: "Session terminate with refcount zero unmaps Stage-2 and releases the host memfd; pages untouched"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "x86_64"

@@ -2,9 +2,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use kelir_core::dispatch_plugin::PipelineEngine;
-use kelir_core::planes::storage::LockBrokerWiring;
-use kelir_core::planes::storage::lock_broker::{LockBroker, LockKey, LockKind, LockRequest};
+use kelir_engine::dispatch_plugin::PipelineEngine;
+use kelir_engine::planes::storage::LockBrokerWiring;
+use kelir_engine::planes::storage::lock_broker::{LockBroker, LockKey, LockKind, LockRequest};
 use kelir_interface::plugin_model::{
     FsInterposer, HandlerCtx, MountScope, PipelineBinder, PluginError,
 };

@@ -1,7 +1,7 @@
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_11_stream_replay_monotonic_cursor_read.yaml#case_id
 use std::path::PathBuf;
 
-use kelir_core::planes::terminal::{LogStream, TerminalPlane, TerminalWiring};
+use kelir_engine::planes::terminal::{LogStream, TerminalPlane, TerminalWiring};
 
 fn session_dir(session_id: &[u8; 16]) -> Result<PathBuf, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_string())?;

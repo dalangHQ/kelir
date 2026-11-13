@@ -3,7 +3,7 @@ case_id: "sp_18_write_chunk_64kb_transparent_stream"
 title: "VirtIO-FS write calls stream across 64KB chunk boundaries transparently without guest buffer failures"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

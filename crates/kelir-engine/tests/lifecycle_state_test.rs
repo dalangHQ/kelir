@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use kelir_core::Session;
+use kelir_engine::Session;
 use kelir_interface::driver_interface::default_vm_config;
 use kelir_interface::driver_interface::{
     DriverCapabilities, DriverError, EntropyBackend, EntropyStreamPosition, ExternalSuspendKind,
@@ -186,8 +186,8 @@ fn lifecycle_boot_forces_drop_all_over_explicit_wiring_when_network_off() -> Res
         &[],
         None,
         Vec::new(),
-        kelir_core::session_lifecycle::PlaneWiring {
-            wire: Some(kelir_core::planes::wire::WireWiring::default()),
+        kelir_engine::session_lifecycle::PlaneWiring {
+            wire: Some(kelir_engine::planes::wire::WireWiring::default()),
             ..Default::default()
         },
     )
@@ -207,8 +207,8 @@ fn lifecycle_boot_forces_drop_all_over_explicit_wiring_when_network_off() -> Res
         &[],
         None,
         Vec::new(),
-        kelir_core::session_lifecycle::PlaneWiring {
-            wire: Some(kelir_core::planes::wire::WireWiring::default()),
+        kelir_engine::session_lifecycle::PlaneWiring {
+            wire: Some(kelir_engine::planes::wire::WireWiring::default()),
             ..Default::default()
         },
     )

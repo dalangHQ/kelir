@@ -3,7 +3,7 @@ case_id: "lc_10_abrupt_kill_dirty_shutdown_receipt"
 title: "session.kill() issues SIGKILL to hypervisor loops and records ExitKind::HardKilled in ExecutionReceipt"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

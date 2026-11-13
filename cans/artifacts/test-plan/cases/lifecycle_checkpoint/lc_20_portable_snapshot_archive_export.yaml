@@ -3,7 +3,7 @@ case_id: "lc_20_portable_snapshot_archive_export"
 title: "session.export_snapshot yields bitwise-verifiable .kelir-snap containing manifest, memory, and broker state"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

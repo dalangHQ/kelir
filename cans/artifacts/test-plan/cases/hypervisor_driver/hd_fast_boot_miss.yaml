@@ -3,7 +3,7 @@ case_id: "hd_fast_boot_miss"
 title: "Fast-boot cache miss falls through to cold boot with no error to the SDK caller"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "x86_64"

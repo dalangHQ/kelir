@@ -3,7 +3,7 @@ case_id: "ar_10_receipt_struct_exhaustiveness_lint"
 title: "ExecutionReceipt struct additions fail compilation across all asserting test fixtures until mapped"
 domain: "attestation_receipts"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

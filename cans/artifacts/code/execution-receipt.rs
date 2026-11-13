@@ -2,7 +2,7 @@
 //
 // Per-process cryptographic execution receipt.
 // Struct exhaustiveness tripwire: adding any field to ExecutionReceipt
-// breaks compilation in kelir-core, kelir-catalog, and kelir-otlp until
+// breaks compilation in kelir-engine, kelir-catalog, and kelir-otlp until
 // Merkle hashing, serialization, and OTel mappers explicitly handle it.
 //
 // Owned by: cans/10-attestation.md#Execution-receipts

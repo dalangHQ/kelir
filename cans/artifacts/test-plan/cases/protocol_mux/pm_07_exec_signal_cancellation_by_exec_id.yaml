@@ -3,7 +3,7 @@ case_id: "pm_07_exec_signal_cancellation_by_exec_id"
 title: "Process cancellation signals on Channel 0x0000 carry exec_id, preventing PID reuse signal misdirection"
 domain: "protocol_mux"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

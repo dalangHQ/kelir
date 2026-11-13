@@ -3,7 +3,7 @@ case_id: "vr_03_virtio_rng_mandatory_entropy"
 title: "virtio-rng passes host entropy to guest kernel, unblocking getrandom() before shim PID 1 executes"
 domain: "virtio_rings"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "tp_06_placeholder_mask_carryover_window"
 title: "In-place console masking maintains MAX_PLACEHOLDER_LEN - 1 carryover window across chunk boundaries"
 domain: "terminal_plane"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

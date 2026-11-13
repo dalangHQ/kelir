@@ -3,7 +3,7 @@ case_id: "tp_07_vt100_wireframe_matrix_determinism"
 title: "Headless VT100 wireframe grid export yields deterministic character matrix hash for identical runs"
 domain: "terminal_plane"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

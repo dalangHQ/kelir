@@ -3,7 +3,7 @@ case_id: "sp_01_host_cow_upper_discard_on_rollback"
 title: "session.rollback() drops upper sparse file and tombstones via punch-hole; base workspace untouched"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/05-storage-plane.md#Host-CoW-broker"
-  statement: "Rollback: broker drops upper file and tombstones; FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED). Gap: StoragePlane::discard is a TODO (L3) in crates/kelir-core/src/planes/storage/mod.rs, so the drop is specified against cans/05-storage-plane.md#Host-CoW-broker, not a live discard path."
+  statement: "Rollback: broker drops upper file and tombstones; FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED). Gap: StoragePlane::discard is a TODO (L3) in crates/kelir-engine/src/planes/storage/mod.rs, so the drop is specified against cans/05-storage-plane.md#Host-CoW-broker, not a live discard path."
   blast_radius_if_breached: "State modifications leak across agent retry attempts, corrupting base workspace trees."
 
 confusion_matrix:

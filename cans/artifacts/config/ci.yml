@@ -223,8 +223,8 @@ jobs:
       # --no-tests pass: the filter selects the 9 work-order-3 stubs in
       # kelir-integration/tests/full_pipeline_test.rs (#[ignore], run via
       # test-red); it must not fail the run when the stubs are absent.
-      # Scoped to kelir-integration; -p kelir-core --lib is wrong here —
-      # the kelir-core integration suite does not compile at base
+      # Scoped to kelir-integration; -p kelir-engine --lib is wrong here —
+      # the kelir-engine integration suite does not compile at base
       # (receipt_attest_test.rs E0063, pre-existing).
       - name: Fast-boot and DAX coverage
         run: cargo nextest run -p kelir-integration -E 'test(hd_fast_boot) | test(sp_dax) | test(lc_base_snapshot)' --no-tests pass
@@ -515,7 +515,7 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - uses: mozilla-actions/sccache-action@v0.0.5
       - name: Core + testkit
-        run: cargo nextest run -p kelir-core -p kelir-plugin-testkit
+        run: cargo nextest run -p kelir-engine -p kelir-plugin-testkit
 
   # ─── ADVERSARIAL INTEGRATION HARNESS (PANIC HUNT; NO panic_hunt TARGET AT BASE) ──────
   panic-hunt:
@@ -527,7 +527,7 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - uses: mozilla-actions/sccache-action@v0.0.5
       - name: Adversarial Frame Fuzzing (no panic_hunt test target at base)
-        run: cargo nextest run -p kelir-core --test panic_hunt
+        run: cargo nextest run -p kelir-engine --test panic_hunt
 
   # ─── ZERO-TOOLCHAIN PACKAGING CHECK ────────────────────
   # Asserts precompiled NAPI binaries and Python wheels build cleanly

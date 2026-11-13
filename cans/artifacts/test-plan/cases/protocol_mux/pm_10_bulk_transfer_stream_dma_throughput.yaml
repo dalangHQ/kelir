@@ -3,7 +3,7 @@ case_id: "pm_10_bulk_transfer_stream_dma_throughput"
 title: "Stream kind BULK transfers high-bandwidth multi-MB payloads directly bypassing CBOR and FUSE overhead"
 domain: "protocol_mux"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

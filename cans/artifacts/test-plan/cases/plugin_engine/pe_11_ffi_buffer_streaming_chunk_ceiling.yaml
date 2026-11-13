@@ -3,7 +3,7 @@ case_id: "pe_11_ffi_buffer_streaming_chunk_ceiling"
 title: "Pinned memory buffers passed across FFI clamp to 64KB per streaming chunk, preventing use-after-free"
 domain: "plugin_engine"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

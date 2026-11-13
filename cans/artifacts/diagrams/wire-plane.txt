@@ -15,7 +15,7 @@
                                         ▼
                               [DNS POLICY FILTER + SYNTHETIC GATEWAY]
                               Gateway 192.168.127.1:53; UDP/TCP 53 intercepted
-                              in kelir-core::wire. Allow/deny by domain
+                              in kelir-engine::wire. Allow/deny by domain
                               allowlist (wildcard suffixes); blocked queries
                               return NXDOMAIN, allowed queries forward to the
                               live upstream. Upstreams track host resolver

@@ -3,7 +3,7 @@ case_id: "ar_08_phase_span_telemetry_isolation"
 title: "Execution phase spans (trap_ingress, policy, ffi_hop) emit strictly to OTel and are excluded from Merkle roots"
 domain: "attestation_receipts"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

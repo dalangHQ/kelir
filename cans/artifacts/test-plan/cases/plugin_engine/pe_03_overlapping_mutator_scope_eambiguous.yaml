@@ -3,7 +3,7 @@ case_id: "pe_03_overlapping_mutator_scope_eambiguous"
 title: "Multiple registered plugins declaring overlapping mutating paths fail validation with EAmbiguousMutation"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -194,7 +194,7 @@
     - No CPU spin-polling on memory flags
     - Fence provides coherency; doorbell provides notification
   - Transport engine abstraction
-    - Host hypervisor backend terminates virtqueue rings directly in kelir-core memory
+    - Host hypervisor backend terminates virtqueue rings directly in kelir-engine memory
     - Two transport channels: 0x0000 Control, 0x0001 Stream Mux
       - see: [3]
     - Stream Mux routes all request/data flows as stream kinds
@@ -213,7 +213,7 @@
     - Host OS containment and path resolution divergence hides at the storage driver boundary
     - Plugin and channel semantics are identical across targets
   - Host plane subsystem
-    - Owner: kelir-core native host subsystem (kelir-core::host)
+    - Owner: kelir-engine native host subsystem (kelir-engine::host)
     - Physical anchor: host kernel boundaries (eBPF/LSM, cgroup v2, keyrings)
     - HostInterposer pipeline executes synchronous native checks before ring transit
     - HostInterposer gate budget: see: 02-plugin-model.md#Latency-ceiling
@@ -249,7 +249,7 @@
     - Native Rust consumer: direct Cargo crate, zero-cost monomorphization
     - TypeScript consumer: @kelir/core via in-process NAPI-RS
     - Python consumer: kelir via PyO3
-    - kelir-core: stripped microkernel (BusDispatcher, PipelineEngine, EventBus, DriverRouter)
+    - kelir-engine: stripped microkernel (BusDispatcher, PipelineEngine, EventBus, DriverRouter)
     - PipelineEngine: compiles inline interceptors into indexed contiguous tables
     - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
   - Host state root
@@ -348,7 +348,7 @@
       - Callers hold `Box<dyn VmmDriver>` only; no backend type is surfaced
     - Hypervisor hardware boundary
       - Driver rollback resets physical RAM and vCPU registers only (<8ms)
-      - Storage diff discard is orchestrated by Session::rollback() in kelir-core
+      - Storage diff discard is orchestrated by Session::rollback() in kelir-engine
     - SnapshotDescriptor.dirty_bytes
       - Byte count, not page count: page size is 16KB on Apple Silicon ARM64
         - and 4KB on Linux/x86

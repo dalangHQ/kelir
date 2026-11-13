@@ -28,8 +28,8 @@ pub use builder_sdk::{
     Unsealed,
 };
 pub use hlist_sdk::{HCons, HList, HNil, NoParams};
-pub use kelir_core::planes::checkpoint::{PidLineage, StepSlot};
-pub use kelir_core::planes::storage::storage_reconciler::CommitStats;
+pub use kelir_engine::planes::checkpoint::{PidLineage, StepSlot};
+pub use kelir_engine::planes::storage::storage_reconciler::CommitStats;
 pub use kelir_interface::driver_interface::{SnapshotDescriptor, VmConfig, WatchdogAction};
 pub use kelir_interface::handlers_plugin::Has;
 pub use kelir_interface::plugin_model::HandlerCtx;

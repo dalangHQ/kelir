@@ -3,7 +3,7 @@ case_id: "lc_base_snapshot_capture"
 title: "Base snapshot capture runs after every on_vm_ready returns and before first spawn"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "x86_64"

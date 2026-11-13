@@ -13,8 +13,8 @@ pub mod fusion_plugin;
 pub mod storage_bridge;
 
 use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, attach_runs, convert_descriptor};
-use kelir_core::Session;
-use kelir_core::planes::storage::storage_reconciler::FsReconcileRequest;
+use kelir_engine::Session;
+use kelir_engine::planes::storage::storage_reconciler::FsReconcileRequest;
 use kelir_interface::driver_interface::{
     ExternalSuspendKind, GuestClock, SnapshotDescriptor, SuspendReason, VmConfig, default_vm_config,
 };
@@ -233,7 +233,7 @@ fn lock_session(
 ) -> PyResult<std::sync::MutexGuard<'_, Session>> {
     session
         .lock()
-        .map_err(|_| missing("kelir-core session lock poisoned"))
+        .map_err(|_| missing("kelir-engine session lock poisoned"))
 }
 
 #[pymethods]
@@ -579,8 +579,8 @@ pub struct PyKelirBuilder {
     plugins: Vec<PluginRegistration>,
     fused: Option<FusedTrampolineDescriptor>,
     trampolines: TrampolineTable,
-    terminal_wiring: Option<kelir_core::planes::terminal::TerminalWiring>,
-    wire_wiring: Option<kelir_core::planes::wire::WireWiring>,
+    terminal_wiring: Option<kelir_engine::planes::terminal::TerminalWiring>,
+    wire_wiring: Option<kelir_engine::planes::wire::WireWiring>,
     storage_config: storage_bridge::PyStorageProjection,
 }
 
@@ -623,7 +623,7 @@ impl PyKelirBuilder {
     // see: cans/04-terminal-plane.md#Terminal-pipeline
     // TODO (L3) [bindings_py]: prompt rules and the token-shield clamp callback stay Python-side until the FFI callback bridge lands.; slop: callbacks stay Python-side, silently dropped
     fn set_terminal_config(&mut self, cfg: &Bound<'_, PyDict>) -> PyResult<()> {
-        let mut wiring = kelir_core::planes::terminal::TerminalWiring::default();
+        let mut wiring = kelir_engine::planes::terminal::TerminalWiring::default();
         for (key, value) in cfg.iter() {
             match key.to_string().as_str() {
                 "cols" => {
@@ -673,7 +673,7 @@ impl PyKelirBuilder {
 
     // see: cans/07-wire-plane.md#DNS-policy-filter
     fn set_wire_config(&mut self, cfg: &Bound<'_, PyDict>) -> PyResult<()> {
-        let mut wiring = kelir_core::planes::wire::WireWiring::default();
+        let mut wiring = kelir_engine::planes::wire::WireWiring::default();
         for (key, value) in cfg.iter() {
             match key.to_string().as_str() {
                 "sinkhole" => {
@@ -853,7 +853,7 @@ impl PyKelirBuilder {
         }
         // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
-        let plane_wiring = kelir_core::session_lifecycle::PlaneWiring {
+        let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
             terminal: self.terminal_wiring.clone(),
             wire: self.wire_wiring.clone(),
             storage: self.storage_config.config.clone(),

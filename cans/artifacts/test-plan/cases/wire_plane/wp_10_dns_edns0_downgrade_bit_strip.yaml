@@ -3,7 +3,7 @@ case_id: "wp_10_dns_edns0_downgrade_bit_strip"
 title: "EDNS0 downgrade strips DO bit from upstream query and clears AD bit in synthesized response"
 domain: "wire_plane"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

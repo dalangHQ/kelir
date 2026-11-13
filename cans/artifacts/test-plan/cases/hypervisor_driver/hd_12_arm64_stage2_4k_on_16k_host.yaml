@@ -3,7 +3,7 @@ case_id: "hd_12_arm64_stage2_4k_on_16k_host"
 title: "ARM64 Stage-2 tables map 4KB guest MMU leaves cleanly over 16KB host RAM pages without alignment faults"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "macos"
   arch: "aarch64"

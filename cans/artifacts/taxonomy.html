@@ -384,7 +384,7 @@
                             "Integration Leaf": "plugin-openshell-coordinator + openshell-grpc adapter bridge upward to OpenShell."
                           },
                           "children": [
-                            { "id": "kelir-core", "name": "KELIR-CORE", "rank": "leaf", "desc": "Stripped microkernel: bus, dispatch, vmm routing, trap gate.", "children": [
+                            { "id": "kelir-engine", "name": "KELIR-ENGINE", "rank": "leaf", "desc": "Stripped microkernel: bus, dispatch, vmm routing, trap gate.", "children": [
                               { "id": "kelir-busdispatcher", "name": "BusDispatcher", "rank": "leaf", "desc": "Routes VirtIO events.", "children": [] },
                               { "id": "kelir-eventbus", "name": "EventBus", "rank": "leaf", "desc": "Typed handler dispatch (lock-free ArcSwap swap on hydration).", "children": [] },
                               { "id": "kelir-driverrouter", "name": "DriverRouter", "rank": "leaf", "desc": "Backend selection across rustvmm, hvf, openvmm, avf, bwrap, proot.", "children": [] },

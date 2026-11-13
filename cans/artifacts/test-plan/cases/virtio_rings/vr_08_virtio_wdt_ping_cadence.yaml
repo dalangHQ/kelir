@@ -3,7 +3,7 @@ case_id: "vr_08_virtio_wdt_ping_cadence"
 title: "virtio-wdt watchdog hardware fires WatchdogDiagnostic when guest fails heartbeat cadence"
 domain: "virtio_rings"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

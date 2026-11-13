@@ -157,7 +157,7 @@
       - Lifecycle asserts: see: 08-lifecycle.md#Hypervisor-primitives
       - State machine assert: verifies all SuspendReason variants execute through
         - centralized lifecycle
-      - CI test-core runs nextest over kelir-core (no kelir-core tests at base)
+      - CI test-core runs nextest over kelir-engine (no kelir-engine tests at base)
     - --panic-hunt-coverage
       - Fuzzes every stream kind and registered hook with adversarial frames
       - Asserts zero unhandled panics across malformed CBOR, VFS, and FUSE ops
@@ -213,7 +213,7 @@
       - Asserts Running -> Draining -> Terminated transitions on
         - completion, on timeout, and on already-draining
       - Asserts EBUSY is returned for new exec during Draining
-      - Drain transitions are asserted in kelir-core, gated by CI test-core
+      - Drain transitions are asserted in kelir-engine, gated by CI test-core
     - --transport-coverage
       - Asserts every Transport backend is exercised by a build matrix cell
       - Linux/macOS: shared-memory SPSC rings, AF_VSOCK fallback
@@ -324,9 +324,9 @@
       - Linux x86_64, aarch64 musl/glibc, macOS arm64/x86_64 prebuilt
       - End-user installation via npm and pip requires zero C or Rust tools
     - Binding coverage assertion
-      - Every kelir-core primitive exposed in FFI must have a parity test
+      - Every kelir-engine primitive exposed in FFI must have a parity test
       - Missing coverage blocks core and plugin releases immediately
-    - Release gate: kelir-core release requires parity green
+    - Release gate: kelir-engine release requires parity green
     - Unified-builder parity vectors
       - vectors.json gains a plugin-merge case family
       - Builder cases: 30 verb, 8 scope, 8 merge, 4 chain

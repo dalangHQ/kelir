@@ -3,7 +3,7 @@ case_id: "sp_07_ephemeral_scratch_tmpfs_discard"
 title: "Ephemeral scratch block disk mounted at /tmp and /var/cache is completely discarded on teardown"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

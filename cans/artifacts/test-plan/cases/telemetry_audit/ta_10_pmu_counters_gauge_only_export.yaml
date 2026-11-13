@@ -3,7 +3,7 @@ case_id: "ta_10_pmu_counters_gauge_only_export"
 title: "PMU sample metrics emit exclusively as OTel gauges and never enter ExecutionReceipt identity"
 domain: "telemetry_audit"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

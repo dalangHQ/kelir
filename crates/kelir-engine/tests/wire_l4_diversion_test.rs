@@ -1,8 +1,8 @@
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_01_default_deny_ingress_drop.yaml#case_id
 use std::net::TcpListener;
 
-use kelir_core::Session;
-use kelir_core::planes::wire::{
+use kelir_engine::Session;
+use kelir_engine::planes::wire::{
     FrameDirection, LinkLocalRoute, WirePlane, classify_frame_directional, link_local_route,
 };
 use kelir_interface::driver_interface::SnapshotDescriptor;
@@ -31,7 +31,7 @@ fn wp_01_default_deny_ingress_drop() -> Result<(), String> {
     let mut frame = ipv4_frame([10, 0, 0, 2], 1, 0);
     assert_eq!(
         classify_frame_directional(&frame, FrameDirection::Inbound),
-        kelir_core::planes::wire::FrameClass::NonTcpUdp
+        kelir_engine::planes::wire::FrameClass::NonTcpUdp
     );
     let mut wire = WirePlane::new();
     let action = wire

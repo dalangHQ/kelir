@@ -326,7 +326,7 @@ async fn lc_15_detached_session_reconnect_relay() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     let id = session.session_id();
-    let relay = kelir_core::Session::relay_socket_path(&id).map_err(|e| e.to_string())?;
+    let relay = kelir_engine::Session::relay_socket_path(&id).map_err(|e| e.to_string())?;
     if !relay.exists() {
         return Err(format!(
             "detached session never created its relay socket at {}",

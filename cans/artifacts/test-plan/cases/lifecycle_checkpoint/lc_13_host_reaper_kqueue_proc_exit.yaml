@@ -3,7 +3,7 @@ case_id: "lc_13_host_reaper_kqueue_proc_exit"
 title: "macOS kqueue EVFILT_PROC watcher on host PID terminates hypervisor instance immediately upon host exit"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "macos"
   arch: "any"

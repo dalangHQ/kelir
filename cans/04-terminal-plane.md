@@ -4,7 +4,7 @@
     - `TerminalWiring` carries `token_shield` and `prompts` from the builder
     - Console filter pipeline: see: artifacts/diagrams/terminal-pipeline.txt
     - Terminal plane attributes
-      - Owner: kelir-core native terminal subsystem (kelir-core::terminal)
+      - Owner: kelir-engine native terminal subsystem (kelir-engine::terminal)
       - Hardware abstraction: virtio-console paravirtual character bus
       - Port 0 allocated to standard console IO; Ports 1-16 dynamically allocated
       - Port 0 is the sole in-process break-glass surface; human attach only

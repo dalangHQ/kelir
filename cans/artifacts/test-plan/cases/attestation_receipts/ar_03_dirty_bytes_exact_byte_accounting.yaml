@@ -3,7 +3,7 @@ case_id: "ar_03_dirty_bytes_exact_byte_accounting"
 title: "SnapshotDescriptor.dirty_bytes records exact written byte counts, remaining identical across 4K and 16K hosts"
 domain: "attestation_receipts"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

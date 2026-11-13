@@ -3,7 +3,7 @@ case_id: "lc_15_detached_session_reconnect_relay"
 title: "CLI client reconnects to detached microVM via ~/.kelir/sessions/<id>/relay.sock idempotently"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

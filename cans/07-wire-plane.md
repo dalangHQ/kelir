@@ -1,7 +1,7 @@
 - Wire plane
   - Wire architecture
     - see: artifacts/diagrams/wire-plane.txt
-    - Owner: kelir-core native wire subsystem (kelir-core::wire)
+    - Owner: kelir-engine native wire subsystem (kelir-engine::wire)
     - Hardware abstraction: virtio-net bound host-side to embedded smoltcp TCP/IP stack
     - Hook points: on_net_outbound and on_net_inbound
     - Interceptor hooks receive NetContext containing raw Ethernet frames
@@ -72,7 +72,7 @@
   - Synthetic DNS gateway
     - Gateway binding
       - Guest paravirtual network binds synthetic gateway 192.168.127.1:53
-      - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-core::wire
+      - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-engine::wire
       - Traffic to non-gateway resolvers redirected at ingress ring
     - Host-state resolution
       - Queries resolved host-side via live OS resolver state

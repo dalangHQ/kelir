@@ -2,8 +2,8 @@
 use std::collections::BTreeMap;
 use std::fs;
 
-use kelir_core::dispatch_plugin::PipelineEngine;
-use kelir_core::plugin_registry::resolve_plugin_registrations;
+use kelir_engine::dispatch_plugin::PipelineEngine;
+use kelir_engine::plugin_registry::resolve_plugin_registrations;
 use kelir_interface::codec_protocol::{MAX_FRAME_PAYLOAD, MAX_STREAM_ID};
 use kelir_interface::driver_interface::WatchdogVerdict;
 use kelir_interface::fusion_plugin::{

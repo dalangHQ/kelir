@@ -3,7 +3,7 @@ case_id: "ar_06_exit_kind_kernel_panic_uart_scrape"
 title: "Host parses kernel panic signature from UART ring buffer into ExecutionReceipt ExitKind::KernelPanic"
 domain: "attestation_receipts"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

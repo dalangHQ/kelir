@@ -3,7 +3,7 @@ case_id: "wp_16_port_forward_so_linger_zero_release"
 title: "Port forward teardown sets SO_LINGER=0, forcing immediate TCP RST and releasing host port from TIME_WAIT"
 domain: "wire_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

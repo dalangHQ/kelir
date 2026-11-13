@@ -3,7 +3,7 @@ case_id: "lc_12_host_reaper_pdeathsig_enforcement"
 title: "Linux host process death delivers SIGKILL to hypervisor child via PR_SET_PDEATHSIG without orphaned vCPUs"
 domain: "lifecycle_checkpoint"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "any"

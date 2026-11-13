@@ -3,7 +3,7 @@ case_id: "pm_11_wire_framing_checked_math_validation"
 title: "Hostile wire frame with oversized payload length triggers framing drop via checked_add without panic"
 domain: "protocol_mux"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

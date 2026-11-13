@@ -3,7 +3,7 @@ case_id: "wp_02_synthetic_dns_nxdomain_enforcement"
 title: "DNS query targeting unlisted external host returns synthetic NXDOMAIN before wire transmission"
 domain: "wire_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

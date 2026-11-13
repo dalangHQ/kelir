@@ -3,7 +3,7 @@ case_id: "sp_06_host_cow_broker_dir_merge_cache"
 title: "Directory readdir merge cache reuses merged view of base+upper+tombstones until subtree invalidation"
 domain: "storage_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

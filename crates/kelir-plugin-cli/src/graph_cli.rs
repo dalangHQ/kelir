@@ -107,7 +107,7 @@ pub fn check() -> Result<(), CliError> {
     let graph = plugin_graph()?;
     for (name, deps) in &graph {
         for dep in deps {
-            if dep == "kelir-core" || dep == "kelir-drivers" {
+            if dep == "kelir-engine" || dep == "kelir-drivers" {
                 return Err(
                     format!("graph: plugin `{name}` depends on forbidden crate `{dep}`").into(),
                 );

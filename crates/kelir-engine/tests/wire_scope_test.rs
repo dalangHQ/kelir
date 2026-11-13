@@ -2,7 +2,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use kelir_core::dispatch_plugin::PipelineEngine;
+use kelir_engine::dispatch_plugin::PipelineEngine;
 use kelir_interface::plugin_model::{MountScope, NetInterposer, PipelineBinder, PluginError};
 use kelir_interface::protocol_wire::FilterAction;
 

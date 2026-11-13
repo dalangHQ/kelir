@@ -1,6 +1,6 @@
 // see: cans/01-architecture.md#Driver-backends
 // see: cans/01-architecture.md#Fallback-policy
-use kelir_core::vmm::DriverRouter;
+use kelir_engine::vmm::DriverRouter;
 use kelir_interface::driver_interface::{DriverPolicy, VmmError, WxPolicy};
 
 // see: cans/01-architecture.md#Driver-backends

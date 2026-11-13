@@ -3,11 +3,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
-use kelir_core::PluginRegistration;
-use kelir_core::Session;
-use kelir_core::dispatch_plugin::PipelineEngine;
-use kelir_core::planes::checkpoint::{CheckpointPlane, PidLineage};
-use kelir_core::session_lifecycle::PlaneWiring;
+use kelir_engine::PluginRegistration;
+use kelir_engine::Session;
+use kelir_engine::dispatch_plugin::PipelineEngine;
+use kelir_engine::planes::checkpoint::{CheckpointPlane, PidLineage};
+use kelir_engine::session_lifecycle::PlaneWiring;
 use kelir_interface::driver_interface::{SnapshotDescriptor, default_vm_config};
 use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::{

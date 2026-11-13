@@ -3,7 +3,7 @@ case_id: "ar_04_binary_blake3_cache_invalidation"
 title: "Modifying binary file st_mtime_ns invalidates cached BLAKE3 hash, forcing re-hash at next exec trap"
 domain: "attestation_receipts"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

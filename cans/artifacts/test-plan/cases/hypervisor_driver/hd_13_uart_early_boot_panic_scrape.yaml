@@ -3,7 +3,7 @@ case_id: "hd_13_uart_early_boot_panic_scrape"
 title: "Early guest kernel panic signature scraped from 64KB UART ring buffer into ExitReason::KernelPanic"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

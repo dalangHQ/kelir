@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
-use kelir_core::plugin_registry::{PluginManifest, PluginTier, parse_plugin_manifest};
+use kelir_engine::plugin_registry::{PluginManifest, PluginTier, parse_plugin_manifest};
 
 use crate::cli_error::CliError;
 use crate::graph_cli;
@@ -221,7 +221,7 @@ pub fn run_plugin(name: &str) -> Result<(), CliError> {
         .join("crates/kelir-plugins")
         .join(name)
         .join("src");
-    layers_cli::check_dir(&src, &["kelir_core::", "kelir_drivers::", "kelir::"])?;
+    layers_cli::check_dir(&src, &["kelir_engine::", "kelir_drivers::", "kelir::"])?;
     let mask = rings_cli::declared_ring_mask(&src)?;
     if !mask.contains("KelirPlugin") {
         return Err(format!(

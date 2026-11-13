@@ -1,4 +1,4 @@
-use kelir_core::planes::wire::{DnsQuery, DnsRcode, WirePlane, WireWiring};
+use kelir_engine::planes::wire::{DnsQuery, DnsRcode, WirePlane, WireWiring};
 
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_10_dns_edns0_downgrade_bit_strip.yaml#case_id
 #[test]

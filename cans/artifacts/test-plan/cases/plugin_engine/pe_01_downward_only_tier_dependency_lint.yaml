@@ -3,7 +3,7 @@ case_id: "pe_01_downward_only_tier_dependency_lint"
 title: "Plugin crate attempting upward tier import fails layer check lint during tiered compilation"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"
@@ -11,7 +11,7 @@ platform_target:
 
 invariant:
   law_reference: "cans/02-plugin-model.md#Plugin-tiering"
-  statement: "Downward-only dependencies: higher tiers import lower-tier crates, never the reverse; Tier 1 direct core imports rejected. Gap: the live lint is kelir-plugin-cli layers::check() (kelir-plugin-cli check --layers), which scans source for forbidden crate prefixes (kelir_core:: / kelir_drivers::) only; no per-tier plugin-to-plugin rule exists, so a Tier 1 crate importing a Tier 3 plugin crate is not mechanically caught today."
+  statement: "Downward-only dependencies: higher tiers import lower-tier crates, never the reverse; Tier 1 direct core imports rejected. Gap: the live lint is kelir-plugin-cli layers::check() (kelir-plugin-cli check --layers), which scans source for forbidden crate prefixes (kelir_engine:: / kelir_drivers::) only; no per-tier plugin-to-plugin rule exists, so a Tier 1 crate importing a Tier 3 plugin crate is not mechanically caught today."
   blast_radius_if_breached: "Architectural layering collapses, creating cyclic compilation dependencies and monolithic coupling."
 
 confusion_matrix:

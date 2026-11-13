@@ -3,7 +3,7 @@ case_id: "pe_07_aot_hook_fusion_single_trampoline"
 title: "AOT hook fusion collapses multiple TypeScript/Python handlers into exactly 1 FFI trampoline crossing"
 domain: "plugin_engine"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

@@ -3,7 +3,7 @@ case_id: "tp_02_pty_raw_mode_ctrl_c_passthrough"
 title: "Host terminal in raw mode forwards Ctrl+C byte (0x03) across virtio-console to guest foreground pgid"
 domain: "terminal_plane"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

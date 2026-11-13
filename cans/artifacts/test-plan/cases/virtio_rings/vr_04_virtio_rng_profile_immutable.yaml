@@ -3,7 +3,7 @@ case_id: "vr_04_virtio_rng_profile_immutable"
 title: "Configuration profile attempting to remove or disable virtio-rng device fails validation with EConfig"
 domain: "virtio_rings"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

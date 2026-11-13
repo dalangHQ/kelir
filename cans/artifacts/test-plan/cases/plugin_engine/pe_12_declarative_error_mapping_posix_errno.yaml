@@ -3,7 +3,7 @@ case_id: "pe_12_declarative_error_mapping_posix_errno"
 title: "Builder error registry maps unhandled foreign exceptions directly to canonical POSIX errnos"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

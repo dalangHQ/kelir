@@ -3,7 +3,7 @@ case_id: "pe_14_service_registry_peer_resolution"
 title: "Tier 2 and Tier 3 plugins resolve peer services via ServiceRegistry without cyclic Cargo dependencies"
 domain: "plugin_engine"
 target_tier: "unit"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "any"
   arch: "any"

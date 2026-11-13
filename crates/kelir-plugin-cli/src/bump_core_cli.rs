@@ -67,7 +67,7 @@ impl Error for BumpCoreError {}
 pub fn resolve_pin(channel: CoreChannel) -> Result<ChannelPin, BumpCoreError> {
     Ok(ChannelPin {
         channel,
-        kelir_version: kelir_core::KELIR_CORE_VERSION.into(),
+        kelir_version: kelir_engine::KELIR_CORE_VERSION.into(),
     })
 }
 

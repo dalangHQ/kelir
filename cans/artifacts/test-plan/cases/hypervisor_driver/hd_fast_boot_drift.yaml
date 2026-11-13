@@ -3,7 +3,7 @@ case_id: "hd_fast_boot_drift"
 title: "Command drift changes the BLAKE3 cache key, invalidates the base snapshot, and cold boots"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "linux"
   arch: "x86_64"

@@ -3,7 +3,7 @@ case_id: "hd_18_rosetta_binfmt_registration"
 title: "macOS Rosetta runtime directory mounted via VirtIO-FS registers into guest binfmt_misc for x86_64 exec"
 domain: "hypervisor_driver"
 target_tier: "integration"
-target_crate: "crates/kelir-core"
+target_crate: "crates/kelir-engine"
 platform_target:
   os: "macos"
   arch: "aarch64"
