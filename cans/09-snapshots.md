@@ -1,5 +1,6 @@
 - Snapshots
   - Snapshot taxonomy
+    - Live home: manifest graph walks live in crates/kelir-checkpoint/src/manifest_graph.run.rs; step slots in crates/kelir-checkpoint/src/step_slot.run.rs
     - Restore modes
       - Branch-from-any-depth
         - Restore accepts any snapshot digest in the chain, including intermediate nodes
@@ -15,6 +16,7 @@
       - Not included in user-visible CausalDelta chains
       - Digest recorded in host-side cache manifest for audit; not in receipts
   - Archives and portability
+    - Live home: compaction and restore live in crates/kelir-checkpoint/src/compaction.run.rs; export archive assembly in crates/kelir-checkpoint/src/real_checkpoint.run.rs
     - Export format: single Content-Addressed .kelir-snap binary stream
       - SDK accessor: session.vm().export_snapshot() through the Session::vm()
         - thin alias over vm_handle(); see: 03-sdk-architecture.md#Session-surfaces

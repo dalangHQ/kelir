@@ -1,7 +1,21 @@
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_12_arm64_stage2_4k_on_16k_host.yaml#case_id
+use std::sync::Arc;
+
 use kelir_engine::Session;
 use kelir_interface::driver_interface::default_vm_config;
 use kelir_interface::telemetry::ExitKind;
+
+fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
+    let metrics = || Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+    kelir_engine::session_lifecycle::PlaneWiring {
+        terminal_ops: Some(Arc::new(kelir_terminal::RealTerminalOps::new(metrics()))),
+        checkpoint_ops: Some(Arc::new(
+            kelir_checkpoint::RealCheckpointOps::new(metrics()),
+        )),
+        host_ops: Some(Arc::new(kelir_host::RealHostOps::new(metrics()))),
+        ..Default::default()
+    }
+}
 
 fn boot_config() -> kelir_interface::driver_interface::VmConfig {
     default_vm_config(
@@ -30,7 +44,9 @@ fn hd_12_arm64_stage2_4k_on_16k_host() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_13_uart_early_boot_panic_scrape.yaml#case_id
 #[test]
 fn hd_13_uart_early_boot_panic_scrape() -> Result<(), String> {
-    let mut session = Session::boot(boot_config()).map_err(|e| e.to_string())?;
+    let mut session =
+        Session::boot_with_plugins(boot_config(), &[], None, Vec::new(), plane_wiring())
+            .map_err(|e| e.to_string())?;
     session.record_early_boot_output(b"early boot ok\n");
     session.record_early_boot_output(b"Kernel panic - not syncing: test_early_boot_oops\n");
     match session.early_boot_exit() {

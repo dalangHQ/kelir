@@ -7,7 +7,7 @@ use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::TrapEvent;
 
 // see: cans/04-terminal-plane.md#Terminal-pipeline
-pub use kelir_engine::planes::terminal::TokenShieldConfig;
+pub use kelir_interface::terminal::TokenShieldConfig;
 
 #[derive(Debug, Clone, Default)]
 pub struct PromptStream;

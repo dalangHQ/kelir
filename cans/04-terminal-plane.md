@@ -2,9 +2,11 @@
   - Terminal pipeline
     - Token Shield and prompt stages are part of the fixed pipeline
     - `TerminalWiring` carries `token_shield` and `prompts` from the builder
+    - Crate topology: kelir-terminal owns RealTerminalOps (vt100.run.rs, token_shield.run.rs, log_segment.run.rs); kelir-engine/src/planes/terminal/mod.rs is the thin L2 TerminalPlane façade holding Arc<dyn TerminalOps>
+    - Trait seam: kelir-interface::terminal::TerminalOps (resize, feed, export_screen_matrix, read_from, append_stream_chunk, record_output, output_filters, token_shield, prompts)
     - Console filter pipeline: see: artifacts/diagrams/terminal-pipeline.txt
     - Terminal plane attributes
-      - Owner: kelir-engine native terminal subsystem (kelir-engine::terminal)
+      - Owner: kelir-terminal native terminal subsystem (RealTerminalOps), behind the kelir-engine TerminalPlane façade
       - Hardware abstraction: virtio-console paravirtual character bus
       - Port 0 allocated to standard console IO; Ports 1-16 dynamically allocated
       - Port 0 is the sole in-process break-glass surface; human attach only

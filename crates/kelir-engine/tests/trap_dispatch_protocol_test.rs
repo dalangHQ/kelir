@@ -3,11 +3,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
+use kelir_checkpoint::RealCheckpointOps;
 use kelir_engine::PluginRegistration;
 use kelir_engine::Session;
 use kelir_engine::dispatch_plugin::PipelineEngine;
-use kelir_engine::planes::checkpoint::{CheckpointPlane, PidLineage};
+use kelir_engine::planes::checkpoint::CheckpointPlane;
 use kelir_engine::session_lifecycle::PlaneWiring;
+use kelir_interface::checkpoint::PidLineage;
 use kelir_interface::driver_interface::{SnapshotDescriptor, default_vm_config};
 use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::{
@@ -41,6 +43,24 @@ fn boot_config() -> kelir_interface::driver_interface::VmConfig {
         None,
         None,
     )
+}
+
+fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
+    let metrics = || Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+    kelir_engine::session_lifecycle::PlaneWiring {
+        terminal_ops: Some(Arc::new(kelir_terminal::RealTerminalOps::new(metrics()))),
+        checkpoint_ops: Some(Arc::new(kelir_checkpoint::RealCheckpointOps::new(
+            metrics(),
+        ))),
+        host_ops: Some(Arc::new(kelir_host::RealHostOps::new(metrics()))),
+        ..Default::default()
+    }
+}
+
+fn checkpoint_plane() -> Arc<CheckpointPlane> {
+    Arc::new(CheckpointPlane::new(Arc::new(RealCheckpointOps::new(Arc::new(
+        kelir_otlp::registry_otlp::MetricRegistry::new(),
+    )))))
 }
 
 struct DropTrap;
@@ -329,7 +349,14 @@ fn pe_10_immutable_dispatch_table_post_seal() -> Result<(), String> {
         Err(e) => return Err(format!("second seal gave wrong error: {e}")),
         Ok(()) => return Err("second seal succeeded".to_string()),
     }
-    let mut session = Session::boot(boot_config()).map_err(|e| e.to_string())?;
+    let mut session = Session::boot_with_plugins(
+        boot_config(),
+        &[],
+        None,
+        Vec::new(),
+        plane_wiring(),
+    )
+    .map_err(|e| e.to_string())?;
     assert!(!session.pipeline().is_sealed());
     session.pipeline_mut().seal().map_err(|e| e.to_string())?;
     assert!(session.pipeline().is_sealed());
@@ -671,7 +698,7 @@ fn pre_step_descriptor(id: &str) -> SnapshotDescriptor {
 
 #[tokio::test]
 async fn hydrate_step_populates_handler_ctx_from_checkpoint_plane() -> Result<(), String> {
-    let plane = Arc::new(CheckpointPlane::new());
+    let plane = checkpoint_plane();
     let lineage = PidLineage::new_in_session(1, [7u8; 16]);
     plane
         .create_step(lineage, pre_step_descriptor("pre-exec"))

@@ -766,7 +766,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
             .unwrap_or_default();
         let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
             terminal: registration.terminal_cfg.as_ref().map(|cfg| {
-                kelir_engine::planes::terminal::TerminalWiring {
+                kelir_interface::terminal::TerminalWiring {
                     cols: cfg.cols,
                     rows: cfg.rows,
                     drop_osc52: cfg.drop_osc52,
@@ -775,7 +775,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                     prompts: cfg
                         .prompts
                         .iter()
-                        .map(|rule| kelir_engine::planes::terminal::PromptRuleConfig {
+                        .map(|rule| kelir_interface::terminal::PromptRuleConfig {
                             pattern: rule.pattern.clone(),
                             timeout: rule.timeout,
                             verify_foreground: rule.verify_foreground,
@@ -810,6 +810,9 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                     allow_udp_proxied: matches!(cfg.tap_filter, TapFilter::AllowUdpProxied),
                 }
             }),
+            terminal_ops: None,
+            checkpoint_ops: None,
+            host_ops: None,
             storage,
         };
         let mut core = kelir_engine::Session::boot_with_engine(

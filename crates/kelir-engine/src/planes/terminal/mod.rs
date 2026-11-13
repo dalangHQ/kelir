@@ -1,391 +1,89 @@
 // see: cans/04-terminal-plane.md#Terminal-pipeline
 // see: cans/04-terminal-plane.md#Stream-replay
-use std::collections::HashMap;
-use std::fs::OpenOptions;
-use std::future::Future;
-use std::io::Write;
-use std::path::PathBuf;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Arc;
 
-#[derive(Debug, Clone, Default)]
-pub struct Cell {
-    pub glyph: char,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct Row {
-    pub cells: Vec<Cell>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct ScreenMatrix {
-    pub rows: Vec<Row>,
-    pub cols: u16,
-}
-
-impl ScreenMatrix {
-    pub fn new(cols: u16, rows: u16) -> Self {
-        Self {
-            rows: (0..rows)
-                .map(|_| Row {
-                    cells: (0..cols).map(|_| Cell { glyph: ' ' }).collect(),
-                })
-                .collect(),
-            cols,
-        }
-    }
-
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut out = Vec::new();
-        for row in &self.rows {
-            for cell in &row.cells {
-                let mut buf = [0u8; 4];
-                out.extend_from_slice(cell.glyph.encode_utf8(&mut buf).as_bytes());
-            }
-            out.push(b'\n');
-        }
-        out
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct Vt100StateMachine {
-    pub matrix: ScreenMatrix,
-    pub cursor_row: u16,
-    pub cursor_col: u16,
-}
-
-impl Vt100StateMachine {
-    pub fn new() -> Self {
-        Self {
-            matrix: ScreenMatrix::new(0, 0),
-            cursor_row: 0,
-            cursor_col: 0,
-        }
-    }
-
-    pub fn resize(&mut self, cols: u16, rows: u16) {
-        self.matrix = ScreenMatrix::new(cols, rows);
-        self.cursor_row = 0;
-        self.cursor_col = 0;
-    }
-
-    pub fn feed(
-        &mut self,
-        _bytes: &[u8],
-    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3) [terminal_plane]: parse VT100 escape sequences in bytes and update matrix + cursor; slop: escape sequences unparsed, matrix and cursor wrong
-        Ok(())
-    }
-
-    pub fn export(&self) -> Vec<u8> {
-        self.matrix.to_bytes()
-    }
-}
-
-pub struct LogCursor(pub u64);
-
-impl LogCursor {
-    pub fn start() -> Self {
-        Self(0)
-    }
-
-    pub fn advance(&self, len: u64) -> Result<Self, kelir_interface::plugin_model::PluginError> {
-        self.0.checked_add(len).map(Self).ok_or_else(|| {
-            kelir_interface::plugin_model::PluginError::Halt("log cursor overflow".into())
-        })
-    }
-}
-
-// see: cans/04-terminal-plane.md#Stream-replay
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LogStream {
-    Port(u32),
-    Exec { id: u64, lane: u8 },
-}
-
-pub struct LogSegment {
-    pub stream: LogStream,
-    pub head: LogCursor,
-    pub bytes: Vec<u8>,
-    pub log_path: PathBuf,
-}
-
-impl LogSegment {
-    pub fn new(
-        session_id: [u8; 16],
-        stream: LogStream,
-    ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
-        Ok(Self {
-            stream,
-            head: LogCursor::start(),
-            bytes: Vec::new(),
-            log_path: session_log_path(&session_id, stream)?,
-        })
-    }
-}
-
-// see: cans/01-architecture.md#Host-state-root
-fn log_file_name(stream: LogStream) -> String {
-    match stream {
-        LogStream::Port(port) => format!("port-{port}.log"),
-        LogStream::Exec { id, lane } => format!("exec-{id}-{lane}.log"),
-    }
-}
-
-// see: cans/01-architecture.md#Host-state-root
-// TODO (L3) [terminal_plane]: write the append-only index.bin chunk index beside the per-stream logs so cursors survive restarts; slop: cursors lost on restart, index never written
-fn session_log_path(
-    session_id: &[u8; 16],
-    stream: LogStream,
-) -> Result<PathBuf, kelir_interface::plugin_model::PluginError> {
-    Ok(crate::session_lifecycle::session_dir(session_id)?
-        .join("logs")
-        .join(log_file_name(stream)))
-}
+use kelir_interface::plugin_model::PluginError;
+use kelir_interface::terminal::{
+    LogStream, PromptRuleConfig, TerminalOps, TerminalWiring, TokenShieldConfig,
+};
+use kelir_otlp::registry_otlp::MetricRegistry;
 
 pub struct TerminalPlane {
     session_id: [u8; 16],
-    state: Mutex<Vt100StateMachine>,
-    segments: Mutex<HashMap<LogStream, LogSegment>>,
-    metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
-    filters: (bool, bool),
-    token_shield: Option<TokenShieldConfig>,
-    prompts: Vec<PromptRuleConfig>,
-}
-
-// see: cans/04-terminal-plane.md#Terminal-pipeline
-#[derive(Debug, Clone)]
-pub struct TokenShieldConfig {
-    pub max_bytes_total: usize,
-    pub max_lines_total: usize,
-    pub clamp_strategy: String,
-    pub notice: String,
-}
-
-// see: cans/04-terminal-plane.md#Terminal-pipeline
-pub type PromptAction = Arc<
-    dyn Fn(
-            &kelir_interface::protocol_wire::TrapEvent,
-        ) -> Pin<
-            Box<dyn Future<Output = Result<(), kelir_interface::plugin_model::PluginError>> + Send>,
-        > + Send
-        + Sync,
->;
-
-// see: cans/04-terminal-plane.md#Terminal-pipeline
-#[derive(Clone)]
-pub struct PromptRuleConfig {
-    pub pattern: String,
-    pub timeout: Duration,
-    pub verify_foreground: bool,
-    pub action: PromptAction,
-}
-
-impl std::fmt::Debug for PromptRuleConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PromptRuleConfig")
-            .field("pattern", &self.pattern)
-            .field("timeout", &self.timeout)
-            .field("verify_foreground", &self.verify_foreground)
-            .finish_non_exhaustive()
-    }
-}
-
-// see: cans/04-terminal-plane.md#Terminal-pipeline
-#[derive(Debug, Clone, Default)]
-pub struct TerminalWiring {
-    pub cols: u16,
-    pub rows: u16,
-    pub drop_osc52: bool,
-    pub strip_title: bool,
-    pub token_shield: Option<TokenShieldConfig>,
-    pub prompts: Vec<PromptRuleConfig>,
+    ops: Arc<dyn TerminalOps>,
+    metrics: Arc<MetricRegistry>,
 }
 
 impl TerminalPlane {
-    pub fn new(session_id: [u8; 16]) -> Self {
-        // see: cans/04-terminal-plane.md#Terminal-pipeline
+    pub fn new(session_id: [u8; 16], ops: Arc<dyn TerminalOps>) -> Self {
+        ops.bind_session(session_id);
         Self {
             session_id,
-            state: Mutex::new(Vt100StateMachine::new()),
-            segments: Mutex::new(HashMap::new()),
-            metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
-            filters: (false, false),
-            token_shield: None,
-            prompts: Vec::new(),
+            ops,
+            metrics: Arc::new(MetricRegistry::new()),
         }
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
     // TODO (L3) [tp_03_ansi_sanitizer_osc52_clipboard_drop]: the host filter pipeline applies drop_osc52/strip_title to console output before VT100 feed; slop: OSC52 payload reaches host terminal, bytes not purged
     pub fn with_wiring(self, wiring: &TerminalWiring) -> Self {
+        let _ = self.ops.apply_wiring(wiring);
         let _ = self.resize(wiring.cols, wiring.rows);
-        Self {
-            filters: (wiring.drop_osc52, wiring.strip_title),
-            token_shield: wiring.token_shield.clone(),
-            prompts: wiring.prompts.clone(),
-            ..self
-        }
+        self
     }
 
-    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>) -> Self {
+    pub fn with_metrics(mut self, metrics: Arc<MetricRegistry>) -> Self {
         self.metrics = metrics;
         self
     }
 
-    pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
+    pub fn metrics(&self) -> &Arc<MetricRegistry> {
         &self.metrics
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
     pub fn output_filters(&self) -> (bool, bool) {
-        self.filters
+        self.ops.output_filters()
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
-    pub fn token_shield(&self) -> Option<&TokenShieldConfig> {
-        self.token_shield.as_ref()
+    pub fn token_shield(&self) -> Option<TokenShieldConfig> {
+        self.ops.token_shield()
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
-    pub fn prompts(&self) -> &[PromptRuleConfig] {
-        &self.prompts
+    pub fn prompts(&self) -> Vec<PromptRuleConfig> {
+        self.ops.prompts()
     }
 
-    pub fn resize(
-        &self,
-        cols: u16,
-        rows: u16,
-    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        let mut state = self.state.lock().map_err(|_| {
-            kelir_interface::plugin_model::PluginError::Halt("terminal state lock poisoned".into())
-        })?;
-        state.resize(cols, rows);
-        Ok(())
+    pub fn resize(&self, cols: u16, rows: u16) -> Result<(), PluginError> {
+        self.ops.resize(cols, rows)
     }
 
-    pub fn feed(&self, bytes: &[u8]) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        let mut state = self.state.lock().map_err(|_| {
-            kelir_interface::plugin_model::PluginError::Halt("terminal state lock poisoned".into())
-        })?;
-        state.feed(bytes).inspect_err(|_| {
-            self.metrics.record_drop();
-        })
+    pub fn feed(&self, bytes: &[u8]) -> Result<(), PluginError> {
+        self.ops.feed(bytes)
     }
 
-    pub fn export_screen_matrix(
-        &self,
-    ) -> Result<Vec<u8>, kelir_interface::plugin_model::PluginError> {
-        let state = self.state.lock().map_err(|_| {
-            kelir_interface::plugin_model::PluginError::Halt("terminal state lock poisoned".into())
-        })?;
-        let (max_lines, max_bytes) = match self.token_shield.as_ref() {
-            Some(shield) => (shield.max_lines_total, shield.max_bytes_total),
-            None => (usize::MAX, usize::MAX),
-        };
-        Ok(apply_token_shield(
-            &filter_ansi_shadow(&state.export()),
-            max_lines,
-            max_bytes,
-        ))
+    pub fn export_screen_matrix(&self) -> Result<Vec<u8>, PluginError> {
+        self.ops.export_screen_matrix()
     }
 
-    // TODO (L3) [terminal_plane]: replay from the durable chunk files and index.bin so cursors survive process restarts; the in-memory segment map starts empty each boot; slop: replay reads memory only, durable chunks ignored
-    pub fn read_from(
-        &self,
-        port: u32,
-        cursor: u64,
-    ) -> Result<(Vec<u8>, u64), kelir_interface::plugin_model::PluginError> {
-        let segments = self.segments.lock().map_err(|_| {
-            kelir_interface::plugin_model::PluginError::Halt("terminal log lock poisoned".into())
-        })?;
-        let segment = segments.get(&LogStream::Port(port)).ok_or_else(|| {
-            kelir_interface::plugin_model::PluginError::Halt("no log segment for port".into())
-        })?;
-        if cursor > segment.head.0 {
-            return Err(kelir_interface::plugin_model::PluginError::Halt(
-                "cursor beyond log head".into(),
-            ));
-        }
-        let offset = usize::try_from(cursor).map_err(|_| {
-            kelir_interface::plugin_model::PluginError::Halt("log cursor too large".into())
-        })?;
-        Ok((segment.bytes[offset..].to_vec(), segment.head.0))
+    pub fn read_from(&self, port: u32, cursor: u64) -> Result<(Vec<u8>, u64), PluginError> {
+        self.ops.read_from(port, cursor)
     }
 
-    pub fn append_log_chunk(
-        &self,
-        port: u32,
-        chunk: &[u8],
-    ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
-        self.append_stream_chunk(LogStream::Port(port), chunk)
+    pub fn append_log_chunk(&self, port: u32, chunk: &[u8]) -> Result<u64, PluginError> {
+        self.ops.append_stream_chunk(LogStream::Port(port), chunk)
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
     // see: cans/04-terminal-plane.md#Stream-replay
-    pub fn record_output(
-        &self,
-        stream: LogStream,
-        bytes: &[u8],
-    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        self.append_stream_chunk(stream, bytes)?;
-        self.feed(bytes)
+    pub fn record_output(&self, stream: LogStream, bytes: &[u8]) -> Result<(), PluginError> {
+        self.ops.record_output(stream, bytes)
     }
 
     // see: cans/04-terminal-plane.md#Stream-replay
-    pub fn append_stream_chunk(
-        &self,
-        stream: LogStream,
-        chunk: &[u8],
-    ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
-        let mut segments = self.segments.lock().map_err(|_| {
-            kelir_interface::plugin_model::PluginError::Halt("terminal log lock poisoned".into())
-        })?;
-        if let std::collections::hash_map::Entry::Vacant(entry) = segments.entry(stream) {
-            entry.insert(LogSegment::new(self.session_id, stream)?);
-        }
-        let segment = segments.get_mut(&stream).ok_or_else(|| {
-            kelir_interface::plugin_model::PluginError::Halt(
-                "log segment missing after insert".into(),
-            )
-        })?;
-        let len = u64::try_from(chunk.len()).map_err(|_| {
-            kelir_interface::plugin_model::PluginError::Halt("log chunk too large".into())
-        })?;
-        let new_head = segment.head.advance(len)?;
-        if let Some(parent) = segment.log_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                kelir_interface::plugin_model::PluginError::Halt(format!(
-                    "create session log dir: {e}"
-                ))
-            })?;
-        }
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&segment.log_path)
-            .map_err(|e| {
-                kelir_interface::plugin_model::PluginError::Halt(format!("open stream log: {e}"))
-            })?;
-        file.write_all(chunk).map_err(|e| {
-            kelir_interface::plugin_model::PluginError::Halt(format!("append stream log: {e}"))
-        })?;
-        segment.head = new_head;
-        segment.bytes.extend_from_slice(chunk);
-        Ok(segment.head.0)
+    pub fn append_stream_chunk(&self, stream: LogStream, chunk: &[u8]) -> Result<u64, PluginError> {
+        self.ops.append_stream_chunk(stream, chunk)
     }
-}
-
-fn filter_ansi_shadow(buf: &[u8]) -> Vec<u8> {
-    // TODO (L3) [tp_03_ansi_sanitizer_osc52_clipboard_drop]: strip ANSI shadow sequences from buf; slop: OSC52 payload reaches host terminal, bytes not purged
-    buf.to_vec()
-}
-
-fn apply_token_shield(grid: &[u8], max_lines: usize, max_bytes: usize) -> Vec<u8> {
-    // TODO (L3) [tp_05_token_shield_scrollback_clamping]: truncate grid to max_lines/max_bytes with saturating math and redact token spans; slop: clamp slices mid-char, invalid UTF-8, tokens leak
-    let _ = (max_lines, max_bytes);
-    grid.to_vec()
 }

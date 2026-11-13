@@ -18,7 +18,9 @@ use std::path::PathBuf;
 // depth unbounded. StepVerdict::Commit advances the delta DAG head;
 // writes remain in sparse extents. Compaction flattens ancestor deltas
 // in a single-pass block copy on export; compaction writes a new
-// consolidated manifest pointing to the ancestor base. Rollback:
+// consolidated manifest pointing to the ancestor base. Live home:
+// crates/kelir-checkpoint/src/compaction.run.rs (compaction, restore),
+// crates/kelir-checkpoint/src/manifest_graph.run.rs (head, lineage).
 // the broker drops the upper file and tombstones, base untouched,
 // FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED); rollback also
 // closes host sockets, guest sees ECONNRESET/EPIPE, sockets are not

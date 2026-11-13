@@ -1,7 +1,16 @@
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_11_stream_replay_monotonic_cursor_read.yaml#case_id
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use kelir_engine::planes::terminal::{LogStream, TerminalPlane, TerminalWiring};
+use kelir_interface::terminal::{LogStream, TerminalOps, TerminalWiring};
+use kelir_otlp::registry_otlp::MetricRegistry;
+use kelir_terminal::RealTerminalOps;
+
+fn ops(session_id: [u8; 16]) -> RealTerminalOps {
+    let ops = RealTerminalOps::new(Arc::new(MetricRegistry::new()));
+    ops.bind_session(session_id);
+    ops
+}
 
 fn session_dir(session_id: &[u8; 16]) -> Result<PathBuf, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
@@ -24,8 +33,8 @@ fn drop_session_dir(session_id: &[u8; 16]) {
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_07_vt100_wireframe_matrix_determinism.yaml#case_id
 #[test]
 fn tp_07_vt100_wireframe_matrix_determinism() -> Result<(), String> {
-    let first = TerminalPlane::new([0x70u8; 16]);
-    let second = TerminalPlane::new([0x70u8; 16]);
+    let first = ops([0x70u8; 16]);
+    let second = ops([0x70u8; 16]);
     first.resize(80, 24).map_err(|e| e.to_string())?;
     second.resize(80, 24).map_err(|e| e.to_string())?;
     let first_matrix = first.export_screen_matrix().map_err(|e| e.to_string())?;
@@ -40,9 +49,9 @@ fn tp_07_vt100_wireframe_matrix_determinism() -> Result<(), String> {
 fn tp_11_stream_replay_monotonic_cursor_read() -> Result<(), String> {
     let session_id = [0x71u8; 16];
     drop_session_dir(&session_id);
-    let plane = TerminalPlane::new(session_id);
+    let plane = ops(session_id);
     let head = plane
-        .append_log_chunk(0, b"hello")
+        .append_stream_chunk(LogStream::Port(0), b"hello")
         .map_err(|e| e.to_string())?;
     assert_eq!(head, 5);
     let first = plane.read_from(0, 0).map_err(|e| e.to_string())?;
@@ -60,10 +69,10 @@ fn tp_11_stream_replay_monotonic_cursor_read() -> Result<(), String> {
 fn tp_12_stream_replay_client_reconnect_resume() -> Result<(), String> {
     let session_id = [0x72u8; 16];
     drop_session_dir(&session_id);
-    let plane = TerminalPlane::new(session_id);
+    let plane = ops(session_id);
     let chunk = [b'x'; 1024];
     let head = plane
-        .append_log_chunk(0, &chunk)
+        .append_stream_chunk(LogStream::Port(0), &chunk)
         .map_err(|e| e.to_string())?;
     assert_eq!(head, 1024);
     let tail = plane.read_from(0, 512).map_err(|e| e.to_string())?;
@@ -82,9 +91,9 @@ fn tp_12_stream_replay_client_reconnect_resume() -> Result<(), String> {
 fn tp_13_exec_log_file_per_exec_isolation() -> Result<(), String> {
     let session_id = [0x73u8; 16];
     drop_session_dir(&session_id);
-    let plane = TerminalPlane::new(session_id);
+    let plane = ops(session_id);
     let head = plane
-        .append_log_chunk(0, b"0123456789")
+        .append_stream_chunk(LogStream::Port(0), b"0123456789")
         .map_err(|e| e.to_string())?;
     assert_eq!(head, 10);
     plane
@@ -122,7 +131,7 @@ fn tp_13_exec_log_file_per_exec_isolation() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_14_window_resize_exec_control_propagation.yaml#case_id
 #[test]
 fn tp_14_window_resize_exec_control_propagation() -> Result<(), String> {
-    let plane = TerminalPlane::new([0x74u8; 16]);
+    let plane = ops([0x74u8; 16]);
     plane.resize(120, 40).map_err(|e| e.to_string())?;
     let matrix = plane.export_screen_matrix().map_err(|e| e.to_string())?;
     assert_eq!(matrix.len(), 4840);
@@ -146,7 +155,8 @@ fn tp_03_ansi_sanitizer_osc52_clipboard_drop() -> Result<(), String> {
         token_shield: None,
         prompts: Vec::new(),
     };
-    let plane = TerminalPlane::new(session_id).with_wiring(&wiring);
+    let plane = ops(session_id);
+    plane.apply_wiring(&wiring).map_err(|e| e.to_string())?;
     plane
         .record_output(
             LogStream::Port(0),
@@ -181,7 +191,8 @@ fn tp_04_ansi_sanitizer_title_spoof_strip() -> Result<(), String> {
         token_shield: None,
         prompts: Vec::new(),
     };
-    let plane = TerminalPlane::new(session_id).with_wiring(&wiring);
+    let plane = ops(session_id);
+    plane.apply_wiring(&wiring).map_err(|e| e.to_string())?;
     plane
         .record_output(
             LogStream::Port(0),
@@ -216,7 +227,8 @@ fn tp_06_placeholder_mask_carryover_window() -> Result<(), String> {
         token_shield: None,
         prompts: Vec::new(),
     };
-    let plane = TerminalPlane::new(session_id).with_wiring(&wiring);
+    let plane = ops(session_id);
+    plane.apply_wiring(&wiring).map_err(|e| e.to_string())?;
     plane
         .record_output(LogStream::Port(0), b"API key is sk-an")
         .map_err(|e| e.to_string())?;

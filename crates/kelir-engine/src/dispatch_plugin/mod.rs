@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use kelir_interface::checkpoint::PidLineage;
 use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
 use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::{
@@ -31,10 +32,10 @@ use kelir_interface::protocol_wire::{
     StepVerdict, StreamKind, TrapEvent, Verdict,
 };
 use kelir_interface::telemetry::{ExecutionReceipt, ReceiptStore};
+use kelir_interface::terminal::LogStream;
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
-use crate::planes::checkpoint::{CheckpointPlane, PidLineage};
-use crate::planes::terminal::LogStream;
+use crate::planes::checkpoint::CheckpointPlane;
 use crate::session_lifecycle::Session;
 use crate::trap_gate::{GateDecision, TrapGateEvaluator};
 

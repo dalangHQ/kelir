@@ -739,6 +739,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kelir-checkpoint"
+version = "1.0.0"
+dependencies = [
+ "kelir-engine",
+ "kelir-interface",
+ "kelir-otlp",
+]
+
+[[package]]
 name = "kelir-engine"
 version = "1.0.0"
 dependencies = [
@@ -746,10 +755,13 @@ dependencies = [
  "bytes",
  "ciborium",
  "kelir-catalog",
+ "kelir-checkpoint",
+ "kelir-host",
  "kelir-interface",
  "kelir-otlp",
  "kelir-storage",
  "kelir-storage-io",
+ "kelir-terminal",
  "kelir-transport",
  "kelir-wire",
  "libc",
@@ -759,6 +771,17 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
+]
+
+[[package]]
+name = "kelir-host"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "kelir-engine",
+ "kelir-interface",
+ "kelir-otlp",
+ "libc",
 ]
 
 [[package]]
@@ -908,6 +931,15 @@ version = "1.0.0"
 dependencies = [
  "kelir-interface",
  "libc",
+]
+
+[[package]]
+name = "kelir-terminal"
+version = "1.0.0"
+dependencies = [
+ "kelir-engine",
+ "kelir-interface",
+ "kelir-otlp",
 ]
 
 [[package]]

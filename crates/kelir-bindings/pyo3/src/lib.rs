@@ -579,7 +579,7 @@ pub struct PyKelirBuilder {
     plugins: Vec<PluginRegistration>,
     fused: Option<FusedTrampolineDescriptor>,
     trampolines: TrampolineTable,
-    terminal_wiring: Option<kelir_engine::planes::terminal::TerminalWiring>,
+    terminal_wiring: Option<kelir_interface::terminal::TerminalWiring>,
     wire_wiring: Option<kelir_interface::wire::net::WireWiring>,
     storage_config: storage_bridge::PyStorageProjection,
 }
@@ -623,7 +623,7 @@ impl PyKelirBuilder {
     // see: cans/04-terminal-plane.md#Terminal-pipeline
     // TODO (L3) [bindings_py]: prompt rules and the token-shield clamp callback stay Python-side until the FFI callback bridge lands.; slop: callbacks stay Python-side, silently dropped
     fn set_terminal_config(&mut self, cfg: &Bound<'_, PyDict>) -> PyResult<()> {
-        let mut wiring = kelir_engine::planes::terminal::TerminalWiring::default();
+        let mut wiring = kelir_interface::terminal::TerminalWiring::default();
         for (key, value) in cfg.iter() {
             match key.to_string().as_str() {
                 "cols" => {
@@ -855,6 +855,9 @@ impl PyKelirBuilder {
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
         let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
             terminal: self.terminal_wiring.clone(),
+            terminal_ops: None,
+            checkpoint_ops: None,
+            host_ops: None,
             wire: self.wire_wiring.clone(),
             storage: self.storage_config.config.clone(),
         };

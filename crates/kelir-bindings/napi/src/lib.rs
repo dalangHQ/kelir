@@ -908,7 +908,7 @@ impl NativeKelirBuilder {
         let terminal =
             self.terminal_cfg
                 .as_ref()
-                .map(|cfg| kelir_engine::planes::terminal::TerminalWiring {
+                .map(|cfg| kelir_interface::terminal::TerminalWiring {
                     cols: cfg.cols.unwrap_or(80),
                     rows: cfg.rows.unwrap_or(24),
                     drop_osc52: cfg.drop_osc52.unwrap_or(false),
@@ -951,6 +951,9 @@ impl NativeKelirBuilder {
         };
         Ok(kelir_engine::session_lifecycle::PlaneWiring {
             terminal,
+            terminal_ops: None,
+            checkpoint_ops: None,
+            host_ops: None,
             wire,
             storage,
         })

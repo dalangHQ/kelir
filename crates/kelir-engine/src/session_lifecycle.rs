@@ -18,9 +18,12 @@ use kelir_interface::plugin_model::{LifecycleCtx, LifecycleEvent, VetoList};
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
-#[derive(Debug, Clone, Default)]
+#[derive(Default)]
 pub struct PlaneWiring {
-    pub terminal: Option<crate::planes::terminal::TerminalWiring>,
+    pub terminal: Option<kelir_interface::terminal::TerminalWiring>,
+    pub terminal_ops: Option<Arc<dyn kelir_interface::terminal::TerminalOps>>,
+    pub checkpoint_ops: Option<Arc<dyn kelir_interface::checkpoint::CheckpointOps>>,
+    pub host_ops: Option<Arc<dyn kelir_interface::host::HostOps>>,
     pub wire: Option<kelir_interface::wire::net::WireWiring>,
     pub storage: crate::planes::storage::StorageConfig,
 }
@@ -34,6 +37,9 @@ pub struct Session {
     pub wire: crate::planes::wire::WirePlane,
     pub checkpoint: Arc<crate::planes::checkpoint::CheckpointPlane>,
     pub host: crate::planes::host::HostPlane,
+    terminal_ops: Arc<dyn kelir_interface::terminal::TerminalOps>,
+    checkpoint_ops: Arc<dyn kelir_interface::checkpoint::CheckpointOps>,
+    host_ops: Arc<dyn kelir_interface::host::HostOps>,
     metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     uart: crate::uart_terminal::UartRingBuffer,
     driver: Option<Arc<tokio::sync::Mutex<Box<dyn kelir_interface::driver_interface::VmmDriver>>>>,
@@ -437,17 +443,38 @@ impl Session {
         if let Some(handler) = engine.vsock_service(VAULT_METADATA_VSOCK_PORT) {
             wire.bind_imds_sink(handler)?;
         }
+        let terminal_ops = plane_wiring.terminal_ops.ok_or_else(|| {
+            kelir_interface::plugin_model::PluginError::Halt(
+                "TerminalOps unbound at boot; bind via PlaneWiring::terminal_ops".into(),
+            )
+        })?;
+        let checkpoint_ops = plane_wiring.checkpoint_ops.ok_or_else(|| {
+            kelir_interface::plugin_model::PluginError::Halt(
+                "CheckpointOps unbound at boot; bind via PlaneWiring::checkpoint_ops".into(),
+            )
+        })?;
+        let host_ops = plane_wiring.host_ops.ok_or_else(|| {
+            kelir_interface::plugin_model::PluginError::Halt(
+                "HostOps unbound at boot; bind via PlaneWiring::host_ops".into(),
+            )
+        })?;
         let terminal = Arc::new(
             match &plane_wiring.terminal {
-                Some(wiring) => {
-                    crate::planes::terminal::TerminalPlane::new(session_id).with_wiring(wiring)
-                }
-                None => crate::planes::terminal::TerminalPlane::new(session_id),
+                Some(wiring) => crate::planes::terminal::TerminalPlane::new(
+                    session_id,
+                    Arc::clone(&terminal_ops),
+                )
+                .with_wiring(wiring),
+                None => crate::planes::terminal::TerminalPlane::new(
+                    session_id,
+                    Arc::clone(&terminal_ops),
+                ),
             }
             .with_metrics(metrics.clone()),
         );
         let session_checkpoint_plane = Arc::new(
-            crate::planes::checkpoint::CheckpointPlane::new().with_metrics(metrics.clone()),
+            crate::planes::checkpoint::CheckpointPlane::new(Arc::clone(&checkpoint_ops))
+                .with_metrics(metrics.clone()),
         );
         let engine = engine
             .with_metrics(metrics.clone())
@@ -508,7 +535,11 @@ impl Session {
             storage: storage.with_metrics(metrics.clone()),
             wire: wire.with_metrics(metrics.clone()),
             checkpoint: session_checkpoint_plane,
-            host: crate::planes::host::HostPlane::new().with_metrics(metrics.clone()),
+            host: crate::planes::host::HostPlane::new(Arc::clone(&host_ops))
+                .with_metrics(metrics.clone()),
+            terminal_ops,
+            checkpoint_ops,
+            host_ops,
             metrics,
             uart: crate::uart_terminal::UartRingBuffer::new(),
             driver,
@@ -603,8 +634,8 @@ impl Session {
     }
 
     // see: cans/08-lifecycle.md#CoW-fork
-    pub fn lineage(&self, root_pid: u32) -> crate::planes::checkpoint::PidLineage {
-        crate::planes::checkpoint::PidLineage::new_in_session(root_pid, self.incarnation_id)
+    pub fn lineage(&self, root_pid: u32) -> kelir_interface::checkpoint::PidLineage {
+        kelir_interface::checkpoint::PidLineage::new_in_session(root_pid, self.incarnation_id)
     }
 
     // see: cans/08-lifecycle.md#CoW-fork
@@ -619,6 +650,9 @@ impl Session {
         let parent_driver = self.driver.clone();
         let metrics = Arc::clone(&self.metrics);
         let terminal = Arc::clone(&self.terminal);
+        let terminal_ops = Arc::clone(&self.terminal_ops);
+        let checkpoint_ops = self.checkpoint_ops.fresh();
+        let host_ops = self.host_ops.fresh();
         let storage_wiring = self.storage.wiring().clone();
         let config = self.config.clone();
         // see: cans/06-storage-catalog.md#Entity-model
@@ -653,7 +687,7 @@ impl Session {
             )
             .with_wiring(storage_wiring);
             let checkpoint = Arc::new(
-                crate::planes::checkpoint::CheckpointPlane::new()
+                crate::planes::checkpoint::CheckpointPlane::new(Arc::clone(&checkpoint_ops))
                     .with_metrics(Arc::clone(&metrics)),
             );
             let mut engine = crate::dispatch_plugin::PipelineEngine::new()
@@ -670,7 +704,11 @@ impl Session {
                 storage: storage.with_metrics(Arc::clone(&metrics)),
                 wire: crate::planes::wire::WirePlane::new().with_metrics(Arc::clone(&metrics)),
                 checkpoint,
-                host: crate::planes::host::HostPlane::new().with_metrics(Arc::clone(&metrics)),
+                host: crate::planes::host::HostPlane::new(Arc::clone(&host_ops))
+                    .with_metrics(Arc::clone(&metrics)),
+                terminal_ops,
+                checkpoint_ops,
+                host_ops,
                 metrics,
                 uart: crate::uart_terminal::UartRingBuffer::new(),
                 driver: child_driver,
@@ -695,7 +733,7 @@ impl Session {
     // see: cans/08-lifecycle.md#Rollback
     pub async fn rollback(
         &mut self,
-        lineage: crate::planes::checkpoint::PidLineage,
+        lineage: kelir_interface::checkpoint::PidLineage,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let node_id = self.checkpoint.head(lineage).ok_or_else(|| {
             kelir_interface::plugin_model::PluginError::Halt(

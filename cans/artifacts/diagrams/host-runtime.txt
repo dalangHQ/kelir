@@ -17,6 +17,8 @@
 │  │   ├── EventBus: Unified compile-time and async hook pipeline                      │  │
 │  │   ├── Transport: SPSC rings primary; AF_VSOCK / named-pipe fallback                │ │
 │  │   ├── Host state: ~/.kelir/catalog.db (SQLite WAL), cas/, sessions/               │  │
+│  │   ├── Planes: Terminal/Checkpoint/Host facades live in                            │  │
+│  │   │   kelir-terminal, kelir-checkpoint, kelir-host (Real*Ops)                     │  │
 │  │   └── DriverRouter: Lifecycle controller mediating Box<dyn VmmDriver>             │  │
 │  └──────────────────────────────────────────┬────────────────────────────────────────┘  │
 │                                             │ Dynamic Driver Trait Interface            │

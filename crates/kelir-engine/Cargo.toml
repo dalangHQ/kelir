@@ -27,6 +27,9 @@ kelir-storage = { path = "../kelir-storage" }
 kelir-storage-io = { path = "../kelir-storage-io" }
 kelir-wire = { path = "../kelir-wire" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+kelir-terminal = { path = "../kelir-terminal" }
+kelir-checkpoint = { path = "../kelir-checkpoint" }
+kelir-host = { path = "../kelir-host" }
 
 [lints]
 workspace = true

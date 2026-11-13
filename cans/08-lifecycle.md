@@ -256,6 +256,8 @@
       - Host reclaim (madvise / hv_vm_unmap) gates on guest ack, not target set
       - Fork, snapshot, and heavy exec require prior convergence completion
   - Native checkpoint plane (kelir-engine::checkpoint)
+    - Crate topology: kelir-checkpoint owns RealCheckpointOps (manifest_graph.run.rs, step_slot.run.rs, compaction.run.rs); kelir-engine/src/planes/checkpoint/mod.rs is the thin L2 CheckpointPlane façade holding Arc<dyn CheckpointOps>
+    - Trait seam: kelir-interface::checkpoint::CheckpointOps (create_step, active_step, commit_step, rollback_step, branch_from, restore, head, lineage, monotonic_watermark_ns, compact)
     - Zero-harness boundary detection
       - Tracks process group exits and foreground PTY idle quiescence
       - Traps sentinel FUSE inodes on unbacked virtual paths (/dev/kelir-gate)
@@ -269,7 +271,8 @@
       - SPEC CORRECTION (SSOT-A1)
         - The former "CheckpointService" named here never existed
         - The live surface is CheckpointPlane plus session.checkpoint
-        - See: crates/kelir-engine/src/planes/checkpoint/mod.rs:99
+        - See: crates/kelir-checkpoint/src/real_checkpoint.run.rs
+        - See: crates/kelir-engine/src/planes/checkpoint/mod.rs
         - See: crates/kelir-engine/src/session_lifecycle.rs:32
       - Captures atomic pre-step SnapshotDescriptor before workload execution
       - Evaluates physical ExecutionReceipt upon trapped process exit
@@ -330,6 +333,8 @@
       - Fork inherits the parent's guest clock at fork instant; children diverge
         - monotonically from that point
   - Host crash reaper
+    - Crate topology: kelir-host owns RealHostOps (reaper.run.rs); kelir-engine/src/planes/host/mod.rs is the thin L2 HostPlane façade holding Arc<dyn HostOps>
+    - Trait seam: kelir-interface::host::HostOps (refresh_rss, lsm_status, pressure_level, pressure_level_typed, subscribe_pressure, poll_pressure_events, inflate_balloon, reclaim, arm_host_reaper)
     - Problem: host crash orphans guest vCPUs
       - Host Node.js / Python process killed abruptly (kill -9, OOM, segfault)
       - Hypervisor children must not survive as orphaned CPU spinners

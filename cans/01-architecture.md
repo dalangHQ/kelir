@@ -233,6 +233,8 @@
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
     - Host memory preservation: see: 08-lifecycle.md#Suspend-and-resume
   - Host memory pressure watcher
+    - Crate topology: kelir-host owns RealHostOps (pressure.run.rs, balloon.run.rs); kelir-engine/src/planes/host/mod.rs is the thin L2 HostPlane façade holding Arc<dyn HostOps>
+    - Trait seam: kelir-interface::host::HostOps (subscribe_pressure, poll_pressure_events, inflate_balloon, reclaim)
     - Balloon convergence loop: see: 08-lifecycle.md#Balloon-convergence
     - Linux: subscribe to cgroup v2 memory.pressure via io_uring/epoll
     - Linux reclaim: madvise(MADV_DONTNEED) releases physical frames immediately

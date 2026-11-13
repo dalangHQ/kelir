@@ -105,7 +105,7 @@ kelir/
 │   │       ├── lib.rs                 # Core initialization exports
 │   │       ├── planes/                # Core Foundation Planes (Merged Engine Subsystems)
 │   │       │   ├── mod.rs
-│   │       │   ├── terminal/mod.rs    # Terminal Plane: virtio-console, VT100 grid, ANSI sanitizer, PTY discipline
+│   │       │   ├── terminal/mod.rs    # Terminal Plane façade: delegates to kelir-terminal RealTerminalOps (vt100.run.rs, token_shield.run.rs, log_segment.run.rs)
 │   │       │   ├── storage/           # Storage Plane: L2 façade (StoragePlane, FuseDispatcher, StorageQuota)
 │   │       │   │   ├── mod.rs
 │   │       │   │   ├── fuse.flow.rs
@@ -113,8 +113,8 @@ kelir/
 │   │       │   ├── wire/              # Wire Plane: virtio-net, userspace smoltcp ingress ring, DNS policy filter + synthetic gateway, connection parking
 │   │       │   │   ├── mod.rs
 │   │       │   │   └── layout_wire.flow.rs  # L2-L4 frame layout constants
-│   │       │   ├── host/mod.rs        # Host Plane: eBPF/LSM hooks, cgroup v2 pressure, host keyring mediation
-│   │       │   └── checkpoint/mod.rs  # Checkpoint Plane: Step verification loop, CoW diffs, hardware rollback
+│   │       │   ├── host/mod.rs        # Host Plane façade: delegates to kelir-host RealHostOps (pressure.run.rs, balloon.run.rs, reaper.run.rs)
+│   │       │   └── checkpoint/mod.rs  # Checkpoint Plane façade: delegates to kelir-checkpoint RealCheckpointOps (manifest_graph.run.rs, step_slot.run.rs, compaction.run.rs)
 │   │       ├── bus/mod.rs             # VirtIO Device Multiplexer (vsock, console, fs, net) over kelir-transport
 │   │       ├── dispatch_plugin.rs            # Static dispatch array & ArcSwap pipeline runner
 │   │       ├── plugin_registry.rs     # Plugin registration and ordering
@@ -132,11 +132,39 @@ kelir/
 │   │       ├── receipt_attest_test.rs
 │   │       ├── storage_fuse_test.rs
 │   │       ├── storage_reconciler_test.rs
-│   │       ├── terminal_vt100_matrix_test.rs
 │   │       ├── trap_dispatch_protocol_test.rs
 │   │       ├── uart_boot_terminal_test.rs
 │   │       ├── wire_dns_gateway_test.rs
 │   │       └── wire_l4_diversion_test.rs
+│   │
+│   ├── kelir-terminal/                # Terminal plane: RealTerminalOps (VT100 grid, token shield, log segments)
+│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp
+│   │   ├── src/
+│   │   │   ├── lib.rs                 # L2 re-export RealTerminalOps
+│   │   │   ├── real_terminal.run.rs   # RealTerminalOps struct + TerminalOps impl
+│   │   │   ├── vt100.run.rs           # VT100 state machine, ANSI filter, export
+│   │   │   ├── token_shield.run.rs    # Token shield + prompt wiring
+│   │   │   └── log_segment.run.rs     # Append-only per-stream log segments
+│   │   └── tests/
+│   │       └── terminal_vt100_matrix_test.rs
+│   │
+│   ├── kelir-checkpoint/              # Checkpoint plane: RealCheckpointOps (manifest graph, step slots, compaction)
+│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp
+│   │   ├── src/
+│   │   │   ├── lib.rs                 # L2 re-export RealCheckpointOps
+│   │   │   ├── real_checkpoint.run.rs # RealCheckpointOps struct + CheckpointOps impl
+│   │   │   ├── manifest_graph.run.rs  # Manifest graph head/lineage
+│   │   │   ├── step_slot.run.rs       # Step slot create/commit/rollback/branch
+│   │   │   └── compaction.run.rs      # Compaction + restore with clock watermark
+│   │
+│   ├── kelir-host/                    # Host plane: RealHostOps (pressure, balloon, reaper)
+│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp, async-trait, libc
+│   │   ├── src/
+│   │   │   ├── lib.rs                 # L2 re-export RealHostOps
+│   │   │   ├── real_host.run.rs       # RealHostOps struct + HostOps impl
+│   │   │   ├── pressure.run.rs        # Pressure subscribe/poll
+│   │   │   ├── balloon.run.rs         # Balloon inflate/reclaim
+│   │   │   └── reaper.run.rs          # LSM status, RSS refresh, host reaper arm
 │   │
 │   ├── kelir-transport/               # Supporting crate: Stream trait + SPSC ring, AF_VSOCK, named-pipe backends
 │   │   ├── src/
